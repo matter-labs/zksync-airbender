@@ -8,7 +8,7 @@ pre-compiler source capture. This checks the importer, not protocol soundness. -
 run_cmd do
   for family in ["add-sub", "jump-branch", "mul-div", "shift-binop", "word-memory",
       "subword-memory", "unified", "bigint", "blake-g", "blake-round", "keccak"] do
-    for mode in ["cached", "uncached"] do
+    for mode in ["cached"] do
       let path := s!"artifacts/compiler/{family}-{mode}-source.json"
       let bytes ← IO.FS.readFile path
       let snapshot ← match Json.parse bytes >>= (fromJson? (α := Source.Snapshot)) with

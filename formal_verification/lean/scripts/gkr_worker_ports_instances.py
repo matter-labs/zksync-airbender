@@ -43,8 +43,8 @@ def module(family, mode):
                  f'    {direction}_tokens_from_base physical data]\n\n')
     # The checked native product-reduction argument is identical to the executor
     # case. Replace only the retained token view and its physical binding lemma.
-    executor = (LEAN / 'Airbender/Proofs/GKRProtocol/MemoryPortsNative/AddSubUncached.lean').read_text()
-    executor = executor.replace('AddSubUncached', case).replace('Airbender.AddSub.', 'Airbender.'+model+'.')
+    executor = (LEAN / 'Airbender/Proofs/GKRProtocol/MemoryPortsNative/AddSubCached.lean').read_text()
+    executor = executor.replace('AddSubCached', case).replace('Airbender.AddSub.', 'Airbender.'+model+'.')
     output = executor[executor.index('theorem read_output_logical'):executor.index('\nend Airbender.Compiler.MemoryPortsNative.')]
     for direction, point in [('read','initial'),('write','final')]:
         start = output.index('theorem ' + direction + '_output_logical')
@@ -119,11 +119,11 @@ def modules(family, mode):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--family',choices=FAMILIES,action='append')
-    p.add_argument('--mode',choices=['cached','uncached'],action='append')
+    p.add_argument('--mode',choices=['cached'],action='append')
     for flag in ['write','check','build']:p.add_argument('--'+flag,action='store_true')
     a=p.parse_args()
     for family in a.family or FAMILIES:
-        for mode in a.mode or ['uncached','cached']:
+        for mode in a.mode or ['cached']:
             for target,text in modules(family,mode):
                 path=LEAN/(target.replace('.','/')+'.lean')
                 if a.check and (not path.exists() or path.read_text()!=text):raise ValueError('worker token proof changed: '+target)

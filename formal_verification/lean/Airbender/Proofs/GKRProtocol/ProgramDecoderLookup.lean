@@ -1,16 +1,9 @@
-import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.AddSubUncached
 import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.AddSubCached
-import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.JumpBranchUncached
 import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.JumpBranchCached
-import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.MulDivUncached
 import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.MulDivCached
-import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.ShiftBinopUncached
 import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.ShiftBinopCached
-import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.WordMemoryUncached
 import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.WordMemoryCached
-import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.SubwordMemoryUncached
 import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.SubwordMemoryCached
-import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.UnifiedUncached
 import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.UnifiedCached
 import Airbender.Proofs.GKRProtocol.ProgramLogicalRows
 
@@ -30,17 +23,11 @@ theorem ProgramLogicalRowCertificate.decoder_lookup
     (typed : cert.row.decoderQuery[0].val < 65536) :
     ProgramRows.maskRow (masks cert.row.family) cert.row.decoderQuery ∈ columns cert.row.family := by
   cases cert with
-  | addSubUncached input arguments => exact ProgramDecoderLookup.AddSubUncached.decoder_lookup setup input arguments typed
   | addSubCached input arguments => exact ProgramDecoderLookup.AddSubCached.decoder_lookup setup input arguments typed
-  | jumpBranchUncached input arguments => exact ProgramDecoderLookup.JumpBranchUncached.decoder_lookup setup input arguments typed
   | jumpBranchCached input arguments => exact ProgramDecoderLookup.JumpBranchCached.decoder_lookup setup input arguments typed
-  | mulDivUncached input arguments => exact ProgramDecoderLookup.MulDivUncached.decoder_lookup setup input arguments typed
   | mulDivCached input arguments => exact ProgramDecoderLookup.MulDivCached.decoder_lookup setup input arguments typed
-  | shiftBinopUncached input arguments => exact ProgramDecoderLookup.ShiftBinopUncached.decoder_lookup setup input arguments typed
   | shiftBinopCached input arguments => exact ProgramDecoderLookup.ShiftBinopCached.decoder_lookup setup input arguments typed
-  | wordMemoryUncached input arguments => exact ProgramDecoderLookup.WordMemoryUncached.decoder_lookup setup input arguments typed
   | wordMemoryCached input arguments => exact ProgramDecoderLookup.WordMemoryCached.decoder_lookup setup input arguments typed
-  | subwordMemoryUncached input arguments => exact ProgramDecoderLookup.SubwordMemoryUncached.decoder_lookup setup input arguments typed
   | subwordMemoryCached input arguments => exact ProgramDecoderLookup.SubwordMemoryCached.decoder_lookup setup input arguments typed
 
 /-- Derive the public decoder matching premise from actual row certificates.
@@ -73,7 +60,6 @@ theorem ProgramLogicalRowCertificate.decoder_lookup
     (typed : cert.row.decoderQuery[0].val < 65536) :
     ProgramRows.maskRow mask cert.row.decoderQuery ∈ columns := by
   cases cert with
-  | unifiedUncached input arguments => exact ProgramDecoderLookup.UnifiedUncached.decoder_lookup setup input arguments typed
   | unifiedCached input arguments => exact ProgramDecoderLookup.UnifiedCached.decoder_lookup setup input arguments typed
 
 theorem decoder_exact_lookup [Fact babyBearModulus.Prime]

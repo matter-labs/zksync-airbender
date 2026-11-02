@@ -1,4 +1,4 @@
-"""Retain both exact erasure predicates, all fields and both cache modes."""
+"""Retain both exact erasure predicates, all fields and cached captures."""
 import contextlib
 import io
 from pathlib import Path
@@ -13,7 +13,7 @@ import gkr_history_erasure_instances as interface
 class HistoryErasureTests(unittest.TestCase):
     def test_complete_source_and_exact_predicates(self):
         self.assertEqual(set(generator.CASES), {stem + mode for stem in generator.CIRCUIT_CASES
-                                              for mode in ['Cached', 'Uncached']})
+                                              for mode in ['Cached']})
         for case in generator.CASES:
             generated = dict(generator.modules(case))
             stem = 'Airbender.Proofs.GKRProtocol.HistoryErasureChecks.' + case

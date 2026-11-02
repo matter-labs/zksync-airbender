@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit actual environment-origin proofs and preserve every established audit root.
+"""Audit environment-origin proofs and preserve public Review and target roots.
 
 Run normal dependency-aware Lean builds first. This checks compiled environments;
 independent kernel replay is a separate gate. No source theorem regex chooses the
@@ -98,7 +98,7 @@ def run_guarded(root, guard, sysroot, directory, label, command, expected_exit=0
     return result
 
 
-def analyze(report, request, baseline, output, dispositions=None):
+def analyze(report, request, baseline, output, dispositions=None, refresh_baseline=False):
     """Use disk-backed graph traversal so the whole imported graph need not fit Python RAM."""
     output.mkdir(parents=True, exist_ok=True)
     database = output / 'dependencies.sqlite3'
@@ -170,6 +170,13 @@ def analyze(report, request, baseline, output, dispositions=None):
     for values in axiom_sets.values():
         values.sort()
     old = baseline['roots']
+    # Legacy baselines registered every internal capture shard. The explicit
+    # method reset retires those roots; a refreshed baseline records the public
+    # roots separately so later audits still reject a missing Review statement.
+    protected = set(baseline.get('protected_roots', old))
+    if refresh_baseline and 'protected_roots' not in baseline:
+        protected = set(old).intersection(request['roots'])
+    missing_old = set(old) - roots.keys()
     changes = {name: {'before': old[name], 'after': axiom_sets[name]}
                for name in old if name in axiom_sets and old[name] != axiom_sets[name]}
     decisions = dispositions or {}
@@ -189,7 +196,9 @@ def analyze(report, request, baseline, output, dispositions=None):
               'forbidden_project_axiom_declarations': sorted(item['name'] for item in present
                   if any(item['origin'] == project or item['origin'].startswith(project + '.')
                          for project in ('Airbender', 'Tests'))),
-              'missing_baseline_roots': sorted(set(old) - roots.keys()), 'changed_reports': changes,
+              'missing_baseline_roots': sorted(missing_old & protected),
+              'retired_internal_roots': sorted(missing_old - protected),
+              'protected_baseline_roots': sorted(protected), 'changed_reports': changes,
               'undispositioned_changes': unexplained, 'forbidden_axioms': forbidden,
               'unsafe_proof_dependencies': unsafe_uses, 'declarations': count,
               'inventory_sha256': sha(report), 'compiled_environment_only': True}
@@ -210,6 +219,8 @@ def main():
     parser.add_argument('--sysroot', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--baseline', type=Path, default=HERE / 'axiom_baseline.json')
+    parser.add_argument('--refresh-baseline', action='store_true',
+                        help='After a passing compiled audit, record Review/explicit roots and retire old internal capture roots')
     parser.add_argument('--dispositions', type=Path, default=HERE / 'axiom_dispositions.json')
     args = parser.parse_args()
     root, output = args.root.resolve(), args.output.resolve()
@@ -244,7 +255,17 @@ def main():
     if snapshot != {str(path): sha(path) for path in paths}:
         raise ValueError('Audit source/compiled inputs changed during inspection')
     result = analyze(report, request, json.loads(args.baseline.read_text()), output,
-                     json.loads(args.dispositions.read_text()) if args.dispositions else None)
+                     json.loads(args.dispositions.read_text()) if args.dispositions else None,
+                     refresh_baseline=args.refresh_baseline)
+    if args.refresh_baseline and result['passed']:
+        protected = sorted(name for name, item in result['roots'].items()
+                           if item['explicit'] or item['origin'] == request['reviewPrefix']
+                           or item['origin'].startswith(request['reviewPrefix'] + '.'))
+        write_json(args.baseline, {
+            'schema': 'airbender-axiom-baseline-v1',
+            'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(),
+            'protected_roots': protected, 'roots': result['axioms'],
+        })
     print(json.dumps({'passed': result['passed'], 'roots': len(result['roots']),
                       'baseline_roots': result['baseline_roots'], 'report': str(output / 'axiom-result.json')}))
     return 0 if result['passed'] else 1

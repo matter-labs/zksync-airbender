@@ -1,5 +1,7 @@
 # Trust and review boundaries
 
+The model covers only the cached circuits. Production sets use_caches = true.
+
 The target is the imported richer no-cache relation built from this checkout,
 with upstream `av_gkr_compiler` baseline revision
 `c1a662222cafcd96db4383dce737edb79fa62b09`. The restored native delegation
@@ -21,17 +23,15 @@ Start with the [Review guide](Airbender/Review/README.md), then the selected
 composed statements, original reference selection, observable mappings and public
 assumptions. Supporting arithmetic and assembly proofs belong in Proofs; a
 separate public wrapper for every internal subcircuit calculation is unnecessary.
-Existing compatibility names and native BabyBear entrypoints remain useful.
+Native BabyBear entrypoints remain available.
 
-The [compiler review](Airbender/Review/Compiler/README.md) exposes arithmetic,
-physical-row logical execution, retained-table supplied-program and explicit-platform
-entrypoints, alongside the older compatibility wrappers. Native JSON readers and concrete capture
-bindings live in Import; certificate checks and supporting calculations live in
-Proofs. Captured-instance scope, exact tuple/state/RAM matching and public
-boundaries remain explicit. Logical entrypoints derive helper/member validity
-without canonical source framing; the older wrappers preserve their premises.
-[Validation evidence](VERIFICATION_STATUS.md#validation-evidence) is the sole
-maintained inventory of completed checks, measurements and pending assurance.
+The [compiler review](Airbender/Review/Compiler/README.md) exposes the three
+production machine targets and their cached native certificate corollaries.
+Native JSON readers and capture bindings live in Import.
+Certificate checks and proof assembly live in Proofs.
+Exact lookup, state and RAM matching remain explicit.
+[Verification status](VERIFICATION_STATUS.md) records the current state.
+The earlier dated log is in [verification history](VERIFICATION_HISTORY.md).
 
 [Pooled soundness](Airbender/Review/Trace/Soundness.lean) derives successful
 ordinary execution and native terminal PC/cells from initialized matching.
@@ -47,19 +47,14 @@ under their per-trace occurrence plan and complete protocol coverage.
 The three [machine targets](Airbender/Review/Compiler/MachineTargets.lean)
 are proved. The unified relation includes external reads, modular MOPs and
 complete delegation calls. The full unsigned relation includes blessed split
-Keccak. All 14 CPU profiles have native public-program constraint and decoder
-adapters. The [native acceptance adapter](Airbender/Proofs/GKRProtocol/NativeMachineAcceptance.lean)
-closes the CPU and decoder premises. The earlier captured-program interfaces
-remain in the compatibility proof layer with their original contracts.
-The boundary guard accepts only the four exact legacy import shims. They
-declare no values or statements. Four named public-program binding modules
-instantiate native row and setup types. They may import native certificates
-through those types. They may not import proofs directly or declare supporting
-theorems. The canonical public-program graph excludes compatibility modules.
-All six boundary controls and the current graph check pass.
-The pinned public OS decoder differential passed all 14 full and unified
-comparisons in both cache modes. It does not prove OS execution: the targets
-exclude special5 calls. The verified checker rollout remains open.
+Keccak. The native adapters cover the six unrolled CPU families and the unified
+circuit. The [native acceptance adapter](Airbender/Proofs/GKRProtocol/NativeMachineAcceptance.lean)
+closes the CPU and decoder premises. The [three native corollaries](Airbender/Review/Compiler/Theorems.lean)
+compose it with the target proofs. The captured-program compatibility layer
+and uncached paths are removed. The tag `fv-archive-uncached` retains them in
+git history. The canonical graph uses public program setup.
+The checker consolidation remains open. Linux checks run at the end.
+
 Upstream #531 merged as `06c15f275` and is in this base. The unified base
 entrypoint now returns the verified registers. New-base runtime validation
 remains pending.

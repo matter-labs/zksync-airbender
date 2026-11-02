@@ -22,7 +22,7 @@ def main():
     for family, stem in zip(FAMILIES, CASES, strict=True):
         if args.family and family not in args.family:
             continue
-        for mode in ("uncached", "cached"):
+        for mode in ("cached",):
             case, name = stem + mode.title(), family + "-" + mode
             module = "Airbender.Proofs.GKRProtocol.TableNative." + case
             path = LEAN / "Airbender/Proofs/GKRProtocol/TableNative" / (case + ".lean")

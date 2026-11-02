@@ -13,8 +13,8 @@ import gkr_full_arithmetic_certificate as generator
 class PackedArithmeticCaptureTests(unittest.TestCase):
     def test_both_modes_use_one_whole_capture(self):
         self.assertEqual(generator.CHECKER_CAPTURES,
-                         {stem + mode for stem in generator.CASES for mode in ("Cached", "Uncached")})
-        for case in ["AddSubCached", "AddSubUncached"]:
+                         {stem + mode for stem in generator.CASES for mode in ('Cached',)})
+        for case in ["AddSubCached"]:
             path = generator.LEAN / f"Airbender/Proofs/GKRProtocol/FullArithmeticNative/{case}Foundation.lean"
             quoted = re.search(r'\bselectors\s+("(?:[^"\\]|\\.)*")', path.read_text()).group(1)
             result = json.loads(json.loads(quoted))
@@ -27,7 +27,7 @@ class PackedArithmeticCaptureTests(unittest.TestCase):
             self.assertNotIn("maxHeartbeats", root)
 
     def test_all_numeric_captures_use_bound_data(self):
-        self.assertEqual(len(generator.NUMERIC_CAPTURES), 20)
+        self.assertEqual(len(generator.NUMERIC_CAPTURES), 10)
         for case in sorted(generator.NUMERIC_CAPTURES):
             path = generator.LEAN / f"Airbender/Proofs/GKRProtocol/FullArithmeticNative/{case}Foundation.lean"
             quoted = re.search(r'\bselectors\s+("(?:[^"\\]|\\.)*")', path.read_text()).group(1)

@@ -67,7 +67,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for flag in ['write','check','build']:parser.add_argument('--'+flag,action='store_true')
     args=parser.parse_args()
-    for mode in ['Uncached','Cached']:
+    for mode in ['Cached']:
         name,text=module('Unified'+mode)
         for target,content in split_row(name,text).items():
             path=LEAN/(target.replace('.','/')+'.lean')

@@ -1,7 +1,6 @@
 import Airbender.Proofs.GKRProtocol.NativeProgramQueries
 import Airbender.Proofs.GKRProtocol.ROMNative.UnifiedBoundary
 import Airbender.Proofs.UnifiedReduced.Tables.ImportedROMRows
-import Airbender.Proofs.GKRProtocol.PhysicalClosedNative.UnifiedUncached
 import Airbender.Proofs.GKRProtocol.PhysicalClosedNative.UnifiedCached
 
 namespace Airbender.Compiler.NativeProgramSetup
@@ -29,28 +28,21 @@ theorem vector_ten_last (query : Vector Source.BaseField 10) :
 /-- A captured fixed helper row belongs to the same table for every public image. -/
 theorem unified_fixed_query_member (initial : Reference.RiscV.Sail.State)
     (configuration : Configuration)
-    (which : configuration = .unifiedUncached ∨ configuration = .unifiedCached)
+    (which : configuration = .unifiedCached)
     (index : Fin (lookupLength configuration)) (query : Vector Source.BaseField 10)
     (same : query.toList = retainedRows configuration 0 index.val)
     (notDecoder : query[9] ≠ 46) (notROM : query[9] ≠ 34) :
     (UnifiedReduced.Setup.table initial).Contains #[] query := by
   have captured : ROMNative.UnifiedBoundary.nativeSetup.Contains
       ((List.range 10).map SourceSetupColumn.generic) query.toList := by
-    rcases which with rfl | rfl
-    · refine ⟨index, ?_⟩
-      have bounded : index.val < MaterializedNative.UnifiedUncached.native.model.imported.data.length := index.isLt
-      simp only [retainedRows, dif_pos bounded] at same
-      change query.toList = MaterializedNative.UnifiedUncached.native.model.fields
-        TableNative.UnifiedUncached.native.genericSetupColumns index at same
-      rw [PhysicalClosedNative.UnifiedUncached.generic_columns_inventory] at same
-      exact same
-    · refine ⟨index, ?_⟩
-      have bounded : index.val < MaterializedNative.UnifiedCached.native.model.imported.data.length := index.isLt
-      simp only [retainedRows, dif_pos bounded] at same
-      change query.toList = MaterializedNative.UnifiedCached.native.model.fields
-        TableNative.UnifiedCached.native.genericSetupColumns index at same
-      rw [PhysicalClosedNative.UnifiedCached.generic_columns_inventory] at same
-      exact same
+    subst configuration
+    refine ⟨index, ?_⟩
+    have bounded : index.val < MaterializedNative.UnifiedCached.native.model.imported.data.length := index.isLt
+    simp only [retainedRows, dif_pos bounded] at same
+    change query.toList = MaterializedNative.UnifiedCached.native.model.fields
+      TableNative.UnifiedCached.native.genericSetupColumns index at same
+    rw [PhysicalClosedNative.UnifiedCached.generic_columns_inventory] at same
+    exact same
   have checked := ROMNative.UnifiedBoundary.nativeSetup.generic_clean_contains
     ((List.range 10).map SourceSetupColumn.generic) rfl query captured "Airbender.Native.UnifiedReduced" #[]
   obtain ⟨row, equal⟩ := ROMNative.UnifiedBoundary.full_table_refinement checked notDecoder
@@ -91,7 +83,7 @@ theorem unified_zero_member (initial : Reference.RiscV.Sail.State) :
 /-- Native non-decoder queries use the fixed helpers or public ROM words. -/
 theorem unified_public_member (decoder : Configuration → List (List Source.BaseField))
     (initial : Reference.RiscV.Sail.State) (configuration : Configuration)
-    (which : configuration = .unifiedUncached ∨ configuration = .unifiedCached)
+    (which : configuration = .unifiedCached)
     (index : Fin (lookupLength configuration)) (query : Vector Source.BaseField 10)
     (same : query.toList = rows decoder (ROM.words initial) configuration 0 index.val)
     (notDecoder : query[9] ≠ 46) : (UnifiedReduced.Setup.table initial).Contains #[] query := by
@@ -99,7 +91,7 @@ theorem unified_public_member (decoder : Configuration → List (List Source.Bas
     «width» := 10, tagged := true, decoderStart := 2097537,
     decoderWords := 1048576, romStart := some 590081, romWords := 1048576 }
   have selected : layouts configuration = some layout := by
-    rcases which with rfl | rfl <;> rfl
+    subst configuration; rfl
   by_cases rom : query[9] = 34
   · have genericSame : query.toList = ProgramSetup.genericRows layout
         (retainedRows configuration 0) (decoder configuration) (ROM.words initial) index.val := by

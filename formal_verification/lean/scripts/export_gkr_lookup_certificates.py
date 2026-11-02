@@ -18,7 +18,7 @@ def main():
     output.mkdir(exist_ok=True)
     records = {}
     for family in FAMILIES:
-        for mode in ("cached", "uncached"):
+        for mode in ("cached",):
             name = family + "-" + mode
             pair, source = parent / (name + ".json"), parent / (name + "-source.json")
             certificate = synthesis(json.loads(pair.read_text()), json.loads(source.read_text()))

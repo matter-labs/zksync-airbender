@@ -327,7 +327,7 @@ def main():
     for family, stem in zip(FAMILIES, CASES, strict=True):
         if args.family and family not in args.family:
             continue
-        for mode in ("uncached", "cached"):
+        for mode in ("cached",):
             name = family + "-" + mode
             result = synthesis(json.loads((root / (name + ".json")).read_text()),
                                json.loads((root / (name + "-source.json")).read_text()))

@@ -1,4 +1,3 @@
-import Airbender.Proofs.GKRProtocol.WindowedPublic
 
 namespace Tests.GKRWindowedInitialization
 open Airbender Airbender.Compiler

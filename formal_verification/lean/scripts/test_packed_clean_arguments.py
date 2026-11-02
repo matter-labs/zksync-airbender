@@ -1,4 +1,4 @@
-"""Retain generic, range and helper arguments in both native cache modes."""
+"""Retain generic, range and helper arguments in cached captures."""
 import contextlib
 import io
 from pathlib import Path
@@ -13,8 +13,8 @@ import gkr_clean_generic_arguments as generic
 
 class CleanArgumentTests(unittest.TestCase):
     def test_all_three_predicate_families(self):
-        self.assertEqual(generator.PILOT_CASES, ('WordMemoryCached', 'WordMemoryUncached'))
-        self.assertEqual(len(set(generator.CASES)), 22)
+        self.assertEqual(generator.PILOT_CASES, ('WordMemoryCached',))
+        self.assertEqual(len(set(generator.CASES)), 11)
         counts_by_stem = {
             'AddSub': (6, 8, 0), 'JumpBranch': (4, 8, 40), 'MulDiv': (8, 8, 72),
             'ShiftBinop': (2, 8, 50), 'WordMemory': (3, 8, 9), 'SubwordMemory': (5, 8, 18),

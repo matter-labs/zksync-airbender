@@ -22,7 +22,7 @@ noncomputable def programRows (decoder : Configuration → List (List Source.Bas
     (wordAt : Nat → BitVec 32) : ProgramLookupRows :=
   fun configuration group index =>
     match configuration with
-    | .subwordMemoryUncached | .subwordMemoryCached =>
+    | .subwordMemoryCached =>
       if group.val = 0 then subwordRows (decoder configuration) wordAt index
       else retainedRows configuration group index
     | _ => rows decoder wordAt configuration group index

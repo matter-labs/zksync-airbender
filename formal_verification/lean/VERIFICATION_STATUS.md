@@ -1,9 +1,12 @@
 # Verification status
 
+The model covers only the cached circuits. Production sets use_caches = true.
+
 ## Proofs
 
 All three machine targets are proved.
-Their definitions and all Review statements stay unchanged.
+Their definitions stay unchanged. Cached Review claims remain.
+Uncached-only Review cases and statements are removed with user approval.
 The split Keccak source certificates are proved.
 Exact lookup, request and RAM premises stay explicit.
 The verified base is `c1a662222cafcd96db4383dce737edb79fa62b09`.
@@ -11,18 +14,23 @@ The local initialization-window fix remains in this branch.
 
 ## Current checkpoint
 
-Commit `f5840e274` records the current memory payload work.
-The existing source and direct-consumer checks passed for the final 18 captures.
-Generator freshness passed. The family rollout has stopped.
+The tag `fv-archive-uncached` records the branch before scope removal.
+
+The uncached captures and captured-program compatibility modules are removed.
+The cached native acceptance theorems remain in the production gate.
+Three [native corollaries](Airbender/Review/Compiler/Theorems.lean) compose them
+with the full unsigned, reduced and unified target proofs.
+Their focused source builds pass.
+The family rollout has stopped. Generator consolidation remains in progress.
 The earlier log is in [VERIFICATION_HISTORY.md](VERIFICATION_HISTORY.md).
-The axiom inventory has not been refreshed for this checkpoint.
+The final axiom inventory and baseline refresh remain pending.
 
 ## Plan
 
 1. Remove uncached captures from the gate.
    Delete the captured-program compatibility layer and its unused dependencies.
    Delete old internal shard declarations and projection wrappers.
-   Preserve all Review statements and the three machine targets.
+   Preserve cached Review claims and all three target definitions.
 2. Use one codec, generator, freshness check and CI step.
 3. At the end, run the cold full Linux build and transitive replay.
    Record module time, peak memory and totals in one table.
@@ -39,10 +47,11 @@ Linux checks and baseline measurements are deferred to the end.
 They have not started. No Linux result is claimed.
 Existing caches and preservation objects remain in `/tmp/airbender-review-round/`.
 
-The known aggregate import collision remains unresolved.
-It names `Airbender.WordMemory.importedConstraintsTraceColumns.eq_1`.
-The same collision occurs with the earlier arithmetic objects.
-No aggregate frontend pass is claimed.
+Focused source builds pass for the cached native acceptance path, all three
+native corollaries and the changed compiler/protocol aggregate imports.
+The single generator freshness command passes for all retained routes.
+The aggregate source builds use retained objects. They are not a clean full
+frontend result. The earlier ownership collision remains in the history.
 
 ## Final validation
 

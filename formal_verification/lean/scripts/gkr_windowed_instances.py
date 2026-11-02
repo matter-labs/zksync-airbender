@@ -7,11 +7,11 @@ import os
 import subprocess
 
 parser=argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--mode',choices=['uncached','cached'],action='append')
+parser.add_argument('--mode',choices=['cached'],action='append')
 for flag in ['write','check','build']:parser.add_argument('--'+flag,action='store_true')
 args=parser.parse_args()
 from gkr_functional_instances import selectors,PRODUCT
-for mode in args.mode or ['uncached','cached']:
+for mode in args.mode or ['cached']:
  case='Unified'+mode.title();pair=json.load(open('artifacts/compiler/unified-'+mode+'.json'));selection=selectors(pair['circuit'])
  chosen=[];product=0
  for layer in pair['circuit']['layers']:

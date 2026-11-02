@@ -9,9 +9,9 @@ from gkr_packed_query_frame import capture_name
 from gkr_packed_rotate_boundary import preflight
 from gkr_wiring_instances import CASES as CIRCUIT_CASES
 
-PILOT_CASES = ('AddSubCached', 'AddSubUncached')
+PILOT_CASES = ('AddSubCached',)
 CASES = PILOT_CASES + tuple(stem + mode for stem in CIRCUIT_CASES if stem != 'AddSub'
-                           for mode in ['Cached', 'Uncached'])
+                           for mode in ['Cached'])
 
 
 def dimensions(case):

@@ -22,10 +22,10 @@ class WiringCaptureTests(unittest.TestCase):
                 return wiring.load('fixture')
 
     def test_both_modes_cover_all_native_families(self):
-        self.assertEqual(len(wiring.CAPTURES), 22)
+        self.assertEqual(len(wiring.CAPTURES), 11)
         for case in wiring.CASES:
             self.assertIn(case + 'Cached', wiring.CAPTURES)
-            self.assertIn(case + 'Uncached', wiring.CAPTURES)
+            self.assertNotIn(case + 'Uncached', wiring.CAPTURES)
 
     def test_duplicate_keys_are_retained(self):
         value = self.payload()

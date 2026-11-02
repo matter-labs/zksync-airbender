@@ -271,7 +271,7 @@ theorem decoder_lookup
   have equal : Airbender.Compiler.LookupSourceNative.SubwordMemoryCached.native.query12.fields.map (fun field => field.value ((input.physical ∘ Airbender.Compiler.LookupSourceNative.SubwordMemoryCached.native.bank.address) ∘ Airbender.Compiler.LookupNative.SubwordMemoryCached.native.sourcePlacement)) =
       NativeProgramSetup.unrolledProgramLookupRows initial columns .subwordMemoryCached 0 index.val := matched
   apply NativeProgramSetup.unrolled_subword_decoder_lookup setup .subwordMemoryCached
-    (Or.inr rfl) index.val _ typed
+    rfl index.val _ typed
   rw [NativeProgramSetup.unrolled_mask_eq setup .subwordMemory]
   exact (ProgramDecoderNative.SubwordMemoryCached.decoder_tuple input).symm.trans equal
 

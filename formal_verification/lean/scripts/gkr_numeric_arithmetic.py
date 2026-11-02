@@ -13,7 +13,7 @@ from export_gkr_translations import FAMILIES, LEAN
 from gkr_wiring_instances import CASES
 
 NUMERIC_CAPTURES = {stem + mode for stem in CASES if stem != "AddSub"
-                    for mode in ("Cached", "Uncached")}
+                    for mode in ("Cached",)}
 PRIME = 2013265921
 
 
@@ -204,7 +204,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--family", choices=[family for family, stem in zip(FAMILIES, CASES, strict=True)
                                                if stem + "Cached" in NUMERIC_CAPTURES], action="append")
-    parser.add_argument("--mode", choices=("cached", "uncached"), action="append")
+    parser.add_argument("--mode", choices=("cached",), action="append")
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--raw-dir", type=Path)
@@ -212,7 +212,7 @@ def main():
     for family, stem in zip(FAMILIES, CASES, strict=True):
         if stem + "Cached" not in NUMERIC_CAPTURES or (args.family and family not in args.family):
             continue
-        for mode in ("cached", "uncached"):
+        for mode in ("cached",):
             if args.mode and mode not in args.mode:
                 continue
             name = family + "-" + mode

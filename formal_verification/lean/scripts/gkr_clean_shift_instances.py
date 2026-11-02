@@ -34,10 +34,10 @@ def module(mode):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--mode',choices=['cached','uncached'],action='append')
+    p.add_argument('--mode',choices=['cached'],action='append')
     for option in ['write','check','build']:p.add_argument('--'+option,action='store_true')
     a=p.parse_args()
-    for mode in a.mode or ['uncached','cached']:
+    for mode in a.mode or ['cached']:
         target,text=module(mode);path=LEAN/(target.replace('.','/')+'.lean')
         if a.check and (not path.exists() or path.read_text()!=text):raise ValueError('Shift Clean proof changed: '+target)
         if a.write:path.write_text(text)

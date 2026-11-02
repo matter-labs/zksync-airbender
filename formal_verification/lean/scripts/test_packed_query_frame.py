@@ -1,4 +1,4 @@
-"""Keep complete query fields, both cache modes and exact numeric bindings."""
+"""Keep complete query fields, cached captures and exact numeric bindings."""
 import contextlib
 import io
 from pathlib import Path
@@ -11,11 +11,11 @@ import gkr_query_frame_instances as interface
 
 class NumericQueryFrameTests(unittest.TestCase):
     def test_complete_both_cache_modes(self):
-        self.assertEqual(len(generator.CASES),22)
-        self.assertEqual(len(set(generator.CASES)),22)
+        self.assertEqual(len(generator.CASES),11)
+        self.assertEqual(len(set(generator.CASES)),11)
         for stem in generator.CIRCUIT_CASES:
             self.assertIn(stem+'Cached',generator.CASES)
-            self.assertIn(stem+'Uncached',generator.CASES)
+            self.assertNotIn(stem + 'Uncached',generator.CASES)
         for case in generator.CASES:
             modules=dict(generator.modules(case));stem='Airbender.Proofs.GKRProtocol.QueryFrameChecks.'+case
             self.assertEqual(modules[stem+'.Certificate'].count(':= by decide +kernel'),1)

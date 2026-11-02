@@ -26,9 +26,10 @@ def main():
                         help='Authoritative check_axioms.py result; otherwise only a direct smoke test')
     args = parser.parse_args()
     registry = (LEAN / 'Airbender/Checks/Axioms.lean').read_text()
-    if registry.count(MARKER) != 1:
-        raise ValueError('compiler audit marker changed')
-    roots = [line.removeprefix('#print axioms ') for line in registry.split(MARKER)[1].splitlines()
+    if registry.count(MARKER) > 1:
+        raise ValueError('duplicate compiler audit marker')
+    audit = registry.split(MARKER, 1)[-1]
+    roots = [line.removeprefix('#print axioms ') for line in audit.splitlines()
              if line.startswith('#print axioms ')]
     if not roots or len(roots) != len(set(roots)):
         raise ValueError('empty or duplicate compiler root inventory')
@@ -42,7 +43,7 @@ def main():
         print(f'PASS {len(roots)} compiler roots in the environment-origin audit', flush=True)
         return
     modules = list(dict.fromkeys(line.removeprefix('import ') for line in registry.splitlines()
-                                if line.startswith(('import Airbender.Proofs.GKR', 'import Airbender.Import.GKR', 'import Airbender.Review.Compiler.', 'import Tests.GKR'))))
+                                if line.startswith('import ')))
     environment = dict(os.environ, LEAN_NUM_THREADS='1')
     for module in modules:
         subprocess.run(['lake', '--no-cache', 'build', '+' + module + ':olean'],

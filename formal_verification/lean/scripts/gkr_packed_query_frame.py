@@ -6,9 +6,9 @@ from gkr_packed_rotate_boundary import preflight
 
 from gkr_wiring_instances import CASES as CIRCUIT_CASES
 
-LARGE_CASES=tuple(stem+mode for stem in CIRCUIT_CASES if stem!='AddSub' for mode in ['Cached','Uncached'])
-MATERIALIZATION_BUDGET_CASES=('BlakeRoundCached','BlakeRoundUncached')
-CASES=('AddSubCached','AddSubUncached')+LARGE_CASES
+LARGE_CASES=tuple(stem+mode for stem in CIRCUIT_CASES if stem!='AddSub' for mode in ['Cached'])
+MATERIALIZATION_BUDGET_CASES=('BlakeRoundCached',)
+CASES=('AddSubCached',)+LARGE_CASES
 
 
 def source(case):
@@ -47,8 +47,8 @@ def small_modules(case):
 
 def capture_name(case):
     from export_gkr_translations import FAMILIES
-    family=next(family for family,stem in zip(FAMILIES,CIRCUIT_CASES,strict=True) if case in (stem+'Cached',stem+'Uncached'))
-    return family+'-'+('cached' if case.endswith('Cached') else 'uncached')
+    family=next(family for family,stem in zip(FAMILIES,CIRCUIT_CASES,strict=True) if case == stem+'Cached')
+    return family+'-cached'
 
 
 def capture_shape(case):

@@ -1,5 +1,4 @@
 import Airbender.Proofs.GKRProtocol.ProgramPCBounds
-import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.SubwordMemoryUncached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.SubwordMemoryCached
 
 namespace Airbender.Compiler
@@ -18,17 +17,11 @@ theorem ProgramLogicalRowCertificate.program_decoder_lookup
     (typed : cert.row.decoderQuery[0].val < 65536) :
     ProgramRows.maskRow (masks cert.row.family) cert.row.decoderQuery ∈ columns cert.row.family := by
   cases cert with
-  | addSubUncached input arguments => exact ProgramDecoderLookup.AddSubUncached.decoder_lookup setup input arguments typed
   | addSubCached input arguments => exact ProgramDecoderLookup.AddSubCached.decoder_lookup setup input arguments typed
-  | jumpBranchUncached input arguments => exact ProgramDecoderLookup.JumpBranchUncached.decoder_lookup setup input arguments typed
   | jumpBranchCached input arguments => exact ProgramDecoderLookup.JumpBranchCached.decoder_lookup setup input arguments typed
-  | mulDivUncached input arguments => exact ProgramDecoderLookup.MulDivUncached.decoder_lookup setup input arguments typed
   | mulDivCached input arguments => exact ProgramDecoderLookup.MulDivCached.decoder_lookup setup input arguments typed
-  | shiftBinopUncached input arguments => exact ProgramDecoderLookup.ShiftBinopUncached.decoder_lookup setup input arguments typed
   | shiftBinopCached input arguments => exact ProgramDecoderLookup.ShiftBinopCached.decoder_lookup setup input arguments typed
-  | wordMemoryUncached input arguments => exact ProgramDecoderLookup.WordMemoryUncached.decoder_lookup setup input arguments typed
   | wordMemoryCached input arguments => exact ProgramDecoderLookup.WordMemoryCached.decoder_lookup setup input arguments typed
-  | subwordMemoryUncached input arguments => exact ProgramConstraintsNative.SubwordMemoryUncached.decoder_lookup setup input arguments typed
   | subwordMemoryCached input arguments => exact ProgramConstraintsNative.SubwordMemoryCached.decoder_lookup setup input arguments typed
 
 /-- Derive the public decoder matching premise from actual row certificates.
@@ -58,17 +51,11 @@ theorem ProgramLogicalRowCertificate.program_final_pc_low
     (setup : PooledSetup babyBearModulus) (cert : ProgramLogicalRowCertificate (NativeProgramSetup.programRows decoder wordAt)) :
     cert.row.finish.word.lo < 65536 := by
   cases cert with
-  | addSubUncached input arguments => exact ProgramPCLowNative.AddSubUncached.final_pc_low decoder wordAt input arguments setup
   | addSubCached input arguments => exact ProgramPCLowNative.AddSubCached.final_pc_low decoder wordAt input arguments setup
-  | jumpBranchUncached input arguments => exact ProgramPCLowNative.JumpBranchUncached.final_pc_low decoder wordAt input arguments setup
   | jumpBranchCached input arguments => exact ProgramPCLowNative.JumpBranchCached.final_pc_low decoder wordAt input arguments setup
-  | mulDivUncached input arguments => exact ProgramPCLowNative.MulDivUncached.final_pc_low decoder wordAt input arguments setup
   | mulDivCached input arguments => exact ProgramPCLowNative.MulDivCached.final_pc_low decoder wordAt input arguments setup
-  | shiftBinopUncached input arguments => exact ProgramPCLowNative.ShiftBinopUncached.final_pc_low decoder wordAt input arguments
   | shiftBinopCached input arguments => exact ProgramPCLowNative.ShiftBinopCached.final_pc_low decoder wordAt input arguments
-  | wordMemoryUncached input arguments => exact ProgramPCLowNative.WordMemoryUncached.final_pc_low decoder wordAt input arguments
   | wordMemoryCached input arguments => exact ProgramPCLowNative.WordMemoryCached.final_pc_low decoder wordAt input arguments
-  | subwordMemoryUncached input arguments => exact ProgramConstraintsNative.SubwordMemoryUncached.final_pc_low decoder wordAt input arguments
   | subwordMemoryCached input arguments => exact ProgramConstraintsNative.SubwordMemoryCached.final_pc_low decoder wordAt input arguments
 
 /-- Exact state matching carries native output ranges to every decoder query. -/

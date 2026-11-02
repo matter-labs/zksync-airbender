@@ -34,7 +34,7 @@ def generated():
     from gkr_packed_wiring import load, modules, native_module
     files, jobs = {}, []
     for family, stem in zip(FAMILIES, CASES, strict=True):
-        for mode, suffix in (("uncached", "Uncached"), ("cached", "Cached")):
+        for mode, suffix in (("cached", "Cached"),):
             case = stem + suffix
             name = family + '-' + mode
             path = f"artifacts/compiler/{name}.json"
@@ -50,7 +50,7 @@ def generated():
             files[native] = native_module(case, name, payload)
             jobs.append(native)
     # Keep the two established import paths after source slots disappear.
-    for suffix in ("Cached", "Uncached"):
+    for suffix in ("Cached",):
         case = "Unified" + suffix
         retired = "Airbender.Proofs.GKRCompiler.WiringParts." + case + "Placement2"
         files[retired] = "import Airbender.Proofs.GKRCompiler.WiringNative." + case + "\n"
@@ -87,7 +87,7 @@ def main():
             print("WIRING", name, flush=True)
             subprocess.run(["lake", "--no-cache", "build", "+" + name + ":olean"],
                            cwd=LEAN, env=environment, check=True)
-    print(f"PASS wiring scaffolding for 22 compilations; {len(jobs)} serial module targets", flush=True)
+    print(f"PASS wiring scaffolding for 11 cached compilations; {len(jobs)} serial module targets", flush=True)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ from gkr_packed_query_frame import capture_name, merge_slices
 from gkr_packed_rotate_boundary import preflight
 from gkr_wiring_instances import CASES as CIRCUITS
 
-CASES = tuple(circuit + mode for circuit in CIRCUITS for mode in ('Cached', 'Uncached'))
+CASES = tuple(circuit + mode for circuit in CIRCUITS for mode in ('Cached',))
 
 
 def metadata(case):

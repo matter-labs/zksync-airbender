@@ -10,7 +10,6 @@ set_option maxRecDepth 65536
 set_option maxHeartbeats 4000000
 
 import_materialized_setup native from "artifacts/compiler/mul-div-cached.json"
-  uncached "artifacts/compiler/mul-div-uncached.json"
   setup_model Airbender.Data.GKRSetup.MulDiv
   table_model Airbender.Compiler.TableNative.MulDivCached.native width 9
 

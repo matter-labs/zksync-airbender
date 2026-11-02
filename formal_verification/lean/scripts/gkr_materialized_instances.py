@@ -20,7 +20,6 @@ def module(family, stem, mode):
         'set_option warningAsError true\nset_option Elab.async false\n'
         'set_option maxRecDepth 65536\nset_option maxHeartbeats 4000000\n\n'
         f'import_materialized_setup native from "artifacts/compiler/{family}-{mode}.json"\n'
-        f'  uncached "artifacts/compiler/{family}-uncached.json"\n'
         f'  setup_model Airbender.Data.GKRSetup.{stem}\n'
         f'  table_model Airbender.Compiler.TableNative.{case}.native width {width}\n\n'
         f'end {namespace}\n')
@@ -30,7 +29,7 @@ def module(family, stem, mode):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--family', choices=FAMILIES, action='append')
-    parser.add_argument('--mode', choices=['cached', 'uncached'], action='append')
+    parser.add_argument('--mode', choices=['cached'], action='append')
     parser.add_argument('--write', action='store_true')
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--build', action='store_true')
@@ -38,7 +37,7 @@ def main():
     for family, stem in zip(FAMILIES, CASES, strict=True):
         if args.family and family not in args.family:
             continue
-        for mode in ['uncached', 'cached']:
+        for mode in ['cached']:
             if args.mode and mode not in args.mode:
                 continue
             target, content = module(family, stem, mode)

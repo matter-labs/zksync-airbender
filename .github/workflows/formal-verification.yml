@@ -212,23 +212,6 @@ jobs:
           source "$FV_ROOT/guard.sh"
           fv native-lock python3 scripts/check_setup_artifacts.py --prepare-lock
           fv provenance-controls python3 -m unittest discover -s scripts -p test_setup_provenance.py -v
-      - name: Packed fixed-capture source controls
-        run: |
-          source "$FV_ROOT/guard.sh"
-          fv packed-fixed-captures python3 scripts/gkr_packed_fixed_captures.py --check
-          fv packed-fixed-projections python3 scripts/gkr_unified_equal_chunks.py --check
-          fv packed-fixed-prefixes python3 scripts/gkr_unified_prefix_assembly.py --stage column --check
-          fv packed-arithmetic-captures python3 scripts/gkr_full_arithmetic_certificate.py --check
-          fv numeric-payloads python3 scripts/gkr_numeric_arithmetic.py --check
-          fv clean-ideal-payloads python3 scripts/gkr_clean_ideal.py --check
-          fv packed-wiring-captures python3 scripts/gkr_packed_wiring.py --check
-          fv packed-xor9 python3 scripts/generate_packed_xor9.py --check
-          fv packed-chi python3 scripts/generate_packed_chi.py --check
-          fv packed-shift-encoding python3 scripts/generate_shift_packed_encoding.py --check
-          fv packed-shift-reference python3 scripts/generate_shift_packed_reference.py --check
-          fv packed-shift-corollaries python3 scripts/generate_shift_output_certificates.py --check
-          fv packed-shift-bitwise python3 scripts/generate_shift_bitwise.py --check
-          fv packed-generator-controls python3 -m unittest discover -s scripts -p 'test_packed_*.py' -v
       - name: Twelve generators and thirteen complete fresh exports
         id: native-setups
         timeout-minutes: 370
@@ -265,7 +248,7 @@ jobs:
             ${{ env.CARGO_TARGET_DIR }}
             ${{ env.FV_COMPILER_TARGET_DIR }}
           key: ${{ steps.cache-keys.outputs.native }}-setups
-      - name: Fresh cached and uncached compiler captures and provenance controls
+      - name: Fresh cached compiler captures and provenance controls
         id: compiler-captures
         timeout-minutes: 130
         run: |
@@ -274,13 +257,11 @@ jobs:
           trap 'exit 124' TERM
           source "$FV_ROOT/guard.sh"
           fv compiler-export env -u CI -u RUST_MIN_STACK CARGO_TARGET_DIR="$FV_COMPILER_TARGET_DIR" \
-            python3 scripts/export_gkr_translations.py --output "$FV_ROOT/compiler"
+            python3 scripts/generate.py compiler --output "$FV_ROOT/compiler"
           fv compiler-retained python3 scripts/check_gkr_translations.py
           fv compiler-fresh python3 scripts/check_gkr_translations.py --directory "$FV_ROOT/compiler"
           fv compiler-bytes python3 scripts/check_compiler_export_bytes.py "$FV_ROOT/compiler"
           fv native-window-semantics python3 scripts/check_gkr_window_semantics.py
-          fv native-lookup-bindings python3 scripts/generate_native_lookup_requests.py --check
-          fv compiler-provenance-controls python3 -m unittest discover -s scripts -p test_gkr_translation_provenance.py -v
           FV_STAGE
       - name: Save compiler capture build progress even after a bounded failure
         if: always() && steps.native-cache.outcome == 'success' && steps.compiler-captures.outcome != 'skipped'
@@ -308,115 +289,11 @@ jobs:
             formal_verification/lean/.lake/config
             formal_verification/lean/.lake/packages
           key: ${{ steps.cache-keys.outputs.lean }}-build
-      - name: Numeric capture binding controls
-        timeout-minutes: 5
+      - name: Checker framework validation
+        timeout-minutes: 130
         run: |
           source "$FV_ROOT/guard.sh"
-          fv numeric-bindings python3 scripts/check_numeric_arithmetic_controls.py
-          fv packed-normalization python3 scripts/check_packed_normalization_controls.py
-          fv clean-placement python3 scripts/check_clean_placement_controls.py
-          fv clean-ideal python3 scripts/check_clean_ideal_controls.py
-          fv wiring-kernel-controls python3 scripts/check_wiring_controls.py
-          fv rotation-kernel-controls python3 scripts/check_rotation_binding_controls.py
-          fv setup-normalization-controls python3 scripts/check_setup_normalization_controls.py
-          fv setup-prefix-freshness python3 scripts/gkr_shift_prefix_instances.py --check
-          fv setup-prefix-assembly-freshness python3 scripts/gkr_shift_prefix_assembly.py --check
-          fv setup-prefix-generator-controls python3 -m unittest discover -s scripts -p test_packed_shift_prefix.py
-          fv setup-span-controls python3 scripts/check_setup_span_controls.py
-          fv rotate-boundary-freshness python3 scripts/gkr_packed_rotate_boundary.py --check
-          fv rotate-boundary-interface-freshness python3 scripts/gkr_unified_prefix.py --unit 14 --check
-          fv rotate-boundary-generator-controls python3 -m unittest discover -s scripts -p test_packed_rotate_boundary.py
-          fv fixed-column-one-freshness python3 scripts/gkr_packed_column1_spans.py --check
-          fv fixed-column-one-interface-freshness python3 scripts/gkr_unified_prefix.py --check
-          fv fixed-column-one-assembly-freshness python3 scripts/gkr_unified_prefix.py --assembly --check
-          fv fixed-column-one-generator-controls python3 -m unittest discover -s scripts -p test_packed_column1_spans.py
-          fv packed-length-controls python3 scripts/check_packed_length_controls.py
-          fv shift-extent-freshness python3 scripts/generate_shift_extent_checks.py --check
-          fv shift-extent-generator-controls python3 -m unittest discover -s scripts -p test_shift_extent_checks.py
-          fv shift-metadata-freshness python3 scripts/generate_shift_metadata.py --check
-          fv shift-metadata-generator-controls python3 -m unittest discover -s scripts -p test_shift_metadata.py
-          fv shift-metadata-kernel-controls python3 scripts/check_shift_metadata_controls.py
-          fv natural-setup-kernel-controls python3 scripts/check_natural_setup_controls.py
-          fv fixed-subword-freshness python3 scripts/gkr_subword_prefix.py --check
-          fv fixed-subword-generator-controls python3 -m unittest discover -s scripts -p test_packed_subword_prefix.py
-          fv fixed-subword-kernel-controls python3 scripts/check_subword_fixed_controls.py
-          fv subword-length-freshness python3 scripts/gkr_packed_subword_lengths.py --check
-          fv subword-length-generator-controls python3 -m unittest discover -s scripts -p test_packed_subword_lengths.py
-          fv subword-length-kernel-controls python3 scripts/check_subword_length_controls.py
-          fv setup-length-freshness python3 scripts/gkr_packed_region_lengths.py --check
-          fv setup-length-consumer-freshness python3 scripts/gkr_unified_prefix_assembly.py --stage column --check
-          fv setup-length-generator-controls python3 -m unittest discover -s scripts -p test_packed_region_lengths.py
-          fv setup-length-kernel-controls python3 scripts/check_setup_length_controls.py
-          fv array-sample-freshness python3 scripts/generate_array_samples.py --check
-          fv array-sample-generator-controls python3 -m unittest discover -s scripts -p test_array_samples.py
-          fv array-sample-kernel-controls python3 scripts/check_array_sample_controls.py
-          fv aligned-sample-freshness python3 scripts/generate_aligned_samples.py --check
-          fv aligned-sample-generator-controls python3 -m unittest discover -s scripts -p test_aligned_samples.py
-          fv aligned-sample-kernel-controls python3 scripts/check_aligned_sample_controls.py
-          fv numeric-memory-frame-freshness python3 scripts/gkr_packed_memory_frame.py --check
-          fv numeric-memory-frame-interface-freshness python3 scripts/gkr_memory_frame_instances.py --check
-          fv numeric-memory-frame-generator-controls python3 -m unittest discover -s scripts -p test_packed_memory_frame.py
-          fv numeric-memory-frame-kernel-controls python3 scripts/check_memory_frame_controls.py
-          fv numeric-functional-step-freshness python3 scripts/gkr_packed_functional_steps.py --check
-          fv numeric-functional-step-interface-freshness python3 scripts/gkr_functional_instances.py --check
-          fv numeric-functional-step-generator-controls python3 -m unittest discover -s scripts -p test_packed_functional_steps.py
-          fv numeric-functional-step-importer lake --no-cache build +Airbender.Import.GKRProtocol.NumericFunctionalStepImport:olean
-          fv numeric-functional-step-kernel-controls python3 scripts/check_functional_step_controls.py
-          fv numeric-functional-base-freshness python3 scripts/gkr_packed_functional_base.py --check
-          fv numeric-functional-base-generator-controls python3 -m unittest discover -s scripts -p test_packed_functional_base.py
-          fv numeric-functional-base-kernel-controls python3 scripts/check_functional_base_controls.py
-          fv numeric-counter-frame-freshness python3 scripts/gkr_packed_counter_frame.py --check
-          fv numeric-counter-frame-generator-controls python3 -m unittest discover -s scripts -p test_packed_counter_frame.py
-          fv numeric-counter-frame-kernel-controls python3 scripts/check_counter_frame_controls.py
-          fv numeric-history-erasure-freshness python3 scripts/gkr_packed_history_erasure.py --check
-          fv numeric-history-erasure-generator-controls python3 -m unittest discover -s scripts -p test_packed_history_erasure.py
-          fv numeric-history-erasure-kernel-controls python3 scripts/check_history_erasure_controls.py
-          fv numeric-clean-argument-freshness python3 scripts/gkr_packed_clean_arguments.py --check
-          fv numeric-clean-argument-generator-controls python3 -m unittest discover -s scripts -p test_packed_clean_arguments.py
-          fv numeric-clean-argument-kernel-controls python3 scripts/check_clean_argument_controls.py
-          fv numeric-lookup-source-freshness python3 scripts/gkr_packed_lookup_source.py --check
-          fv numeric-lookup-source-generator-controls python3 -m unittest discover -s scripts -p test_packed_lookup_source.py
-          fv numeric-lookup-source-kernel-controls python3 scripts/check_lookup_source_controls.py
-          fv numeric-source-freshness-captures python3 scripts/gkr_packed_source_freshness.py --check
-          fv numeric-source-freshness-interface python3 scripts/gkr_table_instances.py --check
-          fv numeric-source-freshness-generator-controls python3 -m unittest discover -s scripts -p test_packed_source_freshness.py
-          fv numeric-source-freshness-kernel-controls python3 scripts/check_source_freshness_controls.py
-          fv numeric-worker-port-captures python3 scripts/gkr_packed_worker_ports.py --check
-          fv numeric-worker-port-interface python3 scripts/gkr_worker_ports_instances.py --check
-          fv numeric-worker-port-generator-controls python3 -m unittest discover -s scripts -p test_packed_worker_ports.py
-          fv numeric-worker-port-kernel-controls python3 scripts/check_worker_port_controls.py
-          fv numeric-helper-validity-captures python3 scripts/gkr_packed_helper_validity.py --check
-          fv numeric-helper-validity-interface python3 scripts/gkr_helper_validity_instances.py --check
-          fv numeric-helper-validity-generator-controls python3 -m unittest discover -s scripts -p test_packed_helper_validity.py
-          fv numeric-helper-validity-shared-controls python3 scripts/check_helper_validity_controls.py --shared-only
-          fv numeric-helper-validity-cached-controls python3 scripts/check_helper_validity_controls.py --case AddSubCached --case JumpBranchCached --case MulDivCached --case ShiftBinopCached --case WordMemoryCached --case SubwordMemoryCached --case UnifiedCached --case BigintCached --case BlakeGCached --case BlakeRoundCached --case KeccakCached
-          fv numeric-helper-validity-uncached-controls python3 scripts/check_helper_validity_controls.py --case AddSubUncached --case JumpBranchUncached --case MulDivUncached --case ShiftBinopUncached --case WordMemoryUncached --case SubwordMemoryUncached --case UnifiedUncached --case BigintUncached --case BlakeGUncached --case BlakeRoundUncached --case KeccakUncached
-          fv numeric-helper-payload-freshness python3 scripts/gkr_packed_helper_payload.py --check
-          fv numeric-helper-payload-interface python3 scripts/gkr_helper_instances.py --check
-          fv numeric-helper-payload-generator-controls python3 -m unittest discover -s scripts -p test_packed_helper_payload.py
-          fv helper-history-projection-kernel-controls python3 scripts/check_helper_history_projection_controls.py
-          fv helper-projection-kernel-controls python3 scripts/check_helper_projection_controls.py
-          fv numeric-helper-payload-kernel-controls python3 scripts/check_helper_payload_controls.py
-          fv numeric-memory-payload-freshness python3 scripts/gkr_packed_memory_payload.py --check
-          fv numeric-memory-payload-interface python3 scripts/gkr_memory_certificate.py --check
-          fv numeric-memory-payload-generator-controls python3 -m unittest discover -s scripts -p test_packed_memory_payload.py
-          fv numeric-memory-payload-shared-controls python3 scripts/check_memory_payload_controls.py --shared-only
-          fv numeric-memory-payload-cached-controls python3 scripts/check_memory_payload_controls.py --case AddSubCached --case JumpBranchCached --case MulDivCached --case ShiftBinopCached --case WordMemoryCached --case SubwordMemoryCached --case UnifiedCached --case BigintCached --case BlakeGCached --case BlakeRoundCached --case KeccakCached
-          fv numeric-memory-payload-uncached-controls python3 scripts/check_memory_payload_controls.py --case AddSubUncached --case JumpBranchUncached --case MulDivUncached --case ShiftBinopUncached --case WordMemoryUncached --case SubwordMemoryUncached --case UnifiedUncached --case BigintUncached --case BlakeGUncached --case BlakeRoundUncached --case KeccakUncached
-          fv numeric-query-frame-freshness python3 scripts/gkr_packed_query_frame.py --check
-          fv numeric-query-frame-interface-freshness python3 scripts/gkr_query_frame_instances.py --check
-          fv numeric-query-frame-generator-controls python3 -m unittest discover -s scripts -p test_packed_query_frame.py
-          fv numeric-query-frame-kernel-controls python3 scripts/check_query_frame_controls.py
-          fv packed-xor7-freshness python3 scripts/generate_packed_xor7.py --check
-          fv packed-xor7-generator-controls python3 -m unittest discover -s scripts -p test_packed_xor7.py
-          fv packed-xor7-kernel-controls python3 scripts/check_packed_xor7_controls.py
-          fv fixed-special-freshness python3 scripts/gkr_unified_special_chunks.py --check
-          fv fixed-special-length-freshness python3 scripts/gkr_unified_chunk_lengths.py --check
-          fv fixed-special-consumer-freshness python3 scripts/gkr_unified_prefix_assembly.py --check
-          fv fixed-special-generator-controls python3 -m unittest discover -s scripts -p test_packed_special_spans.py
-          fv packed-xor9-controls python3 scripts/check_packed_xor9_controls.py
-          fv packed-byte-controls python3 scripts/check_packed_byte_table_controls.py
-          fv packed-word-column-kernel-controls python3 scripts/check_packed_word_column_controls.py
+          fv_stage checker-framework 7200 python3 scripts/generate.py validate --logs "$FV_ROOT/checker-framework"
       - name: Public program decoder row differential
         timeout-minutes: 75
         run: |

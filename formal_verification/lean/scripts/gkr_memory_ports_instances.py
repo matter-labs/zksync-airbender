@@ -130,7 +130,7 @@ def module(name, case, model):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--family', choices=FAMILIES[:7], action='append')
-    parser.add_argument('--mode', choices=['cached', 'uncached'], action='append')
+    parser.add_argument('--mode', choices=['cached'], action='append')
     parser.add_argument('--write', action='store_true')
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--build', action='store_true')
@@ -138,7 +138,7 @@ def main():
     for family, stem, model in zip(FAMILIES[:7], CASES[:7], MODELS[:7], strict=True):
         if args.family and family not in args.family:
             continue
-        for mode in ['uncached', 'cached']:
+        for mode in ['cached']:
             if args.mode and mode not in args.mode:
                 continue
             target, text = module(family + '-' + mode, stem + mode.title(), model)

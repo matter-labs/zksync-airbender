@@ -52,12 +52,12 @@ def check_library_ownership(lake):
     for module, expected in (
         ("Airbender.Import.GKRCompiler.Import", "GKRCompiler"),
         ("Airbender.Import.GKRCompiler.WiringImport", "GKRCompiler"),
-        ("Airbender.Import.Compiler.Arithmetic.AddSubUncached", "GKRCompiler"),
+        ("Airbender.Import.Compiler.Arithmetic.AddSubCached", "GKRCompiler"),
         ("Airbender.Import.Compiler.ArithmeticInstances", "GKRCompiler"),
-        ("Airbender.Proofs.GKRCompiler.Native.AddSubUncached", "GKRCompiler"),
+        ("Airbender.Proofs.GKRCompiler.Native.AddSubCached", "GKRCompiler"),
         ("Airbender.Import.GKRProtocol.Source", "GKRProtocol"),
-        ("Airbender.Import.Compiler.Rows.AddSubUncached", "GKRProtocol"),
-        ("Airbender.Proofs.GKRProtocol.Native.AddSubUncached", "GKRProtocol"),
+        ("Airbender.Import.Compiler.Rows.AddSubCached", "GKRProtocol"),
+        ("Airbender.Proofs.GKRProtocol.Native.AddSubCached", "GKRProtocol"),
     ):
         if owner(module) != expected:
             raise ValueError(f"Compiler reader/library ownership changed: {module}")
@@ -81,9 +81,9 @@ def check(directory=LEAN / "artifacts/compiler", repo=ROOT):
         raise ValueError("Compiler Rust toolchain changed")
     setup.check(repo)
     native_manifest = read(repo / "formal_verification/lean/artifacts/setup/manifest.json")
-    expected_names = {family + mode for family in FAMILIES for mode in ("-cached", "-uncached")}
+    expected_names = {family + mode for family in FAMILIES for mode in ("-cached",)}
     if set(manifest["files"]) != expected_names:
-        raise ValueError("Expected all eleven families in both cache modes")
+        raise ValueError("Expected all eleven cached families")
     expected_files = {"manifest.json"} | {
         name + suffix for name in expected_names
         for suffix in (".json", "-certificate.json", "-source.json")}
@@ -148,6 +148,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     try:
         print(f"PASS {check(args.directory)} source/compiler pairs, source sidecars and arithmetic certificates; "
-              "22 complete retained native identities; kernel checking remains separate")
+              "11 complete retained cached native identities; kernel checking remains separate")
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         raise SystemExit(f"FAIL {error}") from error

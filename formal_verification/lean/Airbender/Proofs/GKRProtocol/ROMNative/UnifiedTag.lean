@@ -1,6 +1,6 @@
+import Airbender.Proofs.GKRProtocol.MaterializedNative.UnifiedCached
 import Airbender.Proofs.GKRProtocol.DenseZeroTag
 import Airbender.Proofs.GKRProtocol.ColumnSlices
-import Airbender.Proofs.GKRProtocol.MaterializedNative.UnifiedUncached
 
 namespace Airbender.Compiler.ROMNative.UnifiedTag
 open Airbender Airbender.Compiler
@@ -9,7 +9,7 @@ set_option Elab.async false
 set_option maxRecDepth 65536
 set_option maxHeartbeats 4000000
 
-abbrev nativeSetup := Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model
+abbrev nativeSetup := Airbender.Compiler.MaterializedNative.UnifiedCached.native.model
 
 def segments : List (Nat × Nat) := [(131072, 1), (65536, 2), (256, 3), (65536, 5), (65536, 8), (262144, 9), (1048576, 34), (65536, 47), (65536, 48), (65536, 49), (65536, 50), (128, 51), (65536, 52), (65536, 53), (65536, 54), (1048576, 46), (5242495, 0)]
 

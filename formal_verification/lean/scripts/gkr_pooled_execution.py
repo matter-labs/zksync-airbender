@@ -7,7 +7,7 @@ from gkr_pooled_row_instances import CASES
 
 
 def module():
-    cases=[stem+mode for stem,_ in CASES for mode in ['Uncached','Cached']]
+    cases=[stem+mode for stem,_ in CASES for mode in ['Cached']]
     text=''.join('import Airbender.Proofs.GKRProtocol.PooledRowNative.'+case+'\n' for case in cases)
     text+='''import Airbender.Proofs.GKRProtocol.PublicProgram
 import Airbender.Proofs.Tables.DecoderPCLow

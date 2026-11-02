@@ -8,6 +8,32 @@ from check_lean import direct_axioms
 
 
 class AxiomReportTests(unittest.TestCase):
+    def test_public_baseline_retires_internal_roots_but_protects_review(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = {'roots': ['Fixture'], 'reviewPrefix': 'Review'}
+            records = [
+                {'kind': 'header', 'schema': 'airbender-proof-audit-v1',
+                 'explicitRoots': 1, 'reviewPrefix': 'Review'},
+                {'kind': 'root', 'name': 'Fixture', 'origin': 'Review',
+                 'explicit': True, 'proofValued': True},
+                {'kind': 'declaration', 'name': 'Fixture', 'declarationKind': 'theorem',
+                 'origin': 'Review', 'unsafe': False, 'partial': False, 'uses': []},
+                {'kind': 'footer', 'roots': 1, 'declarations': 1},
+            ]
+            report = root / 'inventory.jsonl'
+            report.write_text(''.join(json.dumps(record) + '\n' for record in records))
+            baseline = {'commit': 'fixture', 'roots': {'Fixture': [], 'OldShard': []},
+                        'protected_roots': ['Fixture']}
+            result = analyze(report, request, baseline, root / 'retired')
+            self.assertTrue(result['passed'])
+            self.assertEqual(result['retired_internal_roots'], ['OldShard'])
+            baseline['roots']['MissingReview'] = []
+            baseline['protected_roots'].append('MissingReview')
+            result = analyze(report, request, baseline, root / 'missing-review')
+            self.assertFalse(result['passed'])
+            self.assertEqual(result['missing_baseline_roots'], ['MissingReview'])
+
     def test_direct_report_difference_is_informational_but_inventory_is_required(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

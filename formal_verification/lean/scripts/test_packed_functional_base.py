@@ -1,4 +1,4 @@
-"""Retain complete base ports, original residuals and both cache modes."""
+"""Retain complete base ports, original residuals and cached captures."""
 import contextlib
 import io
 import json
@@ -15,7 +15,7 @@ from gkr_packed_query_frame import capture_name
 class FunctionalBaseTests(unittest.TestCase):
     def test_complete_native_references(self):
         self.assertEqual(set(generator.CASES), {stem + mode for stem in generator.CIRCUIT_CASES
-                                              for mode in ['Cached', 'Uncached']})
+                                              for mode in ['Cached']})
         for case in generator.CASES:
             generated = dict(generator.modules(case))
             stem = 'Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.' + case

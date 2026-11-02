@@ -20,7 +20,7 @@ class LookupSourceTests(unittest.TestCase):
             'Keccak': (403, 328, 73),
         }
         expected = {family + mode: counts for family, counts in families.items()
-                    for mode in ('Cached', 'Uncached')}
+                    for mode in ('Cached',)}
         self.assertEqual(set(generator.CASES), set(expected))
         for case in generator.CASES:
             count, fields, operands = expected[case]

@@ -1,6 +1,4 @@
 import Airbender.Proofs.BabyBear
-import Airbender.Proofs.Tables.Decoder.AddSub
-import Airbender.Proofs.Tables.ImportedROMReads
 import Airbender.Proofs.Trace.Program
 
 namespace Airbender.Tests.NativeSetupSemantics

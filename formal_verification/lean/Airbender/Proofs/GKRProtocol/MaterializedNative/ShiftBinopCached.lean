@@ -10,7 +10,6 @@ set_option maxRecDepth 65536
 set_option maxHeartbeats 4000000
 
 import_materialized_setup native from "artifacts/compiler/shift-binop-cached.json"
-  uncached "artifacts/compiler/shift-binop-uncached.json"
   setup_model Airbender.Data.GKRSetup.ShiftBinop
   table_model Airbender.Compiler.TableNative.ShiftBinopCached.native width 10
 

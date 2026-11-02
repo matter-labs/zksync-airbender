@@ -9,13 +9,13 @@ import gkr_worker_ports_instances as legacy
 from gkr_packed_functional_steps import balanced
 from gkr_packed_rotate_boundary import preflight
 
-CASES = tuple(stem + mode for stem, _, _ in legacy.FAMILIES.values() for mode in ('Cached', 'Uncached'))
+CASES = tuple(stem + mode for stem, _, _ in legacy.FAMILIES.values() for mode in ('Cached',))
 DIMENSIONS = LEAN / 'artifacts/checkers/worker-port-dimensions.json'
 
 
 def identity(case):
     for family, (stem, model, _) in legacy.FAMILIES.items():
-        if case in (stem + 'Cached', stem + 'Uncached'):
+        if case == stem + 'Cached':
             return family, case[len(stem):].lower(), model
     raise ValueError('unknown worker capture: ' + case)
 

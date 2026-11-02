@@ -1,4 +1,4 @@
-"""Keep complete source vectors, exact targets and both cache modes."""
+"""Keep complete source vectors, exact targets and cached captures."""
 import contextlib
 import io
 from pathlib import Path
@@ -10,8 +10,8 @@ import gkr_packed_source_freshness as generator
 
 class FreshnessTests(unittest.TestCase):
     def test_complete_source_and_targets(self):
-        self.assertEqual(len(generator.CASES), 22)
-        self.assertEqual(sum(case.endswith('Uncached') for case in generator.CASES), 11)
+        self.assertEqual(len(generator.CASES), 11)
+        self.assertEqual(sum(case.endswith('Uncached') for case in generator.CASES), 0)
         for case in generator.CASES:
             count, targets = generator.metadata(case)
             if case.startswith('BlakeRound'):

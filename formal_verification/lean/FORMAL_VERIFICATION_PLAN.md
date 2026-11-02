@@ -1,83 +1,54 @@
-# Circuit formal verification plan
+# Verification plan
 
-[Verification status](VERIFICATION_STATUS.md) owns coverage and measured evidence.
-[Trust boundaries](TRUST_AND_REVIEW.md) owns external inputs and assumptions.
-Start review with [public claims](Airbender/Review/README.md); supporting proof
-calculations live in Proofs, imported data in Data, and parsing in Import.
+## Current claims
 
-## Agreed implementation scope
+All three production machine targets are proved.
+The split Keccak source certificates are proved.
+The cached native acceptance theorems remain in the gate.
+One Review corollary for each machine composes native acceptance with its target.
+Exact lookup, request and RAM matching remain explicit.
 
-1. Repair assurance tooling: exact native/compiler dependency scopes on warm
-   caches, prefix-query exit handling, rename-aware change selection, complete
-   lookup-premise generation, native window-semantic checks and reproducible
-   export comparisons. Pin the elan installer archive and checksum. Treat the
-   pinned Mathlib binary cache as an explicit trusted input.
-2. Make the review surface smaller without changing claims: move data and
-   re-exports to Data, retain compatibility theorems outside the primary Review
-   statements, move histories out of Review and centralize evidence. Preserve
-   semantic models needed to understand public premises.
-3. Validate affected sources and tool controls, preserve every established audit
-   root, and complete environment audit/replay/negative controls under the
-   existing resource limits. Do not convert interrupted or partial runs into a pass.
-4. Keep CI advisory until a complete run and cold/warm/cache measurements on its
-   configured runner establish feasibility. Any scheduling redesign must retain
-   fresh project replay and trustworthy dependency evidence.
+The model covers only the cached circuits. Production sets use_caches = true.
+The tag `fv-archive-uncached` retains the earlier scope in git history.
+The tree contains no unchecked archive of removed Lean proofs.
 
-## Conditions to preserve
+## Implementation order
 
-Public state/program/configuration, tracked physical RAM, modeled tables, exact
-logical matching and selected complete-protocol scope remain visible. Equality
-of sampled products does not imply a token permutation. Natural lookup
-multiplicities remain separate from physical field counters.
+1. Delete uncached captures and captured-program compatibility modules.
+   Delete dependencies used only by those modules.
+   Keep the three target definitions and the cached production claims.
+2. Delete old internal shards and compatibility projections.
+   Use existing whole-check soundness facts directly.
+3. Consolidate one codec, one generator with subcommands, one freshness check
+   and one checker validation step in CI.
+4. At the end, run a cold full Linux build and one transitive kernel replay.
+   Record per-module time, peak memory and totals in one table.
+5. Use measured costs to choose any further conversion.
+   Process the modules that account for 80 percent of build and replay time.
+   Process the most expensive module first.
+   Stop when the build and replay fit the CI windows.
 
-The [supported-use domain](Airbender/Review/Trace/UnifiedReduced/DelegationUse.lean)
-states wrapper shapes, entry safety and reference-prefix validity for bigint,
-G and extended round. Invalid invocations remain excluded; lower-level witness
-contracts remain explicit. G separation is retained in this domain even though
-accepted complete G spans derive it from memory matching. Extended-round masks
-are also premises of lower-level integrated claims, not public inputs or native
-acceptance consequences. The blessed zero-low-limb rule is stated explicitly.
+Each implementation commit runs focused source builds and generator freshness.
+The full frontend, environment audit and axiom baseline refresh run at the end.
+Linux checks stay at the end, as requested.
 
-Keep original Sail/custom references, native IDs/imported values, BabyBear
-compatibility and established audit roots. Document circuit discrepancies and
-add narrow proof assumptions; changing production circuits to make proofs
-succeed is outside this effort. Dependency/version churn, completeness and
-unrelated parser, setup-schema or ISA changes are outside this round.
+## Proof contract
 
-## Production machine targets
+Use kernel proofs only.
+The permitted axioms are propext, Classical.choice and Quot.sound.
+Do not use native_decide, new axioms or skipped kernel checks.
+Keep the original reference functions and production circuits.
+Record circuit discrepancies and use narrow explicit proof assumptions.
+Do not change production Rust to make a proof pass.
 
-1. One public execution registry combining nondeterminism, modular operations and
-   delegation calls, including missing discarded-x0 encodings and applicable
-   initialization adapters. The unified combined relation is defined, but its
-   native soundness and initialization adapter are open. Existing
-   program-parametric source execution is narrower.
-2. Compiler/setup interpretation beyond the retained four-entry decoder tables,
-   with one committed production verifier program as a concrete acceptance target.
-3. Derive redundant round-worker coverage from public caller coverage and native
-   live-invocation matching, if a checked Lean proof establishes the implication.
-4. Model and compose the blessed 361-call split Keccak path and its three native
-   worker circuits for the full unsigned machine. Existing 649-call special5
-   results remain conditional circuit/protocol
-   coverage; [the finding](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage)
-   records this separate boundary.
+Real workers retain the shared aggregate owner.
+The footprint cap is 2,560 MiB. The resident cap is 5,120 MiB.
+The ordinary worker deadline is 900 seconds.
+Replay uses the lakefile thread stack: 2,048 MiB.
+The guard records both the Lean thread and process stack limits.
 
-## Deferred milestones
+## Evidence
 
-1. Universal Rust compiler correctness and complete native witness extension;
-   formal decoder/preprocessor/setup-generator correspondence; cryptographic
-   lookup/RAM/verifier/protocol soundness; completeness; actual large-field
-   artifacts; full fetch faults, interrupts and exceptional execution.
-
-## Verification contract
-
-All real workers retain the shared aggregate owner and 2560 MiB footprint,
-5120 MiB bounded resident, 900-second ordinary / 1800-second review limits.
-Linux excludes reclaimable mapped pages from its charged-memory caps while
-recording total RSS. Replay records both Lean thread and process stack limits;
-a 32 MiB thread setting alone does not qualify main-thread deep recursion.
-
-Only propext, Classical.choice and Quot.sound are standard permitted axioms.
-Regenerate the dependency baseline after a successful environment audit and
-review its changes. A milestone requires its actual assurance gates; source
-compilation, focused replay and historical checkpoints establish their stated
-scopes only.
+[Verification status](VERIFICATION_STATUS.md) gives the current state.
+[Verification history](VERIFICATION_HISTORY.md) retains the earlier dated log.
+No old partial check establishes the final assurance result.

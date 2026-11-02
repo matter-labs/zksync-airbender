@@ -9,13 +9,13 @@ from gkr_packed_functional_steps import balanced
 from gkr_packed_worker_ports import merge
 from gkr_packed_rotate_boundary import preflight
 
-ALL_CASES = tuple(stem + mode for stem in STEMS for mode in ('Cached', 'Uncached'))
+ALL_CASES = tuple(stem + mode for stem in STEMS for mode in ('Cached',))
 CASES = ALL_CASES
 
 
 def capture_name(case):
     for family, stem in zip(FAMILIES, STEMS, strict=True):
-        for mode in ('Cached', 'Uncached'):
+        for mode in ('Cached',):
             if case == stem + mode:
                 return family + '-' + mode.lower()
     raise ValueError('unknown helper payload capture: ' + case)

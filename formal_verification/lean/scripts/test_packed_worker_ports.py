@@ -9,7 +9,7 @@ import gkr_packed_worker_ports as packed
 
 class WorkerPorts(unittest.TestCase):
     def test_both_modes_and_complete_result(self):
-        self.assertEqual(len(packed.CASES),8)
+        self.assertEqual(len(packed.CASES),4)
         for case in packed.CASES:
             modules=dict(packed.modules(case))
             self.assertEqual(len(modules),5)

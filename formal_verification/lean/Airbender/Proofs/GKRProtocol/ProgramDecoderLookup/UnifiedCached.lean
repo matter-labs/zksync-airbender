@@ -23,7 +23,7 @@ theorem decoder_lookup
     (ProgramDecoderNative.UnifiedCached.decoder_enabled input)
   have matched : Airbender.Compiler.LookupSourceNative.UnifiedCached.native.query20.fields.map (fun field => field.value ((input.physical ∘ Airbender.Compiler.LookupSourceNative.UnifiedCached.native.bank.address) ∘ Airbender.Compiler.LookupNative.UnifiedCached.native.sourcePlacement)) = unifiedLookupRows initial columns .unifiedCached 0 index.val := equal
   apply NativeProgramSetup.unified_decoder_lookup setup .unifiedCached _
-    (Or.inr rfl) rfl index.val _ typed
+    rfl rfl index.val _ typed
   rw [NativeProgramSetup.unified_mask_eq setup]
   exact (ProgramDecoderNative.UnifiedCached.decoder_tuple input).symm.trans matched
 

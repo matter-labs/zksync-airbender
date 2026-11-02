@@ -33,7 +33,7 @@ class CompilerProvenance(unittest.TestCase):
         self.directory = Path(self.temporary.name) / "compiler"
         shutil.copytree(LEAN / "artifacts/compiler", self.directory)
 
-    def mutate(self, suffix, change, repin=False, name="add-sub-uncached"):
+    def mutate(self, suffix, change, repin=False, name="add-sub-cached"):
         path = self.directory / (name + suffix)
         data = json.loads(path.read_text())
         change(data)
@@ -47,7 +47,7 @@ class CompilerProvenance(unittest.TestCase):
             manifest.write_text(json.dumps(data))
 
     def test_current(self):
-        self.assertEqual(checker.check(self.directory), 22)
+        self.assertEqual(checker.check(self.directory), 11)
 
     def test_changed_native_output_metadata(self):
         self.mutate(".json", lambda data: data["circuit"].__setitem__("scratch_space_size", 1))

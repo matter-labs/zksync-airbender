@@ -1,5 +1,5 @@
+import Airbender.Proofs.GKRProtocol.MaterializedNative.WordMemoryCached
 import Airbender.Proofs.GKRProtocol.ColumnSlices
-import Airbender.Proofs.GKRProtocol.MaterializedNative.WordMemoryUncached
 import Airbender.Proofs.Tables.ImportedROMRows
 
 namespace Airbender.Compiler.ROMNative.WordMemory
@@ -10,7 +10,7 @@ set_option Elab.async false
 set_option maxRecDepth 65536
 set_option maxHeartbeats 4000000
 
-abbrev nativeSetup := Airbender.Compiler.MaterializedNative.WordMemoryUncached.native.model
+abbrev nativeSetup := Airbender.Compiler.MaterializedNative.WordMemoryCached.native.model
 
 private theorem key_column (index : Fin 1048576) :
     nativeSetup.imported.data.columns[0].get? (1 + index.val) =

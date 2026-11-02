@@ -43,12 +43,12 @@ def module(family,case,model,mode):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--family',choices=FAMILIES,action='append')
-    parser.add_argument('--mode',choices=['uncached','cached'],action='append')
+    parser.add_argument('--mode',choices=['cached'],action='append')
     for flag in ['write','check','build']:parser.add_argument('--'+flag,action='store_true')
     args=parser.parse_args();count=0
     for family,stem,model in zip(FAMILIES,CASES,MODELS,strict=True):
         if args.family and family not in args.family:continue
-        for mode in args.mode or ['uncached','cached']:
+        for mode in args.mode or ['cached']:
             generated=module(family,stem+mode.title(),model,mode)
             if generated is None:continue
             target,text=generated;path=LEAN/(target.replace('.','/')+'.lean');count+=1

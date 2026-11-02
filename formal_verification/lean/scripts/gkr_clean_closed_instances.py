@@ -151,7 +151,7 @@ def modules(name, case, model_name, width):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--family', choices=FAMILIES, action='append')
-    parser.add_argument('--mode', choices=['cached', 'uncached'], action='append')
+    parser.add_argument('--mode', choices=['cached'], action='append')
     parser.add_argument('--write', action='store_true')
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--build', action='store_true')
@@ -164,7 +164,7 @@ def main():
             continue
         if not width and family != 'add-sub':
             continue
-        for mode in ['uncached', 'cached']:
+        for mode in ['cached']:
             if args.mode and mode not in args.mode:
                 continue
             for target, text in modules(family + '-' + mode, stem + mode.title(), model, width):

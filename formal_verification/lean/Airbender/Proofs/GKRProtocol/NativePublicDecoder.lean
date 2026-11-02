@@ -68,16 +68,16 @@ theorem unified_decoder_lookup
     {mask : ProgramRows.Mask} {columns : List (List Source.BaseField)}
     (setup : UnifiedProgramSetup initial text capacity mask columns)
     (configuration : Configuration) (layout : ProgramSetup.Layout)
-    (unified : configuration = .unifiedUncached ∨ configuration = .unifiedCached)
+    (unified : configuration = .unifiedCached)
     (selected : layouts configuration = some layout) (index : Nat)
     (query : Vector Source.BaseField 9) (bounded : query[0].val < 65536)
     (same : ProgramSetup.packTagged layout.width 46 (ProgramRows.maskRow mask query) =
       unifiedLookupRows initial columns configuration 0 index) :
     ProgramRows.maskRow mask query ∈ columns := by
   have columnsAt : unifiedDecoderColumns columns configuration = columns := by
-    rcases unified with rfl | rfl <;> rfl
+    subst configuration; rfl
   have tagged : layout.tagged = true := by
-    rcases unified with rfl | rfl
+    subst configuration
     all_goals simp only [layouts, Option.some.injEq] at selected
     all_goals subst layout
     all_goals rfl

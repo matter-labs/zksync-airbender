@@ -1,6 +1,5 @@
 import Airbender.Proofs.GKRProtocol.NativeProgramQueries
 import Airbender.Proofs.GKRProtocol.ROMNative.WordFullRows
-import Airbender.Proofs.GKRProtocol.PhysicalClosedNative.WordMemoryUncached
 import Airbender.Proofs.GKRProtocol.PhysicalClosedNative.WordMemoryCached
 
 namespace Airbender.Compiler.NativeProgramSetup
@@ -15,28 +14,21 @@ theorem vector_nine_last (query : Vector Source.BaseField 9) :
 
 /-- The captured word table has only the ROM tag and zero outside the decoder. -/
 theorem fixed_word_query_zero (configuration : Configuration)
-    (which : configuration = .wordMemoryUncached ∨ configuration = .wordMemoryCached)
+    (which : configuration = .wordMemoryCached)
     (index : Fin (lookupLength configuration)) (query : Vector Source.BaseField 9)
     (same : query.toList = retainedRows configuration 0 index.val)
     (notDecoder : query[8] ≠ 46) (notROM : query[8] ≠ 34) :
     query = Vector.replicate 9 0 := by
   have captured : ROMNative.WordFullPublic.nativeSetup.Contains
       ((List.range 9).map SourceSetupColumn.generic) query.toList := by
-    rcases which with rfl | rfl
-    · refine ⟨index, ?_⟩
-      have bounded : index.val < MaterializedNative.WordMemoryUncached.native.model.imported.data.length := index.isLt
-      simp only [retainedRows, dif_pos bounded] at same
-      change query.toList = MaterializedNative.WordMemoryUncached.native.model.fields
-        TableNative.WordMemoryUncached.native.genericSetupColumns index at same
-      rw [PhysicalClosedNative.WordMemoryUncached.generic_columns_inventory] at same
-      exact same
-    · refine ⟨index, ?_⟩
-      have bounded : index.val < MaterializedNative.WordMemoryCached.native.model.imported.data.length := index.isLt
-      simp only [retainedRows, dif_pos bounded] at same
-      change query.toList = MaterializedNative.WordMemoryCached.native.model.fields
-        TableNative.WordMemoryCached.native.genericSetupColumns index at same
-      rw [PhysicalClosedNative.WordMemoryCached.generic_columns_inventory] at same
-      exact same
+    subst configuration
+    refine ⟨index, ?_⟩
+    have bounded : index.val < MaterializedNative.WordMemoryCached.native.model.imported.data.length := index.isLt
+    simp only [retainedRows, dif_pos bounded] at same
+    change query.toList = MaterializedNative.WordMemoryCached.native.model.fields
+      TableNative.WordMemoryCached.native.genericSetupColumns index at same
+    rw [PhysicalClosedNative.WordMemoryCached.generic_columns_inventory] at same
+    exact same
   have checked := ROMNative.WordFullPublic.nativeSetup.generic_clean_contains
     ((List.range 9).map SourceSetupColumn.generic) rfl query captured "Airbender.Native.WordMemory" #[]
   rcases ROM.Proofs.imported_member (ROMNative.WordFullPublic.full_refinement checked notDecoder) with
@@ -50,7 +42,7 @@ theorem fixed_word_query_zero (configuration : Configuration)
 /-- Every native non-decoder word query is zero or reads the public word function. -/
 theorem word_query_member (decoder : Configuration → List (List Source.BaseField))
     (wordAt : Nat → BitVec 32) (configuration : Configuration)
-    (which : configuration = .wordMemoryUncached ∨ configuration = .wordMemoryCached)
+    (which : configuration = .wordMemoryCached)
     (index : Fin (lookupLength configuration)) (query : Vector Source.BaseField 9)
     (same : query.toList = rows decoder wordAt configuration 0 index.val)
     (notDecoder : query[8] ≠ 46) :
@@ -60,7 +52,7 @@ theorem word_query_member (decoder : Configuration → List (List Source.BaseFie
     «width» := 9, tagged := true, decoderStart := 1048577,
     decoderWords := 1048576, romStart := some 1, romWords := 1048576 }
   have selected : layouts configuration = some layout := by
-    rcases which with rfl | rfl <;> rfl
+    subst configuration; rfl
   by_cases rom : query[8] = 34
   · have genericSame : query.toList = ProgramSetup.genericRows layout
         (retainedRows configuration 0) (decoder configuration) wordAt index.val := by
@@ -89,7 +81,7 @@ theorem word_public_member {initial : Reference.RiscV.Sail.State} {cells : List 
     (image : initialImage initial cells = some tokens)
     (domain : ROMNative.WordFullPublic.CoversROM cells)
     (decoder : Configuration → List (List Source.BaseField)) (configuration : Configuration)
-    (which : configuration = .wordMemoryUncached ∨ configuration = .wordMemoryCached)
+    (which : configuration = .wordMemoryCached)
     (index : Fin (lookupLength configuration)) (query : Vector Source.BaseField 9)
     (same : query.toList = rows decoder (ROM.words initial) configuration 0 index.val)
     (notDecoder : query[8] ≠ 46) : (ROM.table cells tokens).Contains #[] query := by

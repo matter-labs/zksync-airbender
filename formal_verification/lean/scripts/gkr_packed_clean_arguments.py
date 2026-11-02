@@ -10,10 +10,10 @@ from gkr_packed_query_frame import capture_name, merge_slices
 from gkr_packed_rotate_boundary import preflight
 from gkr_wiring_instances import CASES as CIRCUIT_CASES
 
-PILOT_CASES = ('WordMemoryCached', 'WordMemoryUncached')
-CASES = PILOT_CASES + ('BlakeRoundCached', 'BlakeRoundUncached')
+PILOT_CASES = ('WordMemoryCached',)
+CASES = PILOT_CASES + ('BlakeRoundCached',)
 CASES += tuple(stem + mode for stem in CIRCUIT_CASES if stem not in ['WordMemory', 'BlakeRound']
-               for mode in ['Cached', 'Uncached'])
+               for mode in ['Cached'])
 
 
 def metadata(case):

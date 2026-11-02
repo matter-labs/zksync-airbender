@@ -48,10 +48,10 @@ def module(mode):
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mode',choices=['uncached','cached'],action='append')
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mode',choices=['cached'],action='append')
     for flag in ['write','check','build']:p.add_argument('--'+flag,action='store_true')
     a=p.parse_args()
-    for mode in a.mode or ['uncached','cached']:
+    for mode in a.mode or ['cached']:
         target,text=module(mode);path=LEAN/(target.replace('.','/')+'.lean')
         if a.check and (not path.exists() or path.read_text()!=text):raise ValueError('windowed token graph changed: '+target)
         if a.write:path.write_text(text)

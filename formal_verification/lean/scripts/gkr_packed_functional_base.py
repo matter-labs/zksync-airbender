@@ -9,9 +9,9 @@ from gkr_packed_query_frame import capture_name, merge_slices
 from gkr_packed_rotate_boundary import preflight
 from gkr_wiring_instances import CASES as CIRCUIT_CASES
 
-PILOT_CASES = ('AddSubCached', 'AddSubUncached', 'BlakeRoundCached', 'BlakeRoundUncached')
+PILOT_CASES = ('AddSubCached', 'BlakeRoundCached')
 CASES = PILOT_CASES + tuple(stem + mode for stem in CIRCUIT_CASES if stem not in ['AddSub', 'BlakeRound']
-                          for mode in ['Cached', 'Uncached'])
+                          for mode in ['Cached'])
 
 
 def base_bindings(case):

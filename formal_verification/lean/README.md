@@ -27,11 +27,11 @@ and physical-row logical execution retain exact lookup/state/RAM matching and
 public boundaries. Native field/mask/helper identities derive source obligations;
 compressed/sampled matching and physical multiplicity binding remain external.
 The three machine targets quantify over public text and initial state.
-Native program adapters cover all 14 CPU profiles in both cache modes.
-The earlier captured-program wrappers retain their original contracts in the
-compatibility proof layer. The pinned public OS decoder differential passed
-all 14 full and unified comparisons in both cache modes. This test does not
-prove OS execution. The targets exclude special5 calls.
+Native program adapters cover the six unrolled CPU families and the unified circuit.
+The earlier captured-program wrappers are removed.
+Git tag `fv-archive-uncached` retains their source.
+The model covers only the cached circuits. Production sets use_caches = true.
+The targets exclude special5 calls.
 [Coverage and validation evidence](VERIFICATION_STATUS.md) states the precise
 scope, completed checks, measurements and pending gates. Cryptographic argument
 soundness and universal Rust compiler correctness remain outside the model.
@@ -152,7 +152,7 @@ while IFS= read -r -d '' file; do dep_args+=(--dep-info "$file"); done \
 fv native-receipts python3 scripts/check_setup_freshness.py verify \
   --work-dir "$FV_ROOT/native" "${dep_args[@]}"
 
-# Re-export actual cached and uncached compiler output after Rust/source changes.
+# Re-export the production cached compiler output after Rust/source changes.
 fv compiler-export env -u CI -u RUST_MIN_STACK CARGO_TARGET_DIR="$FV_COMPILER_TARGET_DIR" \
   python3 scripts/export_gkr_translations.py --output "$FV_ROOT/compiler"
 fv compiler-retained python3 scripts/check_gkr_translations.py

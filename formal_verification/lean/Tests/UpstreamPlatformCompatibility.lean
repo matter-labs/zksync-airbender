@@ -1,7 +1,6 @@
 import Airbender.Review.Helpers.Context.InitializationInputs
 import Airbender.Review.Helpers.Context.InitializationUnifiedInputs
 import Airbender.Review.Helpers.Context.Registries.SubwordMemoryInputs
-import Airbender.Review.Helpers.UnifiedReduced.ImportedInputs
 import Airbender.Review.Circuits.WordMemory.Model
 import Airbender.Review.Circuits.SubwordMemory.Model
 import Airbender.Proofs.UnifiedReduced.WordMemorySoundness

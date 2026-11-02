@@ -53,7 +53,7 @@ def module(mode):
            f'  exact source_boundary_leaf Initialization.unified.layout parameters ({memory}.sourceValues physical)\n'
            '    (fun _ column => physical (.BaseLayerMemory column)) stageKind set row addresses.1 addresses.2 bounds.1 bounds.2\n'
            '      raw.1 raw.2.1 raw.2.2.1 raw.2.2.2\n\n')
-    executor=(LEAN/'Airbender/Proofs/GKRProtocol/MemoryPortsNative/UnifiedUncached.lean').read_text().replace('UnifiedUncached',case)
+    executor=(LEAN/'Airbender/Proofs/GKRProtocol/MemoryPortsNative/UnifiedCached.lean').read_text().replace('UnifiedCached',case)
     for direction,stage in [('read','terminal'),('write','initial')]:
         first=executor.index('theorem '+direction+'_output_logical')
         last=executor.find('theorem write_output_logical',first+1) if direction=='read' else executor.index('\nend Airbender.Compiler.MemoryPortsNative.')
@@ -104,10 +104,10 @@ def module(mode):
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mode',choices=['cached','uncached'],action='append')
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mode',choices=['cached'],action='append')
     for flag in ['write','check','build']:p.add_argument('--'+flag,action='store_true')
     a=p.parse_args()
-    for mode in a.mode or ['uncached','cached']:
+    for mode in a.mode or ['cached']:
         target,text=module(mode);path=LEAN/(target.replace('.','/')+'.lean')
         if a.check and (not path.exists() or path.read_text()!=text):raise ValueError('initialization token bridge changed: '+target)
         if a.write:path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)

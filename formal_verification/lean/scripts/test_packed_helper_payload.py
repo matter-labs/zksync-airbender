@@ -7,7 +7,7 @@ import gkr_helper_instances as legacy
 
 class HelperPayload(unittest.TestCase):
     def test_complete_candidates_and_cache_modes(self):
-        self.assertEqual(len(packed.CASES), 22)
+        self.assertEqual(len(packed.CASES), 11)
         self.assertEqual(set(packed.CASES), set(packed.ALL_CASES))
         for case in packed.CASES:
             modules = dict(packed.modules(case))

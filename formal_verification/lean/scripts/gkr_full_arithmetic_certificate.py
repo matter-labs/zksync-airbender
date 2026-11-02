@@ -169,7 +169,7 @@ def synthesize(pair,snapshot):
 
 
 
-CHECKER_CAPTURES = {"AddSubCached", "AddSubUncached"} | NUMERIC_CAPTURES
+CHECKER_CAPTURES = {"AddSubCached"} | NUMERIC_CAPTURES
 
 
 def modules(name, case, result):
@@ -219,10 +219,7 @@ def modules(name, case, result):
         f'finalize_full_compiler_arithmetic native {dimensions}')))
     # The new captures have fewer relations and source obligations. Keep the
     # old shard module paths as imports of the complete current certificate.
-    retired = {
-        "UnifiedUncached": ("ForwardPart4", "BackwardPart4"),
-        "UnifiedCached": ("BackwardPart4",),
-    }
+    retired = {"UnifiedCached": ("BackwardPart4",)}
     names = {module for module, _ in result_modules}
     for suffix in retired.get(case, ()):
         module = prefix + suffix
@@ -251,7 +248,7 @@ def retired_checker_parts(root, case, targets):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--family", choices=FAMILIES, action="append")
-    parser.add_argument("--mode", choices=("uncached", "cached"), action="append")
+    parser.add_argument("--mode", choices=("cached",), action="append")
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--build", action="store_true")
@@ -262,7 +259,7 @@ def main():
     for family, stem in zip(FAMILIES, CASES, strict=True):
         if args.family and family not in args.family:
             continue
-        for mode in ("uncached", "cached"):
+        for mode in ("cached",):
             if args.mode and mode not in args.mode:
                 continue
             name, case = family + "-" + mode, stem + mode.title()

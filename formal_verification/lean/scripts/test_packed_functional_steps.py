@@ -14,9 +14,9 @@ import gkr_functional_instances as interface
 
 class FunctionalStepTests(unittest.TestCase):
     def test_complete_modes_and_old_step_names(self):
-        self.assertEqual(len(generator.CASES), 22)
+        self.assertEqual(len(generator.CASES), 11)
         self.assertEqual(set(generator.CASES), {stem + mode for stem in generator.CIRCUIT_CASES
-                                              for mode in ['Cached', 'Uncached']})
+                                              for mode in ['Cached']})
         self.assertEqual([len(generator.capture(case)) for case in generator.DENSE_CASES], [674, 394])
         for case in generator.CASES:
             count = len(generator.capture(case))

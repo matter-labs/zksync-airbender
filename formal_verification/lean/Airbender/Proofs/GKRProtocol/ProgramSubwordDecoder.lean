@@ -64,25 +64,25 @@ theorem subword_decoder_member (decoder : List (List Source.BaseField))
       simp [ProgramSetup.packTagged] at tag
       exact ((by exact of_decide_eq_true rfl : (46 : Source.BaseField) ≠ 0) tag).elim
 
-/-- The public unrolled factory binds the subword decoder in both cache modes. -/
+/-- The public unrolled factory binds the subword decoder for the cached configuration. -/
 theorem unrolled_subword_decoder_lookup
     {config : ProgramRows.Config} {initial : Reference.RiscV.Sail.State} {text : List (BitVec 32)}
     {capacity : Nat} {masks : PooledFamily → ProgramRows.Mask}
     {columns : PooledFamily → List (List Source.BaseField)}
     (setup : UnrolledProgramSetup config initial text capacity masks columns)
     (configuration : Configuration)
-    (which : configuration = .subwordMemoryUncached ∨ configuration = .subwordMemoryCached)
+    (which : configuration = .subwordMemoryCached)
     (index : Nat) (query : Vector Source.BaseField 9) (bounded : query[0].val < 65536)
     (same : ProgramSetup.packTagged 9 46 (ProgramRows.maskRow (masks .subwordMemory) query) =
       unrolledProgramLookupRows initial columns configuration 0 index) :
     ProgramRows.maskRow (masks .subwordMemory) query ∈ columns .subwordMemory := by
   have widths : ∀ row ∈ columns .subwordMemory, row.length = 8 := by
     intro row member
-    exact unrolled_column_width setup .subwordMemoryUncached .subwordMemory _ rfl rfl row member
+    exact unrolled_column_width setup .subwordMemoryCached .subwordMemory _ rfl rfl row member
   have payloadWidth : (ProgramRows.maskRow (masks .subwordMemory) query).length = 8 := by
     rw [unrolled_mask_eq setup .subwordMemory]
-    exact unrolled_native_mask_width .subwordMemoryUncached .subwordMemory _ rfl rfl query
-  rcases which with rfl | rfl
+    exact unrolled_native_mask_width .subwordMemoryCached .subwordMemory _ rfl rfl query
+  subst configuration
   all_goals
     apply subword_decoder_member (columns .subwordMemory) (ROM.words initial) index widths _ payloadWidth
     · simpa [unrolledProgramLookupRows, programRows, unrolledDecoderColumns, pooledFamily] using same

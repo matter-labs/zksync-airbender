@@ -45,7 +45,7 @@ def main():
     records, errors = {}, []
     for family in args.family or FAMILIES:
         original_source = None
-        for cached in (False, True):
+        for cached in (True,):
             name = family + ("-cached" if cached else "-uncached")
             pair_path = output / (name + ".json")
             command = ["cargo", "run", "--locked", "-p", "cs", "--example",
@@ -85,7 +85,7 @@ def main():
               Path(__file__).resolve(), Path(__file__).with_name("gkr_arithmetic_certificate.py"),
               LEAN / "artifacts/setup/manifest.json"]
     manifest = {"format_version": 1,
-                "scope": "source arithmetic slice; lookup/memory/cache protocol lowering is not certified",
+                "scope": "cached source arithmetic slice; lookup/memory/cache protocol lowering is not certified",
                 "compiler_inputs": {str(path.relative_to(ROOT)): digest(path) for path in pinned},
                 "rustc": subprocess.check_output(["rustc", "--version"], cwd=ROOT, text=True).strip(),
                 "files": records}

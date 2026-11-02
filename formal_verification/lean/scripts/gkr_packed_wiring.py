@@ -10,7 +10,7 @@ from gkr_wiring_instances import CASES
 
 ROOT = Path(__file__).resolve().parents[1]
 CAPTURES = {case + mode.title(): family + '-' + mode
-            for case, family in zip(CASES, FAMILIES, strict=True) for mode in ['cached', 'uncached']}
+            for case, family in zip(CASES, FAMILIES, strict=True) for mode in ['cached']}
 
 
 def provenance(name):

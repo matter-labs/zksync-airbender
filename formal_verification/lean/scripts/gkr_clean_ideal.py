@@ -16,7 +16,7 @@ from gkr_wiring_instances import CASES
 import gkr_dense_arithmetic as dense
 
 CAPTURES = {case + mode.title(): family + '-' + mode
-            for case, family in zip(CASES, FAMILIES, strict=True) for mode in ('cached', 'uncached')}
+            for case, family in zip(CASES, FAMILIES, strict=True) for mode in ('cached',)}
 TRACE_CASES = {case for case in CAPTURES if case.startswith(('Bigint', 'Keccak'))}
 ROW_CASES = {case for case in CAPTURES if case.startswith(('BlakeRound', 'Unified'))}
 

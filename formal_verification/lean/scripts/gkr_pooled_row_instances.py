@@ -126,7 +126,7 @@ def main():
     parser.add_argument('--case')
     args=parser.parse_args()
     for stem,family in CASES:
-        for mode in ['Uncached','Cached']:
+        for mode in ['Cached']:
             case=stem+mode
             if args.case and case!=args.case:continue
             name,text=module(case,family)

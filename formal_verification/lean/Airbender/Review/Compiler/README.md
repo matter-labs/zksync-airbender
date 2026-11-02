@@ -32,7 +32,7 @@ initial ROM to the supplied text. The [complete unrolled factory](NativeSubwordS
 also replaces the program-derived subword ROM regions. Fixed helper, range
 and timestamp regions keep their imported values.
 
-The native adapters cover all 14 CPU profiles in both cache modes.
+The native adapters cover the six unrolled CPU families and the unified circuit.
 [Unrolled constraints](../../Proofs/GKRProtocol/ProgramPublicConstraints.lean)
 and [unified constraints](../../Proofs/GKRProtocol/ProgramUnifiedConstraints.lean)
 derive each incoming PC bound from native ranges and exact state matching.
@@ -60,10 +60,10 @@ It does not prove Rust decoder equivalence for every possible program.
 | Public boundaries | Initial state, text, ROM coverage, worker setup, initialization circuit, supported caller use and stream ports remain explicit. |
 | Retained source constraints and execution | Native transport and exact matching derive the source equations and decoder membership. The target proofs compose those facts with the reference execution. |
 
-[Physical bindings](../../Import/Compiler/Rows/AddSubUncached.lean) select the
-captured addresses. [Native requests](../../Import/Compiler/LogicalRows/AddSubUncached.lean)
+[Physical bindings](../../Import/Compiler/Rows/AddSubCached.lean) select the
+captured addresses. [Native requests](../../Import/Compiler/LogicalRows/AddSubCached.lean)
 use the actual encoding fields and leaf weights. The
-[transport proof](../../Proofs/GKRProtocol/ProgramNativeTransport/AddSubUncached.lean)
+[transport proof](../../Proofs/GKRProtocol/ProgramNativeTransport/AddSubCached.lean)
 checks arithmetic identities, operand coverage and setup-column bindings.
 [Lookup operands](LookupOperands.lean) and the [logical argument](LookupArgument.lean)
 state the remaining interpretations.
@@ -72,21 +72,15 @@ Extension-field gates, compressed lookup arguments and commitment authentication
 remain separate boundaries. These theorems do not prove universal correctness
 of the Rust compiler.
 
-## Compatibility claims
+## Production scope
 
-Earlier captured-program boundaries and whole-execution wrappers now live in
-the [compatibility proof layer](../../Proofs/Compatibility/Compiler/Theorems.lean).
-The original Review paths forward to those modules. Each declaration keeps its
-public name, statement and proof body. All established audit roots remain.
-These compatibility statements retain their original setup restrictions.
-The three machine targets use the public program setup described above.
+The model covers only the cached circuits. Production sets use_caches = true.
+The tag `fv-archive-uncached` retains the earlier scope in git history.
+The tree has no unchecked archive of the removed Lean modules.
 
-The [arithmetic API](Arithmetic.lean) and
-[capture selection](../../Import/Compiler/ArithmeticInstances.lean) retain the
-22 native configurations. Arithmetic extension constructs a selected gate
-slice. It does not construct the complete native graph.
+The [native target corollaries](Theorems.lean) compose cached native
+certificates with each machine target. They keep exact lookup, request and
+RAM matching explicit. The native acceptance theorems remain in the gate.
 
-Artifact readers live in Import. Certificate algorithms, generated checks,
-refinements and proof assembly live in Proofs.
-[Compiler scope and evidence](../../../GKR_COMPILER_VERIFICATION.md) records
-the validation limits and reproduction steps.
+Artifact readers live in Import. Certificate algorithms and proof assembly
+live in Proofs. Internal shard names are not part of the public contract.

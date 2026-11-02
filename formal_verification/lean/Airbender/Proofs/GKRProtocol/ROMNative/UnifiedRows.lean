@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.MaterializedNative.UnifiedCached
 import Airbender.Proofs.GKRProtocol.UnifiedRegionColumns.Column0
 import Airbender.Proofs.GKRProtocol.UnifiedRegionColumns.Column1
 import Airbender.Proofs.GKRProtocol.UnifiedRegionColumns.Column2
@@ -8,7 +9,6 @@ import Airbender.Proofs.GKRProtocol.UnifiedRegionColumns.Column6
 import Airbender.Proofs.GKRProtocol.UnifiedRegionColumns.Column7
 import Airbender.Proofs.GKRProtocol.UnifiedRegionColumns.Column8
 import Airbender.Proofs.GKRProtocol.UnifiedRegionColumns.Column9
-import Airbender.Proofs.GKRProtocol.MaterializedNative.UnifiedUncached
 import Airbender.Proofs.GKRProtocol.UnifiedLogicalRegions
 
 namespace Airbender.Compiler.ROMNative.UnifiedRows
@@ -18,7 +18,7 @@ set_option Elab.async false
 set_option maxRecDepth 65536
 set_option maxHeartbeats 8000000
 
-abbrev nativeSetup := Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model
+abbrev nativeSetup := Airbender.Compiler.MaterializedNative.UnifiedCached.native.model
 
 def nativeRow (row : Fin 8388608) : Vector Source.BaseField 10 := (nativeSetup.imported.data.row row).map (fun n : Int => (n : Source.BaseField))
 

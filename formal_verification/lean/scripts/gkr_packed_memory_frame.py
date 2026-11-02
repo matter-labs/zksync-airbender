@@ -6,8 +6,10 @@ from gkr_packed_rotate_boundary import preflight
 
 from gkr_wiring_instances import CASES as CIRCUIT_CASES
 
-SMALL_CASES=('AddSubCached','AddSubUncached')
-LARGE_CASES=tuple(stem+mode for stem in CIRCUIT_CASES if stem!='AddSub' for mode in ['Cached','Uncached'])
+# These four frame captures belonged only to the retired captured execution wrappers.
+RETIRED_STEMS=('JumpBranch','MulDiv','ShiftBinop','Unified')
+SMALL_CASES=('AddSubCached',)
+LARGE_CASES=tuple(stem+mode for stem in CIRCUIT_CASES if stem!='AddSub' and stem not in RETIRED_STEMS for mode in ['Cached'])
 CASES=SMALL_CASES+LARGE_CASES
 
 

@@ -1,7 +1,5 @@
 import Airbender.Proofs.GKRProtocol.ProgramPublicRows
-import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.ShiftBinopUncached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.ShiftBinopCached
-import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.WordMemoryUncached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.WordMemoryCached
 
 namespace Airbender.Compiler.PooledExecution
@@ -24,28 +22,16 @@ theorem ProgramLogicalRowCertificate.program_constraints
       (cert.row.constraints (⟨ROM.table cells tokens,
         Verification.subwordTable (ROM.words initial)⟩ : PooledSetup babyBearModulus)) := by
   cases cert with
-  | addSubUncached input arguments =>
-    exact ProgramConstraintsNative.AddSubUncached.input_constraints (unrolledDecoderColumns columns) (ROM.words initial) input arguments _
   | addSubCached input arguments =>
     exact ProgramConstraintsNative.AddSubCached.input_constraints (unrolledDecoderColumns columns) (ROM.words initial) input arguments _
-  | jumpBranchUncached input arguments =>
-    exact ProgramConstraintsNative.JumpBranchUncached.input_constraints (unrolledDecoderColumns columns) (ROM.words initial) input arguments _
   | jumpBranchCached input arguments =>
     exact ProgramConstraintsNative.JumpBranchCached.input_constraints (unrolledDecoderColumns columns) (ROM.words initial) input arguments _
-  | mulDivUncached input arguments =>
-    exact ProgramConstraintsNative.MulDivUncached.input_constraints (unrolledDecoderColumns columns) (ROM.words initial) input arguments _
   | mulDivCached input arguments =>
     exact ProgramConstraintsNative.MulDivCached.input_constraints (unrolledDecoderColumns columns) (ROM.words initial) input arguments _
-  | shiftBinopUncached input arguments =>
-    exact ProgramConstraintsNative.ShiftBinopUncached.input_constraints setup input arguments typed _
   | shiftBinopCached input arguments =>
     exact ProgramConstraintsNative.ShiftBinopCached.input_constraints setup input arguments typed _
-  | wordMemoryUncached input arguments =>
-    exact ProgramConstraintsNative.WordMemoryUncached.input_constraints (unrolledDecoderColumns columns) input arguments image domain _
   | wordMemoryCached input arguments =>
     exact ProgramConstraintsNative.WordMemoryCached.input_constraints (unrolledDecoderColumns columns) input arguments image domain _
-  | subwordMemoryUncached input arguments =>
-    exact ProgramConstraintsNative.SubwordMemoryUncached.input_constraints (unrolledDecoderColumns columns) (ROM.words initial) input arguments _
   | subwordMemoryCached input arguments =>
     exact ProgramConstraintsNative.SubwordMemoryCached.input_constraints (unrolledDecoderColumns columns) (ROM.words initial) input arguments _
 

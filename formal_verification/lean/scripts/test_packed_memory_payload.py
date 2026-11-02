@@ -1,4 +1,4 @@
-"""Check original memory predicate coverage and both cache modes."""
+"""Check original memory predicate coverage and cached captures."""
 import unittest
 import gkr_packed_memory_payload as packed
 import gkr_memory_certificate as legacy
@@ -22,8 +22,7 @@ class MemoryPayload(unittest.TestCase):
 
     def test_original_data_and_cache_modes(self):
         for case in packed.CASES:
-            partner = case[:-6] + 'Uncached' if case.endswith('Cached') else case[:-8] + 'Cached'
-            self.assertIn(partner, packed.CASES)
+            self.assertTrue(case.endswith('Cached') and not case.endswith('Uncached'))
             text = packed.inputs(case)
             self.assertIn('phase 0', text)
             self.assertNotIn('NumericMemoryPayloadChecks', text)
@@ -32,12 +31,13 @@ class MemoryPayload(unittest.TestCase):
                 [('Airbender.Proofs.GKRProtocol.MemoryPayloadChecks.' + case + '.Inputs', text), packed.native(case)])
 
     def test_ci_requires_every_adopted_mode(self):
-        import re
-        workflow = (packed.LEAN.parents[1] / '.github/workflows/formal-verification.yml').read_text()
-        lines = [line for line in workflow.splitlines() if 'scripts/check_memory_payload_controls.py' in line]
-        self.assertEqual(len(lines), 3)
-        self.assertEqual(sum('--shared-only' in line for line in lines), 1)
-        selected = [case for line in lines for case in re.findall(r'--case (\w+)', line)]
+        from generate import CONTROLS
+        commands = [command for _, command in CONTROLS
+                    if 'scripts/check_memory_payload_controls.py' in command]
+        self.assertEqual(len(commands), 2)
+        self.assertEqual(sum('--shared-only' in command for command in commands), 1)
+        selected = [command[index + 1] for command in commands
+                    for index, item in enumerate(command) if item == '--case']
         self.assertEqual(len(selected), len(set(selected)))
         self.assertEqual(set(selected), set(packed.CASES))
 

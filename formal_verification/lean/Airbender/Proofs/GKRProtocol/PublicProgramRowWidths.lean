@@ -65,11 +65,11 @@ theorem unrolled_native_mask_width (configuration : Configuration) (family : Poo
 
 theorem unified_native_mask_width (configuration : Configuration)
     (layout : Airbender.Reference.Compiler.ProgramSetup.Layout)
-    (unified : configuration = .unifiedUncached ∨ configuration = .unifiedCached)
+    (unified : configuration = .unifiedCached)
     (layoutCase : layouts configuration = some layout) (row : Vector Source.BaseField 9) :
     (ProgramRows.maskRow ProgramRows.Proofs.unifiedMask row).length = layout.width - 1 := by
   rw [mask_row_width]
-  rcases unified with rfl | rfl
+  subst configuration
   all_goals simp only [layouts, Option.some.injEq] at layoutCase
   all_goals subst layout
   all_goals decide +kernel
@@ -95,7 +95,7 @@ theorem unified_column_width
     {mask : ProgramRows.Mask} {columns : List (List Source.BaseField)}
     (setup : UnifiedProgramSetup initial text capacity mask columns)
     (configuration : Configuration) (layout : Airbender.Reference.Compiler.ProgramSetup.Layout)
-    (unified : configuration = .unifiedUncached ∨ configuration = .unifiedCached)
+    (unified : configuration = .unifiedCached)
     (layoutCase : layouts configuration = some layout) (row : List Source.BaseField)
     (member : row ∈ columns) : row.length = layout.width - 1 := by
   rw [setup.decoderRows, UnifiedProgramRows.nativeDecoderRows] at member

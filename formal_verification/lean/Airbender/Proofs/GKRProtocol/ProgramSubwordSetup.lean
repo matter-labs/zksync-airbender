@@ -7,13 +7,10 @@ set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
 
-/-- Both native cache modes use the public subword prefix and decoder bounds. -/
-theorem subword_geometry :
-    layouts .subwordMemoryUncached = some {
-      «width» := 9, tagged := true, decoderStart := 13238273,
-      decoderWords := 1048576, romStart := none, romWords := 0 } ∧
-    layouts .subwordMemoryCached = layouts .subwordMemoryUncached := by
-  exact ⟨rfl, rfl⟩
+/-- The cached circuit uses the public subword prefix and decoder bounds. -/
+theorem subword_layout_cached : layouts .subwordMemoryCached = some {
+    «width» := 9, tagged := true, decoderStart := 13238273,
+    decoderWords := 1048576, romStart := none, romWords := 0 } := by rfl
 
 /-- The dummy helper row has no program-dependent field. -/
 theorem subword_zero_row (wordAt : Nat → BitVec 32) :

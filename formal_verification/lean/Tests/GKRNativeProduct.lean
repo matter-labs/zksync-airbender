@@ -1,4 +1,5 @@
-import Airbender.Proofs.GKRProtocol.ProductNative.UnifiedUncached
+import Airbender.Proofs.GKRProtocol.NativeProduct
+import Airbender.Proofs.GKRProtocol.ProductReduction
 
 namespace Tests.GKRNativeProduct
 open Airbender Airbender.Compiler
@@ -46,21 +47,5 @@ theorem rejects_wrong_mask_source :
 lemma; arbitrary field-valued predicates do not justify it. -/
 theorem rejects_non_boolean_mask_distribution :
     maskProduct (2 : Int) (0 * 0) ≠ maskProduct 2 0 * maskProduct 2 0 := by decide +kernel
-
-private def challenges : CacheChallenges Source.BaseField :=
-  ⟨0, 0, fun index => if index.val = 1 then 1 else 0⟩
-
-theorem preserves_initialization_ram_space :
-    ProductNative.UnifiedUncached.native.leaf8.interpret (RingHom.id _) challenges (fun _ => 0) = 1 := by
-  decide +kernel
-
-/-- The second actual set adds 2^(23+2-16)=512 to its high address limb. -/
-theorem preserves_initialization_set_high_offset :
-    ProductNative.UnifiedUncached.native.leaf9.interpret (RingHom.id _) challenges (fun _ => 0) = 513 := by
-  decide +kernel
-
-theorem rejects_exchanged_read_write_outputs :
-    ProductNative.UnifiedUncached.native.memoryReadProduct.leaves ≠
-      ProductNative.UnifiedUncached.native.memoryWriteProduct.leaves := by decide +kernel
 
 end Tests.GKRNativeProduct

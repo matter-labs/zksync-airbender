@@ -15,8 +15,8 @@ SPECS = {
 
 def module(family, case, entries):
     ns='Airbender.Compiler.FixedSetupNative.'+case
-    native='Airbender.Compiler.MaterializedNative.'+case+'Uncached.native.model'
-    text=(f'import Airbender.Proofs.GKRProtocol.ColumnSlices\nimport Airbender.Proofs.GKRProtocol.TaggedSetup\nimport Airbender.Proofs.GKRProtocol.MaterializedNative.{case}Uncached\n'
+    native='Airbender.Compiler.MaterializedNative.'+case+'Cached.native.model'
+    text=(f'import Airbender.Proofs.GKRProtocol.ColumnSlices\nimport Airbender.Proofs.GKRProtocol.TaggedSetup\nimport Airbender.Proofs.GKRProtocol.MaterializedNative.{case}Cached\n'
           'import Airbender.Review.Helpers.Tables.PairData\n\n'+f'namespace {ns}\nopen Airbender Airbender.Compiler\n'
           'set_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 4000000\n\n'
           f'abbrev nativeSetup := {native}\n\n')

@@ -27,9 +27,8 @@ rebased split layouts and their derived borrow equations. It excludes
 The [earlier coverage finding](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage)
 records the historical gap and the current validation boundary.
 
-For 22 captured cached/uncached compilations, base-field arithmetic preservation
-is proved. Wiring/cache checks, 60 lookup-output reductions and 48 RAM-product
-reductions are supporting results. Physical-row logical execution entrypoints
+For the 11 production cached compilations, base-field arithmetic preservation
+is proved. Wiring, cache, lookup and RAM-product checks support these results. Physical-row logical execution entrypoints
 use only the actual physical assignment, native base-field arithmetic and an
 active row, plus exact native lookup-tuple matching. Native requests are built
 from consumed native encoding fields and leaf weights at the physical assignment.
@@ -38,14 +37,13 @@ to source operands; native operand coverage and independent setup-column binding
 connect primitive/group/setup selection. Their composition derives authored
 membership, helper bounds, Clean validity and decoder membership without canonical
 source/borrow framing. Exact state/RAM permutations and public
-boundaries/seed remain explicit. Older framed entrypoints remain compatible.
+boundaries/seed remain explicit. The cached native acceptance theorems remain in the production gate.
 
 The [logical lookup argument](Airbender/Review/Compiler/LookupArgument.lean)
 uses natural multiplicities. The remaining final compressed/sampled
 sum-to-exact-matching step is not proved, and those multiplicities are not tied to
 physical field counters. The [machine targets](Airbender/Review/Compiler/MachineTargets.lean)
-take public text and a public program setup. Native adapters cover all 14 CPU
-profiles in both cache modes. They derive source constraints and public decoder
+take public text and a public program setup. Native adapters cover the six unrolled CPU families and the unified circuit. They derive source constraints and public decoder
 membership from physical row certificates and exact matching.
 The [native acceptance adapter](Airbender/Proofs/GKRProtocol/NativeMachineAcceptance.lean)
 closes the CPU and decoder target premises.
@@ -56,13 +54,13 @@ all 22 comparisons. Stateful decoding now reads the public misa state. A kernel
 proof shows that successful decoding preserves that state. These tests bind
 the decoder model to the tested native exports. They do not prove OS execution.
 
-Earlier [captured-program boundaries](Airbender/Proofs/Compatibility/Compiler/Program.lean)
-retain their structural decoder equality and image contracts for compatibility.
-Explicit Airbender-platform wrappers retain their device configuration.
-Generic wrappers remain polymorphic in the platform. See the
-[execution premise table](Airbender/Review/Compiler/README.md#execution-premises).
+The captured-program compatibility layer is removed.
+The tag `fv-archive-uncached` retains its earlier source in git history.
+[Three native corollaries](Airbender/Review/Compiler/Theorems.lean) start from
+cached native certificates and conclude each machine relation.
+See the [execution premise table](Airbender/Review/Compiler/README.md#execution-premises).
 
-[Verification status](VERIFICATION_STATUS.md#validation-evidence) records completed
+[Verification status](VERIFICATION_STATUS.md) records completed
 source/runtime, native-capture and focused replay evidence, and the uncompleted
 whole-environment/transitive assurance gates. Direct axiom reports can omit
 imported constructor-type dependencies and do not replace the environment audit.
@@ -86,7 +84,7 @@ whole-system completeness remain outside these captured-instance results.
 
 ## Evidence and reproduction
 
-Use [verification status](VERIFICATION_STATUS.md#validation-evidence) for evidence,
+Use [verification status](VERIFICATION_STATUS.md) for evidence,
 measurements and pending gates, and [reproduction](README.md#reproduce) for the
 native setup/compiler, source/runtime, environment-audit and replay commands.
 The source-bound window-semantics validator and full lookup-premise generator

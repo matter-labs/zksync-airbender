@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class LookupPremiseGeneration(unittest.TestCase):
-    def test_all_fourteen_premise_bindings_are_reproduced(self):
+    def test_all_seven_cached_premise_bindings_are_reproduced(self):
         with tempfile.TemporaryDirectory() as directory:
             scratch = Path(directory)
             for relative in ('Airbender/Import/Compiler/LogicalRows',
@@ -40,7 +40,7 @@ class LookupPremiseGeneration(unittest.TestCase):
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / relative, destination)
             # The audit inventory also reads checker and capture source files.
-            for tree in ('Airbender/Proofs', 'Tests'):
+            for tree in ('Airbender/Proofs', 'Tests', 'Airbender/Review'):
                 for source in (ROOT / tree).rglob('*.lean'):
                     destination = scratch / source.relative_to(ROOT)
                     if not destination.exists():
@@ -55,7 +55,7 @@ class LookupPremiseGeneration(unittest.TestCase):
             # Numeric root generation reads the retained arithmetic payloads.
             from gkr_numeric_arithmetic import CASES, FAMILIES, NUMERIC_CAPTURES
             for stem, family in zip(CASES, FAMILIES, strict=True):
-                for mode in ('Cached', 'Uncached'):
+                for mode in ('Cached',):
                     if stem + mode not in NUMERIC_CAPTURES or stem == 'BlakeRound':
                         continue
                     relative = Path('artifacts/compiler/numeric-arithmetic') / (family + '-' + mode.lower() + '.json')
@@ -67,7 +67,7 @@ class LookupPremiseGeneration(unittest.TestCase):
             clean = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
             paths = sorted((scratch / 'Airbender/Import/Compiler/LogicalRows').glob('*.lean'))
-            self.assertEqual(len(paths), 14)
+            self.assertEqual(len(paths), 7)
             for path in paths:
                 text = path.read_text()
                 start = text.index('/-- Exact matching of every enabled emitted tuple')
@@ -84,7 +84,7 @@ class LookupPremiseGeneration(unittest.TestCase):
                                       capture_output=True, text=True)
             self.assertEqual(restored.returncode, 0, restored.stdout + restored.stderr)
             decoder_paths = sorted((scratch / 'Airbender/Proofs/GKRProtocol/ProgramDecoderNative').glob('*.lean'))
-            self.assertEqual(len(decoder_paths), 14)
+            self.assertEqual(len(decoder_paths), 7)
             for path in decoder_paths:
                 text = path.read_text()
                 self.assertIn('.fields.map', text)

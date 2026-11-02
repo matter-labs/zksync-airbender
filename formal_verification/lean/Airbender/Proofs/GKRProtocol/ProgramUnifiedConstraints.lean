@@ -1,5 +1,4 @@
 import Airbender.Proofs.GKRProtocol.ProgramPCBounds
-import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.UnifiedUncached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.UnifiedCached
 
 namespace Airbender.Compiler.UnifiedExecution
@@ -17,8 +16,6 @@ theorem ProgramLogicalRowCertificate.program_constraints
     FlatOperation.ConstraintsHoldFlat (Verification.environment cert.row.assignment)
       (cert.row.constraints (UnifiedReduced.Setup.table initial)) := by
   cases cert with
-  | unifiedUncached input arguments =>
-    exact ProgramConstraintsNative.UnifiedUncached.input_constraints setup input arguments typed
   | unifiedCached input arguments =>
     exact ProgramConstraintsNative.UnifiedCached.input_constraints setup input arguments typed
 

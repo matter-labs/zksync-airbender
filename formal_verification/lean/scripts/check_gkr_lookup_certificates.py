@@ -22,7 +22,7 @@ def verify():
     for relative, expected in manifest["synthesizer_inputs"].items():
         if digest(ROOT / relative) != expected:
             raise ValueError(f"Lookup synthesizer input changed: {relative}")
-    names = {family + "-" + mode for family in FAMILIES for mode in ("cached", "uncached")}
+    names = {family + "-" + mode for family in FAMILIES for mode in ("cached",)}
     if set(manifest["files"]) != names or {path.name for path in output.glob("*.json")} != {"manifest.json"} | {name + ".json" for name in names}:
         raise ValueError("Lookup certificate compilation inventory changed")
     lake = tomllib.loads((LEAN / "lakefile.toml").read_text())

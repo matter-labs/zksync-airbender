@@ -8,10 +8,10 @@ from export_gkr_translations import LEAN
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mode',choices=['uncached','cached'],action='append')
+    parser.add_argument('--mode',choices=['cached'],action='append')
     for flag in ['write','check','build']:parser.add_argument('--'+flag,action='store_true')
     args=parser.parse_args()
-    for mode in args.mode or ['uncached','cached']:
+    for mode in args.mode or ['cached']:
         case='Unified'+mode.title()
         text=(LEAN/'scripts/templates/gkr_windowed_public.lean').read_text().replace('UnifiedUncached',case)
         target='Airbender.Proofs.GKRProtocol.WindowedNative.'+case+'Public';path=LEAN/(target.replace('.','/')+'.lean')

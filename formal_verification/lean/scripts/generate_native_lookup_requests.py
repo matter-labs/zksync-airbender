@@ -12,13 +12,15 @@ import re
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--check', action='store_true', help='check generated blocks without writing')
+parser.add_argument('--report', type=Path, help='write changed expected sources as JSON')
 parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[1], help=argparse.SUPPRESS)
 parser.add_argument('--output-root', type=Path, help=argparse.SUPPRESS)
 args = parser.parse_args()
 ROOT = args.root.resolve()
 OUT = args.output_root.resolve() if args.output_root else ROOT
 CHANGED = []
-NAMES = [family + cache for family in ['AddSub', 'JumpBranch', 'MulDiv', 'ShiftBinop', 'WordMemory', 'SubwordMemory', 'Unified'] for cache in ['Uncached', 'Cached']]
+EXPECTED = {}
+NAMES = [family + cache for family in ['AddSub', 'JumpBranch', 'MulDiv', 'ShiftBinop', 'WordMemory', 'SubwordMemory', 'Unified'] for cache in ['Cached']]
 IMPORT_START = '/-- Expanded native lookup operands before alpha compression. The encodings and\n'
 IMPORT_END = '-- End expanded native lookup operands.\n'
 ARGUMENT_START = '/-- Exact matching of every enabled emitted tuple against the corresponding\n'
@@ -243,6 +245,7 @@ def emit(path, content):
     changed = not original.exists() or original.read_text() != content
     if changed:
         CHANGED.append(str(path))
+        EXPECTED[str(path)] = content
     if not args.check and changed:
         destination = OUT / path
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -321,7 +324,7 @@ noncomputable def ProgramLogicalRowCertificate.sourceRequests {tables : ProgramL
         proofs += f'''
 namespace {execution}
 
-/-- The physical native input proves the execute bit for either cache mode. -/
+/-- The physical native input proves the execute bit for the cached circuit. -/
 theorem ProgramLogicalRowCertificate.row_active {{tables : ProgramLookupRows}}
     (cert : ProgramLogicalRowCertificate tables) :
     cert.row.assignment cert.row.columns.execute = 1 := by
@@ -370,7 +373,7 @@ import Airbender.Review.Compiler.ProgramLogicalRows
 namespace Airbender.Compiler.NativeProgramSetup
 open Airbender.Reference.Compiler
 
-/-- Native setup geometry. Both cache configurations use each exported layout. -/
+/-- Native setup geometry. Production uses the cached layout. -/
 def layouts : Configuration → Option ProgramSetup.Layout
 '''
     for family, filename in families.items():
@@ -382,7 +385,7 @@ def layouts : Configuration → Option ProgramSetup.Layout
         rom_start = 'none' if not roms else 'some ' + str(roms[0]['offset'])
         rom_words = 0 if not roms else roms[0]['length']
         prefix = family[0].lower() + family[1:]
-        data += f'''  | .{prefix}Uncached | .{prefix}Cached => some {{
+        data += f'''  | .{prefix}Cached => some {{
       «width» := {circuit['generic_lookup_tables_width']}
       tagged := {str(circuit['tables_ids_in_generic_lookups']).lower()}
       decoderStart := {circuit['offset_for_decoder_table']}
@@ -437,6 +440,9 @@ def ValidGeometry (configuration : Configuration) : Prop :=
       match layout.romStart with
       | none => layout.romWords = 0
       | some regionStart => regionStart + layout.romWords ≤ layout.decoderStart
+
+-- Emit these equations once, in their source module.
+attribute [local simp] layouts lookupLength genericWidth retainedRows rows ValidGeometry
 
 end Airbender.Compiler.NativeProgramSetup
 '''
@@ -557,9 +563,9 @@ end Airbender.Compiler.ProgramDecoderNative.{name}
     (setup : UnifiedProgramSetup initial text capacity mask columns)'''
             factory = 'unifiedLookupRows initial columns'
             result = f'ProgramRows.maskRow mask {query} ∈ columns'
-            choice = 'Or.inr rfl' if name.endswith('Cached') else 'Or.inl rfl'
+            choice = 'rfl'
             application = f'''NativeProgramSetup.unified_decoder_lookup setup .{constructor} _
-    ({choice}) rfl index.val _ typed
+    {choice} rfl index.val _ typed
   rw [NativeProgramSetup.unified_mask_eq setup]'''
         else:
             parameters = '''{config : ProgramRows.Config} {initial : Reference.RiscV.Sail.State}
@@ -975,7 +981,7 @@ theorem decoder_lookup
   have equal : {source_model}.query12.fields.map (fun field => field.value {values}) =
       NativeProgramSetup.unrolledProgramLookupRows initial columns .{constructor} 0 index.val := matched
   apply NativeProgramSetup.unrolled_subword_decoder_lookup setup .{constructor}
-    ({"Or.inl" if name.endswith("Uncached") else "Or.inr"} rfl) index.val _ typed
+    rfl index.val _ typed
   rw [NativeProgramSetup.unrolled_mask_eq setup .subwordMemory]
   exact (ProgramDecoderNative.{name}.decoder_tuple input).symm.trans equal
 
@@ -1053,7 +1059,7 @@ set_option maxRecDepth 65536
     exact notDecoder
   apply clean_vector_lookup
   apply NativeProgramSetup.word_public_member image domain decoder .{constructor}
-    ({"Or.inl" if name.endswith("Uncached") else "Or.inr"} rfl) nativeIndex actual ?_ guard
+    rfl nativeIndex actual ?_ guard
   simp only [actual, {clean}.genericExpressions0, Vector.map_mk, List.map_toArray]
   change [''' + ', '.join(f'({clean}.part0.genericExpression0_{field}).eval ({arithmetic}.environment input.physical data)' for field in range(9)) + '''] = _
   rw [''' + ', '.join('same' + str(field) for field in range(9)) + ''']
@@ -1157,7 +1163,7 @@ set_option maxRecDepth 65536
     exact guards ⟨{index}, by decide⟩
   apply clean_vector_lookup
   apply NativeProgramSetup.unified_public_member decoder initial .{constructor}
-    ({"Or.inl" if name.endswith("Uncached") else "Or.inr"} rfl) nativeIndex actual ?_ guard
+    rfl nativeIndex actual ?_ guard
   simp only [actual, {clean}.genericExpressions{index}, Vector.map_mk, List.map_toArray]
   change [''' + ', '.join(f'({clean}.part0.genericExpression{index}_{field}).eval ({arithmetic}.environment input.physical data)' for field in range(10)) + '''] = _
   rw [''' + ', '.join('same' + str(field) for field in range(10)) + ''']
@@ -1712,482 +1718,18 @@ packed_setup_roots += ['Airbender.Compiler.UnifiedPackedEquality.Column4.sourceC
  'Airbender.Compiler.UnifiedPackedEquality.Column7.fixed_column_blocks',
  'Airbender.Compiler.UnifiedPackedEquality.Column7.row_counts']
 
-packed_arithmetic_roots = ['Airbender.Compiler.AddressUniqueChecks.addressCode',
- 'Airbender.Compiler.AddressUniqueChecks.ascendingFrom',
- 'Airbender.Compiler.AddressUniqueChecks.ascendingFrom_sound',
- 'Airbender.Compiler.AddressUniqueChecks.ascending',
- 'Airbender.Compiler.AddressUniqueChecks.ascending_sound',
- 'Airbender.Compiler.AddressUniqueChecks.check',
- 'Airbender.Compiler.AddressUniqueChecks.check_sound',
- 'Airbender.Compiler.AddressUniqueChecks.distinctAt_complete',
- 'Airbender.Compiler.FastPolynomialChecks.insertTerm',
- 'Airbender.Compiler.FastPolynomialChecks.insertTerm_eq',
- 'Airbender.Compiler.FastPolynomialChecks.normalize',
- 'Airbender.Compiler.FastPolynomialChecks.normalize_eq',
- 'Airbender.Compiler.FastPolynomialChecks.equal',
- 'Airbender.Compiler.FastPolynomialChecks.equal_eq',
- 'Airbender.Compiler.FullArithmeticChecks.allFin',
- 'Airbender.Compiler.FullArithmeticChecks.allFin_eq',
- 'Airbender.Compiler.FullArithmeticChecks.translationCheck',
- 'Airbender.Compiler.FullArithmeticChecks.translationCheck_eq',
- 'Airbender.Compiler.FullArithmeticChecks.check',
- 'Airbender.Compiler.FullArithmeticChecks.checked_parts',
- 'Airbender.Compiler.FullArithmeticChecks.check_sound',
- 'Airbender.Compiler.FullArithmeticChecks.unique_at',
- 'Airbender.Compiler.FullArithmeticChecks.relation_at',
- 'Airbender.Compiler.FullArithmeticChecks.source_at',
- 'Airbender.Compiler.FullArithmeticChecks.source_at_original',
- 'Airbender.Compiler.FullArithmeticChecks.gate_at',
- 'Tests.PackedArithmeticChecks.identityArtifact',
- 'Tests.PackedArithmeticChecks.identityCertificate',
- 'Tests.PackedArithmeticChecks.identity_accepted',
- 'Tests.PackedArithmeticChecks.duplicate_address_rejected',
- 'Tests.PackedArithmeticChecks.address_constructors_distinct',
- 'Tests.PackedArithmeticChecks.missing_backward_rejected',
- 'Tests.PackedArithmeticChecks.missing_forward_rejected',
- 'Tests.PackedArithmeticChecks.changedGate',
- 'Tests.PackedArithmeticChecks.changed_gate_rejected',
- 'Tests.PackedArithmeticChecks.changedProjection',
- 'Tests.PackedArithmeticChecks.changed_projection_rejected',
- 'Airbender.Compiler.FullArithmeticNative.AddSubCached.native.captureChecked',
- 'Airbender.Compiler.FullArithmeticNative.AddSubUncached.native.captureChecked']
+packed_arithmetic_roots = ['Airbender.Compiler.AddressUniqueChecks.addressCode', 'Airbender.Compiler.AddressUniqueChecks.ascendingFrom', 'Airbender.Compiler.AddressUniqueChecks.ascendingFrom_sound', 'Airbender.Compiler.AddressUniqueChecks.ascending', 'Airbender.Compiler.AddressUniqueChecks.ascending_sound', 'Airbender.Compiler.AddressUniqueChecks.check', 'Airbender.Compiler.AddressUniqueChecks.check_sound', 'Airbender.Compiler.AddressUniqueChecks.distinctAt_complete', 'Airbender.Compiler.FastPolynomialChecks.insertTerm', 'Airbender.Compiler.FastPolynomialChecks.insertTerm_eq', 'Airbender.Compiler.FastPolynomialChecks.normalize', 'Airbender.Compiler.FastPolynomialChecks.normalize_eq', 'Airbender.Compiler.FastPolynomialChecks.equal', 'Airbender.Compiler.FastPolynomialChecks.equal_eq', 'Airbender.Compiler.FullArithmeticChecks.allFin', 'Airbender.Compiler.FullArithmeticChecks.allFin_eq', 'Airbender.Compiler.FullArithmeticChecks.translationCheck', 'Airbender.Compiler.FullArithmeticChecks.translationCheck_eq', 'Airbender.Compiler.FullArithmeticChecks.check', 'Airbender.Compiler.FullArithmeticChecks.checked_parts', 'Airbender.Compiler.FullArithmeticChecks.check_sound', 'Airbender.Compiler.FullArithmeticChecks.unique_at', 'Airbender.Compiler.FullArithmeticChecks.relation_at', 'Airbender.Compiler.FullArithmeticChecks.source_at', 'Airbender.Compiler.FullArithmeticChecks.source_at_original', 'Airbender.Compiler.FullArithmeticChecks.gate_at', 'Tests.PackedArithmeticChecks.identityArtifact', 'Tests.PackedArithmeticChecks.identityCertificate', 'Tests.PackedArithmeticChecks.identity_accepted', 'Tests.PackedArithmeticChecks.duplicate_address_rejected', 'Tests.PackedArithmeticChecks.address_constructors_distinct', 'Tests.PackedArithmeticChecks.missing_backward_rejected', 'Tests.PackedArithmeticChecks.missing_forward_rejected', 'Tests.PackedArithmeticChecks.changedGate', 'Tests.PackedArithmeticChecks.changed_gate_rejected', 'Tests.PackedArithmeticChecks.changedProjection', 'Tests.PackedArithmeticChecks.changed_projection_rejected', 'Airbender.Compiler.FullArithmeticNative.AddSubCached.native.captureChecked']
 
-packed_arithmetic_roots += ['Airbender.Compiler.NumericPolynomialChecks.Data',
- 'Airbender.Compiler.NumericPolynomialChecks.encode',
- 'Airbender.Compiler.NumericPolynomialChecks.monomialCompare',
- 'Airbender.Compiler.NumericPolynomialChecks.insertTerm',
- 'Airbender.Compiler.NumericPolynomialChecks.normalize',
- 'Airbender.Compiler.NumericPolynomialChecks.equal',
- 'Airbender.Compiler.NumericPolynomialChecks.multiply',
- 'Airbender.Compiler.NumericPolynomialChecks.rename',
- 'Airbender.Compiler.NumericPolynomialChecks.substitute',
- 'Airbender.Compiler.NumericPolynomialChecks.combination',
- 'Airbender.Compiler.NumericPolynomialChecks.monomial_injective',
- 'Airbender.Compiler.NumericPolynomialChecks.encode_injective',
- 'Airbender.Compiler.NumericPolynomialChecks.compare_encode',
- 'Airbender.Compiler.NumericPolynomialChecks.encode_insertTerm',
- 'Airbender.Compiler.NumericPolynomialChecks.encode_normalize',
- 'Airbender.Compiler.NumericPolynomialChecks.equal_encode',
- 'Airbender.Compiler.NumericPolynomialChecks.encode_append',
- 'Airbender.Compiler.NumericPolynomialChecks.encode_atom',
- 'Airbender.Compiler.NumericPolynomialChecks.encode_multiply',
- 'Airbender.Compiler.NumericPolynomialChecks.encode_rename',
- 'Airbender.Compiler.NumericPolynomialChecks.encode_substitute',
- 'Airbender.Compiler.NumericPolynomialChecks.encodeCombination',
- 'Airbender.Compiler.NumericPolynomialChecks.encode_combination',
- 'Airbender.Compiler.NumericPolynomialChecks.canonical',
- 'Airbender.Compiler.NumericPolynomialChecks.isUnit',
- 'Airbender.Compiler.NumericPolynomialChecks.isUnit_iff',
- 'Airbender.Compiler.NumericPolynomialChecks.multiply_unit_left',
- 'Airbender.Compiler.NumericPolynomialChecks.multiply_unit_right',
- 'Airbender.Compiler.NumericPolynomialChecks.fastMultiply',
- 'Airbender.Compiler.NumericPolynomialChecks.fastMultiply_eq',
- 'Airbender.Compiler.NumericPolynomialChecks.initial',
- 'Airbender.Compiler.NumericPolynomialChecks.product_inputs',
- 'Airbender.Compiler.NumericPolynomialChecks.fastSubstitute',
- 'Airbender.Compiler.NumericPolynomialChecks.fastSubstitute_eq',
- 'Airbender.Compiler.NumericPolynomialChecks.fastEqual',
- 'Airbender.Compiler.NumericPolynomialChecks.fastEqual_eq',
- 'Airbender.Compiler.NumericPolynomialChecks.LookupTable',
- 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.size',
- 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.toList',
- 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.valid',
- 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.getD',
- 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.ofList',
- 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.toList_ofList',
- 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.size_ofList',
- 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.valid_ofList',
- 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.size_eq_length',
- 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.getD_eq',
- 'Airbender.Compiler.NumericArithmeticChecks.Capture',
- 'Airbender.Compiler.NumericArithmeticChecks.Capture.extension',
- 'Airbender.Compiler.NumericArithmeticChecks.combine',
- 'Airbender.Compiler.NumericArithmeticChecks.combine_eq',
- 'Airbender.Compiler.NumericArithmeticChecks.translationCheck',
- 'Airbender.Compiler.NumericArithmeticChecks.gateCheck',
- 'Airbender.Compiler.NumericArithmeticChecks.layoutCheck',
- 'Airbender.Compiler.NumericArithmeticChecks.Layout',
- 'Airbender.Compiler.NumericArithmeticChecks.layout_sound',
- 'Airbender.Compiler.NumericArithmeticChecks.check',
- 'Airbender.Compiler.NumericArithmeticChecks.gateInput',
- 'Airbender.Compiler.NumericArithmeticChecks.gateOutput',
- 'Airbender.Compiler.NumericArithmeticChecks.gate_check_eq',
- 'Airbender.Compiler.NumericArithmeticChecks.Bindings',
- 'Airbender.Compiler.NumericArithmeticChecks.mapped_size',
- 'Airbender.Compiler.NumericArithmeticChecks.mapped_getD',
- 'Airbender.Compiler.NumericArithmeticChecks.vector_getD',
- 'Airbender.Compiler.NumericArithmeticChecks.initial_extension',
- 'Airbender.Compiler.NumericArithmeticChecks.map_encode_normalize',
- 'Airbender.Compiler.NumericArithmeticChecks.encode_rename_prefix',
- 'Airbender.Compiler.NumericArithmeticChecks.translation_valid',
- 'Airbender.Compiler.NumericArithmeticChecks.gates_checked',
- 'Airbender.Compiler.NumericArithmeticChecks.check_sound',
- 'Airbender.Compiler.NumericArithmeticChecks.full_check',
- 'Tests.NumericArithmeticChecks.identityArtifact',
- 'Tests.NumericArithmeticChecks.identityCertificate',
- 'Tests.NumericArithmeticChecks.identityData',
- 'Tests.NumericArithmeticChecks.identity_checked',
- 'Tests.NumericArithmeticChecks.identity_binding',
- 'Tests.NumericArithmeticChecks.original_check_preserved',
- 'Tests.NumericArithmeticChecks.noncanonical_unit_fallback',
- 'Tests.NumericArithmeticChecks.mixed_input_computed_substitution',
- 'Tests.NumericArithmeticChecks.coefficient_erasure',
- 'Tests.NumericArithmeticChecks.changed_variable_rejected',
- 'Tests.NumericArithmeticChecks.monomial_permutation',
- 'Tests.NumericArithmeticChecks.missing_backward_rejected',
- 'Tests.NumericArithmeticChecks.missing_forward_rejected',
- 'Tests.NumericArithmeticChecks.changed_gate_rejected',
- 'Tests.NumericArithmeticChecks.duplicate_address_key_rejected',
- 'Tests.NumericArithmeticChecks.forgedSizes',
- 'Tests.NumericArithmeticChecks.forged_sizes_skip_row_loops',
- 'Tests.NumericArithmeticChecks.forged_sizes_rejected',
- 'Tests.NumericArithmeticChecks.importedPolynomials',
- 'Tests.NumericArithmeticChecks.importedCombinations',
- 'Tests.NumericArithmeticChecks.importedKeys',
- 'Tests.NumericArithmeticChecks.polynomials_bound',
- 'Tests.NumericArithmeticChecks.combinations_bound',
- 'Tests.NumericArithmeticChecks.keys_bound',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericKeys',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericKeys_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericCapture',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBindings',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericChecked',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericFullChecked',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.captureChecked',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericExtensionData',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericKeys',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericExtensionData_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericKeys_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericCapture',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBindings',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericChecked',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericFullChecked',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.captureChecked']
+packed_arithmetic_roots += ['Airbender.Compiler.NumericPolynomialChecks.Data', 'Airbender.Compiler.NumericPolynomialChecks.encode', 'Airbender.Compiler.NumericPolynomialChecks.monomialCompare', 'Airbender.Compiler.NumericPolynomialChecks.insertTerm', 'Airbender.Compiler.NumericPolynomialChecks.normalize', 'Airbender.Compiler.NumericPolynomialChecks.equal', 'Airbender.Compiler.NumericPolynomialChecks.multiply', 'Airbender.Compiler.NumericPolynomialChecks.rename', 'Airbender.Compiler.NumericPolynomialChecks.substitute', 'Airbender.Compiler.NumericPolynomialChecks.combination', 'Airbender.Compiler.NumericPolynomialChecks.monomial_injective', 'Airbender.Compiler.NumericPolynomialChecks.encode_injective', 'Airbender.Compiler.NumericPolynomialChecks.compare_encode', 'Airbender.Compiler.NumericPolynomialChecks.encode_insertTerm', 'Airbender.Compiler.NumericPolynomialChecks.encode_normalize', 'Airbender.Compiler.NumericPolynomialChecks.equal_encode', 'Airbender.Compiler.NumericPolynomialChecks.encode_append', 'Airbender.Compiler.NumericPolynomialChecks.encode_atom', 'Airbender.Compiler.NumericPolynomialChecks.encode_multiply', 'Airbender.Compiler.NumericPolynomialChecks.encode_rename', 'Airbender.Compiler.NumericPolynomialChecks.encode_substitute', 'Airbender.Compiler.NumericPolynomialChecks.encodeCombination', 'Airbender.Compiler.NumericPolynomialChecks.encode_combination', 'Airbender.Compiler.NumericPolynomialChecks.canonical', 'Airbender.Compiler.NumericPolynomialChecks.isUnit', 'Airbender.Compiler.NumericPolynomialChecks.isUnit_iff', 'Airbender.Compiler.NumericPolynomialChecks.multiply_unit_left', 'Airbender.Compiler.NumericPolynomialChecks.multiply_unit_right', 'Airbender.Compiler.NumericPolynomialChecks.fastMultiply', 'Airbender.Compiler.NumericPolynomialChecks.fastMultiply_eq', 'Airbender.Compiler.NumericPolynomialChecks.initial', 'Airbender.Compiler.NumericPolynomialChecks.product_inputs', 'Airbender.Compiler.NumericPolynomialChecks.fastSubstitute', 'Airbender.Compiler.NumericPolynomialChecks.fastSubstitute_eq', 'Airbender.Compiler.NumericPolynomialChecks.fastEqual', 'Airbender.Compiler.NumericPolynomialChecks.fastEqual_eq', 'Airbender.Compiler.NumericPolynomialChecks.LookupTable', 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.size', 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.toList', 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.valid', 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.getD', 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.ofList', 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.toList_ofList', 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.size_ofList', 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.valid_ofList', 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.size_eq_length', 'Airbender.Compiler.NumericPolynomialChecks.LookupTable.getD_eq', 'Airbender.Compiler.NumericArithmeticChecks.Capture', 'Airbender.Compiler.NumericArithmeticChecks.Capture.extension', 'Airbender.Compiler.NumericArithmeticChecks.combine', 'Airbender.Compiler.NumericArithmeticChecks.combine_eq', 'Airbender.Compiler.NumericArithmeticChecks.translationCheck', 'Airbender.Compiler.NumericArithmeticChecks.gateCheck', 'Airbender.Compiler.NumericArithmeticChecks.layoutCheck', 'Airbender.Compiler.NumericArithmeticChecks.Layout', 'Airbender.Compiler.NumericArithmeticChecks.layout_sound', 'Airbender.Compiler.NumericArithmeticChecks.check', 'Airbender.Compiler.NumericArithmeticChecks.gateInput', 'Airbender.Compiler.NumericArithmeticChecks.gateOutput', 'Airbender.Compiler.NumericArithmeticChecks.gate_check_eq', 'Airbender.Compiler.NumericArithmeticChecks.Bindings', 'Airbender.Compiler.NumericArithmeticChecks.mapped_size', 'Airbender.Compiler.NumericArithmeticChecks.mapped_getD', 'Airbender.Compiler.NumericArithmeticChecks.vector_getD', 'Airbender.Compiler.NumericArithmeticChecks.initial_extension', 'Airbender.Compiler.NumericArithmeticChecks.map_encode_normalize', 'Airbender.Compiler.NumericArithmeticChecks.encode_rename_prefix', 'Airbender.Compiler.NumericArithmeticChecks.translation_valid', 'Airbender.Compiler.NumericArithmeticChecks.gates_checked', 'Airbender.Compiler.NumericArithmeticChecks.check_sound', 'Airbender.Compiler.NumericArithmeticChecks.full_check', 'Tests.NumericArithmeticChecks.identityArtifact', 'Tests.NumericArithmeticChecks.identityCertificate', 'Tests.NumericArithmeticChecks.identityData', 'Tests.NumericArithmeticChecks.identity_checked', 'Tests.NumericArithmeticChecks.identity_binding', 'Tests.NumericArithmeticChecks.original_check_preserved', 'Tests.NumericArithmeticChecks.noncanonical_unit_fallback', 'Tests.NumericArithmeticChecks.mixed_input_computed_substitution', 'Tests.NumericArithmeticChecks.coefficient_erasure', 'Tests.NumericArithmeticChecks.changed_variable_rejected', 'Tests.NumericArithmeticChecks.monomial_permutation', 'Tests.NumericArithmeticChecks.missing_backward_rejected', 'Tests.NumericArithmeticChecks.missing_forward_rejected', 'Tests.NumericArithmeticChecks.changed_gate_rejected', 'Tests.NumericArithmeticChecks.duplicate_address_key_rejected', 'Tests.NumericArithmeticChecks.forgedSizes', 'Tests.NumericArithmeticChecks.forged_sizes_skip_row_loops', 'Tests.NumericArithmeticChecks.forged_sizes_rejected', 'Tests.NumericArithmeticChecks.importedPolynomials', 'Tests.NumericArithmeticChecks.importedCombinations', 'Tests.NumericArithmeticChecks.importedKeys', 'Tests.NumericArithmeticChecks.polynomials_bound', 'Tests.NumericArithmeticChecks.combinations_bound', 'Tests.NumericArithmeticChecks.keys_bound', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericKeys', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericKeys_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericCapture', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBindings', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericChecked', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericFullChecked', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.captureChecked']
 
-packed_arithmetic_roots += ['Tests.NumericArithmeticChecks.changed_normalized_source_rejected', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource_binding']
+packed_arithmetic_roots += ['Tests.NumericArithmeticChecks.changed_normalized_source_rejected', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource_binding']
 
-packed_arithmetic_roots += ['Airbender.Compiler.NumericArithmeticChecks.forwardEqual',
- 'Airbender.Compiler.NumericArithmeticChecks.forwardEqual_eq',
- 'Airbender.Compiler.NumericArithmeticChecks.normalized_getD',
- 'Tests.NumericArithmeticChecks.forward_noncanonical_fallback',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf14',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf15',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf16',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf17',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf18',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf19',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf14',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf15',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf16',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf17',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf18',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf19',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf14',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf15',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf16',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf17',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf18',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf19',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf14',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf15',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf16',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf17',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf18',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf19',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericSource.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericNormalizedSource.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericLowered.leaf14',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericExtensionData.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericExtensionData.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericExtensionData.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericExtensionData.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateInputs.leaf14',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericGateOutputs.leaf14',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericBackward.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.tree',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.tree_binding',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.tree_valid',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf0',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf1',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf2',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf3',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf4',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf5',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf6',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf7',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf8',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf9',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf10',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf11',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf12',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf13',
- 'Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.numericForward.leaf14',
- 'Tests.NumericArithmeticChecks.importedPolynomials.leaf0',
- 'Tests.NumericArithmeticChecks.importedPolynomials.tree',
- 'Tests.NumericArithmeticChecks.importedPolynomials.tree_binding',
- 'Tests.NumericArithmeticChecks.importedPolynomials.tree_valid',
- 'Tests.NumericArithmeticChecks.importedCombinations.leaf0',
- 'Tests.NumericArithmeticChecks.importedCombinations.tree',
- 'Tests.NumericArithmeticChecks.importedCombinations.tree_binding',
- 'Tests.NumericArithmeticChecks.importedCombinations.tree_valid']
+packed_arithmetic_roots += ['Airbender.Compiler.NumericArithmeticChecks.forwardEqual', 'Airbender.Compiler.NumericArithmeticChecks.forwardEqual_eq', 'Airbender.Compiler.NumericArithmeticChecks.normalized_getD', 'Tests.NumericArithmeticChecks.forward_noncanonical_fallback', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.tree', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.tree_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.tree_valid', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf0', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf1', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf2', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf3', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf4', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf5', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf6', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf7', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf8', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf9', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf10', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf11', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf12', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericSource.leaf13', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.tree', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.tree_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.tree_valid', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf0', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf1', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf2', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf3', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf4', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf5', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf6', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf7', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf8', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf9', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf10', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf11', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf12', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericNormalizedSource.leaf13', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.tree', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.tree_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.tree_valid', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf0', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf1', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf2', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf3', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf4', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf5', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf6', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf7', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf8', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf9', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf10', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf11', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf12', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf13', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf14', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf15', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf16', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf17', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf18', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericLowered.leaf19', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.tree', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.tree_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.tree_valid', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.leaf0', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.leaf1', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.leaf2', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.leaf3', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.leaf4', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericExtensionData.leaf5', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.tree', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.tree_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.tree_valid', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf0', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf1', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf2', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf3', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf4', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf5', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf6', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf7', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf8', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf9', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf10', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf11', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf12', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf13', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf14', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf15', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf16', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf17', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf18', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateInputs.leaf19', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.tree', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.tree_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.tree_valid', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf0', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf1', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf2', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf3', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf4', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf5', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf6', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf7', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf8', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf9', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf10', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf11', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf12', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf13', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf14', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf15', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf16', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf17', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf18', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericGateOutputs.leaf19', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.tree', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.tree_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.tree_valid', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf0', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf1', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf2', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf3', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf4', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf5', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf6', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf7', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf8', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf9', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf10', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf11', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf12', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericBackward.leaf13', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.tree', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.tree_binding', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.tree_valid', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf0', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf1', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf2', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf3', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf4', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf5', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf6', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf7', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf8', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf9', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf10', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf11', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf12', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf13', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf14', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf15', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf16', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf17', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf18', 'Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.numericForward.leaf19', 'Tests.NumericArithmeticChecks.importedPolynomials.leaf0', 'Tests.NumericArithmeticChecks.importedPolynomials.tree', 'Tests.NumericArithmeticChecks.importedPolynomials.tree_binding', 'Tests.NumericArithmeticChecks.importedPolynomials.tree_valid', 'Tests.NumericArithmeticChecks.importedCombinations.leaf0', 'Tests.NumericArithmeticChecks.importedCombinations.tree', 'Tests.NumericArithmeticChecks.importedCombinations.tree_binding', 'Tests.NumericArithmeticChecks.importedCombinations.tree_valid']
 
 from gkr_numeric_arithmetic import (NUMERIC_CAPTURES, CASES as NUMERIC_CASES,
                                     FAMILIES as NUMERIC_FAMILIES, capture_roots as numeric_capture_roots)
 for numeric_stem, numeric_family in zip(NUMERIC_CASES, NUMERIC_FAMILIES, strict=True):
-    for numeric_mode in ["Cached", "Uncached"]:
+    for numeric_mode in ["Cached"]:
         numeric_case = numeric_stem + numeric_mode
         if numeric_case not in NUMERIC_CAPTURES or numeric_stem == "BlakeRound":
             continue
@@ -2354,7 +1896,7 @@ packed_arithmetic_roots += ['Airbender.Compiler.CleanPlacementChecks.addressCode
 
 from gkr_clean_placement import capture_roots as clean_placement_roots
 for clean_case in NUMERIC_CASES:
-    for clean_mode in ["Cached", "Uncached"]:
+    for clean_mode in ["Cached"]:
         clean_name = clean_case + clean_mode
         clean_foundation = ROOT / ("Airbender/Proofs/GKRProtocol/FullArithmeticNative/" + clean_name + "Foundation.lean")
         clean_selectors = json.loads(json.loads(re.search(r'\bselectors\s+("(?:[^"\\]|\\.)*")', clean_foundation.read_text())[1]))
@@ -2516,316 +2058,26 @@ for column in PACKED_SHIFT_COLUMNS:
                 packed_arithmetic_roots += [f'Airbender.Compiler.ShiftPrefixChecks.Column{column}.{name}Data{part}'
                     for part in range((count + 127) // 128)]
 
-path = Path('Airbender/Checks/Axioms.lean')
-content = (ROOT / path).read_text()
-xor7_text = (ROOT / 'Airbender/Proofs/Tables/PackedXor7Checks.lean').read_text()
-packed_arithmetic_roots += ['Airbender.Setup.Proofs.PackedXor7Checks.' + name for name in
-    re.findall(r'^(?:def|theorem|structure) (\S+)', xor7_text, re.M)]
-from generate_packed_xor7 import modules as xor7_modules
-for module, xor7_text in xor7_modules():
-    if module.endswith('Xor7Certificate'):
-        continue
-    packed_arithmetic_roots += ['Airbender.Blake2G.Proofs.Xor7PackedCapture.' + name for name in
-        re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', xor7_text, re.M)]
-packed_arithmetic_roots += ['Airbender.Blake2G.Proofs.Xor7PackedCapture.' + name for name in
-    ['column'] + [f'column{role}{index}' for index in range(16) for role in ['Blocks', 'Start', 'Size']]]
-xor7_import = 'import Airbender.Proofs.Blake2G.Xor7PackedCertificate'
-if xor7_import not in content.splitlines():
-    content = xor7_import + '\n' + content
-for length_source in ['Airbender/Proofs/GKRProtocol/PackedSetupLengths.lean', 'Tests/PackedSetupLengths.lean']:
-    length_text = (ROOT / length_source).read_text()
-    length_namespace = re.search(r'^namespace (\S+)', length_text, re.M)[1]
-    packed_arithmetic_roots += [length_namespace + '.' + name for name in
-        re.findall(r'^(?:def|theorem|structure) (\S+)', length_text, re.M)]
-for sample_source in ['ArraySampleChecks', 'SubwordSampleChecks', 'SubwordSampleBindings', 'ShiftSampleChecks', 'ShiftSampleBindings']:
-    sample_text = (ROOT / f'Airbender/Proofs/Tables/{sample_source}.lean').read_text()
-    sample_namespace = re.search(r'^namespace (\S+)', sample_text, re.M)[1]
-    packed_arithmetic_roots += [sample_namespace + '.' + name for name in
-        re.findall(r'^(?:def|theorem|structure|numeric_data_binding) (\S+)', sample_text, re.M)]
-    sample_import = f'import Airbender.Proofs.Tables.{sample_source}'
-    if sample_import not in content.splitlines():
-        content = sample_import + '\n' + content
-aligned_text = (ROOT / 'Airbender/Proofs/GKRProtocol/PackedSetupSamples.lean').read_text()
-packed_arithmetic_roots += ['Airbender.Compiler.PackedSetupSamples.' + name for name in
-    re.findall(r'^(?:def|theorem|structure) (\S+)', aligned_text, re.M)]
-query_frame_text = (ROOT / 'Airbender/Proofs/GKRProtocol/NumericQueryFrameChecks.lean').read_text()
-packed_arithmetic_roots += ['Airbender.Compiler.NumericQueryFrameChecks.' + name for name in
-    re.findall(r'^(?:def|theorem|structure) (\S+)', query_frame_text, re.M)]
-for query_frame_module in ['NumericQueryFrameBindings', 'NumericQueryFrameIndexedChecks']:
-    query_frame_source = (ROOT / f'Airbender/Proofs/GKRProtocol/{query_frame_module}.lean').read_text()
-    packed_arithmetic_roots += ['Airbender.Compiler.NumericQueryFrameChecks.' + name for name in
-        re.findall(r'^(?:def|theorem|structure) (\S+)', query_frame_source, re.M)]
-packed_arithmetic_roots += ['Airbender.Compiler.QueryFrameImport.all_slice_true']
-memory_frame_text = '\n'.join((ROOT / f'Airbender/Proofs/GKRProtocol/{module}.lean').read_text() for module in ['NumericMemoryFrameChecks', 'NumericMemoryFramePrefix'])
-packed_arithmetic_roots += ['Airbender.Compiler.NumericMemoryFrameChecks.' + name for name in
-    re.findall(r'^(?:def|theorem|structure) (\S+)', memory_frame_text, re.M)]
-from gkr_packed_memory_frame import CASES as NUMERIC_MEMORY_FRAME_CASES, modules as numeric_memory_frame_modules
-for case in NUMERIC_MEMORY_FRAME_CASES:
-    for module, frame_text in numeric_memory_frame_modules(case):
-        packed_arithmetic_roots += ['Airbender.Compiler.MemoryFrameChecks.' + case + '.' + name for name in
-            re.findall(r'^(?:noncomputable def|theorem|numeric_data_binding|numeric_memory_frame_capture) (\S+)', frame_text, re.M)]
-    packed_arithmetic_roots += ['Airbender.Compiler.MemoryFrameNative.' + case + '.native.' + name + 'FieldsLength'
-        for name in ['ram', 'initialization', 'execute']]
-    frame_import = f'import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.{case}.Certificate'
-    if frame_import not in content.splitlines():
-        content = frame_import + '\n' + content
-from gkr_packed_query_frame import CASES as NUMERIC_QUERY_FRAME_CASES, modules as numeric_query_frame_modules
-for case in NUMERIC_QUERY_FRAME_CASES:
-    packed_arithmetic_roots += ['Airbender.Compiler.QueryFrameNative.' + case + '.native.fieldsLength']
-    for module, frame_text in numeric_query_frame_modules(case):
-        packed_arithmetic_roots += ['Airbender.Compiler.QueryFrameChecks.' + case + '.' + name for name in
-            re.findall(r'^(?:noncomputable def|theorem|numeric_data_binding|numeric_query_frame_capture|numeric_query_frame_index) (\S+)', frame_text, re.M)]
-    frame_import = f'import Airbender.Proofs.GKRProtocol.QueryFrameChecks.{case}.Certificate'
-    if frame_import not in content.splitlines():
-        content = frame_import + '\n' + content
-from generate_aligned_samples import modules as aligned_sample_modules
-for module, sample_text in aligned_sample_modules():
-    sample_namespace = re.search(r'^namespace (\S+)', sample_text, re.M)[1]
-    packed_arithmetic_roots += [sample_namespace + '.' + name for name in
-        re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', sample_text, re.M)]
-packed_arithmetic_roots += ['Airbender.Verification.AlignedSampleChecks.' + name for name in ['conditionalBlocks', 'positionBlocks']]
-sample_import = 'import Airbender.Proofs.Tables.AlignedSampleChecks.Certificate'
-if sample_import not in content.splitlines():
-    content = sample_import + '\n' + content
-from gkr_packed_region_lengths import COLUMNS as REGION_LENGTH_COLUMNS, modules as region_length_modules, metadata_plan as region_length_plan
-for column in REGION_LENGTH_COLUMNS:
-    for module, length_text in region_length_modules(column):
-        length_namespace = re.search(r'^namespace (\S+)', length_text, re.M)[1]
-        packed_arithmetic_roots += [length_namespace + '.' + name for name in
-            re.findall(r'^(?:noncomputable )?(?:def|theorem|numeric_data_binding) (\S+)', length_text, re.M)]
-    packed_arithmetic_roots += [f'Airbender.Compiler.UnifiedRegionLengths.Column{column}.extra{index}'
-        for index, entry in enumerate(region_length_plan(column)) if entry['kind'] == 'extra']
-    length_import = f'import Airbender.Proofs.GKRProtocol.UnifiedRegionLengths.Column{column}'
-    if length_import not in content.splitlines():
-        content = length_import + '\n' + content
-length_import = 'import Tests.PackedSetupLengths'
-if length_import not in content.splitlines():
-    content = length_import + '\n' + content
-from gkr_packed_subword_lengths import COLUMNS as SUBWORD_LENGTH_COLUMNS, modules as subword_length_modules
-for column in SUBWORD_LENGTH_COLUMNS:
-    for module, length_text in subword_length_modules(column):
-        length_namespace = re.search(r'^namespace (\S+)', length_text, re.M)[1]
-        packed_arithmetic_roots += [length_namespace + '.' + name for name in
-            re.findall(r'^(?:noncomputable )?(?:def|theorem|numeric_data_binding) (\S+)', length_text, re.M)]
-    packed_arithmetic_roots += [f'Airbender.Compiler.SubwordRegionLengths.Column{column}.region{index}' for index in range(5)]
-    length_import = f'import Airbender.Proofs.GKRProtocol.SubwordRegionLengths.Column{column}'
-    if length_import not in content.splitlines():
-        content = length_import + '\n' + content
-from gkr_packed_subword_prefix import COLUMNS as SUBWORD_FIXED_COLUMNS, modules as subword_fixed_modules, capture_plan as subword_fixed_plan
-for column in SUBWORD_FIXED_COLUMNS:
-    capture_module = f'Airbender.Proofs.GKRProtocol.SubwordFixedChecks.Column{column}'
-    capture_text = dict(subword_fixed_modules(column))[capture_module]
-    capture_namespace = f'Airbender.Compiler.SubwordFixedChecks.Column{column}'
-    capture_text = capture_text[:capture_text.index('end '+capture_namespace)]
-    packed_arithmetic_roots += [capture_namespace + '.' + name for name in
-        re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', capture_text, re.M)]
-    _, subword_chunks, subword_selected = subword_fixed_plan(column)
-    for index in subword_selected:
-        packed_arithmetic_roots.append(capture_namespace + f'.source{index}')
-        packed_arithmetic_roots += [capture_namespace + f'.target{index}Region{kind}'
-            for kind, _, _ in subword_chunks[index][-1]]
-    capture_import = 'import '+capture_module
-    if capture_import not in content.splitlines():
-        content = capture_import + '\n' + content
-natural_text = (ROOT / 'Tests/PackedSubwordCodes.lean').read_text()
-packed_arithmetic_roots += ['Tests.PackedSubwordCodes.' + name for name in
-    re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', natural_text, re.M)]
-packed_arithmetic_roots += [f'Tests.PackedSubwordCodes.codes{index}' for index in range(4)]
-natural_import = 'import Tests.PackedSubwordCodes'
-if natural_import not in content.splitlines():
-    content = natural_import + '\n' + content
-from generate_shift_metadata import modules as shift_metadata_modules
-for module, metadata_text in shift_metadata_modules():
-    if module.endswith(('ShiftColumnCoverage', 'ImportedBinaryRows')):
-        continue
-    metadata_namespace = re.search(r'^namespace (\S+)', metadata_text, re.M)[1]
-    packed_arithmetic_roots += [metadata_namespace + '.' + name for name in
-        re.findall(r'^(?:def|theorem) (\S+)', metadata_text, re.M)]
-metadata_import = 'import Airbender.Proofs.Tables.ShiftMetadata.Certificate'
-if metadata_import not in content.splitlines():
-    content = metadata_import + '\n' + content
-from gkr_packed_column1_spans import modules as fixed_column1_modules, capture_plan as fixed_column1_plan
-for module, fixed_text in fixed_column1_modules():
-    if module.endswith(('.Data', '.Projected')):
-        continue
-    fixed_namespace = re.search(r'^namespace (\S+)', fixed_text, re.M)[1]
-    packed_arithmetic_roots += [fixed_namespace + '.' + name for name in
-        re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', fixed_text, re.M)]
-fixed_artifact, fixed_groups, fixed_selected = fixed_column1_plan()
-for index in fixed_selected:
-    packed_arithmetic_roots.append(f'Airbender.Compiler.UnifiedFixedSpans.Column1.source{index}')
-    packed_arithmetic_roots += [f'Airbender.Compiler.UnifiedFixedSpans.Column1.target{index}_{part}'
-        for part in range(len(fixed_groups[index]))]
-fixed_import = 'import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column1.Projected'
-if fixed_import not in content.splitlines():
-    content = fixed_import + '\n' + content
-from gkr_packed_special_spans import COLUMNS as FIXED_SPECIAL_COLUMNS, modules as fixed_special_modules, capture_plan as fixed_special_plan
-for column in FIXED_SPECIAL_COLUMNS:
-    for module, fixed_text in fixed_special_modules(column):
-        if module.endswith(('.Data', '.Projected')):
-            continue
-        fixed_namespace = re.search(r'^namespace (\S+)', fixed_text, re.M)[1]
-        packed_arithmetic_roots += [fixed_namespace + '.' + name for name in
-            re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', fixed_text, re.M)]
-    _, fixed_groups, _, selected, _ = fixed_special_plan(column)
-    for index in selected:
-        fixed_owner = f'Airbender.Compiler.UnifiedFixedSpans.Column{column}.'
-        packed_arithmetic_roots.append(fixed_owner + f'source{index}')
-        packed_arithmetic_roots += [fixed_owner + f'target{index}_{part}'
-            for part in range(len(fixed_groups[index]))]
-    fixed_import = f'import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column{column}.Projected'
-    if fixed_import not in content.splitlines():
-        content = fixed_import + '\n' + content
-from generate_shift_extent_checks import generated as shift_extent_modules
-for extent_source in ['Airbender/Proofs/Tables/PackedLengthChecks.lean', 'Tests/PackedLengthChecks.lean']:
-    extent_text = (ROOT / extent_source).read_text()
-    extent_namespace = re.search(r'^namespace (\S+)', extent_text, re.M)[1]
-    packed_arithmetic_roots += [extent_namespace + '.' + name for name in
-        re.findall(r'^(?:def|theorem|structure) (\S+)', extent_text, re.M)]
-for lane in range(4):
-    for module, extent_text in shift_extent_modules(shift_artifact, lane):
-        extent_namespace = re.search(r'^namespace (\S+)', extent_text, re.M)[1]
-        packed_arithmetic_roots += [extent_namespace + '.' + name for name in
-            re.findall(r'^(?:def|theorem) (\S+)', extent_text, re.M)]
-for extent_import in ['import Tests.PackedLengthChecks'] + [
-        f'import Airbender.Proofs.Tables.ShiftExtentChecks{lane}' for lane in range(4)]:
-    if extent_import not in content.splitlines():
-        content = extent_import + '\n' + content
-from gkr_packed_rotate_boundary import modules as rotate_boundary_modules
-for span_source in ['Airbender/Proofs/GKRProtocol/PackedSetupAccess.lean',
-                    'Airbender/Proofs/GKRProtocol/PackedSetupSpans.lean', 'Tests/PackedSetupSpans.lean']:
-    span_text = (ROOT / span_source).read_text()
-    span_namespace = re.search(r'^namespace (\S+)', span_text, re.M)[1]
-    packed_arithmetic_roots += [span_namespace + '.' + name for name in
-        re.findall(r'^(?:def|theorem|structure) (\S+)', span_text, re.M)]
-for module, span_text in rotate_boundary_modules():
-    span_namespace = re.search(r'^namespace (\S+)', span_text, re.M)[1]
-    packed_arithmetic_roots += [span_namespace + '.' + name for name in
-        re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', span_text, re.M)]
-packed_arithmetic_roots += ['Airbender.Compiler.UnifiedFixedSpans.RotateBoundary.' + name
-    for name in ['sourceCode'] + [f'target{index}' for index in range(12)]]
-for span_import in ['import Tests.PackedSetupSpans',
-                    'import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.RotateBoundary.Certificate']:
-    if span_import not in content.splitlines():
-        content = span_import + '\n' + content
-for shift_import in ['import Tests.PackedSetupNormalization'] + [
-        f'import Airbender.Proofs.GKRProtocol.ShiftPrefixChecks.Column{column}.Projected'
-        for column in PACKED_SHIFT_COLUMNS]:
-    if shift_import not in content.splitlines():
-        content = shift_import + '\n' + content
-rotation_import = 'import Tests.FiniteGridChecks'
-if rotation_import not in content.splitlines():
-    content = rotation_import + '\n' + content
-for wiring_import in ['import Tests.WiringChecks'] + [
-        'import Airbender.Proofs.GKRCompiler.WiringNative.' + case for case in WIRING_CAPTURES]:
-    if wiring_import not in content.splitlines():
-        content = wiring_import + '\n' + content
-for clean_import in ['import Tests.CleanIdealChecks', 'import Tests.CleanIdealTrace', 'import Tests.CleanIdealRows'] + [
-        'import Airbender.Proofs.GKRProtocol.CleanArithmeticNative.' + case for case in CLEAN_IDEAL_CAPTURES]:
-    if clean_import not in content.splitlines():
-        content = clean_import + '\n' + content
-for numeric_case in sorted(NUMERIC_CAPTURES):
-    numeric_capture_import = "import Airbender.Proofs.GKRProtocol.FullArithmeticNative." + numeric_case
-    if numeric_capture_import not in content.splitlines():
-        content = numeric_capture_import + "\n" + content
-for dense_import in ['import Tests.NumericExpressionChecks', 'import Tests.NumericArithmeticTrace']:
-    if dense_import not in content.splitlines():
-        content = dense_import + '\n' + content
-content = re.sub(r'^import Airbender\.Proofs\.Blake2G\.(?:Xor9CertificatePart[0-9]+|Xor9Extents)\n', '', content, flags=re.M)
-content = re.sub(r'^import Airbender\.Proofs\.Tables\.ShiftOutputCertificate[0-3]Part[0-9]+\n', '', content, flags=re.M)
-for shift_import in ['import Tests.PackedWordColumn', 'import Tests.ShiftPackedReference'] + [
-        f'import Airbender.Proofs.Tables.ShiftPackedEncoding.Column{lane}' for lane in range(4)]:
-    if shift_import not in content.splitlines():
-        content = shift_import + '\n' + content
-byte_import = 'import Tests.PackedByteTables'
-if byte_import not in content.splitlines():
-    content = byte_import + '\n' + content
-word_import = 'import Tests.PackedSignedRun'
-if word_import not in content.splitlines():
-    content = word_import + '\n' + content
-clean_import = 'import Tests.CleanPlacementChecks'
-if clean_import not in content.splitlines():
-    content = clean_import + '\n' + content
-trace_import = 'import Tests.PackedNormalizationTrace'
-if trace_import not in content.splitlines():
-    content = trace_import + '\n' + content
-numeric_import = 'import Tests.NumericArithmeticChecks'
-if numeric_import not in content.splitlines():
-    content = numeric_import + '\n' + content
-arithmetic_import = 'import Tests.PackedArithmeticChecks'
-if arithmetic_import not in content.splitlines():
-    content = arithmetic_import + '\n' + content
-program_import = 'import Airbender.Proofs.GKRProtocol.ProgramLogicalRows'
-if program_import not in content.splitlines():
-    content = program_import + '\n' + content
-setup_import = 'import Airbender.Proofs.GKRProtocol.ProgramSetupNative'
-if setup_import not in content.splitlines():
-    content = setup_import + '\n' + content
-public_row_import = 'import Airbender.Proofs.GKRProtocol.ProgramPublicRows'
-if public_row_import not in content.splitlines():
-    content = public_row_import + '\n' + content
-public_constraints_import = 'import Airbender.Proofs.GKRProtocol.ProgramPublicConstraints'
-if public_constraints_import not in content.splitlines():
-    content = public_constraints_import + '\n' + content
-unified_constraints_import = 'import Airbender.Proofs.GKRProtocol.ProgramUnifiedConstraints'
-if unified_constraints_import not in content.splitlines():
-    content = unified_constraints_import + '\n' + content
-setup_packed_import = 'import Airbender.Proofs.GKRProtocol.UnifiedPackedEqualityCertificate'
-if setup_packed_import not in content.splitlines():
-    content = setup_packed_import + '\n' + content
-setup_packed_test_import = 'import Tests.PackedSetupEquality'
-if setup_packed_test_import not in content.splitlines():
-    content = setup_packed_test_import + '\n' + content
-for setup_tree_import in [
-        'import Airbender.Proofs.GKRProtocol.UnifiedPackedEquality.Column5.Certificate',
-        'import Tests.PackedSetupTree',
-        'import Tests.PackedSetupTreeLayout']:
-    if setup_tree_import not in content.splitlines():
-        content = setup_tree_import + '\n' + content
-for column in (4, 6, 7):
-    fixed_import = f'import Airbender.Proofs.GKRProtocol.UnifiedPackedEquality.Column{column}.Certificate'
-    if fixed_import not in content.splitlines():
-        content = fixed_import + '\n' + content
-packed_import = 'import Airbender.Proofs.Tables.ShiftAndPackedCertificate'
-if packed_import not in content.splitlines():
-    content = packed_import + '\n' + content
-packed_test_import = 'import Tests.PackedTableCertificates'
-if packed_test_import not in content.splitlines():
-    content = packed_test_import + '\n' + content
-acceptance_import = 'import Airbender.Proofs.GKRProtocol.NativeMachineAcceptance'
-if acceptance_import not in content.splitlines():
-    content = acceptance_import + '\n' + content
-decoder_imports = '\n'.join('import Airbender.Proofs.GKRProtocol.' + tree + '.' + name
-                          for tree in ['ProgramDecoderNative', 'ProgramDecoderLookup', 'ProgramFixedLookup', 'ProgramPCLowNative'] for name in NAMES)
-for decoder_import in decoder_imports.splitlines():
-    if decoder_import not in content.splitlines():
-        content = decoder_import + '\n' + content
-for name in NAMES:
-    constraint_import = 'import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.' + name
-    if constraint_import not in content.splitlines():
-        content = constraint_import + '\n' + content
-roots = []
-existing_roots = set(content.splitlines())
-for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots + unified_roots + acceptance_roots + decode_roots + packed_table_roots + packed_setup_roots + packed_arithmetic_roots:
-    root = f'#print axioms {name}'
-    if root not in existing_roots:
-        roots.append(root)
-        existing_roots.add(root)
-if '#print axioms Airbender.Compiler.GroupedLookupArguments' not in existing_roots:
-    roots.append('#print axioms Airbender.Compiler.GroupedLookupArguments')
-for name in NAMES:
-    namespace = 'UnifiedRowNative' if name.startswith('Unified') else 'PooledRowNative'
-    for theorem in ['LookupArgumentsWith', 'lookup_arguments_with_retained',
-                    'nativeRequests_source', 'nativeOperands_coverage', 'nativeSetupColumns_binding',
-                    'source_member_with']:
-        root = f'#print axioms Airbender.Compiler.{namespace}.{name}.{theorem}'
-        if root not in existing_roots:
-            roots.append(root)
-            existing_roots.add(root)
-if roots:
-    content += '\n' + '\n'.join(roots) + '\n'
-emit(path, content)
+# Audit only retained public Review roots and the complete machine targets.
+# Compiled environment auditing still selects every Review declaration by origin.
+audit_modules = sorted('.'.join(path.relative_to(ROOT).with_suffix('').parts)
+                       for path in (ROOT / 'Airbender/Review').rglob('*.lean'))
+audit_modules += ['Airbender.Proofs.FullUnsigned.Target',
+                  'Airbender.Proofs.Reduced.MachineTarget',
+                  'Airbender.Proofs.UnifiedReduced.MachineTarget']
+audit_names = ['Airbender.Compiler.MachineTargets.Proofs.unrolled_full_soundness',
+               'Airbender.Compiler.MachineTargets.Proofs.unrolled_reduced_soundness',
+               'Airbender.Compiler.MachineTargets.Proofs.unified_soundness',
+               'Airbender.Compiler.MachineTargets.unrolled_full_from_native',
+               'Airbender.Compiler.MachineTargets.unrolled_reduced_from_native',
+               'Airbender.Compiler.MachineTargets.unified_from_native']
+emit(Path('Airbender/Checks/Axioms.lean'),
+     ''.join('import ' + module + '\n' for module in audit_modules)
+     + '\n' + ''.join('#print axioms ' + name + '\n' for name in audit_names))
 
+if args.report:
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(json.dumps(EXPECTED, indent=2) + '\n')
 if args.check and CHANGED:
     parser.exit(1, 'Generated native lookup bindings are stale:\n' + '\n'.join(CHANGED) + '\n')
 print(f'Native lookup operand bindings: {len(NAMES)} profiles; {len(CHANGED)} changed files.')

@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.MaterializedNative.ShiftBinopCached
 import Airbender.Proofs.GKRProtocol.ShiftPrefixNative.Column0
 import Airbender.Proofs.GKRProtocol.ShiftPrefixNative.Column1
 import Airbender.Proofs.GKRProtocol.ShiftPrefixNative.Column2
@@ -10,7 +11,6 @@ import Airbender.Proofs.GKRProtocol.ShiftPrefixNative.Column8
 import Airbender.Proofs.GKRProtocol.ShiftPrefixNative.Column9
 import Airbender.Proofs.GKRProtocol.CleanGenericSetup
 import Airbender.Proofs.GKRProtocol.TaggedSetup
-import Airbender.Proofs.GKRProtocol.MaterializedNative.ShiftBinopUncached
 
 namespace Airbender.Compiler.ShiftSetupNative
 open Airbender Airbender.Compiler
@@ -19,7 +19,7 @@ set_option Elab.async false
 set_option maxRecDepth 65536
 set_option maxHeartbeats 8000000
 
-abbrev nativeSetup := MaterializedNative.ShiftBinopUncached.native.model
+abbrev nativeSetup := MaterializedNative.ShiftBinopCached.native.model
 
 theorem padding_shape : nativeSetup.imported.data.columns[(8 : Nat)].blocks.toList =
     [(Setup.Block.affine 524545 0 0), .affine 1048576 2013265920 0, .affine 15204095 0 0] := by rfl

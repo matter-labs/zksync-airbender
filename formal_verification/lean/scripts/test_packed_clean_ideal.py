@@ -27,10 +27,10 @@ class CleanIdealTests(unittest.TestCase):
                 return ideal.load('Fixture', 'fixture')
 
     def test_all_cache_modes_remain_required(self):
-        self.assertEqual(len(ideal.CAPTURES), 22)
+        self.assertEqual(len(ideal.CAPTURES), 11)
         for case in ideal.CASES:
             self.assertIn(case + 'Cached', ideal.CAPTURES)
-            self.assertIn(case + 'Uncached', ideal.CAPTURES)
+            self.assertNotIn(case + 'Uncached', ideal.CAPTURES)
 
     def test_no_terms_are_normalized_or_dropped(self):
         value = self.payload()

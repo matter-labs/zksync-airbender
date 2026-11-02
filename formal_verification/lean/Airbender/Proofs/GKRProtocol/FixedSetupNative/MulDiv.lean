@@ -1,6 +1,6 @@
+import Airbender.Proofs.GKRProtocol.MaterializedNative.MulDivCached
 import Airbender.Proofs.GKRProtocol.ColumnSlices
 import Airbender.Proofs.GKRProtocol.TaggedSetup
-import Airbender.Proofs.GKRProtocol.MaterializedNative.MulDivUncached
 import Airbender.Review.Helpers.Tables.PairData
 
 namespace Airbender.Compiler.FixedSetupNative.MulDiv
@@ -10,7 +10,7 @@ set_option Elab.async false
 set_option maxRecDepth 65536
 set_option maxHeartbeats 4000000
 
-abbrev nativeSetup := Airbender.Compiler.MaterializedNative.MulDivUncached.native.model
+abbrev nativeSetup := Airbender.Compiler.MaterializedNative.MulDivCached.native.model
 
 def regZeroData0Front : List Setup.Block := nativeSetup.imported.data.columns[0].blocks.toList.take 0
 def regZeroData0Back : List Setup.Block := nativeSetup.imported.data.columns[0].blocks.toList.drop 1

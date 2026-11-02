@@ -10,7 +10,6 @@ set_option maxRecDepth 65536
 set_option maxHeartbeats 4000000
 
 import_materialized_setup native from "artifacts/compiler/word-memory-cached.json"
-  uncached "artifacts/compiler/word-memory-uncached.json"
   setup_model Airbender.Data.GKRSetup.WordMemory
   table_model Airbender.Compiler.TableNative.WordMemoryCached.native width 9
 

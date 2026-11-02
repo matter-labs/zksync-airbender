@@ -12,7 +12,7 @@ from gkr_functional_instances import selectors
 from gkr_packed_functional_steps import capture_name, digest, source_paths
 from gkr_wiring_instances import CASES
 
-CAPTURES = tuple(stem + mode for stem in CASES for mode in ['Cached', 'Uncached'])
+CAPTURES = tuple(stem + mode for stem in CASES for mode in ['Cached'])
 
 
 def materializer(case, count):

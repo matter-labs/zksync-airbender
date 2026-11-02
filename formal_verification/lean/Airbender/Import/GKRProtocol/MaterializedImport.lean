@@ -18,36 +18,25 @@ private def emitChecked (command : Syntax) : CommandElabM Unit := do
   if (← get).messages.hasErrors then throwAbortCommand
 
 syntax (name := importMaterializedSetup) "import_materialized_setup " ident " from " str
-  " uncached " str " setup_model " ident " table_model " ident " width " num : command
+  " setup_model " ident " table_model " ident " width " num : command
 
 elab_rules : command
-  | `(import_materialized_setup $name:ident from $path:str uncached $uncachedPath:str
+  | `(import_materialized_setup $name:ident from $path:str
       setup_model $dataOwner:ident table_model $tableName:ident width $widthNumber:num) => do
     let json ← match Json.parse (← IO.FS.readFile path.getString) with
       | .ok json => pure json | .error error => throwError "{error}"
-    let uncachedJson ← match Json.parse (← IO.FS.readFile uncachedPath.getString) with
-      | .ok json => pure json | .error error => throwError "{error}"
     let pair ← match fromJson? (α := Import.Pair) json with
       | .ok pair => pure pair | .error error => throwError "{error}"
-    let uncachedPair ← match fromJson? (α := Import.Pair) uncachedJson with
-      | .ok pair => pure pair | .error error => throwError "{error}"
-    let .ok original := json.getObjVal? "source" | throwError "missing original compiler input"
-    let .ok uncachedOriginal := uncachedJson.getObjVal? "source" | throwError "missing original compiler input"
-    unless pair.format_version == 1 && uncachedPair.format_version == 1 && !uncachedPair.cached &&
-        pair.family == uncachedPair.family && original == uncachedOriginal do
-      throwError "materialized setup is detached from the shared original compiler input"
-    let .ok uncachedCircuit := uncachedJson.getObjVal? "circuit" | throwError "missing uncached native circuit"
+    unless pair.format_version == 1 && pair.cached do
+      throwError "materialized setup requires a production cached capture"
     let dataName := fieldName dataOwner "setup"
     let rangeDomain := fieldName dataOwner "range16_length"
     let timestampDomain := fieldName dataOwner "timestamp_length"
-    let circuitBytes := fieldName dataOwner "setupCircuitSource"
     let nativeLayout := fieldName tableName "nativeLayout"
     let sourcePlan := fieldName tableName "sourcePlan"
     let model := fieldName name "model"
     emitChecked (← `(def $model : MaterializedLookupSetup $(quote widthNumber.getNat) :=
       ⟨$dataName, $rangeDomain, $timestampDomain⟩))
-    let circuitChecked := fieldName name "circuitChecked"
-    emitChecked (← `(theorem $circuitChecked : $circuitBytes = $(quote uncachedCircuit.compress) := by rfl))
     let traceChecked := fieldName name "traceChecked"
     let widthChecked := fieldName name "widthChecked"
     let regionsChecked := fieldName name "regionsChecked"

@@ -59,15 +59,18 @@ def module(name, case, phase=3, start=0, stop=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--family', choices=FAMILIES, action='append')
-    parser.add_argument('--mode', choices=['cached', 'uncached'], action='append')
+    parser.add_argument('--mode', choices=['cached'], action='append')
     parser.add_argument('--write', action='store_true')
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--build', action='store_true')
     args = parser.parse_args()
+    from gkr_packed_memory_frame import CASES as RETAINED_CASES
     for family, stem in zip(FAMILIES, CASES, strict=True):
+        if stem + 'Cached' not in RETAINED_CASES:
+            continue
         if args.family and family not in args.family:
             continue
-        for mode in ['uncached', 'cached']:
+        for mode in ['cached']:
             if args.mode and mode not in args.mode:
                 continue
             name, case = family + '-' + mode, stem + mode.title()

@@ -1,4 +1,4 @@
-"""Require both cache modes, all memory field groups and safe generation."""
+"""Require cached captures, all memory field groups and safe generation."""
 import contextlib
 import io
 from pathlib import Path
@@ -11,8 +11,8 @@ import gkr_memory_frame_instances as interface
 
 class NumericMemoryFrameTests(unittest.TestCase):
     def test_complete_both_cache_modes(self):
-        self.assertEqual(len(generator.CASES),22)
-        self.assertEqual(set(generator.CASES),{stem+mode for stem in generator.CIRCUIT_CASES for mode in ['Cached','Uncached']})
+        self.assertEqual(len(generator.CASES),11)
+        self.assertEqual(set(generator.CASES),{'AddSubCached','WordMemoryCached','SubwordMemoryCached','BigintCached','BlakeGCached','BlakeRoundCached','KeccakCached'})
         for case in generator.CASES:
             generated=dict(generator.modules(case));stem='Airbender.Proofs.GKRProtocol.MemoryFrameChecks.'+case
             self.assertEqual(generated[stem+'.Certificate'].count(':= by decide +kernel'),1)
