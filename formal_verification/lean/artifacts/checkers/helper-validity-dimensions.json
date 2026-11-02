@@ -1,0 +1,112 @@
+{
+  "AddSubCached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "f6acf9fe56bef6a40385957c0912edd0a7bedf50477059ccee184f3b0530f859"
+  },
+  "AddSubUncached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "a7248485b46d2d9d635cbf6712eaca2b8245019a49a5c0e56e40239fcfe98cf4"
+  },
+  "JumpBranchCached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "f9a5df8ce4385a90725b55a5652ffdcd0f5992eed9ad325bb9b54e6db87019d2"
+  },
+  "JumpBranchUncached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "7734adf0aa53d2d1dc909ccf2672a1b22fb7da10e5701e83d7dbe135167149dd"
+  },
+  "MulDivCached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "c21157ac74b9d9ea4ec0aaf34a5e6d262d694a41377bbddfc7bc1c04fef9ce0a"
+  },
+  "MulDivUncached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "a65a7fdd71c54581637cb5fe5b51474972f0c758be55ef7200cc59b957748589"
+  },
+  "ShiftBinopCached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "de15a4d01150aec704160bbd586746d4179724564c47d66d1df0ffcf6a4063f6"
+  },
+  "ShiftBinopUncached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "968a65cfc27677e0bb5076f820af234fd52a6e5b5a9c0d86bcda667ff4a0f9c0"
+  },
+  "WordMemoryCached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "d0b33a60bb74927a7ef8c4c2535dd50a120a2ae16f2a97fc9c7d5c7719026d3c"
+  },
+  "WordMemoryUncached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "bc1ad732a66cddddd51dbb79d9771e243dafad7010a9ca85158772902b43425f"
+  },
+  "SubwordMemoryCached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "35b85012267c3f7a340e850685ea622597629ca8c9562b13829031daec5bc38b"
+  },
+  "SubwordMemoryUncached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "a661af664ff5af829f4ee35efea01e4e47325b1faabc4a245800e9916fbfba29"
+  },
+  "UnifiedCached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "29f45b1a208256e08613235e4185272d51948f48ac0cd40e61ed5ba8a300f214"
+  },
+  "UnifiedUncached": {
+    "protected": 8,
+    "fields": 8,
+    "source_sha256": "6cadc3855fd0cd526381e0b4c31c07937cfed761f402afe893ac075504b2551e"
+  },
+  "BigintCached": {
+    "protected": 42,
+    "fields": 41,
+    "source_sha256": "8b439deda1c24a153d116796239552346a4921ffd9b7445abd455dfa72f58b82"
+  },
+  "BigintUncached": {
+    "protected": 42,
+    "fields": 41,
+    "source_sha256": "15247d0eabfc373b2e3cc6751de49b52163acbef7cb20c8e8bb98fb088936f6b"
+  },
+  "BlakeGCached": {
+    "protected": 22,
+    "fields": 21,
+    "source_sha256": "f581d9419a794372073fe20b6945f750c2fa3ced0582f3ceb495f67b1974b1de"
+  },
+  "BlakeGUncached": {
+    "protected": 22,
+    "fields": 21,
+    "source_sha256": "931c47395371c4e9b64fc9cf2dba70bf0d014997c92c61655c2bc865bf234498"
+  },
+  "BlakeRoundCached": {
+    "protected": 90,
+    "fields": 89,
+    "source_sha256": "6a84bf43b7cd41cbf3318f7f8fc29bbeae86226b1c49128d95fffb70a53df282"
+  },
+  "BlakeRoundUncached": {
+    "protected": 90,
+    "fields": 89,
+    "source_sha256": "4361c39bcf9884b4e46e5ead08d83aa27d03fcae30bcd27b4735446a63665b04"
+  },
+  "KeccakCached": {
+    "protected": 31,
+    "fields": 30,
+    "source_sha256": "9e00c36d9bec55770aa816b55b4b23ad0e492aacb24cadc42d4dd59f7467ffe7"
+  },
+  "KeccakUncached": {
+    "protected": 31,
+    "fields": 30,
+    "source_sha256": "29742bd05ea78d8bb0aeffc7aeef27b05e407e05c9ee615c4e4b18d98bb08e22"
+  }
+}

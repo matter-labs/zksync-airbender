@@ -1,20 +1,17 @@
-import Airbender.Import.GKRProtocol.HelperValidityImport
-import Airbender.Proofs.GKRProtocol.HistoryErasureNative.AddSubUncached
-import Airbender.Proofs.GKRProtocol.HelperNative.AddSubUncached
+import Airbender.Proofs.GKRProtocol.HelperValidityChecks.AddSubUncached.Certificate
 
 namespace Airbender.Compiler.HelperValidityNative.AddSubUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_helper_validity native from "artifacts/compiler/add-sub-uncached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.AddSubUncached.native
   source_model Airbender.Compiler.SourceContractNative.AddSubUncached.native
   history_model Airbender.Compiler.HistoryErasureNative.AddSubUncached.native
   helper_model Airbender.Compiler.HelperNative.AddSubUncached.native
-  memory_model Airbender.Compiler.MemoryNative.AddSubUncached.native inputs 48
+  memory_model Airbender.Compiler.MemoryNative.AddSubUncached.native inputs 48 phase 1 using_checks Airbender.Compiler.HelperValidityChecks.AddSubUncached
 
 theorem helper_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

@@ -5700,3 +5700,62 @@ Full frontend validation, environment audit and baseline refresh, full
 transitive replay, cold full measurements and Linux qualification did not run.
 They remain pending for implementation review. The known aggregate ownership
 collision stays deferred. No aggregate import pass is claimed.
+
+## Complete helper-validity pilot
+
+The AddSub and BlakeRound captures now use one complete helper-validity result
+in each cache mode. The other 18 captures remain open. The checker proves the
+original protected-field, recursive borrow and transport predicates.
+Transport keeps exact polynomial list equality. It preserves term order and
+zero terms. It does not replace that reference with normalized equality.
+Protected fields retain the original erasure-substitution equality.
+Every original bank round trip and strict borrow bound remains.
+
+All 258 old declarations remain. Kernel preservation accepts all
+242 old theorem types. All 16 imported Expr values are identical.
+The data phase declares execute, profile, normalized and canonical before the
+numeric imports. The original semantic finalizers remain. Each old per-index
+transport fact now selects the complete result. The importer keeps its legacy
+path. It rejects semantic check injection in the data phase and wrong fact types.
+
+All 75 selected source modules and standard 32 MiB replays pass.
+They include 48 direct consumers. They skip no safe dependency.
+All 1,320 focused axiom queries use only the three allowed axioms.
+All 62 exact controls pass. The kernel rejects all 62 mutations. These controls
+include reordered terms and a dropped zero term. The strict importer rejects an
+opaque payload. All three Python generator controls pass. Dimension freshness,
+source and interface freshness, source layers, the source graph and workflow
+syntax pass. CI keeps both modes required.
+
+All four pilot wrappers and new capture modules use default heartbeats.
+Four-row data commands and complete source bindings cover all three field lists.
+The largest capture has 90 protected fields and 89 borrow and transport rows.
+Its bindings build and replay in about 23 s. Its whole certificate takes about
+2 s for each step. Separate data and binding modules keep memory bounded.
+The four captures use 24 capture modules plus the shared checker and importer.
+No cold full-build gain is claimed.
+
+Whole dense data materialization hit the default heartbeat limit. Bounded data
+commands pass. A combined data-view and typed-source control exceeded memory.
+The adopted controls check each exact view and source piece separately.
+Both stages already pass in the complete source-binding proof.
+
+| Guarded phase | Time | Peak physical footprint |
+| --- | ---: | ---: |
+| Canonical pilot source and replay | 251.95 s | 1,215.79 MiB |
+| Final exact and mutation controls | 238.74 s | 641.82 MiB |
+| Direct consumers | 252.02 s | 959.45 MiB |
+| Dimension freshness | 41.63 s | 434.76 MiB |
+
+All guards clean their owned workers. The inventory has 155,424 roots.
+It retains all 154,572 prior roots and every established root. Original native
+and direct-consumer objects remain in the helper-validity evidence folders.
+The remaining 18 helper captures and the header-budget audit remain open.
+Other frame and argument families still need a scope audit. Some already use
+whole checks. Parametric semantic proofs stay outside the numeric rollout.
+Item 3 remains open. The hourly follow-up stays active.
+
+Full frontend validation, environment audit and baseline refresh, full transitive
+replay, cold full measurements and Linux qualification did not run. They remain
+pending for implementation review. The known aggregate ownership collision stays
+deferred. No aggregate import pass is claimed.
