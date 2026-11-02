@@ -6306,3 +6306,7 @@ The full inventory check correctly rejected three missing split Keccak files.
 The workflow now exports column parity, theta/rho and chi5 too. Its export
 inventory matches all 16 families in `check_setup_freshness.FAMILIES`.
 No native artifact, equation, proof or premise changed.
+
+The repaired run `41451555538`, at signed commit
+`6031819e9f8e76f4acc351a0b1af8c8bf7ee5dd3`, passes all native setup and
+compiler capture stages. Its cold project source pass is active.
