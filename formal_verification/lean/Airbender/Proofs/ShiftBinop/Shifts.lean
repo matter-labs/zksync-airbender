@@ -106,32 +106,32 @@ theorem shift_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256) {
   exact ⟨(values 0).1, (values 0).2.1, fun i j => (values i).2.2 j⟩
 
 private theorem packed_contributions {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
-    (w : Nat → ZMod p) (start : Nat) (target : ZMod p)
-    (bounds : ∀ i : Fin 4, ∀ j : Fin 2, (w (start + 4 * i.val + j.val)).val < 256)
-    (equation : w start + 256 * w (start + 1) + w (start + 4) + 256 * w (start + 5) +
-      w (start + 8) + 256 * w (start + 9) + w (start + 12) + 256 * w (start + 13) - target = 0) :
-    target.val = (w start).val + 256 * (w (start + 1)).val +
-      (w (start + 4)).val + 256 * (w (start + 5)).val +
-      (w (start + 8)).val + 256 * (w (start + 9)).val +
-      (w (start + 12)).val + 256 * (w (start + 13)).val := by
-  let total := (w start).val + 256 * (w (start + 1)).val +
-    (w (start + 4)).val + 256 * (w (start + 5)).val +
-    (w (start + 8)).val + 256 * (w (start + 9)).val +
-    (w (start + 12)).val + 256 * (w (start + 13)).val
+    (w : Nat → ZMod p) («start» : Nat) (target : ZMod p)
+    (bounds : ∀ i : Fin 4, ∀ j : Fin 2, (w («start» + 4 * i.val + j.val)).val < 256)
+    (equation : w «start» + 256 * w («start» + 1) + w («start» + 4) + 256 * w («start» + 5) +
+      w («start» + 8) + 256 * w («start» + 9) + w («start» + 12) + 256 * w («start» + 13) - target = 0) :
+    target.val = (w «start»).val + 256 * (w («start» + 1)).val +
+      (w («start» + 4)).val + 256 * (w («start» + 5)).val +
+      (w («start» + 8)).val + 256 * (w («start» + 9)).val +
+      (w («start» + 12)).val + 256 * (w («start» + 13)).val := by
+  let total := (w «start»).val + 256 * (w («start» + 1)).val +
+    (w («start» + 4)).val + 256 * (w («start» + 5)).val +
+    (w («start» + 8)).val + 256 * (w («start» + 9)).val +
+    (w («start» + 12)).val + 256 * (w («start» + 13)).val
   have field : target = (total : ZMod p) := by
     dsimp [total]
     push_cast
     simp only [ZMod.natCast_zmod_val]
     linear_combination -equation
   have small : total < p := by
-    have a : (w start).val < 256 := bounds 0 0
-    have b : (w (start + 1)).val < 256 := bounds 0 1
-    have c : (w (start + 4)).val < 256 := bounds 1 0
-    have d : (w (start + 5)).val < 256 := bounds 1 1
-    have e : (w (start + 8)).val < 256 := bounds 2 0
-    have f : (w (start + 9)).val < 256 := bounds 2 1
-    have g : (w (start + 12)).val < 256 := bounds 3 0
-    have h : (w (start + 13)).val < 256 := bounds 3 1
+    have a : (w «start»).val < 256 := bounds 0 0
+    have b : (w («start» + 1)).val < 256 := bounds 0 1
+    have c : (w («start» + 4)).val < 256 := bounds 1 0
+    have d : (w («start» + 5)).val < 256 := bounds 1 1
+    have e : (w («start» + 8)).val < 256 := bounds 2 0
+    have f : (w («start» + 9)).val < 256 := bounds 2 1
+    have g : (w («start» + 12)).val < 256 := bounds 3 0
+    have h : (w («start» + 13)).val < 256 := bounds 3 1
     dsimp [total]
     omega
   rw [field, ZMod.val_natCast, Nat.mod_eq_of_lt small]

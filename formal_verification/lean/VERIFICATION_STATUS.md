@@ -33,7 +33,8 @@ Its focused source build passes after the stale imports are removed.
 The tracked-import check covers 12,078 imports in 4,212 Lean files.
 The earlier log is in [VERIFICATION_HISTORY.md](VERIFICATION_HISTORY.md).
 The final axiom inventory and baseline refresh remain pending.
-[PR #585](https://github.com/matter-labs/zksync-airbender/pull/585) is in draft.
+[PR #585](https://github.com/matter-labs/zksync-airbender/pull/585) is open and mergeable.
+The full FV gate must pass before merge.
 The history rewrite signed all 768 commits. Later commits are signed.
 GitHub verifies the signed head.
 The signing rewrite leaves the source tree unchanged.
@@ -52,9 +53,14 @@ The signing rewrite leaves the source tree unchanged.
 
 The user moved final validation to the large CI runner.
 [Run 41451555538](https://github.com/matter-labs/zksync-airbender/actions/runs/41451555538)
-is active at signed commit `6031819e9f8e76f4acc351a0b1af8c8bf7ee5dd3`.
+stopped at signed commit `6031819e9f8e76f4acc351a0b1af8c8bf7ee5dd3`.
 All 12 native generators, all 16 setup exports, the complete setup inventory,
-and the compiler-capture freshness checks pass. The cold source build runs next.
+and the compiler-capture freshness checks pass. The cold pass built 2,756 modules.
+The next module rejected the reserved `parts` binder in `ShiftAssembly.lean`.
+The fix quotes that binder and the same reserved syntax in two adjacent consumers.
+The Lean names and theorems stay unchanged.
+All three focused source builds and all 52 generator checks pass.
+CI now saves cold build progress after failure. A corrected full run is required.
 The earlier run rejected three omitted split Keccak exports. The CI list is fixed.
 The repaired run reuses saved native build caches.
 The registered Rust CI workflow provides the manual entry.
@@ -80,7 +86,8 @@ Other source leaves retain 900 seconds. Memory caps and kernel checks stay uncha
 
 | Phase | State | Time (s) | Peak footprint (MiB) |
 | --- | --- | ---: | ---: |
-| CI cold source build, 4,202 modules | Running | Pending | Pending |
+| CI cold source partial, 2,756 of 4,202 modules | Stopped at parse failure | 33,462.48 | 2,198.55 |
+| CI `ShiftAssembly` parse failure | Fixed; focused source passes | 4.62 | 353.58 |
 | CI full frontend and runtime gates | Queued | Pending | Pending |
 | CI environment audit and baseline refresh | Queued | Pending | Pending |
 | CI full transitive replay, 2,048 MiB stack | Queued | Pending | Pending |
@@ -88,8 +95,9 @@ Other source leaves retain 900 seconds. Memory caps and kernel checks stay uncha
 | Local Mac frontend partial | Stopped; moved to CI | 5,108.33 | 2,100.26 |
 | Local Linux `Source.ChiCharacters` cold leaf | Passed | 1,133.67 | 540.31 |
 
-The Linux partial time sums module guard times. The Mac partial time is wall time.
-The cold CI artifact includes `cold-build/modules.jsonl` and `cold-build/modules.md`.
+The CI and Linux partial times sum module guard times. The Mac time is wall time.
+The failed CI artifact retains `cold-build/modules.jsonl` and all failure logs.
+The complete cold pass will also export `cold-build/modules.md`.
 These times include Lake startup and dependency freshness checks.
 CI uploads commands, resource receipts and failure logs from each stage.
 Local partial evidence remains in `/tmp/airbender-review-round/method-reset-2026-11-02/`.
@@ -101,7 +109,7 @@ The hourly task follows the CI run and the separate focused upgrade experiment.
 The Rust warnings jobs found a stale call in the initialization-window test.
 The test now uses the current five-argument verifier generator.
 The generator derives packing and batching parameters from its configuration.
-At commit `100c270a0`, 22 PR checks passed and the IaC scanner was neutral.
-No check failed or stayed pending. The CI entry change starts new PR checks.
-The separate full FV run must pass before this PR leaves draft.
+At commit `8ca339867`, 22 PR checks passed and the IaC scanner was neutral.
+No ordinary check failed or stayed pending. The FV PR job skips as configured.
+The separate full FV run must pass before merge.
 Production code stays unchanged.

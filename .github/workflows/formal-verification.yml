@@ -291,6 +291,7 @@ jobs:
             ${{ env.FV_COMPILER_TARGET_DIR }}
           key: ${{ steps.cache-keys.outputs.native }}-compiler
       - name: Cold project source build and module resource table
+        id: cold-source-build
         if: inputs.cold_build == true
         timeout-minutes: 910
         run: |
@@ -346,7 +347,7 @@ jobs:
           # No outer guard: the frontend guards each real child and checks reap metadata.
           fv_stage lean-verification 54000 python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean"
       - name: Save Lean build progress even after a bounded failure
-        if: always() && steps.cache-keys.outcome == 'success' && steps.lean-verification.outcome != 'skipped'
+        if: always() && steps.cache-keys.outcome == 'success' && (steps.cold-source-build.outcome != 'skipped' || steps.lean-verification.outcome != 'skipped')
         timeout-minutes: 20
         uses: actions/cache/save@v4
         with:

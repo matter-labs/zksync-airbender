@@ -19,10 +19,10 @@ theorem xorrot_destination [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     (leftBytes : ∀ i : Fin 4, leftByte w i = ((left.extractLsb' (8 * i.val) 8).toNat : ZMod p))
     (rightBytes : ∀ i : Fin 4, rightByte w i + immediateByte w i = ((right.extractLsb' (8 * i.val) 8).toNat : ZMod p)) :
     (Word.mk (w 50).val (w 51).val).toBitVec = (left ^^^ right).rotateRight #[16, 12, 8, 7][kind.val]! := by
-  let parts (i j : Fin 4) := w (58 + 4 * i.val + j.val)
+  let «parts» (i j : Fin 4) := w (58 + 4 * i.val + j.val)
   let target := (left ^^^ right).rotateRight #[16, 12, 8, 7][kind.val]!
   have queries := xorrot_query_values (by omega) holds selected other kind funct3
-  have values (i j : Fin 4) : (parts i j).val =
+  have values (i j : Fin 4) : («parts» i j).val =
       ((rotatedByte32 (left ^^^ right) kind i).extractLsb' (8 * j.val) 8).toNat := by
     change (w (58 + 4 * i.val + j.val)).val = _
     rw [(queries i).2.2 j, ZMod.val_natCast_of_lt (by
@@ -37,19 +37,19 @@ theorem xorrot_destination [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
       simp only [BitVec.toNat_ofNat, BitVec.toNat_setWidth]
     rw [widened]
     rfl
-  have small (i j : Fin 4) : (parts i j).val < 256 := by
+  have small (i j : Fin 4) : («parts» i j).val < 256 := by
     rw [values i j]
     exact ((rotatedByte32 (left ^^^ right) kind i).extractLsb' (8 * j.val) 8).isLt
   let pairs (limb : Fin 2) (i : Fin 4) (j : Fin 2) : ZMod p :=
-    parts i ⟨(j.val + 2 * limb.val + 4 - i.val) % 4, Nat.mod_lt _ (by decide)⟩
+    «parts» i ⟨(j.val + 2 * limb.val + 4 - i.val) % 4, Nat.mod_lt _ (by decide)⟩
   have low := Verification.assertion_of_holds holds ⟨24, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds holds ⟨25, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
     selected.1, selected.2] at low high
   have lo := sum_byte_pairs hp (pairs 0) (w 50) (fun i j => small i _)
-    (by dsimp [pairs, parts]; linear_combination low)
+    (by dsimp [pairs, «parts»]; linear_combination low)
   have hi := sum_byte_pairs hp (pairs 1) (w 51) (fun i j => small i _)
-    (by dsimp [pairs, parts]; linear_combination high)
+    (by dsimp [pairs, «parts»]; linear_combination high)
   have limbValue (limb : Fin 2) :
       ∑ i : Fin 4, ((pairs limb i 0).val + 256 * (pairs limb i 1).val) =
         (target.extractLsb' (16 * limb.val) 16).toNat := by

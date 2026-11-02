@@ -6310,3 +6310,21 @@ No native artifact, equation, proof or premise changed.
 The repaired run `41451555538`, at signed commit
 `6031819e9f8e76f4acc351a0b1af8c8bf7ee5dd3`, passes all native setup and
 compiler capture stages. Its cold project source pass is active.
+
+## 2026-11-02: Repair the cold source parse failure
+
+Run `41451555538` passed all native and compiler freshness stages.
+Its cold pass built 2,756 of 4,202 sources. Their guard times sum to
+33,462.48 seconds and peak at 2,198.55 MiB footprint. The next source,
+`Arithmetic.ShiftAssembly`, rejected the reserved binder `parts`.
+The failure took 4.62 seconds and 353.58 MiB footprint.
+Quoting the existing binder preserves its Lean name and theorem.
+The same fix covers reserved binders in two adjacent shift consumers.
+Those exact compiler failures were also found on the separate upgrade branch.
+
+The cache-save condition previously skipped a failed cold pass because the
+full frontend had not started. It now saves progress after either source stage.
+The failed run retained no Lean cache, so the corrected cold run must start again.
+Its module receipts and failure logs remain in the uploaded artifact.
+No target, cached Review claim, model definition or caller premise changes.
+The three focused Lean 4.31 source builds and all 52 generator checks pass.
