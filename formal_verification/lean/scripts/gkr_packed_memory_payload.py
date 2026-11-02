@@ -11,7 +11,7 @@ from gkr_packed_rotate_boundary import preflight
 import gkr_memory_certificate as legacy
 
 ALL_CASES = tuple(stem + mode for stem in STEMS for mode in ('Cached', 'Uncached'))
-CASES = ('AddSubCached', 'AddSubUncached', 'BlakeRoundCached', 'BlakeRoundUncached')
+CASES = ALL_CASES
 
 
 def capture_name(case):

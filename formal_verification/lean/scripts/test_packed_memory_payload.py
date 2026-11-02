@@ -32,10 +32,14 @@ class MemoryPayload(unittest.TestCase):
                 [('Airbender.Proofs.GKRProtocol.MemoryPayloadChecks.' + case + '.Inputs', text), packed.native(case)])
 
     def test_ci_requires_every_adopted_mode(self):
+        import re
         workflow = (packed.LEAN.parents[1] / '.github/workflows/formal-verification.yml').read_text()
-        line = next(line for line in workflow.splitlines() if 'numeric-memory-payload-kernel-controls ' in line)
-        self.assertIn('python3 scripts/check_memory_payload_controls.py', line)
-        self.assertNotIn('--case', line)
+        lines = [line for line in workflow.splitlines() if 'scripts/check_memory_payload_controls.py' in line]
+        self.assertEqual(len(lines), 3)
+        self.assertEqual(sum('--shared-only' in line for line in lines), 1)
+        selected = [case for line in lines for case in re.findall(r'--case (\w+)', line)]
+        self.assertEqual(len(selected), len(set(selected)))
+        self.assertEqual(set(selected), set(packed.CASES))
 
 
 if __name__ == '__main__':
