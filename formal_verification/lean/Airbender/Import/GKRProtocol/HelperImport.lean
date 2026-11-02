@@ -1,4 +1,4 @@
-import Airbender.Proofs.GKRProtocol.HelperProjectionChecks
+import Airbender.Proofs.GKRProtocol.HelperHistoryProjectionChecks
 import Airbender.Import.GKRProtocol.MemoryImport
 
 namespace Airbender.Compiler.HelperImport
@@ -197,10 +197,18 @@ elab_rules : command
       let [low, high] := timestamps.values.toList | throwError "native history timestamp width changed"
       history := history.push (← `(($(← addressSyntax (.BaseLayerMemory low)), $(← addressSyntax (.BaseLayerMemory high)))))
     let historyProjection := mkIdent (name.getId ++ `historyProjection)
+    let readTimestamps := mkIdent (memoryPrefix.getId ++ `readTimestamps)
+    let projectionInputs := mkIdent (memoryPrefix.getId ++ `projectionInputs)
+    let projectionInBank := mkIdent (memoryPrefix.getId ++ `projectionInBank)
     emitData (← `(theorem $historyProjection :
       ((List.range $(quote history.size)).map (fun index =>
         (($bank).address (($memoryPlacement).readTimestamp index ⟨0, by decide⟩),
-         ($bank).address (($memoryPlacement).readTimestamp index ⟨1, by decide⟩)))) = [$history,*] := by decide +kernel))
+         ($bank).address (($memoryPlacement).readTimestamp index ⟨1, by decide⟩)))) = [$history,*] := by
+      have checked := $projectionInBank
+      simp only [WireBank.inputCheck, $projectionInputs:ident, List.flatMap_append,
+        List.all_append, Bool.and_eq_true] at checked
+      change HelperHistoryProjectionChecks.projectedPairs $bank $readTimestamps = $readTimestamps
+      exact HelperHistoryProjectionChecks.projectedPairs_eq $bank $readTimestamps checked.1.1.1))
     let borrows := pair.circuit.aux_layout_data.shuffle_ram_timestamp_comparison_aux_vars
     unless borrows.size == requests.comparisons.size do throwError "source/native timestamp comparison counts differ"
     let borrowTerms ← borrows.mapM fun row => do

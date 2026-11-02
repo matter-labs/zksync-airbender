@@ -5923,3 +5923,63 @@ The dense payload rollout and the remaining implementation stay open.
 Full frontend validation, environment audit, full transitive replay, cold full
 measurements and Linux qualification stay pending for implementation review.
 No whole dense or aggregate import pass is claimed.
+
+## Dense native helper payload captures
+
+BlakeRoundCached and BlakeRoundUncached now use complete helper payload checks.
+Each result covers all 89 original candidates. Complete source bindings keep
+all original bank round trips, base roles, relation banks and agreement witnesses.
+They preserve every coefficient, zero term and term order.
+Every old checked, inBank and roles fact selects the same whole result.
+The original source-query and timestamp reduction proofs remain.
+
+The importer also derives the exact historyProjection equation from the existing
+complete memory input-bank certificate. A generic pair-projection theorem keeps
+every history pair, both limb positions and every address class.
+This closed proof adds no caller premise. It changes no data definition.
+Both complete dense data modules now pass standard 32 MiB replay.
+The former projection replay caps are resolved for this metadata module.
+The other whole layout, borrow, scope and coverage facts stay explicit.
+This step does not claim their separate numeric migration.
+
+All four adopted captures retain 1,826 original declarations.
+Kernel preservation accepts all 1,216 old theorem types.
+All 610 imported Expr values are identical.
+The dense pair alone retains 1,642 declarations, 1,094 theorem types and 548 values.
+All 40 selected source modules and standard 32 MiB replays pass.
+These include 12 direct consumers. They skip no safe dependency.
+All 3,100 focused axiom queries use only the three allowed axioms.
+All 19 payload exact controls pass. The kernel rejects all 19 mutations.
+Three additional history controls pass and reject changed address classes,
+limb order and complete pair coverage. The first history control fixture omitted its bank constructor import.
+The corrected explicit bank fixture passes. Legacy, phase, wrong-fact and opaque
+controls pass. All three Python generator controls pass.
+
+The dense Inputs commands still exceed the default heartbeat budget after the
+structural repairs. The measured cached control stops safely after 18.13 s,
+with a 1,253.52 MiB peak. Only these two complete data reconstruction commands
+use a scoped two-million budget. All new checkers, bindings, certificates and
+four native wrappers use default heartbeats. No header-wide override remains
+in the four adopted wrappers. Both cache modes stay required.
+
+| Guarded phase | Time | Peak physical footprint |
+| --- | ---: | ---: |
+| helper-history-integrated | 82.30 s | 1,679.22 MiB |
+| helper-payload-dense-canonical2 | 202.10 s | 1,679.32 MiB |
+| helper-payload-dense-qualification2 | 8.90 s | 315.55 MiB |
+| helper-payload-dense-consumers | 53.69 s | 886.52 MiB |
+
+All guards clean their owned workers. The two initial pilot source outputs stay
+unchanged. CI requires all four captures and includes history projection controls.
+Source and interface freshness pass. The inventory has 157,916 roots.
+It retains all 156,794 prior roots and every established root.
+The original helper and memory objects remain in the payload baseline.
+Evidence uses helper-history and helper-payload-dense prefixes.
+No cold full-build gain is claimed.
+
+The other 18 helper payload captures stay open. Memory payloads, consumer typing
+and the remaining metadata/header scope also stay open.
+The hourly follow-up stays active. Full frontend validation, environment audit,
+full transitive replay, cold full measurements and Linux qualification did not
+run. They stay pending for implementation review.
+No aggregate import pass is claimed.
