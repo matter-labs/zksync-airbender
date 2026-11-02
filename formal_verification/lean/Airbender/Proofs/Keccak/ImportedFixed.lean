@@ -34,7 +34,7 @@ private theorem divided_key (n : Nat) (hn : n < 65536) :
     omega
   · have rest : n - 256 < 255 * 256 := by omega
     simp only [Column.get?, getFromBlocks, Block.length,
-      if_neg first, Array.size_replicate, if_pos rest]
+      ite_eq_right first, Array.size_replicate, ite_eq_left rest]
     rw [periodic_constant_get _ _ _ rest]
     congr 1
     omega
@@ -56,10 +56,10 @@ private theorem first_get (kind : Fin 3) (n : Nat) (hn : n < 65536) :
   · exact divided_key n hn
   · change (Column.mk #[.periodic 256 0 (Array.range 256)]).get? n = some (n % 256)
     simpa only [Column.get?, Array.toList, getFromBlocks, Block.length,
-      Array.size_range, if_pos hn] using periodic_range_get 256 n hn
+      Array.size_range, ite_eq_left hn] using periodic_range_get 256 n hn
   · change (Column.mk #[.periodic 256 0 (Array.range 256)]).get? n = some (n % 256)
     simpa only [Column.get?, Array.toList, getFromBlocks, Block.length,
-      Array.size_range, if_pos hn] using periodic_range_get 256 n hn
+      Array.size_range, ite_eq_left hn] using periodic_range_get 256 n hn
 
 private theorem second_get (kind : Fin 3) (n : Nat) (hn : n < 65536) :
     (byteData kind).columns[1].get? n =
@@ -67,11 +67,11 @@ private theorem second_get (kind : Fin 3) (n : Nat) (hn : n < 65536) :
   fin_cases kind
   · change (Column.mk #[.periodic 256 0 (Array.range 256)]).get? n = some (n % 256)
     simpa only [Column.get?, Array.toList, getFromBlocks, Block.length,
-      Array.size_range, if_pos hn] using periodic_range_get 256 n hn
+      Array.size_range, ite_eq_left hn] using periodic_range_get 256 n hn
   · exact divided_key n hn
   · change (Column.mk #[.periodic 256 1 (Array.replicate 256 0)]).get? n = some (n / 256)
     simpa only [Column.get?, Array.toList, getFromBlocks, Block.length,
-      Array.size_replicate, if_pos hn, Nat.zero_add] using periodic_constant_get 256 0 n hn
+      Array.size_replicate, ite_eq_left hn, Nat.zero_add] using periodic_constant_get 256 0 n hn
 
 private theorem output_checks (kind : Fin 3) :
     checkBlocks (byteValue kind) 0 (byteData kind).columns[2].blocks.toList = true := by
@@ -160,13 +160,13 @@ private theorem rotation_key_get (n : Nat) (hn : n < 1048576) :
     .affine 1048320 256 1]).get? n = some n
   by_cases first : n < 256
   · simp only [Column.get?, getFromBlocks, Block.length, Array.size_range,
-      Nat.one_mul, if_pos first]
+      Nat.one_mul, ite_eq_left first]
     rw [periodic_range_get 1 n first]
     congr 1
     omega
   · have rest : n - 256 < 1048320 := by omega
     simp only [Column.get?, getFromBlocks, Block.length, Array.size_range,
-      Nat.one_mul, if_neg first, if_pos rest]
+      Nat.one_mul, ite_eq_right first, ite_eq_left rest]
     rw [affine_one_get _ _ _ rest]
     congr 1
     omega
@@ -215,6 +215,8 @@ theorem rotation_region_reference (n : Nat) (hn : n < 1048576) :
 
 theorem zero_row_reference : fixedRow 0 0 = Vector.replicate 8 0 := by decide +kernel
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- Recover the former mathematical characterization without restricting the
     supplied controller or assuming table correspondence. -/
 theorem setup_row_characterization (control : Fin 4096 → Vector Nat 6) (index : Fin 1249281) :

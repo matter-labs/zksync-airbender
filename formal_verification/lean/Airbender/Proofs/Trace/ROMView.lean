@@ -86,6 +86,8 @@ def row (before : Reference.RiscV.Sail.State) (native : Row p) : Row p :=
     split <;> simp [Row.finish, Row.columns, rawPair,
       WordMemory.importedConstraintsTraceColumns, readData]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 @[simp] theorem row_query (before : Reference.RiscV.Sail.State) (native : Row p) :
     (row before native).decoderQuery = native.decoderQuery := by
   rcases native with ⟨family, w⟩
@@ -292,6 +294,8 @@ theorem shadow_ram (address : BitVec 32) :
   change address.toNat / 65536 < 64 ↔ address.toNat < 4194304
   omega
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem seed_cell {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (profile : InitialProfile before cells) {cell : Cell} (member : cell ∈ cells)
     {value : BitVec 32} (read : cell.read before = .ok value before) :

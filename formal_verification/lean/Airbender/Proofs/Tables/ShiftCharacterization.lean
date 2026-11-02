@@ -102,9 +102,9 @@ private theorem reference_assembly (index : Fin 524545) :
         referenceShiftBinopRow index := by
   unfold assembled referenceShiftBinopRow referenceShiftNatRow
   by_cases zero : index.val = 0
-  · simp only [zero, Nat.reduceLT, if_true, zeroReference]
+  · simp only [zero, Nat.reduceLT, ite_true, zeroReference]
   · have not_first : ¬index.val < 1 := by omega
-    simp only [not_first, if_false, zero]
+    simp only [not_first, ite_false, zero]
     rfl
 
 /-- Imported native rows represent the original full-domain mathematical relation. -/

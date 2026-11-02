@@ -23,6 +23,8 @@ The failed table and offline-memory proof modules now compile.
 Their compatibility settings stay local to proof declarations.
 The fixed Shift prefix padding and native rotation proofs also compile.
 Trace, window-count and Keccak call-port proofs compile.
+The Blake2G XOR lookup proof uses shared row bounds.
+Its recursion limit stays unchanged.
 Controller geometry uses a symbolic index before specializing the native row.
 Its recursion and resource limits stay unchanged.
 Definitions and theorem statements stay unchanged.

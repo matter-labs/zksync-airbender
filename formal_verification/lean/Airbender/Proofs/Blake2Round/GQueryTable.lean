@@ -9,6 +9,8 @@ set_option maxHeartbeats 4000000
 def gWidths : Vector Nat 5 := #v[8, 3, 4, 7, 9]
 def gTags : Vector Nat 5 := #v[4, 17, 18, 19, 20]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- Construct only existing fixed rows, using the G artifact's own region offsets.
     The controller remains arbitrary and is never selected by these rows. -/
 theorem g_xor_row (control : Fin 512 → Vector Nat 7) (kind : Fin 5) (a b : Nat)

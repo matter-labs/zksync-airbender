@@ -41,7 +41,7 @@ theorem token_address (layout : Layout) (geometry : Geometry layout) (windows : 
       (parametersFor embed additive weights windows) raw row.val).address =
         (ExternalBoundary.Initialization.cell
           (geometry := geometry.public) (windows.index set, row)).addressCode := by
-  simp only [Leaf.token, addressHi, parametersFor, Windows.at, dif_pos set.isLt,
+  simp only [Leaf.token, addressHi, parametersFor, Windows.at, dite_eq_left set.isLt,
     ExternalBoundary.Initialization.cell, ExternalBoundary.Initialization.address, Trace.Cell.addressCode, Geometry.public,
     address_word layout geometry (windows.index set) row]
 

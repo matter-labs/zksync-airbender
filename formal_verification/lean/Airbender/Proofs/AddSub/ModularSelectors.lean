@@ -13,11 +13,11 @@ theorem native_mask_bit (opcode : Opcode) (rs1 rs2 rd : BitVec 5)
     (nativeData opcode rs1 rs2 rd).mask.testBit (k - 10) =
       decide (k = if rd = 0 then 10 else opcode.selector) := by
   by_cases zero : rd = 0
-  · simp only [nativeData, arithmeticFields, zero, if_true]
+  · simp only [nativeData, arithmeticFields, zero, ite_true]
     rw [show (1 : Nat) = 2 ^ 0 from rfl, Nat.testBit_two_pow]
     have same : (0 = k - 10) ↔ k = 10 := by omega
     simp only [same]
-  · simp only [nativeData, arithmeticFields, zero, if_false]
+  · simp only [nativeData, arithmeticFields, zero, ite_false]
     rw [Nat.testBit_two_pow]
     have bound : 10 ≤ opcode.selector := by cases opcode <;> decide
     have same : (opcode.selector - 10 = k - 10) ↔ k = opcode.selector := by omega

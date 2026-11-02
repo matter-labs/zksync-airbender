@@ -4,6 +4,36 @@ import Mathlib.Tactic.FinCases
 
 namespace Airbender.Blake2G.Proofs
 
+private theorem xor_row_bounds (width tag offset : Nat)
+    (bound : offset < 2 ^ width * 2 ^ width) :
+    (xorRow width tag offset)[0] < 2 ^ width ∧
+    (xorRow width tag offset)[1] < 2 ^ width ∧
+    (xorRow width tag offset)[2] =
+      (xorRow width tag offset)[0] ^^^ (xorRow width tag offset)[1] := by
+  have positive : 0 < 2 ^ width := Nat.pow_pos (by decide)
+  change offset / 2 ^ width < 2 ^ width ∧ offset % 2 ^ width < 2 ^ width ∧ _ = _
+  exact ⟨(Nat.div_lt_iff_lt_mul positive).2 bound, Nat.mod_lt _ positive, rfl⟩
+
+private theorem xor_tags_injective :
+    Function.Injective (fun k : Fin 5 => (#v[4, 17, 18, 19, 20][k] : Nat)) := by
+  decide +kernel
+
+private theorem selected_xor_row (region kind : Fin 5) (offset : Nat)
+    (bound : offset < 2 ^ (#v[8, 3, 4, 7, 9][region]) * 2 ^ (#v[8, 3, 4, 7, 9][region]))
+    (selected : (xorRow (#v[8, 3, 4, 7, 9][region]) (#v[4, 17, 18, 19, 20][region]) offset)[8] =
+      (#v[4, 17, 18, 19, 20][kind])) :
+    (xorRow (#v[8, 3, 4, 7, 9][region]) (#v[4, 17, 18, 19, 20][region]) offset)[0] <
+      2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
+    (xorRow (#v[8, 3, 4, 7, 9][region]) (#v[4, 17, 18, 19, 20][region]) offset)[1] <
+      2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
+    (xorRow (#v[8, 3, 4, 7, 9][region]) (#v[4, 17, 18, 19, 20][region]) offset)[2] =
+      (xorRow (#v[8, 3, 4, 7, 9][region]) (#v[4, 17, 18, 19, 20][region]) offset)[0] ^^^
+      (xorRow (#v[8, 3, 4, 7, 9][region]) (#v[4, 17, 18, 19, 20][region]) offset)[1] := by
+  have tags : (#v[4, 17, 18, 19, 20][region] : Nat) = (#v[4, 17, 18, 19, 20][kind]) := selected
+  have same := xor_tags_injective tags
+  subst kind
+  exact xor_row_bounds _ _ _ bound
+
 private theorem xor_rows {control : Fin 512 → Vector Nat 7} (index : Fin 344896)
     (kind : Fin 5) (selected : (referenceSetupRow control index)[8] = (#v[4, 17, 18, 19, 20][kind])) :
     (referenceSetupRow control index)[0] < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
@@ -11,11 +41,15 @@ private theorem xor_rows {control : Fin 512 → Vector Nat 7} (index : Fin 34489
     (referenceSetupRow control index)[2] =
       (referenceSetupRow control index)[0] ^^^ (referenceSetupRow control index)[1] := by
   have size := index.isLt
-  fin_cases kind <;> unfold referenceSetupRow at selected ⊢
-  all_goals dsimp only at selected ⊢
-  all_goals split_ifs at selected ⊢
-  all_goals simp [xorRow] at selected ⊢
-  all_goals omega
+  unfold referenceSetupRow at selected ⊢
+  dsimp only at selected ⊢
+  split_ifs at selected ⊢
+  · exact selected_xor_row 0 kind index.val (by norm_num; omega) selected
+  · exact selected_xor_row 1 kind (index.val - 65536) (by norm_num; omega) selected
+  · exact selected_xor_row 2 kind (index.val - 65600) (by norm_num; omega) selected
+  · exact selected_xor_row 3 kind (index.val - 65856) (by norm_num; omega) selected
+  · exact selected_xor_row 4 kind (index.val - 82240) (by norm_num; omega) selected
+  · fin_cases kind <;> norm_num at selected
 
 /-- Each selected XOR region in the native static table enforces its chunk bounds
     and exact XOR. This uses table membership, not an assumed circuit result. -/

@@ -25,7 +25,7 @@ theorem deferred_trace (states : Fin 25 → Vector Nat 25)
       · have positive : 0 < n := by omega
         have modRound : n % 25 = n := Nat.mod_eq_of_lt (by omega)
         have modRC : (n - 1) % 24 = n - 1 := Nat.mod_eq_of_lt (by omega)
-        simp only [if_neg zero, iotaState, Fin.val_ofNat, modRound, dif_pos positive,
+        simp only [ite_eq_right zero, iotaState, Fin.val_ofNat, modRound, dite_eq_left positive,
           Fin.getElem_fin, modRC]
   exact prefixResult 24 (by omega)
 

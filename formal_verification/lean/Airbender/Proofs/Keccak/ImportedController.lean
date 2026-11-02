@@ -51,6 +51,8 @@ private def controllerIndex (key : Fin 4096) : Fin 1249281 :=
     have size := key.isLt
     omega⟩
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- The concrete lookup consumer uses exactly the imported native controller
     row at the exported region offset. -/
 theorem controller_setup_row (key : Fin 4096) :

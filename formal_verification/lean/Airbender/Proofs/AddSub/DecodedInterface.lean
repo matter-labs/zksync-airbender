@@ -55,7 +55,7 @@ theorem reference_interface (input : Input)
     · have nonzero : (.Regidx rd : SailRV32.regidx) ≠ zeroRegister := by
         simpa [zeroRegister] using zero
       dsimp only [Preprocessing]
-      rw [if_neg nonzero]
+      rw [ite_eq_right nonzero]
       cases opcode
       · simpa [arithmeticData, arithmeticFields, zero, Word.ofBitVec] using immediate
       · exact zeroRight (by simp [arithmeticData, arithmeticFields, zero])

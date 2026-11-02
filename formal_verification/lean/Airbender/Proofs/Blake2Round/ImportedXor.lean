@@ -38,6 +38,8 @@ set_option Elab.async false
 set_option maxRecDepth 131072
 set_option maxHeartbeats 4000000
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- All physical imported rows have the checked native mathematical meaning. -/
 theorem setup_row_characterization (index : Fin 606208) :
     setupRow index = referenceSetupRow index := by

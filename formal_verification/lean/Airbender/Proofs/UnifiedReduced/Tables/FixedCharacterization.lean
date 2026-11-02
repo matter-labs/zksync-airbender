@@ -64,6 +64,8 @@ private theorem binary_region (kind : Fin 7) (n : Nat) (bound : n < (shiftData k
   rw [imported_binary_region kind n (by rw [extent]; exact bound), ordinary_tag kind n bound]
   fin_cases kind <;> rfl
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- The original binary proof interface follows from the actual unified regions. -/
 theorem binaryRow_eq_reference (index : Fin 524545) :
     binaryRow index = referenceBinaryRow index := by
@@ -115,6 +117,8 @@ theorem rotateRow_eq_reference (index : Fin 262144) :
   have second : index.val % 65536 % 256 = index.val % 256 := by omega
   rw [first, second, rotation_lookup mode]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- All fixed contents are imported; the old relations are proved characterizations. -/
 theorem fixedRow_eq_reference (index : Fin 1048961) :
     fixedRow index = referenceFixedRow index := by
