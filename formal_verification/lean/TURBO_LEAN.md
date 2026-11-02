@@ -11,9 +11,12 @@ All 52 source generator checks pass.
 The Clean and lean-sail reference revisions stay unchanged.
 The hash-checked Clean compatibility patches apply.
 Stock Lean builds the numeric query-frame checker and its strict importer.
+The complete cached AddSub query-frame certificate also builds.
+This includes exact source bindings and the original semantic finalizer.
 The port fixes proof reductions and deprecated theorem names.
 The Clean patches limit elaborator compatibility settings to affected proofs.
 They preserve reference definitions and theorem statements.
+Library options disable the new `defProp` style warning for shared proof definitions.
 The full proof port remains unqualified.
 
 Turbo-lean is pinned to `2896cfd092758b8d0fc9977502dc036b0ab79921`.

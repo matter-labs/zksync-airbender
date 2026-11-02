@@ -25,9 +25,12 @@ Dependency resolution and the existing Clean compatibility patches pass.
 All 52 source generator checks pass.
 The real `FiniteGridChecks` source compiles with stock Lean 4.35.
 The numeric query-frame checker and strict importer compile with stock Lean 4.35.
+The complete cached AddSub query-frame certificate also compiles.
+Its exact source bindings and original semantic finalizer pass.
 Their dependency builds include the pinned Clean field, vector, channel, equality
 and offline-memory proofs. Hash checks protect all reference patches.
 Proof reductions and theorem-name updates leave statements unchanged.
+Library options disable the new `defProp` style warning for shared proof definitions.
 The pinned turbo tool passes `cargo check` and its release build.
 An exact core-only source copy passes stock Lean and the standard turbo kernel.
 The repeat turbo check returns a checked theorem cache hit.

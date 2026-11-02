@@ -19,13 +19,13 @@ theorem allFin_eq (bound : Nat) (predicate : Fin bound → Bool) :
     apply List.all_eq_true.mpr
     intro index _
     have item := List.all_eq_true.mp checked index.val (List.mem_range.mpr index.isLt)
-    simpa only [dif_pos index.isLt] using item
+    simpa only [dite_eq_left index.isLt] using item
   · intro checked
     apply List.all_eq_true.mpr
     intro index member
     have inside := List.mem_range.mp member
     have item := List.all_eq_true.mp checked ⟨index, inside⟩ (List.mem_finRange _)
-    simpa only [dif_pos inside] using item
+    simpa only [dite_eq_left inside] using item
 
 def translationCheck {n m : Nat} {F : Type} [CommRing F] [DecidableEq F] [BEq F] [LawfulBEq F]
     (translation : Translation n m F) (certificate : Certificate translation) : Bool :=

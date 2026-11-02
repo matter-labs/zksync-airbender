@@ -80,7 +80,7 @@ theorem product_inputs (p inputs : Nat) (computed : Nat → Data) (monomial : Li
       intro inside
       simp only [List.all_cons, Bool.and_eq_true, decide_eq_true_eq] at inside
       rw [List.foldr_cons, ih inside.2]
-      simp only [initial, if_pos inside.1, oneMod,
+      simp only [initial, ite_eq_left inside.1, oneMod,
         multiply, List.flatMap_cons, List.flatMap_nil, List.map_cons, List.map_nil,
         Nat.one_mul, List.append_nil, List.singleton_append]
 

@@ -24,6 +24,8 @@ srcDir = "generated/sail-rv32"
 
 [[lean_lib]]
 name = "Airbender"
+# Keep the existing shared proof-result definitions. This is a style option.
+leanOptions.weak.linter.defProp = false
 # Kernel comparison of the complete source literals needs this virtual stack.
 # The verification guard still caps physical memory and bounded resident memory.
 moreLeanArgs = ["--tstack=2097152"]
@@ -396,6 +398,7 @@ text = true
 # their own real input dependencies; ordinary circuit proofs keep theirs.
 [[lean_lib]]
 name = "GKRCompiler"
+leanOptions.weak.linter.defProp = false
 roots = ["Airbender.Proofs.GKRCompiler", "Airbender.Import.GKRCompiler", "Airbender.Import.Compiler.Arithmetic", "Airbender.Import.Compiler.ArithmeticInstances"]
 globs = ["Airbender.Proofs.GKRCompiler", "Airbender.Import.GKRCompiler.+", "Airbender.Import.Compiler.Arithmetic.+", "Airbender.Import.Compiler.ArithmeticInstances"]
 needs = ["gkrAddSubCachedPair", "gkrAddSubCachedIdentity", "gkrJumpBranchCachedPair", "gkrJumpBranchCachedIdentity", "gkrMulDivCachedPair", "gkrMulDivCachedIdentity", "gkrShiftBinopCachedPair", "gkrShiftBinopCachedIdentity", "gkrWordMemoryCachedPair", "gkrWordMemoryCachedIdentity", "gkrSubwordMemoryCachedPair", "gkrSubwordMemoryCachedIdentity", "gkrUnifiedCachedPair", "gkrUnifiedCachedIdentity", "gkrBigintCachedPair", "gkrBigintCachedIdentity", "gkrBlakeGCachedPair", "gkrBlakeGCachedIdentity", "gkrBlakeRoundCachedPair", "gkrBlakeRoundCachedIdentity", "gkrKeccakCachedPair", "gkrKeccakCachedIdentity"]
@@ -404,6 +407,7 @@ needs = ["gkrAddSubCachedPair", "gkrAddSubCachedIdentity", "gkrJumpBranchCachedP
 # their own real input dependencies; ordinary circuit proofs keep theirs.
 [[lean_lib]]
 name = "GKRProtocol"
+leanOptions.weak.linter.defProp = false
 roots = ["Airbender.Proofs.GKRProtocol", "Airbender.Import.GKRProtocol", "Airbender.Import.Compiler.Rows"]
 globs = ["Airbender.Proofs.GKRProtocol", "Airbender.Import.GKRProtocol.+", "Airbender.Import.Compiler.Rows.+"]
 needs = ["gkrAddSubCachedPair", "gkrJumpBranchCachedPair", "gkrMulDivCachedPair", "gkrShiftBinopCachedPair", "gkrWordMemoryCachedPair", "gkrSubwordMemoryCachedPair", "gkrUnifiedCachedPair", "gkrBigintCachedPair", "gkrBlakeGCachedPair", "gkrBlakeRoundCachedPair", "gkrKeccakCachedPair", "compilerSourceAddSubCached", "compilerSourceJumpBranchCached", "compilerSourceMulDivCached", "compilerSourceShiftBinopCached", "compilerSourceWordMemoryCached", "compilerSourceSubwordMemoryCached", "compilerSourceUnifiedCached", "compilerSourceBigintCached", "compilerSourceBlakeGCached", "compilerSourceBlakeRoundCached", "compilerSourceKeccakCached", "compilerLookupAddSubCached", "compilerLookupJumpBranchCached", "compilerLookupMulDivCached", "compilerLookupShiftBinopCached", "compilerLookupWordMemoryCached", "compilerLookupSubwordMemoryCached", "compilerLookupUnifiedCached", "compilerLookupBigintCached", "compilerLookupBlakeGCached", "compilerLookupBlakeRoundCached", "compilerLookupKeccakCached"]

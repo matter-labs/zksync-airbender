@@ -119,8 +119,8 @@ theorem check_sound [NeZero p] (data : Capture) (coordinates : List (Fin n))
     coordinates.Nodup ∧ erasureCheck coordinates arithmetic = true ∧
       fields.all (fun polynomial => Airbender.Compiler.equal (substitute (erasurePolynomials coordinates) polynomial) polynomial) = true := by
   rw [binding] at checked
-  simp only [check, ofTyped, Bool.and_eq_true, decide_eq_true_eq] at checked
-  refine ⟨checked.1.1.of_map, ?_, ?_⟩
+  simp only [check, ofTyped, Bool.and_eq_true] at checked
+  refine ⟨(of_decide_eq_true checked.1.1).of_map, ?_, ?_⟩
   · simpa only [List.all_map, Function.comp_def, arithmetic_encode, erasureCheck] using checked.1.2
   · simpa only [List.all_map, Function.comp_def, fields_encode] using checked.2
 

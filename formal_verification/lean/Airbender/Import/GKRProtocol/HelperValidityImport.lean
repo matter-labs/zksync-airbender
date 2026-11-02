@@ -139,13 +139,13 @@ elab_rules : command
             (List.all_eq_true.mp $protectedChecked field member) values
         · rfl
       · intro active pair member
-        simp only [$normalized:ident, inactiveHistory, if_neg active]
+        simp only [$normalized:ident, inactiveHistory, ite_eq_right active]
       · intro inactive pair member
         have lowMember : pair.1.low ∈ $historyFields :=
           List.mem_flatMap.mpr ⟨pair, member, by simp⟩
         have highMember : pair.1.high ∈ $historyFields :=
           List.mem_flatMap.mpr ⟨pair, member, by simp⟩
-        simp only [$normalized:ident, inactiveHistory, if_pos inactive]
+        simp only [$normalized:ident, inactiveHistory, ite_eq_left inactive]
         exact ⟨$historyZero values pair.1.low lowMember, $historyZero values pair.1.high highMember⟩))
     let membership := fieldName name "helper_membership"
     elabCommand (← `(theorem $membership (values : Fin $(quote arityNumber.getNat) → Source.BaseField)

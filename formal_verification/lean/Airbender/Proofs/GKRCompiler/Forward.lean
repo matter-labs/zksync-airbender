@@ -12,7 +12,7 @@ def initialExtension [CommRing F] (bound : n ≤ m) (computed : Fin (m - n) → 
 
 theorem initialExtension_at [CommRing F] (bound : n ≤ m) (computed : Fin (m - n) → Polynomial n F)
     (index : Fin n) : initialExtension bound computed (index.castLE bound) = atom index := by
-  simp only [initialExtension, Fin.val_castLE, dif_pos index.isLt]
+  simp only [initialExtension, Fin.val_castLE, dite_eq_left index.isLt]
 
 theorem initialExtension_projection [CommRing F] [DecidableEq F] (bound : n ≤ m)
     (computed : Fin (m - n) → Polynomial n F) (index : Fin n) :

@@ -183,7 +183,7 @@ elab_rules : command
             change (if bound : index < $(quote sourceCount) then
               (⟨index, Nat.lt_of_lt_of_le bound (by decide)⟩ : Fin $(quote arity))
               else ⟨0, by decide⟩).val = index
-            simp only [dif_pos inside]
+            simp only [dite_eq_left inside]
           change (($actualBank)[(($memoryPlacement).original index).val]?).getD
             (.BaseLayerWitness 0) = _
           rw [coordinate]

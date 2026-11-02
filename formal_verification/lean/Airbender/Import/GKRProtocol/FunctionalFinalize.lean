@@ -74,7 +74,7 @@ elab_rules : command
       (baseValue : GKRAddress → Source.BaseField) (address : GKRAddress) (role : $isBase address = true) :
       $canonical hom challenges gamma baseValue address = hom (baseValue address) := by
       change (if $isBase address then hom (baseValue address) else _) = _
-      exact if_pos role))
+      exact ite_eq_left role))
     let artifact := fieldName baseName "artifact"
     let bank := fieldName baseName "bank"
     let mut affineProofs := #[]

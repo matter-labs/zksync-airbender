@@ -94,7 +94,6 @@ theorem ofTransport_check (field : Source.HelperField)
   simp only [transportCheck, ofTransport, Source.HelperField.transportCheck,
     List.all_flatMap, List.all_map, Function.comp_def,
     NumericWorkerPortChecks.addressCode_eq, exact_polynomial_eq]
-  rfl
 
 def ofTyped (history : List (Fin n)) (profile : Source.HelperProfile)
     (sourcePlacement : Source.HelperPlacement n) (slots : Fin k → Fin n)

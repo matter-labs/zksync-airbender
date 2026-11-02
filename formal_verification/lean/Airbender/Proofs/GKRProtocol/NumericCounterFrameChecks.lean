@@ -48,10 +48,10 @@ theorem check_sound (data : Capture) (sourceCount : Nat)
       source.all (erasureUntouched (List.ofFn slots)) = true ∧
       helpers.all (erasureUntouched (List.ofFn slots)) = true := by
   rw [binding] at checked
-  simp only [check, ofTyped, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at checked
+  simp only [check, ofTyped, Bool.and_eq_true, beq_iff_eq] at checked
   rcases checked with ⟨⟨⟨⟨⟨columnsSame, unique⟩, fresh⟩, roundTrip⟩, sourceCheck⟩, helperCheck⟩
   refine ⟨columnsSame, ?_, ?_, ?_, ?_, ?_⟩
-  · exact List.nodup_ofFn.mp unique.of_map
+  · exact List.nodup_ofFn.mp (of_decide_eq_true unique).of_map
   · intro index
     have item := List.all_eq_true.mp fresh (slots index).val
       (List.mem_map.mpr ⟨slots index, List.mem_ofFn.mpr ⟨index, rfl⟩, rfl⟩)

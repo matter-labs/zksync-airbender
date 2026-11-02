@@ -53,7 +53,7 @@ theorem forwardEqual_eq (p : Nat) (data : Capture inputs)
           split_ifs with checked
           · have product : fastMultiply p factor (data.sourceRows.getD index []) = data.sourceRows.getD index [] := by
               unfold fastMultiply
-              rw [if_pos checked]
+              rw [ite_eq_left checked]
             simp only [combine, List.foldr_cons, List.foldr_nil, product, List.append_nil]
             rw [normalized]
             rfl
@@ -198,7 +198,7 @@ theorem translation_valid [NeZero p] (addresses : List GKRAddress)
   refine ⟨?_, ?_, ?_⟩
   · intro wire
     have same : encode (artifact.extension (artifact.projection wire)) = encode (atom (F := ZMod p) wire) := by
-      rw [binding.extension, binding.projection, Capture.extension, initial, if_pos wire.isLt, encode_atom]
+      rw [binding.extension, binding.projection, Capture.extension, initial, ite_eq_left wire.isLt, encode_atom]
     rw [← equal_encode]
     change NumericPolynomialChecks.equal p (encode (artifact.extension (artifact.projection wire)))
       (encode (atom (F := ZMod p) wire)) = true
