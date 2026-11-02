@@ -40,4 +40,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          xargs -0 -r -n 64 "$RUNNER_TEMP/typos" --config ./_typos.toml -- < "$RUNNER_TEMP/typos-files"
+          xargs -0 -r -n 64 "$RUNNER_TEMP/typos" --force-exclude --config ./_typos.toml -- < "$RUNNER_TEMP/typos-files"
