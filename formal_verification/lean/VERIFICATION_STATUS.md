@@ -22,13 +22,17 @@ Full official validation is required before adopting the upgrade.
 ## Completed focused checks
 
 Dependency resolution and the existing Clean compatibility patches pass.
-All 53 generator checks pass.
+All 54 generator checks pass.
 The real `FiniteGridChecks` source compiles with stock Lean 4.35.
 The numeric query-frame checker and strict importer compile with stock Lean 4.35.
 The complete cached AddSub query-frame certificate also compiles.
 Its exact source bindings and original semantic finalizer pass.
 All 11 cached native witness consumers also compile.
 Their exact source bindings and semantic finalizers pass.
+The pinned Sail interpreter and RV32 snapshot compile.
+The compatibility patch annotates the existing natural-number choice binder.
+A local syntax adapter uses Sail's original assertion and monad lift.
+The original compiler-output hash and all 13 instruction fingerprints stay unchanged.
 Their dependency builds include the pinned Clean field, vector, channel, equality
 and offline-memory proofs. Hash checks protect all reference patches.
 Proof reductions and theorem-name updates leave statements unchanged.
@@ -51,7 +55,7 @@ The launcher now clears inherited compiler-simplification exceptions too.
 The user approved host execution of the pinned tool after the focused review.
 The hardened smoke passes with the recorded pinned binary.
 The time and memory guard does not provide OS isolation.
-The remaining proof port needs focused Sail and machine source builds.
+The remaining proof port needs Sail proof and machine source builds.
 Only `propext`, `Classical.choice` and `Quot.sound` are permitted.
 The official kernel remains the acceptance gate.
 

@@ -18,6 +18,9 @@ open ArchSem
 
 namespace Functions
 
+local macro (priority := high) "assert " condition:term:max message:term:max : doElem =>
+  `(doElem| _root_.liftM (_root_.Sail.ArchSem.PreSail.assert (ue := _root_.SailRV32.exception) $condition $message))
+
 variable [MemoryPlatform exception]
 
 abbrev plat_term_write {m : Type → Type} [MonadLift SailM m] (byte : BitVec 8) : m Unit :=

@@ -117,6 +117,7 @@ GENERATORS = (
     ('tables', 'gkr_unified_prefix_assembly.py', ()),
     ('captures', 'gkr_materialized_instances.py', ()),
     ('captures', 'gkr_materialized_witness_instances.py', ()),
+    ('sail', 'generate_sail.py', ()),
 )
 
 WRITE_BY_DEFAULT = ('generate_native_lookup_requests.py', 'gkr_packed_helper_payload.py', 'gkr_packed_helper_validity.py', 'gkr_packed_memory_payload.py', 'gkr_packed_worker_ports.py', 'gkr_unified_chunk_lengths.py', 'gkr_unified_equal_chunks.py', 'gkr_unified_prefix.py', 'gkr_unified_prefix_assembly.py', 'gkr_unified_special_chunks.py', 'gkr_worker_ports_instances.py')

@@ -7,13 +7,17 @@ PR #585 keeps Lean 4.31 and its separate CI validation.
 ## Current state
 
 Lean and Mathlib resolve at version 4.35.0.
-All 53 generator checks pass.
+All 54 generator checks pass.
 The Clean and lean-sail reference revisions stay unchanged.
 The hash-checked Clean compatibility patches apply.
 Stock Lean builds the numeric query-frame checker and its strict importer.
 The complete cached AddSub query-frame certificate also builds.
 All 11 cached native witness consumers also build.
 Their exact source bindings and original semantic finalizers pass.
+The pinned Sail interpreter and RV32 snapshot compile.
+The compatibility patch annotates the existing natural-number choice binder.
+A local syntax adapter uses Sail's original assertion and monad lift.
+The original compiler-output hash and all 13 instruction fingerprints stay unchanged.
 The port fixes proof reductions and deprecated theorem names.
 The Clean patches limit elaborator compatibility settings to affected proofs.
 They preserve reference definitions and theorem statements.

@@ -52,7 +52,7 @@
   "platform_parameterization": {
     "original_functions_sha256": "2b0d862a9feff63d32fefd0a1f967bd4c75485601387cb8e4b258a73bd2bd492",
     "insertion_marker": "namespace Functions\n\n",
-    "inserted_header": "variable [MemoryPlatform exception]\n\nabbrev plat_term_write {m : Type \u2192 Type} [MonadLift SailM m] (byte : BitVec 8) : m Unit :=\n  liftM (Sail.ArchSem.plat_term_write (ue := exception) byte)\n\nabbrev load_reservation {m : Type \u2192 Type} [MonadLift SailM m]\n    (address : BitVec Arch.addr_size) (width : Nat) : m Unit :=\n  liftM (Sail.ArchSem.load_reservation (ue := exception) address width)\n\nabbrev match_reservation (address : BitVec Arch.addr_size) : Bool :=\n  Sail.ArchSem.match_reservation (ue := exception) address\n\n",
+    "inserted_header": "local macro (priority := high) \"assert \" condition:term:max message:term:max : doElem =>\n  `(doElem| _root_.liftM (_root_.Sail.ArchSem.PreSail.assert (ue := _root_.SailRV32.exception) $condition $message))\n\nvariable [MemoryPlatform exception]\n\nabbrev plat_term_write {m : Type \u2192 Type} [MonadLift SailM m] (byte : BitVec 8) : m Unit :=\n  liftM (Sail.ArchSem.plat_term_write (ue := exception) byte)\n\nabbrev load_reservation {m : Type \u2192 Type} [MonadLift SailM m]\n    (address : BitVec Arch.addr_size) (width : Nat) : m Unit :=\n  liftM (Sail.ArchSem.load_reservation (ue := exception) address width)\n\nabbrev match_reservation (address : BitVec Arch.addr_size) : Bool :=\n  Sail.ArchSem.match_reservation (ue := exception) address\n\n",
     "externs": [
       "plat_term_write",
       "load_reservation",
@@ -103,6 +103,6 @@
     "SailRV32/FakeReal.lean": "7fd4dd3710716205f9beaa21cddfdccaa5d77529bb2af5f72b7f9f023fb6c2a9",
     "SailRV32/SailPlatform.lean": "c7c51fa3539ff8272ab8a633bc9dec8086f2439279053f77124cb9c9d5e89524",
     "SailRV32/SpecializationArchSem.lean": "ca8477a86fc89204ffd71cbba42a00c0d3805b7953caea55b26cc5f800eb73b5",
-    "SailRV32.lean": "c42ebaf342da5f066a173d3a4647e40f151caaa880c2b6a561ead32f0b5fd807"
+    "SailRV32.lean": "b5c2258b243bff5c1689ce8ca3e0a464816bc5925becb63afaae00bcf2d1250e"
   }
 }

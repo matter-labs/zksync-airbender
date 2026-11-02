@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply hash-guarded compatibility fixes to the pinned Clean source."""
+"""Apply hash-guarded compatibility fixes to the pinned reference sources."""
 
 from hashlib import sha256
 from pathlib import Path
@@ -12,25 +12,25 @@ if not (clean / "Utils/Bitwise.lean").exists():
     subprocess.run(["lake", "build", "Airbender.Import.Parse"], cwd=root, check=True)
 
 
-def prepare(relative, expected_hash, replacements):
+def prepare(relative, expected_hash, replacements, *, directory=clean, label="Clean"):
     """Accept only the pinned source or its known compatibility patches."""
-    target = clean / relative
+    target = directory / relative
     source = target.read_bytes()
     original = source
     for old, new in reversed(replacements):
         original = original.replace(new, old)
     if sha256(original).hexdigest() != expected_hash:
-        raise SystemExit(f"Clean {relative} differs from the pinned source; refusing to overwrite it")
+        raise SystemExit(f"{label} {relative} differs from the pinned source; refusing to overwrite it")
     patched = original
     for old, new in replacements:
         if old not in patched:
-            raise SystemExit(f"Clean {relative}: compatibility patch no longer matches")
+            raise SystemExit(f"{label} {relative}: compatibility patch no longer matches")
         patched = patched.replace(old, new)
     if source != patched:
         target.write_bytes(patched)
-        print(f"Clean: prepared {relative}; pinned source hash checked")
+        print(f"{label}: prepared {relative}; pinned source hash checked")
     else:
-        print(f"Clean: {relative} already prepared; pinned source hash checked")
+        print(f"{label}: {relative} already prepared; pinned source hash checked")
 
 
 def factory(name):
@@ -176,3 +176,11 @@ prepare("Utils/OfflineMemory.lean",
             b'/--\n  This is the main theorem of this file.\n\n  A list of timestamp-sorted memory accesses is consistent if and only if there exists a permutation of the list\n  that is address-sorted, and such that the offline consistency check holds.\n-/\ntheorem MemoryAccessList.isConsistentOnline_iff_isConsistentOffline\n',
         )
     ])
+
+# Annotate the existing natural-number choice binder for the newer elaborator.
+# This preserves the interpreter branches and the pinned Sail source revision.
+prepare("ArchSemSequential.lean",
+    "2b2ec493d1418d045f68403c86c6ca26304e88fa66357ae9f2477b3b340b7b67", [
+        (b"| .inr choice => if h : (0 : Nat) < choice",
+         b"| .inr (choice : Nat) => if h : (0 : Nat) < choice"),
+    ], directory=root / ".lake/packages/lean-sail/Sail", label="Sail")

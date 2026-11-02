@@ -21,7 +21,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Additional binders for unresolved platform externs, not instruction bodies.
 # The specialized aliases also lift native effects into Sail's early-return monad.
-MEMORY_PLATFORM_HEADER = """variable [MemoryPlatform exception]
+# The local syntax uses Sail's original assertion and monad lift.
+MEMORY_PLATFORM_HEADER = """local macro (priority := high) "assert " condition:term:max message:term:max : doElem =>
+  `(doElem| _root_.liftM (_root_.Sail.ArchSem.PreSail.assert (ue := _root_.SailRV32.exception) $condition $message))
+
+variable [MemoryPlatform exception]
 
 abbrev plat_term_write {m : Type → Type} [MonadLift SailM m] (byte : BitVec 8) : m Unit :=
   liftM (Sail.ArchSem.plat_term_write (ue := exception) byte)
@@ -134,12 +138,22 @@ def extract_base_pc(model):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--compiler-source", required=True, type=Path)
-    parser.add_argument("--model-source", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path,
+    parser.add_argument("--check", action="store_true", help="Check the retained snapshot without regeneration")
+    parser.add_argument("--compiler-source", type=Path)
+    parser.add_argument("--model-source", type=Path)
+    parser.add_argument("--output", type=Path,
                         help="Fresh output directory; the checked-in snapshot is never overwritten")
     parser.add_argument("--smt-cache", type=Path, help="Optional reusable Sail solver cache")
     args = parser.parse_args()
+    if args.check:
+        if any(value is not None for value in
+               (args.compiler_source, args.model_source, args.output, args.smt_cache)):
+            parser.error("--check accepts no generation inputs")
+        from check_sail_reference import check
+        print(json.dumps(check(), sort_keys=True))
+        return
+    if any(value is None for value in (args.compiler_source, args.model_source, args.output)):
+        parser.error("generation requires --compiler-source, --model-source and --output")
     compiler = args.compiler_source.resolve()
     model = args.model_source.resolve()
     output = args.output.resolve()
