@@ -38,6 +38,42 @@ def synthesis(pair, snapshot, lookup_certificate):
             "setup_leaf": setup, "group": lookup["groups"]["LookupTimestamps"]}
 
 
+
+def module(name, case):
+    root = LEAN / "artifacts/compiler"
+    result = synthesis(json.loads((root / (name + ".json")).read_text()),
+                       json.loads((root / (name + "-source.json")).read_text()),
+                       json.loads((root / "lookup" / (name + ".json")).read_text()))
+    module = "Airbender.Proofs.GKRProtocol.HelperNative." + case
+    selectors = json.dumps(json.dumps(result, separators=(",", ":")))
+    content = ("import Airbender.Import.GKRProtocol.HelperImport\n"
+               f"import Airbender.Proofs.GKRProtocol.MemoryNative.{case}\n"
+               f"import Airbender.Proofs.GKRProtocol.LookupNative.{case}\n\n"
+               f"namespace Airbender.Compiler.HelperNative.{case}\n"
+               "open Airbender Airbender.Compiler\n"
+               "set_option warningAsError true\n"
+               "set_option Elab.async false\n"
+               "set_option maxRecDepth 32768\n"
+               "set_option maxHeartbeats 4000000\n\n"
+               f'import_source_helpers native from "artifacts/compiler/{name}.json"\n'
+               f'  source "artifacts/compiler/{name}-source.json"\n'
+               f"  selectors {selectors}\n"
+               f"  memory_model Airbender.Compiler.MemoryNative.{case}.native\n"
+               f"  lookup_model Airbender.Compiler.LookupNative.{case}.native\n"
+               f"  typing Airbender.Compiler.ConsumerNative.{case}.native.typing\n\n"
+               f"end Airbender.Compiler.HelperNative.{case}\n")
+    return module, content
+
+
+def modules(name, case):
+    from gkr_packed_helper_payload import CASES, inputs, native
+    if case in CASES:
+        yield "Airbender.Proofs.GKRProtocol.HelperPayloadChecks." + case + ".Inputs", inputs(case)
+        yield native(case)
+    else:
+        yield module(name, case)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--family", choices=FAMILIES, action="append")
@@ -54,33 +90,18 @@ def main():
             result = synthesis(json.loads((root / (name + ".json")).read_text()),
                                json.loads((root / (name + "-source.json")).read_text()),
                                json.loads((root / "lookup" / (name + ".json")).read_text()))
-            module = "Airbender.Proofs.GKRProtocol.HelperNative." + case
-            selectors = json.dumps(json.dumps(result, separators=(",", ":")))
-            content = ("import Airbender.Import.GKRProtocol.HelperImport\n"
-                       f"import Airbender.Proofs.GKRProtocol.MemoryNative.{case}\n"
-                       f"import Airbender.Proofs.GKRProtocol.LookupNative.{case}\n\n"
-                       f"namespace Airbender.Compiler.HelperNative.{case}\n"
-                       "open Airbender Airbender.Compiler\n"
-                       "set_option warningAsError true\n"
-                       "set_option Elab.async false\n"
-                       "set_option maxRecDepth 32768\n"
-                       "set_option maxHeartbeats 4000000\n\n"
-                       f'import_source_helpers native from "artifacts/compiler/{name}.json"\n'
-                       f'  source "artifacts/compiler/{name}-source.json"\n'
-                       f"  selectors {selectors}\n"
-                       f"  memory_model Airbender.Compiler.MemoryNative.{case}.native\n"
-                       f"  lookup_model Airbender.Compiler.LookupNative.{case}.native\n"
-                       f"  typing Airbender.Compiler.ConsumerNative.{case}.native.typing\n\n"
-                       f"end Airbender.Compiler.HelperNative.{case}\n")
-            destination = LEAN / "Airbender/Proofs/GKRProtocol/HelperNative" / (case + ".lean")
-            if args.check and (not destination.exists() or destination.read_text() != content):
-                raise ValueError(f"source helper selectors changed: {case}")
-            if args.write and (not destination.exists() or destination.read_text() != content):
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                destination.write_text(content)
+            for generated_module, content in modules(name, case):
+                destination = LEAN / (generated_module.replace(".", "/") + ".lean")
+                if args.check and (not destination.exists() or destination.read_text() != content):
+                    raise ValueError(f"source helper selectors changed: {case}")
+                if args.write and (not destination.exists() or destination.read_text() != content):
+                    from gkr_packed_rotate_boundary import preflight
+                    preflight([(generated_module, content)])
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    destination.write_text(content)
             print(name, len(result["operands"]), "timestamp helper queries", flush=True)
             if args.build:
-                subprocess.run(["lake", "--no-cache", "build", "+" + module + ":olean"],
+                subprocess.run(["lake", "--no-cache", "build", "+Airbender.Proofs.GKRProtocol.HelperNative." + case + ":olean"],
                                cwd=LEAN, env=dict(os.environ, LEAN_NUM_THREADS="1"), check=True)
 
 
