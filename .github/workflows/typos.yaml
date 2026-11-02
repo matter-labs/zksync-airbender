@@ -21,16 +21,23 @@ jobs:
         run: |
           set -euo pipefail
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          CHANGED_FILES="$(
-            git diff --name-only --diff-filter=d "$BASE_SHA"...HEAD \
-              | grep -Ev '(\.json|\.lock|\.bin|\.elf|\.pdf|\.png|\.text|\.bak|\.svg)$|^SECURITY\.md$' \
-              | tr '\n' ' '
-          )"
-          echo "files=$CHANGED_FILES" >> "$GITHUB_OUTPUT"
+          git diff --name-only --diff-filter=d -z "$BASE_SHA"...HEAD \
+            | python3 -c 'import sys; paths = [p for p in sys.stdin.buffer.read().split(b"\0") if p and p != b"SECURITY.md" and not p.endswith((b".json", b".lock", b".bin", b".elf", b".pdf", b".png", b".text", b".bak", b".svg"))]; sys.stdout.buffer.write(b"\0".join(paths) + (b"\0" if paths else b""))' \
+            > "$RUNNER_TEMP/typos-files"
+          if [[ -s "$RUNNER_TEMP/typos-files" ]]; then
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Check for typos
-        if: steps.changed.outputs.files != ''
+      - name: Install typos and check its configuration
+        if: steps.changed.outputs.any == 'true'
         uses: crate-ci/typos@v1
         with:
-          files: ${{ steps.changed.outputs.files }}
+          files: _typos.toml
           config: ./_typos.toml
+
+      - name: Check changed files in batches
+        if: steps.changed.outputs.any == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          xargs -0 -r -n 64 "$RUNNER_TEMP/typos" --config ./_typos.toml -- < "$RUNNER_TEMP/typos-files"
