@@ -1,0 +1,16 @@
+import Airbender.Proofs.GKRProtocol.HelperValidityChecks.JumpBranchUncached.Inputs
+import Airbender.Proofs.GKRProtocol.NumericHelperValidityChecks
+
+namespace Airbender.Compiler.HelperValidityChecks.JumpBranchUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+noncomputable def original := NumericHelperValidityChecks.ofTyped Airbender.Compiler.HistoryErasureNative.JumpBranchUncached.native.historyCells
+  Airbender.Compiler.HelperValidityNative.JumpBranchUncached.native.profile
+  Airbender.Compiler.FullArithmeticNative.JumpBranchUncached.native.helperPlacement Airbender.Compiler.SourceContractNative.JumpBranchUncached.native.slots
+  Airbender.Compiler.HelperNative.JumpBranchUncached.native.fields Airbender.Compiler.HelperNative.JumpBranchUncached.native.placement
+  Airbender.Compiler.FullArithmeticNative.JumpBranchUncached.native.inputBank Airbender.Compiler.MemoryNative.JumpBranchUncached.native.bank
+
+end Airbender.Compiler.HelperValidityChecks.JumpBranchUncached

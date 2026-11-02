@@ -388,7 +388,9 @@ jobs:
           fv numeric-helper-validity-captures python3 scripts/gkr_packed_helper_validity.py --check
           fv numeric-helper-validity-interface python3 scripts/gkr_helper_validity_instances.py --check
           fv numeric-helper-validity-generator-controls python3 -m unittest discover -s scripts -p test_packed_helper_validity.py
-          fv numeric-helper-validity-kernel-controls python3 scripts/check_helper_validity_controls.py
+          fv numeric-helper-validity-shared-controls python3 scripts/check_helper_validity_controls.py --shared-only
+          fv numeric-helper-validity-cached-controls python3 scripts/check_helper_validity_controls.py --case AddSubCached --case JumpBranchCached --case MulDivCached --case ShiftBinopCached --case WordMemoryCached --case SubwordMemoryCached --case UnifiedCached --case BigintCached --case BlakeGCached --case BlakeRoundCached --case KeccakCached
+          fv numeric-helper-validity-uncached-controls python3 scripts/check_helper_validity_controls.py --case AddSubUncached --case JumpBranchUncached --case MulDivUncached --case ShiftBinopUncached --case WordMemoryUncached --case SubwordMemoryUncached --case UnifiedUncached --case BigintUncached --case BlakeGUncached --case BlakeRoundUncached --case KeccakUncached
           fv numeric-query-frame-freshness python3 scripts/gkr_packed_query_frame.py --check
           fv numeric-query-frame-interface-freshness python3 scripts/gkr_query_frame_instances.py --check
           fv numeric-query-frame-generator-controls python3 -m unittest discover -s scripts -p test_packed_query_frame.py

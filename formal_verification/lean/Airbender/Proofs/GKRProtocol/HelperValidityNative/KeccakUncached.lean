@@ -1,20 +1,17 @@
-import Airbender.Import.GKRProtocol.HelperValidityImport
-import Airbender.Proofs.GKRProtocol.HistoryErasureNative.KeccakUncached
-import Airbender.Proofs.GKRProtocol.HelperNative.KeccakUncached
+import Airbender.Proofs.GKRProtocol.HelperValidityChecks.KeccakUncached.Certificate
 
 namespace Airbender.Compiler.HelperValidityNative.KeccakUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_helper_validity native from "artifacts/compiler/keccak-uncached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.KeccakUncached.native
   source_model Airbender.Compiler.SourceContractNative.KeccakUncached.native
   history_model Airbender.Compiler.HistoryErasureNative.KeccakUncached.native
   helper_model Airbender.Compiler.HelperNative.KeccakUncached.native
-  memory_model Airbender.Compiler.MemoryNative.KeccakUncached.native inputs 266
+  memory_model Airbender.Compiler.MemoryNative.KeccakUncached.native inputs 266 phase 1 using_checks Airbender.Compiler.HelperValidityChecks.KeccakUncached
 
 theorem helper_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

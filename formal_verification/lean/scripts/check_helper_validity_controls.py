@@ -8,7 +8,9 @@ from gkr_packed_helper_validity import CASES, dimensions, native, original
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--case',choices=CASES,action='append')
+    parser.add_argument('--shared-only',action='store_true')
     args=parser.parse_args()
+    if args.shared_only and args.case:parser.error('--shared-only cannot select captures')
     prefix='''import Airbender.Proofs.GKRProtocol.NumericHelperValidityChecks
 import Airbender.Import.GKRProtocol.NumericHelperValidityImport
 import Airbender.Import.GKRProtocol.NumericArithmeticDataImport
@@ -27,7 +29,7 @@ def tiny : Capture := ⟨[2],1,[([(1,[0]),(0,[])],[(1,[0]),(0,[])])],
         ('exact term order',exact,'check babyBearModulus {tiny with transports := [⟨[(4,4)],[(1,[0]),(0,[])],[(0,[]),(1,[0])]⟩]} = true',''),
         ('retained zero term',exact,'check babyBearModulus {tiny with transports := [⟨[(4,4)],[(1,[0]),(0,[])],[(1,[0])]⟩]} = true',''),
     ]
-    for case in args.case or CASES:
+    for case in ([] if args.shared_only else args.case or CASES):
         owner='Airbender.Compiler.HelperValidityChecks.'+case
         imports='import Airbender.Proofs.GKRProtocol.HelperValidityChecks.'+case+'.Data\n'
         protected,fields=dimensions(case)

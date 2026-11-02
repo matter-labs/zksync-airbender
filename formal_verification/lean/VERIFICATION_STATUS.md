@@ -5759,3 +5759,57 @@ Full frontend validation, environment audit and baseline refresh, full transitiv
 replay, cold full measurements and Linux qualification did not run. They remain
 pending for implementation review. The known aggregate ownership collision stays
 deferred. No aggregate import pass is claimed.
+
+## Complete native helper-validity family
+
+All 22 captures now use one complete helper-validity result per capture.
+The final 18 keep all original protected-field erasure checks, recursive borrow
+checks and exact transport equations. They preserve every polynomial term,
+zero term and term order. Full bank round trips and strict borrow bounds remain.
+The original profile, normalization, canonical assignment and semantic finalizers
+remain. All old per-index transport names select the whole result.
+
+The final 18 retain all 568 original declarations.
+Kernel preservation accepts all 496 old theorem types.
+All 72 imported Expr values are identical.
+All 327 selected source modules and standard 32 MiB replays pass.
+They include all 216 selected direct consumers. They skip no safe dependency.
+All 3,082 focused axiom queries use only the three allowed axioms.
+All 252 exact controls pass. The kernel rejects all
+252 mutations. The pilot's shared legacy, opaque, phase and
+wrong-fact controls retain their passes. All four expanded Python controls pass.
+
+All 22 wrappers and every new capture module use default heartbeats.
+The four pilot outputs stay unchanged. Complete numeric views and exact source
+pieces bind every captured entry. Each family keeps one whole Boolean result.
+The dimension plan includes actual source lengths and source hashes.
+CI checks shared controls and both cache modes in separate bounded commands.
+The existing memory limits remain. No cold full-build gain is claimed.
+
+| Guarded phase | Time | Peak physical footprint |
+| --- | ---: | ---: |
+| helper-validity-remaining-dense-source | 187.07 s | 1,010.52 MiB |
+| helper-validity-remaining-dense-qualification | 354.97 s | 2,307.65 MiB |
+| helper-validity-remaining-dense-direct | 355.15 s | 895.12 MiB |
+| helper-validity-remaining-ordinary-source | 292.92 s | 866.35 MiB |
+| helper-validity-remaining-ordinary-qualification | 697.67 s | 2,281.93 MiB |
+| helper-validity-remaining-ordinary-direct | 659.04 s | 877.81 MiB |
+
+All guards clean their owned workers. The inventory has 156,678 roots.
+It retains all 155,424 prior roots and every established root.
+Original native and direct-consumer objects remain in the helper-validity
+baselines. Evidence uses the helper-validity-remaining prefixes.
+
+The scope audit found additional numerical families. HelperImport still checks
+each payload agreement, recipe round trip and role set. MemoryImport still
+checks each payload expansion, input role, bank input and row fingerprint
+certificate. TypingImport still checks each consumer node before it assembles
+the whole typing result. These families remain open. Their semantic finalizers,
+relation banks and complete witnesses must stay exact. Other metadata and
+header budgets still need an audit. Parametric semantic proofs stay outside the
+numeric rollout. Item 3 remains open. The hourly follow-up stays active.
+
+Full frontend validation, environment audit and baseline refresh, full transitive
+replay, cold full measurements and Linux qualification did not run. They remain
+pending for implementation review. The known aggregate ownership collision stays
+deferred. No aggregate import pass is claimed.

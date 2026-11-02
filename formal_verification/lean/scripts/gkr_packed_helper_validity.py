@@ -12,7 +12,7 @@ from gkr_packed_worker_ports import merge
 from gkr_packed_rotate_boundary import preflight
 
 ALL_CASES=tuple(stem+mode for stem in STEMS for mode in ['Cached','Uncached'])
-CASES=tuple(stem+mode for stem in ['AddSub','BlakeRound'] for mode in ['Cached','Uncached'])
+CASES=ALL_CASES
 DIMENSIONS=LEAN/'artifacts/checkers/helper-validity-dimensions.json'
 
 
