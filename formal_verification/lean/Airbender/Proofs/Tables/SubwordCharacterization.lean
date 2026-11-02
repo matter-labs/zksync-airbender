@@ -15,7 +15,7 @@ theorem subwordImportedLimbs_eq_reference (byte : Bool) (key : Nat)
   cases byte
   · have values := SubwordFixed.loadHalf_outputs key bound
     have small : key < loadHalfData.length := bound
-    simp only [subwordImportedLimbs, Bool.false_eq_true, if_false,
+    simp only [subwordImportedLimbs, Bool.false_eq_true, ite_false,
       Nat.mod_eq_of_lt small]
     exact Prod.ext (congrArg (fun value => value.getD 0) values.1)
       (congrArg (fun value => value.getD 0) values.2)
@@ -157,18 +157,18 @@ private theorem assembled_half (zero : Vector Nat 9)
     (n : Nat) (lower : 655361 ≤ n) (upper : n < 4849665) :
     assembled zero place clear half byte halfROM byteROM n = halfROM (n - 655361) := by
   unfold assembled
-  simp only [if_neg (show n ≠ 0 by omega), if_neg (show ¬n < 131073 by omega),
-    if_neg (show ¬n < 262145 by omega), if_neg (show ¬n < 393217 by omega),
-    if_neg (show ¬n < 655361 by omega), if_pos upper]
+  simp only [ite_eq_right (show n ≠ 0 by omega), ite_eq_right (show ¬n < 131073 by omega),
+    ite_eq_right (show ¬n < 262145 by omega), ite_eq_right (show ¬n < 393217 by omega),
+    ite_eq_right (show ¬n < 655361 by omega), ite_eq_left upper]
 
 private theorem assembled_byte (zero : Vector Nat 9)
     (place clear half byte halfROM byteROM : Nat → Vector Nat 9)
     (n : Nat) (lower : 4849665 ≤ n) :
     assembled zero place clear half byte halfROM byteROM n = byteROM (n - 4849665) := by
   unfold assembled
-  simp only [if_neg (show n ≠ 0 by omega), if_neg (show ¬n < 131073 by omega),
-    if_neg (show ¬n < 262145 by omega), if_neg (show ¬n < 393217 by omega),
-    if_neg (show ¬n < 655361 by omega), if_neg (show ¬n < 4849665 by omega)]
+  simp only [ite_eq_right (show n ≠ 0 by omega), ite_eq_right (show ¬n < 131073 by omega),
+    ite_eq_right (show ¬n < 262145 by omega), ite_eq_right (show ¬n < 393217 by omega),
+    ite_eq_right (show ¬n < 655361 by omega), ite_eq_right (show ¬n < 4849665 by omega)]
 
 theorem subword_fixed_independent (left right : Nat → BitVec 32) (index : Fin 13238273)
     (bound : index.val < 655361) : subwordNativeRow left index = subwordNativeRow right index := by

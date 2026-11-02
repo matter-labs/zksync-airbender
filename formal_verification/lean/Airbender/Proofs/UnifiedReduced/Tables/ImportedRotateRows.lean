@@ -31,7 +31,7 @@ private theorem first (mode : Fin 4) (n : Nat) (bound : n < 65536) :
       some (n / 256) := by
     change getFromBlocks [.periodic 256 1 (Array.replicate 256 0)] n = _
     simp only [getFromBlocks, Block.length, Array.size_replicate,
-      Nat.reduceMul, if_pos bound]
+      Nat.reduceMul, ite_eq_left bound]
     exact (BinaryColumns.periodic_constant 256 0 n bound).trans (by simp only [Nat.zero_add])
   exact (congrArg (fun column : Column => column.get? n) shape).trans actual
 

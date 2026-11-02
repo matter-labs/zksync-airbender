@@ -109,7 +109,7 @@ theorem fastValid_sound (data : Input) (checked : fastValid data = true) : data.
       (digit 65536 data.payload index : Int) + data.stride * ((data.count - 1 : Nat) : Int) < 65536 := by
     by_cases negative : data.stride < 0
     · have mask := checked.2
-      simp only [if_pos negative, beq_iff_eq] at mask
+      simp only [ite_eq_left negative, beq_iff_eq] at mask
       have result := congrArg (fun payload => digit 65536 payload index) mask
       rw [extract_and, repeated_digit 32768 data.period index (by omega) within,
         shifted_digit data.payload data.period (32768 - data.stride.natAbs * (data.count - 1)) index

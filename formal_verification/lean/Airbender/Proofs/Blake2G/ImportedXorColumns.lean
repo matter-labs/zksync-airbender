@@ -59,7 +59,7 @@ theorem first_get (kind : Fin 5) (n : Nat) (hn : n < (xorData kind).length) :
   rw [columns]
   have positive : 0 < chunkSize kind := by fin_cases kind <;> decide
   simpa only [Column.get?, Array.toList, getFromBlocks, Block.length,
-    Array.size_replicate, if_pos (native_length kind ▸ hn)] using
+    Array.size_replicate, ite_eq_left (native_length kind ▸ hn)] using
     periodic_constant_get _ _ n positive (native_length kind ▸ hn)
 
 private theorem offset_add (n offset : Nat) (lower : offset ≤ n) :
@@ -79,12 +79,12 @@ private theorem xor9_tail_mod (n : Nat) (upper : n < 262144)
 private theorem take_input_block (block : Block) (rest : List Block) (n length : Nat)
     (size : block.length = length) (bound : n < length) :
     getFromBlocks (block :: rest) n = block.get? n := by
-  rw [getFromBlocks, size, if_pos bound]
+  rw [getFromBlocks, size, ite_eq_left bound]
 
 private theorem skip_input_block (block : Block) (rest : List Block) (n length : Nat)
     (size : block.length = length) (bound : ¬n < length) :
     getFromBlocks (block :: rest) n = getFromBlocks rest (n - length) := by
-  rw [getFromBlocks, size, if_neg bound]
+  rw [getFromBlocks, size, ite_eq_right bound]
 
 private theorem column_get_three (leading middle tail : Block) (n : Nat) :
     (Column.mk #[leading, middle, tail]).get? n = getFromBlocks [leading, middle, tail] n := rfl

@@ -45,9 +45,9 @@ theorem blockCover_sound (f : Nat → Nat) {blocks : List Block} {start finish :
   | nil position => omega
   | cons start next finish block rest ordered length rows later ih =>
     by_cases inside : n < next - start
-    · simpa only [getFromBlocks, length, if_pos inside] using rows n inside
+    · simpa only [getFromBlocks, length, ite_eq_left inside] using rows n inside
     · have result := ih (n - (next - start)) (by omega)
       have position : next + (n - (next - start)) = start + n := by omega
-      simpa only [getFromBlocks, length, if_neg inside, position] using result
+      simpa only [getFromBlocks, length, ite_eq_right inside, position] using result
 
 end Airbender.Keccak.Proofs

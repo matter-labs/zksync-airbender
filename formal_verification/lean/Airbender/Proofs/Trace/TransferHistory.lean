@@ -108,12 +108,12 @@ theorem event_clock_order (data : Data p) {first last : MemoryAccess}
   have firstPositive : first.1 ≠ 0 := by omega
   have lastIndex := List.idxOf_le_length (l := rawEvents data) (a := last)
   have firstIndex := List.idxOf_le_length (l := rawEvents data) (a := first)
-  simp only [eventClock, if_neg firstPositive]
+  simp only [eventClock, ite_eq_right firstPositive]
   by_cases zero : last.1 = 0
-  · rw [if_pos zero]
+  · rw [ite_eq_left zero]
     have bound := lastBound zero
     omega
-  · rw [if_neg zero]
+  · rw [ite_eq_right zero]
     have multiplied := Nat.mul_le_mul_left (rawEvents data).length.succ
       (Nat.succ_le_of_lt earlier)
     simp only [Nat.mul_succ] at multiplied
@@ -136,6 +136,8 @@ theorem zero_event_seed {data : Data p} {event : MemoryAccess}
   · obtain ⟨edge, _, rfl⟩ := List.mem_map.mp native
     simp [transferEvent] at zero
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem raw_cell_history {data : Data p} (facts : Facts data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (address : Nat) : ∃ history : TimestampSortedMemoryAccessList,
@@ -179,7 +181,7 @@ private theorem address_clocks_distinct (events : List MemoryAccess)
       intro address
       have unique := perAddress address
       by_cases same : first.2.1 = address
-      · simp only [List.filter_cons, same, decide_true, if_true] at unique
+      · simp only [List.filter_cons, same, decide_true, ite_true] at unique
         change (first.1 :: (rest.filter fun event => decide (event.2.1 = address)).map Prod.fst).Nodup at unique
         exact (List.nodup_cons.mp unique).2
       · simpa [same] using unique
@@ -191,7 +193,7 @@ private theorem address_clocks_distinct (events : List MemoryAccess)
     have sameAddress := (Prod.mk.inj equal).2
     have unique := perAddress first.2.1
     have excluded : first.1 ∉ (rest.filter fun event => decide (event.2.1 = first.2.1)).map Prod.fst := by
-      simp only [List.filter_cons, decide_true, if_true] at unique
+      simp only [List.filter_cons, decide_true, ite_true] at unique
       change (first.1 :: (rest.filter fun event => decide (event.2.1 = first.2.1)).map Prod.fst).Nodup at unique
       exact (List.nodup_cons.mp unique).1
     exact excluded (List.mem_map.mpr ⟨other,
@@ -218,6 +220,8 @@ theorem raw_seed_bound {data : Data p} {event : MemoryAccess}
   obtain ⟨source, present, rfl⟩ := zero_event_seed member zero
   exact seed_below_epoch present
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 private theorem nodup_of_address_filters (events : List MemoryAccess)
     (unique : ∀ address, (MemoryAccessList.filterAddress events address).Nodup) : events.Nodup := by
   induction events with
@@ -234,7 +238,7 @@ private theorem nodup_of_address_filters (events : List MemoryAccess)
     intro member
     have checked := unique key
     simp only [MemoryAccessList.filterAddress, List.filter_cons, decide_true,
-      if_true, List.nodup_cons] at checked
+      ite_true, List.nodup_cons] at checked
     exact checked.1 (List.mem_filter.mpr ⟨member, by simp⟩)
 
 theorem raw_events_nodup {data : Data p} (facts : Facts data)
@@ -274,7 +278,7 @@ theorem event_clock_injective {data : Data p}
     have same := List.inj_on_of_nodup_map unique present sinkMember address
     rw [same]
   · have lastNonzero : last.1 ≠ 0 := by omega
-    simp only [eventClock, if_neg lastNonzero, sameTime] at equal
+    simp only [eventClock, ite_eq_right lastNonzero, sameTime] at equal
     have index : (rawEvents data).idxOf first = (rawEvents data).idxOf last := by omega
     exact (List.idxOf_inj firstMember).mp index
 
@@ -282,6 +286,8 @@ private theorem filter_address_eq (events : List MemoryAccess) (address : Nat) :
     MemoryAccessList.filterAddress events address = events.filter (fun event => decide (event.2.1 = address)) := by
   rfl
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem labeled_history {data : Data p} (facts : Facts data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ∃ history : TimestampSortedMemoryAccessList, history.val.Perm (labeledEvents data) ∧
@@ -338,7 +344,7 @@ theorem native_clock_roundtrip {data : Data p} {event : MemoryAccess}
       (relabelMemoryEvent (eventClock data) event) = event := by
   have index := List.idxOf_le_length (l := rawEvents data) (a := event)
   have clock : nativeEventClock data (relabelMemoryEvent (eventClock data) event) = event.1 := by
-    simp only [nativeEventClock, relabelMemoryEvent, eventClock, if_neg positive]
+    simp only [nativeEventClock, relabelMemoryEvent, eventClock, ite_eq_right positive]
     have subtraction : memoryEpoch data + (rawEvents data).length.succ * event.1 +
         (rawEvents data).idxOf event - memoryEpoch data =
         (rawEvents data).length.succ * event.1 + (rawEvents data).idxOf event := by omega
@@ -348,6 +354,8 @@ theorem native_clock_roundtrip {data : Data p} {event : MemoryAccess}
   · exact clock
   · rfl
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem labeled_events_split (data : Data p) : labeledEvents data =
     List.append (α := MemoryAccess)
       (data.initial.map fun token => ((token.address, token.address, 0, token.value) : MemoryAccess))
@@ -378,7 +386,7 @@ theorem native_sail_history_at_boundary {data : Data p} (facts : Facts data)
     obtain ⟨raw, present, rfl⟩ := List.mem_map.mp member
     obtain ⟨edge, _, rfl⟩ := List.mem_map.mp present
     simp only [relabelMemoryEvent, eventClock, transferEvent, Nat.add_eq_zero_iff,
-      Nat.one_ne_zero, and_false, if_false]
+      Nat.one_ne_zero, and_false, ite_false]
     omega
   have separated := permutation
   rw [labeled_events_split] at separated

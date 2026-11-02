@@ -58,12 +58,14 @@ def module(artifact, column):
              f'  change Setup.getFromBlocks {full}.blocks.toList index.val = _\n'
              '  rw [sourceShape, getFromBlocks_before_suffix _ _ _ (by rw [prefixLength]; exact index.isLt), targetShape]\n'
              '  exact normalized_chunks_agree originals targets chunksChecked index.val\n\n')
-    text += (f'theorem padding_value (index : Fin 16777216) (lower : 1573121 ≤ index.val) :\n    {full}.get? index.val = some 0 := by\n'
+    text += ('set_option backward.isDefEq.respectTransparency false in\n'
+             'set_option backward.isDefEq.respectTransparency.types false in\n'
+             f'theorem padding_value (index : Fin 16777216) (lower : 1573121 ≤ index.val) :\n    {full}.get? index.val = some 0 := by\n'
              f'  change Setup.getFromBlocks {full}.blocks.toList index.val = some 0\n'
-             '  rw [sourceShape, getFromBlocks_append, prefixLength, if_neg (by omega)]\n'
+             '  rw [sourceShape, getFromBlocks_append, prefixLength, ite_eq_right (by omega)]\n'
              f'  change Setup.getFromBlocks [Setup.Block.affine 1048576 {46 if column == 9 else 2013265920} 0, .affine 15204095 0 0] (index.val - 524545) = some 0\n'
              '  simp only [Setup.getFromBlocks, Setup.Block.length]\n'
-             '  rw [if_neg (by omega), if_pos (by omega)]\n'
+             '  rw [ite_eq_right (by omega), ite_eq_left (by omega)]\n'
              '  apply constant_block_get\n  omega\n\n')
     offsets=[0,1,257,65793,131329,196865,262401]
     values=[f'(Setup.getFromBlocks {c}.blocks.toList (index.val - {off})).getD 0' for c,off in zip(cols,offsets)]

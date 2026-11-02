@@ -79,7 +79,7 @@ theorem exclusive_mask [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8192)
   rw [column i]
   apply ZMod.val_injective
   have prime := (Fact.out : p.Prime).one_lt
-  letI : Fact (1 < p) := ⟨prime⟩
+  let : Fact (1 < p) := ⟨prime⟩
   fin_cases round <;> fin_cases i
   all_goals norm_num only [Fin.val_mk] at natural
   all_goals norm_num only [Fin.val_mk, Nat.reduceAdd, Fin.mk.injEq, ZMod.val_one, ZMod.val_zero]
@@ -125,12 +125,12 @@ theorem exclusive_mask_iff [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8192)
     let flags := (w 139).val + 2 * (w 140).val + 4 * (w 141).val
     have bound : flags < 8 := by dsimp [flags]; omega
     refine ⟨⟨flags, bound⟩, ?_⟩
-    haveI : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
+    have : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
     have bit (i : Fin 10) : (w Variables.roundBits[i]).val = if i = round then 1 else 0 := by
       have values := congrArg (fun z : ZMod p => z.val) (mask i)
       by_cases same : i = round
-      · simpa only [if_pos same, ZMod.val_one] using values
-      · simpa only [if_neg same, ZMod.val_zero] using values
+      · simpa only [ite_eq_left same, ZMod.val_one] using values
+      · simpa only [ite_eq_right same, ZMod.val_zero] using values
     have r0 := bit 0; have r1 := bit 1; have r2 := bit 2; have r3 := bit 3; have r4 := bit 4
     have r5 := bit 5; have r6 := bit 6; have r7 := bit 7; have r8 := bit 8; have r9 := bit 9
     have encoding := control_encoding hp holds

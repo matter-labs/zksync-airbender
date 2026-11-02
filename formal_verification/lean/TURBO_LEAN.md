@@ -21,6 +21,8 @@ Both proofs reuse each shared continuation of the original generated decoder.
 The exact latest-read trace predicate also compiles.
 The failed table and offline-memory proof modules now compile.
 Their compatibility settings stay local to proof declarations.
+The fixed Shift prefix padding and native rotation proofs also compile.
+Trace, window-count and Keccak call-port proofs compile.
 Controller geometry uses a symbolic index before specializing the native row.
 Its recursion and resource limits stay unchanged.
 Definitions and theorem statements stay unchanged.
@@ -32,7 +34,7 @@ The port fixes proof reductions and deprecated theorem names.
 The Clean patches limit elaborator compatibility settings to affected proofs.
 They preserve reference definitions and theorem statements.
 Library options disable the new `defProp` style warning for shared proof definitions.
-A weak Airbender argument suppresses unused-tactic style checks in inherited proofs.
+Weak Airbender and GKRProtocol arguments suppress unused-tactic style checks in inherited proofs.
 Other warnings remain errors. Kernel checks stay unchanged.
 The full proof port remains unqualified.
 

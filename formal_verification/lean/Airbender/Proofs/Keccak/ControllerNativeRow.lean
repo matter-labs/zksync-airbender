@@ -11,7 +11,7 @@ set_option maxHeartbeats 8000000
 private theorem small_signed {n : Nat} (bound : n < 4096) : signedValue n = (n : Int) := by
   have small : n ≤ babyBearModulus / 2 := by dsimp [babyBearModulus]; omega
   unfold signedValue
-  rw [if_pos small]
+  rw [ite_eq_left small]
 private theorem key_column (key : Fin 4096) :
     (controllerData.columns[0]).get? key.val = some key.val := by
   change getFromBlocks [.affine 4096 0 1] key.val = some key.val

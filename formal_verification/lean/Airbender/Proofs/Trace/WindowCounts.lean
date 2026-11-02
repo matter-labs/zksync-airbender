@@ -75,6 +75,8 @@ theorem native_window_count [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p tim
   change trace.rows.countP selected = _
   omega
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem native_suffix_count [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (constraints : ∀ row ∈ trace.rows,

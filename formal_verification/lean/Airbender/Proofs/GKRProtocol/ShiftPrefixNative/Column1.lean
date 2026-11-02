@@ -92,13 +92,15 @@ theorem prefix_value (index : Fin 524545) :
   rw [sourceShape, getFromBlocks_before_suffix _ _ _ (by rw [prefixLength]; exact index.isLt), targetShape]
   exact normalized_chunks_agree originals targets chunksChecked index.val
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem padding_value (index : Fin 16777216) (lower : 1573121 ≤ index.val) :
     Data.GKRSetup.ShiftBinop.setupColumn1.get? index.val = some 0 := by
   change Setup.getFromBlocks Data.GKRSetup.ShiftBinop.setupColumn1.blocks.toList index.val = some 0
-  rw [sourceShape, getFromBlocks_append, prefixLength, if_neg (by omega)]
+  rw [sourceShape, getFromBlocks_append, prefixLength, ite_eq_right (by omega)]
   change Setup.getFromBlocks [Setup.Block.affine 1048576 2013265920 0, .affine 15204095 0 0] (index.val - 524545) = some 0
   simp only [Setup.getFromBlocks, Setup.Block.length]
-  rw [if_neg (by omega), if_pos (by omega)]
+  rw [ite_eq_right (by omega), ite_eq_left (by omega)]
   apply constant_block_get
   omega
 

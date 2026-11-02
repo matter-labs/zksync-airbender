@@ -60,8 +60,8 @@ theorem history_without_zero {cells : List Cell} {events : List MemoryAccess}
       have noEffect : Reference.Sail.run ((Cell.register 0).write (memoryWord event.2.2.2)) middle = .ok () middle := rfl
       have same := (EStateM.Result.ok.inj (noEffect.symm.trans written)).2
       subst after
-      simpa only [List.filter_cons, zero, ne_eq, not_true_eq_false, decide_false, Bool.false_eq_true, if_false] using ih
-    · simpa only [List.filter_cons, zero, ne_eq, not_false_eq_true, decide_true, if_true] using
+      simpa only [List.filter_cons, zero, ne_eq, not_true_eq_false, decide_false, Bool.false_eq_true, ite_false] using ih
+    · simpa only [List.filter_cons, zero, ne_eq, not_false_eq_true, decide_true, ite_true] using
         (SailHistory.cons ih cell member address read written)
 
 end Airbender.Trace.Proofs

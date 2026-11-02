@@ -14,32 +14,36 @@ def rotationHigh (key : Nat) : Nat :=
 def rotationLow (key : Nat) : Nat :=
   ((key % 65536) * 2 ^ (key / 65536)) % 65536
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 private theorem affine_nat (length first : Nat) (step : Int) (n : Nat)
     (positive : 0 ≤ step) :
     Block.get? (.affine length first step) n =
       if n < length then some (first + step.toNat * n) else none := by
   by_cases bound : n < length
-  · simp only [Block.get?, Block.length, if_pos bound]
+  · simp only [Block.get?, Block.length, ite_eq_left bound]
     have nonneg : 0 ≤ (first : Int) + step * n :=
       add_nonneg (Int.natCast_nonneg first) (mul_nonneg positive (Int.natCast_nonneg n))
-    simp only [if_pos nonneg]
+    simp only [ite_eq_left nonneg]
     rw [Int.toNat_add (Int.natCast_nonneg first)
       (mul_nonneg positive (Int.natCast_nonneg n)),
       Int.toNat_mul positive (Int.natCast_nonneg n)]
     simp
   · simp [Block.get?, Block.length, bound]
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 private theorem periodic_nat (count : Nat) (stride : Int) (values : Array Nat) (n : Nat)
     (positive : 0 ≤ stride) :
     Block.get? (.periodic count stride values) n =
       if n < count * values.size then
         some ((values[n % values.size]?.getD 0) + stride.toNat * (n / values.size)) else none := by
   by_cases bound : n < count * values.size
-  · simp only [Block.get?, Block.length, if_pos bound]
+  · simp only [Block.get?, Block.length, ite_eq_left bound]
     simp only [← Int.natCast_ediv]
     have nonneg : 0 ≤ ((values[n % values.size]?.getD 0 : Nat) : Int) +
         stride * ((n / values.size : Nat) : Int) :=
       add_nonneg (Int.natCast_nonneg _) (mul_nonneg positive (Int.natCast_nonneg _))
-    simp only [if_pos nonneg]
+    simp only [ite_eq_left nonneg]
     rw [Int.toNat_add (Int.natCast_nonneg _)
       (mul_nonneg positive (Int.natCast_nonneg _)),
       Int.toNat_mul positive (Int.natCast_nonneg _)]
@@ -51,7 +55,7 @@ private theorem periodic_nat (count : Nat) (stride : Int) (values : Array Nat) (
 private theorem affine_inrange (length first : Nat) (step : Int) (n : Nat)
     (positive : 0 ≤ step) (bound : n < length) :
     Block.get? (.affine length first step) n = some (first + step.toNat * n) := by
-  rw [affine_nat _ _ _ _ positive, if_pos bound]
+  rw [affine_nat _ _ _ _ positive, ite_eq_left bound]
 
 private theorem high_periodic_inrange (count size n : Nat) (bound : n < count * size) :
     Block.get? (.periodic count 1 (Array.replicate size 0)) n = some (n / size) := by
@@ -61,7 +65,7 @@ private theorem high_periodic_inrange (count size n : Nat) (bound : n < count * 
     simp [zero] at bound
   have residue := Nat.mod_lt n positive
   simp only [periodic_nat _ _ _ _ (by decide : (0 : Int) ≤ 1), Array.size_replicate,
-    if_pos bound, Array.getElem?_replicate, if_pos residue, Option.getD_some,
+    ite_eq_left bound, Array.getElem?_replicate, ite_eq_left residue, Option.getD_some,
     Int.toNat_one, Nat.one_mul, Nat.zero_add]
 
 private theorem low_array_inrange (count size step n : Nat) (values : Array Nat)
@@ -74,7 +78,7 @@ private theorem low_array_inrange (count size step n : Nat) (values : Array Nat)
     have zero : size = 0 := by omega
     simp [zero] at bound
   rw [periodic_nat _ _ _ _ (by decide : (0 : Int) ≤ 0)]
-  simp only [length, if_pos bound, contents _ (Nat.mod_lt _ positive),
+  simp only [length, ite_eq_left bound, contents _ (Nat.mod_lt _ positive),
     Option.getD_some, Int.toNat_zero, Nat.zero_mul, Nat.add_zero]
 
 macro "keccak_rotation_block " meaning:ident start:num shift:num : tactic =>

@@ -22,15 +22,15 @@ theorem disjoint_or (left right : Nat) (disjoint : left &&& right = 0) :
     have rightMod := Nat.mod_lt right (show 0 < 2 by omega)
     change Nat.bitwise Bool.and left right = 0 at disjoint
     rw [Nat.bitwise] at disjoint
-    simp only [if_neg leftZero, if_neg rightZero] at disjoint
+    simp only [ite_eq_right leftZero, ite_eq_right rightZero] at disjoint
     change Nat.bitwise Bool.or left right = left + right
     rw [Nat.bitwise]
-    simp only [if_neg leftZero, if_neg rightZero]
+    simp only [ite_eq_right leftZero, ite_eq_right rightZero]
     change Nat.bitwise Bool.or (left / 2) (right / 2) = left / 2 + right / 2 at result
     by_cases leftOdd : left % 2 = 1 <;> by_cases rightOdd : right % 2 = 1
     all_goals simp only [leftOdd, rightOdd, decide_true, decide_false,
       Bool.true_and, Bool.false_and, Bool.true_or, Bool.false_or, Bool.false_eq_true,
-      if_true, if_false] at disjoint ⊢
+      ite_true, ite_false] at disjoint ⊢
     all_goals rw [result]
     all_goals omega
 end Airbender.Setup.Proofs.PackedDisjointSum

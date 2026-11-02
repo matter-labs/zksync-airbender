@@ -9,6 +9,8 @@ set_option Elab.async false
 set_option maxRecDepth 32768
 set_option maxHeartbeats 2000000
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- All independently imported wide binary fields, including the native tag. -/
 theorem imported_wide_row (kind : Fin 3) (n : Nat) (bound : n < 65536) :
     (wideData kind).columns.map (fun column => (column.get? n).getD 0) =
@@ -21,8 +23,8 @@ theorem imported_wide_row (kind : Fin 3) (n : Nat) (bound : n < 65536) :
     have shape : (wideData kind).columns[9] = Column.mk #[.affine 65536 (52 + kind.val) 0] := by
       fin_cases kind <;> rfl
     simp only [Vector.getElem_map, Vector.getElem_set_self, shape, Column.get?,
-      getFromBlocks, Block.get?, Block.length, if_pos bound]
-    rw [if_pos (by omega)]
+      getFromBlocks, Block.get?, Block.length, ite_eq_left bound]
+    rw [ite_eq_left (by omega)]
     simpa only [Option.getD_some, Int.zero_mul, Int.add_zero, Int.natCast_add, Nat.cast_ofNat] using
       Int.toNat_natCast (52 + kind.val)
   · rw [Vector.getElem_set_ne (by decide : 9 < 10) hLane (by omega : 9 ≠ lane)]

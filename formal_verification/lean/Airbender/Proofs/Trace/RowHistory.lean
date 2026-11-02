@@ -9,6 +9,8 @@ open Reference.RiscV.Sail
 
 abbrev rowClock (row : Row p Kind) : Nat := row.clock
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem native_events_projection [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :

@@ -409,6 +409,8 @@ needs = ["gkrAddSubCachedPair", "gkrAddSubCachedIdentity", "gkrJumpBranchCachedP
 # their own real input dependencies; ordinary circuit proofs keep theirs.
 [[lean_lib]]
 name = "GKRProtocol"
+# Keep inherited generated proof scripts. This flag changes style checks only.
+weakLeanArgs = ["-Dweak.linter.unusedTactic=false"]
 leanOptions.weak.linter.defProp = false
 roots = ["Airbender.Proofs.GKRProtocol", "Airbender.Import.GKRProtocol", "Airbender.Import.Compiler.Rows"]
 globs = ["Airbender.Proofs.GKRProtocol", "Airbender.Import.GKRProtocol.+", "Airbender.Import.Compiler.Rows.+"]

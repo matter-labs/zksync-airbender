@@ -61,7 +61,7 @@ theorem wordFold_hom (function : Nat → Nat) (zero : function 0 = 0)
   | cons bit rest ih =>
     simp only [wordFold, List.foldr_cons] at *
     rw [preserves, ih]
-    cases byte.testBit bit <;> simp only [Bool.false_eq_true, if_false, zero, if_true]
+    cases byte.testBit bit <;> simp only [Bool.false_eq_true, ite_false, zero, ite_true]
 
 theorem rowByte_decomposition (lane position byte control : Nat) (within : byte < 256) :
     rowByte lane position byte control =
@@ -96,7 +96,7 @@ theorem wordFold_disjoint (value : Nat) (values : Nat → Nat) (byte : Nat) (bit
     rw [Nat.and_or_distrib_left, ih (by intro index member; exact disjoint index (by simp [member]))]
     cases chosen : byte.testBit bit
     · simp
-    · simp only [if_true, disjoint bit (by simp), Nat.zero_or]
+    · simp only [ite_true, disjoint bit (by simp), Nat.zero_or]
 
 theorem wordFold_eq_sum (values : Nat → Nat) (byte : Nat) (bits : List Nat)
     (disjoint : bits.Pairwise (fun left right => values left &&& values right = 0)) :
@@ -110,7 +110,7 @@ theorem wordFold_eq_sum (values : Nat → Nat) (byte : Nat) (bits : List Nat)
     simp only [wordFold, wordSum, List.foldr_cons] at *
     cases chosen : byte.testBit bit
     · simpa using sameTail
-    · simp only [if_true]
+    · simp only [ite_true]
       rw [PackedDisjointSum.disjoint_or _ _ separated, sameTail]
 
 end Airbender.Verification.ShiftPackedReference

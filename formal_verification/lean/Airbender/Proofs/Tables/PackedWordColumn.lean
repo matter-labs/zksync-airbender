@@ -123,8 +123,8 @@ theorem getFromBlocks_append_left (left right : List Block) (index : Nat)
     simp only [List.map_cons, List.sum_cons] at within
     simp only [List.cons_append, getFromBlocks]
     by_cases first : index < block.length
-    · simp only [if_pos first]
-    · simp only [if_neg first]
+    · simp only [ite_eq_left first]
+    · simp only [ite_eq_right first]
       exact ih (index - block.length) (by omega)
 
 theorem getFromBlocks_append_right (left right : List Block) (index : Nat)
@@ -135,7 +135,7 @@ theorem getFromBlocks_append_right (left right : List Block) (index : Nat)
   | cons block rest ih =>
     simp only [List.map_cons, List.sum_cons] at within ⊢
     have outside : ¬index < block.length := by omega
-    simp only [List.cons_append, getFromBlocks, if_neg outside]
+    simp only [List.cons_append, getFromBlocks, ite_eq_right outside]
     rw [ih (index - block.length) (by omega)]
     congr 1
     omega
@@ -207,14 +207,14 @@ theorem getFromBlocks_complete (function : Nat → Nat) (start : Nat) (blocks : 
       have result := agreement index.val (by
         simp only [List.map_cons, List.sum_cons]
         omega)
-      simpa only [getFromBlocks, if_pos index.isLt] using result
+      simpa only [getFromBlocks, ite_eq_left index.isLt] using result
     · apply ih (start + block.length)
       intro index within
       have result := agreement (block.length + index) (by
         simp only [List.map_cons, List.sum_cons]
         omega)
       have outside : ¬block.length + index < block.length := by omega
-      simpa only [getFromBlocks, if_neg outside, Nat.add_sub_cancel_left, Nat.add_assoc] using result
+      simpa only [getFromBlocks, ite_eq_right outside, Nat.add_sub_cancel_left, Nat.add_assoc] using result
 
 theorem Tree.checkBlocks_sound (function : Nat → Nat) (start : Nat) (data : Tree)
     (checked : data.check = true)

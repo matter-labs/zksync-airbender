@@ -62,6 +62,8 @@ theorem xor_region_reference (kind : Fin 5) (n : Nat) (hn : n < (xorData kind).l
     simp only [zero, Option.getD_some]
   · simp only [tag, Option.getD_some, chunkTag]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- Native imported fixed rows recover the former mathematical characterization;
     the supplied controller remains arbitrary. -/
 theorem setup_row_characterization (control : Fin 512 → Vector Nat 7) (index : Fin 344896) :

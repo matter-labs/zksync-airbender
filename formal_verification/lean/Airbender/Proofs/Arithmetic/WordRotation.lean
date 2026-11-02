@@ -50,7 +50,7 @@ theorem rotated_chunk_pair (x : BitVec 32) (kind : Fin 4) (i : Fin 4) (limb : Fi
     intro j bound
     rw [BitVec.getLsbD_append]
     simp only [BitVec.getLsbD_extractLsb', BitVec.getLsbD_rotateRight,
-      BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth]
+      BitVec.getLsbD_setWidth]
     interval_cases j
     all_goals simp
 
