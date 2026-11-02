@@ -49,12 +49,11 @@ theorem scalar_row_range_zero_padding (data : Setup.TableData 1) (limit padding 
   change (Setup.signedValue (((data.columns[0]).get? (data.offset + index.val)).getD 0) : Source.BaseField).val < limit
   rw [Setup.signedValue_cast]
   simp only [Setup.Column.get?, shape, Setup.getFromBlocks, Setup.Block.length]
-  split
-  next bounded =>
-    simp [Setup.Block.get?, Setup.Block.length, bounded, ZMod.val_natCast]
+  by_cases bounded : data.offset + index.val < limit
+  · simp [Setup.Block.get?, Setup.Block.length, bounded, ZMod.val_natCast]
     exact lt_of_le_of_lt (Nat.mod_le _ _) bounded
-  next outside =>
-    split <;> simp [Setup.Block.get?, Setup.Block.length, *]
+  · by_cases padded : data.offset + index.val - limit < padding <;>
+      simp [Setup.Block.get?, Setup.Block.length, bounded, padded, positive]
 
 theorem MaterializedLookupSetup.timestamp_bounded (model : MaterializedLookupSetup width)
     (padding : Nat)

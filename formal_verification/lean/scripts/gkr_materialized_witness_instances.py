@@ -137,7 +137,7 @@ def trace_layer(case, o, groups, model, typing, source_binder, head):
     for index, kind in enumerate(groups):
         projection = 'preserved' if size == 1 else 'preserved' + '.2' * index + ('.1' if index < size - 1 else '')
         out += ('  · convert ' + projection + ' using 1 <;> simp [outputPorts, sourceRequests, setupColumns, List.map_map, Function.comp_def]\n'
-                f'    have coordinate : ({index} : Fin {size}) = (⟨{index}, by decide⟩ : Fin {o["table"]}.multiplicityColumns.length) := by decide +kernel\n'
+                f'    have coordinate : ({index} : Fin {size}) = (⟨{index}, by decide⟩ : Fin {o["table"]}.multiplicityColumns.length) := by rfl\n'
                 '    rw [coordinate]\n')
     out += (f'\ntheorem source_requests_valid {source_binder}\n'
             f"    (primitives : {o['helper']}.profile.ExecutionValid ({o['helper']}.execute.value ({o['base']}.helperPlacement.memory.project sourceValue))\n"

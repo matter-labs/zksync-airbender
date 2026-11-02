@@ -22,11 +22,13 @@ Full official validation is required before adopting the upgrade.
 ## Completed focused checks
 
 Dependency resolution and the existing Clean compatibility patches pass.
-All 52 source generator checks pass.
+All 53 generator checks pass.
 The real `FiniteGridChecks` source compiles with stock Lean 4.35.
 The numeric query-frame checker and strict importer compile with stock Lean 4.35.
 The complete cached AddSub query-frame certificate also compiles.
 Its exact source bindings and original semantic finalizer pass.
+All 11 cached native witness consumers also compile.
+Their exact source bindings and semantic finalizers pass.
 Their dependency builds include the pinned Clean field, vector, channel, equality
 and offline-memory proofs. Hash checks protect all reference patches.
 Proof reductions and theorem-name updates leave statements unchanged.
@@ -46,9 +48,10 @@ No warm proof-edit measurement is claimed.
 A focused security review and RustSec graph scan are complete.
 The scan reports no known dependency advisories. This is not a security certificate.
 The launcher now clears inherited compiler-simplification exceptions too.
-Further turbo execution requires a disposable OS sandbox without host credentials.
+The user approved host execution of the pinned tool after the focused review.
+The hardened smoke passes with the recorded pinned binary.
 The time and memory guard does not provide OS isolation.
-The remaining proof port still needs focused dependency and consumer builds.
+The remaining proof port needs focused Sail and machine source builds.
 Only `propext`, `Classical.choice` and `Quot.sound` are permitted.
 The official kernel remains the acceptance gate.
 
@@ -57,10 +60,10 @@ The official kernel remains the acceptance gate.
 | Focused phase | Time (s) | Peak footprint (MiB) |
 | --- | ---: | ---: |
 | Serial tool check and release build | 264.39 | 1,030.80 |
-| Smoke group, stock plus two turbo commands | 4.71 | 149.40 |
-| Stock source command | 1.47 | Within smoke group |
-| Turbo first theorem check, setup warm | 1.83 | Within smoke group |
-| Turbo repeat cache hit | 0.79 | Within smoke group |
+| Hardened smoke, stock plus two turbo commands | 5.27 | 143.08 |
+| Stock source command | 1.45 | Within smoke group |
+| Turbo first theorem check, setup warm | 2.46 | Within smoke group |
+| Turbo repeat cache hit | 0.84 | Within smoke group |
 
 [TURBO_LEAN.md](TURBO_LEAN.md) gives the exact scope and reproduction command.
 Evidence remains in `/tmp/airbender-turbo-2026-11-02/`.

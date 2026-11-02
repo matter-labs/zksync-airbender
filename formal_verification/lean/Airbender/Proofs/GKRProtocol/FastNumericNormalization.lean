@@ -42,7 +42,7 @@ theorem compareMonomial_eq (left right : List Nat) : compareMonomial left right 
           | eq =>
               have same := Nat.compare_eq_eq.mp order
               subst second
-              simp only [compareMonomial, monomialCompare, beq_self_eq_true, if_true, order, ih]
+              simp only [compareMonomial, monomialCompare, beq_self_eq_true, ite_true, order, ih]
           | lt =>
               have less := Nat.compare_eq_lt.mp order
               have different := Nat.ne_of_lt less

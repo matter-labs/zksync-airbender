@@ -114,7 +114,7 @@ theorem insert_append (p : Nat) (term : Row) (front tail : List Row) (nonzero : 
   | nil => rfl
   | cons head rest ih =>
       have order := Nat.compare_eq_gt.mpr (before head (by simp))
-      simp only [List.cons_append, KeyedNormalization.insert, beq_iff_eq, if_neg nonzero, order]
+      simp only [List.cons_append, KeyedNormalization.insert, beq_iff_eq, ite_eq_right nonzero, order]
       rw [ih (fun row member => before row (by simp [member]))]
 
 theorem pack_value (rows : List Row) : (pack rows).value = Nat.ofDigits radix (rows.map termCode) := by
@@ -193,7 +193,7 @@ theorem insertAt_append (p : Nat) (term : Row) (front tail : List Row)
       have headSame : decodeTerm ((pack (head :: rest)).value % radix) = head := by
         rw [head_pack head rest headBound, decode_code head headBound]
       have different : front.length ≠ front.length + (head :: rest).length := by simp
-      simp only [beq_iff_eq, if_neg different, headSame, tail_pack head rest headBound]
+      simp only [beq_iff_eq, ite_eq_right different, headSame, tail_pack head rest headBound]
       rcases lt_or_eq_of_le (after head rest rfl) with less | same
       · have order := Nat.compare_eq_lt.mpr less
         have keys := Nat.ne_of_lt less
@@ -212,7 +212,7 @@ theorem insertAtCheck_sound (p : Nat) (term : Row) (rows : List Row) (result : P
   by_cases zero : term.1 = 0
   · have same : pack rows = result := by simpa [insertAtCheck, zero] using checked
     cases rows <;> simpa [KeyedNormalization.insert, zero] using same.symm
-  · simp only [insertAtCheck, beq_iff_eq, if_neg zero, Bool.and_eq_true, Bool.or_eq_true,
+  · simp only [insertAtCheck, beq_iff_eq, ite_eq_right zero, Bool.and_eq_true, Bool.or_eq_true,
       decide_eq_true_eq, pack_length] at checked
     rcases checked with ⟨⟨⟨within, leftBound⟩, rightBound⟩, output⟩
     have before : ∀ row ∈ rows.take index, row.2 < term.2 := by

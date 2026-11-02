@@ -79,7 +79,7 @@ theorem decode_key (monomial : List Nat) (checked : small monomial = true) :
     have nonzero : 2 + min first second * 512 + max first second ≠ 0 := by omega
     have whole : (2 + min first second * 512 + max first second - 1) / 512 = min first second := by omega
     have rest : (2 + min first second * 512 + max first second - 1) % 512 = max first second + 1 := by omega
-    simp only [key, decode, if_neg nonzero, whole, rest, Nat.add_one_ne_zero, ↓reduceIte, Nat.add_sub_cancel]
+    simp only [key, decode, ite_eq_right nonzero, whole, rest, Nat.add_one_ne_zero, ↓reduceIte, Nat.add_sub_cancel]
     by_cases order : first ≤ second
     · simp [List.insertionSort, order]
     · have reverse := le_of_not_ge order

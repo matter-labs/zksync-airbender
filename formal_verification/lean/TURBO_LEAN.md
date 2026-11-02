@@ -7,12 +7,13 @@ PR #585 keeps Lean 4.31 and its separate CI validation.
 ## Current state
 
 Lean and Mathlib resolve at version 4.35.0.
-All 52 source generator checks pass.
+All 53 generator checks pass.
 The Clean and lean-sail reference revisions stay unchanged.
 The hash-checked Clean compatibility patches apply.
 Stock Lean builds the numeric query-frame checker and its strict importer.
 The complete cached AddSub query-frame certificate also builds.
-This includes exact source bindings and the original semantic finalizer.
+All 11 cached native witness consumers also build.
+Their exact source bindings and original semantic finalizers pass.
 The port fixes proof reductions and deprecated theorem names.
 The Clean patches limit elaborator compatibility settings to affected proofs.
 They preserve reference definitions and theorem statements.
@@ -36,26 +37,26 @@ The source has one proof declaration. The repeat uses its checked cache entry.
 
 | Smoke command | Time (s) | Result |
 | --- | ---: | --- |
-| Stock Lean 4.35 | 1.47 | Source passes |
-| Turbo with an empty theorem cache | 1.83 | Theorem verified |
-| Turbo repeat | 0.79 | Theorem cache hit |
+| Stock Lean 4.35 | 1.45 | Source passes |
+| Turbo with an empty theorem cache | 2.46 | Theorem verified |
+| Turbo repeat | 0.84 | Theorem cache hit |
 
 The tool setup was warm for this table. The initial setup trial took 18.37 seconds
 for its first turbo check. These tiny checks do not measure cold project builds
 or warm proof edits. They establish no whole-project speed gain.
-The smoke group takes 4.71 seconds and peaks at 149.40 MiB footprint.
+The hardened smoke group takes 5.27 seconds and peaks at 143.08 MiB footprint.
 Reports remain in `/tmp/airbender-turbo-2026-11-02/` and the printed smoke directory.
 
 ## Commands
 
-Use a disposable OS sandbox without host credentials for further tool trials.
+The user approved host execution of the pinned tool after the focused review.
 The resource guard limits time and memory. It does not isolate the filesystem
 or network. The earlier host smoke preceded the focused security review.
 That review is not a complete audit of the tool or its dependencies.
 The launcher now also clears inherited compiler-simplification exceptions.
-This policy hardening has static checks; the tool was not rerun after it.
+The hardened host smoke passes with the recorded pinned binary.
 
-Use one free verification worker inside the isolated environment:
+Use one free verification worker:
 
 ```sh
 python3 scripts/bounded_fv.py --mib 2560 --resident-mib 5120 --seconds 900 \
@@ -64,7 +65,7 @@ python3 scripts/bounded_fv.py --mib 2560 --resident-mib 5120 --seconds 900 \
   --log /tmp/airbender-turbo-smoke.log -- bash scripts/turbo_lean.sh smoke
 ```
 
-Continue with focused dependency and importer builds on Lean 4.35.
+Continue with focused Sail and machine proof builds on Lean 4.35.
 Keep target statements, exact imported data and matching premises unchanged.
 Resolve the tool's artifact-dependency support before measuring real project edits.
 The official frontend, axiom audit and kernel replay remain the adoption gate.

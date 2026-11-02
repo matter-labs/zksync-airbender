@@ -25,7 +25,7 @@ theorem MaterializedLookupSetup.uniform_counter_witness
   have labelCorrect (entry : Q) (contained : model.Contains columns (queryFields entry)) :
       queryFields entry = model.fields columns (label entry) := by
     dsimp only [label]
-    rw [dif_pos contained]
+    rw [dite_eq_left contained]
     exact contained.choose_spec
   let counts := fun row => lookupCount row active label weight
   refine ⟨counts, ?_⟩

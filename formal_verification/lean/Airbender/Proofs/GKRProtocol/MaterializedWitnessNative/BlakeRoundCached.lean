@@ -131,10 +131,10 @@ theorem outputs_preserved_uniform {R : Type} [CommRing R]
   intro group
   fin_cases group
   · convert preserved.1 using 1 <;> simp [outputPorts, sourceRequests, setupColumns, List.map_map, Function.comp_def]
-    have coordinate : (0 : Fin 2) = (⟨0, by decide⟩ : Fin Airbender.Compiler.TableNative.BlakeRoundCached.native.multiplicityColumns.length) := by decide +kernel
+    have coordinate : (0 : Fin 2) = (⟨0, by decide⟩ : Fin Airbender.Compiler.TableNative.BlakeRoundCached.native.multiplicityColumns.length) := by rfl
     rw [coordinate]
   · convert preserved.2 using 1 <;> simp [outputPorts, sourceRequests, setupColumns, List.map_map, Function.comp_def]
-    have coordinate : (1 : Fin 2) = (⟨1, by decide⟩ : Fin Airbender.Compiler.TableNative.BlakeRoundCached.native.multiplicityColumns.length) := by decide +kernel
+    have coordinate : (1 : Fin 2) = (⟨1, by decide⟩ : Fin Airbender.Compiler.TableNative.BlakeRoundCached.native.multiplicityColumns.length) := by rfl
     rw [coordinate]
 
 theorem source_requests_valid (sourceValue : Fin 763 → Source.BaseField)
