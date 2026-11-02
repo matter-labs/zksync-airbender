@@ -9,7 +9,7 @@ from gkr_packed_functional_steps import balanced
 from gkr_packed_worker_ports import merge
 from gkr_packed_rotate_boundary import preflight
 
-CASES = ('AddSubCached', 'AddSubUncached')
+CASES = ('AddSubCached', 'AddSubUncached', 'BlakeRoundCached', 'BlakeRoundUncached')
 
 
 def capture_name(case):
@@ -34,7 +34,7 @@ def inputs(case):
     if case.startswith('BlakeRound'):
         text = text.replace('import_source_helpers native',
             '-- This command reconstructs every original affine definition.\n'
-            '-- The default budget expires on these data definitions.\n'
+            '-- The default budget expires on the complete data phase.\n'
             'set_option maxHeartbeats 2000000 in\nimport_source_helpers native')
     return text.replace('\n\nend Airbender.Compiler.HelperNative.', ' phase 0\n\nend Airbender.Compiler.HelperNative.')
 

@@ -7,7 +7,7 @@ import gkr_helper_instances as legacy
 
 class HelperPayload(unittest.TestCase):
     def test_complete_candidates_and_cache_modes(self):
-        self.assertEqual(set(packed.CASES), {'AddSubCached', 'AddSubUncached'})
+        self.assertEqual(set(packed.CASES), {'AddSubCached', 'AddSubUncached', 'BlakeRoundCached', 'BlakeRoundUncached'})
         for case in packed.CASES:
             modules = dict(packed.modules(case))
             stem = 'Airbender.Proofs.GKRProtocol.HelperPayloadChecks.' + case
