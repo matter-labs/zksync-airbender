@@ -25,11 +25,13 @@ private def addressSyntax : GKRAddress → CommandElabM (TSyntax `term)
   | _ => throwError "lookup multiplicity is not in its declared witness column"
 
 syntax (name := importSourceTableLayout) "import_source_table_layout " ident " from " str
-  " source " str " source_lookups " ident " native_model " ident " roles " ident : command
+  " source " str " source_lookups " ident " native_model " ident " roles " ident
+  (" using_freshness " ident)? : command
 
 elab_rules : command
   | `(import_source_table_layout $name:ident from $pairPath:str source $sourcePath:str
-      source_lookups $sourcePrefix:ident native_model $nativePrefix:ident roles $rolesName:ident) => do
+      source_lookups $sourcePrefix:ident native_model $nativePrefix:ident roles $rolesName:ident
+      $[using_freshness $freshnessNamespace:ident]?) => do
     let pairJson ← match Json.parse (← IO.FS.readFile pairPath.getString) with
       | .ok parsed => pure parsed | .error error => throwError "{error}"
     let sourceJson ← match Json.parse (← IO.FS.readFile sourcePath.getString) with
@@ -121,9 +123,14 @@ elab_rules : command
       let bankName := mkIdent (sourcePrefix.getId ++ `bank)
       let placementName := mkIdent (nativePrefix.getId ++ `sourcePlacement)
       let countFresh := mkIdent (name.getId ++ Name.mkSimple s!"{stem}MultiplicityFresh")
+      let freshnessProof ← match freshnessNamespace with
+        | none => `(by decide +kernel)
+        | some owner => do
+          let fact := mkIdent (owner.getId ++ Name.mkSimple s!"{stem}Fresh")
+          `(by exact $fact)
       elabCommand (← `(theorem $countFresh :
         (List.range $(quote pair.source.num_variables)).all (fun index =>
-          !addressEqual (($bankName).address ($placementName index)) $(← addressSyntax multiplicityAddress)) = true := by decide +kernel))
+          !addressEqual (($bankName).address ($placementName index)) $(← addressSyntax multiplicityAddress)) = true := $freshnessProof))
       let interpreted := mkIdent (name.getId ++ Name.mkSimple s!"{stem}SetupInterpreted")
       elabCommand (← `(theorem $interpreted {R : Type} [CommRing R]
         (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

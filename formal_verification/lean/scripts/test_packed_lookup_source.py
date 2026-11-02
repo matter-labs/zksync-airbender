@@ -11,16 +11,28 @@ import gkr_packed_lookup_source as generator
 
 class LookupSourceTests(unittest.TestCase):
     def test_complete_original_checks(self):
-        self.assertEqual(generator.CASES, ('AddSubCached', 'AddSubUncached'))
+        expected = {
+            'AddSubCached': (38, 15, 18),
+            'AddSubUncached': (38, 15, 18),
+            'BlakeRoundCached': (1437, 1152, 283),
+            'BlakeRoundUncached': (1437, 1152, 283),
+        }
+        self.assertEqual(set(generator.CASES), set(expected))
         for case in generator.CASES:
+            count, fields, operands = expected[case]
             rows = generator.descriptors(case)
-            self.assertEqual(len(rows), 38)
-            self.assertEqual(sum(isinstance(row[2], tuple) for row in rows), 15)
+            self.assertEqual(len(rows), count)
+            self.assertEqual(sum(isinstance(row[2], tuple) for row in rows), fields)
             generated = dict(generator.modules(case))
             stem = 'Airbender.Proofs.GKRProtocol.LookupSourceChecks.' + case
             self.assertEqual(len(generated), 5)
             inputs = generated[stem + '.Inputs']
-            self.assertIn('phase 4 start 0 stop 18', inputs)
+            if operands > 128:
+                for first in range(0, operands, 32):
+                    self.assertIn(f'phase 4 start {first} stop {min(first + 32, operands)}', inputs)
+                self.assertEqual(inputs.count('import_source_lookups native'), (operands + 31) // 32)
+            else:
+                self.assertIn(f'phase 4 start 0 stop {operands}', inputs)
             self.assertNotIn('NumericLookupSourceChecks', inputs)
             typed = generated[stem + '.Typed']
             self.assertIn('LookupSourceNative.' + case + '.native.field', typed)
@@ -36,9 +48,17 @@ class LookupSourceTests(unittest.TestCase):
                     self.assertIn('theorem ' + predicate[2] + ' : ' + predicate[0], certificate)
                     self.assertIn('theorem ' + predicate[3] + ' : ' + predicate[1], certificate)
             self.assertNotIn('originalEntries.get', certificate)
-            self.assertIn('(originalEntries.drop 32).take 6', certificate)
-            self.assertNotIn('maxHeartbeats', ''.join(generated.values()))
-            self.assertIn('phase 5 start 0 stop 18 using_checks', generator.native_wrapper(case))
+            first = (count - 1) // 8 * 8
+            self.assertIn(f'(originalEntries.drop {first}).take {count - first}', certificate)
+            if operands > 128:
+                self.assertEqual(inputs.count('set_option maxHeartbeats 2000000 in'), 1)
+                self.assertNotIn('maxHeartbeats', ''.join(source for name, source in generated.items()
+                    if name != stem + '.Inputs'))
+            else:
+                self.assertNotIn('maxHeartbeats', ''.join(generated.values()))
+            self.assertIn(f'phase 5 start 0 stop {operands} using_checks', generator.native_wrapper(case))
+            with self.assertRaisesRegex(ValueError, 'require every operand'):
+                generator.command(case, 5, 1, operands)
 
     def test_legacy_importer_and_full_witness_stay(self):
         source = (generator.LEAN / 'Airbender/Import/GKRProtocol/LookupSourceImport.lean').read_text()

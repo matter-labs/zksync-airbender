@@ -9,7 +9,7 @@ from gkr_packed_functional_steps import balanced
 from gkr_packed_query_frame import capture_name, merge_slices
 from gkr_packed_rotate_boundary import preflight
 
-CASES = ('AddSubCached', 'AddSubUncached')
+CASES = ('AddSubCached', 'AddSubUncached', 'BlakeRoundCached', 'BlakeRoundUncached')
 
 
 def metadata(case):
@@ -19,15 +19,36 @@ def metadata(case):
     return name, previous, synthesis(pair, previous)
 
 
-def command(case, phase):
+def command(case, phase, first=0, last=None):
     name, _, certificate = metadata(case)
+    count = len(certificate['operands'])
+    last = count if last is None else last
+    if not 0 <= first <= last <= count:
+        raise ValueError('source lookup input range is invalid: ' + case)
+    if phase == 5 and (first != 0 or last != count):
+        raise ValueError('source lookup checks require every operand: ' + case)
     selectors = json.dumps(json.dumps(certificate, separators=(',', ':')))
     checks = f' using_checks Airbender.Compiler.LookupSourceChecks.{case}' if phase == 5 else ''
     return (f'import_source_lookups native from "artifacts/compiler/{name}.json"\n'
             f'  certificate "artifacts/compiler/lookup/{name}.json"\n  selectors {selectors}\n'
             f'  reference Airbender.Compiler.LookupNative.{case}.native\n'
             f'  typing Airbender.Compiler.ConsumerNative.{case}.native.typing\n'
-            f'  phase {phase} start 0 stop {len(certificate["operands"])}{checks}\n')
+            f'  phase {phase} start {first} stop {last}{checks}\n')
+
+
+def input_commands(case):
+    count = len(metadata(case)[2]['operands'])
+    # Data commands carry no per-field semantic proofs. Bound their elaboration
+    # work while retaining one complete checker result for the capture.
+    width = 32 if count > 128 else count
+    commands = []
+    for first in range(0, count, width):
+        prefix = ''
+        if count > 128 and first == 0:
+            prefix = ('-- The complete affine source definitions exceed the default data import budget.\n'
+                      'set_option maxHeartbeats 2000000 in\n')
+        commands.append(prefix + command(case, 4, first, min(first + width, count)))
+    return ''.join(commands)
 
 
 def native_wrapper(case):
@@ -85,7 +106,7 @@ def modules(case):
     yield stem + '.Inputs', (f'import Airbender.Import.GKRProtocol.LookupSourceImport\n'
         f'import Airbender.Proofs.GKRProtocol.Native.{case}\nimport Airbender.Proofs.GKRProtocol.LookupNative.{case}\n\n'
         f'namespace {native}\nopen Airbender Airbender.Compiler\nset_option warningAsError true\n'
-        'set_option Elab.async false\nset_option maxRecDepth 32768\n\n' + command(case, 4) + '\nend ' + native + '\n')
+        'set_option Elab.async false\nset_option maxRecDepth 32768\n\n' + input_commands(case) + '\nend ' + native + '\n')
     rows = descriptors(case)
     yield stem + '.Typed', (f'import {stem}.Inputs\nimport Airbender.Proofs.GKRProtocol.NumericLookupSourceChecks\n\n' +
         header + 'noncomputable def originalEntries := [\n  ' + ',\n  '.join(row[1] for row in rows) + ']\n' + end)

@@ -41,6 +41,9 @@ def main():
                 f"  native_model Airbender.Compiler.LookupNative.{case}.native\n"
                 f"  roles Airbender.Compiler.ConsumerNative.{case}.native.typing\n\n"
                 f"end Airbender.Compiler.TableNative.{case}\n")
+            from gkr_packed_source_freshness import CASES as FRESHNESS_CASES, table_wrapper
+            if case in FRESHNESS_CASES:
+                content = table_wrapper(case, content)
             if args.check and (not path.exists() or path.read_text() != content):
                 raise ValueError(f"source table instance changed: {case}")
             if args.write and (not path.exists() or path.read_text() != content):
