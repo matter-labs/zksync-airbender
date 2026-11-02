@@ -21,6 +21,8 @@ theorem region_tag (kind : Fin 6) (n : Nat) :
 private theorem tag_bound {p : Nat} (hp : FieldCapacity.AtLeast p 512) (kind : Fin 6) : nativeTags[kind] < p := by
   fin_cases kind <;> dsimp [nativeTags] <;> omega
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- Every satisfying native entry belongs to one actual imported region. -/
 theorem any_region {p : Nat} [Fact p.Prime]
     {entry : Vector (Expression (ZMod p)) 6} {env : Environment (ZMod p)}

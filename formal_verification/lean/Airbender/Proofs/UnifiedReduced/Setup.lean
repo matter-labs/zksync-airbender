@@ -88,7 +88,7 @@ theorem wide_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} {tag
   by_cases top : i.val < 1048961
   · by_cases first : i.val < 524545
     · have same : referenceRow before i = referenceBinaryRow ⟨i.val, first⟩ := by
-        simp only [referenceRow, top, dif_pos, referenceFixedRow, first]
+        simp only [referenceRow, top, dite_eq_left, referenceFixedRow, first]
       refine ⟨⟨i.val, first⟩, same, ?_⟩
       have projected := congrArg (fun values : Vector Nat 10 => values[9]'(by decide)) same
       replace selected : (referenceBinaryRow ⟨i.val, first⟩)[9] = binaryTag tag :=
@@ -98,7 +98,7 @@ theorem wide_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} {tag
       unfold binaryTag at selected
       rcases wide with rfl | rfl | rfl
       all_goals split_ifs at selected <;> omega
-    · have same : referenceRow before i = referenceFixedRow ⟨i.val, top⟩ := dif_pos top
+    · have same : referenceRow before i = referenceFixedRow ⟨i.val, top⟩ := dite_eq_left top
       have bound : (referenceRow before i)[9] < 52 := by
         rw [same]
         simpa only [fixedRow_eq_reference] using fixed_outside_tag ⟨i.val, top⟩ first

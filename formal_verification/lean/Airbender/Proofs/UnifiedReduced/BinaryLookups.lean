@@ -33,7 +33,7 @@ theorem wide_lookup [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
   have value (k : Nat) (bound : k < 9) : entry[k].eval env = ((shiftBinopRow j)[k] : ZMod p) := by
     have col := columns k (by omega)
     rw [same] at col
-    simpa only [binaryRow_eq_reference, referenceBinaryRow, Vector.getElem_set, show 9 ≠ k by omega, if_false] using col
+    simpa only [binaryRow_eq_reference, referenceBinaryRow, Vector.getElem_set, show 9 ≠ k by omega, ite_false] using col
   simp only [oldEntry, Vector.getElem_map, Expression.eval] at result
   rw [value 0 (by decide), value 1 (by decide), value 2 (by decide)]
   refine ⟨result.1, result.2.1, result.2.2.1, result.2.2.2, ?_⟩

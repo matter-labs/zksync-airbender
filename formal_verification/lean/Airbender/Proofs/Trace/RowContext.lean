@@ -31,6 +31,8 @@ theorem WriteHistory.unique {cells : List Cell} {values : List (Nat × Nat)}
       subst sameState
       exact (EStateM.Result.ok.inj (write.symm.trans secondWrite)).2
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem row_write_values {Kind : Type} [CircuitLayout Kind] (epoch : Nat) (row : Row p Kind) :
     ((rowEvents epoch row).reverse.map fun event => (event.2.1, event.2.2.2)) = rowWriteValues row := by
   simp [rowEvents, nativeRowEvents, rowWriteValues, Row.writes, writeToken,

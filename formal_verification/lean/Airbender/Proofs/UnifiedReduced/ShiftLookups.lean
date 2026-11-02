@@ -36,7 +36,7 @@ theorem ordinary_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} 
   by_cases top : i.val < 1048961
   · by_cases first : i.val < 524545
     · have same : referenceRow before i = referenceBinaryRow ⟨i.val, first⟩ := by
-        simp only [referenceRow, top, dif_pos, referenceFixedRow, first]
+        simp only [referenceRow, top, dite_eq_left, referenceFixedRow, first]
       have projected := congrArg (fun values : Vector Nat 10 => values[9]'(by decide)) same
       replace selected := projected.symm.trans selected
       have bound := shift_tag_bound ⟨i.val, first⟩
@@ -54,7 +54,7 @@ theorem ordinary_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} 
         simp only [oldTag]
         rcases valid with rfl | rfl | rfl <;> rfl
       · rfl
-    · have same : referenceRow before i = referenceFixedRow ⟨i.val, top⟩ := dif_pos top
+    · have same : referenceRow before i = referenceFixedRow ⟨i.val, top⟩ := dite_eq_left top
       have projected := congrArg (fun values : Vector Nat 10 => values[9]'(by decide)) same
       replace selected := projected.symm.trans selected
       have other := fixed_other_tags ⟨i.val, top⟩ first

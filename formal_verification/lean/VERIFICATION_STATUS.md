@@ -40,9 +40,13 @@ The fixed Shift prefix padding and native rotation proofs also compile.
 Trace, window-count and Keccak call-port proofs compile.
 The Blake2G XOR lookup proof uses shared row bounds.
 Its recursion limit stays unchanged.
+The Shift lookup proof also uses shared row bounds and byte extraction.
+Its original row predicate and native contribution function stay unchanged.
+The reported Sail shift and unified arithmetic proofs compile.
+The latest batch qualifies 24 proof modules and all 54 generator checks.
 Controller geometry uses a symbolic index before specializing the native row.
 Its recursion and resource limits stay unchanged.
-Definitions and theorem statements stay unchanged.
+Existing definitions and theorem statements stay unchanged.
 The register-read proofs use explicit reductions of the original state operations.
 The compatibility patch annotates the existing natural-number choice binder.
 A local syntax adapter uses Sail's original assertion and monad lift.

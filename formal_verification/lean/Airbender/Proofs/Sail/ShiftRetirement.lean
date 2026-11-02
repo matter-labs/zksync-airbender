@@ -34,7 +34,7 @@ theorem retire_shift (input : Airbender.ShiftBinop.Input) (output : Output)
     all_goals cases form : input.immediate
     all_goals simp only [Airbender.ShiftBinop.execution, Airbender.ShiftBinop.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, operation, form,
       writeResult, SailRV32.Functions.execute_RTYPE, SailRV32.Functions.execute_SHIFTIOP,
-      SailRV32.Functions.execute_REV8, freeM_bind_assoc, freeM_pure_bind]
+      SailRV32.Functions.execute_REV8, freeM_pure_bind]
     all_goals rw [run_bind_of_ok _ _ _ _ _ left]
     all_goals first
       | (have right := rX_nextPC (pc := output.pc.toBitVec) input.rs2

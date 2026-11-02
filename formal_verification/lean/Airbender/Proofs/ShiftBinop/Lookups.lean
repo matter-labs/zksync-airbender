@@ -71,6 +71,46 @@ theorem truncation_lookup {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 
   rw [values 0 (by decide) a, values 1 (by decide) b, values 2 (by decide) cb]
   exact ⟨a, b, c⟩
 
+private def shiftRowClaim (contribution : Nat → Nat → Nat → Nat → BitVec 32)
+    (row : Vector Nat 10) : Prop :=
+  (∀ j : Nat, ∀ hj : j < 10, row[j] < 256) ∧
+  row[0] < 4 ∧ row[2] < 32 ∧ row[3] < 8 ∧
+  ∀ j : Fin 4, row[4 + j.val] =
+    ((contribution row[0] row[1] row[2] row[3]).extractLsb' (8 * j.val) 8).toNat
+
+private theorem shift_tuple_rows (key : Nat) (bound : key < 262144) (output : BitVec 32) :
+    let row : Vector Nat 10 :=
+      #v[key / 65536, key / 256 % 256, key / 8 % 32, key % 8,
+        output.toNat % 256, output.toNat / 256 % 256, output.toNat / 65536 % 256,
+        output.toNat / 16777216 % 256, 0, 9]
+    (∀ j : Nat, ∀ hj : j < 10, row[j] < 256) ∧
+    row[0] < 4 ∧ row[2] < 32 ∧ row[3] < 8 ∧
+    ∀ j : Fin 4, row[4 + j.val] = (output.extractLsb' (8 * j.val) 8).toNat := by
+  dsimp only
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  · intro j hj
+    interval_cases j <;> dsimp <;> omega
+  · change key / 65536 < 4
+    omega
+  · change key / 8 % 32 < 32
+    omega
+  · change key % 8 < 8
+    omega
+  · intro j
+    fin_cases j <;>
+      simp [BitVec.extractLsb', BitVec.toNat_ofNat, Nat.shiftRight_eq_div_pow]
+
+private theorem shift_contribution_row (contribution : Nat → Nat → Nat → Nat → BitVec 32)
+    (key : Nat) (bound : key < 262144) :
+    shiftRowClaim contribution
+      (let output := (contribution (key / 65536) (key / 256 % 256) (key / 8 % 32) (key % 8)).toNat
+       #v[key / 65536, key / 256 % 256, key / 8 % 32, key % 8,
+         output % 256, output / 256 % 256, output / 65536 % 256,
+         output / 16777216 % 256, 0, 9]) := by
+  unfold shiftRowClaim
+  exact shift_tuple_rows key bound
+    (contribution (key / 65536) (key / 256 % 256) (key / 8 % 32) (key % 8))
+
 private theorem shift_rows (i : Fin 524545) (selected : (shiftBinopRow i)[9] = 9) :
     (∀ j : Nat, ∀ hj : j < 10, (shiftBinopRow i)[j] < 256) ∧
     (shiftBinopRow i)[0] < 4 ∧ (shiftBinopRow i)[2] < 32 ∧
@@ -78,6 +118,7 @@ private theorem shift_rows (i : Fin 524545) (selected : (shiftBinopRow i)[9] = 9
     ∀ j : Fin 4, (shiftBinopRow i)[4 + j.val] =
       ((shiftByteContribution (shiftBinopRow i)[0] (shiftBinopRow i)[1]
         (shiftBinopRow i)[2] (shiftBinopRow i)[3]).extractLsb' (8 * j.val) 8).toNat := by
+  change shiftRowClaim shiftByteContribution (shiftBinopRow i)
   have lower : 262401 ≤ i.val := by
     simp only [shiftBinopRow_eq_reference] at selected
     unfold referenceShiftBinopRow referenceShiftNatRow at selected
@@ -96,12 +137,7 @@ private theorem shift_rows (i : Fin 524545) (selected : (shiftBinopRow i)[9] = 9
       show ¬ i.val < 65793 by omega, show ¬ i.val < 131329 by omega,
       show ¬ i.val < 196865 by omega, show ¬ i.val < 262401 by omega]
   rw [shape]
-  refine ⟨?_, by dsimp; omega, by dsimp; omega, by dsimp; omega, ?_⟩
-  · intro j hj
-    interval_cases j <;> dsimp <;> omega
-  · intro j
-    fin_cases j <;>
-      simp [BitVec.extractLsb', BitVec.toNat_ofNat, Nat.shiftRight_eq_div_pow]
+  exact shift_contribution_row shiftByteContribution (i.val - 262401) (by omega)
 
 /-- Four canonical output bytes are forced by the selected native shift row.
     Table provenance remains the same explicit external binding as for binops. -/

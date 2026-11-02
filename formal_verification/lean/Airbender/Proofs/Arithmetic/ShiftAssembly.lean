@@ -8,17 +8,17 @@ set_option maxRecDepth 16384
 
 theorem shift_assembly (tag : Nat) (valid : tag = 1 ∨ tag = 2 ∨ tag = 3 ∨ tag = 5)
     (x : BitVec 32) (amount : Nat) (reverse : tag = 5 → amount = 0)
-    (parts : Fin 4 → Fin 4 → Nat) (output : Word)
-    (bytes : ∀ i j : Fin 4, parts i j =
+    («parts» : Fin 4 → Fin 4 → Nat) (output : Word)
+    (bytes : ∀ i j : Fin 4, «parts» i j =
       ((shiftByteContribution i.val (x.extractLsb' (8 * i.val) 8).toNat amount tag).extractLsb' (8 * j.val) 8).toNat)
-    (low : output.lo = parts 0 0 + 256 * parts 0 1 + parts 1 0 + 256 * parts 1 1 +
-      parts 2 0 + 256 * parts 2 1 + parts 3 0 + 256 * parts 3 1)
-    (high : output.hi = parts 0 2 + 256 * parts 0 3 + parts 1 2 + 256 * parts 1 3 +
-      parts 2 2 + 256 * parts 2 3 + parts 3 2 + 256 * parts 3 3) :
+    (low : output.lo = «parts» 0 0 + 256 * «parts» 0 1 + «parts» 1 0 + 256 * «parts» 1 1 +
+      «parts» 2 0 + 256 * «parts» 2 1 + «parts» 3 0 + 256 * «parts» 3 1)
+    (high : output.hi = «parts» 0 2 + 256 * «parts» 0 3 + «parts» 1 2 + 256 * «parts» 1 3 +
+      «parts» 2 2 + 256 * «parts» 2 3 + «parts» 3 2 + 256 * «parts» 3 3) :
     output.toBitVec = shiftOperation tag x amount := by
   let contribution (i : Fin 4) := shiftByteContribution i.val (x.extractLsb' (8 * i.val) 8).toNat amount tag
   have rebuild (i : Fin 4) :
-      parts i 0 + 256 * parts i 1 + 65536 * parts i 2 + 16777216 * parts i 3 = (contribution i).toNat := by
+      «parts» i 0 + 256 * «parts» i 1 + 65536 * «parts» i 2 + 16777216 * «parts» i 3 = (contribution i).toNat := by
     rw [bytes i 0, bytes i 1, bytes i 2, bytes i 3]
     exact (bytes_value (contribution i)).symm
   have value : output.value = (contribution 0).toNat + (contribution 1).toNat +

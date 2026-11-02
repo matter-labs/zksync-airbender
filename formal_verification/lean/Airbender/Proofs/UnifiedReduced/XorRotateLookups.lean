@@ -14,14 +14,14 @@ theorem rotate_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} {t
   by_cases top : i.val < 1048961
   · by_cases first : i.val < 524545
     · have same : referenceRow before i = referenceBinaryRow ⟨i.val, first⟩ := by
-        simp only [referenceRow, top, dif_pos, referenceFixedRow, first]
+        simp only [referenceRow, top, dite_eq_left, referenceFixedRow, first]
       have projected := congrArg (fun values : Vector Nat 10 => values[9]'(by decide)) same
       replace selected := projected.symm.trans selected
       have bound := shift_tag_bound ⟨i.val, first⟩
       simp only [referenceBinaryRow, Vector.getElem_set_self] at selected
       unfold binaryTag at selected
       split_ifs at selected <;> omega
-    · have same : referenceRow before i = referenceFixedRow ⟨i.val, top⟩ := dif_pos top
+    · have same : referenceRow before i = referenceFixedRow ⟨i.val, top⟩ := dite_eq_left top
       have projected := congrArg (fun values : Vector Nat 10 => values[9]'(by decide)) same
       replace selected := projected.symm.trans selected
       unfold referenceFixedRow at selected

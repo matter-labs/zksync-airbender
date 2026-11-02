@@ -28,12 +28,12 @@ private theorem control_location {before : Reference.RiscV.Sail.State} {i : Fin 
     controlOffset tag ≤ i.val ∧ i.val < controlOffset tag + controlSize tag := by
   simp only [row_eq_reference, ] at *
   by_cases top : i.val < 1048961
-  · have same : referenceRow before i = referenceFixedRow ⟨i.val, top⟩ := dif_pos top
+  · have same : referenceRow before i = referenceFixedRow ⟨i.val, top⟩ := dite_eq_left top
     have projected := congrArg (fun values : Vector Nat 10 => values[9]'(by decide)) same
     replace selected := projected.symm.trans selected
     by_cases first : i.val < 524545
     · have same : referenceFixedRow ⟨i.val, top⟩ = referenceBinaryRow ⟨i.val, first⟩ := by
-        simp only [referenceFixedRow, first, dif_pos]
+        simp only [referenceFixedRow, first, dite_eq_left]
       have projected := congrArg (fun values : Vector Nat 10 => values[9]'(by decide)) same
       replace selected := projected.symm.trans selected
       have tags := binary_tags ⟨i.val, first⟩

@@ -9,6 +9,8 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 800000
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem scheduled_counter (reduced : Bool) (i : Nat) :
     (controllerAt reduced i).register.val % 128 <
       if (controllerAt reduced i).register.val / 128 = 0 then 80 else 56 := by

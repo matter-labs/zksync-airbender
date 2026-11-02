@@ -33,7 +33,7 @@ theorem transfers_unchanged (before : Reference.RiscV.Sail.State)
   intro port present
   have outside := port_not_shadow binding member (by simpa using present)
   simp only [Function.comp_apply, Trace.ROMView.token, readToken, Delegation.Row.writeToken,
-    outside, if_false]
+    outside, ite_false]
 
 theorem pool_transfers_unchanged (before : Reference.RiscV.Sail.State)
     {data : Delegation.MemoryData p} (binding : Binding data.rows) :
