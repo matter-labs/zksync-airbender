@@ -62,6 +62,57 @@ private theorem appended_zero_even {n : Nat} (upperBits : BitVec n) :
 
 attribute [irreducible] Returns
 
+private theorem returns_share (property : SailRV32.instruction → Prop)
+    (next : Option SailRV32.instruction → SailRV32.SailM SailRV32.instruction)
+    (body : (Option SailRV32.instruction → SailRV32.SailM SailRV32.instruction) →
+      SailRV32.SailM SailRV32.instruction)
+    (valid : ∀ value, optionProperty property value → Returns property (next value))
+    (rest : ∀ next, (∀ value, optionProperty property value → Returns property (next value)) →
+      Returns property (body next)) : Returns property (body next) := rest next valid
+
+local elab "returns_source_step" : tactic => do
+  let goal ← Lean.Elab.Tactic.getMainGoal
+  let target ← Lean.instantiateMVars (← goal.getType)
+  if target.isConstOf ``True then
+    Lean.Elab.Tactic.evalTactic (← `(tactic| exact True.intro))
+    return
+  unless target.isAppOfArity ``Returns 3 do
+    throwError "expected a Returns goal"
+  let action := target.appArg!.consumeMData
+  if let .letE name type value body _ := action then
+    if value.isLambda then
+      let property := target.appFn!.appArg!
+      let abstraction := Lean.mkLambda name .default type body
+      let shared ← goal.withContext <| Lean.Meta.mkAppM ``returns_share #[property, value, abstraction]
+      let [validGoal, restGoal] ← goal.apply shared
+        | throwError "expected the continuation and its body"
+      let validGoals ← Lean.Elab.Tactic.run validGoal
+        (Lean.Elab.Tactic.evalTactic (← `(tactic| intro result satisfies; cases result)))
+      let (_, restGoal) ← restGoal.intro1
+      let (_, restGoal) ← restGoal.intro1
+      Lean.Elab.Tactic.replaceMainGoal (validGoals ++ [restGoal])
+    else
+      Lean.Elab.Tactic.replaceMainGoal
+        [← goal.replaceTargetDefEq (Lean.mkApp target.appFn! (body.instantiate1 value))]
+    return
+  if action.getAppFn.isFVar then
+    Lean.Elab.Tactic.evalTactic (← `(tactic| apply_assumption))
+    return
+  if let some name := action.getAppFn.constName? then
+    if ← Lean.Meta.isMatcher name then
+      let reduced ← goal.withContext <| Lean.Meta.withConfig
+        (fun config => { config with zeta := false, zetaDelta := false, zetaUnused := false })
+        (Lean.Meta.whnf action)
+      if action != reduced then
+        Lean.Elab.Tactic.replaceMainGoal
+          [← goal.replaceTargetDefEq (Lean.mkApp target.appFn! reduced)]
+        return
+  let reduced := action.headBeta
+  if action == reduced then
+    throwError "no source step or head beta reduction"
+  Lean.Elab.Tactic.replaceMainGoal
+    [← goal.replaceTargetDefEq (Lean.mkApp target.appFn! reduced)]
+
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 65536 in
 set_option maxHeartbeats 2000000 in
@@ -77,8 +128,8 @@ theorem decoded_offset_even (bits : BitVec 32) :
   have checked : Returns evenOffsets (SailRV32.Functions.encdec_backwards bits) := by
     unfold SailRV32.Functions.encdec_backwards
     repeat' first
+      | returns_source_step
       | assumption
-      | trivial
       | (apply returns_pure; dsimp [optionProperty, evenOffsets])
       | (apply returns_bind_with (firstProperty := optionProperty evenOffsets) <;>
           try (intro result satisfies; cases result))

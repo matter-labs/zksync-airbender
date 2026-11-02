@@ -87,7 +87,9 @@ theorem latest_reads [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampB
           writeToken writer.columns writer.assignment access) ∈ path.zip path.tail := by
         apply permutation.mem_iff.mpr
         exact List.mem_filter.mpr ⟨nativeMember, by
-          simpa [readToken, writeToken] using (addressEq.trans sameAddress.symm)⟩
+          simp only [readToken, writeToken]
+          apply decide_eq_true
+          simpa only [readToken, writeToken] using (addressEq.trans sameAddress.symm)⟩
       exact List.mem_of_mem_tail (List.of_mem_zip selected).2
   have noGap := consecutive_ranks rank (List.pairwise_map.mp ordered) onPath cellOnPath
   change ¬ (rank previous < rank cell ∧ rank cell < rank written) at noGap
