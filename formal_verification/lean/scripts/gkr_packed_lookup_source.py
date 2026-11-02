@@ -8,8 +8,9 @@ from gkr_lookup_source_certificate import synthesis
 from gkr_packed_functional_steps import balanced
 from gkr_packed_query_frame import capture_name, merge_slices
 from gkr_packed_rotate_boundary import preflight
+from gkr_wiring_instances import CASES as CIRCUITS
 
-CASES = ('AddSubCached', 'AddSubUncached', 'BlakeRoundCached', 'BlakeRoundUncached')
+CASES = tuple(circuit + mode for circuit in CIRCUITS for mode in ('Cached', 'Uncached'))
 
 
 def metadata(case):
@@ -44,7 +45,7 @@ def input_commands(case):
     commands = []
     for first in range(0, count, width):
         prefix = ''
-        if count > 128 and first == 0:
+        if case.startswith('BlakeRound') and first == 0:
             prefix = ('-- The complete affine source definitions exceed the default data import budget.\n'
                       'set_option maxHeartbeats 2000000 in\n')
         commands.append(prefix + command(case, 4, first, min(first + width, count)))
