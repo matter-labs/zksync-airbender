@@ -49,53 +49,54 @@ The signing rewrite leaves the source tree unchanged.
 
 ## Runtime
 
-This host runs macOS. The user enabled Docker.
-The local final validation uses the preserved Mac caches.
-Its import inventory passes after the path-case correction.
-The cold Linux build continues in an isolated Docker volume.
-It uses the pinned ARM64 Lean toolchain and no Mac build objects.
-Bootstrap passed. The current cold queue covers all 4,202 source modules.
-The first pass completed 177 modules. `Source.ChiCharacters` then reached
-the 900-second limit. The resume retains all completed results and reports
-source-character progress. No proof error or memory-limit failure was reported.
-`Source.ChiCharacters` passes on Linux in 1,133.67 seconds at 540.31 MiB.
-This leaf uses the existing 1,800-second review allowance.
-The Mac frontend hit the same 900-second limit and resumes with this allowance.
-All other source leaves retain 900 seconds. Memory caps stay unchanged.
-No full Linux validation result is claimed.
-A timing-helper conflict stopped the first bootstrap attempt.
-The retry uses the unchanged compiler and normal guarded module builds.
-Existing caches and preservation objects remain in `/tmp/airbender-review-round/`.
+The user moved final validation to the large CI runner.
+[Run 41448372904](https://github.com/matter-labs/zksync-airbender/actions/runs/41448372904)
+is active at signed commit `8332e83e1149e62c9ca778b90414a40a44379dfe`.
+The registered Rust CI workflow provides the manual entry.
+It calls the same FV workflow. Other Rust jobs skip this manual run.
+FV stays off PR runs. Nightly runs retain their normal baseline comparison.
+This manual run requests a cold build and a baseline refresh.
+It restores no project Lean objects. Each cold module gets a time and memory receipt.
+The job exports the refreshed baseline only after a passing environment audit.
+The transitive replay uses a 2,048 MiB stack and checks all safe dependencies.
 
-Focused source builds pass for the cached native acceptance path, all three
-native corollaries and the changed compiler/protocol aggregate imports.
-The single generator freshness command passes for all retained routes.
-The aggregate source builds use retained objects. They are not a clean full
-frontend result. The earlier ownership collision remains in the history.
+The duplicate local Mac frontend and Docker cold run stopped at the user's request.
+Their caches and partial reports remain. Neither is a full validation result.
+The local worker now runs the separate Lean 4.35 and turbo experiment.
+That experiment does not change this PR's Lean 4.31 toolchain.
+
+Focused builds pass for the cached native acceptance path, all three native
+corollaries and the changed compiler/protocol aggregate imports.
+All 52 generator routes pass. These focused results do not replace the full gate.
+`Source.ChiCharacters` uses the measured 1,800-second source allowance.
+Other source leaves retain 900 seconds. Memory caps and kernel checks stay unchanged.
 
 ## Final validation
 
-| Phase | State | Time (s) | Peak memory (MiB) |
+| Phase | State | Time (s) | Peak footprint (MiB) |
 | --- | --- | ---: | ---: |
-| Cold Linux source build, 4,202 modules | Resume running after a timeout | Pending | Pending |
-| Mac full frontend and runtime gates | Resume after source time-limit fix | Pending | Pending |
-| Linux `Source.ChiCharacters` cold leaf | Passed | 1,133.67 | 540.31 |
-| Mac environment audit and baseline refresh | Queued | Pending | Pending |
-| Mac full transitive replay, 2,048 MiB stack | Queued | Pending | Pending |
-| Linux runtime qualification | Deferred until last | Pending | Pending |
+| CI cold source build, 4,202 modules | Bootstrap running | Pending | Pending |
+| CI full frontend and runtime gates | Queued | Pending | Pending |
+| CI environment audit and baseline refresh | Queued | Pending | Pending |
+| CI full transitive replay, 2,048 MiB stack | Queued | Pending | Pending |
+| Local Linux cold partial, 857 modules | Stopped; moved to CI | 8,383.54 | 2,202.59 |
+| Local Mac frontend partial | Stopped; moved to CI | 5,108.33 | 2,100.26 |
+| Local Linux `Source.ChiCharacters` cold leaf | Passed | 1,133.67 | 540.31 |
 
-The Linux run uses Docker container `airbender-fv-final-20261102`.
-It retains the completed module receipts. No second full replay is scheduled.
-Local reports are in the sibling `mac-final/` evidence directory.
-Evidence is in `/tmp/airbender-review-round/method-reset-2026-11-02/linux-final/`.
-Normal guarded Lake builds record each module time and peak memory.
+The Linux partial time sums module guard times. The Mac partial time is wall time.
+The cold CI artifact includes `cold-build/modules.jsonl` and `cold-build/modules.md`.
 These times include Lake startup and dependency freshness checks.
-The hourly task follows this plan. It must not restart the family rollout.
+CI uploads commands, resource receipts and failure logs from each stage.
+Local partial evidence remains in `/tmp/airbender-review-round/method-reset-2026-11-02/`.
+No duplicate local full audit or replay is scheduled.
+The hourly task follows the CI run and the separate focused upgrade experiment.
 
 ## PR checks
 
 The Rust warnings jobs found a stale call in the initialization-window test.
 The test now uses the current five-argument verifier generator.
 The generator derives packing and batching parameters from its configuration.
-The three warnings jobs, formatting, spelling and EVM verifier jobs pass.
-Other PR jobs remain pending. Production code stays unchanged.
+At commit `100c270a0`, 22 PR checks passed and the IaC scanner was neutral.
+No check failed or stayed pending. The CI entry change starts new PR checks.
+The separate full FV run must pass before this PR leaves draft.
+Production code stays unchanged.

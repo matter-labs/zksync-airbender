@@ -6280,3 +6280,21 @@ this exact target. All other source leaves retain 900 seconds.
 Memory limits and kernel checks stay unchanged. No proof statement changes.
 The cold pass retains all completed receipts and continues to the next source.
 The Mac continuation retains its completed source cache.
+
+## 2026-11-02: Move final verification to the large CI runner
+
+The user approved moving full validation to CI and freeing local resources.
+Signed commit `8332e83e1149e62c9ca778b90414a40a44379dfe` adds a manual entry
+to the existing Rust CI workflow. The new FV workflow was not registered on the
+default branch, so GitHub could not dispatch it directly. The existing entry
+calls the reusable FV workflow on the large runner. FV stays off PR runs.
+Run `41448372904` requests a cold source build, an environment audit and baseline
+refresh, the full frontend, and one transitive replay with a 2,048 MiB stack.
+The source pass records each module time and peak memory.
+
+The duplicate Mac frontend stopped by request after 5,108.33 seconds.
+The duplicate Docker cold run stopped after 857 completed source modules.
+Its module receipts total 8,383.54 seconds and peak at 2,202.59 MiB footprint.
+The caches and all partial receipts remain. These are partial results.
+Both resource locks are free. The focused Lean 4.35 and turbo experiment can run
+locally while full validation runs on CI. No target or cached Review claim changed.
