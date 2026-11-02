@@ -1,38 +1,20 @@
-import Airbender.Proofs.GKRProtocol.MemoryValueCongruence
-import Airbender.Proofs.GKRProtocol.CleanArithmeticNative.BlakeGUncached
-import Airbender.Proofs.GKRProtocol.MemoryNative.BlakeGUncached
-import Airbender.Proofs.GKRProtocol.MemoryTokens
-import Airbender.Proofs.GKRProtocol.FunctionalLinksNative.BlakeGUncached
-import Airbender.Proofs.GKRProtocol.NativeWitness
-import Airbender.Review.Helpers.Delegation.Requests
+import Airbender.Proofs.GKRProtocol.WorkerPortChecks.BlakeGUncached.Certificate
 
 namespace Airbender.Compiler.WorkerPortsNative.BlakeGUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 65536
-set_option maxHeartbeats 8000000
-
-noncomputable def originalIndices : List Nat := [0] ++
-  (Airbender.Compiler.MemoryNative.BlakeGUncached.native.memoryReadRows ++ Airbender.Compiler.MemoryNative.BlakeGUncached.native.memoryWriteRows).flatMap Source.MemoryRow.originalIndices
 
 theorem original_columns : originalIndices.all (fun index =>
     decide (Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.BlakeGUncached.native.placement index) =
-      Airbender.Compiler.MemoryNative.BlakeGUncached.native.bank.address (Airbender.Compiler.MemoryNative.BlakeGUncached.native.sourcePlacement.original index))) = true := by decide +kernel
+      Airbender.Compiler.MemoryNative.BlakeGUncached.native.bank.address (Airbender.Compiler.MemoryNative.BlakeGUncached.native.sourcePlacement.original index))) = true := Airbender.Compiler.WorkerPortChecks.BlakeGUncached.facts.1.1
 
 theorem history_columns : ((List.finRange Airbender.Blake2G.importedConstraintsMemoryPorts.size).all (fun index =>
     (List.finRange 2).all (fun limb => decide
       (Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.BlakeGUncached.native.placement
         ((Airbender.Blake2G.importedConstraintsMemoryPorts[index.val]).clock.previous[limb.val])) =
-       Airbender.Compiler.MemoryNative.BlakeGUncached.native.bank.address (Airbender.Compiler.MemoryNative.BlakeGUncached.native.sourcePlacement.readTimestamp index.val limb))))) = true := by decide +kernel
-
-noncomputable def logicalValues (assignment : Nat → Source.BaseField) (other : Source.MemoryValues) : Source.MemoryValues :=
-  { other with
-    original := assignment
-    readTimestamp := fun query limb =>
-      if bounded : query < Airbender.Blake2G.importedConstraintsMemoryPorts.size then
-        assignment ((Airbender.Blake2G.importedConstraintsMemoryPorts[query]).clock.previous[limb.val])
-      else 0 }
+       Airbender.Compiler.MemoryNative.BlakeGUncached.native.bank.address (Airbender.Compiler.MemoryNative.BlakeGUncached.native.sourcePlacement.readTimestamp index.val limb))))) = true := Airbender.Compiler.WorkerPortChecks.BlakeGUncached.facts.1.2
 
 theorem source_read_tokens (assignment : Nat → Source.BaseField) (other : Source.MemoryValues) :
     (Airbender.Compiler.MemoryNative.BlakeGUncached.native.memoryReadRows.map (fun row => row.token (logicalValues assignment other))) =
@@ -77,7 +59,7 @@ theorem history_assignment (physical : GKRAddress → Source.BaseField) (data : 
 theorem history_indices :
     (Airbender.Compiler.MemoryNative.BlakeGUncached.native.memoryReadRows ++ Airbender.Compiler.MemoryNative.BlakeGUncached.native.memoryWriteRows).all
       (fun row => row.fields.all (fun field => field.historyIndices.all
-        (fun index => decide (index.1 < Airbender.Blake2G.importedConstraintsMemoryPorts.size)))) = true := by decide +kernel
+        (fun index => decide (index.1 < Airbender.Blake2G.importedConstraintsMemoryPorts.size)))) = true := Airbender.Compiler.WorkerPortChecks.BlakeGUncached.facts.2
 
 theorem row_token_from_base (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (row : Source.MemoryRow)

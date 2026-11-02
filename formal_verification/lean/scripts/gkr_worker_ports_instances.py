@@ -70,7 +70,7 @@ def module(family, mode):
     return 'Airbender.Proofs.GKRProtocol.WorkerPortsNative.' + case, text
 
 
-def modules(family, mode):
+def legacy_modules(family, mode):
     target,text=module(family,mode)
     if family!='blake-round':
         yield target,text
@@ -107,6 +107,13 @@ def modules(family, mode):
                f'  exact BoolChecks.all_true (predicate := fun block : List (Fin Airbender.{model}.importedConstraintsMemoryPorts.size) => block.all historyPredicate) (items := [{", ".join(blocks)}]) ({checks})\n\n')
     header=''.join('import '+part+'\n' for part in parts)+f'\nnamespace {namespace}\nopen Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
     yield target,header+aggregate+text[b:]
+
+
+def modules(family, mode):
+    from gkr_packed_worker_ports import modules as packed_modules, native
+    case = FAMILIES[family][0] + mode.title()
+    yield from packed_modules(case)
+    yield native(case)
 
 
 def main():
