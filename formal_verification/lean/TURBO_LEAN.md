@@ -15,6 +15,8 @@ The complete cached AddSub query-frame certificate also builds.
 All 11 cached native witness consumers also build.
 Their exact source bindings and original semantic finalizers pass.
 The pinned Sail interpreter and RV32 snapshot compile.
+The basic RISC-V step and register-read proofs also compile.
+The register-read proofs use explicit reductions of the original state operations.
 The compatibility patch annotates the existing natural-number choice binder.
 A local syntax adapter uses Sail's original assertion and monad lift.
 The original compiler-output hash and all 13 instruction fingerprints stay unchanged.

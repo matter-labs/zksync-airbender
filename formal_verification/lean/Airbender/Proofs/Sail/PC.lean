@@ -11,7 +11,8 @@ theorem read_register {reg : SailRV32.Register} {value : SailRV32.RegisterType r
     run (SailRV32.readReg reg) state = .ok value state := by
   dsimp [run, SailRV32.readReg, PreSail.readReg, interpretSailEffects,
     FreeM.liftM, interpretInstructionEffect]
-  simp [h]
+  rw [h]
+  rfl
 
 theorem read_register_iff {reg : SailRV32.Register} {value : SailRV32.RegisterType reg}
     {state : State} :
@@ -21,7 +22,10 @@ theorem read_register_iff {reg : SailRV32.Register} {value : SailRV32.RegisterTy
   cases found : state.regs.get? reg
   · change EStateM.Result.error _ state = EStateM.Result.ok value state ↔ none = some value
     simp
-  · simp
+  · rename_i foundValue
+    change EStateM.Result.ok foundValue state = EStateM.Result.ok value state ↔
+      some foundValue = some value
+    simp
 
 /-- A native register insertion preserves every different register read. -/
 theorem read_register_insert {reg setter : SailRV32.Register}

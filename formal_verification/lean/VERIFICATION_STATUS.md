@@ -30,6 +30,8 @@ Its exact source bindings and original semantic finalizer pass.
 All 11 cached native witness consumers also compile.
 Their exact source bindings and semantic finalizers pass.
 The pinned Sail interpreter and RV32 snapshot compile.
+The basic RISC-V step and register-read proofs also compile.
+The register-read proofs use explicit reductions of the original state operations.
 The compatibility patch annotates the existing natural-number choice binder.
 A local syntax adapter uses Sail's original assertion and monad lift.
 The original compiler-output hash and all 13 instruction fingerprints stay unchanged.
@@ -55,7 +57,7 @@ The launcher now clears inherited compiler-simplification exceptions too.
 The user approved host execution of the pinned tool after the focused review.
 The hardened smoke passes with the recorded pinned binary.
 The time and memory guard does not provide OS isolation.
-The remaining proof port needs Sail proof and machine source builds.
+The remaining proof port needs the three machine target source builds.
 Only `propext`, `Classical.choice` and `Quot.sound` are permitted.
 The official kernel remains the acceptance gate.
 
