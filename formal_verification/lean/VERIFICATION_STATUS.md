@@ -5983,3 +5983,53 @@ The hourly follow-up stays active. Full frontend validation, environment audit,
 full transitive replay, cold full measurements and Linux qualification did not
 run. They stay pending for implementation review.
 No aggregate import pass is claimed.
+
+## Complete native helper payload family
+
+All 22 helper payload captures now use one complete result per capture.
+The final 18 preserve every original agreement, bank round trip and base role.
+Complete bindings retain every relation bank, witness, polynomial coefficient,
+zero term and term order. The original semantic finalizers remain.
+All old checked, inBank, roles, sourceQuery and data names remain.
+The four earlier captures stay unchanged.
+
+The final 18 retain all 2,880 original declarations.
+Kernel preservation accepts all 1,914 old theorem types.
+All 966 imported Expr values are identical.
+All 166 selected source modules and standard 32 MiB replays pass.
+They include 54 direct consumers. They skip no safe dependency.
+All 4,904 focused axiom queries use only the three allowed axioms.
+All 72 captured exact controls pass. The kernel rejects all 72 mutations.
+The qualified shared legacy, phase, wrong-fact, opaque, witness and projection
+controls retain their passes. All three expanded Python controls pass.
+Source, interface, static, layer, graph and workflow checks pass.
+CI checks every adopted capture, including both cache modes.
+
+Every module in the final 18 uses default heartbeats.
+All 22 native helper wrappers now use default heartbeats.
+Only the two measured BlakeRound data commands retain scoped two-million budgets.
+The existing memory and time limits remain. No cold full-build gain is claimed.
+
+| Guarded phase | Time | Peak physical footprint |
+| --- | ---: | ---: |
+| helper-payload-remaining-dense-source | 187.72 s | 920.64 MiB |
+| helper-payload-remaining-dense-qualification | 113.31 s | 2,298.60 MiB |
+| helper-payload-remaining-dense-direct | 97.78 s | 858.40 MiB |
+| helper-payload-remaining-ordinary-source | 278.76 s | 841.29 MiB |
+| helper-payload-remaining-ordinary-qualification | 221.81 s | 2,279.99 MiB |
+| helper-payload-remaining-ordinary-direct | 167.58 s | 842.29 MiB |
+
+All guards clean their owned workers. The inventory has 159,724 roots.
+It retains all 157,916 prior roots and every established root.
+The original 44 helper and memory module objects remain in the payload baseline.
+Evidence uses helper-payload-remaining prefixes.
+
+Memory payloads and consumer typing remain open.
+The generic memory fingerprint adapter is proved. It has no adopted capture yet.
+Memory expansion flags, primitive ports, fingerprint occurrences and mask fields
+must retain their original checks and complete witnesses.
+The remaining metadata and header scope also needs its audit.
+The hourly follow-up stays active. Full frontend validation, environment audit,
+full transitive replay, cold full measurements and Linux qualification did not
+run. They stay pending for implementation review.
+No aggregate import pass is claimed.
