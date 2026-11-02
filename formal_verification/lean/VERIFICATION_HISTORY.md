@@ -6298,3 +6298,11 @@ Its module receipts total 8,383.54 seconds and peak at 2,202.59 MiB footprint.
 The caches and all partial receipts remain. These are partial results.
 Both resource locks are free. The focused Lean 4.35 and turbo experiment can run
 locally while full validation runs on CI. No target or cached Review claim changed.
+
+## 2026-11-02: Repair the full gate export inventory
+
+CI run `41448372904` passed all 12 native generators and 13 requested exports.
+The full inventory check correctly rejected three missing split Keccak files.
+The workflow now exports column parity, theta/rho and chi5 too. Its export
+inventory matches all 16 families in `check_setup_freshness.FAMILIES`.
+No native artifact, equation, proof or premise changed.

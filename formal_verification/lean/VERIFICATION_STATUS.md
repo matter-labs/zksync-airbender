@@ -51,7 +51,11 @@ The signing rewrite leaves the source tree unchanged.
 
 The user moved final validation to the large CI runner.
 [Run 41448372904](https://github.com/matter-labs/zksync-airbender/actions/runs/41448372904)
-is active at signed commit `8332e83e1149e62c9ca778b90414a40a44379dfe`.
+ran at signed commit `8332e83e1149e62c9ca778b90414a40a44379dfe`.
+It stopped because the CI export list omitted the three split Keccak families.
+All 12 generators and 13 requested exports passed. The inventory check rejected
+the missing artifacts. The export list now includes all 16 required families.
+The repaired gate will reuse the saved native build caches.
 The registered Rust CI workflow provides the manual entry.
 It calls the same FV workflow. Other Rust jobs skip this manual run.
 FV stays off PR runs. Nightly runs retain their normal baseline comparison.
@@ -75,7 +79,7 @@ Other source leaves retain 900 seconds. Memory caps and kernel checks stay uncha
 
 | Phase | State | Time (s) | Peak footprint (MiB) |
 | --- | --- | ---: | ---: |
-| CI cold source build, 4,202 modules | Bootstrap running | Pending | Pending |
+| CI cold source build, 4,202 modules | Waiting for export-list repair | Pending | Pending |
 | CI full frontend and runtime gates | Queued | Pending | Pending |
 | CI environment audit and baseline refresh | Queued | Pending | Pending |
 | CI full transitive replay, 2,048 MiB stack | Queued | Pending | Pending |

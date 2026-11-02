@@ -230,7 +230,7 @@ jobs:
           source "$FV_ROOT/guard.sh"
           fv native-lock python3 scripts/check_setup_artifacts.py --prepare-lock
           fv provenance-controls python3 -m unittest discover -s scripts -p test_setup_provenance.py -v
-      - name: Twelve generators and thirteen complete fresh exports
+      - name: Twelve generators and sixteen complete fresh exports
         id: native-setups
         timeout-minutes: 370
         run: |
@@ -244,7 +244,7 @@ jobs:
             fv "regenerate-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
               regenerate "$family" --work-dir "$FV_ROOT/native"
           done
-          for family in "${families[@]}" decoder-smoke; do
+          for family in "${families[@]}" keccak-column-parity keccak-theta-rho keccak-chi5 decoder-smoke; do
             fv "export-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
               export "$family" --work-dir "$FV_ROOT/native"
           done
