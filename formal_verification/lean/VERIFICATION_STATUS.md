@@ -1,107 +1,56 @@
-# Verification status
-
-This branch prepares the [Lean 4.35 and turbo-lean experiment](TURBO_LEAN.md).
-The dependency lock and all 52 source generator checks pass.
-The proof port and runtime trials are pending.
-The validation evidence below describes Lean 4.31 at the fork commit.
-PR #585 and its active validation remain on the original branch.
+# Upgrade experiment status
 
 The model covers only the cached circuits. Production sets use_caches = true.
 
-## Proofs
+## Branch and scope
 
-All three machine targets are proved.
-Their definitions stay unchanged. Cached Review claims remain.
-Uncached-only Review cases and statements are removed with user approval.
-The split Keccak source certificates are proved.
-Exact lookup, request and RAM premises stay explicit.
-The verified base is `c1a662222cafcd96db4383dce737edb79fa62b09`.
-The local initialization-window fix remains in this branch.
+This is `codex/lean-turbo-upgrade`.
+It forks from signed commit `100c270a0ec1837701e7b0bf2b7385e5cdee2cab`.
+Lean and Mathlib resolve at version 4.35.0.
+Clean and lean-sail keep their exact reference revisions.
+All three target definitions and cached Review statements stay unchanged.
+The complete proof port remains unqualified on Lean 4.35.
+Earlier whole-project evidence describes Lean 4.31.
 
-## Current checkpoint
+[PR #585](https://github.com/matter-labs/zksync-airbender/pull/585) stays separate.
+Its [full FV run](https://github.com/matter-labs/zksync-airbender/actions/runs/41448372904)
+uses Lean 4.31 on the large runner.
+The user moved full validation there and freed the Mac for this experiment.
+No second full validation is required for the initial experiment.
+Full official validation is required before adopting the upgrade.
 
-The tag `fv-archive-uncached` records the branch before scope removal.
+## Completed focused checks
 
-The uncached captures and captured-program compatibility modules are removed.
-Old arithmetic, functional and frame shard projections are removed.
-All 58 focused source builds for this deletion pass.
-The cached native acceptance theorems remain in the production gate.
-Three [native corollaries](Airbender/Review/Compiler/Theorems.lean) compose them
-with the full unsigned, reduced and unified target proofs.
-Their focused source builds pass.
-Item 3 has stopped. No more fact families will be converted.
-FV CI runs nightly and on manual dispatch, on the large runner.
-One freshness step checks all 52 generator routes.
-It also requires tracked Airbender imports to resolve to tracked sources.
-The cold source queue includes the top-level `Airbender.lean` module.
-Its focused source build passes after the stale imports are removed.
-The tracked-import check covers 12,078 imports in 4,212 Lean files.
-The earlier log is in [VERIFICATION_HISTORY.md](VERIFICATION_HISTORY.md).
-The final axiom inventory and baseline refresh remain pending.
-[PR #585](https://github.com/matter-labs/zksync-airbender/pull/585) is in draft.
-The history rewrite signed all 768 commits. Later commits are signed.
-GitHub verifies the signed head.
-The signing rewrite leaves the source tree unchanged.
+Dependency resolution and the existing Clean compatibility patches pass.
+All 52 source generator checks pass.
+The real `FiniteGridChecks` source compiles with stock Lean 4.35.
+The pinned turbo tool passes `cargo check` and its release build.
+An exact core-only source copy passes stock Lean and the standard turbo kernel.
+The repeat turbo check returns a checked theorem cache hit.
+The smoke launcher verifies exact source and policy hashes after each command.
+No production circuit, Rust code, proof statement or matching premise changes.
 
-## Plan
+## Current limits
 
-1. The three deletion commits are complete. Their focused source builds pass.
-2. Run FV only at night or on manual dispatch, on the large runner.
-   Use one generator freshness step. Keep the existing checkers.
-3. Run one final cold build, full frontend and transitive kernel replay.
-   Use a 2,048 MiB stack. Run the environment audit and refresh the baseline.
-   Record module time, peak memory and totals in one table.
-4. Fix only validation failures. Do not change a target or cached Review claim.
+The pinned turbo tool rejects the real Lake library's `needs` dependencies.
+They protect artifact freshness and remain in place.
+The isolated smoke does not qualify whole-project integration or speed.
+No warm proof-edit measurement is claimed.
+The larger dependency and proof port still needs focused builds.
+Only `propext`, `Classical.choice` and `Quot.sound` are permitted.
+The official kernel remains the acceptance gate.
 
-## Runtime
+## Measurements
 
-This host runs macOS. The user enabled Docker.
-The local final validation uses the preserved Mac caches.
-Its import inventory passes after the path-case correction.
-The cold Linux build continues in an isolated Docker volume.
-It uses the pinned ARM64 Lean toolchain and no Mac build objects.
-Bootstrap passed. The current cold queue covers all 4,202 source modules.
-The first pass completed 177 modules. `Source.ChiCharacters` then reached
-the 900-second limit. The resume retains all completed results and reports
-source-character progress. No proof error or memory-limit failure was reported.
-`Source.ChiCharacters` passes on Linux in 1,133.67 seconds at 540.31 MiB.
-This leaf uses the existing 1,800-second review allowance.
-The Mac frontend hit the same 900-second limit and resumes with this allowance.
-All other source leaves retain 900 seconds. Memory caps stay unchanged.
-No full Linux validation result is claimed.
-A timing-helper conflict stopped the first bootstrap attempt.
-The retry uses the unchanged compiler and normal guarded module builds.
-Existing caches and preservation objects remain in `/tmp/airbender-review-round/`.
+| Focused phase | Time (s) | Peak footprint (MiB) |
+| --- | ---: | ---: |
+| Serial tool check and release build | 264.39 | 1,030.80 |
+| Smoke group, stock plus two turbo commands | 4.71 | 149.40 |
+| Stock source command | 1.47 | Within smoke group |
+| Turbo first theorem check, setup warm | 1.83 | Within smoke group |
+| Turbo repeat cache hit | 0.79 | Within smoke group |
 
-Focused source builds pass for the cached native acceptance path, all three
-native corollaries and the changed compiler/protocol aggregate imports.
-The single generator freshness command passes for all retained routes.
-The aggregate source builds use retained objects. They are not a clean full
-frontend result. The earlier ownership collision remains in the history.
-
-## Final validation
-
-| Phase | State | Time (s) | Peak memory (MiB) |
-| --- | --- | ---: | ---: |
-| Cold Linux source build, 4,202 modules | Resume running after a timeout | Pending | Pending |
-| Mac full frontend and runtime gates | Resume after source time-limit fix | Pending | Pending |
-| Linux `Source.ChiCharacters` cold leaf | Passed | 1,133.67 | 540.31 |
-| Mac environment audit and baseline refresh | Queued | Pending | Pending |
-| Mac full transitive replay, 2,048 MiB stack | Queued | Pending | Pending |
-| Linux runtime qualification | Deferred until last | Pending | Pending |
-
-The Linux run uses Docker container `airbender-fv-final-20261102`.
-It retains the completed module receipts. No second full replay is scheduled.
-Local reports are in the sibling `mac-final/` evidence directory.
-Evidence is in `/tmp/airbender-review-round/method-reset-2026-11-02/linux-final/`.
-Normal guarded Lake builds record each module time and peak memory.
-These times include Lake startup and dependency freshness checks.
-The hourly task follows this plan. It must not restart the family rollout.
-
-## PR checks
-
-The Rust warnings jobs found a stale call in the initialization-window test.
-The test now uses the current five-argument verifier generator.
-The generator derives packing and batching parameters from its configuration.
-The three warnings jobs, formatting, spelling and EVM verifier jobs pass.
-Other PR jobs remain pending. Production code stays unchanged.
+[TURBO_LEAN.md](TURBO_LEAN.md) gives the exact scope and reproduction command.
+Evidence remains in `/tmp/airbender-turbo-2026-11-02/`.
+The initial tool setup and the later warm setup are distinct.
+No full frontend, audit, baseline refresh or transitive replay is claimed here.

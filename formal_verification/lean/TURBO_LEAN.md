@@ -2,48 +2,59 @@
 
 Branch: `codex/lean-turbo-upgrade`.
 Fork: `100c270a0ec1837701e7b0bf2b7385e5cdee2cab`.
-The original branch and PR #585 keep Lean 4.31 and their build caches.
+PR #585 keeps Lean 4.31 and its separate CI validation.
 
 ## Current state
 
-Lean and Mathlib target version 4.35.0.
-The dependency lock resolves with that toolchain.
+Lean and Mathlib resolve at version 4.35.0.
 All 52 source generator checks pass.
 The Clean and lean-sail reference revisions stay unchanged.
-The existing hash-checked Clean compatibility patches remain.
-The proof port and runtime measurements are pending.
-The earlier proof and validation reports describe Lean 4.31.
+The existing hash-checked Clean compatibility patches apply.
+The full proof port remains unqualified.
 
-Turbo-lean is pinned to commit
-`2896cfd092758b8d0fc9977502dc036b0ab79921`.
-Its source, binary and cache stay in this worktree's ignored `.lake/turbo-lean/`.
+Turbo-lean is pinned to `2896cfd092758b8d0fc9977502dc036b0ab79921`.
+Its source, binary and cache use this worktree's ignored `.lake/turbo-lean/`.
 The launcher disables telemetry, daemons and automatic worktree cache links.
 Its axiom policy adds no axioms to `propext`, `Classical.choice` and `Quot.sound`.
-The official frontend, axiom audit and transitive kernel replay remain required.
-Turbo receipts do not replace those gates.
+The serial `cargo check` and release build pass in 264.39 seconds.
+Their aggregate footprint peaks at 1,030.80 MiB.
 
-## Trial
+The pinned tool rejects `lean_lib.needs` in the real Lake configuration.
+These dependencies track native artifact freshness. Keep them unchanged.
+Direct turbo checks of the whole project are not ready.
+The smoke command copies the exact core-only `FiniteGridChecks` source to a
+separate temporary project. It checks source and policy hashes after each command.
+Stock Lean checks the complete source. Turbo uses its standard kernel.
+The source has one proof declaration. The repeat uses its checked cache entry.
 
-Use a free verification worker. Keep the existing validation runs active.
-Install the pinned tool under the resource guard:
+| Smoke command | Time (s) | Result |
+| --- | ---: | --- |
+| Stock Lean 4.35 | 1.47 | Source passes |
+| Turbo with an empty theorem cache | 1.83 | Theorem verified |
+| Turbo repeat | 0.79 | Theorem cache hit |
+
+The tool setup was warm for this table. The initial setup trial took 18.37 seconds
+for its first turbo check. These tiny checks do not measure cold project builds
+or warm proof edits. They establish no whole-project speed gain.
+The smoke group takes 4.71 seconds and peaks at 149.40 MiB footprint.
+Reports remain in `/tmp/airbender-turbo-2026-11-02/` and the printed smoke directory.
+
+## Commands
+
+Use one free local verification worker:
 
 ```sh
 python3 scripts/bounded_fv.py --mib 2560 --resident-mib 5120 --seconds 900 \
   --log /tmp/airbender-turbo-install.log -- bash scripts/turbo_lean.sh install
+python3 scripts/bounded_fv.py --mib 2560 --resident-mib 5120 --seconds 900 \
+  --log /tmp/airbender-turbo-smoke.log -- bash scripts/turbo_lean.sh smoke
 ```
 
-After the port builds, select an existing checker module:
-
-```sh
-bash scripts/turbo_lean.sh check Airbender/Proofs/Tables/FiniteGridChecks.lean \
-  --project-dir . --jobs 1 --timeout 900 --kernel standard
-```
-
-Measure cold builds and warm proof edits separately.
-Compare stock Lean 4.35 and turbo-lean on the same source and imports.
-Report time, peak memory, cache state and checked declarations.
-Keep target statements, imported data and exact matching premises unchanged.
-Use the official kernel to check every accepted proof result.
+Continue with focused dependency and importer builds on Lean 4.35.
+Keep target statements, exact imported data and matching premises unchanged.
+Resolve the tool's artifact-dependency support before measuring real project edits.
+The official frontend, axiom audit and kernel replay remain the adoption gate.
+Turbo receipts do not replace those gates.
 
 Sources: [turbo-lean](https://github.com/Th0rgal/turbo-lean/tree/2896cfd092758b8d0fc9977502dc036b0ab79921),
 [Lean 4.35](https://lean-lang.org/doc/reference/latest/releases/v4.35.0/).

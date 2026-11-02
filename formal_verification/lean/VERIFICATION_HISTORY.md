@@ -6280,3 +6280,16 @@ this exact target. All other source leaves retain 900 seconds.
 Memory limits and kernel checks stay unchanged. No proof statement changes.
 The cold pass retains all completed receipts and continues to the next source.
 The Mac continuation retains its completed source cache.
+
+## 2026-11-02: Focused Lean 4.35 and turbo trial
+
+The user moved final PR validation to the large CI runner. The local worker
+built pinned turbo revision `2896cfd092758b8d0fc9977502dc036b0ab79921`.
+Serial Cargo check and release build passed in 264.39 seconds at 1,030.80 MiB.
+The direct project check rejects Lake library `needs`; no dependency was removed.
+An isolated exact copy of the core-only FiniteGrid checker passed stock Lean
+and the standard turbo kernel. The reusable smoke command passes. Its stock,
+first turbo and repeated turbo times are 1.47, 1.83 and 0.79 seconds. The repeat
+is a cache hit. The initial cold tool setup took 18.37 seconds for its first
+turbo check. No whole-project or proof-edit speed claim follows from this trial.
+The larger proof port remains unqualified.
