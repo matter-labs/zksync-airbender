@@ -33,7 +33,8 @@ The tracked-import check covers 12,078 imports in 4,212 Lean files.
 The earlier log is in [VERIFICATION_HISTORY.md](VERIFICATION_HISTORY.md).
 The final axiom inventory and baseline refresh remain pending.
 [PR #585](https://github.com/matter-labs/zksync-airbender/pull/585) is in draft.
-All 768 branch commits are signed. GitHub verifies the signed head.
+The history rewrite signed all 768 commits. Later commits are signed.
+GitHub verifies the signed head.
 The signing rewrite leaves the source tree unchanged.
 
 ## Plan
@@ -57,6 +58,10 @@ Bootstrap passed. The current cold queue covers all 4,202 source modules.
 The first pass completed 177 modules. `Source.ChiCharacters` then reached
 the 900-second limit. The resume retains all completed results and reports
 source-character progress. No proof error or memory-limit failure was reported.
+`Source.ChiCharacters` passes on Linux in 1,133.67 seconds at 540.31 MiB.
+This leaf uses the existing 1,800-second review allowance.
+The Mac frontend hit the same 900-second limit and resumes with this allowance.
+All other source leaves retain 900 seconds. Memory caps stay unchanged.
 No full Linux validation result is claimed.
 A timing-helper conflict stopped the first bootstrap attempt.
 The retry uses the unchanged compiler and normal guarded module builds.
@@ -73,7 +78,8 @@ frontend result. The earlier ownership collision remains in the history.
 | Phase | State | Time (s) | Peak memory (MiB) |
 | --- | --- | ---: | ---: |
 | Cold Linux source build, 4,202 modules | Resume running after a timeout | Pending | Pending |
-| Mac full frontend and runtime gates | Running | Pending | Pending |
+| Mac full frontend and runtime gates | Resume after source time-limit fix | Pending | Pending |
+| Linux `Source.ChiCharacters` cold leaf | Passed | 1,133.67 | 540.31 |
 | Mac environment audit and baseline refresh | Queued | Pending | Pending |
 | Mac full transitive replay, 2,048 MiB stack | Queued | Pending | Pending |
 | Linux runtime qualification | Deferred until last | Pending | Pending |
@@ -91,4 +97,5 @@ The hourly task follows this plan. It must not restart the family rollout.
 The Rust warnings jobs found a stale call in the initialization-window test.
 The test now uses the current five-argument verifier generator.
 The generator derives packing and batching parameters from its configuration.
-CI must confirm this correction. Production code stays unchanged.
+The three warnings jobs, formatting, spelling and EVM verifier jobs pass.
+Other PR jobs remain pending. Production code stays unchanged.

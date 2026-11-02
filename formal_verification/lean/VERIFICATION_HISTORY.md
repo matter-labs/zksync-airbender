@@ -6268,3 +6268,15 @@ PR warnings jobs found three compile errors in the initialization-window test.
 The test used removed packing constants and the old verifier generator API.
 The correction uses the current configuration-based API.
 It changes only the test. CI will check the corrected call.
+
+
+## 2026-11-02: measured source time allowance
+
+The Linux cold `Source.ChiCharacters` build passes in 1,133.67 seconds.
+Its footprint peak is 540.31 MiB. It leaves no owned worker.
+The Mac frontend also reaches the default 900-second limit on this leaf.
+The source driver now uses the existing 1,800-second review allowance for
+this exact target. All other source leaves retain 900 seconds.
+Memory limits and kernel checks stay unchanged. No proof statement changes.
+The cold pass retains all completed receipts and continues to the next source.
+The Mac continuation retains its completed source cache.

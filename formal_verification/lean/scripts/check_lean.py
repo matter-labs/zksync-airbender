@@ -24,6 +24,9 @@ ROOT = Path(__file__).resolve().parents[1]
 ALLOWED = {'propext', 'Classical.choice', 'Quot.sound'}
 QUERY_LIMIT = 128
 LAKE_NO_BUILD_EXIT = 3  # Pinned Lake.Build.Run.noBuildCode, not a compilation success.
+# The cold kernel source binding took 1,134s on ARM64. Keep the existing
+# memory caps and use the existing 1,800s review allowance for this leaf only.
+SOURCE_REVIEW_TARGETS = {'+Airbender.Proofs.FullUnsigned.Source.ChiCharacters:olean'}
 
 
 def sha(path):
@@ -293,7 +296,8 @@ class Runner:
             if len(targets) == 1:
                 # A normal Lake leaf build traverses its real dependencies. This
                 # remains exclusive under the original supplied serial guard.
-                self.run(label, ['lake', '--no-cache', 'build', targets[0]])
+                self.run(label, ['lake', '--no-cache', 'build', targets[0]],
+                         review=targets[0] in SOURCE_REVIEW_TARGETS)
             else:
                 middle = len(targets) // 2
                 _, failed = self.query_pool(label, [targets[:middle], targets[middle:]])
