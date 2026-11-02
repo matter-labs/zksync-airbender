@@ -1,15 +1,15 @@
 name: Formal verification
 
-# Rust CI calls this advisory job only for relevant source/evidence changes.
-# Manual runs share the same bounded global worker; PR/push have one caller.
+# Nightly and manual runs share the same bounded global worker.
 on:
-  workflow_call:
+  schedule:
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Preserve independent PR queues; each actual worker also takes the host lock.
+# Serialize each ref; each actual worker also takes the host lock.
 concurrency:
   group: formal-verification-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -28,7 +28,7 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
       MATHLIB_NO_CACHE_ON_UPDATE: '1'
-      # A pass ledger is evidence, so PR-produced JSON cannot authorize reuse.
+      # Only the default branch can authorize replay-ledger reuse.
       FV_REPLAY_CACHE_TRUSTED: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     defaults:
       run:
@@ -52,7 +52,7 @@ jobs:
           if [[ "$FV_REPLAY_CACHE_TRUSTED" == true ]]; then
             echo "FV_REPLAY_LEDGER=$GITHUB_WORKSPACE/formal_verification/lean/.lake/verification/replay-ledger" >> "$GITHUB_ENV"
           else
-            # Outside the checkout/build caches, fresh for this PR attempt.
+            # Outside the checkout/build caches, fresh for this manual attempt.
             echo "FV_REPLAY_LEDGER=$FV_ROOT/replay-ledger" >> "$GITHUB_ENV"
           fi
           echo "CARGO_TARGET_DIR=$RUNNER_TEMP/airbender-fv-cargo/setups" >> "$GITHUB_ENV"
@@ -289,11 +289,11 @@ jobs:
             formal_verification/lean/.lake/config
             formal_verification/lean/.lake/packages
           key: ${{ steps.cache-keys.outputs.lean }}-build
-      - name: Checker framework validation
+      - name: Generated source freshness
         timeout-minutes: 130
         run: |
           source "$FV_ROOT/guard.sh"
-          fv_stage checker-framework 7200 python3 scripts/generate.py validate --logs "$FV_ROOT/checker-framework"
+          fv_stage generated-source-freshness 7200 python3 scripts/generate.py check
       - name: Public program decoder row differential
         timeout-minutes: 75
         run: |

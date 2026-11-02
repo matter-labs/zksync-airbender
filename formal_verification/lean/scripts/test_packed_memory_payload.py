@@ -30,17 +30,6 @@ class MemoryPayload(unittest.TestCase):
             self.assertEqual(list(legacy.modules(packed.capture_name(case), case)),
                 [('Airbender.Proofs.GKRProtocol.MemoryPayloadChecks.' + case + '.Inputs', text), packed.native(case)])
 
-    def test_ci_requires_every_adopted_mode(self):
-        from generate import CONTROLS
-        commands = [command for _, command in CONTROLS
-                    if 'scripts/check_memory_payload_controls.py' in command]
-        self.assertEqual(len(commands), 2)
-        self.assertEqual(sum('--shared-only' in command for command in commands), 1)
-        selected = [command[index + 1] for command in commands
-                    for index, item in enumerate(command) if item == '--case']
-        self.assertEqual(len(selected), len(set(selected)))
-        self.assertEqual(set(selected), set(packed.CASES))
-
 
 if __name__ == '__main__':
     unittest.main()

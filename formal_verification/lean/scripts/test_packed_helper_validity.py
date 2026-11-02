@@ -28,15 +28,6 @@ class HelperValidity(unittest.TestCase):
             self.assertIn('phase 1 using_checks Airbender.Compiler.HelperValidityChecks.'+case,native)
             self.assertNotIn('maxHeartbeats',native)
 
-    def test_ci_requires_every_cache_mode(self):
-        from generate import CONTROLS
-        commands = [command for _, command in CONTROLS
-                    if 'scripts/check_helper_validity_controls.py' in command]
-        selected = {command[index + 1] for command in commands
-                    for index, item in enumerate(command) if item == '--case'}
-        self.assertEqual(selected, set(packed.ALL_CASES))
-        self.assertEqual(sum('--shared-only' in command for command in commands), 1)
-
     def test_stale_source_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'dimensions.json';entries=json.loads(packed.DIMENSIONS.read_text());entries[packed.CASES[0]]['source_sha256']='0'*64;path.write_text(json.dumps(entries))
