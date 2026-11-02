@@ -15,7 +15,8 @@ The complete cached AddSub query-frame certificate also builds.
 All 11 cached native witness consumers also build.
 Their exact source bindings and original semantic finalizers pass.
 The pinned Sail interpreter and RV32 snapshot compile.
-The basic RISC-V step and register-read proofs also compile.
+The basic RISC-V step, register-read and load proofs also compile.
+The decoder-frame proof also compiles. It proves each shared continuation once.
 The register-read proofs use explicit reductions of the original state operations.
 The compatibility patch annotates the existing natural-number choice binder.
 A local syntax adapter uses Sail's original assertion and monad lift.
@@ -71,7 +72,7 @@ python3 scripts/bounded_fv.py --mib 2560 --resident-mib 5120 --seconds 900 \
   --log /tmp/airbender-turbo-smoke.log -- bash scripts/turbo_lean.sh smoke
 ```
 
-Continue with focused Sail and machine proof builds on Lean 4.35.
+Continue with the three machine target source builds on Lean 4.35.
 Keep target statements, exact imported data and matching premises unchanged.
 Resolve the tool's artifact-dependency support before measuring real project edits.
 The official frontend, axiom audit and kernel replay remain the adoption gate.

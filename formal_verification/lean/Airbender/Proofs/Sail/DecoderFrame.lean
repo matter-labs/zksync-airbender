@@ -118,6 +118,59 @@ private theorem misa_opcodes :
       | apply misa_ite
       | split
 
+private theorem misa_share {α β γ : Type} (next : α → SailRV32.SailM β)
+    (body : (α → SailRV32.SailM β) → SailRV32.SailM γ)
+    (valid : ∀ value, MisaOnly (next value))
+    (rest : ∀ next, (∀ value, MisaOnly (next value)) → MisaOnly (body next)) :
+    MisaOnly (body next) := rest next valid
+
+local elab "misa_source_step" : tactic => do
+  let goal ← Lean.Elab.Tactic.getMainGoal
+  let target ← Lean.instantiateMVars (← goal.getType)
+  unless target.isAppOfArity ``MisaOnly 2 do
+    throwError "expected a MisaOnly goal"
+  let action := target.appArg!.consumeMData
+  if let .letE name type value body _ := action then
+    if value.isLambda then
+      let abstraction := Lean.mkLambda name .default type body
+      let shared ← goal.withContext <| Lean.Meta.mkAppM ``misa_share #[value, abstraction]
+      let [validGoal, restGoal] ← goal.apply shared
+        | throwError "expected the continuation and its body"
+      let (_, validGoal) ← validGoal.intro1
+      let (_, restGoal) ← restGoal.intro1
+      let (_, restGoal) ← restGoal.intro1
+      Lean.Elab.Tactic.replaceMainGoal [validGoal, restGoal]
+    else
+      Lean.Elab.Tactic.replaceMainGoal
+        [← goal.replaceTargetDefEq (Lean.mkApp target.appFn! (body.instantiate1 value))]
+    return
+  if action.getAppFn.isFVar then
+    Lean.Elab.Tactic.evalTactic (← `(tactic| apply_assumption))
+    return
+  match action.getAppFn.constName? with
+  | some ``SailRV32.Functions.encdec_reg_backwards =>
+    Lean.Elab.Tactic.evalTactic (← `(tactic| exact misa_register _))
+  | some ``SailRV32.Functions.encdec_bop_backwards =>
+    Lean.Elab.Tactic.evalTactic (← `(tactic| exact misa_opcodes.1 _))
+  | some ``SailRV32.Functions.encdec_iop_backwards =>
+    Lean.Elab.Tactic.evalTactic (← `(tactic| exact misa_opcodes.2.1 _))
+  | some ``SailRV32.Functions.encdec_mul_op_backwards =>
+    Lean.Elab.Tactic.evalTactic (← `(tactic| exact misa_opcodes.2.2.1 _))
+  | some ``SailRV32.Functions.encdec_uop_backwards =>
+    Lean.Elab.Tactic.evalTactic (← `(tactic| exact misa_opcodes.2.2.2.1 _))
+  | some ``SailRV32.Functions.encdec_csrop_backwards =>
+    Lean.Elab.Tactic.evalTactic (← `(tactic| exact misa_opcodes.2.2.2.2 _))
+  | some ``SailRV32.Functions.virtual_memory_supported =>
+    Lean.Elab.Tactic.evalTactic (← `(tactic| exact misa_virtual))
+  | some ``SailRV32.Functions.currentlyEnabled =>
+    Lean.Elab.Tactic.evalTactic (← `(tactic| apply misa_enabled; simp))
+  | _ =>
+    let reduced := action.headBeta
+    if action == reduced then
+      throwError "no source step or head beta reduction"
+    Lean.Elab.Tactic.replaceMainGoal
+      [← goal.replaceTargetDefEq (Lean.mkApp target.appFn! reduced)]
+
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 65536 in
 set_option maxHeartbeats 2000000 in
@@ -131,16 +184,9 @@ theorem decoded_misa_frame (bits : BitVec 32) {before after : State}
   have checked : MisaOnly (SailRV32.Functions.encdec_backwards bits) := by
     unfold SailRV32.Functions.encdec_backwards
     repeat' first
+      | misa_source_step
       | assumption
       | apply misa_pure
-      | exact misa_register _
-      | exact misa_opcodes.1 _
-      | exact misa_opcodes.2.1 _
-      | exact misa_opcodes.2.2.1 _
-      | exact misa_opcodes.2.2.2.1 _
-      | exact misa_opcodes.2.2.2.2 _
-      | exact misa_virtual
-      | (apply misa_enabled; simp)
       | apply misa_assert
       | apply misa_throw
       | (apply misa_bind <;> try intro)

@@ -30,7 +30,8 @@ Its exact source bindings and original semantic finalizer pass.
 All 11 cached native witness consumers also compile.
 Their exact source bindings and semantic finalizers pass.
 The pinned Sail interpreter and RV32 snapshot compile.
-The basic RISC-V step and register-read proofs also compile.
+The basic RISC-V step, register-read and load proofs also compile.
+The decoder-frame proof also compiles. It proves each shared continuation once.
 The register-read proofs use explicit reductions of the original state operations.
 The compatibility patch annotates the existing natural-number choice binder.
 A local syntax adapter uses Sail's original assertion and monad lift.
