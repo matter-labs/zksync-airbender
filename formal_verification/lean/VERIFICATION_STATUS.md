@@ -5813,3 +5813,31 @@ Full frontend validation, environment audit and baseline refresh, full transitiv
 replay, cold full measurements and Linux qualification did not run. They remain
 pending for implementation review. The known aggregate ownership collision stays
 deferred. No aggregate import pass is claimed.
+
+## Native payload scaling checkpoint
+
+The next payload family remains unadopted. The generic helper and memory
+adapters pass source and kernel replay checks. Each adapter preserves the exact
+old bank, role and agreement checks. It keeps the complete relation bank and
+witness. The memory adapter keeps the original unsupported-expression branch
+and all seven symbolic variables. A generic projection theorem derives one old
+operand fact from the whole result and an exact bounded source binding.
+
+Both BlakeRound helper prototypes cover all 89 original helper operands.
+All eight prototype source modules and standard 32 MiB replays pass.
+Complete bindings retain every encoded port and polynomial term.
+The cached data builds in 21.26 s. Its bindings build in 19.78 s.
+The uncached data builds in 21.45 s. Its binding replay takes 18.33 s.
+Each whole certificate builds and replays in about 2 s.
+The paired tail guard peaks at 924.04 MiB and takes 112.85 s.
+Three exact controls pass. The kernel rejects changes to a nonempty witness,
+its coefficient and a retained zero term. Their guard takes 9.13 s and peaks
+at 320.13 MiB. No worker remains.
+
+All prototypes stay in the evidence folder. They are not canonical source.
+The native wrappers, metadata facts, complete old-interface preservation,
+axiom checks, captured mutations and direct consumers still need qualification.
+No payload capture is complete. No cold full-build gain is claimed.
+HelperImport and MemoryImport still need their per-payload rollout.
+Consumer typing and the remaining metadata/header scope also stay open.
+The hourly follow-up stays active. Final lengthy validation stays pending.
