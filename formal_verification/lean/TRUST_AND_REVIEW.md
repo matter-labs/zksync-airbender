@@ -163,19 +163,13 @@ and derive the operation on all rows. The tree can encode a region whose length
 is not a power of sixteen. It adds zero encoding slots after the last native
 row. The region keeps its exact native length. Those extra slots cannot supply
 table membership. Separate private column declarations keep elaboration bounded.
-The JSON-to-canonical-table bridge remains open. Source parsing and exact RLE
-column decoding now have kernel proofs for the three split captures. Physical
-real-row membership in the canonical tables remains open. The kernel now
-checks the physical padding cases. Parser validation supplies column coverage.
-Exact final-block certificates supply zero values. Parity and theta/rho
-include these rows in their canonical tables. Chi5 needs membership only for
-native query tags 65 and 66. Its canonical table excludes the all-zero row.
-The kernel checks this exclusion and guarded transport in both cache modes.
+The JSON-to-canonical-table bridge is proved for all three split sources.
+The kernel checks source parsing, exact RLE decoding and canonical membership.
+Parity and theta/rho include physical padding.
+The chi5 certificate uses native query tags 65 and 66.
+Those tags exclude zero padding, which its canonical table does not contain.
 The original target, setup premises and canonical tables stay unchanged.
-The kernel also checks all five chi5 source input columns and its complete
-tag column. The controller source case has full canonical lookup membership.
-Exact suffix decoding and the original parse validation supply its positions.
-Two arithmetic output columns also match the canonical table. Three remain open.
+The full unsigned proof uses all three source certificates.
 
 The generated source expressions retain each original key, value and field
 order. The frontend requires generation freshness and exact byte comparison
@@ -184,7 +178,7 @@ supply theorem proofs. The kernel checks source parsing, each distinct RLE
 block and complete column decoding. A negative control changes one retained
 block and keeps the source bytes fixed. The kernel rejects that control.
 The AND result now follows from a proved packed checker for the original Block
-statement. See the [selected measurements](VERIFICATION_STATUS.md#verified-checker-measurements).
+statement. See the [selected measurements](VERIFICATION_HISTORY.md#verified-checker-measurements).
 The setup-column pilot proves exact block equality with a second kernel-checked
 certificate. Columns 2, 4, 5, 6 and 7 use projections of complete capture
 certificates. The four wide columns use balanced numeric trees. The checker
