@@ -98,14 +98,25 @@ private def predicateChecks (proofs : Array (TSyntax `term)) : CommandElabM (TSy
 
 syntax (name := importSourceLookups) "import_source_lookups " ident " from " str
   " certificate " str " selectors " str " reference " ident " typing " ident
-  " phase " num " start " num " stop " num : command
+  " phase " num " start " num " stop " num (" using_checks " ident)? : command
 
 elab_rules : command
   | `(import_source_lookups $name:ident from $pairPath:str certificate $oldPath:str
       selectors $selectorText:str reference $referenceName:ident typing $typingName:ident
-      phase $phaseNumber:num start $startNumber:num stop $stopNumber:num) => do
+      phase $phaseNumber:num start $startNumber:num stop $stopNumber:num
+      $[using_checks $wholeChecks:ident]?) => do
     let phaseIndex := phaseNumber.getNat
-    unless phaseIndex ≤ 3 do throwError "unsupported source lookup import phase"
+    unless phaseIndex ≤ 5 do throwError "unsupported source lookup import phase"
+    if phaseIndex == 5 && wholeChecks.isNone then
+      throwError "the complete source lookup phase requires checker facts"
+    if phaseIndex != 5 && wholeChecks.isSome then
+      throwError "only the complete source lookup phase accepts checker facts"
+    let emitData := phaseIndex != 5
+    let emitProofs := phaseIndex != 4
+    let checkProof (stem : String) : CommandElabM (TSyntax `term) := do
+      match wholeChecks with
+      | some owner => pure (mkIdent (owner.getId ++ Name.mkSimple stem))
+      | none => `(by decide +kernel)
     let pair ← match Json.parse (← IO.FS.readFile pairPath.getString) >>= (fromJson? (α := Import.Pair)) with
       | .ok pair => pure pair
       | .error error => throwError "invalid actual source-lookup pair: {error}"
@@ -135,7 +146,7 @@ elab_rules : command
     let addressTerms ← previous.addresses.mapM addressSyntax
     let placement := mkIdent (name.getId ++ `wirePlacement)
     let bank := mkIdent (name.getId ++ `bank)
-    if phaseIndex == 0 || phaseIndex == 3 then
+    if phaseIndex == 0 || phaseIndex == 3 || (phaseIndex == 4 && startNumber.getNat == 0) then
       elabCommand (← `(noncomputable def $definitionsName : List AffineDefinition := [$definitions,*]))
       elabCommand (← `(noncomputable def $addressesName : List GKRAddress := [$addressTerms,*]))
       elabCommand (← `(noncomputable def $placement (address : GKRAddress) : Fin $(quote arity) :=
@@ -149,7 +160,7 @@ elab_rules : command
     let relationCount := pair.circuit.layers.foldl (fun total layer => total +
       ((layer.gates ++ layer.gates_with_external_connections).filter (fun gate => match gate.enforced_relation with
         | .CopyInBaseField _ _ => true | _ => false)).size) 0
-    let selectedOperands := if phaseIndex == 1 || phaseIndex == 3 then
+    let selectedOperands := if phaseIndex == 1 || phaseIndex == 3 || phaseIndex == 4 || phaseIndex == 5 then
       cert.operands.extract startNumber.getNat stopNumber.getNat else #[]
     for operand in selectedOperands do
       let [gateIndex, operandIndex] := operand.locator.values.toList | throwError "invalid operand locator width"
@@ -163,23 +174,27 @@ elab_rules : command
         | .error error => throwError "{error}"
       let actualEncoding := LookupSourceData.encoding final
       let leafName := mkIdent (name.getId ++ Name.mkSimple s!"leaf{operand.native_leaf}")
-      elabCommand (← `(noncomputable def $leafName : NativeLookupLeaf :=
-        ⟨$(← weightSyntax actual.weight), $(← inputSyntax actual.input)⟩))
       let found := mkIdent (name.getId ++ Name.mkSimple s!"leafFound{operand.native_leaf}")
-      elabCommand (← `(theorem $found : ($registry)[$(quote operand.native_leaf)]? = some $leafName := by rfl))
+      if emitData then
+        elabCommand (← `(noncomputable def $leafName : NativeLookupLeaf :=
+          ⟨$(← weightSyntax actual.weight), $(← inputSyntax actual.input)⟩))
+        elabCommand (← `(theorem $found : ($registry)[$(quote operand.native_leaf)]? = some $leafName := by rfl))
       let mut recipes : Array (TSyntax `term) := #[]
       for recipe in actualEncoding.columns do
         recipes := recipes.push (← recipeSyntax recipe)
       let encoding := mkIdent (name.getId ++ Name.mkSimple s!"encoding{operand.native_leaf}")
-      match actualEncoding with
-      | .scalar recipe => elabCommand (← `(noncomputable def $encoding : NativeLookupEncoding := .scalar $(← recipeSyntax recipe)))
-      | .vector _ => elabCommand (← `(noncomputable def $encoding : NativeLookupEncoding := .vector [$recipes,*]))
+      if emitData then
+        match actualEncoding with
+        | .scalar recipe => elabCommand (← `(noncomputable def $encoding : NativeLookupEncoding := .scalar $(← recipeSyntax recipe)))
+        | .vector _ => elabCommand (← `(noncomputable def $encoding : NativeLookupEncoding := .vector [$recipes,*]))
       let expanded := mkIdent (name.getId ++ Name.mkSimple s!"expanded{operand.native_leaf}")
       let indices : Array (TSyntax `term) := operand.expansion.map quote
-      elabCommand (← `(theorem $expanded : LookupPayload.expand $definitionsName [$indices,*] ($leafName).payload =
-        some ($encoding).program := by rfl))
+      if emitData then
+        elabCommand (← `(theorem $expanded : LookupPayload.expand $definitionsName [$indices,*] ($leafName).payload =
+          some ($encoding).program := by rfl))
       let roles := mkIdent (name.getId ++ Name.mkSimple s!"baseChecked{operand.native_leaf}")
-      elabCommand (← `(theorem $roles : ($encoding).baseCheck $typingName = true := by decide +kernel))
+      if emitProofs then
+        elabCommand (← `(theorem $roles : ($encoding).baseCheck $typingName = true := $(← checkProof s!"baseChecked{operand.native_leaf}")))
       if operand.kind == "query" || operand.kind == "decoder" then
         let some sourceRow := operand.source_row | throwError "source operand has no authored row selector"
         let some oldRow := previous.rows[sourceRow]? | throwError "authored row selector outside original bank"
@@ -194,30 +209,39 @@ elab_rules : command
         let mut soundFields : Array (TSyntax `term) := #[]
         for h : column in [:targets.size] do
           let recipe := mkIdent (name.getId ++ Name.mkSimple s!"recipe{operand.native_leaf}_{column}")
-          elabCommand (← `(noncomputable def $recipe : NativeBaseRecipe := $(← recipeSyntax targets[column])))
+          if emitData then
+            elabCommand (← `(noncomputable def $recipe : NativeBaseRecipe := $(← recipeSyntax targets[column])))
           let original := mkIdent (referenceName.getId ++ Name.mkSimple s!"field{sourceRow}_{column}")
           originalFields := originalFields.push (← `(($original).source))
           let agreement := mkIdent (name.getId ++ Name.mkSimple s!"field{operand.native_leaf}_{column}")
-          elabCommand (← `(noncomputable def $agreement : BaseRecipeAgreement $copyRelations $recipe :=
-            ⟨($original).source, $(← combinationSyntax arity relationCount operand.fields[column]!)⟩))
+          if emitData then
+            elabCommand (← `(noncomputable def $agreement : BaseRecipeAgreement $copyRelations $recipe :=
+              ⟨($original).source, $(← combinationSyntax arity relationCount operand.fields[column]!)⟩))
           let checked := mkIdent (name.getId ++ Name.mkSimple s!"fieldChecked{operand.native_leaf}_{column}")
           let inBank := mkIdent (name.getId ++ Name.mkSimple s!"inBank{operand.native_leaf}_{column}")
-          elabCommand (← `(theorem $checked : ($agreement).check $sourcePlacement ($bank).placement = true := by decide +kernel))
-          elabCommand (← `(theorem $inBank : ($bank).check $recipe = true := by decide +kernel))
+          if emitProofs then
+            elabCommand (← `(theorem $checked : ($agreement).check $sourcePlacement ($bank).placement = true :=
+              $(← checkProof s!"fieldChecked{operand.native_leaf}_{column}")))
+            elabCommand (← `(theorem $inBank : ($bank).check $recipe = true :=
+              $(← checkProof s!"inBank{operand.native_leaf}_{column}")))
           let sound := mkIdent (name.getId ++ Name.mkSimple s!"sourceField{operand.native_leaf}_{column}")
-          elabCommand (← `(theorem $sound (base : GKRAddress → Source.BaseField)
-            (holds : Satisfies $copyRelations (base ∘ ($bank).address)) :
-            ($agreement).source.value ((base ∘ ($bank).address) ∘ $sourcePlacement) = ($recipe).value base :=
-            BaseRecipeAgreement.sound_bank $sourcePlacement $bank $checked $inBank base holds))
+          if emitProofs then
+            elabCommand (← `(theorem $sound (base : GKRAddress → Source.BaseField)
+              (holds : Satisfies $copyRelations (base ∘ ($bank).address)) :
+              ($agreement).source.value ((base ∘ ($bank).address) ∘ $sourcePlacement) = ($recipe).value base :=
+              BaseRecipeAgreement.sound_bank $sourcePlacement $bank $checked $inBank base holds))
           soundFields := soundFields.push (← `($sound assignment.base holds))
         let query := mkIdent (name.getId ++ Name.mkSimple s!"query{operand.native_leaf}")
         let fields := originalFields.extract maskOffset originalFields.size
         let mask ← if operand.kind == "decoder" then `(some $(originalFields[0]!)) else `(none)
-        elabCommand (← `(noncomputable def $query : SourceLookupQuery := ⟨[$fields,*], $mask⟩))
+        if emitData then
+          elabCommand (← `(noncomputable def $query : SourceLookupQuery := ⟨[$fields,*], $mask⟩))
+        if !emitProofs then continue
         let maskProof ← if operand.kind == "decoder" then do
             let .column maskAddress := actual.weight | throwError "invalid decoder mask"
             let maskRole := mkIdent (name.getId ++ Name.mkSimple s!"maskBase{operand.native_leaf}")
-            elabCommand (← `(theorem $maskRole : ($typingName).compatible ($(← addressSyntax maskAddress), .base) = true := by decide +kernel))
+            elabCommand (← `(theorem $maskRole : ($typingName).compatible ($(← addressSyntax maskAddress), .base) = true :=
+              $(← checkProof s!"maskBase{operand.native_leaf}")))
             `((TypedAssignment.value_base assignment $typingName hom $maskRole).trans
               (congrArg hom $(soundFields[0]!)).symm)
           else `(by rfl)
@@ -235,7 +259,8 @@ elab_rules : command
               $expanded assignment hom challenges gamma defined $query _ $fieldsProof $maskProof)))
     -- Expected query lists come from the independently imported original rows,
     -- rather than the operand selectors or the native reduction tree.
-    if phaseIndex != 2 && phaseIndex != 3 then return
+    if phaseIndex != 2 && phaseIndex != 3 && phaseIndex != 4 && phaseIndex != 5 then return
+    if phaseIndex == 4 && stopNumber.getNat != cert.operands.size then return
     for (group, description) in cert.groups.entries do
       if group == "LookupTimestamps" then continue
       let (stem, rowKind) ← match group with
@@ -255,7 +280,8 @@ elab_rules : command
           let values := fields.extract offset fields.size
           queries := queries.push (← `(SourceLookupQuery.mk [$values,*] $mask))
       let sourceQueries := mkIdent (name.getId ++ Name.mkSimple s!"{stem}Queries")
-      elabCommand (← `(noncomputable def $sourceQueries : List SourceLookupQuery := [$queries,*]))
+      if emitData then
+        elabCommand (← `(noncomputable def $sourceQueries : List SourceLookupQuery := [$queries,*]))
       let selected := cert.operands.filter (fun operand => operand.group == group)
       let setups := selected.filter (fun operand => operand.kind == "setup")
       unless setups.size == 1 do throwError "source group requires exactly one actual setup operand"
@@ -263,29 +289,41 @@ elab_rules : command
       let setupLeaf := setupOperand.native_leaf
       let actualSetup := mkIdent (name.getId ++ Name.mkSimple s!"leaf{setupLeaf}")
       let setupChecked := mkIdent (name.getId ++ Name.mkSimple s!"{stem}SetupChecked")
-      elabCommand (← `(theorem $setupChecked : ($actualSetup).isSetup = true := by decide +kernel))
+      if emitProofs then
+        elabCommand (← `(theorem $setupChecked : ($actualSetup).isSetup = true := $(← checkProof s!"{stem}SetupChecked")))
       let terms := mkIdent (name.getId ++ Name.mkSimple s!"{stem}SourceTerms")
-      elabCommand (← `(noncomputable def $terms {R : Type} [CommRing R]
-        (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-        (assignment : TypedAssignment R) : List (RationalPair R) :=
-        (($sourceQueries).map (fun query => query.value hom challenges.lookupAlpha gamma
-          ((assignment.base ∘ ($bank).address) ∘ $sourcePlacement))) ++
-        [NativeLookupLeaf.registryValue $registry hom challenges gamma (assignment.value $typingName hom) $(quote setupLeaf)]))
+      if emitData then
+        elabCommand (← `(noncomputable def $terms {R : Type} [CommRing R]
+          (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
+          (assignment : TypedAssignment R) : List (RationalPair R) :=
+          (($sourceQueries).map (fun query => query.value hom challenges.lookupAlpha gamma
+            ((assignment.base ∘ ($bank).address) ∘ $sourcePlacement))) ++
+          [NativeLookupLeaf.registryValue $registry hom challenges gamma (assignment.value $typingName hom) $(quote setupLeaf)]))
       unless description.native_leaves.size == description.source_labels.size do throwError "unequal source label lists"
       let mut pairs : Array (TSyntax `term) := #[]
       for (nativeIndex, sourceIndex) in description.native_leaves.zip description.source_labels do
         pairs := pairs.push (← `(($(quote nativeIndex), $(quote sourceIndex))))
       let label := mkIdent (name.getId ++ Name.mkSimple s!"{stem}Label")
-      elabCommand (← `(noncomputable def $label (index : Nat) : Nat :=
-        ((List.find? (fun entry : Nat × Nat => entry.1 == index) [$pairs,*]).map Prod.snd).getD 0))
+      if emitData then
+        elabCommand (← `(noncomputable def $label (index : Nat) : Nat :=
+          ((List.find? (fun entry : Nat × Nat => entry.1 == index) [$pairs,*]).map Prod.snd).getD 0))
       let tree := mkIdent (referenceName.getId ++ Name.mkSimple s!"{stem}Tree")
       let output := mkIdent (referenceName.getId ++ Name.mkSimple s!"{stem}Output")
       let reduction := mkIdent (referenceName.getId ++ Name.mkSimple s!"{stem}Reduction")
       let leaves : Array (TSyntax `term) := description.native_leaves.map quote
       let leavesChecked := mkIdent (name.getId ++ Name.mkSimple s!"{stem}LeavesChecked")
-      elabCommand (← `(theorem $leavesChecked : ($tree).leaves = [$leaves,*] := by decide +kernel))
+      if emitData then
+        let proof ← if phaseIndex == 4 then `(by rfl) else `(by decide +kernel)
+        elabCommand (← `(theorem $leavesChecked : ($tree).leaves = [$leaves,*] := $proof))
+      if !emitProofs then continue
       let coverage := mkIdent (name.getId ++ Name.mkSimple s!"{stem}SourceCoverage")
-      elabCommand (← `(theorem $coverage : (($tree).leaves.map $label).Perm (List.range $(quote (queries.size + 1))) := by decide +kernel))
+      let coverageProof ← match wholeChecks with
+        | some owner =>
+            let fact := mkIdent (owner.getId ++ Name.mkSimple s!"{stem}SourceCoverage")
+            `(of_decide_eq_true $fact)
+        | none => `(by decide +kernel)
+      elabCommand (← `(theorem $coverage : (($tree).leaves.map $label).Perm
+        (List.range $(quote (queries.size + 1))) := $coverageProof))
       let mut matchingProofs : Array (TSyntax `term) := #[]
       for nativeIndex in description.native_leaves do
         let matched := mkIdent (name.getId ++ Name.mkSimple s!"{stem}Match{nativeIndex}")

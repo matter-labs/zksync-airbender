@@ -271,6 +271,16 @@ def main():
                                     json.loads((root / "lookup" / (name + ".json")).read_text()))
             if args.write or args.check:
                 case = stem + mode.title()
+                from gkr_packed_lookup_source import CASES as PACKED_CASES, native_wrapper
+                if case in PACKED_CASES:
+                    destination = LEAN / "Airbender/Proofs/GKRProtocol/LookupSourceNative" / (case + ".lean")
+                    content = native_wrapper(case)
+                    if args.check and (not destination.exists() or destination.read_text() != content):
+                        raise ValueError("source lookup wrapper changed: " + case)
+                    if args.write and (not destination.exists() or destination.read_text() != content):
+                        destination.write_text(content)
+                    print(name, json.dumps(certificate["counts"], sort_keys=True), flush=True)
+                    continue
                 selectors = json.dumps(json.dumps(certificate, separators=(",", ":")))
                 size = len(certificate["operands"])
                 native_imports = ["Airbender.Import.GKRProtocol.LookupSourceImport", f"Airbender.Proofs.GKRProtocol.Native.{case}",
