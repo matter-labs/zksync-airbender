@@ -107,7 +107,17 @@ impl<const MAX_DEPTH: usize> MerkleMultiproofStack<MAX_DEPTH> {
         debug_assert!(self.len > 0);
         self.len -= 1;
         self.refresh_top_level();
-        unsafe { self.hashes.get_unchecked(self.len).assume_init_ref() == hash }
+        // Array equality can lower to memcmp, whose byte loads are unsupported
+        // by the reduced machine. Volatile reads keep this a word comparison.
+        unsafe {
+            let saved = self.hashes.get_unchecked(self.len).assume_init_ref();
+            let mut difference = 0u32;
+            for i in 0..BLAKE2S_DIGEST_SIZE_U32_WORDS {
+                difference |=
+                    saved.as_ptr().add(i).read_volatile() ^ hash.as_ptr().add(i).read_volatile();
+            }
+            difference == 0
+        }
     }
 
     #[inline(always)]
@@ -341,6 +351,22 @@ mod tests {
     use blake2s_u32::{AlignedArray64, BLAKE2S_BLOCK_SIZE_U32_WORDS};
 
     type Digest = [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
+
+    #[test]
+    fn duplicate_digest_equality_checks_every_word() {
+        let digest: Digest = core::array::from_fn(|i| 0x1234_5678u32.rotate_left(i as u32));
+        let mut stack = MerkleMultiproofStack::<2>::new();
+        stack.push(0, &digest);
+        assert!(stack.pop_equals(&digest));
+        assert!(stack.is_empty());
+        for i in 0..digest.len() {
+            let mut changed = digest;
+            changed[i] ^= u32::MAX;
+            stack.push(0, &digest);
+            assert!(!stack.pop_equals(&changed), "mismatched word {i}");
+            assert!(stack.is_empty());
+        }
+    }
 
     fn leaf_hash(hasher: &mut DelegatedBlake2sState, leaf: &[u32; 4]) -> Digest {
         let mut buf = AlignedArray64::<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>::from_value(0);
