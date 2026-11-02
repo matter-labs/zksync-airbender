@@ -1,20 +1,17 @@
-import Airbender.Import.GKRProtocol.HelperValidityImport
-import Airbender.Proofs.GKRProtocol.HistoryErasureNative.ShiftBinopUncached
-import Airbender.Proofs.GKRProtocol.HelperNative.ShiftBinopUncached
+import Airbender.Proofs.GKRProtocol.HelperValidityChecks.ShiftBinopUncached.Certificate
 
 namespace Airbender.Compiler.HelperValidityNative.ShiftBinopUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_helper_validity native from "artifacts/compiler/shift-binop-uncached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.ShiftBinopUncached.native
   source_model Airbender.Compiler.SourceContractNative.ShiftBinopUncached.native
   history_model Airbender.Compiler.HistoryErasureNative.ShiftBinopUncached.native
   helper_model Airbender.Compiler.HelperNative.ShiftBinopUncached.native
-  memory_model Airbender.Compiler.MemoryNative.ShiftBinopUncached.native inputs 98
+  memory_model Airbender.Compiler.MemoryNative.ShiftBinopUncached.native inputs 98 phase 1 using_checks Airbender.Compiler.HelperValidityChecks.ShiftBinopUncached
 
 theorem helper_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

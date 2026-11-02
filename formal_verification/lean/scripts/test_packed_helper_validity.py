@@ -9,7 +9,7 @@ import gkr_packed_helper_validity as packed
 
 class HelperValidity(unittest.TestCase):
     def test_complete_capture_and_both_modes(self):
-        self.assertEqual(len(packed.CASES),4)
+        self.assertEqual(len(packed.CASES),22)
         for case in packed.CASES:
             modules=dict(packed.modules(case));self.assertEqual(len(modules),5)
             prefix='Airbender.Proofs.GKRProtocol.HelperValidityChecks.'+case
@@ -27,6 +27,16 @@ class HelperValidity(unittest.TestCase):
             self.assertIn(source[source.index('theorem helper_graph_extends'):],native)
             self.assertIn('phase 1 using_checks Airbender.Compiler.HelperValidityChecks.'+case,native)
             self.assertNotIn('maxHeartbeats',native)
+
+    def test_ci_requires_every_cache_mode(self):
+        import re
+        workflow=(packed.LEAN.parents[1]/'.github/workflows/formal-verification.yml').read_text()
+        selected=set()
+        for line in workflow.splitlines():
+            if 'numeric-helper-validity-cached-controls ' in line or 'numeric-helper-validity-uncached-controls ' in line:
+                selected.update(re.findall(r'--case (\w+)',line))
+        self.assertEqual(selected,set(packed.ALL_CASES))
+        self.assertIn('numeric-helper-validity-shared-controls python3 scripts/check_helper_validity_controls.py --shared-only',workflow)
 
     def test_stale_source_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

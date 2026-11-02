@@ -1,20 +1,17 @@
-import Airbender.Import.GKRProtocol.HelperValidityImport
-import Airbender.Proofs.GKRProtocol.HistoryErasureNative.WordMemoryCached
-import Airbender.Proofs.GKRProtocol.HelperNative.WordMemoryCached
+import Airbender.Proofs.GKRProtocol.HelperValidityChecks.WordMemoryCached.Certificate
 
 namespace Airbender.Compiler.HelperValidityNative.WordMemoryCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_helper_validity native from "artifacts/compiler/word-memory-cached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.WordMemoryCached.native
   source_model Airbender.Compiler.SourceContractNative.WordMemoryCached.native
   history_model Airbender.Compiler.HistoryErasureNative.WordMemoryCached.native
   helper_model Airbender.Compiler.HelperNative.WordMemoryCached.native
-  memory_model Airbender.Compiler.MemoryNative.WordMemoryCached.native inputs 52
+  memory_model Airbender.Compiler.MemoryNative.WordMemoryCached.native inputs 52 phase 1 using_checks Airbender.Compiler.HelperValidityChecks.WordMemoryCached
 
 theorem helper_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

@@ -1,0 +1,19 @@
+import Airbender.Proofs.GKRProtocol.HelperValidityChecks.JumpBranchCached.Bindings
+
+namespace Airbender.Compiler.HelperValidityChecks.JumpBranchCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+theorem checked : NumericHelperValidityChecks.check babyBearModulus data = true := by decide +kernel
+
+def facts :=
+  NumericHelperValidityChecks.check_sound data Airbender.Compiler.HistoryErasureNative.JumpBranchCached.native.historyCells
+  Airbender.Compiler.HelperValidityNative.JumpBranchCached.native.profile
+  Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.helperPlacement Airbender.Compiler.SourceContractNative.JumpBranchCached.native.slots
+  Airbender.Compiler.HelperNative.JumpBranchCached.native.fields Airbender.Compiler.HelperNative.JumpBranchCached.native.placement
+  Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.inputBank Airbender.Compiler.MemoryNative.JumpBranchCached.native.bank
+    source_binding checked
+
+end Airbender.Compiler.HelperValidityChecks.JumpBranchCached

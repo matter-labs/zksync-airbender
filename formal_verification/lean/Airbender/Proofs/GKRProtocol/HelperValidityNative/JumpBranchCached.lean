@@ -1,20 +1,17 @@
-import Airbender.Import.GKRProtocol.HelperValidityImport
-import Airbender.Proofs.GKRProtocol.HistoryErasureNative.JumpBranchCached
-import Airbender.Proofs.GKRProtocol.HelperNative.JumpBranchCached
+import Airbender.Proofs.GKRProtocol.HelperValidityChecks.JumpBranchCached.Certificate
 
 namespace Airbender.Compiler.HelperValidityNative.JumpBranchCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_helper_validity native from "artifacts/compiler/jump-branch-cached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native
   source_model Airbender.Compiler.SourceContractNative.JumpBranchCached.native
   history_model Airbender.Compiler.HistoryErasureNative.JumpBranchCached.native
   helper_model Airbender.Compiler.HelperNative.JumpBranchCached.native
-  memory_model Airbender.Compiler.MemoryNative.JumpBranchCached.native inputs 55
+  memory_model Airbender.Compiler.MemoryNative.JumpBranchCached.native inputs 55 phase 1 using_checks Airbender.Compiler.HelperValidityChecks.JumpBranchCached
 
 theorem helper_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

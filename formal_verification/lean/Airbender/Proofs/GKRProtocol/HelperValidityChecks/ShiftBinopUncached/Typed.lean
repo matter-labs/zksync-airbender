@@ -1,0 +1,16 @@
+import Airbender.Proofs.GKRProtocol.HelperValidityChecks.ShiftBinopUncached.Inputs
+import Airbender.Proofs.GKRProtocol.NumericHelperValidityChecks
+
+namespace Airbender.Compiler.HelperValidityChecks.ShiftBinopUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+noncomputable def original := NumericHelperValidityChecks.ofTyped Airbender.Compiler.HistoryErasureNative.ShiftBinopUncached.native.historyCells
+  Airbender.Compiler.HelperValidityNative.ShiftBinopUncached.native.profile
+  Airbender.Compiler.FullArithmeticNative.ShiftBinopUncached.native.helperPlacement Airbender.Compiler.SourceContractNative.ShiftBinopUncached.native.slots
+  Airbender.Compiler.HelperNative.ShiftBinopUncached.native.fields Airbender.Compiler.HelperNative.ShiftBinopUncached.native.placement
+  Airbender.Compiler.FullArithmeticNative.ShiftBinopUncached.native.inputBank Airbender.Compiler.MemoryNative.ShiftBinopUncached.native.bank
+
+end Airbender.Compiler.HelperValidityChecks.ShiftBinopUncached

@@ -1,20 +1,17 @@
-import Airbender.Import.GKRProtocol.HelperValidityImport
-import Airbender.Proofs.GKRProtocol.HistoryErasureNative.BlakeGCached
-import Airbender.Proofs.GKRProtocol.HelperNative.BlakeGCached
+import Airbender.Proofs.GKRProtocol.HelperValidityChecks.BlakeGCached.Certificate
 
 namespace Airbender.Compiler.HelperValidityNative.BlakeGCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_helper_validity native from "artifacts/compiler/blake-g-cached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.BlakeGCached.native
   source_model Airbender.Compiler.SourceContractNative.BlakeGCached.native
   history_model Airbender.Compiler.HistoryErasureNative.BlakeGCached.native
   helper_model Airbender.Compiler.HelperNative.BlakeGCached.native
-  memory_model Airbender.Compiler.MemoryNative.BlakeGCached.native inputs 112
+  memory_model Airbender.Compiler.MemoryNative.BlakeGCached.native inputs 112 phase 1 using_checks Airbender.Compiler.HelperValidityChecks.BlakeGCached
 
 theorem helper_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
