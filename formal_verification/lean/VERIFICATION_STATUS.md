@@ -31,7 +31,7 @@ The final axiom inventory and baseline refresh remain pending.
 
 ## Plan
 
-1. Finish the three deletion commits. Run focused source builds of importers.
+1. The three deletion commits are complete. Their focused source builds pass.
 2. Run FV only at night or on manual dispatch, on the large runner.
    Use one generator freshness step. Keep the existing checkers.
 3. Run one final cold build, full frontend and transitive kernel replay.
@@ -42,8 +42,12 @@ The final axiom inventory and baseline refresh remain pending.
 ## Runtime
 
 This host runs macOS. The user enabled Docker.
-Linux checks and baseline measurements are deferred to the end.
-They have not started. No Linux result is claimed.
+The final Linux run has started in an isolated Docker volume.
+It uses the pinned ARM64 Lean toolchain and no Mac build objects.
+Bootstrap passed. The cold build covers all 4,201 retained source modules.
+No full Linux validation result is claimed.
+A timing-helper conflict stopped the first bootstrap attempt.
+The retry uses the unchanged compiler and normal guarded module builds.
 Existing caches and preservation objects remain in `/tmp/airbender-review-round/`.
 
 Focused source builds pass for the cached native acceptance path, all three
@@ -54,6 +58,15 @@ frontend result. The earlier ownership collision remains in the history.
 
 ## Final validation
 
-The final cold build, full frontend, full transitive replay, environment audit
-and axiom baseline refresh remain pending.
+| Phase | State | Time (s) | Peak memory (MiB) |
+| --- | --- | ---: | ---: |
+| Cold Linux source build, 4,201 modules | Running | Pending | Pending |
+| Full frontend and runtime gates | Queued | Pending | Pending |
+| Environment audit and baseline refresh | Queued | Pending | Pending |
+| Full transitive replay, 2,048 MiB stack | Queued | Pending | Pending |
+
+The run uses Docker container `airbender-fv-final-20261102`.
+Evidence is in `/tmp/airbender-review-round/method-reset-2026-11-02/linux-final/`.
+Normal guarded Lake builds record each module time and peak memory.
+These times include Lake startup and dependency freshness checks.
 The hourly task follows this plan. It must not restart the family rollout.
