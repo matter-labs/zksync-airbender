@@ -32,6 +32,12 @@ def selectors(case):
 def inputs(case):
     text = legacy.module(capture_name(case), case)[1]
     text = text.replace('set_option maxHeartbeats 4000000\n', '')
+    from gkr_packed_memory_payload import CASES as memory_cases
+    if case in memory_cases:
+        text = text.replace('set_option maxRecDepth 32768\n\n',
+            'set_option maxRecDepth 32768\n\n'
+            '-- Keep the original data instance paths after numeric memory imports.\n'
+            'attribute [local instance 2000] ZMod.commRing CommSemiring.toSemiring CommRing.toCommSemiring\n\n')
     if case.startswith('BlakeRound'):
         text = text.replace('import_source_helpers native',
             '-- This command reconstructs every original affine definition.\n'

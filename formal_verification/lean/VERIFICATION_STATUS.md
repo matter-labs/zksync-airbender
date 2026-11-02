@@ -6033,3 +6033,65 @@ The hourly follow-up stays active. Full frontend validation, environment audit,
 full transitive replay, cold full measurements and Linux qualification did not
 run. They stay pending for implementation review.
 No aggregate import pass is claimed.
+
+## Native memory payload pilot and dense captures
+
+AddSubCached, AddSubUncached, BlakeRoundCached and BlakeRoundUncached now use one
+complete memory payload result each. Each result covers the full projection
+input list, every primitive expansion flag, every input-bank and base-role check,
+every fingerprint occurrence and both mask fields. The fingerprint adapter
+retains the original memoryExpression none/some branch, all seven extra variables,
+all lifted relations and the complete original witness. Exact bindings retain
+all coefficients, zero terms and term order. All old declarations remain.
+The original product, source-query, mask and RAM proofs keep their premises.
+Whole source-scope, tree and coverage metadata checks stay explicit.
+This step does not claim their separate numeric migration.
+
+The four captures retain all 2,080 original public declarations.
+Kernel preservation accepts all 1,412 old theorem types.
+All 668 imported Expr values are identical.
+All 46 selected source modules and standard 32 MiB replays pass.
+They include 12 direct consumers. They skip no safe dependency.
+Local standard-instance priorities preserve every affected helper Expr value.
+The complete old helper theorem types also pass kernel preservation.
+Both affected worker captures retain their original values and theorem types.
+The first consumer preservation control detected changed field-instance paths.
+The local priorities restore the original paths. The focused retry rebuilds only
+the four changed helper modules. It reuses eight unchanged consumer passes.
+All 6,240 focused axiom queries use only the three allowed axioms.
+All 50 exact controls pass. The kernel rejects all 50 mutations.
+These include nonempty mask witnesses, changed coefficients, expansion flags,
+primitive ports, fingerprint and mask source windows, and projection coverage.
+Legacy, phase, wrong-fact and opaque-payload controls pass.
+All three Python generator controls pass. Source and interface freshness pass.
+Source layers, import graph, changed-source trust checks and workflow syntax pass.
+CI requires all four captures and both cache modes.
+
+The old whole projection-port binding exceeded the replay footprint limit.
+The adopted binding uses bounded source slices before numeric mapping.
+Its generic coverage proof binds every source port to one whole result.
+The repaired dense binding passes source and replay in 22.07 s at 883.30 MiB.
+The two complete BlakeRound data reconstruction commands exceed the default
+heartbeat budget. Only those commands use a scoped two-million budget.
+All new checkers, bindings, certificates and four native wrappers use default
+heartbeats. No cold full-build gain is claimed.
+
+| Guarded phase | Time | Peak physical footprint |
+| --- | ---: | ---: |
+| memory-payload-pilot-canonical | 115.35 s | 847.10 MiB |
+| memory-payload-dense-canonical3 | 291.76 s | 1,002.40 MiB |
+| memory-payload-qualification | 31.75 s | 2,304.04 MiB |
+| memory-payload-controls2 | 173.09 s | 405.20 MiB |
+| memory-payload-direct3 | 71.06 s | 1,726.21 MiB |
+| memory-payload-worker-preservation | 11.96 s | 836.23 MiB |
+
+All guards clean their owned workers. The inventory has 163,824 roots.
+It retains all 159,724 prior roots and every established root.
+The original helper and memory objects remain in the payload baseline.
+Evidence uses memory-payload and memory-projection prefixes.
+
+The other 18 memory payload captures remain open. Consumer typing and the final
+metadata/header scope audit also remain open. The hourly follow-up stays active.
+Full frontend validation, environment audit and baseline refresh, full transitive
+replay, cold full measurements and Linux qualification did not run.
+They stay pending for implementation review. No aggregate import pass is claimed.

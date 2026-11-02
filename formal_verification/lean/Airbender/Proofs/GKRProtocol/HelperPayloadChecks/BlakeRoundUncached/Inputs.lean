@@ -8,6 +8,9 @@ set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
 
+-- Keep the original data instance paths after numeric memory imports.
+attribute [local instance 2000] ZMod.commRing CommSemiring.toSemiring CommRing.toCommSemiring
+
 -- This command reconstructs every original affine definition.
 -- The default budget expires on the complete data phase.
 set_option maxHeartbeats 2000000 in

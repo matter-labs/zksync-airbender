@@ -283,6 +283,39 @@ def synthesis(pair, snapshot):
                                           "nonempty_witnesses": sum(bool(w) for g in groups.values() for w in g["witnesses"])}}
 
 
+def module(name, case):
+    root = LEAN / "artifacts/compiler"
+    result = synthesis(json.loads((root / (name + ".json")).read_text()),
+                       json.loads((root / (name + "-source.json")).read_text()))
+    selectors = json.dumps(json.dumps(result, separators=(",", ":")))
+    content = (
+        "import Airbender.Import.GKRProtocol.MemoryImport\n"
+        f"import Airbender.Proofs.GKRProtocol.ProductNative.{case}\n\n"
+        f"namespace Airbender.Compiler.MemoryNative.{case}\n"
+        "open Airbender Airbender.Compiler\n"
+        "set_option warningAsError true\n"
+        "set_option Elab.async false\n"
+        "set_option maxRecDepth 32768\n"
+        "set_option maxHeartbeats 4000000\n\n"
+        f'import_source_memory native from "artifacts/compiler/{name}.json"\n'
+        f'  source "artifacts/compiler/{name}-source.json"\n'
+        f"  selectors {selectors}\n"
+        "  word_bits 2\n"
+        f"  native_model Airbender.Compiler.ProductNative.{case}.native\n"
+        f"  typing Airbender.Compiler.ConsumerNative.{case}.native.typing\n\n"
+        f"end Airbender.Compiler.MemoryNative.{case}\n")
+    return "Airbender.Proofs.GKRProtocol.MemoryNative." + case, content
+
+
+def modules(name, case):
+    from gkr_packed_memory_payload import CASES, inputs, native
+    if case in CASES:
+        yield "Airbender.Proofs.GKRProtocol.MemoryPayloadChecks." + case + ".Inputs", inputs(case)
+        yield native(case)
+    else:
+        yield module(name, case)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--family", choices=FAMILIES, action="append")
@@ -300,28 +333,13 @@ def main():
                                json.loads((root / (name + "-source.json")).read_text()))
             case = stem + mode.title()
             module = "Airbender.Proofs.GKRProtocol.MemoryNative." + case
-            if args.write or args.check:
-                destination = LEAN / "Airbender/Proofs/GKRProtocol/MemoryNative" / (case + ".lean")
-                selectors = json.dumps(json.dumps(result, separators=(",", ":")))
-                content = (
-                    "import Airbender.Import.GKRProtocol.MemoryImport\n"
-                    f"import Airbender.Proofs.GKRProtocol.ProductNative.{case}\n\n"
-                    f"namespace Airbender.Compiler.MemoryNative.{case}\n"
-                    "open Airbender Airbender.Compiler\n"
-                    "set_option warningAsError true\n"
-                    "set_option Elab.async false\n"
-                    "set_option maxRecDepth 32768\n"
-                    "set_option maxHeartbeats 4000000\n\n"
-                    f'import_source_memory native from "artifacts/compiler/{name}.json"\n'
-                    f'  source "artifacts/compiler/{name}-source.json"\n'
-                    f"  selectors {selectors}\n"
-                    "  word_bits 2\n"
-                    f"  native_model Airbender.Compiler.ProductNative.{case}.native\n"
-                    f"  typing Airbender.Compiler.ConsumerNative.{case}.native.typing\n\n"
-                    f"end Airbender.Compiler.MemoryNative.{case}\n")
+            for generated_module, content in modules(name, case):
+                destination = LEAN / (generated_module.replace(".", "/") + ".lean")
                 if args.check and (not destination.exists() or destination.read_text() != content):
                     raise ValueError(f"source memory selectors changed: {case}")
                 if args.write and (not destination.exists() or destination.read_text() != content):
+                    from gkr_packed_rotate_boundary import preflight
+                    preflight([(generated_module, content)])
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     destination.write_text(content)
             print(name, result["counts"], flush=True)
