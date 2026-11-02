@@ -6244,3 +6244,27 @@ metadata/header scope audit also remain open. The hourly follow-up stays active.
 Full frontend validation, environment audit and baseline refresh, full transitive
 replay, cold full measurements and Linux qualification did not run.
 They stay pending for implementation review. No aggregate import pass is claimed.
+
+
+## 2026-11-02: PR preparation
+
+The user selected PR #585 against `av_gkr_compiler`.
+The older draft #529 stays unchanged.
+All 768 branch commits were SSH signed and pushed with an exact lease.
+The signed head `0138ae78216d9bff87c6418e61b40c7c08052c31` has the same
+source tree as `afa7c1b93ae800f5562b97040713e30ff19720bc`.
+GitHub verifies the signature. The archive tag stays unchanged.
+
+The initial Linux cold stage stopped after 2,999.49 seconds.
+It completed 177 modules. The next module, `Source.ChiCharacters`, reached
+its 900-second limit. It reported no proof error or memory-limit failure.
+The continuation retains completed receipts and uses the same resource caps.
+Its queue adds the configured lowercase oracle root and covers 4,202 sources.
+A proposed 1,800-second retry was rejected before compilation.
+No larger source-build limit was adopted.
+The Mac full frontend continues with its retained caches.
+
+PR warnings jobs found three compile errors in the initialization-window test.
+The test used removed packing constants and the old verifier generator API.
+The correction uses the current configuration-based API.
+It changes only the test. CI will check the corrected call.

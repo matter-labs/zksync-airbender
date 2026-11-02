@@ -1,10 +1,9 @@
-//! AIH-334: test the generated validation without rewriting committed contracts.
+//! Test the generated validation without rewriting committed contracts.
 
 mod common;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
-use prover::gkr::prover_config::{example_configs::EVM_PRODUCTION_TRACE_LEN_LOG2, pow_bits};
 use std::path::PathBuf;
 
 fn fixture_final_pc() -> u32 {
@@ -24,21 +23,7 @@ fn generated_verifier() -> String {
     .unwrap();
     let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(&json).unwrap();
     let config = common::production_prover_config();
-    let batch_pow_bits = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
-        config.security_level.security_bits(),
-        EVM_PRODUCTION_TRACE_LEN_LOG2 + common::PACK_LOG2,
-        config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
-        pow_bits::total_base_oracle_columns(&circuit),
-    );
-    verifier_evm::generate_verifier(
-        &circuit,
-        &config,
-        common::PACK_LOG2,
-        20,
-        batch_pow_bits,
-        fixture_final_pc(),
-        &[0, 1],
-    )
+    verifier_evm::generate_verifier(&circuit, &config, 20, fixture_final_pc(), &[0, 1])
 }
 
 fn yul_function(source: &str, name: &str) -> String {

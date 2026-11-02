@@ -32,6 +32,9 @@ Its focused source build passes after the stale imports are removed.
 The tracked-import check covers 12,078 imports in 4,212 Lean files.
 The earlier log is in [VERIFICATION_HISTORY.md](VERIFICATION_HISTORY.md).
 The final axiom inventory and baseline refresh remain pending.
+[PR #585](https://github.com/matter-labs/zksync-airbender/pull/585) is in draft.
+All 768 branch commits are signed. GitHub verifies the signed head.
+The signing rewrite leaves the source tree unchanged.
 
 ## Plan
 
@@ -48,10 +51,12 @@ The final axiom inventory and baseline refresh remain pending.
 This host runs macOS. The user enabled Docker.
 The local final validation uses the preserved Mac caches.
 Its import inventory passes after the path-case correction.
-Linux qualification runs last.
 The cold Linux build continues in an isolated Docker volume.
 It uses the pinned ARM64 Lean toolchain and no Mac build objects.
-Bootstrap passed. The cold build covers all 4,201 retained source modules.
+Bootstrap passed. The current cold queue covers all 4,202 source modules.
+The first pass completed 177 modules. `Source.ChiCharacters` then reached
+the 900-second limit. The resume retains all completed results and reports
+source-character progress. No proof error or memory-limit failure was reported.
 No full Linux validation result is claimed.
 A timing-helper conflict stopped the first bootstrap attempt.
 The retry uses the unchanged compiler and normal guarded module builds.
@@ -67,16 +72,23 @@ frontend result. The earlier ownership collision remains in the history.
 
 | Phase | State | Time (s) | Peak memory (MiB) |
 | --- | --- | ---: | ---: |
-| Cold Linux source build, 4,201 modules | Running | Pending | Pending |
+| Cold Linux source build, 4,202 modules | Resume running after a timeout | Pending | Pending |
 | Mac full frontend and runtime gates | Running | Pending | Pending |
 | Mac environment audit and baseline refresh | Queued | Pending | Pending |
 | Mac full transitive replay, 2,048 MiB stack | Queued | Pending | Pending |
 | Linux runtime qualification | Deferred until last | Pending | Pending |
 
 The Linux run uses Docker container `airbender-fv-final-20261102`.
-Its next stages wait until local validation finishes.
+It retains the completed module receipts. No second full replay is scheduled.
 Local reports are in the sibling `mac-final/` evidence directory.
 Evidence is in `/tmp/airbender-review-round/method-reset-2026-11-02/linux-final/`.
 Normal guarded Lake builds record each module time and peak memory.
 These times include Lake startup and dependency freshness checks.
 The hourly task follows this plan. It must not restart the family rollout.
+
+## PR checks
+
+The Rust warnings jobs found a stale call in the initialization-window test.
+The test now uses the current five-argument verifier generator.
+The generator derives packing and batching parameters from its configuration.
+CI must confirm this correction. Production code stays unchanged.
