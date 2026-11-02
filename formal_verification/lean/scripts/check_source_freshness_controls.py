@@ -9,7 +9,9 @@ from export_gkr_translations import LEAN
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--case', choices=CASES, action='append')
+    parser.add_argument('--shared-only', action='store_true')
     args = parser.parse_args()
+    if args.shared_only and args.case:parser.error('--shared-only cannot select captures')
     prefix = '''import Airbender.Proofs.GKRProtocol.NumericSourceFreshnessChecks
 import Airbender.Import.GKRProtocol.NumericArithmeticDataImport
 open Airbender Airbender.Compiler NumericSourceFreshnessChecks
@@ -26,7 +28,7 @@ set_option maxRecDepth 8192
         ('complete target vector', 'encodeAddresses [.BaseLayerWitness 4, .BaseLayerWitness 5] = encodeAddresses [.BaseLayerWitness 4, .BaseLayerWitness 5]',
          'encodeAddresses [.BaseLayerWitness 5] = encodeAddresses [.BaseLayerWitness 4, .BaseLayerWitness 5]', ''),
     ]
-    for case in args.case or CASES:
+    for case in ([] if args.shared_only else args.case or CASES):
         count, _ = metadata(case)
         owner = 'Airbender.Compiler.SourceFreshnessChecks.' + case
         imports = 'import Airbender.Proofs.GKRProtocol.SourceFreshnessChecks.' + case + '.Data\n'
@@ -62,6 +64,12 @@ end FreshnessBadFacts
         if not result.returncode or 'type mismatch' not in result.stdout.lower():
             raise SystemExit('Unchecked freshness fact:\n' + result.stdout[-1800:])
         print('PASS table importer rejects freshness facts of the wrong type', flush=True)
+        source = (LEAN / 'Airbender/Proofs/GKRProtocol/TableNative/AddSubCached.lean').read_text()
+        source = source.replace('  using_freshness Airbender.Compiler.SourceFreshnessChecks.AddSubCached\n', '')
+        source = source.replace('Airbender.Compiler.TableNative.AddSubCached', 'FreshnessLegacyTable')
+        result = compile_source(source)
+        if result.returncode:raise SystemExit('Legacy table importer:\n' + result.stdout[-1800:])
+        print('PASS original table importer without supplied freshness facts', flush=True)
 
 
 if __name__ == '__main__':main()

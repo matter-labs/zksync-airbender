@@ -5543,3 +5543,50 @@ Full frontend validation, environment audit and baseline refresh, full transitiv
 replay, cold full measurements and Linux qualification did not run. They remain
 pending for implementation review. The known aggregate ownership collision stays
 deferred. No aggregate import pass is claimed.
+
+## Complete source multiplicity freshness family
+
+All 22 native table captures now use one numeric freshness result per capture.
+The final 20 captures keep every original source coordinate and multiplicity
+address. Complete kernel bindings cover both full vectors. check_sound derives
+the exact original addressEqual facts. The source tables, layouts, roles and
+semantic finalizers keep their original references.
+
+All 436 old declarations in the final 20 captures remain.
+Kernel preservation accepts all 320 old theorem types.
+All 116 imported Expr values are identical.
+All 100 selected source modules and standard 32 MiB replays pass.
+They skip no safe dependency. All 2212 focused axiom queries use only
+the three allowed axioms. The kernel rejects all 60 captured binding mutations.
+All 60 exact controls pass. Four shared exact and kernel mutation pairs pass.
+The importer rejects facts of the wrong type. The default legacy importer also
+passes. All three expanded Python generator controls pass. Both adopted dense
+pilot outputs stay unchanged.
+
+All new freshness modules use default heartbeats. All 22 TableNative wrappers
+now also use default heartbeats. Their 22 old four-million overrides are gone.
+
+| Guarded phase | Time | Peak physical footprint |
+| --- | ---: | ---: |
+| source-freshness-remaining-dense-source | 132.28 s | 857.04 MiB |
+| source-freshness-remaining-dense-qualification | 92.54 s | 2,280.74 MiB |
+| source-freshness-remaining-ordinary-source | 271.63 s | 838.68 MiB |
+| source-freshness-remaining-ordinary-qualification | 217.41 s | 2,275.88 MiB |
+| shared controls | 16.00 s | 419.16 MiB |
+
+All guards clean their owned workers. Source and interface freshness, static
+checks, source layers, the source import graph and workflow syntax pass.
+CI keeps both cache modes required. The inventory has 131,598 roots.
+It retains all 130,022 prior roots and every established root. Original table
+objects remain in source-freshness-original-oleans. Evidence uses the
+source-freshness-remaining prefixes. No cold full-build gain is claimed.
+
+The remaining 18 lookup source captures stay open. Numerical worker port
+checks, other frame and argument families and the header budget audit also
+remain. Program-dependent setup and captured decoder interpretation stay
+outside this rollout. Item 3 remains open. The hourly follow-up stays active.
+
+Full frontend validation, environment audit and baseline refresh, full transitive
+replay, cold full measurements and Linux qualification did not run. They remain
+pending for implementation review. The known aggregate ownership collision stays
+deferred. No aggregate import pass is claimed.

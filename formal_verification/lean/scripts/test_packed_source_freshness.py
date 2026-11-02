@@ -10,11 +10,15 @@ import gkr_packed_source_freshness as generator
 
 class FreshnessTests(unittest.TestCase):
     def test_complete_source_and_targets(self):
-        self.assertEqual(set(generator.CASES), {'BlakeRoundCached', 'BlakeRoundUncached'})
+        self.assertEqual(len(generator.CASES), 22)
+        self.assertEqual(sum(case.endswith('Uncached') for case in generator.CASES), 11)
         for case in generator.CASES:
             count, targets = generator.metadata(case)
-            self.assertEqual(count, 632)
-            self.assertEqual([name for name, _ in targets], ['generic', 'timestamp'])
+            if case.startswith('BlakeRound'):
+                self.assertEqual(count, 632)
+                self.assertEqual([name for name, _ in targets], ['generic', 'timestamp'])
+            self.assertTrue(count > 0 and targets)
+            self.assertEqual(len({name for name, _ in targets}), len(targets))
             generated = dict(generator.modules(case))
             stem = 'Airbender.Proofs.GKRProtocol.SourceFreshnessChecks.' + case
             self.assertEqual(len(generated), 4)

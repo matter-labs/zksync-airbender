@@ -6,8 +6,9 @@ from export_gkr_translations import LEAN
 from gkr_packed_functional_steps import balanced
 from gkr_packed_query_frame import capture_name, merge_slices
 from gkr_packed_rotate_boundary import preflight
+from gkr_wiring_instances import CASES as CIRCUITS
 
-CASES = ('BlakeRoundCached', 'BlakeRoundUncached')
+CASES = tuple(circuit + mode for circuit in CIRCUITS for mode in ('Cached', 'Uncached'))
 
 
 def table_wrapper(case, source):
