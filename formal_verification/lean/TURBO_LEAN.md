@@ -9,7 +9,11 @@ PR #585 keeps Lean 4.31 and its separate CI validation.
 Lean and Mathlib resolve at version 4.35.0.
 All 52 source generator checks pass.
 The Clean and lean-sail reference revisions stay unchanged.
-The existing hash-checked Clean compatibility patches apply.
+The hash-checked Clean compatibility patches apply.
+Stock Lean builds the numeric query-frame checker and its strict importer.
+The port fixes proof reductions and deprecated theorem names.
+The Clean patches limit elaborator compatibility settings to affected proofs.
+They preserve reference definitions and theorem statements.
 The full proof port remains unqualified.
 
 Turbo-lean is pinned to `2896cfd092758b8d0fc9977502dc036b0ab79921`.

@@ -13,7 +13,7 @@ The complete proof port remains unqualified on Lean 4.35.
 Earlier whole-project evidence describes Lean 4.31.
 
 [PR #585](https://github.com/matter-labs/zksync-airbender/pull/585) stays separate.
-Its [full FV run](https://github.com/matter-labs/zksync-airbender/actions/runs/41448372904)
+Its [full FV run](https://github.com/matter-labs/zksync-airbender/actions/runs/41451555538)
 uses Lean 4.31 on the large runner.
 The user moved full validation there and freed the Mac for this experiment.
 No second full validation is required for the initial experiment.
@@ -24,6 +24,10 @@ Full official validation is required before adopting the upgrade.
 Dependency resolution and the existing Clean compatibility patches pass.
 All 52 source generator checks pass.
 The real `FiniteGridChecks` source compiles with stock Lean 4.35.
+The numeric query-frame checker and strict importer compile with stock Lean 4.35.
+Their dependency builds include the pinned Clean field, vector, channel, equality
+and offline-memory proofs. Hash checks protect all reference patches.
+Proof reductions and theorem-name updates leave statements unchanged.
 The pinned turbo tool passes `cargo check` and its release build.
 An exact core-only source copy passes stock Lean and the standard turbo kernel.
 The repeat turbo check returns a checked theorem cache hit.
@@ -41,7 +45,7 @@ The scan reports no known dependency advisories. This is not a security certific
 The launcher now clears inherited compiler-simplification exceptions too.
 Further turbo execution requires a disposable OS sandbox without host credentials.
 The time and memory guard does not provide OS isolation.
-The larger dependency and proof port still needs focused builds.
+The remaining proof port still needs focused dependency and consumer builds.
 Only `propext`, `Classical.choice` and `Quot.sound` are permitted.
 The official kernel remains the acceptance gate.
 

@@ -29,7 +29,7 @@ theorem WireBank.ofList_roundTrip (entries : List GKRAddress) (nonempty : 0 < en
   change (if bound : entries.findIdx (fun candidate => addressEqual candidate (entries.get index)) < entries.length then
     ⟨entries.findIdx (fun candidate => addressEqual candidate (entries.get index)), bound⟩ else ⟨0, nonempty⟩) = index
   rw [found]
-  simp only [dif_pos index.isLt]
+  simp only [dite_eq_left index.isLt]
 
 theorem WireBank.ofList_prefix (entries inputs : List GKRAddress)
     (nonempty : 0 < entries.length) (inputsNonempty : 0 < inputs.length)

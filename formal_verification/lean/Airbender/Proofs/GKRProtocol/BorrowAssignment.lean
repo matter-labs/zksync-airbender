@@ -22,6 +22,6 @@ theorem assignBorrows_frame (slots : Fin k → Fin n) (values : Fin n → BaseFi
     assignBorrows slots values borrows index = values index := by
   classical
   unfold assignBorrows
-  exact dif_neg (by simpa only [not_exists] using outside)
+  exact dite_eq_right (by simpa only [not_exists] using outside)
 
 end Airbender.Compiler.Source

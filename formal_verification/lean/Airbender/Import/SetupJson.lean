@@ -392,7 +392,7 @@ private theorem stringCore_unescaped (chars : List Char)
     have recurrence : stringCore (rest.length + extra + 1 + 1) (c :: (rest ++ ['"'])) earlier =
         stringCore (rest.length + extra + 1) (rest ++ ['"']) (c :: earlier) := by
       rw [stringCore]
-      · simp only [Nat.not_lt.mpr lower, ↓reduceIte, pure, Except.pure, bind, Except.bind]
+      · simp only [Nat.not_lt.mpr lower, ↓reduceIte]
       · exact noQuote
       · exact noSlash
     simpa only [List.length_cons, Nat.succ_add, List.cons_append,

@@ -93,7 +93,7 @@ theorem HelperField.assignBorrows_value (field : HelperField) (placement : Helpe
       have bounded : index < k := of_decide_eq_true checked
       have assigned := assignBorrows_at slots unique values borrows ⟨index, bounded⟩
       rw [coordinates ⟨index, bounded⟩] at assigned
-      simpa only [HelperField.value, HelperPlacement.project, Function.comp_apply, dif_pos bounded] using assigned
+      simpa only [HelperField.value, HelperPlacement.project, Function.comp_apply, dite_eq_left bounded] using assigned
   | add left right leftProof rightProof =>
       have parts : left.borrowCheck placement slots = true ∧ right.borrowCheck placement slots = true := by
         simpa only [borrowCheck, Bool.and_eq_true] using checked
@@ -128,7 +128,7 @@ theorem HelperField.assignCanonical_value (field : HelperField) (placement : Hel
   rw [field.assignBorrows_value placement slots unique coordinates checked]
   apply field.value_borrow_congr _ _ _ k placement slots checked
   intro index bounded
-  simp only [dif_pos bounded]
+  simp only [dite_eq_left bounded]
   rfl
 
 end Source

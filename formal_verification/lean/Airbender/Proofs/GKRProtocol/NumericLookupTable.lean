@@ -88,7 +88,7 @@ theorem LookupTable.getD_eq (table : LookupTable α) (checked : table.valid = tr
       have leftSizeEq := left.size_eq_length checked.1.2
       simp only [getD, toList, checked.1.1, leftSizeEq, List.getElem?_append]
       by_cases inside : index < left.toList.length
-      · simpa only [if_pos inside] using first checked.1.2 index
-      · simpa only [if_neg inside] using second checked.2 (index - left.toList.length)
+      · simpa only [ite_eq_left inside] using first checked.1.2 index
+      · simpa only [ite_eq_right inside] using second checked.2 (index - left.toList.length)
 
 end Airbender.Compiler.NumericPolynomialChecks
