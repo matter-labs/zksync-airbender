@@ -10,6 +10,8 @@ def ofBlock : Block → Option Run
   | .periodic count (.ofNat stride) values => some ⟨count, stride, values⟩
   | _ => none
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem ofBlock_sound (block : Block) (data : Run) (encoded : ofBlock block = some data) :
     block.length = data.length ∧
       ∀ index, index < block.length → block.get? index = some (data.value index) := by
@@ -24,7 +26,7 @@ theorem ofBlock_sound (block : Block) (data : Run) (encoded : ofBlock block = so
       · simp [Block.length, Run.length]
       · intro index within
         simp only [Block.length] at within
-        simp only [Block.get?, Block.length, if_pos within]
+        simp only [Block.get?, Block.length, ite_eq_left within]
         have natural : (first : Int) + Int.ofNat stride * index = ((first + stride * index : Nat) : Int) := by norm_cast
         simp only [natural, Int.natCast_nonneg, ↓reduceIte, Int.toNat_natCast]
         simp [Run.value, Nat.mod_one]
@@ -46,7 +48,7 @@ theorem ofBlock_sound (block : Block) (data : Run) (encoded : ofBlock block = so
       · rfl
       · intro index within
         simp only [Block.length] at within
-        simp only [Block.get?, Block.length, if_pos within]
+        simp only [Block.get?, Block.length, ite_eq_left within]
         have natural : ((values[index % values.size]?.getD 0 : Nat) : Int) +
             Int.ofNat stride * ((index : Int) / values.size) =
             ((values[index % values.size]?.getD 0 + stride * (index / values.size) : Nat) : Int) := by norm_cast

@@ -43,7 +43,7 @@ theorem loadByte_high (n : Nat) (bound : n < 262144) :
     simp only [List.nil_append] at select
     rw [select]
     have sign : ¬ byteNegative n := by rw [byte_negative_ranges n bound]; omega
-    simpa only [b0, Nat.sub_zero, byteHigh, if_neg sign] using constant_block 65664 0 n first
+    simpa only [b0, Nat.sub_zero, byteHigh, ite_eq_right sign] using constant_block 65664 0 n first
   · by_cases second : n < 131200
     · have extent : n - 65664 < 65536 := by omega
       have select := selected_at [b0] [b2, b3] b1 65664 n
@@ -65,7 +65,7 @@ theorem loadByte_high (n : Nat) (bound : n < 262144) :
         simp only [List.nil_append, List.cons_append] at select
         rw [select]
         have sign : ¬ byteNegative n := by rw [byte_negative_ranges n bound]; omega
-        simpa only [b2, byteHigh, if_neg sign] using constant_block 98176 0 (n - 131200) extent
+        simpa only [b2, byteHigh, ite_eq_right sign] using constant_block 98176 0 (n - 131200) extent
       · have extent : n - 229376 < 32768 := by omega
         have select := selected_at [b0, b1, b2] [] b3 229376 n
           (by simp [b0, b1, b2, Block.length, highSign_size]) (by omega)
@@ -73,6 +73,6 @@ theorem loadByte_high (n : Nat) (bound : n < 262144) :
         simp only [List.nil_append, List.cons_append] at select
         rw [select]
         have sign : byteNegative n := by rw [byte_negative_ranges n bound]; omega
-        simpa only [b3, byteHigh, if_pos sign] using constant_block 32768 65535 (n - 229376) extent
+        simpa only [b3, byteHigh, ite_eq_left sign] using constant_block 32768 65535 (n - 229376) extent
 
 end Airbender.Verification.SubwordFixed

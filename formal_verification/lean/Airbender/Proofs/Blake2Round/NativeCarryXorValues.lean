@@ -7,6 +7,8 @@ set_option Elab.async false
 set_option maxRecDepth 131072
 set_option maxHeartbeats 4000000
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- The stored carry is a bounded value, not an assumed valid control. -/
 theorem carry_value_get (kind : Fin 2) (n : Nat)
     (hn : n < (xorData (carryKind kind)).length) :

@@ -15,12 +15,12 @@ theorem checkBlocks_complete (f : Nat → Nat) (blocks : List Block) (start : Na
     refine ⟨?_, ih (start + b.length) ?_⟩
     · intro i
       have value := rows i.val (by simp only [List.map_cons, List.sum_cons]; omega)
-      simpa only [getFromBlocks, if_pos i.isLt] using value
+      simpa only [getFromBlocks, ite_eq_left i.isLt] using value
     · intro n hn
       have value := rows (b.length + n) (by
         simp only [List.map_cons, List.sum_cons]; omega)
       have skip : ¬ b.length + n < b.length := by omega
-      simpa only [getFromBlocks, if_neg skip, Nat.add_sub_cancel_left, Nat.add_assoc] using value
+      simpa only [getFromBlocks, ite_eq_right skip, Nat.add_sub_cancel_left, Nat.add_assoc] using value
 
 theorem checkBlocks_reindex {f g : Nat → Nat} {blocks : List Block} {start target : Nat}
     (checked : checkBlocks f start blocks = true)

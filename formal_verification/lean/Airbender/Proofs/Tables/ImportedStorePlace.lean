@@ -46,15 +46,15 @@ theorem storePlace_output (n : Nat) (bound : n < 131072) :
   by_cases first : n < 65536
   · have flag : n / 65536 % 2 = 0 := by omega
     simp only [Column.get?, getFromBlocks, Block.length, Array.size_range,
-      Nat.reduceMul, if_pos first]
-    simpa only [subwordStoreContribution, Bool.false_eq_true, if_false, flag,
+      Nat.reduceMul, ite_eq_left first]
+    simpa only [subwordStoreContribution, Bool.false_eq_true, ite_false, flag,
       Nat.zero_ne_one, Nat.mul_one] using periodic_range 256 n first
   · have last : n - 65536 < 65536 := by omega
     have flag : n / 65536 % 2 = 1 := by omega
     have residue : (n - 65536) % 256 = n % 256 := by omega
     simp only [Column.get?, getFromBlocks, Block.length, Array.size_range,
-      Nat.reduceMul, if_neg first, high_size, if_pos last]
-    simpa only [subwordStoreContribution, Bool.false_eq_true, if_false, flag,
-      if_true, residue, Nat.mul_comm] using high_get (n - 65536) last
+      Nat.reduceMul, ite_eq_right first, high_size, ite_eq_left last]
+    simpa only [subwordStoreContribution, Bool.false_eq_true, ite_false, flag,
+      ite_true, residue, Nat.mul_comm] using high_get (n - 65536) last
 
 end Airbender.Verification.SubwordFixed

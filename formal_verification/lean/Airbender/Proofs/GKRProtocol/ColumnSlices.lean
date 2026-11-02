@@ -46,11 +46,13 @@ theorem constant_block_get (length value index : Nat) (bounded : index < length)
     (Setup.Block.affine length value 0).get? index = some value := by
   simp [Setup.Block.get?, Setup.Block.length, bounded]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem periodic_block_overlap (left right : Nat) (stride : Int) (values : Array Nat)
     (index : Nat) (leftBound : index < left * values.size) (rightBound : index < right * values.size) :
     (Setup.Block.periodic left stride values).get? index =
       (Setup.Block.periodic right stride values).get? index := by
-  simp only [Setup.Block.get?, Setup.Block.length, if_pos leftBound, if_pos rightBound]
+  simp only [Setup.Block.get?, Setup.Block.length, ite_eq_left leftBound, ite_eq_left rightBound]
 
 theorem MaterializedLookupSetup.generic_cell_value (native : MaterializedLookupSetup width)
     (row : Fin native.imported.data.length) (column : Fin width) :

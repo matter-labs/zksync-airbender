@@ -160,7 +160,7 @@ theorem packedArithmetic_eq (radix : Nat) (positive : 1 < radix) (data : Run)
     (valid : data.valid radix = true) (nonempty : 0 < data.values.size) :
     data.packedArithmetic radix = data.packed radix := by
   have big : 1 < radix ^ data.values.size := one_lt_pow₀ positive (by omega)
-  simp only [Run.packedArithmetic, if_neg (Nat.ne_of_gt nonempty)]
+  simp only [Run.packedArithmetic, ite_eq_right (Nat.ne_of_gt nonempty)]
   rw [geometric_closed _ _ big, moment_closed _ _ big, geometric_closed _ _ positive]
   rw [← packed_linear radix data valid, Int.toNat_natCast]
 

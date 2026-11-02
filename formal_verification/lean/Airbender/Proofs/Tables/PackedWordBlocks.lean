@@ -152,7 +152,7 @@ theorem ofBlock_sound (radix : Nat) (block : Block)
         simp [Array.getElem?_eq_getElem columnWithin]
       have nonnegative := (value_bounds radix _ valid _ rowWithin _ member).1
       simpa [Block.get?, within, ofBlock, PackedSignedRun.Run.value] using
-        (if_pos nonnegative : (if 0 ≤ ((values[index % values.size]?.getD 0 : Nat) : Int) +
+        (ite_eq_left nonnegative : (if 0 ≤ ((values[index % values.size]?.getD 0 : Nat) : Int) +
           stride * ((index / values.size : Nat) : Int) then
           some (((values[index % values.size]?.getD 0 : Nat) : Int) +
             stride * ((index / values.size : Nat) : Int)).toNat else none) = _)

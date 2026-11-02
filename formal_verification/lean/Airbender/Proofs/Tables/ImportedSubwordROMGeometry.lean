@@ -27,6 +27,8 @@ private theorem key_samples (byte : Bool) (q : Fin (groupSize byte)) :
     (keyValues byte)[q.val]'(by rw [values_size]; exact q.isLt) = key byte q.val := by
   cases byte <;> revert q <;> decide +kernel
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 private theorem actual_key (byte : Bool) (n : Nat) (bound : n < (subwordROMData byte).length) :
     (subwordROMData byte).columns[0].get? n = some (key byte n) := by
   rw [key_shape]
@@ -44,7 +46,7 @@ private theorem actual_key (byte : Bool) (n : Nat) (bound : n < (subwordROMData 
     Nat.mod_lt _ (by cases byte <;> decide)⟩
   have formula : key byte (n % groupSize byte) + 4 * (n / groupSize byte) = key byte n := by
     cases byte <;> simp only [key, groupSize, Bool.false_eq_true, reduceIte] <;> omega
-  simp only [Column.get?, getFromBlocks, Block.length, if_pos extent]
+  simp only [Column.get?, getFromBlocks, Block.length, ite_eq_left extent]
   rw [actual]
   simp only [values_size, sample, formula]
 

@@ -37,8 +37,10 @@ private theorem rest_shape : ∀ block ∈ highBlocks, block.length = 4096 := by
 
 private theorem rest_selected (n : Nat) (bound : n < 15) :
     highBlocks[n]? = some (highBlock (n + 1)) := by
-  simp only [highBlocks, Array.toList_ofFn, List.getElem?_ofFn, dif_pos bound]
+  simp only [highBlocks, Array.toList_ofFn, List.getElem?_ofFn, dite_eq_left bound]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 private theorem high_reference_get (n : Nat) (bound : n < 65536) :
     rotate12HighReferenceColumn.get? n = some (n / 4096 ^^^ (n / 16 % 16)) := by
   unfold Column.get? rotate12HighReferenceColumn
@@ -50,25 +52,25 @@ private theorem high_reference_get (n : Nat) (bound : n < 65536) :
   rw [getFromBlocks]
   simp only [Block.length]
   by_cases first : n < 16
-  · rw [if_pos first]
+  · rw [ite_eq_left first]
     have a : n / 4096 = 0 := by omega
     have b : n / 16 % 16 = 0 := by omega
     simp [Block.get?, Block.length, first, a, b]
-  · rw [if_neg first, getFromBlocks]
+  · rw [ite_eq_right first, getFromBlocks]
     simp only [Block.length, Array.size_ofFn, Nat.reduceMul]
     by_cases second : n - 16 < 3840
-    · rw [if_pos second, pattern_get 15 _ _ second]
+    · rw [ite_eq_left second, pattern_get 15 _ _ second]
       have a : n / 4096 = 0 := by omega
       have b : ((n - 16) % 256 / 16 + 1) % 16 = n / 16 % 16 := by omega
       simp only [a, Nat.zero_xor, b]
-    · rw [if_neg second, getFromBlocks]
+    · rw [ite_eq_right second, getFromBlocks]
       simp only [Block.length, Array.size_replicate, Nat.reduceMul]
       by_cases third : n - 16 - 3840 < 240
-      · rw [if_pos third, last_prefix_get _ third]
+      · rw [ite_eq_left third, last_prefix_get _ third]
         have a : n / 4096 = 0 := by omega
         have b : 1 + (n - 16 - 3840) / 16 = n / 16 % 16 := by omega
         simp only [a, Nat.zero_xor, b]
-      · rw [if_neg third]
+      · rw [ite_eq_right third]
         have shift : n - 16 - 3840 - 240 = n - 4096 := by omega
         rw [shift, uniform4096_get _ rest_shape]
         rw [rest_selected _ (by omega : (n - 4096) / 4096 < 15)]

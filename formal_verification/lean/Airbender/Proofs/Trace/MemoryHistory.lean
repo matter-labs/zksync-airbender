@@ -16,6 +16,8 @@ private def retime (clock : Nat → Nat) (event : MemoryAccess) : MemoryAccess :
 def relabelMemoryEvent (clock : MemoryAccess → Nat) (event : MemoryAccess) : MemoryAccess :=
   (clock event, event.2)
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem last_write_relabel (clock : MemoryAccess → Nat) (events : MemoryAccessList)
     (old : events.isTimestampSorted)
     (new : MemoryAccessList.isTimestampSorted (events.map (relabelMemoryEvent clock)))
@@ -88,6 +90,8 @@ private theorem event_times [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p tim
     inputs.initial inputs.aligned (port_offset row port actual)).2
   exact congrArg (trace.memoryEpoch + ·) canonical
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem memory_event_times_unique [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
@@ -126,6 +130,8 @@ theorem sorted_events (events : MemoryAccessList) (unique : (events.map Prod.fst
     omega)
   exact ⟨⟨sorted, strict⟩, permutation⟩
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 private theorem retime_cell [Fact p.Prime] {trace : Data p Kind} {source : MemoryToken p}
     (member : source ∈ trace.initialMemory) {history : TimestampSortedMemoryAccessList}
     (consistent : CellHistory trace source history) :
@@ -151,6 +157,8 @@ private theorem retime_cell [Fact p.Prime] {trace : Data p Kind} {source : Memor
   have mapped := consistent.1.map (retime clock)
   simpa [retime, clock, transferEvent, List.map_map, Function.comp_def] using mapped
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem native_memory_history [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)

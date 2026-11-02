@@ -25,21 +25,21 @@ theorem storeClear_output (n : Nat) (bound : n < 131072) :
   by_cases first : n < 65536
   · have flag : n / 65536 % 2 = 0 := by omega
     have meaning : subwordStoreContribution true n = 256 * (n / 256) := by
-      simp only [subwordStoreContribution, if_true, flag,
-        Nat.zero_ne_one, if_false, Nat.mod_eq_of_lt first]
+      simp only [subwordStoreContribution, ite_true, flag,
+        Nat.zero_ne_one, ite_false, Nat.mod_eq_of_lt first]
       omega
     rw [meaning]
     simp only [Column.get?, getFromBlocks, Block.length, Array.size_replicate,
-      Nat.reduceMul, if_pos first]
+      Nat.reduceMul, ite_eq_left first]
     exact clear_low n first
   · have last : n - 65536 < 65536 := by omega
     have flag : n / 65536 % 2 = 1 := by omega
     have half : n % 65536 = n - 65536 := by omega
     have meaning : subwordStoreContribution true n = (n - 65536) % 256 := by
-      simp only [subwordStoreContribution, if_true, flag, half]
+      simp only [subwordStoreContribution, ite_true, flag, half]
     rw [meaning]
     simp only [Column.get?, getFromBlocks, Block.length, Array.size_replicate,
-      Array.size_range, Nat.reduceMul, if_neg first, if_pos last]
+      Array.size_range, Nat.reduceMul, ite_eq_right first, ite_eq_left last]
     exact periodic_range 256 (n - 65536) last
 
 end Airbender.Verification.SubwordFixed

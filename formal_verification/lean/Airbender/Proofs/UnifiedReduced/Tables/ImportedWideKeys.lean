@@ -35,18 +35,18 @@ theorem wide_second_key (kind : Fin 3) (n : Nat) (bound : n < 65536) :
   by_cases zero : n = 0
   · subst n
     simp only [Column.get?, getFromBlocks, head_length, Nat.zero_lt_one,
-      if_true, Nat.zero_mod]
+      ite_true, Nat.zero_mod]
     exact head_value kind
   · have outside : ¬ n < 1 := by omega
     by_cases middle : n - 1 < 65280
-    · simp only [Column.get?, getFromBlocks, head_length, if_neg outside]
-      simp only [Block.length, cyclicValues, Array.size_ofFn, Nat.reduceMul, if_pos middle]
+    · simp only [Column.get?, getFromBlocks, head_length, ite_eq_right outside]
+      simp only [Block.length, cyclicValues, Array.size_ofFn, Nat.reduceMul, ite_eq_left middle]
       have value : (1 + (n - 1) % 256) % 256 = n % 256 := by omega
       exact (cyclic_get 255 (n - 1) middle).trans (congrArg some value)
     · have last : n - 1 - 65280 < 255 := by omega
       have value : 1 + (n - 1 - 65280) = n % 256 := by omega
-      simp only [Column.get?, getFromBlocks, head_length, if_neg outside]
+      simp only [Column.get?, getFromBlocks, head_length, ite_eq_right outside]
       simp only [Block.length, cyclicValues, finalValues, Array.size_ofFn, Nat.reduceMul,
-        if_neg middle, if_pos last, Block.get?, Array.getElem?_ofFn, value, dif_pos last]
+        ite_eq_right middle, ite_eq_left last, Block.get?, Array.getElem?_ofFn, value, dite_eq_left last]
 
 end Airbender.UnifiedReduced.Setup.Proofs

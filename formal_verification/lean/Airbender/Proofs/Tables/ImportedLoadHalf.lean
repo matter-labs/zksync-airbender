@@ -31,20 +31,20 @@ private theorem half_low (n : Nat) (bound : n < 131072) :
   rw [half_low_shape]
   by_cases first : n < 256
   · simp only [Column.get?, getFromBlocks, Block.length, Array.size_range,
-      Nat.one_mul, if_pos first]
+      Nat.one_mul, ite_eq_left first]
     have value : n % 65536 = n % 256 := by omega
     rw [value]
     exact periodic_range 1 n (by omega)
   · by_cases second : n < 65536
     · have extent : n - 256 < 65280 := by omega
       simp only [Column.get?, getFromBlocks, Block.length, Array.size_range,
-        Nat.one_mul, if_neg first, if_pos extent]
+        Nat.one_mul, ite_eq_right first, ite_eq_left extent]
       have value : 256 + (n - 256) = n % 65536 := by omega
       exact (unit_get 65280 256 (n - 256) extent).trans (congrArg some value)
     · have outside : ¬ n - 256 < 65280 := by omega
       have extent : n - 256 - 65280 < 65536 := by omega
       simp only [Column.get?, getFromBlocks, Block.length, Array.size_range,
-        Nat.one_mul, if_neg first, if_neg outside, if_pos extent]
+        Nat.one_mul, ite_eq_right first, ite_eq_right outside, ite_eq_left extent]
       have value : 0 + (n - 256 - 65280) = n % 65536 := by omega
       exact (unit_get 65536 0 (n - 256 - 65280) extent).trans (congrArg some value)
 
@@ -52,16 +52,18 @@ private theorem constant_get (length value n : Nat) (bound : n < length) :
     Block.get? (.affine length value 0) n = some value := by
   simp [Block.get?, Block.length, bound]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 private theorem half_high (n : Nat) (bound : n < 131072) :
     loadHalfData.columns[2].get? n = some (if 98304 ≤ n then 65535 else 0) := by
   rw [half_high_shape]
   by_cases first : n < 98304
   · have sign : ¬ 98304 ≤ n := by omega
-    simp only [Column.get?, getFromBlocks, Block.length, if_pos first, if_neg sign]
+    simp only [Column.get?, getFromBlocks, Block.length, ite_eq_left first, ite_eq_right sign]
     exact constant_get 98304 0 n first
   · have extent : n - 98304 < 32768 := by omega
     have sign : 98304 ≤ n := by omega
-    simp only [Column.get?, getFromBlocks, Block.length, if_neg first, if_pos extent, if_pos sign]
+    simp only [Column.get?, getFromBlocks, Block.length, ite_eq_right first, ite_eq_left extent, ite_eq_left sign]
     exact constant_get 32768 65535 (n - 98304) extent
 
 /-- Every imported halfword-load output, including the sign boundary. -/

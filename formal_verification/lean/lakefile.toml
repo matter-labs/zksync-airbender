@@ -26,6 +26,8 @@ srcDir = "generated/sail-rv32"
 name = "Airbender"
 # Keep the existing shared proof-result definitions. This is a style option.
 leanOptions.weak.linter.defProp = false
+# Keep inherited generated proof scripts. This flag changes style checks only.
+weakLeanArgs = ["-Dweak.linter.unusedTactic=false"]
 # Kernel comparison of the complete source literals needs this virtual stack.
 # The verification guard still caps physical memory and bounded resident memory.
 moreLeanArgs = ["--tstack=2097152"]

@@ -24,6 +24,8 @@ private theorem last_write_unique (history : MemoryAccessList)
       simpa only [MemoryAccessList.lastWriteValue, if_neg distinct] using
         ih (List.Pairwise.of_cons sorted) (List.nodup_cons.mp unique).2 member
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem seed_history_matches {p : Nat} {before : State} {cells : List Cell}
     {tokens : List (MemoryToken p)} (unique : (tokens.map MemoryToken.address).Nodup)
     (reads : ∀ cell ∈ cells, ∃ token ∈ tokens, token.address = cell.addressCode ∧

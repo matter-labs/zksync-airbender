@@ -20,6 +20,8 @@ private theorem pattern_get (f : Fin 256 → Nat) (n : Nat) (bound : n < 32512) 
   simpa only [Nat.cast_zero, Array.size_ofFn, Array.getElem_ofFn,
     Nat.zero_mul, Nat.add_zero] using actual
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 private theorem high_reference_get (n : Nat) (bound : n < 65536) :
     rotate7HighReferenceColumn.get? n = some (n / 32768 ^^^ (n / 128 % 2)) := by
   change getFromBlocks [Block.affine 128 0 0,
@@ -30,24 +32,24 @@ private theorem high_reference_get (n : Nat) (bound : n < 65536) :
   rw [getFromBlocks]
   simp only [Block.length]
   by_cases first : n < 128
-  · rw [if_pos first]
+  · rw [ite_eq_left first]
     have a : n / 32768 = 0 := by omega
     have b : n / 128 % 2 = 0 := by omega
     rw [constant_get 128 0 n first, a, b]
     rfl
-  · rw [if_neg first, getFromBlocks]
+  · rw [ite_eq_right first, getFromBlocks]
     simp only [Block.length, Array.size_ofFn, Nat.reduceMul]
     by_cases second : n - 128 < 32512
-    · rw [if_pos second, pattern_get _ _ second]
+    · rw [ite_eq_left second, pattern_get _ _ second]
       have a : n / 32768 = 0 := by omega
       have b : 1 - ((n - 128) % 256 / 128) = n / 128 % 2 := by omega
       simp only [a, Nat.zero_xor]
       change some (1 - ((n - 128) % 256 / 128)) = some (n / 128 % 2)
       rw [b]
-    · rw [if_neg second, getFromBlocks]
+    · rw [ite_eq_right second, getFromBlocks]
       simp only [Block.length]
       by_cases third : n - 128 - 32512 < 256
-      · rw [if_pos third]
+      · rw [ite_eq_left third]
         by_cases half : n < 32768
         · have a : n / 32768 = 0 := by omega
           have b : n / 128 % 2 = 1 := by omega
@@ -57,10 +59,10 @@ private theorem high_reference_get (n : Nat) (bound : n < 65536) :
           have b : n / 128 % 2 = 0 := by omega
           rw [constant_get 256 1 _ third, a, b]
           rfl
-      · rw [if_neg third, getFromBlocks]
+      · rw [ite_eq_right third, getFromBlocks]
         simp only [Block.length, Array.size_ofFn, Nat.reduceMul]
         by_cases fourth : n - 128 - 32512 - 256 < 32512
-        · rw [if_pos fourth, pattern_get _ _ fourth]
+        · rw [ite_eq_left fourth, pattern_get _ _ fourth]
           have a : n / 32768 = 1 := by omega
           change some ((n - 128 - 32512 - 256) % 256 / 128) =
             some (n / 32768 ^^^ (n / 128 % 2))
@@ -70,10 +72,10 @@ private theorem high_reference_get (n : Nat) (bound : n < 65536) :
           · have lowOne : n / 128 % 2 = 1 := by omega
             have value : (n - 128 - 32512 - 256) % 256 / 128 = 0 := by omega
             simp [a, lowOne, value]
-        · rw [if_neg fourth, getFromBlocks]
+        · rw [ite_eq_right fourth, getFromBlocks]
           simp only [Block.length]
           have last : n - 128 - 32512 - 256 - 32512 < 128 := by omega
-          rw [if_pos last]
+          rw [ite_eq_left last]
           have a : n / 32768 = 1 := by omega
           have b : n / 128 % 2 = 1 := by omega
           rw [constant_get 128 0 _ last, a, b]

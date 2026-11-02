@@ -29,30 +29,40 @@ def referenceJumpCleanupTable {p : Nat} [Fact p.Prime] : Table (ZMod p) fieldTri
   contains_iff _ := Iff.rfl
 }
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 @[simp] theorem regIsZeroTable_characterization {p : Nat} [Fact p.Prime] :
     (regIsZeroTable : Table (ZMod p) fieldPair) = pairTable "Airbender.RegIsZero" 131072 (fun n => if n = 0 then 1 else 0) := by
   unfold regIsZeroTable setupPairTable pairTable
   simp only [ImportedPairs.regZero_row]
   rfl
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 @[simp] theorem u16SignTable_characterization {p : Nat} [Fact p.Prime] :
     (u16SignTable : Table (ZMod p) fieldPair) = pairTable "Airbender.U16GetSign" 65536 (fun n => n / 32768) := by
   unfold u16SignTable setupPairTable pairTable
   simp only [ImportedPairs.sign_row]
   rfl
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 @[simp] theorem u16LowByteTable_characterization {p : Nat} [Fact p.Prime] :
     (u16LowByteTable : Table (ZMod p) fieldPair) = pairTable "Airbender.U16GetLowByte" 65536 (fun n => n % 256) := by
   unfold u16LowByteTable setupPairTable pairTable
   simp only [ImportedPairs.lowByte_row]
   rfl
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 @[simp] theorem conditionalTable_characterization {p : Nat} [Fact p.Prime] :
     (conditionalTable : Table (ZMod p) fieldPair) = pairTable "Airbender.ConditionalJmpBranchSlt" 4194304 conditionalValue := by
   unfold conditionalTable setupPairTable pairTable
   simp only [ImportedControl.conditional_row]
   rfl
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 @[simp] theorem jumpCleanupTable_characterization {p : Nat} [Fact p.Prime] :
     (jumpCleanupTable : Table (ZMod p) fieldTriple) = referenceJumpCleanupTable := by
   unfold jumpCleanupTable setupTripleTable referenceJumpCleanupTable

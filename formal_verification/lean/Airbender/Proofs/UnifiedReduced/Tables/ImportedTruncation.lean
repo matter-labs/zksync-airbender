@@ -38,8 +38,8 @@ theorem imported_truncation_output (n : Nat) (bound : n < 65536) :
     · have extent : n - 256 < 7936 := by omega
       have outside : ¬ n < 256 := low
       simp only [List.cons_append, List.nil_append, getFromBlocks, first,
-        Block.length, if_neg outside, second, Array.size_replicate,
-        Nat.reduceMul, if_pos extent]
+        Block.length, ite_eq_right outside, second, Array.size_replicate,
+        Nat.reduceMul, ite_eq_left extent]
       have value : 1 + (n - 256) / 256 = n / 256 % 32 := by omega
       exact (repeated_value 31 1 (n - 256) extent).trans (congrArg some value)
     · have offset : (([first, second].map Block.length).sum) = 8192 := by

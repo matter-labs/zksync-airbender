@@ -31,9 +31,9 @@ theorem repeated_get (block : Block)
   | succ count ih =>
     simp only [Nat.succ_mul] at bound
     by_cases inside : n < block.length
-    · simp only [List.replicate_succ, getFromBlocks, if_pos inside, Nat.mod_eq_of_lt inside]
+    · simp only [List.replicate_succ, getFromBlocks, ite_eq_left inside, Nat.mod_eq_of_lt inside]
     · have remaining : n - block.length < count * block.length := by omega
-      rw [List.replicate_succ, getFromBlocks, if_neg inside, ih _ remaining,
+      rw [List.replicate_succ, getFromBlocks, ite_eq_right inside, ih _ remaining,
         ← Nat.mod_eq_sub_mod (Nat.le_of_not_gt inside)]
 
 private theorem four_get (block : Block) (length : block.length = 65536)
@@ -96,6 +96,8 @@ private theorem periodic_zero_get (count n : Nat) (values : Array Nat)
   have hm : n % values.size < values.size := Nat.mod_lt _ positive
   simp [Block.get?, Block.length, bound, hm]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem amount (n : Nat) (bound : n < 262144) :
     byteShiftColumn2.get? n = some (n / 8 % 32) := by
   have positive : 0 < amountValues.size := by rw [amount_size]; decide
@@ -103,7 +105,7 @@ theorem amount (n : Nat) (bound : n < 262144) :
   have sampled := amount_samples ⟨n % 256, Nat.mod_lt _ (by decide)⟩
   have value : (n % 256) / 8 = n / 8 % 32 := by omega
   rw [amount_column]
-  simp only [Column.get?, getFromBlocks, Block.length, if_pos extent]
+  simp only [Column.get?, getFromBlocks, Block.length, ite_eq_left extent]
   rw [periodic_zero_get _ _ _ positive extent]
   simpa only [amount_size, sampled] using congrArg some value
 
@@ -126,13 +128,13 @@ theorem operation (n : Nat) (bound : n < 262144) :
     by_cases middle : n < 262137
     · have extent : n - 1 < 32767 * 8 := by omega
       simp only [getFromBlocks, Block.length, Array.size_ofFn, Nat.reduceMul,
-        if_neg first, if_pos extent]
+        ite_eq_right first, ite_eq_left extent]
       have value : (1 + (n - 1) % 8) % 8 = n % 8 := by omega
       exact (cyclic_get _ _ extent).trans (congrArg some value)
     · have period : ¬ n - 1 < 262136 := by omega
       have tail : n - 1 - 262136 < 7 := by omega
       simp only [getFromBlocks, Block.length, Array.size_ofFn, Nat.reduceMul,
-        if_neg first, if_neg period, if_pos tail]
+        ite_eq_right first, ite_eq_right period, ite_eq_left tail]
       have value : 1 + (n - 1 - 262136) = n % 8 := by omega
       exact (unit_get 7 1 _ tail).trans (congrArg some value)
 

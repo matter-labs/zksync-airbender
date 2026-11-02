@@ -57,12 +57,12 @@ private theorem affine_start_get (b first n : Nat) (h : n < b) :
 private theorem take_block (block : Block) (rest : List Block) (n length : Nat)
     (size : block.length = length) (bound : n < length) :
     getFromBlocks (block :: rest) n = block.get? n := by
-  rw [getFromBlocks, size, if_pos bound]
+  rw [getFromBlocks, size, ite_eq_left bound]
 
 private theorem skip_block (block : Block) (rest : List Block) (n length : Nat)
     (size : block.length = length) (bound : ¬n < length) :
     getFromBlocks (block :: rest) n = getFromBlocks rest (n - length) := by
-  rw [getFromBlocks, size, if_neg bound]
+  rw [getFromBlocks, size, ite_eq_right bound]
 
 private theorem column_get_array (blocks : Array Block) (n : Nat) :
     (Column.mk blocks).get? n = getFromBlocks blocks.toList n := rfl
@@ -107,29 +107,29 @@ private theorem physical_blocks (b0 b1 b2 b3 b4 b5 : Block)
       else if n < 1310720 then 512 + (n - 1310208)
       else if n < 1325057 then 0 else (1 + (n - 1325057) % 256) % 256) := by
   by_cases h0 : n < 262656
-  · rw [take_block b0 _ n 262656 s0 h0, if_pos h0]
+  · rw [take_block b0 _ n 262656 s0 h0, ite_eq_left h0]
     exact g0 n h0
-  rw [skip_block b0 _ n 262656 s0 h0, if_neg h0]
+  rw [skip_block b0 _ n 262656 s0 h0, ite_eq_right h0]
   by_cases h1 : n < 1310208
   · have current : n - 262656 < 1047552 := offset_lt n 262656 1310208 (Nat.le_of_not_gt h0) h1
-    rw [take_block b1 _ (n - 262656) 1047552 s1 current, if_pos h1]
+    rw [take_block b1 _ (n - 262656) 1047552 s1 current, ite_eq_left h1]
     exact g1 (n - 262656) current
   have previous : ¬n - 262656 < 1047552 := offset_not_lt n 262656 1310208 h1
-  rw [skip_block b1 _ (n - 262656) 1047552 s1 previous, if_neg h1]
+  rw [skip_block b1 _ (n - 262656) 1047552 s1 previous, ite_eq_right h1]
   rw [Nat.sub_sub]
   by_cases h2 : n < 1310720
   · have current : n - 1310208 < 512 := offset_lt n 1310208 1310720 (Nat.le_of_not_gt h1) h2
-    rw [take_block b2 _ (n - 1310208) 512 s2 current, if_pos h2]
+    rw [take_block b2 _ (n - 1310208) 512 s2 current, ite_eq_left h2]
     exact g2 (n - 1310208) current
   have previous' : ¬n - 1310208 < 512 := offset_not_lt n 1310208 1310720 h2
-  rw [skip_block b2 _ (n - 1310208) 512 s2 previous', if_neg h2]
+  rw [skip_block b2 _ (n - 1310208) 512 s2 previous', ite_eq_right h2]
   rw [Nat.sub_sub]
   by_cases h3 : n < 1325057
   · have current : n - 1310720 < 14337 := offset_lt n 1310720 1325057 (Nat.le_of_not_gt h2) h3
-    rw [take_block b3 _ (n - 1310720) 14337 s3 current, if_pos h3]
+    rw [take_block b3 _ (n - 1310720) 14337 s3 current, ite_eq_left h3]
     exact g3 (n - 1310720) current
   have previous'' : ¬n - 1310720 < 14337 := offset_not_lt n 1310720 1325057 h3
-  rw [skip_block b3 _ (n - 1310720) 14337 s3 previous'', if_neg h3]
+  rw [skip_block b3 _ (n - 1310720) 14337 s3 previous'', ite_eq_right h3]
   rw [Nat.sub_sub]
   have current : n - 1325057 < 65536 := offset_lt n 1325057 1390593 (Nat.le_of_not_gt h3)
     (Nat.lt_trans hn (by decide))
@@ -174,30 +174,32 @@ private theorem second_get (n : Nat) (hn : n < 1390592) :
   rw [second_physical n hn]
   simp only [Nat.add_mod_mod]
   by_cases h0 : n < 262144
-  · simp only [if_pos h0, if_pos (show n < 262656 by omega)]
+  · simp only [ite_eq_left h0, ite_eq_left (show n < 262656 by omega)]
   by_cases h1 : n < 262656
   · have small : n - 262144 < 512 := by omega
     have value := mod_decomposition n 512 512 (n - 262144) (by omega) small
-    simp only [if_neg h0, if_pos h1, if_pos (show n < 1310720 by omega), value,
+    simp only [ite_eq_right h0, ite_eq_left h1, ite_eq_left (show n < 1310720 by omega), value,
       Nat.mod_eq_of_lt (show n - 262144 < 1024 by omega)]
   by_cases h2 : n < 1310208
   · have same : 512 + (n - 262656) = n - 262144 := by omega
-    simp only [if_neg h0, if_neg h1, if_pos h2,
-      if_pos (show n < 1310720 by omega), same]
+    simp only [ite_eq_right h0, ite_eq_right h1, ite_eq_left h2,
+      ite_eq_left (show n < 1310720 by omega), same]
   by_cases h3 : n < 1310720
   · have value := mod_decomposition (n - 262144) 1024 1023
       (512 + (n - 1310208)) (by omega) (by omega)
-    simp only [if_neg h0, if_neg h1, if_neg h2, if_pos h3, value]
+    simp only [ite_eq_right h0, ite_eq_right h1, ite_eq_right h2, ite_eq_left h3, value]
   by_cases h4 : n < 1325056
-  · simp only [if_neg h0, if_neg h1, if_neg h2, if_neg h3, if_pos h4,
-      if_pos (show n < 1325057 by omega)]
+  · simp only [ite_eq_right h0, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_eq_left h4,
+      ite_eq_left (show n < 1325057 by omega)]
   by_cases edge : n = 1325056
   · subst n
     norm_num
   · have same : 1 + (n - 1325057) = n - 1325056 := by omega
-    simp only [if_neg h0, if_neg h1, if_neg h2, if_neg h3, if_neg h4,
-      if_neg (show ¬n < 1325057 by omega), same]
+    simp only [ite_eq_right h0, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_eq_right h4,
+      ite_eq_right (show ¬n < 1325057 by omega), same]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 private theorem tag_get (n : Nat) (hn : n < 1390592) :
     (importedSetup.columns[2]).get? n = some (
       if n < 262144 then 22 else if n < 1310720 then 23

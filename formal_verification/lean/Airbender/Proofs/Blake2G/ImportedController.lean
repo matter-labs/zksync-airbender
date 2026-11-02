@@ -61,18 +61,48 @@ private def controllerIndex (key : Fin 512) : Fin 344896 :=
     have size := key.isLt
     omega⟩
 
+attribute [local irreducible] xorRegionRow controllerRows
+
+set_option backward.isDefEq.respectTransparency.types false in
+private theorem setup_controller_region (control : Fin 512 → Vector Nat 7)
+    (index : Fin 344896) (lower : 344384 ≤ index.val) :
+    setupRow control index =
+      let key : Fin 512 := ⟨index.val - 344384, by have := index.isLt; omega⟩
+      #v[index.val - 344384, (control key)[0], (control key)[1], (control key)[2],
+        (control key)[3], (control key)[4], (control key)[5], (control key)[6], 28] := by
+  unfold setupRow
+  dsimp only [xor8DataRegion, xor3DataRegion, xor4DataRegion, xor7DataRegion,
+    xor9DataRegion, controllerDataRegion]
+  have size := index.isLt
+  split_ifs <;> try omega
+  rfl
+
+private theorem setup_controller_row (control : Fin 512 → Vector Nat 7) (key : Fin 512) :
+    setupRow control (controllerIndex key) =
+      #v[key.val, (control key)[0], (control key)[1], (control key)[2],
+        (control key)[3], (control key)[4], (control key)[5], (control key)[6], 28] := by
+  let relative : Fin 512 := ⟨(controllerIndex key).val - 344384, by
+    have size := key.isLt
+    change 344384 + key.val - 344384 < 512
+    omega⟩
+  have same : relative = key := by
+    apply Fin.ext
+    change 344384 + key.val - 344384 = key.val
+    omega
+  let rowOf (index : Fin 512) : Vector Nat 9 :=
+    #v[index.val, (control index)[0], (control index)[1], (control index)[2],
+      (control index)[3], (control index)[4], (control index)[5], (control index)[6], 28]
+  have row : setupRow control (controllerIndex key) = rowOf relative :=
+    setup_controller_region control (controllerIndex key)
+      (by change 344384 ≤ 344384 + key.val; omega)
+  exact row.trans (congrArg rowOf same)
+
 /-- The concrete consumer's controller rows include exactly the imported key,
     seven outputs and native discriminator at the exported region offset. -/
 theorem controller_setup_row (key : Fin 512) :
     (setupRow controllerRows (controllerIndex key)).map (fun (n : Nat) => (n : Int)) =
       controllerData.row key := by
-  rw [controller_native_row]
-  congr 1
-  unfold setupRow controllerIndex
-  dsimp only [xor8DataRegion, xor3DataRegion, xor4DataRegion, xor7DataRegion,
-    xor9DataRegion, controllerDataRegion]
-  have size := key.isLt
-  split_ifs <;> try { change 344384 + key.val < _ at *; omega }
-  simp only [Nat.add_sub_cancel_left]
+  exact (congrArg (fun row : Vector Nat 9 => row.map (fun (n : Nat) => (n : Int)))
+    (setup_controller_row controllerRows key)).trans (controller_native_row key).symm
 
 end Airbender.Blake2G.Control.Proofs

@@ -25,7 +25,7 @@ theorem combined_keys_get (n : Nat) (hn : n < 16384) :
   rw [combined_key0_shape, combined_key1_shape, combined_key2_shape, combined_key3_shape]
   refine ⟨?_, ?_, ?_, ?_⟩
   · simpa only [Column.get?, getFromBlocks, Block.length, Array.size_replicate,
-      if_pos hn] using periodic_constant_get 1024 16 n (by decide) hn
+      ite_eq_left hn] using periodic_constant_get 1024 16 n (by decide) hn
   · have value := combined_second_optional (n % 1024) (by omega)
     have index : n % 1024 / 128 = n / 128 % 8 := by omega
     rw [index] at value
@@ -35,6 +35,6 @@ theorem combined_keys_get (n : Nat) (hn : n < 16384) :
     rw [index] at value
     exact stored_periodic thirdTemplate 128 128 n _ third_size hn value
   · simpa only [Column.get?, getFromBlocks, Block.length, Array.size_range,
-      if_pos hn] using periodic_range_get 8 2048 n (by decide) hn
+      ite_eq_left hn] using periodic_range_get 8 2048 n (by decide) hn
 
 end Airbender.Blake2Round.Proofs

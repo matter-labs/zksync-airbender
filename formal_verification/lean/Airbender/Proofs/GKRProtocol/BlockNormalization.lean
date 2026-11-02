@@ -16,13 +16,15 @@ def mergeSetupBlocks : Setup.Block → Setup.Block → Option Setup.Block
       else none
   | _, _ => none
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem affine_blocks_merge (left right first next : Nat) (step : Int)
     (start : (first : Int) + step * left = next) (tail : List Setup.Block) (index : Nat) :
     Setup.getFromBlocks (.affine (left + right) first step :: tail) index =
       Setup.getFromBlocks (.affine left first step :: .affine right next step :: tail) index := by
   by_cases leading : index < left
   · have whole : index < left + right := by omega
-    simp only [Setup.getFromBlocks, Setup.Block.length, if_pos leading, if_pos whole,
+    simp only [Setup.getFromBlocks, Setup.Block.length, ite_eq_left leading, ite_eq_left whole,
       Setup.Block.get?]
   · by_cases trailing : index - left < right
     · have whole : index < left + right := by omega
@@ -31,11 +33,11 @@ theorem affine_blocks_merge (left right first next : Nat) (step : Int)
       have formula : (first : Int) + step * index = (next : Int) + step * (index - left : Nat) := by
         rw [splitIndex, ← start]
         ring
-      simp only [Setup.getFromBlocks, Setup.Block.length, if_pos whole, if_neg leading,
-        if_pos trailing, Setup.Block.get?, formula]
+      simp only [Setup.getFromBlocks, Setup.Block.length, ite_eq_left whole, ite_eq_right leading,
+        ite_eq_left trailing, Setup.Block.get?, formula]
     · have whole : ¬index < left + right := by omega
-      simp only [Setup.getFromBlocks, Setup.Block.length, if_neg whole, if_neg leading,
-        if_neg trailing]
+      simp only [Setup.getFromBlocks, Setup.Block.length, ite_eq_right whole, ite_eq_right leading,
+        ite_eq_right trailing]
       have position : index - (left + right) = index - left - right := by omega
       rw [position]
 
@@ -45,18 +47,20 @@ theorem periodic_zero_get (repetitions : Nat) (values : Array Nat) (index : Nat)
       some ((values[index % values.size]?).getD 0) := by
   simp [Setup.Block.get?, Setup.Block.length, bounded]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem periodic_blocks_merge (left right : Nat) (values : Array Nat)
     (tail : List Setup.Block) (index : Nat) :
     Setup.getFromBlocks (.periodic (left + right) 0 values :: tail) index =
       Setup.getFromBlocks (.periodic left 0 values :: .periodic right 0 values :: tail) index := by
   by_cases leading : index < left * values.size
   · have whole : index < (left + right) * values.size := by rw [Nat.add_mul]; omega
-    simp only [Setup.getFromBlocks, Setup.Block.length, if_pos leading, if_pos whole,
+    simp only [Setup.getFromBlocks, Setup.Block.length, ite_eq_left leading, ite_eq_left whole,
       periodic_zero_get _ _ _ leading, periodic_zero_get _ _ _ whole]
   · by_cases trailing : index - left * values.size < right * values.size
     · have whole : index < (left + right) * values.size := by rw [Nat.add_mul]; omega
-      simp only [Setup.getFromBlocks, Setup.Block.length, if_pos whole, if_neg leading,
-        if_pos trailing, periodic_zero_get _ _ _ whole, periodic_zero_get _ _ _ trailing]
+      simp only [Setup.getFromBlocks, Setup.Block.length, ite_eq_left whole, ite_eq_right leading,
+        ite_eq_left trailing, periodic_zero_get _ _ _ whole, periodic_zero_get _ _ _ trailing]
       have splitIndex : index = (index - left * values.size) + left * values.size := by omega
       have residue : index % values.size = (index - left * values.size) % values.size := by
         calc
@@ -65,8 +69,8 @@ theorem periodic_blocks_merge (left right : Nat) (values : Array Nat)
           _ = _ := by simp [Nat.add_mod]
       rw [residue]
     · have whole : ¬index < (left + right) * values.size := by rw [Nat.add_mul]; omega
-      simp only [Setup.getFromBlocks, Setup.Block.length, if_neg whole, if_neg leading,
-        if_neg trailing]
+      simp only [Setup.getFromBlocks, Setup.Block.length, ite_eq_right whole, ite_eq_right leading,
+        ite_eq_right trailing]
       have position : index - ((left + right) * values.size) =
           index - left * values.size - right * values.size := by rw [Nat.add_mul]; omega
       rw [position]
@@ -172,14 +176,14 @@ theorem getFromBlocks_append (front back : List Setup.Block) (index : Nat) :
     simp only [List.cons_append, List.map_cons, List.sum_cons]
     by_cases leading : index < block.length
     · have whole : index < block.length + (rest.map Setup.Block.length).sum := by omega
-      simp only [Setup.getFromBlocks, if_pos leading, if_pos whole]
-    · simp only [Setup.getFromBlocks, if_neg leading]
+      simp only [Setup.getFromBlocks, ite_eq_left leading, ite_eq_left whole]
+    · simp only [Setup.getFromBlocks, ite_eq_right leading]
       rw [ih]
       by_cases middle : index - block.length < (rest.map Setup.Block.length).sum
       · have whole : index < block.length + (rest.map Setup.Block.length).sum := by omega
-        simp only [if_pos middle, if_pos whole]
+        simp only [ite_eq_left middle, ite_eq_left whole]
       · have whole : ¬index < block.length + (rest.map Setup.Block.length).sum := by omega
-        simp only [if_neg middle, if_neg whole]
+        simp only [ite_eq_right middle, ite_eq_right whole]
         have position : index - block.length - (rest.map Setup.Block.length).sum =
             index - (block.length + (rest.map Setup.Block.length).sum) := by omega
         rw [position]
