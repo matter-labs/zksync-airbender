@@ -1,4 +1,4 @@
-import Airbender.Proofs.GKRProtocol.HelperCertificate
+import Airbender.Proofs.GKRProtocol.HelperProjectionChecks
 import Airbender.Import.GKRProtocol.MemoryImport
 
 namespace Airbender.Compiler.HelperImport
@@ -172,7 +172,25 @@ elab_rules : command
     let originalProjection := mkIdent (name.getId ++ `originalProjection)
     emitData (← `(theorem $originalProjection :
       ((List.range $(quote sourceCount)).map (fun index => ($bank).address (($memoryPlacement).original index))) =
-        [$originals,*] := by decide +kernel))
+        [$originals,*] := by
+      calc
+        _ = (List.range $(quote sourceCount)).map
+            (fun index => (($actualBank)[index]?).getD (.BaseLayerWitness 0)) := by
+          apply List.map_congr_left
+          intro index member
+          have inside := List.mem_range.mp member
+          have coordinate : (($memoryPlacement).original index).val = index := by
+            change (if bound : index < $(quote sourceCount) then
+              (⟨index, Nat.lt_of_lt_of_le bound (by decide)⟩ : Fin $(quote arity))
+              else ⟨0, by decide⟩).val = index
+            simp only [dif_pos inside]
+          change (($actualBank)[(($memoryPlacement).original index).val]?).getD
+            (.BaseLayerWitness 0) = _
+          rw [coordinate]
+        _ = ($actualBank).take $(quote sourceCount) :=
+          HelperProjectionChecks.map_getD_prefix $actualBank (.BaseLayerWitness 0)
+            $(quote sourceCount) (by decide +kernel)
+        _ = [$originals,*] := by rfl))
     let mut history : Array (TSyntax `term) := #[]
     for query in pair.circuit.memory_layout.ram_access_sets do
       let timestamps := match query with | .Readonly row => row.read_timestamp | .Write row => row.read_timestamp

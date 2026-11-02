@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.HelperProjectionChecks
 import Airbender.Proofs.GKRProtocol.HelperPayloadChecks.AddSubCached.Certificate
 import Airbender.Proofs.GKRProtocol.HelperPayloadChecks.AddSubUncached.Certificate
 import Airbender.Proofs.GKRProtocol.HelperValidityChecks.BigintCached.Certificate
@@ -158720,3 +158721,4 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.NumericNativePayloadChecks.ofMemory.eq_1
 #print axioms Airbender.Compiler.NumericNativePayloadChecks.ofMemory.match_1
 #print axioms Airbender.Compiler.NumericNativePayloadChecks.ofMemory_check
+#print axioms Airbender.Compiler.HelperProjectionChecks.map_getD_prefix
