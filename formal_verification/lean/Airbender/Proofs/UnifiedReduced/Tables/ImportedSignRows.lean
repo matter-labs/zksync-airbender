@@ -24,30 +24,36 @@ private theorem sign_key (n : Nat) (bound : n < 65536) :
   change getFromBlocks [.affine 65536 0 1] n = some n
   simp [getFromBlocks, Block.get?, Block.length, bound]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 private theorem sign_value (n : Nat) (bound : n < 65536) :
     nativeSignData.columns[1].get? n = some (n / 32768) := by
   change getFromBlocks [.affine 32768 0 0, .affine 32768 1 0] n = _
   by_cases first : n < 32768
   · have value : n / 32768 = 0 := by omega
-    simp only [getFromBlocks, Block.length, if_pos first, value]
+    simp only [getFromBlocks, Block.length, ite_eq_left first, value]
     exact constant_get 32768 0 n first
   · have extent : n - 32768 < 32768 := by omega
     have value : n / 32768 = 1 := by omega
-    simp only [getFromBlocks, Block.length, if_neg first, if_pos extent, value]
+    simp only [getFromBlocks, Block.length, ite_eq_right first, ite_eq_left extent, value]
     exact constant_get 32768 1 (n - 32768) extent
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 private theorem sign_padding (lane : Fin 7) (n : Nat) (bound : n < 65536) :
     nativeSignData.columns[lane.val + 2].get? n = some 0 := by
   have shape : nativeSignData.columns[lane.val + 2] = Column.mk #[.affine 65536 0 0] := by
     fin_cases lane <;> rfl
   rw [shape]
-  simpa only [Column.get?, getFromBlocks, Block.length, if_pos bound] using
+  simpa only [Column.get?, getFromBlocks, Block.length, ite_eq_left bound] using
     constant_get 65536 0 n bound
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 private theorem sign_tag (n : Nat) (bound : n < 65536) :
     nativeSignData.columns[9].get? n = some 5 := by
   change getFromBlocks [.affine 65536 5 0] n = some 5
-  simp only [getFromBlocks, Block.length, if_pos bound]
+  simp only [getFromBlocks, Block.length, ite_eq_left bound]
   exact constant_get 65536 5 n bound
 
 /-- Every physical native ID-5 field retains its original mathematical meaning. -/

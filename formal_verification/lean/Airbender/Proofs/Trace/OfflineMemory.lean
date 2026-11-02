@@ -46,6 +46,8 @@ private theorem cell_last_write {S : Type} (address : Nat) (rank value : S → N
       sorted address = value first := by
   cases rest <;> simp [cellEvents, MemoryAccessList.lastWriteValue]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- A cell path is a Clean online-consistent access history, including its
     explicit initialization write. No desired read or final value is supplied. -/
 theorem cell_history {S : Type} (address : Nat) (rank value : S → Nat)
@@ -122,6 +124,8 @@ theorem transfer_event [Fact p.Prime] [ClockLaws Kind p] (hp : FieldCapacity.NoW
   rw [canonical]
   rfl
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem cell_history_of_path {p : Nat} (steps : List (MemoryToken p × MemoryToken p))
     (source : MemoryToken p) (path : List (MemoryToken p)) (head : path.head? = some source)
     (ordered : (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·))

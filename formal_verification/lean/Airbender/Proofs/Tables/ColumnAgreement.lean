@@ -23,7 +23,7 @@ private theorem after_end (blocks : List Block) (n : Nat) (outside : blocksLengt
   | nil => rfl
   | cons block rest ih =>
     simp only [blocksLength, List.map_cons, List.sum_cons] at outside
-    rw [getFromBlocks, if_neg (by omega)]
+    rw [getFromBlocks, ite_eq_right (by omega)]
     exact ih _ (by dsimp [blocksLength]; omega)
 
 theorem blocksAgree_sound (left right : List Block) (checked : blocksAgree left right = true)
@@ -40,12 +40,12 @@ theorem blocksAgree_sound (left right : List Block) (checked : blocksAgree left 
       by_cases equal : a = b
       · subst b
         have rest : blocksAgree left right = true := by
-          simpa only [blocksAgree, if_true] using checked
+          simpa only [blocksAgree, ite_true] using checked
         simp only [getFromBlocks]
         split
         · rfl
         · exact ih _ rest _
-      · simp only [blocksAgree, if_neg equal, Bool.and_eq_true, decide_eq_true_eq] at checked
+      · simp only [blocksAgree, ite_eq_right equal, Bool.and_eq_true, decide_eq_true_eq] at checked
         by_cases small : n < 16
         · have sample := List.all_eq_true.mp checked.2 ⟨n, small⟩ (by simp)
           simpa only [beq_iff_eq] using sample

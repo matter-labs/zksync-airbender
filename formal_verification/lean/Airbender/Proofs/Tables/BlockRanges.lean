@@ -12,7 +12,7 @@ theorem skip_blocks (front back : List Block) (n : Nat) :
   | cons block rest ih =>
     simp only [List.cons_append, List.map_cons, List.sum_cons]
     have outside : ¬ block.length + (rest.map Block.length).sum + n < block.length := by omega
-    rw [getFromBlocks, if_neg outside]
+    rw [getFromBlocks, ite_eq_right outside]
     have offset : block.length + (rest.map Block.length).sum + n - block.length =
         (rest.map Block.length).sum + n := by omega
     rw [offset, ih]
@@ -21,7 +21,7 @@ theorem selected_block (front back : List Block) (block : Block) (n : Nat)
     (bound : n < block.length) :
     getFromBlocks (front ++ block :: back) ((front.map Block.length).sum + n) =
       block.get? n := by
-  rw [skip_blocks, getFromBlocks, if_pos bound]
+  rw [skip_blocks, getFromBlocks, ite_eq_left bound]
 
 theorem selected_at (front back : List Block) (block : Block) (base n : Nat)
     (offset : (front.map Block.length).sum = base) (lower : base ≤ n)

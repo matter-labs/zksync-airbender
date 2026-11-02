@@ -30,6 +30,8 @@ theorem pairCode_eq_iff {p : Nat} {w v : Nat → ZMod p} {left right : Vector Na
       (w left[0]).val = (v right[0]).val ∧ (w left[1]).val = (v right[1]).val :=
   Nat.pair_eq_pair
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem readonly_preserves_value {p : Nat} {port : MemoryPort}
     (readonly : port.writeValue = none) (columns : TraceColumns) (w : Nat → ZMod p) :
     port.event columns w =

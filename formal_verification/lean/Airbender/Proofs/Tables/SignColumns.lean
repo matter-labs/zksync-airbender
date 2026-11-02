@@ -19,14 +19,16 @@ theorem key (n : Nat) (bound : n < 256) : byteSignData.columns[0].get? n = some 
   change getFromBlocks [.affine 256 0 1] n = some n
   simp [getFromBlocks, Block.get?, Block.length, bound]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem extension (n : Nat) (bound : n < 256) :
     byteSignData.columns[1].get? n = some (if n < 128 then 0 else 255) := by
   change getFromBlocks [.affine 128 0 0, .affine 128 255 0] n = _
   by_cases first : n < 128
-  · simp only [getFromBlocks, Block.length, if_pos first]
+  · simp only [getFromBlocks, Block.length, ite_eq_left first]
     exact constant_get _ _ _ first
   · have tail : n - 128 < 128 := by omega
-    simp only [getFromBlocks, Block.length, if_neg first, if_pos tail]
+    simp only [getFromBlocks, Block.length, ite_eq_right first, ite_eq_left tail]
     exact constant_get _ _ _ tail
 
 theorem padding (lane : Fin 7) (n : Nat) (bound : n < 256) :

@@ -14,12 +14,12 @@ theorem uniform4096_get (blocks : List Block)
     have head := shape block (by simp)
     have tail : ∀ b ∈ rest, b.length = 4096 := fun b member => shape b (by simp [member])
     by_cases inside : n < 4096
-    · rw [getFromBlocks, head, if_pos inside]
+    · rw [getFromBlocks, head, ite_eq_left inside]
       simp only [Nat.div_eq_of_lt inside, Nat.mod_eq_of_lt inside,
         List.getElem?_cons_zero, Option.bind_some]
     · have quot : n / 4096 = (n - 4096) / 4096 + 1 := by omega
       have residue : n % 4096 = (n - 4096) % 4096 := by omega
-      rw [getFromBlocks, head, if_neg inside, ih tail (n - 4096), quot,
+      rw [getFromBlocks, head, ite_eq_right inside, ih tail (n - 4096), quot,
         List.getElem?_cons_succ, residue]
 
 end Airbender.Setup.Proofs

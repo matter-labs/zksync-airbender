@@ -30,7 +30,7 @@ theorem first (kind : Fin 4) (n : Nat) (bound : n < 65536) :
     fin_cases kind <;> rfl
   rw [column]
   simp only [Column.get?, getFromBlocks, Block.length, Array.size_replicate,
-    Nat.reduceMul, if_pos bound]
+    Nat.reduceMul, ite_eq_left bound]
   simpa only [Nat.zero_add] using periodic_constant 256 0 n bound
 
 theorem second (kind : Fin 4) (n : Nat) (bound : n < 65536) :

@@ -45,6 +45,8 @@ def blockGet (block : BlockCode) (index : Nat) : Option Nat :=
         if 0 ≤ value then some value.toNat else none
   else none
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem blockGet_decode (code : BlockCode) (index : Nat) :
     code.decode.get? index = blockGet code index := by
   cases code <;>

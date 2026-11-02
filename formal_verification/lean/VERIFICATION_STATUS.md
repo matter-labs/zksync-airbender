@@ -34,6 +34,9 @@ The basic RISC-V step, register-read and load proofs also compile.
 The decoder-frame and decoded-offset proofs also compile.
 Both proofs reuse each shared continuation of the original generated decoder.
 The exact latest-read trace predicate also compiles.
+The failed table and offline-memory proof modules now compile.
+Their compatibility settings stay local to proof declarations.
+Definitions and theorem statements stay unchanged.
 The register-read proofs use explicit reductions of the original state operations.
 The compatibility patch annotates the existing natural-number choice binder.
 A local syntax adapter uses Sail's original assertion and monad lift.

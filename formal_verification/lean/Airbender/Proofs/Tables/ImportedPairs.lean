@@ -59,7 +59,7 @@ private theorem sign_value (i : Fin 65536) :
       have middle : ¬ i.val - 2 < 32766 := by omega
       have tail : i.val - 2 - 32766 < 32768 := by omega
       simp only [getFromBlocks, Block.length, Array.size_replicate,
-        if_neg leading, if_neg middle, if_pos tail, value]
+        ite_eq_right leading, ite_eq_right middle, ite_eq_left tail, value]
       exact affine_constant _ _ _ tail
 
 /-- Exact key/sign semantics of the independently exported sign region. -/
@@ -93,14 +93,14 @@ private theorem lowByte_value (i : Fin 65536) :
   · by_cases middle : i.val < 65281
     · have period := periodic_cyclic_get 256 255 1 (i.val - 1) (by decide) (by omega)
       simp (disch := omega) only [getFromBlocks, Block.length, Array.size_ofFn,
-        if_neg, if_pos, period]
+        ite_eq_right, ite_eq_left, period]
       congr 1
       omega
     · have first : ¬ i.val < 1 := by omega
       have period : ¬ i.val - 1 < 65280 := by omega
       have tail : i.val - 1 - 65280 < 255 := by omega
       simp only [getFromBlocks, Block.length, Array.size_ofFn, Nat.reduceMul,
-        if_neg first, if_neg period, if_pos tail]
+        ite_eq_right first, ite_eq_right period, ite_eq_left tail]
       have value : 1 + (i.val - 1 - 65280) = i.val % 256 := by omega
       exact (affine_unit 255 1 _ tail).trans (congrArg some value)
 

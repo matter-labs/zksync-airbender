@@ -10,15 +10,17 @@ instance (n : Nat) : Decidable (byteNegative n) := inferInstanceAs (Decidable (_
 def byteLow (n : Nat) : Nat := byteValue n + if byteNegative n then 65280 else 0
 def byteHigh (n : Nat) : Nat := if byteNegative n then 65535 else 0
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem byte_meaning (n : Nat) (bound : n < 262144) :
     subwordLoadLimbs true n = (byteLow n, byteHigh n) := by
   have value : n % 65536 / (if n / 131072 % 2 = 1 then 256 else 1) % 256 = byteValue n := by
     by_cases low : n < 131072
     · have selector : n / 131072 % 2 = 0 := by omega
-      simp only [selector, Nat.zero_ne_one, if_false, Nat.div_one, byteValue, if_pos low]
+      simp only [selector, Nat.zero_ne_one, ite_false, Nat.div_one, byteValue, ite_eq_left low]
       omega
     · have selector : n / 131072 % 2 = 1 := by omega
-      simp only [selector, if_true, byteValue, if_neg low]
+      simp only [selector, ite_true, byteValue, ite_eq_right low]
       omega
   simp [subwordLoadLimbs, byteLow, byteHigh, byteNegative, value]
 

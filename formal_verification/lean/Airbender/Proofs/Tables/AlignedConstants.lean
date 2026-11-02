@@ -18,6 +18,8 @@ instance (blocks : List Block) : Decidable (AlignedConstants blocks) := by
     letI := ih
     cases block <;> dsimp only [AlignedConstants] <;> infer_instance
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- Every key in a 32,768-key chunk reads the same actual imported constant. -/
 theorem alignedConstants_get (blocks : List Block) (valid : AlignedConstants blocks)
     (n : Nat) : getFromBlocks blocks n = getFromBlocks blocks (n / 32768 * 32768) := by
@@ -35,7 +37,7 @@ theorem alignedConstants_get (blocks : List Block) (valid : AlignedConstants blo
       · have sampled : ¬ n / 32768 * 32768 < length := by omega
         have sub : n / 32768 * 32768 - length =
             (n - length) / 32768 * 32768 := by omega
-        simp only [getFromBlocks, Block.length, if_neg inside, if_neg sampled, sub]
+        simp only [getFromBlocks, Block.length, ite_eq_right inside, ite_eq_right sampled, sub]
         exact ih rest (n - length)
 
 end Airbender.Setup.Proofs

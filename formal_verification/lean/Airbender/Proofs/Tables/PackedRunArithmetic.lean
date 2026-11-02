@@ -77,7 +77,7 @@ theorem packedArithmetic_eq (data : Run) (positive : 0 < data.values.size) :
   have big : 1 < 256 ^ data.values.size := one_lt_pow₀ (by omega) (by omega)
   have total : (256 ^ data.values.size) ^ data.count =
       256 ^ (data.count * data.values.size) := by rw [← pow_mul, Nat.mul_comm]
-  simp only [Run.packedArithmetic, if_neg (Nat.ne_of_gt positive), bytePower_eq, Run.length]
+  simp only [Run.packedArithmetic, ite_eq_right (Nat.ne_of_gt positive), bytePower_eq, Run.length]
   rw [← total, geometric_closed _ _ big, moment_closed _ _ big]
   have units := geometric_closed 256 data.values.size (by omega)
   norm_num only [show 256 - 1 = 255 from rfl] at units
