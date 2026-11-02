@@ -123,11 +123,19 @@ private def helperSyntax (bound : Nat) : Source.HelperField → CommandElabM (TS
   | .neg field => do `(Source.HelperField.neg $(← helperSyntax bound field))
 
 syntax (name := importSourceHelpers) "import_source_helpers " ident " from " str " source " str
-  " selectors " str " memory_model " ident " lookup_model " ident " typing " ident : command
+  " selectors " str " memory_model " ident " lookup_model " ident " typing " ident (" phase " num)? (" using_checks " ident)? : command
 
 elab_rules : command
   | `(import_source_helpers $name:ident from $pairPath:str source $sourcePath:str selectors $selectorText:str
-      memory_model $memoryPrefix:ident lookup_model $lookupPrefix:ident typing $typingName:ident) => do
+      memory_model $memoryPrefix:ident lookup_model $lookupPrefix:ident typing $typingName:ident $[phase $phaseValue:num]? $[using_checks $checks:ident]?) => do
+    let phaseNumber := phaseValue.map (·.getNat) |>.getD 2
+    unless phaseNumber ≤ 2 do throwError "helper phase must be 0, 1 or 2"
+    unless (phaseNumber == 1) == checks.isSome do
+      throwError "helper phase 1 requires using_checks; other phases reject it"
+    let emitData (command : TSyntax `command) : CommandElabM Unit :=
+      if phaseNumber != 1 then elabCommand command else pure ()
+    let emitFinal (command : TSyntax `command) : CommandElabM Unit :=
+      if phaseNumber != 0 then elabCommand command else pure ()
     let pairJson ← match Json.parse (← IO.FS.readFile pairPath.getString) with
       | .ok value => pure value | .error error => throwError "{error}"
     let sourceJson ← match Json.parse (← IO.FS.readFile sourcePath.getString) with
@@ -160,9 +168,9 @@ elab_rules : command
     let actualBank := mkIdent (memoryPrefix.getId ++ `addresses)
     let bankChecked := mkIdent (name.getId ++ `bankChecked)
     let addressTerms ← cert.addresses.mapM addressSyntax
-    elabCommand (← `(theorem $bankChecked : $actualBank = [$addressTerms,*] := by decide +kernel))
+    emitData (← `(theorem $bankChecked : $actualBank = [$addressTerms,*] := by decide +kernel))
     let originalProjection := mkIdent (name.getId ++ `originalProjection)
-    elabCommand (← `(theorem $originalProjection :
+    emitData (← `(theorem $originalProjection :
       ((List.range $(quote sourceCount)).map (fun index => ($bank).address (($memoryPlacement).original index))) =
         [$originals,*] := by decide +kernel))
     let mut history : Array (TSyntax `term) := #[]
@@ -171,7 +179,7 @@ elab_rules : command
       let [low, high] := timestamps.values.toList | throwError "native history timestamp width changed"
       history := history.push (← `(($(← addressSyntax (.BaseLayerMemory low)), $(← addressSyntax (.BaseLayerMemory high)))))
     let historyProjection := mkIdent (name.getId ++ `historyProjection)
-    elabCommand (← `(theorem $historyProjection :
+    emitData (← `(theorem $historyProjection :
       ((List.range $(quote history.size)).map (fun index =>
         (($bank).address (($memoryPlacement).readTimestamp index ⟨0, by decide⟩),
          ($bank).address (($memoryPlacement).readTimestamp index ⟨1, by decide⟩)))) = [$history,*] := by decide +kernel))
@@ -184,27 +192,27 @@ elab_rules : command
     let borrowAddresses := mkIdent (name.getId ++ `borrowAddresses)
     let placement := mkIdent (name.getId ++ `placement)
     let sourceValues := mkIdent (name.getId ++ `sourceValues)
-    elabCommand (← `(def $borrowAddresses : List GKRAddress := [$borrowTerms,*]))
-    elabCommand (← `(def $placement : Source.HelperPlacement $(quote arity) :=
+    emitData (← `(def $borrowAddresses : List GKRAddress := [$borrowTerms,*]))
+    emitData (← `(def $placement : Source.HelperPlacement $(quote arity) :=
       ⟨$memoryPlacement, fun index => ($bank).placement ((($borrowAddresses)[index]?).getD (.BaseLayerWitness 0))⟩))
-    elabCommand (← `(def $sourceValues (base : GKRAddress → Source.BaseField) : Source.HelperValues :=
+    emitData (← `(def $sourceValues (base : GKRAddress → Source.BaseField) : Source.HelperValues :=
       ($placement).project (base ∘ ($bank).address)))
     let inBank := mkIdent (name.getId ++ `borrowsInBank)
     let roles := mkIdent (name.getId ++ `borrowRoles)
     let fresh := mkIdent (name.getId ++ `borrowFresh)
     let unique := mkIdent (name.getId ++ `borrowUnique)
     let projections := mkIdent (memoryPrefix.getId ++ `projectionInputs)
-    elabCommand (← `(theorem $inBank : ($bank).inputCheck $borrowAddresses = true := by decide +kernel))
-    elabCommand (← `(theorem $roles : ($borrowAddresses).all
+    emitData (← `(theorem $inBank : ($bank).inputCheck $borrowAddresses = true := by decide +kernel))
+    emitData (← `(theorem $roles : ($borrowAddresses).all
       (fun address => ($typingName).compatible (address, .base)) = true := by decide +kernel))
-    elabCommand (← `(theorem $unique : ($borrowAddresses).Nodup := by decide +kernel))
-    elabCommand (← `(theorem $fresh : ($borrowAddresses).all (fun address =>
+    emitData (← `(theorem $unique : ($borrowAddresses).Nodup := by decide +kernel))
+    emitData (← `(theorem $fresh : ($borrowAddresses).all (fun address =>
       !(($actualBank).take $(quote sourceCount) ++ $projections).any (addressEqual address)) = true := by decide +kernel))
     let fields := mkIdent (name.getId ++ `fields)
     let sourceFields ← requests.timestamps.mapM (helperSyntax sourceCount)
-    elabCommand (← `(noncomputable def $fields : List Source.HelperField := [$sourceFields,*]))
+    emitData (← `(noncomputable def $fields : List Source.HelperField := [$sourceFields,*]))
     let scope := mkIdent (name.getId ++ `sourceReferencesValid)
-    elabCommand (← `(theorem $scope : ($fields).all
+    emitData (← `(theorem $scope : ($fields).all
       (Source.HelperField.referencesValid $(quote sourceCount) $(quote history.size)
         $(quote pair.circuit.memory_layout.teardown_sets.size) $(quote borrows.size)
         $(quote (snapshot.configuration.inline_init_teardown_pairs != 0))) = true := by decide +kernel))
@@ -217,11 +225,11 @@ elab_rules : command
         copies := copies.push (← `(Compiler.add (Compiler.atom $(← finSyntax outIndex arity))
           (Compiler.negate (Compiler.atom $(← finSyntax inIndex arity)))))
     let copyRelations := mkIdent (name.getId ++ `copyRelations)
-    elabCommand (← `(noncomputable def $copyRelations : List (Polynomial $(quote arity) Source.BaseField) := [$copies,*]))
+    emitData (← `(noncomputable def $copyRelations : List (Polynomial $(quote arity) Source.BaseField) := [$copies,*]))
     let definitionsName := mkIdent (name.getId ++ `definitions)
     let actualDefinitions := LookupSourceData.definitions pair.circuit
     let definitions ← actualDefinitions.mapM definitionSyntax
-    elabCommand (← `(noncomputable def $definitionsName : List AffineDefinition := [$definitions,*]))
+    emitData (← `(noncomputable def $definitionsName : List AffineDefinition := [$definitions,*]))
     let registry := mkIdent (lookupPrefix.getId ++ `registry)
     let mut actualOperands : Array (Array LookupSourceData.Operand) := #[]
     let mut offsets : Array Nat := #[]
@@ -252,19 +260,26 @@ elab_rules : command
       let recipeRoles := mkIdent (name.getId ++ Name.mkSimple s!"roles{operand.native_leaf}")
       let expanded := mkIdent (name.getId ++ Name.mkSimple s!"expanded{operand.native_leaf}")
       let indices : Array (TSyntax `term) := operand.expansion.map quote
-      elabCommand (← `(noncomputable def $leaf : NativeLookupLeaf :=
+      emitData (← `(noncomputable def $leaf : NativeLookupLeaf :=
         ⟨$(← weightSyntax actual.weight), $(← inputSyntax actual.input)⟩))
-      elabCommand (← `(theorem $found : ($registry)[$(quote operand.native_leaf)]? = some $leaf := by rfl))
-      elabCommand (← `(noncomputable def $recipeName : NativeBaseRecipe := $(← recipeSyntax recipe)))
-      elabCommand (← `(noncomputable def $candidate : HelperAgreement $copyRelations $recipeName :=
+      emitData (← `(theorem $found : ($registry)[$(quote operand.native_leaf)]? = some $leaf := by rfl))
+      emitData (← `(noncomputable def $recipeName : NativeBaseRecipe := $(← recipeSyntax recipe)))
+      emitData (← `(noncomputable def $candidate : HelperAgreement $copyRelations $recipeName :=
         ⟨$(← helperSyntax sourceCount expected), $(← combinationSyntax arity copies.size operand.witness)⟩))
-      elabCommand (← `(theorem $checked : ($candidate).check $placement $bank = true := by decide +kernel))
-      elabCommand (← `(theorem $recipeInBank : ($bank).check $recipeName = true := by decide +kernel))
-      elabCommand (← `(theorem $recipeRoles : (NativeLookupEncoding.scalar $recipeName).baseCheck $typingName = true := by decide +kernel))
-      elabCommand (← `(theorem $expanded : LookupPayload.expand $definitionsName [$indices,*] ($leaf).payload =
+      if phaseNumber == 2 then
+        emitFinal (← `(theorem $checked : ($candidate).check $placement $bank = true := by decide +kernel))
+        emitFinal (← `(theorem $recipeInBank : ($bank).check $recipeName = true := by decide +kernel))
+        emitFinal (← `(theorem $recipeRoles : (NativeLookupEncoding.scalar $recipeName).baseCheck $typingName = true := by decide +kernel))
+      else if phaseNumber == 1 then
+        let some checks := checks | throwError "missing helper checks"
+        let fact := mkIdent (checks.getId ++ Name.mkSimple s!"operand{operand.native_leaf}")
+        emitFinal (← `(theorem $checked : ($candidate).check $placement $bank = true := ($fact).1))
+        emitFinal (← `(theorem $recipeInBank : ($bank).check $recipeName = true := ($fact).2.1))
+        emitFinal (← `(theorem $recipeRoles : (NativeLookupEncoding.scalar $recipeName).baseCheck $typingName = true := ($fact).2.2))
+      emitData (← `(theorem $expanded : LookupPayload.expand $definitionsName [$indices,*] ($leaf).payload =
         some ($recipeName).toPayload := by rfl))
       let matched := mkIdent (name.getId ++ Name.mkSimple s!"sourceQuery{operand.native_leaf}")
-      elabCommand (← `(theorem $matched {R : Type} [CommRing R]
+      emitFinal (← `(theorem $matched {R : Type} [CommRing R]
         (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R) (assignment : TypedAssignment R)
         (defined : ∀ definition ∈ $definitionsName, definition.Holds hom challenges (assignment.value $typingName hom))
         (copies : Satisfies $copyRelations (assignment.base ∘ ($bank).address)) :
@@ -276,7 +291,7 @@ elab_rules : command
             (($candidate).sound $placement $bank $checked $recipeInBank assignment.base copies))))
     let setupIndex := cert.setup_leaf
     let terms := mkIdent (name.getId ++ `timestampTerms)
-    elabCommand (← `(noncomputable def $terms {R : Type} [CommRing R]
+    emitData (← `(noncomputable def $terms {R : Type} [CommRing R]
       (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R) (assignment : TypedAssignment R) :
       List (RationalPair R) := ($fields).map (fun field => RationalPair.leaf 1
         (hom (field.value ($sourceValues assignment.base)) + gamma)) ++
@@ -286,11 +301,11 @@ elab_rules : command
     let sourceCoverage := mkIdent (name.getId ++ `sourceCoverage)
     let nativeLeaves : Array (TSyntax `term) := cert.group.native_leaves.map quote
     let labels : Array (TSyntax `term) := cert.group.source_labels.map quote
-    elabCommand (← `(theorem $leavesChecked : ($tree).leaves = [$nativeLeaves,*] := by decide +kernel))
-    elabCommand (← `(theorem $sourceCoverage : ([$labels,*] : List Nat).Perm (List.range (($fields).length + 1)) := by decide +kernel))
+    emitData (← `(theorem $leavesChecked : ($tree).leaves = [$nativeLeaves,*] := by decide +kernel))
+    emitData (← `(theorem $sourceCoverage : ([$labels,*] : List Nat).Perm (List.range (($fields).length + 1)) := by decide +kernel))
     unless cert.group.native_leaves.size == cert.group.source_labels.size do throwError "incomplete timestamp occurrence correspondence"
     let setup := mkIdent (name.getId ++ `setupChecked)
-    elabCommand (← `(theorem $setup : (($registry)[$(quote setupIndex)]?).any NativeLookupLeaf.isSetup = true := by decide +kernel))
+    emitData (← `(theorem $setup : (($registry)[$(quote setupIndex)]?).any NativeLookupLeaf.isSetup = true := by decide +kernel))
     let mut matchingProofs : Array (TSyntax `term) := #[]
     for (nativeIndex, sourceIndex) in cert.group.native_leaves.zip cert.group.source_labels do
       let proof ← if nativeIndex == setupIndex then do
@@ -309,7 +324,7 @@ elab_rules : command
     let reduction := mkIdent (lookupPrefix.getId ++ `timestampReduction)
     let nativeGates := mkIdent (lookupPrefix.getId ++ `gates)
     let translated := mkIdent (name.getId ++ `timestampSourceReduction)
-    elabCommand (← `(theorem $translated {R : Type} [CommRing R]
+    emitFinal (← `(theorem $translated {R : Type} [CommRing R]
       (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R) (assignment : TypedAssignment R)
       (defined : ∀ definition ∈ $definitionsName, definition.Holds hom challenges (assignment.value $typingName hom))
       (copies : Satisfies $copyRelations (assignment.base ∘ ($bank).address))

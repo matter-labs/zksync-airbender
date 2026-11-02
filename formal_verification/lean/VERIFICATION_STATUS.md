@@ -5841,3 +5841,51 @@ No payload capture is complete. No cold full-build gain is claimed.
 HelperImport and MemoryImport still need their per-payload rollout.
 Consumer typing and the remaining metadata/header scope also stay open.
 The hourly follow-up stays active. Final lengthy validation stays pending.
+
+## Native helper payload pilot
+
+AddSubCached and AddSubUncached now use one complete helper payload result each.
+The checker preserves the exact bank round trips, base roles and helper agreement.
+It retains the original relation bank, source, lowered expression and witness.
+Complete source bindings retain every coefficient, zero term and term order.
+One-entry source bindings derive all old per-operand facts from the whole result.
+The original source-query and timestamp reduction proofs remain.
+The whole layout, borrow, source-scope and coverage facts remain explicit.
+This step does not migrate those metadata checks.
+
+The importer freezes every original data definition before numeric imports.
+Its final phase accepts only facts with the original types.
+The default phase retains the original importer path.
+Both adopted wrappers and every new pilot module use default heartbeats.
+All 184 old declarations remain.
+Kernel preservation accepts all 122 old theorem types.
+All 62 imported Expr values are identical.
+All 20 selected source modules and standard 32 MiB replays pass.
+They include six direct consumer modules. They skip no safe dependency.
+All 308 focused axiom queries use only the three allowed axioms.
+All 11 exact controls pass. The kernel rejects all 11 mutations.
+These include a nonempty witness, its coefficient, a retained zero term,
+and complete captured source windows. Legacy, invalid-phase, wrong-fact and
+opaque-payload controls pass. All three Python generator controls pass.
+CI requires both cache modes. Source and interface freshness pass.
+The qualification guard takes 59.41 s and peaks at 2,271.60 MiB.
+The direct-consumer guard takes 26.33 s and peaks at 838.81 MiB.
+Both guards clean their owned workers.
+The inventory has 156,793 roots. It retains all 156,678 prior roots.
+Original helper and memory objects remain in native-payload-original-oleans.
+Evidence uses the helper-payload prefixes. No cold full-build gain is claimed.
+
+The BlakeRound pair remains unadopted. Its original data reconstruction exceeds
+the default heartbeat budget. A scoped two-million budget builds the cached data
+in 33.15 s. Standard-stack replay then reaches the footprint cap at 2,561.52 MiB.
+That guard stops safely after 41.37 s and leaves no owned worker.
+The next step must isolate and replace the expensive original metadata check.
+The prior complete 89-operand payload prototypes remain available in both modes.
+No dense payload capture is claimed as qualified.
+
+The other 20 helper payload captures, memory payloads, consumer typing and the
+remaining metadata/header scope stay open. The hourly follow-up stays active.
+Full frontend validation, environment audit and baseline refresh, full transitive
+replay, cold full measurements and Linux qualification did not run.
+They stay pending for implementation review. The known aggregate ownership
+collision stays deferred. No aggregate import pass is claimed.
