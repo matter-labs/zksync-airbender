@@ -21,11 +21,14 @@ private def checksSyntax (proofs : Array (TSyntax `term)) : CommandElabM (TSynta
 
 syntax (name := importHelperValidity) "import_helper_validity " ident " from " str
   " base_model " ident " source_model " ident " history_model " ident " helper_model " ident
-  " memory_model " ident " inputs " num : command
+  " memory_model " ident " inputs " num (" phase " num)? (" using_checks " ident)? : command
 
 elab_rules : command
   | `(import_helper_validity $name:ident from $path:str base_model $baseName:ident source_model $sourceName:ident
-      history_model $historyName:ident helper_model $helperName:ident memory_model $memoryName:ident inputs $arityNumber:num) => do
+      history_model $historyName:ident helper_model $helperName:ident memory_model $memoryName:ident inputs $arityNumber:num $[phase $phaseValue:num]? $[using_checks $checksOwner:ident]?) => do
+    let phaseNumber := phaseValue.map (·.getNat) |>.getD 2
+    if phaseNumber > 2 then throwError "unsupported helper validity phase"
+    if phaseNumber == 0 && checksOwner.isSome then throwError "helper validity data phase cannot accept checks"
     let snapshot ← match Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Source.Snapshot)) with
       | .ok snapshot => pure snapshot | .error error => throwError "{error}"
     let memory ← match Source.memoryRequests snapshot.semantic_inputs with
@@ -55,7 +58,8 @@ elab_rules : command
     let nativeBank := fieldName memoryName "bank"
     let inputBank := fieldName baseName "inputBank"
     let execute := fieldName name "execute"
-    elabCommand (← `(noncomputable def $execute : Source.MemoryField := $(← variableField memory.execute)))
+    if phaseNumber != 1 then
+      elabCommand (← `(noncomputable def $execute : Source.MemoryField := $(← variableField memory.execute)))
     let clockTerm ← match snapshot.semantic_inputs.executor_machine_state,
         snapshot.semantic_inputs.delegation_circuit_state with
       | some executor, none => `(Source.HelperClock.executor $(← originalWord executor.cycle_end_state.timestamp))
@@ -69,31 +73,57 @@ elab_rules : command
         alignments := alignments.push (← `(Source.HelperAlignment.mk $(quote (2 ^ bits))
           $(← variableField read.values[0]!)))
     let profile := fieldName name "profile"
-    elabCommand (← `(noncomputable def $profile : Source.HelperProfile := ⟨$clockTerm, $comparisons, [$alignments,*]⟩))
+    if phaseNumber != 1 then
+      elabCommand (← `(noncomputable def $profile : Source.HelperProfile := ⟨$clockTerm, $comparisons, [$alignments,*]⟩))
     let fieldsMatch := fieldName name "fieldsMatch"
-    elabCommand (← `(theorem $fieldsMatch : ($profile).fields = $fields := by
-      run_tac
-        Lean.Elab.Tactic.liftMetaTactic fun goal => Lean.Meta.withTransparency .all do
-          goal.refl
-          pure []))
+    if phaseNumber != 0 then
+      elabCommand (← `(theorem $fieldsMatch : ($profile).fields = $fields := by
+        run_tac
+          Lean.Elab.Tactic.liftMetaTactic fun goal => Lean.Meta.withTransparency .all do
+            goal.refl
+            pure []))
+    let normalized := fieldName name "normalized"
+    if phaseNumber != 1 then
+      elabCommand (← `(noncomputable def $normalized (values : Fin $(quote arityNumber.getNat) → Source.BaseField) :=
+        inactiveHistory $historyCells (($execute).value (($placement).memory.project values)) values))
+    let canonical := fieldName name "canonical"
+    if phaseNumber != 1 then
+      elabCommand (← `(noncomputable def $canonical (values : Fin $(quote arityNumber.getNat) → Source.BaseField) :=
+        let normalized := $normalized values
+        let helpers := Source.canonicalHelpers (($placement).memory.project normalized) $comparisons
+        Source.assignBorrows $slots normalized (fun index => helpers.borrow index.val)))
+    if phaseNumber == 0 then return
     let protectedChecked := fieldName name "protectedChecked"
-    elabCommand (← `(theorem $protectedChecked : ($profile).protectedFields.all (fun field =>
-      equal (substitute (erasurePolynomials $historyCells) (field.polynomial ($placement).memory))
-        (field.polynomial ($placement).memory)) = true := by decide +kernel))
     let borrowChecked := fieldName name "borrowChecked"
-    elabCommand (← `(theorem $borrowChecked : ($fields).all (Source.HelperField.borrowCheck $placement $slots) = true := by decide +kernel))
     let transportChecked := fieldName name "transportChecked"
     let predicate ← `(fun field : Source.HelperField => field.transportCheck $placement $nativePlacement $inputBank $nativeBank)
-    let mut transportProofs := #[]
-    for index in [:requests.timestamps.size] do
-      let checked := fieldName name s!"transportChecked{index}"
-      elabCommand (← `(theorem $checked : ($predicate) (($fields).get ⟨$(quote index), by decide⟩) = true := by decide +kernel))
-      transportProofs := transportProofs.push (← `($checked))
-    elabCommand (← `(theorem $transportChecked : ($fields).all $predicate = true :=
-      BoolChecks.all_true (predicate := $predicate) (items := $fields) $(← checksSyntax transportProofs)))
-    let normalized := fieldName name "normalized"
-    elabCommand (← `(noncomputable def $normalized (values : Fin $(quote arityNumber.getNat) → Source.BaseField) :=
-      inactiveHistory $historyCells (($execute).value (($placement).memory.project values)) values))
+    if let some owner := checksOwner then
+      let facts := fieldName owner "facts"
+      elabCommand (← `(theorem $protectedChecked : ($profile).protectedFields.all (fun field =>
+        equal (substitute (erasurePolynomials $historyCells) (field.polynomial ($placement).memory))
+          (field.polynomial ($placement).memory)) = true := ($facts).1.1))
+      elabCommand (← `(theorem $borrowChecked : ($fields).all (Source.HelperField.borrowCheck $placement $slots) = true := ($facts).1.2))
+      elabCommand (← `(theorem $transportChecked : ($fields).all $predicate = true := ($facts).2))
+      for index in [:requests.timestamps.size] do
+        let checked := fieldName name s!"transportChecked{index}"
+        elabCommand (← `(theorem $checked : ($predicate) (($fields).get ⟨$(quote index), by decide⟩) = true :=
+          List.all_eq_true.mp $transportChecked _ (List.get_mem _ _)))
+    else
+      let protectedChecked := fieldName name "protectedChecked"
+      elabCommand (← `(theorem $protectedChecked : ($profile).protectedFields.all (fun field =>
+        equal (substitute (erasurePolynomials $historyCells) (field.polynomial ($placement).memory))
+          (field.polynomial ($placement).memory)) = true := by decide +kernel))
+      let borrowChecked := fieldName name "borrowChecked"
+      elabCommand (← `(theorem $borrowChecked : ($fields).all (Source.HelperField.borrowCheck $placement $slots) = true := by decide +kernel))
+      let transportChecked := fieldName name "transportChecked"
+      let predicate ← `(fun field : Source.HelperField => field.transportCheck $placement $nativePlacement $inputBank $nativeBank)
+      let mut transportProofs := #[]
+      for index in [:requests.timestamps.size] do
+        let checked := fieldName name s!"transportChecked{index}"
+        elabCommand (← `(theorem $checked : ($predicate) (($fields).get ⟨$(quote index), by decide⟩) = true := by decide +kernel))
+        transportProofs := transportProofs.push (← `($checked))
+      elabCommand (← `(theorem $transportChecked : ($fields).all $predicate = true :=
+        BoolChecks.all_true (predicate := $predicate) (items := $fields) $(← checksSyntax transportProofs)))
     let normalizedValid := fieldName name "normalized_valid"
     elabCommand (← `(theorem $normalizedValid (values : Fin $(quote arityNumber.getNat) → Source.BaseField)
       (valid : ($profile).ExecutionValid (($execute).value (($placement).memory.project values))
@@ -117,11 +147,6 @@ elab_rules : command
           List.mem_flatMap.mpr ⟨pair, member, by simp⟩
         simp only [$normalized:ident, inactiveHistory, if_pos inactive]
         exact ⟨$historyZero values pair.1.low lowMember, $historyZero values pair.1.high highMember⟩))
-    let canonical := fieldName name "canonical"
-    elabCommand (← `(noncomputable def $canonical (values : Fin $(quote arityNumber.getNat) → Source.BaseField) :=
-      let normalized := $normalized values
-      let helpers := Source.canonicalHelpers (($placement).memory.project normalized) $comparisons
-      Source.assignBorrows $slots normalized (fun index => helpers.borrow index.val)))
     let membership := fieldName name "helper_membership"
     elabCommand (← `(theorem $membership (values : Fin $(quote arityNumber.getNat) → Source.BaseField)
       (valid : ($profile).ExecutionValid (($execute).value (($placement).memory.project values))

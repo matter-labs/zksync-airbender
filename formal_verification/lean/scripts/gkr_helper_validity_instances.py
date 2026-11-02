@@ -53,6 +53,15 @@ def module(name, case):
     return target, content
 
 
+def modules(name, case):
+    from gkr_packed_helper_validity import CASES, modules as packed_modules, native
+    if case in CASES:
+        yield from packed_modules(case)
+        yield native(case)
+    else:
+        yield module(name, case)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--family', choices=FAMILIES, action='append')
@@ -68,17 +77,17 @@ def main():
             if args.mode and mode not in args.mode:
                 continue
             name, case = family + '-' + mode, stem + mode.title()
-            target, content = module(name, case)
-            path = LEAN / (target.replace('.', '/') + '.lean')
-            if args.check and (not path.exists() or path.read_text() != content):
-                raise ValueError('helper validity scaffold changed: ' + target)
-            if args.write and (not path.exists() or path.read_text() != content):
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content)
-            print(name, flush=True)
-            if args.build:
-                subprocess.run(['lake', '--no-cache', 'build', '+' + target + ':olean'],
-                    cwd=LEAN, env=dict(os.environ, LEAN_NUM_THREADS='1'), check=True)
+            for target, content in modules(name, case):
+                path = LEAN / (target.replace('.', '/') + '.lean')
+                if args.check and (not path.exists() or path.read_text() != content):
+                    raise ValueError('helper validity scaffold changed: ' + target)
+                if args.write and (not path.exists() or path.read_text() != content):
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(content)
+                print(name, flush=True)
+                if args.build:
+                    subprocess.run(['lake', '--no-cache', 'build', '+' + target + ':olean'],
+                        cwd=LEAN, env=dict(os.environ, LEAN_NUM_THREADS='1'), check=True)
 
 
 if __name__ == '__main__':

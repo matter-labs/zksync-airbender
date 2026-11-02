@@ -1,20 +1,17 @@
-import Airbender.Import.GKRProtocol.HelperValidityImport
-import Airbender.Proofs.GKRProtocol.HistoryErasureNative.BlakeRoundUncached
-import Airbender.Proofs.GKRProtocol.HelperNative.BlakeRoundUncached
+import Airbender.Proofs.GKRProtocol.HelperValidityChecks.BlakeRoundUncached.Certificate
 
 namespace Airbender.Compiler.HelperValidityNative.BlakeRoundUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_helper_validity native from "artifacts/compiler/blake-round-uncached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native
   source_model Airbender.Compiler.SourceContractNative.BlakeRoundUncached.native
   history_model Airbender.Compiler.HistoryErasureNative.BlakeRoundUncached.native
   helper_model Airbender.Compiler.HelperNative.BlakeRoundUncached.native
-  memory_model Airbender.Compiler.MemoryNative.BlakeRoundUncached.native inputs 763
+  memory_model Airbender.Compiler.MemoryNative.BlakeRoundUncached.native inputs 763 phase 1 using_checks Airbender.Compiler.HelperValidityChecks.BlakeRoundUncached
 
 theorem helper_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

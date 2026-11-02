@@ -1,20 +1,17 @@
-import Airbender.Import.GKRProtocol.HelperValidityImport
-import Airbender.Proofs.GKRProtocol.HistoryErasureNative.AddSubCached
-import Airbender.Proofs.GKRProtocol.HelperNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.HelperValidityChecks.AddSubCached.Certificate
 
 namespace Airbender.Compiler.HelperValidityNative.AddSubCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_helper_validity native from "artifacts/compiler/add-sub-cached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.AddSubCached.native
   source_model Airbender.Compiler.SourceContractNative.AddSubCached.native
   history_model Airbender.Compiler.HistoryErasureNative.AddSubCached.native
   helper_model Airbender.Compiler.HelperNative.AddSubCached.native
-  memory_model Airbender.Compiler.MemoryNative.AddSubCached.native inputs 48
+  memory_model Airbender.Compiler.MemoryNative.AddSubCached.native inputs 48 phase 1 using_checks Airbender.Compiler.HelperValidityChecks.AddSubCached
 
 theorem helper_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
