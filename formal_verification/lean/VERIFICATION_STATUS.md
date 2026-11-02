@@ -5889,3 +5889,37 @@ Full frontend validation, environment audit and baseline refresh, full transitiv
 replay, cold full measurements and Linux qualification did not run.
 They stay pending for implementation review. The known aggregate ownership
 collision stays deferred. No aggregate import pass is claimed.
+
+## Structural helper source projection
+
+The importer now derives the exact originalProjection equation from a generic
+list-prefix theorem. It binds the complete original source prefix by kernel
+conversion. It keeps the original bank, memory placement, address classes and
+source order. It adds no caller premise and changes no imported data value.
+
+Fresh replay isolated the old originalProjection proof. It reaches the footprint
+cap at 2,570.92 MiB. A separate fresh check isolates historyProjection at
+2,564.08 MiB. The new structural proof closes the first obligation.
+Both dense cache modes build their complete data sources. Fresh replay accepts
+each repaired originalProjection and its complete local dependency closure.
+That paired guard takes 46.12 s and peaks at 2,225.82 MiB.
+These are target checks. They do not qualify either whole dense module.
+The historyProjection obligation remains open.
+
+The generic theorem, importer and both adopted Inputs and native wrappers pass
+source checks and standard 32 MiB replay. All 184 original pilot declarations
+remain. All 122 old theorem types and 62 exact imported values pass preservation
+again. All 310 focused axiom queries use only the allowed three axioms.
+The 11 payload control pairs pass again. Three new exact prefix controls pass.
+The kernel rejects changes to an address class, coordinate and complete prefix.
+Legacy, phase, wrong-fact and opaque controls pass again.
+The qualification guard takes 67.98 s and peaks at 2,290.43 MiB.
+All guards clean their owned workers. Generator and interface freshness pass.
+CI includes the projection controls. The inventory has 156,794 roots and retains
+all 156,793 prior roots. The dense data-range experiment stays unadopted in the
+evidence folder. Its foundation also hits the cap. Do not repeat that variant.
+
+The dense payload rollout and the remaining implementation stay open.
+Full frontend validation, environment audit, full transitive replay, cold full
+measurements and Linux qualification stay pending for implementation review.
+No whole dense or aggregate import pass is claimed.
