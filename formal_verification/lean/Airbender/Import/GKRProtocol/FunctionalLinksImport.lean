@@ -21,12 +21,14 @@ private def predicates (proofs : Array (TSyntax `term)) : CommandElabM (TSyntax 
 
 syntax (name := importFunctionalLinks) "import_functional_links " ident " from " str
   " graph " ident " base_model " ident " typing " ident " lookup_fields " ident
-  " lookup_source " ident " memory_model " ident " helper_model " ident : command
+  " lookup_source " ident " memory_model " ident " helper_model " ident
+  " base_checks " ident : command
 
 elab_rules : command
   | `(import_functional_links $name:ident from $path:str graph $graphName:ident
       base_model $baseName:ident typing $typingName:ident lookup_fields $lookupName:ident
-      lookup_source $sourceName:ident memory_model $memoryName:ident helper_model $helperName:ident) => do
+      lookup_source $sourceName:ident memory_model $memoryName:ident helper_model $helperName:ident
+      base_checks $baseChecks:ident) => do
     let pair ← match Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
       | .ok pair => pure pair | .error error => throwError "{error}"
     unless pair.format_version == 1 do throwError "unsupported native functional link version"
@@ -76,10 +78,13 @@ elab_rules : command
       let (output, input, gateOrdinal) := copy
       let some binding := bindings.findIdx? (· == output) | throwError "base-copy recipe is absent"
       let recipe := indexed graphName "baseRecipe" binding
-      let ports := indexed graphName "basePortsChecked" binding
-      let identity := indexed graphName "baseRelationChecked" binding
+      let facts := indexed baseChecks "baseFacts" binding
+      let ports ← `(($facts).1)
+      let identity ← `(($facts).2)
       let gate := indexed baseName "gate" gateOrdinal
-      let gateCheck := indexed baseName "gateChecked" gateOrdinal
+      let gatesChecked := field baseName "gatesChecked"
+      let gateCheck ← `(List.all_eq_true.mp $gatesChecked $gate
+        (List.get_mem ($artifact).gates ⟨$(quote gateOrdinal), by decide⟩))
       let result := indexed name "baseCopy" index
       elabCommand (← `(theorem $result (baseValue : GKRAddress → Source.BaseField)
         (arithmetic : ∀ gate ∈ ($artifact).gates, gate.expressionResidual (baseValue ∘ ($baseBank).address) = 0) :

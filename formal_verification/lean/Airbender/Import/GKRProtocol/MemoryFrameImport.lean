@@ -7,10 +7,6 @@ open Lean Elab Command
 set_option warningAsError true
 
 private def fieldName (owner : Ident) (stem : String) : Ident := mkIdent (owner.getId ++ Name.mkSimple stem)
-private def checksSyntax (proofs : Array (TSyntax `term)) : CommandElabM (TSyntax `term) := do
-  let mut result ← `(BoolChecks.nil)
-  for proof in proofs.reverse do result ← `(BoolChecks.cons $proof $result)
-  return result
 private def emitChecked (command : Syntax) : CommandElabM Unit := do
   elabCommand command
   if (← get).messages.hasErrors then throwAbortCommand
@@ -33,8 +29,8 @@ elab_rules : command
     let firstIndex := startNumber.getNat
     let finalIndex := stopNumber.getNat
     let ramCount := 7 * (requests.reads.size + requests.writes.size)
-    unless phaseIndex ≤ 3 && firstIndex ≤ finalIndex && finalIndex ≤ ramCount do
-      throwError "invalid memory frame proof slice"
+    unless (phaseIndex == 0 || phaseIndex == 3) && firstIndex ≤ finalIndex && finalIndex ≤ ramCount do
+      throwError "memory frames require a data phase or a complete check"
     let inputBank := fieldName baseName "inputBank"
     let fullBank := fieldName baseName "bank"
     let placement := fieldName memoryName "sourcePlacement"
@@ -113,63 +109,11 @@ elab_rules : command
               else if stem == "initialization" then `(($result).2.1) else `(($result).2.2)
             pure (some proof)
       let predicate ← `(fun field : Source.MemoryField => field.baseFrameCheck $placement $nativeBank $coordinates $inputBank $fullBank)
-      if phaseIndex == 1 || phaseIndex == 3 then
-        if stem == "ram" || phaseIndex == 3 || firstIndex == 0 then
-          let sliceStart := if stem == "ram" then firstIndex else 0
-          let sliceStop := if stem == "ram" then finalIndex else fieldCount
-          let mut proofs := #[]
-          for index in [sliceStart:sliceStop] do
-            let itemChecked := fieldName name s!"{stem}Checked{index}"
-            if let some result := complete then
-              let bound ← `(by rw [$length:ident]; decide)
-              emitChecked (← `(theorem $itemChecked : ($predicate) (($fields).get ⟨$(quote index), $bound⟩) = true :=
-                List.all_eq_true.mp $result _ (List.get_mem $fields ⟨$(quote index), $bound⟩)))
-            else
-              emitChecked (← `(theorem $itemChecked : ($predicate) (($fields).get ⟨$(quote index), by decide⟩) = true := by decide +kernel))
-            proofs := proofs.push (← `($itemChecked))
-          if phaseIndex == 1 && stem == "ram" then
-            let block := fieldName name s!"ramBlock{firstIndex}"
-            let blockChecked := fieldName name s!"ramBlockChecked{firstIndex}"
-            emitChecked (← `(noncomputable def $block : List Source.MemoryField :=
-              (($fields).drop $(quote sliceStart)).take $(quote (sliceStop - sliceStart))))
-            emitChecked (← `(theorem $blockChecked : ($block).all $predicate = true :=
-              BoolChecks.all_true (predicate := $predicate) (items := $block) $(← checksSyntax proofs)))
-          else
-            if let some result := complete then
-              emitChecked (← `(theorem $checked : ($fields).all $predicate = true := $result))
-            else
-              emitChecked (← `(theorem $checked : ($fields).all $predicate = true :=
-                BoolChecks.all_true (predicate := $predicate) (items := $fields) $(← checksSyntax proofs)))
-      if phaseIndex == 3 && stem == "ram" && ramCount > 256 then
-        if let some result := complete then
-          let mut blocks : Array (TSyntax `term) := #[]
-          for first in (List.range ((ramCount + 63) / 64)).map (· * 64) do
-            let block := fieldName name s!"ramBlock{first}"
-            let blockChecked := fieldName name s!"ramBlockChecked{first}"
-            let partCount := min 64 (ramCount - first)
-            emitChecked (← `(noncomputable def $block : List Source.MemoryField :=
-              (($fields).drop $(quote first)).take $(quote partCount)))
-            emitChecked (← `(theorem $blockChecked : ($block).all $predicate = true :=
-              QueryFrameImport.all_slice_true $fields $predicate $(quote first) $(quote partCount) $result))
-            blocks := blocks.push (← `($block))
-          let flattened := fieldName name "ramBlocksFlatten"
-          emitChecked (← `(theorem $flattened : ([$blocks,*] : List (List Source.MemoryField)).flatten = $fields := by rfl))
-      if phaseIndex == 0 || phaseIndex == 1 then continue
-      if phaseIndex == 2 && stem == "ram" then
-        let mut blocks : Array (TSyntax `term) := #[]
-        let mut proofs : Array (TSyntax `term) := #[]
-        for first in (List.range ((ramCount + 63) / 64)).map (· * 64) do
-          let block := fieldName name s!"ramBlock{first}"
-          let blockChecked := fieldName name s!"ramBlockChecked{first}"
-          blocks := blocks.push (← `($block))
-          proofs := proofs.push (← `($blockChecked))
-        let flattened := fieldName name "ramBlocksFlatten"
-        emitChecked (← `(theorem $flattened : ([$blocks,*] : List (List Source.MemoryField)).flatten = $fields := by rfl))
-        let blockPredicate ← `(fun block : List Source.MemoryField => block.all $predicate)
-        emitChecked (← `(theorem $checked : ($fields).all $predicate = true := by
-          rw [← $flattened:ident]
-          exact QueryFrameImport.all_flatten_true [$blocks,*] $predicate
-            (BoolChecks.all_true (predicate := $blockPredicate) (items := [$blocks,*]) $(← checksSyntax proofs))))
+      if phaseIndex == 0 then continue
+      let proof ← match complete with
+        | some result => pure result
+        | none => `(by decide +kernel)
+      emitChecked (← `(theorem $checked : ($fields).all $predicate = true := $proof))
       let preserved := fieldName name s!"{stem}_fields_preserved"
       let activeBinder : Array (TSyntax `Lean.Parser.Term.bracketedBinder) ← if active then
           pure #[← `(bracketedBinder| (active : ($execute).value (($helperPlacement).memory.project sourceValue) ≠ 0))]

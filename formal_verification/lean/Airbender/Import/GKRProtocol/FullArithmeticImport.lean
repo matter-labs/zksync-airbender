@@ -143,12 +143,6 @@ private def combinationSyntax (arity count : Nat) (encoded : Import.EncodedCombi
     `(($(← polynomialSyntax arity polynomial), $(← finSyntax index count)))
   `([$[$terms],*])
 
-private def checksSyntax (proofs : Array (TSyntax `ident)) : CommandElabM (TSyntax `term) := do
-  let mut result ← `(Compiler.BoolChecks.nil)
-  for proof in proofs.reverse do
-    result ← `(Compiler.BoolChecks.cons $proof $result)
-  return result
-
 private def sourceInputSyntax (bound : Nat) : Source.LookupInput → CommandElabM (TSyntax `term)
   | .Variable index => do
       unless index < bound do throwError "memory field changes original source-variable scope"
@@ -355,113 +349,5 @@ elab_rules : command
     let certificateName := mkIdent (name.getId ++ `certificate)
     elabCommand (← `(noncomputable def $certificateName : Certificate ($artifact).translation :=
       ⟨fun index => ($backwardData)[index], fun index => ($forwardData)[index]⟩))
-
-end Airbender.Compiler.FullArithmeticImport
-
-namespace Airbender.Compiler.FullArithmeticImport
-open Lean Elab Command
-set_option warningAsError true
-set_option maxRecDepth 32768
-
-syntax (name := checkFullArithmetic) "check_full_compiler_arithmetic " ident
-  " inputs " num " variables " num " sources " num " gates " num
-  " phase " num " start " num " stop " num : command
-
-elab_rules : command
-  | `(check_full_compiler_arithmetic $name:ident inputs $inputNumber:num variables $variableNumber:num
-      sources $sourceNumber:num gates $gateNumber:num phase $phaseNumber:num start $startNumber:num stop $stopNumber:num) => do
-    let n := inputNumber.getNat
-    let m := variableNumber.getNat
-    let sourceSize := sourceNumber.getNat
-    let gateCount := gateNumber.getNat
-    let phaseIndex := phaseNumber.getNat
-    let bound := if phaseIndex == 0 then m else if phaseIndex == 1 then gateCount else sourceSize
-    unless 0 < n && n ≤ m && phaseIndex < 3 && startNumber.getNat ≤ stopNumber.getNat && stopNumber.getNat ≤ bound do
-      throwError "invalid full arithmetic check shard"
-    let artifact := mkIdent (name.getId ++ `artifact)
-    let addressesName := mkIdent (name.getId ++ `addresses)
-    let certificateName := mkIdent (name.getId ++ `certificate)
-    for index in [startNumber.getNat:stopNumber.getNat] do
-      if phaseIndex == 0 then
-        let checked := mkIdent (name.getId ++ Name.mkSimple s!"uniqueChecked{index}")
-        elabCommand (← `(theorem $checked : distinctAt $addressesName $(← finSyntax index m) = true := by decide +kernel))
-      else if phaseIndex == 1 then
-        let checked := mkIdent (name.getId ++ Name.mkSimple s!"relationChecked{index}")
-        let gate := mkIdent (name.getId ++ Name.mkSimple s!"gate{index}")
-        elabCommand (← `(theorem $checked : equal (substitute ($artifact).extension ($gate).inputResidual)
-          (combination ($artifact).source (($certificateName).forward $(← finSyntax index gateCount))) = true := by decide +kernel))
-        let gateChecked := mkIdent (name.getId ++ Name.mkSimple s!"gateChecked{index}")
-        elabCommand (← `(theorem $gateChecked : ($gate).check = true := by decide +kernel))
-      else
-        let checked := mkIdent (name.getId ++ Name.mkSimple s!"sourceChecked{index}")
-        elabCommand (← `(theorem $checked : equal
-          (rename ($artifact).projection (($artifact).source.get $(← finSyntax index sourceSize)))
-          (combination ($artifact).translation.lowered (($certificateName).backward $(← finSyntax index sourceSize))) = true := by decide +kernel))
-
-syntax (name := finalizeFullArithmetic) "finalize_full_compiler_arithmetic " ident
-  " inputs " num " variables " num " sources " num " gates " num : command
-
-elab_rules : command
-  | `(finalize_full_compiler_arithmetic $name:ident inputs $inputNumber:num variables $variableNumber:num
-      sources $sourceNumber:num gates $gateNumber:num) => do
-    let n := inputNumber.getNat
-    let m := variableNumber.getNat
-    let sourceSize := sourceNumber.getNat
-    let gateCount := gateNumber.getNat
-    let artifact := mkIdent (name.getId ++ `artifact)
-    let addressesName := mkIdent (name.getId ++ `addresses)
-    let bank := mkIdent (name.getId ++ `bank)
-    let certificateName := mkIdent (name.getId ++ `certificate)
-    let extensionData := mkIdent (name.getId ++ `extensionData)
-    let uniqueProofs := (Array.range m).map (fun index => mkIdent (name.getId ++ Name.mkSimple s!"uniqueChecked{index}"))
-    let forwardProofs := (Array.range gateCount).map (fun index => mkIdent (name.getId ++ Name.mkSimple s!"relationChecked{index}"))
-    let gateProofs := (Array.range gateCount).map (fun index => mkIdent (name.getId ++ Name.mkSimple s!"gateChecked{index}"))
-    let backwardProofs := (Array.range sourceSize).map (fun index => mkIdent (name.getId ++ Name.mkSimple s!"sourceChecked{index}"))
-    let unique := mkIdent (name.getId ++ `addressesUnique)
-    elabCommand (← `(theorem $unique : ($addressesName).Nodup := by
-      have checks : (List.finRange $(quote m)).all (distinctAt $addressesName) = true :=
-        BoolChecks.all_true $(← checksSyntax uniqueProofs)
-      exact distinctAt_sound (fun index => List.all_eq_true.mp checks index (List.mem_finRange _))))
-    let roundTrip := mkIdent (name.getId ++ `bankRoundTrip)
-    elabCommand (← `(theorem $roundTrip (wire : Fin $(quote m)) : ($bank).placement (($bank).address wire) = wire :=
-      WireBank.ofList_roundTrip $addressesName (by decide) $unique wire))
-    let valid := mkIdent (name.getId ++ `valid)
-    elabCommand (← `(theorem $valid : ($certificateName).Valid := by
-      refine ⟨?_, ?_, ?_⟩
-      · intro wire
-        exact initialExtension_projection (by decide : $(quote n) ≤ $(quote m))
-          (fun coordinate => ($extensionData)[coordinate]) wire
-      · have checks : (List.finRange $(quote sourceSize)).all (fun index =>
-          equal (rename ($artifact).translation.projection (($artifact).translation.source.get index))
-            (combination ($artifact).translation.lowered (($certificateName).backward index))) = true :=
-          BoolChecks.all_true $(← checksSyntax backwardProofs)
-        intro index
-        exact List.all_eq_true.mp checks index (List.mem_finRange _)
-      · have checks : (List.finRange $(quote gateCount)).all (fun index =>
-          equal (substitute ($artifact).translation.extension (($artifact).translation.lowered.get index))
-            (combination ($artifact).translation.source (($certificateName).forward index))) = true :=
-          BoolChecks.all_true $(← checksSyntax forwardProofs)
-        intro index
-        exact List.all_eq_true.mp checks index (List.mem_finRange _)))
-    let gatesChecked := mkIdent (name.getId ++ `gatesChecked)
-    elabCommand (← `(theorem $gatesChecked : ($artifact).gates.all ArithmeticGate.check = true :=
-      BoolChecks.all_true $(← checksSyntax gateProofs)))
-    let extendsName := mkIdent (name.getId ++ `full_arithmetic_extends)
-    elabCommand (← `(theorem $extendsName (values : Fin $(quote n) → Source.BaseField)
-      (holds : Satisfies ($artifact).source values) :
-      (∀ wire, ($artifact).translation.extend values (($artifact).projection wire) = values wire) ∧
-        (∀ gate ∈ ($artifact).gates, gate.expressionResidual (($artifact).translation.extend values) = 0) :=
-      ArithmeticExtension.forward $artifact ($certificateName).forwardOnly (Certificate.forwardOnly_valid $valid) $gatesChecked holds))
-    let preserved := mkIdent (name.getId ++ `full_arithmetic_preserved)
-    elabCommand (← `(theorem $preserved (values : Fin $(quote m) → Source.BaseField)
-      (holds : ∀ gate ∈ ($artifact).gates, gate.expressionResidual values = 0) :
-      Satisfies ($artifact).source (values ∘ ($artifact).projection) :=
-      ArithmeticExtension.backward $artifact $certificateName $valid $gatesChecked holds))
-    let equivalent := mkIdent (name.getId ++ `full_arithmetic_equivalent)
-    elabCommand (← `(theorem $equivalent (values : Fin $(quote n) → Source.BaseField) :
-      Satisfies ($artifact).source values ↔ ∃ extended : Fin $(quote m) → Source.BaseField,
-        (∀ wire, extended (($artifact).projection wire) = values wire) ∧
-        (∀ gate ∈ ($artifact).gates, gate.expressionResidual extended = 0) :=
-      ArithmeticExtension.equivalent $artifact $certificateName $valid $gatesChecked values))
 
 end Airbender.Compiler.FullArithmeticImport

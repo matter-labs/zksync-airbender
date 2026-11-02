@@ -1,6 +1,6 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.ShiftBinopCachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.ShiftBinopCached.Corollaries
-import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.ShiftBinopCached.Corollaries
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.ShiftBinopCached.Certificate
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.ShiftBinopCached.Certificate
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 
 namespace Airbender.Compiler.FunctionalNative.ShiftBinopCached
@@ -14,5 +14,7 @@ finalize_checked_functional_graph native selectors "{\"steps\":51,\"affine_steps
   lookup Airbender.Compiler.LookupNative.ShiftBinopCached.native
   product Airbender.Compiler.ProductNative.ShiftBinopCached.native
   base Airbender.Compiler.FullArithmeticNative.ShiftBinopCached.native
+  using_steps Airbender.Compiler.FunctionalStepChecks.ShiftBinopCached.programChecked
+  using_base Airbender.Compiler.FunctionalBaseChecks.ShiftBinopCached
 
 end Airbender.Compiler.FunctionalNative.ShiftBinopCached

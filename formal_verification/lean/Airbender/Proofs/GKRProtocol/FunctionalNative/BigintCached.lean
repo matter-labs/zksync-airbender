@@ -1,6 +1,6 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.BigintCachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.BigintCached.Corollaries
-import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.BigintCached.Corollaries
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.BigintCached.Certificate
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.BigintCached.Certificate
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 
 namespace Airbender.Compiler.FunctionalNative.BigintCached
@@ -14,5 +14,7 @@ finalize_checked_functional_graph native selectors "{\"steps\":294,\"affine_step
   lookup Airbender.Compiler.LookupNative.BigintCached.native
   product Airbender.Compiler.ProductNative.BigintCached.native
   base Airbender.Compiler.FullArithmeticNative.BigintCached.native
+  using_steps Airbender.Compiler.FunctionalStepChecks.BigintCached.programChecked
+  using_base Airbender.Compiler.FunctionalBaseChecks.BigintCached
 
 end Airbender.Compiler.FunctionalNative.BigintCached

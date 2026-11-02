@@ -204,7 +204,7 @@ def modules(name, case, result):
         result_modules.append((prefix, wrap([foundation,
             "Airbender.Import.GKRProtocol.FullArithmeticCheckImport"],
             f'certify_full_compiler_arithmetic native {dimensions}\n\n'
-            f'finalize_full_compiler_arithmetic native {dimensions}')))
+            f'finalize_checked_full_compiler_arithmetic native inputs {len(result["inputs"])} variables {len(result["addresses"])}')))
         return result_modules
     parts = []
     counts = [len(result["addresses"]), result["counts"]["relations"], result["counts"]["source_obligations"]]

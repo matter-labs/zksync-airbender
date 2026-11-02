@@ -1,6 +1,6 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.SubwordMemoryCachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.SubwordMemoryCached.Corollaries
-import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.SubwordMemoryCached.Corollaries
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.SubwordMemoryCached.Certificate
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.SubwordMemoryCached.Certificate
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 
 namespace Airbender.Compiler.FunctionalNative.SubwordMemoryCached
@@ -14,5 +14,7 @@ finalize_checked_functional_graph native selectors "{\"steps\":46,\"affine_steps
   lookup Airbender.Compiler.LookupNative.SubwordMemoryCached.native
   product Airbender.Compiler.ProductNative.SubwordMemoryCached.native
   base Airbender.Compiler.FullArithmeticNative.SubwordMemoryCached.native
+  using_steps Airbender.Compiler.FunctionalStepChecks.SubwordMemoryCached.programChecked
+  using_base Airbender.Compiler.FunctionalBaseChecks.SubwordMemoryCached
 
 end Airbender.Compiler.FunctionalNative.SubwordMemoryCached

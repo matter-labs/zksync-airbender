@@ -19,6 +19,7 @@ import_functional_links native from "artifacts/compiler/blake-g-cached.json"
   lookup_source Airbender.Compiler.LookupSourceNative.BlakeGCached.native
   memory_model Airbender.Compiler.MemoryNative.BlakeGCached.native
   helper_model Airbender.Compiler.HelperNative.BlakeGCached.native
+  base_checks Airbender.Compiler.FunctionalBaseChecks.BlakeGCached
 
 theorem timestamp_source_witness {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

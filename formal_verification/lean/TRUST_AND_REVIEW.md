@@ -53,7 +53,7 @@ closes the CPU and decoder premises. The [three native corollaries](Airbender/Re
 compose it with the target proofs. The captured-program compatibility layer
 and uncached paths are removed. The tag `fv-archive-uncached` retains them in
 git history. The canonical graph uses public program setup.
-The checker consolidation remains open. Linux checks run at the end.
+Item 3 has stopped. The existing checkers remain. Linux validation runs last.
 
 Upstream #531 merged as `06c15f275` and is in this base. The unified base
 entrypoint now returns the verified registers. New-base runtime validation

@@ -1,6 +1,6 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.UnifiedCachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.UnifiedCached.Corollaries
-import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.UnifiedCached.Corollaries
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.UnifiedCached.Certificate
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.UnifiedCached.Certificate
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 
 namespace Airbender.Compiler.FunctionalNative.UnifiedCached
@@ -14,5 +14,7 @@ finalize_checked_functional_graph native selectors "{\"steps\":66,\"affine_steps
   lookup Airbender.Compiler.LookupNative.UnifiedCached.native
   product Airbender.Compiler.ProductNative.UnifiedCached.native
   base Airbender.Compiler.FullArithmeticNative.UnifiedCached.native
+  using_steps Airbender.Compiler.FunctionalStepChecks.UnifiedCached.programChecked
+  using_base Airbender.Compiler.FunctionalBaseChecks.UnifiedCached
 
 end Airbender.Compiler.FunctionalNative.UnifiedCached

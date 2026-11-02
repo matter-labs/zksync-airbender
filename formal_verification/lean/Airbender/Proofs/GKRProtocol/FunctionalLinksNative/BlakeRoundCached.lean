@@ -19,6 +19,7 @@ import_functional_links native from "artifacts/compiler/blake-round-cached.json"
   lookup_source Airbender.Compiler.LookupSourceNative.BlakeRoundCached.native
   memory_model Airbender.Compiler.MemoryNative.BlakeRoundCached.native
   helper_model Airbender.Compiler.HelperNative.BlakeRoundCached.native
+  base_checks Airbender.Compiler.FunctionalBaseChecks.BlakeRoundCached
 
 theorem timestamp_source_witness {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

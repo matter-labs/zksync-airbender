@@ -6,24 +6,6 @@ open Lean Elab Command
 set_option warningAsError true
 
 private def fieldName (owner : Ident) (stem : String) : Ident := mkIdent (owner.getId ++ Name.mkSimple stem)
-private def checksSyntax (proofs : Array (TSyntax `term)) : CommandElabM (TSyntax `term) := do
-  let mut result ← `(BoolChecks.nil)
-  for proof in proofs.reverse do result ← `(BoolChecks.cons $proof $result)
-  return result
-theorem all_flatten_true (blocks : List (List α)) (predicate : α → Bool)
-    (checked : blocks.all (fun block => block.all predicate) = true) :
-    blocks.flatten.all predicate = true := by
-  apply List.all_eq_true.mpr
-  intro item member
-  obtain ⟨block, included, inside⟩ := List.mem_flatten.mp member
-  exact List.all_eq_true.mp (List.all_eq_true.mp checked block included) item inside
-
-theorem all_slice_true (items : List α) (predicate : α → Bool) (first count : Nat)
-    (checked : items.all predicate = true) : ((items.drop first).take count).all predicate = true := by
-  apply List.all_eq_true.mpr
-  intro item member
-  exact List.all_eq_true.mp checked item (List.mem_of_mem_drop (List.mem_of_mem_take member))
-
 private def emitChecked (command : Syntax) : CommandElabM Unit := do
   elabCommand command
   if (← get).messages.hasErrors then throwAbortCommand
@@ -45,8 +27,8 @@ elab_rules : command
     let phaseIndex := phaseNumber.getNat
     let firstIndex := startNumber.getNat
     let finalIndex := stopNumber.getNat
-    unless phaseIndex ≤ 3 && firstIndex ≤ finalIndex && finalIndex ≤ size do
-      throwError "invalid query frame proof slice"
+    unless (phaseIndex == 0 || phaseIndex == 3) && firstIndex ≤ finalIndex && finalIndex ≤ size do
+      throwError "query frames require a data phase or a complete check"
     let placement := fieldName baseName "originalProjection"
     let bank := fieldName baseName "inputBank"
     let oldPlacement := fieldName lookupName "sourcePlacement"
@@ -73,67 +55,11 @@ elab_rules : command
     if phaseIndex == 0 then
       emitChecked (← `(theorem $length : ($fields).length = $(quote size) := by decide +kernel))
     let checked := fieldName name "checked"
-    if phaseIndex == 1 || phaseIndex == 3 then
-      let mut proofs := #[]
-      for index in [firstIndex:finalIndex] do
-        let itemChecked := fieldName name s!"checked{index}"
-        if let some complete := wholeCheck then
-          let bound ← `(by rw [$length:ident]; decide)
-          emitChecked (← `(theorem $itemChecked : ($predicate) (($fields).get ⟨$(quote index), $bound⟩) = true :=
-            List.all_eq_true.mp $complete _ (List.get_mem $fields ⟨$(quote index), $bound⟩)))
-        else
-          emitChecked (← `(theorem $itemChecked : ($predicate) (($fields).get ⟨$(quote index), by decide⟩) = true := by decide +kernel))
-        proofs := proofs.push (← `($itemChecked))
-      if phaseIndex == 1 then
-        let block := fieldName name s!"block{firstIndex}"
-        let blockChecked := fieldName name s!"blockChecked{firstIndex}"
-        emitChecked (← `(noncomputable def $block : List Source.EncodedField :=
-          (($fields).drop $(quote firstIndex)).take $(quote (finalIndex - firstIndex))))
-        if let some complete := wholeCheck then
-          emitChecked (← `(theorem $blockChecked : ($block).all $predicate = true :=
-            all_slice_true $fields $predicate $(quote firstIndex) $(quote (finalIndex - firstIndex)) $complete))
-        else
-          emitChecked (← `(theorem $blockChecked : ($block).all $predicate = true :=
-            BoolChecks.all_true (predicate := $predicate) (items := $block) $(← checksSyntax proofs)))
-      else
-        if let some complete := wholeCheck then
-          emitChecked (← `(theorem $checked : ($fields).all $predicate = true := $complete))
-        else
-          emitChecked (← `(theorem $checked : ($fields).all $predicate = true :=
-            BoolChecks.all_true (predicate := $predicate) (items := $fields) $(← checksSyntax proofs)))
-    if phaseIndex == 3 && size > 256 then
-      if let some complete := wholeCheck then
-        let mut blocks : Array (TSyntax `term) := #[]
-        for first in (List.range ((size + 63) / 64)).map (· * 64) do
-          let block := fieldName name s!"block{first}"
-          let blockChecked := fieldName name s!"blockChecked{first}"
-          let count := min 64 (size - first)
-          emitChecked (← `(noncomputable def $block : List Source.EncodedField :=
-            (($fields).drop $(quote first)).take $(quote count)))
-          emitChecked (← `(theorem $blockChecked : ($block).all $predicate = true :=
-            all_slice_true $fields $predicate $(quote first) $(quote count) $complete))
-          blocks := blocks.push (← `($block))
-        let flattened := fieldName name "blocksFlatten"
-        emitChecked (← `(theorem $flattened : ([$blocks,*] : List (List Source.EncodedField)).flatten = $fields := by rfl))
-    if phaseIndex == 0 || phaseIndex == 1 then return
-    if phaseIndex == 2 then
-      let mut blocks : Array (TSyntax `term) := #[]
-      let mut proofs : Array (TSyntax `term) := #[]
-      for first in (List.range ((size + 63) / 64)).map (· * 64) do
-        let block := fieldName name s!"block{first}"
-        let blockChecked := fieldName name s!"blockChecked{first}"
-        blocks := blocks.push (← `($block))
-        proofs := proofs.push (← `($blockChecked))
-      let flattened := fieldName name "blocksFlatten"
-      emitChecked (← `(theorem $flattened : ([$blocks,*] : List (List Source.EncodedField)).flatten = $fields := by rfl))
-      let blockPredicate ← `(fun block : List Source.EncodedField => block.all $predicate)
-      if let some complete := wholeCheck then
-        emitChecked (← `(theorem $checked : ($fields).all $predicate = true := $complete))
-      else
-        emitChecked (← `(theorem $checked : ($fields).all $predicate = true := by
-          rw [← $flattened:ident]
-          exact all_flatten_true [$blocks,*] $predicate
-            (BoolChecks.all_true (predicate := $blockPredicate) (items := [$blocks,*]) $(← checksSyntax proofs))))
+    if phaseIndex == 0 then return
+    let proof ← match wholeCheck with
+      | some complete => pure complete
+      | none => `(by decide +kernel)
+    emitChecked (← `(theorem $checked : ($fields).all $predicate = true := $proof))
     let preserved := fieldName name "fields_preserved"
     emitChecked (← `(theorem $preserved
       (sourceValue : Fin $(quote arityNumber.getNat) → Source.BaseField) (counts : Fin _ → Source.BaseField)

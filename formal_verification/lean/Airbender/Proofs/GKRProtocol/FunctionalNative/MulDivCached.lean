@@ -1,6 +1,6 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.MulDivCachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.MulDivCached.Corollaries
-import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.MulDivCached.Corollaries
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.MulDivCached.Certificate
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.MulDivCached.Certificate
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 
 namespace Airbender.Compiler.FunctionalNative.MulDivCached
@@ -14,5 +14,7 @@ finalize_checked_functional_graph native selectors "{\"steps\":63,\"affine_steps
   lookup Airbender.Compiler.LookupNative.MulDivCached.native
   product Airbender.Compiler.ProductNative.MulDivCached.native
   base Airbender.Compiler.FullArithmeticNative.MulDivCached.native
+  using_steps Airbender.Compiler.FunctionalStepChecks.MulDivCached.programChecked
+  using_base Airbender.Compiler.FunctionalBaseChecks.MulDivCached
 
 end Airbender.Compiler.FunctionalNative.MulDivCached

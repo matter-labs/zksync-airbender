@@ -19,6 +19,7 @@ import_functional_links native from "artifacts/compiler/mul-div-cached.json"
   lookup_source Airbender.Compiler.LookupSourceNative.MulDivCached.native
   memory_model Airbender.Compiler.MemoryNative.MulDivCached.native
   helper_model Airbender.Compiler.HelperNative.MulDivCached.native
+  base_checks Airbender.Compiler.FunctionalBaseChecks.MulDivCached
 
 theorem timestamp_source_witness {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

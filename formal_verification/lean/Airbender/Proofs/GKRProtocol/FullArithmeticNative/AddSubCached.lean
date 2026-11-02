@@ -9,6 +9,6 @@ set_option maxRecDepth 32768
 
 certify_full_compiler_arithmetic native inputs 48 variables 58 sources 30 gates 40
 
-finalize_full_compiler_arithmetic native inputs 48 variables 58 sources 30 gates 40
+finalize_checked_full_compiler_arithmetic native inputs 48 variables 58
 
 end Airbender.Compiler.FullArithmeticNative.AddSubCached

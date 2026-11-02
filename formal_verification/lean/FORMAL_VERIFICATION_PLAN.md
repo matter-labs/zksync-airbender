@@ -19,18 +19,15 @@ The tree contains no unchecked archive of removed Lean proofs.
    Keep the three target definitions and the cached production claims.
 2. Delete old internal shards and compatibility projections.
    Use existing whole-check soundness facts directly.
-3. Consolidate one codec, one generator with subcommands, one freshness check
-   and one checker validation step in CI.
-4. At the end, run a cold full Linux build and one transitive kernel replay.
+3. Run FV at night and on manual dispatch, on the large runner.
+   Use one generator freshness step. Keep the existing checkers.
+4. Run one cold full Linux build and one full transitive kernel replay.
+   Run the full frontend, environment audit and axiom baseline refresh.
    Record per-module time, peak memory and totals in one table.
-5. Use measured costs to choose any further conversion.
-   Process the modules that account for 80 percent of build and replay time.
-   Process the most expensive module first.
-   Stop when the build and replay fit the CI windows.
+5. Fix only failures. Item 3 has stopped. Do not convert more fact families.
 
-Each implementation commit runs focused source builds and generator freshness.
-The full frontend, environment audit and axiom baseline refresh run at the end.
-Linux checks stay at the end, as requested.
+Each deletion commit runs focused source builds of its importers only.
+A background cold build must not block other work.
 
 ## Proof contract
 

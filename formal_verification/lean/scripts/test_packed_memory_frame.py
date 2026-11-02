@@ -11,7 +11,7 @@ import gkr_memory_frame_instances as interface
 
 class NumericMemoryFrameTests(unittest.TestCase):
     def test_complete_both_cache_modes(self):
-        self.assertEqual(len(generator.CASES),11)
+        self.assertEqual(len(generator.CASES),7)
         self.assertEqual(set(generator.CASES),{'AddSubCached','WordMemoryCached','SubwordMemoryCached','BigintCached','BlakeGCached','BlakeRoundCached','KeccakCached'})
         for case in generator.CASES:
             generated=dict(generator.modules(case));stem='Airbender.Proofs.GKRProtocol.MemoryFrameChecks.'+case

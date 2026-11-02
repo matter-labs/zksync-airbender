@@ -31,24 +31,20 @@ private def predicateChecks (proofs : Array (TSyntax `term)) : CommandElabM (TSy
   return result
 
 syntax (name := finalizeCheckedFunctionalGraph) "finalize_checked_functional_graph " ident " selectors " str
-  " lookup " ident " product " ident " base " ident : command
+  " lookup " ident " product " ident " base " ident
+  " using_steps " term " using_base " ident : command
 
 elab_rules : command
   | `(finalize_checked_functional_graph $name:ident selectors $selectorText:str
-      lookup $lookupName:ident product $productName:ident base $baseName:ident) => do
+      lookup $lookupName:ident product $productName:ident base $baseName:ident
+      using_steps $stepsChecked:term using_base $baseChecks:ident) => do
     let data ← match Json.parse selectorText.getString >>= (fromJson? (α := Selectors)) with
       | .ok data => pure data | .error error => throwError "invalid functional proof selectors: {error}"
     let program := fieldName name "program"
     let isBase := fieldName name "isBase"
     let valid := fieldName name "valid"
-    let mut validity ← `(FunctionalProgram.Valid.nil)
-    for index in (List.range data.steps).reverse do
-      let checked := memberName name "stepChecked" index
-      let known := memberName name "known" index
-      let step := memberName name "step" index
-      validity ← `(FunctionalProgram.Valid.cons
-        (FunctionalStep.check_sound (isBase := $isBase) (known := $known) (step := $step) $checked) $validity)
-    elabCommand (← `(theorem $valid : ($program).Valid $isBase [] := $validity))
+    elabCommand (← `(theorem $valid : ($program).Valid $isBase [] :=
+      FunctionalProgram.check_sound $stepsChecked))
     let canonical := fieldName name "canonical"
     let stepHolds := fieldName name "canonical_step_holds"
     let baseHolds := fieldName name "canonical_base"
@@ -100,10 +96,13 @@ elab_rules : command
           let some binding := data.base[ordinal]? | throwError "base affine index is outside reflected list"
           let recipe := memberName name "baseRecipe" ordinal
           let output := memberName name "baseOutput" ordinal
-          let ports := memberName name "basePortsChecked" ordinal
-          let identity := memberName name "baseRelationChecked" ordinal
+          let facts := memberName baseChecks "baseFacts" ordinal
+          let ports ← `(($facts).1)
+          let identity ← `(($facts).2)
           let gate := memberName baseName "gate" binding.gate
-          let gateChecked := memberName baseName "gateChecked" binding.gate
+          let gatesChecked := fieldName baseName "gatesChecked"
+          let gateChecked ← `(List.all_eq_true.mp $gatesChecked $gate
+            (List.get_mem ($artifact).gates ⟨$(quote binding.gate), by decide⟩))
           `(NativeBaseRecipe.definition_of_gate $recipe $bank $isBase $output $gate $ports $identity
             $gateChecked hom challenges baseValue ($canonical hom challenges gamma baseValue)
             ($baseHolds hom challenges gamma baseValue)

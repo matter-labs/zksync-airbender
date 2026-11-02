@@ -19,6 +19,7 @@ import_functional_links native from "artifacts/compiler/shift-binop-cached.json"
   lookup_source Airbender.Compiler.LookupSourceNative.ShiftBinopCached.native
   memory_model Airbender.Compiler.MemoryNative.ShiftBinopCached.native
   helper_model Airbender.Compiler.HelperNative.ShiftBinopCached.native
+  base_checks Airbender.Compiler.FunctionalBaseChecks.ShiftBinopCached
 
 theorem timestamp_source_witness {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

@@ -1,4 +1,4 @@
-"""Require complete functional ports, both modes and exact source freshness."""
+"""Require complete cached functional ports and exact source freshness."""
 import contextlib
 import copy
 import io
@@ -13,16 +13,16 @@ import gkr_functional_instances as interface
 
 
 class FunctionalStepTests(unittest.TestCase):
-    def test_complete_modes_and_old_step_names(self):
+    def test_complete_cached_whole_program(self):
         self.assertEqual(len(generator.CASES), 11)
         self.assertEqual(set(generator.CASES), {stem + mode for stem in generator.CIRCUIT_CASES
                                               for mode in ['Cached']})
-        self.assertEqual([len(generator.capture(case)) for case in generator.DENSE_CASES], [674, 394])
+        self.assertEqual([len(generator.capture(case)) for case in generator.DENSE_CASES], [674])
         for case in generator.CASES:
             count = len(generator.capture(case))
             generated = dict(generator.modules(case))
             stem = 'Airbender.Proofs.GKRProtocol.FunctionalStepChecks.' + case
-            self.assertEqual(len(generated), 4)
+            self.assertEqual(len(generated), 3)
             certificate = generated[stem + '.Certificate']
             self.assertEqual(certificate.count(':= by decide +kernel'), 1)
             self.assertIn('tree_check_sound', certificate)
@@ -30,19 +30,19 @@ class FunctionalStepTests(unittest.TestCase):
             for first in range(0, count, 8):
                 self.assertIn(f'portsPiece{first} :', bindings)
             self.assertIn(f'complete_binding ports sourcePorts {count}', bindings)
-            corollaries = generated[stem + '.Corollaries']
-            self.assertEqual(corollaries.count('theorem stepChecked'), count)
-            for index in range(count):
-                self.assertIn(f'theorem stepChecked{index} : step{index}.check isBase known{index} = true', corollaries)
+            self.assertIn('theorem programChecked : FunctionalProgram.check', certificate)
+            self.assertNotIn(stem + '.Corollaries', generated)
             self.assertNotIn('maxHeartbeats', ''.join(generated.values()))
             name = generator.capture_name(case)
             pair = json.loads((generator.LEAN / f'artifacts/compiler/{name}.json').read_text())
             targets, _, _ = interface.modules(name, case, pair)
             self.assertFalse(any('Steps' in module for module, _ in targets))
-            self.assertIn(stem + '.Corollaries', targets[-1][1])
+            self.assertIn(stem + '.Certificate', targets[-1][1])
+            self.assertIn(f'using_steps Airbender.Compiler.FunctionalStepChecks.{case}.programChecked', targets[-1][1])
             from gkr_packed_functional_base import CASES as PACKED_BASE
             if case in PACKED_BASE:
-                self.assertIn('FunctionalBaseChecks.' + case + '.Corollaries', targets[-1][1])
+                self.assertIn('FunctionalBaseChecks.' + case + '.Certificate', targets[-1][1])
+                self.assertIn(f'using_base Airbender.Compiler.FunctionalBaseChecks.{case}', targets[-1][1])
             else:
                 self.assertTrue(any('Base0' in module for module, _ in targets))
             self.assertIn('noncomputable def native.canonical', targets[0][1])

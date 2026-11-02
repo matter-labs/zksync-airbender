@@ -76,14 +76,6 @@ def modules(case):
             f'  simpa only [Bool.and_eq_true, {native}.basePorts{index}, {native}.baseRelation{index}] using item\n')
     yield stem + '.Certificate', (f'import {stem}.Bindings\n\n' + header + '\n'.join(lines) + end)
 
-    lines = []
-    for index in range(count):
-        lines.append(f'theorem basePortsChecked{index} : basePorts{index} = true := {owner}.baseFacts{index}.1\n')
-        lines.append(f'theorem baseRelationChecked{index} : baseRelation{index} = true := {owner}.baseFacts{index}.2\n')
-    yield stem + '.Corollaries', (f'import {stem}.Certificate\n\nnamespace {native}\n'
-        'set_option warningAsError true\nset_option Elab.async false\n\n' + '\n'.join(lines) + '\nend ' + native + '\n')
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--case', choices=CASES, action='append')

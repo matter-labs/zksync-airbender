@@ -19,6 +19,7 @@ import_functional_links native from "artifacts/compiler/word-memory-cached.json"
   lookup_source Airbender.Compiler.LookupSourceNative.WordMemoryCached.native
   memory_model Airbender.Compiler.MemoryNative.WordMemoryCached.native
   helper_model Airbender.Compiler.HelperNative.WordMemoryCached.native
+  base_checks Airbender.Compiler.FunctionalBaseChecks.WordMemoryCached
 
 theorem timestamp_source_witness {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

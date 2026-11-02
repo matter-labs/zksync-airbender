@@ -19,6 +19,7 @@ import_functional_links native from "artifacts/compiler/add-sub-cached.json"
   lookup_source Airbender.Compiler.LookupSourceNative.AddSubCached.native
   memory_model Airbender.Compiler.MemoryNative.AddSubCached.native
   helper_model Airbender.Compiler.HelperNative.AddSubCached.native
+  base_checks Airbender.Compiler.FunctionalBaseChecks.AddSubCached
 
 theorem timestamp_source_witness {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

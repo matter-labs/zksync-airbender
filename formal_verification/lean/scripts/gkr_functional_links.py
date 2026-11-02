@@ -27,7 +27,8 @@ def module(name, case, pair):
              f'import_functional_links native from "artifacts/compiler/{name}.json"\n'
              f'  graph {graph}\n  base_model {base}\n  typing {typing}\n'
              f'  lookup_fields {lookup}\n  lookup_source {source}\n'
-             f'  memory_model {memory}\n  helper_model {helper}\n')
+             f'  memory_model {memory}\n  helper_model {helper}\n'
+             f'  base_checks Airbender.Compiler.FunctionalBaseChecks.{case}\n')
     outputs = pair['circuit']['global_output_map']
     reductions = [('timestamp', helper, 'helper', True)]
     for key, label in [('GenericLookup', 'generic'), ('Lookup16Bits', 'range16')]:

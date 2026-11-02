@@ -19,6 +19,7 @@ import_functional_links native from "artifacts/compiler/jump-branch-cached.json"
   lookup_source Airbender.Compiler.LookupSourceNative.JumpBranchCached.native
   memory_model Airbender.Compiler.MemoryNative.JumpBranchCached.native
   helper_model Airbender.Compiler.HelperNative.JumpBranchCached.native
+  base_checks Airbender.Compiler.FunctionalBaseChecks.JumpBranchCached
 
 theorem timestamp_source_witness {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

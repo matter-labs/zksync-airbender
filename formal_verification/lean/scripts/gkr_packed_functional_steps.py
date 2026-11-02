@@ -114,18 +114,6 @@ def modules(case):
         f'theorem entriesLength : entries.length = {count} := by\n'
         '  rw [entries, NumericFunctionalStepChecks.sourceEntries_length, programLength]\n' + end)
 
-    lines = []
-    for index in range(count):
-        lines.append(f'theorem stepChecked{index} : step{index}.check isBase known{index} = true := by\n'
-                     f'  have inside : {index} < {owner}.entries.length := by\n'
-                     f'    rw [{owner}.entriesLength]; decide +kernel\n'
-                     f'  exact List.all_eq_true.mp {owner}.entriesChecked\n'
-                     f'    ({owner}.entries.get ⟨{index}, inside⟩) (List.get_mem {owner}.entries ⟨{index}, inside⟩)\n')
-    yield stem + '.Corollaries', (f'import {stem}.Certificate\n\nnamespace {native}\n'
-        'open Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\n'
-        'set_option maxRecDepth 8192\n\n' + '\n'.join(lines) + '\nend ' + native + '\n')
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--case', choices=CASES, action='append')

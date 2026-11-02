@@ -111,10 +111,10 @@ def modules(name, case, pair):
     parts = []
     for phase, (label, count) in enumerate([('Steps', steps), ('Base', bases)]):
         if phase == 0 and case in PACKED_STEPS:
-            parts.append('Airbender.Proofs.GKRProtocol.FunctionalStepChecks.' + case + '.Corollaries')
+            parts.append('Airbender.Proofs.GKRProtocol.FunctionalStepChecks.' + case + '.Certificate')
             continue
         if phase == 1 and case in PACKED_BASE:
-            parts.append('Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.' + case + '.Corollaries')
+            parts.append('Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.' + case + '.Certificate')
             continue
         for part, start in enumerate(range(0, count, 32)):
             module = prefix + label + str(part)
@@ -128,7 +128,9 @@ def modules(name, case, pair):
         f'finalize_checked_functional_graph native selectors {assembly_text}\n'
         f'  lookup Airbender.Compiler.LookupNative.{case}.native\n'
         f'  product Airbender.Compiler.ProductNative.{case}.native\n'
-        f'  base Airbender.Compiler.FullArithmeticNative.{case}.native')))
+        f'  base Airbender.Compiler.FullArithmeticNative.{case}.native\n'
+        f'  using_steps Airbender.Compiler.FunctionalStepChecks.{case}.programChecked\n'
+        f'  using_base Airbender.Compiler.FunctionalBaseChecks.{case}')))
     return result, steps, bases
 
 

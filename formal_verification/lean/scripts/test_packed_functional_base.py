@@ -19,7 +19,7 @@ class FunctionalBaseTests(unittest.TestCase):
         for case in generator.CASES:
             generated = dict(generator.modules(case))
             stem = 'Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.' + case
-            self.assertEqual(len(generated), 5)
+            self.assertEqual(len(generated), 4)
             bindings = generator.base_bindings(case)
             typed = generated[stem + '.Typed']
             for index, binding in enumerate(bindings):
@@ -34,16 +34,17 @@ class FunctionalBaseTests(unittest.TestCase):
                 for index in range(95):
                     self.assertIn(f'piece{index} :', generated[stem + '.Bindings'])
             self.assertIn('check_sound originalEntries data source_binding checked', generated[stem + '.Certificate'])
-            corollaries = generated[stem + '.Corollaries']
+            certificate = generated[stem + '.Certificate']
             for index in range(len(bindings)):
-                self.assertIn(f'theorem basePortsChecked{index} : basePorts{index} = true', corollaries)
-                self.assertIn(f'theorem baseRelationChecked{index} : baseRelation{index} = true', corollaries)
+                self.assertIn(f'theorem baseFacts{index} :', certificate)
+            self.assertNotIn(stem + '.Corollaries', generated)
             self.assertNotIn('maxHeartbeats', ''.join(generated.values()))
             name = capture_name(case)
             pair = json.loads((generator.LEAN / f'artifacts/compiler/{name}.json').read_text())
             targets, _, _ = interface.modules(name, case, pair)
             self.assertFalse(any('Base0' in module for module, _ in targets))
-            self.assertIn(stem + '.Corollaries', targets[-1][1])
+            self.assertIn(stem + '.Certificate', targets[-1][1])
+            self.assertIn(f'using_base Airbender.Compiler.FunctionalBaseChecks.{case}', targets[-1][1])
 
     def test_legacy_base_checks_stay_available(self):
         name, case = 'mul-div-cached', 'MulDivCached'

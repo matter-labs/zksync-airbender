@@ -19,7 +19,7 @@ bindings, with links to their assumptions and evidence.
 The proof path is:
 
 ```text
-no-cache JSON → native Clean constraints → Sail execution (or pinned custom spec)
+cached native JSON → Clean constraints → Sail execution (or pinned custom spec)
 ```
 
 Claims are conditional on explicit interfaces. Captured compiler preservation

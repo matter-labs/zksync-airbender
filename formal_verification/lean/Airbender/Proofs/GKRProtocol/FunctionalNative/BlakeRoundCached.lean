@@ -1,6 +1,6 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.BlakeRoundCachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.BlakeRoundCached.Corollaries
-import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.BlakeRoundCached.Corollaries
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.BlakeRoundCached.Certificate
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.BlakeRoundCached.Certificate
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 
 namespace Airbender.Compiler.FunctionalNative.BlakeRoundCached
@@ -14,5 +14,7 @@ finalize_checked_functional_graph native selectors "{\"steps\":674,\"affine_step
   lookup Airbender.Compiler.LookupNative.BlakeRoundCached.native
   product Airbender.Compiler.ProductNative.BlakeRoundCached.native
   base Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native
+  using_steps Airbender.Compiler.FunctionalStepChecks.BlakeRoundCached.programChecked
+  using_base Airbender.Compiler.FunctionalBaseChecks.BlakeRoundCached
 
 end Airbender.Compiler.FunctionalNative.BlakeRoundCached

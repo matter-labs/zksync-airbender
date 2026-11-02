@@ -19,6 +19,7 @@ import_functional_links native from "artifacts/compiler/unified-cached.json"
   lookup_source Airbender.Compiler.LookupSourceNative.UnifiedCached.native
   memory_model Airbender.Compiler.MemoryNative.UnifiedCached.native
   helper_model Airbender.Compiler.HelperNative.UnifiedCached.native
+  base_checks Airbender.Compiler.FunctionalBaseChecks.UnifiedCached
 
 theorem timestamp_source_witness {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

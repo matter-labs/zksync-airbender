@@ -17,28 +17,25 @@ The local initialization-window fix remains in this branch.
 The tag `fv-archive-uncached` records the branch before scope removal.
 
 The uncached captures and captured-program compatibility modules are removed.
+Old arithmetic, functional and frame shard projections are removed.
+All 58 focused source builds for this deletion pass.
 The cached native acceptance theorems remain in the production gate.
 Three [native corollaries](Airbender/Review/Compiler/Theorems.lean) compose them
 with the full unsigned, reduced and unified target proofs.
 Their focused source builds pass.
-The family rollout has stopped. Generator consolidation remains in progress.
+Item 3 has stopped. No more fact families will be converted.
 The earlier log is in [VERIFICATION_HISTORY.md](VERIFICATION_HISTORY.md).
 The final axiom inventory and baseline refresh remain pending.
 
 ## Plan
 
-1. Remove uncached captures from the gate.
-   Delete the captured-program compatibility layer and its unused dependencies.
-   Delete old internal shard declarations and projection wrappers.
-   Preserve cached Review claims and all three target definitions.
-2. Use one codec, generator, freshness check and CI step.
-3. At the end, run the cold full Linux build and transitive replay.
+1. Finish the three deletion commits. Run focused source builds of importers.
+2. Run FV only at night or on manual dispatch, on the large runner.
+   Use one generator freshness step. Keep the existing checkers.
+3. Run one final cold build, full frontend and transitive kernel replay.
+   Use a 2,048 MiB stack. Run the environment audit and refresh the baseline.
    Record module time, peak memory and totals in one table.
-   Use the lakefile stack for replay: 2,048 MiB.
-4. Use the measured costs to select any further conversion.
-   Stop item 3 when the build and replay fit the CI windows.
-5. For each commit, run focused builds and generator freshness only.
-   Run the full frontend, environment audit and axiom refresh at the end.
+4. Fix only validation failures. Do not change a target or cached Review claim.
 
 ## Runtime
 

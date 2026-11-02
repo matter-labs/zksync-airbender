@@ -19,6 +19,7 @@ import_functional_links native from "artifacts/compiler/subword-memory-cached.js
   lookup_source Airbender.Compiler.LookupSourceNative.SubwordMemoryCached.native
   memory_model Airbender.Compiler.MemoryNative.SubwordMemoryCached.native
   helper_model Airbender.Compiler.HelperNative.SubwordMemoryCached.native
+  base_checks Airbender.Compiler.FunctionalBaseChecks.SubwordMemoryCached
 
 theorem timestamp_source_witness {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
