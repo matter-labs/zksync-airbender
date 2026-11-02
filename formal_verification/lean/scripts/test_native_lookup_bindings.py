@@ -39,12 +39,29 @@ class LookupPremiseGeneration(unittest.TestCase):
                 destination = scratch / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / relative, destination)
+            # The audit inventory also reads checker and capture source files.
+            for tree in ('Airbender/Proofs', 'Tests'):
+                for source in (ROOT / tree).rglob('*.lean'):
+                    destination = scratch / source.relative_to(ROOT)
+                    if not destination.exists():
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copyfile(source, destination)
             for name in ('add-sub', 'jump-branch', 'mul-div', 'shift-binop',
                          'word-memory', 'subword-memory', 'unified'):
                 relative = Path('artifacts/setup') / (name + '.json')
                 destination = scratch / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / relative, destination)
+            # Numeric root generation reads the retained arithmetic payloads.
+            from gkr_numeric_arithmetic import CASES, FAMILIES, NUMERIC_CAPTURES
+            for stem, family in zip(CASES, FAMILIES, strict=True):
+                for mode in ('Cached', 'Uncached'):
+                    if stem + mode not in NUMERIC_CAPTURES or stem == 'BlakeRound':
+                        continue
+                    relative = Path('artifacts/compiler/numeric-arithmetic') / (family + '-' + mode.lower() + '.json')
+                    destination = scratch / relative
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(ROOT / relative, destination)
             command = [sys.executable, '-B', str(ROOT / 'scripts/generate_native_lookup_requests.py'),
                        '--check', '--root', str(scratch)]
             clean = subprocess.run(command, capture_output=True, text=True)

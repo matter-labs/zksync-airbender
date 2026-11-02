@@ -5394,3 +5394,66 @@ Full frontend validation, environment audit and baseline refresh, full transitiv
 replay, cold full measurements and Linux qualification did not run. They remain
 pending for implementation review. The known aggregate ownership collision stays
 deferred. No aggregate import pass is claimed.
+
+## Complete lookup source pilot
+
+Both AddSub modes now use one complete lookup source result per capture.
+NumericLookupSourceChecks.ofAgreement_check proves exact Boolean equality with
+the original bank check and source agreement check. It keeps the complete
+original relation bank and witness. It does not require an empty witness.
+The role and coverage adapter proves exact Boolean equality with each original
+flag. NumericFunctionalBaseChecks.check_sound derives all old check facts.
+
+The data phase reconstructs every actual operand. It retains every registry
+and expansion binding. It imports the original source fields and actual native
+recipes. It preserves all polynomial coefficients, zero terms and term order.
+The result includes all source agreement and bank checks, base roles, mask
+roles, setup flags and exact source coverage. The original sourceField,
+sourceQuery, match and reduction finalizers remain. Exact lookup and RAM
+premises keep their original references. The field transport checks also cover
+the decoder fields. They do not interpret decoded instructions.
+
+All 414 original declarations remain. Kernel preservation accepts all
+248 old theorem types. All 166 imported Expr values are identical.
+Both captures use default heartbeats. All 18 selected modules pass source
+checks and replay. These include both TableNative and FunctionalLinksNative
+consumers. Replay uses the standard 32 MiB stack. It skips no safe dependency.
+All 912 focused axiom checks use only the three allowed axioms.
+
+Nine exact controls pass. The kernel rejects all nine mutations. They cover a
+nonempty witness, a changed witness coefficient, a missing bank round trip,
+a false role, a dropped zero term and both ends of each complete source.
+The nonempty witness fixture uses the source format's Montgomery encoding of
+one. The original legacy importer passes. Three phase controls reject missing
+checker facts, checker facts in the input phase and unsupported phases.
+All three Python generator controls pass. The public premise fixture now
+includes the numeric payloads and checker sources that inventory generation
+reads. Its fourteen-profile control passes. It rejects tuple and decoder-field
+order mutations. CI checks both modes.
+
+| Guarded phase | Time | Peak physical footprint |
+| --- | ---: | ---: |
+| numeric-lookup-source-checker | 3.44 s | 787.64 MiB |
+| lookup-source-importer | 8.25 s | 782.20 MiB |
+| lookup-source-pilot-source | 49.71 s | 838.29 MiB |
+| lookup-source-controls | 27.71 s | 331.45 MiB |
+| lookup-source-pilot-qualification | 35.85 s | 2,267.77 MiB |
+| lookup-source-importer-controls | 6.72 s | 442.27 MiB |
+
+All guards clean their owned workers. Source and interface freshness, static
+checks, source layer checks, the source import graph and workflow syntax pass.
+The explicit inventory has 108,770 roots. It retains all 108,277 prior roots
+and every established root. The 42 original lookup source module objects stay
+in lookup-source-original-oleans. Evidence uses the lookup-source and
+numeric-lookup-source prefixes. No gain in a cold full build is claimed.
+
+The other 20 lookup source captures remain open. The next scaling gate covers
+both BlakeRound modes. Numerical worker port checks, other frame and argument
+checks and the header budget audit also remain. Program-dependent setup and
+captured decoder interpretation stay outside this rollout. Item 3 remains open.
+The hourly follow-up stays active.
+
+Full frontend validation, environment audit and baseline refresh, full transitive
+replay, cold full measurements and Linux qualification did not run. They remain
+pending for implementation review. The known aggregate ownership collision stays
+deferred. No aggregate import pass is claimed.
