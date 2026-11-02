@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply hash-guarded compatibility fixes to pinned Clean for Lean 4.31."""
+"""Apply hash-guarded compatibility fixes to the pinned Clean source."""
 
 from hashlib import sha256
 from pathlib import Path

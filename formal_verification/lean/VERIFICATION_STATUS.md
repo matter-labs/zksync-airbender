@@ -1,5 +1,11 @@
 # Verification status
 
+This branch prepares the [Lean 4.35 and turbo-lean experiment](TURBO_LEAN.md).
+The dependency lock and all 52 source generator checks pass.
+The proof port and runtime trials are pending.
+The validation evidence below describes Lean 4.31 at the fork commit.
+PR #585 and its active validation remain on the original branch.
+
 The model covers only the cached circuits. Production sets use_caches = true.
 
 ## Proofs

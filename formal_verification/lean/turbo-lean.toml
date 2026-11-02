@@ -1,0 +1,15 @@
+# Experiment only. Keep the official kernel validation gate.
+# Turbo-lean revision: 2896cfd092758b8d0fc9977502dc036b0ab79921
+
+[axioms]
+# The tool always allows propext, Classical.choice and Quot.sound.
+# Do not admit any additional axioms.
+allow = []
+
+[zygote]
+timeout_secs = 900
+
+[telemetry]
+enabled = false
+remote = false
+mode = "off"

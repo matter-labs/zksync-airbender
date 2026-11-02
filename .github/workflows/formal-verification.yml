@@ -104,7 +104,7 @@ jobs:
         timeout-minutes: 30
         run: |
           source "$FV_ROOT/guard.sh"
-          test "$(cat lean-toolchain)" = 'leanprover/lean4:v4.31.0'
+          test "$(cat lean-toolchain)" = 'leanprover/lean4:v4.35.0'
           # Pin the executable archive, not a script which downloads latest.
           case "$(uname -m)" in
             x86_64)
@@ -118,7 +118,7 @@ jobs:
           curl -fsSL "https://github.com/leanprover/elan/releases/download/v4.2.4/elan-$elan_arch.tar.gz" -o "$FV_ROOT/elan.tar.gz"
           printf '%s  %s\n' "$elan_sha" "$FV_ROOT/elan.tar.gz" | sha256sum --check
           tar -xzf "$FV_ROOT/elan.tar.gz" -C "$FV_ROOT" elan-init
-          fv lean-toolchain "$FV_ROOT/elan-init" -y --default-toolchain 'leanprover/lean4:v4.31.0'
+          fv lean-toolchain "$FV_ROOT/elan-init" -y --default-toolchain 'leanprover/lean4:v4.35.0'
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Scope immutable cache snapshots to source and toolchain
         id: cache-keys

@@ -16,7 +16,7 @@ rev = "1e563b9c27991b3795eb440c1ee0757edb4ce8b1"
 [[require]]
 name = "mathlib"
 git = "https://github.com/leanprover-community/mathlib4.git"
-rev = "v4.31.0"
+rev = "v4.35.0"
 
 [[lean_lib]]
 name = "SailRV32"
