@@ -42,7 +42,10 @@ The final axiom inventory and baseline refresh remain pending.
 ## Runtime
 
 This host runs macOS. The user enabled Docker.
-The final Linux run has started in an isolated Docker volume.
+The local final validation uses the preserved Mac caches.
+Its import inventory passes after the path-case correction.
+Linux qualification runs last.
+The cold Linux build continues in an isolated Docker volume.
 It uses the pinned ARM64 Lean toolchain and no Mac build objects.
 Bootstrap passed. The cold build covers all 4,201 retained source modules.
 No full Linux validation result is claimed.
@@ -61,11 +64,14 @@ frontend result. The earlier ownership collision remains in the history.
 | Phase | State | Time (s) | Peak memory (MiB) |
 | --- | --- | ---: | ---: |
 | Cold Linux source build, 4,201 modules | Running | Pending | Pending |
-| Full frontend and runtime gates | Queued | Pending | Pending |
-| Environment audit and baseline refresh | Queued | Pending | Pending |
-| Full transitive replay, 2,048 MiB stack | Queued | Pending | Pending |
+| Mac full frontend and runtime gates | Running | Pending | Pending |
+| Mac environment audit and baseline refresh | Queued | Pending | Pending |
+| Mac full transitive replay, 2,048 MiB stack | Queued | Pending | Pending |
+| Linux runtime qualification | Deferred until last | Pending | Pending |
 
-The run uses Docker container `airbender-fv-final-20261102`.
+The Linux run uses Docker container `airbender-fv-final-20261102`.
+Its next stages wait until local validation finishes.
+Local reports are in the sibling `mac-final/` evidence directory.
 Evidence is in `/tmp/airbender-review-round/method-reset-2026-11-02/linux-final/`.
 Normal guarded Lake builds record each module time and peak memory.
 These times include Lake startup and dependency freshness checks.

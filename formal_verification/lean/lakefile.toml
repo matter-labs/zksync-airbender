@@ -88,7 +88,7 @@ root = "Tests.ArtifactImport"
 
 [[lean_exe]]
 name = "program_rows_oracle"
-root = "Scripts.ProgramRowsOracle"
+root = "scripts.ProgramRowsOracle"
 
 [[input_file]]
 name = "unifiedReducedJson"

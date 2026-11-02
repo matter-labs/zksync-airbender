@@ -21,8 +21,9 @@ The tree contains no unchecked archive of removed Lean proofs.
    Use existing whole-check soundness facts directly.
 3. Run FV at night and on manual dispatch, on the large runner.
    Use one generator freshness step. Keep the existing checkers.
-4. Run one cold full Linux build and one full transitive kernel replay.
-   Run the full frontend, environment audit and axiom baseline refresh.
+4. Run the local frontend, environment audit and full transitive kernel replay.
+   Refresh the axiom baseline. Use the preserved Mac caches.
+   Keep the cold Linux build in the background. Finish Linux qualification last.
    Record per-module time, peak memory and totals in one table.
 5. Fix only failures. Item 3 has stopped. Do not convert more fact families.
 

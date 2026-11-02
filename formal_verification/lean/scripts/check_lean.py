@@ -39,13 +39,22 @@ def write_json(path, value):
 
 def discover(root):
     sources = {'Airbender': root / 'Airbender.lean'}
-    for directory, base in [('Airbender', root), ('Tests', root), ('Scripts', root),
+    for directory, base in [('Airbender', root), ('Tests', root),
                             ('generated/sail-rv32', root / 'generated/sail-rv32')]:
         for path in sorted((root / directory).rglob('*.lean')):
             module = '.'.join(path.relative_to(base).with_suffix('').parts)
             if module in sources:
                 raise ValueError('Duplicate project module: ' + module)
             sources[module] = path.resolve()
+    # Tooling lives in lowercase scripts/. Register only configured runtime
+    # roots. A case-insensitive host must not mistake it for a Scripts library.
+    config = tomllib.loads((root / 'lakefile.toml').read_text())
+    for executable in config.get('lean_exe', []):
+        module = executable['root']
+        path = root / executable.get('srcDir', '.') / Path(*module.split('.')).with_suffix('.lean')
+        if module in sources and sources[module].resolve() != path.resolve():
+            raise ValueError('Conflicting executable source: ' + module)
+        sources[module] = path.resolve()
     if not all(path.is_file() for path in sources.values()):
         raise ValueError('Missing top-level Airbender source')
     return sources
@@ -417,7 +426,7 @@ def main():
         if {(item['name'], item['root']) for item in executables} != {
                 ('airbender_import', 'Airbender.Import.Main'),
                 ('airbender_tests', 'Tests.ArtifactImport'),
-                ('program_rows_oracle', 'Scripts.ProgramRowsOracle')}:
+                ('program_rows_oracle', 'scripts.ProgramRowsOracle')}:
             raise ValueError('Executable inventory changed; review serial native coverage')
         source_names = sorted(sources)
         paths = list(sources.values()) + [root / name for name in ('lakefile.toml', 'lake-manifest.json', 'lean-toolchain')]
