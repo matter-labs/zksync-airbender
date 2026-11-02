@@ -25,6 +25,7 @@ class HelperPayload(unittest.TestCase):
             self.assertNotIn('witness := []', '\n'.join(modules.values()))
 
     def test_original_data_before_numeric_imports(self):
+        from gkr_packed_memory_payload import CASES as memory_cases
         for case in packed.CASES:
             text = packed.inputs(case)
             self.assertIn('phase 0', text)
@@ -33,6 +34,7 @@ class HelperPayload(unittest.TestCase):
             self.assertIn('phase 1 using_checks Airbender.Compiler.HelperPayloadChecks.' + case, native)
             self.assertNotIn('maxHeartbeats', native)
             self.assertEqual(text.count('maxHeartbeats 2000000 in'), int(case.startswith('BlakeRound')))
+            self.assertEqual('attribute [local instance 2000]' in text, case in memory_cases)
             self.assertEqual(list(legacy.modules(packed.capture_name(case), case)),
                              [('Airbender.Proofs.GKRProtocol.HelperPayloadChecks.' + case + '.Inputs', text), packed.native(case)])
 

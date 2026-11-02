@@ -111,11 +111,19 @@ private def correspondenceSyntax (proofs : Array (TSyntax `term)) : CommandElabM
   return result
 
 syntax (name := importSourceMemory) "import_source_memory " ident " from " str " source " str
-  " selectors " str " word_bits " num " native_model " ident " typing " ident : command
+  " selectors " str " word_bits " num " native_model " ident " typing " ident (" phase " num)? (" using_checks " ident)? : command
 
 elab_rules : command
   | `(import_source_memory $name:ident from $pairPath:str source $sourcePath:str selectors $selectorText:str
-      word_bits $wordBitsNumber:num native_model $nativePrefix:ident typing $typingName:ident) => do
+      word_bits $wordBitsNumber:num native_model $nativePrefix:ident typing $typingName:ident $[phase $phaseValue:num]? $[using_checks $checks:ident]?) => do
+    let phaseNumber := phaseValue.map (·.getNat) |>.getD 2
+    unless phaseNumber ≤ 2 do throwError "memory phase must be 0, 1 or 2"
+    unless (phaseNumber == 1) == checks.isSome do
+      throwError "memory phase 1 requires using_checks; other phases reject it"
+    let emitData (command : TSyntax `command) : CommandElabM Unit :=
+      if phaseNumber != 1 then elabCommand command else pure ()
+    let emitFinal (command : TSyntax `command) : CommandElabM Unit :=
+      if phaseNumber != 0 then elabCommand command else pure ()
     let pairJson ← match Json.parse (← IO.FS.readFile pairPath.getString) with
       | .ok parsed => pure parsed | .error error => throwError "{error}"
     let sourceJson ← match Json.parse (← IO.FS.readFile sourcePath.getString) with
@@ -167,25 +175,25 @@ elab_rules : command
     for (stem, rows) in sourceGroups do
       let sourceRows := mkIdent (name.getId ++ Name.mkSimple s!"{stem}Rows")
       let terms ← rows.toArray.mapM (rowSyntax sourceCount)
-      elabCommand (← `(noncomputable def $sourceRows : List Source.MemoryRow := [$terms,*]))
+      emitData (← `(noncomputable def $sourceRows : List Source.MemoryRow := [$terms,*]))
     let sourceScope := mkIdent (name.getId ++ `sourceReferencesValid)
     let readRows := mkIdent (name.getId ++ `memoryReadRows)
     let writeRows := mkIdent (name.getId ++ `memoryWriteRows)
     let initialReads := mkIdent (name.getId ++ `initializationReadRows)
     let initialWrites := mkIdent (name.getId ++ `initializationWriteRows)
-    elabCommand (← `(theorem $sourceScope :
+    emitData (← `(theorem $sourceScope :
       ($readRows ++ $writeRows ++ $initialReads ++ $initialWrites).all (fun row => row.fields.all
         (Source.MemoryField.referencesValid $(quote sourceCount) $(quote pair.circuit.memory_layout.ram_access_sets.size)
           $(quote pair.circuit.memory_layout.teardown_sets.size) $(quote (!initial.isEmpty)))) = true := by decide +kernel))
     let addresses := mkIdent (name.getId ++ `addresses)
     let addressTerms ← cert.addresses.mapM addressSyntax
-    elabCommand (← `(def $addresses : List GKRAddress := [$addressTerms,*]))
+    emitData (← `(def $addresses : List GKRAddress := [$addressTerms,*]))
     let wirePlacement := mkIdent (name.getId ++ `wirePlacement)
     let bank := mkIdent (name.getId ++ `bank)
-    elabCommand (← `(def $wirePlacement (address : GKRAddress) : Fin $(quote arity) :=
+    emitData (← `(def $wirePlacement (address : GKRAddress) : Fin $(quote arity) :=
       let index := ($addresses).findIdx (fun candidate => addressEqual candidate address)
       if bound : index < $(quote arity) then ⟨index, bound⟩ else ⟨0, by decide⟩))
-    elabCommand (← `(def $bank : WireBank $(quote arity) :=
+    emitData (← `(def $bank : WireBank $(quote arity) :=
       ⟨fun index => (($addresses)[index.val]?).getD (.BaseLayerWitness 0), $wirePlacement⟩))
     let placement := mkIdent (name.getId ++ `sourcePlacement)
     let readTimesName := mkIdent (name.getId ++ `readTimestamps)
@@ -194,28 +202,35 @@ elab_rules : command
       let timestamps := match query with | .Readonly read => read.read_timestamp | .Write write => write.read_timestamp
       let [low, high] := timestamps.values.toList | throwError "native history timestamp width changed"
       readTimes := readTimes.push (← `(($(← addressSyntax (.BaseLayerMemory low)), $(← addressSyntax (.BaseLayerMemory high)))))
-    elabCommand (← `(def $readTimesName : List (GKRAddress × GKRAddress) := [$readTimes,*]))
+    emitData (← `(def $readTimesName : List (GKRAddress × GKRAddress) := [$readTimes,*]))
     let teardownTimes := mkIdent (name.getId ++ `teardownTimestamps)
     let teardownValues := mkIdent (name.getId ++ `teardownValues)
     let times ← pair.circuit.memory_layout.teardown_sets.mapM (fun entry => pairSyntax entry.1)
     let values ← pair.circuit.memory_layout.teardown_sets.mapM (fun entry => pairSyntax entry.2)
-    elabCommand (← `(def $teardownTimes : List (GKRAddress × GKRAddress) := [$times,*]))
-    elabCommand (← `(def $teardownValues : List (GKRAddress × GKRAddress) := [$values,*]))
+    emitData (← `(def $teardownTimes : List (GKRAddress × GKRAddress) := [$times,*]))
+    emitData (← `(def $teardownValues : List (GKRAddress × GKRAddress) := [$values,*]))
     let projectionInputs := mkIdent (name.getId ++ `projectionInputs)
     let projectionInBank := mkIdent (name.getId ++ `projectionInBank)
     let projectionRoles := mkIdent (name.getId ++ `projectionRoles)
     let extra ← if initial.isEmpty then `([]) else `([GKRAddress.VirtualSetup .InitsAndTeardownsLow,
       GKRAddress.VirtualSetup .InitsAndTeardownsHigh])
-    elabCommand (← `(def $projectionInputs : List GKRAddress :=
+    emitData (← `(def $projectionInputs : List GKRAddress :=
       ($readTimesName ++ $teardownTimes ++ $teardownValues).flatMap (fun locations => [locations.1, locations.2]) ++ $extra))
-    elabCommand (← `(theorem $projectionInBank : ($bank).inputCheck $projectionInputs = true := by decide +kernel))
-    elabCommand (← `(theorem $projectionRoles : ($projectionInputs).all
-      (fun address => ($typingName).compatible (address, .base)) = true := by decide +kernel))
+    if phaseNumber == 2 then
+      emitFinal (← `(theorem $projectionInBank : ($bank).inputCheck $projectionInputs = true := by decide +kernel))
+      emitFinal (← `(theorem $projectionRoles : ($projectionInputs).all
+        (fun address => ($typingName).compatible (address, .base)) = true := by decide +kernel))
+    else if phaseNumber == 1 then
+      let some checks := checks | throwError "missing memory checks"
+      let fact := mkIdent (checks.getId ++ `projection)
+      emitFinal (← `(theorem $projectionInBank : ($bank).inputCheck $projectionInputs = true := ($fact).1))
+      emitFinal (← `(theorem $projectionRoles : ($projectionInputs).all
+        (fun address => ($typingName).compatible (address, .base)) = true := ($fact).2))
     let locateWord := mkIdent (name.getId ++ `wordPlacement)
-    elabCommand (← `(def $locateWord (words : List (GKRAddress × GKRAddress)) (query : Nat) (limb : Fin 2) : Fin $(quote arity) :=
+    emitData (← `(def $locateWord (words : List (GKRAddress × GKRAddress)) (query : Nat) (limb : Fin 2) : Fin $(quote arity) :=
       let locations := (words[query]?).getD (.BaseLayerMemory 0, .BaseLayerMemory 0)
       $wirePlacement (if limb.val = 0 then locations.1 else locations.2)))
-    elabCommand (← `(def $placement : Source.MemoryPlacement $(quote arity) :=
+    emitData (← `(def $placement : Source.MemoryPlacement $(quote arity) :=
       ⟨fun index => if bound : index < $(quote sourceCount) then
           ⟨index, Nat.lt_of_lt_of_le bound (by decide)⟩ else ⟨0, by decide⟩,
         $locateWord $readTimesName,
@@ -223,9 +238,9 @@ elab_rules : command
         $locateWord $teardownTimes, $locateWord $teardownValues⟩))
     let sourceValues := mkIdent (name.getId ++ `sourceValues)
     let sourceExecute := mkIdent (name.getId ++ `sourceExecute)
-    elabCommand (← `(def $sourceValues (base : GKRAddress → Source.BaseField) : Source.MemoryValues :=
+    emitData (← `(def $sourceValues (base : GKRAddress → Source.BaseField) : Source.MemoryValues :=
       ($placement).project (base ∘ ($bank).address)))
-    elabCommand (← `(def $sourceExecute : Source.MemoryField := $(← fieldSyntax sourceCount (.input (.Variable requests.execute)))))
+    emitData (← `(def $sourceExecute : Source.MemoryField := $(← fieldSyntax sourceCount (.input (.Variable requests.execute)))))
     let gates := pair.circuit.layers.flatMap (fun layer => layer.gates ++ layer.gates_with_external_connections)
     let mut copies : Array (TSyntax `term) := #[]
     for gate in gates do
@@ -235,10 +250,10 @@ elab_rules : command
         copies := copies.push (← `(Compiler.add (Compiler.atom $(← finSyntax outIndex arity))
           (Compiler.negate (Compiler.atom $(← finSyntax inIndex arity)))))
     let copyRelations := mkIdent (name.getId ++ `copyRelations)
-    elabCommand (← `(noncomputable def $copyRelations : List (Polynomial $(quote arity) Source.BaseField) := [$copies,*]))
+    emitData (← `(noncomputable def $copyRelations : List (Polynomial $(quote arity) Source.BaseField) := [$copies,*]))
     let definitionsName := mkIdent (name.getId ++ `definitions)
     let definitions ← (LookupSourceData.definitions pair.circuit).mapM definitionSyntax
-    elabCommand (← `(noncomputable def $definitionsName : List AffineDefinition := [$definitions,*]))
+    emitData (← `(noncomputable def $definitionsName : List AffineDefinition := [$definitions,*]))
     let memoryCaches := pair.circuit.layers.flatMap fun layer => layer.cached_relations.filterMap fun (address, relation) =>
       match relation with | .MemoryTuple _ => some address | _ => none
     let mut actualLeaves : Array (Array (TSyntax `term)) := #[]
@@ -262,24 +277,35 @@ elab_rules : command
       let present := mkIdent (name.getId ++ Name.mkSimple s!"expansionPresent{position}")
       let expanded := mkIdent (name.getId ++ Name.mkSimple s!"expanded{position}")
       let indices : Array (TSyntax `term) := selected.expansion.map quote
-      elabCommand (← `(noncomputable def $leaf : LookupPayload := $actual))
-      elabCommand (← `(theorem $found : ($registry)[$(quote position)]? = some $leaf := by rfl))
-      elabCommand (← `(noncomputable def $raw : LookupPayload :=
+      emitData (← `(noncomputable def $leaf : LookupPayload := $actual))
+      emitData (← `(theorem $found : ($registry)[$(quote position)]? = some $leaf := by rfl))
+      emitData (← `(noncomputable def $raw : LookupPayload :=
         (LookupPayload.expand $definitionsName [$indices,*] $leaf).getD (.constant (.natural 0))))
-      elabCommand (← `(theorem $present : (LookupPayload.expand $definitionsName [$indices,*] $leaf).isSome = true := by decide +kernel))
-      elabCommand (← `(theorem $expanded : LookupPayload.expand $definitionsName [$indices,*] $leaf = some $raw :=
+      if phaseNumber == 2 then
+        emitFinal (← `(theorem $present : (LookupPayload.expand $definitionsName [$indices,*] $leaf).isSome = true := by decide +kernel))
+      else if phaseNumber == 1 then
+        let some checks := checks | throwError "missing memory checks"
+        let fact := mkIdent (checks.getId ++ Name.mkSimple s!"expansion{position}")
+        emitFinal (← `(theorem $present : (LookupPayload.expand $definitionsName [$indices,*] $leaf).isSome = true := $fact))
+      emitFinal (← `(theorem $expanded : LookupPayload.expand $definitionsName [$indices,*] $leaf = some $raw :=
         option_eq_some_getD $present (.constant (.natural 0))))
       let roles := mkIdent (name.getId ++ Name.mkSimple s!"roles{position}")
       let inBank := mkIdent (name.getId ++ Name.mkSimple s!"inBank{position}")
-      elabCommand (← `(theorem $roles : ($raw).inputs.all (fun address => ($typingName).compatible (address, .base)) = true := by decide +kernel))
-      elabCommand (← `(theorem $inBank : ($bank).inputCheck ($raw).inputs = true := by decide +kernel))
+      if phaseNumber == 2 then
+        emitFinal (← `(theorem $roles : ($raw).inputs.all (fun address => ($typingName).compatible (address, .base)) = true := by decide +kernel))
+        emitFinal (← `(theorem $inBank : ($bank).inputCheck ($raw).inputs = true := by decide +kernel))
+      else if phaseNumber == 1 then
+        let some checks := checks | throwError "missing memory checks"
+        let fact := mkIdent (checks.getId ++ Name.mkSimple s!"ports{position}")
+        emitFinal (← `(theorem $roles : ($raw).inputs.all (fun address => ($typingName).compatible (address, .base)) = true := ($fact).2))
+        emitFinal (← `(theorem $inBank : ($bank).inputCheck ($raw).inputs = true := ($fact).1))
     for (stem, selection) in cert.groups.entries do
       let some (_, rows) := sourceGroups.find? (fun entry => entry.1 == stem) | throwError "unknown source memory group"
       unless selection.native_leaves.size == selection.source_labels.size &&
           selection.witnesses.size == selection.source_labels.size do throwError "incomplete source memory occurrence correspondence"
       let sourceRows := mkIdent (name.getId ++ Name.mkSimple s!"{stem}Rows")
       let terms := mkIdent (name.getId ++ Name.mkSimple s!"{stem}Terms")
-      elabCommand (← `(noncomputable def $terms {R : Type} [CommRing R]
+      emitData (← `(noncomputable def $terms {R : Type} [CommRing R]
         (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (assignment : TypedAssignment R) : List R :=
         ($sourceRows).map (fun row => row.fingerprint ($sourceValues assignment.base) hom challenges)))
       let mut matchingProofs : Array (TSyntax `term) := #[]
@@ -292,9 +318,14 @@ elab_rules : command
         let checked := mkIdent (name.getId ++ Name.mkSimple s!"{stem}Checked{occurrence}")
         let row ← `( (($sourceRows)[$(quote sourceIndex)]?).getD
           (Source.MemoryRow.mk (.constant 0) .zero .zero .zero))
-        elabCommand (← `(noncomputable def $candidate : MemoryFingerprintCertificate $copyRelations :=
+        emitData (← `(noncomputable def $candidate : MemoryFingerprintCertificate $copyRelations :=
           ⟨$(← combinationSyntax (arity + 7) copies.size selection.witnesses[occurrence]!)⟩))
-        elabCommand (← `(theorem $checked : ($candidate).check $row $placement $bank $raw = true := by decide +kernel))
+        if phaseNumber == 2 then
+          emitFinal (← `(theorem $checked : ($candidate).check $row $placement $bank $raw = true := by decide +kernel))
+        else if phaseNumber == 1 then
+          let some checks := checks | throwError "missing memory checks"
+          let fact := mkIdent (checks.getId ++ Name.mkSimple s!"{stem}Fingerprint{occurrence}")
+          emitFinal (← `(theorem $checked : ($candidate).check $row $placement $bank $raw = true := $fact))
         let found := mkIdent (name.getId ++ Name.mkSimple s!"leafFound{nativeIndex}")
         let expanded := mkIdent (name.getId ++ Name.mkSimple s!"expanded{nativeIndex}")
         let roles := mkIdent (name.getId ++ Name.mkSimple s!"roles{nativeIndex}")
@@ -302,7 +333,7 @@ elab_rules : command
         let matched := mkIdent (name.getId ++ Name.mkSimple s!"{stem}Match{occurrence}")
         let some selector := cert.leaves[nativeIndex]? | throwError "memory occurrence registry index outside actual bank"
         let expansion : Array (TSyntax `term) := selector.expansion.map quote
-        elabCommand (← `(theorem $matched {R : Type} [CommRing R]
+        emitFinal (← `(theorem $matched {R : Type} [CommRing R]
           (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (assignment : TypedAssignment R)
           (defined : ∀ definition ∈ $definitionsName, definition.Holds hom challenges (assignment.value $typingName hom))
           (copies : Satisfies $copyRelations (assignment.base ∘ ($bank).address)) :
@@ -318,11 +349,11 @@ elab_rules : command
       let coverage := mkIdent (name.getId ++ Name.mkSimple s!"{stem}SourceCoverage")
       let nativeLeaves : Array (TSyntax `term) := selection.native_leaves.map quote
       let labels : Array (TSyntax `term) := selection.source_labels.map quote
-      elabCommand (← `(theorem $leavesChecked : ($tree).leaves = [$nativeLeaves,*] := by decide +kernel))
-      elabCommand (← `(theorem $coverage : ([$labels,*] : List Nat).Perm (List.range ($sourceRows).length) := by decide +kernel))
+      emitData (← `(theorem $leavesChecked : ($tree).leaves = [$nativeLeaves,*] := by decide +kernel))
+      emitData (← `(theorem $coverage : ([$labels,*] : List Nat).Perm (List.range ($sourceRows).length) := by decide +kernel))
       let some (_, actualOutput) := nativeGroups.find? (fun entry => entry.1 == stem) | throwError "missing actual memory output"
       let output := mkIdent (name.getId ++ Name.mkSimple s!"{stem}Output")
-      elabCommand (← `(def $output : GKRAddress := $(← addressSyntax actualOutput)))
+      emitData (← `(def $output : GKRAddress := $(← addressSyntax actualOutput)))
       let productEquality ← `(memory_product_translation
         (productRegistryValue $registry hom challenges (assignment.value $typingName hom)) ($terms hom challenges assignment)
         (native := ($tree).leaves) (labels := ([$labels,*] : List Nat))
@@ -337,16 +368,23 @@ elab_rules : command
         let maskInBank := mkIdent (name.getId ++ Name.mkSimple s!"{stem}MaskInBank")
         let maskRole := mkIdent (name.getId ++ Name.mkSimple s!"{stem}MaskRole")
         let maskAddress ← addressSyntax mask.address
-        elabCommand (← `(theorem $shape : $formula = ProductFormula.mask $maskAddress (ProductFormula.ofTree $tree) := by rfl))
-        elabCommand (← `(noncomputable def $maskField : MemoryFieldAgreement $copyRelations :=
+        emitData (← `(theorem $shape : $formula = ProductFormula.mask $maskAddress (ProductFormula.ofTree $tree) := by rfl))
+        emitData (← `(noncomputable def $maskField : MemoryFieldAgreement $copyRelations :=
           ⟨$sourceExecute, Expression.atom ($wirePlacement $maskAddress),
             $(← combinationSyntax arity copies.size mask.witness)⟩))
-        elabCommand (← `(theorem $maskChecked : ($maskField).check $placement = true := by decide +kernel))
-        elabCommand (← `(theorem $maskInBank : ($bank).inputCheck [$maskAddress] = true := by decide +kernel))
-        elabCommand (← `(theorem $maskRole : ($typingName).compatible ($maskAddress, .base) = true := by decide +kernel))
+        if phaseNumber == 2 then
+          emitFinal (← `(theorem $maskChecked : ($maskField).check $placement = true := by decide +kernel))
+          emitFinal (← `(theorem $maskInBank : ($bank).inputCheck [$maskAddress] = true := by decide +kernel))
+          emitFinal (← `(theorem $maskRole : ($typingName).compatible ($maskAddress, .base) = true := by decide +kernel))
+        else if phaseNumber == 1 then
+          let some checks := checks | throwError "missing memory checks"
+          let fact := mkIdent (checks.getId ++ Name.mkSimple s!"{stem}Mask")
+          emitFinal (← `(theorem $maskChecked : ($maskField).check $placement = true := ($fact).2))
+          emitFinal (← `(theorem $maskInBank : ($bank).inputCheck [$maskAddress] = true := ($fact).1.1))
+          emitFinal (← `(theorem $maskRole : ($typingName).compatible ($maskAddress, .base) = true := ($fact).1.2))
         let maskValue ← `(MemoryFieldAgreement.mask_value $placement $bank $maskAddress (by rfl) $maskChecked
           $maskInBank $typingName $maskRole assignment hom copies)
-        elabCommand (← `(theorem $result {R : Type} [CommRing R]
+        emitFinal (← `(theorem $result {R : Type} [CommRing R]
           (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (assignment : TypedAssignment R)
           (defined : ∀ definition ∈ $definitionsName, definition.Holds hom challenges (assignment.value $typingName hom))
           (copies : Satisfies $copyRelations (assignment.base ∘ ($bank).address))
@@ -362,7 +400,7 @@ elab_rules : command
           exact reduced))
       else
         unless selection.mask.isNone do throwError "initialization source product has an unexpected mask"
-        elabCommand (← `(theorem $result {R : Type} [CommRing R]
+        emitFinal (← `(theorem $result {R : Type} [CommRing R]
           (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (assignment : TypedAssignment R)
           (defined : ∀ definition ∈ $definitionsName, definition.Holds hom challenges (assignment.value $typingName hom))
           (copies : Satisfies $copyRelations (assignment.base ∘ ($bank).address))
