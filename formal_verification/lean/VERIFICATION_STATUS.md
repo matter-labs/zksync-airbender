@@ -36,6 +36,11 @@ The pinned turbo tool rejects the real Lake library's `needs` dependencies.
 They protect artifact freshness and remain in place.
 The isolated smoke does not qualify whole-project integration or speed.
 No warm proof-edit measurement is claimed.
+A focused security review and RustSec graph scan are complete.
+The scan reports no known dependency advisories. This is not a security certificate.
+The launcher now clears inherited compiler-simplification exceptions too.
+Further turbo execution requires a disposable OS sandbox without host credentials.
+The time and memory guard does not provide OS isolation.
 The larger dependency and proof port still needs focused builds.
 Only `propext`, `Classical.choice` and `Quot.sound` are permitted.
 The official kernel remains the acceptance gate.

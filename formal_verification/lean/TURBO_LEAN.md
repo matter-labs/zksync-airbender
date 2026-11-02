@@ -41,7 +41,14 @@ Reports remain in `/tmp/airbender-turbo-2026-11-02/` and the printed smoke direc
 
 ## Commands
 
-Use one free local verification worker:
+Use a disposable OS sandbox without host credentials for further tool trials.
+The resource guard limits time and memory. It does not isolate the filesystem
+or network. The earlier host smoke preceded the focused security review.
+That review is not a complete audit of the tool or its dependencies.
+The launcher now also clears inherited compiler-simplification exceptions.
+This policy hardening has static checks; the tool was not rerun after it.
+
+Use one free verification worker inside the isolated environment:
 
 ```sh
 python3 scripts/bounded_fv.py --mib 2560 --resident-mib 5120 --seconds 900 \

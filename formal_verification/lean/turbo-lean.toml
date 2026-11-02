@@ -6,6 +6,10 @@
 # Do not admit any additional axioms.
 allow = []
 
+# Reject additional project compiler simplification exceptions.
+[csimp]
+allow = []
+
 [zygote]
 timeout_secs = 900
 
