@@ -5638,3 +5638,65 @@ Full frontend validation, environment audit and baseline refresh, full transitiv
 replay, cold full measurements and Linux qualification did not run. They remain
 pending for implementation review. The known aggregate ownership collision stays
 deferred. No aggregate import pass is claimed.
+
+## Complete native worker port family
+
+All eight worker captures now use one complete numeric result per capture.
+Both cache modes stay required. This family replaces 32 old modules with 50
+modules, including two shared checker and importer modules. Separate data and
+binding modules keep each build within the memory cap. Exact source bindings
+cover every original column address, previous-clock address and history-index bound. Address codes
+preserve each address class. The checker proves the three original predicates.
+The original read/write token proofs and their exact premises remain.
+
+All 268 original declarations remain. Kernel preservation accepts
+all 228 old theorem types. All 40 imported Expr values
+are identical. This includes each old block and the history predicate.
+The 24 old shard and shared files are retired. Their public facts remain as
+corollaries of the whole result. No worker port semantic proof shard remains.
+
+All 50 selected source modules and standard 32 MiB replays pass.
+They skip no safe dependency. All 2,998 focused axiom queries use only
+the three allowed axioms. All 38 exact controls pass. The kernel rejects
+all 38 mutations. The strict importer rejects an opaque payload.
+All three Python generator controls pass. Complete kernel length bindings
+check the dimensions read from the original source. Source hashes guard the
+dimension plan. Source and interface freshness pass. CI checks both modes.
+
+All new worker captures and all eight native wrappers use default heartbeats.
+Bounded data commands use 16 address pairs or 32 bounds. Source bindings use
+four address pairs or 16 bounds. The largest capture has 507 pairs and 86 bounds.
+Local transparency settings keep the elaborator from unfolding complete data
+recipes during proof assembly. The kernel still checks every exact conversion.
+The largest binding builds in 35.29 s and replays in 32.14 s. Its complete
+certificate builds in 1.93 s and replays in 1.82 s. These are focused prototype
+measurements. The canonical pair also passes. No cold full-build gain is claimed.
+
+The initial assembly exceeded the default heartbeat budget. The local
+transparency settings resolve that cost. The first control runner had a syntax
+error. The corrected runner passes and reuses all passed preservation checks.
+The initial dimension reader used an incomplete search path. The corrected
+reader and the canonical dimension exporter pass.
+
+| Guarded phase | Time | Peak physical footprint |
+| --- | ---: | ---: |
+| Dense source continuation | 225.99 s | 1,145.87 MiB |
+| Other six sources | 210.17 s | 953.38 MiB |
+| Final controls and dimension freshness | 163.53 s | 665.82 MiB |
+
+The cached Inputs module passed in the initial source phase. The continuation
+reuses that pass. All guards clean their owned workers. The inventory has
+154,572 roots. It retains all 152,108 prior roots and every established
+root. Original objects remain in worker-ports-original-oleans. Evidence uses
+the worker-ports prefixes.
+
+Helper-validity transport facts and the header-budget audit remain open.
+Other frame and argument families still need a scope audit. Some already use
+whole checks. Parametric token and lookup proofs stay semantic proofs.
+Program-dependent setup and captured decoder interpretation stay excluded.
+Item 3 remains open. The hourly follow-up stays active.
+
+Full frontend validation, environment audit and baseline refresh, full
+transitive replay, cold full measurements and Linux qualification did not run.
+They remain pending for implementation review. The known aggregate ownership
+collision stays deferred. No aggregate import pass is claimed.

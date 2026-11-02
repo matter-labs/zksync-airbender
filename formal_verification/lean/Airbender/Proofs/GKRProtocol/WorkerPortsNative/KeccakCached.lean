@@ -1,38 +1,20 @@
-import Airbender.Proofs.GKRProtocol.MemoryValueCongruence
-import Airbender.Proofs.GKRProtocol.CleanArithmeticNative.KeccakCached
-import Airbender.Proofs.GKRProtocol.MemoryNative.KeccakCached
-import Airbender.Proofs.GKRProtocol.MemoryTokens
-import Airbender.Proofs.GKRProtocol.FunctionalLinksNative.KeccakCached
-import Airbender.Proofs.GKRProtocol.NativeWitness
-import Airbender.Review.Helpers.Delegation.Requests
+import Airbender.Proofs.GKRProtocol.WorkerPortChecks.KeccakCached.Certificate
 
 namespace Airbender.Compiler.WorkerPortsNative.KeccakCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 65536
-set_option maxHeartbeats 8000000
-
-noncomputable def originalIndices : List Nat := [0] ++
-  (Airbender.Compiler.MemoryNative.KeccakCached.native.memoryReadRows ++ Airbender.Compiler.MemoryNative.KeccakCached.native.memoryWriteRows).flatMap Source.MemoryRow.originalIndices
 
 theorem original_columns : originalIndices.all (fun index =>
     decide (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement index) =
-      Airbender.Compiler.MemoryNative.KeccakCached.native.bank.address (Airbender.Compiler.MemoryNative.KeccakCached.native.sourcePlacement.original index))) = true := by decide +kernel
+      Airbender.Compiler.MemoryNative.KeccakCached.native.bank.address (Airbender.Compiler.MemoryNative.KeccakCached.native.sourcePlacement.original index))) = true := Airbender.Compiler.WorkerPortChecks.KeccakCached.facts.1.1
 
 theorem history_columns : ((List.finRange Airbender.Keccak.importedConstraintsMemoryPorts.size).all (fun index =>
     (List.finRange 2).all (fun limb => decide
       (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement
         ((Airbender.Keccak.importedConstraintsMemoryPorts[index.val]).clock.previous[limb.val])) =
-       Airbender.Compiler.MemoryNative.KeccakCached.native.bank.address (Airbender.Compiler.MemoryNative.KeccakCached.native.sourcePlacement.readTimestamp index.val limb))))) = true := by decide +kernel
-
-noncomputable def logicalValues (assignment : Nat → Source.BaseField) (other : Source.MemoryValues) : Source.MemoryValues :=
-  { other with
-    original := assignment
-    readTimestamp := fun query limb =>
-      if bounded : query < Airbender.Keccak.importedConstraintsMemoryPorts.size then
-        assignment ((Airbender.Keccak.importedConstraintsMemoryPorts[query]).clock.previous[limb.val])
-      else 0 }
+       Airbender.Compiler.MemoryNative.KeccakCached.native.bank.address (Airbender.Compiler.MemoryNative.KeccakCached.native.sourcePlacement.readTimestamp index.val limb))))) = true := Airbender.Compiler.WorkerPortChecks.KeccakCached.facts.1.2
 
 theorem source_read_tokens (assignment : Nat → Source.BaseField) (other : Source.MemoryValues) :
     (Airbender.Compiler.MemoryNative.KeccakCached.native.memoryReadRows.map (fun row => row.token (logicalValues assignment other))) =
@@ -77,7 +59,7 @@ theorem history_assignment (physical : GKRAddress → Source.BaseField) (data : 
 theorem history_indices :
     (Airbender.Compiler.MemoryNative.KeccakCached.native.memoryReadRows ++ Airbender.Compiler.MemoryNative.KeccakCached.native.memoryWriteRows).all
       (fun row => row.fields.all (fun field => field.historyIndices.all
-        (fun index => decide (index.1 < Airbender.Keccak.importedConstraintsMemoryPorts.size)))) = true := by decide +kernel
+        (fun index => decide (index.1 < Airbender.Keccak.importedConstraintsMemoryPorts.size)))) = true := Airbender.Compiler.WorkerPortChecks.KeccakCached.facts.2
 
 theorem row_token_from_base (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (row : Source.MemoryRow)

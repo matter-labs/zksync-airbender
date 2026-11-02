@@ -1,35 +1,233 @@
-import Airbender.Proofs.GKRProtocol.WorkerPortsParts.BlakeRoundUncached.Part0
-import Airbender.Proofs.GKRProtocol.WorkerPortsParts.BlakeRoundUncached.Part1
-import Airbender.Proofs.GKRProtocol.WorkerPortsParts.BlakeRoundUncached.Part2
-import Airbender.Proofs.GKRProtocol.WorkerPortsParts.BlakeRoundUncached.Part3
-import Airbender.Proofs.GKRProtocol.WorkerPortsParts.BlakeRoundUncached.Part4
-import Airbender.Proofs.GKRProtocol.WorkerPortsParts.BlakeRoundUncached.Part5
-import Airbender.Proofs.GKRProtocol.WorkerPortsParts.BlakeRoundUncached.Part6
-import Airbender.Proofs.GKRProtocol.WorkerPortsParts.BlakeRoundUncached.Part7
-import Airbender.Proofs.GKRProtocol.WorkerPortsParts.BlakeRoundUncached.Part8
-import Airbender.Proofs.GKRProtocol.WorkerPortsParts.BlakeRoundUncached.Part9
-import Airbender.Proofs.GKRProtocol.WorkerPortsParts.BlakeRoundUncached.Part10
+import Airbender.Proofs.GKRProtocol.WorkerPortChecks.BlakeRoundUncached.Certificate
 
 namespace Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 65536
-set_option maxHeartbeats 8000000
 
-theorem history_columns : (List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).all historyPredicate = true := by
-  have coverage : ([historyPart0Block, historyPart4Block, historyPart8Block, historyPart12Block, historyPart16Block, historyPart20Block, historyPart24Block, historyPart28Block, historyPart32Block, historyPart36Block, historyPart40Block] : List (List (Fin Airbender.Blake2Round.importedConstraintsMemoryPorts.size))).flatten = List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size := by rfl
-  rw [← coverage]
-  apply QueryFrameImport.all_flatten_true
-  exact BoolChecks.all_true (predicate := fun block : List (Fin Airbender.Blake2Round.importedConstraintsMemoryPorts.size) => block.all historyPredicate) (items := [historyPart0Block, historyPart4Block, historyPart8Block, historyPart12Block, historyPart16Block, historyPart20Block, historyPart24Block, historyPart28Block, historyPart32Block, historyPart36Block, historyPart40Block]) (BoolChecks.cons historyPart0 (BoolChecks.cons historyPart4 (BoolChecks.cons historyPart8 (BoolChecks.cons historyPart12 (BoolChecks.cons historyPart16 (BoolChecks.cons historyPart20 (BoolChecks.cons historyPart24 (BoolChecks.cons historyPart28 (BoolChecks.cons historyPart32 (BoolChecks.cons historyPart36 (BoolChecks.cons historyPart40 (BoolChecks.nil))))))))))))
+theorem original_columns : originalIndices.all (fun index =>
+    decide (Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.BlakeRoundUncached.native.placement index) =
+      Airbender.Compiler.MemoryNative.BlakeRoundUncached.native.bank.address (Airbender.Compiler.MemoryNative.BlakeRoundUncached.native.sourcePlacement.original index))) = true := Airbender.Compiler.WorkerPortChecks.BlakeRoundUncached.facts.1.1
 
-noncomputable def logicalValues (assignment : Nat → Source.BaseField) (other : Source.MemoryValues) : Source.MemoryValues :=
-  { other with
-    original := assignment
-    readTimestamp := fun query limb =>
-      if bounded : query < Airbender.Blake2Round.importedConstraintsMemoryPorts.size then
-        assignment ((Airbender.Blake2Round.importedConstraintsMemoryPorts[query]).clock.previous[limb.val])
-      else 0 }
+theorem history_columns : (List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).all historyPredicate = true := Airbender.Compiler.WorkerPortChecks.BlakeRoundUncached.facts.1.2
+
+theorem historyPart0Item0 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨0, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart0Item1 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨1, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart0Item2 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨2, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart0Item3 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨3, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+noncomputable def historyPart0Block := ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).drop 0).take 4
+
+theorem historyPart0 : historyPart0Block.all historyPredicate = true := by
+  apply List.all_eq_true.mpr
+  intro index member
+  apply List.all_eq_true.mp history_columns index
+  exact List.mem_of_mem_drop (List.mem_of_mem_take member)
+
+theorem historyPart4Item4 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨4, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart4Item5 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨5, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart4Item6 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨6, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart4Item7 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨7, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+noncomputable def historyPart4Block := ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).drop 4).take 4
+
+theorem historyPart4 : historyPart4Block.all historyPredicate = true := by
+  apply List.all_eq_true.mpr
+  intro index member
+  apply List.all_eq_true.mp history_columns index
+  exact List.mem_of_mem_drop (List.mem_of_mem_take member)
+
+theorem historyPart8Item8 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨8, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart8Item9 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨9, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart8Item10 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨10, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart8Item11 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨11, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+noncomputable def historyPart8Block := ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).drop 8).take 4
+
+theorem historyPart8 : historyPart8Block.all historyPredicate = true := by
+  apply List.all_eq_true.mpr
+  intro index member
+  apply List.all_eq_true.mp history_columns index
+  exact List.mem_of_mem_drop (List.mem_of_mem_take member)
+
+theorem historyPart12Item12 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨12, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart12Item13 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨13, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart12Item14 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨14, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart12Item15 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨15, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+noncomputable def historyPart12Block := ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).drop 12).take 4
+
+theorem historyPart12 : historyPart12Block.all historyPredicate = true := by
+  apply List.all_eq_true.mpr
+  intro index member
+  apply List.all_eq_true.mp history_columns index
+  exact List.mem_of_mem_drop (List.mem_of_mem_take member)
+
+theorem historyPart16Item16 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨16, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart16Item17 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨17, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart16Item18 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨18, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart16Item19 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨19, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+noncomputable def historyPart16Block := ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).drop 16).take 4
+
+theorem historyPart16 : historyPart16Block.all historyPredicate = true := by
+  apply List.all_eq_true.mpr
+  intro index member
+  apply List.all_eq_true.mp history_columns index
+  exact List.mem_of_mem_drop (List.mem_of_mem_take member)
+
+theorem historyPart20Item20 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨20, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart20Item21 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨21, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart20Item22 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨22, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart20Item23 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨23, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+noncomputable def historyPart20Block := ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).drop 20).take 4
+
+theorem historyPart20 : historyPart20Block.all historyPredicate = true := by
+  apply List.all_eq_true.mpr
+  intro index member
+  apply List.all_eq_true.mp history_columns index
+  exact List.mem_of_mem_drop (List.mem_of_mem_take member)
+
+theorem historyPart24Item24 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨24, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart24Item25 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨25, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart24Item26 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨26, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart24Item27 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨27, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+noncomputable def historyPart24Block := ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).drop 24).take 4
+
+theorem historyPart24 : historyPart24Block.all historyPredicate = true := by
+  apply List.all_eq_true.mpr
+  intro index member
+  apply List.all_eq_true.mp history_columns index
+  exact List.mem_of_mem_drop (List.mem_of_mem_take member)
+
+theorem historyPart28Item28 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨28, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart28Item29 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨29, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart28Item30 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨30, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart28Item31 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨31, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+noncomputable def historyPart28Block := ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).drop 28).take 4
+
+theorem historyPart28 : historyPart28Block.all historyPredicate = true := by
+  apply List.all_eq_true.mpr
+  intro index member
+  apply List.all_eq_true.mp history_columns index
+  exact List.mem_of_mem_drop (List.mem_of_mem_take member)
+
+theorem historyPart32Item32 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨32, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart32Item33 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨33, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart32Item34 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨34, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart32Item35 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨35, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+noncomputable def historyPart32Block := ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).drop 32).take 4
+
+theorem historyPart32 : historyPart32Block.all historyPredicate = true := by
+  apply List.all_eq_true.mpr
+  intro index member
+  apply List.all_eq_true.mp history_columns index
+  exact List.mem_of_mem_drop (List.mem_of_mem_take member)
+
+theorem historyPart36Item36 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨36, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart36Item37 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨37, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart36Item38 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨38, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart36Item39 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨39, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+noncomputable def historyPart36Block := ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).drop 36).take 4
+
+theorem historyPart36 : historyPart36Block.all historyPredicate = true := by
+  apply List.all_eq_true.mpr
+  intro index member
+  apply List.all_eq_true.mp history_columns index
+  exact List.mem_of_mem_drop (List.mem_of_mem_take member)
+
+theorem historyPart40Item40 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨40, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart40Item41 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨41, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+theorem historyPart40Item42 : historyPredicate ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).get ⟨42, by decide +kernel⟩) = true :=
+  List.all_eq_true.mp history_columns _ (List.get_mem _ _)
+
+noncomputable def historyPart40Block := ((List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size).drop 40).take 3
+
+theorem historyPart40 : historyPart40Block.all historyPredicate = true := by
+  apply List.all_eq_true.mpr
+  intro index member
+  apply List.all_eq_true.mp history_columns index
+  exact List.mem_of_mem_drop (List.mem_of_mem_take member)
 
 theorem source_read_tokens (assignment : Nat → Source.BaseField) (other : Source.MemoryValues) :
     (Airbender.Compiler.MemoryNative.BlakeRoundUncached.native.memoryReadRows.map (fun row => row.token (logicalValues assignment other))) =
@@ -74,7 +272,7 @@ theorem history_assignment (physical : GKRAddress → Source.BaseField) (data : 
 theorem history_indices :
     (Airbender.Compiler.MemoryNative.BlakeRoundUncached.native.memoryReadRows ++ Airbender.Compiler.MemoryNative.BlakeRoundUncached.native.memoryWriteRows).all
       (fun row => row.fields.all (fun field => field.historyIndices.all
-        (fun index => decide (index.1 < Airbender.Blake2Round.importedConstraintsMemoryPorts.size)))) = true := by decide +kernel
+        (fun index => decide (index.1 < Airbender.Blake2Round.importedConstraintsMemoryPorts.size)))) = true := Airbender.Compiler.WorkerPortChecks.BlakeRoundUncached.facts.2
 
 theorem row_token_from_base (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (row : Source.MemoryRow)
