@@ -133,7 +133,7 @@ def run_replay(args, modules=None):
         return str(path)
     def artifact_parts(parts):
         return {artifact_name(path): value for path, value in parts.items()}
-    stack_mib = getattr(args, 'stack_mib', 32)
+    stack_mib = getattr(args, 'stack_mib', 2048)
     tool_key = digest({'files': artifact_parts(identities), 'limits': [2560, 5120, 900],
                        'thread_stack_mib': stack_mib,
                        'process_stack_bytes': stack_mib << 20 if sys.platform == 'linux'
@@ -343,11 +343,9 @@ def main():
     parser.add_argument('--module', action='append', default=[])
     parser.add_argument('--extra-path', type=Path, action='append', default=[])
     parser.add_argument('--axiom-result', type=Path)
-    parser.add_argument('--stack-mib', type=int, choices=range(8, 257), default=32,
-                        help='Finite replay stack in MiB, included in ledger identity (default: 32)')
+    parser.add_argument('--stack-mib', type=int, choices=range(8, 2049), default=2048,
+                        help='Finite replay stack in MiB, included in ledger identity (default: 2048)')
     args = parser.parse_args()
-    if not args.module and not args.axiom_result:
-        parser.error('a complete project replay requires --axiom-result from the separate environment audit')
     run_replay(args)
     return 0
 

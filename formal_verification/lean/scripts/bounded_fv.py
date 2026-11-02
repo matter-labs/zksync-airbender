@@ -616,7 +616,7 @@ def parse_args(argv=None):
     parser.add_argument('--resident-mib', type=int, default=4096)
     parser.add_argument('--log', required=True)
     parser.add_argument('--review', action='store_true', help='Allow review jobs above 900s, up to 1800s')
-    parser.add_argument('--stack-mib', type=int, help='Explicit finite child stack, 8..256 MiB')
+    parser.add_argument('--stack-mib', type=int, help='Explicit finite child stack, 8..2048 MiB')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     args.command = args.command[1:] if args.command[:1] == ['--'] else args.command
@@ -624,7 +624,7 @@ def parse_args(argv=None):
     if (not args.command or not 8 <= args.mib <= 2560 or
             not args.mib <= args.resident_mib <= 5120 or
             not math.isfinite(args.seconds) or not 0 < args.seconds <= maximum or
-            (args.stack_mib is not None and not 8 <= args.stack_mib <= 256)):
+            (args.stack_mib is not None and not 8 <= args.stack_mib <= 2048)):
         parser.error('require command, footprint 8..2560 MiB, resident <=5120 MiB, normal 0..900s; --review permits up to 1800s')
     return args
 

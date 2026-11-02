@@ -469,7 +469,7 @@ jobs:
           sysroot="$(lean --print-prefix)"
           fv_stage kernel-replay 54000 python3 scripts/check_kernel_replay.py --guard scripts/bounded_fv.py \
             --sysroot "$sysroot" --output "$FV_ROOT/replay" \
-            --ledger "$FV_REPLAY_LEDGER" --fresh-project --stack-mib 32 \
+            --ledger "$FV_REPLAY_LEDGER" --fresh-project --stack-mib 2048 \
             --axiom-result "$FV_ROOT/axioms/axiom-result.json"
       - name: Save checked replay progress before controls, including failed replay stages
         if: always() && steps.replay-cache.outcome == 'success' && steps.kernel-replay.outcome != 'skipped'

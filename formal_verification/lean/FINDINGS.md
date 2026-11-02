@@ -46,119 +46,25 @@ are not interchangeable with a full verifier or cryptographic exploit.
 
 ## Kernel fixed-setup provenance
 
-The full unsigned target has an unresolved fixed-setup binding. `FixedSetup`
-describes parsed JSON. `Setup.parse` now uses a total incremental decoder.
-Its block-composition and final-result laws pass kernel checks. The earlier
-opaque `Lean.Json.parse` call now serves only as a differential test oracle.
+All three split Keccak source certificates are proved.
+The kernel connects each retained JSON source to its original canonical rows.
+`parity_original_source_rows` proves the complete parity source relation.
+`theta_original_source_rows` proves the complete theta/rho source relation.
+`chi_original_source_rows` proves chi5 membership under native tags 65 and 66.
+These tags exclude physical zero padding from chi5 queries.
+Parity and theta/rho certificates include their physical padding.
 
-The decoder retains the existing JSON values on the supported 64-bit host.
-Checks cover all 18 retained setup-directory JSON files. They also compare
-every decoded artifact field. Number, Unicode, duplicate-key and malformed
-input controls pass. These runtime checks preserve importer evidence. They
-do not close the source-to-table kernel obligation.
+The proofs retain the original source bytes, parser validation, columns and
+physical lengths. They use exact source parsing and RLE decoder certificates.
+They do not replace the retained sources with mathematical recipes.
+The full unsigned target uses these certificates with native execution,
+public program binding and initialization.
+Exact lookup, request and RAM premises remain explicit.
 
-The setup transport proof covers all three workers in both cache modes.
-Three `FixedSetupRows` certificates suffice for the original target. Each
-certificate must map every parsed physical row, including padding, into its
-complete canonical table. Parity, theta/rho and chi5 certificates remain open.
-No new assumption closes them. Full native execution, public supported-use
-induction and the initialization adapter are kernel checked behind this
-explicit source obligation.
-
-The parsed-field transport proof now preserves the exact columns and physical
-domain length. It uses a successful parse as its premise. It keeps artifact
-validation in that premise. A source-row certificate can use these fields
-without evaluating unrelated circuit data.
-
-Direct monolithic evaluation exceeds the fixed memory cap. A separate block
-generator proved parsing for all 909,925 theta/rho source bytes in 238 seconds.
-The experiment used 1,308 MiB of physical memory. Its source uses a character
-block representation of the same bytes. The generator remains outside the
-branch. It does not prove the three source-to-table certificates. Repeated
-RLE blocks offer a smaller certificate representation. The retained artifacts
-and imported values stay unchanged.
-
-The source-array composition obligation is now proved. One `EagerSource`
-certificate can cover every occurrence of an encoded block. The composition
-rules preserve the exact byte order and decoded RLE block order. Kernel
-controls cover affine, dense and periodic encodings. They reject changed
-values and missing separators. The three production source certificates
-remain open.
-
-The number-token composition obligation is also proved. A Boolean checker
-requires full consumption and exact JSON number equality. Its soundness
-theorem covers every parser context. Array and object rules reuse the result.
-Kernel controls include signed values, exponents, duplicate keys and malformed
-tokens. Captured source bytes, imported values and target premises stay
-unchanged. Complete the three source-table certificates before claiming the
-full target.
-
-Shared source composition now covers every JSON form in the retained split
-sources. A string check supplies both value and key parsing. Node proofs
-compose those facts with checked numbers, booleans, null values, arrays and
-objects. The unescaped string guard passes the runtime scan of the three
-retained sources. Kernel controls also reject unsupported raw escape and
-control characters. The physical source-to-table certificates remain open.
-
-The shared table interpreter now proves source parsing for all three retained
-split captures. The generated representation keeps each key, value and field
-order. Its equality proofs preserve the earlier source-node values. Each
-child now evaluates once. This removes repeated work during byte checks.
-
-The generator freshness check passes. Exact byte comparisons also pass for
-parity, theta/rho and chi5. These comparisons check imported values. The kernel
-checks the parser theorem for each represented source. It does not use the
-runtime comparison as a proof. The original target statements stay unchanged.
-All three physical source-to-table certificates remain open. They must decode
-the columns and match every physical row, including padding, to the canonical
-tables.
-
-The generic RLE decoder now has a kernel proof for every supported block.
-It preserves affine lengths and signed steps, dense values, and periodic
-repetitions and signed strides. Column and array rules preserve every entry
-and its order. The source-row adapter uses the exact retained column JSON.
-Its physical-row premise stays explicit. Bind these decoder rules to each
-captured column and prove physical row membership next.
-
-The three captured sources now have exact column decoder certificates.
-The kernel checks all 283 parity blocks, 2,100 theta/rho blocks and 539 chi5
-blocks. The certificates preserve all 8, 9 and 11 physical columns. They also
-bind the trace lengths. Large arrays share a checked scalar dictionary.
-Their proof preserves every entry and its order. It does not normalize a
-large literal JSON array in the elaborator.
-
-The parity and theta/rho row certificates remain open. They must include
-physical padding. Their canonical tables include that padding.
-
-The earlier `SplitChiPhysicalRows` helper is too strong. The canonical chi5
-table has 1,048,697 real rows. Its tags are 65 and 66. The physical source has
-4,194,304 rows and includes zero padding. The kernel proves that the canonical
-table excludes the all-zero row. Thus full physical containment cannot hold
-for chi5. The old conditional helper remains available for compatibility.
-It is not the route to the full target.
-
-The actual chi5 queries use only tags 65 and 66. Guarded source transport now
-uses these native tags. It preserves all constraints, assertions and timestamp
-lookups in both cache modes. This proof interface correction does not show a
-circuit defect. It does not change the target, canonical table or original
-setup premise. Prove canonical membership for these queried source rows next.
-Bind the equal byte representation at the original setup-source interface
-when the row certificates are complete.
-
-The physical padding cases now have kernel proofs. The original parser
-validation supplies complete column coverage. Exact terminal-block facts
-supply zero values. Parity and theta/rho padding rows belong to their original
-canonical tables. Native chi5 tags exclude its padding. No target premise
-changed. The remaining real-row obligations are `SplitParityRealRows`,
-`SplitThetaRealRows` and `SplitChiRealRows`. Their adapters preserve the full
-parsed row and original canonical table. The three real-row proofs remain open.
-The five chi5 arithmetic input columns now match the original canonical
-columns on every row. Its complete tag column also matches. The kernel checks
-these correspondences from the retained source blocks. The chi5 controller source rows now have canonical lookup membership proofs.
-The kernel checks all 1,331 fields. Exact source suffix decoding and the
-original parse validation supply their positions. Two chi5 arithmetic output columns now also match the canonical table.
-The kernel checks their retained templates and periodic selection rules.
-Three arithmetic output column correspondences remain open.
+The source certificates are in
+[ParitySourceBinding](Airbender/Proofs/FullUnsigned/ParitySourceBinding.lean),
+[ThetaSourceBinding](Airbender/Proofs/FullUnsigned/ThetaSourceBinding.lean) and
+[ChiSourceBinding](Airbender/Proofs/FullUnsigned/ChiSourceBinding.lean).
 
 ## Finding status versus conditional proof coverage
 
