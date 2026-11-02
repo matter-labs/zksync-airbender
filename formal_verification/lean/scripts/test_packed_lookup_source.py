@@ -11,12 +11,16 @@ import gkr_packed_lookup_source as generator
 
 class LookupSourceTests(unittest.TestCase):
     def test_complete_original_checks(self):
-        expected = {
-            'AddSubCached': (38, 15, 18),
-            'AddSubUncached': (38, 15, 18),
-            'BlakeRoundCached': (1437, 1152, 283),
-            'BlakeRoundUncached': (1437, 1152, 283),
+        families = {
+            'AddSub': (38, 15, 18), 'JumpBranch': (80, 55, 20),
+            'MulDiv': (123, 90, 28), 'ShiftBinop': (87, 63, 19),
+            'WordMemory': (43, 22, 16), 'SubwordMemory': (57, 33, 19),
+            'Unified': (109, 74, 30), 'Bigint': (356, 215, 137),
+            'BlakeG': (215, 171, 42), 'BlakeRound': (1437, 1152, 283),
+            'Keccak': (403, 328, 73),
         }
+        expected = {family + mode: counts for family, counts in families.items()
+                    for mode in ('Cached', 'Uncached')}
         self.assertEqual(set(generator.CASES), set(expected))
         for case in generator.CASES:
             count, fields, operands = expected[case]
@@ -50,7 +54,7 @@ class LookupSourceTests(unittest.TestCase):
             self.assertNotIn('originalEntries.get', certificate)
             first = (count - 1) // 8 * 8
             self.assertIn(f'(originalEntries.drop {first}).take {count - first}', certificate)
-            if operands > 128:
+            if case.startswith('BlakeRound'):
                 self.assertEqual(inputs.count('set_option maxHeartbeats 2000000 in'), 1)
                 self.assertNotIn('maxHeartbeats', ''.join(source for name, source in generated.items()
                     if name != stem + '.Inputs'))

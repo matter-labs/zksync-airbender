@@ -5590,3 +5590,51 @@ Full frontend validation, environment audit and baseline refresh, full transitiv
 replay, cold full measurements and Linux qualification did not run. They remain
 pending for implementation review. The known aggregate ownership collision stays
 deferred. No aggregate import pass is claimed.
+
+## Complete native lookup source family
+
+All 22 captures now use one complete numeric lookup source result per capture.
+The final 18 captures retain every original witness and relation bank.
+Complete source bindings keep every polynomial coefficient, zero term and term
+order. The result covers every role, bank round trip, field agreement, mask,
+setup flag and exact source coverage. The original semantic finalizers and
+exact lookup, request and RAM premises remain.
+
+All 16,004 old declarations in the final 18 captures remain.
+Kernel preservation accepts all 9,658 old theorem types.
+All 6,346 imported Expr values are identical.
+All 144 selected source modules and standard 32 MiB replays pass.
+They include every TableNative and FunctionalLinksNative direct consumer.
+They skip no safe dependency. All 36,604 focused axiom queries use only
+the three allowed axioms. All 36 new exact controls pass. The kernel rejects
+all 36 mutations. Prior generic witness, bank, role and legacy controls retain
+their passes. All three expanded Python generator controls pass.
+
+All 18 new captures use default heartbeats. Only the two previously qualified
+dense source-definition imports keep their scoped two-million budgets.
+The four adopted AddSub and BlakeRound outputs stay unchanged. All lookup
+source semantic proof shards are gone. Bounded data commands and complete
+source-binding leaves retain one whole semantic result per capture.
+
+| Guarded phase | Time | Peak physical footprint |
+| --- | ---: | ---: |
+| lookup-source-remaining-dense-source | 339.09 s | 897.43 MiB |
+| lookup-source-remaining-dense-qualification | 161.49 s | 2,281.52 MiB |
+| lookup-source-remaining-ordinary-source | 323.91 s | 846.62 MiB |
+| lookup-source-remaining-ordinary-qualification | 275.30 s | 2,278.09 MiB |
+
+All guards clean their owned workers. Source and interface freshness, static
+checks, source layers, the source import graph and workflow syntax pass.
+CI keeps both cache modes required. The inventory has 152,108 roots.
+It retains all 131,598 prior roots and every established root. Original objects
+remain in lookup-source-original-oleans. Evidence uses the lookup-source-remaining
+prefixes. No cold full-build gain is claimed.
+
+Numerical worker port checks, other frame and argument families and the header
+budget audit remain. Program-dependent setup and captured decoder interpretation
+stay outside this rollout. Item 3 remains open. The hourly follow-up stays active.
+
+Full frontend validation, environment audit and baseline refresh, full transitive
+replay, cold full measurements and Linux qualification did not run. They remain
+pending for implementation review. The known aggregate ownership collision stays
+deferred. No aggregate import pass is claimed.
