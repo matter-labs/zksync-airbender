@@ -28,7 +28,9 @@ Its recursion limit stays unchanged.
 The Shift lookup proof also uses shared row bounds and byte extraction.
 Its original row predicate and native contribution function stay unchanged.
 The reported Sail shift and unified arithmetic proofs compile.
-The latest batch qualifies 24 proof modules and all 54 generator checks.
+The mixed window and worker execution proofs also compile.
+Their state binders keep their exact Lean names.
+The latest batch qualifies 22 proof modules and all 54 generator checks.
 Controller geometry uses a symbolic index before specializing the native row.
 Its recursion and resource limits stay unchanged.
 Existing definitions and theorem statements stay unchanged.

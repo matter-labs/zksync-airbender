@@ -86,9 +86,9 @@ theorem mixed_window_steps [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p time
       simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_false_iff_not, decide_eq_true_eq, Nat.not_le]
       exact and_comm.trans (instruction_window_clock aligned first last (by omega) (by omega) ordered)
     by_cases inside : lower ≤ Delegation.Caller.startClock row ∧ Delegation.Caller.startClock row < upper
-    · simp only [decide_eq_true inside, if_true]
+    · simp only [decide_eq_true inside, ite_true]
       exact List.filter_eq_self.mpr (fun edge present => (portFilter edge present).trans (decide_eq_true inside))
-    · simp only [decide_eq_false inside, Bool.false_eq_true, if_false]
+    · simp only [decide_eq_false inside, Bool.false_eq_true, ite_false]
       apply List.filter_eq_nil_iff.mpr
       intro edge present
       rw [portFilter edge present, decide_eq_false inside]
@@ -146,7 +146,7 @@ theorem mixed_window_execution [Fact p.Prime] (hp : FieldCapacity.NativeHashCapa
     have value := zeroRules edge member same (fun previous present _ address => zeroReads previous present address)
     rw [value]
     rfl
-  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, earlierFacts, selectedFacts,
+  obtain ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, earlierFacts, selectedFacts,
       firstPerm, spanPerm, firstHistory, spanHistory, startInputs, finishInputs⟩ :=
     Transfer.split_native_sail_window facts initialized (mixed_write_rules hp rotationInverse accepted inputs)
       (mixed_write_clocks size clockInverse accepted inputs.publicProgram requests) inputs.aligned zero (lower - 1) (upper - 1)
@@ -160,7 +160,7 @@ theorem mixed_window_execution [Fact p.Prime] (hp : FieldCapacity.NativeHashCapa
     omega
   rw [prefixStepsEqual] at earlierFacts firstPerm
   exact ⟨request_windows size clockInverse accepted.toRequestChecks inputs.publicProgram first last pastZero,
-    start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm, firstHistory, spanHistory,
+    «start», finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm, firstHistory, spanHistory,
     earlierFacts.matching, selectedFacts.matching, native_boundary startInputs, native_boundary finishInputs⟩
 
 theorem prefix_window_partition [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
@@ -194,10 +194,10 @@ theorem prefix_window_partition [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p
     omega
   rwa [earlier, window] at partition
 
-theorem prefix_window_matching {initial start finish : List (MemoryToken p)}
+theorem prefix_window_matching {initial «start» finish : List (MemoryToken p)}
     {earlier current : List (MemoryToken p × MemoryToken p)}
-    (prefixMatching : (initial ++ earlier.map Prod.snd).Perm (start ++ earlier.map Prod.fst))
-    (window : (start ++ current.map Prod.snd).Perm (finish ++ current.map Prod.fst)) :
+    (prefixMatching : (initial ++ earlier.map Prod.snd).Perm («start» ++ earlier.map Prod.fst))
+    (window : («start» ++ current.map Prod.snd).Perm (finish ++ current.map Prod.fst)) :
     (initial ++ (earlier ++ current).map Prod.snd).Perm
       (finish ++ (earlier ++ current).map Prod.fst) := by
   apply List.perm_iff_count.mpr
@@ -251,11 +251,11 @@ theorem matching_at_next_cut [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p ti
     (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before ca)
-    {lower upper : Nat} {start finish : List (MemoryToken p)}
+    {lower upper : Nat} {«start» finish : List (MemoryToken p)}
     (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper)
     (prefixMatching : (data.machine.initialMemory ++ (data.prefixSteps lower).map Prod.snd).Perm
-      (start ++ (data.prefixSteps lower).map Prod.fst))
-    (windowMatching : (start ++ (data.windowSteps lower upper).map Prod.snd).Perm
+      («start» ++ (data.prefixSteps lower).map Prod.fst))
+    (windowMatching : («start» ++ (data.windowSteps lower upper).map Prod.snd).Perm
       (finish ++ (data.windowSteps lower upper).map Prod.fst)) :
     (data.machine.initialMemory ++ (data.prefixSteps upper).map Prod.snd).Perm
       (finish ++ (data.prefixSteps upper).map Prod.fst) := by
@@ -331,7 +331,7 @@ theorem native_window_segments [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p 
   | cons interval rest ih =>
     obtain ⟨lower, upper⟩ := interval
     obtain ⟨gapOrder, spanOrder, lowerAligned, upperAligned, restOrder⟩ := ordered
-    obtain ⟨start, gapEvents, atStart, gapFacts, suffix, gapPerm, gapHistory, startInputs⟩ :=
+    obtain ⟨«start», gapEvents, atStart, gapFacts, suffix, gapPerm, gapHistory, startInputs⟩ :=
       native_suffix_split (by omega : cut - 1 ≤ lower - 1) facts inputs bounds clocks aligned zero
     obtain ⟨finish, spanEvents, atFinish, spanFacts, remaining, spanPerm, spanHistory, finishInputs⟩ :=
       native_suffix_split (by omega : lower - 1 ≤ upper - 1) suffix startInputs bounds clocks aligned zero
@@ -343,7 +343,7 @@ theorem native_window_segments [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p 
     have atUpper := matching_at_next_cut hp clockInverse accepted publicInputs lowerAligned upperAligned (by omega) spanOrder
       atLower spanFacts.matching
     obtain ⟨segments, actual⟩ := ih remaining finishInputs atUpper upperAligned (by omega) restOrder
-    let segment : WindowSegment p := ⟨start, finish, gapEvents, spanEvents, atStart, atFinish⟩
+    let segment : WindowSegment p := ⟨«start», finish, gapEvents, spanEvents, atStart, atFinish⟩
     exact ⟨segment :: segments, gapPerm, gapHistory, gapFacts.matching, atLower, spanPerm, spanHistory,
       spanFacts.matching, native_boundary startInputs, native_boundary finishInputs, actual⟩
 

@@ -78,7 +78,7 @@ theorem machine_steps [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072) (initi
       MemoryAddress.code, store, Trace.ROMView.token, Trace.ROMView.shadow]
   · have lifted : ¬ Selected (UnifiedReduced.ROMView.row initial native).assignment := by
       simpa only [selected] using caller
-    simp only [machinePorts, if_neg caller, if_neg lifted]
+    simp only [machinePorts, ite_eq_right caller, ite_eq_right lifted]
     have transfers := UnifiedReduced.ROMView.row_transfers hp initial native setup active holds
     calc
       _ = (UnifiedReduced.ROMView.row initial native).reads.zip

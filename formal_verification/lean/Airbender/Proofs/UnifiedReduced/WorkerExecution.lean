@@ -103,7 +103,7 @@ theorem all_worker_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p ti
     simp only [time event present, Function.comp_def]
   rw [constant] at keyUnique
   have distinct : (current.map fun event => event.2.1).Nodup := keyUnique.of_map _
-  obtain ⟨start, finish, split, past, call, newer⟩ := Delegation.Proofs.clock_slice ordered history (workerClock worker)
+  obtain ⟨«start», finish, split, past, call, newer⟩ := Delegation.Proofs.clock_slice ordered history (workerClock worker)
   have readable := history_cells_readable past aligned (by
     intro cell present
     obtain ⟨_, _, value, read, _⟩ := image_cell_source image cell present
@@ -116,7 +116,7 @@ theorem all_worker_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p ti
   have observations := Delegation.Proofs.atomic_observations call aligned noZero readable distinct
   have ports : ∀ port ∈ worker.ports, ∃ cell ∈ cells,
       cell.addressCode = port.address.code worker.assignment ∧
-      cell.read start = .ok (readToken worker.assignment port).word.toBitVec start ∧
+      cell.read «start» = .ok (readToken worker.assignment port).word.toBitVec «start» ∧
       cell.read finish = .ok (worker.writeToken port).word.toBitVec finish := by
     intro port present
     have included : transferEvent (readToken worker.assignment port, worker.writeToken port) ∈ current := by
@@ -124,7 +124,7 @@ theorem all_worker_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p ti
       exact List.mem_map.mpr ⟨_, List.mem_map.mpr ⟨port, by simpa using present, rfl⟩, rfl⟩
     simpa only [transferEvent, readToken, MemoryToken.word, memoryWord, Word.toBitVec, Word.value] using observations _ included
   constructor
-  · exact ⟨_, current, _, start, finish, split, grouped, past, call, newer, ports⟩
+  · exact ⟨_, current, _, «start», finish, split, grouped, past, call, newer, ports⟩
   · intro zero
     have early : workerClock worker = 3 := by
       change (timeOfPair (Delegation.Requests.fulfillment worker).time).value + 3 = 3
@@ -160,10 +160,10 @@ theorem native_cycle_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p 
   have floor := machine_native_clock_positive hp inverse accepted publicProgram image member
   have clocks := machine_clock_facts hp inverse accepted.toRequestChecks publicProgram member
   have bounds : Delegation.Caller.startClock row ≤ Delegation.Caller.finishClock row := by omega
-  obtain ⟨start, finish, split, past, current, future⟩ := history_window ordered history bounds
+  obtain ⟨«start», finish, split, past, current, future⟩ := history_window ordered history bounds
   exact ⟨events.filter (fun event => decide (event.1 ≤ Delegation.Caller.startClock row)),
     events.filter (fun event => decide (Delegation.Caller.startClock row < event.1 ∧ event.1 ≤ Delegation.Caller.finishClock row)),
-    events.filter (fun event => decide (Delegation.Caller.finishClock row < event.1)), start, finish,
+    events.filter (fun event => decide (Delegation.Caller.finishClock row < event.1)), «start», finish,
     split, cycle_window_permutation hp inverse accepted.toRequestChecks publicProgram requests permutation member (by omega),
     past, current, future⟩
 

@@ -142,11 +142,11 @@ theorem machine_window_group [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p ti
     by_cases same : Delegation.Caller.startClock other = Delegation.Caller.startClock row
     · have equal := List.inj_on_of_nodup_map (machine_clocks_unique hp inverse accepted inputs) included member same
       subst other
-      simp only [decide_true, if_true]
+      simp only [decide_true, ite_true]
       apply List.filter_eq_self.mpr
       intro event present
       exact decide_eq_true ((machine_event_window hp inverse accepted inputs member member present).mpr rfl)
-    · simp only [same, decide_false, Bool.false_eq_true, if_false]
+    · simp only [same, decide_false, Bool.false_eq_true, ite_false]
       apply List.filter_eq_nil_iff.mpr
       intro event present actual
       have equal := (machine_event_window hp inverse accepted inputs member included present).mp (of_decide_eq_true actual)
@@ -174,21 +174,21 @@ theorem worker_window_group [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p tim
   rw [List.filter_flatMap]
   unfold RequestTrace.cycleWorkers
   by_cases selected : Selected row.assignment
-  · rw [if_pos selected, filter_flatMap]
+  · rw [ite_eq_left selected, filter_flatMap]
     apply List.flatMap_congr
     intro worker included
     by_cases same : Delegation.Requests.fulfillment worker = request row.assignment
-    · simp only [same, decide_true, if_true]
+    · simp only [same, decide_true, ite_true]
       apply List.filter_eq_self.mpr
       intro event present
       exact decide_eq_true ((worker_event_window hp inverse accepted inputs requests member positive included present).mpr
         ⟨selected, same⟩)
-    · simp only [same, decide_false, Bool.false_eq_true, if_false]
+    · simp only [same, decide_false, Bool.false_eq_true, ite_false]
       apply List.filter_eq_nil_iff.mpr
       intro event present actual
       exact same ((worker_event_window hp inverse accepted inputs requests member positive included present).mp
         (of_decide_eq_true actual)).2
-  · rw [if_neg selected]
+  · rw [ite_eq_right selected]
     simp only [List.flatMap_nil]
     have removed : ∀ worker ∈ data.workers.rows,
         ((worker.memorySteps.map transferEvent).filter fun event =>
@@ -316,7 +316,7 @@ theorem cycle_workers_singleton [Fact p.Prime]
       have same := List.inj_on_of_nodup_map unique present included equal
       simpa only [same] using matched.2.1
   refine ⟨worker, matched.1, matched.2.1, ?_⟩
-  rw [RequestTrace.cycleWorkers, if_pos selected, filterIssued, filterTime,
+  rw [RequestTrace.cycleWorkers, ite_eq_left selected, filterIssued, filterTime,
     key_filter_singleton (fun other => (Delegation.Requests.fulfillment other).time) unique included]
 
 theorem caller_cycle_worker_history [Fact p.Prime]
@@ -354,6 +354,8 @@ theorem caller_cycle_worker_history [Fact p.Prime]
   rw [actual, List.filter_append, callerRemoved, workerKept, List.nil_append] at projection
   exact ⟨worker, included, same, projection, history_without_zero history⟩
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem ordinary_cycle_history [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {initial before after : State} {cells : List Cell} {addresses : List (BitVec 32)}
@@ -366,7 +368,7 @@ theorem ordinary_cycle_history [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p 
     intro chosen
     exact ordinary (List.mem_filter.mpr ⟨member, decide_eq_true chosen⟩)
   have cycle : (data.cycleSteps row |>.map transferEvent) = rowEvents 1 row := by
-    simp only [RequestTrace.cycleSteps, RequestTrace.cycleWorkers, if_neg selected,
+    simp only [RequestTrace.cycleSteps, RequestTrace.cycleWorkers, ite_eq_right selected,
       List.flatMap_nil, List.append_nil, machine_ports_ordinary member ordinary, List.map_map, Function.comp_def]
     change row.ports.toList.map _ = row.ports.toList.map _
     apply List.map_congr_left
