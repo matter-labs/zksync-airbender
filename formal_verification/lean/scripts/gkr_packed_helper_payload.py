@@ -9,7 +9,8 @@ from gkr_packed_functional_steps import balanced
 from gkr_packed_worker_ports import merge
 from gkr_packed_rotate_boundary import preflight
 
-CASES = ('AddSubCached', 'AddSubUncached', 'BlakeRoundCached', 'BlakeRoundUncached')
+ALL_CASES = tuple(stem + mode for stem in STEMS for mode in ('Cached', 'Uncached'))
+CASES = ALL_CASES
 
 
 def capture_name(case):
