@@ -5457,3 +5457,89 @@ Full frontend validation, environment audit and baseline refresh, full transitiv
 replay, cold full measurements and Linux qualification did not run. They remain
 pending for implementation review. The known aggregate ownership collision stays
 deferred. No aggregate import pass is claimed.
+
+## Complete dense lookup source checks
+
+Both BlakeRound modes now use one complete lookup source result per capture.
+Each result covers all 1,437 rows, including all 1,152 field agreements.
+The proved adapter keeps the exact original relation bank and witness.
+Complete source bindings retain every coefficient, zero term and term order.
+The original semantic finalizers and exact lookup and RAM premises remain.
+The rollout retires 20 old foundation and proof shard modules.
+
+All 15,526 original declarations remain. Kernel preservation accepts
+all 9,388 old theorem types. All 6,138 imported Expr values
+are identical. All 16 selected modules pass canonical source builds and
+replay. These include both TableNative and FunctionalLinksNative consumers.
+Replay uses the standard 32 MiB stack. It skips no safe dependency.
+All 35,962 focused axiom checks use only the three allowed axioms.
+Four new exact source controls pass. The kernel rejects all four mutations.
+The prior generic witness, role, bank and legacy controls retain their passes.
+All three expanded Python generator controls pass. Only the first data import
+command in each dense Inputs module has a scoped two-million heartbeat budget.
+It reconstructs the complete original affine definitions. Its bounded operand
+data commands retain one whole checker result. Both whole and bounded first
+commands exceeded the default budget in canonical source checks. All other new
+modules use default heartbeats. CI keeps both cache modes required.
+
+| Guarded phase | Time | Peak physical footprint |
+| --- | ---: | ---: |
+| lookup-source-large-BlakeRoundCached-canonical | 554.56 s | 1,455.10 MiB |
+| lookup-source-large-BlakeRoundCached-qualification | 47.93 s | 2,267.54 MiB |
+| lookup-source-large-BlakeRoundUncached-canonical | 540.27 s | 1,455.70 MiB |
+| lookup-source-large-BlakeRoundUncached-qualification | 47.26 s | 2,275.56 MiB |
+
+All guards clean their owned workers. Source and interface freshness, static
+checks, source layers, the source import graph and workflow syntax pass.
+The explicit inventory has 130,022 roots. It retains all 108,770 prior
+roots and every established root. Original objects remain in
+lookup-source-original-oleans. Evidence uses the lookup-source-large prefixes.
+No gain in a cold full build is claimed.
+
+The other 18 lookup source captures remain open. Numerical worker port checks,
+other frame and argument checks and the header budget audit also remain.
+Program-dependent setup and captured decoder interpretation stay outside this
+rollout. Item 3 remains open. The hourly follow-up stays active.
+
+Full frontend validation, environment audit and baseline refresh, full transitive
+replay, cold full measurements and Linux qualification did not run. They remain
+pending for implementation review. The known aggregate ownership collision stays
+deferred. No aggregate import pass is claimed.
+
+## Complete dense source freshness checks
+
+Both dense table captures now use one complete numeric freshness result.
+Each result covers all 632 original source coordinates and both multiplicity
+addresses. Exact bindings keep the complete original source and target vectors.
+The proved address encoding keeps every GKR address class. check_sound derives
+the exact original addressEqual predicates. The original table data, layouts,
+roles and semantic finalizers remain.
+
+The old cached TableNative source builds. Its replay exceeds the physical
+footprint cap. A control rebuild with the archived original lookup objects
+reproduces that replay failure. The control peaks at 2,562.12 MiB. The new
+cached TableNative source builds in 2.23 s and replays in 1.78 s. Its guard
+peaks at 836.73 MiB. The limits stay unchanged. Both cache modes pass.
+
+All 34 original table declarations remain. Kernel preservation
+accepts all 24 old theorem types. All 10 imported Expr
+values are identical. All 13 selected modules pass source and standard
+32 MiB replay. They skip no safe dependency. Together, the coupled lookup and
+freshness step checks 27 distinct modules. All 870 focused
+freshness and table axiom checks use only the three allowed axioms.
+Ten exact controls pass. The kernel rejects all ten mutations. They cover
+collisions, address classes, zero coordinates, complete targets and both ends
+of each native source vector. The importer rejects facts of the wrong type.
+The original AddSub table importer also passes source and replay. All three
+Python generator controls pass. All new freshness modules use default heartbeats.
+Both dense table wrappers also use default heartbeats. CI keeps both modes.
+
+The other 20 table freshness captures remain open. They retain the legacy
+importer path. The other 18 lookup source captures also remain open. Other
+numerical frame and argument families and the header budget audit remain.
+Item 3 stays open. The hourly follow-up stays active.
+
+Full frontend validation, environment audit and baseline refresh, full transitive
+replay, cold full measurements and Linux qualification did not run. They remain
+pending for implementation review. The known aggregate ownership collision stays
+deferred. No aggregate import pass is claimed.
