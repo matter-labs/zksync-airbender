@@ -9,7 +9,10 @@ import gkr_memory_certificate as legacy
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--case', choices=packed.CASES, action='append')
+    parser.add_argument('--shared-only', action='store_true')
     args = parser.parse_args()
+    if args.shared_only and args.case:
+        parser.error('--shared-only cannot select a capture')
     prefix = '''import Airbender.Proofs.GKRProtocol.NumericMemoryPayloadChecks
 import Airbender.Proofs.GKRProtocol.MemoryPayloadChecks.AddSubCached.Inputs
 import Airbender.Import.GKRProtocol.NumericArithmeticDataImport
@@ -32,7 +35,7 @@ def badCoefficient (n : Nat) : MemoryFieldAgreement (relations n) :=
         ('nonempty mask witness', exact, exact.replace('(field _)', '(missingWitness _)'), ''),
         ('mask witness coefficient', exact, exact.replace('(field _)', '(badCoefficient _)'), ''),
     ]
-    for case in args.case or packed.CASES:
+    for case in ([] if args.shared_only else args.case or packed.CASES):
         owner = 'Airbender.Compiler.MemoryPayloadChecks.' + case
         selected = list(packed.entries(case))
         imports = 'import Airbender.Proofs.GKRProtocol.MemoryPayloadChecks.' + case + '.Data\n'
