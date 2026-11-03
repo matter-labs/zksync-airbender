@@ -173,7 +173,6 @@ pub(super) fn finish_proof_fixture(
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     // Match the production-sized arena used by full GPU proofs.
-    let device_allocator_arena_bytes: usize = 64usize << 30;
 
     let trace_len: usize = compiled_circuit.trace_len;
 
@@ -208,10 +207,8 @@ pub(super) fn finish_proof_fixture(
         "basic unrolled fixture requires a device allocator block log size of at least 4 for aligned GPU allocations, got {}",
         device_allocator_block_log_size,
     );
-    let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        None,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
@@ -260,14 +257,7 @@ pub(super) fn finish_proof_fixture(
         drop(memory_trace);
 
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let setup_commitment = setup.commit(
-            &twiddles,
-            whir_schedule.base_lde_factor,
-            whir_schedule.whir_steps_schedule[0],
-            whir_schedule.cap_size,
-            trace_len.trailing_zeros() as usize,
-            &worker,
-        );
+        let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, &worker);
         let expected_cpu_proof =
             prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
                 &compiled_circuit,
@@ -277,7 +267,7 @@ pub(super) fn finish_proof_fixture(
                 &setup_commitment,
                 &twiddles,
                 &prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 vec![],
                 trace_len,
                 &worker,
@@ -301,8 +291,12 @@ pub(super) fn finish_proof_fixture(
         } else {
             None
         };
-        let mut tracing_data_transfer =
-            TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap();
+        let mut tracing_data_transfer = TracingDataTransfer::new(
+            tracing_data_host.clone(),
+            compiled_circuit.trace_len,
+            &context,
+        )
+        .unwrap();
 
         // One-shot Transfer: schedule every H2D against it, record_transferred,
         // ensure_transferred, then run `commit_memory` against the now-visible
@@ -585,7 +579,6 @@ pub(super) fn finish_proof_fixture_memory(
 ) {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 64usize << 30;
 
     let trace_len: usize = compiled_circuit.trace_len;
     assert!(buffer.len() < trace_len);
@@ -621,10 +614,8 @@ pub(super) fn finish_proof_fixture_memory(
         "basic unrolled fixture requires a device allocator block log size of at least 4 for aligned GPU allocations, got {}",
         device_allocator_block_log_size,
     );
-    let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        None,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
@@ -672,14 +663,7 @@ pub(super) fn finish_proof_fixture_memory(
         drop(memory_trace);
 
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let setup_commitment = setup.commit(
-            &twiddles,
-            whir_schedule.base_lde_factor,
-            whir_schedule.whir_steps_schedule[0],
-            whir_schedule.cap_size,
-            trace_len.trailing_zeros() as usize,
-            &worker,
-        );
+        let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, &worker);
         let expected_cpu_proof =
             prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
                 &compiled_circuit,
@@ -689,7 +673,7 @@ pub(super) fn finish_proof_fixture_memory(
                 &setup_commitment,
                 &twiddles,
                 &prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 vec![],
                 trace_len,
                 &worker,
@@ -713,8 +697,12 @@ pub(super) fn finish_proof_fixture_memory(
         } else {
             None
         };
-        let mut tracing_data_transfer =
-            TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap();
+        let mut tracing_data_transfer = TracingDataTransfer::new(
+            tracing_data_host.clone(),
+            compiled_circuit.trace_len,
+            &context,
+        )
+        .unwrap();
 
         let transfer = gpu_prover_context::transfer::single_shot_h2d(
             |t| {

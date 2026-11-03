@@ -1,7 +1,30 @@
+#![allow(
+    dead_code,
+    unused_imports,
+    unused_unsafe,
+    unused_assignments,
+    clippy::needless_range_loop,
+    clippy::too_many_arguments,
+    clippy::manual_div_ceil,
+    clippy::borrow_deref_ref,
+    clippy::identity_op,
+    clippy::missing_safety_doc,
+    clippy::duplicate_mod,
+    clippy::large_const_arrays
+)]
 use super::common::EXT_DEGREE;
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::{DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS};
+#[doc = r" Number of rounds of every same-size GKR layer sumcheck = the number"]
+#[doc = r" of GKR claim-point coordinates: log2 of the LOGICAL (trace-length)"]
+#[doc = r" polynomials. Packing does not change it."]
 pub const GKR_ROUNDS: usize = 24usize;
+#[doc = r" Capacity of the claim-point buffers: the GKR point plus the"]
+#[doc = r" `PACK_LOG2` coordinates appended after the GKR phase for the packed"]
+#[doc = r" base commitment (`TRACE_LEN_LOG2 + pack_log2`, the committed column"]
+#[doc = r" size the WHIR point has). Equals `GKR_ROUNDS` when unpacked."]
+pub const CLAIM_POINT_CAPACITY: usize = 24usize;
+pub const TRACE_LEN_LOG2: u32 = 24u32;
 pub const GKR_ADDRS: usize = 73usize;
 pub const GKR_EVALS: usize = 128usize;
 pub const INIT_AND_TEARDOWN_SETS: usize = 0usize;
@@ -35,15 +58,15 @@ pub const GKR_EVAL_BUF: usize = {
         standard
     };
     let max_data = if max_data > evals { max_data } else { evals };
-    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + max_data;
+    let total = max_data;
     total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
 };
 pub const GKR_COMMIT_BUF: usize = {
-    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + SUMCHECK_POLY_COEFFS * EXT_DEGREE;
+    let total = SUMCHECK_POLY_COEFFS * EXT_DEGREE;
     total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
 };
 pub const GKR_EVALS_COMMIT_BUF: usize = {
-    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + 128usize * EXT_DEGREE;
+    let total = 128usize * EXT_DEGREE;
     total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
 };
 pub const DRAW_BUF_CAPACITY: usize = {
@@ -56,11 +79,11 @@ pub const DRAW_BUF_CAPACITY: usize = {
     }
 };
 pub const WHIR_FOLD_STEPS: [usize; 6usize] = [1usize, 5usize, 5usize, 5usize, 4usize, 3usize];
-pub const WHIR_QUERIES: [usize; 6usize] = [87usize, 23usize, 10usize, 7usize, 5usize, 5usize];
-pub const WHIR_POW_BITS: [u32; 6usize] = [28u32, 24u32, 25u32, 19u32, 21u32, 21u32];
+pub const WHIR_QUERIES: [usize; 6usize] = [89usize, 23usize, 10usize, 7usize, 5usize, 5usize];
+pub const WHIR_POW_BITS: [u32; 6usize] = [26u32, 24u32, 25u32, 19u32, 21u32, 21u32];
 pub const LOOKUP_CHALLENGES_POW_BITS: u32 = 9u32;
 pub const BATCHED_PROXIMITY_POW_BITS: u32 = 8u32;
-pub const MAX_POW_ENTRIES: usize = 137usize;
+pub const MAX_POW_ENTRIES: usize = 139usize;
 pub const FINAL_MONOMIALS_LEN: usize = 2usize;
 pub const NUM_ORACLES: usize = 3usize;
 pub const ORACLE_NUM_COLS: [usize; 3usize] = [29usize, 17usize, 9usize];
@@ -81,7 +104,7 @@ pub type ConcreteInitialTranscript = ::verifier_common::InitialGKRTranscript<
     PADDING_WORDS,
 >;
 pub type ConcreteGKRVerifierOutput =
-    ::verifier_common::GKRVerifierOutput<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>;
+    ::verifier_common::GKRVerifierOutput<BabyBearExt4, CLAIM_POINT_CAPACITY, GKR_ADDRS>;
 pub type ConcreteVerifierOutput = ::verifier_common::VerifierOutput<
     BabyBearExt4,
     INIT_AND_TEARDOWN_SETS,

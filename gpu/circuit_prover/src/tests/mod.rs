@@ -1,4 +1,5 @@
-use crate::proof::{preflight_windowed_backward, prove, GpuGKRProofJob};
+use crate::proof::memory_policy::{presets, ProofMemoryPolicy};
+use crate::proof::{prove, GpuGKRProofJob};
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -72,6 +73,7 @@ mod commit_memory;
 mod fixtures;
 mod inits_and_teardowns;
 mod lsb_commit_pipeline;
+mod memory_policies;
 mod proof_matrix;
 mod stagewise;
 
@@ -213,7 +215,7 @@ pub(crate) struct BasicUnrolledFixture {
     /// Sparse RAM init/teardown trace host. `None` for per-family fixtures
     /// (their memory is fully covered by the per-row shuffle); `Some` for the
     /// unified fixture, which proves the inits-and-teardowns layer.
-    pub(crate) inits_and_teardowns_host: Option<InitsAndTeardownsTraceHost>,
+    pub(crate) inits_and_teardowns_host: Option<InitsAndTeardownsTraceHost<std::alloc::Global>>,
     /// Actual global RAM-set top bits assigned to the fixture's local teardown
     /// slots. `None` uses the canonical contiguous selection for fixtures that
     /// do not need noncontiguous RAM-set rebasing.
@@ -258,6 +260,7 @@ impl BasicUnrolledFixture {
         };
         let tracing_data_transfer = Some(TracingDataTransfer::new(
             self.tracing_data_host.clone(),
+            self.compiled_circuit.trace_len,
             context,
         )?);
         // Memory-cap geometry comes from the setup host when present; the
@@ -278,7 +281,7 @@ impl BasicUnrolledFixture {
                 &self.memory_tree_caps,
                 mem_log_lde_factor,
                 mem_log_tree_cap_size,
-            )?,
+            ),
         );
         let memory_transfer = gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer::new(
             memory_transfer_host,
@@ -288,7 +291,14 @@ impl BasicUnrolledFixture {
         let inits_and_teardowns_transfer = self
             .inits_and_teardowns_host
             .clone()
-            .map(|host| InitsAndTeardownsTransfer::new(host, context))
+            .map(|host| {
+                InitsAndTeardownsTransfer::new(
+                    Some(host),
+                    self.compiled_circuit.memory_layout.teardown_sets.len(),
+                    self.compiled_circuit.trace_len,
+                    context,
+                )
+            })
             .transpose()?;
 
         let top_bits = self
@@ -318,7 +328,7 @@ impl BasicUnrolledFixture {
     fn prove(
         &self,
         transfers: BasicUnrolledTransfers<'static>,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    ) -> CudaResult<GpuGKRProofJob<'static>> {
         let dr_tail_plan = self.dr_tail_plan()?;
         prove::<Global>(
             &self.gkr_programs,
@@ -326,16 +336,12 @@ impl BasicUnrolledFixture {
             self.final_trace_size_log_2,
             transfers,
             &dr_tail_plan,
+            self.memory_policy(),
             &self.context,
         )
     }
 
     fn dr_tail_plan(&self) -> CudaResult<gpu_gkr::DrTailProofPlan> {
-        preflight_windowed_backward(
-            &self.gkr_programs,
-            &self.prover_config,
-            self.final_trace_size_log_2,
-        );
         gpu_gkr::preflight_dr_tail_resources(
             &self.gkr_programs,
             self.final_trace_size_log_2,
@@ -343,7 +349,19 @@ impl BasicUnrolledFixture {
         )
     }
 
-    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    fn memory_policy(&self) -> ProofMemoryPolicy {
+        presets::policy(self.circuit_type, self.context.get_mem_size())
+    }
+
+    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {
+        self.schedule_prove_with_memory_policy(self.memory_policy())
+    }
+
+    fn schedule_prove_with_memory_policy(
+        &self,
+        policy: ProofMemoryPolicy,
+    ) -> CudaResult<GpuGKRProofJob<'static>> {
+        let mem_before_inputs = self.context.get_used_mem_current();
         let mut transfers = self.create_transfers()?;
 
         let h2d_stream = self.context.get_h2d_stream();
@@ -352,37 +370,26 @@ impl BasicUnrolledFixture {
         transfers.schedule(&self.context)?;
         transfer_range.end(h2d_stream)?;
 
-        // Invariant: prove() is balanced — it releases every device allocation
-        // it makes (stream-ordered) before returning, so used device memory
-        // right after prove() returns equals used device memory right before
-        // it was called. The transfers above are allocated before this point
-        // and ride on in the job's keepalive, so they appear on both sides.
-        let mem_before_prove = self.context.get_used_mem_current();
         let dr_tail_plan = self.dr_tail_plan()?;
-        let mut proof_job = prove::<Global>(
+        let mut proof_job = crate::proof::prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,
             &dr_tail_plan,
+            policy,
             &self.context,
         )?;
         let mem_after_prove = self.context.get_used_mem_current();
-        assert_eq!(
-            mem_after_prove,
-            mem_before_prove,
-            "prove() must release every device allocation it makes: \
-             before={mem_before_prove} after={mem_after_prove} \
-             net_retained={}",
-            mem_after_prove as i64 - mem_before_prove as i64,
-        );
+        assert_eq!(mem_after_prove, mem_before_inputs,
+            "prove() must retire all device reservations, including its input bundle, before finish()");
         proof_job.ranges.insert(0, transfer_range);
         Ok(proof_job)
     }
 }
 
 impl BasicUnrolledProofFixture {
-    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {
         self.base.schedule_prove()
     }
 }

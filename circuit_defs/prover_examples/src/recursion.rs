@@ -338,20 +338,19 @@ mod tests {
                 .unwrap(),
             )
         } else {
-            let (mut bridge_proof, bridge_setups) =
-                prove_unified_execution_with_replayer::<Global, _, _>(
-                    UNIFIED_CYCLES_BOUND,
-                    &bridge_bin,
-                    &bridge_text,
-                    use_caches,
-                    QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
-                    RAM_BOUND,
-                    &worker,
-                    SecurityLevel::Sec100,
-                    verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
-                    &DefaultBabyBearBackend::default(),
-                    &DefaultBabyBearGKRBackend::default(),
-                );
+            let (mut bridge_proof, bridge_setups) = prove_unified_execution_with_replayer::<_, _>(
+                UNIFIED_CYCLES_BOUND,
+                &bridge_bin,
+                &bridge_text,
+                use_caches,
+                QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
+                RAM_BOUND,
+                &worker,
+                SecurityLevel::Sec100,
+                verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+                &DefaultBabyBearBackend::default(),
+                &DefaultBabyBearGKRBackend::default(),
+            );
             bridge_proof.set_recursion_chain(&chain);
 
             serialize_compressed_to_file(
@@ -437,20 +436,19 @@ mod tests {
                     try_deserialize_compressed_from_file(&setups_file).unwrap(),
                 )
             } else {
-                let (mut new_proof, new_setups) =
-                    prove_unified_execution_with_replayer::<Global, _, _>(
-                        UNIFIED_CYCLES_BOUND,
-                        &unified_rec_bin,
-                        &unified_rec_text,
-                        use_caches,
-                        QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
-                        RAM_BOUND,
-                        &worker,
-                        SecurityLevel::Sec100,
-                        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
-                        &DefaultBabyBearBackend::default(),
-                        &DefaultBabyBearGKRBackend::default(),
-                    );
+                let (mut new_proof, new_setups) = prove_unified_execution_with_replayer::<_, _>(
+                    UNIFIED_CYCLES_BOUND,
+                    &unified_rec_bin,
+                    &unified_rec_text,
+                    use_caches,
+                    QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
+                    RAM_BOUND,
+                    &worker,
+                    SecurityLevel::Sec100,
+                    verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+                    &DefaultBabyBearBackend::default(),
+                    &DefaultBabyBearGKRBackend::default(),
+                );
                 new_proof.set_recursion_chain(&chain);
                 serialize_compressed_to_file(&new_proof, &proof_file);
                 serialize_compressed_to_file(&new_setups, &setups_file);
@@ -524,11 +522,7 @@ mod tests {
         ))
         .unwrap();
 
-        for mode in [
-            BlakeMode::Compression,
-            BlakeMode::GFunction,
-            BlakeMode::BlakeSpecialOpcodes,
-        ] {
+        for mode in [BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes] {
             let (bin, text) = load_fsv_program(FSV_DIR, FsvProgram::UnifiedRecursionLayer, mode);
             let cycles =
                 measure_verifier_cycles(&bin, &text, build_unified_stream(&setups, &proof));
@@ -651,7 +645,7 @@ mod tests {
                         try_deserialize_compressed_from_file(&s_file).unwrap(),
                     )
                 } else {
-                    let (mut np, ns) = prove_unified_execution_with_replayer::<Global, _, _>(
+                    let (mut np, ns) = prove_unified_execution_with_replayer::<_, _>(
                         UNIFIED_CYCLES_BOUND,
                         &spec_bin,
                         &spec_text,
@@ -883,7 +877,7 @@ mod tests {
     /// cycles <= 2^22) as ONE Proth120 packed unified-circuit proof with the
     /// EVM-production parameters, writing the proof + commitment-mode aux
     /// fixtures into `prover/` — exactly where the verifier_evm generation and
-    /// the two-transaction test (`generated_contracts/two_tx/run_two_tx.sh`)
+    /// the single-transaction verifier test (`generated_contracts/run_merged.sh`)
     /// pick them up. Requires `--features l1` and the caches of
     /// `test_l1_feeder_high_lde_research`; the packed setup commitment is
     /// served by coset recomputation (program-specific, nothing cached).
@@ -931,8 +925,8 @@ mod tests {
             &worker,
         );
         println!(
-            "L1 wrap complete: run the two-transaction cross-check with \
-             verifier_evm/generated_contracts/two_tx/run_two_tx.sh"
+            "L1 wrap complete: run the single-transaction verification with \
+             verifier_evm/generated_contracts/run_merged.sh"
         );
     }
 

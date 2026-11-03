@@ -13,7 +13,7 @@ use crate::definitions::{
 use crate::gkr::prover::prove_configured_with_gkr_with_backends;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
-use crate::gkr::prover::CommitmentMode;
+use crate::gkr::prover::OperationMode;
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::family_circuits::{
@@ -23,9 +23,7 @@ use crate::gkr::witness_gen::family_circuits::{
 use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
 use crate::merkle_trees::DefaultTreeConstructor;
-use crate::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueryable,
-};
+use crate::merkle_trees::MerkleTreeCapVarLength;
 use crate::tests::gkr::GKRFullWitnessTrace;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
@@ -67,6 +65,19 @@ pub struct UnifiedProverOutput {
     /// Closes to ONE when the full applicable set was proved (no filter,
     /// machine state + unified proof + all relevant delegations).
     pub permutation_argument_accumulator: BabyBearExt4,
+    /// Memory/delegation proof-of-work behind `external_challenges` (0/0 for the hardcoded
+    /// challenges of a filtered run).
+    pub pow_bits: u32,
+    pub pow_challenge: u64,
+}
+
+/// Memory/delegation PoW bits the FSV expects: `verifier_common::memory_delegation_pow_bits`
+/// = `security_bits - (BABYBEAR_EXT4_SIZE_LOG2 - MAX_PERMUTATION_ELEMENTS_LOG2 - 2)`
+/// = `security_bits - (123 - 40 - 2)`. `prover` cannot depend on `verifier_common` (it is the
+/// other way round), so this mirrors the derivation; the FSV test asserts the fixture's bits
+/// equal `MEMORY_DELEGATION_POW_BITS`, so drift fails loudly there.
+const fn memory_delegation_pow_bits(level: SecurityLevel) -> u32 {
+    level.security_bits().saturating_sub(123 - 40 - 2) as u32
 }
 
 const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
@@ -171,21 +182,14 @@ where
             "../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
         )
     };
-    let num_unified_teardown_sets = unified_circuit.memory_layout.teardown_sets.len();
-    let unified_ram_coverage_bytes: usize =
-        (num_unified_teardown_sets << TRACE_LEN_LOG2) << (WORD_BITS as usize);
-    assert!(
-        unified_ram_coverage_bytes >= vm.cycles_bound * 4 * 4
-            || unified_ram_coverage_bytes >= vm.ram_bound_bytes,
-        "unified circuit i/t coverage ({unified_ram_coverage_bytes} bytes) is smaller than the \
-         run's max RAM footprint; recompile unified with a larger num_inits_and_teardowns_pairs"
-    );
+    // i/t coverage is enforced where the columns are collected
+    // (`collect_unified_inits_and_teardowns`): every touched RAM chunk must be carried.
 
     let _ = REDUCED_MACHINE_CIRCUIT_FAMILY_IDX; // touch import
 
     let prove_unified = circuit_in_filter(&circuits_filter, "unified_reduced_machine");
     let num_unified_calls = sum_executor_family_calls(&vm.counters);
-    assert!(num_unified_calls < NUM_CYCLES_PER_CHUNK);
+    assert!(num_unified_calls < unified_circuit.trace_len);
 
     // --- Build the unified witness trace once (reused for both the Fiat-Shamir memory-cap
     // commitment and the actual proof). `None` only under a filter excluding unified. ---
@@ -193,7 +197,6 @@ where
         Some(build_unified_full_trace(
             &vm,
             &unified_circuit,
-            num_unified_teardown_sets,
             num_unified_calls,
             unified_eval_fn,
             true,
@@ -208,8 +211,8 @@ where
     // verifies in the full statement verifier, which re-derives them from the memory
     // transcript. Filtered debug runs keep the historical hardcoded challenges (they cannot
     // close the permutation argument anyway, so the FS seed would be ill-defined).
-    let external_challenges = if use_fiat_shamir {
-        let (unified_trace, _, _) = unified_built
+    let (external_challenges, pow_bits, pow_challenge) = if use_fiat_shamir {
+        let (unified_trace, _, _, inits_and_teardowns_top_bits) = unified_built
             .as_ref()
             .expect("no circuits filter ⇒ unified circuit is always proved");
         let unified_memory_columns: Vec<&[BabyBearField]> = unified_trace
@@ -221,7 +224,7 @@ where
         derive_unified_fiat_shamir_challenges::<C>(
             &vm,
             &unified_memory_cap,
-            num_unified_teardown_sets,
+            inits_and_teardowns_top_bits,
             level,
             proof_suffix,
             worker,
@@ -231,7 +234,7 @@ where
             &circuits_filter,
         )
     } else {
-        hardcoded_external_challenges()
+        (hardcoded_external_challenges(), 0, 0)
     };
 
     // --- Prove delegations with the now-fixed external challenges. ---
@@ -306,40 +309,45 @@ where
     }
 
     // --- Prove the unified circuit, reusing the pre-built trace. ---
-    let (unified_proof, unified_setup_cap) =
-        if let Some((unified_full_trace, unified_table_driver, decoder_table)) = unified_built {
-            #[cfg(all(feature = "gkr_check_satisfied", any(test, feature = "test")))]
-            {
-                println!("Checking constraint satisfiability (unified)");
-                assert!(
-                    crate::tests::gkr::check_satisfied(&unified_circuit, &unified_full_trace),
-                    "unified circuit constraint not satisfied"
-                );
-            }
-
-            let (proof, setup_cap) = prove_built_unified_trace(
-                &unified_circuit,
-                unified_full_trace,
-                &unified_table_driver,
-                &decoder_table,
-                num_unified_teardown_sets,
-                &external_challenges,
-                level,
-                worker,
+    let (unified_proof, unified_setup_cap) = if let Some((
+        unified_full_trace,
+        unified_table_driver,
+        decoder_table,
+        inits_and_teardowns_top_bits,
+    )) = unified_built
+    {
+        #[cfg(all(feature = "gkr_check_satisfied", any(test, feature = "test")))]
+        {
+            println!("Checking constraint satisfiability (unified)");
+            assert!(
+                crate::tests::gkr::check_satisfied(&unified_circuit, &unified_full_trace),
+                "unified circuit constraint not satisfied"
             );
+        }
 
-            delegations_serialize(
-                &proof,
-                &format!(
-                    "test_proofs/unified_reduced_machine_{}_gkr_proof.json",
-                    proof_suffix
-                ),
-            );
+        let (proof, setup_cap) = prove_built_unified_trace(
+            &unified_circuit,
+            unified_full_trace,
+            &unified_table_driver,
+            &decoder_table,
+            inits_and_teardowns_top_bits,
+            &external_challenges,
+            level,
+            worker,
+        );
 
-            (Some(proof), Some(setup_cap))
-        } else {
-            (None, None)
-        };
+        delegations_serialize(
+            &proof,
+            &format!(
+                "test_proofs/unified_reduced_machine_{}_gkr_proof.json",
+                proof_suffix
+            ),
+        );
+
+        (Some(proof), Some(setup_cap))
+    } else {
+        (None, None)
+    };
 
     // --- Accumulator close-check. ---
 
@@ -372,6 +380,8 @@ where
         external_challenges,
         unified_setup_cap,
         permutation_argument_accumulator,
+        pow_bits,
+        pow_challenge,
     }
 }
 
@@ -400,6 +410,7 @@ fn commit_memory_cap(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.cap_size,
         trace_len_log2,
+        &crate::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
     mem.get_cap()
@@ -432,14 +443,11 @@ fn flatten_merkle_cap(cap: &MerkleTreeCapVarLength) -> Vec<u32> {
 /// `trace_and_split::fs_transform_for_permutation_argument` specialised to the unified shape:
 /// a single reduced-machine family (one instance), NO separate inits/teardowns section (folded
 /// into the unified circuit), and delegations absorbed in the FSV's
-/// `DELEGATION_CIRCUITS_SETUP_PARAMS` order (blake, bigint, keccak, blake_g_function) — NOT
-/// type-sorted. `trace_and_split`'s version asserts type-sorted order; we mirror the FSV's actual
-/// order instead so the seed is guaranteed to match.
-#[allow(clippy::too_many_arguments)]
+/// `DELEGATION_CIRCUITS_SETUP_PARAMS` order (ascending CSR).
 fn derive_unified_fiat_shamir_challenges<C>(
     vm: &VmRunOutput<C>,
     unified_memory_cap: &MerkleTreeCapVarLength,
-    num_unified_teardown_sets: usize,
+    inits_and_teardowns_top_bits: &[u32],
     level: SecurityLevel,
     proof_suffix: &str,
     worker: &Worker,
@@ -447,7 +455,7 @@ fn derive_unified_fiat_shamir_challenges<C>(
     delegation_call_counts: &DelegationCallCounts,
     prove_empty: bool,
     circuits_filter: &Option<std::collections::HashSet<String>>,
-) -> GKRExternalChallenges<BabyBearField, BabyBearExt4>
+) -> (GKRExternalChallenges<BabyBearField, BabyBearExt4>, u32, u64)
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
@@ -564,20 +572,29 @@ where
     }
 
     let register_final_values = unified_register_final_values(vm);
-    let inits_and_teardowns_top_bits: Vec<u32> = (0..num_unified_teardown_sets as u32).collect();
     let seed = fs_transform_for_unified_circuit(
         &register_final_values,
         vm.final_pc(),
         vm.final_timestamp(),
         unified_memory_cap,
-        &inits_and_teardowns_top_bits,
+        inits_and_teardowns_top_bits,
         &delegation_caps,
     );
 
-    // MEMORY_DELEGATION_POW_BITS = 0 in the FSV ⇒ no proof-of-work, `pow_challenge` is unused
-    // in the derivation. If the FSV's pow-bits ever becomes non-zero, this (and the fixture's
-    // `pow_challenge`) must be updated in lockstep.
-    GKRExternalChallenges::draw_from_blake_transcript_seed(seed, 0, 0)
+    // Grind the memory/delegation PoW exactly as production does (`program_prover::unified`);
+    // the FSV re-derives the challenges from the same seed, bits and nonce.
+    let pow_bits = memory_delegation_pow_bits(level);
+    let pow_challenge = if pow_bits > 0 {
+        Blake2sTranscript::<true>::search_pow(&seed, pow_bits, worker).1
+    } else {
+        0
+    };
+    let challenges = GKRExternalChallenges::draw_from_blake_transcript_seed(
+        seed,
+        pow_bits as usize,
+        pow_challenge,
+    );
+    (challenges, pow_bits, pow_challenge)
 }
 
 /// Memory-transcript seed for the unified circuit. Must match
@@ -645,10 +662,82 @@ fn fs_transform_for_unified_circuit(
     transcript.finalize()
 }
 
+/// Inits/teardowns columns of the unified circuit, one `(top_bits, columns)` group.
+pub type UnifiedInitsAndTeardowns = (
+    Vec<u32>,
+    Vec<([Vec<BabyBearField>; 2], [Vec<BabyBearField>; 2])>,
+);
+
+/// Collect the unified circuit's inits/teardowns the way production does
+/// (`program_prover::unified`): only the touched `trace_len`-word RAM chunks, each tagged with
+/// its chunk index as `top_bits`, grouped (and padded) into sets of the circuit's teardown-set
+/// count. The harness proves a single unified instance, so every touched chunk must fit in
+/// one group — asserted rather than silently dropping teardowns (which breaks the permutation
+/// argument: e.g. multi_family_smoke's stack/data sit at 64–68 MiB, outside a 0-based pair of
+/// 2^23-word chunks).
+fn collect_unified_inits_and_teardowns<C>(
+    vm: &VmRunOutput<C>,
+    unified_circuit: &GKRCircuitArtifact<BabyBearField>,
+    worker: &Worker,
+) -> UnifiedInitsAndTeardowns
+where
+    C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
+{
+    let num_teardown_sets = unified_circuit.memory_layout.teardown_sets.len();
+    let mut groups = vm
+        .ram
+        .collect_inits_and_teardowns_sets::<BabyBearField, Global>(
+            worker,
+            unified_circuit.trace_len.trailing_zeros() as usize,
+            num_teardown_sets,
+            None,
+        );
+    assert_eq!(
+        groups.len(),
+        1,
+        "the harness proves one unified instance, but the run touched RAM needing {} groups of \
+         {num_teardown_sets} chunks",
+        groups.len()
+    );
+    groups.pop().unwrap()
+}
+
+/// Replay the captured VM run into the per-cycle unified oracle data.
+pub fn replay_unified_cycles<C>(
+    vm: &VmRunOutput<C>,
+    num_calls: usize,
+) -> Vec<UnifiedOpcodeTracingDataWithTimestamp>
+where
+    C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
+{
+    let mut state = vm.snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = vm
+        .snapshotter
+        .reads_buffer
+        .make_range(0..vm.snapshotter.reads_buffer.len());
+    let mut replay_ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
+    let mut buffers = [&mut buffer[..]];
+    let mut tracer = UnifiedDestinationHolder {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<C>::replay_basic_unrolled::<_, _, BabyBearField>(
+        &mut state,
+        &mut replay_ram,
+        &vm.tape,
+        &mut (),
+        vm.cycles_bound,
+        &mut tracer,
+    );
+    assert_eq!(vm.expected_final_state(), state);
+    buffer
+}
+
 pub fn build_unified_full_trace<C>(
     vm: &VmRunOutput<C>,
     unified_circuit: &GKRCircuitArtifact<BabyBearField>,
-    num_unified_teardown_sets: usize,
     num_calls: usize,
     eval_fn: fn(
         &mut crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy<
@@ -663,33 +752,12 @@ pub fn build_unified_full_trace<C>(
     GKRFullWitnessTrace<BabyBearField, Global, Global>,
     TableDriver<BabyBearField>,
     Vec<Option<ExecutorFamilyDecoderData>>,
+    Vec<u32>,
 )
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
-    // Replay the captured trace into the unified destination holder.
-    let mut state = vm.snapshotter.initial_snapshot.state;
-    let mut ram_log_buffers = vm
-        .snapshotter
-        .reads_buffer
-        .make_range(0..vm.snapshotter.reads_buffer.len());
-    let mut replay_ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
-        ram_log: &mut ram_log_buffers,
-    };
-    let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
-    let mut tracer = UnifiedDestinationHolder {
-        buffers: &mut buffers[..],
-    };
-    ReplayerVM::<C>::replay_basic_unrolled::<_, _, BabyBearField>(
-        &mut state,
-        &mut replay_ram,
-        &vm.tape,
-        &mut (),
-        vm.cycles_bound,
-        &mut tracer,
-    );
-    assert_eq!(vm.expected_final_state(), state);
+    let buffer = replay_unified_cycles(vm, num_calls);
 
     use common_constants::*;
     use cs::gkr_circuits::*;
@@ -698,9 +766,12 @@ where
     const SUPPORTED_CSRS: &[u16] = &[
         NON_DETERMINISM_CSR as u16,
         BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+        BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
         BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
         KECCAK_SPECIAL5_CSR_REGISTER as u16,
-        BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
+        KECCAK_THETA_RHO_CSR_REGISTER as u16,
+        KECCAK_COLUMN_PARITY_CSR_REGISTER as u16,
+        KECCAK_CHI5_CSR_REGISTER as u16,
     ];
     let mut preprocessing_data = process_binary_into_separate_tables_ext::<
         BabyBearField,
@@ -723,22 +794,8 @@ where
     };
     let unified_table_driver = build_unified_table_driver::<BabyBearField>(&vm.binary);
 
-    // Collect i/t columns sized to the unified circuit's set count.
-    let mut unified_inits_and_teardowns = Vec::with_capacity(num_unified_teardown_sets);
-    for _ in 0..num_unified_teardown_sets {
-        let a = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        let b = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        let c = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        let d = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        unified_inits_and_teardowns.push(([a, b], [c, d]));
-    }
-    vm.ram
-        .collect_inits_and_teardowns_into_columns::<BabyBearField, _>(
-            worker,
-            TRACE_LEN_LOG2,
-            0,
-            &mut unified_inits_and_teardowns,
-        );
+    let (inits_and_teardowns_top_bits, unified_inits_and_teardowns) =
+        collect_unified_inits_and_teardowns(vm, unified_circuit, worker);
 
     let memory_trace = if run_memory_consistency_check {
         println!("Computing memory trace (unified)");
@@ -749,7 +806,7 @@ where
             _,
         >(
             unified_circuit,
-            NUM_CYCLES_PER_CHUNK,
+            unified_circuit.trace_len,
             &oracle,
             worker,
             Some(unified_inits_and_teardowns.clone()),
@@ -764,7 +821,7 @@ where
     let unified_full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
         unified_circuit,
         eval_fn,
-        NUM_CYCLES_PER_CHUNK,
+        unified_circuit.trace_len,
         &oracle,
         &unified_table_driver,
         worker,
@@ -777,7 +834,12 @@ where
         super::common::ensure_memory_trace_consistency(memory_trace, &unified_full_trace);
     }
 
-    (unified_full_trace, unified_table_driver, decoder_table)
+    (
+        unified_full_trace,
+        unified_table_driver,
+        decoder_table,
+        inits_and_teardowns_top_bits,
+    )
 }
 
 /// Prove a *pre-built* unified witness trace: prover config + twiddles, construct &
@@ -785,13 +847,12 @@ where
 /// proof together with the setup-tree cap (the full statement verifier's prepended
 /// verification key). Used by both [`prove_unified`] and the unified malicious-proof
 /// generator (caller owns serialization).
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_unified_trace(
     unified_circuit: &GKRCircuitArtifact<BabyBearField>,
     unified_full_trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,
     unified_table_driver: &TableDriver<BabyBearField>,
     decoder_table: &[Option<ExecutorFamilyDecoderData>],
-    num_unified_teardown_sets: usize,
+    inits_and_teardowns_top_bits: Vec<u32>,
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     level: SecurityLevel,
     worker: &Worker,
@@ -799,7 +860,7 @@ pub fn prove_built_unified_trace(
     GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
     MerkleTreeCap<DEFAULT_CAP_SIZE>,
 ) {
-    let trace_len: usize = 1 << TRACE_LEN_LOG2;
+    let trace_len: usize = unified_circuit.trace_len;
 
     let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
         trace_len.trailing_zeros() as usize,
@@ -812,16 +873,8 @@ pub fn prove_built_unified_trace(
         trace_len,
         unified_circuit,
     );
-    let unified_setup_commitment = unified_setup.commit(
-        &unified_twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    );
-
-    let unified_top_bits: Vec<u32> = (0..num_unified_teardown_sets).map(|i| i as u32).collect();
+    let unified_setup_commitment =
+        unified_setup.commit_for_config(&unified_twiddles, &prover_config, worker);
 
     println!("Trying to prove (unified)");
     let now = std::time::Instant::now();
@@ -840,8 +893,8 @@ pub fn prove_built_unified_trace(
         &unified_setup_commitment,
         &unified_twiddles,
         &prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
-        unified_top_bits,
+        OperationMode::MultipleChunks,
+        inits_and_teardowns_top_bits,
         trace_len,
         &crate::gkr::prover::WorkStealingBackend,
         &crate::gkr::prover::DefaultBabyBearGKRBackend::default(),

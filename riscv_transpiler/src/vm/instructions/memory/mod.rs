@@ -10,7 +10,7 @@ pub(crate) fn sw<C: Counters, S: Snapshotter<C>, R: RAM>(
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
     let rs2_value = read_register::<C, 1>(state, instr.rs2);
     let address = rs1_value.wrapping_add(instr.imm);
-    if address % 4 != 0 {
+    if !address.is_multiple_of(4) {
         panic!("Unaligned memory access at PC = 0x{:08x}", state.pc);
     }
     let (read_timestamp, old_value) = ram.write_word(address, rs2_value, state.timestamp | 2);
@@ -29,7 +29,7 @@ pub(crate) fn lw<C: Counters, S: Snapshotter<C>, R: RAM>(
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
     let address = rs1_value.wrapping_add(instr.imm);
-    if address % 4 != 0 {
+    if !address.is_multiple_of(4) {
         panic!("Unaligned memory access at PC = 0x{:08x}", state.pc);
     }
     let (read_timestamp, old_value) = ram.read_word(address, state.timestamp | 1);
@@ -50,7 +50,7 @@ pub(crate) fn sh<C: Counters, S: Snapshotter<C>, R: RAM>(
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
     let rs2_value = read_register::<C, 1>(state, instr.rs2);
     let address = rs1_value.wrapping_add(instr.imm);
-    if address % 2 != 0 {
+    if !address.is_multiple_of(2) {
         panic!("Unaligned memory access at PC = 0x{:08x}", state.pc);
     }
     let aligned_address = address & !3;
@@ -118,7 +118,7 @@ pub(crate) fn lh<C: Counters, S: Snapshotter<C>, R: RAM, const SIGN_EXTEND: bool
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
     let address = rs1_value.wrapping_add(instr.imm);
-    if address % 2 != 0 {
+    if !address.is_multiple_of(2) {
         panic!("Unaligned memory access at PC = 0x{:08x}", state.pc);
     }
     let aligned_address = address & !3;

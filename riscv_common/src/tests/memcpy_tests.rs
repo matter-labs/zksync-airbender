@@ -1,6 +1,7 @@
 use rand::Rng;
 
 #[test]
+#[cfg_attr(miri, ignore = "randomised 16k-case grid; too slow under Miri")]
 fn test_memcopy() {
     const MAX_SIZE: usize = 1024;
     let mut rng = rand::rng();
@@ -48,7 +49,7 @@ fn test_memcopy() {
                     );
                 }
 
-                if output_buffer[..dst_offset].iter().all(|el| *el == 0) == false {
+                if !output_buffer[..dst_offset].iter().all(|el| *el == 0) {
                     // dbg!(&output_buffer[..dst_offset]);
                     panic!(
                         "Failed for size {}, with source unalignmnet {}, dest unalignment {}: output before destination is touched",
@@ -56,10 +57,9 @@ fn test_memcopy() {
                     );
                 }
 
-                if output_buffer[dst_offset..][size..]
+                if !output_buffer[dst_offset..][size..]
                     .iter()
                     .all(|el| *el == 0)
-                    == false
                 {
                     // dbg!(&output_buffer[dst_offset..][size..]);
                     panic!(

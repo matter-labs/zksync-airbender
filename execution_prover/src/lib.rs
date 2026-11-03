@@ -1,0 +1,27 @@
+//! Backend-independent execution proving: setup construction, simulation and
+//! replay, the trace cache and the commit/prove protocol. Builds without CUDA.
+#![feature(allocator_api)]
+#![feature(get_mut_unchecked)]
+#![feature(likely_unlikely)]
+#![feature(pointer_is_aligned_to)]
+
+pub mod backend;
+pub mod config;
+pub mod messages;
+mod prover;
+pub mod setup;
+mod tracing;
+mod upstream;
+mod workers;
+
+// The harness drives the simulation, which needs the x86-64 JIT
+#[cfg(all(test, target_arch = "x86_64"))]
+mod test_support;
+
+pub use config::{prover_config, ExecutionProverConfiguration};
+pub use execution_prover_model::MachineType;
+pub use prover::{
+    BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, ProgramArtifacts,
+    ProveResult, RiscvFamilyArtifact,
+};
+pub use workers::spawn_abort_on_panic;

@@ -1,8 +1,9 @@
+use std::collections::HashSet;
 use std::ptr::NonNull;
 
 use super::*;
 
-use dynasmrt::{dynasm, x64, DynasmApi, DynasmLabelApi};
+use dynasmrt::{dynasm, x64, DynamicLabel, DynasmApi, DynasmLabelApi};
 
 use crate::ir::simple_instruction_set::{Instruction, InstructionName};
 
@@ -14,6 +15,7 @@ pub struct JittedCode<I: ContextImpl> {
     code: dynasmrt::ExecutableBuffer,
     start: dynasmrt::AssemblyOffset,
     _marker: core::marker::PhantomData<I>,
+    ram_config: JitRunnerRam,
 }
 
 unsafe impl<I: ContextImpl> Send for JittedCode<I> {}
@@ -58,6 +60,7 @@ unsafe impl<I: ContextImpl> Sync for JittedCode<I> {}
 macro_rules! prologue {
     ($ops:ident) => {
         dynasm!($ops
+            ; .arch x64
             // stack is 8 mod 16 here
             ; push rbp // saved (callee-saved); we do NOT use it as a frame pointer
 
@@ -76,6 +79,7 @@ macro_rules! prologue {
 macro_rules! epilogue {
     ($ops:ident) => {
         dynasm!($ops
+            ; .arch x64
             ; add rsp, 8
 
             ; pop r15
@@ -90,16 +94,12 @@ macro_rules! epilogue {
     };
 }
 
-// Spill / reload the vectorized circuit-family counters (xmm8..=xmm12) to the
-// MachineState `counters` array (16-byte aligned, so movdqa is valid). Used ONLY at
-// snapshot boundaries (trace flush / final), where the snapshotter reads the counters.
-// Delegation and non-determinism external calls deliberately do NOT spill counters:
-// they never read or modify them (verified: the delegation implementations only touch
-// the trace and registers), so the values just need to survive the call in xmm8..=xmm12.
-// MachineState pointer must be in RDX.
+// Preserve counters at snapshots and opaque non-determinism calls.
+// MachineState must be in RDX.
 macro_rules! spill_counters {
     ($ops:ident) => {
         dynasm!($ops
+            ; .arch x64
             ; movdqa [rdx + (MachineState::COUNTERS_OFFSET as i32) + 0], xmm8
             ; movdqa [rdx + (MachineState::COUNTERS_OFFSET as i32) + 16], xmm9
             ; movdqa [rdx + (MachineState::COUNTERS_OFFSET as i32) + 32], xmm10
@@ -112,6 +112,7 @@ macro_rules! spill_counters {
 macro_rules! reload_counters {
     ($ops:ident) => {
         dynasm!($ops
+            ; .arch x64
             ; movdqa xmm8, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 0]
             ; movdqa xmm9, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 16]
             ; movdqa xmm10, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 32]
@@ -124,6 +125,7 @@ macro_rules! reload_counters {
 macro_rules! receive_trace {
     ($ops:ident, $recv:expr) => {
         dynasm!($ops
+            ; .arch x64
             // handler for full trace chunk. RDX is expected to have a pointer to the MachineState
             ; ->trace_buffer_full:
             // we only call this function after executing the opcode in full,
@@ -152,6 +154,7 @@ macro_rules! receive_trace {
 macro_rules! quit {
     ($ops:ident, $recv:expr) => {
         dynasm!($ops
+            ; .arch x64
             // handler for final trace chunk. In r9 we have a counter of snapshotted data in the last chunk
             ; ->quit:
             ; ->quit_impl:
@@ -188,6 +191,7 @@ macro_rules! quit {
 macro_rules! before_call {
     ($ops:ident) => {
         dynasm!($ops
+            ; .arch x64
             ; push rsi
             ; push rdi
 
@@ -199,29 +203,15 @@ macro_rules! before_call {
 // This macro saves registers into MachineState structure in RDX
 macro_rules! save_machine_state {
     ($ops:ident) => {
-        // Spill the vector-resident registers and the value-mapped host GPRs into the
-        // MachineState (pointer in RDX). The exact set differs by register-allocation
-        // experiment (see the `xmm_ts` feature), so it lives in cfg'd helpers.
+        // Spill the vector-resident registers and value-mapped host GPRs into
+        // MachineState (pointer in RDX).
         save_value_xmms(&mut $ops);
         save_value_gprs(&mut $ops);
         dynasm!($ops
+            ; .arch x64
             // put current timestamp (without assumptions about mod 4)
             ; mov [rdx + (MachineState::TIMESTAMP_OFFSET as i32)], r8
         );
-        // Spill the value-mapped registers' timestamps (live in GPRs or XMM lanes
-        // depending on the experiment) into register_timestamps[], so snapshots and
-        // external callees see them.
-        spill_register_timestamps(&mut $ops);
-        dynasm!($ops
-            // NOTE: the circuit-family counters (xmm8..=xmm12) are NOT spilled here.
-            // External callees reached through before_call! (delegations, non-determinism)
-            // do not read or modify counters, and do not clobber xmm8..=xmm12, so the live
-            // values survive the call. Counters are spilled only at snapshot boundaries
-            // (see `spill_counters!` in `receive_trace!`/`quit!`).
-            // NOTE: the flattened non-determinism responses pointer lives directly in the
-            // `MachineState` field, which is plain memory and is therefore preserved across
-            // the call without any explicit save/restore here.
-        )
     }
 }
 
@@ -229,6 +219,7 @@ macro_rules! save_machine_state {
 macro_rules! after_call {
     ($ops:ident) => {
         dynasm!($ops
+            ; .arch x64
             ;; update_machine_state_post_call!($ops)
 
             ; pop rdi
@@ -241,22 +232,12 @@ macro_rules! after_call {
 macro_rules! update_machine_state_post_call {
     ($ops:ident) => {
         dynasm!($ops
+            ; .arch x64
             // load updated timestamp (also without assumptions)
             ; mov r8, [rdx + (MachineState::TIMESTAMP_OFFSET as i32)]
         );
-        // Restore the value-mapped host GPRs and vector-resident registers (the set
-        // differs by experiment; see the `xmm_ts` feature).
         restore_value_gprs(&mut $ops);
         restore_value_xmms(&mut $ops);
-        // Reload the value-mapped registers' timestamps (an external callee, e.g. a
-        // delegation, may have modified ts[10..12]).
-        reload_register_timestamps(&mut $ops);
-        dynasm!($ops
-            // NOTE: circuit-family counters (xmm8..=xmm12) are not reloaded here; they are
-            // not spilled by the matching save_machine_state! and survive the call.
-            // NOTE: the flattened non-determinism responses pointer is kept in its own
-            // `MachineState` field (plain memory), so there is nothing to restore here.
-        )
     }
 }
 
@@ -299,27 +280,15 @@ fn destination_gpr(x: u32) -> u8 {
     rv_to_gpr(x).unwrap_or(x64::Rq::RAX as u8)
 }
 
-// ===========================================================================
-// Register-timestamp storage for the value-mapped host GPRs (see `rv_to_gpr`).
-//
-// Default (packed): `write_reg_timestamp` is a no-op; instead the cycle's base timestamp is
-// written once per instruction into the (32x33x33) `packed_timestamps` array
-// (`packed_ts_store`), and register timestamps are reconstructed offline
-// (`MachineState::reconstruct_register_timestamps`). With the `xmm_ts` feature the 8 mapped
-// registers' timestamps are kept live in XMM lanes (`pinsrq`) instead, spilled/reloaded at
-// snapshots and external calls. Both expose the same entry points used by the cfg-agnostic
-// emitters: `write_reg_timestamp`, `spill_register_timestamps`, `reload_register_timestamps`.
-// ===========================================================================
+// Register timestamps are reconstructed from the (32x33x33) `packed_timestamps`
+// array, which records the cycle's base timestamp once per instruction.
+// `MachineState::register_timestamps_array` merges this with the post-cycle effects
+// written by delegation handlers. No timestamp spill/reload is needed.
 
-// ---- default (packed): per-register timestamp writes are eliminated entirely ----
-#[cfg(not(feature = "xmm_ts"))]
-pub(crate) fn write_reg_timestamp(_ops: &mut x64::Assembler, _r: u32) {}
-
-/// packed_ts draft: emit the single per-cycle timestamp store. The slot index
+/// Emit the single per-cycle timestamp store. The slot index
 /// `33*33*rs1 + 33*rs2 + rd` is a compile-time constant (rs1/rs2/rd are decoded), so this
 /// is one `mov [rsp + const], r8` with no runtime index math. rs2 is forced to 32 for
 /// loads and rd to 32 for stores, per the experiment's addressing.
-#[cfg(not(feature = "xmm_ts"))]
 pub(crate) fn packed_ts_store(
     ops: &mut x64::Assembler,
     name: InstructionName,
@@ -328,14 +297,13 @@ pub(crate) fn packed_ts_store(
     rd: u32,
 ) {
     let off = packed_ts_off(name, rs1, rs2, rd);
-    dynasm!(ops ; mov [rsp + off], r8);
+    dynasm!(ops ; .arch x64 ; mov [rsp + off], r8);
 }
 
 /// Byte offset (from RSP, which points at MachineState during JITted execution) of the
 /// `packed_timestamps` slot written by `packed_ts_store` for instruction `(name, rs1, rs2,
 /// rd)`. Factored out so the fused word-mem-run emitter can write the per-element slot
 /// directly with an arbitrary timestamp value (not just live `r8`).
-#[cfg(not(feature = "xmm_ts"))]
 pub(crate) fn packed_ts_off(name: InstructionName, rs1: u32, rs2: u32, rd: u32) -> i32 {
     use InstructionName as Op;
     // ND-write must not credit rs1: the interpreter reads rs1's value WITHOUT bumping its
@@ -373,97 +341,12 @@ pub(crate) fn packed_ts_off(name: InstructionName, rs1: u32, rs2: u32, rd: u32) 
     MachineState::PACKED_TS_OFFSET as i32 + (idx as i32) * 8
 }
 
-// packed: register timestamps live only in the packed array (reconstructed offline);
-// nothing to spill/reload at call boundaries.
-#[cfg(not(feature = "xmm_ts"))]
-fn spill_register_timestamps(_ops: &mut x64::Assembler) {}
-
-#[cfg(not(feature = "xmm_ts"))]
-fn reload_register_timestamps(_ops: &mut x64::Assembler) {}
-
-// ---- xmm_ts: timestamps of the 8 mapped regs live in XMM lanes ----
-// xmm6/7/13/14 hold 2 u64 each (x10/11->xmm6, x12/13->xmm7, x14/15->xmm13, x16/28->xmm14).
-// A touch is `pinsrq xmm, r8, lane` (off the store port p4, onto the shuffle/FP side).
-// A/B against memory storage via RISCV_TS_IN_XMM=0.
-#[cfg(feature = "xmm_ts")]
-const REG_TS_XMM: [(u32, u8, u8); 8] = [
-    (10, 6, 0),
-    (11, 6, 1),
-    (12, 7, 0),
-    (13, 7, 1),
-    (14, 13, 0),
-    (15, 13, 1),
-    (16, 14, 0),
-    (28, 14, 1),
-];
-
-#[cfg(feature = "xmm_ts")]
-pub(crate) fn ts_in_xmm_enabled() -> bool {
-    use std::sync::OnceLock;
-    static E: OnceLock<bool> = OnceLock::new();
-    *E.get_or_init(|| std::env::var_os("RISCV_TS_IN_XMM").map_or(true, |v| v != "0"))
-}
-
-#[cfg(feature = "xmm_ts")]
-pub(crate) fn reg_ts_xmm(r: u32) -> Option<(u8, u8)> {
-    if !ts_in_xmm_enabled() {
-        return None;
-    }
-    let mut i = 0;
-    while i < REG_TS_XMM.len() {
-        if REG_TS_XMM[i].0 == r {
-            return Some((REG_TS_XMM[i].1, REG_TS_XMM[i].2));
-        }
-        i += 1;
-    }
-    None
-}
-
-#[cfg(feature = "xmm_ts")]
-pub(crate) fn write_reg_timestamp(ops: &mut x64::Assembler, r: u32) {
-    if let Some((xmm, lane)) = reg_ts_xmm(r) {
-        dynasm!(ops ; pinsrq Rx(xmm), r8, lane as i8);
-    } else {
-        let rts = MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
-        dynasm!(ops ; mov [rsp + 8 * (r as i32) + rts], r8);
-    }
-}
-
-#[cfg(feature = "xmm_ts")]
-fn spill_register_timestamps(ops: &mut x64::Assembler) {
-    if !ts_in_xmm_enabled() {
-        return;
-    }
-    let rts = MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
-    dynasm!(ops
-        ; movdqu [rdx + rts + 8 * 10], xmm6  // ts[10], ts[11]
-        ; movdqu [rdx + rts + 8 * 12], xmm7  // ts[12], ts[13]
-        ; movdqu [rdx + rts + 8 * 14], xmm13 // ts[14], ts[15]
-        ; pextrq [rdx + rts + 8 * 16], xmm14, 0 // ts[16]
-        ; pextrq [rdx + rts + 8 * 28], xmm14, 1 // ts[28]
-    );
-}
-
-#[cfg(feature = "xmm_ts")]
-fn reload_register_timestamps(ops: &mut x64::Assembler) {
-    if !ts_in_xmm_enabled() {
-        return;
-    }
-    let rts = MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
-    dynasm!(ops
-        ; movdqu xmm6, [rdx + rts + 8 * 10]
-        ; movdqu xmm7, [rdx + rts + 8 * 12]
-        ; movdqu xmm13, [rdx + rts + 8 * 14]
-        ; pinsrq xmm14, [rdx + rts + 8 * 16], 0
-        ; pinsrq xmm14, [rdx + rts + 8 * 28], 1
-    );
-}
-
 // ---- value save/restore for the mapped host GPRs and the vector-resident registers ----
 // (8 value GPRs + 6 vector-register movdqu. The MachineState pointer is in RDX.)
 fn save_value_xmms(ops: &mut x64::Assembler) {
     let off = MachineState::XMM_SPILL_OFFSET as i32;
     dynasm!(ops
+            ; .arch x64
         ; movdqu [rdx + off + 0], xmm0
         ; movdqu [rdx + off + 16], xmm1
         ; movdqu [rdx + off + 32], xmm2
@@ -475,6 +358,7 @@ fn save_value_xmms(ops: &mut x64::Assembler) {
 fn restore_value_xmms(ops: &mut x64::Assembler) {
     let off = MachineState::XMM_SPILL_OFFSET as i32;
     dynasm!(ops
+            ; .arch x64
         ; movdqu xmm0, [rdx + off + 0]
         ; movdqu xmm1, [rdx + off + 16]
         ; movdqu xmm2, [rdx + off + 32]
@@ -486,6 +370,7 @@ fn restore_value_xmms(ops: &mut x64::Assembler) {
 fn save_value_gprs(ops: &mut x64::Assembler) {
     let off = MachineState::GPR_REGISTERS_OFFSET as i32;
     dynasm!(ops
+            ; .arch x64
         ; mov [rdx + off + (1 * 4)], r10d // a0, slot 1
         ; mov [rdx + off + (2 * 4)], r11d // a1, slot 2
         ; mov [rdx + off + (3 * 4)], r12d // a2, slot 3
@@ -499,6 +384,7 @@ fn save_value_gprs(ops: &mut x64::Assembler) {
 fn restore_value_gprs(ops: &mut x64::Assembler) {
     let off = MachineState::GPR_REGISTERS_OFFSET as i32;
     dynasm!(ops
+            ; .arch x64
         ; mov r10d, [rdx + off + (1 * 4)]
         ; mov r11d, [rdx + off + (2 * 4)]
         ; mov r12d, [rdx + off + (3 * 4)]
@@ -561,6 +447,7 @@ fn store_result(ops: &mut x64::Assembler, x: u32) {
         let x = x as u8;
         let (xmm_register, imm) = rv_reg_to_xmm_reg(x);
         dynasm!(ops
+            ; .arch x64
             ; pinsrd Rx(xmm_register), eax, imm as i8
         )
     }
@@ -573,12 +460,14 @@ fn load(ops: &mut x64::Assembler, x: u32) -> u8 {
     rv_to_gpr(x).unwrap_or_else(|| {
         if x == 0 {
             dynasm!(ops
+            ; .arch x64
                 ; xor edx, edx
             );
         } else {
             let x = x as u8;
             let (xmm_register, imm) = rv_reg_to_xmm_reg(x);
             dynasm!(ops
+            ; .arch x64
                 ; pextrd edx, Rx(xmm_register), imm as i8
             );
         }
@@ -592,18 +481,21 @@ fn load_into(ops: &mut x64::Assembler, x: u32, destination: u8) {
     if let Some(gpr) = rv_to_gpr(x) {
         if destination != gpr {
             dynasm!(ops
+            ; .arch x64
                 ; mov Rd(destination), Rd(gpr)
             );
         }
     } else {
         if x == 0 {
             dynasm!(ops
+            ; .arch x64
                 ; xor Rd(destination), Rd(destination)
             );
         } else {
             let x = x as u8;
             let (xmm_register, imm) = rv_reg_to_xmm_reg(x);
             dynasm!(ops
+            ; .arch x64
                 ; pextrd Rd(destination), Rx(xmm_register), imm as i8
             );
         }
@@ -645,20 +537,24 @@ fn load_abelian_into(ops: &mut x64::Assembler, x: u32, y: u32, destination: u8, 
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! print_registers {
     ($ops:ident, $pc:expr, $instr:expr) => {
         dynasm!($ops
+            ; .arch x64
             ; sub rsp, 32 * 4
             ; mov DWORD [rsp], 0
         );
         for i in 1..32 {
             let reg = load(&mut $ops, i);
             dynasm!($ops
+            ; .arch x64
                 ; mov [rsp + 4 * i as i32], Rd(reg)
             );
         }
 
         dynasm!($ops
+            ; .arch x64
             ; mov rcx, rsp
 
             ; push rdi
@@ -682,11 +578,13 @@ macro_rules! print_registers {
         for i in 1..32 {
             let out = destination_gpr(i);
             dynasm!($ops
+            ; .arch x64
                 ; mov Rd(out), [rsp + 4 * i as i32]
             );
             store_result(&mut $ops, i);
         }
         dynasm!($ops
+            ; .arch x64
             ; add rsp, 32 * 4
         );
     };
@@ -695,6 +593,7 @@ macro_rules! print_registers {
 macro_rules! increment_trace {
     ($ops:ident, $pc:expr) => {
         dynasm!($ops
+            ; .arch x64
             ; inc r9
             ;; check_to_save_trace!($ops, $pc)
         );
@@ -704,6 +603,7 @@ macro_rules! increment_trace {
 macro_rules! check_to_save_trace {
     ($ops:ident, $pc:expr) => {
         dynasm!($ops
+            ; .arch x64
             ; cmp r9, TRACE_CHUNK_LEN as i32
             ; jl >skip
             ; mov [rdi + (TraceChunk::LEN_OFFSET as i32)], r9 // save length
@@ -719,77 +619,40 @@ macro_rules! check_to_save_trace {
 // each, covering counters[0..10]) instead of in memory, so an increment is a `paddq`
 // on the vector-ALU ports (p0/1/5) rather than a read-modify-write store on the single
 // store port (p4) — the measured bottleneck. They are spilled to / reloaded from the
-// MachineState `counters` array in `save_machine_state!`/`after_call!`, so snapshots and
-// the final state still observe the correct cumulative values. (Legacy-SSE `paddq` keeps
+// MachineState `counters` array at snapshots and non-determinism calls. Delegation
+// handlers must preserve these registers. (Legacy-SSE `paddq` keeps
 // us off the AVX/SSE transition penalty, matching the existing pextrd/pinsrd/movdqu code.)
 fn record_circuit_type(ops: &mut x64::Assembler, circuit_type: CounterType, by: u16) {
     assert!(by > 0);
+    assert!((circuit_type as u8) < (CounterType::KeccakF1600Delegation as u8));
     let x = circuit_type as u8;
     let grp = 8 + x / 2; // xmm8..=xmm12
     let lane = x % 2; // qword lane within the register
 
     if by == 1 {
         if lane == 0 {
-            dynasm!(ops ; paddq Rx(grp), [->cve_one_q0]);
+            dynasm!(ops ; .arch x64 ; paddq Rx(grp), [->cve_one_q0]);
         } else {
-            dynasm!(ops ; paddq Rx(grp), [->cve_one_q1]);
+            dynasm!(ops ; .arch x64 ; paddq Rx(grp), [->cve_one_q1]);
         }
     } else {
         // Rare (delegations): build `by` at the right qword lane in a scratch xmm.
         dynasm!(ops
+            ; .arch x64
             ; mov eax, by as i32
             ; movd Rx(15), eax
         );
         if lane == 1 {
-            dynasm!(ops ; pslldq Rx(15), 8);
+            dynasm!(ops ; .arch x64 ; pslldq Rx(15), 8);
         }
-        dynasm!(ops ; paddq Rx(grp), Rx(15));
+        dynasm!(ops ; .arch x64 ; paddq Rx(grp), Rx(15));
     }
-}
-
-// NOTE on `packed_ts`: `write_reg_timestamp` is a no-op (register timestamps come from the
-// packed array) and the per-sub-slot r8 advances below are gated off. The running timestamp
-// is instead advanced once per cycle in the eager loop: a single `add r8, TIMESTAMP_STEP`
-// for every opcode except loads/stores, which first bump r8 to their memory sub-slot
-// (base+1 for a load read, base+2 for a store) to stamp the memory cell, then complete to
-// base+4. Delegations keep their explicit base+3 handler contract in their own arm. Only
-// the cycle's 0-mod-4 base is written into the packed array (once, at the loop top).
-macro_rules! pre_bump_timestamp_and_touch {
-    ($ops:ident, $d:expr, $r:expr) => {
-        #[cfg(feature = "xmm_ts")]
-        dynasm!($ops ; add r8, $d);
-        write_reg_timestamp(&mut $ops, $r as u32);
-    };
-}
-
-macro_rules! touch_register_and_increment_timestamp {
-    ($ops:ident, $r:expr) => {
-        write_reg_timestamp(&mut $ops, $r as u32);
-        #[cfg(feature = "xmm_ts")]
-        dynasm!($ops ; inc r8);
-    };
-}
-
-macro_rules! touch_register_and_bump_timestamp {
-    ($ops:ident, $r:expr, $d:expr) => {
-        write_reg_timestamp(&mut $ops, $r as u32);
-        #[cfg(feature = "xmm_ts")]
-        dynasm!($ops ; add r8, $d);
-    };
-}
-
-macro_rules! bump_timestamp {
-    ($ops:ident, $d:expr) => {
-        #[cfg(feature = "xmm_ts")]
-        dynasm!($ops
-            ; add r8, $d
-        );
-    };
 }
 
 macro_rules! emit_misaligned_runtime_error {
     ($ops:ident) => {
         dynasm!($ops
+            ; .arch x64
             ; jmp ->exit_on_misaligned
         )
     };
@@ -798,6 +661,7 @@ macro_rules! emit_misaligned_runtime_error {
 macro_rules! emit_runtime_error {
     ($ops:ident) => {
         dynasm!($ops
+            ; .arch x64
             ; jmp ->exit_with_error
         )
     };
@@ -806,6 +670,7 @@ macro_rules! emit_runtime_error {
 macro_rules! emit_execution_panic {
     ($ops:ident, $pc:expr) => {
         dynasm!($ops
+            ; .arch x64
             ; mov r9, $pc as i32
             ; jmp ->exit_with_execution_panic
         )
@@ -816,6 +681,7 @@ macro_rules! emit_execution_panic {
 macro_rules! machine_state_store_pc {
     ($ops:ident, $reg:ident, $pc:expr) => {
         dynasm!($ops
+            ; .arch x64
             ; mov DWORD [$reg + (MachineState::PC_OFFSET as i32)], ($pc as i32)
         )
     };
@@ -824,6 +690,7 @@ macro_rules! machine_state_store_pc {
 macro_rules! emit_early_exit {
     ($ops:ident, $pc:expr, $bound:expr) => {
         dynasm!($ops
+            ; .arch x64
             ; cmp r8, 4
             ; jl -> exit_with_error
 
@@ -864,7 +731,6 @@ macro_rules! emit_early_exit {
 //
 // `window` (max group size, one of 0/2/4/8; 0 disables) comes from RISCV_MERGE_WINDOW
 // (default 4 when unset).
-#[cfg(not(feature = "xmm_ts"))]
 pub(crate) fn merge_window() -> usize {
     use std::sync::OnceLock;
     static W: OnceLock<usize> = OnceLock::new();
@@ -887,7 +753,6 @@ pub(crate) fn merge_window() -> usize {
 /// Largest fusable group size (a power of two in {1,2,4,8}, capped by `window`) of the run of
 /// consecutive same-opcode, same-base word accesses with immediate stride exactly +4 starting
 /// at `i`. Returns 1 when nothing fuses.
-#[cfg(not(feature = "xmm_ts"))]
 fn merged_word_run_g(
     program: &[Instruction],
     is_static_target: &[bool],
@@ -933,17 +798,22 @@ fn merged_word_run_g(
 
 /// Emit a fused run of `g` (a power of two in {2,4,8}) consecutive word loads or stores. Does
 /// NOT touch r9; the caller advances r9 by g and does the chunk-full check. Advances r8 by 4*g.
-#[cfg(not(feature = "xmm_ts"))]
-fn emit_merged_word_run(ops: &mut x64::Assembler, program: &[Instruction], start: usize, g: usize) {
+fn emit_merged_word_run(
+    ops: &mut x64::Assembler,
+    program: &[Instruction],
+    start: usize,
+    g: usize,
+    timestamp_offset: i32,
+) {
     use InstructionName as Op;
     let first = &program[start];
     let is_load = matches!(first.name, Op::Lw);
     let rs1 = first.rs1 as u32;
     let imm0 = first.imm as i32;
-    let tso = MemoryHolder::TIMESTAMPS_OFFSET as i32;
+    let tso = timestamp_offset;
     let trtso = TraceChunk::TIMESTAMPS_OFFSET as i32;
 
-    // Vector scratch (all free in the packed, non-xmm_ts mode): xmm6/7/13/14.
+    // Vector scratch: xmm6/7/13/14.
     let xv = 6u8; // values
     let xt = 7u8; // old-timestamps copy
     let xb = 13u8; // broadcast of T0 (=r8) into both qwords
@@ -951,7 +821,7 @@ fn emit_merged_word_run(ops: &mut x64::Assembler, program: &[Instruction], start
 
     // Base byte address of word 0 into RCX (32-bit, wraps like RISC-V). Computed once.
     let base = load(ops, rs1);
-    dynasm!(ops ; lea Rd(SCRATCH_REGISTER), [Rd(base) + imm0]);
+    dynasm!(ops ; .arch x64 ; lea Rd(SCRATCH_REGISTER), [Rd(base) + imm0]);
 
     // (1) Copy the words currently in RAM into the trace value column. For loads this is the
     //     read value; for stores it is the OLD value (the write happens in step 3, after).
@@ -960,12 +830,14 @@ fn emit_merged_word_run(ops: &mut x64::Assembler, program: &[Instruction], start
     while off < vbytes {
         if vbytes - off >= 16 {
             dynasm!(ops
+            ; .arch x64
                 ; movdqu Rx(xv), [rsi + Rq(SCRATCH_REGISTER) + off]
                 ; movdqu [rdi + r9 * 4 + off], Rx(xv)
             );
             off += 16;
         } else {
             dynasm!(ops
+            ; .arch x64
                 ; movq Rx(xv), [rsi + Rq(SCRATCH_REGISTER) + off]
                 ; movq [rdi + r9 * 4 + off], Rx(xv)
             );
@@ -979,6 +851,7 @@ fn emit_merged_word_run(ops: &mut x64::Assembler, program: &[Instruction], start
     let mut off = 0i32;
     while off < tbytes {
         dynasm!(ops
+            ; .arch x64
             ; movdqu Rx(xt), [rsi + 2 * Rq(SCRATCH_REGISTER) + (tso + off)]
             ; movdqu [rdi + r9 * 8 + (trtso + off)], Rx(xt)
         );
@@ -995,14 +868,14 @@ fn emit_merged_word_run(ops: &mut x64::Assembler, program: &[Instruction], start
             for k in 0..chunk {
                 let rs2 = program[start + j + k].rs2 as u32;
                 load_into(ops, rs2, x64::Rq::RAX as u8);
-                dynasm!(ops ; pinsrd Rx(xv), eax, k as i8);
+                dynasm!(ops ; .arch x64 ; pinsrd Rx(xv), eax, k as i8);
             }
             if chunk == 4 {
-                dynasm!(ops ; movdqu [rsi + Rq(SCRATCH_REGISTER) + off], Rx(xv));
+                dynasm!(ops ; .arch x64 ; movdqu [rsi + Rq(SCRATCH_REGISTER) + off], Rx(xv));
                 off += 16;
             } else {
                 // chunk == 2 (only when g == 2)
-                dynasm!(ops ; movq [rsi + Rq(SCRATCH_REGISTER) + off], Rx(xv));
+                dynasm!(ops ; .arch x64 ; movq [rsi + Rq(SCRATCH_REGISTER) + off], Rx(xv));
                 off += 8;
             }
             j += chunk;
@@ -1013,18 +886,20 @@ fn emit_merged_word_run(ops: &mut x64::Assembler, program: &[Instruction], start
     //     2 for stores). Build [T0+.., T0+..] two qwords at a time from a precomputed offset
     //     table plus a broadcast of T0. Must come AFTER step (2) read the old timestamps.
     dynasm!(ops
+            ; .arch x64
         ; movq Rx(xb), r8
         ; punpcklqdq Rx(xb), Rx(xb)
     );
     if is_load {
-        dynasm!(ops ; lea rax, [->ts_word_off_load]);
+        dynasm!(ops ; .arch x64 ; lea rax, [->ts_word_off_load]);
     } else {
-        dynasm!(ops ; lea rax, [->ts_word_off_store]);
+        dynasm!(ops ; .arch x64 ; lea rax, [->ts_word_off_store]);
     }
     let mut w = 0usize;
     let mut toff = 0i32;
     while w < g {
         dynasm!(ops
+            ; .arch x64
             ; movdqu Rx(xc), [rax + (8 * w) as i32]
             ; paddq Rx(xc), Rx(xb)
             ; movdqu [rsi + 2 * Rq(SCRATCH_REGISTER) + (tso + toff)], Rx(xc)
@@ -1039,7 +914,7 @@ fn emit_merged_word_run(ops: &mut x64::Assembler, program: &[Instruction], start
         for j in 0..g {
             let rd = program[start + j].rd as u32;
             let out = destination_gpr(rd);
-            dynasm!(ops ; mov Rd(out), [rsi + Rq(SCRATCH_REGISTER) + (4 * j as i32)]);
+            dynasm!(ops ; .arch x64 ; mov Rd(out), [rsi + Rq(SCRATCH_REGISTER) + (4 * j as i32)]);
             store_result(ops, rd);
         }
     }
@@ -1055,9 +930,10 @@ fn emit_merged_word_run(ops: &mut x64::Assembler, program: &[Instruction], start
             instr.rd as u32,
         );
         if j == 0 {
-            dynasm!(ops ; mov [rsp + off], r8);
+            dynasm!(ops ; .arch x64 ; mov [rsp + off], r8);
         } else {
             dynasm!(ops
+            ; .arch x64
                 ; lea rax, [r8 + (4 * j as i32)]
                 ; mov [rsp + off], rax
             );
@@ -1066,10 +942,11 @@ fn emit_merged_word_run(ops: &mut x64::Assembler, program: &[Instruction], start
 
     // (7) Counters and the running timestamp. MemWord += g (identical to g separate +1s).
     record_circuit_type(ops, CounterType::MemWord, g as u16);
-    dynasm!(ops ; add r8, (4 * g) as i32);
+    dynasm!(ops ; .arch x64 ; add r8, (4 * g) as i32);
 }
 
 // === MOP (Zimop) prime-field arithmetic: M31 (default) or BabyBear ========================
+// (BabyBear optionally with inputs assumed canonical, `MopField::BabyBearAssumeCanonical`)
 //
 // The MOP opcodes (ZimopAdd / ZimopSub / ZimopMul / ZimopFMA) compute a prime-field operation
 // on the register's RAW field representation, exactly mirroring the reference
@@ -1091,6 +968,12 @@ fn emit_merged_word_run(ops: &mut x64::Assembler, program: &[Instruction], start
 pub enum MopField {
     M31,
     BabyBear,
+    /// BabyBear, but the inputs of the field operations are ASSUMED to be canonical
+    /// (raw repr `< p`) and are not reduced (or even checked). The outputs are always
+    /// canonical. If the program ever feeds a non-canonical value into a field operation, the
+    /// result diverges from the reference semantics (`from_raw_repr_with_reduction`), so it
+    /// is only suitable for programs that are known to uphold it.
+    BabyBearAssumeCanonical,
 }
 
 /// Env-driven MOP field selection for callers without a fixed field (e.g. the JIT differential
@@ -1103,8 +986,11 @@ pub fn mop_field() -> MopField {
         Ok(s) => match s.to_ascii_lowercase().as_str() {
             "m31" | "mersenne31" | "mersenne" => MopField::M31,
             "babybear" | "baby_bear" | "bb" => MopField::BabyBear,
+            "babybear_assume_canonical" | "baby_bear_assume_canonical" | "bb_assume_canonical" => {
+                MopField::BabyBearAssumeCanonical
+            }
             other => panic!(
-                "RISCV_MOP_FIELD must be 'm31' or 'babybear' (got {:?})",
+                "RISCV_MOP_FIELD must be 'm31', 'babybear' or 'babybear_assume_canonical' (got {:?})",
                 other
             ),
         },
@@ -1121,6 +1007,7 @@ const BB_MONT_K: i32 = 0x77ff_ffffu32 as i32; // BabyBear Montgomery factor
 /// subtractions (matching `from_raw_repr_with_reduction`), using `t` as a dead scratch register.
 fn bb_reduce_to_canonical(ops: &mut x64::Assembler, r: u8, t: u8) {
     dynasm!(ops
+            ; .arch x64
         ; mov Rd(t), Rd(r) ; sub Rd(t), BB_ORDER ; cmovnc Rd(r), Rd(t)
         ; mov Rd(t), Rd(r) ; sub Rd(t), BB_ORDER ; cmovnc Rd(r), Rd(t)
     );
@@ -1130,14 +1017,52 @@ fn bb_reduce_to_canonical(ops: &mut x64::Assembler, r: u8, t: u8) {
 /// register locations; the reduced result is left in `out`. The caller handles timestamps,
 /// `store_result`, and the family counter.
 trait MopFieldEmitter {
-    fn emit_add(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8);
-    fn emit_sub(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8);
-    fn emit_mul(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8);
-    fn emit_fma(ops: &mut x64::Assembler, rs1: u32, rs2: u32, rd: u32, out: u8);
+    fn emit_add(ops: &mut x64::Assembler, cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8);
+    fn emit_sub(ops: &mut x64::Assembler, cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8);
+    fn emit_mul(ops: &mut x64::Assembler, cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8);
+    fn emit_fma(
+        ops: &mut x64::Assembler,
+        cold: &mut ColdStubs,
+        rs1: u32,
+        rs2: u32,
+        rd: u32,
+        out: u8,
+    );
+}
+
+/// Out-of-line slow paths, emitted after the main instruction stream so that the hot path
+/// only pays for a never-taken `cmp` + `jcc`.
+#[derive(Default)]
+struct ColdStubs {
+    reductions: Vec<ColdReduction>,
+}
+
+struct ColdReduction {
+    entry: DynamicLabel,
+    back: DynamicLabel,
+    register: u8,
+    scratch: u8,
+}
+
+impl ColdStubs {
+    fn emit(self, ops: &mut x64::Assembler) {
+        for ColdReduction {
+            entry,
+            back,
+            register,
+            scratch,
+        } in self.reductions
+        {
+            dynasm!(ops ; .arch x64 ; =>entry);
+            bb_reduce_to_canonical(ops, register, scratch);
+            dynasm!(ops ; .arch x64 ; jmp =>back);
+        }
+    }
 }
 
 fn emit_mop<E: MopFieldEmitter>(
     ops: &mut x64::Assembler,
+    cold: &mut ColdStubs,
     name: InstructionName,
     rs1: u32,
     rs2: u32,
@@ -1146,10 +1071,10 @@ fn emit_mop<E: MopFieldEmitter>(
 ) {
     use InstructionName as Op;
     match name {
-        Op::ZimopAdd => E::emit_add(ops, rs1, rs2, out),
-        Op::ZimopSub => E::emit_sub(ops, rs1, rs2, out),
-        Op::ZimopMul => E::emit_mul(ops, rs1, rs2, out),
-        Op::ZimopFMA => E::emit_fma(ops, rs1, rs2, rd, out),
+        Op::ZimopAdd => E::emit_add(ops, cold, rs1, rs2, out),
+        Op::ZimopSub => E::emit_sub(ops, cold, rs1, rs2, out),
+        Op::ZimopMul => E::emit_mul(ops, cold, rs1, rs2, out),
+        Op::ZimopFMA => E::emit_fma(ops, cold, rs1, rs2, rd, out),
         _ => unreachable!("emit_mop called on a non-MOP opcode"),
     }
 }
@@ -1157,12 +1082,13 @@ fn emit_mop<E: MopFieldEmitter>(
 // ---- Mersenne-31 (canonical raw repr; classic fold reductions) ----
 struct M31Emitter;
 impl MopFieldEmitter for M31Emitter {
-    fn emit_add(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8) {
+    fn emit_add(ops: &mut x64::Assembler, _cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
         if rs2 == 0 {
             // ADDI-mod fast path (rs2 == x0), heavily used in the verifier: a single input,
             // fully reduced by subtracting p then 2p.
             load_into(ops, rs1, out);
             dynasm!(ops
+            ; .arch x64
                 ; mov Rd(SCRATCH_REGISTER), Rd(out)
                 ; mov edx, Rd(out)
                 ; sub edx, M31_P
@@ -1173,6 +1099,7 @@ impl MopFieldEmitter for M31Emitter {
         } else {
             load_abelian_into(ops, rs1, rs2, out, x64::Rq::RDX as u8);
             dynasm!(ops
+            ; .arch x64
                 // reduce first input
                 ; mov Rd(SCRATCH_REGISTER), Rd(out)
                 ; and Rd(out), M31_P
@@ -1197,10 +1124,11 @@ impl MopFieldEmitter for M31Emitter {
         }
     }
 
-    fn emit_sub(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8) {
+    fn emit_sub(ops: &mut x64::Assembler, _cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
         load_into(ops, rs2, x64::Rq::RDX as u8);
         load_into(ops, rs1, out);
         dynasm!(ops
+            ; .arch x64
             ; mov Rd(SCRATCH_REGISTER), Rd(out)
             ; and Rd(out), M31_P
             ; shr Rd(SCRATCH_REGISTER), 31i8
@@ -1220,9 +1148,10 @@ impl MopFieldEmitter for M31Emitter {
         );
     }
 
-    fn emit_mul(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8) {
+    fn emit_mul(ops: &mut x64::Assembler, _cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
         load_abelian_into(ops, rs1, rs2, out, x64::Rq::RDX as u8);
         dynasm!(ops
+            ; .arch x64
             ; mov Rd(SCRATCH_REGISTER), Rd(out)
             ; and Rd(out), M31_P
             ; shr Rd(SCRATCH_REGISTER), 31i8
@@ -1246,12 +1175,20 @@ impl MopFieldEmitter for M31Emitter {
         );
     }
 
-    fn emit_fma(ops: &mut x64::Assembler, rs1: u32, rs2: u32, rd: u32, out: u8) {
+    fn emit_fma(
+        ops: &mut x64::Assembler,
+        _cold: &mut ColdStubs,
+        rs1: u32,
+        rs2: u32,
+        rd: u32,
+        out: u8,
+    ) {
         // rd = (rs1*rs2 + rd_old) mod p. Reduce rd_old (single fold) and stash it; then run the
         // mul, fold rd_old into the 64-bit product before the final folds (matching the host
         // `ops::fma_mod`: product = a*b + c, then fold low/high).
         load_into(ops, rd, x64::Rq::RAX as u8); // EAX = rd_old (value-only read)
         dynasm!(ops
+            ; .arch x64
             ; mov Rd(SCRATCH_REGISTER), eax
             ; and eax, M31_P
             ; shr Rd(SCRATCH_REGISTER), 31i8
@@ -1260,6 +1197,7 @@ impl MopFieldEmitter for M31Emitter {
         );
         load_abelian_into(ops, rs1, rs2, out, x64::Rq::RDX as u8);
         dynasm!(ops
+            ; .arch x64
             ; mov Rd(SCRATCH_REGISTER), Rd(out)
             ; and Rd(out), M31_P
             ; shr Rd(SCRATCH_REGISTER), 31i8
@@ -1286,65 +1224,117 @@ impl MopFieldEmitter for M31Emitter {
 }
 
 // ---- BabyBear (Montgomery raw repr) ----
-struct BabyBearEmitter;
-impl MopFieldEmitter for BabyBearEmitter {
-    fn emit_add(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8) {
-        load_into(ops, rs1, x64::Rq::RAX as u8);
-        load_into(ops, rs2, x64::Rq::RCX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RAX as u8, x64::Rq::RDX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RCX as u8, x64::Rq::RDX as u8);
-        dynasm!(ops
-            ; add eax, ecx // a + b < 2p
-            ; mov edx, eax ; sub edx, BB_ORDER ; cmovnc eax, edx
-        );
-        if out != x64::Rq::RAX as u8 {
-            dynasm!(ops ; mov Rd(out), eax);
+//
+// The reference semantics reduce every input (`from_raw_repr_with_reduction`), but the operands
+// are canonical in practice (field elements produced by previous field operations), so the
+// hot path only checks `operand < p` with a never-taken branch, and the two conditional
+// subtractions live in an out-of-line stub. With `ASSUME_CANONICAL` (see
+// `MopField::BabyBearAssumeCanonical`) even that check is not emitted.
+struct BabyBearEmitter<const ASSUME_CANONICAL: bool>;
+
+/// Loads RISC-V register `x` into the scratch register `r` and brings it into `[0, p)`. `t` is a
+/// dead scratch register for the slow path.
+fn bb_load_canonical<const ASSUME_CANONICAL: bool>(
+    ops: &mut x64::Assembler,
+    cold: &mut ColdStubs,
+    x: u32,
+    r: u8,
+    t: u8,
+) {
+    load_into(ops, x, r);
+    if x == 0 || ASSUME_CANONICAL {
+        return;
+    }
+    let entry = ops.new_dynamic_label();
+    let back = ops.new_dynamic_label();
+    dynasm!(ops
+            ; .arch x64
+        ; cmp Rd(r), BB_ORDER
+        ; jae =>entry
+        ; =>back
+    );
+    cold.reductions.push(ColdReduction {
+        entry,
+        back,
+        register: r,
+        scratch: t,
+    });
+}
+
+impl<const ASSUME_CANONICAL: bool> MopFieldEmitter for BabyBearEmitter<ASSUME_CANONICAL> {
+    fn emit_add(ops: &mut x64::Assembler, cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
+        const RAX: u8 = x64::Rq::RAX as u8;
+        const RCX: u8 = x64::Rq::RCX as u8;
+        const RDX: u8 = x64::Rq::RDX as u8;
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs1, RAX, RDX);
+        if rs2 != 0 {
+            // otherwise it is just a reduction of the input
+            bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs2, RCX, RDX);
+            dynasm!(ops
+            ; .arch x64
+                ; add eax, ecx // a + b < 2p
+                ; mov edx, eax ; sub edx, BB_ORDER ; cmovnc eax, edx
+            );
+        }
+        if out != RAX {
+            dynasm!(ops ; .arch x64 ; mov Rd(out), eax);
         }
     }
 
-    fn emit_sub(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8) {
-        load_into(ops, rs1, x64::Rq::RAX as u8);
-        load_into(ops, rs2, x64::Rq::RCX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RAX as u8, x64::Rq::RDX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RCX as u8, x64::Rq::RDX as u8);
+    fn emit_sub(ops: &mut x64::Assembler, cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
+        const RAX: u8 = x64::Rq::RAX as u8;
+        const RCX: u8 = x64::Rq::RCX as u8;
+        const RDX: u8 = x64::Rq::RDX as u8;
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs1, RAX, RDX);
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs2, RCX, RDX);
         dynasm!(ops
+            ; .arch x64
             ; sub eax, ecx // sets CF on borrow (a < b)
             ; lea edx, [rax + BB_ORDER] // a - b + p, does not touch flags
             ; cmovc eax, edx
         );
-        if out != x64::Rq::RAX as u8 {
-            dynasm!(ops ; mov Rd(out), eax);
+        if out != RAX {
+            dynasm!(ops ; .arch x64 ; mov Rd(out), eax);
         }
     }
 
-    fn emit_mul(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8) {
-        load_into(ops, rs1, x64::Rq::RAX as u8);
-        load_into(ops, rs2, x64::Rq::RCX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RAX as u8, x64::Rq::RDX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RCX as u8, x64::Rq::RDX as u8);
+    fn emit_mul(ops: &mut x64::Assembler, cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
+        const RAX: u8 = x64::Rq::RAX as u8;
+        const RCX: u8 = x64::Rq::RCX as u8;
+        const RDX: u8 = x64::Rq::RDX as u8;
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs1, RAX, RDX);
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs2, RCX, RDX);
         emit_bb_montgomery_mul(ops);
-        if out != x64::Rq::RAX as u8 {
-            dynasm!(ops ; mov Rd(out), eax);
+        if out != RAX {
+            dynasm!(ops ; .arch x64 ; mov Rd(out), eax);
         }
     }
 
-    fn emit_fma(ops: &mut x64::Assembler, rs1: u32, rs2: u32, rd: u32, out: u8) {
-        // rd = add_mod(montgomery_mul(rs1, rs2), rd_old). Stash reduced rd_old (the mul uses all
-        // three scratch GPRs, and no spare GPR survives it), then add it back.
-        load_into(ops, rd, x64::Rq::RAX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RAX as u8, x64::Rq::RDX as u8);
-        dynasm!(ops ; mov [rsp - 8], eax); // stash reduced rd_old
-        load_into(ops, rs1, x64::Rq::RAX as u8);
-        load_into(ops, rs2, x64::Rq::RCX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RAX as u8, x64::Rq::RDX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RCX as u8, x64::Rq::RDX as u8);
+    fn emit_fma(
+        ops: &mut x64::Assembler,
+        cold: &mut ColdStubs,
+        rs1: u32,
+        rs2: u32,
+        rd: u32,
+        out: u8,
+    ) {
+        // rd = add_mod(montgomery_mul(rs1, rs2), rd_old). `out` is only written at the very
+        // end, so rd_old can be read after the multiplication (that clobbers all three scratch
+        // GPRs) without any stash, and it stays off the multiplication's dependency chain.
+        const RAX: u8 = x64::Rq::RAX as u8;
+        const RCX: u8 = x64::Rq::RCX as u8;
+        const RDX: u8 = x64::Rq::RDX as u8;
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs1, RAX, RDX);
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs2, RCX, RDX);
         emit_bb_montgomery_mul(ops); // EAX = (rs1*rs2) in [0, p)
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rd, RCX, RDX); // value-only read of rd_old
         dynasm!(ops
-            ; add eax, [rsp - 8] // + rd_old < 2p
+            ; .arch x64
+            ; add eax, ecx // + rd_old < 2p
             ; mov edx, eax ; sub edx, BB_ORDER ; cmovnc eax, edx
         );
-        if out != x64::Rq::RAX as u8 {
-            dynasm!(ops ; mov Rd(out), eax);
+        if out != RAX {
+            dynasm!(ops ; .arch x64 ; mov Rd(out), eax);
         }
     }
 }
@@ -1353,6 +1343,7 @@ impl MopFieldEmitter for BabyBearEmitter {
 /// into EAX. Clobbers RAX/RCX/RDX. Implements `field::baby_bear::ops::basic::mul_mod`.
 fn emit_bb_montgomery_mul(ops: &mut x64::Assembler) {
     dynasm!(ops
+            ; .arch x64
         ; imul rax, rcx // full 64-bit product (operands < 2^31, product < 2^62)
         ; mov ecx, eax // product low 32 bits
         ; imul ecx, ecx, BB_MONT_K // m = (product_lo * MONT_K) mod 2^32
@@ -1369,18 +1360,27 @@ impl<I: ContextImpl> JittedCode<I> {
         program: &[Instruction],
         cycles_bound: Option<u32>,
         mop_field: MopField,
+        ram_config: JitRunnerRam,
     ) -> Self {
+        assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+        let timestamps_offset = ram_config.timestamps_offset();
+        let large_timestamps_offset = timestamps_offset > (1 << 30);
+        assert!(timestamps_offset.is_power_of_two());
+        // bigint delegations run as a routine of the JIT code, or as calls of the Rust handler
+        let use_bigint_asm = delegations::bigint_asm::bigint_asm_enabled();
+        let timestamps_offset_shift = timestamps_offset.trailing_zeros();
+
         let mut ops = x64::Assembler::new().unwrap();
         let start = ops.offset();
 
         // view_rv32_assembly(&program[..100], 0);
 
         dynasm!(ops
+            ; .arch x64
             ; ->start:
             ;; prologue!(ops)
             ; vzeroall
-            // OPTION 1: r10..r13 hold values (a0..a3, init 0); r14/r15/rbx/rbp hold the
-            // timestamps of those 4 (init 0 = untouched). All start zeroed.
+            // All start zeroed.
             ; xor rbx, rbx
             ; xor rbp, rbp
             ; xor r10, r10
@@ -1397,18 +1397,20 @@ impl<I: ContextImpl> JittedCode<I> {
 
         // allocate stack space for Machine state
         dynasm!(ops
+            ; .arch x64
             ; sub rsp, (MachineState::SIZE as i32)
         );
         for i in 0..MachineState::ZERO_INIT_QWORDS {
             dynasm!(ops
+            ; .arch x64
                 ; mov QWORD [rsp + 8 * i as i32], 0
             );
         }
         // packed_ts: zero the large packed-timestamps tail with a small runtime loop
         // (unrolling ~35k stores would bloat the JIT). Uses rax (pointer) and rcx (count),
         // both free here. Untouched slots must read 0 for the offline reconstruction.
-        #[cfg(not(feature = "xmm_ts"))]
         dynasm!(ops
+            ; .arch x64
             ; lea rax, [rsp + (MachineState::PACKED_TS_OFFSET as i32)]
             ; mov ecx, PACKED_TS_LEN as i32
             ; packed_ts_zero:
@@ -1419,9 +1421,14 @@ impl<I: ContextImpl> JittedCode<I> {
         );
 
         // we expect trace chunk in RDI, and memory in RSI, and context pointer in RDX,
-        // so we need to copy context pointer into our structure
+        // so we need to copy context pointer into our structure. Also copy
+        // ram config
         dynasm!(ops
+            ; .arch x64
             ; mov [rsp + (MachineState::CONTEXT_PTR_OFFSET as i32)], rdx
+            ; mov Rq(SCRATCH_REGISTER), 1 // compute absolute address due to large immediate, but use short instructions
+            ; shl Rq(SCRATCH_REGISTER), (timestamps_offset_shift as u8) as i8 // and avoid loading from label, or imm64
+            ; mov [rsp + (MachineState::RAM_CONFIG_OFFSET as i32)], Rq(SCRATCH_REGISTER)
         );
         // // NOTE: potential path for next performance optimization
         // // we will also cache it into XMM for performance
@@ -1434,11 +1441,12 @@ impl<I: ContextImpl> JittedCode<I> {
             // We use the usual call wrappers to preserve our live registers across the call,
             // then read the raw responses pointer returned in RAX.
             dynasm!(ops
+            ; .arch x64
                 ; mov rdx, rsp
                 ;; before_call!(ops)
                 ; push rdx
                 ; push r9
-                ; mov rax, QWORD (Context::<I>::nondeterminism_as_raw_ptr as *const ()).addr() as usize as isize as i64
+                ; mov rax, QWORD (Context::<I>::nondeterminism_as_raw_ptr as *const ()).addr() as isize as i64
                 ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)] // first argument is pointer to the context
                 ; call rax
                 ; pop r9
@@ -1466,7 +1474,6 @@ impl<I: ContextImpl> JittedCode<I> {
         // are not independently addressable). JALR targets are dynamic and are *blindly assumed*
         // never to land inside a run (return sites always follow a transfer, so they are run
         // heads). Index 0 is the entry point.
-        #[cfg(not(feature = "xmm_ts"))]
         let is_static_target: Vec<bool> = {
             use InstructionName as Op;
             let mut t = vec![false; program.len()];
@@ -1493,6 +1500,8 @@ impl<I: ContextImpl> JittedCode<I> {
             println!("Timestamp limit is 0x{:x}", ts_bound);
         }
 
+        let mut cold_stubs = ColdStubs::default();
+
         let mut i = 0;
         while i < program.len() {
             // NOTE: the input is already decoded into the intermediate `Instruction`
@@ -1502,6 +1511,7 @@ impl<I: ContextImpl> JittedCode<I> {
             let pc = i as u32 * 4;
 
             dynasm!(ops
+            ; .arch x64
                 ; => instruction_labels[i]
             );
             jump_offsets[i] = ops.offset().0;
@@ -1519,26 +1529,25 @@ impl<I: ContextImpl> JittedCode<I> {
             // wide vector memory/trace stores (packed path; RISCV_MERGE_WINDOW). The emitter
             // does all packed/timestamp/trace/counter bookkeeping for the whole run, so it
             // bypasses the per-instruction prologue and dispatch below.
-            #[cfg(not(feature = "xmm_ts"))]
+            if !large_timestamps_offset
+                && matches!(instr.name, InstructionName::Lw | InstructionName::Sw)
             {
-                if matches!(instr.name, InstructionName::Lw | InstructionName::Sw) {
-                    let g = merged_word_run_g(program, &is_static_target, i, merge_window());
-                    if g >= 2 {
-                        // Defensively bind the inner instruction labels / jump offsets to the
-                        // run head (the no-inner-target assumption means they're never used; this
-                        // only prevents an unresolved-label panic if it were ever violated).
-                        for k in 1..g {
-                            dynasm!(ops ; => instruction_labels[i + k]);
-                            jump_offsets[i + k] = ops.offset().0;
-                            initialized_jump_offsets.insert(i + k);
-                        }
-                        emit_merged_word_run(&mut ops, program, i, g);
-                        dynasm!(ops ; add r9, g as i32);
-                        let pc_for_trace = pc + 4 * g as u32;
-                        check_to_save_trace!(ops, pc_for_trace);
-                        i += g;
-                        continue;
+                let g = merged_word_run_g(program, &is_static_target, i, merge_window());
+                if g >= 2 {
+                    // Defensively bind the inner instruction labels / jump offsets to the
+                    // run head (the no-inner-target assumption means they're never used; this
+                    // only prevents an unresolved-label panic if it were ever violated).
+                    for k in 1..g {
+                        dynasm!(ops ; .arch x64 ; => instruction_labels[i + k]);
+                        jump_offsets[i + k] = ops.offset().0;
+                        initialized_jump_offsets.insert(i + k);
                     }
+                    emit_merged_word_run(&mut ops, program, i, g, timestamps_offset as u32 as i32);
+                    dynasm!(ops ; .arch x64 ; add r9, g as i32);
+                    let pc_for_trace = pc + 4 * g as u32;
+                    check_to_save_trace!(ops, pc_for_trace);
+                    i += g;
+                    continue;
                 }
             }
 
@@ -1552,24 +1561,17 @@ impl<I: ContextImpl> JittedCode<I> {
             let rs2 = instr.rs2 as u32;
             let imm = instr.imm as i32;
 
-            // packed_ts: write the cycle's initial (0 mod 4) base timestamp once into the
-            // slot for this instruction's (rs1, rs2, rd) triple, then advance r8 a single
-            // time (the touch/bump macros are no-ops here). Loads/stores only advance to
-            // their memory sub-slot now (so the in-arm memory-cell stamp is base+1 / base+2)
-            // and complete to base+4 after stamping (see the issue_snapshot blocks);
-            // delegations advance to base+3 in their own arm.
-            #[cfg(not(feature = "xmm_ts"))]
-            {
-                packed_ts_store(&mut ops, instr.name, rs1, rs2, rd);
-                let pre_bump: i32 = match instr.name {
-                    Op::Lb | Op::Lbu | Op::Lh | Op::Lhu | Op::Lw => 1,
-                    Op::Sb | Op::Sh | Op::Sw => 2,
-                    Op::ZicsrDelegation => 0,
-                    _ => TIMESTAMP_STEP as i32,
-                };
-                if pre_bump != 0 {
-                    dynasm!(ops ; add r8, pre_bump);
-                }
+            // Record the cycle base before advancing to the memory sub-slot for loads/stores
+            // or the next cycle otherwise. Delegations advance in their own arm.
+            packed_ts_store(&mut ops, instr.name, rs1, rs2, rd);
+            let pre_bump: i32 = match instr.name {
+                Op::Lb | Op::Lbu | Op::Lh | Op::Lhu | Op::Lw => 1,
+                Op::Sb | Op::Sh | Op::Sw => 2,
+                Op::ZicsrDelegation => 0,
+                _ => TIMESTAMP_STEP as i32,
+            };
+            if pre_bump != 0 {
+                dynasm!(ops ; .arch x64 ; add r8, pre_bump);
             }
 
             // Pure instructions that are fully modeled by the unsigned RV32 JIT and
@@ -1589,6 +1591,7 @@ impl<I: ContextImpl> JittedCode<I> {
                     | Op::Sll
                     | Op::Srl
                     | Op::Sra
+                    | Op::Rev8
                     | Op::Auipc
                     | Op::Lb
                     | Op::Lbu
@@ -1609,54 +1612,49 @@ impl<I: ContextImpl> JittedCode<I> {
                     Op::Add => {
                         if rs2 == 0 {
                             let source = load(&mut ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, 0);
                             dynasm!(ops
-                                ; lea Rd(out), [Rd(source) + imm]
-                            );
+                            ; .arch x64
+                                                ; lea Rd(out), [Rd(source) + imm]
+                                            );
                             record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                         } else {
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, rs2);
                             let other = load_abelian(&mut ops, rs1, rs2, out);
                             dynasm!(ops
-                                ; add Rd(out), Rd(other)
-                            );
+                            ; .arch x64
+                                                ; add Rd(out), Rd(other)
+                                            );
                             record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                         }
                     }
                     Op::Sub => {
-                        touch_register_and_increment_timestamp!(ops, rs1);
-                        touch_register_and_increment_timestamp!(ops, rs2);
                         load_into(&mut ops, rs2, SCRATCH_REGISTER);
                         load_into(&mut ops, rs1, out);
                         dynasm!(ops
-                            ; sub Rd(out), Rd(SCRATCH_REGISTER)
-                        );
+                        ; .arch x64
+                                        ; sub Rd(out), Rd(SCRATCH_REGISTER)
+                                    );
                         record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                     }
                     // Slt models SLT / SLTI
                     Op::Slt => {
                         if rs2 == 0 {
                             let source = load(&mut ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, 0);
                             dynasm!(ops
-                                ; cmp Rd(source), imm
-                                ; setl Rb(out)
-                                ; movzx Rd(out), Rb(out)
-                            );
+                            ; .arch x64
+                                                ; cmp Rd(source), imm
+                                                ; setl Rb(out)
+                                                ; movzx Rd(out), Rb(out)
+                                            );
                             record_circuit_type(&mut ops, CounterType::BranchSlt, 1);
                         } else {
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, rs2);
                             load_into(&mut ops, rs2, SCRATCH_REGISTER);
                             load_into(&mut ops, rs1, out);
                             dynasm!(ops
-                                ; cmp Rd(out), Rd(SCRATCH_REGISTER)
-                                ; setl Rb(out)
-                                ; movzx Rd(out), Rb(out)
-                            );
+                            ; .arch x64
+                                                ; cmp Rd(out), Rd(SCRATCH_REGISTER)
+                                                ; setl Rb(out)
+                                                ; movzx Rd(out), Rb(out)
+                                            );
                             record_circuit_type(&mut ops, CounterType::BranchSlt, 1);
                         }
                     }
@@ -1664,24 +1662,22 @@ impl<I: ContextImpl> JittedCode<I> {
                     Op::Sltu => {
                         if rs2 == 0 {
                             let source = load(&mut ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, 0);
                             dynasm!(ops
-                                ; cmp Rd(source), imm
-                                ; setb Rb(out)
-                                ; movzx Rd(out), Rb(out)
-                            );
+                            ; .arch x64
+                                                ; cmp Rd(source), imm
+                                                ; setb Rb(out)
+                                                ; movzx Rd(out), Rb(out)
+                                            );
                             record_circuit_type(&mut ops, CounterType::BranchSlt, 1);
                         } else {
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, rs2);
                             load_into(&mut ops, rs2, SCRATCH_REGISTER);
                             load_into(&mut ops, rs1, out);
                             dynasm!(ops
-                                ; cmp Rd(out), Rd(SCRATCH_REGISTER)
-                                ; setb Rb(out)
-                                ; movzx Rd(out), Rb(out)
-                            );
+                            ; .arch x64
+                                                ; cmp Rd(out), Rd(SCRATCH_REGISTER)
+                                                ; setb Rb(out)
+                                                ; movzx Rd(out), Rb(out)
+                                            );
                             record_circuit_type(&mut ops, CounterType::BranchSlt, 1);
                         }
                     }
@@ -1689,19 +1685,17 @@ impl<I: ContextImpl> JittedCode<I> {
                     Op::And => {
                         if rs2 == 0 {
                             load_into(&mut ops, rs1, out);
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, 0);
                             dynasm!(ops
-                                ; and Rd(out), imm
-                            );
+                            ; .arch x64
+                                                ; and Rd(out), imm
+                                            );
                             record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         } else {
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, rs2);
                             let other = load_abelian(&mut ops, rs1, rs2, out);
                             dynasm!(ops
-                                ; and Rd(out), Rd(other)
-                            );
+                            ; .arch x64
+                                                ; and Rd(out), Rd(other)
+                                            );
                             record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         }
                     }
@@ -1709,19 +1703,17 @@ impl<I: ContextImpl> JittedCode<I> {
                     Op::Or => {
                         if rs2 == 0 {
                             load_into(&mut ops, rs1, out);
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, 0);
                             dynasm!(ops
-                                ; or Rd(out), imm
-                            );
+                            ; .arch x64
+                                                ; or Rd(out), imm
+                                            );
                             record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         } else {
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, rs2);
                             let other = load_abelian(&mut ops, rs1, rs2, out);
                             dynasm!(ops
-                                ; or Rd(out), Rd(other)
-                            );
+                            ; .arch x64
+                                                ; or Rd(out), Rd(other)
+                                            );
                             record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         }
                     }
@@ -1729,19 +1721,17 @@ impl<I: ContextImpl> JittedCode<I> {
                     Op::Xor => {
                         if rs2 == 0 {
                             load_into(&mut ops, rs1, out);
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, 0);
                             dynasm!(ops
-                                ; xor Rd(out), imm
-                            );
+                            ; .arch x64
+                                                ; xor Rd(out), imm
+                                            );
                             record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         } else {
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, rs2);
                             let other = load_abelian(&mut ops, rs1, rs2, out);
                             dynasm!(ops
-                                ; xor Rd(out), Rd(other)
-                            );
+                            ; .arch x64
+                                                ; xor Rd(out), Rd(other)
+                                            );
                             record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         }
                     }
@@ -1750,21 +1740,19 @@ impl<I: ContextImpl> JittedCode<I> {
                     Op::Sll => {
                         if rs2 == 0 {
                             load_into(&mut ops, rs1, out);
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, 0);
                             dynasm!(ops
-                                ; shl Rd(out), imm as i8
-                            );
+                            ; .arch x64
+                                                ; shl Rd(out), imm as i8
+                                            );
                             record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         } else {
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, rs2);
                             load_into(&mut ops, rs2, x64::Rq::RCX as u8);
                             load_into(&mut ops, rs1, out);
                             dynasm!(ops
-                                ; and rcx, 0x1f
-                                ; shl Rd(out), cl
-                            );
+                            ; .arch x64
+                                                ; and rcx, 0x1f
+                                                ; shl Rd(out), cl
+                                            );
                             record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         }
                     }
@@ -1772,21 +1760,19 @@ impl<I: ContextImpl> JittedCode<I> {
                     Op::Srl => {
                         if rs2 == 0 {
                             load_into(&mut ops, rs1, out);
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, 0);
                             dynasm!(ops
-                                ; shr Rd(out), imm as i8
-                            );
+                            ; .arch x64
+                                                ; shr Rd(out), imm as i8
+                                            );
                             record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         } else {
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, rs2);
                             load_into(&mut ops, rs2, x64::Rq::RCX as u8);
                             load_into(&mut ops, rs1, out);
                             dynasm!(ops
-                                ; and rcx, 0x1f
-                                ; shr Rd(out), cl
-                            );
+                            ; .arch x64
+                                                ; and rcx, 0x1f
+                                                ; shr Rd(out), cl
+                                            );
                             record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         }
                     }
@@ -1794,75 +1780,112 @@ impl<I: ContextImpl> JittedCode<I> {
                     Op::Sra => {
                         if rs2 == 0 {
                             load_into(&mut ops, rs1, out);
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, 0);
                             dynasm!(ops
-                                ; sar Rd(out), imm as i8
-                            );
+                            ; .arch x64
+                                                ; sar Rd(out), imm as i8
+                                            );
                             record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         } else {
-                            touch_register_and_increment_timestamp!(ops, rs1);
-                            touch_register_and_increment_timestamp!(ops, rs2);
                             load_into(&mut ops, rs2, x64::Rq::RCX as u8);
                             load_into(&mut ops, rs1, out);
                             dynasm!(ops
-                                ; and rcx, 0x1f
-                                ; sar Rd(out), cl
-                            );
+                            ; .arch x64
+                                                ; and rcx, 0x1f
+                                                ; sar Rd(out), cl
+                                            );
                             record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         }
                     }
+                    // Zbb byte swap (rev8): rd = rs1.swap_bytes(). Formal rs2 is x0 and
+                    // imm = 0, so it touches the same sub-slots as an immediate shift.
+                    Op::Rev8 => {
+                        load_into(&mut ops, rs1, out);
+                        dynasm!(ops
+                        ; .arch x64
+                                        ; bswap Rd(out)
+                                    );
+                        record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
+                    }
                     Op::Auipc => {
-                        pre_bump_timestamp_and_touch!(ops, 1, 0);
-                        bump_timestamp!(ops, 1);
                         // NOTE: result is wrapping
                         dynasm!(ops
-                            ; mov Rd(out), (pc.wrapping_add(instr.imm)) as i32
-                        );
+                        ; .arch x64
+                                        ; mov Rd(out), (pc.wrapping_add(instr.imm)) as i32
+                                    );
                         record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                     }
 
                     // for subword loads we need an extra register to store word index. We have RDX "empty"
-                    // after loading the address. And we need one more register to store timestamp - for that we will push RBP
+                    // after loading the address
 
                     // Loads
                     Op::Lb => {
                         let address = load(&mut ops, rs1);
                         dynasm!(ops
-                            ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
-                            ; mov rdx, Rq(SCRATCH_REGISTER) // put word(!) index in to RDX
-                            ; shr rdx, 2
-                        );
-                        touch_register_and_increment_timestamp!(ops, rs1);
-                        dynasm!(ops
-                            ; movsx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
-                            ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
-                            ; mov Rq(SCRATCH_REGISTER), [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
-                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
-                        );
-                        bump_timestamp!(ops, 1);
+                        ; .arch x64
+                                        ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
+                                        ; mov rdx, Rq(SCRATCH_REGISTER) // put word(!) index in to RDX
+                                        ; shr rdx, 2
+                                    );
+                        if large_timestamps_offset {
+                            dynasm!(ops
+                            ; .arch x64
+                                                ; movsx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
+                                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                                ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp (reuse scratch)
+                                                ; mov [rsi + 8 * rdx], r8 // update timestamp
+                                                ; sub rsi, [->timestamps_offset_constant_label]
+                                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                                            );
+                        } else {
+                            let offset = timestamps_offset as u32;
+                            dynasm!(ops
+                            ; .arch x64
+                                                ; movsx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
+                                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp (reuse scratch)
+                                                ; mov [rsi + (offset as i32) + 8 * rdx], r8 // update timestamp
+                                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                                            );
+                        }
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                         issue_snapshot = true;
                     }
                     Op::Lbu => {
                         let address = load(&mut ops, rs1);
                         dynasm!(ops
-                            ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
-                            ; mov rdx, Rq(SCRATCH_REGISTER) // put word(!) index in to RDX
-                            ; shr rdx, 2
-                        );
-                        touch_register_and_increment_timestamp!(ops, rs1);
-                        dynasm!(ops
-                            ; movzx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
-                            ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
-                            ; mov Rq(SCRATCH_REGISTER), [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
-                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
-                        );
-                        bump_timestamp!(ops, 1);
+                        ; .arch x64
+                                        ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
+                                        ; mov rdx, Rq(SCRATCH_REGISTER) // put word(!) index in to RDX
+                                        ; shr rdx, 2
+                                    );
+                        if large_timestamps_offset {
+                            dynasm!(ops
+                            ; .arch x64
+                                                ; movzx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
+                                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                                ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp
+                                                ; mov [rsi + 8 * rdx], r8 // update timestamp
+                                                ; sub rsi, [->timestamps_offset_constant_label]
+                                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                                            );
+                        } else {
+                            let offset = timestamps_offset as u32;
+                            dynasm!(ops
+                            ; .arch x64
+                                                ; movzx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
+                                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp
+                                                ; mov [rsi + (offset as i32) + 8 * rdx], r8 // update timestamp
+                                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                                            );
+                        }
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                         issue_snapshot = true;
                     }
@@ -1870,20 +1893,35 @@ impl<I: ContextImpl> JittedCode<I> {
                         // TODO: exception on misalignment
                         let address = load(&mut ops, rs1);
                         dynasm!(ops
-                            ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
-                            ; mov rdx, Rq(SCRATCH_REGISTER) // put word(!) index in to RDX
-                            ; shr rdx, 2
-                        );
-                        touch_register_and_increment_timestamp!(ops, rs1);
-                        dynasm!(ops
-                            ; movsx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
-                            ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
-                            ; mov Rq(SCRATCH_REGISTER), [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
-                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
-                        );
-                        bump_timestamp!(ops, 1);
+                        ; .arch x64
+                                        ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
+                                        ; mov rdx, Rq(SCRATCH_REGISTER) // put word(!) index in to RDX
+                                        ; shr rdx, 2
+                                    );
+                        if large_timestamps_offset {
+                            dynasm!(ops
+                            ; .arch x64
+                                                ; movsx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
+                                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                                ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp
+                                                ; mov [rsi + 8 * rdx], r8 // update timestamp
+                                                ; sub rsi, [->timestamps_offset_constant_label]
+                                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                                            );
+                        } else {
+                            let offset = timestamps_offset as u32;
+                            dynasm!(ops
+                            ; .arch x64
+                                                ; movsx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
+                                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp
+                                                ; mov [rsi + (offset as i32) + 8 * rdx], r8 // update timestamp
+                                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                                            );
+                        }
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                         issue_snapshot = true;
                     }
@@ -1891,20 +1929,35 @@ impl<I: ContextImpl> JittedCode<I> {
                         // TODO: exception on misalignment
                         let address = load(&mut ops, rs1);
                         dynasm!(ops
-                            ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
-                            ; mov rdx, Rq(SCRATCH_REGISTER) // put word(!) index in to RDX
-                            ; shr rdx, 2
-                        );
-                        touch_register_and_increment_timestamp!(ops, rs1);
-                        dynasm!(ops
-                            ; movzx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
-                            ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
-                            ; mov Rq(SCRATCH_REGISTER), [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
-                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
-                        );
-                        bump_timestamp!(ops, 1);
+                        ; .arch x64
+                                        ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
+                                        ; mov rdx, Rq(SCRATCH_REGISTER) // put word(!) index in to RDX
+                                        ; shr rdx, 2
+                                    );
+                        if large_timestamps_offset {
+                            dynasm!(ops
+                            ; .arch x64
+                                                ; movzx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
+                                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                                ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                                                ; mov Rq(SCRATCH_REGISTER), [rsi + 8 * rdx] // read old timestamp
+                                                ; mov [rsi + 8 * rdx], r8 // update timestamp
+                                                ; sub rsi, [->timestamps_offset_constant_label]
+                                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                                            );
+                        } else {
+                            let offset = timestamps_offset as u32;
+                            dynasm!(ops
+                            ; .arch x64
+                                                ; movzx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
+                                                ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
+                                                ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                                                ; mov Rq(SCRATCH_REGISTER), [rsi + (offset as i32) + 8 * rdx] // read old timestamp
+                                                ; mov [rsi + (offset as i32) + 8 * rdx], r8 // update timestamp
+                                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
+                                            );
+                        }
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                         issue_snapshot = true;
                     }
@@ -1914,86 +1967,98 @@ impl<I: ContextImpl> JittedCode<I> {
                         // TODO: exception on misalignment
                         let address = load(&mut ops, rs1);
                         dynasm!(ops
-                            ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
-                        );
-                        touch_register_and_increment_timestamp!(ops, rs1);
-                        dynasm!(ops
-                            ; mov Rd(out), DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into destination
-                            ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)] // reuse RDX for read timestamp
-                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
-                            ; mov [rdi + r9 * 4], Rd(out) // write value into trace
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write old value into trace
-                        );
-                        bump_timestamp!(ops, 1);
+                        ; .arch x64
+                                        ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
+                                    );
+                        if large_timestamps_offset {
+                            dynasm!(ops
+                            ; .arch x64
+                                                ; mov Rd(out), DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into destination
+                                                ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                                                ; mov rdx, [rsi + 2 * Rq(SCRATCH_REGISTER)] // reuse RDX for read timestamp
+                                                ; mov [rsi + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
+                                                ; sub rsi, [->timestamps_offset_constant_label]
+                                                ; mov [rdi + r9 * 4], Rd(out) // write value into trace
+                                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write old timestamp into trace
+                                            );
+                        } else {
+                            let offset = timestamps_offset as u32;
+                            dynasm!(ops
+                            ; .arch x64
+                                                ; mov Rd(out), DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into destination
+                                                ; mov rdx, [rsi + (offset as i32) + 2 * Rq(SCRATCH_REGISTER)] // reuse RDX for read timestamp
+                                                ; mov [rsi + (offset as i32) + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
+                                                ; mov [rdi + r9 * 4], Rd(out) // write value into trace
+                                                ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write old timestamp into trace
+                                            );
+                        }
                         record_circuit_type(&mut ops, CounterType::MemWord, 1);
                         issue_snapshot = true;
                     }
 
                     // Multiplication
                     Op::Mul => {
-                        touch_register_and_increment_timestamp!(ops, rs1);
-                        touch_register_and_increment_timestamp!(ops, rs2);
                         let other = load_abelian(&mut ops, rs1, rs2, out);
                         dynasm!(ops
-                            ; imul Rd(out), Rd(other)
-                        );
+                        ; .arch x64
+                                        ; imul Rd(out), Rd(other)
+                                    );
                         record_circuit_type(&mut ops, CounterType::MulDiv, 1);
                     }
                     Op::Mulhu => {
-                        touch_register_and_increment_timestamp!(ops, rs1);
-                        touch_register_and_increment_timestamp!(ops, rs2);
                         load_into(&mut ops, rs1, x64::Rq::RAX as u8);
                         let other = load(&mut ops, rs2);
                         dynasm!(ops
-                            ; mul Rd(other)
-                        );
+                        ; .arch x64
+                                        ; mul Rd(other)
+                                    );
                         if out != x64::Rq::RDX as u8 {
                             dynasm!(ops
-                                ; mov Rd(out), edx
-                            );
+                            ; .arch x64
+                                                ; mov Rd(out), edx
+                                            );
                         }
                         record_circuit_type(&mut ops, CounterType::MulDiv, 1);
                     }
                     Op::Divu => {
                         // TODO: handle exception cases
-                        touch_register_and_increment_timestamp!(ops, rs1);
-                        touch_register_and_increment_timestamp!(ops, rs2);
                         load_into(&mut ops, rs1, x64::Rq::RAX as u8);
                         load_into(&mut ops, rs2, SCRATCH_REGISTER);
                         dynasm!(ops
-                            ; xor rdx, rdx
-                            ; div Rd(SCRATCH_REGISTER)
-                        );
+                        ; .arch x64
+                                        ; xor rdx, rdx
+                                        ; div Rd(SCRATCH_REGISTER)
+                                    );
                         // quotient is in RAX
                         if out != x64::Rq::RAX as u8 {
                             dynasm!(ops
-                                ; mov Rd(out), eax
-                            );
+                            ; .arch x64
+                                                ; mov Rd(out), eax
+                                            );
                         }
                         record_circuit_type(&mut ops, CounterType::MulDiv, 1);
                     }
                     Op::Remu => {
                         // TODO: handle exception cases
-                        touch_register_and_increment_timestamp!(ops, rs1);
-                        touch_register_and_increment_timestamp!(ops, rs2);
                         load_into(&mut ops, rs1, x64::Rq::RAX as u8);
                         load_into(&mut ops, rs2, SCRATCH_REGISTER);
                         dynasm!(ops
-                            ; xor rdx, rdx
-                            ; div Rd(SCRATCH_REGISTER)
-                        );
+                        ; .arch x64
+                                        ; xor rdx, rdx
+                                        ; div Rd(SCRATCH_REGISTER)
+                                    );
                         // remainder is in RDX
                         if out != x64::Rq::RDX as u8 {
                             dynasm!(ops
-                                ; mov Rd(out), edx
-                            );
+                            ; .arch x64
+                                                ; mov Rd(out), edx
+                                            );
                         }
                         record_circuit_type(&mut ops, CounterType::MulDiv, 1);
                     }
                     _ => unreachable!(),
                 }
 
-                touch_register_and_bump_timestamp!(ops, rd, 2);
                 store_result(&mut ops, rd);
 
                 // NOTE: ONLY issue snapshotting after store!
@@ -2001,8 +2066,7 @@ impl<I: ContextImpl> JittedCode<I> {
                     // packed_ts: in this block issue_snapshot <=> a load; r8 is at its
                     // memory sub-slot (base+1) after stamping — complete to base+4 (0 mod 4)
                     // before the snapshot/trace save so the saved timestamp matches.
-                    #[cfg(not(feature = "xmm_ts"))]
-                    dynasm!(ops ; add r8, 3);
+                    dynasm!(ops ; .arch x64 ; add r8, 3);
                     let pc_for_trace = pc + 4;
                     increment_trace!(ops, pc_for_trace);
                 }
@@ -2017,9 +2081,6 @@ impl<I: ContextImpl> JittedCode<I> {
                 // Nop is the decoded form of any pure instruction that targets x0
                 // (e.g. the canonical `addi x0, x0, 0`). It only touches x0.
                 Op::Nop => {
-                    touch_register_and_increment_timestamp!(ops, 0);
-                    touch_register_and_increment_timestamp!(ops, 0);
-                    touch_register_and_bump_timestamp!(ops, 0, 2);
                     record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                     i += 1;
                 }
@@ -2032,17 +2093,35 @@ impl<I: ContextImpl> JittedCode<I> {
                 Op::ZimopAdd | Op::ZimopSub | Op::ZimopMul | Op::ZimopFMA => {
                     assert!(rd != 0);
                     let out = destination_gpr(rd); // either a value GPR or EAX
-                    touch_register_and_increment_timestamp!(ops, rs1); // rs1 @ +0
-                    touch_register_and_increment_timestamp!(ops, rs2); // rs2 @ +1
                     match mop_field {
-                        MopField::M31 => {
-                            emit_mop::<M31Emitter>(&mut ops, instr.name, rs1, rs2, rd, out)
-                        }
-                        MopField::BabyBear => {
-                            emit_mop::<BabyBearEmitter>(&mut ops, instr.name, rs1, rs2, rd, out)
-                        }
+                        MopField::M31 => emit_mop::<M31Emitter>(
+                            &mut ops,
+                            &mut cold_stubs,
+                            instr.name,
+                            rs1,
+                            rs2,
+                            rd,
+                            out,
+                        ),
+                        MopField::BabyBear => emit_mop::<BabyBearEmitter<false>>(
+                            &mut ops,
+                            &mut cold_stubs,
+                            instr.name,
+                            rs1,
+                            rs2,
+                            rd,
+                            out,
+                        ),
+                        MopField::BabyBearAssumeCanonical => emit_mop::<BabyBearEmitter<true>>(
+                            &mut ops,
+                            &mut cold_stubs,
+                            instr.name,
+                            rs1,
+                            rs2,
+                            rd,
+                            out,
+                        ),
                     }
-                    touch_register_and_bump_timestamp!(ops, rd, 2); // rd @ +2
                     store_result(&mut ops, rd);
                     record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                     i += 1;
@@ -2056,13 +2135,8 @@ impl<I: ContextImpl> JittedCode<I> {
                 Op::ZimopIXorRot => {
                     assert!(rd != 0);
                     assert_eq!(rs2, rd);
-                    let out = destination_gpr(rd); // rd's GPR, or RAX for an XMM-resident rd
-                    touch_register_and_increment_timestamp!(ops, rs1); // rs1 @ +0
-                    touch_register_and_increment_timestamp!(ops, rs2); // rd_old via rs2 @ +1 (rs2 == rd)
-                                                                       // Materialize rd's OLD value into `out`. A GPR-mapped rd already lives in
-                                                                       // `out`; an XMM-resident rd (out == RAX) must be extracted first. The
-                                                                       // timestamp touch above is the rs2 read; the value itself is unchanged
-                                                                       // until store_result.
+                    let out = destination_gpr(rd);
+                    // Extract the old value only when it lives in an XMM register.
                     if rv_to_gpr(rd).is_none() {
                         load_into(&mut ops, rd, out);
                     }
@@ -2072,10 +2146,10 @@ impl<I: ContextImpl> JittedCode<I> {
                     let src = load(&mut ops, rs1);
                     let rotation = (imm & 31) as i8; // imm ∈ [0,31] from the decoder; mask anyway
                     dynasm!(ops
-                        ; xor Rd(out), Rd(src)
-                        ; ror Rd(out), rotation
-                    );
-                    touch_register_and_bump_timestamp!(ops, rd, 2); // rd @ +2
+                    ; .arch x64
+                                ; xor Rd(out), Rd(src)
+                                ; ror Rd(out), rotation
+                            );
                     store_result(&mut ops, rd);
                     record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                     i += 1;
@@ -2088,24 +2162,16 @@ impl<I: ContextImpl> JittedCode<I> {
                 // touches.
                 Op::ZimopTriAdd => {
                     assert!(rd != 0);
-                    let out = destination_gpr(rd); // rd's GPR, or RAX for an XMM-resident rd
-                    touch_register_and_increment_timestamp!(ops, rs1); // rs1 @ +0
-                    touch_register_and_increment_timestamp!(ops, rs2); // rs2 @ +1
-                                                                       // Accumulate in EAX so rd's GPR (which may alias rs1/rs2) keeps its OLD value
-                                                                       // until all three source reads are done. This rd_old read is value-only (no
-                                                                       // timestamp touch), matching the reference.
-                    load_into(&mut ops, rd, x64::Rq::RAX as u8); // EAX = rd_old
-                                                                 // `a`/`b` are rs1/rs2 (a GPR, or RDX via pextrd for XMM/x0); never RAX. `a` is
-                                                                 // consumed before `b` is loaded, so reusing RDX across the two is safe. If rs1
-                                                                 // or rs2 aliases rd, its GPR still holds rd_old here (only EAX has changed).
+                    let out = destination_gpr(rd);
+                    // Accumulate in EAX so aliases of rd retain its old value until all reads finish.
+                    load_into(&mut ops, rd, x64::Rq::RAX as u8);
                     let a = load(&mut ops, rs1);
-                    dynasm!(ops ; add eax, Rd(a));
+                    dynasm!(ops ; .arch x64 ; add eax, Rd(a));
                     let b = load(&mut ops, rs2);
-                    dynasm!(ops ; add eax, Rd(b));
+                    dynasm!(ops ; .arch x64 ; add eax, Rd(b));
                     if out != x64::Rq::RAX as u8 {
-                        dynasm!(ops ; mov Rd(out), eax);
+                        dynasm!(ops ; .arch x64 ; mov Rd(out), eax);
                     }
-                    touch_register_and_bump_timestamp!(ops, rd, 2); // rd @ +2
                     store_result(&mut ops, rd);
                     record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                     i += 1;
@@ -2114,22 +2180,15 @@ impl<I: ContextImpl> JittedCode<I> {
                 // Control transfer instructions
                 Op::Jal => {
                     let out = destination_gpr(rd);
-                    // No reads (so read x0 twice)
                     if rd != 0 {
-                        pre_bump_timestamp_and_touch!(ops, 1, 0);
                         dynasm!(ops
-                            ; mov Rd(out), (pc + 4) as i32
-                        );
+                        ; .arch x64
+                                        ; mov Rd(out), (pc + 4) as i32
+                                    );
                         store_result(&mut ops, rd);
-                        pre_bump_timestamp_and_touch!(ops, 1, rd);
-                    } else {
-                        pre_bump_timestamp_and_touch!(ops, 2, 0);
                     }
 
-                    bump_timestamp!(ops, 2);
                     record_circuit_type(&mut ops, CounterType::BranchSlt, 1);
-
-                    // NOTE: we finished with all register touches as it'll jump out of our normal control flow
 
                     let offset = imm;
                     let jump_target = pc as i32 + offset;
@@ -2137,17 +2196,19 @@ impl<I: ContextImpl> JittedCode<I> {
                         // An infinite loop is used to signal end of execution.
                         // Store the actual PC we're exiting from so multiple exit points are allowed.
                         dynasm!(ops
-                            ;; machine_state_store_pc!(ops, rsp, pc)
-                            ; jmp ->quit_impl
-                        );
+                        ; .arch x64
+                                        ;; machine_state_store_pc!(ops, rsp, pc)
+                                        ; jmp ->quit_impl
+                                    );
                     } else if jump_target % 4 != 0 {
                         panic!("Unaligned jump destination");
                         // emit_runtime_error!(ops)
                     } else {
                         if let Some(&label) = instruction_labels.get((jump_target / 4) as usize) {
                             dynasm!(ops
-                                ; jmp => label
-                            );
+                            ; .arch x64
+                                                ; jmp => label
+                                            );
                         } else {
                             panic!("Unknown jump destination");
                             // emit_runtime_error!(ops)
@@ -2158,47 +2219,40 @@ impl<I: ContextImpl> JittedCode<I> {
                 Op::Jalr => {
                     let out = destination_gpr(rd);
                     let offset = imm;
-                    touch_register_and_increment_timestamp!(ops, rs1);
                     load_into(&mut ops, rs1, SCRATCH_REGISTER);
                     dynasm!(ops
-                        ; add Rd(SCRATCH_REGISTER), offset
-                        // Must be aligned to an instruction but no need to test the least significant bit,
-                        // as it is set to zero according to the specification
-                        ; test Rd(SCRATCH_REGISTER), 2
-                        ; jnz >misaligned
-                        ; shr Rd(SCRATCH_REGISTER), 2
-                        ; lea rdx, [->jump_offsets]
-                        ; mov rax, [rdx + Rq(SCRATCH_REGISTER) * 8]
-                        ; lea rdx, [->start]
-                        ; add rdx, rax
-                    );
+                    ; .arch x64
+                                ; add Rd(SCRATCH_REGISTER), offset
+                                // Must be aligned to an instruction but no need to test the least significant bit,
+                                // as it is set to zero according to the specification
+                                ; test Rd(SCRATCH_REGISTER), 2
+                                ; jnz >misaligned
+                                ; shr Rd(SCRATCH_REGISTER), 2
+                                ; lea rdx, [->jump_offsets]
+                                ; mov rax, [rdx + Rq(SCRATCH_REGISTER) * 8]
+                                ; lea rdx, [->start]
+                                ; add rdx, rax
+                            );
 
                     // Return address may not be written into register before jump target is computed,
                     // otherwise it could affect the jump target.
                     if rd != 0 {
-                        touch_register_and_increment_timestamp!(ops, 0);
                         dynasm!(ops
-                            ; mov Rd(out), (pc + 4) as i32
-                        );
-                        touch_register_and_bump_timestamp!(ops, rd, 2);
+                        ; .arch x64
+                                        ; mov Rd(out), (pc + 4) as i32
+                                    );
                         store_result(&mut ops, rd);
-                    } else {
-                        // rd == 0: the interpreter stamps x0 at +1 (touch_x0) AND at +2
-                        // (write_register with reg_idx 0 — a discarded write still bumps
-                        // the timestamp), so the eager model must touch x0 twice.
-                        pre_bump_timestamp_and_touch!(ops, 1, 0);
-                        pre_bump_timestamp_and_touch!(ops, 1, 0);
-                        bump_timestamp!(ops, 1);
                     }
                     record_circuit_type(&mut ops, CounterType::BranchSlt, 1);
 
                     dynasm!(ops
-                        ; jmp rdx
-                        ; misaligned:
-                        ; mov esi, Rd(SCRATCH_REGISTER)
-                        ;; emit_misaligned_runtime_error!(ops)
-                        // ;; emit_runtime_error!(ops)
-                    );
+                    ; .arch x64
+                                ; jmp rdx
+                                ; misaligned:
+                                ; mov esi, Rd(SCRATCH_REGISTER)
+                                ;; emit_misaligned_runtime_error!(ops)
+                                // ;; emit_runtime_error!(ops)
+                            );
                     i += 1;
                 }
                 // Branches carry their funct3 selector in `rd`.
@@ -2211,46 +2265,49 @@ impl<I: ContextImpl> JittedCode<I> {
                         let a = load(&mut ops, rs1);
                         load_into(&mut ops, rs2, SCRATCH_REGISTER);
 
-                        touch_register_and_increment_timestamp!(ops, rs1);
-                        touch_register_and_increment_timestamp!(ops, rs2);
-
-                        touch_register_and_bump_timestamp!(ops, 0, 2);
                         record_circuit_type(&mut ops, CounterType::BranchSlt, 1);
 
                         if let Some(&label) = instruction_labels.get((jump_target / 4) as usize) {
                             dynasm!(ops
-                                ; cmp Rd(a), Rd(SCRATCH_REGISTER)
-                            );
+                            ; .arch x64
+                                                ; cmp Rd(a), Rd(SCRATCH_REGISTER)
+                                            );
                             match rd {
                                 0 => {
                                     dynasm!(ops
-                                        ; je =>label
-                                    );
+                                    ; .arch x64
+                                                                ; je =>label
+                                                            );
                                 }
                                 1 => {
                                     dynasm!(ops
-                                        ; jne =>label
-                                    );
+                                    ; .arch x64
+                                                                ; jne =>label
+                                                            );
                                 }
                                 4 => {
                                     dynasm!(ops
-                                        ; jl =>label
-                                    );
+                                    ; .arch x64
+                                                                ; jl =>label
+                                                            );
                                 }
                                 5 => {
                                     dynasm!(ops
-                                        ; jge =>label
-                                    );
+                                    ; .arch x64
+                                                                ; jge =>label
+                                                            );
                                 }
                                 6 => {
                                     dynasm!(ops
-                                        ; jb =>label
-                                    );
+                                    ; .arch x64
+                                                                ; jb =>label
+                                                            );
                                 }
                                 7 => {
                                     dynasm!(ops
-                                        ; jae =>label
-                                    );
+                                    ; .arch x64
+                                                                ; jae =>label
+                                                            );
                                 }
                                 _ => {
                                     panic!("Unknown BRANCH funct3 {}", rd);
@@ -2270,27 +2327,40 @@ impl<I: ContextImpl> JittedCode<I> {
                 Op::Sb => {
                     let address = load(&mut ops, rs1);
                     dynasm!(ops
-                        ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
-                        ; mov rax, Rq(SCRATCH_REGISTER) // put word(!) index in to RAX
-                        ; shr rax, 2
-                    );
-                    touch_register_and_increment_timestamp!(ops, rs1);
-                    touch_register_and_increment_timestamp!(ops, rs2);
+                    ; .arch x64
+                                ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
+                                ; mov rax, Rq(SCRATCH_REGISTER) // put word(!) index in to RAX
+                                ; shr rax, 2
+                            );
                     // Read + trace the old word value BEFORE loading the new value, so we
                     // never need 4 scratch registers at once (and avoid RBP). RDX is free
                     // here (value not loaded yet).
                     dynasm!(ops
-                        ; mov edx, DWORD [rsi + 4 * rax] // load old word(!) value
-                        ; mov [rdi + r9 * 4], edx // write old value into trace
-                    );
+                    ; .arch x64
+                                ; mov edx, DWORD [rsi + 4 * rax] // load old word(!) value
+                                ; mov [rdi + r9 * 4], edx // write old value into trace
+                            );
                     let value = load(&mut ops, rs2);
-                    dynasm!(ops
-                        ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value (frees its register)
-                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp (RDX free; frees RBP)
-                        ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax], r8 // update timestamp
-                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
-                    );
-                    bump_timestamp!(ops, 2);
+                    if large_timestamps_offset {
+                        dynasm!(ops
+                        ; .arch x64
+                                        ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value (frees its register)
+                                        ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                                        ; mov rdx, [rsi + 8 * rax] // read timestamp
+                                        ; mov [rsi + 8 * rax], r8 // update timestamp
+                                        ; sub rsi, [->timestamps_offset_constant_label]
+                                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                                    );
+                    } else {
+                        let offset = timestamps_offset as u32;
+                        dynasm!(ops
+                        ; .arch x64
+                                        ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value (frees its register)
+                                        ; mov rdx, [rsi + (offset as i32) + 8 * rax] // read timestamp
+                                        ; mov [rsi + (offset as i32) + 8 * rax], r8 // update timestamp
+                                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                                    );
+                    }
                     record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                     issue_snapshot = true;
                     i += 1;
@@ -2299,25 +2369,38 @@ impl<I: ContextImpl> JittedCode<I> {
                     // TODO: exception on misalignment
                     let address = load(&mut ops, rs1);
                     dynasm!(ops
-                        ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
-                        ; mov rax, Rq(SCRATCH_REGISTER) // put word(!) index in to RAX
-                        ; shr rax, 2
-                    );
-                    touch_register_and_increment_timestamp!(ops, rs1);
-                    touch_register_and_increment_timestamp!(ops, rs2);
+                    ; .arch x64
+                                ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
+                                ; mov rax, Rq(SCRATCH_REGISTER) // put word(!) index in to RAX
+                                ; shr rax, 2
+                            );
                     // Read + trace the old word value BEFORE loading the new value (see Sb).
                     dynasm!(ops
-                        ; mov edx, DWORD [rsi + 4 * rax] // load old word(!) value
-                        ; mov [rdi + r9 * 4], edx // write old value into trace
-                    );
+                    ; .arch x64
+                                ; mov edx, DWORD [rsi + 4 * rax] // load old word(!) value
+                                ; mov [rdi + r9 * 4], edx // write old value into trace
+                            );
                     let value = load(&mut ops, rs2);
-                    dynasm!(ops
-                        ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value (frees its register)
-                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp (RDX free; frees RBP)
-                        ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax], r8 // update timestamp
-                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
-                    );
-                    bump_timestamp!(ops, 2);
+                    if large_timestamps_offset {
+                        dynasm!(ops
+                        ; .arch x64
+                                        ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value (frees its register)
+                                        ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                                        ; mov rdx, [rsi + 8 * rax] // read timestamp
+                                        ; mov [rsi + 8 * rax], r8 // update timestamp
+                                        ; sub rsi, [->timestamps_offset_constant_label]
+                                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                                    );
+                    } else {
+                        let offset = timestamps_offset as u32;
+                        dynasm!(ops
+                        ; .arch x64
+                                        ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value (frees its register)
+                                        ; mov rdx, [rsi + (offset as i32) + 8 * rax] // read timestamp
+                                        ; mov [rsi + (offset as i32) + 8 * rax], r8 // update timestamp
+                                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                                    );
+                    }
                     record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                     issue_snapshot = true;
                     i += 1;
@@ -2326,24 +2409,39 @@ impl<I: ContextImpl> JittedCode<I> {
                     // TODO: exception on misalignment
                     let address = load(&mut ops, rs1);
                     dynasm!(ops
-                        ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
-                    );
+                    ; .arch x64
+                                ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
+                            );
                     let value = load(&mut ops, rs2);
                     // RDX may hold `value`; RAX and RBP are free here (RBP is no longer a
                     // frame pointer, so it can be clobbered), so use them as scratch for the
                     // old value / old timestamp instead of pushing/popping RDX.
-                    touch_register_and_increment_timestamp!(ops, rs1);
-                    touch_register_and_increment_timestamp!(ops, rs2);
-                    dynasm!(ops
-                        // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
-                        ; mov eax, DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into RAX
-                        ; mov DWORD [rsi + Rq(SCRATCH_REGISTER)], Rd(value) // store new value (frees its register)
-                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)] // read timestamp (RDX free now; frees RBP)
-                        ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
-                        ; mov [rdi + r9 * 4], eax // write old value into trace
-                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
-                    );
-                    bump_timestamp!(ops, 2);
+                    if large_timestamps_offset {
+                        dynasm!(ops
+                        ; .arch x64
+                                        // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
+                                        ; mov eax, DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into RAX
+                                        ; mov DWORD [rsi + Rq(SCRATCH_REGISTER)], Rd(value) // store new value (frees its register)
+                                        ; add rsi, [->timestamps_offset_constant_label] // derive address, as we can not use 64-bit imm here
+                                        ; mov rdx, [rsi + 2 * Rq(SCRATCH_REGISTER)] // read timestamp
+                                        ; mov [rsi + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
+                                        ; sub rsi, [->timestamps_offset_constant_label]
+                                        ; mov [rdi + r9 * 4], eax // write old value into trace
+                                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                                    );
+                    } else {
+                        let offset = timestamps_offset as u32;
+                        dynasm!(ops
+                        ; .arch x64
+                                        // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
+                                        ; mov eax, DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into RAX
+                                        ; mov DWORD [rsi + Rq(SCRATCH_REGISTER)], Rd(value) // store new value (frees its register)
+                                        ; mov rdx, [rsi + (offset as i32) + 2 * Rq(SCRATCH_REGISTER)] // read timestamp
+                                        ; mov [rsi + (offset as i32) + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
+                                        ; mov [rdi + r9 * 4], eax // write old value into trace
+                                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                                    );
+                    }
                     record_circuit_type(&mut ops, CounterType::MemWord, 1);
                     issue_snapshot = true;
                     i += 1;
@@ -2360,16 +2458,18 @@ impl<I: ContextImpl> JittedCode<I> {
                         // MachineState here). Reload the cursor, read the next response into the
                         // destination, then bump the cursor by one u32 and store it back.
                         let out = destination_gpr(rd);
-                        pre_bump_timestamp_and_touch!(ops, 1, 0);
                         dynasm!(ops
-                            ; mov rcx, [rsp + (MachineState::NON_DETERMINISM_RESPONSES_PTR_OFFSET as i32)]
-                            ; mov Rd(out), [rcx]
-                            ; add rcx, 4 // size_of::<u32>()
-                            ; mov [rsp + (MachineState::NON_DETERMINISM_RESPONSES_PTR_OFFSET as i32)], rcx
-                        );
+                        ; .arch x64
+                                        ; mov rcx, [rsp + (MachineState::NON_DETERMINISM_RESPONSES_PTR_OFFSET as i32)]
+                                        ; mov Rd(out), [rcx]
+                                        ; add rcx, 4 // size_of::<u32>()
+                                        ; mov [rsp + (MachineState::NON_DETERMINISM_RESPONSES_PTR_OFFSET as i32)], rcx
+                                        // same trace record as in the default implementation below - replayers
+                                        // take non-determinism values from the trace
+                                        ; mov [rdi + r9 * 4], Rd(out)
+                                        ; mov QWORD [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], 0 // use 0 for timestamp
+                                    );
                         store_result(&mut ops, rd);
-                        pre_bump_timestamp_and_touch!(ops, 1, rd);
-                        bump_timestamp!(ops, 2);
                         record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                         issue_snapshot = true;
                         i += 1;
@@ -2378,25 +2478,25 @@ impl<I: ContextImpl> JittedCode<I> {
                         let out = destination_gpr(rd);
                         // We want to read non-determinism value into RD
                         // as usual, we will stash our machine state into stack, and call external implementation
-                        pre_bump_timestamp_and_touch!(ops, 1, 0);
                         dynasm!(ops
-                            ; mov rdx, rsp
-                            ;; before_call!(ops)
-                            ; push rdx
-                            ; push r9
-                            ; mov rax, QWORD (Context::<I>::read_nondeterminism as *const ()).addr() as usize as isize as i64
-                            ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
-                            ; call rax
-                            ; pop r9
-                            ; pop rdx
-                            ;; after_call!(ops)
-                            ; mov Rd(out), eax
-                            ; mov [rdi + r9 * 4], eax // use common trace for non-determinism reads
-                            ; mov QWORD [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], 0 // use 0 for timestamp
-                        );
+                        ; .arch x64
+                                        ; mov rdx, rsp
+                                        ;; before_call!(ops)
+                                        ; push rdx
+                                        ; push r9
+                                        ; mov rax, QWORD (Context::<I>::read_nondeterminism as *const ()).addr() as isize as i64
+                                        ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
+                                        ;; spill_counters!(ops)
+                                        ; call rax
+                                        ; pop r9
+                                        ; pop rdx
+                                        ;; reload_counters!(ops)
+                                        ;; after_call!(ops)
+                                        ; mov Rd(out), eax
+                                        ; mov [rdi + r9 * 4], eax // use common trace for non-determinism reads
+                                        ; mov QWORD [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], 0 // use 0 for timestamp
+                                    );
                         store_result(&mut ops, rd);
-                        pre_bump_timestamp_and_touch!(ops, 1, rd);
-                        bump_timestamp!(ops, 2);
                         record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                         issue_snapshot = true;
                         i += 1;
@@ -2410,31 +2510,28 @@ impl<I: ContextImpl> JittedCode<I> {
                     if I::PROVIDES_FLATTENED_NON_DETERMINISM {
                         // effectively NOP. rs1's value is read WITHOUT a timestamp touch
                         // (the interpreter's nd_write only touches x0 — circuits read x0).
-                        bump_timestamp!(ops, 1);
-                        pre_bump_timestamp_and_touch!(ops, 1, 0);
-                        bump_timestamp!(ops, 2);
                         record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                         i += 1;
                     } else {
                         load_into(&mut ops, rs1, SCRATCH_REGISTER);
                         // rs1 read carries no timestamp touch (see flattened branch).
-                        bump_timestamp!(ops, 1);
                         dynasm!(ops
-                            ; mov rdx, rsp
-                            ;; before_call!(ops)
-                            ; push rdx
-                            ; push r9
-                            ; mov rax, QWORD (Context::<I>::write_nondeterminism as *const ()).addr() as usize as isize as i64
-                            ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
-                            ; mov rdx, rsi
-                            ; mov esi, Rd(SCRATCH_REGISTER)
-                            ; call rax
-                            ; pop r9
-                            ; pop rdx
-                            ;; after_call!(ops)
-                        );
-                        pre_bump_timestamp_and_touch!(ops, 1, 0);
-                        bump_timestamp!(ops, 2);
+                        ; .arch x64
+                                        ; mov rdx, rsp
+                                        ;; before_call!(ops)
+                                        ; push rdx
+                                        ; push r9
+                                        ; mov rax, QWORD (Context::<I>::write_nondeterminism as *const ()).addr() as isize as i64
+                                        ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
+                                        ;; spill_counters!(ops)
+                                        ; mov rdx, rsi
+                                        ; mov esi, Rd(SCRATCH_REGISTER)
+                                        ; call rax
+                                        ; pop r9
+                                        ; pop rdx
+                                        ;; reload_counters!(ops)
+                                        ;; after_call!(ops)
+                                    );
                         record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                         i += 1;
                     }
@@ -2443,7 +2540,7 @@ impl<I: ContextImpl> JittedCode<I> {
                 // the corresponding CSR register number. Consecutive identical
                 // delegation instructions belong to a single delegated call.
                 Op::ZicsrDelegation => {
-                    let mut cycles_taken = 0;
+                    let cycles_taken;
                     // NOTE: all the increment below happen before moving RSP
                     let function: *const () = match instr.imm {
                         BLAKE2S_DELEGATION_CSR_REGISTER => {
@@ -2476,7 +2573,7 @@ impl<I: ContextImpl> JittedCode<I> {
                         KECCAK_SPECIAL5_CSR_REGISTER => {
                             // we expect exactly 649 calls for single keccak_f1600
                             let mut num_calls = 0;
-                            for j in 1..=NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
+                            for j in 1..=KECCAK_SPECIAL5_NUM_DELEGATION_CALLS {
                                 if program[i + j] == program[i] {
                                     continue;
                                 } else {
@@ -2484,7 +2581,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                     break;
                                 }
                             }
-                            assert_eq!(num_calls, NUM_DELEGATION_CALLS_FOR_KECCAK_F1600);
+                            assert_eq!(num_calls, KECCAK_SPECIAL5_NUM_DELEGATION_CALLS);
                             i += num_calls;
                             cycles_taken = num_calls;
                             record_circuit_type(
@@ -2494,7 +2591,17 @@ impl<I: ContextImpl> JittedCode<I> {
                             );
                             process_csr::<KECCAK_SPECIAL5_CSR_REGISTER> as *const ()
                         }
-                        other_csrs @ _ => {
+                        KECCAK_COLUMN_PARITY_CSR_REGISTER => {
+                            let num_calls = NUM_KECCAK_F1600_CALLS;
+                            for j in 0..num_calls {
+                                assert_eq!(program[i + j].name, InstructionName::ZicsrDelegation);
+                                assert_eq!(program[i + j].imm, keccak_f1600_call_csr(j));
+                            }
+                            i += num_calls;
+                            cycles_taken = num_calls;
+                            process_csr::<KECCAK_COLUMN_PARITY_CSR_REGISTER> as *const ()
+                        }
+                        other_csrs => {
                             panic!("Unknown CSR {}", other_csrs);
                         }
                     };
@@ -2508,41 +2615,76 @@ impl<I: ContextImpl> JittedCode<I> {
                     // Those are markers in nature
                     assert_eq!(rs1, 0);
                     assert_eq!(rd, 0);
-                    pre_bump_timestamp_and_touch!(ops, 2, 0); // touch x0 at 0/1/2 formally
-                    bump_timestamp!(ops, 1); // 3 mod 4
-                                             // packed_ts: the macros above are no-ops; advance r8 to base+3 so the
-                                             // delegation handler sees its expected (3 mod 4) timestamp.
-                    #[cfg(not(feature = "xmm_ts"))]
-                    dynasm!(ops ; add r8, 3);
+                    // Delegation handlers expect the cycle's base+3 timestamp.
+                    dynasm!(ops ; .arch x64 ; add r8, 3);
 
                     let pc_for_trace = pc + ((4 * cycles_taken) as u32);
 
-                    dynasm!(ops
-                        ; mov rdx, rsp
-                        ;; before_call!(ops) // will save rsi and rdi
-                        ; push rdx
-                        // NOTE: we should write r9 into structure, so snapshotter is consistent as a structure
-                        ; mov [rdi + (TraceChunk::LEN_OFFSET as i32)], r9
-                        ; sub rsp, 8
-                        ; mov rax, QWORD (function as *const ()).addr() as usize as isize as i64
-                        // we already have trace chunk in RDI, memory in RSI, and MachineState in RDX
-                        ; call rax
-                        ; add rsp, 8
-                        ; pop rdx
-                        ;; after_call!(ops) // restore rsi and rdi
-                        // read snapshot length back into register
-                        ; mov r9, [rdi + (TraceChunk::LEN_OFFSET as i32)]
-                        // and check if we should save
-                        ;; check_to_save_trace!(ops, pc_for_trace)
-                    );
+                    // Profiling knobs (off unless the environment variables are set): extra
+                    // spill + reload pairs of the machine state, and extra calls of an empty
+                    // handler, around every bigint delegation
+                    if use_bigint_asm && instr.imm == BIGINT_OPS_WITH_CONTROL_CSR_REGISTER {
+                        // no state leaves the registers: see `delegations::bigint_asm`
+                        dynasm!(ops
+                            ; .arch x64
+                            ; call ->bigint_delegation
+                            ;; check_to_save_trace!(ops, pc_for_trace)
+                        );
+                    } else {
+                        let (spill_knob, call_knob) = match instr.imm {
+                            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER => (
+                                "RISCV_ABLATE_DELEG_SPILL_DUP",
+                                "RISCV_ABLATE_DELEG_CALL_DUP",
+                            ),
+                            _ => (
+                                "RISCV_ABLATE_KECCAK_SPILL_DUP",
+                                "RISCV_ABLATE_KECCAK_CALL_DUP",
+                            ),
+                        };
+                        let spill_dup = ablation_knob(spill_knob);
+                        let call_dup = ablation_knob(call_knob);
+                        dynasm!(ops ; .arch x64 ; mov rdx, rsp);
+                        for _ in 0..spill_dup {
+                            save_machine_state!(ops);
+                            update_machine_state_post_call!(ops);
+                        }
+                        dynasm!(ops
+                            ; .arch x64
+                            ;; before_call!(ops) // will save rsi and rdi
+                            ; push rdx
+                            // NOTE: we should write r9 into structure, so snapshotter is consistent as a structure
+                            ; mov [rdi + (TraceChunk::LEN_OFFSET as i32)], r9
+                            ; sub rsp, 8
+                        );
+                        for _ in 0..call_dup {
+                            dynasm!(ops
+                                ; .arch x64
+                                ; mov rax, QWORD (ablation_empty_handler as *const ()).addr() as isize as i64
+                                ; call rax
+                                // the arguments of the real call, from where they were pushed
+                                ; mov rdx, [rsp + 8]
+                                ; mov rdi, [rsp + 16]
+                                ; mov rsi, [rsp + 24]
+                            );
+                        }
+                        dynasm!(ops
+                            ; .arch x64
+                            ; mov rax, QWORD (function as *const ()).addr() as usize as isize as i64
+                            // we already have trace chunk in RDI, memory in RSI, and MachineState in RDX
+                            ; call rax
+                            ; add rsp, 8
+                            ; pop rdx
+                            ;; after_call!(ops) // restore rsi and rdi
+                            // read snapshot length back into register
+                            ; mov r9, [rdi + (TraceChunk::LEN_OFFSET as i32)]
+                            // and check if we should save
+                            ;; check_to_save_trace!(ops, pc_for_trace)
+                        );
+                    }
 
                     // delegation implementations are themselves responsible to call trace finalizers
-                    bump_timestamp!(ops, 1); // 0 mod 4
-                                             // packed_ts: macro above is a no-op; the handler advanced
-                                             // MachineState.timestamp and after_call reloaded r8, so step once more
-                                             // to reach the next cycle's base (0 mod 4).
-                    #[cfg(not(feature = "xmm_ts"))]
-                    dynasm!(ops ; add r8, 1);
+                    // The handler advanced the timestamp to 3 mod 4; start the next cycle.
+                    dynasm!(ops ; .arch x64 ; add r8, 1);
 
                     // NOTE: no other snapshot check is required - we do the check above
                 }
@@ -2564,9 +2706,8 @@ impl<I: ContextImpl> JittedCode<I> {
                 // packed_ts: stores are at their memory sub-slot (base+2) after stamping —
                 // complete to base+4 before the save. ND read/write already pre-bumped the
                 // full step, so only stores need this.
-                #[cfg(not(feature = "xmm_ts"))]
                 if matches!(instr.name, Op::Sb | Op::Sh | Op::Sw) {
-                    dynasm!(ops ; add r8, 2);
+                    dynasm!(ops ; .arch x64 ; add r8, 2);
                 }
                 let pc_for_trace = pc + 4;
                 increment_trace!(ops, pc_for_trace);
@@ -2577,37 +2718,46 @@ impl<I: ContextImpl> JittedCode<I> {
         // if we even come here without exit condition - it's an error
         emit_runtime_error!(ops);
 
+        cold_stubs.emit(&mut ops);
+
+        if use_bigint_asm {
+            delegations::bigint_asm::emit_bigint_delegation_routine(&mut ops, ram_config);
+        }
+
         dynasm!(ops
+            ; .arch x64
             // in r9 we expect PC
             ; ->exit_with_execution_panic:
             // update state
             ; mov rdx, rsp
             ; mov [rdx + (MachineState::PC_OFFSET as i32)], r9d
             ;; save_machine_state!(ops)
-            ; mov rax, QWORD (print_runtime_panic as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_runtime_panic as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; mov rsi, rdx
             ; call rax
         );
 
         dynasm!(ops
+            ; .arch x64
             ; ->exit_on_misaligned:
-            ; mov rax, QWORD (print_misaligned as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_misaligned as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; call rax
         );
 
         let exit_with_error_offset = ops.offset().0;
         dynasm!(ops
+            ; .arch x64
             ; ->exit_with_error:
-            ; mov rax, QWORD (print_complaint as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_complaint as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; call rax
         );
 
         // map jump offsets that were no initialized to point into error
         for (i, offset) in jump_offsets.iter_mut().enumerate() {
-            if initialized_jump_offsets.contains(&i) == false {
+            if !initialized_jump_offsets.contains(&i) {
                 assert_eq!(*offset, 0);
                 *offset = exit_with_error_offset;
             }
@@ -2615,13 +2765,22 @@ impl<I: ContextImpl> JittedCode<I> {
 
         // record all jump offsets
         dynasm!(ops
+            ; .arch x64
             ; ->jump_offsets:
             ; .bytes jump_offsets.into_iter().flat_map(|x| x.to_le_bytes())
+        );
+
+        // put timestamps offset into static data
+        dynasm!(ops
+            ; .arch x64
+            ; ->timestamps_offset_constant_label:
+            ; .bytes timestamps_offset.to_le_bytes()
         );
 
         // 16-byte-aligned one-hot constants for the vectorized counter increments
         // (`paddq xmm, [->cve_one_qN]`). q0 increments the low qword lane, q1 the high.
         dynasm!(ops
+            ; .arch x64
             ; .align 16
             ; ->cve_one_q0:
             ; .bytes 1u64.to_le_bytes()
@@ -2636,8 +2795,8 @@ impl<I: ContextImpl> JittedCode<I> {
         // delta = 1 for loads, 2 for stores. These hold the (4*w + delta) addends as u64 so a
         // 128-bit load of two adjacent entries plus a broadcast `paddq` of T0 builds two
         // consecutive new timestamps. Sized for the largest window (8 words).
-        #[cfg(not(feature = "xmm_ts"))]
         dynasm!(ops
+            ; .arch x64
             ; .align 16
             ; ->ts_word_off_load:
             ; .bytes 1u64.to_le_bytes()
@@ -2676,6 +2835,7 @@ impl<I: ContextImpl> JittedCode<I> {
             code,
             start,
             _marker: core::marker::PhantomData,
+            ram_config,
         }
     }
 
@@ -2687,18 +2847,19 @@ impl<I: ContextImpl> JittedCode<I> {
         initial_memory: &[u32],
     ) {
         assert!(initial_memory.len() <= common_constants::rom::ROM_WORD_SIZE);
+
+        assert_eq!(self.ram_config.ram_size(), memory.ram_size(), "Jitted core was created for the ram size 0x{:08x} bytes, but memory holder received has size of 0x{:08x} bytes", self.ram_config.ram_size(), memory.ram_size());
+        assert!(initial_memory.len() <= memory.memory().len());
         assert!(context.final_state_ref().is_none());
 
-        memory.memory[..initial_memory.len()].copy_from_slice(initial_memory);
+        memory.memory_mut()[..initial_memory.len()].copy_from_slice(initial_memory);
 
-        let run_program: extern "sysv64" fn(
-            NonNull<TraceChunk>,
-            &mut MemoryHolder,
-            &mut Context<I>,
-        ) = unsafe { std::mem::transmute(self.code.ptr(self.start)) };
+        // NOTE: improper c-types doesn't trigger here for some reason!
+        let run_program: extern "sysv64" fn(NonNull<TraceChunk>, NonNull<u64>, &mut Context<I>) =
+            unsafe { std::mem::transmute(self.code.ptr(self.start)) };
 
         let before = std::time::Instant::now();
-        run_program(initial_trace_chunk, memory, context);
+        run_program(initial_trace_chunk, memory.as_mut_ptr(), context);
         let elapsed = before.elapsed();
 
         if let Some(final_state) = context.final_state_ref() {
@@ -2720,13 +2881,12 @@ impl<I: ContextImpl> JittedCode<I> {
         memory: &mut MemoryHolder,
         initial_trace_chunk: NonNull<TraceChunk>,
     ) {
-        let run_program: extern "sysv64" fn(
-            NonNull<TraceChunk>,
-            &mut MemoryHolder,
-            &mut Context<I>,
-        ) = unsafe { std::mem::transmute(self.code.ptr(self.start)) };
+        assert_eq!(self.ram_config.ram_size(), memory.ram_size(), "Jitted core was created for the ram size 0x{:08x} bytes, but memory holder received has size of 0x{:08x} bytes", self.ram_config.ram_size(), memory.ram_size());
+        // Improper c-types doesn't trigger here, but can not use &mut MemoryHolder
+        let run_program: extern "sysv64" fn(NonNull<TraceChunk>, NonNull<u64>, &mut Context<I>) =
+            unsafe { std::mem::transmute(self.code.ptr(self.start)) };
 
-        run_program(initial_trace_chunk, memory, context);
+        run_program(initial_trace_chunk, memory.as_mut_ptr(), context);
     }
 }
 
@@ -2736,17 +2896,16 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
         non_determinism_responses: &'a [u32],
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
-        let mut context = Context::<FlattenedContextImpl<'_>> {
-            implementation: FlattenedContextImpl::new(non_determinism_responses),
-        };
+        assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+        let mut context = Context::<FlattenedContextImpl<'_>>::new(
+            FlattenedContextImpl::new(non_determinism_responses),
+            ram_config,
+        );
 
-        let mut memory: Box<MemoryHolder> = unsafe {
-            // let mut memory: Box<MemoryHolder> = Box::new_uninit().assume_init();
-            let memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
-
-            memory
-        };
+        let mut memory: Box<MemoryHolder> =
+            MemoryHolder::allocate_zeroed(ram_config, Default::default());
 
         // println!(
         //     "Memory chunk address = 0x{:x}",
@@ -2769,7 +2928,8 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field());
+        let runner =
+            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
 
         // Profiling baseline: when RISCV_PROFILE_SKIP_RUN is set we do all of the
         // setup (decode + JIT compile + the large allocations) but skip execution,
@@ -2804,21 +2964,27 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
-        let mut context = Context::<DefaultContextImpl<'_, N>> {
-            implementation: DefaultContextImpl {
-                non_determinism_source,
-                trace_len: 0,
-                final_state: None,
-            },
+        assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+        // Per-run setup timings, printed when `AIRBENDER_HOST_TIMING` is set
+        let timing = std::env::var_os("AIRBENDER_HOST_TIMING").is_some();
+        let t = std::time::Instant::now();
+
+        // println!("Preparing default context implementation");
+        let implementation = DefaultContextImpl {
+            non_determinism_source,
+            trace_len: 0,
+            final_state: None,
         };
 
-        let mut memory: Box<MemoryHolder> = unsafe {
-            // let mut memory: Box<MemoryHolder> = Box::new_uninit().assume_init();
-            let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
+        // println!("Preparing JIT context");
+        let mut context = Context::<DefaultContextImpl<'_, N>>::new(implementation, ram_config);
 
-            memory
-        };
+        // println!("Allocating `MemoryHolder`");
+        let mut memory: Box<MemoryHolder> =
+            MemoryHolder::allocate_zeroed(ram_config, Default::default());
+        assert_eq!(memory.ram_size(), ram_config.ram_size());
 
         // println!(
         //     "Memory chunk address = 0x{:x}",
@@ -2837,19 +3003,48 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         //     (&*trace as *const TraceChunk).addr()
         // );
 
+        let alloc_time = t.elapsed();
+        let t = std::time::Instant::now();
         let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field());
+        let decode_time = t.elapsed();
 
+        // println!("Preprocessing the bytecode");
+        let t = std::time::Instant::now();
+        let runner =
+            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
+        let compile_time = t.elapsed();
+
+        // println!("Running the simulator");
+        let t = std::time::Instant::now();
         runner.run(
             &mut context,
             memory.as_mut(),
             unsafe { NonNull::new_unchecked(trace.as_mut() as *mut _) },
             initial_memory,
         );
+        if timing {
+            eprintln!(
+                "jit run_alternative_simulator: memory + trace alloc {alloc_time:?}, decode {decode_time:?} ({} instructions), jit compile {compile_time:?}, execution {:?}",
+                instructions.len(),
+                t.elapsed()
+            );
+            if let Some(state) = context.final_state_ref() {
+                eprintln!("jit final counters: {:?}", state.counters);
+            }
+            eprintln!(
+                "jit bigint delegations: {}",
+                if delegations::bigint_asm::bigint_asm_enabled() {
+                    "assembly routine"
+                } else {
+                    "Rust handler"
+                }
+            );
+        }
 
+        // println!("Obtaining the final machine state");
         let final_state = context
             .implementation
             .take_final_state()
@@ -2866,19 +3061,23 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
-        let mut context = Context::<DefaultContextImpl<'_, N>> {
-            implementation: DefaultContextImpl {
+        assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+        let mut context = Context::<DefaultContextImpl<'_, N>>::new(
+            DefaultContextImpl {
                 non_determinism_source,
                 trace_len: 0,
                 final_state: None,
             },
-        };
+            ram_config,
+        );
 
-        let mut memory: Box<MemoryHolder> = unsafe { Box::new_zeroed().assume_init() };
+        let mut memory: Box<MemoryHolder> =
+            MemoryHolder::allocate_zeroed(ram_config, Default::default());
         let mut trace: Box<TraceChunk> = unsafe { Box::new_zeroed().assume_init() };
 
-        let runner = Self::preprocess_bytecode(instructions, cycles_bound, mop_field());
+        let runner = Self::preprocess_bytecode(instructions, cycles_bound, mop_field(), ram_config);
         runner.run(
             &mut context,
             memory.as_mut(),
@@ -2899,17 +3098,16 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>, Box<TraceChunk>) {
-        let mut context = Context::<DefaultContextImpl<'_, N>> {
-            implementation: DefaultContextImpl::new(non_determinism_source),
-        };
+        assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+        let mut context = Context::<DefaultContextImpl<'_, N>>::new(
+            DefaultContextImpl::new(non_determinism_source),
+            ram_config,
+        );
 
-        let mut memory: Box<MemoryHolder> = unsafe {
-            // let mut memory: Box<MemoryHolder> = Box::new_uninit().assume_init();
-            let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
-
-            memory
-        };
+        let mut memory: Box<MemoryHolder> =
+            MemoryHolder::allocate_zeroed(ram_config, Default::default());
 
         // println!(
         //     "Memory chunk address = 0x{:x}",
@@ -2928,13 +3126,12 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         //     (&*trace as *const TraceChunk).addr()
         // );
 
-        let context_ref_mut = &mut context;
-
         let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field());
+        let runner =
+            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
 
         runner.run(
             &mut context,
@@ -2952,9 +3149,27 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
     }
 }
 
+/// A profiling knob: the count in the environment variable `name`, 0 when unset
+pub(crate) fn ablation_knob(name: &str) -> usize {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.parse().expect("an ablation knob is a count"))
+        .unwrap_or(0)
+}
+
+/// The handler of the extra calls of `RISCV_ABLATE_DELEG_CALL_DUP`
+#[inline(never)]
+extern "sysv64" fn ablation_empty_handler(
+    trace_piece: &mut TraceChunk,
+    _memory_holder: NonNull<u64>,
+    _machine_state: &mut MachineState,
+) -> u64 {
+    core::hint::black_box(trace_piece.len)
+}
+
 extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
     trace_piece: &mut TraceChunk,
-    memory_holder: &mut MemoryHolder,
+    memory_holder: NonNull<u64>,
     machine_state: &mut MachineState,
 ) -> u64 {
     debug_assert!(
@@ -2963,11 +3178,20 @@ extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
     debug_assert!(
         (trace_piece as *const TraceChunk).is_aligned_to(core::mem::align_of::<TraceChunk>())
     );
-    debug_assert!(
-        (memory_holder as *const MemoryHolder).is_aligned_to(core::mem::align_of::<MemoryHolder>())
-    );
+    debug_assert!(memory_holder.is_aligned_to(MemoryHolder::ALIGNMENT));
+    debug_assert_ne!(machine_state.ram_config, JitRunnerRam::UninitPlaceholder);
+    // we must reconstruct it
+    let memory_holder = unsafe {
+        let num_u64_word = machine_state.ram_config.memory_holder_buffer_size();
+        core::mem::transmute::<&mut [u64], &mut MemoryHolder>(core::slice::from_raw_parts_mut(
+            memory_holder.as_ptr(),
+            num_u64_word,
+        ))
+    };
     if CSR_NUMBER == KECCAK_SPECIAL5_CSR_REGISTER {
         keccak_unrolled_implementation(trace_piece, memory_holder, machine_state)
+    } else if CSR_NUMBER == KECCAK_COLUMN_PARITY_CSR_REGISTER {
+        keccak_f1600_unrolled_implementation(trace_piece, memory_holder, machine_state)
     } else if CSR_NUMBER == BIGINT_OPS_WITH_CONTROL_CSR_REGISTER {
         bigint_implementation(trace_piece, memory_holder, machine_state)
     } else if CSR_NUMBER == BLAKE2S_DELEGATION_CSR_REGISTER {
@@ -2979,10 +3203,23 @@ extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
 
 #[repr(C)]
 pub struct Context<I: ContextImpl> {
-    pub implementation: I,
+    pub(crate) implementation: I,
+    pub(crate) ram_config: JitRunnerRam,
 }
 
 impl<I: ContextImpl> Context<I> {
+    pub fn new(implementation: I, ram_config: JitRunnerRam) -> Self {
+        assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+        Self {
+            implementation,
+            ram_config,
+        }
+    }
+
+    pub fn into_implementation(self) -> I {
+        self.implementation
+    }
+
     extern "sysv64" fn nondeterminism_as_raw_ptr(&self) -> *const u32 {
         if let Some(ptr) = self.implementation.nondeterminism_as_raw_ptr() {
             ptr
@@ -2995,26 +3232,40 @@ impl<I: ContextImpl> Context<I> {
         self.implementation.read_nondeterminism()
     }
 
-    extern "sysv64" fn write_nondeterminism(&mut self, value: u32, memory: &RamImage) {
+    extern "sysv64" fn write_nondeterminism(&mut self, value: u32, memory: *const u32) {
+        let memory = unsafe {
+            core::slice::from_raw_parts(
+                memory,
+                self.ram_config.ram_size() / core::mem::size_of::<u32>(),
+            )
+        };
         self.implementation.write_nondeterminism(value, memory)
     }
 
     extern "sysv64" fn receive_trace(
         &mut self,
-        trace_piece: NonNull<TraceChunk>,
+        trace_chunk: NonNull<TraceChunk>,
         machine_state: &MachineState,
     ) -> NonNull<TraceChunk> {
+        debug_assert!((machine_state as *const MachineState)
+            .is_aligned_to(core::mem::align_of::<MachineState>()));
+        debug_assert!((trace_chunk.as_ptr() as *const TraceChunk)
+            .is_aligned_to(core::mem::align_of::<TraceChunk>()));
         self.implementation
-            .receive_trace(trace_piece, machine_state)
+            .receive_trace(trace_chunk, machine_state)
     }
 
     extern "sysv64" fn receive_final_trace_piece(
         &mut self,
-        trace_piece: NonNull<TraceChunk>,
+        trace_chunk: NonNull<TraceChunk>,
         machine_state: &MachineState,
     ) {
+        debug_assert!((machine_state as *const MachineState)
+            .is_aligned_to(core::mem::align_of::<MachineState>()));
+        debug_assert!((trace_chunk.as_ptr() as *const TraceChunk)
+            .is_aligned_to(core::mem::align_of::<TraceChunk>()));
         self.implementation
-            .receive_final_trace_piece(trace_piece, machine_state);
+            .receive_final_trace_piece(trace_chunk, machine_state);
     }
 
     pub fn take_final_state(&mut self) -> Option<MachineState> {
@@ -3026,6 +3277,7 @@ impl<I: ContextImpl> Context<I> {
     }
 }
 
+#[allow(dead_code)]
 extern "sysv64" fn print_registers(
     registers: &[u32; 32],
     timestamp: u64,
@@ -3069,11 +3321,13 @@ extern "sysv64" fn print_complaint(timestamp: u64) {
     )
 }
 
+#[allow(dead_code)]
 fn sign_extend<const SOURCE_BITS: u8>(x: u32) -> i32 {
     let shift = 32 - SOURCE_BITS;
     i32::from_ne_bytes((x << shift).to_ne_bytes()) >> shift
 }
 
+#[allow(dead_code)]
 fn view_assembly(assembly: &[u8], start: usize) {
     /// Print register names
     fn reg_names(cs: &Capstone, regs: &[RegId]) -> String {
@@ -3106,7 +3360,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
         println!();
         println!("{}", i);
 
-        let detail: InsnDetail = cs.insn_detail(&i).expect("Failed to get insn detail");
+        let detail: InsnDetail = cs.insn_detail(i).expect("Failed to get insn detail");
         let arch_detail: ArchDetail = detail.arch_detail();
         let ops = arch_detail.operands();
 
@@ -3118,7 +3372,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
             ("insn groups:", group_names(&cs, detail.groups())),
         ];
 
-        for &(ref name, ref message) in output.iter() {
+        for (name, message) in output.iter() {
             println!("{:4}{:12} {}", "", name, message);
         }
 
@@ -3129,6 +3383,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
     }
 }
 
+#[allow(dead_code)]
 fn view_rv32_assembly(assembly: &[u32], start: usize) {
     let assembly =
         unsafe { core::slice::from_raw_parts(assembly.as_ptr().cast(), assembly.len() * 4) };
@@ -3162,7 +3417,7 @@ fn view_rv32_assembly(assembly: &[u32], start: usize) {
         println!();
         println!("{}", i);
 
-        let detail: InsnDetail = cs.insn_detail(&i).expect("Failed to get insn detail");
+        let detail: InsnDetail = cs.insn_detail(i).expect("Failed to get insn detail");
         let arch_detail: ArchDetail = detail.arch_detail();
         let ops = arch_detail.operands();
 
@@ -3174,7 +3429,7 @@ fn view_rv32_assembly(assembly: &[u32], start: usize) {
             ("insn groups:", group_names(&cs, detail.groups())),
         ];
 
-        for &(ref name, ref message) in output.iter() {
+        for (name, message) in output.iter() {
             println!("{:4}{:12} {}", "", name, message);
         }
 

@@ -12,7 +12,9 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::BF;
 use gpu_ops::simple::set_to_zero;
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
+use gpu_trace::trace::holder::{
+    TraceHolder, TreesCacheMode, WitnessCommitmentStrategy, WitnessPostCommitStorage,
+};
 use gpu_trace::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
@@ -50,6 +52,7 @@ use era_cudart::slice::DeviceSlice;
 mod multiplicities;
 
 #[doc(hidden)]
+#[derive(Default)]
 pub struct GpuGKRLookupMappings {
     generic_family: Option<DeviceAllocation<u32>>,
     range_check_16: Option<DeviceAllocation<u32>>,
@@ -128,6 +131,9 @@ const fn production_witness_strategy(circuit_type: CircuitType) -> WitnessGenera
             DelegationCircuitType::Blake2WithCompression => WitnessGenerationStrategy::Fused,
             DelegationCircuitType::Blake2GFunction => WitnessGenerationStrategy::Fused,
             DelegationCircuitType::KeccakSpecial5 => WitnessGenerationStrategy::Split,
+            DelegationCircuitType::KeccakColumnParity => WitnessGenerationStrategy::Fused,
+            DelegationCircuitType::KeccakThetaRho => WitnessGenerationStrategy::Split,
+            DelegationCircuitType::KeccakChi5 => WitnessGenerationStrategy::Fused,
         },
         CircuitType::Unrolled(circuit_type) => match circuit_type {
             UnrolledCircuitType::InitsAndTeardowns => WitnessGenerationStrategy::Split,
@@ -166,7 +172,9 @@ impl GpuGKRStage1Output {
         geometry: GpuGKRTraceGeometry,
         context: &ProverContext,
     ) -> CudaResult<TraceHolder<BF>> {
-        TraceHolder::new(
+        // Allocate cosets at commitment, after the persistent stage1 buffers,
+        // so releasing them leaves a contiguous range for backward replay.
+        TraceHolder::new_without_cosets(
             geometry.log_domain_size,
             geometry.log_lde_factor,
             geometry.log_rows_per_leaf,
@@ -186,6 +194,8 @@ impl GpuGKRStage1Output {
         inits_and_teardowns: Option<&InitsAndTeardownsTraceDevice>,
         tracing_data: Option<&TracingDataDevice>,
         witness_cap_dst: Option<&mut DeviceSlice<u32>>,
+        commitment: WitnessCommitmentStrategy,
+        post_commitment: WitnessPostCommitStorage,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let strategy = production_witness_strategy(circuit_type);
@@ -200,10 +210,11 @@ impl GpuGKRStage1Output {
             witness_cap_dst,
             context,
             strategy,
+            commitment,
+            post_commitment,
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn generate_with_strategy_impl(
         circuit_type: CircuitType,
         compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -215,6 +226,8 @@ impl GpuGKRStage1Output {
         witness_cap_dst: Option<&mut DeviceSlice<u32>>,
         context: &ProverContext,
         strategy: WitnessGenerationStrategy,
+        commitment: WitnessCommitmentStrategy,
+        post_commitment: WitnessPostCommitStorage,
     ) -> CudaResult<Self> {
         let trace_len = compiled_circuit.trace_len;
         assert_eq!(trace_len, 1usize << geometry.log_domain_size);
@@ -302,7 +315,7 @@ impl GpuGKRStage1Output {
             };
 
             macro_rules! generate_delegation_row_data {
-                ($trace:expr) => {
+                ($trace:expr, $circuit:ident) => {
                     if use_fused_delegation {
                         let mut range16_mapping = DeviceMatrixMut::new(
                             early_range_check_16
@@ -316,7 +329,10 @@ impl GpuGKRStage1Output {
                                 .expect("fused delegation path allocated timestamp mappings"),
                             trace_len,
                         );
-                        generate_fused_values_delegation(
+                        generate_fused_values_delegation::<
+                            _,
+                            { DelegationCircuitType::$circuit as u16 },
+                        >(
                             compiled_circuit,
                             $trace,
                             &DeviceMatrix::new(generic_lookup_tables, trace_len),
@@ -329,14 +345,20 @@ impl GpuGKRStage1Output {
                             context.get_exec_stream(),
                         )?;
                     } else {
-                        generate_memory_and_witness_values_delegation(
+                        generate_memory_and_witness_values_delegation::<
+                            _,
+                            { DelegationCircuitType::$circuit as u16 },
+                        >(
                             compiled_circuit,
                             $trace,
                             &mut memory_matrix,
                             &mut witness_matrix,
                             context.get_exec_stream(),
                         )?;
-                        generate_witness_values_delegation(
+                        generate_witness_values_delegation::<
+                            _,
+                            { DelegationCircuitType::$circuit as u16 },
+                        >(
                             $trace,
                             &DeviceMatrix::new(generic_lookup_tables, trace_len),
                             &DeviceMatrix::new(memory_matrix.slice(), trace_len),
@@ -360,7 +382,7 @@ impl GpuGKRStage1Output {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
-                    generate_delegation_row_data!(trace);
+                    generate_delegation_row_data!(trace, BigIntWithControl);
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -374,7 +396,7 @@ impl GpuGKRStage1Output {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
-                    generate_delegation_row_data!(trace);
+                    generate_delegation_row_data!(trace, Blake2WithCompression);
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -388,7 +410,7 @@ impl GpuGKRStage1Output {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
-                    generate_delegation_row_data!(trace);
+                    generate_delegation_row_data!(trace, Blake2GFunction);
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -402,7 +424,49 @@ impl GpuGKRStage1Output {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
-                    generate_delegation_row_data!(trace);
+                    generate_delegation_row_data!(trace, KeccakSpecial5);
+                    witness_values_range.end(stream)?;
+                    tracing_ranges.push(witness_values_range);
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(
+                        DelegationTracingDataDevice::KeccakColumnParity(trace),
+                    )),
+                ) => {
+                    assert_eq!(circuit_type, DelegationCircuitType::KeccakColumnParity);
+                    let witness_values_range =
+                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                    witness_values_range.start(stream)?;
+                    generate_delegation_row_data!(trace, KeccakColumnParity);
+                    witness_values_range.end(stream)?;
+                    tracing_ranges.push(witness_values_range);
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(
+                        DelegationTracingDataDevice::KeccakThetaRho(trace),
+                    )),
+                ) => {
+                    assert_eq!(circuit_type, DelegationCircuitType::KeccakThetaRho);
+                    let witness_values_range =
+                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                    witness_values_range.start(stream)?;
+                    generate_delegation_row_data!(trace, KeccakThetaRho);
+                    witness_values_range.end(stream)?;
+                    tracing_ranges.push(witness_values_range);
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(
+                        DelegationTracingDataDevice::KeccakChi5(trace),
+                    )),
+                ) => {
+                    assert_eq!(circuit_type, DelegationCircuitType::KeccakChi5);
+                    let witness_values_range =
+                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                    witness_values_range.start(stream)?;
+                    generate_delegation_row_data!(trace, KeccakChi5);
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -566,26 +630,16 @@ impl GpuGKRStage1Output {
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
                     // The sweep clears the memory matrix before writing teardown columns,
-                    // so it must precede per-row generation. A missing transfer means that
-                    // the init/teardown columns are all zero.
-                    match inits_and_teardowns {
-                        Some(inits_and_teardowns) => {
-                            generate_memory_and_witness_values_unrolled_inits_and_teardowns(
-                                &compiled_circuit.memory_layout,
-                                geometry.log_domain_size,
-                                PAGE_SIZE_LOG2,
-                                inits_and_teardowns,
-                                &mut memory_matrix,
-                                context.get_exec_stream(),
-                            )?;
-                        }
-                        None => {
-                            gpu_ops::simple::set_to_zero(
-                                memory_matrix.slice_mut(),
-                                context.get_exec_stream(),
-                            )?;
-                        }
-                    }
+                    // so it must precede per-row generation.
+                    generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                        &compiled_circuit.memory_layout,
+                        geometry.log_domain_size,
+                        PAGE_SIZE_LOG2,
+                        inits_and_teardowns
+                            .expect("unified circuit requires init/teardown buffers"),
+                        &mut memory_matrix,
+                        context.get_exec_stream(),
+                    )?;
                     let decoder_table = if compiled_circuit.has_decoder_lookup {
                         decoder_table.expect("decoder lookup requires transferred decoder table")
                     } else {
@@ -710,10 +764,23 @@ impl GpuGKRStage1Output {
         if witness_trace_holder.columns_count > 0 {
             let witness_commit_range = Range::new("gkr.stage1.commit.witness_trace")?;
             witness_commit_range.start(stream)?;
-            match witness_cap_dst {
-                Some(dst) => witness_trace_holder.commit_all_into(dst, context)?,
-                None => witness_trace_holder.commit_all(context)?,
+            match commitment {
+                WitnessCommitmentStrategy::AllCosets
+                    if post_commitment != WitnessPostCommitStorage::RawAndMonomials =>
+                {
+                    match witness_cap_dst {
+                        Some(dst) => witness_trace_holder.commit_all_into(dst, context)?,
+                        None => witness_trace_holder.commit_all(context)?,
+                    }
+                }
+                WitnessCommitmentStrategy::AllCosets | WitnessCommitmentStrategy::PerCoset => {
+                    witness_trace_holder.commit_with_monomials(witness_cap_dst, context)?;
+                }
+                WitnessCommitmentStrategy::InPlace => {
+                    witness_trace_holder.commit_in_place(witness_cap_dst, context)?;
+                }
             }
+            witness_trace_holder.retain_after_commitment(post_commitment);
             witness_commit_range.end(stream)?;
             tracing_ranges.push(witness_commit_range);
         }
@@ -740,7 +807,6 @@ impl GpuGKRStage1Output {
 }
 
 #[doc(hidden)]
-#[allow(clippy::too_many_arguments)]
 pub fn generate_with_witness_strategy(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -764,5 +830,7 @@ pub fn generate_with_witness_strategy(
         witness_cap_dst,
         context,
         strategy,
+        WitnessCommitmentStrategy::AllCosets,
+        WitnessPostCommitStorage::RawAndCosets,
     )
 }

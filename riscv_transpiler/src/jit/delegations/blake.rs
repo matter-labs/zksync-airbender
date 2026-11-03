@@ -47,10 +47,7 @@ pub(crate) fn blake_implementation(
             (1 << 10) & ((1 << BLAKE2S_MAX_ROUNDS) - 1)
         };
 
-        let final_x12 =
-            (control_bitmask | (final_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16;
-
-        final_x12
+        (control_bitmask | (final_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16
     };
 
     let num_rounds = if reduced_rounds { 7 } else { 10 };
@@ -60,7 +57,7 @@ pub(crate) fn blake_implementation(
     let write_ts = machine_state.timestamp;
 
     // Precompile post-cycle register-timestamp effects: a0/a1/a2 -> write_ts (3 mod 4),
-    // x0 -> write_ts - 1 (2 mod 4). Merged via `register_timestamps_array` under packed_ts.
+    // x0 -> write_ts - 1 (2 mod 4). Merged via `register_timestamps_array`.
     machine_state.register_timestamps[10] = write_ts;
     machine_state.register_timestamps[11] = write_ts;
     machine_state.register_timestamps[12] = write_ts;
@@ -73,15 +70,13 @@ pub(crate) fn blake_implementation(
         // read blake state, and input
 
         let state_words_offset = (state_ptr as usize) / core::mem::size_of::<u32>();
-
-        let blake_state_full = memory_holder
-            .memory
+        let (mem, ts) = memory_holder.memory_and_timestamps_mut();
+        let blake_state_full = mem
             .as_mut_ptr()
             .add(state_words_offset)
             .cast::<[u32; 24]>()
             .as_mut_unchecked();
-        let state_timestamps = memory_holder
-            .timestamps
+        let state_timestamps = ts
             .as_mut_ptr()
             .add(state_words_offset)
             .cast::<[TimestampScalar; 24]>()
@@ -94,15 +89,13 @@ pub(crate) fn blake_implementation(
         }
 
         let input_words_offset = (input_ptr as usize) / core::mem::size_of::<u32>();
-
-        let input = memory_holder
-            .memory
+        let (mem, ts) = memory_holder.memory_and_timestamps_mut();
+        let input = mem
             .as_ptr()
             .add(input_words_offset)
             .cast::<[u32; 16]>()
             .as_ref_unchecked();
-        let input_timestamps = memory_holder
-            .timestamps
+        let input_timestamps = ts
             .as_mut_ptr()
             .add(input_words_offset)
             .cast::<[TimestampScalar; 16]>()
@@ -129,17 +122,13 @@ pub(crate) fn blake_implementation(
 
         if mode_compression {
             // overwrite first 8 elements to the extended
-            for i in 0..8 {
-                extended_state[i] = CONFIGURED_IV[i];
-                extended_state[i + 8] = IV[i];
-            }
+            extended_state[..8].copy_from_slice(&CONFIGURED_IV);
+            extended_state[8..].copy_from_slice(&IV);
             extended_state[12] ^= BLAKE2S_BLOCK_SIZE_BYTES as u32;
             extended_state[14] ^= 0xffffffff;
         } else {
             // overwrite first 8 elements of the extended with current state
-            for i in 0..8 {
-                extended_state[i] = blake_state[i];
-            }
+            extended_state[..8].copy_from_slice(blake_state);
             // overwrite elements 8-11, 13, 15
             extended_state[8] = IV[0];
             extended_state[9] = IV[1];
@@ -165,7 +154,7 @@ pub(crate) fn blake_implementation(
                 mixing_function(extended_state, &buffer, sigma);
             } else {
                 let sigma = &SIGMAS[round];
-                mixing_function(extended_state, &input, sigma);
+                mixing_function(extended_state, input, sigma);
             }
 
             // update output the state if needed

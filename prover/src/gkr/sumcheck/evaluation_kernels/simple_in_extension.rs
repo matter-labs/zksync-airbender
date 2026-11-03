@@ -1,3 +1,4 @@
+use crate::allocation_pool::{AllocationPool, ColumnLayout};
 use crate::{
     definitions::sumcheck_kernel::fixed_over_extension::ExtensionFieldInOutFixedSizesEvaluationKernelCore,
     gkr::{prover::apply_row_wise, sumcheck::access_and_fold::ExtensionFieldPoly},
@@ -23,9 +24,8 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
         assert!(IN > 0);
         assert!(OUT > 0);
         let p0s = std::array::from_fn(|i| sources[i].get_at_index(index));
-        let eval = self.pointwise_eval_forward(&p0s);
 
-        eval
+        self.pointwise_eval_forward(&p0s)
     }
 
     #[inline(always)]
@@ -143,12 +143,13 @@ pub fn forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inp
     storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,
     trace_len: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     assert!(trace_len.is_power_of_two());
     unsafe {
         let mut inputs = inputs.clone();
-        let outputs = std::mem::replace(&mut inputs.outputs_in_extension, vec![]);
+        let outputs = std::mem::take(&mut inputs.outputs_in_extension);
         assert_eq!(outputs.len(), OUT);
         for output in outputs.iter() {
             output.assert_as_layer(expected_output_layer);
@@ -156,11 +157,11 @@ pub fn forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inp
         let sources = storage.get_for_sumcheck_round_0(&inputs);
         let mut destinations = Vec::with_capacity(outputs.len());
         for _ in 0..outputs.len() {
-            destinations.push(Box::<[E]>::new_uninit_slice(trace_len));
+            destinations.push(pool.alloc_ext(trace_len, ColumnLayout::Contiguous));
         }
         let mut destinations_refs = Vec::with_capacity(outputs.len());
         for el in destinations.iter_mut() {
-            destinations_refs.push(&mut el[..]);
+            destinations_refs.push(el.as_mut());
         }
 
         let inputs = sources.extension_field_inputs.as_array().unwrap_unchecked();
@@ -176,19 +177,18 @@ pub fn forward_evaluate_single_input_type_fixed_in_out_kernel_with_extension_inp
                 for index in 0..chunk_size {
                     let absolute_index = chunk_start + index;
                     let value = kernel.evaluate_forward(absolute_index, inputs);
-                    for (dst, val) in destinations.iter_mut().zip(value.into_iter()) {
+                    for (dst, val) in destinations.iter_mut().zip(value) {
                         dst[index].write(val);
                     }
                 }
             },
         );
 
-        for (output, destination) in outputs.into_iter().zip(destinations.into_iter()) {
-            let values = destination.assume_init();
+        for (output, destination) in outputs.into_iter().zip(destinations) {
             storage.insert_extension_at_layer(
                 expected_output_layer,
                 output,
-                ExtensionFieldPoly::new(values),
+                ExtensionFieldPoly::from_pooled(destination),
             );
         }
     }
@@ -222,7 +222,7 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
                 let sources = storage.get_for_sumcheck_round_0(inputs);
                 assert!(sources.base_field_inputs.is_empty());
                 assert!(sources.base_field_outputs.is_empty());
-                if sources.extension_field_outputs.is_empty() == false {
+                if !sources.extension_field_outputs.is_empty() {
                     assert_eq!(sources.extension_field_inputs.len(), IN);
                     assert_eq!(sources.extension_field_outputs.len(), OUT);
                     assert_eq!(batch_challenges.len(), OUT);

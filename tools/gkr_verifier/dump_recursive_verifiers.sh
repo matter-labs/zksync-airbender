@@ -4,9 +4,9 @@
 # can select at runtime, writing each to a blake-suffixed filename so the
 # variants don't overwrite one another:
 #
-#   fsv_unrolled_base_layer_sec_100      : blake2_with_compression, blake2_g_function
-#   fsv_unrolled_recursion_layer_sec_100 : blake2_with_compression, blake2_g_function
-#   fsv_unified_recursion_layer_sec_100  : blake2_with_compression, blake2_g_function, special_opcodes_extension
+#   fsv_unrolled_base_layer_sec_100      : blake2_with_compression
+#   fsv_unrolled_recursion_layer_sec_100 : blake2_with_compression
+#   fsv_unified_recursion_layer_sec_100  : blake2_with_compression, special_opcodes_extension
 #
 # `--sec` defaults to 100, the currently supported security level.
 #
@@ -18,7 +18,7 @@
 # We do NOT build the unified base-layer verifier — the recursion pipeline never
 # uses it (it only verifies a unified proof at the recursion layer).
 #
-# Output files are e.g. `fsv_unrolled_recursion_layer_sec_100_blake2_g_function.{bin,elf,text}`.
+# Output files are e.g. `fsv_unrolled_recursion_layer_sec_100_blake2_with_compression.{bin,elf,text}`.
 # The naming contract lives in `verifier_common::fsv_binaries` (FsvProgram::file_stem);
 # drivers load the files via `full_statement_verifier::host_utils::load_fsv_program`,
 # selecting variants with the RECURSION_UNROLLED_BLAKE / RECURSION_BRIDGE_BLAKE /
@@ -56,16 +56,15 @@ build_variant() {
     echo "    wrote ${circuit}_${mode}.{bin,elf,text}"
 }
 
-# Unrolled-machine recursive verifiers: blake round function or blake g function.
+# Unrolled-machine recursive verifiers: blake round function.
 for sec in $SEC_LEVELS; do
-    # for mode in blake2_with_compression blake2_g_function; do
     for mode in blake2_with_compression; do
         build_variant "fsv_unrolled_base_layer_sec_${sec}" "${mode}"
         build_variant "fsv_unrolled_recursion_layer_sec_${sec}" "${mode}"
     done
 done
 
-# Unified-machine recursion verifier: round, g function, or inline special opcodes.
+# Unified-machine recursion verifier: round or inline special opcodes.
 for sec in $SEC_LEVELS; do
     for mode in blake2_with_compression special_opcodes_extension; do
         build_variant "fsv_unified_recursion_layer_sec_${sec}" "${mode}"

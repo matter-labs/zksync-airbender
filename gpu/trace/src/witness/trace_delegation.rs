@@ -1,4 +1,3 @@
-use crate::witness::trace::ChunkedTraceHolder;
 use gpu_core::primitives::context::DeviceAllocation;
 
 // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
@@ -24,4 +23,4 @@ impl<T> From<&DelegationTraceDevice<T>> for DelegationTraceRaw<T> {
 
 // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
 #[doc(hidden)]
-pub type DelegationTraceHost<T, A> = ChunkedTraceHolder<T, A>;
+pub use execution_prover_model::trace::DelegationTraceHost;

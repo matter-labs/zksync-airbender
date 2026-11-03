@@ -1,6 +1,7 @@
-use super::circuit::{LookupRequest, F3_SCRATCH_VARS};
+use super::circuit::{
+    LookupRequest, F3_RS1_BYTE_SPLIT_SLOTS, F3_RS2_BYTE_SPLIT_SLOTS, F3_SCRATCH_VARS,
+};
 use super::*;
-use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
 use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables;
 use crate::gkr_circuits::binary_shifts_family::ShiftBinaryFamilyCircuitMask;
@@ -19,6 +20,10 @@ use field::PrimeField;
 /// operand (rd's old value) arrives through the rs2 read port — `preprocess_bytecode`
 /// aliases rs2 := rd — with imm = 0, so its rows are operand-identical to register
 /// binop rows.
+///
+/// Byte swap (Zbb `rev8`) rides the ordinary shift path instead: the shift
+/// table is keyed by byte index, and funct3 = FORMAL_BSWAP_FUNCT3 sends byte `i` to byte
+/// `3 - i` (rs2 = x0, imm = 0 pin the shift amount to 0).
 pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
@@ -57,10 +62,8 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     let shift_output_chunks = shift_outputs.as_chunks::<4>().0;
 
     let inv_256 = F::from_u32_with_reduction(1 << 8).inverse().unwrap();
-    let rs1_b0 = scratch_space[17];
-    let rs1_b2 = scratch_space[18];
-    let rs2_b0 = scratch_space[19];
-    let rs2_b2 = scratch_space[20];
+    let [rs1_b0, rs1_b2] = F3_RS1_BYTE_SPLIT_SLOTS.map(|slot| scratch_space[slot]);
+    let [rs2_b0, rs2_b2] = F3_RS2_BYTE_SPLIT_SLOTS.map(|slot| scratch_space[slot]);
     let hi_byte = |lo_limb: Variable, lo_byte: Variable| -> Expr<F> {
         (Expr::from(lo_limb) - Expr::from(lo_byte)) * inv_256
     };
@@ -78,13 +81,21 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         hi_byte(rs2_limbs[1], rs2_b2),
     ];
     {
+        // The rs1 split slots also hold the shared F1/F2/F4 register on other families'
+        // rows, so Family 3 writes them only on its own rows, u16-typed so that the
+        // generated masked-off select keeps the register limb untruncated.
+        let is_shift_var = decoder.perform_shift().expect_variable();
+        let is_binary_op_var = decoder.perform_binary_op().expect_variable();
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let rs1_lo = placer.get_u16(rs1_limbs[0]);
             let rs1_hi = placer.get_u16(rs1_limbs[1]);
             let rs2_lo = placer.get_u16(rs2_limbs[0]);
             let rs2_hi = placer.get_u16(rs2_limbs[1]);
-            placer.assign_u8(rs1_b0, &rs1_lo.truncate());
-            placer.assign_u8(rs1_b2, &rs1_hi.truncate());
+            let is_f3 = placer
+                .get_boolean(is_shift_var)
+                .or(&placer.get_boolean(is_binary_op_var));
+            placer.conditionally_assign_u16(rs1_b0, &is_f3, &rs1_lo.truncate().widen());
+            placer.conditionally_assign_u16(rs1_b2, &is_f3, &rs1_hi.truncate().widen());
             placer.assign_u8(rs2_b0, &rs2_lo.truncate());
             placer.assign_u8(rs2_b2, &rs2_hi.truncate());
         };
@@ -255,7 +266,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // chunk[i][(k - i) mod 4], degenerating to identity byte placement for the rot-0
     // Wide{Xor,Or,And} tables. Computed in field space (honest per-lane sums stay
     // < 2^16). Gated on Family 3 (is_binary_op + is_shift).
-    if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+    if !CS::ASSUME_MEMORY_VALUES_ASSIGNED {
         let is_binary_var = is_binary_op.expect_variable();
         let is_shift_var = is_shift.expect_variable();
         let chunks: [[Variable; 4]; 4] = core::array::from_fn(|i| shift_output_chunks[i]);

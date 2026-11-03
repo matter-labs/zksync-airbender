@@ -219,22 +219,20 @@ pub struct WhirLeafTransformParams {
     pub inverse_fine_log_count: u32,
     pub inverse_coarse_values: *const BF,
     pub inverse_coarse_mask: u32,
-    pub two_inv_power: BF,
     pub omega_log_order: u32,
 }
 
 // Cross-language layout drift guard. Keep these literal offsets synchronized
 // with `native/whir_leaf_transform.cuh`.
 const _: () = {
-    assert!(core::mem::size_of::<WhirLeafTransformParams>() == 40);
+    assert!(core::mem::size_of::<WhirLeafTransformParams>() == 32);
     assert!(core::mem::align_of::<WhirLeafTransformParams>() == 8);
     assert!(core::mem::offset_of!(WhirLeafTransformParams, inverse_fine_values) == 0);
     assert!(core::mem::offset_of!(WhirLeafTransformParams, inverse_fine_mask) == 8);
     assert!(core::mem::offset_of!(WhirLeafTransformParams, inverse_fine_log_count) == 12);
     assert!(core::mem::offset_of!(WhirLeafTransformParams, inverse_coarse_values) == 16);
     assert!(core::mem::offset_of!(WhirLeafTransformParams, inverse_coarse_mask) == 24);
-    assert!(core::mem::offset_of!(WhirLeafTransformParams, two_inv_power) == 28);
-    assert!(core::mem::offset_of!(WhirLeafTransformParams, omega_log_order) == 32);
+    assert!(core::mem::offset_of!(WhirLeafTransformParams, omega_log_order) == 28);
 };
 
 pub struct DeviceContext {
@@ -244,7 +242,6 @@ pub struct DeviceContext {
     powers_of_w_inv_coarse_for_ntt: DeviceAllocation<BF>,
     powers_of_w_fine_log_count: u32,
     powers_of_w_coarse_log_count: u32,
-    inv_sizes_host: [BF; OMEGA_LOG_ORDER as usize + 1],
     _fwd_gmem_twiddles_coarse: DeviceAllocation<BF>,
     _inv_gmem_twiddles_coarse: DeviceAllocation<BF>,
     _fully_precomputed_bitrev_twiddles: DeviceAllocation<BF>,
@@ -409,7 +406,6 @@ impl DeviceContext {
             powers_of_w_inv_coarse_for_ntt,
             powers_of_w_fine_log_count,
             powers_of_w_coarse_log_count,
-            inv_sizes_host,
             _fwd_gmem_twiddles_coarse: fwd_gmem_twiddles_coarse,
             _inv_gmem_twiddles_coarse: inv_gmem_twiddles_coarse,
             _fully_precomputed_bitrev_twiddles: fully_precomputed_bitrev_twiddles,
@@ -429,42 +425,14 @@ impl DeviceContext {
         self.dit_triangles.coupled(log_n, log_vpt)
     }
 
-    pub fn whir_leaf_transform_params(&self, log_values_per_leaf: u32) -> WhirLeafTransformParams {
-        assert!((1..=5).contains(&log_values_per_leaf));
+    pub fn whir_leaf_transform_params(&self) -> WhirLeafTransformParams {
         WhirLeafTransformParams {
             inverse_fine_values: self.powers_of_w_inv_fine_for_ntt.as_ptr(),
             inverse_fine_mask: (1 << self.powers_of_w_fine_log_count) - 1,
             inverse_fine_log_count: self.powers_of_w_fine_log_count,
             inverse_coarse_values: self.powers_of_w_inv_coarse_for_ntt.as_ptr(),
             inverse_coarse_mask: (1 << self.powers_of_w_coarse_log_count) - 1,
-            two_inv_power: self.inv_sizes_host[log_values_per_leaf as usize],
             omega_log_order: OMEGA_LOG_ORDER,
-        }
-    }
-}
-
-#[cfg(all(test, not(no_cuda)))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn whir_leaf_transform_params_cover_all_leaf_widths() {
-        let context = DeviceContext::create(13).unwrap();
-        let two_inv = BF::new(2).inverse().unwrap();
-        let mut expected_two_inv_power = BF::ONE;
-
-        for log_values_per_leaf in 1..=5 {
-            expected_two_inv_power.mul_assign(&two_inv);
-            let params = context.whir_leaf_transform_params(log_values_per_leaf);
-
-            assert_eq!(params.inverse_fine_log_count, OMEGA_LOG_ORDER - 13);
-            assert_eq!(
-                params.inverse_fine_mask,
-                (1 << params.inverse_fine_log_count) - 1
-            );
-            assert_eq!(params.inverse_coarse_mask, (1 << 13) - 1);
-            assert_eq!(params.omega_log_order, OMEGA_LOG_ORDER);
-            assert_eq!(params.two_inv_power, expected_two_inv_power);
         }
     }
 }

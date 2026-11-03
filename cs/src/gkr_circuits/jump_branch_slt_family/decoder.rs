@@ -1,11 +1,11 @@
 use super::*;
 use crate::types::Boolean;
 
-const JAL_BIT: usize = 0;
-const JALR_BIT: usize = 1;
-const SLT_BIT: usize = 2;
-const BRANCH_BIT: usize = 3;
-const RD_IS_ZERO_BIT: usize = 4;
+pub(crate) const JAL_BIT: usize = 0;
+pub(crate) const JALR_BIT: usize = 1;
+pub(crate) const SLT_BIT: usize = 2;
+pub(crate) const BRANCH_BIT: usize = 3;
+pub(crate) const RD_IS_ZERO_BIT: usize = 4;
 
 const IGNORE_JUMP_TABLE_FUNCT3: u8 = 0b000;
 const SLT_FUNCT3: u8 = 0b010;
@@ -58,9 +58,9 @@ impl OpcodeFamilyDecoder for JumpSltBranchDecoder {
         preprocessed_opcode: Instruction,
     ) -> Result<ExecutorFamilyDecoderData, ()> {
         let (mut rs1_index, mut rs2_index, mut rd_index) = (0, 0u16, 0);
-        let mut imm = 0;
+        let imm;
         let mut bitmask = 0u32;
-        let mut funct3 = None;
+        let funct3;
 
         // NOTE: SLT/SLTU and BRANCH opcode's funct3s are disjoint, so
         // we will use single table for resolution in the circuit

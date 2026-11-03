@@ -17,15 +17,36 @@ impl ChunkPostSnapshot {
     }
 }
 
+// `NonDeterminismCSRSource` is not dyn compatible (it has associated constants), so the
+// part of it that is used here is erased via a separate trait
+trait ErasedNonDeterminismSource {
+    fn read(&mut self) -> u32;
+    fn write_with_memory_access_raw(&mut self, ram: &[u32], value: u32);
+}
+
+impl<N: NonDeterminismCSRSource> ErasedNonDeterminismSource for N {
+    #[inline(always)]
+    fn read(&mut self) -> u32 {
+        NonDeterminismCSRSource::read(self)
+    }
+    #[inline(always)]
+    fn write_with_memory_access_raw(&mut self, ram: &[u32], value: u32) {
+        NonDeterminismCSRSource::write_with_memory_access_raw(self, ram, value)
+    }
+}
+
 #[repr(C, align(16))]
 pub struct PreallocatedSnapshots<'a, const N: usize, A: Allocator> {
     buffer: Box<[ChunkPostSnapshot; N], A>,
     filled: AtomicU64,
-    non_determinism: &'a mut dyn NonDeterminismCSRSource,
+    non_determinism: &'a mut dyn ErasedNonDeterminismSource,
 }
 
 impl<'a, const N: usize, A: Allocator> PreallocatedSnapshots<'a, N, A> {
-    pub fn new_in(allocator: A, non_determinism: &'a mut dyn NonDeterminismCSRSource) -> Self {
+    pub fn new_in(
+        allocator: A,
+        non_determinism: &'a mut (impl NonDeterminismCSRSource + 'a),
+    ) -> Self {
         unsafe {
             // let buffer = Box::new_zeroed_in(allocator).assume_init();
             // let buffer = {
@@ -73,12 +94,12 @@ impl<'a, const N: usize, A: Allocator> ContextImpl for PreallocatedSnapshots<'a,
         self.non_determinism.read()
     }
     #[inline(always)]
-    fn write_nondeterminism(&mut self, value: u32, memory: &RamImage) {
+    fn write_nondeterminism(&mut self, value: u32, memory: &[u32]) {
         self.non_determinism
-            .write_with_memory_access_dyn(memory, value);
+            .write_with_memory_access_raw(memory, value);
     }
     fn take_final_state(&mut self) -> Option<MachineState> {
-        self.final_state_ref().map(|el| *el)
+        self.final_state_ref().copied()
     }
     fn final_state_ref(&'_ self) -> Option<&'_ MachineState> {
         let filled = self.filled.load(std::sync::atomic::Ordering::Acquire) as usize;

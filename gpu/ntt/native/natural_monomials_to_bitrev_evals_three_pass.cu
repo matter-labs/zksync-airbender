@@ -13,11 +13,11 @@ namespace airbender::ntt {
 // multi-coset shape: one shared input column feeds every coset's output slab,
 // with the coset pre-scale g_k^row fused into the load.
 
-template <bool HYPERCUBE_FINAL4>
-DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_initial_8_stages(bf_matrix_getter<ld_modifier::cg> gmem_in,
-                                                                           bf_matrix_setter<st_modifier::cg> gmem_out, const bool transposed_monomials,
-                                                                           const int log_n, const int coset_index_base, const int coset_factor_shift,
-                                                                           const int num_cols_per_coset, const int log_cosets_in_tile) {
+template <bool HYPERCUBE_FINAL4, bool WRITEBACK = false, typename Input>
+DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_initial_8_stages(Input gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                                           const bool transposed_monomials, const int log_n, const int coset_index_base,
+                                                                           const int coset_factor_shift, const int num_cols_per_coset,
+                                                                           const int log_cosets_in_tile) {
   using namespace pass_config::three_pass_phase_a;
   constexpr int ROLES = 2;
   constexpr int ROLE_TILE_STRIDE = THREAD_TILES_PER_BLOCK / ROLES;
@@ -74,6 +74,16 @@ DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_initial_8_stages(bf_ma
             vals[i] = bf::sub(vals[i], bf::from_reduced_raw_repr(partner_bits));
         }
       }
+    }
+
+    // Only the single-coset writeback entry enables this. Each thread stores
+    // precisely its loaded rows, after the register-only final4 shuffles and
+    // before coset scaling. Roles and blocks have disjoint input row sets.
+    if constexpr (WRITEBACK) {
+      static_assert(HYPERCUBE_FINAL4);
+#pragma unroll
+      for (int i{0}, row{thread_il_gmem_start}; i < VALS_PER_THREAD; i++, row += interleaved_gmem_stride)
+        gmem_in.set_at_row(row, vals[i]);
     }
 
     // A separate coset adjustment loop performs better than interleaving
@@ -180,6 +190,16 @@ EXTERN __launch_bounds__(256, 1) __global__ void ab_natural_monomials_to_bitrev_
     const int coset_index_base, const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
   natural_monomials_to_bitrev_evals_initial_8_stages<true>(gmem_in, gmem_out, transposed_monomials, log_n, coset_index_base, coset_factor_shift,
                                                            num_cols_per_coset, log_cosets_in_tile);
+}
+
+// One coset only: multiple cosets would read and rewrite the same input
+// concurrently. The Rust launcher fixes log_n=20 and log_cosets_in_tile=0.
+EXTERN __launch_bounds__(256, 1) __global__
+    void ab_natural_lde_fused_boundary_writeback_log_n_20_kernel(bf_matrix_getter_setter<ld_modifier::cg, st_modifier::cg> gmem_scratch,
+                                                                 bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n, const int coset_index_base,
+                                                                 const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
+  natural_monomials_to_bitrev_evals_initial_8_stages<true, true>(gmem_scratch, gmem_out, false, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset,
+                                                                 log_cosets_in_tile);
 }
 
 template <int STRIDE, int REGION_SIZE, int NUM_REGIONS>

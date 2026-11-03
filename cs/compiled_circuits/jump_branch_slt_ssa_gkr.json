@@ -1352,18 +1352,6 @@
     },
     {
       "Bool": {
-        "FromGenericIntegerCarry": {
-          "lhs": {
-            "U32SubExpression": 14
-          },
-          "rhs": {
-            "U32SubExpression": 15
-          }
-        }
-      }
-    },
-    {
-      "Bool": {
         "Select": {
           "selector": {
             "SubExpression": 27
@@ -1372,7 +1360,7 @@
             "SubExpression": 40
           },
           "if_false": {
-            "SubExpression": 41
+            "SubExpression": 38
           }
         }
       }
@@ -1387,7 +1375,7 @@
             "SubExpression": 40
           },
           "if_false": {
-            "SubExpression": 42
+            "SubExpression": 41
           }
         }
       }
@@ -1402,7 +1390,7 @@
             "SubExpression": 39
           },
           "if_false": {
-            "SubExpression": 43
+            "SubExpression": 42
           }
         }
       }
@@ -1417,7 +1405,7 @@
             "SubExpression": 38
           },
           "if_false": {
-            "SubExpression": 44
+            "SubExpression": 43
           }
         }
       }
@@ -1427,10 +1415,22 @@
         "into_variable": 39,
         "source_subexpr": {
           "Bool": {
-            "SubExpression": 45
+            "SubExpression": 44
           }
         },
         "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Bool": {
+        "FromGenericIntegerCarry": {
+          "lhs": {
+            "U32SubExpression": 14
+          },
+          "rhs": {
+            "U32SubExpression": 15
+          }
+        }
       }
     },
     {
@@ -1467,7 +1467,7 @@
             "SubExpression": 48
           },
           "if_false": {
-            "SubExpression": 38
+            "SubExpression": 46
           }
         }
       }
@@ -1509,7 +1509,7 @@
             "SubExpression": 6
           },
           "if_true": {
-            "SubExpression": 41
+            "SubExpression": 46
           },
           "if_false": {
             "SubExpression": 51

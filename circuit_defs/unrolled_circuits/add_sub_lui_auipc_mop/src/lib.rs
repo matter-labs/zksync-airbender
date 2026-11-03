@@ -1,6 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
-
 use crate::cs::gkr_circuits::add_sub_family::*;
 use crate::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 use prover::cs;
@@ -17,7 +14,9 @@ pub struct AddSubLuiAuipcMopCircuit;
 impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, false> for AddSubLuiAuipcMopCircuit {
     const CIRCUIT_FAMILY: u8 =
         common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
-    const DOMAIN_SIZE_LOG2: u32 = 24;
+    fn prover_config(level: circuit_common::SecurityLevel) -> circuit_common::ProverConfig {
+        circuit_common::default_prover_config(24, level)
+    }
     const NUM_INIT_AND_TEARDOWN_PAIRS: usize = 0;
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS, _bytecode: &[u32]) {

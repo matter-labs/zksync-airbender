@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::E4;
-use gpu_gkr_compiler::SourceId;
 
 use crate::upstream::GKRAddress;
 
@@ -18,25 +17,7 @@ pub(crate) struct ContinuationPublishedShape {
 pub(crate) enum ContinuationPublicationError {
     EmptyShape,
     ShapeElementCountOverflow,
-    AllocationLength {
-        expected: usize,
-        actual: usize,
-    },
-    SourceOutOfBounds {
-        source: SourceId,
-        columns: usize,
-    },
-    DuplicateSemanticSource {
-        source: SourceId,
-    },
-    MissingSemanticSource {
-        source: SourceId,
-    },
-    NonCanonicalSourceColumn {
-        source: SourceId,
-        expected: usize,
-        actual: usize,
-    },
+    AllocationLength { expected: usize, actual: usize },
 }
 
 impl core::fmt::Display for ContinuationPublicationError {
@@ -57,51 +38,7 @@ fn shape_elems(shape: ContinuationPublishedShape) -> Result<usize, ContinuationP
         .ok_or(ContinuationPublicationError::ShapeElementCountOverflow)
 }
 
-pub(crate) fn validate_canonical_publication(
-    shape: ContinuationPublishedShape,
-    publication: impl IntoIterator<Item = (SourceId, usize)>,
-) -> Result<(), ContinuationPublicationError> {
-    shape_elems(shape)?;
-    let mut seen = vec![false; shape.columns];
-    for (source, column) in publication {
-        let source_index = usize::try_from(source.0).map_err(|_| {
-            ContinuationPublicationError::SourceOutOfBounds {
-                source,
-                columns: shape.columns,
-            }
-        })?;
-        if source_index >= shape.columns {
-            return Err(ContinuationPublicationError::SourceOutOfBounds {
-                source,
-                columns: shape.columns,
-            });
-        }
-        if seen[source_index] {
-            return Err(ContinuationPublicationError::DuplicateSemanticSource { source });
-        }
-        seen[source_index] = true;
-        if column != source_index {
-            return Err(ContinuationPublicationError::NonCanonicalSourceColumn {
-                source,
-                expected: source_index,
-                actual: column,
-            });
-        }
-    }
-    if let Some(missing) = seen.iter().position(|present| !present) {
-        return Err(ContinuationPublicationError::MissingSemanticSource {
-            source: SourceId(missing as u32),
-        });
-    }
-    Ok(())
-}
-
-/// Sole owner of a canonical continuation publication arena.
-///
-/// Construction validates the producer's independently supplied semantic
-/// source-to-column map. Because fields are private and the type is not
-/// cloneable, canonical dense `SourceId` order is thereafter a type invariant;
-/// adoption needs to revalidate only consumer geometry.
+/// Owns the dense source-ID columns written by a continuation producer.
 pub(crate) struct ContinuationPublishedLevel {
     shape: ContinuationPublishedShape,
     allocation: DeviceAllocation<E4>,
@@ -111,10 +48,7 @@ impl ContinuationPublishedLevel {
     pub(crate) fn try_new(
         shape: ContinuationPublishedShape,
         allocation: DeviceAllocation<E4>,
-        publication: impl IntoIterator<Item = (SourceId, usize)>,
     ) -> Result<Self, ContinuationPublicationError> {
-        let publication: Vec<_> = publication.into_iter().collect();
-        validate_canonical_publication(shape, publication.iter().copied())?;
         let expected = shape_elems(shape)?;
         let actual = allocation.len();
         if actual != expected {
@@ -205,48 +139,12 @@ pub(crate) fn repoint_final_evaluations_from_raw<E>(
 mod cpu_continuation_published_level {
     use std::collections::BTreeMap;
 
-    use gpu_gkr_compiler::SourceId;
-
     use crate::upstream::GKRAddress;
 
-    use super::{
-        validate_canonical_publication, ContinuationPublicationError, FinalEvaluationRepointError,
-    };
-    use crate::backward::ContinuationPublishedShape;
+    use super::FinalEvaluationRepointError;
 
     fn address(offset: usize) -> GKRAddress {
         GKRAddress::ScratchSpace(offset)
-    }
-
-    #[test]
-    fn cpu_continuation_published_level_rejects_noncanonical_source_columns() {
-        let shape = ContinuationPublishedShape {
-            depth: 12,
-            columns: 3,
-            column_elems: 16,
-        };
-        assert_eq!(
-            validate_canonical_publication(
-                shape,
-                [(SourceId(0), 0), (SourceId(1), 1), (SourceId(2), 2)],
-            ),
-            Ok(())
-        );
-        assert!(matches!(
-            validate_canonical_publication(
-                shape,
-                [(SourceId(0), 0), (SourceId(1), 2), (SourceId(2), 1)],
-            ),
-            Err(ContinuationPublicationError::NonCanonicalSourceColumn { .. })
-        ));
-        assert!(matches!(
-            validate_canonical_publication(shape, [(SourceId(0), 0), (SourceId(0), 1)]),
-            Err(ContinuationPublicationError::DuplicateSemanticSource { .. })
-        ));
-        assert!(matches!(
-            validate_canonical_publication(shape, [(SourceId(0), 0), (SourceId(1), 1)]),
-            Err(ContinuationPublicationError::MissingSemanticSource { .. })
-        ));
     }
 
     #[test]

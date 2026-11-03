@@ -1,11 +1,13 @@
-use crate::definitions::gkr::RamAuxComparisonSet;
+use crate::definitions::gkr::{RamAuxComparisonSet, RelativeTimestampGroup};
 use crate::gkr_compiler::graph::{CopyNode, GKRGraph};
 
 use super::*;
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GKRAuxLayoutData {
-    pub shuffle_ram_timestamp_comparison_aux_vars: Vec<RamAuxComparisonSet>,
+    pub shuffle_ram_timestamp_comparison_aux_vars: Vec<Option<RamAuxComparisonSet>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relative_timestamp_groups: Vec<RelativeTimestampGroup>,
 }
 
 #[serde_with::serde_as]
@@ -51,6 +53,7 @@ impl<F: PrimeField> GKRLayerDescription<F> {
 }
 
 #[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum LookupOutput<F: PrimeField> {
     Direct(GKRRelation<F>),
     Copied {
@@ -78,7 +81,7 @@ impl<F: PrimeField> GKRGraph<F> {
         Vec<GKRLayerDescription<F>>,
         BTreeMap<OutputType, Vec<GKRAddress>>,
     ) {
-        assert!(self.enforced_relations.len() > 0);
+        assert!(!self.enforced_relations.is_empty());
 
         // We put all external outputs to the same layer
 
@@ -125,7 +128,7 @@ impl<F: PrimeField> GKRGraph<F> {
                 }
             }
 
-            let max_output_layer = output_layers.iter().map(|(_k, v)| *v).max().unwrap();
+            let max_output_layer = output_layers.values().copied().max().unwrap();
             assert!(output_layers.len() <= 5);
 
             for (k, output_layer_idx) in output_layers.into_iter() {

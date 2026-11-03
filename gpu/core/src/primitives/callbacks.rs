@@ -1,15 +1,13 @@
 //! Owning list of stream-scheduled host callbacks.
 //!
-//! Each `Callbacks` instance owns the `HostFn` objects backing one stream's
-//! `launch_host_fn` calls. The CUDA driver dereferences the `HostFn` when the
-//! callback fires on the stream, so the `Callbacks` must outlive every queued
-//! op until those ops have been **scheduled** (not completed). After the last
-//! call to `schedule`, the `Callbacks` can be parked alongside the rest of
-//! the per-stream keepalive bundle and dropped together once the proof or
-//! workflow that produced it finishes.
+//! Each `Callbacks` instance owns the `HostFn` objects backing its
+//! `launch_host_fn` calls. CUDA holds only a weak reference to each callback;
+//! dropping the owner before execution can silently skip the callback and
+//! release its captured resources too early. Keep the owner alive until a
+//! stream or event synchronization confirms that all its callbacks completed.
 //!
-//! See `gpu/docs/gpu_scheduling_contract.md` §Lifetime rules for
-//! the broader "scheduled vs. completed" distinction.
+//! Unlike stream-ordered pool reservations, callback owners cannot be released
+//! merely because their users have been scheduled.
 
 use era_cudart::execution::{launch_host_fn, HostFn};
 use era_cudart::result::CudaResult;

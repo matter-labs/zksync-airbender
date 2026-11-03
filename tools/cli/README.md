@@ -22,6 +22,14 @@ Build with GPU proving support:
 cargo build -p cli --features gpu
 ```
 
+Deterministic proof-of-work is enabled by default. Disable it for GPU timing
+runs while keeping the other default features:
+
+```bash
+cargo build --release -p cli --no-default-features \
+  --features gpu,verifier_common/proof_utils
+```
+
 ## Commands
 
 - `prove`
@@ -153,6 +161,7 @@ cargo run --release -p cli -- run --bin examples/basic_fibonacci/app.bin --expec
 - `backend`
 - `batch_id`
 - `cycles`
+- `program_cycles` (cycles of the base layer, the program's own count)
 - `program_bin_keccak`
 - `program_text_keccak`
 - `timings_ms`

@@ -1,18 +1,20 @@
-use crate::messages::{
-    GpuWorkRequest, GpuWorkResult, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
-    ProofResult, SetupInitializationRequest, SetupInitializationResult,
-};
 use crate::precomputations::CircuitPrecomputations;
+use crate::workers::gpu_manager::{GpuWorkRequest, GpuWorkResult};
 use crate::A;
 use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
+use execution_prover::messages::{
+    MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
+    SetupInitializationRequest, SetupInitializationResult,
+};
 use gpu_circuit_prover::proof::{
     admit_dr_tail_before_transfers, DrTailPreflightRequest, GpuGKRProofJob,
 };
+use gpu_core::allocator::tracker::AllocationDirection::{Ascending, Descending};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
-use gpu_prover_context::{ProverContext, ProverContextConfig};
+use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
 use gpu_trace::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
@@ -75,7 +77,7 @@ struct RequestState {
     memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
     /// Original host witnesses returned to the orchestrator after the GPU work
     /// completes so their allocators return to the pool.
-    inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost>,
+    inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost<A>>,
     tracing_data_result: Option<gpu_trace::trace::tracing_data::TracingDataHost<A>>,
     security_level: SecurityLevel,
 }
@@ -114,8 +116,8 @@ struct PhaseTwo<'a> {
 // collection.
 #[allow(clippy::large_enum_variant)]
 enum JobType<'a> {
-    MemoryCommitment(MemoryCommitmentJob<'a, A>),
-    Proof(GpuGKRProofJob<'a, A>),
+    MemoryCommitment(MemoryCommitmentJob<'a>),
+    Proof(GpuGKRProofJob<'a>),
     SetupInitialization,
 }
 
@@ -136,7 +138,11 @@ fn gpu_worker(
         props.multiProcessorCount,
         props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
     );
-    let mut context = ProverContext::new(&prover_context_config)?;
+    let mut context = ProverContext::new_with_auto_arena_size(
+        &prover_context_config,
+        crate::memory_policy::select_arena_bytes,
+    )?;
+    crate::memory_policy::select_arena_bytes(context.get_mem_size());
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
@@ -149,14 +155,19 @@ fn gpu_worker(
     let mut current_phase_one: Option<PhaseOne> = None;
     let mut current_phase_two: Option<PhaseTwo> = None;
     for request in requests {
-        context.set_reversed_allocation_placement(even_odd_index == 1);
         let mut phase_one = if let Some(request) = request {
+            context.set_allocation_mode(match request {
+                GpuWorkRequest::SetupInitialization(_) => AllocationMode::Unbounded,
+                _ => AllocationMode::Inputs([Ascending, Descending][even_odd_index]),
+            });
             Some(schedule_phase_one(device_id, &context, request)?)
         } else {
             None
         };
         mem::swap(&mut current_phase_one, &mut phase_one);
-        context.set_reversed_allocation_placement(even_odd_index == 0);
+        context.set_allocation_mode(AllocationMode::Proof(
+            [Descending, Ascending][even_odd_index],
+        ));
         let mut phase_two = if let Some(p1) = phase_one {
             Some(enqueue_phase_two(device_id, &context, p1)?)
         } else {
@@ -310,14 +321,31 @@ fn schedule_phase_one<'a>(
                 .as_ref()
                 .map(|host| host.top_bits.clone());
 
-            let inits_and_teardowns_transfer = if let Some(host) = inits_and_teardowns_host {
-                Some(InitsAndTeardownsTransfer::new(host, context)?)
+            let num_teardown_sets = state
+                .precomputations
+                .gkr_programs
+                .compiled_circuit()
+                .memory_layout
+                .teardown_sets
+                .len();
+            let trace_len = circuit_type.get_domain_size();
+            let inits_and_teardowns_transfer = if num_teardown_sets > 0 {
+                Some(InitsAndTeardownsTransfer::new(
+                    inits_and_teardowns_host,
+                    num_teardown_sets,
+                    trace_len,
+                    context,
+                )?)
             } else {
                 None
             };
 
             let tracing_data_transfer = if let Some(tracing_data_host) = tracing_data_host {
-                Some(TracingDataTransfer::new(tracing_data_host, context)?)
+                Some(TracingDataTransfer::new(
+                    tracing_data_host,
+                    trace_len,
+                    context,
+                )?)
             } else {
                 None
             };
@@ -347,19 +375,13 @@ fn schedule_phase_one<'a>(
                     memory_caps,
                     log_lde_factor,
                     log_tree_cap_size,
-                )?;
+                );
                 let memory_transfer = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;
                 let external_challenges_value = state
                     .external_challenges
                     .expect("Proof requires external_challenges");
-                let compiled_circuit = state
-                    .precomputations
-                    .gkr_programs
-                    .compiled_circuit()
-                    .as_ref();
                 // Without i&t data the windows are all zero, which is what the unified
                 // verifier requires of its leading instances.
-                let num_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
                 let top_bits = carried_top_bits.unwrap_or_else(|| vec![0u32; num_teardown_sets]);
                 assert_eq!(
                 top_bits.len(),
@@ -432,6 +454,7 @@ fn enqueue_phase_two<'a>(
                 final_trace_size_log_2,
                 bundle,
                 &dr_tail_plan,
+                crate::memory_policy::policy(circuit_type, context.get_mem_size()),
                 context,
             )?;
             JobType::Proof(job)

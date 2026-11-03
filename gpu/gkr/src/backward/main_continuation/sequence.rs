@@ -64,9 +64,7 @@ impl MainContinuationWindowSequence {
         self.final_eq_boundary
     }
 
-    /// Materialize the canonical depth-zero E4 arena consumed by a tail that
-    /// starts immediately after R0. This is a device producer launch, not a
-    /// fabricated publication and not a host/device copy.
+    /// Materialize the canonical depth-zero E4 arena for a tail that starts after R0.
     pub(crate) fn schedule_r0_publication(
         &mut self,
         storage: &mut GpuGKRStorage<BF, E4>,
@@ -91,13 +89,13 @@ impl MainContinuationWindowSequence {
             0,
         )?;
         let launched = launch_main_continuation_window(launch, context)?;
+        storage.release_main_layer_inputs(self.layer_idx);
         self.published = Some(launched.into_published_level());
         self.final_eq_boundary = Some(main_continuation_post_tail_eq_boundary(
             0,
             folding_steps,
             r0_eq_sizes,
         ));
-        storage.purge_up_to_layer(self.layer_idx);
         Ok(())
     }
 
@@ -115,7 +113,6 @@ impl MainContinuationWindowSequence {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn schedule_windows(
         &mut self,
         storage: &mut GpuGKRStorage<BF, E4>,
@@ -184,19 +181,16 @@ impl MainContinuationWindowSequence {
                 )?,
             };
             let launched = launch_main_continuation_window(launch, context)?;
-
-            // The first continuation pass is the last reader of raw layer
-            // storage. Pool reuse is safe immediately after that launch has
-            // been enqueued on the execution stream.
             if pass_index == 0 {
-                storage.purge_up_to_layer(self.layer_idx);
+                // Later passes read the publication; extras read lower layers.
+                storage.release_main_layer_inputs(self.layer_idx);
             }
 
             let mut actual_eq_sizes = launched.eq_sizes();
             let (active_eq_slot_base, active_eq_size_before_fold) =
                 resolve_active_eq_slot(&actual_eq_sizes, scratch.eq_low.cast_mut());
             let tail_state = WindowTailState {
-                partials: scratch.partials,
+                partials: launched.partials(scratch.partials),
                 row_tiles: launched.row_tiles(),
                 reduced_tensor: launched.reduced_tensor(),
                 // SAFETY: the plan guarantees pass_start + 3 <= folding_steps.

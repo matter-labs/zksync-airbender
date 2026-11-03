@@ -6,6 +6,7 @@ use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum CircuitId {
     Riscv(u32),
+    InitsAndTeardowns,
     Delegation(u32),
 }
 
@@ -41,7 +42,10 @@ impl core::fmt::Display for EstimateError {
                  --test cost_model_trace -- --ignored`"
             ),
             Self::UnexpectedInitsAndTeardowns { found } => {
-                write!(f, "expected exactly 1 inits/teardowns proof, found {found}")
+                write!(
+                    f,
+                    "expected at least 1 inits/teardowns proof, found {found}"
+                )
             }
         }
     }
@@ -66,6 +70,10 @@ pub fn proof_counts(proof: &ProgramProof) -> Vec<(CircuitId, usize)> {
         .riscv_proofs
         .iter()
         .map(|(k, v)| (CircuitId::Riscv(*k), v.len()))
+        .chain(std::iter::once((
+            CircuitId::InitsAndTeardowns,
+            proof.inits_and_teardown_proofs.len(),
+        )))
         .chain(
             proof
                 .delegation_proofs
@@ -75,12 +83,7 @@ pub fn proof_counts(proof: &ProgramProof) -> Vec<(CircuitId, usize)> {
         .collect()
 }
 
-pub const DELEGATION_TYPES: &[u32] = &[
-    common_constants::BLAKE2S_DELEGATION_CSR_REGISTER,
-    common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-    common_constants::KECCAK_SPECIAL5_CSR_REGISTER,
-    common_constants::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
-];
+pub use crate::definitions::DELEGATION_TYPES;
 
 #[must_use]
 pub fn riscv_order(program: FsvProgram) -> &'static [u32] {
@@ -108,6 +111,7 @@ pub fn compiled_circuits(program: FsvProgram) -> Vec<CircuitId> {
     riscv_order(program)
         .iter()
         .map(|k| CircuitId::Riscv(*k))
+        .chain(std::iter::once(CircuitId::InitsAndTeardowns))
         .chain(DELEGATION_TYPES.iter().map(|k| CircuitId::Delegation(*k)))
         .collect()
 }
@@ -136,7 +140,7 @@ mod order_tests {
             crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_100::<I, E>(
             )
             .iter()
-            .map(|(k, _)| *k)
+            .map(|(k, _, _)| *k)
             .collect();
         assert_eq!(
             riscv_order(FsvProgram::UnrolledBaseLayer),
@@ -152,7 +156,7 @@ mod order_tests {
                 E,
             >()
             .iter()
-            .map(|(k, _)| *k)
+            .map(|(k, _, _)| *k)
             .collect();
         assert_eq!(
             riscv_order(FsvProgram::UnrolledRecursionLayer),
@@ -163,11 +167,13 @@ mod order_tests {
     #[test]
     fn delegation_order_matches_verifier_functions() {
         let actual = crate::delegation_params::all_delegation_circuit_verifiers_sec_100::<I, E>();
-        let expected: [DelegVerifier; 4] = [
+        let expected: [DelegVerifier; 6] = [
             imports::blake2_with_extended_control_sec_100::verify::<I, E>,
             imports::bigint_with_extended_control_sec_100::verify::<I, E>,
             imports::keccak_special5_sec_100::verify::<I, E>,
-            imports::blake2_g_function_sec_100::verify::<I, E>,
+            imports::keccak_theta_rho_sec_100::verify::<I, E>,
+            imports::keccak_column_parity_sec_100::verify::<I, E>,
+            imports::keccak_chi5_sec_100::verify::<I, E>,
         ];
         for (i, (a, b)) in actual.iter().zip(expected.iter()).enumerate() {
             assert_eq!(

@@ -1,4 +1,4 @@
-//! Fixed-width backward term encoding.
+//! Fixed-width continuation term encoding.
 //!
 //! ```text
 //! word0 = [class:3 @13 | coeff_idx:13 @0]
@@ -15,14 +15,13 @@
 //! ```
 //!
 //! Member coefficient fields are [`ImmediateId`] values; singleton and header
-//! fields are recipe ids. Class `2` is an R0 term and a continuation header, so
-//! decoding requires the regime.
+//! fields are recipe ids.
 
 use gkr_eval_ir::FieldKind;
 
 use super::limits::{
     category_arity, term_category, TermCategory, HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS,
-    LEAN_CONT_GROUP_HEADER_CLASS, MAX_OPCODES_PER_REGIME,
+    LEAN_CONT_GROUP_HEADER_CLASS, MAX_OPCODE_ENCODINGS,
 };
 use super::model::{
     CoeffGroup, CoeffLayer, CoeffTerm, CoefficientRecipeId, ImmediateId, SourceId, TermId,
@@ -45,7 +44,7 @@ pub const LEAN_CLASS_SHIFT: u32 = HEADER_COEFFICIENT_BITS;
 pub(crate) const LEAN_CLASS_MASK: u16 = (1 << HEADER_OPCODE_BITS) - 1;
 
 /// `source_b` of a one-source class. Never a slot: a source table long enough to
-/// reach it is unrepresentable on this wire and [`encode_program`] rejects one
+/// reach it is unrepresentable on this wire and [`encode_program_atoms`] rejects one
 /// (the corpus maximum is 1,062 sources).
 pub const SOURCE_NONE: u16 = 0xFFFF;
 
@@ -59,21 +58,12 @@ pub(crate) const LEAN_GROUP_FLAG_MASK: u16 = LEAN_GROUP_FLAG_C0 | LEAN_GROUP_FLA
 const _: () = assert!(LEAN_CLASS_SHIFT == 13);
 const _: () = assert!(LEAN_CONT_GROUP_HEADER_CLASS <= LEAN_CLASS_MASK);
 const _: () = assert!(LEAN_COEFFICIENT_MASK == 0x1fff);
-const _: () = assert!(LEAN_CLASS_MASK as usize == MAX_OPCODES_PER_REGIME - 1);
+const _: () = assert!(LEAN_CLASS_MASK as usize == MAX_OPCODE_ENCODINGS - 1);
 const _: () = assert!(LEAN_BYTES_PER_TERM == 6);
 
 // ── Lean class tables ────────────────────────────────────────────────────────
 //
 // The CUDA side mirrors these class numbers with static assertions.
-
-/// Lean R0 classes, `(class, category)`, in class order. `5..7` are invalid.
-pub const LEAN_R0_OPCODES: &[(u16, TermCategory)] = &[
-    (0, TermCategory::C0LinearBf),
-    (1, TermCategory::C0LinearE4),
-    (2, TermCategory::C2ProductBfBf),
-    (3, TermCategory::C2ProductBfE4),
-    (4, TermCategory::C2ProductE4E4),
-];
 
 /// Lean continuation classes, `(class, category)`, in class order. `2..7` are
 /// invalid.
@@ -87,7 +77,7 @@ const fn table_is_canonical(table: &[(u16, TermCategory)]) -> bool {
     let mut i = 0;
     while i < table.len() {
         let (class, _) = table[i];
-        if class as usize != i || class as usize >= MAX_OPCODES_PER_REGIME {
+        if class as usize != i || class as usize >= MAX_OPCODE_ENCODINGS {
             return false;
         }
         i += 1;
@@ -95,9 +85,7 @@ const fn table_is_canonical(table: &[(u16, TermCategory)]) -> bool {
     true
 }
 
-const _: () = assert!(LEAN_R0_OPCODES.len() == 5);
 const _: () = assert!(LEAN_CONT_OPCODES.len() == 2);
-const _: () = assert!(table_is_canonical(LEAN_R0_OPCODES));
 const _: () = assert!(table_is_canonical(LEAN_CONT_OPCODES));
 
 /// No row of `table` numbers `class`.
@@ -112,39 +100,19 @@ const fn class_is_free(table: &[(u16, TermCategory)], class: u16) -> bool {
     true
 }
 
-// The group header is a CONTROL code, so it may not collide with a live
-// continuation TERM class — the one fence that keeps `decode_atoms`' `class == 2`
-// branch unambiguous in the `Ext` regime. At R0 the same number IS a live class,
-// which is exactly why decode takes a regime.
 const _: () = assert!(class_is_free(
     LEAN_CONT_OPCODES,
     LEAN_CONT_GROUP_HEADER_CLASS
 ));
-const _: () = assert!(!class_is_free(
-    LEAN_R0_OPCODES,
-    LEAN_CONT_GROUP_HEADER_CLASS
-));
-
-/// The lean class table of one regime.
-const fn lean_table(regime: crate::BwdRegime) -> &'static [(u16, TermCategory)] {
-    match regime {
-        crate::BwdRegime::R0 => LEAN_R0_OPCODES,
-        crate::BwdRegime::Ext => LEAN_CONT_OPCODES,
-    }
-}
-
-/// The class of `category` in `regime`, or `None` when the regime does not admit
-/// the category at all.
-fn lean_class(regime: crate::BwdRegime, category: TermCategory) -> Option<u16> {
-    lean_table(regime)
+fn lean_class(category: TermCategory) -> Option<u16> {
+    LEAN_CONT_OPCODES
         .iter()
         .find(|(_, listed)| *listed == category)
         .map(|(class, _)| *class)
 }
 
-/// The category a class names in `regime`, or `None` for a dead class.
-fn lean_category(regime: crate::BwdRegime, class: u16) -> Option<TermCategory> {
-    lean_table(regime)
+fn lean_category(class: u16) -> Option<TermCategory> {
+    LEAN_CONT_OPCODES
         .iter()
         .find(|(listed, _)| *listed == class)
         .map(|(_, category)| *category)
@@ -201,7 +169,7 @@ pub enum LeanAtom {
 
 /// Everything the lean codec and its validator can reject. Every variant is
 /// derivable from the inputs, and the codec's only run-time panics are
-/// [`encode_program`]'s and [`encode_program_atoms`]' documented ones.
+/// the out-of-range atom indices documented by [`encode_program_atoms`].
 ///
 /// Every index a variant carries is a RECORD index in the word stream — headers
 /// included, so `3 · index` is the offending record's word offset — with the one
@@ -267,24 +235,6 @@ pub enum LeanCodecError {
 }
 
 // ── Encoding ─────────────────────────────────────────────────────────────────
-
-/// Encode `layer`'s terms in `order` — one record per entry, in that order.
-///
-/// # Panics
-///
-/// If `order` names a term outside `layer.terms`.
-pub(crate) fn encode_program(
-    layer: &CoeffLayer,
-    order: &[TermId],
-) -> Result<LeanProgram, LeanCodecError> {
-    let mut words = Vec::with_capacity(order.len() * LEAN_WORDS_PER_TERM);
-    for (index, id) in order.iter().enumerate() {
-        let term = &layer.terms[id.0 as usize];
-        let coeff = CoeffField::Recipe(term.coefficient());
-        encode_term(&mut words, layer, index, term, coeff)?;
-    }
-    Ok(LeanProgram { words })
-}
 
 /// Encode plain terms and grouped atoms in their committed order.
 ///
@@ -374,9 +324,6 @@ enum CoeffField {
     Immediate(ImmediateId),
 }
 
-/// Append one term record, checking exactly what the pre-group encoder
-/// checked and in the same order: the class is live in the regime, the coefficient
-/// field is in range, the slots are inside the source table.
 fn encode_term(
     words: &mut Vec<u16>,
     layer: &CoeffLayer,
@@ -385,7 +332,7 @@ fn encode_term(
     field: CoeffField,
 ) -> Result<(), LeanCodecError> {
     let category = term_category(term);
-    let class = lean_class(layer.regime, category).ok_or(LeanCodecError::ClassNotInRegime {
+    let class = lean_class(category).ok_or(LeanCodecError::ClassNotInRegime {
         term: record,
         opcode: u16::from(category.tag()),
     })?;
@@ -464,40 +411,8 @@ fn source_slots(
 
 // ── Decoding and validation ──────────────────────────────────────────────────
 
-/// Unpack the whole stream into ATOMS. Bank-free and table-free: it checks the
-/// stream's structure and, in `Ext`, everything a
-/// self-delimiting walk needs to be unambiguous (`N >= 2`, well-formed flags, no
-/// nesting, no truncated group, the declared term total) — and reads the fields.
-/// [`validate_program`] is what decides legality against a layer.
-///
-/// `regime` is not a preference: class `2` is a live R0 term class and the `Ext`
-/// group-header control code, and no property of the words distinguishes them.
-pub(crate) fn decode_atoms(
-    program: &LeanProgram,
-    regime: crate::BwdRegime,
-) -> Result<Vec<LeanAtom>, LeanCodecError> {
-    match regime {
-        crate::BwdRegime::R0 => decode_r0_atoms(program),
-        crate::BwdRegime::Ext => decode_ext_atoms(program),
-    }
-}
-
-/// R0 has no headers, so every record is a term.
-fn decode_r0_atoms(program: &LeanProgram) -> Result<Vec<LeanAtom>, LeanCodecError> {
-    if !program.words.len().is_multiple_of(LEAN_WORDS_PER_TERM) {
-        return Err(LeanCodecError::TruncatedStream {
-            words: program.words.len(),
-        });
-    }
-    let mut out = Vec::with_capacity(program.words.len() / LEAN_WORDS_PER_TERM);
-    for record in program.words.as_chunks::<LEAN_WORDS_PER_TERM>().0 {
-        out.push(LeanAtom::Term(term_record(record)));
-    }
-    Ok(out)
-}
-
 /// Decode the self-delimiting continuation stream.
-fn decode_ext_atoms(program: &LeanProgram) -> Result<Vec<LeanAtom>, LeanCodecError> {
+pub(crate) fn decode_atoms(program: &LeanProgram) -> Result<Vec<LeanAtom>, LeanCodecError> {
     let words = &program.words;
     if !words.len().is_multiple_of(LEAN_WORDS_PER_TERM) {
         return Err(LeanCodecError::TruncatedStream { words: words.len() });
@@ -576,27 +491,18 @@ fn term_record(record: &[u16]) -> LeanTerm {
     }
 }
 
-/// Unpack the whole stream as a flat TERM list — [`decode_atoms`] with the group
-/// headers dropped and their members spliced in place, which is exactly the
-/// decoder's output for an R0 or group-free stream.
-///
-/// A member's [`LeanTerm::coeff`] is an [`ImmediateId`] and its group's core is not
-/// in the returned list, so this is the right view for a consumer that cares about
-/// CLASSES and SOURCES (the class-coverage walks, the deal's record census) and the
-/// wrong one for a consumer that must evaluate coefficients — that one wants
-/// [`decode_atoms`].
 pub(crate) fn validate_program(
     program: &LeanProgram,
     layer: &CoeffLayer,
-) -> Result<(), LeanCodecError> {
-    let atoms = decode_atoms(program, layer.regime)?;
+) -> Result<Vec<LeanAtom>, LeanCodecError> {
+    let atoms = decode_atoms(program)?;
     let coefficients = CoefficientRecipeId::RESERVED as usize + layer.coefficients.len();
     let immediates = usize::from(ImmediateId::RESERVED) + layer.immediates.len();
     let mut record = 0usize;
     for atom in &atoms {
         match atom {
             LeanAtom::Term(decoded) => {
-                let category = validate_class(layer, record, decoded)?;
+                let category = validate_class(record, decoded)?;
                 if usize::from(decoded.coeff) >= coefficients {
                     return Err(LeanCodecError::CoefficientOutOfRange {
                         term: record,
@@ -612,11 +518,6 @@ pub(crate) fn validate_program(
                 has_c2,
                 members,
             } => {
-                debug_assert_eq!(
-                    layer.regime,
-                    crate::BwdRegime::Ext,
-                    "an R0 stream decodes class 2 as a term, so it yields no group atom"
-                );
                 if CoefficientRecipeId(u32::from(*core)).literal().is_some() {
                     return Err(LeanCodecError::GroupCoreIsLiteral { atom: record });
                 }
@@ -629,7 +530,7 @@ pub(crate) fn validate_program(
                 let mut expected = 0u16;
                 for (offset, member) in members.iter().enumerate() {
                     let position = record + 1 + offset;
-                    let category = validate_class(layer, position, member)?;
+                    let category = validate_class(position, member)?;
                     if usize::from(member.coeff) >= immediates {
                         return Err(LeanCodecError::ImmediateOutOfRange {
                             term: position,
@@ -651,17 +552,12 @@ pub(crate) fn validate_program(
             }
         }
     }
-    Ok(())
+    Ok(atoms)
 }
 
-/// The category one record's class names in `layer.regime`, or the dead-class reject.
-fn validate_class(
-    layer: &CoeffLayer,
-    record: usize,
-    decoded: &LeanTerm,
-) -> Result<TermCategory, LeanCodecError> {
+fn validate_class(record: usize, decoded: &LeanTerm) -> Result<TermCategory, LeanCodecError> {
     let class = u16::from(decoded.class);
-    lean_category(layer.regime, class).ok_or(LeanCodecError::ClassNotInRegime {
+    lean_category(class).ok_or(LeanCodecError::ClassNotInRegime {
         term: record,
         opcode: class,
     })

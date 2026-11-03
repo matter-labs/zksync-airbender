@@ -12,10 +12,11 @@ use crate::witness::memory_unrolled::{
 use crate::witness::trace_unrolled::{ExecutorFamilyDecoderData, PAGE_SIZE_LOG2};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
-use gpu_core::primitives::device_structures::{DeviceMatrixMut, DeviceMatrixMutImpl};
+use gpu_core::primitives::device_structures::DeviceMatrixMut;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::BF;
 use gpu_hash::blake2s::Digest;
+use gpu_prover_context::transfer::TransferKeepalive;
 use gpu_prover_context::ProverContext;
 
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, ProverConfig};
@@ -25,48 +26,65 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 
-pub struct MemoryCommitmentJob<'a, A: GoodAllocator = std::alloc::Global> {
+pub struct MemoryCommitmentJob<'a> {
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
+    inputs: Option<TransferKeepalive<'a>>,
     tree_caps: Box<Option<Vec<MerkleTreeCapVarLength>>>,
     range: Range,
-    /// Holds the per-piece transferless wrappers (decoder, inits_and_teardowns,
-    /// tracing_data) + the bundle's accumulated `Transfer` callbacks. Only
-    /// populated when the job came from `commit_memory_from_transfers`; tests
-    /// that call `commit_memory` directly leave this `None`.
-    _inputs_keepalive: Option<super::memory_transfer::GpuGKRCommitMemoryTransferKeepalive<'a, A>>,
 }
 
-impl<'a, A: GoodAllocator> MemoryCommitmentJob<'a, A> {
+impl<'a> MemoryCommitmentJob<'a> {
     pub fn finish(self) -> CudaResult<(Vec<MerkleTreeCapVarLength>, f32)> {
         let Self {
             is_finished_event,
             callbacks,
+            inputs,
             tree_caps,
             range,
-            _inputs_keepalive,
         } = self;
         is_finished_event.synchronize()?;
         drop(callbacks);
-        drop(_inputs_keepalive);
+        drop(inputs);
         let tree_caps = tree_caps.unwrap();
         let commitment_time_ms = range.elapsed()?;
         Ok((tree_caps, commitment_time_ms))
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn commit_memory_inner<'a, A: GoodAllocator>(
+/// The GPU prover commits every base column set over the circuit's own
+/// `2^trace_len_log2` domain (one committed column per base column) and starts
+/// WHIR from that size: it does not implement the base-commitment packing of
+/// `ProverConfig::pack_log2` (`2^pack_log2` consecutive columns per committed
+/// polynomial, WHIR message `2^(trace_len_log2 + pack_log2)`, `pack_log2` extra
+/// claim-point coordinates drawn after the GKR phase). Every GPU entry that
+/// takes a `ProverConfig` (the memory commitments here, `prove()` and the DR
+/// preflight in `gpu_circuit_prover`) calls this before enqueuing any
+/// commitment or proof kernel (the preflight rejects before transfers are
+/// even constructed), so a packed config fails closed instead of yielding an
+/// unpacked proof that the verifier generated from the same config rejects.
+pub fn assert_unpacked_prover_config(prover_config: &ProverConfig) {
+    assert_eq!(
+        prover_config.pack_log2,
+        0,
+        "GPU prover does not implement base-commitment packing: ProverConfig::pack_log2 = {} \
+         (WHIR message 2^{}); prove packed configs with the CPU prover",
+        prover_config.pack_log2,
+        prover_config.whir_message_size_log2(),
+    );
+}
+
+fn commit_memory_inner<'a>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
     inits_and_teardowns: Option<&crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice>,
     tracing_data: Option<&TracingDataDevice>,
     prover_config: &ProverConfig,
-    mut callbacks: Callbacks<'a>,
-    inputs_keepalive: Option<super::memory_transfer::GpuGKRCommitMemoryTransferKeepalive<'a, A>>,
+    inputs: Option<TransferKeepalive<'a>>,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a, A>> {
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    assert_unpacked_prover_config(prover_config);
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
@@ -103,7 +121,10 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
                 circuit_type,
                 crate::witness::circuit_type::DelegationCircuitType::BigIntWithControl
             );
-            generate_memory_values_delegation(compiled_circuit, trace, memory, stream)?;
+            generate_memory_values_delegation::<
+                _,
+                { crate::witness::circuit_type::DelegationCircuitType::BigIntWithControl as u16 },
+            >(compiled_circuit, trace, memory, stream)?;
         }
         (
             CircuitType::Delegation(circuit_type),
@@ -115,7 +136,13 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
                 circuit_type,
                 crate::witness::circuit_type::DelegationCircuitType::Blake2WithCompression
             );
-            generate_memory_values_delegation(compiled_circuit, trace, memory, stream)?;
+            generate_memory_values_delegation::<
+                _,
+                {
+                    crate::witness::circuit_type::DelegationCircuitType::Blake2WithCompression
+                        as u16
+                },
+            >(compiled_circuit, trace, memory, stream)?;
         }
         (
             CircuitType::Delegation(circuit_type),
@@ -127,7 +154,10 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
                 circuit_type,
                 crate::witness::circuit_type::DelegationCircuitType::Blake2GFunction
             );
-            generate_memory_values_delegation(compiled_circuit, trace, memory, stream)?;
+            generate_memory_values_delegation::<
+                _,
+                { crate::witness::circuit_type::DelegationCircuitType::Blake2GFunction as u16 },
+            >(compiled_circuit, trace, memory, stream)?;
         }
         (
             CircuitType::Delegation(circuit_type),
@@ -137,7 +167,51 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
                 circuit_type,
                 crate::witness::circuit_type::DelegationCircuitType::KeccakSpecial5
             );
-            generate_memory_values_delegation(compiled_circuit, trace, memory, stream)?;
+            generate_memory_values_delegation::<
+                _,
+                { crate::witness::circuit_type::DelegationCircuitType::KeccakSpecial5 as u16 },
+            >(compiled_circuit, trace, memory, stream)?;
+        }
+        (
+            CircuitType::Delegation(circuit_type),
+            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakColumnParity(
+                trace,
+            ))),
+        ) => {
+            assert_eq!(
+                circuit_type,
+                crate::witness::circuit_type::DelegationCircuitType::KeccakColumnParity
+            );
+            generate_memory_values_delegation::<
+                _,
+                { crate::witness::circuit_type::DelegationCircuitType::KeccakColumnParity as u16 },
+            >(compiled_circuit, trace, memory, stream)?;
+        }
+        (
+            CircuitType::Delegation(circuit_type),
+            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakThetaRho(trace))),
+        ) => {
+            assert_eq!(
+                circuit_type,
+                crate::witness::circuit_type::DelegationCircuitType::KeccakThetaRho
+            );
+            generate_memory_values_delegation::<
+                _,
+                { crate::witness::circuit_type::DelegationCircuitType::KeccakThetaRho as u16 },
+            >(compiled_circuit, trace, memory, stream)?;
+        }
+        (
+            CircuitType::Delegation(circuit_type),
+            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakChi5(trace))),
+        ) => {
+            assert_eq!(
+                circuit_type,
+                crate::witness::circuit_type::DelegationCircuitType::KeccakChi5
+            );
+            generate_memory_values_delegation::<
+                _,
+                { crate::witness::circuit_type::DelegationCircuitType::KeccakChi5 as u16 },
+            >(compiled_circuit, trace, memory, stream)?;
         }
         (
             CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type)),
@@ -185,28 +259,16 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
             // Inline i/t paged sweep FIRST (page-based-reuse): it zeroes the
             // whole matrix (set_to_zero) then writes the teardown columns; the per-row unified
             // memory-values launch below fills machine_state + shuffle_ram. Mirrors the standalone
-            // InitsAndTeardowns arm above.
-            //
-            // `None` = a TRIVIAL (dummy) unified init/teardown chunk: the CPU reference
-            // (prover_examples::unified) commits all-zero i&t columns for the leading
-            // `num_dummy_inits_and_teardowns` circuits. The i/t launcher only zeroes the whole
-            // matrix and writes teardown timestamp/value columns at page-covered rows, so the
-            // all-zero case is exactly "zero the matrix and skip the teardown-column writes".
-            match inits_and_teardowns.as_ref() {
-                Some(inits_and_teardowns) => {
-                    generate_memory_and_witness_values_unrolled_inits_and_teardowns(
-                        &compiled_circuit.memory_layout,
-                        log_domain_size,
-                        PAGE_SIZE_LOG2,
-                        inits_and_teardowns,
-                        memory,
-                        stream,
-                    )?;
-                }
-                None => {
-                    gpu_ops::simple::set_to_zero(memory.slice_mut(), stream)?;
-                }
-            }
+            // InitsAndTeardowns arm above. A TRIVIAL (dummy) chunk has no pages, so its
+            // i/t columns stay all zero, as the CPU reference commits them.
+            generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                &compiled_circuit.memory_layout,
+                log_domain_size,
+                PAGE_SIZE_LOG2,
+                inits_and_teardowns.expect("unified circuit requires init/teardown buffers"),
+                memory,
+                stream,
+            )?;
             generate_memory_values_unrolled_unified(
                 &compiled_circuit.memory_layout,
                 decoder_table.expect("unified circuit requires a decoder table"),
@@ -236,8 +298,7 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
         let unified = cap_host_accessor.get();
         debug_assert_eq!(unified.len() % lde_factor, 0);
         let per_coset = unified.len() / lde_factor;
-        // Repack the unified cap (bit-reversed coset order) back into the
-        // natural per-coset shape that `MemoryCommitmentJob`'s callers expect.
+        // Reorder the unified cap from bit-reversed to natural coset order.
         let mut per_coset_caps: Vec<MerkleTreeCapVarLength> = (0..lde_factor)
             .map(|_| MerkleTreeCapVarLength { cap: Vec::new() })
             .collect();
@@ -251,6 +312,7 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
             .replace(per_coset_caps)
             .is_none());
     };
+    let mut callbacks = Callbacks::new();
     callbacks.schedule(transform_tree_caps_fn, stream)?;
     // `cap_host` (pool-backed pinned host buffer) drops at end of this function;
     // the callback above has already been scheduled, so the contract's
@@ -262,14 +324,13 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
     let job = MemoryCommitmentJob {
         is_finished_event,
         callbacks,
+        inputs,
         tree_caps,
         range,
-        _inputs_keepalive: inputs_keepalive,
     };
     Ok(job)
 }
 
-// test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
 #[doc(hidden)]
 pub fn commit_memory<'a>(
     circuit_type: CircuitType,
@@ -278,15 +339,14 @@ pub fn commit_memory<'a>(
     tracing_data: &TracingDataDevice,
     prover_config: &ProverConfig,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a, std::alloc::Global>> {
-    commit_memory_inner::<std::alloc::Global>(
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    commit_memory_inner(
         circuit_type,
         compiled_circuit,
         decoder_table,
         None,
         Some(tracing_data),
         prover_config,
-        Callbacks::new(),
         None,
         context,
     )
@@ -298,43 +358,58 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
     inputs: super::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>,
     prover_config: &ProverConfig,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a, A>> {
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    // reject a packed config before touching the streams
+    assert_unpacked_prover_config(prover_config);
     // One exec-stream wait covers every H2D bundled by `inputs` (decoder,
     // inits_and_teardowns, tracing_data).
     inputs.ensure_transferred(context)?;
-    // Move the wrappers into the bundle keepalive; raw-pointer into its
-    // device-buffer fields so we can simultaneously hand the keepalive to
-    // `commit_memory_inner` (where it moves into the returned job's
-    // `_inputs_keepalive`).
-    //
-    // SAFETY: `keepalive` is passed by-move into `commit_memory_inner` and
-    // ends up stored in the returned `MemoryCommitmentJob`; the wrappers it
-    // owns therefore outlive every kernel reading from the pointers below,
-    // since `MemoryCommitmentJob::finish()` synchronizes on the completion
-    // event before dropping the keepalive.
-    let keepalive = inputs.into_keepalive();
-    let decoder_ptr: Option<*const DeviceSlice<ExecutorFamilyDecoderData>> = keepalive
-        .decoder
-        .as_ref()
-        .map(|t| (&t.data_device[..]) as *const _);
-    let inits_ptr: Option<*const crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice> =
-        keepalive
-            .inits_and_teardowns
-            .as_ref()
-            .map(|t| &t.data_device as *const _);
-    let tracing_ptr: Option<*const TracingDataDevice> = keepalive
-        .tracing_data
-        .as_ref()
-        .map(|t| &t.data_device as *const _);
-    commit_memory_inner::<A>(
+    let super::memory_transfer::GpuGKRCommitMemoryTransfer {
+        transfer,
+        decoder,
+        inits_and_teardowns,
+        tracing_data,
+    } = inputs;
+    // Device reservations live through enqueue; H2D sources move into the job
+    // and live through its completion synchronization.
+    commit_memory_inner(
         circuit_type,
         compiled_circuit,
-        decoder_ptr.map(|p| unsafe { &*p }),
-        inits_ptr.map(|p| unsafe { &*p }),
-        tracing_ptr.map(|p| unsafe { &*p }),
+        decoder.as_ref().map(|t| &t.data_device[..]),
+        inits_and_teardowns.as_ref().map(|t| &t.data_device),
+        tracing_data.as_ref().map(|t| &t.data_device),
         prover_config,
-        Callbacks::new(),
-        Some(keepalive),
+        Some(transfer.into_keepalive()),
         context,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::assert_unpacked_prover_config;
+    use prover::definitions::SecurityLevel;
+    use prover::gkr::prover_config::example_configs::{
+        config_for_security_level_under_pessimistic_conjecture,
+        packed_config_for_security_level_under_pessimistic_conjecture,
+    };
+
+    #[test]
+    fn cpu_unpacked_prover_config_is_accepted() {
+        let config =
+            config_for_security_level_under_pessimistic_conjecture(20, SecurityLevel::Sec100);
+        assert_eq!(config.pack_log2, 0);
+        assert_unpacked_prover_config(&config);
+    }
+
+    #[test]
+    #[should_panic(expected = "GPU prover does not implement base-commitment packing")]
+    fn cpu_packed_prover_config_is_rejected() {
+        let config = packed_config_for_security_level_under_pessimistic_conjecture(
+            20,
+            4,
+            SecurityLevel::Sec100,
+        );
+        assert_eq!(config.pack_log2, 4);
+        assert_unpacked_prover_config(&config);
+    }
 }

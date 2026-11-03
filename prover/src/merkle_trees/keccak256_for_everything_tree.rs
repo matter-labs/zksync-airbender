@@ -10,6 +10,7 @@
 use super::keccak256_hash_leafs::{
     keccak256_leaf_hashes_from_cosets, keccak_digest_to_bytes, KECCAK256_DIGEST_SIZE_U32_WORDS,
 };
+use super::CosetLeafAccessor;
 use super::*;
 use crate::definitions::{LeafInclusionVerifier, MerkleTreeCap};
 use blake2s_u32::AlignedSlice64;
@@ -34,7 +35,7 @@ fn compress_two_to_one(left: &Digest32, right: &Digest32) -> Digest32 {
     input[..32].copy_from_slice(&keccak_digest_to_bytes(left));
     input[32..].copy_from_slice(&keccak_digest_to_bytes(right));
     let mut out = [0u8; 32];
-    out.copy_from_slice(Keccak256::digest(&input).as_slice());
+    out.copy_from_slice(Keccak256::digest(input).as_slice());
     super::keccak256_hash_leafs::keccak_digest_from_bytes(out)
 }
 
@@ -137,10 +138,7 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
         bitreverse_cosets: bool,
         bitreverse_leaf_hashes: bool,
         worker: &Worker,
-    ) -> std::io::Result<()>
-    where
-        [(); E::DEGREE]: Sized,
-    {
+    ) -> std::io::Result<()> {
         crate::merkle_trees::on_disk::write_disk_artifacts::<Proth120, Self, E, _>(
             base_path,
             layout,
@@ -175,27 +173,17 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
         crate::merkle_trees::on_disk::open_disk_artifacts::<Self>(base_path, layout, num_cosets)
     }
 
-    fn construct_from_coset_producer<'a, E: FieldExtension<Proth120> + 'a>(
-        num_cosets: usize,
-        mut producer: CosetColumnsProducer<'a, E>,
+    fn construct_from_cosets<E: FieldExtension<Proth120>, A: CosetIndexedAccessor<E>>(
+        trace: &[&[A]],
         combine_by: usize,
         cap_size: usize,
         bitreverse_evaluations: bool,
         bitreverse_cosets: bool,
         bitreverse_leaf_hashes: bool,
         worker: &Worker,
-    ) -> Self
-    where
-        [(); E::DEGREE]: Sized,
-    {
-        let cosets: Vec<Vec<Cow<'a, [E]>>> = (0..num_cosets).map(|c| producer(c)).collect();
-        let trace: Vec<Vec<&[E]>> = cosets
-            .iter()
-            .map(|coset| coset.iter().map(|c| c.as_ref()).collect())
-            .collect();
-        let trace_refs: Vec<&[&[E]]> = trace.iter().map(|c| &c[..]).collect();
-        let leaf_hashes = keccak256_leaf_hashes_from_cosets::<E, B>(
-            &trace_refs,
+    ) -> Self {
+        let leaf_hashes = keccak256_leaf_hashes_from_cosets::<E, A, B>(
+            trace,
             combine_by,
             bitreverse_evaluations,
             bitreverse_cosets,
@@ -203,6 +191,26 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
             worker,
         );
 
+        Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
+    }
+
+    fn construct_from_leaf_accessors<
+        E: FieldExtension<Proth120> + field::Field,
+        L: CosetLeafAccessor<E>,
+    >(
+        cosets: &[&[L]],
+        cap_size: usize,
+        bitreverse_cosets: bool,
+        bitreverse_leaf_hashes: bool,
+        worker: &Worker,
+    ) -> Self {
+        use crate::merkle_trees::keccak256_hash_leafs::keccak256_leaf_hashes_from_leaf_accessors;
+        let leaf_hashes = keccak256_leaf_hashes_from_leaf_accessors::<E, L, B>(
+            cosets,
+            bitreverse_cosets,
+            bitreverse_leaf_hashes,
+            worker,
+        );
         Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
     }
 
@@ -278,7 +286,7 @@ pub fn keccak_leaf_encoding_words(values: &[Proth120]) -> Vec<u32> {
     let mut words = Vec::with_capacity(values.len() * 4);
     for v in values.iter() {
         let be16 = v.to_u128().to_be_bytes();
-        for chunk in be16.chunks_exact(4) {
+        for chunk in be16.as_chunks::<4>().0 {
             words.push(u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
         }
     }
@@ -366,7 +374,6 @@ impl LeafInclusionVerifier for Keccak256LeafInclusionVerifier {
 mod test {
     use super::super::keccak256_hash_leafs::{keccak_digest_from_bytes, keccak_digest_to_bytes};
     use super::*;
-    use field::PrimeField;
 
     fn keccak(bytes: &[u8]) -> [u8; 32] {
         let mut out = [0u8; 32];
@@ -421,7 +428,7 @@ mod test {
 
         let tree = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
             Proth120,
-        >>::construct_from_cosets::<Proth120>(
+        >>::construct_from_cosets::<Proth120, _>(
             trace, COMBINE_BY, CAP_SIZE, /* bitreverse_evaluations */ true,
             /* bitreverse_cosets */ false, /* bitreverse_leaf_hashes */ false, &worker,
         );
@@ -494,7 +501,7 @@ mod test {
 
         let tree = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
             Proth120,
-        >>::construct_from_cosets::<Proth120>(
+        >>::construct_from_cosets::<Proth120, _>(
             trace, COMBINE_BY, CAP_SIZE, true, false, false, &worker,
         );
 

@@ -11,8 +11,7 @@ used to live under `circuit_prover/native/gkr/` and `native/ops/gkr_ops.cu`).
 ## Layer position
 
 `gpu_core < { gpu_ntt, gpu_ops, gpu_hash } < gpu_prover_context <
-gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
-gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
+gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
 DAG. Dependencies point only down: this crate depends on `gpu_core`,
 `gpu_ops`, `gpu_hash`, `gpu_prover_context`, `gpu_trace`,
 `gpu_gkr_model`, `gpu_gkr_compiler`, and `gkr_eval_ir`, plus the upstream crates below;
@@ -71,7 +70,8 @@ drift by convention.
 - **Header relationships**: `export_include(true)` — this crate exports its
   `native/` dir as `DEP_GPU_GKR_NATIVE_INCLUDE`, consumed by `gpu_whir`'s
   `accumulate_eq.cu` for `gkr/support/{eq_inline,kernel_helpers}.cuh` (which
-  pulls in `descriptors.cuh`). This crate itself reads `gpu_core`'s base
+  pulls in `descriptors.cuh`), and `ops/gkr_ops_helpers.cuh` supplies the
+  inline WHIR round update to `gpu_whir`'s `in_domain.cu`. This crate itself reads `gpu_core`'s base
   headers and `gpu_hash`'s `hash.cuh` (via `DEP_GPU_HASH_NATIVE_INCLUDE`) for
   the blake2s-dependent protocol kernels in `ops/gkr_ops.cu`.
 

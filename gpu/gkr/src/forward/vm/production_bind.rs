@@ -20,8 +20,10 @@ use crate::forward::dimension_reducing::{
     LoweredSlotInitialInput, LoweredSlotOutput, PreparedDimensionReductionForward,
 };
 use crate::gkr_address_audit::AddressClass;
-use crate::setup::GpuGKRForwardSetup;
-use crate::stage1::GpuGKRStage1Output;
+use crate::setup::{
+    GpuGKRForwardSetup, DECODER_FILL_INDEX, LOOKUP_FILL_COUNT, SETUP_PADDING_FILL_INDEX,
+};
+use crate::stage1::{GpuGKRLookupMappings, GpuGKRStage1Output};
 use crate::upstream::{
     ChallengeKey, ChallengePower, ChallengeRef, Field, GKRAddress, GKRCircuitArtifact,
     GKRExternalChallenges, PermutationSlot, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
@@ -40,8 +42,6 @@ pub(crate) enum BindError {
     /// An `ArgDerivedE4` ref is not host-known at scheduling time, so it
     /// cannot ride the by-value descriptor.
     NonScheduleTimeArgDerivedE4(ChallengeRef),
-    /// A bank copy failed.
-    Cuda(era_cudart_sys::CudaError),
 }
 
 impl std::fmt::Display for BindError {
@@ -52,7 +52,6 @@ impl std::fmt::Display for BindError {
                 "arg-derived-E4 {r:?} is not known to the host at scheduling time, so it cannot \
                  ride the by-value descriptor"
             ),
-            BindError::Cuda(e) => write!(f, "const-derived-E4 bank copy failed: {e:?}"),
         }
     }
 }
@@ -120,24 +119,24 @@ fn copy_one_e4_into_bank(
     memory_copy_async(dst, src, context.get_exec_stream())
 }
 
-fn stage_const_derived_e4_bank(
+pub(crate) fn stage_derived_e4_slots(
     lowered: &LoweredFwdVm,
-    forward_setup: &GpuGKRForwardSetup,
+    lookup_additive: &DeviceSlice<E4>,
+    lookup_fill_values: &DeviceSlice<E4>,
     context: &ProverContext,
-) -> Result<(), BindError> {
+) -> CudaResult<()> {
+    assert_eq!(lookup_fill_values.len(), LOOKUP_FILL_COUNT);
     let bank = const_derived_e4_bank_device_ptr();
     if let Some(slot) = lowered.lookup_additive_slot {
-        copy_one_e4_into_bank(
-            bank,
-            slot,
-            forward_setup.lookup_additive_part_device(),
-            context,
-        )
-        .map_err(BindError::Cuda)?;
+        copy_one_e4_into_bank(bank, slot, lookup_additive, context)?;
     }
     if let Some(slot) = lowered.decoder_fill_slot {
-        let src = forward_setup.decoder_lookup_fill_value_device();
-        copy_one_e4_into_bank(bank, slot, &src[..1], context).map_err(BindError::Cuda)?;
+        let fill = &lookup_fill_values[DECODER_FILL_INDEX..DECODER_FILL_INDEX + 1];
+        copy_one_e4_into_bank(bank, slot, fill, context)?;
+    }
+    if let Some(slot) = lowered.setup_fill_slot {
+        let fill = &lookup_fill_values[SETUP_PADDING_FILL_INDEX..SETUP_PADDING_FILL_INDEX + 1];
+        copy_one_e4_into_bank(bank, slot, fill, context)?;
     }
     Ok(())
 }
@@ -165,25 +164,17 @@ where
     })
 }
 
-pub(crate) fn production_header<'a>(
-    stage1: &GpuGKRStage1Output,
-    forward_setup: &GpuGKRForwardSetup,
+pub(crate) fn forward_header<'a>(
+    mappings: &GpuGKRLookupMappings,
+    table: Option<&DeviceSlice<E4>>,
     trace_len: usize,
     inits_and_teardowns_top_bits: &'a [u32],
 ) -> FwdVmInputs<'a> {
-    let m = &stage1.lookup_mappings;
+    let m = mappings;
     assert_eq!(
         m.trace_len, trace_len,
         "mapping-arena column stride != trace_len"
     );
-    let (table, table_len) = if forward_setup.generic_lookup_len() > 0 {
-        (
-            forward_setup.generic_lookup().as_ptr() as *const E4,
-            forward_setup.generic_lookup_len() as u32,
-        )
-    } else {
-        (null(), 0)
-    };
     FwdVmInputs {
         mapping_arena: [
             if m.has_generic_family() {
@@ -205,8 +196,8 @@ pub(crate) fn production_header<'a>(
         decoder_mapping_col: m
             .has_decoder
             .then(|| u16::try_from(m.num_generic_sets).expect("num_generic_sets exceeds u16")),
-        table,
-        table_len,
+        table: table.map_or(null(), |t| t.as_ptr()),
+        table_len: table.map_or(0, |t| t.len() as u32),
         count: trace_len as u32,
         inits_and_teardowns_top_bits,
     }
@@ -333,7 +324,6 @@ fn bind_fused_reduction_prefix(
     desc.reduction_pair_count = pair as u32;
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(in crate::forward) fn prepare_vm(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     compiled_layers: &[CompiledLayer],
@@ -355,9 +345,9 @@ pub(in crate::forward) fn prepare_vm(
         register_layer_copy_aliases(layer_idx, layer, storage);
     }
 
-    let header = production_header(
-        stage1,
-        forward_setup,
+    let header = forward_header(
+        &stage1.lookup_mappings,
+        (forward_setup.generic_lookup_len() > 0).then(|| &forward_setup.generic_lookup()[..]),
         trace_len,
         inits_and_teardowns_top_bits,
     );
@@ -375,13 +365,23 @@ pub(in crate::forward) fn prepare_vm(
 pub(in crate::forward) fn schedule_vm(
     lowered: &mut LoweredFwdVm,
     reductions: &PreparedDimensionReductionForward<E4>,
+    streaming_blocks: Option<u32>,
+    circuit_type: gpu_trace::witness::circuit_type::CircuitType,
     forward_setup: &GpuGKRForwardSetup,
     context: &ProverContext,
 ) -> CudaResult<()> {
     bind_fused_reduction_prefix(&mut lowered.desc, reductions);
-    stage_const_derived_e4_bank(lowered, forward_setup, context)
-        .unwrap_or_else(|error| panic!("forward VM constant staging failed: {error:?}"));
-    launch_fwd_vm(&lowered.desc, context)
+    stage_derived_e4_slots(
+        lowered,
+        forward_setup.lookup_additive_part_device(),
+        forward_setup.lookup_fill_values_device(),
+        context,
+    )
+    .unwrap_or_else(|error| panic!("forward VM constant staging failed: {error:?}"));
+    match streaming_blocks {
+        Some(blocks) => super::launch_fwd_vm_streaming(&lowered.desc, blocks, context),
+        None => launch_fwd_vm(&lowered.desc, circuit_type, context),
+    }
 }
 
 #[cfg(test)]

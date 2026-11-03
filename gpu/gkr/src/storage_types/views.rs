@@ -21,6 +21,7 @@ pub(crate) struct GpuGKRLayerSource<B, E> {
 pub(crate) struct GpuGKRStorage<B, E> {
     pub(crate) layers: Vec<GpuGKRLayerSource<B, E>>,
     pub(crate) layout: Option<Arc<GpuGKRStorageLayout>>,
+    pub(crate) replay: Option<crate::forward::recompute::ForwardReplay>,
 }
 
 impl<B, E> Default for GpuGKRLayerSource<B, E> {
@@ -39,6 +40,7 @@ impl<B, E> Default for GpuGKRStorage<B, E> {
         Self {
             layers: Vec::new(),
             layout: None,
+            replay: None,
         }
     }
 }
@@ -217,6 +219,27 @@ impl<B, E> GpuGKRStorage<B, E> {
 
     pub(crate) fn purge_up_to_layer(&mut self, layer: usize) {
         self.layers.truncate(layer + 1);
+    }
+
+    pub(crate) fn release_main_layer_inputs(&mut self, layer: usize) {
+        if layer > 0 {
+            self.layers.truncate(layer);
+        } else {
+            // Layer-zero extras still read raw columns, but no longer read caches.
+            let sources = &mut self.layers[0];
+            sources
+                .base_field_inputs
+                .retain(|address, _| !matches!(address, GKRAddress::Cached { layer: 0, .. }));
+            sources
+                .extension_field_inputs
+                .retain(|address, _| !matches!(address, GKRAddress::Cached { layer: 0, .. }));
+            sources
+                .base_class_backings
+                .remove(&AddressClass::ThisLayerCachedWrite);
+            sources
+                .ext_class_backings
+                .remove(&AddressClass::ThisLayerCachedWrite);
+        }
     }
 
     pub(crate) fn get_ext_poly(&self, address: GKRAddress) -> &GpuExtensionFieldPoly<E> {

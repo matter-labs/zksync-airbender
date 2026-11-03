@@ -1,14 +1,12 @@
 use super::super::*;
 
-use gpu_hash::blake2s::{transcript_commit, transcript_squeeze_e4};
+use gpu_hash::blake2s::{transcript_commit, transcript_squeeze_e4, transcript_squeeze_fresh_e4};
 use gpu_ops::powers::get_powers_by_ref;
 use gpu_ops::squaring::squaring_sequence_e4;
 
 /// Commits the next WHIR extension oracle: builds it from `state.sumchecked_poly_monomial_form`,
 /// gathering its unified device cap directly into the slab at `oracle_idx`, then advances
 /// the rolling device transcript seed via `transcript_commit` reading the same slab range.
-/// Production proof assembly sources `intermediate_whir_oracles[oracle_idx].commitment.cap`
-/// from the slab via `parse_whir_proof`.
 pub(super) fn schedule_commit_next_oracle_phase(
     state: &GpuWhirState,
     oracle_idx: usize,
@@ -44,10 +42,6 @@ pub(super) fn schedule_commit_next_oracle_phase(
         lde_factor,
         1 << next_folding_steps,
         tree_cap_size,
-        // transform_leaves_to_multilinear_coeffs: coeff form by default (CPU
-        // commits recursive WHIR oracles in coeff form); the `eval_leaves` feature
-        // selects eval form to mirror the CPU prover's recursive-oracle encoding.
-        !cfg!(feature = "eval_leaves"),
         cap_dst_u32,
         context,
     )?;
@@ -66,8 +60,8 @@ pub(super) fn schedule_commit_next_oracle_phase(
 /// Draws an OOD sample point on device, schedules the monomial-eval reduction
 /// for the current state's folded polynomial, D2D-copies the resulting reduced
 /// E4 into the slab's `whir.ood_samples[oracle_idx]`, then advances the rolling
-/// transcript seed via `transcript_commit` of the slab slot. Pushes the
-/// device-resident OOD point into `ood_point_devices` so the caller's
+/// transcript seed via `transcript_commit` of the slab slot. Returns the
+/// device-resident OOD point so the caller's
 /// delinearization phase can read it without a host round-trip.
 ///
 /// Range tracking is the caller's responsibility.
@@ -77,10 +71,9 @@ pub(super) fn schedule_ood_sample_phase(
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     device_seed: &mut DeviceSlice<u32>,
-    ood_point_devices: &mut Vec<DeviceAllocation<E4>>,
     stream: &era_cudart::stream::CudaStream,
     context: &ProverContext,
-) -> CudaResult<()> {
+) -> CudaResult<DeviceAllocation<E4>> {
     let mut ood_point_device: DeviceAllocation<E4> =
         context.alloc(1, AllocationPlacement::BestFit)?;
     transcript_squeeze_e4(device_seed, &mut ood_point_device, stream)?;
@@ -108,8 +101,7 @@ pub(super) fn schedule_ood_sample_phase(
         )
     };
     transcript_commit(device_seed, slot_as_u32, stream)?;
-    ood_point_devices.push(ood_point_device);
-    Ok(())
+    Ok(ood_point_device)
 }
 
 /// Schedules the PoW verify + query-index draw for one WHIR round driven by the
@@ -125,9 +117,8 @@ pub(super) fn schedule_pow_and_query_indexes_phase(
     query_domain_log2: u32,
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
-    pow_round_state: &mut Vec<PowAndQueryIndexesState>,
     context: &ProverContext,
-) -> CudaResult<()> {
+) -> CudaResult<PowAndQueryIndexesState> {
     // SAFETY: `ProofLayout` computes a live, non-overlapping mutable region for
     // the PoW-nonce array inside the slab allocation.
     let (pow_nonces_ptr, pow_nonces_len) =
@@ -145,16 +136,14 @@ pub(super) fn schedule_pow_and_query_indexes_phase(
         era_cudart::slice::DeviceVariable::from_raw_parts_mut(pow_nonces_ptr.add(pow_round_idx))
     };
 
-    let pow_round_state_entry = schedule_pow_verify_and_query_indexes(
+    schedule_pow_verify_and_query_indexes(
         device_seed,
         num_queries,
         pow_bits,
         query_domain_log2,
         nonce_slab_dst,
         context,
-    )?;
-    pow_round_state.push(pow_round_state_entry);
-    Ok(())
+    )
 }
 
 /// Schedules the running-powers buffer `[x, x^2, ..., x^(num_queries + 1)]`
@@ -174,7 +163,6 @@ pub(super) fn schedule_delinearization_running_powers_phase(
     ood_point_device: &DeviceSlice<E4>,
     anchor_out: &mut DeviceSlice<E4>,
     device_seed: &mut DeviceSlice<u32>,
-    device_keepalives: &mut Vec<DeviceAllocation<E4>>,
     context: &ProverContext,
 ) -> CudaResult<DeviceAllocation<E4>> {
     let stream = context.get_exec_stream();
@@ -182,7 +170,7 @@ pub(super) fn schedule_delinearization_running_powers_phase(
     assert_eq!(anchor_out.len(), log_n);
     // Draw the delinearization base challenge on device.
     let mut delin_base: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
-    transcript_squeeze_e4(device_seed, &mut delin_base, stream)?;
+    transcript_squeeze_fresh_e4(device_seed, &mut delin_base, stream)?;
     // Materialize [base^1, base^2, ..., base^(num_queries + 1)] on device.
     let count = num_queries + 1;
     let mut delinearization_device: DeviceAllocation<E4> =
@@ -191,6 +179,5 @@ pub(super) fn schedule_delinearization_running_powers_phase(
     // Materialize the OOD anchor squaring sequence directly into the caller's
     // slot (slot 0 of the fused claim_points buffer).
     squaring_sequence_e4(&ood_point_device[0], anchor_out, stream)?;
-    device_keepalives.push(delin_base);
     Ok(delinearization_device)
 }

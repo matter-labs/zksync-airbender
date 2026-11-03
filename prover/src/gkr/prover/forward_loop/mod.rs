@@ -1,7 +1,8 @@
 use super::*;
-use crate::gkr::prover::forward_loop::utils::{
-    evaluate_linear_relation_at_row, evaluate_memory_query,
-};
+use crate::allocation_pool::{AllocationPool, ColumnLayout};
+#[cfg(feature = "gkr_self_checks")]
+use crate::gkr::prover::forward_loop::utils::evaluate_linear_relation_at_row;
+use crate::gkr::prover::forward_loop::utils::evaluate_memory_query;
 use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
 use crate::{cs::definitions::*, gkr::sumcheck::access_and_fold::ExtensionFieldPoly};
 use cs::definitions::gkr::RamWordRepresentation;
@@ -12,17 +13,38 @@ use cs::{
     gkr_compiler::{GKRCacheRelation, GKRLayerDescription},
 };
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub(crate) mod avx512;
 pub(crate) mod copy;
 pub(crate) mod inits_and_teardowns;
 pub(crate) mod lookup_from_base_inputs;
 pub(crate) mod lookup_from_vector_inputs;
 pub(crate) mod lookup_pair;
 pub(crate) mod mask_product;
+#[cfg(feature = "gkr_self_checks")]
 pub(crate) mod max_quadratic;
 pub(crate) mod pairwise_product;
 pub(crate) mod single_column_lookup;
 pub(crate) mod utils;
 pub(crate) mod vector_lookup;
+
+fn setup_padding_fill<F: PrimeField, E: FieldExtension<F> + Field>(
+    circuit: &GKRCircuitArtifact<F>,
+    lookup_alpha: E,
+) -> E {
+    if let Some(padding) = circuit.generic_lookup_padding {
+        let mut sum = E::ZERO;
+        let mut power = E::ONE;
+        for _ in 0..circuit.generic_lookup_tables_width {
+            sum.add_assign(&power);
+            power.mul_assign(&lookup_alpha);
+        }
+        sum.mul_assign_by_base(&padding);
+        sum
+    } else {
+        E::ZERO
+    }
+}
 
 fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_idx: usize,
@@ -38,6 +60,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     preprocessed_generic_lookup: &[E],
     offset_for_decoder_table: u32,
     decoder_predicate_address: GKRAddress,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     assert!(address.is_cache());
@@ -55,6 +78,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                     gkr_storage,
                     witness_trace,
                     trace_len,
+                    pool,
                     worker,
                 );
             }
@@ -65,6 +89,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                     trace_len,
                     external_challenges,
                     compiled_circuit,
+                    pool,
                     worker,
                 );
                 assert_eq!(layer_idx, 0);
@@ -72,7 +97,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                 gkr_storage.insert_extension_at_layer(
                     layer_idx,
                     address,
-                    ExtensionFieldPoly::new(destination),
+                    ExtensionFieldPoly::from_allocation(destination),
                 );
             }
             GKRCacheRelation::VectorizedLookup(rel) => {
@@ -86,26 +111,45 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                     decoder_lookup_fill_value,
                     offset_for_decoder_table,
                     decoder_predicate_address,
+                    pool,
                     worker,
                 );
                 address.assert_as_layer(layer_idx);
                 gkr_storage.insert_extension_at_layer(
                     layer_idx,
                     address,
-                    ExtensionFieldPoly::new(destination),
+                    ExtensionFieldPoly::from_allocation(destination),
                 );
             }
             GKRCacheRelation::VectorizedLookupSetup(_rel) => {
-                let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-                destination[..preprocessed_generic_lookup.len()]
-                    .write_copy_of_slice(preprocessed_generic_lookup);
-                let _ = destination[preprocessed_generic_lookup.len()..].write_filled(E::ZERO);
-                let destination = destination.assume_init();
+                let mut destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
+                let padding_fill =
+                    setup_padding_fill(compiled_circuit, lookup_challenges_multiplicative_part);
+                #[allow(unused_mut)]
+                let mut filled = false;
+                #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+                if avx512::enabled::<F, E>(trace_len) {
+                    avx512::fill_setup_column(
+                        destination.as_mut(),
+                        preprocessed_generic_lookup,
+                        padding_fill,
+                        worker,
+                    );
+                    filled = true;
+                }
+                if !filled {
+                    utils::fill_setup_column(
+                        destination.as_mut(),
+                        preprocessed_generic_lookup,
+                        padding_fill,
+                        worker,
+                    );
+                }
                 assert_eq!(layer_idx, 0);
                 gkr_storage.insert_extension_at_layer(
                     0,
                     address,
-                    ExtensionFieldPoly::new(destination),
+                    ExtensionFieldPoly::from_pooled(destination),
                 );
             }
         }
@@ -125,8 +169,11 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
     decoder_lookup_fill_value: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
+    let mut __fwd_times: std::collections::BTreeMap<&'static str, (std::time::Duration, usize)> =
+        Default::default();
     println!("Evaluating layer {} in forward direction", layer_idx);
     assert_eq!(
         compiled_circuit.scratch_space_mapping.len(),
@@ -144,7 +191,6 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         for (i, poly) in witness_trace
             .column_major_memory_trace
             .drain(..)
-            .into_iter()
             .enumerate()
         {
             gkr_storage.insert_base_field_at_layer(
@@ -156,7 +202,6 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         for (i, poly) in witness_trace
             .column_major_witness_trace
             .drain(..)
-            .into_iter()
             .enumerate()
         {
             gkr_storage.insert_base_field_at_layer(
@@ -177,13 +222,13 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 if let GKRAddress::InnerLayer { layer, .. } = *place {
                     if layer == layer_idx {
                         assert!(
-                            poly.is_empty() == false,
+                            !poly.is_empty(),
                             "trying to fill {:?} from scratch space, but it's source is empty",
                             place
                         );
                         if gkr_storage.try_get_base_poly(*place).is_none() {
                             // some Copy relations could already fill it
-                            let poly = core::mem::replace(poly, vec![]);
+                            let poly = std::mem::take(poly);
                             gkr_storage.insert_base_field_at_layer(
                                 layer_idx,
                                 *place,
@@ -213,6 +258,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         .iter()
         .chain(layer.gates_with_external_connections.iter())
     {
+        let __t_gate = std::time::Instant::now();
         assert_eq!(
             gate.output_layer, expected_output_layer,
             "Unexpected output layer for gate {:?}",
@@ -259,23 +305,32 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     decoder_lookup_fill_value,
                     compiled_circuit.offset_for_decoder_table as u32,
                     decoder_predicate_address,
+                    pool,
                     worker,
                 );
                 output.assert_as_layer(expected_output_layer);
                 gkr_storage.insert_extension_at_layer(
                     expected_output_layer,
                     *output,
-                    ExtensionFieldPoly::new(value),
+                    ExtensionFieldPoly::from_allocation(value),
                 );
             }
             _ => {
                 // skip
             }
         }
+        __fwd_times
+            .entry(relation_kind(&gate.enforced_relation))
+            .and_modify(|e| {
+                e.0 += __t_gate.elapsed();
+                e.1 += 1;
+            })
+            .or_insert((__t_gate.elapsed(), 1));
     }
 
     // first we compute caches
     for (addr, cache_relation) in layer.cached_relations.iter() {
+        let __t_gate = std::time::Instant::now();
         // println!(
         //     "Computing cache relation {:?} for output {:?}",
         //     cache_relation, addr
@@ -296,8 +351,16 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
             preprocessed_generic_lookup,
             compiled_circuit.offset_for_decoder_table as u32,
             decoder_predicate_address,
+            pool,
             worker,
         );
+        __fwd_times
+            .entry(cache_relation_kind(cache_relation))
+            .and_modify(|e| {
+                e.0 += __t_gate.elapsed();
+                e.1 += 1;
+            })
+            .or_insert((__t_gate.elapsed(), 1));
     }
 
     for gate in layer
@@ -305,6 +368,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         .iter()
         .chain(layer.gates_with_external_connections.iter())
     {
+        let __t_gate = std::time::Instant::now();
         assert_eq!(gate.output_layer, expected_output_layer);
 
         // println!("Should evaluate {:?}", &gate.enforced_relation);
@@ -340,10 +404,11 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     expected_output_layer,
                     *output,
                     input,
-                    *range_check_width as u32,
+                    *range_check_width,
                     gkr_storage,
                     witness_trace,
                     trace_len,
+                    pool,
                     worker,
                 );
             }
@@ -355,6 +420,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     gkr_storage,
                     expected_output_layer,
                     trace_len,
+                    pool,
                     worker,
                 );
             }
@@ -368,6 +434,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     expected_output_layer,
                     compiled_circuit,
                     trace_len,
+                    pool,
                     worker,
                 );
             }
@@ -384,6 +451,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     gkr_storage,
                     expected_output_layer,
                     trace_len,
+                    pool,
                     worker,
                 );
             }
@@ -395,6 +463,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     gkr_storage,
                     expected_output_layer,
                     trace_len,
+                    pool,
                     worker,
                 );
             }
@@ -410,6 +479,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                         gkr_storage,
                         expected_output_layer,
                         trace_len,
+                        pool,
                         worker,
                     );
                     // debug evaluation
@@ -431,6 +501,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     expected_output_layer,
                     trace_len,
                     lookup_challenges_additive_part,
+                    pool,
                     worker,
                 );
             }
@@ -440,7 +511,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 output,
             } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
-                lookup_from_vector_inputs::forward_evaluate_masked_lookup_from_vector_inputs_with_setup(*input, *setup, *output, gkr_storage, expected_output_layer, trace_len, lookup_challenges_additive_part, worker);
+                lookup_from_vector_inputs::forward_evaluate_masked_lookup_from_vector_inputs_with_setup(*input, *setup, *output, gkr_storage, expected_output_layer, trace_len, lookup_challenges_additive_part, pool, worker);
             }
             GKRRelation::LookupWithDensAndSetupExpressions {
                 input,
@@ -460,7 +531,9 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     lookup_challenges_multiplicative_part,
                     lookup_challenges_additive_part,
                     decoder_lookup_fill_value,
+                    setup_padding_fill(compiled_circuit, lookup_challenges_multiplicative_part),
                     compiled_circuit.offset_for_decoder_table as u32,
+                    pool,
                     worker,
                 );
             }
@@ -472,6 +545,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     gkr_storage,
                     expected_output_layer,
                     trace_len,
+                    pool,
                     worker,
                 );
             }
@@ -484,6 +558,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     expected_output_layer,
                     trace_len,
                     lookup_challenges_additive_part,
+                    pool,
                     worker,
                 );
             }
@@ -501,6 +576,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                         trace_len,
                         lookup_challenges_additive_part,
                         witness_trace,
+                        pool,
                         worker
                     );
                 } else if *range_check_width == TIMESTAMP_COLUMNS_NUM_BITS {
@@ -512,6 +588,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                         trace_len,
                         lookup_challenges_additive_part,
                         witness_trace,
+                        pool,
                         worker
                     );
                 } else {
@@ -535,6 +612,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     expected_output_layer,
                     trace_len,
                     lookup_challenges_additive_part,
+                    pool,
                     worker,
                 );
             }
@@ -552,6 +630,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     expected_output_layer,
                     trace_len,
                     lookup_challenges_additive_part,
+                    pool,
                     worker,
                 );
             }
@@ -564,6 +643,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     expected_output_layer,
                     trace_len,
                     lookup_challenges_additive_part,
+                    pool,
                     worker,
                 );
             }
@@ -580,6 +660,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     expected_output_layer,
                     trace_len,
                     lookup_challenges_additive_part,
+                    pool,
                     worker,
                 );
             }
@@ -595,6 +676,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     lookup_challenges_multiplicative_part,
                     lookup_challenges_additive_part,
                     compiled_circuit.offset_for_decoder_table as u32,
+                    pool,
                     worker,
                 );
             }
@@ -615,6 +697,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     lookup_challenges_multiplicative_part,
                     lookup_challenges_additive_part,
                     compiled_circuit.offset_for_decoder_table as u32,
+                    pool,
                     worker,
                 );
             }
@@ -634,6 +717,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     lookup_challenges_multiplicative_part,
                     lookup_challenges_additive_part,
                     compiled_circuit.offset_for_decoder_table as u32,
+                    pool,
                     worker,
                 );
             }
@@ -644,6 +728,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     trace_len,
                     external_challenges,
                     compiled_circuit,
+                    pool,
                     worker,
                 );
                 assert_eq!(expected_output_layer, 1);
@@ -651,7 +736,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 gkr_storage.insert_extension_at_layer(
                     expected_output_layer,
                     *output,
-                    ExtensionFieldPoly::new(destination),
+                    ExtensionFieldPoly::from_allocation(destination),
                 );
             }
             GKRRelation::InitsOrTeardownsInitialPair {
@@ -668,6 +753,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                         trace_len,
                         external_challenges,
                         compiled_circuit,
+                        pool,
                         worker,
                     );
                 assert_eq!(expected_output_layer, 1);
@@ -675,12 +761,82 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 gkr_storage.insert_extension_at_layer(
                     expected_output_layer,
                     *output,
-                    ExtensionFieldPoly::new(destination),
+                    ExtensionFieldPoly::from_allocation(destination),
                 );
             }
-            rel @ _ => {
+            rel => {
                 panic!("Should evaluate {:?}", rel);
             }
         }
+        __fwd_times
+            .entry(relation_kind(&gate.enforced_relation))
+            .and_modify(|e| {
+                e.0 += __t_gate.elapsed();
+                e.1 += 1;
+            })
+            .or_insert((__t_gate.elapsed(), 1));
+    }
+    {
+        let mut v: Vec<_> = __fwd_times.iter().collect();
+        v.sort_by_key(|a| std::cmp::Reverse(a.1 .0));
+        let parts: Vec<String> = v
+            .iter()
+            .map(|(k, (d, n))| format!("{k} {:.1} ms ({n})", d.as_secs_f64() * 1e3))
+            .collect();
+        println!("[fwd-rel] layer {layer_idx}: {}", parts.join(", "));
+    }
+}
+
+fn relation_kind<F: PrimeField>(r: &GKRRelation<F>) -> &'static str {
+    match r {
+        GKRRelation::LinearBaseFieldRelation { .. } => "LinearBaseFieldRelation",
+        GKRRelation::MaxQuadratic { .. } => "MaxQuadratic",
+        GKRRelation::EnforceSingleMaxQuadraticConstraint { .. } => {
+            "EnforceSingleMaxQuadraticConstraint"
+        }
+        GKRRelation::EnforceConstraintsMaxQuadratic { .. } => "EnforceConstraintsMaxQuadratic",
+        GKRRelation::CopyInBaseField { .. } => "CopyInBaseField",
+        GKRRelation::CopyInExtensionField { .. } => "CopyInExtensionField",
+        GKRRelation::InitialGrandProductFromCaches { .. } => "InitialGrandProductFromCaches",
+        GKRRelation::InitialGrandProductWithoutCaches { .. } => "InitialGrandProductWithoutCaches",
+        GKRRelation::MaterializeGrandProductTermExpression { .. } => {
+            "MaterializeGrandProductTermExpression"
+        }
+        GKRRelation::TrivialProduct { .. } => "TrivialProduct",
+        GKRRelation::MaskIntoIdentityProduct { .. } => "MaskIntoIdentityProduct",
+        GKRRelation::MaterializeSingleLookupInput { .. } => "MaterializeSingleLookupInput",
+        GKRRelation::MaterializedVectorLookupInput { .. } => "MaterializedVectorLookupInput",
+        GKRRelation::LookupWithCachedDensAndSetup { .. } => "LookupWithCachedDensAndSetup",
+        GKRRelation::LookupWithDensAndSetupExpressions { .. } => {
+            "LookupWithDensAndSetupExpressions"
+        }
+        GKRRelation::LookupPairFromBaseInputs { .. } => "LookupPairFromBaseInputs",
+        GKRRelation::LookupPairFromMaterializedBaseInputs { .. } => {
+            "LookupPairFromMaterializedBaseInputs"
+        }
+        GKRRelation::LookupFromMaterializedBaseInputWithSetup { .. } => {
+            "LookupFromMaterializedBaseInputWithSetup"
+        }
+        GKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs { .. } => {
+            "LookupUnbalancedPairWithMaterializedBaseInputs"
+        }
+        GKRRelation::LookupPairFromMaterializedVectorInputs { .. } => {
+            "LookupPairFromMaterializedVectorInputs"
+        }
+        GKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs { .. } => {
+            "LookupUnbalancedPairWithMaterializedVectorInputs"
+        }
+        GKRRelation::AggregateLookupRationalPair { .. } => "AggregateLookupRationalPair",
+        GKRRelation::InitsOrTeardownsInitialPair { .. } => "InitsOrTeardownsInitialPair",
+        _ => "other",
+    }
+}
+
+fn cache_relation_kind<F: PrimeField>(r: &GKRCacheRelation<F>) -> &'static str {
+    match r {
+        GKRCacheRelation::MemoryTuple(..) => "Cache::MemoryTuple",
+        GKRCacheRelation::VectorizedLookup(..) => "Cache::VectorizedLookup",
+        GKRCacheRelation::VectorizedLookupSetup(..) => "Cache::VectorizedLookupSetup",
+        GKRCacheRelation::SingleColumnLookup { .. } => "Cache::SingleColumnLookup",
     }
 }

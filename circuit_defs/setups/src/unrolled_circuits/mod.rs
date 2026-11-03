@@ -12,7 +12,6 @@ use circuit_common::RiscVCycleCircuit;
 pub use ::mul_div_unsigned;
 pub use ::shift_binary;
 pub use ::unified_reduced_machine;
-use prover::common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 
 mod add_sub_lui_auipc_mop_circuit;
 mod inits_and_teardowns_circuit;
@@ -69,7 +68,7 @@ pub fn get_unrolled_circuits_setups_for_machine_type<
     // first we preprocess the bytecode
     let preprocessing_data =
         process_binary_into_separate_tables_ext::<BabyBearField, C::DecodingOptions, true, Global>(
-            &text_section,
+            text_section,
             &decoders_for_machine_type::<C>(),
             common_constants::ROM_WORD_SIZE,
             &supported_csrs,

@@ -55,6 +55,18 @@
     344896,
     344896,
     344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
     344896
   ],
   "total_tables_size": 344896,
@@ -736,9 +748,26 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "LookupFromMaterializedBaseInputWithSetup": {
+            "LookupFromBaseInputsWithSetup": {
               "input": {
-                "BaseLayerMemory": 53
+                "input": {
+                  "linear_terms": [
+                    [
+                      1073741824,
+                      {
+                        "BaseLayerMemory": 53
+                      }
+                    ],
+                    [
+                      939524097,
+                      {
+                        "BaseLayerMemory": 52
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                "lookup_set_index": 0
               },
               "setup": [
                 {
@@ -761,7 +790,8 @@
                     "offset": 12
                   }
                 }
-              ]
+              ],
+              "range_check_width": 19
             }
           }
         },
@@ -770,20 +800,6 @@
           "enforced_relation": {
             "LookupPairFromBaseInputs": {
               "input": [
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 54
-                        }
-                      ]
-                    ],
-                    "constant": 0
-                  },
-                  "lookup_set_index": 1
-                },
                 {
                   "input": {
                     "linear_terms": [
@@ -807,6 +823,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 1
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 54
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 1
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 46
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 2
                 }
@@ -840,32 +882,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 54
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 1
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 46
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 3
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 53
                         }
                       ],
@@ -883,6 +899,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 3
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 54
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 5
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 47
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 4
                 }
@@ -916,32 +958,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 54
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 5
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 47
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 5
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 53
                         }
                       ],
@@ -959,6 +975,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 5
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 54
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 12
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 48
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 6
                 }
@@ -992,32 +1034,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 54
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 12
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 48
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 7
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 53
                         }
                       ],
@@ -1035,6 +1051,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 7
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 54
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 19
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 49
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 8
                 }
@@ -1068,32 +1110,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 54
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 19
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 49
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 9
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 53
                         }
                       ],
@@ -1111,6 +1127,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 9
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 54
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 26
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 50
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 10
                 }
@@ -1144,32 +1186,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 54
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 26
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 50
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 11
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 53
                         }
                       ],
@@ -1187,6 +1203,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 11
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 54
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 33
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 51
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 12
                 }
@@ -1220,32 +1262,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 54
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 33
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 51
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 13
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 53
                         }
                       ],
@@ -1263,6 +1279,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 13
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 54
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 37
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 52
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 14
                 }
@@ -1296,32 +1338,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 54
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 37
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 52
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 15
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 53
                         }
                       ],
@@ -1339,6 +1355,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 15
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 54
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 42
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 53
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 16
                 }
@@ -1372,32 +1414,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 54
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 42
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 53
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 17
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 53
                         }
                       ],
@@ -1415,6 +1431,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 17
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 54
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 47
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 54
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 18
                 }
@@ -1440,39 +1482,51 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "MaterializeSingleLookupInput": {
-              "input": {
-                "input": {
-                  "linear_terms": [
-                    [
-                      1744830467,
-                      {
-                        "BaseLayerMemory": 54
-                      }
+            "LookupPairFromBaseInputs": {
+              "input": [
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        67108864,
+                        {
+                          "BaseLayerMemory": 2
+                        }
+                      ]
                     ],
-                    [
-                      268435454,
-                      {
-                        "BaseLayerMemory": 47
-                      }
-                    ],
-                    [
-                      1744830467,
-                      {
-                        "BaseLayerWitness": 54
-                      }
-                    ]
-                  ],
-                  "constant": 133099247
+                    "constant": 0
+                  },
+                  "lookup_set_index": 19
                 },
-                "lookup_set_index": 19
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 31
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        67108864,
+                        {
+                          "BaseLayerMemory": 34
+                        }
+                      ]
+                    ],
+                    "constant": 0
+                  },
+                  "lookup_set_index": 20
                 }
-              },
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 31
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 32
+                  }
+                }
+              ],
               "range_check_width": 19
             }
           }
@@ -1622,13 +1676,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 32
+                    "offset": 33
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 33
+                    "offset": 34
                   }
                 }
               ]
@@ -1805,13 +1859,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 34
+                    "offset": 35
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 35
+                    "offset": 36
                   }
                 }
               ]
@@ -2000,13 +2054,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 36
+                    "offset": 37
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 37
+                    "offset": 38
                   }
                 }
               ]
@@ -2147,13 +2201,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 38
+                    "offset": 39
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 39
+                    "offset": 40
                   }
                 }
               ]
@@ -2336,13 +2390,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 40
+                    "offset": 41
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 41
+                    "offset": 42
                   }
                 }
               ]
@@ -2531,13 +2585,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 42
+                    "offset": 43
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 43
+                    "offset": 44
                   }
                 }
               ]
@@ -2744,13 +2798,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 44
+                    "offset": 45
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 45
+                    "offset": 46
                   }
                 }
               ]
@@ -2981,13 +3035,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 46
+                    "offset": 47
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 47
+                    "offset": 48
                   }
                 }
               ]
@@ -3176,13 +3230,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 48
+                    "offset": 49
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 49
+                    "offset": 50
                   }
                 }
               ]
@@ -3383,13 +3437,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 50
+                    "offset": 51
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 51
+                    "offset": 52
                   }
                 }
               ]
@@ -5820,27 +5874,37 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "LookupUnbalancedPairWithMaterializedBaseInputs": {
+            "AggregateLookupRationalPair": {
               "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 29
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 31
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 32
+                    }
                   }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 30
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 29
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 30
+                    }
                   }
-                }
+                ]
               ],
-              "remainder": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 31
-                }
-              },
               "output": [
                 {
                   "InnerLayer": {
@@ -6109,13 +6173,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 50
+                      "offset": 51
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 51
+                      "offset": 52
                     }
                   }
                 ],
@@ -6123,13 +6187,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 48
+                      "offset": 49
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 49
+                      "offset": 50
                     }
                   }
                 ]
@@ -6160,13 +6224,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 46
+                      "offset": 47
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 47
+                      "offset": 48
                     }
                   }
                 ],
@@ -6174,13 +6238,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 44
+                      "offset": 45
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 45
+                      "offset": 46
                     }
                   }
                 ]
@@ -6211,13 +6275,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 42
+                      "offset": 43
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 43
+                      "offset": 44
                     }
                   }
                 ],
@@ -6225,13 +6289,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 40
+                      "offset": 41
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 41
+                      "offset": 42
                     }
                   }
                 ]
@@ -6262,13 +6326,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 38
+                      "offset": 39
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 39
+                      "offset": 40
                     }
                   }
                 ],
@@ -6276,13 +6340,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 36
+                      "offset": 37
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 37
+                      "offset": 38
                     }
                   }
                 ]
@@ -6313,13 +6377,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 34
+                      "offset": 35
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 35
+                      "offset": 36
                     }
                   }
                 ],
@@ -6327,13 +6391,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 32
+                      "offset": 33
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 33
+                      "offset": 34
                     }
                   }
                 ]
@@ -6356,7 +6420,7 @@
           }
         }
       ],
-      "intermediate_layer_width": 52
+      "intermediate_layer_width": 53
     },
     {
       "layer": 2,
@@ -12553,29 +12617,21 @@
       "input": {
         "linear_terms": [
           [
-            268435454,
+            1073741824,
             {
               "BaseLayerMemory": 53
+            }
+          ],
+          [
+            939524097,
+            {
+              "BaseLayerMemory": 52
             }
           ]
         ],
         "constant": 0
       },
       "lookup_set_index": 0
-    },
-    {
-      "input": {
-        "linear_terms": [
-          [
-            268435454,
-            {
-              "BaseLayerMemory": 54
-            }
-          ]
-        ],
-        "constant": 0
-      },
-      "lookup_set_index": 1
     },
     {
       "input": {
@@ -12601,7 +12657,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 2
+      "lookup_set_index": 1
     },
     {
       "input": {
@@ -12627,7 +12683,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 3
+      "lookup_set_index": 2
     },
     {
       "input": {
@@ -12653,7 +12709,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 4
+      "lookup_set_index": 3
     },
     {
       "input": {
@@ -12679,7 +12735,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 5
+      "lookup_set_index": 4
     },
     {
       "input": {
@@ -12705,7 +12761,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 6
+      "lookup_set_index": 5
     },
     {
       "input": {
@@ -12731,7 +12787,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 7
+      "lookup_set_index": 6
     },
     {
       "input": {
@@ -12757,7 +12813,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 8
+      "lookup_set_index": 7
     },
     {
       "input": {
@@ -12783,7 +12839,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 9
+      "lookup_set_index": 8
     },
     {
       "input": {
@@ -12809,7 +12865,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 10
+      "lookup_set_index": 9
     },
     {
       "input": {
@@ -12835,7 +12891,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 11
+      "lookup_set_index": 10
     },
     {
       "input": {
@@ -12861,7 +12917,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 12
+      "lookup_set_index": 11
     },
     {
       "input": {
@@ -12887,7 +12943,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 13
+      "lookup_set_index": 12
     },
     {
       "input": {
@@ -12913,7 +12969,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 14
+      "lookup_set_index": 13
     },
     {
       "input": {
@@ -12939,7 +12995,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 15
+      "lookup_set_index": 14
     },
     {
       "input": {
@@ -12965,7 +13021,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 16
+      "lookup_set_index": 15
     },
     {
       "input": {
@@ -12991,7 +13047,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 17
+      "lookup_set_index": 16
     },
     {
       "input": {
@@ -13017,7 +13073,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 18
+      "lookup_set_index": 17
     },
     {
       "input": {
@@ -13043,7 +13099,35 @@
         ],
         "constant": 133099247
       },
+      "lookup_set_index": 18
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            67108864,
+            {
+              "BaseLayerMemory": 2
+            }
+          ]
+        ],
+        "constant": 0
+      },
       "lookup_set_index": 19
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            67108864,
+            {
+              "BaseLayerMemory": 34
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 20
     }
   ],
   "variable_names": {
@@ -13084,52 +13168,52 @@
     "34": "input read from x11 indirect access 0 read[1]",
     "35": "input read from x11 indirect access 1 read[0]",
     "36": "input read from x11 indirect access 1 read[1]",
-    "37": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::33",
-    "38": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::33",
-    "39": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::35",
-    "40": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::35",
-    "41": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::38",
-    "42": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::38",
-    "43": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::117",
-    "44": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "45": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "46": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::117",
-    "47": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "48": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "49": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::204",
-    "50": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::206",
-    "51": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::213",
-    "52": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::213",
-    "53": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::213",
-    "54": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::213",
-    "55": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::301",
-    "56": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::302",
-    "57": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "58": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "59": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "60": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::301",
-    "61": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::302",
-    "62": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "63": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "64": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "65": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::434",
-    "66": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::434",
-    "67": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::436",
-    "68": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::436",
-    "69": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::441",
-    "70": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::441",
-    "71": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "72": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "73": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "74": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "75": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::552",
-    "76": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::554",
-    "77": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::561",
-    "78": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::561",
-    "79": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "80": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "81": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "82": "Variable at cs/src/cs/circuit_impl.rs::1237",
+    "37": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::33",
+    "38": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::33",
+    "39": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::35",
+    "40": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::35",
+    "41": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::38",
+    "42": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::38",
+    "43": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::117",
+    "44": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "45": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "46": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::117",
+    "47": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "48": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "49": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::204",
+    "50": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::206",
+    "51": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::213",
+    "52": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::213",
+    "53": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::213",
+    "54": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::213",
+    "55": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::301",
+    "56": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::302",
+    "57": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "58": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "59": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "60": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::301",
+    "61": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::302",
+    "62": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "63": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "64": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "65": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::434",
+    "66": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::434",
+    "67": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::436",
+    "68": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::436",
+    "69": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::441",
+    "70": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::441",
+    "71": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "72": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "73": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "74": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "75": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::552",
+    "76": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::554",
+    "77": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::561",
+    "78": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::561",
+    "79": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "80": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "81": "Variable at cs/src/cs/circuit_impl.rs::1252",
+    "82": "Variable at cs/src/cs/circuit_impl.rs::1252",
     "83": "ram or indirect query 0, register read_ts[0]",
     "84": "ram or indirect query 0, register read_ts[1]",
     "85": "indirect access query 0, register access intermediate timestamp borrow",

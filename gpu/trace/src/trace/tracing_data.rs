@@ -1,18 +1,27 @@
-use crate::witness::trace_delegation::{DelegationTraceDevice, DelegationTraceHost};
+use crate::witness::trace_delegation::DelegationTraceDevice;
 use crate::witness::trace_unrolled::{
     InitsAndTeardownsTraceDevice, InitsAndTeardownsTraceHost, UnrolledMemoryTraceDevice,
-    UnrolledMemoryTraceHost, UnrolledNonMemoryTraceDevice, UnrolledNonMemoryTraceHost,
-    UnrolledUnifiedTraceDevice, UnrolledUnifiedTraceHost,
+    UnrolledNonMemoryTraceDevice, UnrolledUnifiedTraceDevice, PAGE_SIZE_LOG2,
 };
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::context::DeviceAllocation;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
+use riscv_transpiler::witness::delegation::keccak_f1600::{
+    KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
+    KeccakThetaRhoDelegationWitness,
+};
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
+
+pub use execution_prover_model::trace::{
+    DelegationTracingDataHost, DelegationTracingDataHostSource, TracingDataHost,
+    UnrolledTracingDataHost,
+};
 
 // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
 #[doc(hidden)]
@@ -21,6 +30,9 @@ pub enum DelegationTracingDataDevice {
     Blake2WithCompression(DelegationTraceDevice<Blake2sRoundFunctionDelegationWitness>),
     Blake2GFunction(DelegationTraceDevice<Blake2sGFunctionDelegationWitness>),
     KeccakSpecial5(DelegationTraceDevice<KeccakSpecial5DelegationWitness>),
+    KeccakChi5(DelegationTraceDevice<KeccakChi5DelegationWitness>),
+    KeccakThetaRho(DelegationTraceDevice<KeccakThetaRhoDelegationWitness>),
+    KeccakColumnParity(DelegationTraceDevice<KeccakColumnParityDelegationWitness>),
 }
 
 // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
@@ -38,85 +50,6 @@ pub enum TracingDataDevice {
     Unrolled(UnrolledTracingDataDevice),
 }
 
-#[derive(Clone)]
-pub enum DelegationTracingDataHost<A: GoodAllocator> {
-    BigIntWithControl(DelegationTraceHost<BigintDelegationWitness, A>),
-    Blake2WithCompression(DelegationTraceHost<Blake2sRoundFunctionDelegationWitness, A>),
-    Blake2GFunction(DelegationTraceHost<Blake2sGFunctionDelegationWitness, A>),
-    KeccakSpecial5(DelegationTraceHost<KeccakSpecial5DelegationWitness, A>),
-}
-
-impl<A: GoodAllocator> DelegationTracingDataHost<A> {
-    pub fn into_allocators(self) -> Vec<A> {
-        match self {
-            DelegationTracingDataHost::BigIntWithControl(trace) => trace.into_allocators(),
-            DelegationTracingDataHost::Blake2WithCompression(trace) => trace.into_allocators(),
-            DelegationTracingDataHost::Blake2GFunction(trace) => trace.into_allocators(),
-            DelegationTracingDataHost::KeccakSpecial5(trace) => trace.into_allocators(),
-        }
-    }
-}
-
-pub trait DelegationTracingDataHostSource: Sized {
-    fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A>;
-}
-
-impl DelegationTracingDataHostSource for BigintDelegationWitness {
-    fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A> {
-        DelegationTracingDataHost::BigIntWithControl(trace)
-    }
-}
-
-impl DelegationTracingDataHostSource for Blake2sRoundFunctionDelegationWitness {
-    fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A> {
-        DelegationTracingDataHost::Blake2WithCompression(trace)
-    }
-}
-
-impl DelegationTracingDataHostSource for Blake2sGFunctionDelegationWitness {
-    fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A> {
-        DelegationTracingDataHost::Blake2GFunction(trace)
-    }
-}
-
-impl DelegationTracingDataHostSource for KeccakSpecial5DelegationWitness {
-    fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A> {
-        DelegationTracingDataHost::KeccakSpecial5(trace)
-    }
-}
-
-#[derive(Clone)]
-pub enum UnrolledTracingDataHost<A: GoodAllocator> {
-    Memory(UnrolledMemoryTraceHost<A>),
-    NonMemory(UnrolledNonMemoryTraceHost<A>),
-    Unified(UnrolledUnifiedTraceHost<A>),
-}
-
-impl<A: GoodAllocator> UnrolledTracingDataHost<A> {
-    pub fn into_allocators(self) -> Vec<A> {
-        match self {
-            UnrolledTracingDataHost::Memory(trace) => trace.into_allocators(),
-            UnrolledTracingDataHost::NonMemory(trace) => trace.into_allocators(),
-            UnrolledTracingDataHost::Unified(trace) => trace.into_allocators(),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub enum TracingDataHost<A: GoodAllocator> {
-    Delegation(DelegationTracingDataHost<A>),
-    Unrolled(UnrolledTracingDataHost<A>),
-}
-
-impl<A: GoodAllocator> TracingDataHost<A> {
-    pub fn into_allocators(self) -> Vec<A> {
-        match self {
-            TracingDataHost::Delegation(trace) => trace.into_allocators(),
-            TracingDataHost::Unrolled(trace) => trace.into_allocators(),
-        }
-    }
-}
-
 pub struct TracingDataTransfer<'a, A: GoodAllocator> {
     pub data_host: TracingDataHost<A>,
     // pub: apex production (`prover::gkr::stage1`) reads the device trace across the split.
@@ -125,46 +58,67 @@ pub struct TracingDataTransfer<'a, A: GoodAllocator> {
 }
 
 impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
-    pub fn new(data_host: TracingDataHost<A>, context: &ProverContext) -> CudaResult<Self> {
+    /// Allocates the circuit's full `capacity`, not the host length, so every
+    /// instance of a circuit allocates alike.
+    pub fn new(
+        data_host: TracingDataHost<A>,
+        capacity: usize,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         let data_device = match &data_host {
             TracingDataHost::Delegation(delegation) => {
                 let data = match delegation {
                     DelegationTracingDataHost::BigIntWithControl(data) => {
-                        let tracing_data = context.alloc(data.len(), AllocationPlacement::Top)?;
+                        let tracing_data = alloc_input(data.len(), capacity, context)?;
                         let trace = DelegationTraceDevice { tracing_data };
                         DelegationTracingDataDevice::BigIntWithControl(trace)
                     }
                     DelegationTracingDataHost::Blake2WithCompression(data) => {
-                        let tracing_data = context.alloc(data.len(), AllocationPlacement::Top)?;
+                        let tracing_data = alloc_input(data.len(), capacity, context)?;
                         let trace = DelegationTraceDevice { tracing_data };
                         DelegationTracingDataDevice::Blake2WithCompression(trace)
                     }
                     DelegationTracingDataHost::Blake2GFunction(data) => {
-                        let tracing_data = context.alloc(data.len(), AllocationPlacement::Top)?;
+                        let tracing_data = alloc_input(data.len(), capacity, context)?;
                         let trace = DelegationTraceDevice { tracing_data };
                         DelegationTracingDataDevice::Blake2GFunction(trace)
                     }
                     DelegationTracingDataHost::KeccakSpecial5(data) => {
-                        let tracing_data = context.alloc(data.len(), AllocationPlacement::Top)?;
+                        let tracing_data = alloc_input(data.len(), capacity, context)?;
                         let trace = DelegationTraceDevice { tracing_data };
                         DelegationTracingDataDevice::KeccakSpecial5(trace)
+                    }
+                    DelegationTracingDataHost::KeccakChi5(data) => {
+                        let tracing_data = alloc_input(data.len(), capacity, context)?;
+                        let trace = DelegationTraceDevice { tracing_data };
+                        DelegationTracingDataDevice::KeccakChi5(trace)
+                    }
+                    DelegationTracingDataHost::KeccakThetaRho(data) => {
+                        let tracing_data = alloc_input(data.len(), capacity, context)?;
+                        let trace = DelegationTraceDevice { tracing_data };
+                        DelegationTracingDataDevice::KeccakThetaRho(trace)
+                    }
+                    DelegationTracingDataHost::KeccakColumnParity(data) => {
+                        let tracing_data = alloc_input(data.len(), capacity, context)?;
+                        let trace = DelegationTraceDevice { tracing_data };
+                        DelegationTracingDataDevice::KeccakColumnParity(trace)
                     }
                 };
                 TracingDataDevice::Delegation(data)
             }
             TracingDataHost::Unrolled(unrolled) => match unrolled {
                 UnrolledTracingDataHost::Memory(trace) => {
-                    let tracing_data = context.alloc(trace.len(), AllocationPlacement::Top)?;
+                    let tracing_data = alloc_input(trace.len(), capacity, context)?;
                     let data = UnrolledMemoryTraceDevice { tracing_data };
                     TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(data))
                 }
                 UnrolledTracingDataHost::NonMemory(trace) => {
-                    let tracing_data = context.alloc(trace.len(), AllocationPlacement::Top)?;
+                    let tracing_data = alloc_input(trace.len(), capacity, context)?;
                     let data = UnrolledNonMemoryTraceDevice { tracing_data };
                     TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(data))
                 }
                 UnrolledTracingDataHost::Unified(trace) => {
-                    let tracing_data = context.alloc(trace.len(), AllocationPlacement::Top)?;
+                    let tracing_data = alloc_input(trace.len(), capacity, context)?;
                     let trace = UnrolledUnifiedTraceDevice { tracing_data };
                     TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace))
                 }
@@ -232,6 +186,38 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
                     )?,
                     _ => panic!("expected keccak special 5 trace"),
                 },
+                DelegationTracingDataHost::KeccakChi5(h_trace) => match &mut self.data_device {
+                    TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakChi5(
+                        d_trace,
+                    )) => transfer.schedule_multiple(
+                        &h_trace.chunks,
+                        &mut d_trace.tracing_data,
+                        context,
+                    )?,
+                    _ => panic!("expected keccak_chi5 trace"),
+                },
+                DelegationTracingDataHost::KeccakThetaRho(h_trace) => match &mut self.data_device {
+                    TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakThetaRho(
+                        d_trace,
+                    )) => transfer.schedule_multiple(
+                        &h_trace.chunks,
+                        &mut d_trace.tracing_data,
+                        context,
+                    )?,
+                    _ => panic!("expected keccak_theta_rho trace"),
+                },
+                DelegationTracingDataHost::KeccakColumnParity(h_trace) => {
+                    match &mut self.data_device {
+                        TracingDataDevice::Delegation(
+                            DelegationTracingDataDevice::KeccakColumnParity(d_trace),
+                        ) => transfer.schedule_multiple(
+                            &h_trace.chunks,
+                            &mut d_trace.tracing_data,
+                            context,
+                        )?,
+                        _ => panic!("expected keccak_column_parity trace"),
+                    }
+                }
             },
             TracingDataHost::Unrolled(unrolled) => match unrolled {
                 UnrolledTracingDataHost::Memory(h_trace) => match &mut self.data_device {
@@ -270,25 +256,29 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
     }
 }
 
-pub struct InitsAndTeardownsTransfer<'a> {
-    pub data_host: InitsAndTeardownsTraceHost,
+pub struct InitsAndTeardownsTransfer<'a, A: GoodAllocator> {
+    pub data_host: Option<InitsAndTeardownsTraceHost<A>>,
     // pub: apex production (`prover::gkr::stage1`) reads the device trace across the split.
     pub data_device: InitsAndTeardownsTraceDevice,
     _marker: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a> InitsAndTeardownsTransfer<'a> {
-    pub fn new(data_host: InitsAndTeardownsTraceHost, context: &ProverContext) -> CudaResult<Self> {
-        let page_indices = context.alloc(data_host.page_indices.len(), AllocationPlacement::Top)?;
-        let values_packed =
-            context.alloc(data_host.values_packed.len(), AllocationPlacement::Top)?;
-        let timestamps_packed =
-            context.alloc(data_host.timestamps_packed.len(), AllocationPlacement::Top)?;
-        let data_device = InitsAndTeardownsTraceDevice {
-            page_indices,
-            values_packed,
-            timestamps_packed,
-        };
+impl<'a, A: GoodAllocator + 'a> InitsAndTeardownsTransfer<'a, A> {
+    /// Without host data (a TRIVIAL leading unified chunk) the buffers hold no pages.
+    pub fn new(
+        data_host: Option<InitsAndTeardownsTraceHost<A>>,
+        num_sets: usize,
+        trace_len: usize,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let lens = data_host.as_ref().map_or([0; 3], |host| {
+            [
+                host.page_indices.len(),
+                host.values_packed.len(),
+                host.timestamps_packed.len(),
+            ]
+        });
+        let data_device = alloc_inits_and_teardowns(lens, num_sets, trace_len, context)?;
         Ok(Self {
             data_host,
             data_device,
@@ -303,21 +293,48 @@ impl<'a> InitsAndTeardownsTransfer<'a> {
         transfer: &mut Transfer<'a>,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        let Some(data_host) = &self.data_host else {
+            return Ok(());
+        };
         transfer.schedule_multiple(
-            &self.data_host.page_indices.chunks,
+            &data_host.page_indices.chunks,
             &mut self.data_device.page_indices,
             context,
         )?;
         transfer.schedule_multiple(
-            &self.data_host.values_packed.chunks,
+            &data_host.values_packed.chunks,
             &mut self.data_device.values_packed,
             context,
         )?;
         transfer.schedule_multiple(
-            &self.data_host.timestamps_packed.chunks,
+            &data_host.timestamps_packed.chunks,
             &mut self.data_device.timestamps_packed,
             context,
         )?;
         Ok(())
     }
+}
+
+fn alloc_input<T>(
+    len: usize,
+    capacity: usize,
+    context: &ProverContext,
+) -> CudaResult<DeviceAllocation<T>> {
+    let mut allocation = context.alloc(capacity, AllocationPlacement::Top)?;
+    allocation.shrink_len_to(len);
+    Ok(allocation)
+}
+
+fn alloc_inits_and_teardowns(
+    [pages, values, timestamps]: [usize; 3],
+    num_sets: usize,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<InitsAndTeardownsTraceDevice> {
+    let capacity = num_sets * trace_len;
+    Ok(InitsAndTeardownsTraceDevice {
+        page_indices: alloc_input(pages, capacity >> PAGE_SIZE_LOG2, context)?,
+        values_packed: alloc_input(values, capacity, context)?,
+        timestamps_packed: alloc_input(timestamps, capacity, context)?,
+    })
 }

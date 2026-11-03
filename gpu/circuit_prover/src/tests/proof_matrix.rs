@@ -32,6 +32,43 @@ pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
     );
 }
 
+#[test]
+#[ignore]
+fn run_mixed_circuit_multi_schedule_test() {
+    let add_sub = prepare_basic_unrolled_proof_fixture();
+    // Both contexts use the default twiddle geometry. Keep Keccak's context
+    // alive through finish: its construction replaces the shared twiddle pointers.
+    let keccak = prepare_keccak_special5_proof_fixture();
+    let context = &add_sub.base.context;
+    let baseline = context.get_used_mem_current();
+    let fixtures = [&add_sub, &keccak, &add_sub];
+    let mut jobs = Vec::with_capacity(fixtures.len());
+    for fixture in fixtures {
+        let base = &fixture.base;
+        let plan = base.dr_tail_plan().unwrap();
+        let mut transfers = base.create_transfers_for_context(context).unwrap();
+        transfers.schedule(context).unwrap();
+        jobs.push(
+            prove::<Global>(
+                &base.gkr_programs,
+                &base.prover_config,
+                base.final_trace_size_log_2,
+                transfers,
+                &plan,
+                ProofMemoryPolicy::default(),
+                context,
+            )
+            .unwrap(),
+        );
+        assert_eq!(context.get_used_mem_current(), baseline);
+    }
+    for (job, fixture) in jobs.into_iter().zip(fixtures) {
+        let (proof, _) = job.finish().unwrap();
+        assert_gkr_proof_eq_for_test(&proof, &fixture.expected_cpu_proof);
+    }
+    assert_eq!(context.get_used_mem_current(), baseline);
+}
+
 /// Warmup + profiled prove; structure check only (no CPU reference needed).
 pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
     let baseline = fixture.context.get_used_mem_current();
@@ -248,7 +285,7 @@ fn run_add_sub_profile_test() {
 // jump_branch_slt fixture wrappers + test functions
 // ---------------------------------------------------------------------------
 
-fn prepare_jump_branch_slt_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_jump_branch_slt_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = prepare_unrolled_non_memory_proof_fixture::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
         common_constants::PC_STEP as u32, // default_pc_value_in_padding
@@ -299,7 +336,7 @@ fn run_jump_branch_slt_profile_test() {
 // shift_binop fixture wrappers + test functions
 // ---------------------------------------------------------------------------
 
-fn prepare_shift_binop_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_shift_binop_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = prepare_unrolled_non_memory_proof_fixture::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
         common_constants::PC_STEP as u32, // default_pc_value_in_padding
@@ -350,7 +387,7 @@ fn run_shift_binop_profile_test() {
 // mul_div fixture wrappers + test functions
 // ---------------------------------------------------------------------------
 
-fn prepare_mul_div_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_mul_div_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = prepare_unrolled_non_memory_proof_fixture::<MUL_DIV_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
         common_constants::PC_STEP as u32, // default_pc_value_in_padding
@@ -401,7 +438,7 @@ fn run_mul_div_profile_test() {
 // load_store_word_only fixture wrappers + test functions
 // ---------------------------------------------------------------------------
 
-fn prepare_load_store_word_only_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_load_store_word_only_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = prepare_unrolled_memory_proof_fixture::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
         UnrolledMemoryCircuitType::LoadStoreWordOnly,
@@ -468,7 +505,7 @@ fn run_load_store_word_only_profile_test() {
 // load_store_subword_only fixture wrappers + test functions
 // ---------------------------------------------------------------------------
 
-fn prepare_load_store_subword_only_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_load_store_subword_only_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) =
         prepare_unrolled_memory_proof_fixture::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>(
             &[15, 1],
@@ -541,10 +578,10 @@ fn run_load_store_subword_only_profile_test() {
 // from its OWN correct workload: bigint from `examples/bigint_with_control`
 // (issues one bigint call), keccak from keccak_f1600, and the two blake2 variants
 // from the `examples/multi_family_smoke` apps (nd `[50, 0xDEAD_BEEF]`, matching the
-// CPU unified orchestration test). All four build their fixture + CPU reference +
+// CPU unified orchestration test). Each builds its fixture + CPU reference +
 // tracing host, then prove on the GPU.
 //
-// All four tests are kept `#[ignore]`d (heavy GPU) — run with `--ignored`.
+// Tests are kept `#[ignore]`d (heavy GPU) — run with `--ignored`.
 // ===========================================================================
 
 const BIGINT_DELEGATION_LAYOUT_PATH: &str =
@@ -609,7 +646,7 @@ fn replay_bigint_delegation_buffer() -> (Vec<BigintDelegationWitness>, TableDriv
     (buffer, table_driver)
 }
 
-fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
     let (buffer, table_driver) = replay_bigint_delegation_buffer();
     let oracle = BigintDelegationOracle {
         cycle_data: &buffer,
@@ -626,7 +663,7 @@ fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
         buffer_for_host,
         &oracle,
         bigint_with_extended_control_mod::witness_eval_fn,
-        1 << 22,
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl).get_domain_size(),
     );
     drop(buffer);
     fixture
@@ -639,7 +676,7 @@ fn prepare_bigint_profiling_fixture() -> BasicUnrolledFixture {
         BIGINT_DELEGATION_LAYOUT_PATH,
         &table_driver,
         buffer,
-        1 << 22,
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl).get_domain_size(),
     )
 }
 
@@ -712,7 +749,7 @@ fn replay_keccak_special5_delegation_buffer(
     (buffer, table_driver)
 }
 
-fn prepare_keccak_special5_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_keccak_special5_proof_fixture() -> BasicUnrolledProofFixture {
     let (buffer, table_driver) = replay_keccak_special5_delegation_buffer();
     let oracle = KeccakDelegationOracle {
         cycle_data: &buffer,
@@ -830,7 +867,7 @@ fn replay_blake2_with_compression_delegation_buffer(
     (buffer, table_driver)
 }
 
-fn prepare_blake2_with_compression_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_blake2_with_compression_proof_fixture() -> BasicUnrolledProofFixture {
     let (buffer, table_driver) = replay_blake2_with_compression_delegation_buffer();
     let oracle = Blake2sDelegationOracle {
         cycle_data: &buffer,
@@ -938,7 +975,7 @@ fn replay_blake2_g_function_delegation_buffer(
     (buffer, table_driver)
 }
 
-fn prepare_blake2_g_function_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_blake2_g_function_proof_fixture() -> BasicUnrolledProofFixture {
     let (buffer, table_driver) = replay_blake2_g_function_delegation_buffer();
     let oracle = Blake2sGFunctionDelegationOracle {
         cycle_data: &buffer,
@@ -1013,9 +1050,9 @@ fn run_unified_proof_parity_test() {
 ///
 /// Concurrent shape (schedule -> schedule -> finish -> finish), NOT serial: both
 /// unified (2^24) jobs are scheduled before either finishes, so the second proof's
-/// device allocations land on blocks the first proof wrote and freed (the first
-/// job keeps only its input transfers alive until `finish()`, which shifts the
-/// second proof's placement onto recycled, non-zero memory). This is the exact
+/// device allocations land on blocks the first proof wrote and freed. The first
+/// job retains host data and callback owners until `finish()`, while its device
+/// reservations have already been released. This is the exact
 /// condition that exposed a witness-trace uninitialized-read: the witness
 /// generators write the per-opcode lookup columns only under `IF` guards, so rows
 /// whose opcode doesn't match were left unwritten and read as fresh-page zeros on a
@@ -1023,9 +1060,6 @@ fn run_unified_proof_parity_test() {
 /// `Lookup16Bits`/`LookupTimestamps`/`GenericLookup` base-layer claims. The fix is
 /// the codegen zero-default for conditionally-written witness columns
 /// (`gpu_witness_eval_generator`); this test guards against its regression.
-/// `prove()` is balanced — every device allocation it makes is released
-/// stream-ordered before it returns (asserted per-prove in `schedule_prove`) — so a
-/// single ~54 GiB peak fits the 64 GiB fixture arena even with both jobs live.
 #[test]
 #[ignore]
 fn run_unified_multi_schedule_test() {
@@ -1095,7 +1129,7 @@ fn run_unified_profile_test() {
 // still driven through the same three matrix bodies as every other circuit.
 // ---------------------------------------------------------------------------
 
-fn prepare_inits_and_teardowns_matrix_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_inits_and_teardowns_matrix_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = super::inits_and_teardowns::prepare_inits_and_teardowns_proof_fixture(true);
     BasicUnrolledProofFixture {
         base,
@@ -1127,4 +1161,185 @@ fn run_inits_and_teardowns_multi_schedule_test() {
 #[ignore]
 fn run_inits_and_teardowns_profile_test() {
     run_profile(&prepare_inits_and_teardowns_matrix_profiling_fixture());
+}
+
+mod keccak_f1600 {
+    use super::*;
+    use circuit_common::DelegationCircuit;
+    use common_constants::keccak_f1600::*;
+    use prover::tracers::oracles::transpiler_oracles::delegation::{
+        KeccakChi5DelegationOracle, KeccakColumnParityDelegationOracle,
+        KeccakThetaRhoDelegationOracle,
+    };
+    use riscv_transpiler::witness::delegation::keccak_f1600::{
+        KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
+        KeccakThetaRhoDelegationWitness,
+    };
+    use riscv_transpiler::witness::DelegationDestinationHolder;
+
+    macro_rules! keccak_proof_matrix_tests {
+        ($multi_schedule:ident, $stage1_parity:ident, $commit_memory:ident, $buffer:ident,
+         $variant:ident, $stem:ident, $definition:ty, $witness:ident, $oracle:ident,
+         $writes:ident, $offsets:ident, $calls:ident) => {
+            fn $buffer() -> Vec<$witness> {
+                replay_delegation_trace_buffer_for_workload::<_, FullUnsignedMachineDecoderConfig>(
+                    "examples/keccak/app.bin",
+                    "examples/keccak/app.text",
+                    &[],
+                    false,
+                    |counters| {
+                        assert!(counters.keccak_f1600_calls > 0);
+                        keccak_f1600_permutations(counters.keccak_f1600_calls) * $calls
+                    },
+                    $witness::empty(),
+                    |tape, cycles_bound, replay_state, replay_ram, buffer| {
+                        let mut buffers = [buffer];
+                        let mut tracer = DelegationDestinationHolder::<
+                            { <$definition as DelegationCircuit<BF>>::DELEGATION_TYPE_ID },
+                            NUM_KECCAK_F1600_REGISTER_ACCESSES,
+                            NUM_KECCAK_F1600_INDIRECT_READS,
+                            $writes,
+                            $offsets,
+                        > {
+                            buffers: &mut buffers,
+                        };
+                        ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<
+                            _,
+                            _,
+                            BF,
+                        >(
+                            replay_state,
+                            replay_ram,
+                            tape,
+                            &mut (),
+                            cycles_bound,
+                            &mut tracer,
+                        );
+                        assert!(
+                            tracer.buffers.is_empty(),
+                            "replay must fill every Keccak-f1600 row"
+                        );
+                    },
+                )
+            }
+
+            #[test]
+            #[ignore]
+            fn $multi_schedule() {
+                let buffer = $buffer();
+                let oracle = $oracle {
+                    cycle_data: &buffer,
+                    marker: core::marker::PhantomData,
+                };
+                let mut table_driver = TableDriver::<BF>::new();
+                <$definition as DelegationCircuit<BF>>::table_driver_fn(&mut table_driver);
+                let circuit_type = DelegationCircuitType::$variant;
+                let fixture = prepare_delegation_proof_fixture(
+                    circuit_type,
+                    concat!(
+                        "cs/compiled_circuits/",
+                        stringify!($stem),
+                        "_layout_gkr.json"
+                    ),
+                    &table_driver,
+                    buffer.clone(),
+                    &oracle,
+                    setups::$stem::witness_eval_fn,
+                    CircuitType::Delegation(circuit_type).get_domain_size(),
+                );
+                run_multi_schedule(&fixture);
+            }
+
+            #[test]
+            #[ignore]
+            fn $stage1_parity() {
+                let mut table_driver = TableDriver::<BF>::new();
+                <$definition as DelegationCircuit<BF>>::table_driver_fn(&mut table_driver);
+                let circuit_type = DelegationCircuitType::$variant;
+                run_stage1_buffer_parity(&prepare_delegation_profiling_fixture(
+                    circuit_type,
+                    concat!(
+                        "cs/compiled_circuits/",
+                        stringify!($stem),
+                        "_layout_gkr.json"
+                    ),
+                    &table_driver,
+                    $buffer(),
+                    CircuitType::Delegation(circuit_type).get_domain_size(),
+                ));
+            }
+
+            #[test]
+            #[ignore]
+            fn $commit_memory() {
+                let buffer = $buffer();
+                let oracle = $oracle {
+                    cycle_data: &buffer,
+                    marker: core::marker::PhantomData,
+                };
+                let compiled_circuit = deserialize_json_for_test(concat!(
+                    "cs/compiled_circuits/",
+                    stringify!($stem),
+                    "_layout_gkr.json"
+                ));
+                super::super::commit_memory::assert_delegation_commit_memory_matches_cpu(
+                    stringify!($stem),
+                    DelegationCircuitType::$variant,
+                    &compiled_circuit,
+                    &buffer,
+                    &oracle,
+                    |tracing_data| {
+                        TracingDataDevice::Delegation(DelegationTracingDataDevice::$variant(
+                            gpu_trace::witness::trace_delegation::DelegationTraceDevice {
+                                tracing_data,
+                            },
+                        ))
+                    },
+                );
+            }
+        };
+    }
+
+    keccak_proof_matrix_tests!(
+        run_keccak_chi5_multi_schedule_test,
+        run_keccak_chi5_stage1_buffer_parity_test,
+        test_keccak_chi5_delegation_commit_memory_matches_cpu,
+        keccak_chi5_buffer,
+        KeccakChi5,
+        keccak_chi5,
+        setups::KeccakChi5DelegationCircuit,
+        KeccakChi5DelegationWitness,
+        KeccakChi5DelegationOracle,
+        KECCAK_CHI5_X11_NUM_WRITES,
+        KECCAK_CHI5_NUM_VARIABLE_OFFSETS,
+        NUM_KECCAK_F1600_CHI5_CALLS
+    );
+    keccak_proof_matrix_tests!(
+        run_keccak_column_parity_multi_schedule_test,
+        run_keccak_column_parity_stage1_buffer_parity_test,
+        test_keccak_column_parity_delegation_commit_memory_matches_cpu,
+        keccak_column_parity_buffer,
+        KeccakColumnParity,
+        keccak_column_parity,
+        setups::KeccakColumnParityDelegationCircuit,
+        KeccakColumnParityDelegationWitness,
+        KeccakColumnParityDelegationOracle,
+        KECCAK_COLUMN_PARITY_X11_NUM_WRITES,
+        KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
+        NUM_KECCAK_F1600_COLUMN_PARITY_CALLS
+    );
+    keccak_proof_matrix_tests!(
+        run_keccak_theta_rho_multi_schedule_test,
+        run_keccak_theta_rho_stage1_buffer_parity_test,
+        test_keccak_theta_rho_delegation_commit_memory_matches_cpu,
+        keccak_theta_rho_buffer,
+        KeccakThetaRho,
+        keccak_theta_rho,
+        setups::KeccakThetaRhoDelegationCircuit,
+        KeccakThetaRhoDelegationWitness,
+        KeccakThetaRhoDelegationOracle,
+        KECCAK_THETA_RHO_X11_NUM_WRITES,
+        KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
+        NUM_KECCAK_F1600_THETA_RHO_CALLS
+    );
 }

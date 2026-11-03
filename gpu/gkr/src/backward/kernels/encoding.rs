@@ -2,7 +2,7 @@ use std::ffi::c_void;
 use std::ptr::{null, null_mut};
 
 use super::dim_reducing::{
-    GKR_DIM_REDUCING_IO_PER_SLOT, GKR_DIM_REDUCING_OUTPUTS_PER_SLOT, GKR_DIM_REDUCING_SLOTS,
+    GKR_DIM_REDUCING_INPUTS_PER_SLOT, GKR_DIM_REDUCING_OUTPUTS_PER_SLOT, GKR_DIM_REDUCING_SLOTS,
 };
 use super::launchers::GkrEqSizes;
 use crate::upstream::Field;
@@ -53,13 +53,13 @@ pub(crate) const GKR_DIM_REDUCING_BASE_SLOTS: usize = 16;
 /// Number of polynomials addressable by the 11-bit polynomial index.
 pub(crate) const GKR_DIM_REDUCING_POLY_CAPACITY: usize = 1 << 11;
 
-/// One dim-reducing slot: `io[0..2]` inputs then `io[2..4]` outputs, plus the
+/// One dim-reducing slot: its input pair and the
 /// batch-challenge table index for each output. Mirrors
 /// `gkr_dim_reducing_slot` in `native/gkr/support/descriptors.cuh`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct GpuGKRDimensionReducingSlot {
-    pub(crate) io: [GpuGKRSourceRecord; GKR_DIM_REDUCING_IO_PER_SLOT],
+    pub(crate) inputs: [GpuGKRSourceRecord; GKR_DIM_REDUCING_INPUTS_PER_SLOT],
     pub(crate) batch_exp: [u16; GKR_DIM_REDUCING_OUTPUTS_PER_SLOT],
 }
 
@@ -114,7 +114,6 @@ pub(crate) struct GpuGKRDimensionReducingBatch<E> {
     pub(crate) eq_low: *const E,
     pub(crate) eq_sizes: GkrEqSizes,
     pub(crate) _eq_sizes_pad: u32,
-    pub(crate) contributions: *mut E,
     pub(crate) tables: GpuGKRDimensionReducingTables,
     pub(crate) slots: [GpuGKRDimensionReducingSlot; GKR_DIM_REDUCING_SLOTS],
     pub(crate) _slots_pad: u32,
@@ -128,7 +127,6 @@ impl<E: Field> Default for GpuGKRDimensionReducingBatch<E> {
             eq_low: null(),
             eq_sizes: GkrEqSizes::zeroed(),
             _eq_sizes_pad: 0,
-            contributions: null_mut(),
             tables: GpuGKRDimensionReducingTables::default(),
             slots: [GpuGKRDimensionReducingSlot::default(); GKR_DIM_REDUCING_SLOTS],
             _slots_pad: 0,

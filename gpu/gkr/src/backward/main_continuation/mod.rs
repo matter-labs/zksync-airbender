@@ -1,6 +1,6 @@
 mod abi;
 mod binding;
-mod generated_registry;
+mod generated_kernels;
 mod publication;
 mod sequence;
 

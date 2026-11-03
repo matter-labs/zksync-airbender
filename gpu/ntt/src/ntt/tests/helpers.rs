@@ -65,7 +65,6 @@ pub(super) fn transpose_monomials(vals: &mut [BF]) {
 ///
 /// `forward_twiddles` must be the size-`n` forward twiddles
 /// (`precompute_twiddles_for_fft::<BF, Global, false>`) truncated to `n / 2`.
-#[cfg(not(no_cuda))]
 pub(super) fn host_forward_ntt_single_coset(
     monomials_bitreversed: &[BF],
     log_n: usize,

@@ -243,7 +243,7 @@ mod tests {
         let blocks_count = arena_bytes >> BLOCK_LOG;
         let mut config = ProverContextConfig {
             allocator_block_log_size: BLOCK_LOG,
-            max_device_allocation_blocks_count: Some(blocks_count),
+            device_allocation_blocks_count: Some(blocks_count),
             ..Default::default()
         };
         let host_block_size = 1usize << config.host_allocator_block_log_size;

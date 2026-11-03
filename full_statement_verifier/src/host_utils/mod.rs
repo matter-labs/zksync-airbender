@@ -1,4 +1,5 @@
 pub mod cost_model;
+pub mod fixture_codec;
 
 use crate::program_proof::ProgramProof;
 use crate::recursion_chain::{self, RecursionChain};
@@ -108,7 +109,7 @@ pub fn load_fsv_program(
 ) -> (Vec<u32>, Vec<u32>) {
     let dir = dir.as_ref();
     let stem = program.file_stem(blake);
-    println!("Trying to load `{}` verifier", &stem);
+    println!("Trying to load `{}` verifier", stem);
     let bin_path = dir.join(format!("{stem}.bin"));
     let exists = match bin_path.try_exists() {
         Ok(res) => res,
@@ -129,7 +130,7 @@ pub fn load_fsv_program(
     } else {
         println!(
             "Verifier binary `{}` doesn't exist at path {}, using fallback naming mode",
-            &stem,
+            stem,
             bin_path.display(),
         );
         assert!(
@@ -194,8 +195,9 @@ pub fn final_blake_mode() -> BlakeMode {
 /// protocol constant — drivers may pick their own, and
 /// `RECURSION_UNIFIED_SWITCH_CYCLES` overrides it.
 ///
-/// Measured crossover ~60M cycles, indifferent within [55M, 70M].
-pub const DEFAULT_UNIFIED_SWITCH_CYCLES: u64 = 64 * 1024 * 1024;
+/// Rounded heavy-block calibration for the Sec100 verifier.
+/// Circuit-count boundaries make the crossover workload-dependent.
+pub const DEFAULT_UNIFIED_SWITCH_CYCLES: u64 = 52_000_000;
 
 /// The estimated verifier cost never drops below ~6.55M cycles (past the first
 /// layer, each unrolled recursion layer verifies another such layer), so lower

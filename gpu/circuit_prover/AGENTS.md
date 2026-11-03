@@ -11,8 +11,7 @@ of its own** — the split-out kernel crates below it (`gpu_trace`, `gpu_gkr`,
 ## Layer position
 
 `gpu_core < { gpu_ntt, gpu_ops, gpu_hash } < gpu_prover_context <
-gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
-gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
+gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
 DAG. This crate depends on `gpu_core`, `gpu_hash`, `gpu_prover_context`,
 `gpu_trace`, `gpu_gkr`, and `gpu_whir`, plus the upstream
 crates below; `gpu_execution_prover` depends on it, never the reverse.
@@ -45,8 +44,7 @@ summary — the contract document is the source of truth.
   operation thereafter only reads.
 - **MUST** consume D2H readback buffers via a scheduled host callback, never
   from the scheduling thread.
-- **MUST** fork/join any op on an auxiliary stream (`h2d_stream` or
-  `side_stream`) against `exec_stream` with explicit CUDA
+- **MUST** fork/join any op on an auxiliary stream (`h2d_stream`) against `exec_stream` with explicit CUDA
   events. The driver gives independent streams no implicit ordering.
 - **MUST** allocate and drop pool-backed handles on `exec_stream`. If a
   secondary stream touched the allocation, the `exec_stream` join wait must be
@@ -59,7 +57,8 @@ summary — the contract document is the source of truth.
   is enough — completion is not required.
 - **MUST NOT** call any CUDA API from within a host callback, and callbacks
   must not create or destroy pool-backed allocations. Callbacks exist to
-  compute challenge-dependent host data only.
+  compute challenge-dependent host data, fill H2D staging, and consume D2H
+  readbacks (including proof assembly).
 - **MUST** keep `prove()` enqueue-only. No `stream.synchronize()`, no host
   blocking for `exec_stream` progress — not even for profiling or logging.
   Host blocking belongs in `GpuGKRProofJob::finish()`.
@@ -75,7 +74,12 @@ summary — the contract document is the source of truth.
   `#[cfg(test)]` `test_utils`/`tests`).
 - `src/config.rs`: prover configuration policy — maps a `CircuitType` +
   `SecurityLevel` to the canonical upstream `ProverConfig`, and owns
-  `GPU_SUPPORTED_SECURITY_LEVELS` / `UnsupportedGpuSecurityLevel`.
+  `GPU_SUPPORTED_SECURITY_LEVELS` / `UnsupportedGpuSecurityLevel`. The GPU
+  prover implements only the unpacked base commitment: `prove()`, its DR
+  preflight and `gpu_trace`'s memory commitments reject
+  `ProverConfig::pack_log2 != 0` via
+  `gpu_trace::trace::memory::assert_unpacked_prover_config` before enqueuing
+  any commitment or proof kernel (the preflight before constructing transfers).
 - `src/proof/`:
   - `inputs.rs`: the consolidated H2D transfer bundle
     (`GpuGKRProofTransfer`) — one shared `Transfer` (from `gpu_prover_context`)

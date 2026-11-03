@@ -8,9 +8,10 @@ namespace airbender::ntt {
 // previous 512-thread shape; a role's vals die into smem at the barrier, so
 // live register pressure stays at the single-role level. 3 blocks/SM wins by
 // giving each SM more independent __syncthreads domains.
-template <ld_modifier LD, st_modifier ST>
+template <ld_modifier LD, st_modifier ST, bool INVERSE = false>
 DEVICE_FORCEINLINE void monomials_to_evals_noninitial_8_stages_body(bf_matrix_getter<LD> gmem_in, bf_matrix_setter<ST> gmem_out, const int log_n,
-                                                                    const int start_stage, const int num_cols_per_coset, const int log_cosets_in_tile) {
+                                                                    const int start_stage, const int num_cols_per_coset, const int log_cosets_in_tile,
+                                                                    const unsigned coset_factor_power = 0) {
   using namespace pass_config::three_pass_phase_a;
   constexpr int ROLES = 2;
   constexpr int ROLE_TILE_STRIDE = THREAD_TILES_PER_BLOCK / ROLES;
@@ -64,21 +65,21 @@ DEVICE_FORCEINLINE void monomials_to_evals_noninitial_8_stages_body(bf_matrix_ge
 
     int tile_exchg_region_offset = (alternating_block_idx_y * THREAD_TILES_PER_BLOCK + tile_id) << 3;
     if (start_stage == log_n - 8) {
-      reg_exchg_fwd<1, 2, 8>(vals, tile_exchg_region_offset);
+      reg_exchg_fwd<1, 2, 8, INVERSE>(vals, tile_exchg_region_offset);
       tile_exchg_region_offset >>= 1;
-      reg_exchg_fwd<2, 4, 4>(vals, tile_exchg_region_offset);
+      reg_exchg_fwd<2, 4, 4, INVERSE>(vals, tile_exchg_region_offset);
       tile_exchg_region_offset >>= 1;
-      reg_exchg_fwd<4, 8, 2>(vals, tile_exchg_region_offset);
+      reg_exchg_fwd<4, 8, 2, INVERSE>(vals, tile_exchg_region_offset);
       tile_exchg_region_offset >>= 1;
-      reg_exchg_fwd<8, 16, 1>(vals, tile_exchg_region_offset);
+      reg_exchg_fwd<8, 16, 1, INVERSE>(vals, tile_exchg_region_offset);
     } else {
-      reg_exchg_cmem_twiddles_fwd<1, 2, 8>(vals, tile_exchg_region_offset);
+      reg_exchg_cmem_twiddles_fwd<1, 2, 8, INVERSE>(vals, tile_exchg_region_offset);
       tile_exchg_region_offset >>= 1;
-      reg_exchg_cmem_twiddles_fwd<2, 4, 4>(vals, tile_exchg_region_offset);
+      reg_exchg_cmem_twiddles_fwd<2, 4, 4, INVERSE>(vals, tile_exchg_region_offset);
       tile_exchg_region_offset >>= 1;
-      reg_exchg_cmem_twiddles_fwd<4, 8, 2>(vals, tile_exchg_region_offset);
+      reg_exchg_cmem_twiddles_fwd<4, 8, 2, INVERSE>(vals, tile_exchg_region_offset);
       tile_exchg_region_offset >>= 1;
-      reg_exchg_cmem_twiddles_fwd<8, 16, 1>(vals, tile_exchg_region_offset);
+      reg_exchg_cmem_twiddles_fwd<8, 16, 1, INVERSE>(vals, tile_exchg_region_offset);
     }
 
 #pragma unroll
@@ -101,24 +102,30 @@ DEVICE_FORCEINLINE void monomials_to_evals_noninitial_8_stages_body(bf_matrix_ge
       vals[i] = smem_block[addr]; // read interleaved smem tiles
 
     if (start_stage == log_n - 8) {
-      reg_exchg_fwd<1, 2, 8>(vals);
-      reg_exchg_fwd<2, 4, 4>(vals);
-      reg_exchg_fwd<4, 8, 2>(vals);
+      reg_exchg_fwd<1, 2, 8, INVERSE>(vals);
+      reg_exchg_fwd<2, 4, 4, INVERSE>(vals);
+      reg_exchg_fwd<4, 8, 2, INVERSE>(vals);
       reg_exchg_final_fwd<8>(vals);
     } else {
       int block_exchg_region_offset = alternating_block_idx_y << 3;
-      reg_exchg_cmem_twiddles_fwd<1, 2, 8>(vals, block_exchg_region_offset);
+      reg_exchg_cmem_twiddles_fwd<1, 2, 8, INVERSE>(vals, block_exchg_region_offset);
       block_exchg_region_offset >>= 1;
-      reg_exchg_cmem_twiddles_fwd<2, 4, 4>(vals, block_exchg_region_offset);
+      reg_exchg_cmem_twiddles_fwd<2, 4, 4, INVERSE>(vals, block_exchg_region_offset);
       block_exchg_region_offset >>= 1;
-      reg_exchg_cmem_twiddles_fwd<4, 8, 2>(vals, block_exchg_region_offset);
+      reg_exchg_cmem_twiddles_fwd<4, 8, 2, INVERSE>(vals, block_exchg_region_offset);
       block_exchg_region_offset >>= 1;
-      reg_exchg_cmem_twiddles_fwd<8, 16, 1>(vals, block_exchg_region_offset);
+      reg_exchg_cmem_twiddles_fwd<8, 16, 1, INVERSE>(vals, block_exchg_region_offset);
     }
 
 #pragma unroll
-    for (int i{0}, addr{thread_il_gmem_start}; i < VALS_PER_THREAD; i++, addr += interleaved_gmem_stride)
-      gmem_out.set_at_row(addr, vals[i]);
+    for (int i{0}, addr{thread_il_gmem_start}; i < VALS_PER_THREAD; i++, addr += interleaved_gmem_stride) {
+      bf value = vals[i];
+      if constexpr (INVERSE) {
+        if (start_stage == log_n - 8)
+          value = normalize_coset_inverse(value, gmem_block_offset + addr, log_n, coset_factor_power);
+      }
+      gmem_out.set_at_row(addr, value);
+    }
   }
 }
 
@@ -139,7 +146,7 @@ EXTERN __launch_bounds__(256, 3) __global__
   monomials_to_evals_noninitial_8_stages_body(gmem_in, gmem_out, log_n, start_stage, num_cols_per_coset, log_cosets_in_tile);
 }
 
-template <int STAGES>
+template <int STAGES, bool INVERSE = false>
 DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                                   const bool transposed_monomials, const int log_n, const int coset_index_base,
                                                                   const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
@@ -174,7 +181,7 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
   // The gmem layout is already swizzled, so it's a linear copy and we can vectorize :)
 #pragma unroll
   for (int i{0}, addr{pipeline_memcpy_start}; i < 4; i++, addr += pipeline_memcpy_stride)
-    __pipeline_memcpy_async(smem_twiddles + addr, ab_fwd_gmem_twiddles_coarse + addr, 4 * sizeof(bf));
+    __pipeline_memcpy_async(smem_twiddles + addr, (INVERSE ? ab_inv_gmem_twiddles_coarse : ab_fwd_gmem_twiddles_coarse) + addr, 4 * sizeof(bf));
   __pipeline_commit();
 
 #pragma unroll
@@ -182,7 +189,7 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
     vals[i] = gmem_in.get_at_row(row);
 
   // A separate coset adjustment loop performs better than interleaving adjustments with loads.
-  if (coset_factor_power > 0) {
+  if (!INVERSE && coset_factor_power > 0) {
 #pragma unroll
     for (int i{0}, global_row{lane_id + gmem_block_offset + warp_id * VALS_PER_WARP}; i < VALS_PER_THREAD; i++, global_row += WARP_SIZE) {
       const int effective_row = transposed_monomials ? transposed_row_to_effective_row(global_row) : global_row;
@@ -209,7 +216,7 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
   }
 
   int thread_exchg_region_offset = (threadIdx.x + static_cast<int>(fi.intra_x) * blockDim.x) << 4;
-  constexpr bf *cmem_twiddles = ab_fwd_cmem_twiddles_finest_11;
+  constexpr bf *cmem_twiddles = INVERSE ? ab_inv_cmem_twiddles_finest_11 : ab_fwd_cmem_twiddles_finest_11;
   reg_exchg_cmem_smem_twiddles_fwd<EightStages, 1, 2, 16, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
   thread_exchg_region_offset >>= 1;
   reg_exchg_cmem_smem_twiddles_fwd<EightStages, 2, 4, 8, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
@@ -233,23 +240,23 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
       if (STAGES == 8) {
         int exchg_region_offset = warp_exchg_region_offset + i * 4;
         bf *vals_this_region = vals + 8 * i;
-        reg_exchg_cmem_twiddles_fwd<1, 2, 4>(vals_this_region, exchg_region_offset);
+        reg_exchg_cmem_twiddles_fwd<1, 2, 4, INVERSE>(vals_this_region, exchg_region_offset);
         exchg_region_offset >>= 1;
-        reg_exchg_cmem_twiddles_fwd<2, 4, 2>(vals_this_region, exchg_region_offset);
+        reg_exchg_cmem_twiddles_fwd<2, 4, 2, INVERSE>(vals_this_region, exchg_region_offset);
         exchg_region_offset >>= 1;
-        reg_exchg_cmem_twiddles_fwd<4, 8, 1>(vals_this_region, exchg_region_offset);
+        reg_exchg_cmem_twiddles_fwd<4, 8, 1, INVERSE>(vals_this_region, exchg_region_offset);
       }
       if (STAGES == 7) {
         int exchg_region_offset = warp_exchg_region_offset + i * 2;
         bf *vals_this_region = vals + 4 * i;
-        reg_exchg_cmem_twiddles_fwd<1, 2, 2>(vals_this_region, exchg_region_offset);
+        reg_exchg_cmem_twiddles_fwd<1, 2, 2, INVERSE>(vals_this_region, exchg_region_offset);
         exchg_region_offset >>= 1;
-        reg_exchg_cmem_twiddles_fwd<2, 4, 1>(vals_this_region, exchg_region_offset);
+        reg_exchg_cmem_twiddles_fwd<2, 4, 1, INVERSE>(vals_this_region, exchg_region_offset);
       }
       if (STAGES == 6) {
         int exchg_region_offset = warp_exchg_region_offset + i;
         bf *vals_this_region = vals + 2 * i;
-        reg_exchg_cmem_twiddles_fwd<1, 2, 1>(vals_this_region, exchg_region_offset);
+        reg_exchg_cmem_twiddles_fwd<1, 2, 1, INVERSE>(vals_this_region, exchg_region_offset);
       }
     }
   }
@@ -273,5 +280,27 @@ DEFINE_INITIAL_KERNEL(7)
 DEFINE_INITIAL_KERNEL(8)
 
 #undef DEFINE_INITIAL_KERNEL
+
+// Inverse-twiddle specializations preserve the same in-place address sets.
+EXTERN __launch_bounds__(256, 3) __global__
+    void ab_coset_to_monomials_noninitial_8_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                          const int log_n, const int start_stage, const int num_cols_per_coset, const int log_cosets_in_tile,
+                                                          const unsigned coset_factor_power) {
+  monomials_to_evals_noninitial_8_stages_body<ld_modifier::cg, st_modifier::cg, true>(gmem_in, gmem_out, log_n, start_stage, num_cols_per_coset,
+                                                                                      log_cosets_in_tile, coset_factor_power);
+}
+
+#define DEFINE_INVERSE_INITIAL(STAGES)                                                                                                                         \
+  EXTERN __launch_bounds__(256, 3) __global__ void ab_coset_to_monomials_initial_##STAGES##_stages_kernel(                                                     \
+      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const bool transposed_monomials, const int log_n,                 \
+      const int coset_index_base, const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {                                  \
+    monomials_to_evals_initial_up_to_8_stages<STAGES, true>(gmem_in, gmem_out, transposed_monomials, log_n, coset_index_base, coset_factor_shift,              \
+                                                            num_cols_per_coset, log_cosets_in_tile);                                                           \
+  }
+DEFINE_INVERSE_INITIAL(5)
+DEFINE_INVERSE_INITIAL(6)
+DEFINE_INVERSE_INITIAL(7)
+DEFINE_INVERSE_INITIAL(8)
+#undef DEFINE_INVERSE_INITIAL
 
 } // namespace airbender::ntt

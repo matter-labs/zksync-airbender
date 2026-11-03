@@ -12,6 +12,7 @@ pub enum DelegationType {
     BigInt = common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
     Keccak = common_constants::KECCAK_SPECIAL5_CSR_REGISTER,
     BlakeGFunction = common_constants::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
+    KeccakColumnParity = common_constants::KECCAK_COLUMN_PARITY_CSR_REGISTER,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,6 +47,7 @@ pub enum InstructionName {
     Or,
     And,
     ZimopIXorRot,
+    Rev8,
     // Multiplication and division
     Mul,
     Mulh,
@@ -187,7 +189,14 @@ pub fn preprocess_bytecode<
                 Instruction::from_imm(InstructionName::Jal, 0, 0, rd, imm)
             }
             OPCODE_JALR => {
-                // I format
+                // I format, funct3 must be 000; the other seven encodings are reserved
+                if funct3 != 0 {
+                    panic!(
+                        "Unknown JALR-like opcode 0x{:08x} at PC = 0x{:08x}",
+                        opcode,
+                        i * 4
+                    );
+                }
                 let mut imm: u32 = ITypeOpcode::imm(opcode);
                 // quasi sign extend
                 sign_extend(&mut imm, 12);
@@ -250,6 +259,12 @@ pub fn preprocess_bytecode<
                             rd,
                             imm & 0x1f,
                         )
+                    }
+                    0b101 if opcode >> 20 == REV8_RV32_FUNCT12 => {
+                        // Zbb byte reverse, rd = rs1.swap_bytes(), in every config. Formal
+                        // rs2 := x0 and imm = 0, so it is operand-identical to an immediate
+                        // shift with a zero amount.
+                        Instruction::pure_from_imm(InstructionName::Rev8, formal_rs1, 0, rd, 0)
                     }
                     0b101 if funct7 == ROT_FUNCT7 => {
                         panic!("not supporting rotate family")
@@ -445,35 +460,35 @@ pub fn preprocess_bytecode<
                             panic!("ROR is not supported");
                             // Instruction::from_imm(InstructionName::Ror, formal_rs1, formal_rs2, rd, 0)
                         }
-                        0b010 => Instruction::pure_from_imm(
+                        0b010 if funct7 == 0 => Instruction::pure_from_imm(
                             InstructionName::Slt,
                             formal_rs1,
                             formal_rs2,
                             rd,
                             0,
                         ),
-                        0b011 => Instruction::pure_from_imm(
+                        0b011 if funct7 == 0 => Instruction::pure_from_imm(
                             InstructionName::Sltu,
                             formal_rs1,
                             formal_rs2,
                             rd,
                             0,
                         ),
-                        0b100 => Instruction::pure_from_imm(
+                        0b100 if funct7 == 0 => Instruction::pure_from_imm(
                             InstructionName::Xor,
                             formal_rs1,
                             formal_rs2,
                             rd,
                             0,
                         ),
-                        0b110 => Instruction::pure_from_imm(
+                        0b110 if funct7 == 0 => Instruction::pure_from_imm(
                             InstructionName::Or,
                             formal_rs1,
                             formal_rs2,
                             rd,
                             0,
                         ),
-                        0b111 => Instruction::pure_from_imm(
+                        0b111 if funct7 == 0 => Instruction::pure_from_imm(
                             InstructionName::And,
                             formal_rs1,
                             formal_rs2,
@@ -498,72 +513,64 @@ pub fn preprocess_bytecode<
                 sign_extend(&mut imm, 12);
 
                 match funct3 {
-                    a @ 0 | a @ 1 | a @ 2 | a @ 4 | a @ 5 => {
-                        let instr = match a {
-                            0 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lb,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                    a @ 0 | a @ 1 | a @ 2 | a @ 4 | a @ 5 => match a {
+                        0 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lb,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
                             }
-                            1 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lh,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                        }
+                        1 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lh,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
                             }
-                            2 => Instruction::pure_from_imm(
-                                InstructionName::Lw,
-                                formal_rs1,
-                                0,
-                                rd,
-                                imm,
-                            ),
-                            4 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lbu,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                        }
+                        2 => {
+                            Instruction::pure_from_imm(InstructionName::Lw, formal_rs1, 0, rd, imm)
+                        }
+                        4 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lbu,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
                             }
-                            5 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lhu,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                        }
+                        5 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lhu,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
                             }
-                            _ => unreachable!(),
-                        };
-
-                        instr
-                    }
+                        }
+                        _ => unreachable!(),
+                    },
                     _ => {
                         panic!(
                             "Unknown LOAD opcode 0x{:08x} at PC = 0x{:08x}",
@@ -638,6 +645,7 @@ pub fn preprocess_bytecode<
                 const ZIMOP_FUNCT3: u8 = 0b100;
 
                 // if funct3 & ZIMOP_MASK == ZIMOP_MASK {
+                #[allow(clippy::unusual_byte_groupings)] // groups follow the Zimop encoding fields
                 let instr = if funct3 == ZIMOP_FUNCT3 {
                     const MOP_FUNCT7_MASK: u8 = 0b10_11_00_1;
                     const MOP_FUNCT7_TEST: u8 = 0b10_00_00_1;
@@ -757,7 +765,13 @@ pub fn preprocess_bytecode<
                             panic!("Unknown system space opcode 0x{:08x}", opcode);
                         }
                     }
-                } else if funct3 & ZICSR_MASK != 0 {
+                } else if funct3 != 0b001 && funct3 & ZICSR_MASK != 0 {
+                    // not CSRRW (csrrs/csrrc/csrrwi/...): decode as illegal so the
+                    // program only fails if the instruction is actually executed.
+                    // Checked before the CSR match below because the delegation
+                    // branches `continue` early and would otherwise skip it.
+                    illegal_instr
+                } else if funct3 == 0b001 {
                     let csr_number = ITypeOpcode::imm(opcode);
 
                     // read
@@ -842,10 +856,10 @@ pub fn preprocess_bytecode<
                         common_constants::KECCAK_SPECIAL5_CSR_REGISTER => {
                             assert_eq!(formal_rs1, 0);
                             assert_eq!(rd, 0);
-                            use common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600;
+                            use common_constants::KECCAK_SPECIAL5_NUM_DELEGATION_CALLS;
 
                             let mut num_calls = 0;
-                            for j in 1..=NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
+                            for j in 1..=KECCAK_SPECIAL5_NUM_DELEGATION_CALLS {
                                 if bytecode[i + j] == opcode {
                                     continue;
                                 } else {
@@ -853,7 +867,7 @@ pub fn preprocess_bytecode<
                                     break;
                                 }
                             }
-                            assert_eq!(num_calls, NUM_DELEGATION_CALLS_FOR_KECCAK_F1600);
+                            assert_eq!(num_calls, KECCAK_SPECIAL5_NUM_DELEGATION_CALLS);
 
                             let instr = Instruction::from_imm(
                                 InstructionName::ZicsrDelegation,
@@ -873,6 +887,41 @@ pub fn preprocess_bytecode<
                             i += num_calls;
                             // short-cut
                             continue;
+                        }
+                        common_constants::KECCAK_COLUMN_PARITY_CSR_REGISTER => {
+                            // each call keeps its own CSR: a circuit's delegation argument only
+                            // accepts calls of its own type
+                            assert_eq!(formal_rs1, 0);
+                            assert_eq!(rd, 0);
+                            use common_constants::keccak_f1600::*;
+                            for j in 0..NUM_KECCAK_F1600_CALLS {
+                                let csr = keccak_f1600_call_csr(j);
+                                assert_eq!(
+                                    bytecode[i + j],
+                                    (csr << 20) | (0b001 << 12) | OPCODE_SYSTEM as u32,
+                                    "Keccak-f1600 run broken at call {j}, PC = 0x{:08x}",
+                                    (i + j) * 4
+                                );
+                                if j == 0 || !PROTECT_AGAINST_MID_DELEGATION_JUMPS {
+                                    instructions[i + j] = Instruction::from_imm(
+                                        InstructionName::ZicsrDelegation,
+                                        0,
+                                        0,
+                                        0,
+                                        csr,
+                                    );
+                                }
+                            }
+                            i += NUM_KECCAK_F1600_CALLS;
+                            continue;
+                        }
+                        common_constants::KECCAK_THETA_RHO_CSR_REGISTER
+                        | common_constants::KECCAK_CHI5_CSR_REGISTER => {
+                            panic!(
+                                "Keccak-f1600 CSR 0x{:04x} outside a permutation run at PC = 0x{:08x}",
+                                csr_number,
+                                i * 4
+                            );
                         }
                         common_constants::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER => {
                             assert_eq!(formal_rs1, 0);
@@ -933,27 +982,20 @@ pub fn preprocess_bytecode<
                             illegal_instr
                         }
                         _ => {
-                            panic!("Unknown CSR number 0x{:04x}", csr_number);
+                            // Unknown CSR (e.g. `time`/`instret` reads that a C
+                            // toolchain's libraries may contain on never-taken
+                            // paths): decode as illegal so the program only fails
+                            // if the instruction is actually executed.
+                            illegal_instr
                         }
                     };
 
-                    if funct3 != 0b001 {
-                        // not CSRRW
-                        panic!(
-                            "Unknown CSRRW family opcode 0x{:08x} at PC = 0x{:08x}",
-                            opcode,
-                            i * 4
-                        );
-                    }
-
                     instr
                 } else {
-                    panic!(
-                        "Unknown SYSTEM funct3 enc 0x{:08x}, opcode 0x{:08x} at PC = 0x{:08x}",
-                        funct3,
-                        opcode,
-                        i * 4
-                    );
+                    // funct3 == 0: ecall/ebreak/mret/wfi... GCC emits `ebreak`
+                    // for `__builtin_trap` on unreachable paths; decode as
+                    // illegal instead of refusing the whole binary.
+                    illegal_instr
                 };
 
                 instr
@@ -969,4 +1011,218 @@ pub fn preprocess_bytecode<
     }
 
     instructions
+}
+
+#[cfg(test)]
+mod rev8_decode_tests {
+    use super::*;
+    use crate::ir::{
+        FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
+    };
+
+    /// OP-IMM with funct3 = 0b101: `imm12 | rs1 | 101 | rd | 0010011`.
+    fn encode_op_imm_101(imm12: u32, rs1: u32, rd: u32) -> u32 {
+        assert!(imm12 < 1 << 12 && rs1 < 32 && rd < 32);
+        (imm12 << 20) | (rs1 << 15) | (0b101 << 12) | (rd << 7) | 0b0010011
+    }
+
+    /// `mop.r.N rd, rs1`: `1 n4 00 n3 n2 0111 n1 n0 | rs1 | 100 | rd | 1110011`.
+    fn encode_mop_r(n: u32, rs1: u32, rd: u32) -> u32 {
+        assert!(n < 32 && rs1 < 32 && rd < 32);
+        // base funct12 = 0b1_0_00_00_0111_00
+        let funct12 = 0x81C | (n & 0b11) | (((n >> 2) & 0b11) << 6) | ((n >> 4) << 10);
+        (funct12 << 20) | (rs1 << 15) | (0b100 << 12) | (rd << 7) | 0b1110011
+    }
+
+    fn decode_one<OPT: DecodingOptions>(word: u32) -> Instruction {
+        preprocess_bytecode::<OPT, false>(&[word])[0]
+    }
+
+    #[test]
+    fn rev8_is_byte_swap_in_every_config() {
+        let word = encode_op_imm_101(REV8_RV32_FUNCT12, 1, 3);
+        // `rev8 x3, x1` as LLVM assembles it (`.option arch, +zbb`).
+        assert_eq!(word, 0x6980d193);
+        let expected = Instruction::new(InstructionName::Rev8, 1, 0, 3, 0);
+        assert_eq!(decode_one::<FullMachineDecoderConfig>(word), expected);
+        assert_eq!(
+            decode_one::<FullUnsignedMachineDecoderConfig>(word),
+            expected
+        );
+        assert_eq!(decode_one::<ReducedMachineDecoderConfig>(word), expected);
+
+        // rd == x0 collapses to Nop like every pure opcode.
+        let to_x0 = encode_op_imm_101(REV8_RV32_FUNCT12, 1, 0);
+        assert_eq!(
+            decode_one::<ReducedMachineDecoderConfig>(to_x0),
+            Instruction::nop()
+        );
+    }
+
+    #[test]
+    fn rev8_does_not_shadow_immediate_shifts() {
+        // srai / srli by 24 share rev8's opcode, funct3 and shamt; only funct7 differs.
+        let srai = encode_op_imm_101(((SRA_FUNCT7 as u32) << 5) | 24, 1, 3);
+        let srli = encode_op_imm_101(((SRL_FUNCT7 as u32) << 5) | 24, 1, 3);
+        assert_eq!(
+            decode_one::<ReducedMachineDecoderConfig>(srai),
+            Instruction::new(InstructionName::Sra, 1, 0, 3, 24)
+        );
+        assert_eq!(
+            decode_one::<ReducedMachineDecoderConfig>(srli),
+            Instruction::new(InstructionName::Srl, 1, 0, 3, 24)
+        );
+    }
+
+    #[test]
+    fn mop_r_0_keeps_its_rotation_semantics() {
+        let word = encode_mop_r(0, 1, 3);
+        assert_eq!(
+            decode_one::<ReducedMachineDecoderConfig>(word),
+            Instruction::new(InstructionName::ZimopIXorRot, 1, 3, 3, 0)
+        );
+        assert_eq!(
+            decode_one::<FullUnsignedMachineDecoderConfig>(word),
+            Instruction::new(InstructionName::Ror, 1, 0, 3, 0)
+        );
+    }
+}
+
+#[cfg(test)]
+mod op_funct7_decode_tests {
+    use super::*;
+    use crate::ir::{
+        FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
+    };
+
+    /// R-type OP: `funct7 | rs2 | rs1 | funct3 | rd | 0110011`.
+    fn encode_op(funct7: u32, funct3: u32, rs1: u32, rs2: u32, rd: u32) -> u32 {
+        assert!(funct7 < 1 << 7 && funct3 < 1 << 3 && rs1 < 32 && rs2 < 32 && rd < 32);
+        (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | 0b0110011
+    }
+
+    /// Decodes one word; `Err` carries the panic message if the decoder refused it.
+    fn try_decode_one<OPT: DecodingOptions>(word: u32) -> Result<Instruction, String> {
+        std::panic::catch_unwind(|| preprocess_bytecode::<OPT, false>(&[word])[0]).map_err(
+            |payload| {
+                payload
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_default()
+            },
+        )
+    }
+
+    /// Ratified RV32 OP encodings (Zba, Zbb, Zbc, Zbkb, Zbkc, Zbkx, Zicond) that share funct3
+    /// with SLT/SLTU/XOR/OR/AND: `(insn, funct7, funct3, rs2, word)`. Words are
+    /// `<insn> x3, x1, x2` (`zext.h x3, x1`) as LLVM assembles them.
+    const UNSUPPORTED_OP_ENCODINGS: [(&str, u32, u32, u32, u32); 17] = [
+        ("sh1add", 0b0010000, 0b010, 2, 0x2020a1b3),
+        ("sh2add", 0b0010000, 0b100, 2, 0x2020c1b3),
+        ("sh3add", 0b0010000, 0b110, 2, 0x2020e1b3),
+        ("andn", 0b0100000, 0b111, 2, 0x4020f1b3),
+        ("orn", 0b0100000, 0b110, 2, 0x4020e1b3),
+        ("xnor", 0b0100000, 0b100, 2, 0x4020c1b3),
+        ("min", 0b0000101, 0b100, 2, 0x0a20c1b3),
+        ("max", 0b0000101, 0b110, 2, 0x0a20e1b3),
+        ("maxu", 0b0000101, 0b111, 2, 0x0a20f1b3),
+        ("zext.h", 0b0000100, 0b100, 0, 0x0800c1b3),
+        ("pack", 0b0000100, 0b100, 2, 0x0820c1b3),
+        ("packh", 0b0000100, 0b111, 2, 0x0820f1b3),
+        ("clmulr", 0b0000101, 0b010, 2, 0x0a20a1b3),
+        ("clmulh", 0b0000101, 0b011, 2, 0x0a20b1b3),
+        ("xperm4", 0b0010100, 0b010, 2, 0x2820a1b3),
+        ("xperm8", 0b0010100, 0b100, 2, 0x2820c1b3),
+        ("czero.nez", 0b0000111, 0b111, 2, 0x0e20f1b3),
+    ];
+
+    fn assert_bitmanip_encodings_rejected<OPT: DecodingOptions>() {
+        for (name, funct7, funct3, rs2, word) in UNSUPPORTED_OP_ENCODINGS {
+            assert_eq!(encode_op(funct7, funct3, 1, rs2, 3), word, "{name}");
+            // rd == x0 must be refused too, not collapsed to Nop.
+            for word in [word, word & !(0x1f << 7)] {
+                let result = try_decode_one::<OPT>(word);
+                assert!(
+                    result
+                        .as_ref()
+                        .is_err_and(|msg| msg.contains("Unknown REG-REG I-ext opcode")),
+                    "{name} (0x{word:08x}) must be rejected, got {result:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn bitmanip_op_encodings_are_rejected_in_every_config() {
+        assert_bitmanip_encodings_rejected::<FullMachineDecoderConfig>();
+        assert_bitmanip_encodings_rejected::<FullUnsignedMachineDecoderConfig>();
+        assert_bitmanip_encodings_rejected::<ReducedMachineDecoderConfig>();
+    }
+
+    /// Every (funct7, funct3) pair of the OP opcode: RV32I and M decode as before, anything
+    /// else is refused with the decoder's rejection message for that pair.
+    fn assert_op_funct7_allowlist<OPT: DecodingOptions>() {
+        use InstructionName as N;
+        const M_EXT: [(InstructionName, bool); 8] = [
+            (N::Mul, false),
+            (N::Mulh, true),
+            (N::Mulhsu, true),
+            (N::Mulhu, false),
+            (N::Div, true),
+            (N::Divu, false),
+            (N::Rem, true),
+            (N::Remu, false),
+        ];
+        for funct7 in 0..1 << 7 {
+            for funct3 in 0..1 << 3 {
+                let word = encode_op(funct7, funct3, 1, 2, 3);
+                let expected = match (funct7, funct3) {
+                    (0, 0) => Ok(N::Add),
+                    (0b0100000, 0) => Ok(N::Sub),
+                    (0, 1) => Ok(N::Sll),
+                    (0, 2) => Ok(N::Slt),
+                    (0, 3) => Ok(N::Sltu),
+                    (0, 4) => Ok(N::Xor),
+                    (0, 5) => Ok(N::Srl),
+                    (0b0100000, 5) => Ok(N::Sra),
+                    (0, 6) => Ok(N::Or),
+                    (0, 7) => Ok(N::And),
+                    (0b0000001, _) => {
+                        let (name, signed) = M_EXT[funct3 as usize];
+                        let supported =
+                            OPT::SUPPORT_MUL_DIV && (!signed || OPT::SUPPORT_SIGNED_MUL_DIV);
+                        Ok(if supported { name } else { N::Illegal })
+                    }
+                    (0b0110000, 1) => Err("ROL is not supported"),
+                    (0b0110000, 5) => Err("ROR is not supported"),
+                    _ => Err("Unknown REG-REG I-ext opcode"),
+                };
+                let result = try_decode_one::<OPT>(word);
+                match expected {
+                    Ok(N::Illegal) => assert_eq!(
+                        result,
+                        Ok(Instruction::new(N::Illegal, 0, 0, 0, 0)),
+                        "0x{word:08x}"
+                    ),
+                    Ok(name) => assert_eq!(
+                        result,
+                        Ok(Instruction::new(name, 1, 2, 3, 0)),
+                        "0x{word:08x}"
+                    ),
+                    Err(message) => assert!(
+                        result.as_ref().is_err_and(|msg| msg.contains(message)),
+                        "funct7 = 0b{funct7:07b}, funct3 = 0b{funct3:03b} (0x{word:08x}) must be rejected with {message:?}, got {result:?}"
+                    ),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn op_funct7_allowlist_is_exact_in_every_config() {
+        assert_op_funct7_allowlist::<FullMachineDecoderConfig>();
+        assert_op_funct7_allowlist::<FullUnsignedMachineDecoderConfig>();
+        assert_op_funct7_allowlist::<ReducedMachineDecoderConfig>();
+    }
 }

@@ -3,26 +3,27 @@ use crate::constraint::Constraint;
 use crate::constraint::Term;
 use crate::cs::circuit::LookupQueryTableType;
 use crate::cs::circuit::RangeCheckQuery;
-use crate::cs::circuit_trait::MemoryAccess;
 use crate::definitions::LookupInput;
 use crate::definitions::Variable;
 use crate::definitions::LARGE_RANGE_CHECK_TABLE_WIDTH;
 use crate::definitions::SMALL_RANGE_CHECK_TABLE_WIDTH;
 use crate::tables::TableType;
 
-pub(crate) fn compile_timestamp_comparison_range_checks<F: PrimeField>(
+pub(crate) fn compile_timestamp_comparison_range_checks<'a, F: PrimeField>(
     dst: &mut Vec<LookupInput<F>>,
-    shuffle_ram_augmented_sets: &[(MemoryAccess, ShuffleRamTimestampComparisonPartialData)],
+    per_access_comparisons: impl IntoIterator<
+        Item = (Variable, &'a ShuffleRamTimestampComparisonPartialData),
+    >,
     write_timestamp_base: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
 ) {
     // timestamps deserve separate range checks for shuffle RAM in the main circuit,
     // as those also take contribution from circuit index in the sequence
 
-    for (_query, aux) in shuffle_ram_augmented_sets.iter() {
+    for (intermediate_borrow, aux) in per_access_comparisons {
         let ShuffleRamTimestampComparisonPartialData {
-            intermediate_borrow,
             read_timestamp,
             local_timestamp_in_cycle,
+            ..
         } = aux;
 
         // read - write is with borrow. Note that we have write_timestamp_base + local timestamp offset as range checked,
@@ -34,11 +35,11 @@ pub(crate) fn compile_timestamp_comparison_range_checks<F: PrimeField>(
         {
             let mut constraint = Constraint::<F>::from(Term::from((
                 F::from_u32_unchecked(1 << TIMESTAMP_COLUMNS_NUM_BITS),
-                *intermediate_borrow,
+                intermediate_borrow,
             )));
-            constraint = constraint + Term::from(read_timestamp[0]);
-            constraint = constraint - Term::from(write_timestamp_base[0]);
-            constraint = constraint - Term::from(*local_timestamp_in_cycle as u32);
+            constraint += Term::from(read_timestamp[0]);
+            constraint -= Term::from(write_timestamp_base[0]);
+            constraint -= Term::from(*local_timestamp_in_cycle as u32);
 
             let input = LookupInput::from(constraint);
             dst.push(input);
@@ -46,11 +47,10 @@ pub(crate) fn compile_timestamp_comparison_range_checks<F: PrimeField>(
         // and almost the same for high part
         {
             let mut constraint =
-                Constraint::<F>::from(Term::from((F::MINUS_ONE, *intermediate_borrow)));
-            constraint = constraint + Term::from(read_timestamp[1]);
-            constraint = constraint
-                + Term::from_field(F::from_u32_unchecked(1 << TIMESTAMP_COLUMNS_NUM_BITS));
-            constraint = constraint - Term::from(write_timestamp_base[1]);
+                Constraint::<F>::from(Term::from((F::MINUS_ONE, intermediate_borrow)));
+            constraint += Term::from(read_timestamp[1]);
+            constraint += Term::from_field(F::from_u32_unchecked(1 << TIMESTAMP_COLUMNS_NUM_BITS));
+            constraint -= Term::from(write_timestamp_base[1]);
 
             // if we borrowed - then we will fit into TIMESTAMP_COLUMNS_NUM_BITS
 

@@ -6,9 +6,6 @@ use crate::ir::{
     FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
 use crate::{jit::minimal_tracer::PreallocatedSnapshots, vm::test::*};
-// Used only by `test_replayer_over_jit` (gated to the `xmm_ts` mechanism).
-#[cfg(feature = "xmm_ts")]
-use crate::{jit::minimal_tracer::ChunkPostSnapshot, replayer::ReplayerVM};
 use field::Mersenne31Field;
 use std::{alloc::Global, io::Read, path::Path};
 
@@ -22,8 +19,65 @@ fn assemble_single_instruction(instruction: &str) -> u32 {
         .expect("single-instruction assembly should emit one opcode")
 }
 
+#[test]
+#[serial_test::serial]
+fn test_jit_preserves_counters_across_nondeterminism_callbacks() {
+    struct ClobberingSource;
+
+    impl NonDeterminismCSRSource for ClobberingSource {
+        fn read(&mut self) -> u32 {
+            // SysV permits callbacks to overwrite all these registers.
+            unsafe {
+                core::arch::asm!(
+                    "pcmpeqd xmm8, xmm8",
+                    "psrlq xmm8, 63",
+                    "movdqa xmm9, xmm8",
+                    "movdqa xmm10, xmm8",
+                    "movdqa xmm11, xmm8",
+                    "movdqa xmm12, xmm8",
+                    out("xmm8") _, out("xmm9") _, out("xmm10") _,
+                    out("xmm11") _, out("xmm12") _,
+                    options(nostack, nomem),
+                );
+            }
+            0
+        }
+
+        fn write_with_memory_access<R: crate::vm::RamPeek + ?Sized>(&mut self, _: &R, _: u32) {
+            self.read();
+        }
+
+        fn write_with_memory_access_raw(&mut self, ram: &[u32], value: u32) {
+            self.write_with_memory_access(ram, value);
+        }
+
+        fn write_with_memory_access_dyn(&mut self, ram: &dyn crate::vm::RamPeek, value: u32) {
+            self.write_with_memory_access(ram, value);
+        }
+    }
+
+    for callback in ["csrrw x5, 0x7c0, x0", "csrrw x0, 0x7c0, x1"] {
+        let program = ["addi x1, x0, 7", callback, "jal x0, 0"].map(assemble_single_instruction);
+        let (expected, _) = JittedCode::<_>::run_alternative_simulator(
+            &program,
+            &mut (),
+            &[],
+            None,
+            JitRunnerRam::Tiny,
+        );
+        let (actual, _) = JittedCode::<_>::run_alternative_simulator(
+            &program,
+            &mut ClobberingSource,
+            &[],
+            None,
+            JitRunnerRam::Tiny,
+        );
+        assert_eq!(actual.counters, expected.counters, "{callback}");
+    }
+}
+
 fn run_jit_program(program: &[u32]) {
-    JittedCode::<_>::run_alternative_simulator(program, &mut (), &[], None);
+    JittedCode::<_>::run_alternative_simulator(program, &mut (), &[], None, JitRunnerRam::Medium);
 }
 
 /// Assert that an unsupported instruction aborts the process (with `expected`
@@ -32,9 +86,7 @@ fn run_jit_program(program: &[u32]) {
 /// We can not use `#[should_panic]` or `catch_unwind` here because the JIT-runtime
 /// panic is raised from an `extern "sysv64"` callback reached from JIT-generated
 /// code. Rust treats that path as non-unwinding, so the process aborts instead of
-/// producing a catchable unwind. Some instructions are instead rejected earlier,
-/// while decoding the bytecode into the intermediate `Instruction` representation;
-/// those abort with a decode-time panic message rather than the JIT-runtime one.
+/// producing a catchable unwind.
 fn assert_jit_aborts(test_name: &str, fixture_env_var: &str, instruction: &str, expected: &str) {
     let output = std::process::Command::new(
         std::env::current_exe().expect("test binary path should be available"),
@@ -71,10 +123,9 @@ fn test_jit_unsupported_instructions_trap_at_runtime() {
         "div x0, x1, x2",
         "rem x0, x1, x2",
         "fence",
+        "ecall",
+        "ebreak",
     ];
-    // Environment calls have no JIT/VM lowering at all and are rejected while the
-    // bytecode is decoded into the intermediate representation.
-    let decode_rejected = ["ecall", "ebreak"];
 
     if let Ok(instruction) = std::env::var(fixture_env_var) {
         run_jit_program(&[assemble_single_instruction(&instruction)]);
@@ -86,14 +137,6 @@ fn test_jit_unsupported_instructions_trap_at_runtime() {
                 fixture_env_var,
                 instruction,
                 "Runtime explicitly panicked",
-            );
-        }
-        for instruction in decode_rejected {
-            assert_jit_aborts(
-                test_name,
-                fixture_env_var,
-                instruction,
-                "Unknown system funct3",
             );
         }
     }
@@ -111,10 +154,10 @@ fn test_jit_simple_fibonacci() {
     // let (_, binary) = read_binary(&Path::new("examples/fibonacci/app.bin"));
     // let (_, text) = read_binary(&Path::new("examples/fibonacci/app.text"));
 
-    let (_, binary) = read_binary(&Path::new("examples/keccak_f1600/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/keccak_f1600/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/keccak_f1600/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/keccak_f1600/app.text"));
 
-    JittedCode::<_>::run_alternative_simulator(&text, &mut (), &binary, None);
+    JittedCode::<_>::run_alternative_simulator(&text, &mut (), &binary, None, JitRunnerRam::Medium);
 }
 
 #[test]
@@ -123,10 +166,10 @@ fn test_jit_recursive_verifier() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
-    let (_, binary) = read_binary(&Path::new(
+    let (_, binary) = read_binary(Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.bin",
     ));
-    let (_, text) = read_binary(&Path::new(
+    let (_, text) = read_binary(Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.text",
     ));
 
@@ -141,7 +184,13 @@ fn test_jit_recursive_verifier() {
         .collect();
     let mut source = QuasiUARTSource::new_with_reads(responses);
 
-    JittedCode::<_>::run_alternative_simulator(&text, &mut source, &binary, None);
+    JittedCode::<_>::run_alternative_simulator(
+        &text,
+        &mut source,
+        &binary,
+        None,
+        JitRunnerRam::Medium,
+    );
 }
 
 #[test]
@@ -150,10 +199,10 @@ fn test_ensure_proof_correctness() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
-    let (_, binary) = read_binary(&Path::new(
+    let (_, binary) = read_binary(Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.bin",
     ));
-    let (_, text) = read_binary(&Path::new(
+    let (_, text) = read_binary(Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.text",
     ));
 
@@ -227,7 +276,7 @@ fn test_few_instr() {
     }
     text.push(0x0000006f);
 
-    JittedCode::<_>::run_alternative_simulator(&text, &mut (), &[], None);
+    JittedCode::<_>::run_alternative_simulator(&text, &mut (), &[], None, JitRunnerRam::Medium);
 }
 
 /// `ZimopIXorRot` (MOP-I xor-rotate) computes `rd = (rd_old ^ rs1).rotate_right(imm)` — the
@@ -274,12 +323,65 @@ fn test_jit_zimop_ixor_rot() {
         };
         let expected = (v2 ^ rs1_value).rotate_right(rot);
 
-        let (state, _mem) =
-            JittedCode::<_>::run_alternative_simulator_from_instructions(&prog, &mut (), &[], None);
+        let (state, _mem) = JittedCode::<_>::run_alternative_simulator_from_instructions(
+            &prog,
+            &mut (),
+            &[],
+            None,
+            JitRunnerRam::Medium,
+        );
         let got = state.materialized_registers()[rd as usize];
         assert_eq!(
             got, expected,
             "ZimopIXorRot mismatch: rs1=x{rs1} rd=x{rd} v1={v1:#010x} v2={v2:#010x} rot={rot} -> got {got:#010x}, expected {expected:#010x}"
+        );
+    }
+}
+
+/// `Rev8` (Zbb byte swap) computes `rd = rs1.swap_bytes()` — the formula of the
+/// reference `binary_shifts_family::shifts::rev8`. Covers GPR-mapped vs
+/// XMM-resident rd/rs1, rs1 == rd, and rs1 == x0.
+#[test]
+#[serial_test::serial]
+fn test_jit_rev8() {
+    use InstructionName::{Add, Jal, Rev8};
+
+    // (rs1, rd, v1). GPR-mapped regs are {10,11,12,13,14,15,16,28}; the rest are XMM-resident.
+    let cases: &[(u8, u8, u32)] = &[
+        (10, 11, 0xDDCC_BBAA), // both GPR-mapped
+        (5, 11, 0x0102_0304),  // rs1 XMM-resident, rd GPR-mapped
+        (11, 6, 0x8000_0001),  // rs1 GPR-mapped, rd XMM-resident
+        (7, 9, 0xCAFE_BABE),   // both XMM-resident
+        (12, 12, 0x00AA_0000), // rs1 == rd
+        (0, 13, 0),            // rs1 == x0
+    ];
+
+    for &(rs1, rd, v1) in cases {
+        let mut prog: Vec<Instruction> = Vec::new();
+        if rs1 != 0 {
+            prog.push(Instruction::new(Add, 0, 0, rs1, v1)); // rs1 = v1
+        }
+        if rd != rs1 {
+            prog.push(Instruction::new(Add, 0, 0, rd, 0x5555_5555)); // rd's old value
+        }
+        // Formal rs2 = x0 and imm = 0, mirroring the decoder.
+        prog.push(Instruction::new(Rev8, rs1, 0, rd, 0));
+        prog.push(Instruction::new(Jal, 0, 0, 0, 0)); // jal x0, 0 = self-loop = exit
+
+        let rs1_value = if rs1 == 0 { 0 } else { v1 };
+        let expected = rs1_value.swap_bytes();
+
+        let (state, _mem) = JittedCode::<_>::run_alternative_simulator_from_instructions(
+            &prog,
+            &mut (),
+            &[],
+            None,
+            JitRunnerRam::Medium,
+        );
+        let got = state.materialized_registers()[rd as usize];
+        assert_eq!(
+            got, expected,
+            "Rev8 mismatch: rs1=x{rs1} rd=x{rd} v1={v1:#010x} -> got {got:#010x}, expected {expected:#010x}"
         );
     }
 }
@@ -310,7 +412,7 @@ fn test_jit_zimop_tri_add() {
         // Set up rs1, rs2 and rd's old value. The LAST write to a given reg wins, so write rd
         // last to guarantee its OLD value is exactly v_rd.
         let mut prog: Vec<Instruction> = Vec::new();
-        let mut set = |prog: &mut Vec<Instruction>, reg: u8, val: u32| {
+        let set = |prog: &mut Vec<Instruction>, reg: u8, val: u32| {
             if reg != 0 {
                 prog.push(Instruction::new(Add, 0, 0, reg, val));
             }
@@ -338,8 +440,13 @@ fn test_jit_zimop_tri_add() {
         };
         let expected = val_of(rs1).wrapping_add(val_of(rs2)).wrapping_add(v_rd);
 
-        let (state, _mem) =
-            JittedCode::<_>::run_alternative_simulator_from_instructions(&prog, &mut (), &[], None);
+        let (state, _mem) = JittedCode::<_>::run_alternative_simulator_from_instructions(
+            &prog,
+            &mut (),
+            &[],
+            None,
+            JitRunnerRam::Medium,
+        );
         let got = state.materialized_registers()[rd as usize];
         assert_eq!(
             got, expected,
@@ -360,10 +467,9 @@ fn test_jit_zimop_field_ops() {
     use InstructionName::{Add, Jal, ZimopAdd, ZimopFMA, ZimopMul, ZimopSub};
 
     fn field_expected<F: field::PrimeField>(op: InstructionName, a: u32, b: u32, c: u32) -> u32 {
-        use field::Field;
         let fa = F::from_raw_repr_with_reduction(a);
         let fb = F::from_raw_repr_with_reduction(b);
-        let mut res = match op {
+        let res = match op {
             ZimopAdd => {
                 let mut x = fa;
                 x.add_assign(&fb);
@@ -401,13 +507,20 @@ fn test_jit_zimop_field_ops() {
     ];
     let ops = [ZimopAdd, ZimopSub, ZimopMul, ZimopFMA];
 
-    for field_env in ["m31", "babybear"] {
+    for field_env in ["m31", "babybear", "babybear_assume_canonical"] {
         std::env::set_var("RISCV_MOP_FIELD", field_env);
         for &op in &ops {
             for &(rs1, rs2, rd) in placements {
                 for &(v1, v2, v_rd) in values {
+                    // this mode is only defined over canonical inputs
+                    let (v1, v2, v_rd) = if field_env == "babybear_assume_canonical" {
+                        const P: u32 = 0x7800_0001;
+                        (v1 % P, v2 % P, v_rd % P)
+                    } else {
+                        (v1, v2, v_rd)
+                    };
                     let mut prog: Vec<Instruction> = Vec::new();
-                    let mut set = |p: &mut Vec<Instruction>, reg: u8, val: u32| {
+                    let set = |p: &mut Vec<Instruction>, reg: u8, val: u32| {
                         if reg != 0 {
                             p.push(Instruction::new(Add, 0, 0, reg, val));
                         }
@@ -433,7 +546,29 @@ fn test_jit_zimop_field_ops() {
                             &mut (),
                             &[],
                             None,
+                            JitRunnerRam::Medium,
                         );
+                    if field_env == "babybear_assume_canonical" {
+                        // Even when the value computation degenerates (e.g. addition of x0 is
+                        // just a move), all the bookkeeping must be the same as with the
+                        // reducing implementation: register timestamps, machine timestamp,
+                        // PC and family counters
+                        std::env::set_var("RISCV_MOP_FIELD", "babybear");
+                        let (reference_state, _mem) =
+                            JittedCode::<_>::run_alternative_simulator_from_instructions(
+                                &prog,
+                                &mut (),
+                                &[],
+                                None,
+                                JitRunnerRam::Medium,
+                            );
+                        std::env::set_var("RISCV_MOP_FIELD", field_env);
+                        assert_eq!(
+                            state.as_replayer_state(),
+                            reference_state.as_replayer_state(),
+                            "{op:?}: rs1=x{rs1} rs2=x{rs2} rd=x{rd} machine state diverged"
+                        );
+                    }
                     let got = state.materialized_registers()[rd as usize];
                     assert_eq!(
                         got, expected,
@@ -452,10 +587,10 @@ fn test_jit_full_block() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<_> = witness
         .as_chunks::<4>()
@@ -464,7 +599,13 @@ fn test_jit_full_block() {
         .map(|el| u32::from_be_bytes(*el))
         .collect();
     let mut source = QuasiUARTSource::new_with_reads(witness);
-    let (state, _) = JittedCode::<_>::run_alternative_simulator(&text, &mut source, &binary, None);
+    let (state, _) = JittedCode::<_>::run_alternative_simulator(
+        &text,
+        &mut source,
+        &binary,
+        None,
+        JitRunnerRam::Full,
+    );
     println!("PC = 0x{:08x}", state.pc);
     dbg!(state.materialized_registers());
 }
@@ -475,10 +616,10 @@ fn test_jit_full_block_with_flattened_responder() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<_> = witness
         .as_chunks::<4>()
@@ -486,69 +627,24 @@ fn test_jit_full_block_with_flattened_responder() {
         .iter()
         .map(|el| u32::from_be_bytes(*el))
         .collect();
-    let (state, _) = JittedCode::run_with_flattened_context(&text, &witness[..], &binary, None);
+    let (state, _) = JittedCode::run_with_flattened_context(
+        &text,
+        &witness[..],
+        &binary,
+        None,
+        JitRunnerRam::Medium,
+    );
     println!("PC = 0x{:08x}", state.pc);
     dbg!(state.materialized_registers());
 }
 
-fn dump_replayer_state(s: &State<DelegationsAndFamiliesCounters>) -> String {
-    let mut out = String::new();
-    for (i, r) in s.registers.iter().enumerate() {
-        out.push_str(&format!("x{:02} value={} ts={}\n", i, r.value, r.timestamp));
-    }
-    out.push_str(&format!("pc={} timestamp={}\n", s.pc, s.timestamp));
-    let c = &s.counters;
-    out.push_str(&format!(
-        "counters add_sub={} slt_branch={} shift={} mul_div={} mem_word={} mem_subword={} blake={} bigint={} keccak={} blake_g={}\n",
-        c.add_sub_family, c.slt_branch_family, c.binary_shift_family, c.mul_div_family,
-        c.word_size_mem_family, c.subword_size_mem_family, c.blake_calls, c.bigint_calls,
-        c.keccak_calls, c.blake_g_function_calls,
-    ));
-    out
-}
-
-/// Exhaustive packed_ts verification against the authoritative non-assembly reference VM.
-/// Runs the JIT to completion, reconstructs the final state via `as_replayer_state` (which
-/// under `packed_ts` scans the (32x33x33) buffer and merges the delegation post-cycle
-/// effects from `register_timestamps`), then runs the reference VM to the same final
-/// timestamp and asserts equality of EVERY register value + timestamp and EVERY memory
-/// word value + timestamp. Meaningful under `--features "jit packed_ts"`; also passes
-/// without it (then `as_replayer_state` reads the field directly).
-///   cargo test --features "jit packed_ts" --release --lib packed_ts_vs_reference -- --exact jit::tests::packed_ts_vs_reference --nocapture
-#[test]
-#[serial_test::serial]
-fn packed_ts_vs_reference() {
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
-    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
-    let witness: Vec<u32> = witness
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_be_bytes(*el))
-        .collect();
-
-    let source = QuasiUARTSource::new_with_reads(witness);
-    // Bound comfortably above the full block (~558M cycles); execution halts on its own.
-    let num_steps: u32 = 762314752;
-
-    let (jit_state, jit_memory, _chunk) = JittedCode::run_alternative_simulator_with_last_snapshot(
-        &text,
-        &mut source.clone(),
-        &binary,
-        Some(num_steps),
-    );
+fn assert_jit_matches_reference(
+    jit_state: &MachineState,
+    jit_memory: &MemoryHolder,
+    reference_state: &State<DelegationsAndFamiliesCounters>,
+    reference_ram: &RamWithRomRegion<{ common_constants::rom::ROM_SECOND_WORD_BITS }>,
+) {
     let reconstructed = jit_state.as_replayer_state();
-
-    let (reference_state, reference_ram, _snap) = run_reference_for_num_cycles_with_snapshots(
-        &binary,
-        &text,
-        source.clone(),
-        jit_state.timestamp,
-        false,
-    );
-
     let mut diffs = 0usize;
     if reconstructed.pc != reference_state.pc {
         println!(
@@ -578,12 +674,12 @@ fn packed_ts_vs_reference() {
             diffs += 1;
         }
     }
-    assert_eq!(reference_ram.backing.len(), jit_memory.memory.len());
+    assert_eq!(reference_ram.backing.len(), jit_memory.memory().len());
     for (word_idx, ((reference_value, jit_value), jit_ts)) in reference_ram
         .backing
         .iter()
-        .zip(jit_memory.memory.iter())
-        .zip(jit_memory.timestamps.iter())
+        .zip(jit_memory.memory().iter())
+        .zip(jit_memory.timestamps().iter())
         .enumerate()
     {
         if reference_value.value != *jit_value {
@@ -609,30 +705,15 @@ fn packed_ts_vs_reference() {
         diffs, 0,
         "reconstructed state diverged from the reference VM"
     );
-    println!(
-        "packed_ts_vs_reference: reconstructed state MATCHES reference (32 regs + {} mem words) at cycle ts={}",
-        jit_memory.memory.len(),
-        jit_state.timestamp
-    );
 }
 
-/// packed_ts verification. Runs the full block and computes the final replayer State
-/// (`as_replayer_state`, which under `packed_ts` reconstructs register timestamps by
-/// scanning the (32x33x33) buffer; otherwise reads `register_timestamps`).
-///
-///   * built WITHOUT `packed_ts`: writes the eager State to a temp file (the baseline).
-///   * built WITH    `packed_ts`: reads that baseline and compares; prints the first
-///     differing lines and panics on mismatch.
-///
-/// Procedure:
-///   cargo test --features jit            --release --lib packed_ts_state_roundtrip -- --exact jit::tests::packed_ts_state_roundtrip --nocapture
-///   cargo test --features "jit packed_ts" --release --lib packed_ts_state_roundtrip -- --exact jit::tests::packed_ts_state_roundtrip --nocapture
+// Compare reconstructed register and memory timestamps against the reference VM.
 #[test]
 #[serial_test::serial]
-fn packed_ts_state_roundtrip() {
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+fn packed_ts_vs_reference() {
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<u32> = witness
         .as_chunks::<4>()
@@ -641,50 +722,32 @@ fn packed_ts_state_roundtrip() {
         .map(|el| u32::from_be_bytes(*el))
         .collect();
 
-    let (state, _) = JittedCode::run_with_flattened_context(&text, &witness[..], &binary, None);
-    let replayer = state.as_replayer_state();
-    let dump = dump_replayer_state(&replayer);
+    let source = QuasiUARTSource::new_with_reads(witness);
+    // Bound comfortably above the full block (~558M cycles); execution halts on its own.
+    let num_steps: u32 = 762314752;
 
-    let path = std::env::temp_dir().join("packed_ts_state_baseline.txt");
+    let (jit_state, jit_memory, _chunk) = JittedCode::run_alternative_simulator_with_last_snapshot(
+        &text,
+        &mut source.clone(),
+        &binary,
+        Some(num_steps),
+        JitRunnerRam::Medium,
+    );
+    let (reference_state, reference_ram, _snap) = run_reference_for_num_cycles_with_snapshots(
+        &binary,
+        &text,
+        source.clone(),
+        jit_state.timestamp,
+        false,
+        JitRunnerRam::Medium.ram_size(),
+    );
 
-    #[cfg(feature = "xmm_ts")]
-    {
-        std::fs::write(&path, dump.as_bytes()).expect("write baseline");
-        println!(
-            "[baseline] wrote eager replayer State to {} ({} bytes)",
-            path.display(),
-            dump.len()
-        );
-    }
-    #[cfg(not(feature = "xmm_ts"))]
-    {
-        let baseline = std::fs::read_to_string(&path).expect(
-            "baseline missing — run this test WITHOUT the packed_ts feature first to write it",
-        );
-        if baseline == dump {
-            println!("[packed_ts] reconstructed State MATCHES the eager baseline");
-        } else {
-            let mut diffs = 0;
-            for (i, (a, b)) in baseline.lines().zip(dump.lines()).enumerate() {
-                if a != b {
-                    println!("DIFF line {}:\n  eager : {}\n  packed: {}", i, a, b);
-                    diffs += 1;
-                    if diffs >= 40 {
-                        println!("... (more diffs)");
-                        break;
-                    }
-                }
-            }
-            if baseline.lines().count() != dump.lines().count() {
-                println!(
-                    "line count differs: eager={} packed={}",
-                    baseline.lines().count(),
-                    dump.lines().count()
-                );
-            }
-            panic!("packed_ts reconstructed State diverged from eager baseline");
-        }
-    }
+    assert_jit_matches_reference(&jit_state, &jit_memory, &reference_state, &reference_ram);
+    println!(
+        "packed_ts_vs_reference: reconstructed state MATCHES reference (32 regs + {} mem words) at cycle ts={}",
+        jit_memory.memory().len(),
+        jit_state.timestamp
+    );
 }
 
 /// Execution-weighted opportunity for op-fusion on the full block. Runs the
@@ -696,9 +759,9 @@ fn packed_ts_state_roundtrip() {
 #[ignore = "runs full reference VM; explicit --ignored --nocapture"]
 #[serial_test::serial]
 fn test_fusion_opportunity() {
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<u32> = witness
         .as_chunks::<4>()
@@ -993,7 +1056,7 @@ fn test_fusion_opportunity() {
         if w > 0 {
             for &r in &t {
                 total_xmm += w;
-                if hist.last().map_or(false, |h| h.contains(&r)) {
+                if hist.last().is_some_and(|h| h.contains(&r)) {
                     reuse_w2 += w;
                 }
                 if hist.iter().rev().take(3).any(|h| h.contains(&r)) {
@@ -1058,9 +1121,9 @@ fn test_abi_jalr_coverage() {
     use crate::control_flow_artifact::build_control_flow_artifact;
     use std::collections::BTreeSet;
 
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<u32> = witness
         .as_chunks::<4>()
@@ -1099,7 +1162,7 @@ fn test_abi_jalr_coverage() {
     let mut covered = 0usize;
     let mut uncovered_transfers = 0u64;
     let mut total_transfers = 0u64;
-    for (_site, tc) in &artifact.jalr_dynamic_targets {
+    for tc in artifact.jalr_dynamic_targets.values() {
         for (t, count) in tc {
             total_targets += 1;
             total_transfers += *count;
@@ -1127,11 +1190,11 @@ fn test_abi_jalr_coverage() {
 fn test_bytecode_analysis_full_block() {
     use crate::analysis::{analyze_dynamic_execution, analyze_static_bytecode};
 
-    let (binary_raw, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
+    let (binary_raw, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
     let _ = binary_raw;
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<u32> = witness
         .as_chunks::<4>()
@@ -1164,10 +1227,10 @@ fn test_bytecode_analysis_full_block() {
 fn test_build_cfg_artifact_full_block() {
     use crate::control_flow_artifact::{build_control_flow_artifact, ControlFlowArtifact};
 
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<u32> = witness
         .as_chunks::<4>()
@@ -1198,6 +1261,7 @@ fn test_build_cfg_artifact_full_block() {
     println!("round-trip OK");
 }
 
+#[allow(dead_code)]
 fn run_reference_for_num_cycles(
     binary: &[u32],
     text: &[u32],
@@ -1212,7 +1276,7 @@ fn run_reference_for_num_cycles(
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
-            &binary,
+            binary,
             1 << 30,
         );
 
@@ -1236,6 +1300,7 @@ fn run_reference_for_num_cycles_with_snapshots(
     mut source: impl NonDeterminismCSRSource,
     timestamp_bound: TimestampScalar,
     reduced_isa: bool,
+    ram_bound: usize,
 ) -> (
     State<DelegationsAndFamiliesCounters>,
     RamWithRomRegion<{ common_constants::rom::ROM_SECOND_WORD_BITS }>,
@@ -1252,8 +1317,7 @@ fn run_reference_for_num_cycles_with_snapshots(
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
-            &binary,
-            1 << 30,
+            binary, ram_bound,
         );
 
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
@@ -1275,10 +1339,10 @@ fn run_reference_for_num_cycles_with_snapshots(
 #[test]
 #[serial_test::serial]
 fn test_reference_block_exec() {
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<_> = witness
         .as_chunks::<4>()
@@ -1311,7 +1375,7 @@ fn test_reference_block_exec() {
         cycles_bound,
         &mut source,
     );
-    let elapsed = now.elapsed();
+    let _elapsed = now.elapsed();
 
     println!("PC = 0x{:08x}", state.pc);
     dbg!(state.registers.map(|el| el.value));
@@ -1333,10 +1397,10 @@ fn test_reference_block_exec() {
 fn measure_register_timestamp_deltas() {
     use common_constants::TIMESTAMP_STEP;
 
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<_> = witness
         .as_chunks::<4>()
@@ -1483,10 +1547,11 @@ fn measure_register_timestamp_deltas() {
 #[test]
 #[serial_test::serial]
 fn run_and_compare() {
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
+    let ram_config = JitRunnerRam::Full;
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<_> = witness
         .as_chunks::<4>()
@@ -1494,10 +1559,10 @@ fn run_and_compare() {
         .iter()
         .map(|el| u32::from_be_bytes(*el))
         .collect();
-    let mut source = QuasiUARTSource::new_with_reads(witness);
+    let source = QuasiUARTSource::new_with_reads(witness);
 
-    let step = 1 << 19;
-    let initial_step = 762314752;
+    let step = 1 << 22;
+    let initial_step = step;
     let upper_bound = (1 << 30) - 8;
 
     let mut previous_cycles_taken = 0;
@@ -1517,6 +1582,7 @@ fn run_and_compare() {
                 &mut source.clone(),
                 &binary,
                 Some(num_steps),
+                ram_config,
             );
 
         let cycles_taken = (jit_state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
@@ -1535,6 +1601,7 @@ fn run_and_compare() {
                 source.clone(),
                 jit_state.timestamp,
                 false,
+                ram_config.ram_size(),
             );
 
         assert_eq!(
@@ -1614,30 +1681,36 @@ fn run_and_compare() {
             }
         }
 
-        assert_eq!(reference_ram.backing.len(), jit_memory.memory.len());
+        assert_eq!(reference_ram.backing.len(), jit_memory.memory().len());
         for (word_idx, ((reference_value, jit_value), jit_ts)) in reference_ram
             .backing
             .iter()
-            .zip(jit_memory.memory.iter())
-            .zip(jit_memory.timestamps.iter())
+            .zip(jit_memory.memory().iter())
+            .zip(jit_memory.timestamps().iter())
             .enumerate()
         {
-            assert_eq!(
-                reference_value.value, *jit_value,
-                "VALUE diverged for word {} after {} steps",
-                word_idx, num_steps
+            assert!(
+                reference_value.value == *jit_value,
+                "VALUE diverged for word {} after {} steps: reference is {}, JIT is {}",
+                word_idx,
+                num_steps,
+                reference_value.value,
+                jit_value
             );
-            assert_eq!(
-                reference_value.timestamp, *jit_ts,
-                "TIMESTAMP diverged for word {} after {} steps",
-                word_idx, num_steps
+            assert!(
+                reference_value.timestamp == *jit_ts,
+                "TIMESTAMP diverged for word {} after {} steps: reference is {}, JIT is {}",
+                word_idx,
+                num_steps,
+                reference_value.timestamp,
+                jit_ts,
             );
         }
 
         // compare the end of snapshotter
         let (jit_snapshot_values, jit_snapshot_tses) = jit_last_trace_chunk.data();
         println!("Snapshot tail length is {}", jit_snapshot_values.len());
-        if jit_snapshot_values.len() > 0 {
+        if !jit_snapshot_values.is_empty() {
             let length = jit_snapshot_values.len();
             let last_reference = &reference_snapshotter.reads_buffer
                 [(reference_snapshotter.reads_buffer.len() - length)..];
@@ -1679,7 +1752,7 @@ fn run_and_compare() {
             }
         }
 
-        if equal_state == false {
+        if !equal_state {
             panic!("State diverged");
         }
 
@@ -1695,10 +1768,10 @@ fn run_and_compare() {
 #[serial_test::serial]
 fn run_recursion_and_compare() {
     skip_if_ci!();
-    let (_, binary) = read_binary(&Path::new(
+    let (_, binary) = read_binary(Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.bin",
     ));
-    let (_, text) = read_binary(&Path::new(
+    let (_, text) = read_binary(Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.text",
     ));
 
@@ -1711,7 +1784,7 @@ fn run_recursion_and_compare() {
         .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
-    let mut source = QuasiUARTSource::new_with_reads(responses);
+    let source = QuasiUARTSource::new_with_reads(responses);
 
     let step = 1 << 16;
     let initial_step = 836694;
@@ -1734,6 +1807,7 @@ fn run_recursion_and_compare() {
                 &mut source.clone(),
                 &binary,
                 Some(num_steps),
+                JitRunnerRam::Medium,
             );
 
         let cycles_taken = (jit_state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
@@ -1752,6 +1826,7 @@ fn run_recursion_and_compare() {
                 source.clone(),
                 jit_state.timestamp,
                 true,
+                1 << 30,
             );
 
         assert_eq!(
@@ -1831,12 +1906,12 @@ fn run_recursion_and_compare() {
             }
         }
 
-        assert_eq!(reference_ram.backing.len(), jit_memory.memory.len());
+        assert_eq!(reference_ram.backing.len(), jit_memory.memory().len());
         for (word_idx, ((reference_value, jit_value), jit_ts)) in reference_ram
             .backing
             .iter()
-            .zip(jit_memory.memory.iter())
-            .zip(jit_memory.timestamps.iter())
+            .zip(jit_memory.memory().iter())
+            .zip(jit_memory.timestamps().iter())
             .enumerate()
         {
             assert_eq!(
@@ -1854,7 +1929,7 @@ fn run_recursion_and_compare() {
         // compare the end of snapshotter
         let (jit_snapshot_values, jit_snapshot_tses) = jit_last_trace_chunk.data();
         println!("Snapshot tail length is {}", jit_snapshot_values.len());
-        if jit_snapshot_values.len() > 0 {
+        if !jit_snapshot_values.is_empty() {
             let length = jit_snapshot_values.len();
             let last_reference = &reference_snapshotter.reads_buffer
                 [(reference_snapshotter.reads_buffer.len() - length)..];
@@ -1896,7 +1971,7 @@ fn run_recursion_and_compare() {
             }
         }
 
-        if equal_state == false {
+        if !equal_state {
             dbg!(&jit_state.pc);
             println!(
                 "Last opcode = 0x{:08x}",
@@ -1918,13 +1993,14 @@ fn run_recursion_and_compare() {
 #[serial_test::serial]
 fn test_perf_with_trace_keeping() {
     skip_if_ci!();
+    let ram_config = JitRunnerRam::Medium;
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<_> = witness
         .as_chunks::<4>()
@@ -1935,16 +2011,14 @@ fn test_perf_with_trace_keeping() {
     let mut source = QuasiUARTSource::new_with_reads(witness);
 
     let instructions = preprocess_bytecode::<FullUnsignedMachineDecoderConfig, false>(&text);
-    let simulator = JittedCode::<_>::preprocess_bytecode(&instructions, None, mop_field());
+    let simulator =
+        JittedCode::<_>::preprocess_bytecode(&instructions, None, mop_field(), ram_config);
 
     let mut implementation = PreallocatedSnapshots::<1024, _>::new_in(Global, &mut source);
     let initial_chunk = implementation.initial_snapshot();
-    let mut context = Context { implementation };
-    let mut memory: Box<MemoryHolder> = unsafe {
-        let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
-
-        memory
-    };
+    let mut context = Context::new(implementation, ram_config);
+    let mut memory: Box<MemoryHolder> =
+        MemoryHolder::allocate_uninit(ram_config, Default::default());
 
     println!("Running");
     simulator.run(&mut context, &mut memory, initial_chunk, &binary);
@@ -1953,90 +2027,48 @@ fn test_perf_with_trace_keeping() {
     // dbg!(state.materialized_registers());
 }
 
-// Reconstructs register timestamps from INTERMEDIATE per-chunk snapshots via
-// `as_replayer_state`. That requires the per-snapshot register-timestamp data that only the
-// `xmm_ts` mechanism writes into each snapshot's MachineState; the default packed scheme
-// would need a per-snapshot copy of the packed array (deferred). (Has a known pre-existing
-// divergence at snapshot 321 even under xmm_ts — not gated on.)
-#[cfg(feature = "xmm_ts")]
+#[test]
+fn test_memory_holder_drop() {
+    let boxed_holder: Box<MemoryHolder> =
+        MemoryHolder::allocate_zeroed(JitRunnerRam::Small, Default::default());
+    drop(boxed_holder);
+}
+
 #[test]
 #[serial_test::serial]
-fn test_replayer_over_jit() {
-    let path = std::env::current_dir().unwrap();
-    println!("The current directory is {}", path.display());
+fn test_jit_keccak_f1600_matches_vm() {
+    let (_, binary) = read_binary(Path::new("../examples/keccak/app.bin"));
+    let (_, text) = read_binary(Path::new("../examples/keccak/app.text"));
 
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
-
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
-    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
-    let witness: Vec<_> = witness
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_be_bytes(*el))
-        .collect();
-    let mut source = QuasiUARTSource::new_with_reads(witness);
-
-    let jit_instructions = preprocess_bytecode::<FullUnsignedMachineDecoderConfig, false>(&text);
-    let simulator = JittedCode::<_>::preprocess_bytecode(&jit_instructions, None, mop_field());
-
-    let mut implementation = PreallocatedSnapshots::<1024, _>::new_in(Global, &mut source);
-    let initial_chunk = implementation.initial_snapshot();
-    let mut context = Context { implementation };
-    let mut memory: Box<MemoryHolder> = unsafe {
-        let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
-
-        memory
-    };
-
-    let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
-    let tape = SimpleTape::new(&instructions);
-
-    println!("Running");
-    simulator.run(&mut context, &mut memory, initial_chunk, &binary);
-
-    let implementation = context.implementation;
-    let mut jit_state = MachineState::initial();
-
-    println!("Total of {} snapshots", implementation.snapshots().len());
-    for (snapshot_idx, snapshot) in implementation.snapshots().iter().enumerate() {
-        let ChunkPostSnapshot {
-            state_with_counters,
-            trace_chunk,
-        } = snapshot;
-
-        let (values, timestamps) = trace_chunk.data();
-
-        let mut replaying_ram = ReplayerMemChunks {
-            chunks: &mut [(values, timestamps)],
-        };
-        let mut state = jit_state.as_replayer_state();
-        let final_timestamp = state_with_counters.timestamp;
-
-        let _ = ReplayerVM::replay_by_timestamp_bound::<_, _, Mersenne31Field>(
-            &mut state,
-            &mut replaying_ram,
-            &tape,
+    let (jit_state, jit_memory, jit_trace) =
+        JittedCode::<_>::run_alternative_simulator_with_last_snapshot(
+            &text,
             &mut (),
-            final_timestamp,
-            &mut (),
+            &binary,
+            None,
+            JitRunnerRam::Medium,
         );
-        let mut state_with_counters = *state_with_counters;
-        state_with_counters.timestamp = state_with_counters
-            .timestamp
-            .next_multiple_of(TIMESTAMP_STEP);
-
-        let mut final_state = state_with_counters.as_replayer_state();
-        state.counters = Default::default();
-        final_state.counters = Default::default();
-        assert_eq!(state, final_state, "diverged at snapshot {}", snapshot_idx);
-        jit_state = state_with_counters;
-
-        println!("Snapshot {} passed", snapshot_idx);
+    let (state, ram, snapshotter) = run_reference_for_num_cycles_with_snapshots(
+        &binary,
+        &text,
+        (),
+        jit_state.timestamp,
+        false,
+        JitRunnerRam::Medium.ram_size(),
+    );
+    assert_jit_matches_reference(&jit_state, &jit_memory, &state, &ram);
+    // the guest reads every slot after each permutation, so the slot write timestamps survive only
+    // in the timestamps of those reads
+    let (values, timestamps) = jit_trace.data();
+    assert!(!values.is_empty());
+    let reads = &snapshotter.reads_buffer[snapshotter.reads_buffer.len() - values.len()..];
+    for (i, (&(value, (ts_low, ts_high)), (jit_value, jit_ts))) in
+        reads.iter().zip(values.iter().zip(timestamps)).enumerate()
+    {
+        let ts = (ts_high as TimestampScalar) << 32 | ts_low as TimestampScalar;
+        assert_eq!((value, ts), (*jit_value, *jit_ts), "read {i}");
     }
-
-    // println!("PC = 0x{:08x}", state.pc);
-    // dbg!(state.materialized_registers());
+    let keccak_calls = jit_state.counters.values[CounterType::KeccakF1600Delegation as u8 as usize];
+    assert_eq!(keccak_calls as usize, state.counters.keccak_f1600_calls);
+    assert!(keccak_calls > 0);
 }

@@ -1,13 +1,18 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
 #![feature(allocator_api)]
 
 pub use ::prover;
 pub use ::setups;
 
+#[cfg(feature = "l1")]
+pub mod compression;
+#[cfg(feature = "l1")]
+pub mod l1;
+pub mod proof_assembly;
 pub mod unified;
 pub mod unified_transition;
 pub mod unrolled;
+
+pub use proof_assembly::{assemble_program_proof, program_setups};
 
 const DUMP_WITNESS_VAR: &str = "DUMP_WITNESS";
 
@@ -21,8 +26,10 @@ pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> 
     serde_json::from_reader(src).unwrap()
 }
 
-pub fn try_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> Result<T, ()> {
-    let src = std::fs::File::open(filename).map_err(|_| ())?;
+pub fn try_deserialize_from_file<T: serde::de::DeserializeOwned>(
+    filename: &str,
+) -> std::io::Result<T> {
+    let src = std::fs::File::open(filename)?;
     Ok(serde_json::from_reader(src).unwrap())
 }
 

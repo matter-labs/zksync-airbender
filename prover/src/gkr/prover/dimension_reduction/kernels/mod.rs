@@ -1,4 +1,5 @@
 use super::*;
+use crate::allocation_pool::{AllocationPool, ColumnLayout};
 use crate::gkr::sumcheck::access_and_fold::*;
 use std::mem::MaybeUninit;
 
@@ -27,9 +28,8 @@ pub trait DimensionReducingEvaluationKernel<
         let pairwise_index = index + 1;
         let a = std::array::from_fn(|i| sources[i].get_at_index(index));
         let b = std::array::from_fn(|i| sources[i].get_at_index(pairwise_index));
-        let eval = self.pointwise_eval_forward(&a, &b);
 
-        eval
+        self.pointwise_eval_forward(&a, &b)
     }
 
     #[inline(always)]
@@ -163,13 +163,14 @@ pub fn forward_evaluate_dimension_reducing_kernel<
     storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,
     input_trace_len: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     assert!(input_trace_len.is_power_of_two());
     let output_trace_len = input_trace_len / 2;
     unsafe {
         let mut inputs = inputs.clone();
-        let outputs = std::mem::replace(&mut inputs.outputs_in_extension, vec![]);
+        let outputs = std::mem::take(&mut inputs.outputs_in_extension);
         assert_eq!(outputs.len(), OUT);
         for output in outputs.iter() {
             output.assert_as_layer(expected_output_layer);
@@ -177,11 +178,11 @@ pub fn forward_evaluate_dimension_reducing_kernel<
         let sources = storage.get_for_sumcheck_round_0(&inputs);
         let mut destinations = Vec::with_capacity(outputs.len());
         for _ in 0..outputs.len() {
-            destinations.push(Box::<[E]>::new_uninit_slice(output_trace_len));
+            destinations.push(pool.alloc_ext(output_trace_len, ColumnLayout::Contiguous));
         }
         let mut destinations_refs = Vec::with_capacity(outputs.len());
         for el in destinations.iter_mut() {
-            destinations_refs.push(&mut el[..]);
+            destinations_refs.push(el.as_mut());
         }
 
         let inputs = sources.extension_field_inputs.as_array().unwrap_unchecked();
@@ -197,19 +198,18 @@ pub fn forward_evaluate_dimension_reducing_kernel<
                 for index in 0..chunk_size {
                     let absolute_index = chunk_start + index;
                     let value = kernel.evaluate_forward(absolute_index, inputs);
-                    for (dst, val) in destinations.iter_mut().zip(value.into_iter()) {
+                    for (dst, val) in destinations.iter_mut().zip(value) {
                         dst[index].write(val);
                     }
                 }
             },
         );
 
-        for (output, destination) in outputs.into_iter().zip(destinations.into_iter()) {
-            let values = destination.assume_init();
+        for (output, destination) in outputs.into_iter().zip(destinations) {
             storage.insert_extension_at_layer(
                 expected_output_layer,
                 output,
-                ExtensionFieldPoly::new(values),
+                ExtensionFieldPoly::from_pooled(destination),
             );
         }
     }
@@ -243,7 +243,7 @@ pub fn evaluate_single_dimension_reducing_kernel<
                 let sources = storage.get_for_sumcheck_round_0(inputs);
                 assert!(sources.base_field_inputs.is_empty());
                 assert!(sources.base_field_outputs.is_empty());
-                if sources.extension_field_outputs.is_empty() == false {
+                if !sources.extension_field_outputs.is_empty() {
                     assert_eq!(sources.extension_field_inputs.len(), IN);
                     assert_eq!(sources.extension_field_outputs.len(), OUT);
                     assert_eq!(batch_challenges.len(), OUT);

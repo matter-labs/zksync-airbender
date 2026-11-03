@@ -288,8 +288,6 @@ fn run_single_pass_stream_parity(log_n: u32, log_vpt: u32) {
                     1,
                     cc,
                     1,
-                    1,
-                    1,
                     context.device_context(),
                     None,
                     stream,
@@ -1228,6 +1226,174 @@ fn dit_launcher_single_pass_parity() {
     run_launcher_parity(4, 2, 512, 2);
 }
 
+// ---------------------------------------------------------------------------
+// Column-batched launches (`column_batch_applies`: >= 32 columns at (13,3) or
+// (8,3)). The batched launch must produce the same bytes as the per-column
+// launches it replaces; the per-column path is reached by calling the
+// launcher one column at a time (below the batching gate) into the same
+// strided output layout.
+// ---------------------------------------------------------------------------
+
+fn run_launcher_batched_vs_per_column(
+    log_n: u32,
+    log_vpt: u32,
+    num_cosets: usize,
+    num_ntts: usize,
+) {
+    use crate::ntt::dit::{column_batch_applies, monomials_to_evals_dit};
+
+    assert!(
+        column_batch_applies(log_n as usize, log_vpt as usize, num_ntts),
+        "shape must select the batched path"
+    );
+    let n: usize = 1 << log_n;
+    let num_cols_per_coset = num_ntts;
+    let out_cols = num_cosets * num_cols_per_coset;
+    assert!(num_cosets.is_power_of_two());
+    // The launched cosets are the upper half of a domain twice their count, so
+    // `cfp_0` is nonzero on both paths.
+    let log_lde_factor = num_cosets.trailing_zeros() + 1;
+    assert!(log_n + log_lde_factor <= OMEGA_LOG_ORDER);
+    let coset_factor_shift: u32 = OMEGA_LOG_ORDER - log_n - log_lde_factor;
+    let coset_index_base: usize = num_cosets;
+
+    let context = make_context();
+    let stream = context.get_exec_stream();
+    let device_props = context.get_device_properties();
+    let device_context = &context._device_context;
+
+    let monomials_host: Vec<BF> = (0..num_ntts)
+        .flat_map(|col| {
+            (0..n).map(move |idx| {
+                BF::new(23 + (idx as u32).wrapping_mul(37) + (col as u32).wrapping_mul(103))
+            })
+        })
+        .collect();
+    let mut monomials_dev = context.alloc(num_ntts * n).unwrap();
+    memory_copy_async(&mut monomials_dev, &monomials_host, stream).unwrap();
+    let mut d_scratch = context.alloc(n).unwrap();
+
+    // SUBJECT: one launcher call over all columns (batched path).
+    let mut batched_dev = context.alloc(out_cols * n).unwrap();
+    {
+        let inputs_matrix = DeviceMatrixChunk::new(&monomials_dev[..], n, 0, n);
+        let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut batched_dev[..], n, 0, n);
+        monomials_to_evals_dit(
+            &inputs_matrix,
+            &mut outputs_matrix,
+            log_n as usize,
+            log_vpt as usize,
+            coset_index_base,
+            coset_factor_shift,
+            num_cosets,
+            num_cols_per_coset,
+            false,
+            device_context,
+            &mut d_scratch[..],
+            stream,
+            device_props,
+        )
+        .unwrap();
+    }
+
+    let mut batched_host = vec![BF::ZERO; out_cols * n];
+    memory_copy_async(&mut batched_host, &batched_dev, stream).unwrap();
+    stream.synchronize().unwrap();
+
+    // REFERENCE: the per-column path (one column per call is below the batching
+    // gate), each column into its own contiguous per-coset buffer.
+    let mut per_column_dev = context.alloc(num_cosets * n).unwrap();
+    let mut per_column_host = vec![BF::ZERO; num_cosets * n];
+    for col in 0..num_ntts {
+        {
+            let inputs_matrix =
+                DeviceMatrixChunk::new(&monomials_dev[col * n..(col + 1) * n], n, 0, n);
+            let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut per_column_dev[..], n, 0, n);
+            monomials_to_evals_dit(
+                &inputs_matrix,
+                &mut outputs_matrix,
+                log_n as usize,
+                log_vpt as usize,
+                coset_index_base,
+                coset_factor_shift,
+                num_cosets,
+                1,
+                false,
+                device_context,
+                &mut d_scratch[..],
+                stream,
+                device_props,
+            )
+            .unwrap();
+        }
+        memory_copy_async(&mut per_column_host, &per_column_dev, stream).unwrap();
+        stream.synchronize().unwrap();
+        for k in 0..num_cosets {
+            let slab = (k * num_cols_per_coset + col) * n;
+            let got = &batched_host[slab..slab + n];
+            let expected = &per_column_host[k * n..(k + 1) * n];
+            if let Some(i) = (0..n).find(|&i| got[i] != expected[i]) {
+                panic!(
+                    "DIT batched-vs-per-column FAILED: log_n={log_n}, log_vpt={log_vpt}, \
+                     num_cosets={num_cosets}, num_ntts={num_ntts}, coset={k}, col={col}, i={i}, \
+                     got={:?}, expected={:?}",
+                    got[i], expected[i]
+                );
+            }
+        }
+    }
+    println!(
+        "DIT batched-vs-per-column PASS: log_n={log_n}, log_vpt={log_vpt}, \
+         num_cosets={num_cosets}, num_ntts={num_ntts}"
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn dit_launcher_batched_two_pass_13_3_residue_columns() {
+    // Residue oracle columns (4 limbs x 32 residues), with a small coset count.
+    run_launcher_batched_vs_per_column(13, 3, 8, 128);
+}
+
+// Residue LDE sizes for the 2^20..2^23 schedules: log_n' = 12, 11, 10, 9 with
+// 128 columns; small coset counts keep the outputs at 64 MiB.
+#[test]
+#[cfg(not(no_cuda))]
+fn dit_launcher_batched_two_pass_12_3_residue_columns() {
+    run_launcher_batched_vs_per_column(12, 3, 32, 128);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn dit_launcher_batched_two_pass_11_3_residue_columns() {
+    run_launcher_batched_vs_per_column(11, 3, 64, 128);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn dit_launcher_batched_two_pass_10_3_residue_columns() {
+    run_launcher_batched_vs_per_column(10, 3, 128, 128);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn dit_launcher_batched_two_pass_9_3_residue_columns() {
+    run_launcher_batched_vs_per_column(9, 3, 256, 128);
+}
+
+// Deterministic short final column group on every device: 37 columns with
+// `cols_per_launch` capped at 5 gives eight launches, the last with two.
+#[test]
+#[cfg(not(no_cuda))]
+fn dit_launcher_batched_capped_ragged_columns_all_shapes() {
+    use crate::ntt::dit::with_cols_per_launch_cap;
+    with_cols_per_launch_cap(5, || {
+        for log_n in 9..=13 {
+            run_launcher_batched_vs_per_column(log_n, 3, 64, 37);
+        }
+    });
+}
+
 // ===========================================================================
 // BENCH-ONLY DIT kernel VARIANTS — parity for the two NEW templates that the
 // bench bring-up added (`ntt_two_pass_fixed<K>`, `ntt_single_stream`).
@@ -1607,8 +1773,6 @@ mod bench_variants {
                         log_lde_factor as usize,
                         1,
                         cc,
-                        1,
-                        1,
                         1,
                         context.device_context(),
                         None,

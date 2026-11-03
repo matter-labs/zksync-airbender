@@ -7,7 +7,6 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::CudaSlice;
 
 use super::GpuGKRStorage;
-#[cfg(test)]
 use crate::upstream::Field;
 use crate::upstream::{CpuGKRSetup, GKRAddress, GKRCircuitArtifact, TableType};
 use era_cudart::slice::DeviceSlice;
@@ -26,6 +25,8 @@ pub(crate) mod kernels;
 pub use kernels::GpuGKRSetupHost;
 pub(crate) use kernels::*;
 
+/// Device setup with consumable raw backing. The host setup can be reused
+/// to create fresh transfers.
 pub struct GpuGKRSetupTransfer<'a> {
     pub host: Arc<GpuGKRSetupHost>,
     pub trace_holder: TraceHolder<BF>,
@@ -33,9 +34,7 @@ pub struct GpuGKRSetupTransfer<'a> {
 }
 
 impl<'a> GpuGKRSetupTransfer<'a> {
-    /// Convenience accessor for the unified device cap that
-    /// `schedule_transfer` H2Ds into. `prove()` consumes it via a D2D into
-    /// the proof slab's `whir.setup.cap` range.
+    /// Unified device cap populated by `schedule_transfer`.
     pub fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {
         self.trace_holder.unified_device_cap()
     }
@@ -52,9 +51,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             TreesCacheMode::CachePartial,
             context,
         )?;
-        // Unified device cap is allocated up front so the pre-prove H2D in
-        // `schedule_transfer` has a stable destination. `prove()` then D2Ds
-        // the cap from this buffer into the proof slab.
+        // Allocate the cap up front so `schedule_transfer` has a stable destination.
         let cap_size = 1usize << host.log_tree_cap_size;
         let unified_cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
         assert!(trace_holder
@@ -92,8 +89,6 @@ impl<'a> GpuGKRSetupTransfer<'a> {
                 .expect("setup transfers require partial-tree caching");
             memory_copy_async(dst_tree, &src_tree[..], stream)?;
         }
-        // Production source of the proof's setup cap: stage 1 D2Ds it from
-        // this buffer into the proof slab (gpu_circuit_prover stage1_forward).
         let unified_dst = self
             .trace_holder
             .unified_device_cap
@@ -175,6 +170,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             compiled_circuit.generic_lookup_tables_width,
             compiled_circuit.total_tables_size,
             compiled_circuit.tables_ids_in_generic_lookups,
+            compiled_circuit.generic_lookup_padding,
             d_lookup_challenges,
             context,
         )
@@ -187,6 +183,7 @@ pub fn schedule_forward_setup_for_shape(
     generic_lookup_width: usize,
     generic_lookup_len: usize,
     tables_ids_in_generic_lookups: bool,
+    generic_lookup_padding: Option<BF>,
     d_lookup_challenges: DeviceAllocation<E4>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardSetup> {
@@ -226,20 +223,23 @@ pub fn schedule_forward_setup_for_shape(
     let tracing_ranges = Vec::new();
     let callbacks = Callbacks::new();
 
-    let mut device_decoder_lookup_fill_value =
-        context.alloc::<E4>(1, AllocationPlacement::BestFit)?;
+    let mut device_lookup_fill_values =
+        context.alloc::<E4>(LOOKUP_FILL_COUNT, AllocationPlacement::BestFit)?;
 
     // We need `alpha_powers` populated in setup constant memory whenever we'll
     // launch the generic-lookup kernel. The kernel runs when either:
     //   (a) there is real generic lookup preprocessing to do (`generic_lookup_len > 0`), or
     //   (b) we still need to emit the decoder fill value inline (tables_ids_in_generic_lookups
-    //       && generic_lookup_width > 0), even though there are no generic lookups to accumulate.
+    //       && generic_lookup_width > 0), even though there are no generic lookups to accumulate, or
+    //   (c) the circuit pads its setup tail with a nonzero value.
     let decoder_table_id_value = if tables_ids_in_generic_lookups && generic_lookup_width > 0 {
         TableType::Decoder as u32
     } else {
         0
     };
-    let needs_generic_lookup_kernel = generic_lookup_len > 0 || decoder_table_id_value != 0;
+    let padding_value = generic_lookup_padding.unwrap_or(BF::ZERO);
+    let needs_generic_lookup_kernel =
+        generic_lookup_len > 0 || decoder_table_id_value != 0 || !padding_value.is_zero();
     if needs_generic_lookup_kernel && generic_lookup_width > 0 {
         schedule_lookup_alpha_powers_prelude(
             d_lookup_challenges.as_ptr().cast::<E4>(),
@@ -247,17 +247,6 @@ pub fn schedule_forward_setup_for_shape(
             context,
         )?;
     }
-    if decoder_table_id_value == 0 {
-        // Keep the unused forward-VM slot deterministic.
-        unsafe {
-            era_cudart::memory::memory_set_async(
-                device_decoder_lookup_fill_value.transmute_mut::<u8>(),
-                0,
-                stream,
-            )?;
-        }
-    }
-
     let mut generic_lookup = if generic_lookup_len > 0 {
         Some(context.alloc::<E4>(generic_lookup_len, AllocationPlacement::BestFit)?)
     } else {
@@ -283,20 +272,38 @@ pub fn schedule_forward_setup_for_shape(
         } else {
             (null_mut(), 0)
         };
+        let fill_values = device_lookup_fill_values.as_mut_ptr();
         let batch = pack_forward_setup_generic_lookup_batch(
             &setup_columns,
             output_ptr,
-            device_decoder_lookup_fill_value.as_mut_ptr(),
+            fill_values.wrapping_add(DECODER_FILL_INDEX),
+            fill_values.wrapping_add(SETUP_PADDING_FILL_INDEX),
             decoder_table_id_value,
+            padding_value,
         );
         launch_forward_setup_generic_lookup(&batch, output_len, context)?;
+    } else {
+        // The fused kernel writes every fill value when it runs.
+        unsafe {
+            era_cudart::memory::memory_set_async(
+                device_lookup_fill_values.transmute_mut::<u8>(),
+                0,
+                stream,
+            )?;
+        }
     }
+
+    #[expect(
+        clippy::arc_with_non_send_sync,
+        reason = "Storage shares Arc backings; the non-concurrent allocator stays on the scheduling thread."
+    )]
+    let device_lookup_fill_values = Arc::new(device_lookup_fill_values);
 
     Ok(GpuGKRForwardSetup {
         _tracing_ranges: tracing_ranges,
         _callbacks: callbacks,
         d_lookup_challenges,
-        device_decoder_lookup_fill_value,
+        device_lookup_fill_values,
         generic_lookup,
     })
 }
@@ -378,11 +385,15 @@ pub(crate) fn bootstrap_storage_from_trace_holders<E>(
     Ok(storage)
 }
 
+pub(crate) const DECODER_FILL_INDEX: usize = 0;
+pub(crate) const SETUP_PADDING_FILL_INDEX: usize = 1;
+pub(crate) const LOOKUP_FILL_COUNT: usize = 2;
+
 pub struct GpuGKRForwardSetup {
     _tracing_ranges: Vec<Range>,
     _callbacks: Callbacks<'static>,
     d_lookup_challenges: DeviceAllocation<E4>,
-    device_decoder_lookup_fill_value: DeviceAllocation<E4>,
+    device_lookup_fill_values: Arc<DeviceAllocation<E4>>,
     generic_lookup: Option<DeviceAllocation<E4>>,
 }
 
@@ -398,8 +409,8 @@ impl GpuGKRForwardSetup {
         &self.d_lookup_challenges[1..2]
     }
 
-    pub(crate) fn decoder_lookup_fill_value_device(&self) -> &DeviceAllocation<E4> {
-        &self.device_decoder_lookup_fill_value
+    pub(crate) fn lookup_fill_values_device(&self) -> &DeviceAllocation<E4> {
+        &self.device_lookup_fill_values
     }
 
     pub fn generic_lookup(&self) -> &DeviceAllocation<E4> {
@@ -415,8 +426,12 @@ impl GpuGKRForwardSetup {
             .unwrap_or(0)
     }
 
-    pub(crate) fn release_generic_lookup(&mut self) {
-        self.generic_lookup = None;
+    pub(crate) fn take_generic_lookup(&mut self) -> Option<DeviceAllocation<E4>> {
+        self.generic_lookup.take()
+    }
+
+    pub(crate) fn lookup_fill_values_owner(&self) -> Arc<DeviceAllocation<E4>> {
+        self.device_lookup_fill_values.clone()
     }
 
     /// Hands the `d_lookup_challenges` device buffer back to the caller instead
@@ -432,7 +447,7 @@ impl GpuGKRForwardSetup {
             _tracing_ranges,
             _callbacks,
             d_lookup_challenges,
-            device_decoder_lookup_fill_value: _,
+            device_lookup_fill_values: _,
             generic_lookup: _,
         } = self;
         (
@@ -492,10 +507,8 @@ pub(super) fn precompute_partial_tree_cache(
         _ => unreachable!("host setup precomputation always caches partial trees"),
     };
 
-    // D2H the unified device cap directly into a pinned host buffer suitable
-    // for the pre-prove H2D in `schedule_transfer`. Synchronization happens
-    // here because precomputation is a one-shot scheduling-time operation,
-    // not part of `prove()`'s hot path.
+    // Store the cap in pinned host memory for subsequent H2D transfers.
+    // Synchronize before returning the host data.
     let cap_size = 1usize << log_tree_cap_size;
     let mut unified_tree_cap = alloc_static_pinned_box_uninit::<Digest>(cap_size)?;
     memory_copy_async(

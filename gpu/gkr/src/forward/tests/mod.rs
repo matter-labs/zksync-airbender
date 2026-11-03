@@ -267,6 +267,7 @@ fn forward_tower_binds_adjacent_pairs_vs_cpu() {
 /// memory rounds keep halving on the low coordinate.
 #[test]
 fn forward_production_vm_binds_adjacent_pairs_vs_cpu() {
+    use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
     let context = make_test_context(1024, 32);
     let initial_trace_len = 1usize << PROBE_TRACE_LOG_2;
     // The VM owns exactly the fused rounds, so no round is left unwritten.
@@ -303,6 +304,7 @@ fn forward_production_vm_binds_adjacent_pairs_vs_cpu() {
         0,
         0,
         false,
+        None,
         context
             .alloc::<E4>(2, AllocationPlacement::BestFit)
             .unwrap(),
@@ -317,10 +319,19 @@ fn forward_production_vm_binds_adjacent_pairs_vs_cpu() {
         desc: unsafe { core::mem::zeroed() },
         lookup_additive_slot: None,
         decoder_fill_slot: None,
+        setup_fill_slot: None,
     };
     lowered.desc.count = initial_trace_len as u32;
     lowered.desc.layer_count = 1;
-    schedule_vm(&mut lowered, &prepared, &forward_setup, &context).unwrap();
+    schedule_vm(
+        &mut lowered,
+        &prepared,
+        None,
+        CircuitType::Unrolled(UnrolledCircuitType::Unified),
+        &forward_setup,
+        &context,
+    )
+    .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     assert_eq!(
         lowered.desc.reduction_pair_count as usize,

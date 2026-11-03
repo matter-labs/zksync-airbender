@@ -275,6 +275,7 @@ fn lower_relation<F: PrimeField>(
         | R::LookupPairFromCachedVectorInputs { .. }
         | R::LookupPairFromVectorInputs { .. }
         | R::LookupFromVectorInputWithSetup { .. }
+        | R::LookupFromBaseInputsWithSetup { .. }
         | R::LookupUnbalancedPairWithVectorInputs { .. } => {
             Err("gkr_eval_ir: unsupported relation in retained GPU circuits".to_string())
         }

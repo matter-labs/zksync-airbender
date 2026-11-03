@@ -9,9 +9,8 @@
 //! it fits a workstation. Run with:
 //!   `cargo bench -p prover --bench lde_scheduling`
 
-use field::{
-    baby_bear::base::BabyBearField, Field, FieldExtension, PrimeField, Proth120, Rand, TwoAdicField,
-};
+use field::{baby_bear::base::BabyBearField, PrimeField, Proth120, Rand, TwoAdicField};
+use prover::allocation_pool::GenericAllocationPool;
 use prover::fft::Twiddles;
 use prover::gkr::prover::{Backend, NaiveBackend, WorkStealingBackend};
 use std::alloc::Global;
@@ -64,6 +63,7 @@ fn bench_packed_shape<F: PrimeField + TwoAdicField + Rand>(
                 m,
                 &twiddles,
                 lde_factor,
+                &GenericAllocationPool::proxy(),
                 worker,
             );
             std::hint::black_box(cosets);
@@ -80,6 +80,7 @@ fn bench_packed_shape<F: PrimeField + TwoAdicField + Rand>(
                 m,
                 &twiddles,
                 lde_factor,
+                &GenericAllocationPool::proxy(),
                 worker,
             );
             std::hint::black_box(cosets);
@@ -115,6 +116,7 @@ fn bench_multi_col_shape<F: PrimeField + TwoAdicField + Rand>(
                 &col_refs,
                 &twiddles,
                 lde_factor,
+                &GenericAllocationPool::proxy(),
                 worker,
             );
             std::hint::black_box(cosets);
@@ -131,6 +133,7 @@ fn bench_multi_col_shape<F: PrimeField + TwoAdicField + Rand>(
                 &col_refs,
                 &twiddles,
                 lde_factor,
+                &GenericAllocationPool::proxy(),
                 worker,
             );
             std::hint::black_box(cosets);

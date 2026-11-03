@@ -53,5 +53,25 @@ DIT_TWO_PASS_WRAPPER(12, 2)
 #undef DIT_SINGLE_STREAM_WRAPPER
 #undef DIT_TWO_PASS_WRAPPER
 
+// Column-batched variants for the WHIR residue-polynomial LDE (many narrow
+// columns over few cosets): grid.y selects the column, grid.x keeps the coset
+// stride and therefore the d-table step. Same device templates, same ABI plus
+// the two column strides. Exported only for the shapes the launcher batches.
+#define DIT_TWO_PASS_COLS_WRAPPER(LOGN, LOGVPT)                                                                                                                \
+  EXTERN __launch_bounds__(NttTwoPassGeom<LOGN, LOGVPT>::THREADS, 1u)                                                                                          \
+      __global__ void ab_dit_two_pass_cols_##LOGN##_##LOGVPT(const bf *mono, const bf *tw_p1, const bf *tw_p2, const bf *d_tab, bf *out, u32 cfp0, u32 step,   \
+                                                             u32 num_cosets, u32 cstride, u32 mono_col_stride, u32 out_col_stride) {                           \
+    ntt_two_pass<LOGN, LOGVPT, StoreMode::CS>(mono + static_cast<size_t>(blockIdx.y) * mono_col_stride, tw_p1, tw_p2, d_tab,                                   \
+                                              out + static_cast<size_t>(blockIdx.y) * out_col_stride, cfp0, step, num_cosets, cstride);                        \
+  }
+
+DIT_TWO_PASS_COLS_WRAPPER(9, 3)
+DIT_TWO_PASS_COLS_WRAPPER(10, 3)
+DIT_TWO_PASS_COLS_WRAPPER(11, 3)
+DIT_TWO_PASS_COLS_WRAPPER(12, 3)
+DIT_TWO_PASS_COLS_WRAPPER(13, 3)
+
+#undef DIT_TWO_PASS_COLS_WRAPPER
+
 } // namespace ntt
 } // namespace airbender

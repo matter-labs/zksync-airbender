@@ -12,7 +12,7 @@ Dependency edges may only point DOWN this order; never up. Enforcement is doc-on
 
 ```text
 gpu_core  <  { gpu_ntt, gpu_ops, gpu_hash }  <  gpu_prover_context  <
-gpu_trace  <  gpu_gkr  <  gpu_whir  <  circuit_prover  <  execution_prover  <  program_prover
+gpu_trace  <  gpu_gkr  <  gpu_whir  <  circuit_prover  <  execution_prover
 ```
 
 Plus four off-DAG crates: **`gpu_witness_eval_generator`** (`witness_eval_generator/`:
@@ -34,7 +34,7 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
 
 - **`gpu_core`** = `allocator` + `primitives` (pure GPU substrate: static
   allocators, device_structures/DeviceMatrix, accessors, field, callbacks, nvtx,
-  machine_type, utils). It also OWNS the base CUDA headers (`native_headers/`:
+  utils). It also OWNS the base CUDA headers (`native_headers/`:
   field/memory/ptx/vectorized/common `.cuh`) and exports their include dir via
   `links = "gpu_core_native"` → kernel crates read `DEP_GPU_CORE_NATIVE_INCLUDE`.
   Its `build.rs` compiles `native/nvtx.c` (C); it owns no production CUDA
@@ -79,7 +79,7 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   (`native/hash.cu`, `gather.cu`). It **exports `hash.cuh`'s include dir** via
   `links = "gpu_hash_native"` → `gpu_gkr` and `gpu_whir` each read
   `DEP_GPU_HASH_NATIVE_INCLUDE` so their blake2s-dependent kernels
-  (`gkr_ops.cu` in `gpu_gkr`, `leaves.cu` in `gpu_whir`) resolve
+  (`gkr_ops.cu` in `gpu_gkr`, `leaves.cu`, `residue_commit.cu`, and `in_domain.cu` in `gpu_whir`) resolve
   `#include "hash.cuh"`. Dep: `gpu_core` (`gpu_ops` is dev-only test
   setup). The GKR/WHIR **protocol** kernels live in `gpu_gkr`'s `ops::gkr_ops`
   (native `ops/gkr_ops.cu`), not `ops/blake2s/`. PoW determinism is
@@ -88,8 +88,8 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   (which `circuit_prover/deterministic_pow` forwards to) — without it the
   `ab_blake2s_pow_kernel` runs a non-deterministic search → silent
   proof-parity divergence that passes compile + breadth. Test-and-production
-  helpers consumed across the crate boundary (`gather_leaf_rows`,
-  `gather_merkle_paths_*`, `build_merkle_tree`) are `#[doc(hidden)] pub` —
+  helpers consumed across the crate boundary (`gather_merkle_paths_*`,
+  `build_merkle_tree`) are `#[doc(hidden)] pub` —
   `gpu_trace`'s trace holder and `gpu_whir`'s fold scheduler are the
   production consumers today (the pre-split comments in `gpu_hash`'s source
   naming `circuit_prover` as the consumer predate the split and are stale;
@@ -101,14 +101,13 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   so `prover` is a **dev-only** dep of `gpu_hash` (production stays
   `gpu_core`-only).
 - **`gpu_prover_context`** = `ProverContext` + `ProverContextConfig` (the
-  device/host allocators, the three CUDA streams — `exec_stream`, `h2d_stream`,
-  `side_stream` — and the NTT twiddle `DeviceContext`) plus the H2D `Transfer`
+  device/host allocators, `exec_stream` and `h2d_stream`, and the NTT twiddle `DeviceContext`) plus the H2D `Transfer`
   machinery (`transfer.rs`). No native of its
   own — pure Rust over `gpu_core` + `gpu_ntt`. Every crate from `gpu_trace`
   upward threads a `&ProverContext` through its scheduling functions. See
   [`prover_context/AGENTS.md`](prover_context/AGENTS.md).
 - **`gpu_trace`** = witness generation (`witness/**`) + trace commit/holder
-  (`trace/**`), with its own `gpu_trace_native` (40 kernels: 18 literal + 22
+  (`trace/**`), with its own `gpu_trace_native` (52 kernels: 24 literal + 28
   token-pasted witness and fused stage-1 kernels, two per circuit under
   `witness/circuits/`), namespace `airbender::trace::witness::*`.
   Self-contained (only `gpu_core`'s base headers; no `export_include`, no
@@ -125,28 +124,26 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   `gkr/support/{eq_inline,kernel_helpers}.cuh`; reads `gpu_hash`'s `hash.cuh`
   for its own blake2s-dependent protocol kernels. See [`gkr/AGENTS.md`](gkr/AGENTS.md).
 - **`gpu_whir`** = WHIR folds (`fold/`) + PoW/query scheduling (`pow.rs`) +
-  the recursive WHIR extension oracle and its side-stream LDE/Merkle commit
-  scheduler, with its own `gpu_whir_native` (25 kernels, no `__constant__`
+  the recursive WHIR extension oracle and its retained/fused LDE/Merkle commit
+  scheduler on exec, with its own `gpu_whir_native` (25 kernels, no `__constant__`
   symbols), namespace `airbender::whir`. Reads
   `gpu_gkr`'s exported headers (`accumulate_eq.cu`) and `gpu_hash`'s
-  `hash.cuh` plus gpu_ntt's exported `whir_leaf_transform.cuh` (`leaves.cu`).
+  `hash.cuh` (`leaves.cu`, `residue_commit.cu`, `in_domain.cu`) plus gpu_ntt's
+  exported `whir_leaf_transform.cuh` (`residue_commit.cu`, `in_domain.cu`);
+  `in_domain.cu` also reads the inline transcript update in `ops/gkr_ops_helpers.cuh`.
   Features `deterministic_pow =
   ["prover/deterministic_pow","gpu_hash/deterministic_pow"]` (owns both
   determinism legs; `prover` is a normal, not dev-only, dependency here only
-  for that forward), and `eval_leaves`. See [`whir/AGENTS.md`](whir/AGENTS.md).
+  for that forward). See [`whir/AGENTS.md`](whir/AGENTS.md).
 
 `circuit_prover` now consumes `gpu_prover_context`/`gpu_trace`/`gpu_gkr`/
 `gpu_whir` (and `gpu_core`/`gpu_hash`) as ordinary Cargo
 dependencies — there are no more in-crate facade re-exports for the kernel
 crates, and **no `native/` tree at all**: its `build.rs` only emits the
-`no_cuda` cfg its test sites key off. `execution_prover` holds `ExecutionProver` + the 11-symbol facade.
-`program_prover` is the program-level driver on top of `execution_prover`: it
-assembles `ProveResult` into `full_statement_verifier::ProgramProof`, builds the
-non-determinism streams the `fsv_*` verifier binaries consume, and (behind its
-non-default `verifiers` feature) verifies proofs natively. It replaces the old prover's
-GPU recursion driver; the recursion protocol helpers come
-from upstream library code (`full_statement_verifier::host_utils` /
-`recursion_chain`, `verifier_common::fsv_binaries`) via its `upstream.rs` shim.
+`no_cuda` cfg its test sites key off.
+`gpu_execution_prover` implements the root `execution_prover` backend contract.
+The root `program_prover` assembles proofs from either backend. GPU program-level
+tests live in `gpu/execution_prover/tests/program.rs`, behind `verifiers`.
 
 ## Cross-crate conventions (apply when adding/editing a kernel crate)
 

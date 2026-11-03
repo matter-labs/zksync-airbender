@@ -662,8 +662,6 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
                 num_cosets,
                 coset_index_base,
                 NUM_COLS,
-                1,
-                1,
                 context.device_context(),
                 scratch_opt,
                 stream,
@@ -746,8 +744,6 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
                     1,
                     coset_index,
                     NUM_COLS,
-                    1,
-                    1,
                     context.device_context(),
                     None,
                     stream,
@@ -1022,8 +1018,6 @@ mod host_oracle {
                         num_cosets,
                         coset_index_base,
                         num_cols, // num_cols_per_coset_stride (contiguous)
-                        1,        // occupancy hint numerator
-                        1,        // occupancy hint denominator
                         context.device_context(),
                         None, // log_n in (13, 18]: fast path needs no scratch
                         stream,
@@ -1445,8 +1439,6 @@ fn run_streaming_vs_compact_parity(
                     1,
                     coset_index,
                     num_cols,
-                    1,
-                    1,
                     context.device_context(),
                     None,
                     stream,
@@ -1739,7 +1731,9 @@ multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_1_cosets_32, 1, 32
 
 mod dit_engine;
 mod helpers;
+mod in_place;
 mod lde_writeback_hybrid;
+mod retained_monomials;
 use crate::upstream::{Field, PrimeField};
 #[allow(unused_imports)]
 use helpers::*;
@@ -1812,7 +1806,6 @@ mod natural_to_bitrev {
         natural_monomials_to_bitrev_evals_3_pass,
     };
     use super::super::{
-        bitreversed_monomials_to_natural_evals_multi_coset,
         natural_monomials_to_bitreversed_evals_coset_range,
         natural_monomials_to_bitreversed_evals_multi_coset,
     };
@@ -2177,10 +2170,9 @@ mod natural_to_bitrev {
         }
     }
 
-    /// The fused natural boundary (hypercube coarse tail + monomial writeback
-    /// + coset scale + DIT initial in one launch, over the fine->coarse
-    /// pre-tail) must reproduce the unfused sequence bit-exactly: the
-    /// multi-coset LDE output AND the materialized natural monomials.
+    /// Fusing the hypercube coarse tail, monomial writeback, coset scale, and
+    /// initial DIT pass must preserve both the multi-coset LDE output and the
+    /// materialized natural monomials.
     #[test]
     fn natural_fused_boundary_matches_unfused() {
         use super::super::{

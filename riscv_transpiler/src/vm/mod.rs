@@ -27,6 +27,7 @@ pub trait Counters: 'static + Clone + Copy + Debug + PartialEq + Eq + Send + Syn
     fn bump_bigint(&mut self, by: usize);
     fn bump_blake2_round_function(&mut self, by: usize);
     fn bump_keccak_special5(&mut self, by: usize);
+    fn bump_keccak_f1600(&mut self, by: usize);
     fn bump_blake2_g_function(&mut self, by: usize);
     #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {
@@ -167,14 +168,22 @@ pub trait InstructionTape: Send + Sync {
 
 // there is no interpretation of methods here, it's just read/write and that's all
 pub trait NonDeterminismCSRSource {
+    const PROVIDES_FLATTENED_NON_DETERMINISM: bool = false;
+
+    fn nondeterminism_as_raw_ptr(&self) -> Option<*const u32> {
+        None
+    }
+
     fn read(&mut self) -> u32;
 
     // we in general can allow CSR source to peek into memory (readonly)
     // to perform adhoc computations to prepare result. This will allow to save on
     // passing large structures
-    fn write_with_memory_access<R: RamPeek>(&mut self, ram: &R, value: u32)
+    fn write_with_memory_access<R: RamPeek + ?Sized>(&mut self, ram: &R, value: u32)
     where
         Self: Sized;
+
+    fn write_with_memory_access_raw(&mut self, ram: &[u32], value: u32);
 
     // we in general can allow CSR source to peek into memory (readonly)
     // to perform adhoc computations to prepare result. This will allow to save on
@@ -186,7 +195,8 @@ impl NonDeterminismCSRSource for () {
     fn read(&mut self) -> u32 {
         0u32
     }
-    fn write_with_memory_access<R: RamPeek>(&mut self, _ram: &R, _value: u32) {}
+    fn write_with_memory_access<R: RamPeek + ?Sized>(&mut self, _ram: &R, _value: u32) {}
+    fn write_with_memory_access_raw(&mut self, _ram: &[u32], _value: u32) {}
     fn write_with_memory_access_dyn(&mut self, _ram: &dyn RamPeek, _value: u32) {}
 }
 
@@ -196,12 +206,42 @@ impl NonDeterminismCSRSource for crate::abstractions::non_determinism::QuasiUART
         self.oracle.pop_front().expect("must have an answer")
     }
 
-    fn write_with_memory_access<R: RamPeek>(&mut self, _ram: &R, value: u32) {
+    fn write_with_memory_access<R: RamPeek + ?Sized>(&mut self, _ram: &R, value: u32) {
+        self.write_state.process_write(value);
+    }
+    fn write_with_memory_access_raw(&mut self, _ram: &[u32], value: u32) {
         self.write_state.process_write(value);
     }
     fn write_with_memory_access_dyn(&mut self, _ram: &dyn RamPeek, value: u32) {
         self.write_state.process_write(value);
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FlatResponsesSource {
+    pub oracle: Vec<u32>,
+}
+
+impl FlatResponsesSource {
+    pub fn new_with_reads(reads: Vec<u32>) -> Self {
+        Self { oracle: reads }
+    }
+}
+
+impl NonDeterminismCSRSource for FlatResponsesSource {
+    const PROVIDES_FLATTENED_NON_DETERMINISM: bool = true;
+
+    fn nondeterminism_as_raw_ptr(&self) -> Option<*const u32> {
+        Some(self.oracle[..].as_ptr())
+    }
+
+    fn read(&mut self) -> u32 {
+        unreachable!()
+    }
+
+    fn write_with_memory_access<R: RamPeek + ?Sized>(&mut self, _ram: &R, _value: u32) {}
+    fn write_with_memory_access_raw(&mut self, _ram: &[u32], _value: u32) {}
+    fn write_with_memory_access_dyn(&mut self, _ram: &dyn RamPeek, _value: u32) {}
 }
 
 pub struct VM<C: Counters, E: ExecutionObserver<C> = ()> {
@@ -392,7 +432,7 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
                 add_sub_family::mop::mop_fmamod::<C, S, R, F>(state, ram, snapshotter, instr)
             }
             InstructionName::ZimopTriAdd => {
-                add_sub_family::mop::mop_tri_add::<C, S, R, F>(state, ram, snapshotter, instr)
+                add_sub_family::mop::mop_tri_add::<C, S, R>(state, ram, snapshotter, instr)
             }
             InstructionName::ZicsrNonDeterminismRead => add_sub_family::non_determinism::nd_read::<
                 C,
@@ -472,15 +512,22 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             InstructionName::ZimopIXorRot => {
                 binary_shifts_family::mopi::mopi_xor_rot::<C, S, R>(state, ram, snapshotter, instr)
             }
+            InstructionName::Rev8 => {
+                binary_shifts_family::shifts::rev8::<C, S, R>(state, ram, snapshotter, instr)
+            }
 
             InstructionName::Mul => mul_div::mul::<C, S, R>(state, ram, snapshotter, instr),
             InstructionName::Mulhu => mul_div::mulhu::<C, S, R>(state, ram, snapshotter, instr),
             InstructionName::Divu => mul_div::divu::<C, S, R>(state, ram, snapshotter, instr),
             InstructionName::Remu => mul_div::remu::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Mulh => mul_div::mulh::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Mulhsu => mul_div::mulhsu::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Div => mul_div::div::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Rem => mul_div::rem::<C, S, R>(state, ram, snapshotter, instr),
 
             InstructionName::ZicsrMarkerCsr => marker::<C, S, R, E>(state, ram, snapshotter, instr),
 
-            a @ _ => {
+            a => {
                 panic!("Unknown instruction {:?}", a);
             } // _ => unsafe { core::hint::unreachable_unchecked() },
         }
@@ -546,11 +593,66 @@ pub(crate) mod test {
         assert!(diff.delegations.is_empty());
     }
 
+    /// Encoded Zbb `rev8` runs through decode + interpreter as byte swap on the shift/binary
+    /// family, in both the full (per-family) and reduced (unified) decoder configs.
+    #[test]
+    #[serial_test::serial]
+    fn test_rev8_byte_swap() {
+        use crate::ir::ReducedMachineDecoderConfig;
+
+        const fn lui(rd: u32, imm20: u32) -> u32 {
+            (imm20 << 12) | (rd << 7) | 0b0110111
+        }
+        const fn addi(rd: u32, rs1: u32, imm12: i32) -> u32 {
+            (((imm12 as u32) & 0xfff) << 20) | (rs1 << 15) | (rd << 7) | 0b0010011
+        }
+        // rev8 rd, rs1 (OP-IMM, funct3 = 0b101, imm[11:0] = 0x698)
+        const fn rev8(rd: u32, rs1: u32) -> u32 {
+            (0x698 << 20) | (rs1 << 15) | (0b101 << 12) | (rd << 7) | 0b0010011
+        }
+
+        // x5 = 0xDDCCBBAA; x6 = bswap(x5); x5 = bswap(x5) (rd == rs1)
+        let program = vec![lui(5, 0xDDCCC), addi(5, 5, -0x456), rev8(6, 5), rev8(5, 5)];
+
+        fn run<OPT: crate::ir::DecodingOptions>(
+            program: &[u32],
+        ) -> State<DelegationsAndFamiliesCounters> {
+            let instructions: Vec<Instruction> = preprocess_bytecode::<OPT, true>(program);
+            let tape = SimpleTape::new(&instructions);
+            let mut ram = RamWithRomRegion::<5>::from_rom_content(program, 1 << 22);
+            let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
+            VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
+                &mut state,
+                &mut ram,
+                &mut (),
+                &tape,
+                program.len(),
+                &mut (),
+            );
+            state
+        }
+
+        for state in [
+            run::<FullUnsignedMachineDecoderConfig>(&program),
+            run::<ReducedMachineDecoderConfig>(&program),
+        ] {
+            assert_eq!(state.pc, 16);
+            assert_eq!(state.registers[6].value, 0xAABB_CCDD);
+            assert_eq!(state.registers[5].value, 0xAABB_CCDD);
+            assert_eq!(
+                state
+                    .counters
+                    .get_calls_to_circuit_family::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(),
+                2
+            );
+        }
+    }
+
     #[test]
     #[serial_test::serial]
     fn test_simple_fibonacci() {
-        let (_, binary) = read_binary(&Path::new("examples/fibonacci/app.bin"));
-        let (_, text) = read_binary(&Path::new("examples/fibonacci/app.text"));
+        let (_, binary) = read_binary(Path::new("examples/fibonacci/app.bin"));
+        let (_, text) = read_binary(Path::new("examples/fibonacci/app.text"));
         let instructions: Vec<Instruction> =
             preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
@@ -598,7 +700,7 @@ pub(crate) mod test {
     #[serial_test::serial]
     fn test_pretty_show_assembly() {
         // let (_, binary) = read_binary(&Path::new("examples/fibonacci/app.bin"));
-        let (_, text) = read_binary(&Path::new(
+        let (_, text) = read_binary(Path::new(
             "../tools/gkr_verifier/add_sub_lui_auipc_mop_sec_100.text",
         ));
         for opcode in text.iter().take(16) {
@@ -609,8 +711,8 @@ pub(crate) mod test {
     #[test]
     #[serial_test::serial]
     fn test_keccak_f1600() {
-        let (_, binary) = read_binary(&Path::new("examples/keccak_f1600/app.bin"));
-        let (_, text) = read_binary(&Path::new("examples/keccak_f1600/app.text"));
+        let (_, binary) = read_binary(Path::new("../examples/keccak/app.bin"));
+        let (_, text) = read_binary(Path::new("../examples/keccak/app.text"));
         let instructions: Vec<Instruction> =
             preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
@@ -651,9 +753,10 @@ pub(crate) mod test {
             snapshotter.reads_buffer.len()
         );
 
-        assert_eq!(
-            state.counters.keccak_calls % common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600,
-            0
+        assert!(
+            common_constants::keccak_f1600::keccak_f1600_permutations(
+                state.counters.keccak_f1600_calls
+            ) > 0
         );
 
         dbg!(state.pc);
@@ -670,10 +773,10 @@ pub(crate) mod test {
         use crate::abstractions::non_determinism::QuasiUARTSource;
         use crate::ir::*;
 
-        let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-        let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+        let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+        let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-        let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+        let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
         let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
         let witness: Vec<_> = witness
             .as_chunks::<4>()
@@ -727,13 +830,14 @@ pub(crate) mod test {
     }
 
     #[test]
+    #[ignore = "runs the local examples/experiments playground; build it first (its app.* is gitignored)"]
     #[serial_test::serial]
     fn test_special_rotation_opcodes() {
         use crate::abstractions::non_determinism::QuasiUARTSource;
         use crate::ir::*;
 
-        let (_, binary) = read_binary(&Path::new("../examples/experiments/app.bin"));
-        let (_, text) = read_binary(&Path::new("../examples/experiments/app.text"));
+        let (_, binary) = read_binary(Path::new("../examples/experiments/app.bin"));
+        let (_, text) = read_binary(Path::new("../examples/experiments/app.text"));
 
         let mut source = QuasiUARTSource::new_with_reads(vec![]);
 
@@ -781,13 +885,14 @@ pub(crate) mod test {
     }
 
     #[test]
+    #[ignore = "runs the local examples/experiments playground; build it first (its app.* is gitignored)"]
     #[serial_test::serial]
     fn test_blake_mixing_function_delegation() {
         use crate::abstractions::non_determinism::QuasiUARTSource;
         use crate::ir::*;
 
-        let (_, binary) = read_binary(&Path::new("../examples/experiments/app.bin"));
-        let (_, text) = read_binary(&Path::new("../examples/experiments/app.text"));
+        let (_, binary) = read_binary(Path::new("../examples/experiments/app.bin"));
+        let (_, text) = read_binary(Path::new("../examples/experiments/app.text"));
 
         let mut source = QuasiUARTSource::new_with_reads(vec![]);
 

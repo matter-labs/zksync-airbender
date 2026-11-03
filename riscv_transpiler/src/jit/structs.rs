@@ -1,3 +1,5 @@
+use std::alloc::Layout;
+
 use super::*;
 
 impl TraceChunk {
@@ -47,29 +49,162 @@ impl TraceChunk {
         self.len = 0;
     }
 
+    #[cfg(all(target_arch = "x86_64", feature = "jit"))]
     pub(crate) const TIMESTAMPS_OFFSET: usize = offset_of!(Self, timestamps);
+    #[cfg(all(target_arch = "x86_64", feature = "jit"))]
     pub(crate) const LEN_OFFSET: usize = offset_of!(Self, len);
 }
 
-#[repr(C, align(4096))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[repr(u64)]
+pub enum JitRunnerRam {
+    UninitPlaceholder = 0,
+    Tiny = 32 * (1 << 20),
+    Small = 128 * (1 << 20),
+    Medium = 1 << 30,
+    Full = 1 << 32,
+}
+
+impl JitRunnerRam {
+    pub fn ram_size(&self) -> usize {
+        (*self as u64) as usize
+    }
+
+    // Offset in bytes to the timestamps
+    #[cfg(all(target_arch = "x86_64", feature = "jit"))]
+    pub(crate) fn timestamps_offset(&self) -> u64 {
+        *self as u64
+    }
+
+    pub(crate) fn memory_holder_buffer_size(&self) -> usize {
+        let num_u32_words = self.ram_size() / core::mem::size_of::<u32>();
+        assert_eq!(num_u32_words % 2, 0);
+        num_u32_words * 3 / 2
+    }
+}
+
+// Memory holder is defined as unsized, and it can/should only be constructed via
+// boxed allocation. It's alignment is 2Mb - huge page on x86-64
+#[repr(align(2097152))]
 pub struct MemoryHolder {
-    pub memory: [u32; NUM_RAM_WORDS],
-    pub timestamps: [TimestampScalar; NUM_RAM_WORDS],
+    buffer: [u64],
 }
 
 impl MemoryHolder {
-    pub fn empty() -> Self {
-        Self {
-            memory: [0u32; NUM_RAM_WORDS],
-            timestamps: [0; NUM_RAM_WORDS],
+    pub const ALIGNMENT: usize = 1 << 21;
+
+    fn num_words(&self) -> usize {
+        assert_eq!((self.buffer.len() * 2) % 3, 0);
+        self.buffer.len() * 2 / 3
+    }
+
+    pub fn as_mut_ptr(&mut self) -> NonNull<u64> {
+        unsafe { NonNull::new_unchecked(self.buffer.as_mut_ptr()) }
+    }
+
+    pub fn ram_size(&self) -> usize {
+        self.num_words() * core::mem::size_of::<u32>()
+    }
+
+    pub fn memory(&self) -> &[u32] {
+        unsafe {
+            let num_words = self.num_words();
+            core::slice::from_raw_parts(self.buffer.as_ptr().cast(), num_words)
         }
     }
 
-    pub(crate) const TIMESTAMPS_OFFSET: usize = offset_of!(Self, timestamps);
+    pub fn timestamps(&self) -> &[TimestampScalar] {
+        unsafe {
+            let num_words = self.num_words();
+            core::slice::from_raw_parts(
+                self.buffer
+                    .as_ptr()
+                    .cast::<u32>()
+                    .add(num_words)
+                    .cast::<TimestampScalar>(),
+                num_words,
+            )
+        }
+    }
+
+    pub fn memory_mut(&mut self) -> &mut [u32] {
+        unsafe {
+            let num_words = self.num_words();
+            core::slice::from_raw_parts_mut(self.buffer.as_mut_ptr().cast(), num_words)
+        }
+    }
+
+    pub fn timestamps_mut(&mut self) -> &mut [TimestampScalar] {
+        unsafe {
+            let num_words = self.num_words();
+            core::slice::from_raw_parts_mut(
+                self.buffer
+                    .as_mut_ptr()
+                    .cast::<u32>()
+                    .add(num_words)
+                    .cast::<TimestampScalar>(),
+                num_words,
+            )
+        }
+    }
+
+    pub fn memory_and_timestamps_mut(&mut self) -> (&mut [u32], &mut [TimestampScalar]) {
+        unsafe {
+            let num_words = self.num_words();
+            let mem = core::slice::from_raw_parts_mut(self.buffer.as_mut_ptr().cast(), num_words);
+            let ts = core::slice::from_raw_parts_mut(
+                self.buffer
+                    .as_mut_ptr()
+                    .cast::<u32>()
+                    .add(num_words)
+                    .cast::<TimestampScalar>(),
+                num_words,
+            );
+
+            (mem, ts)
+        }
+    }
+
+    pub fn allocate_uninit<A: Allocator>(size: JitRunnerRam, _allocator: A) -> Box<Self, A> {
+        assert_ne!(size, JitRunnerRam::UninitPlaceholder);
+        // performed via raw layout construction
+        todo!();
+    }
+
+    pub fn allocate_zeroed<A: Allocator>(size: JitRunnerRam, allocator: A) -> Box<Self, A> {
+        assert_ne!(size, JitRunnerRam::UninitPlaceholder);
+        // performed via raw layout construction
+        let num_words = size.memory_holder_buffer_size();
+        unsafe {
+            let mut layout =
+                Layout::array::<u64>(num_words).expect("proper array layout for [u64]");
+            layout = layout
+                .align_to(Self::ALIGNMENT)
+                .expect("proper extra alignment for [u64]");
+            let backing = allocator
+                .allocate_zeroed(layout)
+                .expect("MemoryHolder allocated");
+            let backing_u64 =
+                NonNull::slice_from_raw_parts(backing.as_non_null_ptr().cast::<u64>(), num_words);
+            let backing_box = Box::<MemoryHolder, A>::from_non_null_in(
+                core::mem::transmute::<NonNull<[u64]>, NonNull<MemoryHolder>>(backing_u64),
+                allocator,
+            );
+            // Same layout
+            backing_box
+        }
+    }
+
+    pub fn byte_size(&self) -> usize {
+        std::mem::size_of_val(&self.buffer)
+    }
+
+    pub fn reset_buffer(&mut self) {
+        self.buffer.fill(0);
+    }
 
     pub fn reset<A: Allocator>(this: &mut Box<Self, A>) {
-        this.memory.fill(0);
-        this.timestamps.fill(0);
+        this.buffer.fill(0);
     }
 
     pub fn collect_inits_and_teardowns<A: Allocator + Clone + Send + Sync>(
@@ -82,15 +217,16 @@ impl MemoryHolder {
         let mut chunks: Vec<Vec<(u32, (TimestampScalar, u32)), A>> =
             vec![Vec::new_in(allocator).clone(); worker.get_num_cores()];
         let mut dst = &mut chunks[..];
-        worker.scope(NUM_RAM_WORDS, |scope, geometry| {
+        let work_size = self.num_words();
+        worker.scope(work_size, |scope, geometry| {
             for thread_idx in 0..geometry.len() {
                 let chunk_size = geometry.get_chunk_size(thread_idx);
                 let chunk_start = geometry.get_chunk_start_pos(thread_idx);
                 let range = chunk_start..(chunk_start + chunk_size);
                 let (el, rest) = dst.split_at_mut(1);
                 dst = rest;
-                let values = &self.memory[range.clone()];
-                let timestamps = &self.timestamps[range];
+                let values = &self.memory()[range.clone()];
+                let timestamps = &self.timestamps()[range];
 
                 worker::Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                     let el = &mut el[0];
@@ -125,7 +261,7 @@ impl<'a> RamPeek for ReplayerMemChunks<'a> {
     #[inline(always)]
     fn peek_word(&self, address: u32) -> u32 {
         debug_assert_eq!(address % 4, 0);
-        debug_assert!(self.chunks.len() > 0);
+        debug_assert!(!self.chunks.is_empty());
         unsafe {
             let value = *self.chunks.get_unchecked(0).0.get_unchecked(0);
 
@@ -141,17 +277,19 @@ impl<'a> RAM for ReplayerMemChunks<'a> {
     #[inline(always)]
     fn read_word(&mut self, address: u32, timestamp: TimestampScalar) -> (TimestampScalar, u32) {
         debug_assert_eq!(address % 4, 0);
-        debug_assert!(self.chunks.len() > 0);
+        debug_assert!(!self.chunks.is_empty());
         unsafe {
             let src = self.chunks.get_unchecked_mut(0);
             let value = *src.0.get_unchecked(0);
             let read_timestamp = *src.1.get_unchecked(0);
             let next_values = src.0.get_unchecked(1..);
             let next_timestamps = src.1.get_unchecked(1..);
-            if next_values.len() > 0 {
+            if !next_values.is_empty() {
                 *src = (next_values, next_timestamps);
             } else {
-                self.chunks = core::mem::transmute(self.chunks.get_unchecked_mut(1..));
+                self.chunks = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                    self.chunks.get_unchecked_mut(1..),
+                );
             }
 
             debug_assert!(read_timestamp < timestamp, "trying to read replay log at address 0x{:08x} with timestamp {}, but read timestamp is {}", address, timestamp, read_timestamp);
@@ -180,17 +318,19 @@ impl<'a> RAM for ReplayerMemChunks<'a> {
         timestamp: TimestampScalar,
     ) -> (TimestampScalar, u32) {
         debug_assert_eq!(address % 4, 0);
-        debug_assert!(self.chunks.len() > 0);
+        debug_assert!(!self.chunks.is_empty());
         unsafe {
             let src = self.chunks.get_unchecked_mut(0);
             let value = *src.0.get_unchecked(0);
             let read_timestamp = *src.1.get_unchecked(0);
             let next_values = src.0.get_unchecked(1..);
             let next_timestamps = src.1.get_unchecked(1..);
-            if next_values.len() > 0 {
+            if !next_values.is_empty() {
                 *src = (next_values, next_timestamps);
             } else {
-                self.chunks = core::mem::transmute(self.chunks.get_unchecked_mut(1..));
+                self.chunks = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                    self.chunks.get_unchecked_mut(1..),
+                );
             }
 
             debug_assert!(read_timestamp < timestamp, "trying to read replay log at address 0x{:08x} with timestamp {}, but read timestamp is {}", address, timestamp, read_timestamp);
@@ -208,10 +348,12 @@ impl<'a> RAM for ReplayerMemChunks<'a> {
             debug_assert!(src.1.len() >= num_snapshots);
             let next_values = src.0.get_unchecked(num_snapshots..);
             let next_timestamps = src.1.get_unchecked(num_snapshots..);
-            if next_values.len() > 0 {
+            if !next_values.is_empty() {
                 *src = (next_values, next_timestamps);
             } else {
-                self.chunks = core::mem::transmute(self.chunks.get_unchecked_mut(1..));
+                self.chunks = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                    self.chunks.get_unchecked_mut(1..),
+                );
             }
         }
     }
@@ -238,7 +380,7 @@ impl<'a, N: NonDeterminismCSRSource> ContextImpl for DefaultContextImpl<'a, N> {
         self.non_determinism_source.read()
     }
 
-    fn write_nondeterminism(&mut self, value: u32, memory: &RamImage) {
+    fn write_nondeterminism(&mut self, value: u32, memory: &[u32]) {
         self.non_determinism_source
             .write_with_memory_access(memory, value);
     }
@@ -291,7 +433,7 @@ impl<'a, N: NonDeterminismCSRSource> ContextImpl for DefaultContextImpl<'a, N> {
         mut trace_chunk: NonNull<TraceChunk>,
         machine_state: &MachineState,
     ) {
-        println!("Execution completed");
+        // println!("Execution completed");
         debug_assert!((machine_state as *const MachineState)
             .is_aligned_to(core::mem::align_of::<MachineState>()));
         debug_assert!((trace_chunk.as_ptr() as *const TraceChunk)
@@ -347,7 +489,7 @@ impl<'a> ContextImpl for FlattenedContextImpl<'a> {
         value[0]
     }
 
-    fn write_nondeterminism(&mut self, _value: u32, _memory: &RamImage) {
+    fn write_nondeterminism(&mut self, _value: u32, _memory: &[u32]) {
         // nothing
     }
 
@@ -399,7 +541,7 @@ impl<'a> ContextImpl for FlattenedContextImpl<'a> {
         mut trace_chunk: NonNull<TraceChunk>,
         machine_state: &MachineState,
     ) {
-        println!("Execution completed");
+        // println!("Execution completed");
         debug_assert!((machine_state as *const MachineState)
             .is_aligned_to(core::mem::align_of::<MachineState>()));
         debug_assert!((trace_chunk.as_ptr() as *const TraceChunk)

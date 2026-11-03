@@ -19,12 +19,9 @@ const _: () = assert!(HEADER_COEFFICIENT_BITS + HEADER_OPCODE_BITS == 16);
 pub const MAX_COEFFICIENT_ENCODINGS: usize = 1 << HEADER_COEFFICIENT_BITS;
 const _: () = assert!(MAX_COEFFICIENT_ENCODINGS == 8_192);
 
-/// Opcode values three bits admit, per regime.
-pub(crate) const MAX_OPCODES_PER_REGIME: usize = 1 << HEADER_OPCODE_BITS;
-const _: () = assert!(MAX_OPCODES_PER_REGIME == 8);
+pub(crate) const MAX_OPCODE_ENCODINGS: usize = 1 << HEADER_OPCODE_BITS;
+const _: () = assert!(MAX_OPCODE_ENCODINGS == 8);
 
-/// Continuation group-header control code. R0 uses the same value for a term,
-/// so decoding requires the regime.
 pub const LEAN_CONT_GROUP_HEADER_CLASS: u16 = 2;
 
 /// Wire-level cap on one coordinate's immediate table. The GPU
@@ -112,10 +109,11 @@ pub(crate) const fn program_bytes(words: usize) -> usize {
 pub(crate) const LEAN_MAX_COEFFICIENT_RECIPES: usize = 1_150;
 /// Source records available in the runtime descriptor.
 pub(crate) const LEAN_MAX_SOURCES: usize = 1_072;
-/// Inline program capacity of the runtime descriptor.
-pub const LEAN_DESCRIPTOR_PROGRAM_WORDS: usize = 6_472;
+/// Inline program capacity of the runtime descriptor. The aligned delegation
+/// corpus needs 6,486 words; reserve headroom for circuit growth.
+pub const LEAN_DESCRIPTOR_PROGRAM_WORDS: usize = 8_192;
 /// [`LEAN_DESCRIPTOR_PROGRAM_WORDS`] in bytes: 16-byte aligned by construction.
-pub const LEAN_DESCRIPTOR_PROGRAM_BYTES: usize = 12_944;
+pub const LEAN_DESCRIPTOR_PROGRAM_BYTES: usize = 16_384;
 
 const _: () = assert!(
     LEAN_MAX_COEFFICIENT_RECIPES + CoefficientRecipeId::RESERVED as usize

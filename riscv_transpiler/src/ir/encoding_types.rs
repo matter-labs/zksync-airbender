@@ -31,18 +31,21 @@ pub struct BTypeOpcode;
 impl BTypeOpcode {
     #[must_use]
     #[inline(always)]
+    #[allow(dead_code)]
     pub const fn rs1(src: u32) -> u32 {
         get_bits_and_align_right(src, 15, 5)
     }
 
     #[must_use]
     #[inline(always)]
+    #[allow(dead_code)]
     pub const fn rs2(src: u32) -> u32 {
         get_bits_and_align_right(src, 20, 5)
     }
 
     #[must_use]
     #[inline(always)]
+    #[allow(dead_code)]
     pub const fn funct3(src: u32) -> u32 {
         get_bits_and_align_right(src, 12, 3)
     }
@@ -63,12 +66,14 @@ pub struct ITypeOpcode;
 impl ITypeOpcode {
     #[must_use]
     #[inline(always)]
+    #[allow(dead_code)]
     pub const fn rs1(src: u32) -> u32 {
         get_bits_and_align_right(src, 15, 5)
     }
 
     #[must_use]
     #[inline(always)]
+    #[allow(dead_code)]
     pub const fn funct3(src: u32) -> u32 {
         get_bits_and_align_right(src, 12, 3)
     }
@@ -86,18 +91,21 @@ pub struct STypeOpcode;
 impl STypeOpcode {
     #[must_use]
     #[inline(always)]
+    #[allow(dead_code)]
     pub const fn rs1(src: u32) -> u32 {
         get_bits_and_align_right(src, 15, 5)
     }
 
     #[must_use]
     #[inline(always)]
+    #[allow(dead_code)]
     pub const fn rs2(src: u32) -> u32 {
         get_bits_and_align_right(src, 20, 5)
     }
 
     #[must_use]
     #[inline(always)]
+    #[allow(dead_code)]
     pub const fn funct3(src: u32) -> u32 {
         get_bits_and_align_right(src, 12, 3)
     }

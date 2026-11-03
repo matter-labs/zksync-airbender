@@ -4,18 +4,35 @@ use super::*;
 
 #[derive(Debug)]
 pub struct BaseFieldPoly<F: PrimeField> {
-    pub(crate) values: Arc<Box<[F]>>,
+    pub(crate) values: Arc<crate::allocation_pool::AllocationType<F>>,
 }
 
 impl<F: PrimeField> BaseFieldPoly<F> {
     pub fn new(values: Box<[F]>) -> Self {
         assert!(values.len().is_power_of_two());
         Self {
+            values: Arc::new(crate::allocation_pool::AllocationType::Owned(values)),
+        }
+    }
+
+    pub fn from_allocation(values: crate::allocation_pool::AllocationType<F>) -> Self {
+        assert!(values.len().is_power_of_two());
+        Self {
             values: Arc::new(values),
         }
     }
 
-    pub fn from_arc(values: Arc<Box<[F]>>) -> Self {
+    /// A pooled buffer whose window is fully written.
+    ///
+    /// # Safety
+    /// Every element of the buffer's window must have been written.
+    pub unsafe fn from_pooled(values: crate::allocation_pool::Buffer<F>) -> Self {
+        Self::from_allocation(crate::allocation_pool::AllocationType::from_initialized(
+            values,
+        ))
+    }
+
+    pub fn from_arc(values: Arc<crate::allocation_pool::AllocationType<F>>) -> Self {
         assert!(values.len().is_power_of_two());
         Self { values }
     }
@@ -41,6 +58,7 @@ pub struct BaseFieldPolySource<F: PrimeField> {
 }
 
 impl<F: PrimeField> BaseFieldPolySource<F> {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
     pub(crate) fn current_values(&'_ self) -> &'_ [F] {
         unsafe { core::slice::from_raw_parts(self.start, self.next_layer_size * 2) }
     }
@@ -102,7 +120,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolySourceAfterOneFol
             let evals =
                 core::slice::from_raw_parts(self.base_input_start, self.base_layer_half_size * 2);
             // LSB binding: adjacent pairs
-            for pair in evals.chunks_exact(2) {
+            for pair in evals.as_chunks::<2>().0 {
                 let (f0, f1) = (&pair[0], &pair[1]);
                 let mut diff = *f1;
                 diff.sub_assign(f0);
@@ -224,7 +242,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolyIntermediateFoldi
 pub struct BaseFieldPolySourceAfterTwoFoldings<F: PrimeField, E: FieldExtension<F> + Field> {
     pub(crate) base_input_start: *const F,
     pub(crate) this_layer_cache_start: *mut E,
+    #[allow(dead_code)]
     pub(crate) base_layer_half_size: usize,
+    #[allow(dead_code)]
     pub(crate) base_quarter_size: usize,
     pub(crate) next_layer_size: usize,
     pub(crate) first_folding_challenge: E,
@@ -234,6 +254,7 @@ pub struct BaseFieldPolySourceAfterTwoFoldings<F: PrimeField, E: FieldExtension<
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolySourceAfterTwoFoldings<F, E> {
+    #[allow(dead_code)]
     pub(crate) fn current_values(&self) -> Vec<E> {
         let mut result_evals = Vec::with_capacity(self.base_layer_half_size);
         unsafe {

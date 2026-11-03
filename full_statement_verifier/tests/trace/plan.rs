@@ -8,6 +8,7 @@ use verifier_common::prover::definitions::MerkleTreeCap;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Section {
     Riscv,
+    InitsAndTeardowns,
     Delegation,
 }
 
@@ -65,15 +66,25 @@ pub fn plan_unrolled_stream(
 
     let inits_count_word = w;
     w += 1;
+    let mut proof_first_words = Vec::new();
     {
         let compiled = proof
             .inits_and_teardowns_circuit
             .as_ref()
             .expect("compiled inits and teardowns");
         for p in &proof.inits_and_teardown_proofs {
+            proof_first_words.push(w);
             w += flatten_gkr_proof_for_nds(p, compiled).len();
         }
     }
+    regions.push(RegionPlan {
+        circuit: CircuitId::InitsAndTeardowns,
+        section: Section::InitsAndTeardowns,
+        count_word: inits_count_word,
+        end_word: w,
+        proof_first_words,
+        closes_at_epilogue: false,
+    });
 
     for k in DELEGATION_TYPES {
         let count_word = w;
@@ -110,6 +121,7 @@ pub fn plan_unrolled_stream(
         regions[i].end_word = match (same_section_next, regions[i].section) {
             (Some(next), _) => next,
             (None, Section::Riscv) => inits_count_word,
+            (None, Section::InitsAndTeardowns) => regions[i].end_word,
             (None, Section::Delegation) => pow_word,
         };
         regions[i].closes_at_epilogue =

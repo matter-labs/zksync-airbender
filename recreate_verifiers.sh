@@ -4,11 +4,20 @@ set -e
 
 cd "$(dirname "$0")"
 
+# Keep compiler layouts and SSA in sync with the production artifacts.
+RUST_MIN_STACK=100000000 cargo test -p cs --lib -- \
+    _into_gkr _into_no_caches_gkr _witness_graph
+RUST_MIN_STACK=100000000 cargo test -p witness_eval_generator --lib -- \
+    gen_for_gkr gen_for_large_field
+
 circuit_names=(
-    "blake2_with_compression"
-    "blake2_g_function"
     "bigint_with_control"
+    "blake2_g_function"
+    "blake2_with_compression"
+    "keccak_chi5"
+    "keccak_column_parity"
     "keccak_special5"
+    "keccak_theta_rho"
 )
 
 unrolled_circuit_names=(
@@ -37,5 +46,12 @@ done
 (cd circuit_defs/setups && RUST_MIN_STACK=100000000 cargo test --release generate_delegation_circuits_artifacts)
 
 cargo run -p gpu_witness_eval_generator --bin regenerate_committed
+
+for SCHEDULE in cs/compiled_circuits/*_schedule_b4_gkr.json; do
+    STEM=$(basename "$SCHEDULE" _schedule_b4_gkr.json)
+    cargo run --release -p gpu_gkr_compiler --features search --bin gkr-forward-artifact -- \
+        --if-stale --circuit "$STEM" --layout "cs/compiled_circuits/${STEM}_layout_gkr.json" \
+        --output "$SCHEDULE" --seed 42 --cache-buckets 4 --population 64 --evaluations 1024
+done
 
 (cargo test -p verifier_generator --no-default-features --test generate_verifiers)

@@ -17,13 +17,14 @@ const UNIFIED_TEXT_PATH: &str = "examples/multi_family_smoke/app_blake2_g_functi
 const TRACE_LEN_LOG2: u32 = UnrolledCircuitType::Unified.get_domain_size_log2();
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
-// Delegation cycle counts mirror the (test-gated, hence inlined here) constants
-// in `prover::tests::gkr::orchestration::common`. The `prover` test module is
-// not enabled by `gpu_circuit_prover`, so the values are reproduced verbatim.
-const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
-const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
-const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
-const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+const BLAKE_NUM_DELEGATION_CYCLES: usize =
+    1 << DelegationCircuitType::Blake2WithCompression.get_domain_size_log2();
+const BIGINT_NUM_DELEGATION_CYCLES: usize =
+    1 << DelegationCircuitType::BigIntWithControl.get_domain_size_log2();
+const KECCAK_NUM_DELEGATION_CYCLES: usize =
+    1 << DelegationCircuitType::KeccakSpecial5.get_domain_size_log2();
+const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize =
+    1 << DelegationCircuitType::Blake2GFunction.get_domain_size_log2();
 
 /// Derive the unified decoder
 /// table the way the production setups path does
@@ -252,14 +253,7 @@ where
     );
     let twiddles: Twiddles<_, Global> = Twiddles::new(num_delegation_cycles, worker);
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, circuit);
-    let setup_commitment = setup.commit(
-        &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        num_delegation_cycles.trailing_zeros() as usize,
-        worker,
-    );
+    let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, worker);
     prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
         circuit,
         external_challenges,
@@ -268,7 +262,7 @@ where
         &setup_commitment,
         &twiddles,
         &prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
         Vec::new(),
         num_delegation_cycles,
         worker,
@@ -558,14 +552,17 @@ fn prove_unified_delegation_factors(
 /// via `DelegationTracingDataHostSource::get`, so it serves bigint / blake2 /
 /// keccak alike. The buffer rides as a single
 /// chunk, mirroring the unified/per-family `*_tracing_host_for_test` helpers.
-pub(super) fn make_delegation_tracing_host_for_test<W>(buffer: Vec<W>) -> TracingDataHost<Global>
+pub(super) fn make_delegation_tracing_host_for_test<W>(
+    circuit_type: DelegationCircuitType,
+    buffer: Vec<W>,
+) -> TracingDataHost<Global>
 where
     W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
 {
     let trace = gpu_trace::witness::trace_delegation::DelegationTraceHost::<W, Global> {
         chunks: vec![Arc::new(buffer)],
     };
-    TracingDataHost::Delegation(W::get(trace))
+    TracingDataHost::Delegation(W::get(circuit_type, trace))
 }
 
 /// Build a `BasicUnrolledProofFixture` that drives a single delegation circuit
@@ -602,7 +599,6 @@ where
 {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 64usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
     assert!(
@@ -643,10 +639,8 @@ where
     // validated delegation setup. (`prove()` asserts this equals
     // `base_oracles_values_per_leaf.trailing_zeros()`.)
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
-    let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        None,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
@@ -682,7 +676,7 @@ where
         })
         .collect_vec();
 
-    let tracing_data_host = make_delegation_tracing_host_for_test(buffer);
+    let tracing_data_host = make_delegation_tracing_host_for_test(circuit_type, buffer);
     eprintln!("delegation fixture ({circuit_type:?}): tracing host ready");
 
     let base = BasicUnrolledFixture {
@@ -729,7 +723,6 @@ where
 {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 64usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
     assert!(
@@ -746,10 +739,8 @@ where
     let whir_schedule = prover_config.whir_schedule.clone();
 
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
-    let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        None,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
@@ -764,13 +755,17 @@ where
         .unwrap(),
     );
     let decoder_table_host = make_decoder_table_host_for_test(&[]);
-    let tracing_data_host = make_delegation_tracing_host_for_test(buffer);
+    let tracing_data_host = make_delegation_tracing_host_for_test(circuit_type, buffer);
 
     // No CPU reference -> derive memory tree caps from a one-shot GPU
     // commit_memory (delegations need no decoder / inits-and-teardowns bundle).
     let memory_tree_caps = {
-        let mut tracing_data_transfer =
-            TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap();
+        let mut tracing_data_transfer = TracingDataTransfer::new(
+            tracing_data_host.clone(),
+            compiled_circuit.trace_len,
+            &context,
+        )
+        .unwrap();
         let transfer = gpu_prover_context::transfer::single_shot_h2d(
             |t| tracing_data_transfer.schedule_transfer(t, &context),
             &context,
@@ -849,7 +844,6 @@ fn prepare_unified_fixture(
 
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 64usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
@@ -952,10 +946,8 @@ fn prepare_unified_fixture(
         &compiled_circuit,
     );
 
-    let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        None,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
@@ -987,14 +979,7 @@ fn prepare_unified_fixture(
 
     let (expected_cpu_proof, delegation_grand_product_factors) = if compute_cpu_reference {
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let setup_commitment = setup.commit(
-            &twiddles,
-            whir_schedule.base_lde_factor,
-            whir_schedule.whir_steps_schedule[0],
-            whir_schedule.cap_size,
-            trace_len.trailing_zeros() as usize,
-            &worker,
-        );
+        let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, &worker);
         let expected_cpu_proof =
             prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
                 &compiled_circuit,
@@ -1004,7 +989,7 @@ fn prepare_unified_fixture(
                 &setup_commitment,
                 &twiddles,
                 &prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 selected_set_top_bits.clone(),
                 trace_len,
                 &worker,
@@ -1054,10 +1039,22 @@ fn prepare_unified_fixture(
             None
         };
         let inits_and_teardowns = Some(
-            InitsAndTeardownsTransfer::new(inits_and_teardowns_host.clone(), &context).unwrap(),
+            InitsAndTeardownsTransfer::new(
+                Some(inits_and_teardowns_host.clone()),
+                compiled_circuit.memory_layout.teardown_sets.len(),
+                compiled_circuit.trace_len,
+                &context,
+            )
+            .unwrap(),
         );
-        let tracing_data =
-            Some(TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap());
+        let tracing_data = Some(
+            TracingDataTransfer::new(
+                tracing_data_host.clone(),
+                compiled_circuit.trace_len,
+                &context,
+            )
+            .unwrap(),
+        );
 
         let mut bundle = gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::new(
             decoder,

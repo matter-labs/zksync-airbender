@@ -19,9 +19,9 @@ pub(crate) fn peek_lookup_values_unconstrained_into_variables<
     table: LookupInput<F>,
     exec_flag: Boolean,
 ) {
-    assert!(inputs.len() > 0);
+    assert!(!inputs.is_empty());
 
-    let output_variables: [Variable; N] = outputs.clone();
+    let output_variables: [Variable; N] = *outputs;
     let inputs = inputs.clone();
     let exec_flag = exec_flag.get_variable().unwrap();
 
@@ -55,10 +55,10 @@ pub(crate) fn peek_lookup_values_unconstrained_into_variables_from_constraints<
     output_variables: &[Variable; N],
     table_type: Constraint<F>,
 ) {
-    assert!(inputs.len() > 0);
+    assert!(!inputs.is_empty());
 
     let inputs = inputs.clone();
-    let output_variables = output_variables.clone();
+    let output_variables = *output_variables;
 
     let value_fn = move |placer: &mut CS::WitnessPlacer| {
         let inputs = inputs
@@ -91,11 +91,11 @@ pub(crate) fn peek_lookup_values_unconstrained_into_variables_from_constraints_c
     table_type: Constraint<F>,
     exec_flag_vars: &[Variable],
 ) {
-    assert!(inputs.len() > 0);
+    assert!(!inputs.is_empty());
     assert!(!exec_flag_vars.is_empty());
 
     let inputs = inputs.clone();
-    let output_variables = output_variables.clone();
+    let output_variables = *output_variables;
     let exec_flag_vars = exec_flag_vars.to_vec();
 
     let value_fn = move |placer: &mut CS::WitnessPlacer| {

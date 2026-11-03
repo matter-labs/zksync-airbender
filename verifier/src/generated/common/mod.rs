@@ -1,3 +1,17 @@
+#![allow(
+    dead_code,
+    unused_imports,
+    unused_unsafe,
+    unused_assignments,
+    clippy::needless_range_loop,
+    clippy::too_many_arguments,
+    clippy::manual_div_ceil,
+    clippy::borrow_deref_ref,
+    clippy::identity_op,
+    clippy::missing_safety_doc,
+    clippy::duplicate_mod,
+    clippy::large_const_arrays
+)]
 use verifier_common::blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
@@ -66,6 +80,25 @@ pub fn draw_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
     }
     let raw = unsafe { words.as_array::<EXT_DEGREE>() };
     ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
+}
+#[doc = r" Variant of [`draw_single_field_el`] that first moves past the digest the preceding"]
+#[doc = r" raw draw emitted. Matches the prover's `draw_fresh_random_field_els`."]
+#[inline(always)]
+pub fn draw_fresh_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
+    ts.advance();
+    draw_single_field_el(ts)
+}
+#[doc = r" Variant of [`draw_field_els_into`] that first moves past the digest the preceding"]
+#[doc = r" draw emitted (`seed = H(seed)`), so a draw that directly follows another draw never"]
+#[doc = r" re-emits its words. Matches the prover's `draw_fresh_random_field_els` — used for"]
+#[doc = r" the packing coordinates drawn right after the GKR phase, which ends with a draw."]
+#[inline(always)]
+pub fn draw_fresh_field_els_into<const BUF_CAP: usize>(
+    ts: &mut TranscriptState,
+    dst: &mut [BabyBearExt4],
+) {
+    ts.advance();
+    draw_field_els_into::<BUF_CAP>(ts, dst);
 }
 #[doc = r" Variant of [`draw_field_els_into`] used immediately after a `read_and_verify_pow`:"]
 #[doc = r" the first drawn word was consumed by the PoW, so we draw one extra word and skip it."]
@@ -170,10 +203,6 @@ pub fn verify_sumcheck_rounds<
     let mut eq_prefactor = BabyBearExt4::ONE;
     let coeff_data_words = SUMCHECK_POLY_COEFFS * EXT_DEGREE;
     let mut commit_buf = CommitBuf::<COMMIT_BUF>::new();
-    let mut draw_buf = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
-    unsafe {
-        draw_buf.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-    }
     for round in 0..NUM_ROUNDS {
         {
             let mut i = 0;
@@ -182,48 +211,45 @@ pub fn verify_sumcheck_rounds<
                 i += 1;
             }
         }
-        let coeffs: [BabyBearExt4; 4] =
-            unsafe { *commit_buf.data_as::<[BabyBearExt4; 4]>(1).as_ptr() };
-        let p0 = coeffs[0];
-        let mut p1 = coeffs[0];
-        field_ops::add_assign(&mut p1, &coeffs[1]);
-        field_ops::add_assign(&mut p1, &coeffs[2]);
-        field_ops::add_assign(&mut p1, &coeffs[3]);
-        let mut sum = p0;
-        field_ops::add_assign(&mut sum, &p1);
-        field_ops::mul_assign(&mut sum, &eq_prefactor);
-        if sum != claim {
-            return Err(E::gkr_sumcheck_round_failed(layer_idx, round));
+        {
+            let coeffs: [BabyBearExt4; 4] = unsafe { commit_buf.read_one::<[BabyBearExt4; 4]>() };
+            let p0 = coeffs[0];
+            let mut p1 = coeffs[0];
+            field_ops::add_assign(&mut p1, &coeffs[1]);
+            field_ops::add_assign(&mut p1, &coeffs[2]);
+            field_ops::add_assign(&mut p1, &coeffs[3]);
+            let mut sum = p0;
+            field_ops::add_assign(&mut sum, &p1);
+            field_ops::mul_assign(&mut sum, &eq_prefactor);
+            if sum != claim {
+                return Err(E::gkr_sumcheck_round_failed(layer_idx, round));
+            }
         }
         ts.commit(&mut commit_buf, coeff_data_words);
-        ts.draw_raw(draw_buf.as_mut_slice());
+        let coeffs: [BabyBearExt4; 4] = unsafe { commit_buf.read_one::<[BabyBearExt4; 4]>() };
         let r_k = {
             let raw = unsafe {
-                (draw_buf.as_slice().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked()
+                (ts.draw_digest().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked()
             };
             ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
         };
         {
-            let mut result = coeffs[3];
-            field_ops::mul_assign(&mut result, &r_k);
-            field_ops::add_assign(&mut result, &coeffs[2]);
-            field_ops::mul_assign(&mut result, &r_k);
-            field_ops::add_assign(&mut result, &coeffs[1]);
-            field_ops::mul_assign(&mut result, &r_k);
-            field_ops::add_assign(&mut result, &coeffs[0]);
-            claim = result;
+            let mut h2 = coeffs[2];
+            field_ops::add_assign_product(&mut h2, &coeffs[3], &r_k);
+            let mut h1 = coeffs[1];
+            field_ops::add_assign_product(&mut h1, &h2, &r_k);
+            let mut h0 = coeffs[0];
+            field_ops::add_assign_product(&mut h0, &h1, &r_k);
+            claim = h0;
         }
         {
             let p = unsafe { *challenges.get_unchecked(round) };
-            let mut one_minus_r = BabyBearExt4::ONE;
-            field_ops::sub_assign(&mut one_minus_r, &r_k);
-            let mut one_minus_p = BabyBearExt4::ONE;
-            field_ops::sub_assign(&mut one_minus_p, &p);
-            let mut t = one_minus_r;
-            field_ops::mul_assign(&mut t, &one_minus_p);
-            let mut rp = r_k;
-            field_ops::mul_assign(&mut rp, &p);
-            field_ops::add_assign(&mut t, &rp);
+            let mut t = r_k;
+            field_ops::mul_assign(&mut t, &p);
+            field_ops::double(&mut t);
+            field_ops::sub_assign(&mut t, &r_k);
+            field_ops::sub_assign(&mut t, &p);
+            field_ops::add_assign_base(&mut t, &BabyBearField::ONE);
             eq_prefactor = t;
         }
         unsafe { *challenges.get_unchecked_mut(round) = r_k };
@@ -454,31 +480,33 @@ pub unsafe fn compute_claim<const N: usize>(
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
     let mut combined = BabyBearExt4::ZERO;
-    let mut current_batch = BabyBearExt4::ONE;
-    let mut i = 0;
-    while i < N {
+    let mut i = N;
+    while i > 0 {
+        i -= 1;
         let (n, o0, o1) = unsafe { *descs.get_unchecked(i) };
         if n == 0 {
-            field_ops::mul_assign(&mut current_batch, &batch_base);
+            field_ops::mul_assign(&mut combined, &batch_base);
         } else if n == 1 {
             let claim = *output_claims.get_unchecked(o0);
-            let mut t = current_batch;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
+            {
+                let mut h = claim;
+                field_ops::add_assign_product(&mut h, &combined, &batch_base);
+                combined = h;
+            }
         } else {
             let c0 = *output_claims.get_unchecked(o0);
-            let mut t0 = current_batch;
-            field_ops::mul_assign(&mut t0, &c0);
-            field_ops::add_assign(&mut combined, &t0);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
             let c1 = *output_claims.get_unchecked(o1);
-            let mut t1 = current_batch;
-            field_ops::mul_assign(&mut t1, &c1);
-            field_ops::add_assign(&mut combined, &t1);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
+            {
+                let mut h = c1;
+                field_ops::add_assign_product(&mut h, &combined, &batch_base);
+                combined = h;
+            }
+            {
+                let mut h = c0;
+                field_ops::add_assign_product(&mut h, &combined, &batch_base);
+                combined = h;
+            }
         }
-        i += 1;
     }
     combined
 }
@@ -507,7 +535,7 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource<BabyBearField>, E: Erro
 ) -> Result<(BabyBearExt4, BabyBearExt4), E::Error> {
     const WHIR_SC_DATA_WORDS: usize = 3 * EXT_DEGREE;
     const WHIR_SC_COMMIT_BUF: usize = {
-        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_SC_DATA_WORDS;
+        let total = WHIR_SC_DATA_WORDS;
         (total + ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
             / ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
             * ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
@@ -597,10 +625,9 @@ pub fn eval_multilinear_with_monomial_tensor(
     let mut result = unsafe { *coeffs.get_unchecked(0) };
     let mut i = 1;
     while i < n {
-        let mut term = unsafe { *coeffs.get_unchecked(i) };
+        let term = unsafe { *coeffs.get_unchecked(i) };
         let w = unsafe { *weights.get_unchecked(i) };
-        field_ops::mul_assign(&mut term, &w);
-        field_ops::add_assign(&mut result, &term);
+        field_ops::add_assign_product(&mut result, &term, &w);
         i += 1;
     }
     result
@@ -677,8 +704,13 @@ pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource<BabyBearField>>(
     }
 }
 #[inline(always)]
-pub fn fold_whir_accumulator<const MAX_POW: usize>(
-    acc: &mut ::verifier_common::whir::WhirAccumulator<BabyBearExt4, MAX_POW>,
+pub fn fold_whir_accumulator<const MAX_POW: usize, const MAX_OOD: usize>(
+    acc: &mut ::verifier_common::whir::WhirAccumulator<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW,
+        MAX_OOD,
+    >,
     alpha: BabyBearExt4,
     z_initial: &[BabyBearExt4],
 ) {
@@ -707,10 +739,28 @@ pub fn fold_whir_accumulator<const MAX_POW: usize>(
         }
         i += 1;
     }
+    let n = acc.base_pow_entries.len();
+    let mut i = 0;
+    while i < n {
+        unsafe {
+            let entry = acc.base_pow_entries.get_unchecked_mut(i);
+            let s = entry.current_scalar;
+            let mut eq = one_minus_alpha;
+            field_ops::add_assign_product_with_base(&mut eq, &alpha_coeff, &s);
+            field_ops::mul_assign(&mut entry.prefactor, &eq);
+            field_ops::square(&mut entry.current_scalar);
+        }
+        i += 1;
+    }
 }
 #[inline(always)]
-pub fn push_whir_pow_entry<const MAX_POW: usize>(
-    acc: &mut ::verifier_common::whir::WhirAccumulator<BabyBearExt4, MAX_POW>,
+pub fn push_whir_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
+    acc: &mut ::verifier_common::whir::WhirAccumulator<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW,
+        MAX_OOD,
+    >,
     current_scalar: BabyBearExt4,
     coefficient: BabyBearExt4,
 ) {
@@ -719,6 +769,24 @@ pub fn push_whir_pow_entry<const MAX_POW: usize>(
         prefactor: BabyBearExt4::ONE,
         coefficient,
     });
+}
+#[inline(always)]
+pub fn push_whir_base_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
+    acc: &mut ::verifier_common::whir::WhirAccumulator<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW,
+        MAX_OOD,
+    >,
+    current_scalar: BabyBearField,
+    coefficient: BabyBearExt4,
+) {
+    acc.base_pow_entries
+        .push(::verifier_common::whir::WhirBasePowEntry {
+            current_scalar,
+            prefactor: BabyBearExt4::ONE,
+            coefficient,
+        });
 }
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]

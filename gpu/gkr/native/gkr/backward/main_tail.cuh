@@ -3,7 +3,7 @@
 #include <assert.h>
 
 #include "continuation_eval.cuh"
-#include "mega_finalize.cuh"
+#include "tail_common.cuh"
 
 namespace airbender::gkr::backward {
 
@@ -12,19 +12,19 @@ constexpr u32 BWD_MAIN_TAIL_K = 8;
 constexpr u32 BWD_MAIN_TAIL_LIST_OFFSETS = BWD_MAIN_TAIL_K + 1;
 constexpr u32 BWD_MAIN_TAIL_LIST_OFFSETS_OFFSET = 0;
 constexpr u32 BWD_MAIN_TAIL_PROGRAM_OFFSET = 18;
-constexpr u32 BWD_MAIN_TAIL_PROGRAM_WORD_CAP = 6472;
-constexpr u32 BWD_MAIN_TAIL_PROGRAM_BYTES = 12944;
-constexpr u32 BWD_MAIN_TAIL_IMMEDIATE_OFFSET = 12964;
+constexpr u32 BWD_MAIN_TAIL_PROGRAM_WORD_CAP = 8192;
+constexpr u32 BWD_MAIN_TAIL_PROGRAM_BYTES = 16384;
+constexpr u32 BWD_MAIN_TAIL_IMMEDIATE_OFFSET = 16404;
 constexpr u32 BWD_MAIN_TAIL_IMMEDIATE_CAP = 512;
-constexpr u32 BWD_MAIN_TAIL_BLOB_BYTES = 15024;
+constexpr u32 BWD_MAIN_TAIL_BLOB_BYTES = 18464;
 constexpr u16 BWD_MAIN_TAIL_C_INIT_NONE = 0xffff;
 constexpr u32 BWD_MAIN_TAIL_SOURCE_CAP = 1072;
 
 static_assert(BWD_MAIN_TAIL_PROGRAM_OFFSET == BWD_MAIN_TAIL_LIST_OFFSETS * sizeof(u16), "main-tail program offset drift");
 static_assert(BWD_MAIN_TAIL_PROGRAM_BYTES == BWD_MAIN_TAIL_PROGRAM_WORD_CAP * sizeof(u16), "main-tail program capacity drift");
-static_assert(BWD_MAIN_TAIL_IMMEDIATE_OFFSET == 12964, "main-tail immediate offset drift");
+static_assert(BWD_MAIN_TAIL_IMMEDIATE_OFFSET == 16404, "main-tail immediate offset drift");
 static_assert(BWD_MAIN_TAIL_IMMEDIATE_OFFSET % alignof(u32) == 0, "main-tail immediate table is misaligned");
-static_assert(BWD_MAIN_TAIL_BLOB_BYTES == 15024, "main-tail blob size drift");
+static_assert(BWD_MAIN_TAIL_BLOB_BYTES == 18464, "main-tail blob size drift");
 static_assert(BWD_MAIN_TAIL_BLOB_BYTES % 16 == 0, "main-tail blob alignment drift");
 
 struct __align__(16) bwd_main_tail_desc {
@@ -78,7 +78,7 @@ static_assert(__builtin_offsetof(bwd_main_tail_desc, folding_steps) == 113, "fol
 static_assert(__builtin_offsetof(bwd_main_tail_desc, tail_padding) == 114, "tail_padding ABI offset drift");
 static_assert(sizeof(bwd_main_tail_program_blob) == BWD_MAIN_TAIL_BLOB_BYTES, "main-tail program blob size drift");
 static_assert(alignof(bwd_main_tail_program_blob) == 16, "main-tail program blob alignment drift");
-static_assert(sizeof(bwd_main_tail_desc) + sizeof(bwd_main_tail_program_blob) == 15152, "main-tail argument size drift");
+static_assert(sizeof(bwd_main_tail_desc) + sizeof(bwd_main_tail_program_blob) == 18592, "main-tail argument size drift");
 
 DEVICE_FORCEINLINE const u16 *bwd_main_tail_list_offsets(const bwd_main_tail_desc &desc) {
   return reinterpret_cast<const u16 *>(desc.program_blob + BWD_MAIN_TAIL_LIST_OFFSETS_OFFSET);
@@ -94,10 +94,23 @@ DEVICE_FORCEINLINE const u32 *bwd_main_tail_immediates(const bwd_main_tail_desc 
 
 DEVICE_FORCEINLINE e4 bwd_main_tail_eq_weight(const bool bit, const e4 coordinate) { return bit ? coordinate : e4::sub(e4::ONE(), coordinate); }
 
+DEVICE_FORCEINLINE void bwd_main_tail_build_d3_weights(const bwd_main_tail_desc &desc, e4 (&weights)[7]) {
+  if (threadIdx.x < 7) {
+    const u32 q = threadIdx.x + 1;
+    e4 weight = e4::ONE();
+#pragma unroll
+    for (u32 bit = 0; bit < 3; ++bit) {
+      const e4 coordinate = desc.challenges_out[u32{desc.tail_start} - 3u + bit];
+      weight = e4::mul(weight, bwd_main_tail_eq_weight(((q >> bit) & 1u) != 0, coordinate));
+    }
+    weights[threadIdx.x] = weight;
+  }
+}
+
 DEVICE_FORCEINLINE void bwd_main_tail_fold_d3(const bwd_main_tail_desc &desc, const e4 *input, const u32 input_stride, e4 *output, const u32 output_stride,
-                                              const e4 (&coordinates)[3]) {
+                                              const e4 (&weights)[7]) {
   const u32 total = u32{desc.source_count} * output_stride;
-  for (u32 flat = threadIdx.x; flat < total; flat += BWD_MAIN_TAIL_BLOCK_THREADS) {
+  for (u32 flat = blockIdx.x * blockDim.x + threadIdx.x; flat < total; flat += gridDim.x * blockDim.x) {
     const u32 source = flat / output_stride;
     const u32 row = flat - source * output_stride;
     const e4 *leaves = input + static_cast<size_t>(source) * input_stride + 8u * row;
@@ -112,10 +125,7 @@ DEVICE_FORCEINLINE void bwd_main_tail_fold_d3(const bwd_main_tail_desc &desc, co
       assert(q == previous_q + 1u);
       previous_q = q;
 #endif
-      e4 weight = e4::ONE();
-#pragma unroll
-      for (u32 bit = 0; bit < 3; ++bit)
-        weight = e4::mul(weight, bwd_main_tail_eq_weight(((q >> bit) & 1u) != 0, coordinates[bit]));
+      const e4 weight = weights[q - 1];
       folded = e4::fma(e4::sub(leaves[q], leaf_zero), weight, folded);
     }
     output[static_cast<size_t>(source) * output_stride + row] = folded;
@@ -147,18 +157,6 @@ struct bwd_main_tail_source_pair_resolver {
   }
 };
 
-DEVICE_FORCEINLINE e4 bwd_main_tail_warp_sum(e4 value) {
-#pragma unroll
-  for (u32 mask = BWD_WINDOW_WARP_LANES >> 1; mask != 0; mask >>= 1) {
-    e4 shuffled;
-    const uint4 *source = reinterpret_cast<const uint4 *>(&value);
-    uint4 *destination = reinterpret_cast<uint4 *>(&shuffled);
-    destination[0] = shfl_xor(0xffffffffu, source[0], mask, BWD_WINDOW_WARP_LANES);
-    value = e4::add(value, shuffled);
-  }
-  return value;
-}
-
 DEVICE_FORCEINLINE void bwd_main_tail_evaluate_round(const bwd_main_tail_desc &desc, const e4 *columns, const u32 stride, const gkr_eq_sizes eq_sizes,
                                                      e4 (&plane)[BWD_MAIN_TAIL_BLOCK_THREADS], e4 &e_partial, e4 &c_partial) {
   const u32 lane = threadIdx.x & BWD_WINDOW_LANE_INDEX_MASK;
@@ -187,7 +185,7 @@ DEVICE_FORCEINLINE void bwd_main_tail_evaluate_round(const bwd_main_tail_desc &d
     if (active)
       row_c0 = e4::mul(row_c0, gkr_compute_eq_inline<e4>(desc.eq_low, eq_sizes, lane));
   }
-  row_c0 = bwd_main_tail_warp_sum(row_c0);
+  row_c0 = gkr_trace_holder_partials_warp_reduce_sum(row_c0);
   if (threadIdx.x == 0)
     e_partial = row_c0;
   __syncthreads();
@@ -202,7 +200,7 @@ DEVICE_FORCEINLINE void bwd_main_tail_evaluate_round(const bwd_main_tail_desc &d
     if (active)
       row_c2 = e4::mul(row_c2, gkr_compute_eq_inline<e4>(desc.eq_low, eq_sizes, lane));
   }
-  row_c2 = bwd_main_tail_warp_sum(row_c2);
+  row_c2 = gkr_trace_holder_partials_warp_reduce_sum(row_c2);
   if (threadIdx.x == 0)
     c_partial = row_c2;
   __syncthreads();
@@ -210,18 +208,12 @@ DEVICE_FORCEINLINE void bwd_main_tail_evaluate_round(const bwd_main_tail_desc &d
 
 DEVICE_FORCEINLINE void bwd_main_tail_execute(const bwd_main_tail_desc &desc) {
   __shared__ e4 plane[BWD_MAIN_TAIL_BLOCK_THREADS];
-  __shared__ e4 d3_coordinates[3];
   __shared__ e4 e_partial;
   __shared__ e4 c_partial;
   __shared__ e4 challenge;
   __shared__ gkr_eq_sizes eq_sizes;
 
   const u32 tail_rounds = u32{desc.folding_steps} - u32{desc.tail_start};
-  if (threadIdx.x < 3)
-    // The published entry still precedes the last continuation window's
-    // three folds. Bind it with those generated sumcheck challenges, not with
-    // the incoming claim point used by the round-update normalization below.
-    d3_coordinates[threadIdx.x] = desc.challenges_out[u32{desc.tail_start} - 3u + threadIdx.x];
   if (threadIdx.x == 0)
     eq_sizes = desc.eq_sizes;
   __syncthreads();
@@ -231,9 +223,8 @@ DEVICE_FORCEINLINE void bwd_main_tail_execute(const bwd_main_tail_desc &desc) {
   u32 input_stride = desc.entry_column_elems;
   for (u32 iteration = 0; iteration < tail_rounds; ++iteration) {
     const u32 output_stride = iteration == 0 ? input_stride >> 3 : input_stride >> 1;
-    if (iteration == 0)
-      bwd_main_tail_fold_d3(desc, input, input_stride, output, output_stride, d3_coordinates);
-    else
+    // The preceding multi-block d3 fold has already populated ping.
+    if (iteration != 0)
       bwd_main_tail_fold_d1(desc, input, input_stride, output, output_stride, challenge);
     __syncthreads();
 

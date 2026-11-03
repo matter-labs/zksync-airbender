@@ -39,6 +39,7 @@ pub struct BasicAssembly<
     table_driver: TableDriver<F>,
     register_and_indirect_memory_accesses: Vec<RegisterAndIndirectAccesses>,
     register_and_indirect_memory_accesses_offset_variables_idxes: HashMap<Variable, usize>,
+    read_timestamp_group_distances: BTreeMap<u8, Expr<F>>,
     executor_machine_state: Option<OpcodeFamilyCircuitState<F>>,
     delegation_circuit_state: Option<DelegationCircuitState>,
 
@@ -70,6 +71,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
             register_and_indirect_memory_accesses: vec![],
             register_and_indirect_memory_accesses_offset_variables_idxes: HashMap::new(),
+            read_timestamp_group_distances: BTreeMap::new(),
             witness_graph: WitnessResolutionGraph::new(),
 
             executor_machine_state: None,
@@ -272,8 +274,8 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         expr.validate_degree_at_most(4);
         let mut constraint = expr.clone().to_max_quadratic_constraint();
         assert!(constraint.degree() <= 2);
-        assert!(constraint.is_empty() == false);
-        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
+        assert!(!constraint.is_empty());
+        assert!(!constraint.terms.iter().all(|x| x.is_constant()));
         constraint.normalize();
 
         // let idx = self.structured_statements.len();
@@ -301,8 +303,8 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         expr.validate_degree_at_most(4);
         let mut constraint = expr.to_max_quadratic_constraint();
         assert!(constraint.degree() <= 2);
-        assert!(constraint.is_empty() == false);
-        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
+        assert!(!constraint.is_empty());
+        assert!(!constraint.terms.iter().all(|x| x.is_constant()));
         constraint.normalize();
         let new_var = self.add_variable();
 
@@ -314,7 +316,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         use crate::cs::utils::collapse_max_quadratic_constraint_into;
         collapse_max_quadratic_constraint_into(self, constraint.clone(), new_var);
 
-        constraint = constraint - Term::from(new_var);
+        constraint -= Term::from(new_var);
 
         self.structured_statements
             .push(StructuredStatement::AssertZero {
@@ -332,7 +334,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         expr.validate_degree_at_most(4);
         let mut constraint = expr.to_max_quadratic_constraint();
         assert!(constraint.degree() <= 2);
-        assert!(constraint.is_empty() == false);
+        assert!(!constraint.is_empty());
         constraint.normalize();
         constraint -= Term::from(dst);
         constraint.normalize();
@@ -364,8 +366,8 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         expr.validate_degree_at_most(4);
         let mut constraint = expr.to_max_quadratic_constraint();
         assert!(constraint.degree() <= 2);
-        assert!(constraint.is_empty() == false);
-        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
+        assert!(!constraint.is_empty());
+        assert!(!constraint.terms.iter().all(|x| x.is_constant()));
         constraint.normalize();
         let mut max_input_layer = isize::MIN;
         let mut all_vars = HashSet::new();
@@ -470,7 +472,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
                 // no range check is needed here, as our RAM is consistent by itself - our writes(!) are range-checked,
                 // so any reads will have to be range-checked
-                if split_as_u8 == false {
+                if !split_as_u8 {
                     let read_value = Register::new_unchecked_from_placeholder_named(
                         self,
                         read_value_placeholder,
@@ -486,7 +488,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     let access = MemoryAccess::RegisterOnly(RegisterAccess {
                         reg_idx,
                         read_timestamp,
-                        read_value: read_value.clone(),
+                        read_value,
                         write_value: read_value,
                         local_timestamp_in_cycle,
                     });
@@ -526,7 +528,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     let access = MemoryAccess::RegisterOnly(RegisterAccess {
                         reg_idx,
                         read_timestamp,
-                        read_value: read_value.clone(),
+                        read_value,
                         write_value: read_value,
                         local_timestamp_in_cycle,
                     });
@@ -655,7 +657,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
                     vars
                 };
-                let read_value = if split_as_u8 == false {
+                let read_value = if !split_as_u8 {
                     let reg = Register::new_unchecked_from_placeholder_named(
                         self,
                         read_value_placeholder,
@@ -734,7 +736,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
                     vars
                 };
-                let read_value = if split_read_as_u8 == false {
+                let read_value = if !split_read_as_u8 {
                     let reg = Register::new_unchecked_from_placeholder_named(
                         self,
                         read_value_placeholder,
@@ -762,7 +764,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     self.set_values(value_fn);
                     WordRepresentation::U8Limbs(vars)
                 };
-                let write_value = if split_write_as_u8 == false {
+                let write_value = if !split_write_as_u8 {
                     let reg = Register::new_unchecked_from_placeholder_named(
                         self,
                         write_value_placeholder,
@@ -934,21 +936,20 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     "overflowing address generation with variable part is not yet supported"
                 );
             }
-            if access_description.variable_dependent.is_none() {
-                if access_description.assume_no_alignment_overflow {
-                    assert!(
-                        access_description.offset_constant + (core::mem::size_of::<u32>() as u32)
-                            <= (1 << request.indirects_alignment_log2)
-                    );
-                }
+            if access_description.variable_dependent.is_none()
+                && access_description.assume_no_alignment_overflow
+            {
+                assert!(
+                    access_description.offset_constant + (core::mem::size_of::<u32>() as u32)
+                        <= (1 << request.indirects_alignment_log2)
+                );
             }
             // make formal witness assignment to placeholder to drive witness resolution
             let variable_dependent = if let Some((off, var)) = access_description.variable_dependent
             {
-                if self
+                if !self
                     .register_and_indirect_memory_accesses_offset_variables_idxes
                     .contains_key(&var)
-                    == false
                 {
                     let idx = self
                         .register_and_indirect_memory_accesses_offset_variables_idxes
@@ -1057,9 +1058,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                 IndirectAccessType::Write {
                     read_value: [read_low, read_high],
                     write_value: [write_low, write_high],
-                    variable_dependent: variable_dependent,
+                    variable_dependent,
                     offset_constant: access_description.offset_constant,
                     assume_no_alignment_overflow: access_description.assume_no_alignment_overflow,
+                    read_timestamp_group: access_description.read_timestamp_group,
                 }
             } else {
                 let read_low = self.add_named_variable(&format!(
@@ -1103,9 +1105,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
                 IndirectAccessType::Read {
                     read_value: [read_low, read_high],
-                    variable_dependent: variable_dependent,
+                    variable_dependent,
                     offset_constant: access_description.offset_constant,
                     assume_no_alignment_overflow: access_description.assume_no_alignment_overflow,
+                    read_timestamp_group: access_description.read_timestamp_group,
                 }
             };
 
@@ -1116,6 +1119,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             register_index: request.register_index,
             indirects_alignment_log2: request.indirects_alignment_log2,
             register_access,
+            read_timestamp_group: request.read_timestamp_group,
             indirect_accesses,
         };
 
@@ -1123,9 +1127,20 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             .push(access.clone());
         // we always maintain sort
         self.register_and_indirect_memory_accesses
-            .sort_by(|a, b| a.register_index.cmp(&b.register_index));
+            .sort_by_key(|a| a.register_index);
 
         access
+    }
+
+    fn set_read_timestamp_group_distance(&mut self, group: u8, distance: Expr<F>) {
+        assert!(self.delegation_circuit_state.is_some());
+        let distance = distance.canonicalize();
+        distance.validate_degree_at_most(1);
+        let existing = self.read_timestamp_group_distances.insert(group, distance);
+        assert!(
+            existing.is_none(),
+            "read timestamp group {group} has two distances"
+        );
     }
 
     #[track_caller]
@@ -1148,7 +1163,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             placer.lookup_enforce::<M>(&input_values, &table_id);
         };
         if Self::WitnessPlacer::MERGE_LOOKUP_AND_MULTIPLICITY_COUNT
-            && skip_generating_multiplicity_counting_function == false
+            && !skip_generating_multiplicity_counting_function
         {
             self.set_values(value_fn);
         }
@@ -1251,9 +1266,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         output_variables: &[Variable; N],
         table_type: LookupQueryTableType<F>,
     ) {
-        assert!(lookup_inputs.len() > 0);
+        assert!(!lookup_inputs.is_empty());
 
-        let output_variables: [Variable; N] = output_variables.clone();
+        let output_variables: [Variable; N] = *output_variables;
         let inputs = lookup_inputs.clone();
         let table = table_type.clone();
 
@@ -1328,7 +1343,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         need_funct7: bool,
         family_bitmask_size: usize,
     ) -> (OpcodeFamilyCircuitState<F>, Vec<Variable>) {
-        assert!(need_funct7 == false);
+        assert!(!need_funct7);
 
         // Variables will be allocated with all the corresponding guarantees,
         // and circuit should use them in constraints and make witness values if necessary
@@ -1370,7 +1385,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             execute,
             Invariant::Substituted((Placeholder::ExecuteOpcodeFamilyCycle, 0)),
         );
-        if Self::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+        if !Self::ASSUME_MEMORY_VALUES_ASSIGNED {
             let value_fn = move |placer: &mut Self::WitnessPlacer| {
                 let value = placer.get_oracle_boolean(Placeholder::ExecuteOpcodeFamilyCycle);
                 placer.assign_mask(execute, &value);
@@ -1466,7 +1481,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         let final_pc: [Variable; 2] =
             std::array::from_fn(|i| self.add_named_variable(&format!("final_pc[{}]", i)));
 
-        if Self::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+        if !Self::ASSUME_MEMORY_VALUES_ASSIGNED {
             // we will put next PC for debug purposes
             let value_fn = move |placer: &mut Self::WitnessPlacer| {
                 let value = placer.get_oracle_u32(Placeholder::PcFin);
@@ -1575,7 +1590,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
         let mut range_check_8_iter = range_check_8_elements.into_iter();
 
-        for _ in 0..(num_range_check_8.next_multiple_of(2) / 2) {
+        for _ in 0..num_range_check_8.div_ceil(2) {
             let first_input = range_check_8_iter.next().unwrap();
             let LookupInput::Variable(first_input) = first_input.input else {
                 unimplemented!()
@@ -1614,6 +1629,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             table_driver,
             memory_queries,
             register_and_indirect_memory_accesses,
+            read_timestamp_group_distances,
             executor_machine_state,
             delegation_circuit_state,
             variable_names,
@@ -1634,6 +1650,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             boolean_vars: boolean_variables,
             substitutions: placeholder_query,
             register_and_indirect_memory_accesses,
+            read_timestamp_group_distances,
             executor_machine_state,
             delegation_circuit_state,
             variable_names,
@@ -1754,7 +1771,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         println!("Assignments are {:?}", values);
                         panic!(
                             "unsatisfied at constraint {} with value {:?}",
-                            &constraint, value
+                            constraint, value
                         );
                     }
                 }

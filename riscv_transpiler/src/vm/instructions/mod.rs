@@ -9,7 +9,7 @@ pub mod mul_div;
 #[inline(always)]
 pub(crate) fn touch_x0<C: Counters, const TIMESTAMP_OFFSET: TimestampScalar>(state: &mut State<C>) {
     unsafe {
-        let reg = state.registers.get_unchecked_mut(0 as usize);
+        let reg = state.registers.get_unchecked_mut(0_usize);
         debug_assert!(reg.timestamp < (state.timestamp | TIMESTAMP_OFFSET));
         reg.timestamp = state.timestamp | TIMESTAMP_OFFSET;
     }
@@ -93,7 +93,10 @@ pub(crate) fn marker<C: Counters, S: Snapshotter<C>, R: RAM, E: ExecutionObserve
 ) {
     let _rs1_value = read_register::<C, 0>(state, instr.rs1);
     touch_x0::<C, 1>(state);
-    write_register_for_pure_opcode::<C, 2>(state, instr.rd, 0);
+    // The marker always decodes with rd = x0: stamp it at sub-slot +2 without a value write
+    // (`write_register_for_pure_opcode` rejects x0).
+    debug_assert_eq!(instr.rd, 0);
+    touch_x0::<C, 2>(state);
 
     // Emit the observation before the instruction advances the cycle-family
     // counters or the outer execution loop bumps the timestamp.

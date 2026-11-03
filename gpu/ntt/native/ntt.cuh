@@ -136,14 +136,17 @@ template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void 
   }
 }
 
-template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void reg_exchg_hypercube_inv(bf *vals) {
+template <int STRIDE, int REGION_SIZE, int NUM_REGIONS, bool RESTORE_EVALUATIONS = false> DEVICE_FORCEINLINE void reg_exchg_hypercube_inv(bf *vals) {
 #pragma unroll
   for (int region{0}; region < NUM_REGIONS; region++) {
     const int region_offset = region * REGION_SIZE;
 #pragma unroll
     for (int lane_in_region{0}; lane_in_region < STRIDE; lane_in_region++) {
       const int i = region_offset + lane_in_region;
-      vals[i + STRIDE] = bf::sub(vals[i + STRIDE], vals[i]);
+      if constexpr (RESTORE_EVALUATIONS)
+        vals[i + STRIDE] = bf::add(vals[i + STRIDE], vals[i]);
+      else
+        vals[i + STRIDE] = bf::sub(vals[i + STRIDE], vals[i]);
     }
   }
 }
@@ -162,10 +165,14 @@ DEVICE_FORCEINLINE void reg_exchg_cmem_smem_twiddles_fwd(bf *vals, const int exc
   }
 }
 
-template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void reg_exchg_cmem_twiddles_fwd(bf *vals, const int exchg_region_offset) {
+// The traversal remains DIF when INVERSE_TWIDDLES is true. This is the inverse
+// of the natural-to-bitreversed forward network, not the DIT `_inv` family.
+template <int STRIDE, int REGION_SIZE, int NUM_REGIONS, bool INVERSE_TWIDDLES = false>
+DEVICE_FORCEINLINE void reg_exchg_cmem_twiddles_fwd(bf *vals, const int exchg_region_offset) {
 #pragma unroll
   for (int region{0}; region < NUM_REGIONS; region++) {
-    const bf twiddle = get_cmem_twiddle<ab_fwd_cmem_twiddles_coarse, ab_fwd_cmem_twiddles_fine>(exchg_region_offset + region);
+    const bf twiddle = INVERSE_TWIDDLES ? get_cmem_twiddle<ab_inv_cmem_twiddles_coarse, ab_inv_cmem_twiddles_fine>(exchg_region_offset + region)
+                                        : get_cmem_twiddle<ab_fwd_cmem_twiddles_coarse, ab_fwd_cmem_twiddles_fine>(exchg_region_offset + region);
     const int region_offset = region * REGION_SIZE;
 #pragma unroll
     for (int lane_in_region{0}; lane_in_region < STRIDE; lane_in_region++) {
@@ -175,10 +182,11 @@ template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void 
   }
 }
 
-template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void reg_exchg_fwd(bf *vals, const int exchg_region_offset) {
+template <int STRIDE, int REGION_SIZE, int NUM_REGIONS, bool INVERSE_TWIDDLES = false>
+DEVICE_FORCEINLINE void reg_exchg_fwd(bf *vals, const int exchg_region_offset) {
 #pragma unroll
   for (int region{0}; region < NUM_REGIONS; region++) {
-    const bf twiddle = ab_fwd_cmem_twiddles_coarse[exchg_region_offset + region];
+    const bf twiddle = INVERSE_TWIDDLES ? ab_inv_cmem_twiddles_coarse[exchg_region_offset + region] : ab_fwd_cmem_twiddles_coarse[exchg_region_offset + region];
     const int region_offset = region * REGION_SIZE;
 #pragma unroll
     for (int lane_in_region{0}; lane_in_region < STRIDE; lane_in_region++) {
@@ -188,10 +196,10 @@ template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void 
   }
 }
 
-template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void reg_exchg_fwd(bf *vals) {
+template <int STRIDE, int REGION_SIZE, int NUM_REGIONS, bool INVERSE_TWIDDLES = false> DEVICE_FORCEINLINE void reg_exchg_fwd(bf *vals) {
 #pragma unroll
   for (int region{0}; region < NUM_REGIONS; region++) {
-    const bf twiddle = ab_fwd_cmem_twiddles_coarse[region];
+    const bf twiddle = INVERSE_TWIDDLES ? ab_inv_cmem_twiddles_coarse[region] : ab_fwd_cmem_twiddles_coarse[region];
     const int region_offset = region * REGION_SIZE;
 #pragma unroll
     for (int lane_in_region{0}; lane_in_region < STRIDE; lane_in_region++) {
@@ -205,6 +213,15 @@ template <int STRIDE> DEVICE_FORCEINLINE void reg_exchg_final_fwd(bf *vals) {
 #pragma unroll
   for (int i{0}; i < STRIDE; i++)
     exchg_dif_0(vals[i], vals[i + STRIDE]);
+}
+
+// Final natural-order store of a bitreversed-coset inverse. Fuse normalization
+// and coset unscaling here so the in-place roundtrip needs no extra bulk pass.
+DEVICE_FORCEINLINE bf normalize_coset_inverse(const bf value, const unsigned natural_row, const int log_n, const unsigned coset_factor_power) {
+  bf result = bf::mul(value, ::ab_inv_sizes[log_n]);
+  if (coset_factor_power != 0)
+    result = bf::mul(result, get_inverse_twiddle_power(natural_row * coset_factor_power));
+  return result;
 }
 
 // DIT-over-forward-twiddles family: the `_inv` traversal and `exchg_dit`
@@ -277,11 +294,18 @@ template <int GROUP> DEVICE_FORCEINLINE void exchg_pipeline_group(bf *vals, cons
   exchg_dit(vals[GROUP + 16], vals[GROUP + 24], twiddle);
 }
 
-template <int GROUP> DEVICE_FORCEINLINE void exchg_pipeline_group_hypercube(bf *vals) {
-  vals[GROUP + 16] = bf::sub(vals[GROUP + 16], vals[GROUP]);
-  vals[GROUP + 24] = bf::sub(vals[GROUP + 24], vals[GROUP + 8]);
-  vals[GROUP + 8] = bf::sub(vals[GROUP + 8], vals[GROUP]);
-  vals[GROUP + 24] = bf::sub(vals[GROUP + 24], vals[GROUP + 16]);
+template <int GROUP, bool RESTORE = false> DEVICE_FORCEINLINE void exchg_pipeline_group_hypercube(bf *vals) {
+  if constexpr (RESTORE) {
+    vals[GROUP + 16] = bf::add(vals[GROUP + 16], vals[GROUP]);
+    vals[GROUP + 24] = bf::add(vals[GROUP + 24], vals[GROUP + 8]);
+    vals[GROUP + 8] = bf::add(vals[GROUP + 8], vals[GROUP]);
+    vals[GROUP + 24] = bf::add(vals[GROUP + 24], vals[GROUP + 16]);
+  } else {
+    vals[GROUP + 16] = bf::sub(vals[GROUP + 16], vals[GROUP]);
+    vals[GROUP + 24] = bf::sub(vals[GROUP + 24], vals[GROUP + 8]);
+    vals[GROUP + 8] = bf::sub(vals[GROUP + 8], vals[GROUP]);
+    vals[GROUP + 24] = bf::sub(vals[GROUP + 24], vals[GROUP + 16]);
+  }
 }
 
 template <int GROUP, int IL_GMEM_STRIDE, int PL_GROUP_SIZE, int PL_STRIDE>

@@ -1,3 +1,4 @@
+#include "../gkr/support/kernel_helpers.cuh"
 #include "gkr_ops_helpers.cuh"
 
 namespace airbender::gkr::ops {
@@ -21,103 +22,7 @@ using namespace ::airbender::hash;
 // matches the host flatten order used by commit_field_els.
 // ---------------------------------------------------------------------------
 EXTERN __global__ void ab_whir_fold_round_update_kernel(const e4 *reduction_output, u32 *seed_io, e4 *coeffs_out, e4 *challenge_out) {
-  // Derive constants: quart = 1/4, two_inv = 1/2 (Montgomery form).
-  const bf two = bf::from_u32_unchecked(2);
-  const bf four = bf::from_u32_unchecked(4);
-  const bf two_inv_bf = bf::inv(two);
-  const bf quart_bf = bf::inv(four);
-  const e4 random_point = e4::from_scalar(two_inv_bf);
-  const e4 ONE = e4::ONE();
-  const e4 ZERO = e4::ZERO();
-
-  // Load evals and scale the half-point evaluation by 1/4 (the host does
-  // `values[2].mul_assign_by_base(&quart)`).
-  const e4 eval_at_0 = reduction_output[0];
-  const e4 eval_at_1 = reduction_output[1];
-  const e4 eval_at_random = e4::mul(reduction_output[2], quart_bf);
-
-  // Lagrange interpolant at x in {0, 1, random_point = 1/2}.
-  //   coeffs_for_0      = [rp, -(1+rp), 1]
-  //   coeffs_for_1      = [ 0,     -rp, 1]
-  //   coeffs_for_random = [ 0,      -1, 1]
-  e4 coeffs_for_0[3];
-  coeffs_for_0[0] = random_point;
-  coeffs_for_0[1] = e4::neg(e4::add(ONE, random_point));
-  coeffs_for_0[2] = ONE;
-
-  e4 coeffs_for_1[3];
-  coeffs_for_1[0] = ZERO;
-  coeffs_for_1[1] = e4::neg(random_point);
-  coeffs_for_1[2] = ONE;
-
-  e4 coeffs_for_random[3];
-  coeffs_for_random[0] = ZERO;
-  coeffs_for_random[1] = e4::neg(ONE);
-  coeffs_for_random[2] = ONE;
-
-  // Denominators:
-  //   dens[0] = (0 - 1) * (0 - rp) = rp
-  //   dens[1] = (1 - rp)
-  //   dens[2] = rp * (rp - 1)
-  e4 dens[3];
-  dens[0] = random_point;
-  dens[1] = e4::sub(ONE, random_point);
-  dens[2] = e4::mul(random_point, e4::sub(random_point, ONE));
-
-  // Three inversions (launched <<<1,1>>> — no parallelism to gain from a
-  // batched Montgomery trick here, and explicit inv keeps the bookkeeping
-  // obvious).
-  dens[0] = e4::inv(dens[0]);
-  dens[1] = e4::inv(dens[1]);
-  dens[2] = e4::inv(dens[2]);
-
-  // Accumulate interpolant coefficients.
-  const e4 evals[3] = {eval_at_0, eval_at_1, eval_at_random};
-  const e4 *coeff_tables[3] = {coeffs_for_0, coeffs_for_1, coeffs_for_random};
-  e4 result[3] = {ZERO, ZERO, ZERO};
-#pragma unroll
-  for (unsigned j = 0; j < 3; j++) {
-    const e4 eval_den = e4::mul(evals[j], dens[j]);
-#pragma unroll
-    for (unsigned i = 0; i < 3; i++) {
-      result[i] = e4::add(result[i], e4::mul(eval_den, coeff_tables[j][i]));
-    }
-  }
-
-#pragma unroll
-  for (unsigned i = 0; i < 3; i++)
-    coeffs_out[i] = result[i];
-
-  // Blake2s commit: seed (8 words) || flatten(3 × E4 = 12 words) = 20 words.
-  // One non-final 16-word block, then one final 4-word block.
-  u32 state[STATE_SIZE];
-  initialize(state);
-  u32 t = 0;
-  u32 block[BLOCK_SIZE];
-
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    block[i] = seed_io[i];
-  const u32 *coeff_words = reinterpret_cast<const u32 *>(&result[0]);
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    block[STATE_SIZE + i] = coeff_words[i];
-  compress<false>(state, t, block, BLOCK_SIZE);
-
-#pragma unroll
-  for (unsigned i = 0; i < 4; i++)
-    block[i] = coeff_words[STATE_SIZE + i];
-#pragma unroll
-  for (unsigned i = 4; i < BLOCK_SIZE; i++)
-    block[i] = 0;
-  compress<true>(state, t, block, 4);
-
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    seed_io[i] = state[i];
-
-  // Extract the fold challenge from the first 4 words of the new seed.
-  *challenge_out = e4_from_raw_u32x4(state);
+  whir_fold_round_update_inline(reduction_output, seed_io, coeffs_out, challenge_out);
 }
 
 // ---------------------------------------------------------------------------
@@ -219,22 +124,33 @@ struct gpu_combined_claim_desc {
 
 static_assert(sizeof(gpu_combined_claim_desc) <= 32u * 1024u, "gpu_combined_claim_desc must fit under the 32 KB inline kernel-arg ceiling");
 
-EXTERN __global__ void ab_build_combined_claim_kernel(const e4 *claims, const e4 *batching, __grid_constant__ const gpu_combined_claim_desc desc, e4 *claim_out,
-                                                      e4 *eq_prefactor_out) {
-  if (threadIdx.x != 0 || blockIdx.x != 0)
+EXTERN __global__ __launch_bounds__(256) void ab_build_combined_claim_kernel(const e4 *claims, const e4 *batching,
+                                                                             __grid_constant__ const gpu_combined_claim_desc desc, e4 *claim_out,
+                                                                             e4 *eq_prefactor_out) {
+  if (blockDim.x != 256 || gridDim.x != 1)
     return;
   const e4 b = *batching;
   e4 result = e4::ZERO();
-  for (unsigned i = 0; i < desc.num_terms; i++) {
+  for (unsigned i = threadIdx.x; i < desc.num_terms; i += 256) {
     const unsigned exp = desc.entries[2u * i];
     const unsigned idx = desc.entries[2u * i + 1u];
-    e4 pow = e4::ONE();
-    for (unsigned j = 0; j < exp; j++)
-      pow = e4::mul(pow, b);
-    result = e4::add(result, e4::mul(pow, claims[idx]));
+    result = e4::add(result, e4::mul(e4::pow(b, exp), claims[idx]));
   }
-  *claim_out = result;
-  *eq_prefactor_out = e4::ONE();
+  result = gkr_trace_holder_partials_warp_reduce_sum(result);
+  __shared__ e4 warp_sums[8];
+  const unsigned lane = threadIdx.x & 31;
+  const unsigned warp = threadIdx.x >> 5;
+  if (lane == 0)
+    warp_sums[warp] = result;
+  __syncthreads();
+  if (warp == 0) {
+    result = lane < 8 ? warp_sums[lane] : e4::ZERO();
+    result = gkr_trace_holder_partials_warp_reduce_sum(result);
+    if (lane == 0) {
+      *claim_out = result;
+      *eq_prefactor_out = e4::ONE();
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

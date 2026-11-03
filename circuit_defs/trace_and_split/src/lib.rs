@@ -1,5 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
 #![feature(allocator_api)]
 
 use std::alloc::Global;
@@ -49,14 +47,15 @@ pub fn commit_memory_tree_for_unrolled_nonmem_circuits<
     default_pc_value_in_padding: u32,
     decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
-) -> MerkleTreeCapVarLength
-where
-    [(); F::DEGREE]:,
-{
-    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
+) -> MerkleTreeCapVarLength {
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
     use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
 
-    let trace_len = twiddles.plain().domain_size;
+    let trace_len = 1usize << prover_config.trace_len_log2;
+    assert!(
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        "twiddles must cover the (packed) base commitment domain"
+    );
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
@@ -67,10 +66,10 @@ where
     };
 
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<F, _, A, B>(
-        &circuit,
+        circuit,
         trace_len,
         &oracle,
-        &worker,
+        worker,
         None,
         A::default(),
         B::default(),
@@ -87,14 +86,12 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, EF, T, _>(
+    let mem = commit_trace_part_for_config::<F, EF, T, _>(
         backend,
         &mem_inputs,
         twiddles,
-        prover_config.lde_factor,
-        prover_config.whir_schedule.whir_steps_schedule[0],
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
+        prover_config,
+        &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -120,14 +117,15 @@ pub fn commit_memory_tree_for_unrolled_mem_circuits<
     prover_config: &ProverConfig,
     decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
-) -> MerkleTreeCapVarLength
-where
-    [(); F::DEGREE]:,
-{
-    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
+) -> MerkleTreeCapVarLength {
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
     use prover::gkr::witness_gen::oracles::MemoryCircuitOracle;
 
-    let trace_len = twiddles.plain().domain_size;
+    let trace_len = 1usize << prover_config.trace_len_log2;
+    assert!(
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        "twiddles must cover the (packed) base commitment domain"
+    );
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
@@ -137,10 +135,10 @@ where
     };
 
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<F, _, A, B>(
-        &circuit,
+        circuit,
         trace_len,
         &oracle,
-        &worker,
+        worker,
         None,
         A::default(),
         B::default(),
@@ -157,14 +155,12 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, EF, T, _>(
+    let mem = commit_trace_part_for_config::<F, EF, T, _>(
         backend,
         &mem_inputs,
         twiddles,
-        prover_config.lde_factor,
-        prover_config.whir_schedule.whir_steps_schedule[0],
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
+        prover_config,
+        &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -189,11 +185,12 @@ pub fn commit_memory_tree_for_inits_and_teardowns<
     twiddles: &BE::TwiddleSet,
     prover_config: &ProverConfig,
     worker: &Worker,
-) -> MerkleTreeCapVarLength
-where
-    [(); F::DEGREE]:,
-{
-    let trace_len = twiddles.plain().domain_size;
+) -> MerkleTreeCapVarLength {
+    let trace_len = 1usize << prover_config.trace_len_log2;
+    assert!(
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        "twiddles must cover the (packed) base commitment domain"
+    );
     assert!(trace_len.is_power_of_two());
 
     assert_eq!(inits_and_teardowns.len(), NUM_INIT_AND_TEARDOWN_SETS);
@@ -202,23 +199,21 @@ where
         circuit.memory_layout.teardown_sets.len()
     );
 
-    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
     use prover::gkr::witness_gen::family_circuits::evaluate_init_and_teardown_memory_witness;
 
     let now = std::time::Instant::now();
 
     let witness_inner =
-        evaluate_init_and_teardown_memory_witness(inits_and_teardowns, &circuit, Global, Global);
+        evaluate_init_and_teardown_memory_witness(inits_and_teardowns, circuit, Global, Global);
 
     let mem_inputs: Vec<_> = witness_inner.iter().map(|el| &el[..]).collect();
-    let mem = commit_trace_part::<F, EF, T, _>(
+    let mem = commit_trace_part_for_config::<F, EF, T, _>(
         backend,
         &mem_inputs,
         twiddles,
-        prover_config.lde_factor,
-        prover_config.whir_schedule.whir_steps_schedule[0],
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
+        prover_config,
+        &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -250,19 +245,20 @@ pub fn commit_memory_tree_for_unified_circuits<
     circuit: &GKRCircuitArtifact<F>,
     witness_chunk: &[riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp],
     inits_and_teardowns: Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>,
-    text_section: &[u32],
+    _text_section: &[u32],
     twiddles: &BE::TwiddleSet,
     prover_config: &ProverConfig,
     decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
-) -> MerkleTreeCapVarLength
-where
-    [(); F::DEGREE]:,
-{
-    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
+) -> MerkleTreeCapVarLength {
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
     use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 
-    let trace_len = twiddles.plain().domain_size;
+    let trace_len = 1usize << prover_config.trace_len_log2;
+    assert!(
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        "twiddles must cover the (packed) base commitment domain"
+    );
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
@@ -272,10 +268,10 @@ where
     };
 
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<F, _, A, B>(
-        &circuit,
+        circuit,
         trace_len,
         &oracle,
-        &worker,
+        worker,
         Some(inits_and_teardowns),
         A::default(),
         B::default(),
@@ -292,14 +288,12 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, EF, T, _>(
+    let mem = commit_trace_part_for_config::<F, EF, T, _>(
         backend,
         &mem_inputs,
         twiddles,
-        prover_config.lde_factor,
-        prover_config.whir_schedule.whir_steps_schedule[0],
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
+        prover_config,
+        &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -331,12 +325,111 @@ pub fn commit_merged_tree_for_unified_circuits<
     prover_config: &ProverConfig,
     worker: &Worker,
 ) -> MerkleTreeCapVarLength {
+    let (_witness_trace, merged) =
+        commit_merged_tree_and_witness_for_unified_circuits::<EF, T, A, BE>(
+            backend,
+            unified_setup,
+            witness_chunk,
+            inits_and_teardowns,
+            twiddles,
+            prover_config,
+            worker,
+        );
+    merged.get_cap()
+}
+
+/// [`commit_merged_tree_for_unified_circuits`] that also RETURNS the evaluated
+/// witness trace and the committed in-memory merged oracle instead of
+/// discarding them: the caller can feed both straight into
+/// `prove_configured_with_gkr_merged_with_precommitted_oracle`, so the witness
+/// evaluation and the merged commitment happen exactly once per chunk. The
+/// commitment cap is `.get_cap()` of the returned oracle.
+pub fn commit_merged_tree_and_witness_for_unified_circuits<
+    EF: FieldExtension<BabyBearField> + Field,
+    T: ColumnMajorMerkleTreeConstructor<BabyBearField>,
+    A: GoodAllocator + 'static,
+    BE: Backend<BabyBearField, EF>,
+>(
+    backend: &BE,
+    unified_setup: &setups::CircuitSetup<A>,
+    witness_chunk: &[riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp],
+    inits_and_teardowns: Vec<([Vec<BabyBearField>; 2], [Vec<BabyBearField>; 2])>,
+    twiddles: &BE::TwiddleSet,
+    prover_config: &ProverConfig,
+    worker: &Worker,
+) -> (
+    prover::gkr::witness_gen::family_circuits::GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    prover::gkr::whir::ColumnMajorBaseOracleForLDE<BabyBearField, T>,
+) {
+    commit_merged_tree_and_witness_with_storage::<EF, T, A, BE>(
+        backend,
+        unified_setup,
+        witness_chunk,
+        inits_and_teardowns,
+        twiddles,
+        prover_config,
+        worker,
+        false,
+    )
+}
+
+/// Commit the merged cap one coset at a time, without retaining the full LDE.
+/// Produces the same cap as [`commit_merged_tree_for_unified_circuits`].
+pub fn commit_merged_tree_for_unified_circuits_recompute<
+    EF: FieldExtension<BabyBearField> + Field,
+    T: ColumnMajorMerkleTreeConstructor<BabyBearField>,
+    A: GoodAllocator + 'static,
+    BE: Backend<BabyBearField, EF>,
+>(
+    backend: &BE,
+    unified_setup: &setups::CircuitSetup<A>,
+    witness_chunk: &[riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp],
+    inits_and_teardowns: Vec<([Vec<BabyBearField>; 2], [Vec<BabyBearField>; 2])>,
+    twiddles: &BE::TwiddleSet,
+    prover_config: &ProverConfig,
+    worker: &Worker,
+) -> MerkleTreeCapVarLength {
+    let (_witness, oracle) = commit_merged_tree_and_witness_with_storage::<EF, T, A, BE>(
+        backend,
+        unified_setup,
+        witness_chunk,
+        inits_and_teardowns,
+        twiddles,
+        prover_config,
+        worker,
+        true,
+    );
+    oracle.get_cap()
+}
+
+fn commit_merged_tree_and_witness_with_storage<
+    EF: FieldExtension<BabyBearField> + Field,
+    T: ColumnMajorMerkleTreeConstructor<BabyBearField>,
+    A: GoodAllocator + 'static,
+    BE: Backend<BabyBearField, EF>,
+>(
+    backend: &BE,
+    unified_setup: &setups::CircuitSetup<A>,
+    witness_chunk: &[riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp],
+    inits_and_teardowns: Vec<([Vec<BabyBearField>; 2], [Vec<BabyBearField>; 2])>,
+    twiddles: &BE::TwiddleSet,
+    prover_config: &ProverConfig,
+    worker: &Worker,
+    recompute: bool,
+) -> (
+    prover::gkr::witness_gen::family_circuits::GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    prover::gkr::whir::ColumnMajorBaseOracleForLDE<BabyBearField, T>,
+) {
     use prover::gkr::prover::stages::initial_commit::commit_merged_memory_and_witness_subtrees;
     use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
     use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
     use setups::UnrolledCircuitWitnessEvalFn;
 
-    let trace_len = twiddles.plain().domain_size;
+    let trace_len = 1usize << prover_config.trace_len_log2;
+    assert!(
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        "twiddles must cover the (packed) base commitment domain"
+    );
     assert_eq!(trace_len, unified_setup.trace_len);
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
@@ -372,22 +465,25 @@ pub fn commit_merged_tree_for_unified_circuits<
         now.elapsed()
     );
 
-    let merged = commit_merged_memory_and_witness_subtrees::<BabyBearField, EF, T, _>(
-        backend,
-        &witness_trace,
-        twiddles,
-        prover_config.lde_factor,
-        prover_config.whir_schedule.whir_steps_schedule[0],
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    );
-
-    let cap = merged.get_cap();
+    let merged = if recompute {
+        prover::gkr::prover::stages::initial_commit::commit_merged_memory_and_witness_recompute::<
+            BabyBearField,
+            T,
+        >(&witness_trace, twiddles.plain(), prover_config, worker)
+    } else {
+        commit_merged_memory_and_witness_subtrees::<BabyBearField, EF, T, _>(
+            backend,
+            &witness_trace,
+            twiddles,
+            prover_config,
+            &prover::allocation_pool::GenericAllocationPool::proxy(),
+            worker,
+        )
+    };
 
     println!("Unified merged commitment took {:?}", now.elapsed());
 
-    cap
+    (witness_trace, merged)
 }
 
 pub fn commit_memory_tree_for_delegation_circuit<
@@ -414,13 +510,14 @@ pub fn commit_memory_tree_for_delegation_circuit<
     twiddles: &BE::TwiddleSet,
     prover_config: &ProverConfig,
     worker: &Worker,
-) -> MerkleTreeCapVarLength
-where
-    [(); F::DEGREE]:,
-{
-    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
+) -> MerkleTreeCapVarLength {
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
 
-    let trace_len = twiddles.plain().domain_size;
+    let trace_len = 1usize << prover_config.trace_len_log2;
+    assert!(
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        "twiddles must cover the (packed) base commitment domain"
+    );
     assert!(trace_len.is_power_of_two());
 
     let now = std::time::Instant::now();
@@ -432,7 +529,7 @@ where
         circuit,
         trace_len,
         &oracle,
-        &worker,
+        worker,
         A::default(),
         B::default(),
     );
@@ -448,14 +545,12 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, EF, T, _>(
+    let mem = commit_trace_part_for_config::<F, EF, T, _>(
         backend,
         &mem_inputs,
         twiddles,
-        prover_config.lde_factor,
-        prover_config.whir_schedule.whir_steps_schedule[0],
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
+        prover_config,
+        &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -482,7 +577,7 @@ pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool
     final_pc: u32,
     final_timestamp: TimestampScalar,
     circuit_families_memory_caps: &[(u32, Vec<MerkleTreeCapVarLength>)],
-    inits_and_teardowns_memory_caps: &[MerkleTreeCapVarLength],
+    inits_and_teardowns_memory_caps: &[(Vec<u32>, MerkleTreeCapVarLength)], // inits and teardowns top bits, and caps
     delegation_circuits_memory_caps: &[(u32, Vec<MerkleTreeCapVarLength>)],
 ) -> Seed {
     use transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
@@ -513,7 +608,7 @@ pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool
     // then we commit all main RISC-V circuits
     assert!(circuit_families_memory_caps.is_sorted_by(|a, b| a.0 < b.0));
     for (family, caps) in circuit_families_memory_caps.iter() {
-        if caps.len() > 0 {
+        if !caps.is_empty() {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             buffer[0] = *family;
             memory_trace_transcript.absorb(&buffer);
@@ -526,16 +621,19 @@ pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool
 
     // inits and teardowns
     {
-        if inits_and_teardowns_memory_caps.len() > 0 {
+        if !inits_and_teardowns_memory_caps.is_empty() {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             buffer[0] =
                 common_constants::circuit_families::INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX
                     as u32;
             memory_trace_transcript.absorb(&buffer);
         }
-        for caps in inits_and_teardowns_memory_caps.iter() {
+        for (top_bits, caps) in inits_and_teardowns_memory_caps.iter() {
             let caps = flatten_merkle_cap(caps);
             memory_trace_transcript.absorb(&caps);
+            let mut top_bits_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+            top_bits_buffer[..top_bits.len()].copy_from_slice(top_bits);
+            memory_trace_transcript.absorb(&top_bits_buffer);
         }
     }
 
@@ -550,7 +648,7 @@ pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool
 
     assert!(delegation_circuits_memory_caps.is_sorted_by(|a, b| a.0 < b.0));
     for (delegation_type, caps) in delegation_circuits_memory_caps.iter() {
-        if caps.len() > 0 {
+        if !caps.is_empty() {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             buffer[0] = *delegation_type;
             memory_trace_transcript.absorb(&buffer);
@@ -566,9 +664,7 @@ pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool
         );
     }
 
-    let memory_challenges_seed = memory_trace_transcript.finalize();
-
-    memory_challenges_seed
+    memory_trace_transcript.finalize()
 }
 
 /// We need to draw a common challenge based on all the values that will contribute to the memory permutation grand product, and
@@ -627,7 +723,7 @@ pub fn fs_transform_unified_for_permutation_argument<const REDUCED_ROUNDS: bool>
 
     assert!(delegation_circuits_memory_caps.is_sorted_by(|a, b| a.0 < b.0));
     for (delegation_type, caps) in delegation_circuits_memory_caps.iter() {
-        if caps.len() > 0 {
+        if !caps.is_empty() {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             buffer[0] = *delegation_type;
             memory_trace_transcript.absorb(&buffer);
@@ -643,7 +739,5 @@ pub fn fs_transform_unified_for_permutation_argument<const REDUCED_ROUNDS: bool>
         );
     }
 
-    let memory_challenges_seed = memory_trace_transcript.finalize();
-
-    memory_challenges_seed
+    memory_trace_transcript.finalize()
 }

@@ -1,6 +1,6 @@
-#[cfg(not(target_endian = "little"))]
+#[cfg(not(all(target_endian = "little", target_arch = "riscv32")))]
 mod assert {
-    compile_error!("unsupported arch - only LE is supported");
+    compile_error!("unsupported arch - only RV-32 LE is supported");
 }
 
 #[unsafe(no_mangle)]

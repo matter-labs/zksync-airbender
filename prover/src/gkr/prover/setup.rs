@@ -10,7 +10,7 @@ use fft::{materialize_powers_serial_starting_with_one, GoodAllocator};
 use std::sync::Arc;
 
 pub struct GKRSetup<F: PrimeField + TwoAdicField> {
-    pub hypercube_evals: Vec<Arc<Box<[F]>>>,
+    pub hypercube_evals: Vec<Arc<crate::allocation_pool::AllocationType<F>>>,
 }
 
 impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
@@ -23,10 +23,10 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         // we always have range-check 16 bits and timestamp limbs
         let total_width = compiled_circuit.generic_lookup_tables_width;
 
-        println!(
-            "Creating setup with {} columns in total ({} generic lookup tables width)",
-            total_width, compiled_circuit.generic_lookup_tables_width
-        );
+        // println!(
+        //     "Creating setup with {} columns in total ({} generic lookup tables width)",
+        //     total_width, compiled_circuit.generic_lookup_tables_width
+        // );
 
         let mut result = Vec::with_capacity(total_width);
 
@@ -40,7 +40,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         assert_eq!(total_tables_size, compiled_circuit.total_tables_size);
 
         let mut num_table_subsets = total_tables_size / table_encoding_capacity_per_tuple;
-        if total_tables_size % table_encoding_capacity_per_tuple != 0 {
+        if !total_tables_size.is_multiple_of(table_encoding_capacity_per_tuple) {
             num_table_subsets += 1;
         }
         assert!(
@@ -63,8 +63,8 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
 
         // no parallelism for now
 
-        if compiled_circuit.tables_ids_in_generic_lookups == false {
-            assert!(all_generic_tables.len() == 0 || decoder_table.len() == 0);
+        if !compiled_circuit.tables_ids_in_generic_lookups {
+            assert!(all_generic_tables.is_empty() || decoder_table.is_empty());
         }
 
         for row_idx in 0..all_generic_tables.len() {
@@ -82,7 +82,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         }
         let offset = compiled_circuit.offset_for_decoder_table;
 
-        if decoder_table.len() > 0 {
+        if !decoder_table.is_empty() {
             let table = materialize_flattened_decoder_table_with_bitmask(
                 decoder_table,
                 &compiled_circuit.decode_table_columns_mask,
@@ -112,8 +112,17 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             }
         }
 
+        if let Some(padding) = compiled_circuit.generic_lookup_padding {
+            for column in &mut result {
+                column[total_tables_size..].fill(padding);
+            }
+        }
+
         Self {
-            hypercube_evals: result.into_iter().map(Arc::new).collect(),
+            hypercube_evals: result
+                .into_iter()
+                .map(|b| Arc::new(crate::allocation_pool::AllocationType::from(b)))
+                .collect(),
         }
     }
 
@@ -344,70 +353,54 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
     //     timestamp_range_check_preprocessing.into_boxed_slice()
     // }
 
-    /// Commit the setup polynomials in memory (RS codewords + Merkle tree) and wrap
-    /// the resulting base oracle in an owned [`SetupCommitment::InMemory`].
-    pub fn commit<T: ColumnMajorMerkleTreeConstructor<F>>(
+    /// Commit the setup polynomials in memory (RS codewords + Merkle tree) with the
+    /// prover config's geometry — LDE factor, leaf size
+    /// (`base_oracles_values_per_leaf`), cap, trace length and `pack_log2` (groups of
+    /// `2^pack_log2` setup columns packed into `(trace_len_log2 + pack_log2)`-variate
+    /// multilinears) — and wrap the resulting base oracle in an owned
+    /// [`SetupCommitment::InMemory`]. The ONLY way to commit a setup, so a setup
+    /// commitment cannot disagree with the proof's config. Runs on the naive
+    /// backend; `twiddles` must cover the `2^(trace_len_log2 + pack_log2)` domain.
+    pub fn commit_for_config<T: ColumnMajorMerkleTreeConstructor<F>>(
         &self,
         twiddles: &Twiddles<F, Global>,
-        lde_factor: usize,
-        whir_first_fold_step_log2: usize,
-        tree_cap_size: usize,
-        trace_len_log2: usize,
+        prover_config: &crate::gkr::prover_config::ProverConfig,
         worker: &Worker,
-    ) -> SetupCommitment<F, T>
-    where
-        [(); F::DEGREE]: Sized,
-    {
-        let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
-        use crate::gkr::prover::commitment_utils::commit_trace_part;
-
-        SetupCommitment::InMemory(commit_trace_part::<F, F, T, _>(
+    ) -> SetupCommitment<F, T> {
+        self.commit_for_config_with_backend::<T, F, _>(
             &crate::gkr::prover::backend::NaiveBackend,
-            &inputs,
             twiddles,
-            lde_factor,
-            whir_first_fold_step_log2,
-            tree_cap_size,
-            trace_len_log2,
-            worker,
-        ))
-    }
-
-    /// Logical equivalent of [`Self::commit`], but commits the setup polynomials
-    /// using the packing approach: groups of `2^pack_log2` setup columns are merged
-    /// into a single `(trace_len_log2 + pack_log2)`-variate multilinear (via
-    /// `pack_polys_parallel_from_hypercubes_to_monomials`) before the coset LDE.
-    ///
-    /// `trace_len_log2` is the number of variables of each setup column (same as in
-    /// [`Self::commit`]); the resulting packed polynomials have `trace_len_log2 +
-    /// pack_log2` variables, so `twiddles` must be sized for the enlarged
-    /// `2^(trace_len_log2 + pack_log2)` domain.
-    pub fn commit_packed<T: ColumnMajorMerkleTreeConstructor<F>>(
-        &self,
-        twiddles: &Twiddles<F, Global>,
-        lde_factor: usize,
-        whir_first_fold_step_log2: usize,
-        tree_cap_size: usize,
-        trace_len_log2: usize,
-        pack_log2: usize,
-        worker: &Worker,
-    ) -> ColumnMajorBaseOracleForLDE<F, T>
-    where
-        [(); F::DEGREE]: Sized,
-    {
-        let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
-        use crate::gkr::prover::commitment_utils::commit_trace_part_packed;
-
-        commit_trace_part_packed::<F, F, T, _>(
-            &crate::gkr::prover::backend::NaiveBackend,
-            &inputs,
-            twiddles,
-            lde_factor,
-            whir_first_fold_step_log2,
-            tree_cap_size,
-            trace_len_log2 + pack_log2,
-            pack_log2,
+            prover_config,
             worker,
         )
+    }
+
+    /// [`Self::commit_for_config`] on a caller-chosen [`Backend`] (its twiddle set,
+    /// its LDE schedule and kernels — including its fused packed commitment)
+    /// instead of the naive one: the setup columns are few, so on wide machines
+    /// the backend's under-filled-grid schedule matters here most. Values are
+    /// identical across backends.
+    pub fn commit_for_config_with_backend<
+        T: ColumnMajorMerkleTreeConstructor<F>,
+        E: FieldExtension<F> + Field,
+        B: crate::gkr::prover::backend::Backend<F, E>,
+    >(
+        &self,
+        backend: &B,
+        twiddles: &B::TwiddleSet,
+        prover_config: &crate::gkr::prover_config::ProverConfig,
+        worker: &Worker,
+    ) -> SetupCommitment<F, T> {
+        let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
+        use crate::gkr::prover::commitment_utils::commit_trace_part_for_config;
+
+        SetupCommitment::InMemory(commit_trace_part_for_config::<F, E, T, B>(
+            backend,
+            &inputs,
+            twiddles,
+            prover_config,
+            &*crate::allocation_pool::default_proxy_pool_for(),
+            worker,
+        ))
     }
 }

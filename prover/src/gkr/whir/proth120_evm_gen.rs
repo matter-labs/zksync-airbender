@@ -24,14 +24,12 @@
 
 use super::coset_commit::CosetByCosetBaseCommitment;
 use super::*;
-use crate::gkr::prover::stages::commitment_utils::{
-    commit_trace_part, ColumnMajorCosetBoundTracePart,
-};
+use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
+use crate::gkr::prover::WhirSchedule;
 use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use field::Proth120;
 use rand::{Rng, SeedableRng};
 use std::alloc::Global;
-use std::sync::Arc;
 use transcript::{Keccak256Seed, Keccak256Transcript};
 
 type Tree = Keccak256MerkleTreeWithCap<Global>;
@@ -169,6 +167,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         first_fold_log2,
         cap_size,
         n,
+        &crate::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -188,22 +187,47 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
 
     log("running whir_fold (folding rounds + PoW grinding)");
     let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup_oracle);
-    let proof = whir_fold::<Proth120, Proth120, Tree, Keccak256Transcript, _>(
+    // the base layer the batched proximity poly is accumulated from: the same
+    // hypercube values the commitments were made of
+    let mut gkr_storage =
+        crate::gkr::sumcheck::access_and_fold::GKRStorage::<Proth120, Proth120>::default();
+    for (i, poly) in mem_polys.iter().enumerate() {
+        gkr_storage.insert_base_field_at_layer(
+            0,
+            cs::definitions::GKRAddress::BaseLayerMemory(i),
+            crate::gkr::sumcheck::access_and_fold::BaseFieldPoly::new(
+                poly.clone().into_boxed_slice(),
+            ),
+        );
+    }
+    gkr_storage.insert_base_field_at_layer(
+        0,
+        cs::definitions::GKRAddress::BaseLayerWitness(0),
+        crate::gkr::sumcheck::access_and_fold::BaseFieldPoly::new(
+            wit_poly.clone().into_boxed_slice(),
+        ),
+    );
+    let proof = whir_fold::<Proth120, Proth120, Tree, Keccak256Transcript, _, _>(
         mem_oracle,
         mem_claims.clone(),
         wit_oracle,
         wit_claims.clone(),
         &setup_commitment,
         vec![],
+        gkr_storage,
+        &crate::gkr::prover_config::ProverConfig::whir_only(
+            n,
+            schedule.clone(),
+            crate::definitions::SecurityLevel::Sec100,
+        ),
         z.clone(),
         batching_challenge,
-        &schedule,
         &twiddles,
         seed,
-        cap_size,
-        n,
         &crate::gkr::prover::backend::NaiveBackend,
+        &crate::gkr::prover::gkr_backend::NaiveGKRBackend,
         WhirIntermediateOracleMode::CosetByCoset,
+        &crate::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -262,7 +286,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     cd.extend_from_slice(&be16(batched));
     // z_initial: nz elements (nz even for both variants -> exactly nz*16 bytes)
     assert!(
-        n % 2 == 0,
+        n.is_multiple_of(2),
         "odd nz would need padding to the EVM's ceil(nz/2) words"
     );
     for e in z.iter() {

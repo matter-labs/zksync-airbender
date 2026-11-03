@@ -1,8 +1,6 @@
 use super::option::u8::Option;
 use crate::upstream::CSExecutorFamilyDecoderData;
-use crate::witness::trace::ChunkedTraceHolder;
 use common_constants::TimestampScalar;
-use gpu_core::allocator::host::ConcurrentStaticHostAllocator;
 use gpu_core::primitives::context::DeviceAllocation;
 
 use riscv_transpiler::witness::{
@@ -10,12 +8,7 @@ use riscv_transpiler::witness::{
     UnifiedOpcodeTracingDataWithTimestamp,
 };
 
-/// Page size for the inits-and-teardowns trace transfer, in `log2(words)`.
-///
-/// Each touched page ships `1 << PAGE_SIZE_LOG2` `u32` values plus
-/// `1 << PAGE_SIZE_LOG2` `u64` timestamps. Producer / kernel both rely on
-/// this value as the contract.
-pub const PAGE_SIZE_LOG2: u32 = 10;
+pub use execution_prover_model::trace::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
 
 #[repr(C)]
 #[derive(Copy, Clone, Default, Debug)]
@@ -66,9 +59,6 @@ impl From<&UnrolledMemoryTraceDevice> for UnrolledMemoryTraceRaw {
     }
 }
 
-pub(crate) type UnrolledMemoryTraceHost<A> =
-    ChunkedTraceHolder<MemoryOpcodeTracingDataWithTimestamp, A>;
-
 #[repr(C)]
 pub(crate) struct UnrolledMemoryOracle {
     pub trace: UnrolledMemoryTraceRaw,
@@ -95,9 +85,6 @@ impl From<&UnrolledNonMemoryTraceDevice> for UnrolledNonMemoryTraceRaw {
         }
     }
 }
-
-pub(crate) type UnrolledNonMemoryTraceHost<A> =
-    ChunkedTraceHolder<NonMemoryOpcodeTracingDataWithTimestamp, A>;
 
 #[repr(C)]
 pub(crate) struct UnrolledNonMemoryOracle {
@@ -126,9 +113,6 @@ impl From<&UnrolledUnifiedTraceDevice> for UnrolledUnifiedTraceRaw {
         }
     }
 }
-
-pub(crate) type UnrolledUnifiedTraceHost<A> =
-    ChunkedTraceHolder<UnifiedOpcodeTracingDataWithTimestamp, A>;
 
 #[repr(C)]
 pub(crate) struct UnrolledUnifiedOracle {
@@ -163,42 +147,5 @@ impl From<&InitsAndTeardownsTraceDevice> for InitsAndTeardownsTraceRaw {
             values_packed: value.values_packed.as_ptr(),
             timestamps_packed: value.timestamps_packed.as_ptr(),
         }
-    }
-}
-
-/// Chunked, pinned-host inits-and-teardowns trace.
-///
-/// Each field is a `ChunkedTraceHolder` whose chunks come from the bounded
-/// pinned-host allocator pool. The three series stay in lockstep at the page
-/// granularity: chunks of `values_packed` and `timestamps_packed` must be
-/// page-aligned (length is a multiple of `1 << PAGE_SIZE_LOG2`); chunks of
-/// `page_indices` carry one entry per page. Per-field chunk lengths sum to
-/// the same total page count.
-///
-/// `page_indices` are **local** to this instance: the high `log2(num_sets)` bits
-/// select the set, the low bits the page within that set's window. `top_bits`
-/// maps each set back to the global window it holds — set `i` covers global
-/// words `[top_bits[i] << trace_len_log2, (top_bits[i] + 1) << trace_len_log2)`.
-#[derive(Clone)]
-pub struct InitsAndTeardownsTraceHost {
-    pub page_indices: ChunkedTraceHolder<u32, ConcurrentStaticHostAllocator>,
-    pub values_packed: ChunkedTraceHolder<u32, ConcurrentStaticHostAllocator>,
-    pub timestamps_packed: ChunkedTraceHolder<TimestampScalar, ConcurrentStaticHostAllocator>,
-    /// One global window index per set, ascending.
-    pub top_bits: Vec<u32>,
-}
-
-impl InitsAndTeardownsTraceHost {
-    pub fn into_allocators(self) -> Vec<ConcurrentStaticHostAllocator> {
-        let Self {
-            page_indices,
-            values_packed,
-            timestamps_packed,
-            top_bits: _,
-        } = self;
-        let mut allocators = page_indices.into_allocators();
-        allocators.extend(values_packed.into_allocators());
-        allocators.extend(timestamps_packed.into_allocators());
-        allocators
     }
 }

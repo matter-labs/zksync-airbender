@@ -12,7 +12,7 @@ use super::*;
 /// memory: out[2j] = (1 - c) * prev[j], out[2j + 1] = c * prev[j].
 fn compute_next_layer_interleaved<E: Field>(prev: &[E], out: &mut [MaybeUninit<E>], c: &E) {
     debug_assert_eq!(out.len(), prev.len() * 2);
-    for (p, dst) in prev.iter().zip(out.chunks_exact_mut(2)) {
+    for (p, dst) in prev.iter().zip(out.as_chunks_mut::<2>().0) {
         let mut one = *p;
         one.mul_assign(c);
         let mut zero = *p;
@@ -137,7 +137,6 @@ pub fn make_eq_table_from_weight_blocks<E: Field>(blocks: &[&[E]], worker: &Work
                 let chunk = geometry.get_chunk_size(thread_idx);
                 let (lo, lo_tail) = core::mem::take(&mut lo_rest).split_at_mut(chunk);
                 lo_rest = lo_tail;
-                let w0 = w0;
                 Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                     for lv in lo.iter_mut() {
                         // SAFETY: live prefix, see above.
@@ -307,7 +306,7 @@ pub(crate) fn make_pows<E: Field>(el: E, num_powers: usize) -> Vec<E> {
 /// `2^log_n` table factors EXACTLY into `hi (x) lo` over the bit split
 /// (field multiplication is exact), so consumers can weigh elements with
 /// two tiny tensors instead of one full-size table.
-pub(crate) fn split_eq_tensors<T: Field>(
+pub fn split_eq_tensors<T: Field>(
     point: T,
     log_n: usize,
     log_c: usize,
@@ -439,6 +438,7 @@ pub fn make_domain_eq_table_lsb_first<
     table
 }
 
+#[cfg(any(test, feature = "gkr_self_checks"))]
 pub(crate) fn evaluate_with_precomputed_eq<F: PrimeField, E: FieldExtension<F> + Field>(
     base_field_values: &[F],
     eq: &[E],
@@ -465,6 +465,117 @@ pub(crate) fn evaluate_with_precomputed_eq_ext<E: Field>(ext_field_values: &[E],
     }
 
     result
+}
+
+/// Worker-parallel [`evaluate_with_precomputed_eq`]: balanced row chunks,
+/// one partial sum per chunk, reduced in chunk order (field addition is
+/// exact, so the value is identical to the serial loop).
+#[allow(dead_code)]
+pub(crate) fn evaluate_with_precomputed_eq_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
+    base_field_values: &[F],
+    eq: &[E],
+    worker: &Worker,
+) -> E {
+    let (base, ext) =
+        evaluate_many_with_precomputed_eq_parallel(&[base_field_values], &[], eq, worker);
+    debug_assert!(ext.is_empty());
+    base[0]
+}
+
+/// Worker-parallel [`evaluate_with_precomputed_eq_ext`].
+#[allow(dead_code)]
+pub(crate) fn evaluate_with_precomputed_eq_ext_parallel<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    ext_field_values: &[E],
+    eq: &[E],
+    worker: &Worker,
+) -> E {
+    let (base, ext) =
+        evaluate_many_with_precomputed_eq_parallel::<F, E>(&[], &[ext_field_values], eq, worker);
+    debug_assert!(base.is_empty());
+    ext[0]
+}
+
+/// FUSED worker-parallel evaluation of many polynomials at one point: one
+/// pass over the eq table computes every dot product (`sum_i eq[i] * p[i]`
+/// for each base-field `p` and each extension-field `q`). Each row's eq
+/// value is loaded once and applied to all polys, so the 256 MB table is
+/// streamed once instead of once per poly; per-chunk partial sums are
+/// reduced in chunk order — exact field arithmetic, identical values to
+/// the serial evaluators. Returns the base-field results in slot order,
+/// then the extension-field results.
+pub(crate) fn evaluate_many_with_precomputed_eq_parallel<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    base_polys: &[&[F]],
+    ext_polys: &[&[E]],
+    eq: &[E],
+    worker: &Worker,
+) -> (Vec<E>, Vec<E>) {
+    let n = eq.len();
+    for p in base_polys {
+        assert_eq!(p.len(), n);
+    }
+    for q in ext_polys {
+        assert_eq!(q.len(), n);
+    }
+    let (nb, ne) = (base_polys.len(), ext_polys.len());
+    if nb + ne == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    if n == 0 {
+        return (vec![E::ZERO; nb], vec![E::ZERO; ne]);
+    }
+    let num_chunks = worker.get_num_cores().min(n).max(1);
+    let mut partials: Vec<Vec<E>> = vec![vec![E::ZERO; nb + ne]; num_chunks];
+    worker.scope(n, |scope, geometry| {
+        let chunks = geometry.len().min(num_chunks);
+        let mut rest = &mut partials[..];
+        for chunk_idx in 0..chunks {
+            let (mine, tail) = core::mem::take(&mut rest).split_at_mut(1);
+            rest = tail;
+            let acc = &mut mine[0];
+            let start = geometry.get_chunk_start_pos(chunk_idx);
+            let size = geometry.get_chunk_size(chunk_idx);
+            scope.spawn(move |_| {
+                // accumulate in a THREAD-LOCAL buffer and publish once: the
+                // per-chunk `partials` vectors are tiny heap allocations that
+                // can sit in adjacent cache lines, and writing them on every
+                // row made the 16 threads ping-pong those lines (measured
+                // 33 ms -> 250 ms for the same loop depending on heap state)
+                let mut local: Vec<E> = vec![E::ZERO; nb + ne];
+                let eq = &eq[start..start + size];
+                for (i, e) in eq.iter().enumerate() {
+                    let row = start + i;
+                    for (j, p) in base_polys.iter().enumerate() {
+                        let mut t = *e;
+                        t.mul_assign_by_base(&p[row]);
+                        local[j].add_assign(&t);
+                    }
+                    for (k, q) in ext_polys.iter().enumerate() {
+                        let mut t = *e;
+                        t.mul_assign(&q[row]);
+                        local[nb + k].add_assign(&t);
+                    }
+                }
+                acc.copy_from_slice(&local);
+            });
+        }
+    });
+    let mut base = vec![E::ZERO; nb];
+    let mut ext = vec![E::ZERO; ne];
+    for part in partials.iter() {
+        for j in 0..nb {
+            base[j].add_assign(&part[j]);
+        }
+        for k in 0..ne {
+            ext[k].add_assign(&part[nb + k]);
+        }
+    }
+    (base, ext)
 }
 
 pub(crate) fn evaluate_constant_and_quadratic_coeffs_with_precomputed_eq<
@@ -565,7 +676,7 @@ pub fn make_eq_poly_in_full_lsb_serial<E: Field>(challenges: &[E]) -> Vec<Box<[E
         let c = challenges[idx];
         let prev = result.last().expect("is present");
         let mut layer = Box::new_uninit_slice(prev.len() * 2);
-        for (p, dst) in prev.iter().zip(layer.chunks_exact_mut(2)) {
+        for (p, dst) in prev.iter().zip(layer.as_chunks_mut::<2>().0) {
             let mut one = *p;
             one.mul_assign(&c);
             let mut zero = *p;
@@ -620,7 +731,7 @@ mod eq_lsb_orientation_tests {
     use super::*;
     use field::baby_bear::base::BabyBearField as F;
     use field::baby_bear::ext4::BabyBearExt4 as E;
-    use field::{Field, FieldExtension, PrimeField};
+    use field::{Field, FieldExtension};
 
     /// `make_eq_table_lsb_first` (index bit b <-> challenges[b]) must match
     /// the explicit product formula for every size.
@@ -683,7 +794,7 @@ mod eq_lsb_orientation_tests {
         let coord = ch[0];
         let mut om = E::ONE;
         om.sub_assign(&coord);
-        let c2 = vec![om, coord];
+        let c2 = [om, coord];
         let mixed = make_eq_table_from_weight_blocks::<E>(&[&block8[..], &c2[..]], &worker);
         assert_eq!(mixed.len(), 16);
         for j in 0..8usize {
@@ -705,10 +816,7 @@ mod tests {
     type F = BabyBearField;
     type E = BabyBearExt4;
 
-    fn random_in_ext(rng: &mut ThreadRng) -> E
-    where
-        [(); <E as FieldExtension<F>>::DEGREE]: Sized,
-    {
+    fn random_in_ext(rng: &mut ThreadRng) -> E {
         let coefs = [(); <E as FieldExtension<F>>::DEGREE]
             .map(|_| F::from_u32_with_reduction(rng.next_u32()));
         <E as FieldExtension<F>>::from_coeffs(coefs)

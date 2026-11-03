@@ -8,7 +8,7 @@ use crate::GpuGKRStorage;
 
 use super::super::kernels::*;
 use super::super::main_tail::{bind_main_tail, launch_main_tail, MainTailRuntimeState};
-use super::super::window::binding::{launch_window_program, BWD_WINDOW_COORDINATES};
+use super::super::window::binding::BWD_WINDOW_COORDINATES;
 use super::super::window::tail::{launch_window_tensor_round_tail, WindowTailState};
 use super::extras::{schedule_main_layer_extras_eval, MainLayerExtrasKeepalive};
 use crate::proof_layout::ProofLayout;
@@ -44,8 +44,8 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             claim_batching,
             context,
         )?;
-        launch_window_program(&windowed.window, context)?;
-        let row_tiles = windowed.window.row_tiles;
+        super::super::window::r0::launch(&windowed.window, context)?;
+        let row_tiles = windowed.window.reduction_tiles;
         let reduced_tensor = windowed.window.reduced_tensor;
         super::super::window::bank::schedule_main_continuation_coefficient_bank_fill(
             &mut self.main_continuation_bank,
@@ -377,7 +377,6 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             // SAFETY: `device_new_claims` includes the `extra_count`-element tail.
             let extras_dst_ptr = unsafe { device_new_claims.as_mut_ptr().add(num_addresses) };
             Some(schedule_main_layer_extras_eval(
-                self.layer_idx,
                 &extra_addresses,
                 storage,
                 folding_point_ptr,

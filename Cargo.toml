@@ -38,7 +38,6 @@ members = [
     "gpu/whir",
     "gpu/circuit_prover",
     "gpu/execution_prover",
-    "gpu/program_prover",
     "gpu/gkr_model",
     "gpu/gkr_compiler",
     "gkr_eval_ir",
@@ -47,10 +46,13 @@ members = [
 
     "tools/cli",
 
+    "circuit_defs/bigint_with_control",
     "circuit_defs/blake2_g_function",
     "circuit_defs/blake2_with_compression",
-    "circuit_defs/bigint_with_control",
+    "circuit_defs/keccak_chi5",
+    "circuit_defs/keccak_column_parity",
     "circuit_defs/keccak_special5",
+    "circuit_defs/keccak_theta_rho",
 
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
     "circuit_defs/unrolled_circuits/jump_branch_slt",
@@ -62,6 +64,9 @@ members = [
     "circuit_defs/unrolled_circuits/shift_binary",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
 
+    "cpu_execution_prover",
+    "execution_prover",
+    "execution_prover_model",
     "program_prover",
     "prover_pipeline",
     "riscv_common",
@@ -81,11 +86,17 @@ default-members = [
     "circuit_defs/blake2_g_function",
     "circuit_defs/blake2_with_compression",
     "circuit_defs/circuit_common",
-    "circuit_defs/prover_examples",
+    "circuit_defs/keccak_chi5",
+    "circuit_defs/keccak_column_parity",
     "circuit_defs/keccak_special5",
+    "circuit_defs/keccak_theta_rho",
+    "circuit_defs/prover_examples",
     "circuit_defs/setups",
     "circuit_defs/trace_and_split",
+    "cpu_execution_prover",
     "cs",
+    "execution_prover",
+    "execution_prover_model",
     "fft",
     "field",
     # "full_statement_verifier",
@@ -117,6 +128,16 @@ default-members = [
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
 ]
 
+[workspace.lints.rust]
+# `no_cuda` is emitted by the gpu/ build scripts; crates without one (gpu_execution_prover)
+# still carry `#[cfg(not(no_cuda))]`-gated GPU tests.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(no_cuda)'] }
+
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"
+needless_range_loop = "allow"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
@@ -143,10 +164,13 @@ verifier_common = { path = "./verifier_common", default-features = false }
 
 circuit_common = { path = "./circuit_defs/circuit_common" }
 
+bigint_with_control = { path = "./circuit_defs/bigint_with_control" }
 blake2_g_function = { path = "./circuit_defs/blake2_g_function" }
 blake2_with_compression = { path = "./circuit_defs/blake2_with_compression" }
-bigint_with_control = { path = "./circuit_defs/bigint_with_control" }
+keccak_chi5 = {path = "./circuit_defs/keccak_chi5"}
+keccak_column_parity = {path = "./circuit_defs/keccak_column_parity"}
 keccak_special5 = {path = "./circuit_defs/keccak_special5"}
+keccak_theta_rho = {path = "./circuit_defs/keccak_theta_rho"}
 
 add_sub_lui_auipc_mop = { path = "./circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop" }
 inits_and_teardowns = { path = "./circuit_defs/unrolled_circuits/inits_and_teardowns" }
@@ -180,8 +204,10 @@ gpu_gkr = { path = "./gpu/gkr" }
 gpu_whir = { path = "./gpu/whir" }
 gpu_circuit_prover = { path = "./gpu/circuit_prover", default-features = false }
 gpu_execution_prover = { path = "./gpu/execution_prover", default-features = false }
-gpu_program_prover = { path = "./gpu/program_prover", default-features = false }
 program_prover = { path = "./program_prover", default-features = false }
+cpu_execution_prover = { path = "./cpu_execution_prover", default-features = false }
+execution_prover = { path = "./execution_prover", default-features = false }
+execution_prover_model = { path = "./execution_prover_model" }
 prover_examples = { path = "./circuit_defs/prover_examples", default-features = false }
 prover_pipeline = { path = "./prover_pipeline", default-features = false }
 gpu_gkr_model = { path = "./gpu/gkr_model" }
@@ -190,8 +216,8 @@ gkr_eval_ir = { path = "./gkr_eval_ir" }
 
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 clap = { version = "4.5.21", features = ["derive"] }
-addr2line_new = { package = "addr2line", version = "0.25" }
-object = "0.37"
+addr2line_new = { package = "addr2line", version = "0.25", default-features = false, features = ["std", "rustc-demangle", "cpp_demangle", "fallible-iterator", "smallvec"] }
+object = { version = "0.37", default-features = false, features = ["read"] }
 rand = { version = "0.9", default-features = false }
 unroll = "0.1"
 seq-macro = "0.3"
@@ -199,7 +225,7 @@ arrayvec = { version = "0.7", default-features = false }
 itertools = { version = "0.14" }
 inferno = "0.12"
 log = "0.4"
-sha3 = { version = "*", default-features = false }
+sha3 = { version = "0.12", default-features = false }
 insta = "1.47.2"
 tempfile = "3.27.0"
 mmap-io = "1.0"

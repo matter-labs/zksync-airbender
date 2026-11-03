@@ -1,3 +1,4 @@
+use crate::proof::memory_policy::{WitnessMemoryPolicy, WitnessOpeningStrategy};
 use std::sync::Arc;
 
 use era_cudart::memory::memory_copy_async;
@@ -33,15 +34,23 @@ pub(in crate::proof) struct Stage1AndForwardPreparation {
 }
 
 /// Device buffers owned by the proof job's keepalive.
-#[derive(Clone, Copy)]
-pub(in crate::proof) struct BundleDeviceRefs<'b, 'a> {
+pub(in crate::proof) struct BundleDeviceRefs<'b, 'a, A: GoodAllocator> {
     pub setup: Option<&'b GpuGKRSetupTransfer<'a>>,
     pub decoder: Option<&'b DecoderTableTransfer<'a>>,
-    pub inits_and_teardowns: Option<&'b InitsAndTeardownsTransfer<'a>>,
+    pub inits_and_teardowns: Option<&'b InitsAndTeardownsTransfer<'a, A>>,
     pub memory: &'b GpuGKRMemoryTransfer<'a>,
     pub top_bits_device: Option<&'b DeviceAllocation<u32>>,
     pub external_challenges_device: &'b DeviceAllocation<E4>,
 }
+
+// Only references, so copyable whatever `A` is; the derive would require `A: Copy`.
+impl<A: GoodAllocator> Clone for BundleDeviceRefs<'_, '_, A> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<A: GoodAllocator> Copy for BundleDeviceRefs<'_, '_, A> {}
 
 fn allocate_proof_slab(
     context: &ProverContext,
@@ -64,8 +73,9 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     whir_schedule: &WhirSchedule,
-    bundle: BundleDeviceRefs<'_, 'a>,
+    bundle: BundleDeviceRefs<'_, 'a, A>,
     tracing_data_transfer: Option<&TracingDataTransfer<'a, A>>,
+    witness_policy: WitnessMemoryPolicy,
     context: &ProverContext,
 ) -> CudaResult<Stage1AndForwardPreparation> {
     let circuit_type = gkr_programs.circuit_type();
@@ -166,7 +176,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     let mut witness_cap_dst =
         unsafe { DeviceSlice::from_raw_parts_mut(witness_cap_ptr, witness_cap_len_u32) };
 
-    let stage1_output = GpuGKRStage1Output::generate(
+    let mut stage1_output = GpuGKRStage1Output::generate(
         circuit_type,
         compiled_circuit,
         setup_geometry,
@@ -180,8 +190,15 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
             .map(|transfer| &transfer.data_device),
         tracing_data_transfer.map(|transfer| &transfer.data_device),
         Some(&mut witness_cap_dst),
+        witness_policy.commitment,
+        witness_policy.post_commitment,
         context,
     )?;
+    if let WitnessOpeningStrategy::Recompute(opening) = witness_policy.opening {
+        stage1_output
+            .witness_trace_holder
+            .defer_materialization_until_queries(opening);
+    }
     let synthetic_setup_trace_holder = if bundle.setup.is_none() {
         Some(TraceHolder::new_without_cosets(
             setup_geometry.log_domain_size,
@@ -249,6 +266,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
             compiled_circuit.generic_lookup_tables_width,
             compiled_circuit.total_tables_size,
             compiled_circuit.tables_ids_in_generic_lookups,
+            compiled_circuit.generic_lookup_padding,
             d_lookup_challenges,
             context,
         )?
@@ -275,7 +293,7 @@ mod tests {
             allocator_block_log_size: 10,
             device_slack_static_bytes: 1,
             device_slack_per_thread_bytes: 0,
-            max_device_allocation_blocks_count: Some(4),
+            device_allocation_blocks_count: Some(4),
             host_allocator_block_log_size: 5,
             host_allocator_blocks_count: 1,
             small_allocator_log_chunk_size: Some(4),

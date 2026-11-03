@@ -1,7 +1,7 @@
 // NOTE: here we need struct definition for external crates, but we will panic in implementations instead
 use super::*;
 use crate::aligned_array::AlignedArray64;
-#[cfg(feature = "blake2_g_function")]
+#[cfg(all(target_arch = "riscv32", feature = "blake2_g_function"))]
 use crate::aligned_array::A64;
 
 #[cfg(all(
@@ -68,6 +68,19 @@ impl Blake2RoundFunctionEvaluator {
             self.state[6],
             self.state[7],
         ]
+    }
+
+    /// Starts a new hash whose chaining value is `h` instead of the IV.
+    #[inline(always)]
+    pub fn reset_with_chaining_value(&mut self, h: &[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]) {
+        unsafe {
+            crate::spec_memcopy_u32_nonoverlapping(
+                h.as_ptr(),
+                self.state.as_mut_ptr().cast::<u32>(),
+                BLAKE2S_DIGEST_SIZE_U32_WORDS,
+            );
+        }
+        self.t = 0;
     }
 
     #[inline(always)]

@@ -6,11 +6,13 @@
 use gpu_core::primitives::utils::WARP_SIZE;
 
 mod gather;
+mod gather_coset;
 mod hash;
 mod merkle;
 mod transcript;
 
 pub use gather::*;
+pub use gather_coset::*;
 pub use hash::*;
 pub use merkle::*;
 pub use transcript::*;

@@ -73,7 +73,7 @@ fn base_query_paths_match_cpu_tree() {
         .collect::<Vec<_>>();
     let cpu_tree = <Blake2sU32MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
         BF,
-    >>::construct_from_cosets::<BF>(
+    >>::construct_from_cosets::<BF, _>(
         &source_refs,
         1usize << log_rows_per_leaf,
         1usize << log_tree_cap_size,

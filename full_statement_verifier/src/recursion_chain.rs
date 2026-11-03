@@ -37,6 +37,19 @@ impl<const REDUCED_ROUNDS: bool> RecursionChain<REDUCED_ROUNDS> {
         }
     }
 
+    /// Resume a chain from the `preimage` a previously proven layer carries
+    /// (`ProgramProof::recursion_chain_preimage`). The hash/preimage pairing
+    /// invariant is re-established by recomputation, so no mismatched pair can
+    /// be constructed this way; whether the preimage is the honest history is
+    /// (as always) re-checked by the verifier of any proof chained onto it.
+    #[must_use]
+    pub fn resume(preimage: [u32; 16]) -> Self {
+        Self {
+            hash: Self::hash_preimage(&preimage),
+            preimage,
+        }
+    }
+
     pub fn extend(&mut self, end_params: &[u32; 8]) {
         if self.preimage[8..] == end_params[..] {
             return;

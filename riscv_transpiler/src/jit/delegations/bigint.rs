@@ -17,14 +17,24 @@ pub fn bigint_implementation(
     assert!(b_ptr as usize >= common_constants::rom::ROM_BYTE_SIZE);
     assert_eq!(a_ptr % 32, 0, "`a` pointer is unaligned");
     assert_eq!(b_ptr % 32, 0, "`b` pointer is unaligned");
+    // the operands are 32 bytes each, and the accesses below are not bounds-checked
+    let ram_size = machine_state.ram_config.ram_size();
+    debug_assert_eq!(ram_size, memory_holder.ram_size());
+    assert!(
+        a_ptr as usize + 32 <= ram_size,
+        "`a` extends beyond the end of RAM"
+    );
+    assert!(
+        b_ptr as usize + 32 <= ram_size,
+        "`b` extends beyond the end of RAM"
+    );
 
     assert!(a_ptr != b_ptr);
 
     let write_ts = machine_state.timestamp;
 
     // Precompile post-cycle register-timestamp effect (a0/a1/a2 = x10/x11/x12 -> 3 mod 4).
-    // Under packed_ts this is the only writer of register_timestamps (per-cycle writes are
-    // off); the offline scan merges it via `register_timestamps_array`.
+    // Merged with per-cycle timestamps by `register_timestamps_array`.
     machine_state.register_timestamps[10] = write_ts;
     machine_state.register_timestamps[11] = write_ts;
     machine_state.register_timestamps[12] = write_ts;
@@ -35,14 +45,9 @@ pub fn bigint_implementation(
 
     let b = unsafe {
         let offset = (b_ptr as usize) / core::mem::size_of::<u32>();
-        let integer = memory_holder
-            .memory
-            .as_ptr()
-            .add(offset)
-            .cast::<U256>()
-            .as_ref_unchecked();
-        let timestamps = memory_holder
-            .timestamps
+        let (mem, ts) = memory_holder.memory_and_timestamps_mut();
+        let integer = mem.as_ptr().add(offset).cast::<U256>().as_ref_unchecked();
+        let timestamps = ts
             .as_mut_ptr()
             .add(offset)
             .cast::<[TimestampScalar; 8]>()
@@ -63,14 +68,13 @@ pub fn bigint_implementation(
 
     let a = unsafe {
         let offset = (a_ptr as usize) / core::mem::size_of::<u32>();
-        let integer = memory_holder
-            .memory
+        let (mem, ts) = memory_holder.memory_and_timestamps_mut();
+        let integer = mem
             .as_mut_ptr()
             .add(offset)
             .cast::<U256>()
             .as_mut_unchecked();
-        let timestamps = memory_holder
-            .timestamps
+        let timestamps = ts
             .as_mut_ptr()
             .add(offset)
             .cast::<[TimestampScalar; 8]>()
@@ -103,4 +107,45 @@ pub fn bigint_implementation(
     // println!("Bigint, should flush = {}", should_flush);
 
     should_flush
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use common_constants::delegation_types::bigint_with_control::ADD_OP_BIT_IDX;
+
+    /// The Rust handler rejects operands that extend beyond the end of RAM, like the routine of the x86-64 JIT
+    fn rust_handler_with_operands(a: u32, b: u32) {
+        let ram_config = JitRunnerRam::Tiny;
+        let mut memory = MemoryHolder::allocate_zeroed(ram_config, std::alloc::Global);
+        let mut trace: Box<TraceChunk> = unsafe { Box::new_zeroed().assume_init() };
+        let mut state = Box::new(MachineState::initial());
+        *state.get_register_mut(10) = a;
+        *state.get_register_mut(11) = b;
+        *state.get_register_mut(12) = 1 << ADD_OP_BIT_IDX;
+        state.timestamp = INITIAL_TIMESTAMP + 3;
+        state.ram_config = ram_config;
+        bigint_implementation(&mut trace, &mut memory, &mut state);
+    }
+
+    #[test]
+    fn rust_handler_accepts_the_last_operand_of_ram() {
+        let ram_size = JitRunnerRam::Tiny.ram_size() as u32;
+        rust_handler_with_operands(ram_size - 32, ram_size - 64);
+        rust_handler_with_operands(ram_size - 64, ram_size - 32);
+    }
+
+    #[test]
+    #[should_panic(expected = "`a` extends beyond the end of RAM")]
+    fn rust_handler_rejects_a_beyond_ram() {
+        let ram_size = JitRunnerRam::Tiny.ram_size() as u32;
+        rust_handler_with_operands(ram_size, ram_size - 32);
+    }
+
+    #[test]
+    #[should_panic(expected = "`b` extends beyond the end of RAM")]
+    fn rust_handler_rejects_b_beyond_ram() {
+        let ram_size = JitRunnerRam::Tiny.ram_size() as u32;
+        rust_handler_with_operands(ram_size - 32, ram_size + 64);
+    }
 }

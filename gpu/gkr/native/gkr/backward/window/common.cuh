@@ -32,11 +32,13 @@ struct bwd_source_window {
   u8 log2_stride;
   u8 origin;
   u8 procedural_kind;
-  u8 reserved[5];
+  u8 reserved;
+  u32 r0_stride_bytes;
 };
 
 static_assert(sizeof(bwd_source_window) == 16, "bwd_source_window ABI size drift");
 static_assert(alignof(bwd_source_window) == 8, "bwd_source_window ABI alignment drift");
+static_assert(__builtin_offsetof(bwd_source_window, r0_stride_bytes) == 12);
 
 constexpr u16 BWD_SOURCE_LANE_NONE = 0xffff;
 constexpr u32 BWD_SOURCE_LANE_COLUMN_BITS = 7;
@@ -54,7 +56,7 @@ constexpr u32 BWD_WINDOW_LANE_INDEX_MASK = BWD_WINDOW_WARP_LANES - 1;
 constexpr u32 BWD_COEFF_BANK_CAPACITY = 1792;
 constexpr u32 BWD_COEFF_NONE = 0xffffffffu;
 constexpr u32 BWD_CONTINUATION_MAX_SOURCES = 1072;
-constexpr u32 BWD_CONTINUATION_PROGRAM_WORD_CAP = 6472;
+constexpr u32 BWD_CONTINUATION_PROGRAM_WORD_CAP = 8192;
 constexpr u32 BWD_CONTINUATION_MAX_IMMEDIATES = 512;
 
 static_assert(BWD_COEFF_BANK_CAPACITY * sizeof(e4) == 28 * 1024, "coefficient bank size drift");

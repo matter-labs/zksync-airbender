@@ -9,9 +9,11 @@ use field::baby_bear::ext4::BabyBearExt4;
 use field::Field;
 use verifier_common::errors::VerificationError;
 
+#[cfg(not(feature = "no_caches"))]
+use common::assert_rejects_with_variant;
 use common::{
-    assert_rejects_any, assert_rejects_corrupted_nds, assert_rejects_via_panic,
-    assert_rejects_with_variant, SecurityLevel, VerifyRejection,
+    assert_rejects_any, assert_rejects_corrupted_nds, assert_rejects_via_panic, SecurityLevel,
+    VerifyRejection,
 };
 
 fn test_rejects_garbage_proof(name: &str) {
@@ -282,7 +284,10 @@ fn test_rejects_corrupted_init_teardown_bits(name: &str) {
             SecurityLevel::Sec100,
             &label,
             |nds| nds[i] ^= 0xFFFF_FFFF,
-            |r| matches!(r, VerifyRejection::Error(..)),
+            // `top_bits` open the initial transcript, so this is a head corruption: the
+            // diverged seed may be caught first by the next non-zero-bit `verify_pow` draw
+            // (host-transcript panic) — either rejection kind is a reject here.
+            |r| matches!(r, VerifyRejection::Error(..) | VerifyRejection::Panic(_)),
         );
     }
 }
@@ -401,6 +406,7 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
     );
 }
 
+#[allow(clippy::assertions_on_constants)]
 fn test_rejects_corrupted_it_evals(name: &str) {
     with_circuit!(name, SecurityLevel::Sec100, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;

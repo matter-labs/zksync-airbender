@@ -4,9 +4,9 @@
 namespace airbender::ntt {
 
 // For n = 2^24 (log_n = 24) only. log_n argument is only present for API symmetry.
-EXTERN __launch_bounds__(512, 1) __global__
-    void ab_hypercube_evals_to_monomials_first_10_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                                const int log_n, const int start_stage /*unused, for symmetry with three-pass API*/) {
+template <bool RESTORE = false>
+DEVICE_FORCEINLINE void hypercube_evals_to_monomials_first_10_stages_body(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                                          const int log_n, const int start_stage /*unused, for symmetry with three-pass API*/) {
   using namespace pass_config::two_pass_phase_a;
   using namespace pass_config::pipeline_prefetch;
 
@@ -24,11 +24,11 @@ EXTERN __launch_bounds__(512, 1) __global__
   // "il" = interleaved tile layout
   const ThreadTileStarts starts = thread_tile_starts(lane_in_tile, tile_id, TILE_GMEM_STRIDE, IL_GMEM_STRIDE, TILE_SIZE, THREAD_TILES_PER_BLOCK);
 
-  prefetch_exchg_pipeline_8<IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, starts.il_gmem_start, pipeline_exchg_hypercube{});
+  prefetch_exchg_pipeline_8<IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, starts.il_gmem_start, pipeline_exchg_hypercube_direction<RESTORE>{});
 
-  reg_exchg_hypercube_inv<4, 8, 4>(vals);
-  reg_exchg_hypercube_inv<2, 4, 8>(vals);
-  reg_exchg_hypercube_inv<1, 2, 16>(vals);
+  reg_exchg_hypercube_inv<4, 8, 4, RESTORE>(vals);
+  reg_exchg_hypercube_inv<2, 4, 8, RESTORE>(vals);
+  reg_exchg_hypercube_inv<1, 2, 16, RESTORE>(vals);
 
 #pragma unroll
   for (int i{0}, addr{starts.il_smem_start}; i < 32; i++, addr += TILE_SIZE * THREAD_TILES_PER_BLOCK)
@@ -40,21 +40,32 @@ EXTERN __launch_bounds__(512, 1) __global__
   for (int i{0}, addr{starts.ct_smem_start}; i < 32; i++, addr += TILE_SIZE)
     vals[i] = smem_block[addr]; // read consecutive smem tiles
 
-  reg_exchg_hypercube_inv<16, 32, 1>(vals);
-  reg_exchg_hypercube_inv<8, 16, 2>(vals);
-  reg_exchg_hypercube_inv<4, 8, 4>(vals);
-  reg_exchg_hypercube_inv<2, 4, 8>(vals);
-  reg_exchg_hypercube_inv<1, 2, 16>(vals);
+  reg_exchg_hypercube_inv<16, 32, 1, RESTORE>(vals);
+  reg_exchg_hypercube_inv<8, 16, 2, RESTORE>(vals);
+  reg_exchg_hypercube_inv<4, 8, 4, RESTORE>(vals);
+  reg_exchg_hypercube_inv<2, 4, 8, RESTORE>(vals);
+  reg_exchg_hypercube_inv<1, 2, 16, RESTORE>(vals);
 
 #pragma unroll
   for (int i{0}, row{starts.ct_gmem_start}; i < 32; i++, row += TILE_GMEM_STRIDE)
     gmem_out.set_at_row(row, vals[i]); // write consecutive gmem tiles
 }
 
-// For n = 2^23 (log_n = 23) only. log_n argument is only present for API symmetry.
 EXTERN __launch_bounds__(512, 1) __global__
-    void ab_hypercube_evals_to_monomials_first_9_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                               const int log_n, const int start_stage /*unused, for symmetry with three-pass API*/) {
+    void ab_hypercube_evals_to_monomials_first_10_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                                const int log_n, const int start_stage /*unused, for symmetry with three-pass API*/) {
+  hypercube_evals_to_monomials_first_10_stages_body(gmem_in, gmem_out, log_n, start_stage);
+}
+EXTERN __launch_bounds__(512, 1) __global__
+    void ab_monomials_to_hypercube_first_10_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                          const int log_n, const int start_stage /*unused, for symmetry with three-pass API*/) {
+  hypercube_evals_to_monomials_first_10_stages_body<true>(gmem_in, gmem_out, log_n, start_stage);
+}
+
+// For n = 2^23 (log_n = 23) only.
+template <bool RESTORE = false>
+DEVICE_FORCEINLINE void hypercube_evals_to_monomials_first_9_stages_body(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                                         const int log_n, const int start_stage /*unused, for symmetry with three-pass API*/) {
   using namespace pass_config::two_pass_phase_b;
   using namespace pass_config::pipeline_prefetch;
 
@@ -75,11 +86,11 @@ EXTERN __launch_bounds__(512, 1) __global__
   const int thread_il_smem_start = lane_in_tile + tile_id * TILE_SIZE;
   const int thread_ct_smem_start = lane_in_tile + tile_id * TILE_SIZE * 2 * THREAD_TILES_PER_BLOCK;
 
-  prefetch_exchg_pipeline_8<IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start, pipeline_exchg_hypercube{});
+  prefetch_exchg_pipeline_8<IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start, pipeline_exchg_hypercube_direction<RESTORE>{});
 
-  reg_exchg_hypercube_inv<4, 8, 4>(vals);
-  reg_exchg_hypercube_inv<2, 4, 8>(vals);
-  reg_exchg_hypercube_inv<1, 2, 16>(vals);
+  reg_exchg_hypercube_inv<4, 8, 4, RESTORE>(vals);
+  reg_exchg_hypercube_inv<2, 4, 8, RESTORE>(vals);
+  reg_exchg_hypercube_inv<1, 2, 16, RESTORE>(vals);
 
 #pragma unroll
   for (int i{0}, addr{thread_il_smem_start}; i < 32; i++, addr += TILE_SIZE * THREAD_TILES_PER_BLOCK)
@@ -91,10 +102,10 @@ EXTERN __launch_bounds__(512, 1) __global__
   for (int i{0}, addr{thread_ct_smem_start}; i < 32; i++, addr += TILE_SIZE)
     vals[i] = smem_block[addr]; // read consecutive smem tiles
 
-  reg_exchg_hypercube_inv<8, 16, 2>(vals);
-  reg_exchg_hypercube_inv<4, 8, 4>(vals);
-  reg_exchg_hypercube_inv<2, 4, 8>(vals);
-  reg_exchg_hypercube_inv<1, 2, 16>(vals);
+  reg_exchg_hypercube_inv<8, 16, 2, RESTORE>(vals);
+  reg_exchg_hypercube_inv<4, 8, 4, RESTORE>(vals);
+  reg_exchg_hypercube_inv<2, 4, 8, RESTORE>(vals);
+  reg_exchg_hypercube_inv<1, 2, 16, RESTORE>(vals);
 
 #pragma unroll
   for (int i{0}, row{thread_ct_gmem_start}; i < 32; i++, row += TILE_GMEM_STRIDE)
@@ -102,8 +113,19 @@ EXTERN __launch_bounds__(512, 1) __global__
 }
 
 EXTERN __launch_bounds__(512, 1) __global__
-    void ab_hypercube_evals_to_monomials_last_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                               const bool transposed_monomials, const int log_n) {
+    void ab_hypercube_evals_to_monomials_first_9_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                               const int log_n, const int start_stage /*unused, for symmetry with three-pass API*/) {
+  hypercube_evals_to_monomials_first_9_stages_body(gmem_in, gmem_out, log_n, start_stage);
+}
+EXTERN __launch_bounds__(512, 1) __global__
+    void ab_monomials_to_hypercube_first_9_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,
+                                                         const int start_stage /*unused, for symmetry with three-pass API*/) {
+  hypercube_evals_to_monomials_first_9_stages_body<true>(gmem_in, gmem_out, log_n, start_stage);
+}
+
+template <bool RESTORE = false>
+DEVICE_FORCEINLINE void hypercube_evals_to_monomials_last_14_stages_body(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                                         const bool transposed_monomials, const int log_n) {
   using namespace pass_config::two_pass_phase_c;
 
   const int lane_id = threadIdx.x & 31;
@@ -125,10 +147,10 @@ EXTERN __launch_bounds__(512, 1) __global__
     vals[i + 1] = gmem_in.get_at_row(row + 32);
   }
 
-  reg_exchg_hypercube_inv<16, 32, 1>(vals);
-  reg_exchg_hypercube_inv<8, 16, 2>(vals);
-  reg_exchg_hypercube_inv<4, 8, 4>(vals);
-  reg_exchg_hypercube_inv<2, 4, 8>(vals);
+  reg_exchg_hypercube_inv<16, 32, 1, RESTORE>(vals);
+  reg_exchg_hypercube_inv<8, 16, 2, RESTORE>(vals);
+  reg_exchg_hypercube_inv<4, 8, 4, RESTORE>(vals);
+  reg_exchg_hypercube_inv<2, 4, 8, RESTORE>(vals);
 
 #pragma unroll
   for (int i{0}, row{thread_start}; i < 32; i += 2, row += tile_stride) {
@@ -142,20 +164,20 @@ EXTERN __launch_bounds__(512, 1) __global__
   for (int i{0}, row{lane_id}; i < 32; i++, row += 32)
     vals[i] = smem_warp[row];
 
-  reg_exchg_hypercube_inv<16, 32, 1>(vals);
-  reg_exchg_hypercube_inv<8, 16, 2>(vals);
-  reg_exchg_hypercube_inv<4, 8, 4>(vals);
-  reg_exchg_hypercube_inv<2, 4, 8>(vals);
-  reg_exchg_hypercube_inv<1, 2, 16>(vals);
+  reg_exchg_hypercube_inv<16, 32, 1, RESTORE>(vals);
+  reg_exchg_hypercube_inv<8, 16, 2, RESTORE>(vals);
+  reg_exchg_hypercube_inv<4, 8, 4, RESTORE>(vals);
+  reg_exchg_hypercube_inv<2, 4, 8, RESTORE>(vals);
+  reg_exchg_hypercube_inv<1, 2, 16, RESTORE>(vals);
 
   __syncwarp();
   warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 
-  reg_exchg_hypercube_inv<16, 32, 1>(vals);
-  reg_exchg_hypercube_inv<8, 16, 2>(vals);
-  reg_exchg_hypercube_inv<4, 8, 4>(vals);
-  reg_exchg_hypercube_inv<2, 4, 8>(vals);
-  reg_exchg_hypercube_inv<1, 2, 16>(vals);
+  reg_exchg_hypercube_inv<16, 32, 1, RESTORE>(vals);
+  reg_exchg_hypercube_inv<8, 16, 2, RESTORE>(vals);
+  reg_exchg_hypercube_inv<4, 8, 4, RESTORE>(vals);
+  reg_exchg_hypercube_inv<2, 4, 8, RESTORE>(vals);
+  reg_exchg_hypercube_inv<1, 2, 16, RESTORE>(vals);
 
   if (transposed_monomials) {
 #pragma unroll
@@ -169,6 +191,17 @@ EXTERN __launch_bounds__(512, 1) __global__
     for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
       gmem_out.set_at_row(row, vals[i]);
   }
+}
+
+EXTERN __launch_bounds__(512, 1) __global__
+    void ab_hypercube_evals_to_monomials_last_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                               const bool transposed_monomials, const int log_n) {
+  hypercube_evals_to_monomials_last_14_stages_body(gmem_in, gmem_out, transposed_monomials, log_n);
+}
+EXTERN __launch_bounds__(512, 1) __global__
+    void ab_monomials_to_hypercube_last_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                         const bool transposed_monomials, const int log_n) {
+  hypercube_evals_to_monomials_last_14_stages_body<true>(gmem_in, gmem_out, transposed_monomials, log_n);
 }
 
 } // namespace airbender::ntt

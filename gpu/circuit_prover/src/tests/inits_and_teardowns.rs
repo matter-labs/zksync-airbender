@@ -1,4 +1,5 @@
 use super::*;
+use std::alloc::Global;
 
 /// Bucket sparse `(addr, (timestamp, value))` triples (per CPU-worker chunks) into the
 /// page-based SoA wire format consumed by the GPU inits-and-teardowns kernel.
@@ -97,41 +98,19 @@ pub(super) fn build_inits_and_teardowns_trace_host_for_test(
     values_packed: &[u32],
     timestamps_packed: &[common_constants::TimestampScalar],
     top_bits: &[u32],
-) -> InitsAndTeardownsTraceHost {
+) -> InitsAndTeardownsTraceHost<Global> {
     InitsAndTeardownsTraceHost {
         top_bits: top_bits.to_vec(),
         page_indices: ChunkedTraceHolder {
-            chunks: vec![Arc::new(alloc_pinned_vec_from_slice_for_test(page_indices))],
+            chunks: vec![Arc::new(page_indices.to_vec())],
         },
         values_packed: ChunkedTraceHolder {
-            chunks: vec![Arc::new(alloc_pinned_vec_from_slice_for_test(
-                values_packed,
-            ))],
+            chunks: vec![Arc::new(values_packed.to_vec())],
         },
         timestamps_packed: ChunkedTraceHolder {
-            chunks: vec![Arc::new(alloc_pinned_vec_from_slice_for_test(
-                timestamps_packed,
-            ))],
+            chunks: vec![Arc::new(timestamps_packed.to_vec())],
         },
     }
-}
-
-/// Build a single pinned-host `Vec<T, ConcurrentStaticHostAllocator>` from a slice.
-///
-/// Each call dedicates a private `ConcurrentStaticHostAllocator` that owns one fresh
-/// `HostAllocation`, mirroring the per-chunk pinned allocation pattern used in the
-/// production producer's pool allocators (single-chunk degenerate case).
-pub(super) fn alloc_pinned_vec_from_slice_for_test<T: Copy>(
-    values: &[T],
-) -> Vec<T, gpu_core::allocator::host::ConcurrentStaticHostAllocator> {
-    use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
-    use gpu_core::allocator::host::ConcurrentStaticHostAllocator;
-    let bytes = std::mem::size_of_val(values);
-    let allocation = HostAllocation::alloc(bytes, CudaHostAllocFlags::DEFAULT).unwrap();
-    let allocator = ConcurrentStaticHostAllocator::new([allocation], 0);
-    let mut out: Vec<T, _> = Vec::with_capacity_in(values.len(), allocator);
-    out.extend_from_slice(values);
-    out
 }
 
 /// Build a `BasicUnrolledFixture` for the standalone inits-and-teardowns
@@ -274,14 +253,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
 
     // --- CPU reference proof (only when requested) ---
     let expected_cpu_proof = if compute_cpu_reference {
-        let setup_commitment = setup.commit(
-            &twiddles,
-            whir_schedule.base_lde_factor,
-            whir_schedule.whir_steps_schedule[0],
-            whir_schedule.cap_size,
-            trace_len.trailing_zeros() as usize,
-            &worker,
-        );
+        let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, &worker);
         Some(prove_configured_with_gkr::<
             BF,
             E4,
@@ -295,7 +267,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             &setup_commitment,
             &twiddles,
             &prover_config,
-            CommitmentMode::SeparateMemoryAndWitness,
+            OperationMode::MultipleChunks,
             top_bits.clone(),
             trace_len,
             &worker,
@@ -323,10 +295,8 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
                 &NaiveBackend,
                 &make_full_trace(),
                 &twiddles,
-                whir_schedule.base_lde_factor,
-                whir_schedule.whir_steps_schedule[0],
-                whir_schedule.cap_size,
-                trace_len.trailing_zeros() as usize,
+                &prover_config,
+                &prover::allocation_pool::GenericAllocationPool::proxy(),
                 &worker,
             );
         stage1_subcaps_from_cap(
@@ -335,14 +305,9 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
         )
     };
 
-    // --- GPU-side hosts + context (matches the 64 GiB recycled-block arena the
-    //     per-family fixtures use, so multi_schedule exercises the same path) ---
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
-    let device_allocator_arena_bytes: usize = 64usize << 30;
-    let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        None,
         1024,
         device_allocator_block_log_size,
     );

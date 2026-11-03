@@ -1,14 +1,11 @@
 //! Query-time gathering: leaf values, Merkle paths, and tree caps.
 //!
-//! The `*_for_queries` slab-write variants feed the proof slab's per-query
-//! layout that `gpu_circuit_prover`'s proof parsing consumes:
+//! The `*_for_queries` variants use this per-query output layout:
 //! - `query_indices` (`u32`): tree-space index per query.
 //! - `query_leaves` (`BF`): row-major per query, `[v0c0, v0c1, ..., v(V-1)c(C-1)]`.
 //! - `query_paths` (`u32`): query-major, `[layer0_d, layer1_d, ..., layer(L-1)_d]`
 //!   per query, each digest is `STATE_SIZE` u32 words.
 //!
-//! The `#[doc(hidden)]` readers at the bottom are test-reference
-//! implementations kept for downstream parity tests, not production paths.
 
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -25,17 +22,14 @@ use gpu_core::primitives::utils::{
     get_grid_block_dims_for_threads_count, LOG_WARP_SIZE, WARP_SIZE,
 };
 
-/// Kernel-arg descriptor for `gather_leaves_for_queries`. One entry per
-/// base-field oracle: the consolidated cosets backing pointer, the per-oracle
-/// column count, and the slab destination pointer. `columns_count == 0`
-/// signals an inactive descriptor slot (the kernel skips the whole oracle).
+/// Leaf-gather inputs and destination for one base-field oracle.
+/// `columns_count == 0` skips the oracle.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct OracleGatherDesc {
-    /// `const BF*` consolidated cosets backing for this oracle. Coset `c`
-    /// occupies elements `c * (columns_count << log_domain_size) ..
-    /// (c + 1) * (columns_count << log_domain_size)`; within each coset the
-    /// layout is column-major with stride `1 << log_domain_size`.
+    /// `const BF*` column-major coset data, with `1 << log_domain_size` rows
+    /// per column. All-coset gathers use stride `columns_count << log_domain_size`
+    /// between cosets; single-coset gathers read the resident coset at offset zero.
     pub cosets_ptr: u64,
     /// Number of base-field columns in this oracle. Set to `0` to mark the
     /// slot inactive — the kernel skips all writes for that oracle.
@@ -160,10 +154,7 @@ pub fn gather_leaves_for_queries(
 cuda_kernel!(
     GatherLeavesForQueriesPhysical,
     ab_gather_leaves_for_queries_physical_kernel(
-        num_oracles: u32,
-        desc0: OracleGatherDesc,
-        desc1: OracleGatherDesc,
-        desc2: OracleGatherDesc,
+        desc: OracleGatherDesc,
         log_lde_factor: u32,
         log_domain_size: u32,
         log_rows_per_leaf: u32,
@@ -172,37 +163,22 @@ cuda_kernel!(
     )
 );
 
-/// LSB sibling of [`gather_leaves_for_queries`]: every per-coset segment of
-/// each oracle's cosets backing is the BITREVERSED-order codeword, so logical
-/// leaf `l`'s slot `v` is read from row `(bitreverse(l) << log_rows_per_leaf)
-/// + v`.
+/// Gather one oracle's leaves from bitreversed codewords. Logical leaf `l`'s
+/// slot `v` is read from row `(bitreverse(l) << log_rows_per_leaf) + v`.
 pub fn gather_leaves_for_queries_physical(
-    descs: &[OracleGatherDesc; 3],
-    num_oracles: u32,
+    desc: OracleGatherDesc,
     log_lde_factor: u32,
     log_domain_size: u32,
     log_rows_per_leaf: u32,
     query_indexes: &DeviceSlice<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(
-        num_oracles == 1 || num_oracles == 3,
-        "gather_leaves_for_queries_physical supports num_oracles in {{1, 3}}, got {num_oracles}"
-    );
     assert!(log_domain_size < 32);
     assert!(log_domain_size >= log_rows_per_leaf);
     let indexes_count = checked_u32(query_indexes.len());
-    for (i, desc) in descs.iter().enumerate().skip(num_oracles as usize) {
-        desc.assert_inactive(i);
+    if indexes_count == 0 || desc.columns_count == 0 {
+        return Ok(());
     }
-    let max_cols = (0..num_oracles as usize)
-        .map(|i| descs[i].columns_count)
-        .max()
-        .unwrap_or(0);
-    assert!(
-        max_cols >= 1,
-        "gather_leaves_for_queries_physical requires at least one active oracle with columns_count >= 1"
-    );
     let rows_per_leaf = 1u32 << log_rows_per_leaf;
     let (mut grid_dim, block_dim) = if log_rows_per_leaf < LOG_WARP_SIZE {
         get_grid_block_dims_for_threads_count(
@@ -213,14 +189,10 @@ pub fn gather_leaves_for_queries_physical(
         (indexes_count.into(), 1.into())
     };
     let block_dim = (rows_per_leaf, block_dim.x);
-    grid_dim.y = max_cols;
-    let grid_dim = (grid_dim.x, grid_dim.y, num_oracles);
+    grid_dim.y = desc.columns_count;
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GatherLeavesForQueriesPhysicalArguments::new(
-        num_oracles,
-        descs[0],
-        descs[1],
-        descs[2],
+        desc,
         log_lde_factor,
         log_domain_size,
         log_rows_per_leaf,
@@ -245,9 +217,7 @@ cuda_kernel!(
     )
 );
 
-/// WHIR oracle query-leaves gather against the natural multi-coset NTT
-/// output. Single oracle, no multi-oracle descriptor indirection — the WHIR
-/// recursive oracle is always queried alone.
+/// Gather one oracle's query leaves from natural multi-coset NTT output.
 ///
 /// `dst_slab` is written query-major: `dst_slab[idx * dst_cols + col]` where
 /// `dst_cols = src_cols_per_coset << log_values_per_leaf = EXT4_DEGREE *
@@ -388,23 +358,19 @@ pub fn gather_merkle_paths_full_for_queries(
     GatherMerklePathsFullForQueriesFunction::default().launch(&config, &args)
 }
 
-/// Kernel-arg descriptor for `gather_merkle_paths_partial_for_queries`. One
-/// entry per base-field oracle: the consolidated cosets backing pointer (for
-/// on-the-fly bottom-layer hashing), the consolidated partial-tree backing
-/// pointer (for upper-layer walks), the per-oracle column count, and the slab
-/// destination pointer. `columns_count == 0` signals an inactive descriptor
-/// slot (the kernel skips the whole oracle).
+/// Partial-path gather inputs and destination for one base-field oracle.
+/// Coset data is re-hashed for the bottom layers; cached trees supply upper layers.
+/// `columns_count == 0` skips the oracle.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct OraclePartialPathDesc {
-    /// `const BF*` consolidated cosets backing for this oracle. Coset `c`
-    /// occupies elements `c * (columns_count << log_domain_size) ..
-    /// (c + 1) * (columns_count << log_domain_size)`; within each coset the
-    /// layout is column-major with stride `1 << log_domain_size`.
+    /// `const BF*` column-major coset data, with `1 << log_domain_size` rows
+    /// per column. All-coset gathers use stride `columns_count << log_domain_size`
+    /// between cosets; single-coset gathers read the resident coset at offset zero.
     pub cosets_ptr: u64,
-    /// `const u32*` consolidated partial-tree backing for this oracle.
-    /// Coset `c` occupies digest words `c * stride_per_coset_in_digests *
-    /// STATE_SIZE .. (c + 1) * stride_per_coset_in_digests * STATE_SIZE`.
+    /// `const u32*` partial trees. All-coset gathers use stride
+    /// `stride_per_coset_in_digests * STATE_SIZE` between trees; single-coset
+    /// gathers read the resident tree at offset zero.
     pub partial_tree_ptr: u64,
     /// Number of base-field columns in this oracle. Set to `0` to mark the
     /// slot inactive — the kernel skips all writes for that oracle.
@@ -535,10 +501,7 @@ pub fn gather_merkle_paths_partial_for_queries(
 cuda_kernel!(
     GatherMerklePathsPartialForQueriesPhysical,
     ab_gather_merkle_paths_partial_for_queries_physical_kernel(
-        num_oracles: u32,
-        desc0: OraclePartialPathDesc,
-        desc1: OraclePartialPathDesc,
-        desc2: OraclePartialPathDesc,
+        desc: OraclePartialPathDesc,
         log_lde_factor: u32,
         log_rows_per_leaf: u32,
         log_total_leaves_count: u32,
@@ -549,13 +512,10 @@ cuda_kernel!(
     )
 );
 
-/// LSB sibling of [`gather_merkle_paths_partial_for_queries`]: every per-coset
-/// segment of each oracle's cosets backing is the BITREVERSED-order codeword,
-/// so the on-the-fly bottom-layer hashing reads logical leaf `l` from the
-/// physical block `bitreverse(l)`.
+/// Gather one oracle's paths from bitreversed codewords. Bottom-layer hashing
+/// reads logical leaf `l` from the physical block `bitreverse(l)`.
 pub fn gather_merkle_paths_partial_for_queries_physical(
-    descs: &[OraclePartialPathDesc; 3],
-    num_oracles: u32,
+    desc: OraclePartialPathDesc,
     log_lde_factor: u32,
     log_rows_per_leaf: u32,
     log_total_leaves_count: u32,
@@ -563,34 +523,24 @@ pub fn gather_merkle_paths_partial_for_queries_physical(
     query_indexes: &DeviceSlice<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(
-        num_oracles == 1 || num_oracles == 3,
-        "gather_merkle_paths_partial_for_queries_physical supports num_oracles in {{1, 3}}, got {num_oracles}"
-    );
     assert!(layers_count >= LOG_WARP_SIZE);
     assert!(log_total_leaves_count >= LOG_WARP_SIZE);
     assert!(layers_count <= log_total_leaves_count);
     let indexes_count = checked_u32(query_indexes.len());
     let stride_per_coset_in_digests = 1u32 << (log_total_leaves_count + 1 - LOG_WARP_SIZE);
-    for (i, desc) in descs.iter().enumerate() {
-        if i >= num_oracles as usize {
-            desc.assert_inactive(i);
-        } else if desc.columns_count != 0 {
-            assert_eq!(
-                desc.slab_dst_ptr % 32,
-                0,
-                "oracle {i} slab_dst_ptr must be 32-byte aligned"
-            );
-        }
+    if indexes_count == 0 || desc.columns_count == 0 {
+        return Ok(());
     }
-    let grid_dim = (indexes_count, num_oracles);
+    assert_eq!(
+        desc.slab_dst_ptr % 32,
+        0,
+        "slab_dst_ptr must be 32-byte aligned"
+    );
+    let grid_dim = indexes_count;
     let block_dim = WARP_SIZE;
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GatherMerklePathsPartialForQueriesPhysicalArguments::new(
-        num_oracles,
-        descs[0],
-        descs[1],
-        descs[2],
+        desc,
         log_lde_factor,
         log_rows_per_leaf,
         log_total_leaves_count,
@@ -620,13 +570,9 @@ cuda_kernel!(
     )
 );
 
-/// Single-oracle WHIR Partial-tree merkle-path gather against the natural
-/// multi-coset NTT cosets backing. The packed-layout sibling
-/// (`gather_merkle_paths_partial_for_queries`) is parameterized to support
-/// three GKR oracles and reads its cosets backing with packed-leaf addressing;
-/// this variant hard-codes single-oracle + single-packed-coset (the WHIR
-/// oracle's tree has `log_lde_factor = 0`, `log_rows_per_leaf = 0`) and reads via the
-/// pack-inverse used by `gather_leaves_for_queries_from_ntt`.
+/// Gather one oracle's Merkle paths from a partial tree and natural multi-coset
+/// NTT output. The tree has one packed coset and one row per leaf. Bottom-layer
+/// hashing uses the pack-inverse addressing of `gather_leaves_for_queries_from_ntt`.
 pub fn gather_merkle_paths_partial_for_queries_from_ntt(
     ntt_output: &DeviceSlice<BF>,
     partial_tree: &DeviceSlice<u32>,
@@ -896,12 +842,7 @@ pub fn query_index_to_tree_index(
 }
 
 // ---------------------------------------------------------------------------
-// Test-reference readers. No production callers: these direct gathers from a
-// fully-materialized cosets/tree backing back circuit_prover's TraceHolder
-// cache-mode and whir/fold query parity tests (which validate the production
-// tree-construction paths against independent CPU ground truth). `pub` +
-// `#[doc(hidden)]` because a dependency's `#[cfg(test)]` items are invisible
-// to consumers.
+// Reference readers for fully materialized coset and tree storage.
 // ---------------------------------------------------------------------------
 
 cuda_kernel!(

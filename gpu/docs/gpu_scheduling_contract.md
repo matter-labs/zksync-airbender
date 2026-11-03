@@ -26,9 +26,11 @@ edge cases, and wiring behind each rule.
   pool: the scheduling thread writes once during construction, and every stream
   operation thereafter only reads. See *SchedulerHostAllocator* below for the
   construction invariant and what belongs there.
+- **MUST NOT** pin host memory per request. Small per-request H2D sources go
+  through `Transfer::stage` and the context's fixed staging buffer.
 - **MUST** consume D2H readback buffers via a scheduled host callback, never
   from the scheduling thread.
-- **MUST** fork/join any op on an auxiliary stream (`h2d_stream` or `side_stream`)
+- **MUST** fork/join any op on an auxiliary stream (`h2d_stream`)
   against `exec_stream` with explicit CUDA events. The driver gives independent
   streams no implicit ordering.
 - **MUST** allocate and drop pool-backed handles on `exec_stream`. If a
@@ -42,7 +44,8 @@ edge cases, and wiring behind each rule.
   is enough — completion is not required.
 - **MUST NOT** call any CUDA API from within a host callback, and callbacks
   must not create or destroy pool-backed allocations. Callbacks exist to
-  compute challenge-dependent host data only.
+  compute challenge-dependent host data, fill H2D staging, and consume D2H
+  readbacks (including proof assembly).
 - **MUST** keep `prove()` enqueue-only. No `stream.synchronize()`, no host
   blocking for `exec_stream` progress — not even for profiling or logging.
   Host blocking belongs in `GpuGKRProofJob::finish()`.
@@ -51,7 +54,7 @@ edge cases, and wiring behind each rule.
 
 ## Streams
 
-`ProverContext` (`gpu/prover_context/src/context.rs`) owns three streams:
+`ProverContext` (`gpu/prover_context/src/context.rs`) owns two streams:
 
 - **exec stream** (`exec_stream`): the single reference stream for all GPU work.
   Kernel launches, pool allocations, pool frees, and host callbacks are all
@@ -63,15 +66,9 @@ edge cases, and wiring behind each rule.
   host-to-device transfers with exec-stream compute. It is **not** the default
   path for H2D copies — see *H2D copies* below.
 
-- **Side stream** (`side_stream`, `get_side_stream()`): an auxiliary compute
-  stream used to overlap independent kernel work with exec_stream. Its only
-  consumer is `gpu_whir`'s recursive-oracle commit scheduler — see *Side
-  stream* below.
-
-**Rule for auxiliary streams**: any operation on an auxiliary stream
-(h2d_stream or side_stream) must be explicitly ordered with
-respect to exec_stream using CUDA events. The driver gives independent
-streams no implicit ordering guarantees.
+**Rule for H2D work**: operations on h2d_stream must be explicitly ordered
+with respect to exec_stream using CUDA events. The driver gives independent
+streams no implicit ordering guarantees. All compute kernels use exec_stream.
 
 ## Memory lifetime
 
@@ -148,6 +145,11 @@ access semantics** vs. the stream-ordered pool above: the scheduling thread
 writes once during construction, and every stream operation thereafter only
 reads.
 
+Each `StaticPinnedBox` (`alloc_static_pinned_box_uninit`) is its own
+`cudaHostAlloc`, released with `cudaFreeHost` on drop. Use it only for data
+allocated once per context or circuit (setup, decoder); per-request sources use
+`Transfer::stage` (see *H2D copies*).
+
 **Why a second pool.** The "fill via callback" rule guards against a
 scheduling-thread write racing a prior owner's outstanding DMA on a recycled
 block. That hazard only exists for buffers the stream *writes*.
@@ -173,7 +175,7 @@ holds for everything else.
 
 | Use                                              | Pool                       |
 | ------------------------------------------------ | -------------------------- |
-| H2D source for transcript-derived challenge data | stream-ordered host pool   |
+| Small per-request H2D source                     | `Transfer::stage`          |
 | H2D source for compiled / scheduling-time data   | `SchedulerHostAllocator`   |
 | D2H readback destination                         | stream-ordered host pool   |
 | Callback-populated staging                       | stream-ordered host pool   |
@@ -207,74 +209,51 @@ it implements. This is only worthwhile when meaningful exec-stream compute can
 be overlapped with the transfer.
 
 ```text
-exec_stream: alloc device buffer D
-exec_stream: record E_alloc          ("buffer D is allocated")
-h2d_stream:  wait_event(E_alloc)     ("don't copy before D exists")
-h2d_stream:  memory_copy_async(D, src)
-h2d_stream:  schedule keepalive cb   (holds src alive until copy completes)
-h2d_stream:  record E_xfer           ("copy complete")
-exec_stream: wait_event(E_xfer)      ("don't use D before data arrives")
+exec_stream: alloc device buffers D_i
+exec_stream: record E_alloc          ("buffers D_i are allocated")
+h2d_stream:  fill staging cb         (only if values were staged)
+h2d_stream:  wait_event(E_alloc)     ("don't copy before D_i exist"), once per bundle
+h2d_stream:  memory_copy_async(D_i, staging or src_i)
+h2d_stream:  record E_xfer           ("copies complete")
+exec_stream: wait_event(E_xfer)      ("don't use D_i before data arrives")
 ```
 
 The E_alloc fence ensures h2d_stream does not start writing to a device buffer
 before it has been allocated on the exec side. The E_xfer fence ensures exec
 kernels do not read a buffer that is still being transferred.
 
+A `Transfer` issues the `E_alloc` wait once, at its first copy or at
+`record_transferred`.
+
+**Per-request sources.** Small inputs that change with every request (top bits,
+external challenges, the unified memory cap) are recorded with
+`Transfer::stage` before any direct copy of the bundle. They are packed into
+the context's fixed pinned staging buffer (`H2D_STAGING_BYTES`) by one
+`h2d_stream` callback enqueued ahead of the wait, and copied right after it.
+Each bundle's fill sits behind every earlier staged copy on the in-order
+`h2d_stream`, so all bundles reuse the same buffer.
+
 ## D2H copies
 
-D2H copies run on `exec_stream`. Schedule the consumer callback after the copy
-and keep the host destination alive until that callback has been scheduled.
+D2H copies run on `exec_stream`. Schedule the consumer callback after the copy.
+The stream-ordered host-pool destination may be released once that callback is
+scheduled. Keep the callback owner alive until stream or event synchronization
+confirms completion: the CUDA callback dispatch holds only a weak reference.
 
-## Side stream
+## H2D source lifetime
 
-`side_stream` (`ProverContext::get_side_stream()`) carries general compute
-kernels in parallel with the same kind of kernels on
-exec_stream. Its only current consumer is the recursive-WHIR commit scheduler
-(`commit_trace_from_ntt_single_tree` in
-`gpu/whir/src/oracle_commit.rs`), which ping-pongs LDE and leaf-commit work
-across coset-index chunks between `exec_stream` and `side_stream`. Coefficient
-commit uses the fused shared-memory transform-and-hash kernel; evaluation
-commit uses the ordinary leaf-hash kernel.
+A `Transfer` owns the `Arc` sources of its direct copies and its staging fill
+callback. `Transfer::into_keepalive` hands them to the job, which must keep
+them until stream or event synchronization confirms completion (`finish()`).
+Dropping them sooner can release a source while its copy is in flight, or skip
+the fill. This differs from the scheduled-use lifetime of stream-ordered pool
+reservations.
 
-The same fork/join/write-exclusivity/drop discipline as H2D applies, adapted to
-a compute workload:
+The staging fill callback is distinct from exec-stream callbacks:
 
-```text
-exec_stream:  record E_start                     ("first chunk's inputs are ready")
-side_stream:  wait_event(E_start)                 ("don't start before exec_stream is ready")
-exec_stream:  chunk 0, 2, 4, … : LDE / leaf-commit kernels
-side_stream:  chunk 1, 3, 5, … : LDE / leaf-commit kernels
-side_stream:  record E_done                       ("side_stream's chunks are committed")
-exec_stream:  wait_event(E_done)                  ("don't build Merkle-tree nodes yet")
-exec_stream:  build_merkle_tree_nodes(...)         (exec_stream-only; reads every chunk)
-```
-
-- **Fork**: a single event recorded on exec_stream before the chunked
-  ping-pong loop; `side_stream` waits on it before its first chunk (mirrors the
-  H2D fork above, generalized from "before a copy" to "before a kernel").
-- **Join**: a single event recorded on `side_stream` after its last chunk;
-  `exec_stream` waits on it before the exec_stream-only Merkle-tree node build
-  that follows (mirrors the H2D join above).
-- **Write-exclusivity**: each stream's kernels write a disjoint coset-index
-  range of the shared trace/leaf buffers (the per-chunk offset is computed
-  from the chunk's coset-index base), so the two streams never write the same
-  bytes inside the fork/join window — the partitioning itself is what
-  satisfies write-exclusivity here, rather than a read/write split.
-- **Drop on exec_stream**: any pool-backed scratch allocated for the call
-  (`context.alloc` from the stream-ordered pool) is a local handle that drops
-  when the function returns, which is only after the join wait above has
-  already been scheduled on exec_stream — same drop-after-join-scheduled
-  discipline as the aux streams.
-
-## H2D keepalive callbacks
-
-`Transfer::schedule` places a callback on h2d_stream that holds an `Arc`
-reference to the source buffer alive until h2d_stream executes past the copy.
-These callbacks are distinct from exec-stream callbacks:
-
-- They do **not** compute challenge data.
-- They are not subject to transcript-ordering restrictions.
-- They may **not** call CUDA APIs (same rule applies to all stream callbacks).
+- It does **not** compute challenge data.
+- It is not subject to transcript-ordering restrictions.
+- It may **not** call CUDA APIs (same rule applies to all stream callbacks).
 
 ## Stream fence at end of prove()
 
@@ -299,9 +278,14 @@ profiling instrumentation. Host blocking is reserved for
 
 ## Callback restrictions
 
-Host callbacks (the `Callbacks` system) execute on a CPU thread when exec_stream
-reaches their enqueue point. They may **only** compute challenge-dependent host
-data (e.g. filling descriptor buffers with transcript-derived challenges).
+Host callbacks (the `Callbacks` system) execute on a CPU thread when their
+stream reaches their enqueue point (`exec_stream`, or `h2d_stream` for the
+staging fill). They may **only**:
+
+- compute challenge-dependent host data (e.g. filling descriptor buffers with
+  transcript-derived challenges);
+- fill the H2D staging buffer (see *H2D copies*);
+- consume D2H readbacks, including proof assembly (see *D2H copies*).
 
 Callbacks must **not**:
 

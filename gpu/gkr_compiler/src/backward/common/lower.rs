@@ -1,7 +1,7 @@
 //! Lowers a distilled DAG layer to normalized coefficient terms.
 //!
-//! At R0, materialized roots supply `acc_c0` through endpoint reads while
-//! fragments supply `acc_c2`; scalar and linear fragment residues are omitted.
+//! MAIN R0 reconstructs endpoint values from scalar, linear, and quadratic
+//! input-expression terms.
 //!
 //! In continuation rounds, scalar residues merge into `c_init`, linear terms
 //! become `C0Linear`, and quadratic terms become `DualProduct`. Structural keys
@@ -15,12 +15,12 @@ use gkr_eval_ir::{
     SourceKind,
 };
 
-use super::distill::{DistilledLayer, DistilledRootTerm};
+use super::distill::DistilledLayer;
 use super::fragment::MergedRecipe;
 use super::limits::MAX_COEFFICIENT_ENCODINGS;
 use super::model::{
-    sink_read_place, source_order_key, CoeffError, CoeffLayer, CoeffSource, CoeffTerm,
-    CoefficientRecipeId, NormalizedCoefficientRecipe, ProjectionId, SourceId, TermId,
+    source_order_key, CoeffError, CoeffLayer, CoeffSource, CoeffTerm, CoefficientRecipeId,
+    NormalizedCoefficientRecipe, ProjectionId, SourceId, TermId,
 };
 use super::source::OriginLeaf;
 use super::Bf;
@@ -241,10 +241,7 @@ struct Lowering<'a> {
 impl Lowering<'_> {
     fn run(&mut self) -> Result<(), CoeffError> {
         self.check_root_order()?;
-        self.lower_c_init()?;
-        if self.distilled.regime == crate::BwdRegime::R0 {
-            self.lower_r0_root_c0()?;
-        }
+        self.c_init = self.scalar_sum(&self.distilled.fragments.c_init)?;
         self.lower_fragments()
     }
 
@@ -260,78 +257,16 @@ impl Lowering<'_> {
                 distilled: terms.len(),
             });
         }
-        for (position, (&expected, term)) in order.iter().zip(terms).enumerate() {
-            if term.canonical_root != expected {
+        for (position, (&expected, &found)) in order.iter().zip(terms).enumerate() {
+            if found != expected {
                 return Err(CoeffError::RootOrderMismatch {
                     position,
                     expected,
-                    found: term.canonical_root,
+                    found,
                 });
             }
         }
         Ok(())
-    }
-
-    /// The spine's own scalar-pure addends.
-    ///
-    /// Continuation seeds `acc_c0` with these addends. R0 drops them because its
-    /// materialized endpoint value already includes them.
-    fn lower_c_init(&mut self) -> Result<(), CoeffError> {
-        let d = self.distilled;
-        let spine_scalar = self.scalar_sum(&d.fragments.c_init)?;
-        if d.regime == crate::BwdRegime::Ext {
-            self.c_init = self.c_init.add(&spine_scalar);
-        }
-        Ok(())
-    }
-
-    /// R0 `acc_c0`, in canonical claim-root order.
-    fn lower_r0_root_c0(&mut self) -> Result<(), CoeffError> {
-        let canonical = self.canonical;
-        let terms = &self.distilled.root_terms;
-        for term in terms {
-            let rid = term.canonical_root;
-            let root = canonical
-                .roots
-                .get(rid.0 as usize)
-                .ok_or(CoeffError::UnknownCanonicalRoot { root: rid })?;
-            if root.claim.is_none() {
-                return Err(CoeffError::RootNotClaimBearing { root: rid });
-            }
-            let coefficient = self.batch_factor(term)?;
-            // A claim-only constraint is structurally zero on the hypercube, so
-            // it contributes no acc_c0 term and its cone is never read at Endpoint0.
-            if let Some(sink) = &root.materialize {
-                let place = sink_read_place(&sink.kind).ok_or(CoeffError::UnsupportedSink {
-                    root: rid,
-                    sink: sink.kind,
-                })?;
-                let source = self.intern_source(OriginLeaf::Read(place), sink.field)?;
-                self.push_body(BodyKey::C0Linear { source }, coefficient);
-            }
-        }
-        Ok(())
-    }
-
-    /// A root's canonical batch/challenge factor: the multiplicative identity for
-    /// root zero (`claim_roots[0]`, unscaled by construction), else its
-    /// `ClaimBatching` beta power.
-    fn batch_factor(&self, term: &DistilledRootTerm) -> Result<Recipe, CoeffError> {
-        let Some(expr) = term.batching_factor else {
-            return Ok(Recipe::one());
-        };
-        let d = &self.distilled.layer;
-        let err = || CoeffError::BatchingFactorNotChallenge {
-            root: term.canonical_root,
-            expr,
-        };
-        match &d.exprs[expr.0 as usize] {
-            Expr::Source(sid) => match &d.sources[sid.0 as usize] {
-                SourceKind::Challenge { reference } => Ok(Recipe::challenge(*reference)),
-                _ => Err(err()),
-            },
-            _ => Err(err()),
-        }
     }
 
     fn lower_fragments(&mut self) -> Result<(), CoeffError> {
@@ -363,15 +298,9 @@ impl Lowering<'_> {
     /// Route one fragment's expanded value into terms / `c_init`.
     fn emit(&mut self, k: &Recipe, value: Quad) {
         let r0 = self.distilled.regime == crate::BwdRegime::R0;
-        if !r0 {
-            // Every scalar-only contribution merges into the one c_init recipe,
-            // and every degree-1 contribution becomes one `C0Linear`. At R0 both
-            // are dropped: `X^0` is already covered by the materialized-output
-            // shortcut and `acc_c1` does not exist.
-            self.c_init = self.c_init.add(&k.mul(&value.scalar));
-            for (source, coefficient) in &value.linear {
-                self.push_body(BodyKey::C0Linear { source: *source }, k.mul(coefficient));
-            }
+        self.c_init = self.c_init.add(&k.mul(&value.scalar));
+        for (source, coefficient) in &value.linear {
+            self.push_body(BodyKey::C0Linear { source: *source }, k.mul(coefficient));
         }
         for ((lhs, rhs), coefficient) in &value.quad {
             let coefficient = k.mul(coefficient);

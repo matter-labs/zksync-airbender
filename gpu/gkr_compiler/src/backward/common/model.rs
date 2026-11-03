@@ -9,7 +9,7 @@ use std::cmp::Ordering;
 use field::{Field, PrimeField};
 use gkr_eval_ir::{
     ChallengeKey, ChallengePower, ChallengeRef, ExprId, FieldKind, PermutationSlot, ReadPlace,
-    RootId, SinkKind, VirtualSetupKind,
+    RootId, VirtualSetupKind,
 };
 
 use super::source::OriginLeaf;
@@ -175,21 +175,6 @@ pub(crate) fn source_order_key(origin: &OriginLeaf) -> (u8, u8, usize, usize) {
             };
             (1, variant, 0, 0)
         }
-    }
-}
-
-/// The address from which a materialized sink can be read.
-pub(crate) fn sink_read_place(sink: &SinkKind) -> Option<ReadPlace> {
-    match sink {
-        SinkKind::Inner { layer, offset } => Some(ReadPlace::LayerOutput {
-            layer: *layer,
-            offset: *offset,
-        }),
-        SinkKind::Cache { layer, offset } => Some(ReadPlace::CacheOutput {
-            layer: *layer,
-            offset: *offset,
-        }),
-        SinkKind::Scratch { slot } => Some(ReadPlace::Scratch { slot: *slot }),
     }
 }
 
@@ -593,24 +578,6 @@ pub enum CoeffError {
         position: usize,
         expected: RootId,
         found: RootId,
-    },
-    /// A `root_terms` entry names a root outside the canonical layer.
-    UnknownCanonicalRoot {
-        root: RootId,
-    },
-    /// A backward root that is not claim-bearing.
-    RootNotClaimBearing {
-        root: RootId,
-    },
-    /// A sink kind with no read counterpart (`Export`).
-    UnsupportedSink {
-        root: RootId,
-        sink: SinkKind,
-    },
-    /// A root's batching factor is not a `ClaimBatching` challenge leaf.
-    BatchingFactorNotChallenge {
-        root: RootId,
-        expr: ExprId,
     },
     /// Relation degree above two. `degree` saturates at 3.
     DegreeTooHigh {

@@ -1,22 +1,10 @@
-// Pre-prove H2D transfer of the memory base-layer Merkle cap.
-//
-// Mirrors the setup transfer's "scheduling-time-known cap" pattern: caller
-// stages the per-coset memory caps produced by `MemoryCommitmentJob` into a
-// single contiguous pinned host buffer (canonical bit-reversed coset order),
-// allocates a matching device buffer up front, and `schedule_transfer` H2Ds
-// the pinned buffer into the device cap on `h2d_stream` (overlapped with the
-// prior proof's exec work, outside the WHIR hot range). `prove()` then D2Ds
-// the device cap into the proof slab's `whir.memory.cap` range.
-//
-// `MemoryCommitmentJob` itself is intentionally not threaded into `prove()`
-// — it stays a standalone caps-producer (see `gpu/trace/src/trace/memory.rs`).
-// Callers obtain `Vec<MerkleTreeCapVarLength>` from `MemoryCommitmentJob::finish()`
-// and hand it here.
+//! H2D transfer of a memory Merkle cap. Per-coset host caps are packed into a
+//! contiguous host buffer in bit-reversed coset order and staged into a
+//! matching device allocation on `h2d_stream`.
 
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
@@ -25,34 +13,28 @@ use crate::trace::holder::bitreverse_index;
 use crate::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::upstream::MerkleTreeCapVarLength;
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
-use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use gpu_hash::blake2s::Digest;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 
 pub struct GpuGKRMemoryTransferHost {
-    // pub: apex production (`prover::proof::orchestration`) reads these cap dims across the split.
     pub log_lde_factor: u32,
     pub log_tree_cap_size: u32,
     /// Single contiguous Merkle cap of length `1 << log_tree_cap_size`, stored
-    /// in canonical bit-reversed coset order — same layout as the device-side
-    /// unified cap that `prove()` consumes.
-    pub(crate) unified_tree_cap: StaticPinnedBox<Digest>,
+    /// in canonical bit-reversed coset order, matching the device-side cap.
+    pub(crate) unified_tree_cap: Vec<Digest>,
 }
 
 impl GpuGKRMemoryTransferHost {
-    /// Repacks the per-coset caps produced by `MemoryCommitmentJob` (in natural
-    /// coset order) into the canonical bit-reversed unified-cap layout used by
-    /// the device side. `log_lde_factor` and `log_tree_cap_size` are the same
-    /// geometry that the memory commitment job was configured with; they are
-    /// captured here so `schedule_transfer` does not need to re-derive them.
+    /// Packs naturally ordered per-coset caps into one bit-reversed cap.
+    /// `log_lde_factor` specifies the number of cosets; `log_tree_cap_size`
+    /// specifies the total cap size across all cosets.
     pub fn from_per_coset_caps(
         memory_tree_caps: &[MerkleTreeCapVarLength],
         log_lde_factor: u32,
         log_tree_cap_size: u32,
-    ) -> CudaResult<Self> {
+    ) -> Self {
         let lde_factor = 1usize << log_lde_factor;
         assert_eq!(
             memory_tree_caps.len(),
@@ -61,7 +43,7 @@ impl GpuGKRMemoryTransferHost {
         );
         let cap_size = 1usize << log_tree_cap_size;
         let per_coset = cap_size >> log_lde_factor;
-        let mut unified_tree_cap = alloc_static_pinned_box_uninit::<Digest>(cap_size)?;
+        let mut unified_tree_cap = Vec::with_capacity(cap_size);
         for stage1_pos in 0..lde_factor {
             let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
             let src = &memory_tree_caps[natural_coset_index].cap;
@@ -70,14 +52,13 @@ impl GpuGKRMemoryTransferHost {
                 per_coset,
                 "memory tree cap[{natural_coset_index}] length mismatch",
             );
-            unified_tree_cap[stage1_pos * per_coset..(stage1_pos + 1) * per_coset]
-                .copy_from_slice(src);
+            unified_tree_cap.extend_from_slice(src);
         }
-        Ok(Self {
+        Self {
             log_lde_factor,
             log_tree_cap_size,
             unified_tree_cap,
-        })
+        }
     }
 }
 
@@ -98,23 +79,10 @@ impl<'a> GpuGKRMemoryTransfer<'a> {
         })
     }
 
-    // pub: apex production (`prover::proof::inputs`) drives the H2D transfer through
-    // `GpuGKRProofTransfer`/`BasicUnrolledTransfers` across the crate boundary.
-    pub fn schedule_transfer(
-        &mut self,
-        transfer: &mut Transfer<'a>,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
-        transfer.ensure_allocated(context)?;
-        let stream = context.get_h2d_stream();
-        memory_copy_async(
-            &mut self.unified_device_cap,
-            &self.host.unified_tree_cap[..],
-            stream,
-        )
+    pub fn stage_transfer(&mut self, transfer: &mut Transfer<'a>) {
+        transfer.stage(&self.host.unified_tree_cap, &mut self.unified_device_cap);
     }
 
-    // pub: apex production reads the committed unified cap across the crate boundary.
     pub fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {
         &self.unified_device_cap
     }
@@ -124,28 +92,19 @@ impl<'a> GpuGKRMemoryTransfer<'a> {
 // GpuGKRCommitMemoryTransfer
 // ---------------------------------------------------------------------------
 
-/// Bundle for `commit_memory_from_transfers()` — same shape as
-/// `GpuGKRProofTransfer` but only carrying the pieces the memory-commitment
-/// path consumes (decoder, inits_and_teardowns, tracing_data; no setup,
-/// memory caps, or challenges).
+/// Input transfers for `commit_memory_from_transfers`: decoder,
+/// inits-and-teardowns, and tracing data share one transfer fence.
 pub struct GpuGKRCommitMemoryTransfer<'a, A: GoodAllocator> {
     pub(crate) transfer: Transfer<'a>,
     pub(crate) decoder: Option<DecoderTableTransfer<'a>>,
-    pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a>>,
+    pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
     pub(crate) tracing_data: Option<TracingDataTransfer<'a, A>>,
-}
-
-pub(crate) struct GpuGKRCommitMemoryTransferKeepalive<'a, A: GoodAllocator> {
-    pub(crate) decoder: Option<DecoderTableTransfer<'a>>,
-    pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a>>,
-    pub(crate) tracing_data: Option<TracingDataTransfer<'a, A>>,
-    _callbacks: Callbacks<'a>,
 }
 
 impl<'a, A: GoodAllocator + 'a> GpuGKRCommitMemoryTransfer<'a, A> {
     pub fn new(
         decoder: Option<DecoderTableTransfer<'a>>,
-        inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a>>,
+        inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
         tracing_data: Option<TracingDataTransfer<'a, A>>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
@@ -174,20 +133,5 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRCommitMemoryTransfer<'a, A> {
 
     pub(crate) fn ensure_transferred(&self, context: &ProverContext) -> CudaResult<()> {
         self.transfer.ensure_transferred(context)
-    }
-
-    pub(crate) fn into_keepalive(self) -> GpuGKRCommitMemoryTransferKeepalive<'a, A> {
-        let Self {
-            transfer,
-            decoder,
-            inits_and_teardowns,
-            tracing_data,
-        } = self;
-        GpuGKRCommitMemoryTransferKeepalive {
-            decoder,
-            inits_and_teardowns,
-            tracing_data,
-            _callbacks: transfer.into_callbacks(),
-        }
     }
 }

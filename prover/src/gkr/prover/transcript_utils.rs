@@ -2,18 +2,17 @@ use super::*;
 use crate::gkr::whir::WhirCommitment;
 use crate::query_utils::BitSource;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-use field::FixedArrayConvertible;
 use transcript::Transcript;
 
-pub fn flatten_field_els_into<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>)
-where
-    [(); E::DEGREE]: Sized,
-{
+pub fn flatten_field_els_into<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>) {
     for el in src.iter() {
-        let coeffs = E::into_coeffs(*el)
-            .into_array::<{ E::DEGREE }>()
-            .map(|el: F| el.as_u32_raw_repr_reduced());
-        dst.extend(coeffs);
+        let coeffs = E::into_coeffs(*el);
+        dst.extend(
+            coeffs
+                .as_ref()
+                .iter()
+                .map(|el| el.as_u32_raw_repr_reduced()),
+        );
     }
 }
 
@@ -41,6 +40,21 @@ where
     all_challenges
 }
 
+/// Same as [`draw_random_field_els`], but drawn past the digest the preceding raw
+/// draw emitted (see `Transcript::draw_fresh_random_field_elements`).
+#[track_caller]
+pub fn draw_fresh_random_field_els<F, E, TR>(seed: &mut TR::Seed, num_challenges: usize) -> Vec<E>
+where
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    TR: Transcript<F, E>,
+{
+    let mut all_challenges = vec![E::ZERO; num_challenges];
+    TR::draw_fresh_random_field_elements(seed, &mut all_challenges);
+
+    all_challenges
+}
+
 /// Same as [`draw_random_field_els`], but the challenges are gated behind a
 /// proof-of-work. The prover grinds `pow_bits` of PoW into the seed (exactly the
 /// work the verifier replays via `read_and_verify_pow`) and returns the winning
@@ -61,10 +75,7 @@ pub fn draw_random_field_els_with_pow<
     num_challenges: usize,
     pow_bits: u32,
     worker: &Worker,
-) -> (u64, Vec<E>)
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> (u64, Vec<E>) {
     let mut all_challenges = vec![E::ZERO; num_challenges];
     let (new_seed, pow_challenge) =
         TR::draw_random_field_elements_with_pow(&*seed, pow_bits, &mut all_challenges, worker);
@@ -127,8 +138,7 @@ where
 {
     let (new_seed, pow_challenge) = TR::search_pow(seed, pow_bits, worker);
     *seed = new_seed;
-    let num_required_words =
-        num_bits_for_queries.next_multiple_of(u32::BITS as usize) / (u32::BITS as usize);
+    let num_required_words = num_bits_for_queries.div_ceil(u32::BITS as usize);
     // we used 1 top word for PoW
     let num_required_words_padded =
         (num_required_words + 1).next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS);

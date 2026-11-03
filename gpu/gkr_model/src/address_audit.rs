@@ -306,6 +306,16 @@ pub fn collect_addresses_from_relation<F: PrimeField>(
             reads.extend_from_slice(input);
             writes.extend_from_slice(output);
         }
+        LookupFromBaseInputsWithSetup {
+            input,
+            setup,
+            output,
+            range_check_width: _,
+        } => {
+            push_single_lookup(input, reads);
+            reads.extend_from_slice(setup);
+            writes.extend_from_slice(output);
+        }
         LookupFromMaterializedBaseInputWithSetup {
             input,
             setup,

@@ -300,6 +300,7 @@ name = "verifier_common"
 version = "0.1.0"
 dependencies = [
  "blake2s_u32",
+ "common_constants",
  "cs",
  "field",
  "non_determinism_source",

@@ -31,17 +31,24 @@ pub(crate) use cs::definitions::gkr::RamWriteQuery as CSRamWriteQuery;
 pub(crate) use cs::definitions::gkr::RegisterOnlyAccessAddress as CSRegisterOnlyAccessAddress;
 pub(crate) use cs::definitions::gkr::RegisterOrRamAccessAddress as CSRegisterOrRamAccessAddress;
 pub(crate) use cs::definitions::gkr::RegisterOrRamAddressSpace as CSRegisterOrRamAddressSpace;
+pub(crate) use cs::definitions::gkr::RelativeTimestampGroup as CSRelativeTimestampGroup;
 pub(crate) use cs::definitions::{
     GKRAddress, BIGINT_BASE_ABI_REGISTER, BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
     BIGINT_X10_NUM_WRITES, BIGINT_X11_NUM_READS, BLAKE2S_BASE_ABI_REGISTER,
     BLAKE2S_DELEGATION_CSR_REGISTER, BLAKE2S_G_FUNCTION_BASE_ABI_REGISTER,
     BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, BLAKE2S_G_FUNCTION_X10_NUM_WRITES,
     BLAKE2S_G_FUNCTION_X11_NUM_READS, BLAKE2S_X10_NUM_WRITES, BLAKE2S_X11_NUM_READS,
+    KECCAK_CHI5_CSR_REGISTER, KECCAK_CHI5_NUM_VARIABLE_OFFSETS, KECCAK_CHI5_X11_NUM_WRITES,
+    KECCAK_COLUMN_PARITY_CSR_REGISTER, KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
+    KECCAK_COLUMN_PARITY_X11_NUM_WRITES, KECCAK_F1600_BASE_ABI_REGISTER,
     KECCAK_SPECIAL5_BASE_ABI_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER,
-    KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS, KECCAK_SPECIAL5_X11_NUM_WRITES, NON_DETERMINISM_CSR,
-    NUM_BIGINT_REGISTER_ACCESSES, NUM_BIGINT_VARIABLE_OFFSETS,
-    NUM_BLAKE2S_G_FUNCTION_REGISTER_ACCESSES, NUM_BLAKE2S_G_FUNCTION_VARIABLE_OFFSETS,
-    NUM_BLAKE2S_REGISTER_ACCESSES, NUM_BLAKE2S_VARIABLE_OFFSETS, NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP,
+    KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS, KECCAK_SPECIAL5_X11_NUM_WRITES,
+    KECCAK_THETA_RHO_CSR_REGISTER, KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
+    KECCAK_THETA_RHO_X11_NUM_WRITES, NON_DETERMINISM_CSR, NUM_BIGINT_REGISTER_ACCESSES,
+    NUM_BIGINT_VARIABLE_OFFSETS, NUM_BLAKE2S_G_FUNCTION_REGISTER_ACCESSES,
+    NUM_BLAKE2S_G_FUNCTION_VARIABLE_OFFSETS, NUM_BLAKE2S_REGISTER_ACCESSES,
+    NUM_BLAKE2S_VARIABLE_OFFSETS, NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP,
+    NUM_KECCAK_F1600_INDIRECT_READS, NUM_KECCAK_F1600_REGISTER_ACCESSES,
     NUM_KECCAK_SPECIAL5_INDIRECT_READS, NUM_KECCAK_SPECIAL5_REGISTER_ACCESSES,
     NUM_TIMESTAMP_COLUMNS_FOR_RAM, NUM_TIMESTAMP_DATA_LIMBS, REGISTER_SIZE,
     TIMESTAMP_COLUMNS_NUM_BITS,
@@ -75,15 +82,3 @@ pub(crate) use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 pub(crate) use prover::merkle_trees::MerkleTreeCapVarLength;
 #[cfg(test)]
 pub(crate) use prover::merkle_trees::PathQueryable;
-
-// -----------------------------------------------------------------------
-// `setups` — compiled-circuit binary loading
-// -----------------------------------------------------------------------
-
-pub(crate) use setups::{
-    inits_and_teardowns, AddSubLuiAuipcMopCircuit, BigIntDelegationCircuit,
-    Blake2sGFunctionDelegationCircuit, Blake2sWithCompressionDelegationCircuit,
-    JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit, LoadStoreSubwordOnlyCircuit,
-    LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnifiedReducedMachineCircuit,
-    UnsignedMulDivCircuit,
-};

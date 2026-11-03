@@ -3,7 +3,7 @@ use crate::gkr::prover::GKRProof;
 use crate::merkle_trees::DefaultTreeConstructor;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 
-type Proof = GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>;
+pub type Proof = GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DelegationComponents {
@@ -19,4 +19,8 @@ pub struct UnifiedBaseLayerComponents {
     pub final_pc: u32,
     pub final_timestamp: crate::cs::definitions::TimestampScalar,
     pub unified_setup_cap: MerkleTreeCap<DEFAULT_CAP_SIZE>,
+    /// Memory/delegation proof-of-work the external challenges were drawn with: the bits
+    /// (the FSV asserts they equal `MEMORY_DELEGATION_POW_BITS`) and the ground nonce.
+    pub pow_bits: u32,
+    pub pow_challenge: u64,
 }

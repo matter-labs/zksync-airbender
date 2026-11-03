@@ -1,13 +1,8 @@
 #![allow(incomplete_features)]
-#![feature(allocator_api)]
+#![cfg_attr(test, feature(allocator_api))]
 #![warn(clippy::manual_div_ceil)]
 #![warn(clippy::needless_pass_by_value)]
 #![allow(clippy::mut_from_ref)]
-// The public trace/witness launchers mirror their CUDA kernels' parameter
-// lists; splitting them into config structs would obscure the 1:1
-// Rust<->kernel correspondence (same precedent as gpu_hash's / gpu_ntt's /
-// gpu_execution_prover's crate-level allow).
-#![allow(clippy::too_many_arguments)]
 // `no_cuda` gates out every GPU test body, leaving their helpers and imports dead
 // by construction. That mode only ever compiles, so this is not a real finding.
 #![cfg_attr(no_cuda, allow(dead_code, unused_imports))]

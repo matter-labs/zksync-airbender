@@ -1,4 +1,4 @@
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_1<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
@@ -23,7 +23,7 @@ fn eval_fn_1<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_8 = v_7[0usize];
     witness_proxy.set_witness_place(6usize, v_8);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_2<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
@@ -45,7 +45,7 @@ fn eval_fn_2<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_6 = v_5[0usize];
     witness_proxy.set_witness_place(7usize, v_6);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_3<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
@@ -67,7 +67,7 @@ fn eval_fn_3<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_6 = v_5[0usize];
     witness_proxy.set_witness_place(8usize, v_6);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
@@ -129,63 +129,63 @@ fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_46 = v_29.shr(16u32);
     let v_47 = v_46.truncate();
     let v_48 = v_47.truncate();
-    let v_49 = v_29.shr(8u32);
+    let v_49 = v_35.shr(16u32);
     let v_50 = v_49.truncate();
     let v_51 = v_50.truncate();
-    let v_52 = v_35.shr(16u32);
+    let v_52 = v_18.shr(16u32);
     let v_53 = v_52.truncate();
     let v_54 = v_53.truncate();
-    let v_55 = v_18.shr(16u32);
-    let v_56 = v_55.truncate();
-    let v_57 = v_56.truncate();
-    let v_58 = WitnessComputationCore::select(&v_38, &v_57, &v_41);
-    let v_59 = WitnessComputationCore::select(&v_2, &v_54, &v_58);
-    let v_60 = WitnessComputationCore::select(&v_3, &v_51, &v_59);
-    let v_61 = WitnessComputationCore::select(&v_3, &v_48, &v_60);
-    witness_proxy.set_witness_place_u8(10usize, v_61);
+    let v_55 = WitnessComputationCore::select(&v_38, &v_54, &v_41);
+    let v_56 = WitnessComputationCore::select(&v_2, &v_51, &v_55);
+    let v_57 = WitnessComputationCore::select(&v_3, &v_48, &v_56);
+    witness_proxy.set_witness_place_u8(10usize, v_57);
     witness_proxy.set_witness_place_u16(11usize, v_30);
     witness_proxy.set_witness_place_u16(12usize, v_47);
-    let mut v_65 = v_12;
-    W::U32::sub_assign(&mut v_65, &v_11);
-    let mut v_66 = v_29;
-    W::U32::sub_assign(&mut v_66, &v_11);
-    let mut v_67 = v_35;
-    W::U32::sub_assign(&mut v_67, &v_11);
-    let v_68 = WitnessComputationCore::select(&v_3, &v_67, &v_12);
-    let v_69 = WitnessComputationCore::select(&v_2, &v_66, &v_68);
-    let v_70 = WitnessComputationCore::select(&v_38, &v_65, &v_69);
-    let v_71 = v_70.truncate();
-    witness_proxy.set_witness_place_u16(13usize, v_71);
-    let v_73 = v_70.shr(16u32);
+    let mut v_61 = v_12;
+    W::U32::sub_assign(&mut v_61, &v_11);
+    let mut v_62 = v_29;
+    W::U32::sub_assign(&mut v_62, &v_11);
+    let mut v_63 = v_35;
+    W::U32::sub_assign(&mut v_63, &v_11);
+    let v_64 = WitnessComputationCore::select(&v_3, &v_63, &v_12);
+    let v_65 = WitnessComputationCore::select(&v_2, &v_62, &v_64);
+    let v_66 = WitnessComputationCore::select(&v_38, &v_61, &v_65);
+    let v_67 = v_66.truncate();
+    witness_proxy.set_witness_place_u16(13usize, v_67);
+    let v_69 = v_66.shr(16u32);
+    let v_70 = v_69.truncate();
+    witness_proxy.set_witness_place_u16(14usize, v_70);
+    let v_72 = v_44.widen();
+    let v_73 = v_11.truncate();
     let v_74 = v_73.truncate();
-    witness_proxy.set_witness_place_u16(14usize, v_74);
-    let v_76 = v_44.widen();
-    let v_77 = v_11.truncate();
-    let v_78 = v_77.truncate();
-    let v_79 = v_78.widen();
-    let v_80 = W::U16::split_widening_product(&v_76, &v_79).0;
-    let v_81 = v_80.widen();
-    let mut v_82 = v_12;
-    W::U32::add_assign(&mut v_82, &v_81);
-    let v_83 = v_35.shr(8u32);
+    let v_75 = v_74.widen();
+    let v_76 = W::U16::split_widening_product(&v_72, &v_75).0;
+    let v_77 = v_76.widen();
+    let mut v_78 = v_12;
+    W::U32::add_assign(&mut v_78, &v_77);
+    let v_79 = v_29.shr(8u32);
+    let v_80 = v_79.truncate();
+    let v_81 = v_80.truncate();
+    let v_82 = v_35.shr(8u32);
+    let v_83 = v_82.truncate();
     let v_84 = v_83.truncate();
-    let v_85 = v_84.truncate();
-    let v_86 = v_18.shr(8u32);
+    let v_85 = v_18.shr(8u32);
+    let v_86 = v_85.truncate();
     let v_87 = v_86.truncate();
-    let v_88 = v_87.truncate();
-    let v_89 = WitnessComputationCore::select(&v_38, &v_88, &v_41);
-    let v_90 = WitnessComputationCore::select(&v_2, &v_85, &v_89);
+    let v_88 = WitnessComputationCore::select(&v_38, &v_87, &v_41);
+    let v_89 = WitnessComputationCore::select(&v_2, &v_84, &v_88);
+    let v_90 = WitnessComputationCore::select(&v_3, &v_81, &v_89);
     let v_91 = v_90.widen();
-    let v_92 = W::U16::split_widening_product(&v_91, &v_79).0;
+    let v_92 = W::U16::split_widening_product(&v_91, &v_75).0;
     let v_93 = v_92.widen();
     let v_94 = v_93.shl(8u32);
-    let mut v_95 = v_82;
+    let mut v_95 = v_78;
     W::U32::add_assign(&mut v_95, &v_94);
     let v_96 = v_11.shr(8u32);
     let v_97 = v_96.truncate();
     let v_98 = v_97.truncate();
     let v_99 = v_98.widen();
-    let v_100 = W::U16::split_widening_product(&v_76, &v_99).0;
+    let v_100 = W::U16::split_widening_product(&v_72, &v_99).0;
     let v_101 = v_100.widen();
     let v_102 = v_101.shl(8u32);
     let mut v_103 = v_95;
@@ -209,8 +209,8 @@ fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_118 = v_117.widen();
     let mut v_119 = v_12;
     W::U32::add_assign(&mut v_119, &v_118);
-    let v_120 = v_61.widen();
-    let v_121 = W::U16::split_widening_product(&v_120, &v_79).0;
+    let v_120 = v_57.widen();
+    let v_121 = W::U16::split_widening_product(&v_120, &v_75).0;
     let v_122 = v_121.widen();
     let mut v_123 = v_119;
     W::U32::add_assign(&mut v_123, &v_122);
@@ -218,7 +218,7 @@ fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_125 = v_124.truncate();
     let v_126 = v_125.truncate();
     let v_127 = v_126.widen();
-    let v_128 = W::U16::split_widening_product(&v_76, &v_127).0;
+    let v_128 = W::U16::split_widening_product(&v_72, &v_127).0;
     let v_129 = v_128.widen();
     let mut v_130 = v_123;
     W::U32::add_assign(&mut v_130, &v_129);
@@ -235,7 +235,7 @@ fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_141 = WitnessComputationCore::select(&v_2, &v_136, &v_140);
     let v_142 = WitnessComputationCore::select(&v_3, &v_133, &v_141);
     let v_143 = v_142.widen();
-    let v_144 = W::U16::split_widening_product(&v_143, &v_79).0;
+    let v_144 = W::U16::split_widening_product(&v_143, &v_75).0;
     let v_145 = v_144.widen();
     let v_146 = v_145.shl(8u32);
     let mut v_147 = v_130;
@@ -244,7 +244,7 @@ fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_149 = v_148.truncate();
     let v_150 = v_149.truncate();
     let v_151 = v_150.widen();
-    let v_152 = W::U16::split_widening_product(&v_76, &v_151).0;
+    let v_152 = W::U16::split_widening_product(&v_72, &v_151).0;
     let v_153 = v_152.widen();
     let v_154 = v_153.shl(8u32);
     let mut v_155 = v_147;
@@ -303,7 +303,7 @@ fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_195 = v_194.truncate();
     witness_proxy.set_witness_place_u16(17usize, v_195);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_5<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
@@ -323,7 +323,7 @@ fn eval_fn_5<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_4 = W::U16::constant(26u16);
     let v_5 = witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 3usize);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
@@ -343,7 +343,7 @@ fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_4 = W::U16::constant(26u16);
     let v_5 = witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 4usize);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
@@ -363,7 +363,7 @@ fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_4 = W::U16::constant(26u16);
     let v_5 = witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 5usize);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_8<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
@@ -385,7 +385,7 @@ fn eval_fn_8<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     W::Field::add_assign_product(&mut v_5, &v_1, &v_2);
     witness_proxy.set_scratch_place(0usize, v_5);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_9<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
@@ -415,7 +415,7 @@ fn eval_fn_9<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     W::Field::add_assign_product(&mut v_11, &v_3, &v_4);
     witness_proxy.set_scratch_place(1usize, v_11);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_10<
     'a,
@@ -450,7 +450,7 @@ fn eval_fn_10<
     W::Field::add_assign_product(&mut v_11, &v_3, &v_4);
     witness_proxy.set_scratch_place(2usize, v_11);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_11<
     'a,
@@ -478,7 +478,7 @@ fn eval_fn_11<
     W::Field::add_assign_product(&mut v_6, &v_1, &v_2);
     witness_proxy.set_scratch_place(3usize, v_6);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_12<
     'a,
@@ -506,7 +506,7 @@ fn eval_fn_12<
     W::Field::add_assign_product(&mut v_6, &v_1, &v_2);
     witness_proxy.set_scratch_place(4usize, v_6);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_13<
     'a,
@@ -541,7 +541,7 @@ fn eval_fn_13<
     W::Field::add_assign_product(&mut v_11, &v_3, &v_6);
     witness_proxy.set_scratch_place(5usize, v_11);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_14<
     'a,
@@ -576,7 +576,7 @@ fn eval_fn_14<
     W::Field::add_assign_product(&mut v_11, &v_3, &v_6);
     witness_proxy.set_scratch_place(6usize, v_11);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_15<
     'a,
@@ -604,7 +604,7 @@ fn eval_fn_15<
     W::Field::add_assign_product(&mut v_6, &v_1, &v_2);
     witness_proxy.set_scratch_place(7usize, v_6);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_16<
     'a,
@@ -632,7 +632,7 @@ fn eval_fn_16<
     W::Field::add_assign_product(&mut v_6, &v_1, &v_2);
     witness_proxy.set_scratch_place(8usize, v_6);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_17<
     'a,
@@ -665,7 +665,7 @@ fn eval_fn_17<
     W::Field::add_assign_product(&mut v_9, &v_3, &v_4);
     witness_proxy.set_scratch_place(9usize, v_9);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_18<
     'a,
@@ -698,7 +698,7 @@ fn eval_fn_18<
     W::Field::add_assign_product(&mut v_9, &v_3, &v_4);
     witness_proxy.set_scratch_place(10usize, v_9);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_19<
     'a,
@@ -724,7 +724,7 @@ fn eval_fn_19<
     W::Field::add_assign(&mut v_4, &v_1);
     witness_proxy.set_scratch_place(11usize, v_4);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_20<
     'a,
@@ -747,7 +747,7 @@ fn eval_fn_20<
     W::Field::add_assign(&mut v_2, &v_0);
     witness_proxy.set_scratch_place(12usize, v_2);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_21<
     'a,
@@ -770,7 +770,7 @@ fn eval_fn_21<
     W::Field::add_assign(&mut v_2, &v_0);
     witness_proxy.set_scratch_place(13usize, v_2);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_22<
     'a,
@@ -793,7 +793,7 @@ fn eval_fn_22<
     W::Field::add_assign(&mut v_2, &v_0);
     witness_proxy.set_scratch_place(14usize, v_2);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_23<
     'a,
@@ -816,7 +816,7 @@ fn eval_fn_23<
     W::Field::add_assign(&mut v_2, &v_0);
     witness_proxy.set_scratch_place(15usize, v_2);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_24<
     'a,
@@ -839,7 +839,7 @@ fn eval_fn_24<
     W::Field::add_assign(&mut v_2, &v_0);
     witness_proxy.set_scratch_place(16usize, v_2);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_25<
     'a,
@@ -862,7 +862,7 @@ fn eval_fn_25<
     W::Field::add_assign(&mut v_2, &v_0);
     witness_proxy.set_scratch_place(17usize, v_2);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_26<
     'a,
@@ -885,7 +885,7 @@ fn eval_fn_26<
     W::Field::add_assign(&mut v_2, &v_0);
     witness_proxy.set_scratch_place(18usize, v_2);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_27<
     'a,
@@ -908,7 +908,7 @@ fn eval_fn_27<
     W::Field::add_assign(&mut v_2, &v_0);
     witness_proxy.set_scratch_place(19usize, v_2);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_28<
     'a,
@@ -931,7 +931,7 @@ fn eval_fn_28<
     W::Field::add_assign(&mut v_2, &v_0);
     witness_proxy.set_scratch_place(20usize, v_2);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_29<
     'a,
@@ -953,7 +953,7 @@ fn eval_fn_29<
     let v_2 = W::U16::constant(41u16);
     let v_3 = witness_proxy.lookup_enforce::<2usize>(&[v_0, v_1], v_2, 6usize);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_30<
     'a,

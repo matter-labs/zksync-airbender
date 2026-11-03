@@ -7,8 +7,13 @@ const BINARY_OP_BIT: usize = 1;
 pub(crate) const FORMAL_SLL_FUNCT3: u8 = 0b001;
 pub(crate) const FORMAL_SRL_FUNCT3: u8 = 0b010;
 pub(crate) const FORMAL_SRA_FUNCT3: u8 = 0b011;
+#[allow(dead_code)]
 pub(crate) const FORMAL_ROL_FUNCT3: u8 = 0b100;
+#[allow(dead_code)]
 pub(crate) const FORMAL_ROR_FUNCT3: u8 = 0b100;
+/// Byte swap (Zbb `rev8`) rides the shift path: the shift table is keyed by byte index, so it
+/// can send byte `i` to byte `3 - i`. Code 0b101 is otherwise unused.
+pub(crate) const FORMAL_BSWAP_FUNCT3: u8 = 0b101;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ShiftBinaryDecoder;
@@ -51,10 +56,10 @@ impl OpcodeFamilyDecoder for ShiftBinaryDecoder {
         &self,
         preprocessed_opcode: Instruction,
     ) -> Result<ExecutorFamilyDecoderData, ()> {
-        let (mut rs1_index, mut rs2_index, mut rd_index) = (0, 0u16, 0);
+        let (rs1_index, rd_index, funct3);
+        let mut rs2_index = 0u16;
         let mut imm = 0;
         let mut bitmask = 0u32;
-        let mut funct3 = None;
 
         match preprocessed_opcode.name {
             InstructionName::And => {
@@ -136,6 +141,17 @@ impl OpcodeFamilyDecoder for ShiftBinaryDecoder {
                 assert!(preprocessed_opcode.imm < 32);
                 imm = preprocessed_opcode.imm;
                 funct3 = Some(FORMAL_SRA_FUNCT3);
+                bitmask |= 1 << SHIFT_BIT;
+            }
+            InstructionName::Rev8 => {
+                assert_ne!(preprocessed_opcode.rd, 0);
+                // rs2 = x0 and imm = 0 pin the shift amount key to 0.
+                assert_eq!(preprocessed_opcode.rs2, 0);
+                assert_eq!(preprocessed_opcode.imm, 0);
+
+                rs1_index = preprocessed_opcode.rs1;
+                rd_index = preprocessed_opcode.rd;
+                funct3 = Some(FORMAL_BSWAP_FUNCT3);
                 bitmask |= 1 << SHIFT_BIT;
             }
             _ => {

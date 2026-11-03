@@ -2,7 +2,6 @@ use std::mem::MaybeUninit;
 
 use super::*;
 use blake2s_u32::g_function_control_flags::*;
-use blake2s_u32::state_with_extended_control::Blake2RoundFunctionEvaluator;
 use blake2s_u32::*;
 use common_constants::*;
 
@@ -76,8 +75,8 @@ pub(crate) fn blake2_g_function_call<
 
     assert!(x10 != x11);
 
-    assert!(x10 % 64 == 0, "state pointer is unaligned");
-    assert!(x11 % 64 == 0, "input pointer is unaligned");
+    assert!(x10.is_multiple_of(64), "state pointer is unaligned");
+    assert!(x11.is_multiple_of(64), "input pointer is unaligned");
 
     assert!(
         x12 < (1 << BLAKE2S_G_FUNCTION_NUM_CONTROL_REGISTER_BITS),

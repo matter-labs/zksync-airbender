@@ -1,0 +1,442 @@
+//! Synthetic inputs for the offline memory sweep.
+//!
+//! Inputs are production-shaped but arbitrary: precomputations come from the
+//! production builders over a zero ROM image, tracing data is `2^N` filled
+//! rows in pinned chunks, inits-and-teardowns hosts fill every page in every set, and external challenges are fixed. Proofs are not verified.
+//!
+//! Ordering contract for the runner: initialize every setup host on the sweep
+//! context (`precomputations.setup_host.get_or_init`) and run one warm memory
+//! commitment per circuit before scheduling proof inputs.
+
+use crate::precomputations::{
+    build_unrolled_circuit_precomputation, get_common_precomputations_for_all,
+    CircuitPrecomputations,
+};
+use crate::upstream::{
+    GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel, ROM_WORD_SIZE,
+};
+use crate::A;
+use common_constants::delegation_types::keccak_f1600::{
+    keccak_chi5_lane_read_distance, keccak_f1600_bump_control, keccak_f1600_decode_control,
+    keccak_f1600_slots, KECCAK_CHI5_NUM_VARIABLE_OFFSETS, KECCAK_CHI5_PRECOMPILE,
+    KECCAK_CHI5_X11_NUM_WRITES, KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
+    KECCAK_COLUMN_PARITY_PRECOMPILE, KECCAK_COLUMN_PARITY_X11_NUM_WRITES,
+    KECCAK_F1600_INITIAL_CONTROL_VALUE, KECCAK_F1600_REGISTER_READ_DISTANCE,
+    KECCAK_THETA_RHO_LANE_READ_DISTANCE, KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
+    KECCAK_THETA_RHO_PARITY_READ_DISTANCES, KECCAK_THETA_RHO_PRECOMPILE,
+    KECCAK_THETA_RHO_X11_NUM_WRITES, NUM_KECCAK_F1600_CALLS, NUM_KECCAK_F1600_INDIRECT_READS,
+    NUM_KECCAK_F1600_REGISTER_ACCESSES,
+};
+use common_constants::{
+    TimestampData, TimestampScalar, DELEGATION_EXECUTION_OFFSET, DELEGATION_INVOCATION_OFFSET,
+    INITIAL_TIMESTAMP, TIMESTAMP_STEP,
+};
+use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
+use era_cudart::result::CudaResult;
+use execution_prover_model::MachineType;
+use gpu_core::primitives::field::{BF, E4};
+use gpu_trace::trace::tracing_data::{
+    DelegationTracingDataHostSource, TracingDataHost, UnrolledTracingDataHost,
+};
+use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType, UnrolledCircuitType};
+use gpu_trace::witness::trace::ChunkedTraceHolder;
+use gpu_trace::witness::trace_unrolled::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
+use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
+use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
+use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
+use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
+use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
+use riscv_transpiler::witness::{
+    MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
+};
+use std::collections::BTreeMap;
+use std::mem::size_of;
+use std::sync::Arc;
+use worker::Worker;
+
+/// Pinned chunk size for synthetic traces; one pool allocator per chunk.
+const TRACE_CHUNK_BYTES: usize = 64 << 20;
+const TRACE_CHUNK_LOG_SIZE: u32 = TRACE_CHUNK_BYTES.trailing_zeros();
+
+/// Stable external GKR challenges shared by every synthetic request. Any
+/// nonzero deterministic values are acceptable: the sweep never verifies.
+const CHALLENGE_SEED: [u32; 4] = [0x5359_4e54, 0x4845_5449, 0x435f_4d45, 0x4153_5552];
+
+#[derive(Clone)]
+pub(super) struct SyntheticInputs {
+    pub(super) inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
+    pub(super) tracing_data: Option<TracingDataHost<A>>,
+}
+
+// Sizing rows must activate Keccak-f1600 control lookups with valid first-round inputs.
+fn keccak_sizing_row<const WORDS: usize, const LANES: usize>(
+    mode: u32,
+) -> riscv_transpiler::witness::DelegationWitness<
+    NUM_KECCAK_F1600_REGISTER_ACCESSES,
+    NUM_KECCAK_F1600_INDIRECT_READS,
+    WORDS,
+    LANES,
+> {
+    let call = std::iter::successors(Some(KECCAK_F1600_INITIAL_CONTROL_VALUE), |&control| {
+        Some(keccak_f1600_bump_control(control))
+    })
+    .take(NUM_KECCAK_F1600_CALLS)
+    .position(|control| control == mode)
+    .expect("sizing mode is a canonical Keccak-f1600 call");
+    let mut witness = invoked_at(
+        riscv_transpiler::witness::DelegationWitness::empty(),
+        INITIAL_TIMESTAMP + TIMESTAMP_STEP * call as TimestampScalar,
+    );
+    witness.reg_accesses[0].read_value = mode;
+    witness.reg_accesses[0].write_value = keccak_f1600_bump_control(mode);
+    witness.reg_accesses[1].read_value = 0x8000_0000;
+    witness.reg_accesses[1].write_value = 0x8000_0000;
+    let slots = keccak_f1600_slots(mode);
+    witness.variables_offsets = core::array::from_fn(|i| slots[i] as u16);
+    let (precompile, iteration, _) = keccak_f1600_decode_control(mode);
+    let lane_read_distances: Option<[usize; LANES]> = match precompile {
+        KECCAK_THETA_RHO_PRECOMPILE => Some(core::array::from_fn(|slot| {
+            if slot < 5 {
+                KECCAK_THETA_RHO_LANE_READ_DISTANCE
+            } else {
+                KECCAK_THETA_RHO_PARITY_READ_DISTANCES[slot - 5][iteration]
+            }
+        })),
+        KECCAK_CHI5_PRECOMPILE => Some(core::array::from_fn(|slot| {
+            keccak_chi5_lane_read_distance(iteration, slot)
+        })),
+        _ => None,
+    };
+    if let Some(lane_read_distances) = lane_read_distances {
+        let written = witness.write_timestamp + DELEGATION_EXECUTION_OFFSET;
+        let read_timestamp = |distance: usize| {
+            TimestampData::from_scalar(written - TIMESTAMP_STEP * distance as TimestampScalar)
+        };
+        for access in &mut witness.reg_accesses {
+            access.timestamp = read_timestamp(KECCAK_F1600_REGISTER_READ_DISTANCE);
+        }
+        for (words, distance) in witness
+            .indirect_writes
+            .chunks_exact_mut(2)
+            .zip(lane_read_distances)
+        {
+            for word in words {
+                word.timestamp = read_timestamp(distance);
+            }
+        }
+    }
+    witness
+}
+
+fn invoked_at<
+    const REG_ACCESSES: usize,
+    const INDIRECT_READS: usize,
+    const INDIRECT_WRITES: usize,
+    const VARIABLE_OFFSETS: usize,
+>(
+    mut witness: riscv_transpiler::witness::DelegationWitness<
+        REG_ACCESSES,
+        INDIRECT_READS,
+        INDIRECT_WRITES,
+        VARIABLE_OFFSETS,
+    >,
+    cycle: TimestampScalar,
+) -> riscv_transpiler::witness::DelegationWitness<
+    REG_ACCESSES,
+    INDIRECT_READS,
+    INDIRECT_WRITES,
+    VARIABLE_OFFSETS,
+> {
+    witness.write_timestamp = cycle | DELEGATION_INVOCATION_OFFSET;
+    witness
+}
+
+fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<TracingDataHost<A>>> {
+    fn delegation<W: Copy + DelegationTracingDataHostSource>(
+        circuit_type: DelegationCircuitType,
+        rows: usize,
+        value: W,
+    ) -> CudaResult<Option<TracingDataHost<A>>> {
+        Ok(Some(TracingDataHost::Delegation(W::get(
+            circuit_type,
+            pinned_filled_trace(rows, value)?,
+        ))))
+    }
+    match circuit {
+        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => Ok(None),
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => delegation(
+            DelegationCircuitType::BigIntWithControl,
+            rows,
+            invoked_at(BigintDelegationWitness::empty(), INITIAL_TIMESTAMP),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) => delegation(
+            DelegationCircuitType::Blake2WithCompression,
+            rows,
+            invoked_at(
+                Blake2sRoundFunctionDelegationWitness::empty(),
+                INITIAL_TIMESTAMP,
+            ),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => delegation(
+            DelegationCircuitType::Blake2GFunction,
+            rows,
+            invoked_at(
+                Blake2sGFunctionDelegationWitness::empty(),
+                INITIAL_TIMESTAMP,
+            ),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => delegation(
+            DelegationCircuitType::KeccakSpecial5,
+            rows,
+            invoked_at(KeccakSpecial5DelegationWitness::empty(), INITIAL_TIMESTAMP),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity) => delegation(
+            DelegationCircuitType::KeccakColumnParity,
+            rows,
+            keccak_sizing_row::<
+                KECCAK_COLUMN_PARITY_X11_NUM_WRITES,
+                KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
+            >(KECCAK_COLUMN_PARITY_PRECOMPILE),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho) => delegation(
+            DelegationCircuitType::KeccakThetaRho,
+            rows,
+            keccak_sizing_row::<
+                KECCAK_THETA_RHO_X11_NUM_WRITES,
+                KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
+            >(KECCAK_THETA_RHO_PRECOMPILE),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::KeccakChi5) => delegation(
+            DelegationCircuitType::KeccakChi5,
+            rows,
+            keccak_sizing_row::<KECCAK_CHI5_X11_NUM_WRITES, KECCAK_CHI5_NUM_VARIABLE_OFFSETS>(
+                KECCAK_CHI5_PRECOMPILE,
+            ),
+        ),
+        CircuitType::Unrolled(UnrolledCircuitType::Memory(_)) => Ok(Some(
+            TracingDataHost::Unrolled(UnrolledTracingDataHost::Memory(pinned_filled_trace(
+                rows,
+                MemoryOpcodeTracingDataWithTimestamp {
+                    cycle_timestamp: TimestampData::from_scalar(INITIAL_TIMESTAMP),
+                    ..Default::default()
+                },
+            )?)),
+        )),
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_)) => Ok(Some(
+            TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(pinned_filled_trace(
+                rows,
+                NonMemoryOpcodeTracingDataWithTimestamp {
+                    cycle_timestamp: TimestampData::from_scalar(INITIAL_TIMESTAMP),
+                    ..Default::default()
+                },
+            )?)),
+        )),
+        CircuitType::Unrolled(UnrolledCircuitType::Unified) => Ok(Some(TracingDataHost::Unrolled(
+            UnrolledTracingDataHost::Unified(pinned_filled_trace(
+                rows,
+                UnifiedOpcodeTracingDataWithTimestamp::NonMem(
+                    NonMemoryOpcodeTracingDataWithTimestamp {
+                        cycle_timestamp: TimestampData::from_scalar(INITIAL_TIMESTAMP),
+                        ..Default::default()
+                    },
+                ),
+            )?),
+        ))),
+    }
+}
+
+/// One circuit's reusable synthetic inputs. `memory_caps` stays `None` until
+/// the runner has fed back the warm GPU memory commitment for this circuit.
+pub(crate) struct PreparedCircuit {
+    pub(crate) circuit: CircuitType,
+    pub(crate) precomputations: CircuitPrecomputations,
+    pub(super) security_level: SecurityLevel,
+    pub(super) inputs: SyntheticInputs,
+    pub(super) memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
+}
+
+impl PreparedCircuit {
+    pub(crate) fn set_memory_caps(&mut self, memory_caps: Vec<MerkleTreeCapVarLength>) {
+        self.memory_caps = Some(memory_caps);
+    }
+}
+
+pub(crate) struct SyntheticInputFactory {
+    worker: Worker,
+    security_level: SecurityLevel,
+    /// Zero ROM image and text section at `ROM_WORD_SIZE` words, the padded
+    /// size `add_binary` hands to the per-binary precomputation builder.
+    binary_image: Vec<u32>,
+    text_section: Vec<u32>,
+    common: BTreeMap<CircuitType, CircuitPrecomputations>,
+}
+
+impl SyntheticInputFactory {
+    pub(crate) fn new(security_level: SecurityLevel) -> Self {
+        let worker = Worker::new();
+        let common = get_common_precomputations_for_all(&worker, security_level);
+        Self {
+            worker,
+            security_level,
+            binary_image: vec![0; ROM_WORD_SIZE],
+            text_section: vec![0; ROM_WORD_SIZE],
+            common,
+        }
+    }
+
+    /// Precomputations for `circuit`: production delegations and i&t from the
+    /// binary-independent map, unrolled families and the unified circuit from
+    /// the per-binary builder over the zero image; Blake2G retained for proof-matrix coverage.
+    fn precomputations(&self, circuit: CircuitType) -> CircuitPrecomputations {
+        match circuit {
+            CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
+                let setup = execution_prover::setup::build_delegation_setup(
+                    DelegationCircuitType::Blake2GFunction,
+                    &self.worker,
+                );
+                CircuitPrecomputations::from_canonical(circuit, setup, self.security_level)
+                    .expect("Blake2GFunction precomputations must be supported")
+            }
+            CircuitType::Delegation(_)
+            | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+                self.common[&circuit].clone()
+            }
+            CircuitType::Unrolled(unrolled) => {
+                let machine_type = match unrolled {
+                    UnrolledCircuitType::Unified => MachineType::Reduced,
+                    _ => MachineType::FullUnsigned,
+                };
+                build_unrolled_circuit_precomputation(
+                    machine_type,
+                    unrolled,
+                    &self.binary_image,
+                    &self.text_section,
+                    &self.worker,
+                    self.security_level,
+                )
+            }
+        }
+    }
+
+    pub(crate) fn prepare(&self, circuit: CircuitType) -> CudaResult<PreparedCircuit> {
+        let precomputations = self.precomputations(circuit);
+        let inputs = build_inputs(circuit, &precomputations)?;
+        Ok(PreparedCircuit {
+            circuit,
+            precomputations,
+            security_level: self.security_level,
+            inputs,
+            memory_caps: None,
+        })
+    }
+}
+
+fn build_inputs(
+    circuit: CircuitType,
+    precomputations: &CircuitPrecomputations,
+) -> CudaResult<SyntheticInputs> {
+    let compiled = precomputations.gkr_programs.compiled_circuit();
+    let tracing_data = build_tracing_data(circuit, circuit.get_domain_size())?;
+    let num_sets = compiled.memory_layout.teardown_sets.len();
+    let inits_and_teardowns = if carries_inits_and_teardowns(circuit) {
+        Some(full_inits_and_teardowns(
+            circuit.get_domain_size_log2(),
+            num_sets,
+        )?)
+    } else {
+        None
+    };
+    Ok(SyntheticInputs {
+        inits_and_teardowns,
+        tracing_data,
+    })
+}
+
+fn carries_inits_and_teardowns(circuit: CircuitType) -> bool {
+    matches!(
+        circuit,
+        CircuitType::Unrolled(
+            UnrolledCircuitType::InitsAndTeardowns | UnrolledCircuitType::Unified
+        )
+    )
+}
+
+/// Maximum-capacity payload: local page indices enumerate every page in every set window.
+fn full_inits_and_teardowns(
+    trace_len_log2: u32,
+    num_sets: usize,
+) -> CudaResult<InitsAndTeardownsTraceHost<A>> {
+    assert!(trace_len_log2 >= PAGE_SIZE_LOG2);
+    assert!(
+        num_sets > 0,
+        "i&t carriers declare at least one teardown set"
+    );
+    let pages_per_set_log2 = trace_len_log2 - PAGE_SIZE_LOG2;
+    let words = num_sets
+        .checked_shl(trace_len_log2)
+        .expect("synthetic request shape overflow");
+    let page_count = num_sets
+        .checked_shl(pages_per_set_log2)
+        .expect("synthetic request shape overflow");
+    let page_count: u32 = page_count
+        .try_into()
+        .expect("synthetic page count exceeds u32");
+    let page_indices: Vec<u32> = (0..page_count).collect();
+    Ok(InitsAndTeardownsTraceHost {
+        page_indices: pinned_chunks_from_slice(&page_indices)?,
+        values_packed: pinned_filled_trace(words, 0u32)?,
+        timestamps_packed: pinned_filled_trace(words, TimestampScalar::default())?,
+        top_bits: (0..num_sets as u32).collect(),
+    })
+}
+
+pub(super) fn stable_external_challenges() -> GKRExternalChallenges<BF, E4> {
+    let total = GKRExternalChallenges::<BF, E4>::TOTAL_CHALLENGES;
+    let challenges: Vec<E4> = (0..total as u32)
+        .map(|index| {
+            E4::from_array_of_base(CHALLENGE_SEED.map(|word| {
+                // Distinct nonzero base elements far below any supported field order.
+                BF::new((word.wrapping_mul(index + 1) % 1_000_000) + 1)
+            }))
+        })
+        .collect();
+    GKRExternalChallenges::from_slice(&challenges)
+}
+
+/// `total_elements` copies of `value` in 64 MiB pinned chunks, each on its own
+/// pool allocator; the pinned memory is released when the last request clone
+/// drops its `Arc`.
+fn pinned_filled_trace<T: Copy>(
+    total_elements: usize,
+    value: T,
+) -> CudaResult<ChunkedTraceHolder<T, A>> {
+    assert_ne!(size_of::<T>(), 0);
+    let elements_per_chunk = (TRACE_CHUNK_BYTES / size_of::<T>()).max(1);
+    let mut remaining = total_elements;
+    let mut chunks = Vec::new();
+    while remaining != 0 {
+        let elements = remaining.min(elements_per_chunk);
+        let mut chunk = Vec::with_capacity_in(elements, pinned_chunk_allocator()?);
+        chunk.extend(std::iter::repeat_n(value, elements));
+        chunks.push(Arc::new(chunk));
+        remaining -= elements;
+    }
+    Ok(ChunkedTraceHolder { chunks })
+}
+
+fn pinned_chunks_from_slice<T: Copy>(values: &[T]) -> CudaResult<ChunkedTraceHolder<T, A>> {
+    assert_ne!(size_of::<T>(), 0);
+    let elements_per_chunk = (TRACE_CHUNK_BYTES / size_of::<T>()).max(1);
+    let mut chunks = Vec::new();
+    for piece in values.chunks(elements_per_chunk) {
+        let mut chunk = Vec::with_capacity_in(piece.len(), pinned_chunk_allocator()?);
+        chunk.extend_from_slice(piece);
+        chunks.push(Arc::new(chunk));
+    }
+    Ok(ChunkedTraceHolder { chunks })
+}
+
+fn pinned_chunk_allocator() -> CudaResult<A> {
+    let backing = HostAllocation::alloc(TRACE_CHUNK_BYTES, CudaHostAllocFlags::DEFAULT)?;
+    Ok(A::new([backing], TRACE_CHUNK_LOG_SIZE))
+}

@@ -66,7 +66,7 @@ fn gpr_roles(instr: &Instruction) -> GprRoles {
         // Register/immediate ALU: rd = f(rs1, rs2|imm). For immediate forms rs2 == x0.
         Add | Sub | Slt | Sltu | And | Or | Xor | Sll | Srl | Sra | Mul | Mulh | Mulhsu | Mulhu
         | Div | Divu | Rem | Remu | Rol | Ror | ZimopAdd | ZimopSub | ZimopMul | ZimopFMA
-        | ZimopTriAdd | ZimopIXorRot => rw(Some(rd), Some(rs1), Some(rs2)),
+        | ZimopTriAdd | ZimopIXorRot | Rev8 => rw(Some(rd), Some(rs1), Some(rs2)),
         // Upper-immediate / link: write rd only.
         Auipc | Jal => rw(Some(rd), None, None),
         // Jalr: rd = pc+4; target from rs1.
@@ -163,7 +163,7 @@ impl GprUsage {
 
     fn fmt_table(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut order: Vec<usize> = (1..32).collect();
-        order.sort_by(|&a, &b| self.total(b).cmp(&self.total(a)));
+        order.sort_by_key(|&a| std::cmp::Reverse(self.total(a)));
         let grand: u64 = (1..32).map(|i| self.total(i)).sum();
         writeln!(
             f,

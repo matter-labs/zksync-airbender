@@ -17,6 +17,7 @@ pub const GROUP_IMM_SLTU: u8 = 0b011;
 pub const GROUP_IMM_XOR: u8 = 0b100;
 pub const GROUP_IMM_SRL: u8 = 0b101;
 pub const GROUP_IMM_SRA: u8 = 0b101;
+#[allow(dead_code)]
 pub const GROUP_IMM_ROR: u8 = 0b101;
 pub const GROUP_IMM_OR: u8 = 0b110;
 pub const GROUP_IMM_AND: u8 = 0b111;
@@ -27,3 +28,6 @@ pub(crate) const SRL_FUNCT7: u8 = 0;
 pub(crate) const SRA_FUNCT7: u8 = 0b0100000;
 pub(crate) const ROT_FUNCT7: u8 = 0b0110000;
 pub(crate) const M_EXT_FUNCT7: u8 = 0b0000001;
+/// RV32 Zbb `rev8`: OP-IMM, funct3 = 0b101, imm[11:0] = 0x698 (funct7 = 0b0110100, shamt = 24).
+/// RV64 encodes `rev8` differently (0x6b8).
+pub(crate) const REV8_RV32_FUNCT12: u32 = 0x698;

@@ -5,6 +5,7 @@ on:
       - main
       - stable
       - dev
+      - av_gkr_compiler
   pull_request:
 
 permissions: read-all
@@ -36,10 +37,17 @@ jobs:
           CI: "true"
           RUST_MIN_STACK: 16777216
         run: cargo test -p prover --profile cli -- --nocapture gkr_run_basic_unrolled_test_sec_100
+      - name: Fail if the smoke test changed the committed test proofs
+        run: |
+          if [ -n "$(git status --porcelain -- prover/test_proofs)" ]; then
+            echo "❌ The smoke test regenerated these test proofs; commit them:"
+            git status --porcelain -- prover/test_proofs
+            exit 1
+          fi
       - name: GKR compiler feature tests
         env:
           RUST_MIN_STACK: 16777216
-        run: cargo test -p gpu_gkr_compiler --profile cli --features search --test forward_search --bin gkr-forward-artifact
+        run: cargo test -p gpu_gkr_compiler --profile cli --features search --test forward_corpus --test forward_search --bin gkr-forward-artifact
       - name: Verifier cost-model drift guard
         env:
           RUST_MIN_STACK: 1073741824
@@ -54,11 +62,53 @@ jobs:
         with:
           components: rustfmt
           rustflags: ""
+          # Formatting does not compile dependencies.
+          cache: false
       - name: Setup
         run: |
           rustup set profile minimal
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
+      - name: Forbid the generic_const_exprs feature gate
+        run: |
+          if grep -rn --include='*.rs' --exclude-dir=target 'feature(generic_const_exprs)' . ; then
+            echo 'generic_const_exprs is incompatible with the next-generation trait solver; use FieldExtension::Coeffs instead'
+            exit 1
+          fi
+
+  warnings:
+    name: warnings (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default
+            rustflags: "-D warnings"
+            args: ""
+          - name: no-default-features
+            rustflags: "-D warnings"
+            args: "--no-default-features"
+          - name: x86-64-v4
+            rustflags: "-D warnings -C target-cpu=x86-64-v4"
+            # An explicit target keeps RUSTFLAGS off build scripts, which run on the runner's CPU.
+            args: "--target x86_64-unknown-linux-gnu"
+    env:
+      RUSTFLAGS: ${{ matrix.rustflags }}
+      # no_cuda mode: the GPU crates skip their CMake/nvcc builds.
+      ZKSYNC_USE_CUDA_STUBS: "1"
+      RUST_MIN_STACK: 1073741824
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache-key: ${{ matrix.name }}
+      # The bench-only dev-dependency era_criterion_cuda of gpu_core and gpu_ntt needs a CUDA toolkit.
+      - name: Check
+        run: |
+          cargo check --workspace --all-targets --exclude gpu_core --exclude gpu_ntt ${{ matrix.args }}
+          cargo check -p gpu_core -p gpu_ntt --lib ${{ matrix.args }}
 
   circuits_generated:
     name: circuits_generated
@@ -89,70 +139,88 @@ jobs:
     runs-on: [matterlabs-ci-runner-c3d]
     steps:
       - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+      - name: Setup
+        run: |
+          rustup set profile default
+          # `cargo objcopy` for the guest dumps (tools/gkr_verifier/dump_bin.sh); the guest
+          # toolchain itself is installed on demand from tools/gkr_verifier/rust-toolchain.toml.
+          cargo install cargo-binutils --version '=0.4.0' --locked
 
       - name: Build fresh verifiers
         run: |
-          tools/reproduce/reproduce.sh
+          ./build.sh
 
       - name: Fail if any files were modified
         run: |
-          git status --porcelain
-          git diff --name-only
-          if [ -n "$(git diff --name-only)" ]; then
-            echo "❌ The following files were modified. Did you run tools/reproduce/reproduce.sh?:"
-            git diff --name-only
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "❌ The following files were modified or added. Did you run build.sh?:"
+            git status --porcelain
             exit 1
           fi
 
-  build_cli:
-    name: build_cli
+  evm_verifier:
+    name: evm_verifier
     runs-on: [matterlabs-ci-runner-c3d]
+    timeout-minutes: 30
+    env:
+      RUST_MIN_STACK: 1073741824
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
       - name: Setup
         run: rustup set profile minimal
-      - name: Compile
-        run: cargo build --release -p cli
-      - uses: actions/upload-artifact@v4
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
         with:
-          name: cli
-          path: |
-            target/release/cli
-            examples/basic_fibonacci/app.bin
-            examples/basic_fibonacci/app.text
+          version: v1.8.5
+      - name: EVM verifier Foundry tests
+        # Forge installs the solc version pinned in merged/foundry.toml.
+        # Preserve forge failures through the script's output filters.
+        run: bash -o pipefail verifier_evm/generated_contracts/run_merged.sh --no-gas
+      - name: Fail if the generated contract or calldata changed
+        run: git diff --exit-code -- verifier_evm/
 
   cli_smoke_verify:
     name: cli_smoke_verify
-    runs-on: [matterlabs-ci-runner-c3d]
-    needs: [build_cli]
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 180
+    container:
+      image: ubuntu:24.04
     env:
-      # `continue-proof` loads the fsv_* verifier programs from disk at run
-      # time; its built-in default is the compile-time source path, so point
-      # it at this job's checkout explicitly.
-      FSV_DIR: ${{ github.workspace }}/tools/gkr_verifier
+      RUST_MIN_STACK: 1073741824
+    defaults:
+      run:
+        shell: bash
     steps:
-      # The recursion targets need the committed fsv verifier binaries from
-      # tools/gkr_verifier, not just the cli artifact.
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v4
-        with:
-          name: cli
-      - name: Setup
+      - name: Install build dependencies
         run: |
-          chmod +x ./target/release/cli
-          mkdir -p output
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake curl git libssl-dev pkg-config
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+      - name: Build CPU CLI
+        run: cargo build --release -p cli
+      - name: CPU tests
+        run: |
+          cargo test --release -p execution_prover_model -p execution_prover \
+            -p cpu_execution_prover -p prover_pipeline -p cli \
+            -- --test-threads=1
       - name: Prove base
-        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file base.json
+        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cycles-bound 16777216 --worker-threads 8 --output-dir output --output-file base.json
       - name: Verify base
         run: ./target/release/cli verify --proof output/base.json --bin examples/basic_fibonacci/app.bin
       - name: Continue to recursion unified
-        run: ./target/release/cli continue-proof --proof output/base.json --bin examples/basic_fibonacci/app.bin --target recursion-unified --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file recursion_unified.json
+        run: ./target/release/cli continue-proof --proof output/base.json --bin examples/basic_fibonacci/app.bin --target recursion-unified --cycles-bound 16777216 --worker-threads 8 --output-dir output --output-file recursion_unified.json
       - name: Verify recursion unified
         run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
-
   # Keep branch protection tied to one stable check name even as the
   # underlying CI fan-out changes over time.
   pr-checks:
@@ -162,9 +230,10 @@ jobs:
     needs:
       - tests
       - formatting
+      - warnings
       - circuits_generated
       - check_verifiers
-      - build_cli
+      - evm_verifier
       - cli_smoke_verify
     steps:
       - name: Decide on PR checks

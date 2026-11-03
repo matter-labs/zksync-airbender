@@ -1,8 +1,6 @@
 use super::*;
 use crate::constraint::{Constraint, Term};
-use crate::cs::circuit::{
-    IndirectAccessType, RangeCheckQuery, RegisterAccessType, RegisterAndIndirectAccesses,
-};
+use crate::cs::circuit::{RegisterAccessType, RegisterAndIndirectAccesses};
 use crate::cs::circuit_trait::{
     ConstantRegisterAccess, MemoryAccess, RegisterIndirectRamAccess, WordRepresentation,
 };
@@ -11,8 +9,118 @@ use crate::definitions::gkr::{
 };
 use crate::definitions::LookupInput;
 use crate::gkr_compiler::graph::GKRGraph;
+use crate::structured_expr::{Expr, StructuredStatement};
 
 const LOCAL_TIMESTAMP_FOR_INDIRECTS: u32 = 2;
+
+pub(crate) struct ReadTimestampGroup {
+    pub(crate) read_timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    pub(crate) read_timestamp_places: [GKRAddress; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    pub(crate) members: Vec<usize>,
+}
+
+fn grouped_read_timestamp<F: PrimeField>(
+    graph: &mut GKRGraph<F>,
+    num_variables: &mut u64,
+    all_variables_to_place: &mut BTreeSet<Variable>,
+    layers_mapping: &mut HashMap<Variable, usize>,
+    variable_names: &mut HashMap<Variable, String>,
+    read_timestamp_groups: &mut BTreeMap<u8, ReadTimestampGroup>,
+    group: u8,
+    access_idx: usize,
+) -> (
+    [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    [GKRAddress; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+) {
+    let entry = read_timestamp_groups.entry(group).or_insert_with(|| {
+        let read_timestamp = std::array::from_fn(|_| {
+            add_compiler_defined_base_layer_variable(
+                num_variables,
+                all_variables_to_place,
+                layers_mapping,
+            )
+        });
+        for (limb, variable) in read_timestamp.iter().enumerate() {
+            variable_names.insert(
+                *variable,
+                format!("read timestamp group {}, read_ts[{}]", group, limb),
+            );
+        }
+        let read_timestamp_places = graph.layout_memory_subtree_multiple_variables(
+            read_timestamp,
+            all_variables_to_place,
+            layers_mapping,
+        );
+
+        ReadTimestampGroup {
+            read_timestamp,
+            read_timestamp_places,
+            members: vec![],
+        }
+    });
+    entry.members.push(access_idx);
+
+    (entry.read_timestamp, entry.read_timestamp_places)
+}
+
+/// Callers must constrain `2 < distance < R = 2^19` on active rows and `distance = 0`
+/// on padding. Keccak's control lookups enforce `distance = 4 * delta`: register gaps
+/// are 1 call, theta/rho gaps are at most 6, and chi5 gaps are `5 + y - j <= 9`
+/// (`y, j` in `0..5`). Thus the canonical sequence has maximum gap `N = 9` and
+/// `4 * N = 36`; see `keccak_f1600_read_distances_match_the_schedule`.
+///
+/// A call with invocation timestamp `I` writes at `I + 2`. In canonical Keccak
+/// sequences its actual predecessor is `r = I + 2 - distance`, so
+/// `2 <= I - r <= 34 < R`. For normalized timestamps matched by the memory argument,
+/// `b = I_hi - r_hi` is therefore in `{0, 1}`. Conversely, the low-limb equation and
+/// Booleanity imply the per-access read-before-write checks under the caller's
+/// distance bound; see `docs/keccak_relative_read_timestamps.md`, sections 3 and 5.
+/// All-zero padding has `b = 0` and satisfies both equations.
+///
+/// Here `b` is the borrow in `I + 2 - distance`. The conventional intermediate
+/// borrow for `r - (I + 2)` is `a = 1 - b` on active rows. Substituting `a` gives
+/// the same polynomials; `b` is kept because substitution changes their serialized
+/// expression trees.
+pub(crate) fn compile_read_timestamp_group_constraints<F: PrimeField>(
+    structured_statements: &mut Vec<StructuredStatement<F>>,
+    read_timestamp_groups: &BTreeMap<u8, ReadTimestampGroup>,
+    read_timestamp_group_distances: BTreeMap<u8, Expr<F>>,
+    execute: Variable,
+    invocation_timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+) {
+    assert!(
+        read_timestamp_groups
+            .keys()
+            .eq(read_timestamp_group_distances.keys()),
+        "read timestamp groups {:?} do not match their distances {:?}",
+        read_timestamp_groups.keys().collect::<Vec<_>>(),
+        read_timestamp_group_distances.keys().collect::<Vec<_>>(),
+    );
+    for (group, distance) in read_timestamp_group_distances {
+        let ReadTimestampGroup {
+            read_timestamp,
+            members,
+            ..
+        } = &read_timestamp_groups[&group];
+        assert!(!members.is_empty());
+        let borrow = Expr::<F>::var(invocation_timestamp[1]) - Expr::var(read_timestamp[1]);
+        let low = Expr::<F>::var(read_timestamp[0])
+            - Expr::var(invocation_timestamp[0])
+            - Expr::from(LOCAL_TIMESTAMP_FOR_INDIRECTS) * Expr::var(execute)
+            + distance
+            - Expr::from(1u32 << TIMESTAMP_COLUMNS_NUM_BITS) * borrow.clone();
+        low.validate_degree_at_most(1);
+        let booleanity = borrow.clone() * (borrow - Expr::from(1));
+        for expr in [low, booleanity] {
+            let compiled_constraint = expr.to_max_quadratic_constraint();
+            structured_statements.push(StructuredStatement::AssertZero {
+                expr,
+                compiled_constraint,
+                prevent_optimizations: true,
+            });
+        }
+    }
+}
 
 pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
     graph: &mut GKRGraph<F>,
@@ -25,53 +133,81 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
     ram_access_sets: &mut Vec<RamQuery>,
     ram_augmented_sets: &mut Vec<(MemoryAccess, ShuffleRamTimestampComparisonPartialData)>,
     indirect_access_variable_offsets: &mut BTreeMap<usize, GKRAddress>,
-    range_check_expressions: &mut Vec<RangeCheckQuery<F>>,
+    timestamp_range_check_expressions: &mut Vec<LookupInput<F>>,
+    read_timestamp_groups: &mut BTreeMap<u8, ReadTimestampGroup>,
 ) {
     for (query_idx, memory_query) in accesses.clone().into_iter().enumerate() {
         let RegisterAndIndirectAccesses {
             register_index,
             register_access,
+            read_timestamp_group,
             indirects_alignment_log2,
             indirect_accesses,
         } = memory_query;
-        let [read_timestamp_low, read_timestamp_high] = std::array::from_fn(|_| {
-            add_compiler_defined_base_layer_variable(
-                num_variables,
-                all_variables_to_place,
-                layers_mapping,
-            )
-        });
-        variable_names.insert(
-            read_timestamp_low,
-            format!("ram or indirect query {}, register read_ts[0]", query_idx),
-        );
-        variable_names.insert(
-            read_timestamp_high,
-            format!("ram or indirect query {}, register read_ts[1]", query_idx),
-        );
-        let read_timestamp = graph.layout_memory_subtree_multiple_variables(
-            [read_timestamp_low, read_timestamp_high],
-            all_variables_to_place,
-            layers_mapping,
-        );
-        let borrow_var = {
-            // now that we have declared timestamps, we can produce comparison expressions for range checks
-            let borrow_var = add_compiler_defined_base_layer_variable(
-                num_variables,
-                all_variables_to_place,
-                layers_mapping,
-            );
-            boolean_vars.push(borrow_var);
-            variable_names.insert(
-                borrow_var,
-                format!(
-                    "indirect access query {}, register access intermediate timestamp borrow",
-                    query_idx
-                ),
-            );
+        let ([read_timestamp_low, read_timestamp_high], read_timestamp, comparison) =
+            if let Some(group) = read_timestamp_group {
+                let (read_timestamp_vars, read_timestamp) = grouped_read_timestamp(
+                    graph,
+                    num_variables,
+                    all_variables_to_place,
+                    layers_mapping,
+                    variable_names,
+                    read_timestamp_groups,
+                    group,
+                    ram_access_sets.len(),
+                );
+                (
+                    read_timestamp_vars,
+                    read_timestamp,
+                    ReadTimestampComparison::Grouped { group },
+                )
+            } else {
+                let [read_timestamp_low, read_timestamp_high] = std::array::from_fn(|_| {
+                    add_compiler_defined_base_layer_variable(
+                        num_variables,
+                        all_variables_to_place,
+                        layers_mapping,
+                    )
+                });
+                variable_names.insert(
+                    read_timestamp_low,
+                    format!("ram or indirect query {}, register read_ts[0]", query_idx),
+                );
+                variable_names.insert(
+                    read_timestamp_high,
+                    format!("ram or indirect query {}, register read_ts[1]", query_idx),
+                );
+                let read_timestamp = graph.layout_memory_subtree_multiple_variables(
+                    [read_timestamp_low, read_timestamp_high],
+                    all_variables_to_place,
+                    layers_mapping,
+                );
+                let borrow_var = {
+                    // now that we have declared timestamps, we can produce comparison expressions for range checks
+                    let borrow_var = add_compiler_defined_base_layer_variable(
+                        num_variables,
+                        all_variables_to_place,
+                        layers_mapping,
+                    );
+                    boolean_vars.push(borrow_var);
+                    variable_names.insert(
+                        borrow_var,
+                        format!(
+                        "indirect access query {}, register access intermediate timestamp borrow",
+                        query_idx
+                    ),
+                    );
 
-            borrow_var
-        };
+                    borrow_var
+                };
+                (
+                    [read_timestamp_low, read_timestamp_high],
+                    read_timestamp,
+                    ReadTimestampComparison::PerAccess {
+                        intermediate_borrow: borrow_var,
+                    },
+                )
+            };
 
         let (register_read_value, register_write_value) = match register_access {
             RegisterAccessType::Read { read_value } => (read_value, read_value),
@@ -88,7 +224,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
             local_timestamp_in_cycle: LOCAL_TIMESTAMP_FOR_INDIRECTS,
         });
         let partial_data = ShuffleRamTimestampComparisonPartialData {
-            intermediate_borrow: borrow_var,
+            comparison,
             read_timestamp: [read_timestamp_low, read_timestamp_high],
             local_timestamp_in_cycle: LOCAL_TIMESTAMP_FOR_INDIRECTS as usize,
         };
@@ -174,11 +310,17 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
         };
 
         ram_access_sets.push(query_columns);
-        drop(register_ram_query);
 
         if indirects_alignment_log2 != 0 {
             assert!(indirects_alignment_log2 < 16);
-            assert!(indirect_accesses.len() > 0);
+            assert!(!indirect_accesses.is_empty());
+            assert!(
+                (1u128 << (indirects_alignment_log2 + TIMESTAMP_COLUMNS_NUM_BITS))
+                    < F::CHARACTERISTICS_U128,
+                "indirect alignment 2^{} is too large for the {}-bit timestamp range check over this field",
+                indirects_alignment_log2,
+                TIMESTAMP_COLUMNS_NUM_BITS
+            );
             // permutation check will ensure that the value is 16 bits, so we just need to shift it right and
             // range check again
             let constraint = Constraint::empty()
@@ -188,10 +330,8 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                         .unwrap(),
                     register_read_value_vars[0],
                 ));
-            range_check_expressions.push(RangeCheckQuery::new_for_input(
-                LookupInput::from(constraint),
-                16,
-            ));
+            let lookup_input = LookupInput::from(constraint);
+            timestamp_range_check_expressions.push(lookup_input);
         }
 
         // and now complex part - indirects
@@ -201,50 +341,76 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
             let variable_offset = indirect_access.variable_dependent();
             // (offset, var, indirect_access_var_idx)
 
-            let [read_timestamp_low, read_timestamp_high] = std::array::from_fn(|_| {
-                add_compiler_defined_base_layer_variable(
-                    num_variables,
-                    all_variables_to_place,
-                    layers_mapping,
-                )
-            });
-            variable_names.insert(
-                read_timestamp_low,
-                format!(
-                    "indirect query {}, indirect access {} read_ts[0]",
-                    query_idx, indirect_access_idx
-                ),
-            );
-            variable_names.insert(
-                read_timestamp_high,
-                format!(
-                    "indirect query {}, indirect access {} read_ts[1]",
-                    query_idx, indirect_access_idx
-                ),
-            );
-            let read_timestamp = graph.layout_memory_subtree_multiple_variables(
-                [read_timestamp_low, read_timestamp_high],
-                all_variables_to_place,
-                layers_mapping,
-            );
-            let borrow_var = {
-                // now that we have declared timestamps, we can produce comparison expressions for range checks
-                let borrow_var = add_compiler_defined_base_layer_variable(
-                    num_variables,
-                    all_variables_to_place,
-                    layers_mapping,
-                );
-                boolean_vars.push(borrow_var);
-                variable_names.insert(
-                    borrow_var,
-                    format!(
-                        "indirect access query {}, indirect access {} intermediate timestamp borrow",
-                        query_idx, indirect_access_idx
-                    ),
-                );
+            let ([read_timestamp_low, read_timestamp_high], read_timestamp, comparison) =
+                if let Some(group) = indirect_access.read_timestamp_group() {
+                    let (read_timestamp_vars, read_timestamp) = grouped_read_timestamp(
+                        graph,
+                        num_variables,
+                        all_variables_to_place,
+                        layers_mapping,
+                        variable_names,
+                        read_timestamp_groups,
+                        group,
+                        ram_access_sets.len(),
+                    );
+                    (
+                        read_timestamp_vars,
+                        read_timestamp,
+                        ReadTimestampComparison::Grouped { group },
+                    )
+                } else {
+                    let [read_timestamp_low, read_timestamp_high] = std::array::from_fn(|_| {
+                        add_compiler_defined_base_layer_variable(
+                            num_variables,
+                            all_variables_to_place,
+                            layers_mapping,
+                        )
+                    });
+                    variable_names.insert(
+                        read_timestamp_low,
+                        format!(
+                            "indirect query {}, indirect access {} read_ts[0]",
+                            query_idx, indirect_access_idx
+                        ),
+                    );
+                    variable_names.insert(
+                        read_timestamp_high,
+                        format!(
+                            "indirect query {}, indirect access {} read_ts[1]",
+                            query_idx, indirect_access_idx
+                        ),
+                    );
+                    let read_timestamp = graph.layout_memory_subtree_multiple_variables(
+                        [read_timestamp_low, read_timestamp_high],
+                        all_variables_to_place,
+                        layers_mapping,
+                    );
+                    let borrow_var = {
+                        // now that we have declared timestamps, we can produce comparison expressions for range checks
+                        let borrow_var = add_compiler_defined_base_layer_variable(
+                            num_variables,
+                            all_variables_to_place,
+                            layers_mapping,
+                        );
+                        boolean_vars.push(borrow_var);
+                        variable_names.insert(
+                            borrow_var,
+                            format!(
+                                "indirect access query {}, indirect access {} intermediate timestamp borrow",
+                                query_idx, indirect_access_idx
+                            ),
+                        );
 
-                borrow_var
-            };
+                        borrow_var
+                    };
+                    (
+                        [read_timestamp_low, read_timestamp_high],
+                        read_timestamp,
+                        ReadTimestampComparison::PerAccess {
+                            intermediate_borrow: borrow_var,
+                        },
+                    )
+                };
 
             // now place read value and write value if needed
             let indirect_read_value = indirect_access.read_value();
@@ -254,7 +420,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                 indirect_read_value
             };
             let indirect_ram_query = MemoryAccess::RamIndirect(RegisterIndirectRamAccess {
-                variable_offset: variable_offset,
+                variable_offset,
                 base_address: register_read_value_vars,
                 constant_offset,
                 read_timestamp: [read_timestamp_low, read_timestamp_high],
@@ -263,7 +429,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                 local_timestamp_in_cycle: LOCAL_TIMESTAMP_FOR_INDIRECTS,
             });
             let partial_data = ShuffleRamTimestampComparisonPartialData {
-                intermediate_borrow: borrow_var,
+                comparison,
                 read_timestamp: [read_timestamp_low, read_timestamp_high],
                 local_timestamp_in_cycle: LOCAL_TIMESTAMP_FOR_INDIRECTS as usize,
             };

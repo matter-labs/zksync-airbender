@@ -1,4 +1,4 @@
-use crate::messages::{GpuWorkBatch, GpuWorkRequest, GpuWorkResult, WorkerResult};
+use crate::precomputations::CircuitPrecomputations;
 use crate::workers::gpu::get_gpu_worker_func;
 use crate::A;
 use crossbeam_channel::{bounded, unbounded, Receiver, RecvError, Select, Sender};
@@ -6,12 +6,17 @@ use crossbeam_utils::sync::WaitGroup;
 use crossbeam_utils::thread::{scope, Scope};
 use era_cudart::device::get_device_count;
 use era_cudart::result::CudaResult;
+use execution_prover::messages::{WorkBatch, WorkRequest, WorkResult, WorkerResult};
+use execution_prover::spawn_abort_on_panic;
 use gpu_prover_context::ProverContextConfig;
 use itertools::Itertools;
 use log::{error, info, trace};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::process::exit;
-use std::thread;
+
+pub(crate) type GpuWorkBatch = WorkBatch<A, CircuitPrecomputations>;
+pub(crate) type GpuWorkRequest<A> = WorkRequest<A, CircuitPrecomputations>;
+pub(crate) type GpuWorkResult<A> = WorkResult<A>;
 
 pub(crate) struct GpuManager {
     wait_group: Option<WaitGroup>,
@@ -19,24 +24,14 @@ pub(crate) struct GpuManager {
 }
 
 impl GpuManager {
-    pub fn new(
-        initialized_wait_group: WaitGroup,
-        prover_context_config: ProverContextConfig,
-    ) -> Self {
+    pub fn new(prover_context_config: ProverContextConfig) -> Self {
         let (batches_sender, batches_receiver) = unbounded();
         trace!("GPU_MANAGER spawning");
         let wait_group = WaitGroup::new();
         let wait_group_clone = wait_group.clone();
-        thread::spawn(move || {
-            let result = scope(|s| {
-                gpu_manager(
-                    initialized_wait_group,
-                    prover_context_config,
-                    batches_receiver,
-                    s,
-                )
-            })
-            .unwrap();
+        spawn_abort_on_panic("gpu-manager".to_owned(), move || {
+            let result =
+                scope(|s| gpu_manager(prover_context_config, batches_receiver, s)).unwrap();
             if let Err(e) = result {
                 error!("GPU_MANAGER encountered an error: {e}");
                 exit(1);
@@ -75,7 +70,6 @@ impl Drop for GpuManager {
 /// stay inline because `SelectedOperation` must be consumed with the exact
 /// channel reference it was registered against.
 fn gpu_manager(
-    initialized_wait_group: WaitGroup,
     prover_context_config: ProverContextConfig,
     batches_receiver: Receiver<GpuWorkBatch>,
     scope: &Scope,
@@ -104,7 +98,6 @@ fn gpu_manager(
     }
     drop(worker_initialized_sender);
     assert_eq!(worker_initialized_receiver.iter().count(), device_count);
-    drop(initialized_wait_group);
     trace!("GPU_MANAGER all GPU workers initialized");
     let mut batches_receiver = Some(batches_receiver);
     let mut batch_receivers = HashMap::new();
@@ -294,7 +287,7 @@ fn handle_worker_result(
                 trace!("BATCH[{batch_id}] GPU_MANAGER received setup initialization for circuit {circuit_type:?}[{sequence_id}] from GPU_WORKER[{worker_id}]");
             }
         };
-        let result = WorkerResult::GpuWorkResult(result);
+        let result = WorkerResult::BackendWorkResult(result);
         batch_senders[&batch_id]
             .send(result)
             .expect("GPU manager result channel closed before batch completion");

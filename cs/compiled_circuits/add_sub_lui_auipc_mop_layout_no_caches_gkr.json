@@ -55,6 +55,18 @@
     0,
     0,
     0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
     0
   ],
   "total_tables_size": 1048576,
@@ -313,9 +325,20 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "LookupFromMaterializedBaseInputWithSetup": {
+            "LookupFromBaseInputsWithSetup": {
               "input": {
-                "BaseLayerWitness": 11
+                "input": {
+                  "linear_terms": [
+                    [
+                      268435454,
+                      {
+                        "BaseLayerWitness": 11
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                "lookup_set_index": 0
               },
               "setup": [
                 {
@@ -338,7 +361,8 @@
                     "offset": 6
                   }
                 }
-              ]
+              ],
+              "range_check_width": 16
             }
           }
         },
@@ -465,9 +489,20 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "LookupFromMaterializedBaseInputWithSetup": {
+            "LookupFromBaseInputsWithSetup": {
               "input": {
-                "BaseLayerMemory": 24
+                "input": {
+                  "linear_terms": [
+                    [
+                      268435454,
+                      {
+                        "BaseLayerMemory": 24
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                "lookup_set_index": 0
               },
               "setup": [
                 {
@@ -490,7 +525,8 @@
                     "offset": 13
                   }
                 }
-              ]
+              ],
+              "range_check_width": 19
             }
           }
         },
@@ -5233,6 +5269,7 @@
     true
   ],
   "tables_ids_in_generic_lookups": false,
+  "generic_lookup_padding": 1744830467,
   "degree_2_constraints": [
     {
       "quadratic_terms": [

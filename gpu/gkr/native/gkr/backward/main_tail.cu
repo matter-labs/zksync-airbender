@@ -15,3 +15,16 @@ EXTERN __global__ __launch_bounds__(airbender::gkr::backward::BWD_MAIN_TAIL_BLOC
     return;
   bwd_main_tail_execute(bound_desc);
 }
+
+EXTERN __global__ __launch_bounds__(airbender::gkr::backward::BWD_MAIN_TAIL_BLOCK_THREADS,
+                                    1) void ab_gkr_bwd_main_tail_fold_d3_kernel(const __grid_constant__ airbender::gkr::backward::bwd_main_tail_desc desc) {
+  using namespace airbender::gkr::backward;
+  const u32 tail_rounds = u32{desc.folding_steps} - u32{desc.tail_start};
+  if (blockDim.x != BWD_MAIN_TAIL_BLOCK_THREADS || gridDim.x == 0 || desc.source_count == 0 || desc.source_count > BWD_MAIN_TAIL_SOURCE_CAP ||
+      desc.tail_start < 3 || tail_rounds < 1 || tail_rounds > 6 || desc.entry_column_elems != (8u << tail_rounds))
+    return;
+  __shared__ e4 weights[7];
+  bwd_main_tail_build_d3_weights(desc, weights);
+  __syncthreads();
+  bwd_main_tail_fold_d3(desc, desc.entry, desc.entry_column_elems, desc.ping, desc.entry_column_elems >> 3, weights);
+}

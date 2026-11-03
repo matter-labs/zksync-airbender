@@ -3,7 +3,6 @@ use crate::prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BlakeMode {
     Compression,
-    GFunction,
     BlakeSpecialOpcodes,
 }
 
@@ -12,7 +11,6 @@ impl BlakeMode {
     pub const fn tag(self) -> &'static str {
         match self {
             Self::Compression => "blake2_with_compression",
-            Self::GFunction => "blake2_g_function",
             Self::BlakeSpecialOpcodes => "special_opcodes_extension",
         }
     }
@@ -21,7 +19,6 @@ impl BlakeMode {
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "blake2_with_compression" | "compression" | "round" => Some(Self::Compression),
-            "blake2_g_function" | "g_function" | "g" => Some(Self::GFunction),
             "special_opcodes_extension" | "special_opcodes" | "spec" => {
                 Some(Self::BlakeSpecialOpcodes)
             }
@@ -81,11 +78,7 @@ mod tests {
 
     #[test]
     fn tags_roundtrip_through_parse() {
-        for mode in [
-            BlakeMode::Compression,
-            BlakeMode::GFunction,
-            BlakeMode::BlakeSpecialOpcodes,
-        ] {
+        for mode in [BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes] {
             assert_eq!(BlakeMode::parse(mode.tag()), Some(mode));
         }
         assert_eq!(BlakeMode::parse("nonsense"), None);
@@ -96,7 +89,7 @@ mod tests {
         assert!(FsvProgram::UnifiedRecursionLayer.supports(BlakeMode::BlakeSpecialOpcodes));
         assert!(!FsvProgram::UnrolledBaseLayer.supports(BlakeMode::BlakeSpecialOpcodes));
         assert!(!FsvProgram::UnrolledRecursionLayer.supports(BlakeMode::BlakeSpecialOpcodes));
-        assert!(FsvProgram::UnrolledBaseLayer.supports(BlakeMode::GFunction));
+        assert!(FsvProgram::UnrolledBaseLayer.supports(BlakeMode::Compression));
     }
 
     #[test]
@@ -104,21 +97,14 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tools/gkr_verifier");
         // Blake-suffixed recursion-pipeline variants.
         for (program, modes) in [
-            (
-                FsvProgram::UnrolledBaseLayer,
-                &[BlakeMode::Compression, BlakeMode::GFunction][..],
-            ),
+            (FsvProgram::UnrolledBaseLayer, &[BlakeMode::Compression][..]),
             (
                 FsvProgram::UnrolledRecursionLayer,
-                &[BlakeMode::Compression, BlakeMode::GFunction][..],
+                &[BlakeMode::Compression][..],
             ),
             (
                 FsvProgram::UnifiedRecursionLayer,
-                &[
-                    BlakeMode::Compression,
-                    BlakeMode::GFunction,
-                    BlakeMode::BlakeSpecialOpcodes,
-                ][..],
+                &[BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes][..],
             ),
         ] {
             for mode in modes {

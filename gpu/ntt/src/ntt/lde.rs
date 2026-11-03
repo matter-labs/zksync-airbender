@@ -31,21 +31,15 @@ use gpu_core::primitives::field::BaseField;
 
 type BF = BaseField;
 
-// Computes grid dimensions for high-degree LDE kernels, targeting fractional occupancy.
-// num_cols_per_coset and cosets_in_tile are not required to be powers of 2.
-// The resulting grid prioritizes monomial reuse, because monomials are unique gmem data.
-// However, the grid is not guaranteed to yield good occupancy or load balancing
-// by itself. It's meant to work with an external multistream ping-ping approach,
-// where 2 grids in flight compensate for each other's tail effects.
-fn get_lde_grid_dims_for_occupancy_hint(
+// Size the LDE grid for one full occupancy wave, prioritizing monomial reuse.
+// num_cols_per_coset and cosets_in_tile need not be powers of two.
+fn get_lde_grid_dims(
     n: usize,
     cosets_in_tile: usize,
     num_cols_per_coset: usize,
     func: &impl KernelFunction,
     block_dim_x: usize,
     vals_per_block: usize,
-    occupancy_hint_numerator: usize,
-    occupancy_hint_denominator: usize,
     device_properties: &DeviceProperties,
 ) -> CudaResult<Dim3> {
     assert!(n >= vals_per_block);
@@ -58,9 +52,7 @@ fn get_lde_grid_dims_for_occupancy_hint(
     )?;
     let max_blocks_per_sm = max_blocks_per_sm as usize;
 
-    let full_occupancy = max_blocks_per_sm * device_properties.sm_count;
-    let target_blocks =
-        (full_occupancy * occupancy_hint_numerator).div_ceil(occupancy_hint_denominator);
+    let target_blocks = max_blocks_per_sm * device_properties.sm_count;
 
     let grid_dim_x = n / vals_per_block;
 
@@ -119,8 +111,6 @@ pub(crate) fn lde_intermediate_range(
     cosets_in_tile: usize,
     coset_index_base: usize,
     num_cols_per_coset_stride: usize,
-    occupancy_hint_numerator: usize,
-    occupancy_hint_denominator: usize,
     device_properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -143,15 +133,13 @@ pub(crate) fn lde_intermediate_range(
         14 => LdeIntermediateFunction(ab_lde_first_6_stages_kernel),
         _ => unimplemented!(),
     };
-    let grid_dim: Dim3 = get_lde_grid_dims_for_occupancy_hint(
+    let grid_dim: Dim3 = get_lde_grid_dims(
         trace_len,
         cosets_in_tile,
         num_cols_per_coset_stride,
         &first_pass_function,
         block_dim_x,
         vals_per_block,
-        occupancy_hint_numerator,
-        occupancy_hint_denominator,
         device_properties,
     )?;
     let config = CudaLaunchConfig::basic(grid_dim, block_dim_x as u32, stream);
@@ -251,7 +239,6 @@ pub fn bitreversed_monomials_to_natural_evals_multi_coset(
 pub const MAX_LOG_N_FOR_SINGLE_KERNEL_LDE: usize = 13;
 
 /// Commitment-only log_n=20 boundary fusion for the LSB codeword.
-#[allow(clippy::too_many_arguments)]
 pub fn hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     coeff_scratch: &mut DeviceSlice<BF>,
@@ -321,7 +308,6 @@ pub fn hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20(
 /// also materializes the monomials in place for the remaining cosets. Returns
 /// `Ok(false)` without scheduling anything when ineligible (non-transposed
 /// log_n or a 2-pass regime); callers fall back to the unfused sequence.
-#[allow(clippy::too_many_arguments)]
 pub fn hypercube_to_multi_coset_evals_fused(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     coeff_scratch: &mut DeviceSlice<BF>,
@@ -424,7 +410,6 @@ pub fn hypercube_to_multi_coset_evals_fused(
 /// Returns `Ok(false)` without scheduling anything when ineligible (outside
 /// the natural->bitrev 3-pass regime); callers fall back to the unfused
 /// sequence.
-#[allow(clippy::too_many_arguments)]
 pub fn hypercube_to_multi_coset_bitrev_evals_fused(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &mut DeviceSlice<BF>,
@@ -536,8 +521,6 @@ pub fn lde_with_coset_range(
     num_cosets: usize,
     coset_index_base: usize,
     num_cols_per_coset_stride: usize,
-    occupancy_hint_numerator: usize,
-    occupancy_hint_denominator: usize,
     ntt_ctx: &crate::ntt_twiddles::DeviceContext,
     d_table_scratch: Option<&mut DeviceSlice<BF>>,
     stream: &CudaStream,
@@ -569,8 +552,6 @@ pub fn lde_with_coset_range(
             num_cosets,
             coset_index_base,
             num_cols_per_coset_stride,
-            occupancy_hint_numerator,
-            occupancy_hint_denominator,
             device_properties,
             stream,
         );
@@ -822,7 +803,6 @@ fn dispatch_forward_multi_coset(
 ///
 /// Covers `log_n` in `[13, 24]`; smaller dispatch families are unreachable
 /// from a production base size.
-#[allow(clippy::too_many_arguments)]
 pub fn natural_monomials_to_bitreversed_evals_multi_coset(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &mut DeviceSlice<BF>,
@@ -859,7 +839,6 @@ pub fn natural_monomials_to_bitreversed_evals_multi_coset(
 /// coset-factor shift). `num_cosets` is the number of local cosets written to
 /// `outputs`, `coset_index_base` the global index of the first local coset.
 /// Both must be powers of two and the range must fit the full LDE domain.
-#[allow(clippy::too_many_arguments)]
 pub fn natural_monomials_to_bitreversed_evals_coset_range(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &mut DeviceSlice<BF>,
