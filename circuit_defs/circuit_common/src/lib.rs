@@ -118,31 +118,6 @@ impl CircuitGeometry {
     }
 }
 
-/// The configs of a circuit at EVERY security level, indexed by `SecurityLevel
-/// as usize` (see [`prover_config_at`]): what a setup carries so that every
-/// commitment / proof made from it uses the circuit's own geometry.
-pub fn prover_configs_for_all_levels(
-    prover_config: impl Fn(SecurityLevel) -> ProverConfig,
-) -> Vec<ProverConfig> {
-    SecurityLevel::ALL
-        .iter()
-        .enumerate()
-        .map(|(idx, &level)| {
-            assert_eq!(level as usize, idx);
-            let config = prover_config(level);
-            assert_eq!(config.security_level, level);
-            config
-        })
-        .collect()
-}
-
-/// The config for `level` out of [`prover_configs_for_all_levels`].
-pub fn prover_config_at(configs: &[ProverConfig], level: SecurityLevel) -> &ProverConfig {
-    let config = &configs[level as usize];
-    assert_eq!(config.security_level, level);
-    config
-}
-
 pub trait DelegationCircuit<F: PrimeField> {
     const DELEGATION_TYPE_ID: u16;
 

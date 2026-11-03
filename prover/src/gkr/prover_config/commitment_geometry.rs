@@ -1,7 +1,6 @@
 //! Checked base-commitment dimensions, independent of field and storage policy.
 
 use super::{pow_bits, BaseColumns, CommitmentMode, ProverConfig};
-use crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum BaseOracleRole {
@@ -49,30 +48,12 @@ pub struct BaseCommitmentGeometry {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CommitmentGeometryError {
     Overflow { quantity: &'static str },
-    InvalidPowerOfTwo { parameter: &'static str },
-    InvalidLdeFactor { parameter: &'static str },
-    InvalidWhirSchedule,
-    InconsistentScheduleGeometry,
-    LeafExceedsMessage,
-    CapExceedsTree,
 }
 
 impl std::fmt::Display for CommitmentGeometryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Overflow { quantity } => write!(f, "base commitment {quantity} overflows usize"),
-            Self::InvalidPowerOfTwo { parameter } => {
-                write!(f, "base commitment {parameter} must be a power of two")
-            }
-            Self::InvalidLdeFactor { parameter } => {
-                write!(f, "base commitment {parameter} must be at least 2")
-            }
-            Self::InvalidWhirSchedule => write!(f, "invalid WHIR schedule"),
-            Self::InconsistentScheduleGeometry => {
-                write!(f, "WHIR schedule disagrees with base commitment geometry")
-            }
-            Self::LeafExceedsMessage => write!(f, "base commitment leaf exceeds its polynomial"),
-            Self::CapExceedsTree => write!(f, "base commitment cap exceeds its tree"),
         }
     }
 }
@@ -91,38 +72,11 @@ fn product(a: usize, b: usize, quantity: &'static str) -> Result<usize, Commitme
         .ok_or(CommitmentGeometryError::Overflow { quantity })
 }
 
-fn lde(log: usize, parameter: &'static str) -> Result<usize, CommitmentGeometryError> {
-    if log == 0 {
-        return Err(CommitmentGeometryError::InvalidLdeFactor { parameter });
-    }
-    pow2(log, parameter)
-}
-
-fn validate_tree(
-    message_log2: usize,
-    lde_factor: usize,
-    leaf_log2: usize,
-    cap_size: usize,
-) -> Result<(), CommitmentGeometryError> {
-    if leaf_log2 > message_log2 {
-        return Err(CommitmentGeometryError::LeafExceedsMessage);
-    }
-    let domain = product(
-        pow2(message_log2, "message size")?,
-        lde_factor,
-        "LDE domain",
-    )?;
-    let leaves = domain / pow2(leaf_log2, "leaf size")?;
-    if cap_size > leaves {
-        return Err(CommitmentGeometryError::CapExceedsTree);
-    }
-    Ok(())
-}
-
 impl BaseCommitmentGeometry {
-    /// Checks all WHIR oracle trees and the plain-text floor, then projects the
+    /// Checks that every size, LDE factor and oracle LDE domain fits `usize`,
+    /// panics on any schedule or tree rule that
+    /// [`ProverConfig::validate_for_whir_message_size`] rejects, then projects the
     /// existing column-count authority into memory/witness/setup storage sizes.
-    /// Mirrors [`ProverConfig::validate_for_whir_message_size`]; keep both in sync.
     /// Base fold zero is valid; field and backend limits are checked separately.
     pub fn from_config(
         config: &ProverConfig,
@@ -139,44 +93,17 @@ impl BaseCommitmentGeometry {
         let message_size = pow2(message_size_log2, "message size")?;
         let schedule = &config.whir_schedule;
         let base = config.base_round();
-        let lde_factor = lde(base.lde_factor_log2, "LDE factor")?;
+        let lde_factor = pow2(base.lde_factor_log2, "LDE factor")?;
         let values_per_leaf = pow2(base.fold_log2, "values per leaf")?;
-        if !config.cap_size.is_power_of_two() {
-            return Err(CommitmentGeometryError::InvalidPowerOfTwo {
-                parameter: "cap size",
-            });
-        }
-        if schedule.cap_size != config.cap_size {
-            return Err(CommitmentGeometryError::InconsistentScheduleGeometry);
-        }
-        if schedule.internal_rounds.is_empty() || base.num_queries == 0 {
-            return Err(CommitmentGeometryError::InvalidWhirSchedule);
-        }
-        validate_tree(
-            message_size_log2,
-            lde_factor,
-            base.fold_log2,
-            config.cap_size,
-        )?;
-        let mut remaining = message_size_log2
-            .checked_sub(base.fold_log2)
-            .ok_or(CommitmentGeometryError::InvalidWhirSchedule)?;
         for round in &schedule.internal_rounds {
-            if remaining < DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2
-                || round.folding_log2 == 0
-                || round.num_queries == 0
-                || round.num_ood_samples == 0
-            {
-                return Err(CommitmentGeometryError::InvalidWhirSchedule);
-            }
-            let factor = lde(round.lde_factor_log2, "intermediate LDE factor")?;
-            validate_tree(remaining, factor, round.folding_log2, config.cap_size)?;
-            remaining = remaining
-                .checked_sub(round.folding_log2)
-                .ok_or(CommitmentGeometryError::InvalidWhirSchedule)?;
+            pow2(round.lde_factor_log2, "intermediate LDE factor")?;
         }
-        if remaining == 0 {
-            return Err(CommitmentGeometryError::InvalidWhirSchedule);
+        config.validate_for_whir_message_size(message_size_log2);
+        let mut poly_size_log2 = message_size_log2;
+        pow2(poly_size_log2 + base.lde_factor_log2, "LDE domain")?;
+        for (round, fold_log2) in schedule.internal_rounds.iter().zip(schedule.fold_steps()) {
+            poly_size_log2 -= fold_log2;
+            pow2(poly_size_log2 + round.lde_factor_log2, "LDE domain")?;
         }
         let widths = if config.merged_memory_and_witness() {
             [

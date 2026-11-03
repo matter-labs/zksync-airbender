@@ -94,7 +94,6 @@ fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
     let files = gkr::generate_gkr_inlined::<MW>(&compiled_circuit, prover_config);
 
     write_and_fmt(&format!("{}/constants.rs", dir), &files.constants);
-    write_and_fmt(&format!("{}/gkr.rs", dir), &files.gkr);
 
     files
 }
@@ -156,31 +155,60 @@ fn ensure_common() {
     });
 }
 
-/// The verifier of `circuit` for the config of `mode` at `level`, generated
-/// into `verifier/src/generated/<circuit>/<mode>/`.
-fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
-    circuit: &CircuitData,
-    level: SecurityLevel,
-    mode: SoundnessMode,
-) {
-    let prover_config = circuit.prover_config_for_mode(level, mode);
-    generate_verifier_for_circuit_with_config::<MW>(
-        circuit,
-        prover_config,
-        verifier_dir_name(mode),
-    );
+/// Where a generated verifier's `gkr` module lives.
+enum GkrModule<'a> {
+    /// `<dir>/gkr.rs`, private to this verifier.
+    Own,
+    /// `<dir>/../gkr.rs`, shared by every soundness mode of the circuit: the first mode writes it
+    /// (before any `mod.rs` that rustfmt resolves it through) and every later mode's GKR verifier
+    /// must render identically.
+    Shared {
+        mode: SoundnessMode,
+        first: &'a mut Option<(SoundnessMode, String)>,
+    },
 }
 
-/// Like [`generate_verifier_for_circuit`] but with an EXPLICIT prover config,
-/// output dir suffix — for special-purpose
-/// verifier variants whose LDE factor / WHIR schedule / base-commitment shape
-/// differ from the standard per-level configs (e.g. the high-LDE, merged-tree
-/// "L1 feeder" unified verifier).
-///
+fn remove_stale(path: &str) {
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => panic!("{path}: {error}"),
+    }
+}
+
+/// The verifiers of `circuit` for the config of every soundness mode at `level`, generated into
+/// `verifier/src/generated/<circuit>/<mode>/`. Their GKR verifier must be identical in every mode
+/// and is written once, to `verifier/src/generated/<circuit>/gkr.rs`; each mode's module binds it
+/// to its own `constants` and `whir`.
+fn generate_standard_verifiers_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
+    circuit: &CircuitData,
+    level: SecurityLevel,
+) {
+    let mut first = None;
+    for &mode in SoundnessMode::ALL {
+        let prover_config = circuit.prover_config_for_mode(level, mode);
+        generate_verifier_for_circuit_with_config::<MW>(
+            circuit,
+            prover_config,
+            verifier_dir_name(mode),
+            GkrModule::Shared {
+                mode,
+                first: &mut first,
+            },
+        );
+    }
+}
+
+/// The verifier of `circuit` for an EXPLICIT prover config, generated into
+/// `verifier/src/generated/<circuit>/<dir_suffix>/`. Special-purpose
+/// variants whose LDE factor / WHIR schedule / base-commitment shape differ from the standard
+/// per-level configs (e.g. the high-LDE, merged-tree "L1 feeder" unified verifier) keep their
+/// [`GkrModule::Own`] GKR verifier.
 fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     prover_config: &prover::gkr::prover_config::ProverConfig,
     dir_suffix: &str,
+    gkr_module: GkrModule,
 ) {
     ensure_common();
 
@@ -194,9 +222,39 @@ fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBe
     let gkr_files = generate_gkr_verifier::<MW>(circuit, prover_config, &dir);
     generate_whir_verifier::<MW>(prover_config, &dir, &gkr_files);
 
+    let own_gkr = format!("{}/gkr.rs", dir);
+    let gkr_mod = match gkr_module {
+        GkrModule::Own => {
+            write_and_fmt(&own_gkr, &gkr_files.gkr);
+            quote::quote! { pub mod gkr; }
+        }
+        GkrModule::Shared { mode, first } => {
+            let rendered = gkr_files.gkr.to_string();
+            match first {
+                None => {
+                    write_and_fmt(
+                        &format!("{}/gkr.rs", circuit.generated_dir()),
+                        &gkr_files.gkr,
+                    );
+                    *first = Some((mode, rendered));
+                }
+                Some((first_mode, first_rendered)) => assert!(
+                    *first_rendered == rendered,
+                    "{}: the {mode:?} GKR verifier differs from the {first_mode:?} one and cannot be shared",
+                    circuit.name
+                ),
+            }
+            remove_stale(&own_gkr);
+            quote::quote! {
+                #[path = "../gkr.rs"]
+                pub mod gkr;
+            }
+        }
+    };
+
     let mod_rs = quote::quote! {
         pub mod constants;
-        pub mod gkr;
+        #gkr_mod
         pub mod whir;
         #[path = "../../common/mod.rs"]
         pub mod common;
@@ -254,6 +312,7 @@ fn unified_reduced_machine_l1_feeder() {
         circuit,
         &prover_config,
         "pessimistic_conjecture_l1_feeder",
+        GkrModule::Own,
     );
 }
 
@@ -283,6 +342,7 @@ fn one_off_from_prover_config_file() {
         circuit,
         &prover_config,
         &dir_suffix,
+        GkrModule::Own,
     );
 }
 
@@ -293,9 +353,7 @@ macro_rules! generate_circuit_tests {
             fn $name() {
                 let circuit = CIRCUITS.iter().find(|c| c.name == stringify!($name)).unwrap();
                 for level in LEVELS_TO_GENERATE {
-                    for mode in SoundnessMode::ALL {
-                        generate_verifier_for_circuit::<DefaultBabyBearField>(circuit, *level, *mode);
-                    }
+                    generate_standard_verifiers_for_circuit::<DefaultBabyBearField>(circuit, *level);
                 }
             }
         )*

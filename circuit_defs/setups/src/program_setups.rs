@@ -46,28 +46,6 @@ pub fn find_binary_exit_point(binary: &[u32]) -> u32 {
     final_pc as u32
 }
 
-/// Pessimistic compatibility wrapper: `Setups` for an UNROLLED execution of `(binary, text)` on machine `C`:
-/// one entry per circuit family of the machine, with the setup cap committed
-/// exactly like the provers do. Inputs must already be padded for proving
-/// (`pad_bytecode_for_proving` / `read_and_pad_binary`).
-pub fn compute_unrolled_program_setups<C: MachineConfig, A: GoodAllocator + 'static>(
-    binary_image: &[u32],
-    text_section: &[u32],
-    use_caches: bool,
-    security_level: SecurityLevel,
-    worker: &Worker,
-) -> Setups {
-    compute_unrolled_program_setups_in_mode::<C, A>(
-        binary_image,
-        text_section,
-        use_caches,
-        security_level,
-        SoundnessMode::PessimisticConjecture,
-        worker,
-    )
-    .unwrap_or_else(|error| panic!("{error}"))
-}
-
 /// Mode-explicit setup reconstruction from each family's actual compiled columns.
 pub fn compute_unrolled_program_setups_in_mode<C: MachineConfig, A: GoodAllocator + 'static>(
     binary_image: &[u32],
@@ -95,27 +73,6 @@ pub fn compute_unrolled_program_setups_in_mode<C: MachineConfig, A: GoodAllocato
         security_level,
         worker,
     ))
-}
-
-/// Pessimistic compatibility wrapper: `Setups` for a UNIFIED (reduced-machine) execution of `(binary, text)`:
-/// the single unified-family entry, committed exactly like the provers do.
-/// Inputs must already be padded for proving.
-pub fn compute_unified_program_setups<A: GoodAllocator + 'static>(
-    binary_image: &[u32],
-    text_section: &[u32],
-    use_caches: bool,
-    security_level: SecurityLevel,
-    worker: &Worker,
-) -> Setups {
-    compute_unified_program_setups_in_mode::<A>(
-        binary_image,
-        text_section,
-        use_caches,
-        security_level,
-        SoundnessMode::PessimisticConjecture,
-        worker,
-    )
-    .unwrap_or_else(|error| panic!("{error}"))
 }
 
 /// Mode-explicit unified setup reconstruction from actual compiled columns.

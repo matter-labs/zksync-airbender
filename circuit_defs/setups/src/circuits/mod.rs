@@ -35,10 +35,6 @@ use prover::definitions::SecurityLevel;
 pub struct DelegationCircuitSetup {
     pub delegation_type: u16,
     pub trace_len: usize,
-    /// The circuit's prover config per security level
-    /// ([`circuit_common::prover_configs_for_all_levels`]): the geometry every
-    /// commitment and proof made from this setup must use.
-    pub prover_configs: Vec<prover::gkr::prover_config::ProverConfig>,
     /// The circuit definition's geometry (trace length, base packing): with
     /// [`Self::compiled_circuit`] it yields the config of any soundness mode
     /// ([`Self::prover_config_in_mode`]).
@@ -63,16 +59,8 @@ impl DelegationCircuitSetup {
             .try_prover_config(&self.compiled_circuit, level, mode)
     }
 
-    /// Pessimistic compatibility wrapper: the circuit's prover config at `level` — the single source of its
-    /// proving geometry (trace length, schedules, packing).
-    pub fn prover_config(&self, level: SecurityLevel) -> &prover::gkr::prover_config::ProverConfig {
-        let config = circuit_common::prover_config_at(&self.prover_configs, level);
-        assert_eq!(1usize << config.trace_len_log2, self.trace_len);
-        config
-    }
-
     /// The circuit's config under `mode` at `level`, from its geometry and
-    /// compiled circuit (the default mode's is the stored [`Self::prover_config`]).
+    /// compiled circuit.
     pub fn prover_config_in_mode(
         &self,
         level: SecurityLevel,
@@ -93,10 +81,6 @@ pub fn make_setup_for_delegation_circuit<C: circuit_common::DelegationCircuit<Ba
     DelegationCircuitSetup {
         delegation_type: C::DELEGATION_TYPE_ID,
         trace_len: 1 << C::trace_len_log2(),
-        // from the compiled circuit: the source of the committed column widths
-        prover_configs: circuit_common::prover_configs_for_all_levels(|level| {
-            C::prover_config_in_mode(&circuit, level, circuit_common::SoundnessMode::DEFAULT)
-        }),
         geometry: C::geometry(),
         compiled_circuit: circuit,
         table_driver,

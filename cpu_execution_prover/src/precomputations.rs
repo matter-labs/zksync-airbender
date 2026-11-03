@@ -55,7 +55,6 @@ impl CpuCircuitPrecomputations {
                 table_driver,
                 setup,
                 witness_eval_fn,
-                prover_configs: _,
             }) => Precomputed {
                 circuit_type,
                 selection,

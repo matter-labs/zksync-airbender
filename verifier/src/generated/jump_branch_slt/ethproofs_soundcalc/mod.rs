@@ -15,6 +15,7 @@
 #[path = "../../common/mod.rs"]
 pub mod common;
 pub mod constants;
+#[path = "../gkr.rs"]
 pub mod gkr;
 pub mod whir;
 use verifier_common::errors::ErrorCreator;

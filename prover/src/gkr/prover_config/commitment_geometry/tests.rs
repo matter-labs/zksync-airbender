@@ -12,6 +12,25 @@ fn config(pack: usize, mode: CommitmentMode) -> ProverConfig {
     config
 }
 
+fn panic_message(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
+    let payload = std::panic::catch_unwind(f).expect_err("expected a named panic");
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+        .unwrap_or_default()
+}
+
+/// The geometry rejects a malformed schedule with the CPU validator's own diagnostic.
+fn assert_rejected_like_cpu(cfg: &ProverConfig, expected: &str) {
+    let cpu = panic_message(|| cfg.validate_for_whir_message_size(cfg.whir_message_size_log2()));
+    let geometry = panic_message(|| {
+        let _ = geometry(cfg, [1, 1, 1]);
+    });
+    assert!(cpu.contains(expected), "{expected:?} not in {cpu:?}");
+    assert_eq!(geometry, cpu);
+}
+
 fn geometry(
     config: &ProverConfig,
     widths: [usize; 3],
@@ -279,34 +298,36 @@ fn rejects_invalid_caps_and_unit_lde() {
     for invalid in [0, 3, 6] {
         let mut cfg = config(0, CommitmentMode::SeparateMemoryAndWitness);
         cfg.cap_size = invalid;
-        assert_eq!(
-            geometry(&cfg, [1, 1, 1]),
-            Err(CommitmentGeometryError::InvalidPowerOfTwo {
-                parameter: "cap size"
-            })
-        );
+        cfg.whir_schedule.cap_size = invalid;
+        assert_rejected_like_cpu(&cfg, "must be a power of two");
     }
     let mut cfg = config(0, CommitmentMode::SeparateMemoryAndWitness);
     cfg.whir_schedule.base_round.lde_factor_log2 = 0;
-    assert_eq!(
-        geometry(&cfg, [1, 1, 1]),
-        Err(CommitmentGeometryError::InvalidLdeFactor {
-            parameter: "LDE factor"
-        })
-    );
+    assert_rejected_like_cpu(&cfg, "base LDE factor 1 must be a power of two >= 2");
     let mut cfg = config(0, CommitmentMode::SeparateMemoryAndWitness);
     cfg.whir_schedule.internal_rounds[0].lde_factor_log2 = 0;
-    assert_eq!(
-        geometry(&cfg, [1, 1, 1]),
-        Err(CommitmentGeometryError::InvalidLdeFactor {
-            parameter: "intermediate LDE factor"
-        })
+    assert_rejected_like_cpu(
+        &cfg,
+        "intermediate oracle 0 LDE factor 1 must be a power of two >= 2",
     );
 }
 
 #[test]
-fn rejects_inconsistent_and_malformed_schedules_without_panicking() {
-    for case in 0..9 {
+fn rejects_inconsistent_and_malformed_schedules_like_the_cpu_validator() {
+    for (case, expected) in [
+        "at least one internal round",
+        "cap size must equal",
+        "base round needs at least one query",
+        "intermediate oracle 0 needs at least one query",
+        "needs at least one OOD sample",
+        "must be folded by at least one step",
+        "exceeds the tree's",
+        "exceeds the 2^12 coset",
+        "plain-text floor",
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let mut cfg = config(0, CommitmentMode::SeparateMemoryAndWitness);
         match case {
             0 => cfg.whir_schedule.internal_rounds.clear(),
@@ -319,14 +340,7 @@ fn rejects_inconsistent_and_malformed_schedules_without_panicking() {
             7 => cfg.whir_schedule.internal_rounds[0].folding_log2 = usize::MAX,
             _ => cfg.trace_len_log2 = 7,
         }
-        assert!(geometry(&cfg, [1, 1, 1]).is_err(), "case {case}");
-        assert!(
-            std::panic::catch_unwind(
-                || cfg.validate_for_whir_message_size(cfg.whir_message_size_log2())
-            )
-            .is_err(),
-            "CPU validator case {case}"
-        );
+        assert_rejected_like_cpu(&cfg, expected);
     }
     let mut cfg = config(0, CommitmentMode::SeparateMemoryAndWitness);
     cfg.whir_schedule.base_round.fold_log2 = 0;
@@ -338,23 +352,14 @@ fn rejects_inconsistent_and_malformed_schedules_without_panicking() {
 fn rejects_leaves_larger_than_cosets_and_caps_larger_than_trees() {
     let mut cfg = config(0, CommitmentMode::SeparateMemoryAndWitness);
     cfg.whir_schedule.base_round.fold_log2 = 17;
-    assert_eq!(
-        geometry(&cfg, [1, 1, 1]),
-        Err(CommitmentGeometryError::LeafExceedsMessage)
-    );
+    assert_rejected_like_cpu(&cfg, "base oracles: a leaf of 2^17 values exceeds");
     let mut cfg = config(0, CommitmentMode::SeparateMemoryAndWitness);
     cfg.cap_size = 1 << 14;
     cfg.whir_schedule.cap_size = cfg.cap_size;
-    assert_eq!(
-        geometry(&cfg, [1, 1, 1]),
-        Err(CommitmentGeometryError::CapExceedsTree)
-    );
+    assert_rejected_like_cpu(&cfg, "base oracles: cap size 16384 exceeds");
     cfg.cap_size = 1024;
     cfg.whir_schedule.cap_size = cfg.cap_size;
-    assert_eq!(
-        geometry(&cfg, [1, 1, 1]),
-        Err(CommitmentGeometryError::CapExceedsTree)
-    );
+    assert_rejected_like_cpu(&cfg, "intermediate oracle: cap size 1024 exceeds");
 }
 
 #[test]

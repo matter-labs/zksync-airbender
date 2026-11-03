@@ -11,6 +11,7 @@ use full_statement_verifier::program_proof::ProgramProof;
 use prover::definitions::ProvingSelection;
 use setups::Setups;
 use std::path::Path;
+use std::sync::Arc;
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram};
 
 /// Loaded once, before backend initialization. Unused guests remain absent.
@@ -19,11 +20,11 @@ pub(super) struct FsvPrograms {
     pub(super) unrolled_blake: BlakeMode,
     pub(super) bridge_blake: BlakeMode,
     pub(super) final_blake: BlakeMode,
-    unrolled_base: Option<VerifiedFsvProgram>,
-    unrolled_recursion: Option<VerifiedFsvProgram>,
-    bridge_base: Option<VerifiedFsvProgram>,
-    bridge_recursion: Option<VerifiedFsvProgram>,
-    unified: Option<VerifiedFsvProgram>,
+    unrolled_base: Option<Arc<VerifiedFsvProgram>>,
+    unrolled_recursion: Option<Arc<VerifiedFsvProgram>>,
+    bridge_base: Option<Arc<VerifiedFsvProgram>>,
+    bridge_recursion: Option<Arc<VerifiedFsvProgram>>,
+    unified: Option<Arc<VerifiedFsvProgram>>,
 }
 
 impl FsvPrograms {
@@ -48,21 +49,29 @@ impl FsvPrograms {
     ) -> Result<Self, String> {
         let recursion = target != ProofTarget::Base;
         let unified = target == ProofTarget::RecursionUnified;
-        let load = |needed: bool, program, blake| {
-            if needed {
+        let mut loaded: Vec<Arc<VerifiedFsvProgram>> = Vec::new();
+        let mut load =
+            |needed: bool, program, blake| -> Result<Option<Arc<VerifiedFsvProgram>>, String> {
+                if !needed {
+                    return Ok(None);
+                }
                 let descriptor = FsvDescriptor::new(
                     selection.security_level,
                     selection.soundness_mode,
                     program,
                     blake,
                 );
-                load_fsv_exact(dir, &descriptor)
-                    .map(Some)
-                    .map_err(|error| error.to_string())
-            } else {
-                Ok(None)
-            }
-        };
+                if let Some(guest) = loaded
+                    .iter()
+                    .find(|guest| *guest.descriptor() == descriptor)
+                {
+                    return Ok(Some(Arc::clone(guest)));
+                }
+                let guest =
+                    Arc::new(load_fsv_exact(dir, &descriptor).map_err(|error| error.to_string())?);
+                loaded.push(Arc::clone(&guest));
+                Ok(Some(guest))
+            };
         let programs = Self {
             selection,
             unrolled_base: load(recursion, FsvProgram::UnrolledBaseLayer, unrolled_blake)?,
@@ -103,7 +112,7 @@ impl FsvPrograms {
             (FsvProgram::UnifiedRecursionLayer, SetupMachine::Unified) => &self.unified,
             other => return Err(format!("unsupported pipeline guest {other:?}")),
         };
-        guest.as_ref().ok_or_else(|| {
+        guest.as_deref().ok_or_else(|| {
             format!("pipeline guest {program:?}/{machine:?} was not loaded for this target")
         })
     }
@@ -186,6 +195,15 @@ mod tests {
                         guest.digest(),
                         fsv_manifest_entry(&expected).unwrap().digest
                     );
+                }
+                for program in [
+                    FsvProgram::UnrolledBaseLayer,
+                    FsvProgram::UnrolledRecursionLayer,
+                ] {
+                    assert!(std::ptr::eq(
+                        guests.get(program, SetupMachine::UnrolledReduced).unwrap(),
+                        guests.get(program, SetupMachine::Unified).unwrap(),
+                    ));
                 }
             }
         }

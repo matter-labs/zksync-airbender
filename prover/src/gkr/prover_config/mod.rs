@@ -238,8 +238,10 @@ pub enum CommitmentMode {
     MergedMemoryAndWitness,
 }
 
+/// The pre-refactor top-level `lde_factor`, `base_oracles_values_per_leaf` and `pack_log2` are
+/// rejected as unknown fields: the schedule is their only source.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(from = "legacy_compat::ProverConfigRepr")]
+#[serde(deny_unknown_fields)]
 pub struct ProverConfig {
     /// log2 of the circuit trace length this config was computed for. The
     /// prove entries assert the caller-supplied `trace_len` matches, so a
@@ -265,6 +267,7 @@ pub struct ProverConfig {
     /// sumchecks, applied to every same-size layer regardless of its input
     /// poly count. Must satisfy the STRICT grammar of
     /// [`validate_sumcheck_schedule`] for the trace length's variable count.
+    #[serde(default)]
     pub same_size_sumcheck_schedule: Vec<SumcheckStep>,
     /// Step schedules for the DIMENSION-REDUCING layer sumchecks (pairwise
     /// products + logup reduction gates only), keyed by the layer's number
@@ -272,6 +275,7 @@ pub struct ProverConfig {
     /// `dimension_reducing_sumcheck_schedule[&n]` if present, and
     /// NaiveSumcheck for every round otherwise. Each entry must satisfy
     /// [`validate_sumcheck_schedule`] for its key.
+    #[serde(default)]
     pub dimension_reducing_sumcheck_schedule: BTreeMap<usize, Vec<SumcheckStep>>,
     /// Whether memory and witness are committed as two base oracles or as one
     /// merged oracle (see [`CommitmentMode`]). Decides the transcript layout,
@@ -393,7 +397,10 @@ impl ProverConfig {
             num_rounds >= 2,
             "a WHIR schedule needs the base round and at least one internal round"
         );
-        assert_eq!(schedule.cap_size, self.cap_size);
+        assert_eq!(
+            schedule.cap_size, self.cap_size,
+            "the WHIR schedule's cap size must equal the config's"
+        );
         assert!(
             schedule.base_lde_factor_log2() >= 1,
             "base LDE factor {} must be a power of two >= 2",
@@ -404,7 +411,10 @@ impl ProverConfig {
             "cap size {} must be a power of two",
             self.cap_size
         );
-        assert!(schedule.base_round.num_queries >= 1);
+        assert!(
+            schedule.base_round.num_queries >= 1,
+            "the WHIR base round needs at least one query"
+        );
         for (i, round) in schedule.internal_rounds.iter().enumerate() {
             assert!(
                 round.lde_factor_log2 >= 1,
@@ -419,7 +429,10 @@ impl ProverConfig {
                 round.num_ood_samples >= 1,
                 "WHIR intermediate oracle {i} needs at least one OOD sample"
             );
-            assert!(round.num_queries >= 1);
+            assert!(
+                round.num_queries >= 1,
+                "WHIR intermediate oracle {i} needs at least one query"
+            );
         }
 
         // Merkle geometry of the oracle committed with LDE factor `lde_factor`
@@ -789,76 +802,6 @@ fn whir_folding_step(
     }
 }
 
-// LEGACY-COMPAT (delete once every tracked proof / config fixture has been
-// regenerated with the refactored layout): the pre-refactor serialized
-// `ProverConfig` carried `lde_factor`, `base_oracles_values_per_leaf` and
-// `pack_log2` as its own fields (now derived from the schedule). The decoder
-// accepts both layouts; a legacy `pack_log2` is re-applied to the (legacy,
-// unpacked-decoded) schedule, and the legacy LDE factor / leaf size are
-// asserted against it.
-mod legacy_compat {
-    use super::*;
-
-    #[derive(serde::Deserialize)]
-    pub(crate) struct ProverConfigRepr {
-        trace_len_log2: usize,
-        cap_size: usize,
-        sumcheck_explicit_output_size_log_2: usize,
-        security_level: SecurityLevel,
-        whir_schedule: WhirSchedule,
-        #[serde(default)]
-        same_size_sumcheck_schedule: Vec<SumcheckStep>,
-        #[serde(default)]
-        dimension_reducing_sumcheck_schedule: BTreeMap<usize, Vec<SumcheckStep>>,
-        commitment_mode: CommitmentMode,
-        // legacy fields
-        #[serde(default)]
-        lde_factor: Option<usize>,
-        #[serde(default)]
-        base_oracles_values_per_leaf: Option<usize>,
-        #[serde(default)]
-        pack_log2: Option<usize>,
-    }
-
-    impl From<ProverConfigRepr> for ProverConfig {
-        fn from(repr: ProverConfigRepr) -> Self {
-            let mut whir_schedule = repr.whir_schedule;
-            if let Some(pack_log2) = repr.pack_log2 {
-                let schedule_pack_log2 = &mut whir_schedule.base_round.physical_packing_log2;
-                assert!(
-                    *schedule_pack_log2 == 0 || *schedule_pack_log2 == pack_log2,
-                    "legacy config pack_log2 {pack_log2} contradicts the schedule's"
-                );
-                *schedule_pack_log2 = pack_log2;
-            }
-            if let Some(lde_factor) = repr.lde_factor {
-                assert_eq!(
-                    lde_factor,
-                    whir_schedule.base_lde_factor(),
-                    "legacy config lde_factor contradicts the schedule's"
-                );
-            }
-            if let Some(values_per_leaf) = repr.base_oracles_values_per_leaf {
-                assert_eq!(
-                    values_per_leaf,
-                    whir_schedule.base_values_per_leaf(),
-                    "legacy config base_oracles_values_per_leaf contradicts the schedule's"
-                );
-            }
-            Self {
-                trace_len_log2: repr.trace_len_log2,
-                cap_size: repr.cap_size,
-                sumcheck_explicit_output_size_log_2: repr.sumcheck_explicit_output_size_log_2,
-                security_level: repr.security_level,
-                whir_schedule,
-                same_size_sumcheck_schedule: repr.same_size_sumcheck_schedule,
-                dimension_reducing_sumcheck_schedule: repr.dimension_reducing_sumcheck_schedule,
-                commitment_mode: repr.commitment_mode,
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use crate::{definitions::*, gkr::whir::proximity_testing_modes::PessimisticConjectureMode};
@@ -899,7 +842,22 @@ mod test {
     }
 
     #[test]
-    fn legacy_config_json_decodes_with_its_packing() {
+    fn current_config_json_round_trips() {
+        for config in [
+            example_configs::config_for_100_bits_under_pessimistic_conjecture(20),
+            example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
+                20,
+                4,
+                SecurityLevel::Sec100,
+            ),
+        ] {
+            let json = serde_json::to_string(&config).unwrap();
+            assert_eq!(serde_json::from_str::<ProverConfig>(&json).unwrap(), config);
+        }
+    }
+
+    #[test]
+    fn obsolete_config_fields_are_rejected() {
         // the pre-refactor serialized layout of a PACKED config: the packing
         // lived on the config, the schedule was six flat arrays
         let json = r#"{"trace_len_log2": 20, "lde_factor": 2, "cap_size": 16, "base_oracles_values_per_leaf": 2,
@@ -909,16 +867,35 @@ mod test {
                 "whir_pow_schedule": [26, 24, 25, 19, 21, 21]},
             "same_size_sumcheck_schedule": [], "dimension_reducing_sumcheck_schedule": {},
             "pack_log2": 4, "commitment_mode": "SeparateMemoryAndWitness"}"#;
-        let decoded: ProverConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(decoded.pack_log2(), 4);
-        assert_eq!(decoded.lde_factor(), 2);
-        assert_eq!(decoded.base_oracles_values_per_leaf(), 2);
-        assert_eq!(decoded.whir_message_size_log2(), 24);
-        decoded.validate_for_whir_message_size(24);
-        // the current layout round-trips
-        let reencoded = serde_json::to_string(&decoded).unwrap();
-        let again: ProverConfig = serde_json::from_str(&reencoded).unwrap();
-        assert_eq!(again, decoded);
+        let error = serde_json::from_str::<ProverConfig>(json)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("unknown field `lde_factor`"), "{error}");
+
+        let packed = example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
+            20,
+            4,
+            SecurityLevel::Sec100,
+        );
+        let current = serde_json::to_value(&packed).unwrap();
+        for (field, value) in [
+            ("lde_factor", 2),
+            ("base_oracles_values_per_leaf", 2),
+            ("pack_log2", 4),
+        ] {
+            let mut obsolete = current.clone();
+            obsolete
+                .as_object_mut()
+                .unwrap()
+                .insert(field.to_string(), value.into());
+            let error = serde_json::from_value::<ProverConfig>(obsolete)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains(&format!("unknown field `{field}`")),
+                "{error}"
+            );
+        }
     }
 
     #[test]

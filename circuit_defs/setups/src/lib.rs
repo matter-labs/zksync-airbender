@@ -99,10 +99,6 @@ pub struct CircuitSetup<A: GoodAllocator = Global> {
     pub table_driver: TableDriver<BabyBearField>,
     pub setup: GKRSetup<BabyBearField>,
     pub witness_eval_fn: Option<UnrolledCircuitWitnessEvalFn<A>>,
-    /// The circuit's prover config per security level
-    /// ([`circuit_common::prover_configs_for_all_levels`]): the geometry every
-    /// commitment and proof made from this setup must use.
-    pub prover_configs: Vec<ProverConfig>,
 }
 
 impl<A: GoodAllocator> CircuitSetup<A> {
@@ -114,14 +110,6 @@ impl<A: GoodAllocator> CircuitSetup<A> {
     ) -> Result<ProverConfig, circuit_common::ConfigSelectionError> {
         self.geometry
             .try_prover_config(&self.compiled_circuit, level, mode)
-    }
-
-    /// Pessimistic compatibility wrapper: the circuit's prover config at `level` — the single source of its
-    /// proving geometry (trace length, schedules, packing).
-    pub fn prover_config(&self, level: SecurityLevel) -> &ProverConfig {
-        let config = circuit_common::prover_config_at(&self.prover_configs, level);
-        assert_eq!(1usize << config.trace_len_log2, self.trace_len);
-        config
     }
 }
 
@@ -165,7 +153,6 @@ pub fn make_setup_for_non_mem_circuit<
         table_driver,
         setup,
         witness_eval_fn,
-        prover_configs: circuit_common::prover_configs_for_all_levels(C::prover_config),
     }
 }
 
@@ -210,7 +197,6 @@ pub fn make_setup_for_with_mem_circuit<
         table_driver,
         setup,
         witness_eval_fn,
-        prover_configs: circuit_common::prover_configs_for_all_levels(C::prover_config),
     }
 }
 
