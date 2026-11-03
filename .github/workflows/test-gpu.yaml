@@ -206,6 +206,7 @@ jobs:
             --input-file examples/hashed_fibonacci/input.txt \
             --target recursion-unified \
             --backend gpu \
+            --ram-size 128mib \
             --output-dir output \
             --output-file proof.json
 

@@ -6328,3 +6328,19 @@ The failed run retained no Lean cache, so the corrected cold run must start agai
 Its module receipts and failure logs remain in the uploaded artifact.
 No target, cached Review claim, model definition or caller premise changes.
 The three focused Lean 4.31 source builds and all 52 generator checks pass.
+
+## 2026-11-03: Bound the GPU smoke guest RAM
+
+The GPU smoke at `d1423ca72` failed in run `41546758697` and its single retry.
+Both failed while proving the unified recursion example on an NVIDIA L4.
+The runner reports 23,034 MiB of device memory.
+The allocator could not add 1 GiB after allocating 20,564,675,584 bytes.
+The CLI command had used its default 1 GiB guest RAM setting.
+
+The CI smoke now requests the supported 128 MiB guest RAM setting.
+It still proves the same example and verifies the resulting proof.
+The circuit parity tests also remain required.
+This change affects the CI command. It changes no production Rust or circuit.
+The separate full FV run `41546838677` continues with the same Lean inputs.
+All 52 generator checks and the workflow syntax checks pass.
+The corrected GPU check remains pending.

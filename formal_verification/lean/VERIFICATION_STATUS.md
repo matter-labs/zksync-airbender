@@ -60,7 +60,9 @@ The next module rejected the reserved `parts` binder in `ShiftAssembly.lean`.
 The fix quotes that binder and the same reserved syntax in two adjacent consumers.
 The Lean names and theorems stay unchanged.
 All three focused source builds and all 52 generator checks pass.
-CI now saves cold build progress after failure. A corrected full run is required.
+CI now saves cold build progress after failure.
+The corrected [run 41546838677](https://github.com/matter-labs/zksync-airbender/actions/runs/41546838677)
+is running at `d1423ca72`. Its Lean inputs stay unchanged by the GPU CI fix.
 The earlier run rejected three omitted split Keccak exports. The CI list is fixed.
 The repaired run reuses saved native build caches.
 The registered Rust CI workflow provides the manual entry.
@@ -111,5 +113,9 @@ The test now uses the current five-argument verifier generator.
 The generator derives packing and batching parameters from its configuration.
 At commit `8ca339867`, 22 PR checks passed and the IaC scanner was neutral.
 No ordinary check failed or stayed pending. The FV PR job skips as configured.
+The GPU smoke at `d1423ca72` then failed twice on the L4 runner.
+It could not allocate another 1 GiB after allocating 20,564,675,584 bytes.
+The CI command now requests the supported 128 MiB guest RAM setting.
+Proof generation and verification remain required. The corrected GPU check is pending.
 The separate full FV run must pass before merge.
 Production code stays unchanged.
