@@ -73,14 +73,14 @@ theorem unrolled_full_standard_caller_cycle
     facts inputs.toBoundaryInputs workerSetup bounds ram commands controls present workerFamily
     localHistory localEvents aligned readable
   have prepared : ∀ cell ∈ cells, ∃ value,
-      cell.read (retiredState before row.start.word.toBitVec) =
-        .ok value (retiredState before row.start.word.toBitVec) := by
+      cell.read (retiredState before row.«start».word.toBitVec) =
+        .ok value (retiredState before row.«start».word.toBitVec) := by
     intro cell included
     obtain ⟨value, read⟩ := readable cell included
     exact ⟨value, cell_read_PC cell (cell_read_nextPC cell read _) _⟩
   have rebased := unrolled_full_standard_worker_call accepted equations active initialClock initialAligned
     facts inputs.toBoundaryInputs workerSetup bounds ram commands controls present workerFamily
-    (retired_state_history localHistory row.start.word.toBitVec) localEvents aligned prepared
+    (retired_state_history localHistory row.«start».word.toBitVec) localEvents aligned prepared
   obtain ⟨entry, included, source, pc, query, sameFamily⟩ := unrolled_full_standard_caller_source
     setup lookup accepted excluded initialPC row member family selected worker matched
   have code := text_caller_code FullUnsigned.standardDecoderFields text setup.size entry included
@@ -88,17 +88,17 @@ theorem unrolled_full_standard_caller_cycle
     (fun event present => readonly event (List.mem_filter.mp present).1) source code.1 code.2
   have pcBinding := unrolled_full_standard_pc_binding setup lookup accepted excluded initialPC
     row member family selected worker matched
-  have start : Delegation.Caller.initialPC row.assignment = row.start.word := by
+  have «start» : Delegation.Caller.initialPC row.assignment = row.«start».word := by
     cases row with | mk kind assignment => cases family; rfl
   have finish : Delegation.Caller.finalPC row.assignment = row.finish.word := by
     cases row with | mk kind assignment => cases family; rfl
   have retirement : run (do SailRV32.Functions.normal_base_next_pc (); SailRV32.Functions.tick_pc ())
-      (retiredState after row.start.word.toBitVec) = .ok () (retiredState after row.finish.word.toBitVec) := by
+      (retiredState after row.«start».word.toBitVec) = .ok () (retiredState after row.finish.word.toBitVec) := by
     have actual : run (do SailRV32.Functions.normal_base_next_pc (); SailRV32.Functions.tick_pc ())
-        (retiredState after row.start.word.toBitVec) =
-          .ok () (retiredState (retiredState after row.start.word.toBitVec) row.finish.word.toBitVec) := by
-      simpa only [finish, retiredState] using pcBinding.sail (retiredState after row.start.word.toBitVec)
-        (by simpa only [start] using retired_state_pc after row.start.word.toBitVec)
+        (retiredState after row.«start».word.toBitVec) =
+          .ok () (retiredState (retiredState after row.«start».word.toBitVec) row.finish.word.toBitVec) := by
+      simpa only [finish, retiredState] using pcBinding.sail (retiredState after row.«start».word.toBitVec)
+        (by simpa only [«start»] using retired_state_pc after row.«start».word.toBitVec)
     simpa only [retired_state_overwrite] using actual
   have clocks := state_clock_inputs (by decide)
     (by decide +kernel : SerializedInverse.Clock babyBearModulus)
@@ -108,7 +108,7 @@ theorem unrolled_full_standard_caller_cycle
     (accepted.cpuEquations row member) clocks.1
   change (timeOfPair row.finish.timestamp).value = row.clock + 4 at advance
   refine ⟨before, after, past, ?_, ?_, entry, included, query, pc, atCall,
-    sameFamily ▸ raw, retiredState after row.start.word.toBitVec, sameFamily ▸ rebased, retirement⟩
+    sameFamily ▸ raw, retiredState after row.«start».word.toBitVec, sameFamily ▸ rebased, retirement⟩
   · change SailHistory cells (events.filter fun event => decide
       (row.clock < event.1 ∧ event.1 ≤ (timeOfPair row.finish.timestamp).value)) before after
     rw [advance]

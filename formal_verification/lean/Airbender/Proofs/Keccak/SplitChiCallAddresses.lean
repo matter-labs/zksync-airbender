@@ -9,7 +9,7 @@ set_option maxHeartbeats 1600000
 /-- Every active split lane uses one of the twenty-five physical state slots. -/
 theorem split_state_slot_bound (index : Fin 361) (lane : Fin 5) :
     ((Call.slots index)[lane.val]).val < 25 := by
-  simp only [Call.slots, Vector.getElem_ofFn, dif_pos lane.isLt]
+  simp only [Call.slots, Vector.getElem_ofFn, dite_eq_left lane.isLt]
   exact (Call.physicalSlot _ _).isLt
 
 variable [Fact babyBearModulus.Prime]

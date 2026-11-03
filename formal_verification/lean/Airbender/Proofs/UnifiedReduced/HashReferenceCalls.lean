@@ -82,13 +82,13 @@ theorem computed_window_call [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCa
   have duration := scope.duration
   have projection := mixed_projected_window (by omega) clockInverse rotationInverse accepted inputs first last
     (by omega) (by omega) (by omega) scope.beforeTerminal (by simpa only [scope.calls] using duration)
-  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, _, _, _, _,
+  obtain ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, _, _, _, _,
     prefixMatching, _, startBoundary, _, selected, initialized, _, _⟩ := projection.execution
   have control := hash_control_preparation_at_boundary (by omega) clockInverse accepted inputs scope.preparation
     first prefixMatching startBoundary
   have entry : (Cell.register window.span.controlRegister).read atStart = .ok window.span.controlStart atStart := by
     simpa only [hash_preparation_value] using control.1
-  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection window.lower window.upper start finish)
+  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection window.lower window.upper «start» finish)
       atStart window.span := ⟨inputs.tables, scope.family, entry, scope.calls⟩
   exact hash_span_call hp clockInverse selected initialized protocol
     (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))

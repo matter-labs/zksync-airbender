@@ -24,11 +24,11 @@ theorem chi5_native_reference_result (cached : Bool) (w : Nat → ZMod babyBearM
   intro lane bound
   simp only [Call.result, kind, chi5ReferenceLanes, Fin.getElem_fin, Vector.getElem_ofFn]
   by_cases live : lane < 5
-  · simp only [dif_pos live]
+  · simp only [dite_eq_left live]
     have first : (lane + 1) % 5 < 5 := Nat.mod_lt _ (by decide)
     have second : (lane + 2) % 5 < 5 := Nat.mod_lt _ (by decide)
-    simp only [dif_pos first, dif_pos second]
+    simp only [dite_eq_left first, dite_eq_left second]
     exact (chi5_native_lane_operation cached w holds ⟨lane, live⟩).symm
-  · simp only [dif_neg live]
+  · simp only [dite_eq_right live]
 
 end Airbender.Keccak.Split.Native.Proofs

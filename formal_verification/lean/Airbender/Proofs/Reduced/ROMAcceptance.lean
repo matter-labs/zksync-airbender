@@ -75,7 +75,7 @@ theorem rom_token_refresh (initial : State) {left right : MemoryToken p}
     simp [ROMView.shadow, Cell.addressCode, Word.ofBitVec, limbBase]
     dsimp [ROM.limit] at inROM
     omega
-  simp only [ROMView.token, ← same, if_pos shadow]
+  simp only [ROMView.token, ← same, ite_eq_left shadow]
 
 /-- The interpreted shared history preserves original public instruction bytes. -/
 theorem rom_unchanged [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072) (initial : State)

@@ -68,7 +68,7 @@ theorem unrolled_full_rom_cpu_steps
       simp [Cell.addressCode, ROMView.shadow]
     have address : (writeToken row.columns row.assignment port).address =
         (readToken row.assignment port).address := rfl
-    simp only [Function.comp_apply, ROMView.token, address, outside, if_false]
+    simp only [Function.comp_apply, ROMView.token, address, outside, ite_false]
   · have lifted : PooledROMView.row initial row ∉ (Delegation.Caller.NativeROM.view initial data).callers := by
       rw [Delegation.Caller.NativeROM.Proofs.callers]
       intro included
@@ -128,7 +128,7 @@ theorem unrolled_full_rom_steps
         intro edge member
         have same := Keccak.Split.Native.Proofs.preserved_addresses edge member
         have outside := splitRAM edge member
-        simp only [ROMView.token, ← same, outside, if_false, id_eq]
+        simp only [ROMView.token, ← same, outside, ite_false, id_eq]
       _ = splitWorkers.steps := List.map_id _
   change pooledSteps (PooledROMView.data initial trace) ++ workers.steps ++ splitWorkers.steps =
     (pooledSteps trace ++ workers.steps ++ splitWorkers.steps).map _

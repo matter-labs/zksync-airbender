@@ -27,7 +27,7 @@ private theorem filter_groups {A B : Type} (rows : List A) (group : A → List B
         have same := (agreement first List.mem_cons_self item member).symm.trans picked
         rw [chosen] at same
         cases same)
-      simpa only [List.filter_cons, chosen, Bool.false_eq_true, if_false, List.flatMap_cons,
+      simpa only [List.filter_cons, chosen, Bool.false_eq_true, ite_false, List.flatMap_cons,
         List.filter_append, none, List.nil_append] using tail
 
 /-- Cutting before a real instruction partitions the actual architectural

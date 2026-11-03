@@ -37,18 +37,18 @@ theorem uniform65536_get (blocks : List Block)
     have head := shape block (by simp)
     have tail : ∀ b ∈ rest, b.length = 65536 := fun b member => shape b (by simp [member])
     by_cases inside : n < 65536
-    · rw [getFromBlocks, head, if_pos inside]
+    · rw [getFromBlocks, head, ite_eq_left inside]
       simp only [Nat.div_eq_of_lt inside, Nat.mod_eq_of_lt inside,
         List.getElem?_cons_zero, Option.bind_some]
     · have quot : n / 65536 = (n - 65536) / 65536 + 1 := by omega
       have residue : n % 65536 = (n - 65536) % 65536 := by omega
-      rw [getFromBlocks, head, if_neg inside, ih tail (n - 65536), quot,
+      rw [getFromBlocks, head, ite_eq_right inside, ih tail (n - 65536), quot,
         List.getElem?_cons_succ, residue]
 
 theorem constant_affine_get (length value index : Nat) (bound : index < length) :
     Block.get? (.affine length value 0) index = some value := by
-  simp only [Block.get?, Block.length, if_pos bound, zero_mul, add_zero,
-    if_pos (Int.natCast_nonneg value), Int.toNat_natCast]
+  simp only [Block.get?, Block.length, ite_eq_left bound, zero_mul, add_zero,
+    ite_eq_left (Int.natCast_nonneg value), Int.toNat_natCast]
 
 /-- Complete coverage locates any retained source suffix. -/
 theorem column_suffix_get (column : Column) (first length index : Nat)

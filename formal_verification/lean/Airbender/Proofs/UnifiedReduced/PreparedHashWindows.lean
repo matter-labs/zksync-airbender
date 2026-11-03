@@ -28,18 +28,18 @@ theorem prepared_hash_reference_at_states [Fact p.Prime] (hp : FieldCapacity.Nat
     (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before atStart atFinish : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {span : Delegation.Caller.HashSpan} {lower upper : Nat}
-    {start finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
+    {«start» finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
     (accepted : MixedMemoryAccepted data program)
     (inputs : PreparedHashWindowInputs data before ca oa cells program span lower upper)
     (first : lower % 4 = 0) (last : upper % 4 = 0)
     (prefixMatching : (data.machine.initialMemory ++ (data.prefixSteps lower).map Prod.snd).Perm
-      (start ++ (data.prefixSteps lower).map Prod.fst))
-    (matching : (start ++ (data.windowSteps lower upper).map Prod.snd).Perm
+      («start» ++ (data.prefixSteps lower).map Prod.fst))
+    (matching : («start» ++ (data.windowSteps lower upper).map Prod.snd).Perm
       (finish ++ (data.windowSteps lower upper).map Prod.fst))
-    (startBoundary : NativeBoundary start atStart cells) (finishBoundary : NativeBoundary finish atFinish cells)
+    (startBoundary : NativeBoundary «start» atStart cells) (finishBoundary : NativeBoundary finish atFinish cells)
     (spanPerm : spanEvents.Perm ((data.windowSteps lower upper).map transferEvent))
     (spanHistory : SailHistory cells spanEvents atStart atFinish) :
-    span.Result (data.windowProjection lower upper start finish) atStart atFinish (Delegation.Caller.workerCells cells) :=
+    span.Result (data.windowProjection lower upper «start» finish) atStart atFinish (Delegation.Caller.workerCells cells) :=
   computed_hash_reference_at_states hp clockInverse accepted (literal_computed_hash_inputs inputs)
     first last prefixMatching matching startBoundary finishBoundary spanPerm spanHistory
 

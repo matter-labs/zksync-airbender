@@ -80,7 +80,7 @@ theorem source_split_low_six_get {artifact : Artifact}
   have bound : index.val < (Block.periodic 64 0 patternArray).length := by
     rw [Block.length, pattern_size]
     exact index.isLt
-  rw [if_pos bound]
+  rw [ite_eq_left bound]
   have sampled := periodic_get patternArray 64 0 index.val (by rw [pattern_size]; decide +kernel)
     (by rw [pattern_size]; exact index.isLt)
   simp only [Int.natCast_zero, Nat.zero_mul, Nat.add_zero, pattern_size] at sampled

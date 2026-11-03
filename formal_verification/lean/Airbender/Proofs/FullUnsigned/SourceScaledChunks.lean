@@ -66,7 +66,7 @@ theorem ChunkBlock.expandBy_get (scale : Nat) (positive : 0 < scale) (block : Ch
     have quotient : index / (scale * values.size) = index / scale / values.size := by
       rw [Nat.div_div_eq_div_mul]
     change Block.get? (.periodic count stride _) index = Block.get? (.periodic count stride values) (index / scale)
-    simp only [Block.get?, Block.length, scaledValues_size, if_pos inside, if_pos small,
+    simp only [Block.get?, Block.length, scaledValues_size, ite_eq_left inside, ite_eq_left small,
       scaledValues_get scale positive, residue, ← Int.natCast_ediv, quotient]
 
 theorem expanded_blocks_length (scale : Nat) (blocks : List ChunkBlock) :
@@ -85,7 +85,7 @@ theorem getFromBlocks_expandBy (scale : Nat) (positive : 0 < scale) (blocks : Li
     by_cases inside : index < (block.expandBy scale).length
     · have small : index / scale < block.compact.length := (Nat.div_lt_iff_lt_mul positive).mpr
         (by simpa only [ChunkBlock.expandBy_length, Nat.mul_comm] using inside)
-      rw [if_pos inside, if_pos small, ChunkBlock.expandBy_get _ positive _ _ inside]
+      rw [ite_eq_left inside, ite_eq_left small, ChunkBlock.expandBy_get _ positive _ _ inside]
     · have outside : ¬ index / scale < block.compact.length := by
         rw [Nat.div_lt_iff_lt_mul positive]
         simpa only [ChunkBlock.expandBy_length, Nat.mul_comm] using inside
@@ -93,6 +93,6 @@ theorem getFromBlocks_expandBy (scale : Nat) (positive : 0 < scale) (blocks : Li
         rw [ChunkBlock.expandBy_length]
         exact Nat.sub_mul_div_of_le index scale block.compact.length (by
           rw [ChunkBlock.expandBy_length] at inside; omega)
-      rw [if_neg inside, if_neg outside, ih, offset]
+      rw [ite_eq_right inside, ite_eq_right outside, ih, offset]
 
 end Airbender.Setup.Proofs

@@ -21,7 +21,7 @@ theorem history_unique_address_read {cells : List Cell} {events : List MemoryAcc
   | @cons event rest before middle after past cell member address old written ih =>
     by_cases same : event.2.1 = target.2.1
     · have picked : event :: (rest.filter fun other => decide (other.2.1 = target.2.1)) = [target] := by
-        simpa only [List.filter_cons, same, decide_true, if_true] using single
+        simpa only [List.filter_cons, same, decide_true, ite_true] using single
       have equal := (List.cons.inj picked).1
       have empty := (List.cons.inj picked).2
       subst target
@@ -37,7 +37,7 @@ theorem history_unique_address_read {cells : List Cell} {events : List MemoryAcc
       subst value
       exact ⟨cell, member, address, read⟩
     · have tailSingle : (rest.filter fun other => decide (other.2.1 = target.2.1)) = [target] := by
-        simpa only [List.filter_cons, same, decide_false, Bool.false_eq_true, if_false] using single
+        simpa only [List.filter_cons, same, decide_false, Bool.false_eq_true, ite_false] using single
       exact ih initial tailSingle
 
 end Airbender.Trace.Proofs

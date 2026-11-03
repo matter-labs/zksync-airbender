@@ -71,8 +71,8 @@ theorem parity_source_xor_member [Fact babyBearModulus.Prime] {artifact : Artifa
       (Keccak.Split.Native.Fixed.columnParityXor5.row ⟨index.val - 65780, by
         change index.val - 65780 < 1048576; omega⟩).map signedValue := by
     simp only [Keccak.Split.Native.Fixed.columnParityGenericRow,
-      dif_neg (by omega : ¬ index.val < 65536), dif_neg (by omega : ¬ index.val < 65658),
-      dif_neg (by omega : ¬ index.val < 65780), dif_pos upper]
+      dite_eq_right (by omega : ¬ index.val < 65536), dite_eq_right (by omega : ¬ index.val < 65658),
+      dite_eq_right (by omega : ¬ index.val < 65780), dite_eq_left upper]
   rw [physical]
   have reference := congrArg (fun actual : Vector Int 8 => actual.map (fun value : Int => (value : F))) canonical
   simpa only [position] using reference

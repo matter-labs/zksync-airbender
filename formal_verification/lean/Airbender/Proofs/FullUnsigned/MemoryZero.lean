@@ -73,7 +73,7 @@ theorem unrolled_full_memory_zero_rules
       apply preserving port native same
       intro previous prior earlier key
       have physical : previous ∈ machinePorts row := by
-        simpa only [machinePorts, if_neg caller] using prior
+        simpa only [machinePorts, ite_eq_right caller] using prior
       have inMachine : (readToken row.assignment previous,
           writeToken row.columns row.assignment previous) ∈ pooledSteps trace :=
         List.mem_flatMap.mpr ⟨row, member, List.mem_map.mpr ⟨previous, by simpa using physical, rfl⟩⟩

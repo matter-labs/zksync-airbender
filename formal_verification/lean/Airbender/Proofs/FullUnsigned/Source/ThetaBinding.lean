@@ -9,9 +9,14 @@ set_option Elab.async false
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-certify_source_string_binding Airbender.Setup.SourceCaptureThetaProofs
+certify_source_character_binding Airbender.Setup.SourceCaptureThetaProofs
   using Airbender.Setup.SourceCaptureTheta
   against Airbender.Keccak.Split.Native.Fixed.thetaRhoGenericSourceBytes
   with Airbender.Setup.SourceCaptureThetaLiteral
   bytes Airbender.Setup.SourceCaptureThetaBytes
-  bank Airbender.Setup.SourceCaptureThetaBank
+  bank Airbender.Setup.SourceCaptureThetaBank interval 8192
+
+close_source_string_binding Airbender.Setup.SourceCaptureThetaProofs
+  using Airbender.Setup.SourceCaptureTheta
+  against Airbender.Keccak.Split.Native.Fixed.thetaRhoGenericSourceBytes
+  with Airbender.Setup.SourceCaptureThetaLiteral

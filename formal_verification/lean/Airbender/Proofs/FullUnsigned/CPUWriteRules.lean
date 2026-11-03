@@ -107,7 +107,7 @@ theorem unrolled_full_cpu_write_rule
     apply rules port native
     intro source sourceMember order
     have physical : source ∈ machinePorts row := by
-      simpa only [machinePorts, if_neg caller] using sourceMember
+      simpa only [machinePorts, ite_eq_right caller] using sourceMember
     apply earlierReads _ (member source physical)
     rw [time source sourceMember, time port native]
     exact order

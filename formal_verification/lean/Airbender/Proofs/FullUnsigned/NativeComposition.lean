@@ -29,7 +29,7 @@ theorem unrolled_full_cycle_transition_of_selected_inputs
     (excluded : FullUnsigned.NoSpecial5Call initial text)
     (initialPC : trace.initial.word.lo < limbBase)
     (closure : VerifierBoundary.BootClosure trace.initial
-      (trace.rows.map Row.start) (trace.rows.map Row.finish))
+      (trace.rows.map Row.«start») (trace.rows.map Row.finish))
     (equations : Keccak.Split.Native.EquationsHold splitWorkers.cached splitWorkers.setup splitWorkers.rows)
     (fixedEquations : Keccak.Split.Native.EquationsHold
       splitWorkers.cached Keccak.Split.Native.Proofs.fixedSetup splitWorkers.rows)
@@ -69,12 +69,12 @@ theorem unrolled_full_cycle_transition_of_selected_inputs
     {row : Trace.Row babyBearModulus PooledFamily} (member : row ∈ trace.rows) :
     let program := FullUnsigned.Program.ofText initial text bundles splitBundles
     ∃ before after,
-      CutState cells events initial (timeOfPair row.start.timestamp).value before ∧
+      CutState cells events initial (timeOfPair row.«start».timestamp).value before ∧
       CutState cells events initial (timeOfPair row.finish.timestamp).value after ∧
       FullUnsigned.Step stream program
-        (retiredState before row.start.word.toBitVec, countAt trace row.clock)
+        (retiredState before row.«start».word.toBitVec, countAt trace row.clock)
         (retiredState after row.finish.word.toBitVec, countAt trace (timeOfPair row.finish.timestamp).value) ∧
-      (run (SailRV32.Functions.get_arch_pc ()) before = .ok row.start.word.toBitVec before →
+      (run (SailRV32.Functions.get_arch_pc ()) before = .ok row.«start».word.toBitVec before →
         FullUnsigned.Step stream program (before, countAt trace row.clock)
           (retiredState after row.finish.word.toBitVec, countAt trace (timeOfPair row.finish.timestamp).value)) := by
   let program := FullUnsigned.Program.ofText initial text bundles splitBundles
@@ -85,7 +85,7 @@ theorem unrolled_full_cycle_transition_of_selected_inputs
     (by decide +kernel : SerializedInverse.Clock babyBearModulus) trace.rom row
     (accepted.cpuEquations row member) clocks.1
   change (timeOfPair row.finish.timestamp).value = row.clock + 4 at advance
-  have orderedClocks : (timeOfPair row.start.timestamp).value ≤ (timeOfPair row.finish.timestamp).value := by
+  have orderedClocks : (timeOfPair row.«start».timestamp).value ≤ (timeOfPair row.finish.timestamp).value := by
     change row.clock ≤ (timeOfPair row.finish.timestamp).value
     omega
   have count := unrolled_full_cycle_count accepted initialClock initialAligned member
@@ -115,14 +115,14 @@ theorem unrolled_full_cycle_transition_of_selected_inputs
       · intro read
         have binding := unrolled_full_standard_pc_binding setup lookup accepted excluded initialPC
           row member caller.1 caller.2 worker matched
-        have start : Delegation.Caller.initialPC row.assignment = row.start.word := by
+        have «start» : Delegation.Caller.initialPC row.assignment = row.«start».word := by
           cases row with | mk kind w => cases caller.1; rfl
         have finish : Delegation.Caller.finalPC row.assignment = row.finish.word := by
           cases row with | mk kind w => cases caller.1; rfl
         refine Or.inl (Or.inr ⟨sameCount.symm, entry, included, allowed,
           source, pc ▸ read, after, raw, ?_⟩)
         simpa only [finish, retiredState] using binding.sail after
-          (by simpa only [start] using sail_history_pc_read current read)
+          (by simpa only [«start»] using sail_history_pc_read current read)
     · obtain ⟨worker, present, matched⟩ := List.mem_map.mp split
       obtain ⟨before, after, past, current, _, entry, included, source, pc, query, sameKind, executes⟩ :=
         unrolled_full_split_caller_cycle setup lookup accepted excluded initialPC workerFamilies equations
@@ -137,20 +137,20 @@ theorem unrolled_full_cycle_transition_of_selected_inputs
       · intro read
         have binding := unrolled_full_split_pc_binding setup lookup accepted excluded initialPC workerFamilies
           equations active initialClock initialAligned row member caller.1 caller.2 worker matched
-        have start : Delegation.Caller.initialPC row.assignment = row.start.word := by
+        have «start» : Delegation.Caller.initialPC row.assignment = row.«start».word := by
           cases row with | mk kind w => cases caller.1; rfl
         have finish : Delegation.Caller.finalPC row.assignment = row.finish.word := by
           cases row with | mk kind w => cases caller.1; rfl
         refine Or.inr ⟨sameCount.symm, entry, included, source, pc ▸ read, after, sameKind ▸ raw, ?_⟩
         simpa only [finish, retiredState] using binding.sail after
-          (by simpa only [start] using sail_history_pc_read current read)
+          (by simpa only [«start»] using sail_history_pc_read current read)
   · obtain ⟨entry, included, family, query, clause, next, selected, counter,
         before, after, past, current, _, retired⟩ :=
       unrolled_full_ordinary_cycle setup lookup accepted excluded initialPC closure equations active
         initialClock initialAligned image wordSetup subwordSetup aligned profile permutation ordered history
         readonly (fun edge present => (bounds edge present).1) stream ports member caller
     have pcWord := native_query_pc_word (by decide) query
-    change row.start.word = Word.ofBitVec entry.pc at pcWord
+    change row.«start».word = Word.ofBitVec entry.pc at pcWord
     have pc := (congrArg Word.toBitVec pcWord).trans (Word.ofBitVec_roundtrip _)
     have source := entry_source_after_history past
       (fun event present => readonly event (List.mem_filter.mp present).1)
@@ -159,7 +159,7 @@ theorem unrolled_full_cycle_transition_of_selected_inputs
     have nextCount : next = countAt trace (timeOfPair row.finish.timestamp).value := counter.trans count.symm
     have step : NonDeterminism.StepWithClause AddSub.Modular.External.decoderFields AddSub.Modular.External.clause
         stream program.ordinary
-        (retiredState before row.start.word.toBitVec, countAt trace row.clock)
+        (retiredState before row.«start».word.toBitVec, countAt trace row.clock)
         (retiredState after row.finish.word.toBitVec, countAt trace (timeOfPair row.finish.timestamp).value) := by
       refine ⟨entry, included, entry_source_retired_state source _, pc ▸ retired_state_pc before _,
         clause, ?_, retired⟩

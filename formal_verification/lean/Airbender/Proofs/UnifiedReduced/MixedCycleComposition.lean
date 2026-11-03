@@ -96,7 +96,7 @@ theorem ordinary_cycle_at [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception
           cases rs : input.rs1 with
           | Regidx index =>
             apply profile.loads entry present input.encodedImmediate index
-            simpa only [load, Bool.false_eq_true, if_false, zero, rs, zeroRegister] using encoding
+            simpa only [load, Bool.false_eq_true, ite_false, zero, rs, zeroRegister] using encoding
         refine ⟨Airbender.WordMemory.execution input, liftClause ?_, ?_⟩
         · rw [encoding]
           cases mode : input.store <;>

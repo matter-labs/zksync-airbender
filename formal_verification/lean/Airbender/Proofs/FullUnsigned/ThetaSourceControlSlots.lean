@@ -166,21 +166,21 @@ theorem source_control_slot_rows {artifact : Artifact}
   by_cases early : index.val < 121
   · have controller : 589824 + index.val < 589945 := by omega
     simp only [Airbender.Keccak.Split.Native.Fixed.thetaRhoPhysicalGenericRow,
-      dif_neg first, dif_neg second, dif_pos controller]
+      dite_eq_right first, dite_eq_right second, dite_eq_left controller]
     apply Vector.ext
     intro column bound
     simp only [Vector.getElem_ofFn]
     have value := source_tail_get parsed index ⟨column, bound⟩
-    rw [dif_pos early] at value
+    rw [dite_eq_left early] at value
     simpa only [Fin.getElem_fin, Nat.add_sub_cancel_left] using value
   · have controller : ¬ 589824 + index.val < 589945 := by omega
     simp only [Airbender.Keccak.Split.Native.Fixed.thetaRhoPhysicalGenericRow,
-      dif_neg first, dif_neg second, dif_neg controller, dif_pos final]
+      dite_eq_right first, dite_eq_right second, dite_eq_right controller, dite_eq_left final]
     apply Vector.ext
     intro column bound
     simp only [Vector.getElem_ofFn]
     have value := source_tail_get parsed index ⟨column, bound⟩
-    rw [dif_neg early] at value
+    rw [dite_eq_right early] at value
     have position : 589824 + index.val - 589945 = index.val - 121 := by omega
     simpa only [Fin.getElem_fin, position] using value
 

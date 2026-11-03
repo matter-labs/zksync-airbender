@@ -15,12 +15,12 @@ theorem uniform256_get (blocks : List Block)
     have head := shape block (by simp)
     have tail : ∀ b ∈ rest, b.length = 256 := fun b member => shape b (by simp [member])
     by_cases inside : index < 256
-    · rw [getFromBlocks, head, if_pos inside]
+    · rw [getFromBlocks, head, ite_eq_left inside]
       simp only [Nat.div_eq_of_lt inside, Nat.mod_eq_of_lt inside,
         List.getElem?_cons_zero, Option.bind_some]
     · have quotient : index / 256 = (index - 256) / 256 + 1 := by omega
       have residue : index % 256 = (index - 256) % 256 := by omega
-      rw [getFromBlocks, head, if_neg inside, ih tail (index - 256), quotient,
+      rw [getFromBlocks, head, ite_eq_right inside, ih tail (index - 256), quotient,
         List.getElem?_cons_succ, residue]
 
 theorem periodic_zero_get_mod (values : Array Nat) (count index : Nat)

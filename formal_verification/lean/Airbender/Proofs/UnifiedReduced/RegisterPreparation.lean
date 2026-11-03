@@ -157,15 +157,15 @@ theorem first_port_prefix_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCap
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
     (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
     (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
-    ∃ start : List (MemoryToken p),
+    ∃ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) ∧
-      readToken w importedConstraintsMemoryPorts[0] ∈ start ∧
-      (start.map MemoryToken.address).Nodup := by
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) ∧
+      readToken w importedConstraintsMemoryPorts[0] ∈ «start» ∧
+      («start».map MemoryToken.address).Nodup := by
   have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
   have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
-  obtain ⟨start, earlier, later⟩ := Transfer.split_at facts (cut - 5)
+  obtain ⟨«start», earlier, later⟩ := Transfer.split_at facts (cut - 5)
   have prefixMatching := earlier.matching
   have cutoff : cut - 5 = (cut - 4) - 1 := by omega
   rw [cutoff, mixed_prefix_steps data (by omega)] at prefixMatching
@@ -186,7 +186,7 @@ theorem first_port_prefix_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCap
     apply List.mem_filter.mpr
     exact ⟨edge, by simp only [writeTime]; simp; omega⟩
   have readMember := later.matching.mem_iff.mpr (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨_, inSuffix, rfl⟩)))
-  have inStart : readToken w importedConstraintsMemoryPorts[0] ∈ start := by
+  have inStart : readToken w importedConstraintsMemoryPorts[0] ∈ «start» := by
     rcases List.mem_append.mp readMember with initial | written
     · exact initial
     · obtain ⟨previous, included, same⟩ := List.mem_map.mp written
@@ -200,8 +200,8 @@ theorem first_port_prefix_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCap
       rw [← same, writeTime] at strict
       omega
   have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
-  have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
-  exact ⟨start, prefixMatching, inStart, unique⟩
+  have unique : («start».map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
+  exact ⟨«start», prefixMatching, inStart, unique⟩
 
 /-- The actual first ADDI read consumes the retained source token at the
     preceding instruction cut. This raw matching lemma is shared by finite
@@ -218,19 +218,19 @@ theorem register_immediate_source_word_of_value [Fact p.Prime] (hp : FieldCapaci
     (scope : RegisterImmediatePreparation data program cut source register immediate)
     (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
     (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register source).addressCode ∧
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register source).addressCode ∧
         token.word = Word.ofBitVec value)
     (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
     (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
     (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
     (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec value := by
-  obtain ⟨start, prefixMatching, inStart, unique⟩ := first_port_prefix_token hp clockInverse
+  obtain ⟨«start», prefixMatching, inStart, unique⟩ := first_port_prefix_token hp clockInverse
     accepted publicProgram initialization uniqueSeeds (by omega) member ordinary last
-  obtain ⟨token, present, address, word⟩ := seedToken start prefixMatching
+  obtain ⟨token, present, address, word⟩ := seedToken «start» prefixMatching
   obtain ⟨entry, _, query, metadata⟩ := register_immediate_preparation_entry (by omega) clockInverse setup accepted
     publicProgram ordinaryProgram scope nonzero member ordinary last
   have indices := native_query_indices (by dsimp [limbBase]; omega) query
@@ -254,10 +254,10 @@ theorem register_immediate_preparation_token_of_value [Fact p.Prime] (hp : Field
     (scope : RegisterImmediatePreparation data program cut source register immediate)
     (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
     (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register source).addressCode ∧
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register source).addressCode ∧
         token.word = Word.ofBitVec value)
     (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
     (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
@@ -296,10 +296,10 @@ theorem register_immediate_source_word [Fact p.Prime] (hp : FieldCapacity.Native
     (scope : RegisterImmediatePreparation data program cut source register immediate)
     (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
     (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register source).addressCode ∧
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register source).addressCode ∧
         (timeOfPair token.time).value = (cut - 4) - 2 ∧ token.word = Word.ofBitVec value)
     (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
@@ -307,8 +307,8 @@ theorem register_immediate_source_word [Fact p.Prime] (hp : FieldCapacity.Native
     (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
     (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec value := by
   exact register_immediate_source_word_of_value hp clockInverse setup accepted publicProgram ordinaryProgram initialization
-    scope uniqueSeeds sourceFloor (fun start matching => by
-      obtain ⟨token, present, address, _, word⟩ := seedToken start matching
+    scope uniqueSeeds sourceFloor (fun «start» matching => by
+      obtain ⟨token, present, address, _, word⟩ := seedToken «start» matching
       exact ⟨token, present, address, word⟩) nonzero aligned member ordinary last
 
 theorem register_immediate_preparation_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
@@ -324,10 +324,10 @@ theorem register_immediate_preparation_token [Fact p.Prime] (hp : FieldCapacity.
     (scope : RegisterImmediatePreparation data program cut source register immediate)
     (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
     (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register source).addressCode ∧
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register source).addressCode ∧
         (timeOfPair token.time).value = (cut - 4) - 2 ∧ token.word = Word.ofBitVec value)
     (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
     (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
@@ -336,8 +336,8 @@ theorem register_immediate_preparation_token [Fact p.Prime] (hp : FieldCapacity.
       (timeOfPair token.time).value = cut - 2 ∧
       token.word = Word.ofBitVec (registerImmediateValue value immediate) := by
   exact register_immediate_preparation_token_of_value hp clockInverse setup accepted publicProgram ordinaryProgram initialization
-    scope uniqueSeeds sourceFloor (fun start prefixMatching => by
-      obtain ⟨token, present, address, _, word⟩ := seedToken start prefixMatching
+    scope uniqueSeeds sourceFloor (fun «start» prefixMatching => by
+      obtain ⟨token, present, address, _, word⟩ := seedToken «start» prefixMatching
       exact ⟨token, present, address, word⟩) nonzero aligned matching
 
 /-- Legacy literal→ADDI source interface, sharing the raw token proof. -/
@@ -386,6 +386,8 @@ theorem literal_addi_preparation_token [Fact p.Prime] (hp : FieldCapacity.Native
       scope.seed scope.sourceNonzero (by have floor := scope.seed.afterInitial; omega) matching)
     nonzero aligned matching
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem register_immediate_control_preparation [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
     (clockInverse : SerializedInverse.Clock p)
     (rotationInverse : SerializedInverse.Scale64 p)

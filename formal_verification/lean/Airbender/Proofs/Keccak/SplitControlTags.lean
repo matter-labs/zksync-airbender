@@ -15,6 +15,8 @@ private theorem theta_rho_tag_column : thetaRhoGeneric.columns[8] =
 private theorem chi5_tag_column : chi5Generic.columns[10] =
     ⟨#[.affine 1048576 65 0, .affine 121 66 0, .affine 3145607 0 0]⟩ := by rfl
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- The actual field tag selects the theta/rho controller region. -/
 theorem theta_rho_controller_field_tag_region (i : Fin thetaRhoGeneric.length)
     (tag : ((thetaRhoGeneric.row i).map (fun value : Int => (value : ZMod babyBearModulus)))[8] = 59) :
@@ -37,6 +39,8 @@ theorem theta_rho_controller_field_tag_region (i : Fin thetaRhoGeneric.length)
        | change 60 = 59 at values; omega
        | change 0 = 59 at values; omega)
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- The actual field tag selects the chi5 controller region. -/
 theorem chi5_controller_field_tag_region (i : Fin chi5Generic.length)
     (tag : ((chi5Generic.row i).map (fun value : Int => (value : ZMod babyBearModulus)))[10] = 66) :

@@ -55,12 +55,12 @@ theorem source_input_get (column : Fin 5) (index : Fin 1048576) :
   rw [source_prefix]
   fin_cases column
   · change getFromBlocks (inputBlocks 0) index.val = some (index.val / 16 ^ 0 % 16)
-    rw [prefix0, getFromBlocks, if_pos (show index.val < Block.length (.periodic 65536 0 (Array.range 16)) by
+    rw [prefix0, getFromBlocks, ite_eq_left (show index.val < Block.length (.periodic 65536 0 (Array.range 16)) by
       simpa only [Block.length, Array.size_range] using index.isLt)]
     simpa using periodic_get (Array.range 16) 65536 0 index.val (by simp)
       (by simpa only [Array.size_range] using index.isLt)
   · change getFromBlocks (inputBlocks 1) index.val = some (index.val / 16 ^ 1 % 16)
-    rw [prefix1, getFromBlocks, if_pos (show index.val < Block.length
+    rw [prefix1, getFromBlocks, ite_eq_left (show index.val < Block.length
         (.periodic 4096 0 (Array.ofFn fun index : Fin 256 => index.val / 16)) by
       simpa only [Block.length, Array.size_ofFn] using index.isLt)]
     have sampled := periodic_get (Array.ofFn fun index : Fin 256 => index.val / 16)

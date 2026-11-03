@@ -30,6 +30,8 @@ private theorem zero_blocks : ∀ column : Fin 4,
 private theorem native_zero_blocks : ∀ column : Fin 4,
     Airbender.Keccak.Split.Native.Fixed.columnParityIota.columns[3 + column.val].blocks.toList = [.affine 65536 0 0] := by decide +kernel
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- Every original byte-iota source field equals its unchanged native field. -/
 theorem source_iota_columns (column : Fin 8) (index : Fin 65536) :
     ((SourceCaptureParity.columns[column.val]?).getD ({ blocks := #[] } : Column)).get? index.val =
@@ -54,7 +56,7 @@ theorem source_iota_columns (column : Fin 8) (index : Fin 65536) :
     change Airbender.Keccak.Split.Native.Fixed.columnParityIota.columns[3].blocks.toList = [.affine 65536 0 0] at native
     change _ = getFromBlocks _ index.val
     rw [same, native]
-    simp only [getFromBlocks, Block.length, if_pos (by omega : index.val < 65537), if_pos index.isLt]
+    simp only [getFromBlocks, Block.length, ite_eq_left (by omega : index.val < 65537), ite_eq_left index.isLt]
     exact (constant_affine_get _ _ _ (by omega)).trans (constant_affine_get _ _ _ index.isLt).symm
   · have same := zero_blocks (⟨1, by decide +kernel⟩ : Fin 4)
     have native := native_zero_blocks (⟨1, by decide +kernel⟩ : Fin 4)
@@ -62,7 +64,7 @@ theorem source_iota_columns (column : Fin 8) (index : Fin 65536) :
     change Airbender.Keccak.Split.Native.Fixed.columnParityIota.columns[4].blocks.toList = [.affine 65536 0 0] at native
     change _ = getFromBlocks _ index.val
     rw [same, native]
-    simp only [getFromBlocks, Block.length, if_pos (by omega : index.val < 65537), if_pos index.isLt]
+    simp only [getFromBlocks, Block.length, ite_eq_left (by omega : index.val < 65537), ite_eq_left index.isLt]
     exact (constant_affine_get _ _ _ (by omega)).trans (constant_affine_get _ _ _ index.isLt).symm
   · have same := zero_blocks (⟨2, by decide +kernel⟩ : Fin 4)
     have native := native_zero_blocks (⟨2, by decide +kernel⟩ : Fin 4)
@@ -70,7 +72,7 @@ theorem source_iota_columns (column : Fin 8) (index : Fin 65536) :
     change Airbender.Keccak.Split.Native.Fixed.columnParityIota.columns[5].blocks.toList = [.affine 65536 0 0] at native
     change _ = getFromBlocks _ index.val
     rw [same, native]
-    simp only [getFromBlocks, Block.length, if_pos (by omega : index.val < 65537), if_pos index.isLt]
+    simp only [getFromBlocks, Block.length, ite_eq_left (by omega : index.val < 65537), ite_eq_left index.isLt]
     exact (constant_affine_get _ _ _ (by omega)).trans (constant_affine_get _ _ _ index.isLt).symm
   · have same := zero_blocks (⟨3, by decide +kernel⟩ : Fin 4)
     have native := native_zero_blocks (⟨3, by decide +kernel⟩ : Fin 4)
@@ -78,7 +80,7 @@ theorem source_iota_columns (column : Fin 8) (index : Fin 65536) :
     change Airbender.Keccak.Split.Native.Fixed.columnParityIota.columns[6].blocks.toList = [.affine 65536 0 0] at native
     change _ = getFromBlocks _ index.val
     rw [same, native]
-    simp only [getFromBlocks, Block.length, if_pos (by omega : index.val < 65537), if_pos index.isLt]
+    simp only [getFromBlocks, Block.length, ite_eq_left (by omega : index.val < 65537), ite_eq_left index.isLt]
     exact (constant_affine_get _ _ _ (by omega)).trans (constant_affine_get _ _ _ index.isLt).symm
   · have same := same_blocks (⟨3, by decide +kernel⟩ : Fin 4)
     change initialBlocks ⟨7, by decide +kernel⟩ = Airbender.Keccak.Split.Native.Fixed.columnParityIota.columns[7].blocks.toList at same
@@ -129,7 +131,7 @@ theorem parity_source_iota_member [Fact babyBearModulus.Prime] {artifact : Artif
   have canonical := SourceCaptureParityProofs.source_iota_rows ⟨index.val, upper⟩
   have physical : Keccak.Split.Native.Fixed.columnParityGenericRow ⟨index.val, by
       change index.val < 4194304; omega⟩ = Keccak.Split.Native.Fixed.columnParityIota.row ⟨index.val, upper⟩ := by
-    simp only [Keccak.Split.Native.Fixed.columnParityGenericRow, dif_pos upper]
+    simp only [Keccak.Split.Native.Fixed.columnParityGenericRow, dite_eq_left upper]
   rw [physical]
   exact congrArg (fun actual : Vector Int 8 => actual.map (fun value : Int => (value : F))) canonical
 

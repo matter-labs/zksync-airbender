@@ -39,7 +39,6 @@ theorem column_parity_controller_slots : ∀ i : Fin columnParityControl.length,
 /-- Only the retained live rows execute; the separate leading row is padding. -/
 theorem column_parity_controller_execute : ∀ i : Fin columnParityControl.length,
     (columnParityControl.row i)[1] = 0 ∨ (columnParityControl.row i)[1] = 1 := by
-  intro i
-  fin_cases i <;> exact of_decide_eq_true (by cbv)
+  decide +kernel
 
 end Airbender.Keccak.Split.Native.Fixed.Proofs

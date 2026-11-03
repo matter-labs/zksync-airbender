@@ -19,9 +19,9 @@ theorem column_parity_slot_key (i : Fin columnParityControl.length) :
   · have same : i = ⟨0, by decide⟩ := Fin.ext zero
     subst i
     exact of_decide_eq_true (by cbv)
-  · rw [if_neg zero]
+  · rw [ite_eq_right zero]
     have enabled : (columnParityControl.row i)[1] = 1 := by
-      rw [column_parity_controller_execute_value, if_neg zero]
+      rw [column_parity_controller_execute_value, ite_eq_right zero]
     exact (column_parity_controller_slots i enabled).1
 
 end Airbender.Keccak.Split.Native.Fixed.Proofs

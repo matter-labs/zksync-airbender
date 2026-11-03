@@ -51,7 +51,7 @@ theorem source_split_first_get (index : Fin 524288) :
   rw [source_key_window (⟨0, by decide +kernel⟩ : Fin 3) index, low_shape]
   have bound : index.val < (Block.periodic 2048 0 (Array.range 256)).length := by
     simpa only [Block.length, Array.size_range] using index.isLt
-  rw [getFromBlocks, if_pos bound]
+  rw [getFromBlocks, ite_eq_left bound]
   have value := periodic_get (Array.range 256) 2048 0 index.val (by simp)
     (by simpa only [Array.size_range] using index.isLt)
   simpa only [Array.size_range, Array.getElem_range, Nat.zero_mul, Nat.add_zero, Int.natCast_zero] using value
@@ -120,7 +120,7 @@ theorem source_split_tag_get (index : Fin 524288) :
     tag_offset (by rw [tag_shape]; exact index.isLt)
   change ((SourceCaptureTheta.columns[8]?).getD ({ blocks := #[] } : Column)).get? (65536 + index.val) = _ at selected
   have bound : index.val < (Block.affine 524288 58 0).length := index.isLt
-  rw [selected, tag_shape, getFromBlocks, if_pos bound]
+  rw [selected, tag_shape, getFromBlocks, ite_eq_left bound]
   exact constant_affine_get _ _ _ index.isLt
 
 /-- All three source keys equal their original native literal-tree keys. -/

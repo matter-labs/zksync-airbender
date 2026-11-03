@@ -21,6 +21,6 @@ theorem xor5_key_values (column : Fin 5) (row : Nat) :
   fin_cases column
   all_goals
     simp (disch := omega) only [Column.evaluate, entry, xor5KeyEntry,
-      Nat.reducePow, Nat.div_one, if_pos, if_neg, ↓reduceIte]
+      Nat.reducePow, Nat.div_one, ite_eq_left, ite_eq_right, ↓reduceIte]
 
 end Airbender.Keccak.Split.Native.Fixed.Proofs

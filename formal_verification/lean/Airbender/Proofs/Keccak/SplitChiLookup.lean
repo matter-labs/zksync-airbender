@@ -9,6 +9,8 @@ set_option maxHeartbeats 1600000
 private theorem chi5_tag_column : chi5Generic.columns[10] =
     ⟨#[.affine 1048576 65 0, .affine 121 66 0, .affine 3145607 0 0]⟩ := by rfl
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- The native chi tag selects the arithmetic region of the complete generic table. -/
 theorem chi5_arithmetic_field_tag_region (index : Fin chi5Generic.length)
     (tag : ((chi5Generic.row index).map (fun value : Int => (value : ZMod babyBearModulus)))[10] = 65) :

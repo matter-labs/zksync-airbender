@@ -43,9 +43,9 @@ theorem computed_round_region_masks [Fact p.Prime] (hp : FieldCapacity.NativeHas
   have positive : 2 ≤ region.lower := by omega
   have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
   have facts := mixed_memory_facts size clockInverse accepted inputs.publicProgram inputs.initialization requests
-  obtain ⟨start, earlier, suffix⟩ := Transfer.split_at facts (region.lower - 1)
+  obtain ⟨«start», earlier, suffix⟩ := Transfer.split_at facts (region.lower - 1)
   obtain ⟨finish, window, _⟩ := Transfer.split_at suffix (region.upper - 1)
-  change Transfer.Facts ⟨start, finish,
+  change Transfer.Facts ⟨«start», finish,
     Transfer.windowSteps (mixedData data) (region.lower - 1) (region.upper - 1)⟩ at window
   rw [← mixed_window_steps size clockInverse accepted.toRequestChecks inputs.publicProgram
     scope.aligned.1 scope.aligned.2 positive (by omega)] at window
@@ -62,7 +62,7 @@ theorem computed_round_region_masks [Fact p.Prime] (hp : FieldCapacity.NativeHas
   have schedule := caller_window_schedule size clockInverse accepted.toRequestChecks inputs.publicProgram
     scope.aligned.1 scope.aligned.2 positive (by omega) (by omega) scope.beforeTerminal duration
   let keep := fun token : MemoryToken p => token.address != (Cell.register 0).addressCode
-  let projected := data.windowProjection region.lower region.upper start finish
+  let projected := data.windowProjection region.lower region.upper «start» finish
   have matching := window.matching.filter keep
   have writes := caller_window_filtered_tokens schedule requests true
   have reads := caller_window_filtered_tokens schedule requests false
@@ -72,7 +72,7 @@ theorem computed_round_region_masks [Fact p.Prime] (hp : FieldCapacity.NativeHas
   have selected : Delegation.MemoryAccepted projected := by
     refine ⟨fun row member => accepted.workerConstraints row (List.mem_of_mem_filter member), matching⟩
   have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
-  have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp (by
+  have unique : («start».map MemoryToken.address).Nodup := keys.nodup_iff.mp (by
     change (data.machine.initialMemory.map MemoryToken.address).Nodup
     rw [image_addresses inputs.initialization]
     exact inputs.distinct)
@@ -203,19 +203,19 @@ theorem computed_protocol_reference_at_states [Fact p.Prime] (hp : FieldCapacity
     (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before atStart atFinish : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion} {window : HashWindow}
-    {start finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
+    {«start» finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
     (accepted : MixedMemoryAccepted data program)
     (inputs : ComputedPreparedProtocolInputs data before ca oa cells program regions)
     (scope : ComputedProtocolWindowInputs data program window)
     (first : window.lower % 4 = 0) (last : window.upper % 4 = 0)
     (prefixMatching : (data.machine.initialMemory ++ (data.prefixSteps window.lower).map Prod.snd).Perm
-      (start ++ (data.prefixSteps window.lower).map Prod.fst))
-    (matching : (start ++ (data.windowSteps window.lower window.upper).map Prod.snd).Perm
+      («start» ++ (data.prefixSteps window.lower).map Prod.fst))
+    (matching : («start» ++ (data.windowSteps window.lower window.upper).map Prod.snd).Perm
       (finish ++ (data.windowSteps window.lower window.upper).map Prod.fst))
-    (startBoundary : NativeBoundary start atStart cells) (finishBoundary : NativeBoundary finish atFinish cells)
+    (startBoundary : NativeBoundary «start» atStart cells) (finishBoundary : NativeBoundary finish atFinish cells)
     (spanPerm : spanEvents.Perm ((data.windowSteps window.lower window.upper).map transferEvent))
     (spanHistory : SailHistory cells spanEvents atStart atFinish) :
-    window.span.Result (data.windowProjection window.lower window.upper start finish) atStart atFinish
+    window.span.Result (data.windowProjection window.lower window.upper «start» finish) atStart atFinish
       (Delegation.Caller.workerCells cells) := by
   have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   have memory := computed_protocol_memory_inputs (by omega) clockInverse accepted inputs
@@ -230,7 +230,7 @@ theorem computed_protocol_reference_at_states [Fact p.Prime] (hp : FieldCapacity
     first prefixMatching startBoundary
   have entry : (Cell.register window.span.controlRegister).read atStart = .ok window.span.controlStart atStart := by
     simpa only [hash_preparation_value] using control.1
-  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection window.lower window.upper start finish)
+  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection window.lower window.upper «start» finish)
       atStart window.span := ⟨inputs.tables, scope.family, entry, scope.calls⟩
   exact Delegation.Caller.Proofs.hash_span_at_target hp clockInverse selected initialized protocol
     (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))

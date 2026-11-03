@@ -27,7 +27,7 @@ theorem theta_split_first_value (row : Fin thetaRhoXorSplit.length) :
     ((thetaRhoXorSplit.columns[0]).entry 20 (row.val / 65536 % 16)) row.val = _
   rw [root]
   simp (disch := omega) only [Column.evaluate, first_entry, xorByteLowEntry, Nat.reducePow,
-    Nat.div_one, if_pos, if_neg, ↓reduceIte, Nat.mul_zero, Nat.zero_add]
+    Nat.div_one, ite_eq_left, ite_eq_right, ↓reduceIte, Nat.mul_zero, Nat.zero_add]
   omega
 
 /-- Every actual second key is the next byte of its native row coordinate. -/
@@ -42,7 +42,7 @@ theorem theta_split_second_value (row : Fin thetaRhoXorSplit.length) :
     ((thetaRhoXorSplit.columns[1]).entry 273 (row.val / 65536 % 16)) row.val = _
   rw [root]
   simp (disch := omega) only [Column.evaluate, second_entry, xorByteHighEntry, Nat.reducePow,
-    Nat.div_one, if_pos, if_neg, ↓reduceIte, Nat.add_sub_cancel_left]
+    Nat.div_one, ite_eq_left, ite_eq_right, ↓reduceIte, Nat.add_sub_cancel_left]
   omega
 
 /-- Every actual third key is the native shift in the range zero through seven. -/

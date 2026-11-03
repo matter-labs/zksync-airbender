@@ -74,18 +74,18 @@ theorem caller_window_filtered_tokens [Fact p.Prime] {data : RequestTrace p} {be
 theorem mixed_worker_window_at_states [Fact p.Prime]
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before atStart atFinish : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {lower upper : Nat}
-    {start finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
+    {«start» finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
     (schedule : CallerWindowSchedule data lower upper) (requests : RequestBinding data before)
-    (matching : (start ++ (data.windowSteps lower upper).map Prod.snd).Perm
+    (matching : («start» ++ (data.windowSteps lower upper).map Prod.snd).Perm
       (finish ++ (data.windowSteps lower upper).map Prod.fst))
-    (startBoundary : NativeBoundary start atStart cells) (finishBoundary : NativeBoundary finish atFinish cells)
+    (startBoundary : NativeBoundary «start» atStart cells) (finishBoundary : NativeBoundary finish atFinish cells)
     (spanPerm : spanEvents.Perm ((data.windowSteps lower upper).map transferEvent))
     (spanHistory : SailHistory cells spanEvents atStart atFinish) :
-    Delegation.MemoryAccepted (data.windowProjection lower upper start finish) ∧
-    Delegation.BoundaryMemoryInputs (data.windowProjection lower upper start finish) atStart (Delegation.Caller.workerCells cells) ∧
-    NativeBoundary (data.windowProjection lower upper start finish).terminal atFinish (Delegation.Caller.workerCells cells) ∧
-    Delegation.TraceMapping (data.windowProjection lower upper start finish) atStart atFinish (Delegation.Caller.workerCells cells) := by
+    Delegation.MemoryAccepted (data.windowProjection lower upper «start» finish) ∧
+    Delegation.BoundaryMemoryInputs (data.windowProjection lower upper «start» finish) atStart (Delegation.Caller.workerCells cells) ∧
+    NativeBoundary (data.windowProjection lower upper «start» finish).terminal atFinish (Delegation.Caller.workerCells cells) ∧
+    Delegation.TraceMapping (data.windowProjection lower upper «start» finish) atStart atFinish (Delegation.Caller.workerCells cells) := by
   have selectedMatching := matching.filter fun token => token.address != (Cell.register 0).addressCode
   have writes := caller_window_filtered_tokens schedule requests true
   have reads := caller_window_filtered_tokens schedule requests false
@@ -148,11 +148,11 @@ theorem mixed_projected_window [Fact p.Prime] (hp : FieldCapacity.NativeHashCapa
     first last positive ordered afterInitial beforeTerminal duration
   have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
   have window := mixed_window_execution hp clockInverse rotationInverse accepted inputs first last positive ordered
-  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
+  obtain ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
     firstHistory, spanHistory, prefixMatching, matching, startBoundary, finishBoundary⟩ := window.execution
   obtain ⟨selected, initialized, finalBoundary, target⟩ :=
     mixed_worker_window_at_states accepted inputs schedule requests matching startBoundary finishBoundary spanPerm spanHistory
-  exact ⟨schedule, window.requests, start, finish, earlierEvents, spanEvents, atStart, atFinish,
+  exact ⟨schedule, window.requests, «start», finish, earlierEvents, spanEvents, atStart, atFinish,
     firstPerm, spanPerm, firstHistory, spanHistory, prefixMatching, matching, startBoundary, finishBoundary,
     selected, initialized, finalBoundary, target⟩
 

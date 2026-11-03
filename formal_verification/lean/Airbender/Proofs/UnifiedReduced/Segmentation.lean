@@ -173,12 +173,12 @@ theorem hash_worker_partition [Fact p.Prime]
         obtain ⟨window, included, inside⟩ := (covered worker member hash).mpr live
         exact ⟨window, included, (List.mem_filter.mp inside).2⟩
     by_cases wanted : worker.family ≠ .bigint ∧ Delegation.Requests.Live (Delegation.Requests.fulfillment worker)
-    · rw [if_pos (selection.mpr wanted)]
+    · rw [ite_eq_left (selection.mpr wanted)]
       simpa only [issuedHashWorkers] using (List.count_filter
         (p := fun actual : Delegation.Row p => decide
           (actual.family ≠ .bigint ∧ Delegation.Requests.Live (Delegation.Requests.fulfillment actual)))
         (a := worker) (l := data.workers.rows) (decide_eq_true wanted)).symm
-    · rw [if_neg (fun selected => wanted (selection.mp selected))]
+    · rw [ite_eq_right (fun selected => wanted (selection.mp selected))]
       symm
       apply List.count_eq_zero.mpr
       simp [issuedHashWorkers, wanted]

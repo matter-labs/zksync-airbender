@@ -12,6 +12,11 @@ The Clean and lean-sail reference revisions stay unchanged.
 The hash-checked Clean compatibility patches apply.
 Stock Lean builds the numeric query-frame checker and its strict importer.
 The complete cached AddSub query-frame certificate also builds.
+All three machine target source builds pass with stock Lean 4.35.
+The Theta certificate uses the existing character tree and bounded source binding.
+Its complete original source and final string equality remain checked.
+Only the auxiliary character representation changes.
+The closed controller execute proof uses the kernel decision tactic.
 All 11 cached native witness consumers also build.
 Their exact source bindings and original semantic finalizers pass.
 The pinned Sail interpreter and RV32 snapshot compile.
@@ -30,10 +35,10 @@ Its original row predicate and native contribution function stay unchanged.
 The reported Sail shift and unified arithmetic proofs compile.
 The mixed window and worker execution proofs also compile.
 Their state binders keep their exact Lean names.
-The latest batch qualifies 22 proof modules and all 54 generator checks.
+The latest batch qualifies 85 proof modules and all 54 generator checks.
 Controller geometry uses a symbolic index before specializing the native row.
 Its recursion and resource limits stay unchanged.
-Existing definitions and theorem statements stay unchanged.
+Native data, target definitions and existing theorem statements stay unchanged.
 The register-read proofs use explicit reductions of the original state operations.
 The compatibility patch annotates the existing natural-number choice binder.
 A local syntax adapter uses Sail's original assertion and monad lift.
@@ -91,7 +96,8 @@ python3 scripts/bounded_fv.py --mib 2560 --resident-mib 5120 --seconds 900 \
   --log /tmp/airbender-turbo-smoke.log -- bash scripts/turbo_lean.sh smoke
 ```
 
-Continue with the three machine target source builds on Lean 4.35.
+The three machine target source builds pass on Lean 4.35.
+The initial focused upgrade experiment is complete.
 Keep target statements, exact imported data and matching premises unchanged.
 Resolve the tool's artifact-dependency support before measuring real project edits.
 The official frontend, axiom audit and kernel replay remain the adoption gate.

@@ -76,7 +76,7 @@ theorem word_address_from_shared_history
     · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
     · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   cases store
-  all_goals dsimp only [Bool.false_eq_true, if_false, if_true] at selected ⊢
+  all_goals dsimp only [Bool.false_eq_true, ite_false, ite_true] at selected ⊢
   · have portMember : WordMemory.importedConstraintsMemoryPorts[1] ∈
         (⟨.wordMemory, w⟩ : Row babyBearModulus PooledFamily).ports := by
       change WordMemory.importedConstraintsMemoryPorts[1] ∈ WordMemory.importedConstraintsMemoryPorts
@@ -116,7 +116,7 @@ theorem word_transport_from_shared_history
   have oneValue : (1 : ZMod babyBearModulus).val = 1 := by
     simpa only [Nat.cast_one] using ZMod.val_natCast_of_lt (by decide : 1 < babyBearModulus)
   cases store
-  · simp only [Bool.false_eq_true, if_false] at selected ⊢
+  · simp only [Bool.false_eq_true, ite_false] at selected ⊢
     have present : WordMemory.importedConstraintsMemoryPorts[1] ∈
         (⟨.wordMemory, w⟩ : Row babyBearModulus PooledFamily).ports := by
       change WordMemory.importedConstraintsMemoryPorts[1] ∈ WordMemory.importedConstraintsMemoryPorts
@@ -126,7 +126,7 @@ theorem word_transport_from_shared_history
           simp [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.code, selected, pairCode, oneValue])
     have read := native_history_read epoch rfl rfl rfl history present cell.2
     simpa [WordMemory.importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode, memoryWord, MemoryAddress.word, Cell.read] using read
-  · simp only [if_true] at selected ⊢
+  · simp only [ite_true] at selected ⊢
     have present : WordMemory.importedConstraintsMemoryPorts[2] ∈
         (⟨.wordMemory, w⟩ : Row babyBearModulus PooledFamily).ports := by
       change WordMemory.importedConstraintsMemoryPorts[2] ∈ WordMemory.importedConstraintsMemoryPorts

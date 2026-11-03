@@ -53,7 +53,7 @@ theorem chi5_call_write_projection (cached : Bool) (w : Nat → ZMod babyBearMod
   have value (lane : Fin 5) (high : Bool) :
       memoryWord ((chi5LanePort cached lane high).writeCode w) =
         Call.half (chi5ReferenceLanes cached true w)[lane.val] high := by
-    simpa only [chi5ReferenceLanes, Vector.getElem_ofFn, dif_pos lane.isLt, ↓reduceIte] using
+    simpa only [chi5ReferenceLanes, Vector.getElem_ofFn, dite_eq_left lane.isLt, ↓reduceIte] using
       (chi5_lane_port_half cached true high w holds lane).symm
   have finList : List.finRange 5 = [0, 1, 2, 3, 4] := by decide +kernel
   have rangeList : List.range 5 = [0, 1, 2, 3, 4] := by decide +kernel

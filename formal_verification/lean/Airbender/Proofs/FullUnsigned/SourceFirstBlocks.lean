@@ -13,6 +13,6 @@ theorem getFromBlocks_first (blocks : List Block) (block : Block) (index : Nat)
   | cons head rest =>
     have same : head = block := Option.some.inj first
     subst head
-    rw [getFromBlocks, if_pos bound]
+    rw [getFromBlocks, ite_eq_left bound]
 
 end Airbender.Setup.Proofs

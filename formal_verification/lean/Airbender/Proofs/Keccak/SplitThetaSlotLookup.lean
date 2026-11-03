@@ -23,7 +23,7 @@ theorem theta_rho_slot_table_sound [Fact babyBearModulus.Prime]
   obtain ⟨i, rfl⟩ := sound
   have sourceKey := theta_rho_slot_key i
   by_cases padding : i.val = 0
-  · rw [if_pos padding] at sourceKey
+  · rw [ite_eq_left padding] at sourceKey
     have mapped := congrArg (fun value : Int => (value : ZMod babyBearModulus)) sourceKey
     have zero : ((thetaRhoSlots.row ⟨i.val, i.isLt⟩).map
         (fun value : Int => (value : ZMod babyBearModulus)))[0] = 0 := by
@@ -31,7 +31,7 @@ theorem theta_rho_slot_table_sound [Fact babyBearModulus.Prime]
     have impossible := congrArg ZMod.val (zero.symm.trans key)
     rw [ZMod.val_zero, ZMod.val_natCast_of_lt (control_key_small index)] at impossible
     omega
-  · rw [if_neg padding] at sourceKey
+  · rw [ite_eq_right padding] at sourceKey
     have mapped := congrArg (fun value : Int => (value : ZMod babyBearModulus)) sourceKey
     have actual : ((thetaRhoSlots.row ⟨i.val, i.isLt⟩).map
         (fun value : Int => (value : ZMod babyBearModulus)))[0] =
@@ -43,7 +43,7 @@ theorem theta_rho_slot_table_sound [Fact babyBearModulus.Prime]
     have same := Split.Proofs.control_injective
       (show controlAt (thetaRhoControllerIndex i).val = controlAt index.val by omega)
     have enabled : (thetaRhoControl.row i)[1] = 1 := by
-      rw [theta_rho_controller_execute_value, if_neg padding]
+      rw [theta_rho_controller_execute_value, ite_eq_right padding]
     intro lane
     have slots := (theta_rho_controller_slots i enabled).2 lane
     have values := congrArg (fun value : Int => (value : ZMod babyBearModulus)) slots

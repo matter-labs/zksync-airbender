@@ -65,9 +65,9 @@ theorem parity_call_executes (cached : Bool) (w : Nat → ZMod babyBearModulus)
       change Call.half (parityLaneValue cached false w native) high =
         (readToken w (parityLanePort cached native high)).word.toBitVec at half
       rw [← half] at found
-      simpa only [parityReferenceLanes, Fin.getElem_fin, Vector.getElem_ofFn, dif_pos live] using found
+      simpa only [parityReferenceLanes, Fin.getElem_fin, Vector.getElem_ofFn, dite_eq_left live] using found
     refine ⟨?_, read false, read true⟩
-    simpa only [parityReferenceLanes, Fin.getElem_fin, Vector.getElem_ofFn, dif_pos live] using
+    simpa only [parityReferenceLanes, Fin.getElem_fin, Vector.getElem_ofFn, dite_eq_left live] using
       parity_read_lane_bound cached w native boundedLane
   · apply atomic_writes_of_history history
     have projection := parity_call_write_projection cached w holds index controls.1 controls.2.2.2.2 pointer aligned

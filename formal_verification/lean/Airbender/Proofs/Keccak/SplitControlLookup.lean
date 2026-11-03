@@ -9,6 +9,8 @@ namespace Airbender.Keccak.Split.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- The theta/rho controller lookup yields exactly one live iteration flag for
 an active row. The statement uses the actual five witness columns selected by
 the native grouped distance equations. -/
@@ -46,6 +48,8 @@ theorem theta_rho_control_selector [Fact p.Prime]
     simpa [row, query, ThetaRho.importedConstraints, FlatOperation.lookups,
       Expression.eval, Verification.environment] using flag
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- The fixed chi5 controller row bounds the row index used in all six native
 group distances. Its table semantics are an explicit public setup premise. -/
 theorem chi5_control_row_bound [Fact p.Prime]
@@ -79,6 +83,8 @@ theorem chi5_control_row_bound [Fact p.Prime]
   simpa only [index] using control.chi5 row rowSound tag enabled
 
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem theta_rho_cached_control_selector [Fact p.Prime]
     {setup : Native.Setup p} (control : Native.ControlSetupFacts setup)
     {w : Nat → ZMod p}
@@ -113,6 +119,8 @@ theorem theta_rho_cached_control_selector [Fact p.Prime]
     simpa [row, query, ThetaRhoCached.importedConstraints, FlatOperation.lookups,
       Expression.eval, Verification.environment] using flag
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 theorem chi5_cached_control_row_bound [Fact p.Prime]
     {setup : Native.Setup p} (control : Native.ControlSetupFacts setup)
     {w : Nat → ZMod p}

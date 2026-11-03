@@ -62,9 +62,9 @@ theorem chi5_call_executes (cached : Bool) (w : Nat → ZMod babyBearModulus)
       change Call.half (chi5LaneValue cached false w native) high =
         (readToken w (chi5LanePort cached native high)).word.toBitVec at half
       rw [← half] at found
-      simpa only [chi5ReferenceLanes, Fin.getElem_fin, Vector.getElem_ofFn, dif_pos live] using found
+      simpa only [chi5ReferenceLanes, Fin.getElem_fin, Vector.getElem_ofFn, dite_eq_left live] using found
     refine ⟨?_, read false, read true⟩
-    simpa only [chi5ReferenceLanes, Fin.getElem_fin, Vector.getElem_ofFn, dif_pos live] using
+    simpa only [chi5ReferenceLanes, Fin.getElem_fin, Vector.getElem_ofFn, dite_eq_left live] using
       chi5_lane_bound cached false w holds native
   · apply atomic_writes_of_history history
     have projection := chi5_call_write_projection cached w holds index controls.1 pointer aligned

@@ -23,7 +23,7 @@ theorem column_parity_slot_table_sound [Fact babyBearModulus.Prime]
   obtain ⟨i, rfl⟩ := sound
   have sourceKey := column_parity_slot_key i
   by_cases padding : i.val = 0
-  · rw [if_pos padding] at sourceKey
+  · rw [ite_eq_left padding] at sourceKey
     have mapped := congrArg (fun value : Int => (value : ZMod babyBearModulus)) sourceKey
     have zero : ((columnParitySlots.row ⟨i.val, i.isLt⟩).map
         (fun value : Int => (value : ZMod babyBearModulus)))[0] = 0 := by
@@ -31,7 +31,7 @@ theorem column_parity_slot_table_sound [Fact babyBearModulus.Prime]
     have impossible := congrArg ZMod.val (zero.symm.trans key)
     rw [ZMod.val_zero, ZMod.val_natCast_of_lt (control_key_small index)] at impossible
     omega
-  · rw [if_neg padding] at sourceKey
+  · rw [ite_eq_right padding] at sourceKey
     have mapped := congrArg (fun value : Int => (value : ZMod babyBearModulus)) sourceKey
     have actual : ((columnParitySlots.row ⟨i.val, i.isLt⟩).map
         (fun value : Int => (value : ZMod babyBearModulus)))[0] =
@@ -43,7 +43,7 @@ theorem column_parity_slot_table_sound [Fact babyBearModulus.Prime]
     have same := Split.Proofs.control_injective
       (show controlAt (columnParityControllerIndex i).val = controlAt index.val by omega)
     have enabled : (columnParityControl.row i)[1] = 1 := by
-      rw [column_parity_controller_execute_value, if_neg padding]
+      rw [column_parity_controller_execute_value, ite_eq_right padding]
     intro lane
     have slots := (column_parity_controller_slots i enabled).2 lane
     have values := congrArg (fun value : Int => (value : ZMod babyBearModulus)) slots

@@ -55,7 +55,7 @@ theorem parity_call_write_projection (cached : Bool) (w : Nat → ZMod babyBearM
   have value (lane : Fin 6) (high : Bool) :
       memoryWord ((parityLanePort cached lane high).writeCode w) =
         Call.half (parityReferenceLanes cached true w)[lane.val] high := by
-    simpa only [parityReferenceLanes, Vector.getElem_ofFn, dif_pos lane.isLt, ↓reduceIte] using
+    simpa only [parityReferenceLanes, Vector.getElem_ofFn, dite_eq_left lane.isLt, ↓reduceIte] using
       (parity_written_port_half cached high w holds lane).symm
   have finList : List.finRange 6 = [0, 1, 2, 3, 4, 5] := by decide +kernel
   have rangeList : List.range 6 = [0, 1, 2, 3, 4, 5] := by decide +kernel

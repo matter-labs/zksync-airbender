@@ -80,7 +80,7 @@ theorem machine_steps [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072) (initi
       simp [Cell.addressCode, ROMView.shadow]
     have address : (writeToken row.columns row.assignment port).address =
         (readToken row.assignment port).address := rfl
-    simp only [Function.comp_apply, ROMView.token, address, outside, if_false]
+    simp only [Function.comp_apply, ROMView.token, address, outside, ite_false]
   · have lifted : PooledROMView.row initial row ∉ (view initial data).callers := by
       rw [callers]
       intro included

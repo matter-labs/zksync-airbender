@@ -30,7 +30,7 @@ theorem interpreted_rom_refresh (initial : State) {left right : MemoryToken p}
     simp [Trace.ROMView.shadow, Cell.addressCode, Word.ofBitVec, limbBase]
     dsimp [ROM.limit] at inROM
     omega
-  simp only [Trace.ROMView.token, ← same, if_pos shadow]
+  simp only [Trace.ROMView.token, ← same, ite_eq_left shadow]
 
 /-- The native ROM interpretation preserves code in the full mixed history. -/
 theorem interpreted_rom_unchanged [Fact p.Prime]

@@ -92,7 +92,7 @@ theorem theta_source_xor_member [Fact babyBearModulus.Prime] {artifact : Artifac
   have physical : Keccak.Split.Native.Fixed.thetaRhoPhysicalGenericRow ⟨index.val, by
       change index.val < 4194304; omega⟩ =
       (Keccak.Split.Native.Fixed.thetaRhoXor.row ⟨index.val, upper⟩).map signedValue := by
-    simp only [Keccak.Split.Native.Fixed.thetaRhoPhysicalGenericRow, dif_pos upper]
+    simp only [Keccak.Split.Native.Fixed.thetaRhoPhysicalGenericRow, dite_eq_left upper]
   rw [physical]
   exact congrArg (fun actual : Vector Int 9 => actual.map (fun value : Int => (value : F))) canonical
 

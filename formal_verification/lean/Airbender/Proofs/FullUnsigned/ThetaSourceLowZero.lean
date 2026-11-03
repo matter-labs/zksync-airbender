@@ -115,23 +115,23 @@ private theorem leading_get (index : Fin 256) : lowColumn.get? (65536 + index.va
   rw [getFromBlocks]
   by_cases zero : index.val = 0
   · simp only [zero]
-    rw [if_pos (by change 65536 < 65537; decide +kernel)]
+    rw [ite_eq_left (by change 65536 < 65537; decide +kernel)]
     exact constant_affine_get _ _ _ (by decide +kernel)
   · have outside : ¬ 65536 + index.val < (Block.affine 65537 0 0).length := by
       change ¬ 65536 + index.val < 65537
       omega
     have offset : 65536 + index.val - 65537 = index.val - 1 := by omega
-    rw [if_neg outside]
+    rw [ite_eq_right outside]
     simp only [Block.length]
     rw [offset, getFromBlocks]
     have inside : index.val - 1 < (Block.affine 255 1 1).length := by
       change index.val - 1 < 255
       have bound := index.isLt
       omega
-    rw [if_pos inside]
-    simp only [Block.get?, if_pos inside, Int.natCast_one]
+    rw [ite_eq_left inside]
+    simp only [Block.get?, ite_eq_left inside, Int.natCast_one]
     have value : (1 : Int) + 1 * (index.val - 1 : Nat) = (index.val : Int) := by omega
-    rw [value, if_pos (Int.natCast_nonneg _), Int.toNat_natCast]
+    rw [value, ite_eq_left (Int.natCast_nonneg _), Int.toNat_natCast]
 
 /-- The zero-shift source fragment reuses the complete proved byte-XOR column. -/
 theorem source_split_low_zero_get (index : Fin 65536) :

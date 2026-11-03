@@ -49,7 +49,7 @@ theorem cycle_workers_singleton [Fact p.Prime]
       have same := List.inj_on_of_nodup_map unique present included equal
       simpa only [same] using matched.2.1
   refine ⟨worker, matched.1, matched.2.1, ?_⟩
-  rw [RequestTrace.cycleWorkers, if_pos selected, filterIssued, filterTime,
+  rw [RequestTrace.cycleWorkers, ite_eq_left selected, filterIssued, filterTime,
     key_filter_singleton (fun other => (Delegation.Requests.fulfillment other).time) unique included]
 
 theorem caller_cycle_worker_history [Fact p.Prime]

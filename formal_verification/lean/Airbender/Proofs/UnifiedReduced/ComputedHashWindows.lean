@@ -157,9 +157,9 @@ theorem hash_control_preparation [Fact p.Prime] (hp : FieldCapacity.NativeHashCa
     PreparedBoundaryExecution data before cells cut span.controlRegister (hashPreparation span) := by
   have floor := hash_control_preparation_after_initial source
   have window := mixed_window_execution hp inverse rotationInverse accepted inputs aligned aligned (by omega) (by omega)
-  obtain ⟨start, finish, earlier, current, atStart, atFinish, earlierPerm, _, earlierHistory, _,
+  obtain ⟨«start», finish, earlier, current, atStart, atFinish, earlierPerm, _, earlierHistory, _,
     matching, _, boundary, _⟩ := window.execution
-  exact ⟨start, earlier, atStart, earlierPerm, earlierHistory, boundary,
+  exact ⟨«start», earlier, atStart, earlierPerm, earlierHistory, boundary,
     hash_control_preparation_at_boundary hp inverse accepted inputs source aligned matching boundary⟩
 
 theorem literal_computed_hash_inputs [Fact p.Prime]
@@ -196,39 +196,39 @@ theorem computed_hash_window [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCa
   have duration := inputs.duration
   have projection := mixed_projected_window (by omega) clockInverse rotationInverse accepted memory first last
     (by omega) (by omega) (by omega) inputs.beforeTerminal (by simpa only [inputs.calls] using duration)
-  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
+  obtain ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
     firstHistory, spanHistory, prefixMatching, _, startBoundary, finishBoundary,
     selected, initialized, finalBoundary, target⟩ := projection.execution
   have control := hash_control_preparation_at_boundary (by omega) clockInverse accepted memory inputs.preparation
     first prefixMatching startBoundary
   have entry : (Cell.register span.controlRegister).read atStart = .ok span.controlStart atStart := by
     simpa only [hash_preparation_value] using control.1
-  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection lower upper start finish) atStart span :=
+  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection lower upper «start» finish) atStart span :=
     ⟨inputs.tables, inputs.family, entry, inputs.calls⟩
   have result := Delegation.Caller.Proofs.hash_span_at_target hp clockInverse selected initialized protocol
     (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))
     (fun cell member => inputs.aligned cell (List.mem_of_mem_filter member)) target finalBoundary.1.addresses
   exact ⟨projection.requests,
     (Delegation.Caller.Proofs.window_call_count projection.requests).trans inputs.calls,
-    start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
+    «start», finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
     firstHistory, spanHistory, startBoundary, finishBoundary, selected, initialized, result⟩
 
 theorem computed_hash_reference_at_states [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
     (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before atStart atFinish : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {span : Delegation.Caller.HashSpan} {lower upper : Nat}
-    {start finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
+    {«start» finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
     (accepted : MixedMemoryAccepted data program)
     (inputs : ComputedPreparedHashWindowInputs data before ca oa cells program span lower upper)
     (first : lower % 4 = 0) (last : upper % 4 = 0)
     (prefixMatching : (data.machine.initialMemory ++ (data.prefixSteps lower).map Prod.snd).Perm
-      (start ++ (data.prefixSteps lower).map Prod.fst))
-    (matching : (start ++ (data.windowSteps lower upper).map Prod.snd).Perm
+      («start» ++ (data.prefixSteps lower).map Prod.fst))
+    (matching : («start» ++ (data.windowSteps lower upper).map Prod.snd).Perm
       (finish ++ (data.windowSteps lower upper).map Prod.fst))
-    (startBoundary : NativeBoundary start atStart cells) (finishBoundary : NativeBoundary finish atFinish cells)
+    (startBoundary : NativeBoundary «start» atStart cells) (finishBoundary : NativeBoundary finish atFinish cells)
     (spanPerm : spanEvents.Perm ((data.windowSteps lower upper).map transferEvent))
     (spanHistory : SailHistory cells spanEvents atStart atFinish) :
-    span.Result (data.windowProjection lower upper start finish) atStart atFinish (Delegation.Caller.workerCells cells) := by
+    span.Result (data.windowProjection lower upper «start» finish) atStart atFinish (Delegation.Caller.workerCells cells) := by
   have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   have memory := computed_hash_memory_inputs inputs
   have floor := hash_control_preparation_after_initial inputs.preparation
@@ -242,7 +242,7 @@ theorem computed_hash_reference_at_states [Fact p.Prime] (hp : FieldCapacity.Nat
     first prefixMatching startBoundary
   have entry : (Cell.register span.controlRegister).read atStart = .ok span.controlStart atStart := by
     simpa only [hash_preparation_value] using control.1
-  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection lower upper start finish) atStart span :=
+  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection lower upper «start» finish) atStart span :=
     ⟨inputs.tables, inputs.family, entry, inputs.calls⟩
   exact Delegation.Caller.Proofs.hash_span_at_target hp clockInverse selected initialized protocol
     (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))

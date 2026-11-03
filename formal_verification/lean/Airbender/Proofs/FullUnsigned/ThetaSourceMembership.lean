@@ -220,7 +220,7 @@ theorem theta_source_split_member [Fact babyBearModulus.Prime] {artifact : Artif
       change index.val < 4194304; omega⟩ =
       (Keccak.Split.Native.Fixed.thetaRhoXorSplit.row ⟨index.val - 65536, by
         change index.val - 65536 < 524288; omega⟩).map signedValue := by
-    simp only [Keccak.Split.Native.Fixed.thetaRhoPhysicalGenericRow, dif_neg (by omega : ¬ index.val < 65536), dif_pos upper]
+    simp only [Keccak.Split.Native.Fixed.thetaRhoPhysicalGenericRow, dite_eq_right (by omega : ¬ index.val < 65536), dite_eq_left upper]
   rw [physical]
   have reference := congrArg (fun actual : Vector Int 9 => actual.map (fun value : Int => (value : F))) canonical
   simpa only [position] using reference

@@ -62,12 +62,12 @@ theorem theta_output_byte_value (cached : Bool) (w : Nat → ZMod babyBearModulu
   change (thetaOutputByte cached w lane left digit).val = rotatedLaneByte bytes left digit
   rw [output]
   by_cases zero : left.val % 8 = 0
-  · rw [if_pos zero, add_zero, lowValue]
+  · rw [ite_eq_left zero, add_zero, lowValue]
     have priorBound : bytes[prior] < 256 := theta_xored_state_byte_bound cached w holds lane prior
     change (bytes[source] * 2 ^ (left.val % 8)) % 256 =
       (bytes[source] * 2 ^ (left.val % 8)) % 256 + bytes[prior] / 2 ^ (8 - left.val % 8)
     simp only [zero, Nat.sub_zero, Nat.reducePow, Nat.div_eq_of_lt priorBound, Nat.add_zero]
-  · rw [if_neg zero]
+  · rw [ite_eq_right zero]
     have lowBound := theta_fragment_byte_bound cached false w holds lane source
     have highBound := theta_fragment_byte_bound cached true w holds lane prior
     have small : (thetaFragmentByte cached false w lane source).val +

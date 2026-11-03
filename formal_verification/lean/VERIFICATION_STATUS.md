@@ -13,7 +13,7 @@ The complete proof port remains unqualified on Lean 4.35.
 Earlier whole-project evidence describes Lean 4.31.
 
 [PR #585](https://github.com/matter-labs/zksync-airbender/pull/585) stays separate.
-Its [full FV run](https://github.com/matter-labs/zksync-airbender/actions/runs/41451555538)
+Its [full FV run](https://github.com/matter-labs/zksync-airbender/actions/runs/41546838677)
 uses Lean 4.31 on the large runner.
 The user moved full validation there and freed the Mac for this experiment.
 No second full validation is required for the initial experiment.
@@ -26,6 +26,11 @@ All 54 generator checks pass.
 The real `FiniteGridChecks` source compiles with stock Lean 4.35.
 The numeric query-frame checker and strict importer compile with stock Lean 4.35.
 The complete cached AddSub query-frame certificate also compiles.
+All three machine target source builds pass with stock Lean 4.35.
+The Theta certificate uses the existing character tree and bounded source binding.
+Its complete original source and final string equality remain checked.
+Only the auxiliary character representation changes.
+The closed controller execute proof uses the kernel decision tactic.
 Its exact source bindings and original semantic finalizer pass.
 All 11 cached native witness consumers also compile.
 Their exact source bindings and semantic finalizers pass.
@@ -45,10 +50,10 @@ Its original row predicate and native contribution function stay unchanged.
 The reported Sail shift and unified arithmetic proofs compile.
 The mixed window and worker execution proofs also compile.
 Their state binders keep their exact Lean names.
-The latest batch qualifies 22 proof modules and all 54 generator checks.
+The latest batch qualifies 85 proof modules and all 54 generator checks.
 Controller geometry uses a symbolic index before specializing the native row.
 Its recursion and resource limits stay unchanged.
-Existing definitions and theorem statements stay unchanged.
+Native data, target definitions and existing theorem statements stay unchanged.
 The register-read proofs use explicit reductions of the original state operations.
 The compatibility patch annotates the existing natural-number choice binder.
 A local syntax adapter uses Sail's original assertion and monad lift.
@@ -77,7 +82,8 @@ The launcher now clears inherited compiler-simplification exceptions too.
 The user approved host execution of the pinned tool after the focused review.
 The hardened smoke passes with the recorded pinned binary.
 The time and memory guard does not provide OS isolation.
-The remaining proof port needs the three machine target source builds.
+The initial focused upgrade experiment is complete.
+Full official validation remains required before adoption.
 Only `propext`, `Classical.choice` and `Quot.sound` are permitted.
 The official kernel remains the acceptance gate.
 

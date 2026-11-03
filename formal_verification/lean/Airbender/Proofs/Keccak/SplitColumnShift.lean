@@ -12,7 +12,7 @@ theorem getFromBlocks_append (before after : List Block) (index : Nat) :
   | nil => simp only [List.nil_append, List.map_nil, List.sum_nil, Nat.zero_add]
   | cons first rest ih =>
     simp only [List.cons_append, List.map_cons, List.sum_cons, getFromBlocks]
-    rw [if_neg (by omega)]
+    rw [ite_eq_right (by omega)]
     rw [show first.length + (rest.map Block.length).sum + index - first.length =
       (rest.map Block.length).sum + index by omega]
     exact ih

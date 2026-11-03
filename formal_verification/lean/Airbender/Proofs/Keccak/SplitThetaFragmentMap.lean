@@ -72,8 +72,8 @@ theorem xor_fragment_evaluate {target : Column} {output : Nat → Nat} {map : Xo
       simpa only [Column.evaluate, ite_true] using equality
     · have next := xor_fragment_next_bound (previous + 1) node digit ⟨by omega, upper⟩ bound digitBound
       have result := ih (xorByteEntry node digit) (by omega) (by omega) (by simpa using next)
-      simp only [Column.evaluate, if_neg last]
-      rw [transition, if_neg last, actual]
+      simp only [Column.evaluate, ite_eq_right last]
+      rw [transition, ite_eq_right last, actual]
       exact result
 
 /-- The actual five-level fragment column has the transformed complete byte-XOR value. -/

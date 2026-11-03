@@ -17,7 +17,7 @@ private theorem split_register_token_unchanged (initial : State) (cached : Bool)
     change ¬ ROMView.shadow ((Keccak.Split.Native.Proofs.nativeRegisterPort cached worker index).address.code worker.assignment)
     rw [Keccak.Split.Native.Proofs.native_register_port_address]
     simp [MemoryAddress.code, ROMView.shadow]
-  simp only [ROMView.token, outside, if_false]
+  simp only [ROMView.token, outside, ite_false]
 
 variable [Fact babyBearModulus.Prime]
 variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]

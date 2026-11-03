@@ -9,6 +9,8 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 variable [Fact babyBearModulus.Prime]
 
+set_option backward.isDefEq.respectTransparency false in
+set_option backward.isDefEq.respectTransparency.types false in
 /-- Each ordinary full native window supplies the exact three-port history
 used by its original family proof. All six CPU families use the same pool. -/
 theorem unrolled_full_ordinary_context
@@ -39,7 +41,7 @@ theorem unrolled_full_ordinary_context
     have both : row.family = .addSub ∧ Delegation.Requests.Selected row.assignment := by
       simpa only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] using chosen
     exact ordinary both
-  have ports : machinePorts row = row.ports := by simp only [machinePorts, if_neg notSelected]
+  have ports : machinePorts row = row.ports := by simp only [machinePorts, ite_eq_right notSelected]
   have clock := state_clock_inputs (by decide)
     (by decide +kernel : SerializedInverse.Clock babyBearModulus)
     accepted.cpuEquations accepted.states initialClock initialAligned row member

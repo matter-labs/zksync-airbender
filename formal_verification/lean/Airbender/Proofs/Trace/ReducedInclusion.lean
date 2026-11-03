@@ -49,7 +49,7 @@ theorem execution_reduced (stream : List (BitVec 32))
     (run : Relation.ReflTransGen (Step reducedCall stream program callers) before after) :
     Relation.ReflTransGen (ReducedStep stream program callers) before after :=
   Relation.ReflTransGen.mono
-    (fun _ _ h => step_reduced stream program callers family h) run
+    (fun _ _ h => step_reduced stream program callers family h) before after run
 
 /-- The reduced-machine terminal relation retains exact stream consumption,
 native terminal PC and every tracked terminal cell. -/

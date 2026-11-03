@@ -57,12 +57,12 @@ private theorem key_four_shape : keyWindow ⟨4, by decide +kernel⟩ =
     .affine 65658 0 0 :: (List.range 15).map (fun digit => Block.affine 65536 (digit + 1) 0) := by setup_source_rfl
 
 private theorem first_get (index : Fin 1048576) : getFromBlocks (keyWindow ⟨0, by decide +kernel⟩) index.val = some (index.val % 16) := by
-  rw [key_zero_shape, getFromBlocks, if_pos (by simpa only [Block.length, Array.size_range] using index.isLt)]
+  rw [key_zero_shape, getFromBlocks, ite_eq_left (by simpa only [Block.length, Array.size_range] using index.isLt)]
   simpa only [Array.size_range, Array.getElem_range, Int.natCast_zero, Nat.zero_mul, Nat.add_zero] using
     periodic_get (Array.range 16) 65536 0 index.val (by simp) (by simpa only [Array.size_range] using index.isLt)
 
 private theorem second_get (index : Fin 1048576) : getFromBlocks (keyWindow ⟨1, by decide +kernel⟩) index.val = some (index.val / 16 % 16) := by
-  rw [key_one_shape, getFromBlocks, if_pos (by rw [Block.length, second_size]; exact index.isLt)]
+  rw [key_one_shape, getFromBlocks, ite_eq_left (by rw [Block.length, second_size]; exact index.isLt)]
   have sampled := periodic_get secondPattern 4096 0 index.val (by rw [second_size]; decide +kernel)
     (by rw [second_size]; exact index.isLt)
   simp only [second_size, Int.natCast_zero, Nat.zero_mul, Nat.add_zero] at sampled
@@ -139,7 +139,7 @@ theorem source_xor_padding_get (index : Fin 1048576) :
   have position : 65658 + (122 + index.val) = 65780 + index.val := by omega
   rw [position, padding_shape] at selected
   change getFromBlocks (sourceColumn ⟨6, by decide +kernel⟩).blocks.toList (65780 + index.val) = _
-  rw [selected, getFromBlocks, if_pos (by change 122 + index.val < 4128646; omega)]
+  rw [selected, getFromBlocks, ite_eq_left (by change 122 + index.val < 4128646; omega)]
   exact constant_affine_get _ _ _ (by omega)
 
 /-- The original XOR-five tag is exact on the full source arithmetic region. -/
@@ -148,7 +148,7 @@ theorem source_xor_tag_get (index : Fin 1048576) :
   have selected := getFromBlocks_window (sourceColumn ⟨7, by decide +kernel⟩).blocks.toList 3 1 65780 index.val
     tag_offset (by rw [tag_shape]; exact index.isLt)
   change getFromBlocks (sourceColumn ⟨7, by decide +kernel⟩).blocks.toList (65780 + index.val) = _
-  rw [selected, tag_shape, getFromBlocks, Block.length, if_pos index.isLt]
+  rw [selected, tag_shape, getFromBlocks, Block.length, ite_eq_left index.isLt]
   exact constant_affine_get _ _ _ index.isLt
 
 /-- Both fixed source fields equal their complete original native values. -/

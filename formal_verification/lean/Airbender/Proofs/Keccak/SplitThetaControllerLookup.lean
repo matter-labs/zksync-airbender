@@ -31,8 +31,8 @@ theorem theta_rho_controller_table_schedule (row : Vector (ZMod babyBearModulus)
   · intro column
     have values := congrArg (fun value : Int => (value : ZMod babyBearModulus)) (flags column)
     by_cases selected : column.val = (thetaRhoControllerIndex i).val % 5
-    · simpa only [Vector.getElem_map, if_pos selected, Int.cast_one] using values
-    · simpa only [Vector.getElem_map, if_neg selected, Int.cast_zero] using values
+    · simpa only [Vector.getElem_map, ite_eq_left selected, Int.cast_one] using values
+    · simpa only [Vector.getElem_map, ite_eq_right selected, Int.cast_zero] using values
 
 /-- The retained complete generic extent supplies the exact original controller schedule. -/
 theorem theta_rho_generic_controller_schedule (row : Vector (ZMod babyBearModulus) 9)

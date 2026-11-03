@@ -21,7 +21,7 @@ theorem xor_byte_high_value (row : Nat) :
   unfold Column.value
   rw [xor_byte_shapes.1.1, xor_byte_shapes.1.2]
   simp (disch := omega) only [Column.evaluate, high_entry, xorByteHighEntry, Nat.reducePow,
-    Nat.div_one, if_pos, if_neg, ↓reduceIte, Nat.add_sub_cancel_left]
+    Nat.div_one, ite_eq_left, ite_eq_right, ↓reduceIte, Nat.add_sub_cancel_left]
   omega
 
 /-- Every actual second key is the low byte of the native row coordinate. -/
@@ -30,7 +30,7 @@ theorem xor_byte_low_value (row : Nat) :
   unfold Column.value
   rw [xor_byte_shapes.2.1.1, xor_byte_shapes.2.1.2]
   simp (disch := omega) only [Column.evaluate, low_entry, xorByteLowEntry, Nat.reducePow,
-    Nat.div_one, if_pos, if_neg, ↓reduceIte, Nat.mul_zero, Nat.zero_add]
+    Nat.div_one, ite_eq_left, ite_eq_right, ↓reduceIte, Nat.mul_zero, Nat.zero_add]
   omega
 
 /-- The checked native byte-XOR transitions preserve their bounded node range. -/

@@ -184,12 +184,12 @@ private theorem round_call
       cases right : (Blake2Round.Native.input round w).inputIsRight <;>
       cases compression : (Blake2Round.Native.input round w).compression
     all_goals simp only [reduced, right, compression, Bool.false_eq_true, Bool.toNat, Bool.cond_false, Bool.cond_true,
-      if_false, if_true, ZMod.val_zero, ZMod.val_one] at reducedValue rightValue compressionValue ⊢
+      ite_false, ite_true, ZMod.val_zero, ZMod.val_one] at reducedValue rightValue compressionValue ⊢
     all_goals have := flags.isLt
     all_goals omega
   have reducedMode : (Blake2Round.Native.input round w).reducedRounds = decide (flags.val % 2 = 1) := by
     cases mode : (Blake2Round.Native.input round w).reducedRounds
-    all_goals simp only [mode, Bool.false_eq_true, if_false, if_true,
+    all_goals simp only [mode, Bool.false_eq_true, ite_false, ite_true,
       ZMod.val_zero, ZMod.val_one] at reducedValue
     · simp [show flags.val % 2 ≠ 1 by omega]
     · simp [show flags.val % 2 = 1 from reducedValue.symm]

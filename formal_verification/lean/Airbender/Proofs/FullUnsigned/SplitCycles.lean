@@ -57,20 +57,20 @@ theorem unrolled_full_split_caller_cycle
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ before after,
       SailHistory cells (events.filter fun event => decide
-        (event.1 ≤ (timeOfPair row.start.timestamp).value)) initial before ∧
+        (event.1 ≤ (timeOfPair row.«start».timestamp).value)) initial before ∧
       SailHistory cells (events.filter fun event => decide
-        ((timeOfPair row.start.timestamp).value < event.1 ∧
+        ((timeOfPair row.«start».timestamp).value < event.1 ∧
           event.1 ≤ (timeOfPair row.finish.timestamp).value)) before after ∧
       SailHistory cells (events.filter fun event => decide
         ((timeOfPair row.finish.timestamp).value < event.1)) after finalState ∧
       ∃ entry ∈ FullUnsigned.entriesWith Keccak.Split.Caller.decoderFields text,
         entry.SourceWith before Keccak.Split.Caller.decoderFields ∧
-        row.start.word.toBitVec = entry.pc ∧
+        row.«start».word.toBitVec = entry.pc ∧
         Delegation.Caller.nativeQuery row.assignment = Keccak.Split.Caller.query entry ∧
         worker.kind = entry.data.family ∧
         ∀ index : Fin 361, Keccak.Split.ArgumentsAt index.val before →
           Keccak.Split.Call.Executes worker.kind before after ∧
-          Keccak.Split.Call.Retires worker.kind (retiredState before row.start.word.toBitVec)
+          Keccak.Split.Call.Retires worker.kind (retiredState before row.«start».word.toBitVec)
             (retiredState after row.finish.word.toBitVec) := by
   obtain ⟨before, after, past, localHistory, localEvents, future⟩ :=
     unrolled_full_split_caller_history setup lookup accepted excluded initialPC equations active
@@ -87,8 +87,8 @@ theorem unrolled_full_split_caller_cycle
     obtain ⟨_, _, _, read, _⟩ := Transfer.native_cell_source inputs included
     exact ⟨_, read⟩)
   have prepared : ∀ cell ∈ cells, ∃ value,
-      cell.read (retiredState before row.start.word.toBitVec) =
-        .ok value (retiredState before row.start.word.toBitVec) := by
+      cell.read (retiredState before row.«start».word.toBitVec) =
+        .ok value (retiredState before row.«start».word.toBitVec) := by
     intro cell included
     obtain ⟨value, read⟩ := readable cell included
     exact ⟨value, cell_read_PC cell (cell_read_nextPC cell read _) _⟩
@@ -105,17 +105,17 @@ theorem unrolled_full_split_caller_cycle
     (fun event present => readonly event (List.mem_filter.mp present).1) source code.1 code.2
   have pcBinding := unrolled_full_split_pc_binding setup lookup accepted excluded initialPC families equations
     active initialClock initialAligned row member family selected worker matched
-  have start : Delegation.Caller.initialPC row.assignment = row.start.word := by
+  have «start» : Delegation.Caller.initialPC row.assignment = row.«start».word := by
     cases row with | mk kind assignment => cases family; rfl
   have finish : Delegation.Caller.finalPC row.assignment = row.finish.word := by
     cases row with | mk kind assignment => cases family; rfl
   have retirement : run (do SailRV32.Functions.normal_base_next_pc (); SailRV32.Functions.tick_pc ())
-      (retiredState after row.start.word.toBitVec) = .ok () (retiredState after row.finish.word.toBitVec) := by
+      (retiredState after row.«start».word.toBitVec) = .ok () (retiredState after row.finish.word.toBitVec) := by
     have actual : run (do SailRV32.Functions.normal_base_next_pc (); SailRV32.Functions.tick_pc ())
-        (retiredState after row.start.word.toBitVec) =
-          .ok () (retiredState (retiredState after row.start.word.toBitVec) row.finish.word.toBitVec) := by
-      simpa only [finish, retiredState] using pcBinding.sail (retiredState after row.start.word.toBitVec)
-        (by simpa only [start] using retired_state_pc after row.start.word.toBitVec)
+        (retiredState after row.«start».word.toBitVec) =
+          .ok () (retiredState (retiredState after row.«start».word.toBitVec) row.finish.word.toBitVec) := by
+      simpa only [finish, retiredState] using pcBinding.sail (retiredState after row.«start».word.toBitVec)
+        (by simpa only [«start»] using retired_state_pc after row.«start».word.toBitVec)
     simpa only [retired_state_overwrite] using actual
   have clocks := state_clock_inputs (by decide)
     (by decide +kernel : SerializedInverse.Clock babyBearModulus)
@@ -134,10 +134,10 @@ theorem unrolled_full_split_caller_cycle
   · intro index arguments
     refine ⟨Keccak.Split.Native.Proofs.native_call_executes_of_history splitWorkers.cached worker
       (fixedEquations.rowsHold worker present) (active worker present) index arguments localReads
-      localHistory localEvents aligned readable, retiredState after row.start.word.toBitVec, ?_, retirement⟩
+      localHistory localEvents aligned readable, retiredState after row.«start».word.toBitVec, ?_, retirement⟩
     exact Keccak.Split.Native.Proofs.native_call_executes_of_history splitWorkers.cached worker
       (fixedEquations.rowsHold worker present) (active worker present) index
-      (split_prepared_arguments arguments row.start.word.toBitVec) localReads
-      (retired_state_history localHistory row.start.word.toBitVec) localEvents aligned prepared
+      (split_prepared_arguments arguments row.«start».word.toBitVec) localReads
+      (retired_state_history localHistory row.«start».word.toBitVec) localEvents aligned prepared
 
 end Airbender.Compiler.MachineTargets.Proofs

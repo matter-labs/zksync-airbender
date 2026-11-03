@@ -76,7 +76,7 @@ theorem ChunkBlock.expand_get (block : ChunkBlock) (index : Nat)
       rw [Nat.div_div_eq_div_mul]
     change Block.get? (.periodic count stride _) index =
       Block.get? (.periodic count stride values) (index / 256)
-    simp only [Block.get?, Block.length, expandedValues_size, if_pos inside, if_pos small,
+    simp only [Block.get?, Block.length, expandedValues_size, ite_eq_left inside, ite_eq_left small,
       expandedValues_get, residue, ← Int.natCast_ediv, quotient]
 
 /-- Chunk expansion preserves every physical row, including the end of a list. -/
@@ -91,14 +91,14 @@ theorem getFromBlocks_expand (blocks : List ChunkBlock) (index : Nat) :
     · have small : index / 256 < block.compact.length := by
         rw [ChunkBlock.expand_length] at inside
         omega
-      rw [if_pos inside, if_pos small, ChunkBlock.expand_get _ _ inside]
+      rw [ite_eq_left inside, ite_eq_left small, ChunkBlock.expand_get _ _ inside]
     · have outside : ¬ index / 256 < block.compact.length := by
         rw [ChunkBlock.expand_length] at inside
         omega
       have offset : (index - block.expand.length) / 256 = index / 256 - block.compact.length := by
         rw [ChunkBlock.expand_length]
         omega
-      rw [if_neg inside, if_neg outside, ih, offset]
+      rw [ite_eq_right inside, ite_eq_right outside, ih, offset]
 
 /-- Check each short block at its absolute row offset. -/
 def checkBlockRows (expected : Nat → Nat) : Nat → List Block → Bool
@@ -119,9 +119,9 @@ theorem checkBlockRows_sound (expected : Nat → Nat) (blocks : List Block) (fir
     simp only [checkBlockRows, Bool.and_eq_true] at checked
     simp only [getFromBlocks]
     by_cases inside : index < block.length
-    · rw [if_pos inside]
+    · rw [ite_eq_left inside]
       exact beq_iff_eq.mp ((List.all_eq_true.mp checked.1) index (List.mem_range.mpr inside))
-    · rw [if_neg inside]
+    · rw [ite_eq_right inside]
       have remaining : index - block.length < (rest.map Block.length).sum := by
         simp only [List.map_cons, List.sum_cons] at bound
         omega

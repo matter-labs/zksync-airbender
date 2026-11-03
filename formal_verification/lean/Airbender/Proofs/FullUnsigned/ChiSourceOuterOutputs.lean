@@ -132,8 +132,8 @@ private theorem output3_block_lengths : ∀ block ∈ output3Blocks, block.lengt
   obtain ⟨number, within, rfl⟩ := List.mem_map.mp member
   have bound : number < 256 := List.mem_range.mp within
   by_cases constant : number / 16 = 15
-  · simp only [output3Block, if_pos constant, Block.length]
-  · simp only [output3Block, if_neg constant, Block.length, Array.size_ofFn]
+  · simp only [output3Block, ite_eq_left constant, Block.length]
+  · simp only [output3Block, ite_eq_right constant, Block.length, Array.size_ofFn]
     exact (output3_period_info ⟨number, bound⟩).2.1
 
 private theorem output4_block_lengths : ∀ block ∈ output4Blocks, block.length = 65536 := by
@@ -156,9 +156,9 @@ private theorem output3_block_get (block : Fin 256) (offset : Fin 4096) :
     (output3Block block.val).get? offset.val =
       some ((block.val % 16) ^^^ ((15 ^^^ (block.val / 16)) &&& (offset.val % 16))) := by
   by_cases constant : block.val / 16 = 15
-  · rw [output3Block, if_pos constant, constant_affine_get _ _ _ offset.isLt]
+  · rw [output3Block, ite_eq_left constant, constant_affine_get _ _ _ offset.isLt]
     simp [constant]
-  · rw [output3Block, if_neg constant]
+  · rw [output3Block, ite_eq_right constant]
     have info := output3_period_info block
     have sampled := periodic_get
       (Array.ofFn fun low : Fin (output3Period block.val) =>
