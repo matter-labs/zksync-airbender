@@ -214,7 +214,17 @@ impl CircuitData {
         level: SecurityLevel,
         mode: SoundnessMode,
     ) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
-        deserialize_from_file(&self.proof_path_for_mode(level, mode))
+        let path = self.proof_path_for_mode(level, mode);
+        let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> =
+            deserialize_from_file(&path);
+        // A stale proof and stale verifier can agree while both lag behind the
+        // current config. Check before either native or transpiled verification.
+        assert_eq!(
+            proof.whir_proof.whir_schedule,
+            self.whir_schedule_for_mode(level, mode).clone(),
+            "{path}: stale proof fixture; regenerate the matching {mode:?} proofs and per-circuit verifier binaries together"
+        );
+        proof
     }
 
     pub fn compiled_circuit(&self) -> GKRCircuitArtifact<BabyBearField> {

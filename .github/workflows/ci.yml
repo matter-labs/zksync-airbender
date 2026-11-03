@@ -52,6 +52,10 @@ jobs:
         env:
           RUST_MIN_STACK: 1073741824
         run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers,fsv_execution --lib --test cost_model_drift
+      - name: Native verifier and fixture schedule guards
+        env:
+          RUST_MIN_STACK: 1073741824
+        run: cargo test -p verifier --profile cli --test native --test mop_montgomery -- --test-threads=1
 
   formatting:
     name: cargo fmt

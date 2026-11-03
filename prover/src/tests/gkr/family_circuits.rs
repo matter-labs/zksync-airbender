@@ -901,6 +901,16 @@ fn add_sub_mop_real_program_check_satisfied() {
     type CountersT = DelegationsAndFamiliesCounters;
     const CIRCUIT_TYPE: u8 = ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
 
+    assert_eq!(
+        super::orchestration::common::soundness_mode(),
+        crate::definitions::SoundnessMode::DEFAULT,
+        "the MOP-specific fixture uses the default soundness mode"
+    );
+    let prover_config = super::orchestration::common::fixture_prover_config(
+        "add_sub_lui_auipc_mop",
+        SecurityLevel::Sec100,
+    );
+
     let worker = Worker::new_with_num_threads(8);
 
     let config = super::orchestration::common::ProgramConfig::mop_smoke();
@@ -960,14 +970,14 @@ fn add_sub_mop_real_program_check_satisfied() {
     assert!(check_satisfied(&circuit, &full_trace));
 
     let trace_len = 1usize << TRACE_LEN_LOG2;
-    let proof = super::orchestration::per_family::prove_built_family_trace(
+    let proof = super::orchestration::per_family::prove_built_family_trace_with_prover_config(
         &circuit,
         &table_driver,
         decoder_table_data,
         full_trace,
         trace_len,
         &super::orchestration::common::hardcoded_external_challenges(),
-        SecurityLevel::Sec100,
+        &prover_config,
         &worker,
     );
 
@@ -983,6 +993,14 @@ fn shift_binop_mop_real_program_check_satisfied() {
 
     type CountersT = DelegationsAndFamiliesCounters;
     const CIRCUIT_TYPE: u8 = SHIFT_BINARY_CIRCUIT_FAMILY_IDX;
+
+    assert_eq!(
+        super::orchestration::common::soundness_mode(),
+        crate::definitions::SoundnessMode::DEFAULT,
+        "the MOP-specific fixture uses the default soundness mode"
+    );
+    let prover_config =
+        super::orchestration::common::fixture_prover_config("shift_binop", SecurityLevel::Sec100);
 
     let worker = Worker::new_with_num_threads(8);
 
@@ -1052,14 +1070,14 @@ fn shift_binop_mop_real_program_check_satisfied() {
     assert!(check_satisfied(&circuit, &full_trace));
 
     let trace_len = 1usize << TRACE_LEN_LOG2;
-    let proof = super::orchestration::per_family::prove_built_family_trace(
+    let proof = super::orchestration::per_family::prove_built_family_trace_with_prover_config(
         &circuit,
         &table_driver,
         decoder_table_data,
         full_trace,
         trace_len,
         &super::orchestration::common::hardcoded_external_challenges(),
-        SecurityLevel::Sec100,
+        &prover_config,
         &worker,
     );
 

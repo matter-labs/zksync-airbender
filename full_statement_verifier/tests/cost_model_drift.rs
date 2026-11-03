@@ -9,6 +9,7 @@ mod trace;
 
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
+use verifier_common::fsv_binaries::SoundnessMode;
 use verifier_common::prover::gkr::prover::GKRProof;
 use verifier_common::prover::merkle_trees::DefaultTreeConstructor;
 
@@ -27,6 +28,23 @@ const EXPECTED: &[(&str, u64)] = &[
     ("keccak_column_parity", 941217),
     ("keccak_theta_rho", 1029628),
     ("keccak_chi5", 967750),
+];
+
+const EXPECTED_ETHPROOFS: &[(&str, u64)] = &[
+    ("add_sub_lui_auipc_mop", 1359349),
+    ("jump_branch_slt", 1407018),
+    ("shift_binop", 1424933),
+    ("unsigned_mul_div", 1281363),
+    ("mem_word_only", 1335819),
+    ("mem_subword_only", 1365922),
+    ("inits_and_teardowns", 961891),
+    ("blake2_with_extended_control", 2012093),
+    ("bigint_with_extended_control", 1932230),
+    ("keccak_special5", 1936390),
+    ("blake2_g_function", 1432366),
+    ("keccak_column_parity", 1588132),
+    ("keccak_theta_rho", 1719086),
+    ("keccak_chi5", 1649448),
 ];
 
 fn repo_root() -> String {
@@ -53,28 +71,17 @@ fn nds_for(
     )
 }
 
-fn guest_cycles(circuit: &str) -> u64 {
-    let root = repo_root();
-    let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> = {
-        let path = format!("{root}/prover/test_proofs/{circuit}_sec_100_gkr_proof.json");
-        let f = std::fs::File::open(&path).unwrap_or_else(|e| panic!("open {path}: {e}"));
-        serde_json::from_reader(std::io::BufReader::new(f)).expect("deserialize proof")
-    };
-
-    // A stale proof and stale guest can agree with each other while both lag
-    // behind the current prover. Check the fixture before executing the guest.
+fn guest_cycles(circuit: &str, mode: SoundnessMode) -> u64 {
     let circuit_data = verifier_common::test_circuits::CIRCUITS
         .iter()
         .find(|c| c.name == circuit)
         .unwrap_or_else(|| panic!("{circuit}: not a registered fixture circuit"));
     let level = verifier_common::test_circuits::SecurityLevel::Sec100;
-    assert_eq!(
-        proof.whir_proof.whir_schedule,
-        circuit_data.whir_schedule_for(level).clone(),
-        "{circuit}: stale proof fixture; regenerate the Sec100 proofs and per-circuit verifier binaries together"
-    );
+    // The shared fixture loader rejects schedules that lag behind this mode's
+    // current prover config, even if a stale proof and stale guest still agree.
+    let proof = circuit_data.proof_for_mode(level, mode);
 
-    let elf_path = circuit_data.elf_path_for(level);
+    let elf_path = circuit_data.elf_path_for_mode(level, mode);
     assert!(
         std::path::Path::new(&elf_path).exists(),
         "open {elf_path}: no such file"
@@ -89,14 +96,13 @@ fn guest_cycles(circuit: &str) -> u64 {
     trace::measure_verifier_cycles(&bin, &text, stream)
 }
 
-#[test]
-fn per_circuit_verifier_cost_has_not_drifted() {
-    for (circuit, expected) in EXPECTED {
-        let actual = guest_cycles(circuit);
+fn assert_costs_have_not_drifted(mode: SoundnessMode, expected_costs: &[(&str, u64)]) {
+    for (circuit, expected) in expected_costs {
+        let actual = guest_cycles(circuit, mode);
         let tolerance = expected / 1000;
         assert!(
             actual.abs_diff(*expected) <= tolerance,
-            "{circuit}: {actual} vs expected {expected} (tolerance {tolerance}). The generated \
+            "{circuit} ({mode:?}): {actual} vs expected {expected} (tolerance {tolerance}). The generated \
              verifier changed; recalibrate the cost tables. This guard is a proxy: the guest \
              runs only verify(), so it detects codegen drift but cannot validate the cost \
              table's numbers"
@@ -105,10 +111,26 @@ fn per_circuit_verifier_cost_has_not_drifted() {
 }
 
 #[test]
+fn per_circuit_verifier_cost_has_not_drifted() {
+    assert_costs_have_not_drifted(SoundnessMode::PessimisticConjecture, EXPECTED);
+}
+
+#[test]
+fn ethproofs_per_circuit_verifier_cost_has_not_drifted() {
+    assert_costs_have_not_drifted(SoundnessMode::EthproofsSoundnessCalc, EXPECTED_ETHPROOFS);
+}
+
+#[test]
 #[ignore = "regenerate the Sec100 proof fixtures and verifier binaries (tools/reproduce/reproduce.sh) first"]
 fn emit_per_circuit_verifier_costs() {
-    for (circuit, _) in EXPECTED {
-        println!("(\"{circuit}\", {}),", guest_cycles(circuit));
+    for mode in [
+        SoundnessMode::PessimisticConjecture,
+        SoundnessMode::EthproofsSoundnessCalc,
+    ] {
+        println!("// {mode:?}");
+        for (circuit, _) in EXPECTED {
+            println!("(\"{circuit}\", {}),", guest_cycles(circuit, mode));
+        }
     }
 }
 

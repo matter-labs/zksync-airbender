@@ -16,17 +16,35 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(path: &str) -> T {
     serde_json::from_reader(src).unwrap()
 }
 
+// These two fixtures cover MOP/BSWAP rows in the default soundness mode.
+fn mop_proof(
+    fixture: &str,
+    circuit: &str,
+) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
+    let path = format!("{}/prover/test_proofs/{fixture}", repo_root());
+    let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> =
+        deserialize_from_file(&path);
+    assert_eq!(
+        proof.whir_proof.whir_schedule,
+        common::circuit_by_name(circuit)
+            .whir_schedule_for(SecurityLevel::Sec100)
+            .clone(),
+        "{fixture}: stale MOP proof fixture; regenerate it with the current default-mode config"
+    );
+    proof
+}
+
+#[test]
+fn mop_fixture_schedules_are_current() {
+    mop_proof("mop_add_sub_gkr_proof.json", "add_sub_lui_auipc_mop");
+    mop_proof("mop_shift_binop_gkr_proof.json", "shift_binop");
+}
+
 #[test]
 #[ignore]
 fn verifier_mop_proof() {
-    let path = format!(
-        "{}/prover/test_proofs/mop_add_sub_gkr_proof.json",
-        repo_root()
-    );
-    let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> =
-        deserialize_from_file(&path);
-
     let name = "add_sub_lui_auipc_mop";
+    let proof = mop_proof("mop_add_sub_gkr_proof.json", name);
     let level = SecurityLevel::Sec100;
     let (nds, external_challenges) = common::proof_to_nds(name, level, &proof);
 
@@ -38,14 +56,8 @@ fn verifier_mop_proof() {
 #[test]
 #[ignore]
 fn verifier_mop_shift_binop_proof() {
-    let path = format!(
-        "{}/prover/test_proofs/mop_shift_binop_gkr_proof.json",
-        repo_root()
-    );
-    let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> =
-        deserialize_from_file(&path);
-
     let name = "shift_binop";
+    let proof = mop_proof("mop_shift_binop_gkr_proof.json", name);
     let level = SecurityLevel::Sec100;
     let (nds, external_challenges) = common::proof_to_nds(name, level, &proof);
 
