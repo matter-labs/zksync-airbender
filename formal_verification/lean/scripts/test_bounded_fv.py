@@ -10,6 +10,7 @@ cannot establish Linux pidfd/subreaper behavior.
 
 import contextlib
 import ctypes
+import errno
 import fcntl
 import io
 import json
@@ -88,6 +89,51 @@ class ParserTests(unittest.TestCase):
         with patch.object(backend, 'info', side_effect=[before, after]), patch.object(backend, 'pin'), patch.object(
                 Path, 'read_text', side_effect=ProcessLookupError()), self.assertRaises(guard.IdentityChanged):
             backend.measure(42, 987)
+
+    def test_pidfd_invalid_argument_rechecks_exit_and_birth(self):
+        before = guard.parse_proc_stat(proc_stat())
+        for after in (None, guard.replace(before, state='Z'),
+                      guard.replace(before, state='X'), guard.replace(before, state='x')):
+            backend = guard.LinuxBackend()
+            with self.subTest(after=after), patch.object(
+                    guard.os, 'pidfd_open', create=True,
+                    side_effect=OSError(errno.EINVAL, 'exiting PID')) as opened, patch.object(
+                    backend, 'info', return_value=after):
+                backend.pin(before)
+                self.assertEqual(backend.handles, {})
+                opened.assert_called_once_with(42, 0)
+        replacement = guard.replace(before, birth=999, state='Z')
+        with patch.object(guard.os, 'pidfd_open', create=True,
+                          side_effect=OSError(errno.EINVAL, 'reused PID')), patch.object(
+                backend, 'info', return_value=replacement), self.assertRaises(guard.IdentityChanged):
+            backend.pin(before)
+
+    def test_pidfd_transient_invalid_argument_still_requires_a_handle(self):
+        backend = guard.LinuxBackend()
+        before = guard.parse_proc_stat(proc_stat())
+        with patch.object(guard.os, 'pidfd_open', create=True,
+                          side_effect=[OSError(errno.EINVAL, 'transition'), 77]) as opened, patch.object(
+                backend, 'info', return_value=before), patch.object(guard.time, 'sleep'):
+            backend.pin(before)
+            self.assertEqual(opened.call_count, 2)
+            self.assertEqual(backend.handles, {42: (987, 77)})
+        with patch.object(guard.os, 'close') as closed:
+            backend.release_exited(42)
+            closed.assert_called_once_with(77)
+
+    def test_pidfd_live_invalid_argument_and_other_errors_fail_closed(self):
+        before = guard.parse_proc_stat(proc_stat())
+        for code, attempts in ((errno.EINVAL, 3), (errno.EACCES, 1)):
+            backend = guard.LinuxBackend()
+            with self.subTest(code=code), patch.object(
+                    guard.os, 'pidfd_open', create=True,
+                    side_effect=OSError(code, 'live PID')) as opened, patch.object(
+                    backend, 'info', return_value=before), patch.object(
+                    guard.time, 'sleep'), self.assertRaises(OSError) as raised:
+                backend.pin(before)
+            self.assertEqual(raised.exception.errno, code)
+            self.assertEqual(opened.call_count, attempts)
+            self.assertEqual(backend.handles, {})
 
     def test_linux_supervisor_keeps_ownership_until_cleanup_succeeds(self):
         backend, child, tracker = Mock(), Mock(), Mock()

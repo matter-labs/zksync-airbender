@@ -61,8 +61,11 @@ The fix quotes that binder and the same reserved syntax in two adjacent consumer
 The Lean names and theorems stay unchanged.
 All three focused source builds and all 52 generator checks pass.
 CI now saves cold build progress after failure.
-The corrected [run 41546838677](https://github.com/matter-labs/zksync-airbender/actions/runs/41546838677)
-is running at `d1423ca72`. Its Lean inputs stay unchanged by the GPU CI fix.
+[Run 41546838677](https://github.com/matter-labs/zksync-airbender/actions/runs/41546838677)
+then stopped after 756 modules when Linux rejected a `pidfd_open` request.
+The guard now retries this error briefly and rechecks process identity and exit.
+It still stops if it cannot pin a live process. Resource caps stay unchanged.
+The focused Linux guard controls pass. A corrected full run is required.
 The earlier run rejected three omitted split Keccak exports. The CI list is fixed.
 The repaired run reuses saved native build caches.
 The registered Rust CI workflow provides the manual entry.
@@ -75,7 +78,7 @@ The transitive replay uses a 2,048 MiB stack and checks all safe dependencies.
 
 The duplicate local Mac frontend and Docker cold run stopped at the user's request.
 Their caches and partial reports remain. Neither is a full validation result.
-The local worker now runs the separate Lean 4.35 and turbo experiment.
+The separate Lean 4.35 experiment has completed its focused source checks.
 That experiment does not change this PR's Lean 4.31 toolchain.
 
 Focused builds pass for the cached native acceptance path, all three native
@@ -90,6 +93,7 @@ Other source leaves retain 900 seconds. Memory caps and kernel checks stay uncha
 | --- | --- | ---: | ---: |
 | CI cold source partial, 2,756 of 4,202 modules | Stopped at parse failure | 33,462.48 | 2,198.55 |
 | CI `ShiftAssembly` parse failure | Fixed; focused source passes | 4.62 | 353.58 |
+| CI cold source partial, 756 of 4,202 modules | Stopped at guard error; fixed | 11,130.39 | 2,278.52 |
 | CI full frontend and runtime gates | Queued | Pending | Pending |
 | CI environment audit and baseline refresh | Queued | Pending | Pending |
 | CI full transitive replay, 2,048 MiB stack | Queued | Pending | Pending |

@@ -6344,3 +6344,22 @@ This change affects the CI command. It changes no production Rust or circuit.
 The separate full FV run `41546838677` continues with the same Lean inputs.
 All 52 generator checks and the workflow syntax checks pass.
 The corrected GPU check remains pending.
+
+## 2026-11-03: Handle the Linux process pin race
+
+Full FV run `41546838677` built 756 of 4,202 cold sources.
+Their module guard times sum to 11,130.39 seconds.
+The charged footprint proxy peaks at 2,278.52 MiB.
+The next guard stopped when `pidfd_open` returned `EINVAL`.
+It reported no Lean proof or memory-limit failure and left no owned workers.
+The run saved its Lean build progress and uploaded the module receipts.
+
+The guard now retries only this error, at most three times.
+It rechecks the birth identity and exit state before each retry.
+It still stops if a live process cannot be pinned or its identity changes.
+The memory caps, deadline, pidfd signals and cleanup rules stay unchanged.
+The 25 focused parser checks pass on the host.
+All 28 focused Linux checks pass in a small container with networking disabled.
+The check includes short-lived children, normal exit and descendant cleanup.
+The container mounts only the two guard files and keeps its root read-only.
+All 52 generator checks pass. No Lean source or proof statement changes.

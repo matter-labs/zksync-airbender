@@ -316,10 +316,24 @@ class LinuxBackend:
             if previous[0] != info.birth:
                 raise IdentityChanged(f'owned PID unexpectedly reused: {info.pid}')
             return
-        try:
-            descriptor = os.pidfd_open(info.pid, 0)
-        except ProcessLookupError:
-            return
+        for attempt in range(3):
+            try:
+                descriptor = os.pidfd_open(info.pid, 0)
+                break
+            except ProcessLookupError:
+                return
+            except OSError as error:
+                if error.errno != errno.EINVAL:
+                    raise
+                # Process membership can disappear between stat and pidfd_open.
+                again = self.info(info.pid)
+                if again is not None and again.birth != info.birth:
+                    raise IdentityChanged(f'PID reused while pinning: {info.pid}') from error
+                if again is None or again.state in ('Z', 'X', 'x'):
+                    return
+                if attempt == 2:
+                    raise
+                time.sleep(0.001)
         again = self.info(info.pid)
         if again is None or again.birth != info.birth:
             os.close(descriptor)
