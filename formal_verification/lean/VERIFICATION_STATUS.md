@@ -24,8 +24,8 @@ Three [native corollaries](Airbender/Review/Compiler/Theorems.lean) compose them
 with the full unsigned, reduced and unified target proofs.
 Their focused source builds pass.
 Item 3 has stopped. No more fact families will be converted.
-FV CI is configured for nightly and manual runs on the large runner.
-The nightly schedule starts when the workflow reaches the default branch.
+FV CI is configured for weekly full assurance and manual iteration runs on the large runner.
+The weekly schedule starts when the workflow reaches the default branch.
 One freshness step checks all 52 generator routes.
 It also requires tracked Airbender imports to resolve to tracked sources.
 The cold source queue includes the top-level `Airbender.lean` module.
@@ -34,7 +34,7 @@ The tracked-import check covers 12,078 imports in 4,212 Lean files.
 The earlier log is in [VERIFICATION_HISTORY.md](VERIFICATION_HISTORY.md).
 The final axiom inventory and baseline refresh remain pending.
 [PR #585](https://github.com/matter-labs/zksync-airbender/pull/585) is open and mergeable.
-The full FV gate must pass before merge.
+One full assurance run, including independent kernel replay, remains required before merge.
 The history rewrite signed all 768 commits. Later commits are signed.
 GitHub verifies the signed head.
 The signing rewrite leaves the source tree unchanged.
@@ -42,11 +42,14 @@ The signing rewrite leaves the source tree unchanged.
 ## Plan
 
 1. The three deletion commits are complete. Their focused source builds pass.
-2. Run FV only at night or on manual dispatch, on the large runner.
-   Use one generator freshness step. Keep the existing checkers.
-3. Run one final cold build, full frontend and transitive kernel replay.
-   Use a 2,048 MiB stack. Run the environment audit and refresh the baseline.
-   Record module time, peak memory and totals in one table.
+2. Iterate with a warm manual run on the large runner. It retains normal Lake
+   freshness, the complete frontend and runtime checks, generator freshness,
+   and the environment/axiom audit. The cold benchmark and independent replay
+   are not in this iteration gate.
+3. After iteration, run full assurance once with transitive kernel replay and
+   the false-proof controls. Use a 2,048 MiB stack and refresh the axiom
+   baseline. Weekly default-branch runs also include this assurance. Request
+   a cold source benchmark separately when new performance data is needed.
 4. Fix only validation failures. Do not change a target or cached Review claim.
 
 ## Runtime

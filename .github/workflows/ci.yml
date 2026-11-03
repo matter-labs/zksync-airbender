@@ -12,9 +12,13 @@ on:
       cold_build:
         description: Build every project module without restored Lean objects
         type: boolean
-        default: true
+        default: false
       refresh_axiom_baseline:
         description: Export a refreshed baseline after the passing environment audit
+        type: boolean
+        default: false
+      full_assurance:
+        description: Run the complete independent kernel replay and false-proof controls
         type: boolean
         default: false
 
@@ -264,3 +268,4 @@ jobs:
     with:
       cold_build: ${{ inputs.cold_build }}
       refresh_axiom_baseline: ${{ inputs.refresh_axiom_baseline }}
+      full_assurance: ${{ inputs.full_assurance }}

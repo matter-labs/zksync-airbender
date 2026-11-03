@@ -1,9 +1,9 @@
 name: Formal verification
 
-# Nightly and manual runs share the same bounded global worker.
+# Weekly assurance and manual runs share the same bounded global worker.
 on:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 2 * * 0'
   workflow_dispatch:
     inputs:
       cold_build:
@@ -14,12 +14,19 @@ on:
         description: Export a refreshed baseline after the passing environment audit
         type: boolean
         default: false
+      full_assurance:
+        description: Run the complete independent kernel replay and false-proof controls
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       cold_build:
         type: boolean
         default: false
       refresh_axiom_baseline:
+        type: boolean
+        default: false
+      full_assurance:
         type: boolean
         default: false
 
@@ -33,6 +40,7 @@ concurrency:
 
 jobs:
   verification:
+    name: ${{ (github.event_name == 'schedule' || inputs.full_assurance == true) && 'full assurance' || 'iteration validation' }}
     runs-on: [matterlabs-ci-runner-high-performance]
     # A shared 22-hour work deadline leaves two hours for cleanup, immutable
     # partial-cache snapshots and logs before this runner/job boundary.
@@ -53,6 +61,21 @@ jobs:
         working-directory: formal_verification/lean
     steps:
       - uses: actions/checkout@v3
+      - name: Report verification scope
+        env:
+          FV_COLD_BUILD: ${{ inputs.cold_build == true }}
+          FV_FULL_ASSURANCE: ${{ inputs.full_assurance == true || github.event_name == 'schedule' }}
+        run: |
+          if [[ "$FV_COLD_BUILD" == true ]]; then
+            echo 'Cold source benchmark: enabled' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Cold source benchmark: omitted; restored objects still undergo Lake freshness checks' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ "$FV_FULL_ASSURANCE" == true ]]; then
+            echo 'Independent full kernel replay and false-proof controls: enabled' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Independent full kernel replay and false-proof controls: deferred to weekly or manual full assurance' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -184,7 +207,7 @@ jobs:
             ${{ steps.cache-keys.outputs.native-tool-prefix }}
       - uses: actions/cache/restore@v4
         id: replay-cache
-        if: env.FV_REPLAY_CACHE_TRUSTED == 'true'
+        if: env.FV_REPLAY_CACHE_TRUSTED == 'true' && (inputs.full_assurance == true || github.event_name == 'schedule')
         timeout-minutes: 20
         with:
           path: ${{ env.FV_REPLAY_LEDGER }}
@@ -414,6 +437,7 @@ jobs:
           fi
       - name: Independent kernel replay of the complete compiled dependency DAG
         id: kernel-replay
+        if: inputs.full_assurance == true || github.event_name == 'schedule'
         timeout-minutes: 910
         run: |
           source "$FV_ROOT/guard.sh"
@@ -431,6 +455,7 @@ jobs:
           key: ${{ steps.cache-keys.outputs.replay }}-replay
       - name: Direct and transitive isolated false-proof controls
         id: assurance-controls
+        if: inputs.full_assurance == true || github.event_name == 'schedule'
         timeout-minutes: 70
         run: |
           source "$FV_ROOT/guard.sh"
