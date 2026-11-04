@@ -1,4 +1,5 @@
 import Slop.Sail.ForwardSim
+import Human.ISA.Sail.Airbender
 
 /-! # `Simple` closure: the generated register clauses are covered computations
 
@@ -94,5 +95,24 @@ theorem simple_normalStep {m : SailRV32.SailM SailRV32.ExecutionResult} (hm : Si
   refine simple_bind simple_normalBaseNextPC (fun _ => ?_)
   refine simple_bind hm (fun r => ?_)
   exact simple_bind simple_tick_pc (fun _ => Simple.pure _)
+
+/-- The Airbender execution wrapper passes the register clauses through (no special case applies). -/
+theorem simple_airbender_execute_RTYPE (next : BitVec 32) (rs2 rs1 rd : regidx) (op : rop) :
+    Simple (Airbender.execute next (.RTYPE (rs2, rs1, rd, op))) := by
+  unfold Airbender.execute SailRV32.Functions.execute
+  dsimp only
+  exact simple_execute_RTYPE rs2 rs1 rd op
+
+theorem simple_airbender_execute_ITYPE (next : BitVec 32) (imm : BitVec 12) (rs1 rd : regidx) (op : iop) :
+    Simple (Airbender.execute next (.ITYPE (imm, rs1, rd, op))) := by
+  unfold Airbender.execute SailRV32.Functions.execute
+  dsimp only
+  exact simple_execute_ITYPE imm rs1 rd op
+
+theorem simple_airbender_execute_UTYPE (next : BitVec 32) (imm : BitVec 20) (rd : regidx) (op : uop) :
+    Simple (Airbender.execute next (.UTYPE (imm, rd, op))) := by
+  unfold Airbender.execute SailRV32.Functions.execute
+  dsimp only
+  exact simple_execute_UTYPE imm rd op
 
 end Airbender.Reference.RiscV.Sail
