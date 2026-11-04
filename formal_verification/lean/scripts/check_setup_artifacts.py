@@ -17,9 +17,6 @@ LEAN = Path(__file__).resolve().parents[1]
 REPO = LEAN.parent.parent
 ARTIFACTS = LEAN / "artifacts/setup"
 SOURCE_ROOT_CRATES = ("cs", "execution_prover", "prover")
-NATIVE_EXPORT_SOURCES = {"execution_prover/examples/export_setup_json.rs",
-                         "cs/examples/export_subword_circuit.rs",
-                         "formal_verification/native/rom_tables.rs"}
 MANIFEST_FILES = {"manifest.json", "native-evidence.json"}
 PRODUCTION_CIRCUITS = {
     "add-sub": "add_sub_lui_auipc_mop", "bigint": "bigint_with_extended_control",
@@ -109,7 +106,7 @@ def source_inventory(repo):
         for path in (crate / "build.rs",):
             if path.is_file() and path.stat().st_size:
                 paths.add(path.relative_to(repo).as_posix())
-    paths.update(NATIVE_EXPORT_SOURCES)
+    paths.add("execution_prover/examples/export_setup_json.rs")
     for path in (repo / ".cargo").glob("config*"):
         if path.is_file():
             paths.add(path.relative_to(repo).as_posix())

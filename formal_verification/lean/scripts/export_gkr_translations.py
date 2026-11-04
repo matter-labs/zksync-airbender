@@ -19,7 +19,6 @@ LEAN = Path(__file__).resolve().parents[1]
 FAMILIES = ["add-sub", "jump-branch", "mul-div", "shift-binop", "word-memory",
             "subword-memory", "unified", "bigint", "blake-g", "blake-round", "keccak"]
 COMPILER_INPUTS = {"Cargo.lock", "cs/examples/export_gkr_translation.rs",
-                   "formal_verification/native/rom_tables.rs",
                    "formal_verification/lean/scripts/export_gkr_translations.py",
                    "formal_verification/lean/scripts/gkr_arithmetic_certificate.py",
                    "formal_verification/lean/artifacts/setup/manifest.json"}

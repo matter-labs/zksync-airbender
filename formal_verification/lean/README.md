@@ -117,13 +117,42 @@ export FV_COMPILER_TARGET_DIR="$FV_ROOT/cargo/compiler"
 python3 -m unittest discover -s scripts -p test_bounded_fv.py -v
 python3 scripts/compilation_pool/test_pool.py --process-tests --process-output "$FV_ROOT/pool-controls"
 PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports \
-  test_olean_hashes test_replay_cache test_proof_boundaries test_native_lookup_bindings
+  test_olean_hashes test_replay_cache test_proof_boundaries test_native_lookup_bindings test_native_memory_policy
 fv() {
   label="$1"
   shift
   python3 scripts/bounded_fv.py --mib 2560 --resident-mib 5120 --seconds 900 \
     --log "$FV_ROOT/$label.log" -- "$@" | tee "$FV_ROOT/$label.guard.jsonl"
 }
+
+# Native reconstruction has a separate, explicit Linux-only memory profile.
+# Capacity qualification requires at least 14 GiB effective/available memory.
+fv_native() {
+  label="$1"
+  shift
+  python3 scripts/qualify_native_memory.py --report "$FV_ROOT/$label.capacity.json"
+  python3 scripts/bounded_fv.py --mib 8192 --resident-mib 12288 --seconds 900 \
+    --log "$FV_ROOT/$label.log" -- "$@" | tee "$FV_ROOT/$label.guard.jsonl"
+}
+
+# Copy the retained Cargo lock only when absent; an existing lock must match.
+fv native-lock python3 scripts/check_setup_artifacts.py --prepare-lock
+fv provenance-controls python3 -m unittest discover -s scripts -p test_setup_provenance.py -v
+families=(add-sub jump-branch mul-div shift-binop word-memory subword-memory
+  unified bigint blake-g blake-round keccak inits-and-teardowns)
+for family in "${families[@]}"; do
+  fv_native "regenerate-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
+    regenerate "$family" --work-dir "$FV_ROOT/native"
+done
+for family in "${families[@]}" keccak-column-parity keccak-theta-rho keccak-chi5 decoder-smoke; do
+  fv_native "export-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
+    export "$family" --work-dir "$FV_ROOT/native"
+done
+dep_args=()
+while IFS= read -r -d '' file; do dep_args+=(--dep-info "$file"); done \
+  < <(find "$CARGO_TARGET_DIR/debug" -type f -name '*.d' -print0)
+fv native-receipts python3 scripts/check_setup_freshness.py verify \
+  --work-dir "$FV_ROOT/native" "${dep_args[@]}"
 
 # Bootstrap only the pinned Mathlib cache CLI, serially, before Clean patches.
 # Ordinary Lake loads the exact manifest; do not run lake update.
@@ -140,27 +169,8 @@ fv cache-executable lake --no-cache build cache
 fv mathlib-cache lake exe cache get
 fv prepare-clean python3 scripts/prepare_clean.py
 
-# Copy the retained Cargo lock only when absent; an existing lock must match.
-fv native-lock python3 scripts/check_setup_artifacts.py --prepare-lock
-fv provenance-controls python3 -m unittest discover -s scripts -p test_setup_provenance.py -v
-families=(add-sub jump-branch mul-div shift-binop word-memory subword-memory
-  unified bigint blake-g blake-round keccak inits-and-teardowns)
-for family in "${families[@]}"; do
-  fv "regenerate-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
-    regenerate "$family" --work-dir "$FV_ROOT/native"
-done
-for family in "${families[@]}" keccak-column-parity keccak-theta-rho keccak-chi5 decoder-smoke; do
-  fv "export-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
-    export "$family" --work-dir "$FV_ROOT/native"
-done
-dep_args=()
-while IFS= read -r -d '' file; do dep_args+=(--dep-info "$file"); done \
-  < <(find "$CARGO_TARGET_DIR/debug" -type f -name '*.d' -print0)
-fv native-receipts python3 scripts/check_setup_freshness.py verify \
-  --work-dir "$FV_ROOT/native" "${dep_args[@]}"
-
 # Re-export the production cached compiler output after Rust/source changes.
-fv compiler-export env -u CI -u RUST_MIN_STACK CARGO_TARGET_DIR="$FV_COMPILER_TARGET_DIR" \
+fv_native compiler-export env -u CI -u RUST_MIN_STACK CARGO_TARGET_DIR="$FV_COMPILER_TARGET_DIR" \
   python3 scripts/export_gkr_translations.py --output "$FV_ROOT/compiler"
 fv compiler-retained python3 scripts/check_gkr_translations.py
 fv compiler-fresh python3 scripts/check_gkr_translations.py --directory "$FV_ROOT/compiler"
@@ -185,10 +195,16 @@ python3 scripts/check_assurance_controls.py --guard scripts/bounded_fv.py \
   --ledger .lake/verification/replay-ledger
 ```
 
-The 28 native jobs execute eleven production generator tests, one artifact-only
-subword circuit generator and sixteen exports. The subword generator invokes the
-same native circuit builder/compiler with native ROM rows assembled in bounded
-chunks; it preserves the full domain and avoids unused witness index maps.
+The 28 native jobs execute twelve original production generator tests and
+sixteen exports. Native reconstruction runs before the Lean cache restore. It
+retains the original table objects, index maps, sizes, offsets and materialized
+setup code. The withdrawn chunked adapter reported incorrect table cardinalities.
+Native artifact generation, compiler capture and mixed decoder-differential jobs
+use an explicit 8,192 MiB footprint / 12,288 MiB resident profile, with the same
+900-second limit and global serial worker. A Linux capacity check requires at
+least 14 GiB effective capacity and available memory, accounting for cgroup hard
+limits and reclaimable inactive file cache. Every native job records that check.
+Lean source, axiom-audit and kernel-replay workers retain 2,560 / 5,120 MiB limits.
 The export list is the twelve `families` above plus `keccak-column-parity`,
 `keccak-theta-rho`, `keccak-chi5` and the derived `decoder-smoke` fixture, exactly
 as in the workflow. Independent replay uses a 2,048 MiB stack. Their final verification checks

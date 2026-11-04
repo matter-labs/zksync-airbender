@@ -15,10 +15,6 @@ use std::path::Path;
 
 type Build = fn(&mut BasicAssembly<F>);
 
-mod rom_export {
-    include!("../../formal_verification/native/rom_tables.rs");
-}
-
 fn write_json_if_changed(path: &Path, value: &serde_json::Value) -> std::io::Result<()> {
     let mut bytes = serde_json::to_vec(value)?;
     bytes.push(b'\n');
@@ -115,8 +111,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             assembly.add_table_with_content(kind, table);
         }
     } else if args[0] == "subword-memory" {
-        for (kind, table) in
-            rom_export::subword_rom_tables::<F, { common_constants::ROM_SECOND_WORD_BITS }>(&[])
+        for (kind, table) in create_mem_subword_only_special_tables::<
+            F,
+            { common_constants::ROM_SECOND_WORD_BITS },
+        >(&[])
         {
             assembly.add_table_with_content(kind, table);
         }

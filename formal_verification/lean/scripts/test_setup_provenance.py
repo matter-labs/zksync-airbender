@@ -227,6 +227,10 @@ class ProvenanceControls(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "differs from retained complete JSON"):
             freshness.compare_artifact(path, original)
 
+    def test_difference_reports_the_first_field_and_rejects_scalar_type_changes(self):
+        self.assertEqual(freshness.first_difference({'columns': [[1, 2]]}, {'columns': [[1, 3]]}), '$.columns[0][1]: 2 != 3')
+        self.assertEqual(freshness.first_difference([False], [0]), '$[0]: type bool != int')
+
     def test_exact_one_native_test_positive(self):
         name = retained.SMOKE_TEST
         text = f"running 1 test\ntest {name} ... ok\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 99 filtered out; finished in 0.1s\n"

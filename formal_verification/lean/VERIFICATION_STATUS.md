@@ -55,14 +55,21 @@ re-export and current proof validation remain pending.
 
 Run [41818079338](https://github.com/matter-labs/zksync-airbender/actions/runs/41818079338)
 passed five native circuit comparisons and then hit the footprint limit in the
-subword generator. An artifact-only chunked ROM materializer and subword circuit
-example now preserve the full domain while avoiding full-domain witness index
-maps. Production functions and resource bounds are unchanged. Sixty-one Python
-provenance/preflight tests pass; the two Rust equivalence controls and full-domain
-exports still need CI. The workflow checks those controls before restoring the
-Lean cache. Compiler input receipts are promoted only after all 33 payload files
-match exactly and fresh compiler provenance passes; both verified manifests
-still need committing after actual requalification succeeds.
+subword generator. The attempted chunked adapter then failed complete circuit
+identity in [41823630219](https://github.com/matter-labs/zksync-airbender/actions/runs/41823630219):
+its cleared content index made native table sizes zero. That adapter and its
+example are removed; original native constructors and all twelve exact generator
+tests are restored. Production functions remain at the base.
+
+Native artifact, compiler-capture and mixed decoder-data jobs now use a separate
+explicit 8,192 / 12,288 MiB memory profile, with the same 900-second limit and
+single-worker lock. A per-job Linux capacity check requires 14 GiB effective
+capacity/available memory, including cgroup hard limits and reclaimable file
+cache. Lean source, proof audits and kernel replay retain 2,560 / 5,120 MiB limits.
+Native reconstruction runs before Lean cache restore. Sixty-seven lightweight
+Python controls pass; actual native peaks and complete output equality remain
+pending. Both verified setup and compiler manifests must be committed after real
+requalification succeeds. No current manifest or full FV result is qualified.
 
 Warm run [41803197805](https://github.com/matter-labs/zksync-airbender/actions/runs/41803197805)
 failed in source validation on reserved `start` binders in

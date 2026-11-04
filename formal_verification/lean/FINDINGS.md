@@ -95,15 +95,28 @@ Run [41818079338](https://github.com/matter-labs/zksync-airbender/actions/runs/4
 passed the first five circuit regenerations, then the original subword generator
 exceeded the 2,560 MiB footprint bound (2,577.18 MiB observed after 9.86 seconds).
 This is a resource failure, with no Rust constraint or setup mismatch diagnosed.
-Production table construction remains unchanged. The artifact-only subword path
-now uses the original native ROM constructors on 128 KiB image chunks, lifting
-their address/tag keys back into the unchanged full domain. It retains all row
-values, physical order, table IDs and widths; each chunk's witness index maps are
-discarded. Native controls compare the assembled tables with the original whole
-constructor on a smaller domain, including cross-chunk images and signed values.
-The full setup comparison remains mandatory on the production domain. The
-subword circuit uses the same native circuit builder and GKR compiler through a
-new export example; the other eleven generation jobs still run exact tests.
+Production table construction remains unchanged.
+
+Run [41823630219](https://github.com/matter-labs/zksync-airbender/actions/runs/41823630219)
+rejected the attempted chunked export adapter: its data rows matched smaller-domain
+native tests, but it cleared the content index map that the original table-size
+method uses. The resulting ROM size was zero and the full circuit comparison
+failed. The adapter and its example are withdrawn completely. Restored exporters
+use the original native constructors, complete table objects and exact generator
+tests. No source receipt was promoted by either failed run.
+
+Native artifact generation, compiler capture and mixed native/Lean decoder-data
+checks now have an explicit 8,192 MiB footprint / 12,288 MiB resident budget,
+retaining the 900-second time cap and one global worker. This is a deliberate
+resource-policy change, not a native fidelity or proof result. Before each such
+job, Linux host and visible cgroup capacity/availability must provide the resident
+budget plus 2 GiB headroom; reclaimable inactive file cache is accounted for.
+Capacity measurements and actual guarded peaks are retained as receipts. Lean
+source verification, environment/axiom audits and independent kernel replay keep
+the original 2,560 / 5,120 MiB limits. Native reconstruction runs before restoring
+the Lean cache so complete circuit/setup checks happen before Lean preparation.
+Future mismatches record the first differing JSON field and retain the fresh
+circuit for inspection. Actual reconstruction under the new budget is pending.
 
 Setup receipt promotion also invalidates the compiler's pin of the setup
 manifest. Requalification now refreshes compiler input receipts only after all

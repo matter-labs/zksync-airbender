@@ -40,7 +40,10 @@ Record circuit discrepancies and use narrow explicit proof assumptions.
 Do not change production Rust to make a proof pass.
 
 Real workers retain the shared aggregate owner.
-The footprint cap is 2,560 MiB. The resident cap is 5,120 MiB.
+Lean source, proof-audit and replay workers retain the 2,560 MiB footprint and
+5,120 MiB resident caps. Native artifact generation and decoder-data jobs use
+explicit 8,192 / 12,288 MiB caps after Linux host/cgroup capacity qualification
+with 2 GiB headroom. Both profiles retain their existing serial worker and time caps.
 The ordinary worker deadline is 900 seconds.
 Replay uses the lakefile thread stack: 2,048 MiB.
 The guard records both the Lean thread and process stack limits.

@@ -108,7 +108,7 @@ jobs:
           # children sequentially. An outer guard would deadlock the host lock.
           python3 -m unittest discover -s scripts -p test_bounded_fv.py -v 2>&1 | tee "$FV_ROOT/guard-controls.log"
           python3 scripts/compilation_pool/test_pool.py --process-tests --process-output "$FV_ROOT/pool-controls"
-          PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports test_olean_hashes test_replay_cache test_proof_boundaries test_native_lookup_bindings -v
+          PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports test_olean_hashes test_replay_cache test_proof_boundaries test_native_lookup_bindings test_native_memory_policy -v
           cat > "$FV_ROOT/guard.sh" <<'SH'
           set -euo pipefail
           # Lightweight orchestration only: real children still own their
@@ -125,11 +125,11 @@ jobs:
             echo "FV stage $label: deadline ${seconds}s; cleanup reserve 120s"
             timeout --signal=TERM --kill-after=120s "${seconds}s" "$@"
           }
-          fv() {
-            local label="$1"
-            shift
+          fv_limited() {
+            local label="$1" fv_footprint="$2" fv_resident="$3"
+            shift 3
             python3 "$GITHUB_WORKSPACE/formal_verification/lean/scripts/bounded_fv.py" \
-              --mib 2560 --resident-mib 5120 --seconds 900 \
+              --mib "$fv_footprint" --resident-mib "$fv_resident" --seconds 900 \
               --log "$FV_ROOT/$label.log" -- "$@" | tee "$FV_ROOT/$label.guard.jsonl"
             python3 - "$FV_ROOT/$label.guard.jsonl" <<'PY'
           import json, sys
@@ -140,7 +140,25 @@ jobs:
           assert records[0]['live_owned_after'] == [], records
           PY
           }
+          fv() {
+            local label="$1"
+            shift
+            fv_limited "$label" 2560 5120 "$@"
+          }
+          fv_native() {
+            local label="$1"
+            shift
+            python3 "$GITHUB_WORKSPACE/formal_verification/lean/scripts/qualify_native_memory.py" \
+              --report "$FV_ROOT/$label.capacity.json"
+            fv_limited "$label" 8192 12288 "$@"
+          }
           SH
+      - name: Qualify explicit native artifact memory budget
+        run: |
+          source "$FV_ROOT/guard.sh"
+          fv native-memory-policy python3 scripts/qualify_native_memory.py --report "$FV_ROOT/native-memory-policy.json"
+          echo 'Native artifact and decoder differential jobs: 8192 MiB footprint / 12288 MiB resident; 900s per worker' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Lean source, proof audit and kernel replay limits remain 2560 MiB footprint / 5120 MiB resident' >> "$GITHUB_STEP_SUMMARY"
       - name: Prepare exact native lock or unqualified re-export snapshot
         env:
           FV_REQUALIFY_SETUPS: ${{ inputs.requalify_setups == true }}
@@ -208,11 +226,58 @@ jobs:
           restore-keys: |
             ${{ steps.cache-keys.outputs.native-source-prefix }}
             ${{ steps.cache-keys.outputs.native-tool-prefix }}
-      - name: Native ROM export equivalence controls
+      - name: Twelve generators and sixteen complete fresh exports
+        id: native-setups
+        timeout-minutes: 370
+        env:
+          FV_REQUALIFY_SETUPS: ${{ inputs.requalify_setups == true }}
         run: |
           source "$FV_ROOT/guard.sh"
-          fv native-rom-controls env -u CI -u RUST_MIN_STACK cargo test --locked -p cs \
-            --manifest-path ../../Cargo.toml --example export_subword_circuit -- --nocapture --test-threads=1
+          fv_stage native-setups 21600 bash -euo pipefail <<'FV_STAGE'
+          trap 'exit 124' TERM
+          source "$FV_ROOT/guard.sh"
+          qualification=()
+          promotion=()
+          if [[ "$FV_REQUALIFY_SETUPS" == true ]]; then
+            qualification=(--requalify)
+            promotion=(--promote)
+          fi
+          families=(add-sub jump-branch mul-div shift-binop word-memory subword-memory
+            unified bigint blake-g blake-round keccak inits-and-teardowns)
+          for family in "${families[@]}"; do
+            fv_native "regenerate-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
+              regenerate "$family" --work-dir "$FV_ROOT/native" "${qualification[@]}"
+          done
+          for family in "${families[@]}" keccak-column-parity keccak-theta-rho keccak-chi5 decoder-smoke; do
+            fv_native "export-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
+              export "$family" --work-dir "$FV_ROOT/native" "${qualification[@]}"
+          done
+          # Only this source-keyed, scoped native build's dep-info is supplied.
+          mapfile -d '' dep_info < <(find "$CARGO_TARGET_DIR/debug" -type f -name '*.d' -print0)
+          test "${#dep_info[@]}" -gt 0
+          dep_args=()
+          for path in "${dep_info[@]}"; do dep_args+=(--dep-info "$path"); done
+          fv native-receipts python3 scripts/check_setup_freshness.py verify \
+            --work-dir "$FV_ROOT/native" "${dep_args[@]}" "${qualification[@]}" "${promotion[@]}"
+          git diff --quiet -- ../../cs/compiled_circuits
+          fv provenance-controls python3 -m unittest discover -s scripts -p test_setup_provenance.py -v
+          FV_STAGE
+      - name: Upload qualified setup manifest and native execution receipts
+        if: steps.native-setups.outcome == 'success' && inputs.requalify_setups == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualified-setups-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.FV_ROOT }}/native
+          if-no-files-found: error
+      - name: Save native setup build progress even after a bounded failure
+        if: always() && steps.native-cache.outcome == 'success' && steps.native-setups.outcome != 'skipped'
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.CARGO_TARGET_DIR }}
+            ${{ env.FV_COMPILER_TARGET_DIR }}
+          key: ${{ steps.cache-keys.outputs.native }}-setups
       - uses: actions/cache/restore@v4
         id: lean-cache
         if: inputs.cold_build != true
@@ -270,58 +335,6 @@ jobs:
             formal_verification/lean/.lake/config
             formal_verification/lean/.lake/packages
           key: ${{ steps.cache-keys.outputs.lean }}-bootstrap
-      - name: Twelve generators and sixteen complete fresh exports
-        id: native-setups
-        timeout-minutes: 370
-        env:
-          FV_REQUALIFY_SETUPS: ${{ inputs.requalify_setups == true }}
-        run: |
-          source "$FV_ROOT/guard.sh"
-          fv_stage native-setups 21600 bash -euo pipefail <<'FV_STAGE'
-          trap 'exit 124' TERM
-          source "$FV_ROOT/guard.sh"
-          qualification=()
-          promotion=()
-          if [[ "$FV_REQUALIFY_SETUPS" == true ]]; then
-            qualification=(--requalify)
-            promotion=(--promote)
-          fi
-          families=(add-sub jump-branch mul-div shift-binop word-memory subword-memory
-            unified bigint blake-g blake-round keccak inits-and-teardowns)
-          for family in "${families[@]}"; do
-            fv "regenerate-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
-              regenerate "$family" --work-dir "$FV_ROOT/native" "${qualification[@]}"
-          done
-          for family in "${families[@]}" keccak-column-parity keccak-theta-rho keccak-chi5 decoder-smoke; do
-            fv "export-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
-              export "$family" --work-dir "$FV_ROOT/native" "${qualification[@]}"
-          done
-          # Only this source-keyed, scoped native build's dep-info is supplied.
-          mapfile -d '' dep_info < <(find "$CARGO_TARGET_DIR/debug" -type f -name '*.d' -print0)
-          test "${#dep_info[@]}" -gt 0
-          dep_args=()
-          for path in "${dep_info[@]}"; do dep_args+=(--dep-info "$path"); done
-          fv native-receipts python3 scripts/check_setup_freshness.py verify \
-            --work-dir "$FV_ROOT/native" "${dep_args[@]}" "${qualification[@]}" "${promotion[@]}"
-          git diff --quiet -- ../../cs/compiled_circuits
-          fv provenance-controls python3 -m unittest discover -s scripts -p test_setup_provenance.py -v
-          FV_STAGE
-      - name: Upload qualified setup manifest and native execution receipts
-        if: steps.native-setups.outcome == 'success' && inputs.requalify_setups == true
-        uses: actions/upload-artifact@v4
-        with:
-          name: qualified-setups-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ env.FV_ROOT }}/native
-          if-no-files-found: error
-      - name: Save native setup build progress even after a bounded failure
-        if: always() && steps.native-cache.outcome == 'success' && steps.native-setups.outcome != 'skipped'
-        timeout-minutes: 20
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ env.CARGO_TARGET_DIR }}
-            ${{ env.FV_COMPILER_TARGET_DIR }}
-          key: ${{ steps.cache-keys.outputs.native }}-setups
       - name: Fresh cached compiler captures and provenance controls
         id: compiler-captures
         timeout-minutes: 130
@@ -332,7 +345,7 @@ jobs:
           fv_stage compiler-captures 7200 bash -euo pipefail <<'FV_STAGE'
           trap 'exit 124' TERM
           source "$FV_ROOT/guard.sh"
-          fv compiler-export env -u CI -u RUST_MIN_STACK CARGO_TARGET_DIR="$FV_COMPILER_TARGET_DIR" \
+          fv_native compiler-export env -u CI -u RUST_MIN_STACK CARGO_TARGET_DIR="$FV_COMPILER_TARGET_DIR" \
             python3 scripts/generate.py compiler --output "$FV_ROOT/compiler"
           fv compiler-fresh python3 scripts/check_gkr_translations.py --directory "$FV_ROOT/compiler"
           qualification=()
@@ -443,7 +456,7 @@ jobs:
           test -x "$oracle"
           python3 scripts/test_program_decoder_rows.py
           for name in one two muldiv blake-caller split-keccak; do
-            fv "decoder-small-$name" env -u CI -u RUST_MIN_STACK python3 scripts/check_program_decoder_rows.py \
+            fv_native "decoder-small-$name" env -u CI -u RUST_MIN_STACK python3 scripts/check_program_decoder_rows.py \
               --exporter "$exporter" --oracle "$oracle" --small-program "$name"
           done
           texts=(../../tools/gkr_verifier/fsv_*.text)
@@ -457,13 +470,13 @@ jobs:
               config=unified
               families=unified
             fi
-            fv "decoder-$name" env -u CI -u RUST_MIN_STACK python3 scripts/check_program_decoder_rows.py \
+            fv_native "decoder-$name" env -u CI -u RUST_MIN_STACK python3 scripts/check_program_decoder_rows.py \
               --exporter "$exporter" --oracle "$oracle" --program "$text" \
               --configs "$config" --families "$families"
           done
           production="$FV_ROOT/production-os"
           python3 scripts/fetch_production_program.py --destination "$production"
-          fv decoder-production-os env -u CI -u RUST_MIN_STACK python3 scripts/check_program_decoder_rows.py \
+          fv_native decoder-production-os env -u CI -u RUST_MIN_STACK python3 scripts/check_program_decoder_rows.py \
             --exporter "$exporter" --oracle "$oracle" \
             --program "$production/multiblock_batch.text" --configs full,unified
           FV_STAGE

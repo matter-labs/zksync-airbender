@@ -184,17 +184,17 @@ external scratch directory and print the exact job inventory:
 python3 scripts/check_setup_freshness.py plan --work-dir /tmp/airbender-setup-fresh
 ```
 
-Each printed command is one bounded job. Eleven generation jobs deliberately run
-exact native no-cache circuit tests. Subword uses `export_subword_circuit`, an
-artifact-only harness for the same native circuit builder and GKR compiler.
-Its shared ROM helper invokes the original table constructors in 128 KiB chunks,
-relocates address/tag bits into the full domain, and preserves every row/value
-in physical order. This avoids full-domain witness index maps. Two guarded Rust
-controls compare its complete rows with the original constructors on a smaller
-domain, including empty-image padding and cross-chunk signed values. The original
-full-domain generator exceeds the 2,560 MiB bound; production remains unchanged.
-The next sixteen jobs export all
-setups. Example steps (place each inside the normal bounded worker):
+Each printed command is one bounded native job. The first twelve run the exact
+original no-cache circuit generator tests; the next sixteen export all setups.
+The original table objects and complete native setup construction are preserved.
+The chunked adapter was withdrawn after its cleared index map made table sizes
+zero. Native jobs now use an explicit 8,192 MiB footprint / 12,288 MiB resident
+profile, a 900-second limit and the same serial global worker. Linux host/cgroup
+qualification must show at least 14 GiB capacity and available memory before each
+job; inactive file cache is reclaimable. This does not change Lean proof-worker
+limits. CI checks native equality before restoring the Lean cache.
+
+Example steps (place each inside the qualified native bounded worker):
 
 ```sh
 env -u CI python3 scripts/check_setup_freshness.py regenerate inits-and-teardowns \
@@ -232,8 +232,7 @@ After reviewed source changes, dispatch the FV workflow with `requalify_setups`
 enabled. It runs `prepare-requalification --work-dir DIRECTORY` under the same
 guard, writing an unqualified snapshot outside the checkout. It preserves the
 retained payload hashes, circuit identities, dependency lock and Cargo closure.
-Additional reviewed artifact-helper paths are registered explicitly; other
-source inventory changes are rejected. Only current source hashes and the smoke
+Source inventory changes are rejected. Only current source hashes and the smoke
 constructor receipt can be candidates.
 The normal retained drift guard continues to reject stale committed receipts.
 

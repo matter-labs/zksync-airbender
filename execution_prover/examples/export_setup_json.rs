@@ -28,48 +28,13 @@ use setups::circuits::{
 };
 use setups::unrolled_circuits::{
     add_sub_lui_auipc_mop_circuit_setup, jump_branch_slt_circuit_setup,
-    load_store_word_only_circuit_setup, mul_div_unsigned_circuit_setup, shift_binary_circuit_setup,
+    load_store_subword_only_circuit_setup, load_store_word_only_circuit_setup,
+    mul_div_unsigned_circuit_setup, shift_binary_circuit_setup,
     unified_reduced_machine_circuit_setup,
 };
 use std::alloc::Global;
 use std::io::{self, BufWriter, Write};
 use worker::Worker;
-
-mod rom_export {
-    include!("../../formal_verification/native/rom_tables.rs");
-}
-
-/// Artifact-only setup: the production circuit builder and materialized setup
-/// use identical rows, without retaining ROM witness indexes or witness code.
-fn subword_setup_for_export(
-    decoder: &[Option<cs::gkr_circuits::ExecutorFamilyDecoderData>],
-    image: &[u32],
-    cached: bool,
-) -> setups::CircuitSetup<Global> {
-    let circuit = rom_export::compile_subword_circuit(image, cached);
-    let mut driver = cs::tables::TableDriver::<BF>::new();
-    cs::gkr_circuits::mem_subword_only_table_driver_fn(&mut driver);
-    for (kind, table) in
-        rom_export::subword_rom_tables::<BF, { common_constants::ROM_SECOND_WORD_BITS }>(image)
-    {
-        driver.add_table_with_content(kind, table);
-    }
-    let setup = prover::gkr::prover::setup::GKRSetup::construct(
-        &driver,
-        decoder,
-        circuit.trace_len,
-        &circuit,
-    );
-    setups::CircuitSetup {
-        family_idx: common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX,
-        trace_len: circuit.trace_len,
-        compiled_circuit: circuit,
-        table_driver: driver,
-        setup,
-        witness_eval_fn: None,
-        prover_configs: Vec::new(),
-    }
-}
 
 fn read_words(path: &str) -> io::Result<Vec<u32>> {
     let bytes = std::fs::read(path)?;
@@ -155,8 +120,6 @@ fn build_unrolled_setup_with_cache_mode(
         .get(&family_idx)
         .expect("missing decoder data for circuit family")
         .clone();
-    // This binary exports one family. Release the other families before setup.
-    drop(preprocessing);
 
     let setup = match circuit_type {
         U::Memory(M::LoadStoreWordOnly) => load_store_word_only_circuit_setup::<Global>(
@@ -165,9 +128,12 @@ fn build_unrolled_setup_with_cache_mode(
             use_caches,
             worker,
         ),
-        U::Memory(M::LoadStoreSubwordOnly) => {
-            subword_setup_for_export(&table_data, binary_image, use_caches)
-        }
+        U::Memory(M::LoadStoreSubwordOnly) => load_store_subword_only_circuit_setup::<Global>(
+            &table_data,
+            binary_image,
+            use_caches,
+            worker,
+        ),
         U::NonMemory(N::AddSubLuiAuipcMop) => {
             add_sub_lui_auipc_mop_circuit_setup::<Global>(&table_data, use_caches, worker)
         }
