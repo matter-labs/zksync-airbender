@@ -57,15 +57,15 @@ theorem local_instruction_execution {p : Nat} [Fact p.Prime]
   case h_10 =>
     rename_i _ amount rs1 rd encoding
     apply operation .sll true (amount.setWidth 12) rs1 0 rd
-    simpa only [rowInstruction, BitVec.extractLsb'_setWidth_of_le (b := amount) (start := 0) (len := 6) (w' := 12) (by decide), BitVec.extractLsb'_eq_self] using encoding
+    simpa only [rowInstruction, BitVec.extractLsb'_setWidth_of_le (b := amount) («start» := 0) (len := 6) (w' := 12) (by decide), BitVec.extractLsb'_eq_self] using encoding
   case h_11 =>
     rename_i _ amount rs1 rd encoding
     apply operation .srl true (amount.setWidth 12) rs1 0 rd
-    simpa only [rowInstruction, BitVec.extractLsb'_setWidth_of_le (b := amount) (start := 0) (len := 6) (w' := 12) (by decide), BitVec.extractLsb'_eq_self] using encoding
+    simpa only [rowInstruction, BitVec.extractLsb'_setWidth_of_le (b := amount) («start» := 0) (len := 6) (w' := 12) (by decide), BitVec.extractLsb'_eq_self] using encoding
   case h_12 =>
     rename_i _ amount rs1 rd encoding
     apply operation .sra true (amount.setWidth 12) rs1 0 rd
-    simpa only [rowInstruction, BitVec.extractLsb'_setWidth_of_le (b := amount) (start := 0) (len := 6) (w' := 12) (by decide), BitVec.extractLsb'_eq_self] using encoding
+    simpa only [rowInstruction, BitVec.extractLsb'_setWidth_of_le (b := amount) («start» := 0) (len := 6) (w' := 12) (by decide), BitVec.extractLsb'_eq_self] using encoding
   case h_13 => rename_i _ rs1 rd encoding; exact operation .rev8 false 0 rs1 0 rd encoding
   case h_14 => cases fields
 
