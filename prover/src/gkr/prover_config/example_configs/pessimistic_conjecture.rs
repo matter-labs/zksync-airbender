@@ -88,17 +88,20 @@ fn lower_queries_pow_to_minimum(schedule: &mut WhirSchedule, security_bits: u32)
 fn ladder_for_100_bits(input: &WhirInput) -> Result<WhirSchedule, ConfigSelectionError> {
     let (steps, queries, lde_factors, pows): (&[usize], &[usize], &[usize], &[u32]) =
         match input.message_size_log2 {
+            // Oracle 0's 12 queries need only 20 bits, to which the query PoW
+            // is lowered; its 26 is what the virtual twin's query count is
+            // derived from (see `try_whir_schedule`).
             20 => (
                 &[1, 5, 5, 4, 4],
-                &[89, 11, 8, 7, 7],
+                &[89, 12, 8, 7, 7],
                 &[256, 4096, 8192, 16384],
-                &[26, 27, 20, 25, 19],
+                &[26, 26, 20, 25, 19],
             ),
             21 => (
                 &[1, 5, 5, 5, 4],
-                &[89, 15, 8, 7, 7],
+                &[89, 15, 9, 7, 7],
                 &[64, 2048, 8192, 16384],
-                &[26, 25, 27, 25, 19],
+                &[26, 25, 18, 25, 19],
             ),
             22 => (
                 &[1, 5, 5, 5, 5],
@@ -374,8 +377,9 @@ mod tests {
         assert_eq!(virtual_.whir_schedule.final_poly_size_log2(20), 1);
         let round0 = &virtual_.whir_schedule.internal_rounds[0];
         // the query count is derived one bit of query PoW above the ladder's
-        // oracle 0 (see `whir_schedule`), then the PoW is lowered to the minimum
-        let ladder_pow = default.whir_schedule.internal_rounds[0].queries_pow_bits;
+        // oracle-0 entry (26; see `try_whir_schedule`), then the PoW is lowered
+        // to the minimum, as the standard schedule's is (12 queries, 20 bits)
+        let ladder_pow = 26;
         assert_eq!(
             round0.num_queries,
             PessimisticConjectureMode
@@ -383,7 +387,15 @@ mod tests {
                 as usize
         );
         assert_eq!(round0.num_queries, 13);
-        assert_eq!((ladder_pow, round0.queries_pow_bits), (27, 25));
+        assert_eq!(round0.queries_pow_bits, 25);
+        let standard_round0 = &default.whir_schedule.internal_rounds[0];
+        assert_eq!(
+            (
+                standard_round0.num_queries,
+                standard_round0.queries_pow_bits
+            ),
+            (12, 20)
+        );
         assert_eq!(
             &virtual_.whir_schedule.internal_rounds[1..],
             &default.whir_schedule.internal_rounds[1..]

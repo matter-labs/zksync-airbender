@@ -22,19 +22,18 @@ Plain-text tail: the 2^1 polynomial.
 
 ## Why
 
-- base: unique decoding, the only regime certifiable at rate 1/2 (as for the 27-bit base round); 179 queries at 26 PoW bits (no round of the production schedules grinds more than 26) put the base query term at 100 bits (no folding PoW needed: the unique-decoding fold term is above 100 by itself)
+- base: unique decoding, the only regime certifiable at rate 1/2 (as for the 2^20 test shapes' 27-bit base round); 179 queries at 26 PoW bits (no round of the Ethproofs production schedules grinds more than 26) put the base query term at 100 bits (no folding PoW needed: the unique-decoding fold term is above 100 by itself)
 - oracle 0: LDE 2^2, two steps below the fewest-query 2^4 (domain 2^25): a cheaper commit of this largest oracle for more queries; at rate 2^-2 m = 12 gives 0.94 bits/query at a 22-bit folding grind — 79 queries at 26 bits where unique decoding would need 108; the OOD term needs 8 PoW bits
-- oracle 1: m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE cut from the ladder's 2^9 to 2^8 (domain 2^26) so the fold grind is 22 bits; 3.78 bits/query
-- oracle 2: m = 3; LDE cut from the ladder's 2^14 to 2^10 (domain 2^23), fold grind 22 bits; 4.78 bits/query
-- oracle 3: m = 3; LDE cut from the ladder's 2^19 to 2^12 (domain 2^20), fold grind 22 bits; 5.78 bits/query, no OOD grind
-- oracle 4: m = 3; LDE cut from the ladder's 2^19 to 2^14 (domain 2^18), fold grind 23 bits; 6.78 bits/query, no OOD grind
+- oracle 1: m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^8 (domain 2^26) so the fold grind is 22 bits; 3.78 bits/query
+- oracle 2: m = 3; LDE 2^10 (domain 2^23), fold grind 22 bits; 4.78 bits/query
+- oracle 3: m = 3; LDE 2^12 (domain 2^20), fold grind 22 bits; 5.78 bits/query, no OOD grind
+- oracle 4: m = 3; LDE 2^14 (domain 2^18), fold grind 23 bits; 6.78 bits/query, no OOD grind
 
 `folding_pow_bits` is one value for every folding-challenge draw of an oracle; the analysis needs one bit less per sumcheck step (listed per step above), so the schedule grinds slightly more than the certification requires.
 
-## Against the pessimistic-conjecture ladder it was derived from
+## Against the current pessimistic-conjecture schedule
 
-ladder: folds [1,5,5,5,4,3], LDE log2 [4,9,14,19,19], queries [89,23,10,7,5,5], query PoW [26,24,25,19,21,21], no folding / OOD PoW.
+- this schedule: folds [1, 5, 5, 5, 4, 3], LDE log2 [2, 8, 10, 12, 14], queries [179, 79, 20, 16, 13, 11], query PoW [26, 26, 25, 24, 25, 26], folding PoW [22, 22, 22, 22, 23], OOD PoW [8, 5, 2, 0, 0]
+- pessimistic conjecture (`prover_config_sec_100_pessimistic_conjecture.json`, same shape, security level and packing): folds [1, 5, 5, 5, 4, 3], LDE log2 [4, 9, 13, 14, 17], queries [89, 23, 10, 8, 7, 6], query PoW [26, 24, 25, 14, 19, 15], no folding / OOD PoW
 
-This is the pessimistic-conjecture ladder before its 2026-10-27 LDE rebalance; `prover_config_sec_100_pessimistic_conjecture.json` holds the current one.
-
-The base round cannot stay at the ladder's 89 queries / 26 PoW bits: under both accepted regimes a query into the rate-1/2 base oracle is worth at most 0.415 bits, so that base round certifies 62 bits whatever the later rounds do; 100 bits need ceil((100 − 26) / 0.415) = 179 queries at 26 PoW bits (this schedule's grinding cap) with the base LDE factor and round-0 fold unchanged. The later oracles' LDE factors are cut because the Johnson-bound fold term grows with n / ρ^1.5 and must stay within a 24-bit folding grind.
+The base round cannot keep the pessimistic 89 queries / 26 PoW bits: under both accepted regimes a query into the rate-1/2 base oracle is worth at most 0.415 bits, so that base round certifies 62 bits whatever the later rounds do; 100 bits need ceil((100 − 26) / 0.415) = 179 queries at 26 PoW bits (the largest grind of this schedule) with the base LDE factor and round-0 fold unchanged. The later oracles' LDE factors stay low because the Johnson-bound fold term grows with n / ρ^1.5 and must stay within a 24-bit folding grind.

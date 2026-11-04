@@ -21,18 +21,17 @@ Plain-text tail: the 2^3 polynomial.
 
 ## Why
 
-- base: unique decoding, the only regime certifiable at rate 1/2 (as for the 27-bit base round); 179 queries at 26 PoW bits (no round of the production schedules grinds more than 26) put the base query term at 100 bits (no folding PoW needed: the unique-decoding fold term is above 100 by itself)
+- base: unique decoding, the only regime certifiable at rate 1/2 (as for the 2^20 test shapes' 27-bit base round); 179 queries at 26 PoW bits (no round of the Ethproofs production schedules grinds more than 26) put the base query term at 100 bits (no folding PoW needed: the unique-decoding fold term is above 100 by itself)
 - oracle 0: LDE 2^3, two steps below the fewest-query 2^5 (domain 2^25): a cheaper commit of this largest oracle for more queries; at rate 2^-3 m = 12 gives 1.44 bits/query at a 23-bit folding grind — 52 queries at 26 bits where unique decoding would need 88; the OOD term needs 8 PoW bits with a single sample
-- oracle 1: m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^9 (the ladder's) keeps the domain at 2^26 where the fold grind is 24 bits; 4.28 bits/query
-- oracle 2: m = 3; LDE cut from the ladder's 2^14 to 2^11 so the 2^23 domain keeps the fold grind at 24 bits; 5.28 bits/query, 15 queries so that 21 bits of query PoW suffice
-- oracle 3: m = 3; LDE cut from the ladder's 2^19 to 2^13 (domain 2^20) so 24 bits of fold grind suffice; 6.28 bits/query, the OOD term needs no grind
+- oracle 1: m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^9 keeps the domain at 2^26 where the fold grind is 24 bits; 4.28 bits/query
+- oracle 2: m = 3; LDE 2^11 so the 2^23 domain keeps the fold grind at 24 bits; 5.28 bits/query, 15 queries so that 21 bits of query PoW suffice
+- oracle 3: m = 3; LDE 2^13 (domain 2^20) so 24 bits of fold grind suffice; 6.28 bits/query, the OOD term needs no grind
 
 `folding_pow_bits` is one value for every folding-challenge draw of an oracle; the analysis needs one bit less per sumcheck step (listed per step above), so the schedule grinds slightly more than the certification requires.
 
-## Against the pessimistic-conjecture ladder it was derived from
+## Against the current pessimistic-conjecture schedule
 
-ladder: folds [1,5,5,5,4], LDE log2 [4,9,14,19], queries [89,23,10,7,5], query PoW [26,24,25,19,21], no folding / OOD PoW.
+- this schedule: folds [1, 5, 5, 5, 4], LDE log2 [3, 9, 11, 13], queries [179, 52, 18, 15, 12], query PoW [26, 26, 24, 21, 25], folding PoW [23, 24, 24, 24], OOD PoW [8, 5, 2, 0]
+- pessimistic conjecture (`prover_config_sec_100_pessimistic_conjecture.json`, same shape, security level and packing): folds [1, 5, 5, 5, 4], LDE log2 [4, 9, 13, 14], queries [89, 23, 10, 8, 7], query PoW [26, 24, 25, 14, 19], no folding / OOD PoW
 
-This is the pessimistic-conjecture ladder before its 2026-10-27 LDE rebalance; `prover_config_sec_100_pessimistic_conjecture.json` holds the current one.
-
-The base round cannot stay at the ladder's 89 queries / 26 PoW bits: under both accepted regimes a query into the rate-1/2 base oracle is worth at most 0.415 bits, so that base round certifies 62 bits whatever the later rounds do; 100 bits need ceil((100 − 26) / 0.415) = 179 queries at 26 PoW bits (this schedule's grinding cap) with the base LDE factor and round-0 fold unchanged. The later oracles' LDE factors are cut because the Johnson-bound fold term grows with n / ρ^1.5 and must stay within a 24-bit folding grind.
+The base round cannot keep the pessimistic 89 queries / 26 PoW bits: under both accepted regimes a query into the rate-1/2 base oracle is worth at most 0.415 bits, so that base round certifies 62 bits whatever the later rounds do; 100 bits need ceil((100 − 26) / 0.415) = 179 queries at 26 PoW bits (the largest grind of this schedule) with the base LDE factor and round-0 fold unchanged. The later oracles' LDE factors stay low because the Johnson-bound fold term grows with n / ρ^1.5 and must stay within a 24-bit folding grind.

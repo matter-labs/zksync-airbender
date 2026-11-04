@@ -26,14 +26,16 @@
 //! * the price of the Johnson rounds is a proof of work before every
 //!   folding challenge (their fold term starts 18–24 bits short) and before
 //!   the single OOD sample of every oracle (the user-chosen alternative to a
-//!   second sample), capped at 24 and 27 bits; the late oracles' LDE factors
-//!   are cut from the pessimistic ladder's so that their domains keep that
-//!   fold grind within the cap (the fold term grows with `n / ρ^1.5`);
+//!   second sample), capped at 24 and 27 bits (26 for every grind of the
+//!   production shapes below); the late oracles' LDE factors stay low so
+//!   that their domains keep that fold grind within the cap (the fold term
+//!   grows with `n / ρ^1.5`);
 //! * every grind is the SMALLEST that lifts its term to the target: the
-//!   per-round query count is sized against a 27-bit query-PoW cap, then the
+//!   per-round query count is sized against the shape's query-PoW cap (27
+//!   bits for the 2^20 test shapes, 26 for the production shapes), then the
 //!   query PoW is lowered to what the chosen count actually leaves short
 //!   (e.g. 12 queries at 6.28 bits each are 75 bits, so 25 bits of grind, not
-//!   27); the folding and OOD grinds are computed the same way;
+//!   the cap); the folding and OOD grinds are computed the same way;
 //! * virtual packing (`fold_log2 = 0`) is emulated as a message one bit
 //!   larger with a round-0 fold of 1 (soundcalc needs `k_0 ≥ 1`); the
 //!   re-committed oracle 0 is then exactly our batched polynomial, the
@@ -52,9 +54,9 @@
 //! decoding. A unique-decoding base at `p` PoW bits needs
 //! `ceil((100 − p) / 0.415)` queries for its 100-bit query term: 176 at 27 bits
 //! for the 2^20 test-circuit shapes, 179 at 26 bits for the production shapes
-//! (base LDE factor and round-0 fold unchanged). Every later round keeps
-//! its fold; the second oracle keeps its LDE factor, the later ones move to a
-//! better rate at the cost of a few queries.
+//! (base LDE factor and round-0 fold unchanged). Each circuit's notes compare
+//! its schedule with the current pessimistic-conjecture schedule of the same
+//! shape, security level and packing, derived when the notes are rendered.
 //!
 //! The production shapes (2^22 virtual, 2^23, 2^24) are tuned for proving time
 //! rather than for the fewest queries: no grind exceeds 26 bits, and oracle 0 is
@@ -194,10 +196,25 @@ pub struct EthproofsSoundcalcEntry {
     pub base_queries_pow_bits: u32,
     pub base_analysis: RoundAnalysis,
     pub rounds: &'static [EthproofsInternalRound],
-    /// The pessimistic-conjecture ladder of the same shape that the schedule was derived from,
-    /// as it stood before the 2026-10-27 rebalance of the pessimistic LDE factors; historical,
-    /// for comparison.
-    pub pessimistic_ladder: &'static str,
+}
+
+/// One line of a schedule's per-round parameters, base round first.
+fn schedule_summary(schedule: &WhirSchedule) -> String {
+    let rounds = &schedule.internal_rounds;
+    let lde: Vec<_> = rounds.iter().map(|r| r.lde_factor_log2).collect();
+    let folding: Vec<_> = rounds.iter().map(|r| r.folding_pow_bits).collect();
+    let ood: Vec<_> = rounds.iter().map(|r| r.ood_pow_bits).collect();
+    let grinds = if folding.iter().chain(&ood).all(|&bits| bits == 0) {
+        "no folding / OOD PoW".to_string()
+    } else {
+        format!("folding PoW {folding:?}, OOD PoW {ood:?}")
+    };
+    format!(
+        "folds {:?}, LDE log2 {lde:?}, queries {:?}, query PoW {:?}, {grinds}",
+        schedule.fold_steps(),
+        schedule.queries_per_round(),
+        schedule.queries_pow_bits_per_round(),
+    )
 }
 
 impl EthproofsSoundcalcEntry {
@@ -343,26 +360,49 @@ impl EthproofsSoundcalcEntry {
              needs one bit less per sumcheck step (listed per step above), so the schedule grinds slightly \
              more than the certification requires.\n"
         );
+        let pessimistic_mode = SoundnessMode::PessimisticConjecture;
         let _ = writeln!(
             out,
-            "## Against the pessimistic-conjecture ladder it was derived from\n"
+            "## Against the current pessimistic-conjecture schedule\n"
         );
-        let _ = writeln!(out, "{}\n", self.pessimistic_ladder);
         let _ = writeln!(
             out,
-            "This is the pessimistic-conjecture ladder before its 2026-10-27 LDE rebalance; \
-             `prover_config_{}_{}.json` holds the current one.\n",
+            "- this schedule: {}",
+            schedule_summary(&self.schedule(input.physical_packing_log2))
+        );
+        let pessimistic = match try_whir_schedule(pessimistic_mode, level, input) {
+            Ok(pessimistic) => pessimistic,
+            Err(error) => {
+                let _ = writeln!(
+                    out,
+                    "- pessimistic conjecture: none for this shape ({error})"
+                );
+                return out;
+            }
+        };
+        let _ = writeln!(
+            out,
+            "- pessimistic conjecture (`prover_config_{}_{}.json`, same shape, security level and packing): {}\n",
             level.dir_suffix(),
-            crate::definitions::SoundnessMode::PessimisticConjecture.file_suffix()
+            pessimistic_mode.file_suffix(),
+            schedule_summary(&pessimistic)
+        );
+        let (pessimistic_queries, pessimistic_pow) = (
+            pessimistic.base_round.num_queries,
+            pessimistic.base_round.queries_pow_bits,
         );
         let _ = writeln!(
             out,
-            "The base round cannot stay at the ladder's 89 queries / 26 PoW bits: under both accepted \
-             regimes a query into the rate-1/2 base oracle is worth at most 0.415 bits, so that base round \
-             certifies 62 bits whatever the later rounds do; 100 bits need ceil((100 − {p}) / 0.415) = {q} \
-             queries at {p} PoW bits (this schedule's grinding cap) with the base LDE factor and round-0 fold unchanged. The later oracles' \
-             LDE factors are cut because the Johnson-bound fold term grows with n / ρ^1.5 and must stay \
-             within a 24-bit folding grind.",
+            "The base round cannot keep the pessimistic {pessimistic_queries} queries / {pessimistic_pow} PoW bits: \
+             under both accepted regimes a query into the rate-1/2 base oracle is worth at most {bpq} bits, so that \
+             base round certifies {certified} bits whatever the later rounds do; 100 bits need \
+             ceil((100 − {p}) / {bpq}) = {q} queries at {p} PoW bits (the largest grind of this schedule) with \
+             the base LDE factor and round-0 fold unchanged. The later oracles' LDE factors stay low because the \
+             Johnson-bound fold term grows with n / ρ^1.5 and must stay within a 24-bit folding grind.",
+            bpq = self.base_analysis.bits_per_query,
+            certified = (pessimistic_queries as f64 * self.base_analysis.bits_per_query
+                + pessimistic_pow as f64)
+                .floor(),
             p = self.base_queries_pow_bits,
             q = self.base_num_queries,
         );
@@ -378,20 +418,21 @@ const BASE_UDR: RoundAnalysis = RoundAnalysis {
     reason: "unique decoding is the only regime certifiable at rate 1/2: the Johnson-bound batching \
              term of the committed columns is 73–90 bits for any multiplicity and cannot be lifted \
              within any sane batching PoW, and the Johnson radius at rate 1/2 (0.28–0.48 bits/query) \
-             is below the unique-decoding one (0.415) anyway; 176 queries at 27 PoW bits (no round of this \
-             mode grinds more than 27) put the base query term at exactly 100 bits (no folding PoW needed: the unique-decoding fold term is \
+             is below the unique-decoding one (0.415) anyway; 176 queries at 27 PoW bits (no round of the \
+             2^20 test-shape schedules grinds more than 27) put the base query term at exactly 100 bits (no folding PoW needed: the unique-decoding fold term is \
              above 100 by itself)",
 };
 
-/// [`BASE_UDR`] under the production schedules' 26-bit grind cap: three more
-/// queries for one bit less of query PoW.
+/// [`BASE_UDR`] under the Ethproofs production schedules' 26-bit grind cap:
+/// three more queries for one bit less of query PoW.
 const BASE_UDR_26: RoundAnalysis = RoundAnalysis {
     regime: ProximityRegime::UniqueDecoding,
     bits_per_query: 0.415,
     unique_decoding_queries: 179,
     folding_pow_bits_per_step: &[],
-    reason: "unique decoding, the only regime certifiable at rate 1/2 (as for the 27-bit base round); \
-             179 queries at 26 PoW bits (no round of the production schedules grinds more than 26) put \
+    reason: "unique decoding, the only regime certifiable at rate 1/2 (as for the 2^20 test shapes' \
+             27-bit base round); 179 queries at 26 PoW bits (no round of the Ethproofs production \
+             schedules grinds more than 26) put \
              the base query term at 100 bits (no folding PoW needed: the unique-decoding fold term is \
              above 100 by itself)",
 };
@@ -414,8 +455,9 @@ const fn jbr(
 
 /// `queries_pow_bits` is the SMALLEST grind that lifts the oracle's query
 /// term (`num_queries` queries at the regime's bits per query) to the target:
-/// the query count is sized against a 27-bit cap, and the leftover fraction of
-/// a bit is not paid for with a full 27-bit grind.
+/// the query count is sized against the shape's cap (27 bits for the 2^20 test
+/// shapes, 26 for the production shapes), and the leftover fraction of a bit
+/// is not paid for with a full grind at the cap.
 const fn round(
     lde_factor_log2: usize,
     folding_log2: usize,
@@ -458,13 +500,12 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
             round(3, 5, 52, 26, 8, jbr(12, 1.44, 88, &[23, 22, 21, 20, 19],
                 "LDE 2^3, two steps below the fewest-query 2^5 (domain 2^25): a cheaper commit of this largest oracle for more queries; at rate 2^-3 m = 12 gives 1.44 bits/query at a 23-bit folding grind — 52 queries at 26 bits where unique decoding would need 88; the OOD term needs 8 PoW bits with a single sample")),
             round(9, 5, 18, 24, 5, jbr(3, 4.28, 74, &[24, 23, 22, 21, 20],
-                "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^9 (the ladder's) keeps the domain at 2^26 where the fold grind is 24 bits; 4.28 bits/query")),
+                "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^9 keeps the domain at 2^26 where the fold grind is 24 bits; 4.28 bits/query")),
             round(11, 5, 15, 21, 2, jbr(3, 5.28, 74, &[24, 23, 22, 21, 20],
-                "m = 3; LDE cut from the ladder's 2^14 to 2^11 so the 2^23 domain keeps the fold grind at 24 bits; 5.28 bits/query, 15 queries so that 21 bits of query PoW suffice")),
+                "m = 3; LDE 2^11 so the 2^23 domain keeps the fold grind at 24 bits; 5.28 bits/query, 15 queries so that 21 bits of query PoW suffice")),
             round(13, 4, 12, 25, 0, jbr(3, JOHNSON_R13_BITS_PER_QUERY, 74, &[24, 23, 22, 21],
-                "m = 3; LDE cut from the ladder's 2^19 to 2^13 (domain 2^20) so 24 bits of fold grind suffice; 6.28 bits/query, the OOD term needs no grind")),
+                "m = 3; LDE 2^13 (domain 2^20) so 24 bits of fold grind suffice; 6.28 bits/query, the OOD term needs no grind")),
         ],
-        pessimistic_ladder: "ladder: folds [1,5,5,5,4], LDE log2 [4,9,14,19], queries [89,23,10,7,5], query PoW [26,24,25,19,21], no folding / OOD PoW.",
     },
     EthproofsSoundcalcEntry {
         shape: "2^24 committed polynomials, two values per column per leaf (add_sub_lui_auipc_mop, inits_and_teardowns, jump_branch_slt, load_store_subword_only, load_store_word_only, shift_binary)",
@@ -481,15 +522,14 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
             round(2, 5, 79, 26, 8, jbr(12, 0.94, 108, &[22, 21, 20, 19, 18],
                 "LDE 2^2, two steps below the fewest-query 2^4 (domain 2^25): a cheaper commit of this largest oracle for more queries; at rate 2^-2 m = 12 gives 0.94 bits/query at a 22-bit folding grind — 79 queries at 26 bits where unique decoding would need 108; the OOD term needs 8 PoW bits")),
             round(8, 5, 20, 25, 5, jbr(3, 3.78, 74, &[22, 21, 20, 19, 18],
-                "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE cut from the ladder's 2^9 to 2^8 (domain 2^26) so the fold grind is 22 bits; 3.78 bits/query")),
+                "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^8 (domain 2^26) so the fold grind is 22 bits; 3.78 bits/query")),
             round(10, 5, 16, 24, 2, jbr(3, 4.78, 74, &[22, 21, 20, 19, 18],
-                "m = 3; LDE cut from the ladder's 2^14 to 2^10 (domain 2^23), fold grind 22 bits; 4.78 bits/query")),
+                "m = 3; LDE 2^10 (domain 2^23), fold grind 22 bits; 4.78 bits/query")),
             round(12, 4, 13, 25, 0, jbr(3, 5.78, 74, &[22, 21, 20, 19],
-                "m = 3; LDE cut from the ladder's 2^19 to 2^12 (domain 2^20), fold grind 22 bits; 5.78 bits/query, no OOD grind")),
+                "m = 3; LDE 2^12 (domain 2^20), fold grind 22 bits; 5.78 bits/query, no OOD grind")),
             round(14, 3, 11, 26, 0, jbr(3, 6.78, 74, &[23, 22, 21],
-                "m = 3; LDE cut from the ladder's 2^19 to 2^14 (domain 2^18), fold grind 23 bits; 6.78 bits/query, no OOD grind")),
+                "m = 3; LDE 2^14 (domain 2^18), fold grind 23 bits; 6.78 bits/query, no OOD grind")),
         ],
-        pessimistic_ladder: "ladder: folds [1,5,5,5,4,3], LDE log2 [4,9,14,19,19], queries [89,23,10,7,5,5], query PoW [26,24,25,19,21,21], no folding / OOD PoW.",
     },
     EthproofsSoundcalcEntry {
         shape: "2^22 committed polynomials, virtual packing (bigint_with_control, keccak_chi5, keccak_column_parity, keccak_special5, keccak_theta_rho, blake2_g_function unpacked; blake2_with_compression packed by 2^2)",
@@ -506,13 +546,12 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
             round(3, 6, 52, 26, 8, jbr(12, 1.44, 88, &[23, 22, 21, 20, 19, 18],
                 "the re-committed batched polynomial at LDE 2^3, two steps below the fewest-query 2^5 (domain 2^25, folded by 6): a cheaper commit for more queries; m = 12 gives 1.44 bits/query at a 23-bit folding grind — 52 queries at 26 bits where unique decoding would need 88; its OOD term needs 8 PoW bits with a single sample")),
             round(9, 5, 18, 24, 4, jbr(3, 4.28, 74, &[23, 22, 21, 20, 19],
-                "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE cut from the ladder's 2^11 to 2^9 (domain 2^25), fold grind 23 bits; 4.28 bits/query")),
+                "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^9 (domain 2^25), fold grind 23 bits; 4.28 bits/query")),
             round(11, 5, 15, 21, 1, jbr(3, 5.28, 74, &[23, 22, 21, 20, 19],
-                "m = 3; LDE cut from the ladder's 2^15 to 2^11 (domain 2^22), fold grind 23 bits; 5.28 bits/query, 15 queries so that 21 bits of query PoW suffice")),
+                "m = 3; LDE 2^11 (domain 2^22), fold grind 23 bits; 5.28 bits/query, 15 queries so that 21 bits of query PoW suffice")),
             round(13, 5, 12, 25, 0, jbr(3, JOHNSON_R13_BITS_PER_QUERY, 74, &[23, 22, 21, 20, 19],
-                "m = 3; LDE cut from the ladder's 2^19 to 2^13 (domain 2^19), fold grind 23 bits; 6.28 bits/query, no OOD grind")),
+                "m = 3; LDE 2^13 (domain 2^19), fold grind 23 bits; 6.28 bits/query, no OOD grind")),
         ],
-        pessimistic_ladder: "ladder (virtual twin): folds [0,6,5,5,5], LDE log2 [5,11,15,19], queries [89,15,8,6,5], query PoW [26,25,27,25,21], no folding / OOD PoW.",
     },
     EthproofsSoundcalcEntry {
         shape: "2^20 committed polynomials, two values per column per leaf (blake2_with_extended_control test circuit)",
@@ -527,15 +566,14 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         base_analysis: BASE_UDR,
         rounds: &[
             round(8, 5, 20, 25, 6, jbr(3, 3.78, 74, &[23, 22, 21, 20, 19],
-                "LDE 2^8 as in the ladder (domain 2^27); m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term, fold grind 23 bits; 3.78 bits/query — 20 queries where unique decoding would need 74; the OOD term needs 6 PoW bits")),
+                "LDE 2^8 (domain 2^27); m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term, fold grind 23 bits; 3.78 bits/query — 20 queries where unique decoding would need 74; the OOD term needs 6 PoW bits")),
             round(10, 5, 16, 24, 3, jbr(3, 4.78, 74, &[23, 22, 21, 20, 19],
-                "m = 3; LDE cut from the ladder's 2^13 to 2^10 (domain 2^24), fold grind 23 bits; 4.78 bits/query")),
+                "m = 3; LDE 2^10 (domain 2^24), fold grind 23 bits; 4.78 bits/query")),
             round(12, 4, 13, 25, 0, jbr(3, 5.78, 74, &[23, 22, 21, 20],
-                "m = 3; LDE cut from the ladder's 2^15 to 2^12 (domain 2^21), fold grind 23 bits; 5.78 bits/query, no OOD grind")),
+                "m = 3; LDE 2^12 (domain 2^21), fold grind 23 bits; 5.78 bits/query, no OOD grind")),
             round(14, 4, 11, 26, 0, jbr(3, 6.78, 74, &[24, 23, 22, 21],
-                "m = 3; LDE cut from the ladder's 2^19 to 2^14 (domain 2^19), fold grind 24 bits; 6.78 bits/query, no OOD grind")),
+                "m = 3; LDE 2^14 (domain 2^19), fold grind 24 bits; 6.78 bits/query, no OOD grind")),
         ],
-        pessimistic_ladder: "ladder: folds [1,5,5,4,4], LDE log2 [8,13,15,19], queries [89,11,7,6,5], query PoW [26,27,25,25,21], no folding / OOD PoW.",
     },
     EthproofsSoundcalcEntry {
         shape: "2^20 committed polynomials, virtual packing (blake2_with_extended_control test circuit)",
@@ -552,13 +590,12 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
             round(7, 6, 22, 27, 7, jbr(4, 3.33, 74, &[24, 23, 22, 21, 20, 19],
                 "the re-committed batched polynomial at LDE 2^7 (the virtual twin's: domain 2^27, folded by 6); m = 4 keeps the fold grind of the 2^27 domain at the 24-bit cap for 3.33 bits/query — 22 queries where unique decoding would need 74; its OOD term needs 7 PoW bits")),
             round(10, 5, 16, 24, 3, jbr(3, 4.78, 74, &[23, 22, 21, 20, 19],
-                "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE cut from the ladder's 2^13 to 2^10 (domain 2^24), fold grind 23 bits; 4.78 bits/query")),
+                "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^10 (domain 2^24), fold grind 23 bits; 4.78 bits/query")),
             round(12, 4, 13, 25, 0, jbr(3, 5.78, 74, &[23, 22, 21, 20],
-                "m = 3; LDE cut from the ladder's 2^15 to 2^12 (domain 2^21), fold grind 23 bits; 5.78 bits/query, no OOD grind")),
+                "m = 3; LDE 2^12 (domain 2^21), fold grind 23 bits; 5.78 bits/query, no OOD grind")),
             round(14, 4, 11, 26, 0, jbr(3, 6.78, 74, &[24, 23, 22, 21],
-                "m = 3; LDE cut from the ladder's 2^19 to 2^14 (domain 2^19), fold grind 24 bits; 6.78 bits/query, no OOD grind")),
+                "m = 3; LDE 2^14 (domain 2^19), fold grind 24 bits; 6.78 bits/query, no OOD grind")),
         ],
-        pessimistic_ladder: "ladder (virtual twin): folds [0,6,5,4,4], LDE log2 [7,13,15,19], queries [89,13,7,6,5], query PoW [26,27,25,25,21], no folding / OOD PoW.",
     },
 ];
 
