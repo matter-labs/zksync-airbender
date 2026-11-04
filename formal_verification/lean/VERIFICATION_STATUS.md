@@ -287,6 +287,16 @@ tail. No production or Review changes. The failed leaf exited 1 in 4.03 seconds
 at 322.81 MiB with no owned children; complete-source work took 1105.42 seconds
 after 29.55 seconds of early fixtures. The new test proofs await focused CI.
 
+Focused run [41935450679](https://github.com/matter-labs/zksync-airbender/actions/runs/41935450679)
+on `447c6c720` resolved those imports and accepted the positive decoder/ROM
+checks. The full-domain rejection proof then failed on vector projections;
+direct reduction also reached the existing recursion limit. A private PC
+projection lemma now separates normalization from the imported column, and
+query equality uses the vector projection lemmas explicitly. The resource
+limits, rejection statement and complete domain are unchanged. The failed
+leaf took 6.04 seconds at 406.13 MiB, with no owned children; focused source
+work took 57.91 seconds. The projection repair awaits focused CI.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

@@ -422,6 +422,16 @@ statement, production code or kernel policy is weakened. The failed leaf
 exited 1 in 4.03 seconds at 322.81 MiB charged footprint with no owned children;
 complete-source work reached 1105.42 seconds after a 29.55-second fixture phase.
 
+Focused run [41935450679](https://github.com/matter-labs/zksync-airbender/actions/runs/41935450679)
+on `447c6c720` resolved the imports and positive membership checks, then
+rejected definitional projection steps in the full-domain negative proof.
+Directly reducing the padding vector also reached the existing recursion
+limit. The repair projects normalization and mapped vectors through explicit
+lemmas before reading the first imported column. It preserves the full
+16,777,216-row rejection and existing limits. The failed leaf exited 1 in
+6.04 seconds at 406.13 MiB with no owned children; focused sources took
+57.91 seconds. No production or Review change is involved.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.
