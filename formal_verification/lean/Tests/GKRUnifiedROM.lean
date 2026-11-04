@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.ROMNative.UnifiedTag
 
 namespace Tests.GKRUnifiedROM
 open Airbender Airbender.Compiler

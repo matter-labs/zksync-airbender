@@ -377,6 +377,28 @@ AST. The failed leaf exited 1 in 61.12 seconds at 889.54 MiB charged footprint,
 with no owned children left. This is another stale constructed test helper,
 with no production defect identified.
 
+Standard warm [41919500084](https://github.com/matter-labs/zksync-airbender/actions/runs/41919500084)
+on `2092e29db` passed native/setup reconstruction, compiler captures/provenance
+and the early Lean fixtures. The complete source scan then found
+`Tests/GKRNativeROM.lean:3:5` opening `Airbender` without any import; the expected
+`ROMNative.WordMemory.nativeSetup` was consequently unknown. An explicit import
+of the existing `Airbender.Proofs.GKRProtocol.ROMNative.WordMemoryRows` module
+restores the test's intended dependency. Every test statement and proof body is
+unchanged. The leaf exited 1 in 1.10 seconds at 131.93 MiB charged footprint,
+with no owned children left. This was a missing test dependency, with no
+production defect identified. The focused consumed-message diagnosis had
+already passed in run 41917429432; complete FV and final assurance remain pending.
+
+A scan found four additional zero-import entry points: windowed initialization,
+subword native setup, unified full native setup and unified ROM. Their explicit
+dependencies are restored together. Subword's removed `SubwordRows` and
+`SubwordBoundary` helper names are replaced by direct checks on the existing
+materialized native setup. The same concrete halfword/byte/decoder tag facts
+are retained, and all nine generic coordinates of the padding row are proved
+zero. This is the coordinate form of the original zero-vector property; it
+does not weaken coverage. No Review or production code changes. A lightweight
+test-import boundary control catches the missing-import pattern before builds.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

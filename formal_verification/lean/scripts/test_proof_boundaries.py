@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
 """Controls for the public compiler semantics dependency boundary."""
 import unittest
+from pathlib import Path
+import re
 from unittest.mock import patch
 
 import check_proof_boundaries as boundaries
 
 
 class CompilerSemanticBoundaryTests(unittest.TestCase):
+    def test_project_smoke_tests_import_their_namespace_dependencies(self):
+        root = Path(__file__).resolve().parents[1] / 'Tests'
+        for path in root.rglob('*.lean'):
+            source = path.read_text()
+            if re.search(r'(?m)^open Airbender\b', source) and not re.search(
+                    r'(?m)^namespace Airbender(?:\s|\.)', source):
+                self.assertRegex(source, r'(?m)^import\s+', str(path.relative_to(root)))
+
     def test_indirect_calculation_is_rejected(self):
         root = 'Airbender.Review.Compiler.Operands'
         graph = {

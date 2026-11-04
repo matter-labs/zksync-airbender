@@ -243,6 +243,29 @@ to the native range-column AST. Worker column 78 is unchanged. The leaf exited
 1 in 61.12 seconds at 889.54 MiB with no owned children; the focused phase took
 308.06 seconds. Complete derivative and standard verification remain pending.
 
+Focused diagnosis [41917429432](https://github.com/matter-labs/zksync-airbender/actions/runs/41917429432)
+on `2092e29db` passed the complete consumed-message derivative and dependencies,
+including Core, Inputs, Native and the top-level theorem module. Its selected
+source phase took 399.51 seconds; final freshness/object checks passed with no
+owned children left. This remains partial evidence.
+
+Standard warm [41919500084](https://github.com/matter-labs/zksync-airbender/actions/runs/41919500084)
+on the same head passed native/setup reconstruction, compiler provenance and
+the early Lean fixture phase, then failed at `Tests/GKRNativeROM.lean:3:5`.
+The test had no import despite opening `Airbender.Compiler.ROMNative.WordMemory`.
+It now imports the existing `WordMemoryRows` proof module explicitly. No test
+statement or proof changes. The failed leaf exited 1 in 1.10 seconds at 131.93
+MiB with no owned children; complete-source work reached 1037.92 seconds after
+the 144.16-second fixture phase. Standard verification and assurance are pending.
+
+The same zero-import pattern affected four more GKR smoke tests. All five
+entry points now import their actual dependency explicitly. The subword test
+also referenced removed helper namespaces; it now checks the same half/byte
+ROM and decoder tags directly on the existing materialized setup, and proves
+zero padding for every one of the row's nine generic coordinates. No Review
+statement or premise changes. A lightweight boundary control checks all test
+entry points that open the project namespace for missing imports.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;
