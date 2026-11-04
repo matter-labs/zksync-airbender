@@ -82,7 +82,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > Here $\varepsilon_{\mathrm{chunk},i}$ includes all local lookup, GKR and PCS errors of Algorithm 3, counted once, with the sum bounded over permitted participant collections. Each component bound must hold for adversarial choices conditioned on the preceding transcript and no earlier soundness failure. The resulting execution claim is relative to the supplied setup identities; Algorithms 10–11 bind the program history and anchor the recursive executions to the expected program identities and successful endpoints.
 >
-> This is an algebraic bound in the fresh-word model stated above. For Fiat–Shamir, adaptive transcript/nonce trials, shared transcript queries and recursive invocations require a computational reduction and a query/work budget. The 19-bit PoW gives the stated per-candidate joint bound, not a blanket $2^{-19}$ multiplier on the execution error; a complete Fiat–Shamir bound remains open.
+> These component bounds enter the whole-system Fiat–Shamir analysis described in the final soundness section.
 
 ---
 
@@ -540,6 +540,8 @@ $$
 \end{aligned}
 $$
 
-Each bound must hold under the preceding transcript and permitted adaptive choices, with sums bounded over the allowed participant collections. A computational Fiat–Shamir bound must additionally account for adaptive transcript/nonce trials, query reuse and the external work budget, together with commitment-binding failures and Algorithm 10's $\varepsilon_{\mathrm{chain}}$. Algorithm 11's terminal comparisons and handoff conditions are deterministic premises; any additional terminal proof system contributes its own soundness term. Completing this computational reduction and the per-configuration obligations above is necessary to obtain a concrete end-to-end security bound.
+Each bound must hold under the preceding transcript and permitted adaptive choices, with sums bounded over the allowed participant collections. Algorithm 10's $\varepsilon_{\mathrm{chain}}$ accounts for history-binding failures in the computational analysis. Algorithm 11's terminal comparisons and handoff conditions are deterministic premises; any additional terminal proof system contributes its own soundness term.
+
+**Fiat–Shamir security.** The bounds above give conditional algebraic soundness guarantees under fresh transcript randomness, including field-sampling bias and the stated per-candidate PoW bounds. Let $q$ bound the adversary's total random-oracle queries across all transcript and nonce trials. A complete Fiat–Shamir proof must establish round-by-round soundness for the composed protocol and derive its computational soundness bound as a function of $q$, accounting for adaptive trials, repeated oracle inputs and commitment binding. The main unresolved obligations are WHIR's proximity/list-decoding invariant and the memory participant-binding, event-encoding and execution-reconstruction lemmas. Recursive composition additionally requires the handoff guarantees stated in Algorithm 11.
 
 **References:** [GKR](https://people.cs.georgetown.edu/jthaler/GKRNote.pdf), [LogUp](https://eprint.iacr.org/2022/1530), [GKR lookup compression](https://eprint.iacr.org/2023/1284), [WHIR](https://eprint.iacr.org/2024/1586), [Two Shuffles Make a RAM](https://eprint.iacr.org/2023/1115).
