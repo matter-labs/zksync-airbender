@@ -1,6 +1,8 @@
 import Human.Helpers.Memory.InitialImage
 import Human.Helpers.Memory.ROM
 import Human.Helpers.Core.Configuration
+import Human.ISA.RV32
+import Human.ISA.Sail.Airbender
 
 -- The full Sail model compiles its decoder (`encdec_backwards`) as noncomputable (sail/regen.sh,
 -- `proof` variant): these definitions are specifications, read by proofs, never executed.
@@ -98,6 +100,30 @@ noncomputable abbrev programImageWith {Kind : Type}
 
 noncomputable abbrev programEntry := programEntryWith decoderFields
 noncomputable abbrev programImage := programImageWith decoderFields
+
+/-- RV sibling of `programEntryWith`: the instruction is our spec's decoding `RV.decode` of the public bytes,
+    viewed in Sail's vocabulary (`toSail`); no Sail decoder call. The ROM-aligned fetch guard is the same. -/
+noncomputable abbrev rvProgramEntryWith {Kind : Type}
+    (projection : SailRV32.instruction → Option (DecoderData Kind))
+    (before : Reference.RiscV.Sail.State) (pc : BitVec 32) :
+    Option (ProgramEntry Kind) := do
+  if ¬(pc.toNat < ROM.limit ∧ pc.toNat % 4 = 0) then none else
+  let bits ← match (Cell.ram pc).read before with
+    | .ok bits _ => some bits
+    | .error _ _ => none
+  let i ← RV.decode bits
+  let instruction := Airbender.toSail i
+  let data ← projection instruction
+  pure ⟨pc, bits, instruction, data⟩
+
+/-- RV sibling of `programImageWith`. -/
+noncomputable abbrev rvProgramImageWith {Kind : Type}
+    (projection : SailRV32.instruction → Option (DecoderData Kind))
+    (before : Reference.RiscV.Sail.State) (addresses : List (BitVec 32)) :
+    Option (List (ProgramEntry Kind)) := addresses.mapM (rvProgramEntryWith projection before)
+
+noncomputable abbrev rvProgramEntry := rvProgramEntryWith decoderFields
+noncomputable abbrev rvProgramImage := rvProgramImageWith decoderFields
 
 /-- Rust's nine-column decoder row; omitted funct3 is represented by zero.
     This remains a modeled setup, not an extracted Rust table. -/
