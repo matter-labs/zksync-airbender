@@ -335,6 +335,21 @@ with unchanged arguments. This composes the current theorems without adding
 aliases to Review or changing any test statement or premise. Lean CI must
 validate the new applications.
 
+A static certificate audit found another stale interface: the four
+`AirbenderUnifiedNative` rows and the consumed-message derivative still bounded
+their finite CPU certificates by 129. The native inventory has 120 equations.
+Their final chunks now cover 112–119; obsolete index-128 certificates are
+removed, while the conclusions still quantify over the complete original
+imported constraint list. The consumed-message CPU store also moves its word
+address from old scratch 78 to native 74, retaining the multiplication value
+from its already-correct parent witness. No worker coordinate is remapped.
+
+Four new lightweight preflight controls compare explicit bounds and complete
+chunk coverage against the native JSON and reject missing, overlapping and
+outside-domain intervals. They run before compiler/native work. The import-only
+fixture gate includes the consumed-message derivative. These source checks
+pass; Lean still must validate the repaired certificates and derivative.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

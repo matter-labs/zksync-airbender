@@ -190,14 +190,9 @@ private theorem cpu_check_96 :
 private theorem cpu_check_112 :
     PathGLoopNative.gCpuEquationsCheck (cpuAssignment 226)
       (((PathGLoopNative.gCpuPolynomials
-        (UnifiedReduced.Setup.table (PathGLoopProgram.before .baseline))).drop 112).take 16) = true := by
+        (UnifiedReduced.Setup.table (PathGLoopProgram.before .baseline))).drop 112).take 8) = true := by
   decide +kernel
 
-private theorem cpu_check_128 :
-    PathGLoopNative.gCpuEquationsCheck (cpuAssignment 226)
-      (((PathGLoopNative.gCpuPolynomials
-        (UnifiedReduced.Setup.table (PathGLoopProgram.before .baseline))).drop 128).take 1) = true := by
-  decide +kernel
 
 private theorem cpu_store_equations
     (setup : Table (ZMod babyBearModulus) (fields 10)) :
@@ -205,7 +200,7 @@ private theorem cpu_store_equations
       expression.eval (Verification.environment (cpuAssignment 226)) = 0 := by
   rw [List.forall_mem_iff_forall_getElem]
   intro equation bound
-  have actual : equation < 129 := by simpa only [UnifiedReduced.constraint_count] using bound
+  have actual : equation < 120 := by simpa only [UnifiedReduced.constraint_count] using bound
   change ((PathGLoopNative.gCpuPolynomials setup)[equation]'bound).eval _ = 0
   by_cases below : equation < 16
   · exact PathGLoopNative.g_cpu_equations_of_check (cpuAssignment 226) setup
@@ -228,11 +223,8 @@ private theorem cpu_store_equations
             · by_cases below : equation < 112
               · exact PathGLoopNative.g_cpu_equations_of_check (cpuAssignment 226) setup
                   96 16 equation (by omega) (by omega) actual cpu_check_96
-              · by_cases below : equation < 128
-                · exact PathGLoopNative.g_cpu_equations_of_check (cpuAssignment 226) setup
-                    112 16 equation (by omega) (by omega) actual cpu_check_112
-                · exact PathGLoopNative.g_cpu_equations_of_check (cpuAssignment 226) setup
-                      128 1 equation (by omega) (by omega) actual cpu_check_128
+              · exact PathGLoopNative.g_cpu_equations_of_check (cpuAssignment 226) setup
+                  112 8 equation (by omega) (by omega) actual cpu_check_112
 
 theorem cpu_core (index : Fin 228) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (cpuAssignment index))

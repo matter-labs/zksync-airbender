@@ -213,6 +213,16 @@ API remain unchanged. These proof applications await Lean CI validation.
 its dependencies for one selected-module diagnosis. It adds no statements or
 assumptions and does not replace full verification or assurance.
 
+The finite certificate audit also found the old 129-equation bounds in
+`AirbenderUnifiedNative` and `PathGConsumedMessage.Core`. Their chunks now cover
+exactly native indices 0–119, with eight equations in the last chunk. Only the
+obsolete outside-domain 128 certificates are removed; the full imported-list
+conclusions remain unchanged. The consumed-message store's word-address scratch
+moves from 78 to native 74. The fixture gate now includes this derivative.
+Four lightweight inventory controls compare bounds and interval coverage with
+the native JSON, including missing/overlapping/outside-domain negative controls.
+CI runs them before toolchain and native work. Lean validation remains pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

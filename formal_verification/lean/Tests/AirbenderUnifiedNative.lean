@@ -78,7 +78,7 @@ private theorem lui_polynomials_0
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat)
     (upper : i < 16) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment luiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -89,7 +89,7 @@ private theorem lui_polynomials_1
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 16 ≤ i)
     (upper : i < 32) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment luiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -100,7 +100,7 @@ private theorem lui_polynomials_2
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 32 ≤ i)
     (upper : i < 48) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment luiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -111,7 +111,7 @@ private theorem lui_polynomials_3
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 48 ≤ i)
     (upper : i < 64) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment luiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -122,7 +122,7 @@ private theorem lui_polynomials_4
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 64 ≤ i)
     (upper : i < 80) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment luiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -133,7 +133,7 @@ private theorem lui_polynomials_5
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 80 ≤ i)
     (upper : i < 96) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment luiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -144,7 +144,7 @@ private theorem lui_polynomials_6
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 96 ≤ i)
     (upper : i < 112) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment luiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -153,32 +153,22 @@ private theorem lui_polynomials_6
 
 private theorem lui_polynomials_7
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 112 ≤ i)
-    (upper : i < 128) :
+    (upper : i < 120) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment luiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
   all_goals try simp only [List.getElem_cons_zero, List.getElem_cons_succ]
   all_goals decide +kernel
 
-private theorem lui_polynomials_8
-    (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 128 ≤ i)
-    (upper : i < 129) :
-    ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
-        (Verification.environment luiAssignment) = 0 := by
-  interval_cases i
-  all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
-  all_goals try simp only [List.getElem_cons_zero, List.getElem_cons_succ]
-  all_goals decide +kernel
 
 private theorem lui_polynomials (setup : Table (ZMod babyBearModulus) (fields 10)) :
     ∀ expression ∈ FlatOperation.constraints (UnifiedReduced.importedConstraints setup),
       expression.eval (Verification.environment luiAssignment) = 0 := by
   rw [List.forall_mem_iff_forall_getElem]
   intro i bound
-  have short : i < 129 := by simpa only [UnifiedReduced.constraint_count] using bound
+  have short : i < 120 := by simpa only [UnifiedReduced.constraint_count] using bound
   by_cases selected0 : i < 16
   · exact lui_polynomials_0 setup i selected0
   by_cases selected1 : i < 32
@@ -193,9 +183,7 @@ private theorem lui_polynomials (setup : Table (ZMod babyBearModulus) (fields 10
   · exact lui_polynomials_5 setup i (by omega) selected5
   by_cases selected6 : i < 112
   · exact lui_polynomials_6 setup i (by omega) selected6
-  by_cases selected7 : i < 128
-  · exact lui_polynomials_7 setup i (by omega) selected7
-  exact lui_polynomials_8 setup i (by omega) short
+  exact lui_polynomials_7 setup i (by omega) short
 
 private theorem lui_lookups (setup : Table (ZMod babyBearModulus) (fields 10))
     (disabled : setup.Contains #[] (Vector.replicate 10 0)) :
@@ -245,7 +233,7 @@ private theorem addi_polynomials_0
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat)
     (upper : i < 16) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment addiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -256,7 +244,7 @@ private theorem addi_polynomials_1
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 16 ≤ i)
     (upper : i < 32) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment addiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -267,7 +255,7 @@ private theorem addi_polynomials_2
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 32 ≤ i)
     (upper : i < 48) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment addiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -278,7 +266,7 @@ private theorem addi_polynomials_3
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 48 ≤ i)
     (upper : i < 64) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment addiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -289,7 +277,7 @@ private theorem addi_polynomials_4
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 64 ≤ i)
     (upper : i < 80) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment addiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -300,7 +288,7 @@ private theorem addi_polynomials_5
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 80 ≤ i)
     (upper : i < 96) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment addiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -311,7 +299,7 @@ private theorem addi_polynomials_6
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 96 ≤ i)
     (upper : i < 112) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment addiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -320,32 +308,22 @@ private theorem addi_polynomials_6
 
 private theorem addi_polynomials_7
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 112 ≤ i)
-    (upper : i < 128) :
+    (upper : i < 120) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment addiAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
   all_goals try simp only [List.getElem_cons_zero, List.getElem_cons_succ]
   all_goals decide +kernel
 
-private theorem addi_polynomials_8
-    (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 128 ≤ i)
-    (upper : i < 129) :
-    ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
-        (Verification.environment addiAssignment) = 0 := by
-  interval_cases i
-  all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
-  all_goals try simp only [List.getElem_cons_zero, List.getElem_cons_succ]
-  all_goals decide +kernel
 
 private theorem addi_polynomials (setup : Table (ZMod babyBearModulus) (fields 10)) :
     ∀ expression ∈ FlatOperation.constraints (UnifiedReduced.importedConstraints setup),
       expression.eval (Verification.environment addiAssignment) = 0 := by
   rw [List.forall_mem_iff_forall_getElem]
   intro i bound
-  have short : i < 129 := by simpa only [UnifiedReduced.constraint_count] using bound
+  have short : i < 120 := by simpa only [UnifiedReduced.constraint_count] using bound
   by_cases selected0 : i < 16
   · exact addi_polynomials_0 setup i selected0
   by_cases selected1 : i < 32
@@ -360,9 +338,7 @@ private theorem addi_polynomials (setup : Table (ZMod babyBearModulus) (fields 1
   · exact addi_polynomials_5 setup i (by omega) selected5
   by_cases selected6 : i < 112
   · exact addi_polynomials_6 setup i (by omega) selected6
-  by_cases selected7 : i < 128
-  · exact addi_polynomials_7 setup i (by omega) selected7
-  exact addi_polynomials_8 setup i (by omega) short
+  exact addi_polynomials_7 setup i (by omega) short
 
 private theorem addi_lookups (setup : Table (ZMod babyBearModulus) (fields 10))
     (disabled : setup.Contains #[] (Vector.replicate 10 0)) :
@@ -412,7 +388,7 @@ private theorem sw_polynomials_0
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat)
     (upper : i < 16) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment swAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -423,7 +399,7 @@ private theorem sw_polynomials_1
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 16 ≤ i)
     (upper : i < 32) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment swAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -434,7 +410,7 @@ private theorem sw_polynomials_2
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 32 ≤ i)
     (upper : i < 48) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment swAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -445,7 +421,7 @@ private theorem sw_polynomials_3
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 48 ≤ i)
     (upper : i < 64) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment swAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -456,7 +432,7 @@ private theorem sw_polynomials_4
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 64 ≤ i)
     (upper : i < 80) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment swAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -467,7 +443,7 @@ private theorem sw_polynomials_5
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 80 ≤ i)
     (upper : i < 96) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment swAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -478,7 +454,7 @@ private theorem sw_polynomials_6
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 96 ≤ i)
     (upper : i < 112) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment swAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -487,32 +463,22 @@ private theorem sw_polynomials_6
 
 private theorem sw_polynomials_7
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 112 ≤ i)
-    (upper : i < 128) :
+    (upper : i < 120) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment swAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
   all_goals try simp only [List.getElem_cons_zero, List.getElem_cons_succ]
   all_goals decide +kernel
 
-private theorem sw_polynomials_8
-    (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 128 ≤ i)
-    (upper : i < 129) :
-    ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
-        (Verification.environment swAssignment) = 0 := by
-  interval_cases i
-  all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
-  all_goals try simp only [List.getElem_cons_zero, List.getElem_cons_succ]
-  all_goals decide +kernel
 
 private theorem sw_polynomials (setup : Table (ZMod babyBearModulus) (fields 10)) :
     ∀ expression ∈ FlatOperation.constraints (UnifiedReduced.importedConstraints setup),
       expression.eval (Verification.environment swAssignment) = 0 := by
   rw [List.forall_mem_iff_forall_getElem]
   intro i bound
-  have short : i < 129 := by simpa only [UnifiedReduced.constraint_count] using bound
+  have short : i < 120 := by simpa only [UnifiedReduced.constraint_count] using bound
   by_cases selected0 : i < 16
   · exact sw_polynomials_0 setup i selected0
   by_cases selected1 : i < 32
@@ -527,9 +493,7 @@ private theorem sw_polynomials (setup : Table (ZMod babyBearModulus) (fields 10)
   · exact sw_polynomials_5 setup i (by omega) selected5
   by_cases selected6 : i < 112
   · exact sw_polynomials_6 setup i (by omega) selected6
-  by_cases selected7 : i < 128
-  · exact sw_polynomials_7 setup i (by omega) selected7
-  exact sw_polynomials_8 setup i (by omega) short
+  exact sw_polynomials_7 setup i (by omega) short
 
 private theorem sw_lookups (setup : Table (ZMod babyBearModulus) (fields 10))
     (disabled : setup.Contains #[] (Vector.replicate 10 0)) :
@@ -579,7 +543,7 @@ private theorem lw_polynomials_0
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat)
     (upper : i < 16) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment lwAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -590,7 +554,7 @@ private theorem lw_polynomials_1
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 16 ≤ i)
     (upper : i < 32) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment lwAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -601,7 +565,7 @@ private theorem lw_polynomials_2
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 32 ≤ i)
     (upper : i < 48) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment lwAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -612,7 +576,7 @@ private theorem lw_polynomials_3
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 48 ≤ i)
     (upper : i < 64) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment lwAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -623,7 +587,7 @@ private theorem lw_polynomials_4
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 64 ≤ i)
     (upper : i < 80) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment lwAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -634,7 +598,7 @@ private theorem lw_polynomials_5
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 80 ≤ i)
     (upper : i < 96) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment lwAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -645,7 +609,7 @@ private theorem lw_polynomials_6
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 96 ≤ i)
     (upper : i < 112) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment lwAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
@@ -654,32 +618,22 @@ private theorem lw_polynomials_6
 
 private theorem lw_polynomials_7
     (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 112 ≤ i)
-    (upper : i < 128) :
+    (upper : i < 120) :
     ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
+      simpa only [UnifiedReduced.constraint_count] using (show i < 120 by omega))).eval
         (Verification.environment lwAssignment) = 0 := by
   interval_cases i
   all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
   all_goals try simp only [List.getElem_cons_zero, List.getElem_cons_succ]
   all_goals decide +kernel
 
-private theorem lw_polynomials_8
-    (setup : Table (ZMod babyBearModulus) (fields 10)) (i : Nat) (lower : 128 ≤ i)
-    (upper : i < 129) :
-    ((FlatOperation.constraints (UnifiedReduced.importedConstraints setup))[i]'(by
-      simpa only [UnifiedReduced.constraint_count] using (show i < 129 by omega))).eval
-        (Verification.environment lwAssignment) = 0 := by
-  interval_cases i
-  all_goals dsimp only [UnifiedReduced.importedConstraints, FlatOperation.constraints]
-  all_goals try simp only [List.getElem_cons_zero, List.getElem_cons_succ]
-  all_goals decide +kernel
 
 private theorem lw_polynomials (setup : Table (ZMod babyBearModulus) (fields 10)) :
     ∀ expression ∈ FlatOperation.constraints (UnifiedReduced.importedConstraints setup),
       expression.eval (Verification.environment lwAssignment) = 0 := by
   rw [List.forall_mem_iff_forall_getElem]
   intro i bound
-  have short : i < 129 := by simpa only [UnifiedReduced.constraint_count] using bound
+  have short : i < 120 := by simpa only [UnifiedReduced.constraint_count] using bound
   by_cases selected0 : i < 16
   · exact lw_polynomials_0 setup i selected0
   by_cases selected1 : i < 32
@@ -694,9 +648,7 @@ private theorem lw_polynomials (setup : Table (ZMod babyBearModulus) (fields 10)
   · exact lw_polynomials_5 setup i (by omega) selected5
   by_cases selected6 : i < 112
   · exact lw_polynomials_6 setup i (by omega) selected6
-  by_cases selected7 : i < 128
-  · exact lw_polynomials_7 setup i (by omega) selected7
-  exact lw_polynomials_8 setup i (by omega) short
+  exact lw_polynomials_7 setup i (by omega) short
 
 private theorem lw_lookups (setup : Table (ZMod babyBearModulus) (fields 10))
     (disabled : setup.Contains #[] (Vector.replicate 10 0)) :

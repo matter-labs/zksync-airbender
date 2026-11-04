@@ -4,6 +4,7 @@ import Tests.DelegationTimestamps
 import Tests.DelegationZeroInvocation
 import Tests.DynamicCopyLoopNative
 import Tests.PathGLoopNative
+import Tests.PathGConsumedMessage
 import Tests.UnifiedBinary
 import Tests.UnifiedBinaryImmediate
 import Tests.UnifiedBranch
