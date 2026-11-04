@@ -1,4 +1,5 @@
 import Airbender.Proofs.GKRProtocol.MaterializedNative.SubwordMemoryCached
+import Airbender.Proofs.GKRProtocol.ColumnSlices
 
 namespace Tests.GKRSubwordNative
 open Airbender Airbender.Compiler

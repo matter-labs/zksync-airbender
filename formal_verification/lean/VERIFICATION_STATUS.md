@@ -266,6 +266,14 @@ zero padding for every one of the row's nine generic coordinates. No Review
 statement or premise changes. A lightweight boundary control checks all test
 entry points that open the project namespace for missing imports.
 
+Focused diagnosis [41926270665](https://github.com/matter-labs/zksync-airbender/actions/runs/41926270665)
+on `6c6ab2f79` passed `GKRNativeROM`, then found that the subword test also needs
+the existing `ColumnSlices` projection theorem import for `generic_cell_value`.
+That dependency is now explicit; the assertions and proofs are unchanged.
+The leaf exited 1 in 3.90 seconds at 314.51 MiB with no owned children; the
+focused phase took 75.77 seconds. The five-test diagnosis and standard FV
+remain pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

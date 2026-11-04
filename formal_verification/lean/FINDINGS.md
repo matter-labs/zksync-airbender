@@ -399,6 +399,14 @@ zero. This is the coordinate form of the original zero-vector property; it
 does not weaken coverage. No Review or production code changes. A lightweight
 test-import boundary control catches the missing-import pattern before builds.
 
+Focused diagnosis [41926270665](https://github.com/matter-labs/zksync-airbender/actions/runs/41926270665)
+on `6c6ab2f79` passed native ROM, then rejected subword's `generic_cell_value`
+field notation: the theorem is declared in `Proofs.GKRProtocol.ColumnSlices`,
+which the old helper namespace had imported transitively. That explicit import
+is restored beside the materialized model import. Every assertion and proof
+body is unchanged. The leaf exited 1 in 3.90 seconds at 314.51 MiB charged
+footprint, with no owned children left; focused source work took 75.77 seconds.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.
