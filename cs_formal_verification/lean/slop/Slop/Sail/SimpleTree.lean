@@ -79,13 +79,11 @@ theorem simple_execute_UTYPE (imm : BitVec 20) (rd : regidx) (op : uop) :
 
 theorem simple_tick_pc : Simple (SailRV32.Functions.tick_pc ()) := by
   unfold SailRV32.Functions.tick_pc
-  dsimp only
   refine simple_bind (simple_readReg _) (fun _ => ?_)
-  exact simple_bind (simple_writeReg _ _) (fun _ => Simple.pure _)
+  exact simple_bind (simple_writeReg _ _) (fun _ => simple_bind (simple_readReg _) (fun _ => Simple.pure _))
 
 theorem simple_normalBaseNextPC : Simple normalBaseNextPC := by
   unfold normalBaseNextPC
-  dsimp only
   refine simple_bind (simple_readReg _) (fun _ => ?_)
   exact simple_writeReg _ _
 
@@ -93,7 +91,6 @@ theorem simple_normalBaseNextPC : Simple normalBaseNextPC := by
 theorem simple_normalStep {m : SailRV32.SailM SailRV32.ExecutionResult} (hm : Simple m) :
     Simple (normalStep m) := by
   unfold normalStep
-  dsimp only
   refine simple_bind simple_normalBaseNextPC (fun _ => ?_)
   refine simple_bind hm (fun r => ?_)
   exact simple_bind simple_tick_pc (fun _ => Simple.pure _)
