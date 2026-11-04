@@ -147,6 +147,11 @@ log "quoted $n_before uses of \`assert\`"
 perl -pi -e 's/^(set_option maxRecDepth .*)$/$1\nset_option backward.do.legacy true/' "$GEN/$LEAN_PKG/$LEAN_PKG/RvfiDii.lean"
 grep -q 'backward.do.legacy' "$GEN/$LEAN_PKG/$LEAN_PKG/RvfiDii.lean" || { echo "RvfiDii patch failed" >&2; exit 1; }
 
+# Sail's emulator entry `main` is a root-level definition; the test driver (Tests.ArtifactImport) is also `main`, and both
+# sit in one environment once the tests import the Sail model. Pure rename of that one definition.
+perl -pi -e 's/^def main \(_ : List String\)/def sailMainEntry (_ : List String)/' "$GEN/$LEAN_PKG/$LEAN_PKG.lean"
+grep -q '^def sailMainEntry' "$GEN/$LEAN_PKG/$LEAN_PKG.lean" || { echo "main rename failed" >&2; exit 1; }
+
 # ---------------------------------------------------------------- 4. assemble the Lake package
 log "assemble $OUT"
 rm -rf "$OUT"; mkdir -p "$OUT"

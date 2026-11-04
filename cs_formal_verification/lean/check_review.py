@@ -33,6 +33,7 @@ SOURCE_NAMES = {
     "Model.lean", "lakefile.toml", "av_gkr_compiler",
     "inits_or_teardowns_as_flattened_relation", "mask_read_for_witness",
     "run_hart_active", "F_Base", "FormalCircuit", "sorry",
+    "PROVENANCE.txt", "regen.sh", "sail_rv32", "Zalrsc",
 }
 
 

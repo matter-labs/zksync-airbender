@@ -141,7 +141,7 @@ import Slop.SubwordMemory.MemoryAccess
 #print axioms Tests.SailMMIO.ram_read
 #print axioms Tests.SailMMIO.ram_write
 #print axioms Tests.SailMMIO.windows_excluded
-#print axioms Tests.SailMMIO.signature_is_mmio
+#print axioms Tests.SailMMIO.signature_is_not_mmio
 #print axioms Airbender.Reference.RiscV.Sail.decode_word_bytes
 #print axioms Airbender.Reference.RiscV.Sail.encode_word_bytes
 #print axioms Airbender.Reference.RiscV.Sail.read_ram_word
@@ -766,10 +766,10 @@ import Slop.SubwordMemory.MemoryAccess
 #print axioms Tests.MulDivDecoder.unsupported_forms_rejected
 #print axioms Tests.MulDivDecoder.accepted_row_fetched
 #print axioms Tests.MulDivDecoder.wrong_selector_rejected
-#print axioms Tests.MulDivDecoder.disabled_extension_rejected
+#print axioms Tests.MulDivDecoder.disabled_extension_not_rejected_by_decoder
 
 #print axioms Airbender.Reference.Sail.run_read_cont
-#print axioms Airbender.Trace.Proofs.run_entry_source
+#print axioms Airbender.Trace.Proofs.entry_source
 #print axioms Airbender.Trace.Proofs.run_program_sources
 #print axioms Airbender.MulDiv.Proofs.incoming_pc_bounds
 #print axioms Airbender.MulDiv.Proofs.outgoing_pc_bounds

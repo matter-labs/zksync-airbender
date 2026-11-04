@@ -113,6 +113,17 @@ theorem wrong_selector_rejected :
       (fun i => if i = 10 then 1 else Tests.MulDivTimestamp.assignment false false i))[8] ≠
       ((entry false).query : Vector (ZMod babyBearModulus) 9)[8]) mask
 
+/-- The original `disabled_extension_rejected` (with M disabled in `misa`, the Sail decoder rejects the
+    multiplication encoding) is retired, not restated: it is false, not merely unprovable. Clearing only `misa.M`
+    (bit 12) leaves the Sail decoder returning a value (`isSome`), and that value differs from the M-enabled
+    decode. The image-level form (`programImage = none`) is false by design since the image decodes on the
+    Airbender configuration (`state_misa_ignored`). Kernel-checked. -/
+theorem disabled_extension_not_rejected_by_decoder :
+    (Reference.RiscV.Sail.resultValue (Reference.RiscV.Sail.Configuration.runSail
+      (SailRV32.Functions.encdec_backwards (0x022081b3 : BitVec 32))
+      (Reference.RiscV.Sail.Configuration.resetState.set .misa (0x40000100 : BitVec 32)))).isSome = true := by
+  kernel_rfl
+
 /-- The program image decodes on the Airbender configuration (`decodeOnReset`), so a state whose `misa`
     disables M still yields the multiplication row: the configuration is not read from the state. -/
 theorem state_misa_ignored :

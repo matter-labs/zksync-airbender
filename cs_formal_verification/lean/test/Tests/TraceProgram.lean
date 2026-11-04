@@ -88,6 +88,16 @@ theorem negative_immediate :
 theorem decoder_on_reset : Airbender.Reference.RiscV.Sail.decodeOnReset addEntry.bits = some addEntry.instruction := by
   decode_on_reset
 
+/-- The decoder reads `misa`: after `misa` is written (every extension enabled) it still returns the same ADD.
+    Stated on the Sail reset state with `misa` set and checked by the kernel, since the hash-map fixture
+    exceeds elaborator reduction on the full model. -/
+theorem decoder_after_configuration_change :
+    Reference.RiscV.Sail.resultValue (Reference.RiscV.Sail.Configuration.runSail
+      (SailRV32.Functions.encdec_backwards addEntry.bits)
+      (Reference.RiscV.Sail.Configuration.resetState.set .misa (0xffffffff : BitVec 32))) =
+      some addEntry.instruction := by
+  kernel_rfl
+
 /-- A native RAM store preserves the fetched/decoded public ROM instruction. -/
 theorem fetched_after_ram_store :
     addEntry.Source (Reference.RiscV.Sail.wordWriteState before 4194304 0xabcdef12) := by
