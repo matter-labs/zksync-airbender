@@ -71,6 +71,14 @@ Python controls pass; actual native peaks and complete output equality remain
 pending. Both verified setup and compiler manifests must be committed after real
 requalification succeeds. No current manifest or full FV result is qualified.
 
+Run [41830870517](https://github.com/matter-labs/zksync-airbender/actions/runs/41830870517)
+passed Linux capacity qualification, but its first native command was rejected
+by the guard's old CLI maxima before execution. The guard now requires an
+explicit native-artifact profile for 8,192 / 12,288 MiB, with another capacity
+check under the worker lock. Unflagged calls retain the original caps, and native
+calls cannot request the extended review timeout. The profile boundary controls
+pass; actual original native reconstruction still requires CI.
+
 Warm run [41803197805](https://github.com/matter-labs/zksync-airbender/actions/runs/41803197805)
 failed in source validation on reserved `start` binders in
 `Proofs/UnifiedReduced/WorkerExecution.lean`. The binders and their uses are now

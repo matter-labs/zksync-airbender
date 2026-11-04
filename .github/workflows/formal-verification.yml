@@ -126,10 +126,13 @@ jobs:
             timeout --signal=TERM --kill-after=120s "${seconds}s" "$@"
           }
           fv_limited() {
-            local label="$1" fv_footprint="$2" fv_resident="$3"
-            shift 3
+            local label="$1" fv_footprint="$2" fv_resident="$3" fv_profile="$4"
+            shift 4
+            local fv_profile_args=()
+            if [[ "$fv_profile" == native-artifact ]]; then fv_profile_args=(--native-artifact); fi
             python3 "$GITHUB_WORKSPACE/formal_verification/lean/scripts/bounded_fv.py" \
               --mib "$fv_footprint" --resident-mib "$fv_resident" --seconds 900 \
+              "${fv_profile_args[@]}" \
               --log "$FV_ROOT/$label.log" -- "$@" | tee "$FV_ROOT/$label.guard.jsonl"
             python3 - "$FV_ROOT/$label.guard.jsonl" <<'PY'
           import json, sys
@@ -143,14 +146,14 @@ jobs:
           fv() {
             local label="$1"
             shift
-            fv_limited "$label" 2560 5120 "$@"
+            fv_limited "$label" 2560 5120 lean "$@"
           }
           fv_native() {
             local label="$1"
             shift
             python3 "$GITHUB_WORKSPACE/formal_verification/lean/scripts/qualify_native_memory.py" \
               --report "$FV_ROOT/$label.capacity.json"
-            fv_limited "$label" 8192 12288 "$@"
+            fv_limited "$label" 8192 12288 native-artifact "$@"
           }
           SH
       - name: Qualify explicit native artifact memory budget

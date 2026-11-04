@@ -118,6 +118,17 @@ the Lean cache so complete circuit/setup checks happen before Lean preparation.
 Future mismatches record the first differing JSON field and retain the fresh
 circuit for inspection. Actual reconstruction under the new budget is pending.
 
+Run [41830870517](https://github.com/matter-labs/zksync-airbender/actions/runs/41830870517)
+qualified the runner at 111,377 MiB effective capacity and over 110,000 MiB
+available memory. It then rejected the larger CLI arguments before running a
+native command: the guard parser still enforced the default caps. The correction
+adds an explicit native-artifact profile, rejects its use with extended review
+time, and independently qualifies capacity after acquiring the worker lock.
+Default-profile callers still reject limits above 2,560 / 5,120 MiB. Controls now
+exercise profile acceptance, rejection of unflagged/high/extended requests, and
+budget decisions for native-sized process samples. No native result is
+claimed from the argument-validation failure.
+
 Setup receipt promotion also invalidates the compiler's pin of the setup
 manifest. Requalification now refreshes compiler input receipts only after all
 33 compiler payload files reproduce byte for byte and the freshly exported

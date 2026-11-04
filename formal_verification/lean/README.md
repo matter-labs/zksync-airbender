@@ -131,7 +131,7 @@ fv_native() {
   label="$1"
   shift
   python3 scripts/qualify_native_memory.py --report "$FV_ROOT/$label.capacity.json"
-  python3 scripts/bounded_fv.py --mib 8192 --resident-mib 12288 --seconds 900 \
+  python3 scripts/bounded_fv.py --native-artifact --mib 8192 --resident-mib 12288 --seconds 900 \
     --log "$FV_ROOT/$label.log" -- "$@" | tee "$FV_ROOT/$label.guard.jsonl"
 }
 

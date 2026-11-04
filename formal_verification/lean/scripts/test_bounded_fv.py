@@ -184,6 +184,21 @@ class ParserTests(unittest.TestCase):
         charged = guard.Sample(guard.ProcessInfo(2, 20, 'worker'), 9 << 20, 1)
         self.assertEqual(guard.budget_reason([charged], args, 0), 'memory budget exceeded')
 
+    def test_native_profile_is_explicit_bounded_and_keeps_default_caps(self):
+        base = ['--mib', '8192', '--resident-mib', '12288', '--seconds', '900', '--log', 'unused']
+        args = guard.parse_args(base + ['--native-artifact', '--', 'true'])
+        self.assertTrue(args.native_artifact)
+        sample = guard.Sample(guard.ProcessInfo(42, 1, 'native-exporter'), 7680 << 20, 7680 << 20)
+        self.assertIsNone(guard.budget_reason([sample], args, 0))
+        too_large = guard.Sample(sample.info, 8193 << 20, 8193 << 20)
+        self.assertEqual(guard.budget_reason([too_large], args, 0), 'memory budget exceeded')
+        for extra in ([], ['--native-artifact', '--mib', '8193'],
+                      ['--native-artifact', '--resident-mib', '12289'],
+                      ['--native-artifact', '--seconds', '901'],
+                      ['--native-artifact', '--seconds', '1800', '--review']):
+            with self.subTest(extra=extra), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                guard.parse_args(base + extra + ['--', 'true'])
+
     def test_prefix_query_is_not_a_compiler_but_keeps_resource_charges(self):
         args = guard.parse_args(['--mib', '8', '--resident-mib', '16', '--seconds', '1', '--log', 'unused', '--', 'true'])
         compiler = guard.Sample(guard.ProcessInfo(1, 10, 'lean'), 1, 1)

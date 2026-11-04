@@ -13,6 +13,9 @@ Keep /tmp/airbender_bounded.py unchanged. Run this guard as the one foreground
 owner, never inside another guard holding the same global lock. Replay may select
 an explicit finite stack limit. No cgroup, daemon, external package or GPU
 operation is created.
+
+The default profile retains 2560/5120 MiB caps. Only the explicit Linux native
+artifact profile permits 8192/12288 MiB after host/cgroup capacity qualification.
 """
 
 import argparse
@@ -630,16 +633,19 @@ def parse_args(argv=None):
     parser.add_argument('--resident-mib', type=int, default=4096)
     parser.add_argument('--log', required=True)
     parser.add_argument('--review', action='store_true', help='Allow review jobs above 900s, up to 1800s')
+    parser.add_argument('--native-artifact', action='store_true', help='Explicit Linux native artifact profile, up to 8192/12288 MiB, with capacity qualification')
     parser.add_argument('--stack-mib', type=int, help='Explicit finite child stack, 8..2048 MiB')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     args.command = args.command[1:] if args.command[:1] == ['--'] else args.command
     maximum = 1800 if args.review else 900
-    if (not args.command or not 8 <= args.mib <= 2560 or
-            not args.mib <= args.resident_mib <= 5120 or
+    footprint_cap, resident_cap = (8192, 12288) if args.native_artifact else (2560, 5120)
+    if (not args.command or not 8 <= args.mib <= footprint_cap or
+            not args.mib <= args.resident_mib <= resident_cap or
+            (args.native_artifact and args.review) or
             not math.isfinite(args.seconds) or not 0 < args.seconds <= maximum or
             (args.stack_mib is not None and not 8 <= args.stack_mib <= 2048)):
-        parser.error('require command, footprint 8..2560 MiB, resident <=5120 MiB, normal 0..900s; --review permits up to 1800s')
+        parser.error('require command, default footprint 8..2560 MiB/resident <=5120 MiB; explicit --native-artifact allows 8192/12288 MiB; normal 0..900s; --review permits up to 1800s only in the default profile')
     return args
 
 
@@ -664,6 +670,13 @@ def main(argv=None):
         json.dump({'guard_pid': os.getpid(), 'birth': own_info.birth,
                    'backend': backend.name, 'log': args.log}, lock)
         lock.flush()
+        if args.native_artifact:
+            if sys.platform != 'linux':
+                raise RuntimeError('native artifact profile requires Linux capacity qualification')
+            import qualify_native_memory
+            qualification = qualify_native_memory.inspect()
+            if not qualification['qualified']:
+                raise RuntimeError('native artifact capacity is no longer qualified: ' + json.dumps(qualification))
         backend.prepare_owner()
         def limits():
             resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
@@ -741,6 +754,8 @@ def main(argv=None):
         if lock is not None:
             lock.close()
     result = {'reason': reason, 'exit': code, 'peak_mib': round(peak / 2**20, 2),
+              'resource_profile': 'native-artifact' if args.native_artifact else 'lean',
+              'footprint_limit_mib': args.mib, 'resident_limit_mib': args.resident_mib,
               'footprint_peak_mib': round(footprint_peak / 2**20, 2),
               'resident_peak_mib': round(resident_peak / 2**20, 2),
               'bounded_resident_peak_mib': round(bounded_resident_peak / 2**20, 2),
