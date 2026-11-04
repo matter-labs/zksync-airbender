@@ -21,24 +21,24 @@ private def byte (kind : Fin 6) (i : Nat) : Nat := ((outputWord kind).extractLsb
 private def tag (kind : Fin 6) : Nat := UnifiedReduced.Setup.binaryTag (operation kind).tag
 
 private def assignment (kind : Fin 6) : Nat → ZMod babyBearModulus
-  | 4 | 5 | 27 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 5 | 27 | 123 | 124 | 125 => 1
   | 7 | 44 => 3
   | 2 | 30 => 4
   | 32 => 8
-  | 10 | 92 | 101 | 110 | 119 => (tag kind : ZMod babyBearModulus)
+  | 10 | 86 | 95 | 104 | 113 => (tag kind : ZMod babyBearModulus)
   | 36 => 0x1234 | 37 => 0xabcd
-  | 8 | 94 => (rightByte kind 0 : ZMod babyBearModulus)
-  | 9 | 89 | 103 => (rightByte kind 1 : ZMod babyBearModulus)
-  | 57 | 90 | 112 | 121 => (rightByte kind 2 : ZMod babyBearModulus)
+  | 8 | 88 => (rightByte kind 0 : ZMod babyBearModulus)
+  | 9 | 83 | 97 => (rightByte kind 1 : ZMod babyBearModulus)
+  | 57 | 84 | 106 | 115 => (rightByte kind 2 : ZMod babyBearModulus)
   | 50 => (((outputWord kind).toNat % 65536 : Nat) : ZMod babyBearModulus)
   | 51 => (((outputWord kind).toNat / 65536 : Nat) : ZMod babyBearModulus)
-  | 58 | 95 => (byte kind 0 : ZMod babyBearModulus)
-  | 62 | 104 => (byte kind 1 : ZMod babyBearModulus)
-  | 66 | 113 => (byte kind 2 : ZMod babyBearModulus)
-  | 70 | 122 => (byte kind 3 : ZMod babyBearModulus)
-  | 74 | 93 => 0x34 | 75 | 111 => 0xcd
-  | 102 => 0x12 | 120 => 0xab
-  | 88 => 3
+  | 58 | 89 => (byte kind 0 : ZMod babyBearModulus)
+  | 62 | 98 => (byte kind 1 : ZMod babyBearModulus)
+  | 66 | 107 => (byte kind 2 : ZMod babyBearModulus)
+  | 70 | 116 => (byte kind 3 : ZMod babyBearModulus)
+  | 74 | 87 => 0x34 | 75 | 105 => 0xcd
+  | 96 => 0x12 | 114 => 0xab
+  | 82 => 3
   | _ => 0
 
 private def instructionBits (kind : Fin 6) : BitVec 32 :=

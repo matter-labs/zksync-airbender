@@ -22,13 +22,13 @@ private def setup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic {
 }
 
 private def assignment : Nat → ZMod babyBearModulus
-  | 4 | 5 | 6 | 7 | 20 | 38 | 44 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 5 | 6 | 7 | 20 | 38 | 44 | 123 | 124 | 125 => 1
   | 2 | 30 | 40 => 4
   | 32 => 8
   | 46 => 5
   | 36 | 42 | 48 => 123
   | 50 => 369
-  | 80 => 123 * 123 * 943718400
+  | 78 => 123 * 123 * 943718400
   | _ => 0
 
 private def before : State :=

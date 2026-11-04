@@ -182,6 +182,18 @@ This is supplementary diagnosis, not Lean validation of their theorems. No
 theorem, native constraint, Review statement, production function or artifact
 is changed. The affected modules still require Lean CI.
 
+The remaining arithmetic, memory, ROM, branch/jump, binary, shift and modular
+execution examples had the same obsolete layout. Fifteen further test files
+now use the native auxiliary positions; inline initialization/teardown fields
+move from 134–141 to 126–133. Theorems and proof bodies are unchanged. A
+supplementary source-parsed audit checks sixty additional rows against all
+native equations and their applicable range/clock queries. Fixed pooled rows
+are compared in full with the retained setup JSON; the three dynamic-ROM
+examples instead check their explicit public words. Three core-only rows have
+no clock-acceptance claim and receive no added one. Shift/bitwise helpers are
+evaluated independently with their declared bit-vector semantics. These checks
+do not replace Lean CI or final assurance.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

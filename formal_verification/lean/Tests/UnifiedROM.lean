@@ -51,14 +51,14 @@ theorem wrong_value_rejected :
   exact wrong result
 
 private def assignment : Nat → ZMod babyBearModulus
-  | 4 | 28 | 54 | 87 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 28 | 54 | 81 | 123 | 124 | 125 => 1
   | 7 | 44 => 3
   | 2 | 30 => 4
   | 32 => 8
-  | 50 | 90 => 0xbeef
-  | 51 | 91 => 0xdead
-  | 86 => 65472
-  | 88 => 34
+  | 50 | 84 => 0xbeef
+  | 51 | 85 => 0xdead
+  | 80 => 65472
+  | 82 => 34
   | _ => 0
 
 theorem native_row_accepted : FlatOperation.ConstraintsHoldFlat

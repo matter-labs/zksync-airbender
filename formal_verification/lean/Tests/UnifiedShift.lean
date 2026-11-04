@@ -24,7 +24,7 @@ private def «part» (kind : Fin 7) (i j : Nat) : Nat :=
   ((Verification.shiftByteContribution i (leftByte i) (amount kind) (operation kind).tag).extractLsb' (8 * j) 8).toNat
 
 private def assignment (kind : Fin 7) : Nat → ZMod babyBearModulus
-  | 4 | 5 | 26 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 5 | 26 | 123 | 124 | 125 => 1
   | 6 | 38 => if unusedRight kind then 0 else 2
   | 7 | 44 => 3
   | 2 | 30 => 4
@@ -36,16 +36,16 @@ private def assignment (kind : Fin 7) : Nat → ZMod babyBearModulus
   | 43 => (((rightWord kind).toNat / 65536 : Nat) : ZMod babyBearModulus)
   | 50 => (((outputWord kind).toNat % 65536 : Nat) : ZMod babyBearModulus)
   | 51 => (((outputWord kind).toNat / 65536 : Nat) : ZMod babyBearModulus)
-  | 57 | 91 => if unusedRight kind then 0 else 31
+  | 57 | 85 => if unusedRight kind then 0 else 31
   | 74 => leftByte 0 | 75 => leftByte 2
-  | 76 | 89 => if unusedRight kind then 0 else 0x1f
-  | 90 => if unusedRight kind then 0 else 0x9b
-  | 88 => 8
-  | 80 => 0xabcd1234 * (rightWord kind).toNat * 943718400
+  | 76 | 83 => if unusedRight kind then 0 else 0x1f
+  | 84 => if unusedRight kind then 0 else 0x9b
+  | 82 => 8
+  | 78 => 0xabcd1234 * (rightWord kind).toNat * 943718400
   | n => if 58 ≤ n ∧ n < 74 then «part» kind ((n - 58) / 4) ((n - 58) % 4) else
-    if 92 ≤ n ∧ n < 128 then
-      let i := (n - 92) / 9
-      match (n - 92) % 9 with
+    if 86 ≤ n ∧ n < 122 then
+      let i := (n - 86) / 9
+      match (n - 86) % 9 with
       | 0 => 9 | 1 => i | 2 => leftByte i | 3 => amount kind
       | 4 => (operation kind).tag | j => «part» kind i (j - 5)
     else 0

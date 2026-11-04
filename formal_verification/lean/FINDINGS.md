@@ -297,6 +297,25 @@ theorem states rejection. These supplementary checks are not Lean theorem valida
 the affected modules must still pass CI. This identifies stale constructed
 test witnesses, with no production defect established.
 
+The same inspection found fifteen more affected files covering arithmetic,
+RAM/ROM, branch/JAL/JALR, bitwise, shifts, modular arithmetic and mixed/native
+execution. Their witness definitions now use the current native coordinates,
+including the inline initialization/teardown fields at 126–133. Every theorem
+statement and proof body is byte-identical; no native constraint or lookup is
+removed. The wrapping core-only example sets actual PC carry 122, while its
+native clock extensions use borrows 123–125.
+
+The supplementary source parser checks sixty more rows, for 144 total, against
+the native equations and applicable range, timestamp and clock checks. It
+compares complete fixed lookup rows with the retained native setup JSON;
+dynamic ROM queries in three examples are checked against their explicit
+public words instead. Three intentionally core-only rows retain that scope.
+Bitwise and shift helper results are independently evaluated with the declared
+bit-vector operations before checking the actual source-parsed assignments.
+These are diagnostic checks, not Lean validation. The affected modules still
+require CI; production code, Review statements and retained artifacts remain
+unchanged.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

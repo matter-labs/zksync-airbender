@@ -21,12 +21,12 @@ private def program : List UnifiedReduced.ProgramEntry := [
   ⟨8, 0x2083, .LOAD (0, .Regidx 0, .Regidx 1, false, 4),
     ⟨.machine, 0, 0, 1, ⟨0, 0⟩, 131072, 0⟩⟩]
 private def arithmetic : Nat → ZMod babyBearModulus
-  | 4 | 5 | 7 | 8 | 11 | 44 | 50 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 5 | 7 | 8 | 11 | 44 | 50 | 123 | 124 | 125 => 1
   | 2 | 30 | 46 => 4
   | 32 => 8
   | _ => 0
 private def triadd (value : Nat) : Nat → ZMod babyBearModulus
-  | 4 | 5 | 6 | 7 | 20 | 38 | 44 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 5 | 6 | 7 | 20 | 38 | 44 | 123 | 124 | 125 => 1
   | 0 => 4
   | 2 | 30 | 40 => 8
   | 32 => 12
@@ -34,19 +34,19 @@ private def triadd (value : Nat) : Nat → ZMod babyBearModulus
   | 46 => 9
   | 36 | 42 | 48 => value
   | 50 => 3 * value
-  | 80 => value * value * 943718400
+  | 78 => value * value * 943718400
   | _ => 0
 private def load : Nat → ZMod babyBearModulus
-  | 4 | 7 | 28 | 44 | 54 | 87 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 7 | 28 | 44 | 54 | 81 | 123 | 124 | 125 => 1
   | 0 => 8
   | 2 | 30 => 12
-  | 32 | 51 | 91 => 16
+  | 32 | 51 | 85 => 16
   | 34 => 5
   | 46 => 10
   | 48 => 3
-  | 50 | 90 => 0x8093
-  | 86 => 65472
-  | 88 => 34
+  | 50 | 84 => 0x8093
+  | 80 => 65472
+  | 82 => 34
   | _ => 0
 private def trace (value : Nat) : UnifiedTrace babyBearModulus where
   rows := [⟨.machine, load⟩, ⟨.machine, triadd value⟩, ⟨.machine, arithmetic⟩]

@@ -22,12 +22,12 @@ private def physical : List (MemoryToken babyBearModulus) :=
   ROMView.nativeBootImage Tests.TraceExecution.cells ++ [Cell.initialToken (.ram 0) 0x2083]
 
 private def assignment : Nat → ZMod babyBearModulus
-  | 4 | 7 | 28 | 44 | 54 | 87 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 7 | 28 | 44 | 54 | 81 | 123 | 124 | 125 => 1
   | 2 | 30 => 4
   | 32 => 8
-  | 50 | 90 => 0x2083
-  | 86 => 65472
-  | 88 => 34
+  | 50 | 84 => 0x2083
+  | 80 => 65472
+  | 82 => 34
   | _ => 0
 
 private def nativeRow : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment⟩

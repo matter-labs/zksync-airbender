@@ -23,7 +23,7 @@ private def zeroSetup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic 
 private def row : Nat → ZMod babyBearModulus
   | 0 => 65534
   | 1 | 30 => 2
-  | 4 | 11 | 128 | 129 | 130 => 1
+  | 4 | 11 | 122 => 1
   | 31 => 3
   | 32 => 4
   | _ => 0
@@ -59,7 +59,7 @@ private def aliasedRow : Nat → ZMod babyBearModulus
   | 5 | 6 | 7 | 38 | 44 => 1
   | 36 | 42 => 123
   | 50 => 246
-  | 80 => 123 * 123 * 943718400
+  | 78 => 123 * 123 * 943718400
   | i => row i
 
 set_option maxRecDepth 8192 in
@@ -165,7 +165,7 @@ private def triRow : Nat → ZMod babyBearModulus
   | 20 | 52 | 53 | 54 | 55 => 1
   | 36 | 37 | 42 | 43 | 48 | 49 | 51 => 65535
   | 50 => 65533
-  | 80 => 4294967295 * 4294967295 * 943718400
+  | 78 => 4294967295 * 4294967295 * 943718400
   | i => aliasedRow i
 
 set_option maxRecDepth 8192 in
@@ -271,7 +271,7 @@ private def nativeAssignment (rollover : Bool) (i : Nat) : ZMod babyBearModulus 
   else if i = 33 then (if rollover then 8 else 0)
   else if i = 46 then (if rollover then 524285 else 5)
   else if i = 48 then 123
-  else if i = 131 || i = 132 || i = 133 then 1
+  else if i = 123 || i = 124 || i = 125 then 1
   else aliasedRow i
 
 private theorem native_constraints (rollover : Bool) : FlatOperation.ConstraintsHoldFlat
@@ -356,7 +356,7 @@ theorem initialized_word_bounds (rollover : Bool) :
 private def fabricatedAssignment (i : Nat) : ZMod babyBearModulus :=
   if i = 42 then 124
   else if i = 50 then 247
-  else if i = 80 then 123 * 124 * 943718400
+  else if i = 78 then 123 * 124 * 943718400
   else nativeAssignment false i
 
 private def fabricatedTrace : UnifiedTrace babyBearModulus :=

@@ -15,14 +15,14 @@ private def assignment (index : Fin 12) : Nat → ZMod babyBearModulus :=
   match index.val with
   | 0 => fun column => match column with
     | 2 | 30 | 40 => 4
-    | 4 | 7 | 11 | 44 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 7 | 11 | 44 | 123 | 124 | 125 => 1
     | 8 | 50 => 11
     | 32 => 8
     | _ => 0
   | 1 => fun column => match column with
     | 0 => 4
     | 2 | 30 | 40 => 8
-    | 4 | 11 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 11 | 123 | 124 | 125 => 1
     | 7 | 44 => 2
     | 8 | 50 => 3
     | 32 => 12
@@ -31,7 +31,7 @@ private def assignment (index : Fin 12) : Nat → ZMod babyBearModulus :=
   | 2 => fun column => match column with
     | 0 => 8
     | 2 | 30 => 12
-    | 4 | 5 | 14 | 52 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 5 | 14 | 52 | 123 | 124 | 125 => 1
     | 6 | 38 => 2
     | 7 | 42 | 44 => 3
     | 32 => 16
@@ -39,26 +39,26 @@ private def assignment (index : Fin 12) : Nat → ZMod babyBearModulus :=
     | 36 => 11
     | 40 => 10
     | 50 => 14
-    | 78 => 13
-    | 79 => 34816
-    | 80 => 943718385
+    | 74 => 13
+    | 75 => 34816
+    | 78 => 943718385
     | _ => 0
   | 3 => fun column => match column with
     | 0 | 40 => 12
     | 2 | 30 | 46 => 16
-    | 4 | 6 | 15 | 38 | 52 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 6 | 15 | 38 | 52 | 123 | 124 | 125 => 1
     | 5 | 7 | 44 | 50 => 3
     | 32 => 20
     | 34 | 36 | 48 => 14
     | 42 => 11
-    | 78 => 2
-    | 79 => 34816
-    | 80 => 377487288
+    | 74 => 2
+    | 75 => 34816
+    | 78 => 377487288
     | _ => 0
   | 4 => fun column => match column with
     | 0 => 16
     | 2 | 30 | 46 => 20
-    | 4 | 16 | 52 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 16 | 52 | 123 | 124 | 125 => 1
     | 5 | 7 | 36 | 42 | 44 | 48 => 3
     | 6 | 38 => 2
     | 32 => 24
@@ -66,14 +66,14 @@ private def assignment (index : Fin 12) : Nat → ZMod babyBearModulus :=
     | 40 => 13
     | 50 => 65532
     | 51 => 6719
-    | 78 => 65531
-    | 79 => 41535
-    | 80 => 440401916
+    | 74 => 65531
+    | 75 => 41535
+    | 78 => 440401916
     | _ => 0
   | 5 => fun column => match column with
     | 0 => 20
     | 2 | 30 | 46 => 24
-    | 4 | 17 | 52 | 78 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 17 | 52 | 74 | 123 | 124 | 125 => 1
     | 5 | 7 | 42 | 44 => 3
     | 6 | 38 | 50 => 2
     | 32 => 28
@@ -82,13 +82,13 @@ private def assignment (index : Fin 12) : Nat → ZMod babyBearModulus :=
     | 37 | 49 => 6719
     | 40 => 21
     | 51 => 8790
-    | 79 => 43606
-    | 80 => 576061442
+    | 75 => 43606
+    | 78 => 576061442
     | _ => 0
   | 6 => fun column => match column with
     | 0 => 24
     | 2 | 30 | 40 => 28
-    | 4 | 11 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 11 | 123 | 124 | 125 => 1
     | 32 => 32
     | 34 => 9
     | 46 => 29
@@ -96,7 +96,7 @@ private def assignment (index : Fin 12) : Nat → ZMod babyBearModulus :=
   | 7 => fun column => match column with
     | 0 => 28
     | 2 | 30 | 40 => 32
-    | 4 | 11 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 11 | 123 | 124 | 125 => 1
     | 32 => 36
     | 34 => 30
     | 46 => 33
@@ -104,7 +104,7 @@ private def assignment (index : Fin 12) : Nat → ZMod babyBearModulus :=
   | 8 => fun column => match column with
     | 0 => 32
     | 2 | 30 | 40 => 36
-    | 4 | 11 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 11 | 123 | 124 | 125 => 1
     | 32 => 40
     | 34 => 34
     | 46 => 37
@@ -112,7 +112,7 @@ private def assignment (index : Fin 12) : Nat → ZMod babyBearModulus :=
   | 9 => fun column => match column with
     | 0 => 36
     | 2 | 30 | 40 => 40
-    | 4 | 11 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 11 | 123 | 124 | 125 => 1
     | 32 => 44
     | 34 => 38
     | 46 => 41
@@ -120,7 +120,7 @@ private def assignment (index : Fin 12) : Nat → ZMod babyBearModulus :=
   | 10 => fun column => match column with
     | 0 => 40
     | 2 | 30 => 44
-    | 4 | 11 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 11 | 123 | 124 | 125 => 1
     | 5 => 3
     | 7 | 44 => 4
     | 32 => 48
@@ -132,7 +132,7 @@ private def assignment (index : Fin 12) : Nat → ZMod babyBearModulus :=
   | 11 => fun column => match column with
     | 0 => 44
     | 2 | 30 => 48
-    | 4 | 5 | 20 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 5 | 20 | 123 | 124 | 125 => 1
     | 6 | 38 => 2
     | 7 | 44 => 5
     | 32 => 52
@@ -141,7 +141,7 @@ private def assignment (index : Fin 12) : Nat → ZMod babyBearModulus :=
     | 40 => 25
     | 42 => 3
     | 50 => 14
-    | 80 => 943718385
+    | 78 => 943718385
     | _ => 0
   | _ => fun _ => 0
 

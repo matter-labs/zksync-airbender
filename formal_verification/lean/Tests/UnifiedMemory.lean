@@ -18,7 +18,7 @@ private def zeroSetup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic 
 }
 
 private def assignment (store : Bool) : Nat → ZMod babyBearModulus
-  | 4 | 5 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 5 | 123 | 124 | 125 => 1
   | 6 => if store then 2 else 0
   | 7 => if store then 0 else 2
   | 28 => if store then 0 else 1
@@ -32,7 +32,7 @@ private def assignment (store : Bool) : Nat → ZMod babyBearModulus
   | 45 => if store then 64 else 0
   | 42 | 50 => 0x1234
   | 43 | 51 => 0xbeef
-  | 80 => 4194304 * (0x1234 + 65536 * 0xbeef) * 943718400
+  | 78 => 4194304 * (0x1234 + 65536 * 0xbeef) * 943718400
   | _ => 0
 
 private def row (store : Bool) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment store⟩
