@@ -1,5 +1,6 @@
 import Slop.Sail.ForwardSim
 import Human.ISA.Sail.Airbender
+import Human.Circuits.AddSub.Reference
 
 /-! # `Simple` closure: the generated register clauses are covered computations
 
@@ -114,5 +115,15 @@ theorem simple_airbender_execute_UTYPE (next : BitVec 32) (imm : BitVec 20) (rd 
   unfold Airbender.execute SailRV32.Functions.execute
   dsimp only
   exact simple_execute_UTYPE imm rd op
+
+/-- The five AddSub-family clauses selected by `Reference.execution` are covered computations. -/
+theorem simple_execution (input : Input) : Simple (execution input) := by
+  unfold execution
+  cases h : input.row.opcode <;> simp only [instruction, registerClause, h, Option.get_some]
+  · exact simple_execute_RTYPE _ _ _ _
+  · exact simple_execute_ITYPE _ _ _ _
+  · exact simple_execute_RTYPE _ _ _ _
+  · exact simple_execute_UTYPE _ _ _
+  · exact simple_execute_UTYPE _ _ _
 
 end Airbender.Reference.RiscV.Sail
