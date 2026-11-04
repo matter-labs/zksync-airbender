@@ -494,3 +494,7 @@ mod tests {
         .is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "setup_tests.rs"]
+mod setup_tests;

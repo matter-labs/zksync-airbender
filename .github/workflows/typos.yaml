@@ -32,12 +32,12 @@ jobs:
         if: steps.changed.outputs.any == 'true'
         uses: crate-ci/typos@v1
         with:
-          files: _typos.toml
-          config: ./_typos.toml
+          files: .github/typos.toml
+          config: ./.github/typos.toml
 
       - name: Check changed files in batches
         if: steps.changed.outputs.any == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          xargs -0 -r -n 64 "$RUNNER_TEMP/typos" --force-exclude --config ./_typos.toml -- < "$RUNNER_TEMP/typos-files"
+          xargs -0 -r -n 64 "$RUNNER_TEMP/typos" --force-exclude --config ./.github/typos.toml -- < "$RUNNER_TEMP/typos-files"

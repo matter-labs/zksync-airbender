@@ -23,26 +23,6 @@ pub fn build_unrolled_setup(
     text_section: &[u32],
     worker: &Worker,
 ) -> CanonicalCircuitSetup {
-    build_unrolled_setup_with_cache_mode(
-        machine_type,
-        circuit_type,
-        binary_image,
-        text_section,
-        true,
-        worker,
-    )
-}
-
-/// Explicit cache mode for setup artifact export; ordinary proving keeps its
-/// existing cached setup through `build_unrolled_setup`.
-pub fn build_unrolled_setup_with_cache_mode(
-    machine_type: MachineType,
-    circuit_type: UnrolledCircuitType,
-    binary_image: &[u32],
-    text_section: &[u32],
-    use_caches: bool,
-    worker: &Worker,
-) -> CanonicalCircuitSetup {
     let family_idx = match circuit_type {
         UnrolledCircuitType::Memory(c) => c.get_family_idx(),
         UnrolledCircuitType::NonMemory(c) => c.get_family_idx(),
@@ -50,7 +30,7 @@ pub fn build_unrolled_setup_with_cache_mode(
             return CanonicalCircuitSetup::Riscv(unified_reduced_machine_circuit_setup::<Global>(
                 binary_image,
                 text_section,
-                use_caches,
+                true,
                 worker,
             ))
         }
@@ -63,7 +43,7 @@ pub fn build_unrolled_setup_with_cache_mode(
             .iter()
             .map(DelegationCircuitType::get_delegation_type_id)
             .collect();
-    let mut preprocessing = match machine_type {
+    let preprocessing = match machine_type {
         MachineType::Full | MachineType::FullUnsigned => {
             process_binary_into_separate_tables_ext::<BF, FullUnsignedMachineDecoderConfig, true, Global>(
                 text_section,
@@ -82,40 +62,28 @@ pub fn build_unrolled_setup_with_cache_mode(
         }
     };
     let table_data = preprocessing
-        .remove(&family_idx)
-        .expect("missing decoder data for circuit family");
-    // Setup materializes full native columns. Release the unused decoder
-    // families first instead of retaining them alongside a cloned selection.
-    drop(preprocessing);
+        .get(&family_idx)
+        .expect("missing decoder data for circuit family")
+        .clone();
 
     let setup = match circuit_type {
         UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreWordOnly) => {
-            load_store_word_only_circuit_setup::<Global>(
-                &table_data,
-                binary_image,
-                use_caches,
-                worker,
-            )
+            load_store_word_only_circuit_setup::<Global>(&table_data, binary_image, true, worker)
         }
         UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreSubwordOnly) => {
-            load_store_subword_only_circuit_setup::<Global>(
-                &table_data,
-                binary_image,
-                use_caches,
-                worker,
-            )
+            load_store_subword_only_circuit_setup::<Global>(&table_data, binary_image, true, worker)
         }
         UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop) => {
-            add_sub_lui_auipc_mop_circuit_setup::<Global>(&table_data, use_caches, worker)
+            add_sub_lui_auipc_mop_circuit_setup::<Global>(&table_data, true, worker)
         }
         UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::JumpBranchSlt) => {
-            jump_branch_slt_circuit_setup::<Global>(&table_data, use_caches, worker)
+            jump_branch_slt_circuit_setup::<Global>(&table_data, true, worker)
         }
         UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::ShiftBinary) => {
-            shift_binary_circuit_setup::<Global>(&table_data, use_caches, worker)
+            shift_binary_circuit_setup::<Global>(&table_data, true, worker)
         }
         UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::MulDivUnsigned) => {
-            mul_div_unsigned_circuit_setup::<Global>(&table_data, use_caches, worker)
+            mul_div_unsigned_circuit_setup::<Global>(&table_data, true, worker)
         }
         UnrolledCircuitType::InitsAndTeardowns | UnrolledCircuitType::Unified => unreachable!(),
     };

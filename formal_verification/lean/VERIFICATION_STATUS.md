@@ -10,9 +10,25 @@ Uncached-only Review cases and statements are removed with user approval.
 The split Keccak source certificates are proved.
 Exact lookup, request and RAM premises stay explicit.
 The verified base is `c1a662222cafcd96db4383dce737edb79fa62b09`.
-The local initialization-window fix remains in this branch.
+Production functions match the base. Only additive artifact exports and their
+required serialization derives remain outside the formal model and CI.
+The initialization-window defect is fixed upstream by #548 in this base. The
+redundant branch-only repair is removed; see [FINDINGS.md](FINDINGS.md).
 
 ## Current checkpoint
+
+The 4 November production-scope cleanup restores every existing production
+function to the base. A static diff audit checks exact restored bytes, unchanged
+setup bodies and serialization-only derives. Exporter formatting passes.
+Native source receipts have ten mismatches against the retained setup manifest;
+[FINDINGS.md](FINDINGS.md) records them pending fresh-export requalification.
+No full FV result qualifies this cleanup yet.
+
+Warm run [41803197805](https://github.com/matter-labs/zksync-airbender/actions/runs/41803197805)
+failed in source validation on reserved `start` binders in
+`Proofs/UnifiedReduced/WorkerExecution.lean`. The binders and their uses are now
+escaped without changing their Lean names or theorem statements. This source
+repair still needs CI validation; no duplicate local build is running.
 
 The tag `fv-archive-uncached` records the branch before scope removal.
 
@@ -50,7 +66,9 @@ The signing rewrite leaves the source tree unchanged.
    the false-proof controls. Use a 2,048 MiB stack and refresh the axiom
    baseline. Weekly default-branch runs also include this assurance. Request
    a cold source benchmark separately when new performance data is needed.
-4. Fix only validation failures. Do not change a target or cached Review claim.
+4. Fix proof and validation failures within the formal model and CI. Record
+   production defects in FINDINGS.md and expose the required property as a
+   temporary interface assumption. Do not repair production behavior here.
 
 ## Runtime
 
@@ -111,18 +129,19 @@ These times include Lake startup and dependency freshness checks.
 CI uploads commands, resource receipts and failure logs from each stage.
 Local partial evidence remains in `/tmp/airbender-review-round/method-reset-2026-11-02/`.
 No duplicate local full audit or replay is scheduled.
-The hourly task follows the CI run and the separate focused upgrade experiment.
+The PR monitor follows the CI run and reports failed verification steps even
+while cache-saving cleanup is still running.
 
 ## PR checks
 
-The Rust warnings jobs found a stale call in the initialization-window test.
-The test now uses the current five-argument verifier generator.
-The generator derives packing and batching parameters from its configuration.
-At commit `8ca339867`, 22 PR checks passed and the IaC scanner was neutral.
-No ordinary check failed or stayed pending. The FV PR job skips as configured.
-The GPU smoke at `d1423ca72` then failed twice on the L4 runner.
-It could not allocate another 1 GiB after allocating 20,564,675,584 bytes.
-The CI command now requests the supported 128 MiB guest RAM setting.
-Proof generation and verification remain required. The corrected GPU check is pending.
-The separate full FV run must pass before merge.
-Production code stays unchanged.
+Earlier passing PR checks apply to their recorded revisions, not this cleanup.
+The branch-only initialization-window test is removed; upstream #548 already
+pins deployment top bits and rejects differing preimage values. The GPU workflow,
+including its original RAM setting, is restored to the base.
+
+Production crate additions are limited to the artifact export examples, the setup
+artifact module and tests, its module declaration, and required serialization
+derives. Cache-mode setup selection lives only inside the export example.
+The final PR description lists every file outside `formal_verification/` and
+its artifact or CI purpose. Current ordinary checks, native receipt
+requalification and the separate full FV gate must pass before merge.

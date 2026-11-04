@@ -9,7 +9,8 @@ namespace Airbender.ExternalBoundary
 open Trace
 
 /-- Conditional domain uniqueness under the AIH-334 window-validation interface.
-    The source check is tested; correspondence to `Selection.unique` is external. -/
+    Upstream #548 pins the EVM windows; correspondence to `Selection.unique`
+    for the selected deployment constants remains external. -/
 theorem initialization_soundness (selection : Initialization.Selection geometry) :
     ((Initialization.cells selection).map Cell.addressCode).Nodup ∧
     (∀ cell ∈ Initialization.cells selection, cell.Aligned) ∧
@@ -18,7 +19,8 @@ theorem initialization_soundness (selection : Initialization.Selection geometry)
     Initialization.Proofs.aligned selection, Initialization.Proofs.all_registers selection⟩
 
 /-- Conditional public-program membership under a corrected decoder setup.
-    AIH-336 remains open until the implementation enforces this interface. -/
+    Upstream #492 supplies the sentinel behavior; the full decoder binding
+    and backend agreement remain external as recorded in FINDINGS.md. -/
 theorem decoder_soundness {Kind : Type} [DecidableEq Kind] [CircuitLayout Kind] [Fact p.Prime]
     (hp : FieldCapacity.NoWrap p 65536) {trace : Data p Kind} {program : List (ProgramEntry Kind)}
     {rows : Decoder.Rows p Kind} {column : Fin 9}

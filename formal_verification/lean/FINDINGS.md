@@ -44,6 +44,43 @@ An **unresolved binding** identifies a condition not yet connected to general
 acceptance. A **profile difference** is intentional semantic scope. These labels
 are not interchangeable with a full verifier or cryptographic exploit.
 
+## Production scope and temporary interface assumptions — 4 November 2026
+
+PR #585 retains production behavior from base
+`c1a662222cafcd96db4383dce737edb79fa62b09`. Outside the formal model and CI,
+only additive artifact exporters, their private setup helpers, export tests and
+required serialization derives remain. Existing table, setup, proving, GPU
+scheduling and EVM verifier functions are restored to the base. The normal setup
+and proving path does not call the export code.
+
+A production defect discovered by the model is documented here and represented
+by an explicit temporary interface assumption. Record the required property,
+affected source path, named Lean premise and evidence needed to discharge it.
+The assumption leaves the production defect open; it must not be described as
+native enforcement or introduced as a new Lean axiom. Keep it until a production
+repair is validated and the affected artifacts are regenerated. Production
+behavior must not be repaired in this PR to make a formal check pass.
+
+The redundant branch-only EVM initialization-window repair and its tests have
+been removed entirely. Upstream #548 already fixes the supported EVM path by
+pinning window top bits to deployment constants; no replacement PR is being opened. The lazy lookup maps, setup-memory rewrites
+and GPU lookup-domain change are also removed. Earlier tests of those branch
+revisions do not validate the current checkout. Native source receipts and
+fresh-export equality must be rechecked after the restorations; retained
+artifact bytes and older validation results alone are not current freshness
+receipts. Any resulting mismatch belongs in this register, not in a production
+code repair.
+
+Static comparison with the retained setup manifest's `source_sha256` currently
+reports ten changed source receipts: `circuit_defs/setups/src/lib.rs`,
+`cs/src/gkr_circuits/decoder_trait.rs`, `cs/src/tables/mod.rs`, the three
+`execution_prover/src/setup/{common,mod,unrolled}.rs` files, and
+`prover/src/gkr/prover/{setup,setup_artifact,setup_tests}.rs`, plus
+`execution_prover/examples/export_setup_json.rs`.
+This is a recorded freshness failure after scope cleanup, not evidence of a new
+circuit defect. Do not rewrite these hashes as if fresh exports had passed;
+regenerate and compare under the existing guard before claiming final fidelity.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.
@@ -84,15 +121,16 @@ to retain a demonstrated source defect or accepted-relation discrepancy.
 ### Linear and open-PR review — 15 October 2026
 
 The five exported Linear issues and **all live comments** were read. Initial source
-assessment used `3f4c7d67d`; the AIH-334 fix below builds on `73c632e89`.
+assessment used `3f4c7d67d`. Current production scope and interface assumptions
+are updated below for the 4 November 2026 cleanup.
 PR patches are proposals at their
 inspected heads, not assumed fixes. This is the disposition of the reviewed cases,
 not a claim that every open PR or every backend has been audited.
 
 | Case | Classification and evidence | What remains open |
 | --- | --- | --- |
-| [AIH-334](https://linear.app/matterlabs/issue/AIH-334) — duplicate initialization windows | **Fixed in the current EVM generator and both tracked GKR sources; validation below.** The Linear comment correctly accepts the original defect as “Valid in general.” [Generated validation](../../verifier_evm/src/generator/initialization.rs) now rejects duplicate/out-of-range windows before transcript processing. The [Rust unified statement](../../full_statement_verifier/src/unified_circuit_statement.rs) separately checks range and increasing order. | The [distinct-selection contract](Airbender/Review/Helpers/Context/ExternalBoundary/Initialization.lean) remains explicit: its formal correspondence to EVM execution is unproved. Valid sparse windows 254/255 and reversed distinct pairs are retained for the 2^22-word/four-byte geometry. Existing deployments are not changed by this source fix. |
-| [AIH-336](https://linear.app/matterlabs/issue/AIH-336) — queryable decoder filler | **Upstream #492 supplies the fix.** It sets each untagged decoder padding column to field-minus-one. This fix is in the current base. Tagged tables keep their discriminator and generic zero entry. The native forward code computes the padding fill from the circuit metadata. | The branch removes its redundant full-domain CPU lookup cache. The focused regression compares the forward relation with every row in the native test fixtures. New-base accelerated runtime tests and a complete proof run remain pending. The external [decoder contract](Airbender/Review/Helpers/Context/ExternalBoundary/Decoder.lean) still needs extraction, authentication and query binding. |
+| [AIH-334](https://linear.app/matterlabs/issue/AIH-334) — duplicate initialization windows | **Fixed upstream by [#548](https://github.com/matter-labs/zksync-airbender/pull/548), already present in the base.** The EVM template pins inits/teardowns top bits to deployment constants, rejects preimage values that differ, and uses those constants in the generated gates. The redundant #585 repair and tests are removed. | The [initialization selection interface](Airbender/Review/Helpers/Context/ExternalBoundary/Initialization.lean) retains the formal range/distinctness and layout-correspondence obligation for the selected deployment constants. This is not an outstanding production validation defect in the supported deployment. |
+| [AIH-336](https://linear.app/matterlabs/issue/AIH-336) — queryable decoder filler | **Upstream #492 is present in the base.** Untagged decoder padding uses field-minus-one, while tagged tables retain their discriminator and generic zero entry. PR #585 adds no CPU or GPU setup correction. | The temporary [decoder binding](Airbender/Review/Helpers/Context/ExternalBoundary/Decoder.lean) retains full-row extraction, setup authentication, typed queries and committed/preprocessed/backend agreement. Requalification against the restored production functions remains pending. |
 | [AIH-339](https://linear.app/matterlabs/issue/AIH-339) — zero-clock workers | **Fixed and verified for the current native BabyBear target.** The adopted #490 timestamp query rejects active zero clocks in all four imported BabyBear families and all 14 cached/no-cache Rust profiles. The historical raw witness is retained and now proved rejected; valid issued execution passes. The original comments' caller-to-worker argument alone did not establish the converse. | [Native occurrence accounting](Airbender/Proofs/ExternalBoundary/NativeRequests.lean) derives the full ledger from accepted constraints and initialized caller binding. The full mixed execution proof uses that derivation. Rust/artifact correspondence and cryptographic enforcement remain external. |
 | [AIH-113](https://linear.app/matterlabs/issue/AIH-113) — dropped scaled pointer range check | **Historical compiler bug with repair present in the inspected source.** [Delegation compilation](../../cs/src/gkr_compiler/delegation_circuit.rs) now passes the retained range vector into [memory lowering](../../cs/src/gkr_compiler/delegation_mem_accesses.rs), which pushes the scaled check into it. No live comments. | Do not assume every generated/cached artifact includes that repair. Compiled/artifact correspondence remains an external fidelity obligation; no new pointer-alignment assumption or newly discovered current-source bug is asserted. |
 | [AIH-315](https://linear.app/matterlabs/issue/AIH-315) — WHIR randomness reuse | **Upstream correction included in the verified rebase.** The corrected `av_gkr_compiler` target includes the coordinated [#526 correction](https://github.com/matter-labs/zksync-airbender/pull/526) and #527 protocol change. The Linear comment accepting the original freshness defect is unchanged. | The recorded CPU/EVM proof-replay paths pass on this branch. Backend-specific regeneration/compatibility and formal protocol soundness remain separate obligations. The old-pin assessment below is historical; source inclusion and scoped replay are not a general protocol-soundness proof or evidence of a forged proof. |
@@ -206,120 +244,56 @@ current defect or repair. The PDF in [#301](https://github.com/matter-labs/zksyn
 and the full merge in [private #17](https://github.com/matter-labs/zksync-airbender-private/pull/17)
 were not audited. No Linear state or PR was changed.
 
-### AIH-334 implementation fix and validation
+### AIH-334 — fixed upstream by #548
 
-The [emitter](../../verifier_evm/src/generator/initialization.rs) derives window
-size from the artifact's trace length and word bits, and set count from its
-teardown layout. A 2^22-row/four-byte-word window occupies 2^24 bytes, so the
-exclusive top-index bound in the u32 byte-address space is **256**, not 64.
-The [live template](../../verifier_evm/src/templates/gkr.sol) invokes validation
-before transcript copying or hashing. It checks that all index bytes exist,
-decodes each complete little-endian u32, checks range and rejects every duplicate
-pair. It does not truncate indices, assume contiguity or require ordering.
+[Upstream #548](https://github.com/matter-labs/zksync-airbender/pull/548), merged
+as `f8ed88f68a99bdba3f769bf6cef1472f82b962cc`, is already in the PR base.
+The [template](../../verifier_evm/src/templates/gkr.sol) declares one
+`__TEMPLATE_INITS_TEARDOWNS_TOP_BITS_` deployment constant per RAM set.
+`transcript_init` decodes each full u32 preimage word and reverts unless it equals
+the corresponding constant. The
+[gate generator](../../verifier_evm/src/generator/circuit_yul.rs) uses those same
+constants when computing each set's window, and
+[verifier assembly](../../verifier_evm/src/generator/assemble.rs) checks the
+configured count and uint8 range. The committed supported verifier pins distinct
+windows. Arbitrary prover-selected windows therefore cannot replace them.
 
-Both tracked [merged source](../../verifier_evm/generated_contracts/merged/src/GkrWhirVerifier.sol)
-and [replay fixture](../../verifier_evm/generated_contracts/merged/test/fixtures/GkrWhirVerifierFixture.sol)
-carry the same emitted guard and invocation; a regression compares their decoder,
-validation and transcript-init functions to fresh generation. Other generated
-circuits, contracts and proof/cache artifacts are unchanged.
+**The production item is fixed upstream by #548.** The redundant `de9c7c77b`
+repair, its helper module, template/generated changes and tests are removed from
+#585. No replacement PR is being opened.
 
-The [Rust/EVM regression](../../verifier_evm/tests/initialization_windows.rs)
-compares both committed entrypoints' guards and transcript initialization to fresh
-generation, and compiles the fresh verifier and committed replay fixture with Solidity 0.8.36.
-It executes the actual generated guard in the
-[EVM suite](../../verifier_evm/tests/contracts/InitializationWindows.t.sol): valid
-sparse/reversed windows, duplicates, both out-of-range positions, high-byte/LE
-decoding, truncated input, adjacent-byte independence and two 256-run fuzz tests.
-The existing valid merged proof is replayed through the fresh verifier and committed
-fixture. On the rebased `451884662` target, both Rust tests and all eight Solidity
-cases pass, including the two 256-run fuzz tests. The main production contract has
-a different terminal PC; its guard is compared, with no production-proof replay claimed.
-The local macOS run disabled Rust debug information for the
-[prover](../../prover/Cargo.toml) and
-[keccak_special5](../../circuit_defs/keccak_special5/Cargo.toml) crates to avoid
-the pinned nightly compiler's debug-info crash.
-Full FV validation of the rebased branch remains in progress.
+[Initialization.Selection](Airbender/Review/Helpers/Context/ExternalBoundary/Initialization.lean)
+still expresses the logical range and distinctness needed by the memory model.
+Binding that record and its geometry to the selected deployment constants remains
+a formal correspondence obligation, rather than a claim that production lacks
+the checks supplied by #548. New deployments must select valid, disjoint windows;
+the generic generator's configurable constants are not a proof of every possible
+deployment configuration.
 
-This fixes the source-level AIH-334 validation defect for the current single-proof
-EVM target. It does not prove EVM/Rust/Lean refinement, cryptographic soundness or
-correctness of other verifier paths, and does not upgrade deployed contracts.
-The Lean selection premise stays visible for that unproved formal connection;
-the other implementation findings remain open. The Linear assessment above is
-unchanged: explicit validation implements the required property without pinning
-production indices to constants.
+### AIH-336 — base sentinel behavior and temporary decoder interface
 
-Reproduce the scoped EVM regression with Foundry and Solidity 0.8.36 installed:
+The current base already uses `generic_lookup_padding` in
+[CPU setup construction](../../prover/src/gkr/prover/setup.rs) to fill the
+committed tail, and the decoder materializer retains the upstream sentinel
+behavior. Those files are restored exactly to the base. The former branch-only
+CPU memory optimizations, GPU lookup-domain expansion and associated production
+regressions are removed; their old passing results do not qualify this checkout.
 
-```sh
-cargo check --locked -p verifier_evm --lib
-SOLC_PATH=/path/to/solc-0.8.36 cargo test --locked -p verifier_evm --lib --test initialization_windows --test flatten_roundtrip -- --include-ignored
-```
+The Lean model keeps the **temporary decoder interface assumption** in
+[Decoder.Binding](Airbender/Review/Helpers/Context/ExternalBoundary/Decoder.lean).
+Its `contents` premise binds complete rows to the public program or an excluded
+sentinel, `lookups` binds the actual query to the family table, and `typed`
+binds the guarded limb to its native range. Extraction, setup authentication,
+and agreement among committed columns, cached preprocessing and scalar/vector/GPU
+paths remain external obligations. The restored GPU scheduler retains its base
+lookup-length and padding mechanisms; no new runtime agreement or discrepancy
+is claimed without validation.
 
-On this host the pinned Rust compiler crashed while emitting debug information
-for an existing dependency. The successful test run used environment-only
-`CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0` and `CARGO_INCREMENTAL=0`;
-no compiler pin, dependency or repository build configuration changed.
-
-### AIH-336 source correction and validation
-
-Rechecked the live issue and its complete comment page on 15 October 2026; the
-assessment of Aleksandr Vlasov's comment is unchanged. Unsupported decoder slots
-already used field-minus-one. The actual remaining problem was the zero-filled
-setup-domain tail beyond the real decoder table, particularly when the compiler
-omits a decoder table discriminator.
-
-[Setup construction](../../prover/src/gkr/prover/setup.rs) now sets PC-low to
-field-minus-one in that untagged tail, outside the existing active u16 PC-limb
-domain. Real program rows, unsupported slots, discriminator-tagged tables and
-the generic zero-entry row retain their existing meanings. Inactive witness
-queries still use their original zero/default tuple; their execute predicate
-remains zero. The correction does not assume that an active query selected a
-valid instruction.
-
-Changing only the committed columns would leave the optimized forward path
-inconsistent. CPU preprocessing now compresses every committed setup row, rather
-than truncating the cache and synthesizing a zero tail. The scalar and AVX-512
-consumers already read that cache's actual length. [GPU setup scheduling](../../gpu/gkr/src/setup/mod.rs)
-now materializes the same full domain; the existing kernel and stream/ownership
-contract are unchanged. This increases retained cache size to one extension
-value per trace row. No compiled layout, generated witness function, saved
-setup cache or proof artifact is rewritten.
-
-The [CPU regression](../../prover/src/gkr/prover/setup_tests.rs) uses both real
-cached/no-cache add/sub decoder shapes with small test domains and the native
-bytecode preprocessor. Its eight cases cover tagged/untagged tables and
-supported/unsupported PC zero. It checks exact
-real rows, out-of-range filler, legal PC-zero preservation, committed-column
-compression versus the full cache, inactive tuples, and actual production forward
-lookup numerators/denominators with cancelling valid multiplicities. It runs
-with the [gkr_self_checks feature](../../prover/Cargo.toml). The same test fails
-for the old zero tail and for a
-committed-only correction with a truncated cache. The
-[CUDA scheduling regression](../../gpu/gkr/src/setup/tests.rs) now includes a
-nonzero tail and compares the complete domain with CPU arithmetic.
-
-Scoped [prover](../../prover/Cargo.toml) library and
-[gpu_gkr](../../gpu/gkr/Cargo.toml) library/test checks pass on this aarch64
-Mac. The CPU regression passes; CUDA is unavailable and the AVX-512 path is not
-executed here. The test automatically reaches that accelerated path on enabled
-x86 hosts. Full regenerated proof replay, accelerated runtime agreement and
-replacement of old decoder-only setup commitments remain explicit validation
-work; the finding is not marked fully closed. F09's formal extraction, setup
-commitment authentication and compiler/verifier correspondence remain external.
-The existing external interpretation contract is unchanged and is not counted as the
-implementation correction.
-
-The nightly compiler crashed in LLVM debug-info emission for the large prover
-test harness. The successful scoped build disables debug info only for the
-[prover crate](../../prover/Cargo.toml)
-through command-line profile overrides; no compiler pin or dependency changed:
-
-```sh
-cargo check --locked -p prover --lib
-cargo check --locked -p gpu_gkr --tests
-cargo test --locked --config 'profile.dev.package.prover.debug=0' --config 'profile.test.package.prover.debug=0' -p prover --lib --features gkr_self_checks decoder_padding_matches_committed_setup_in_forward_relations --no-run
-cargo test --locked --config 'profile.dev.package.prover.debug=0' --config 'profile.test.package.prover.debug=0' -p prover --lib --features gkr_self_checks decoder_padding_matches_committed_setup_in_forward_relations
-```
+Fresh exports and source receipts must be requalified against the restored
+functions. If this exposes a mismatch, record its exact inputs and required
+interface property here. Do not change production to satisfy the model. Remove
+an assumption only after the relevant production behavior and artifact binding
+are validated.
 
 ### AIH-315 upstream correction and branch applicability
 
@@ -852,9 +826,10 @@ and request checks retain exact logical decoder-query membership.
 fidelity, compiled query placement and cryptographic setup authentication remain
 unproved; see [the trust boundary](TRUST_AND_REVIEW.md#modeled-tables-and-logical-arguments).
 Importing and checking actual row contents does not prove those connections.
-AIH-336's separate source correction still awaits accelerated runtime agreement,
-complete regenerated proof replay and replacement of old decoder-only setup
-commitments. No new decoder/table discrepancy was demonstrated by this recheck.
+AIH-336's upstream sentinel behavior is in the base; PR #585 adds no production
+correction. Requalification of source receipts, fresh exports and backend
+agreement after restoring the base remains pending. Decoder interpretation stays
+an explicit temporary interface assumption; no new discrepancy is asserted here.
 
 ## F10 — Shared cycle composition does not validate the full custom CSR reference
 

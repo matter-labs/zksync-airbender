@@ -272,9 +272,6 @@ contract GkrWhirVerifierFixture {
         }
 
         function transcript_init(ptr) -> next_ptr {
-            // Fiat-Shamir binds the selected indices but does not make their
-            // address windows disjoint. Validate the artifact-derived geometry.
-            gkr_validate_inits_teardowns_windows(ptr)
             // Proth120 packed-mode transcript (OperationMode::SingleChunk), validated
             // keccak-for-keccak in step1_test/GkrStep1.sol against the real proof.
             //   seed = keccak256(preimage)                       // commit_initial_u32 (916 B: regs+PC+topbits+caps)
@@ -2062,23 +2059,6 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
     let neg_one := sub(mload(P_PTR), 1)
     let gate := add(mulmod(mask, add(input, neg_one), mload(P_PTR)), 1)
     next_acc := pointcheck_update(acc, alpha, gate)
-}
-
-function gkr_validate_inits_teardowns_windows(preimage_ptr) {
-    if lt(calldatasize(), add(preimage_ptr, 404)) { revert(0, 0) }
-    for { let i := 0 } lt(i, 2) { i := add(i, 1) } {
-        let offset := add(preimage_ptr, 396)
-        let index := gkr_inits_teardowns_topbits(add(offset, mul(i, 4)))
-        if iszero(lt(index, 256)) { revert(0, 0) }
-        for { let j := 0 } lt(j, i) { j := add(j, 1) } {
-            if eq(index, gkr_inits_teardowns_topbits(add(offset, mul(j, 4)))) { revert(0, 0) }
-        }
-    }
-}
-
-function gkr_inits_teardowns_topbits(byteoff) -> value {
-    let word := calldataload(byteoff)
-    value := add(add(byte(0, word), shl(8, byte(1, word))), add(shl(16, byte(2, word)), shl(24, byte(3, word))))
 }
 
         // Circuit sumcheck: run every circuit layer from the output layer (highest index,

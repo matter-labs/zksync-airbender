@@ -16,7 +16,6 @@
 //! forgets an assignment cannot produce a buildable verifier.
 
 mod circuit_yul;
-mod initialization;
 mod whir;
 
 pub use circuit_yul::{emit_circuit_yul, emit_circuit_yul_with_stats, CircuitYulStats};

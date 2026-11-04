@@ -15,6 +15,28 @@ prefixes for bigint, G and extended round. Blessed split Keccak remains uncovere
 material limits. The [historical integration record](TRUST_AND_REVIEW_HISTORY.md)
 retains earlier experiments and narrower intermediate interfaces.
 
+## Production defects and temporary interfaces
+
+PR #585 changes production crates only through additive artifact export code
+and the serialization derives those exports need. Export-specific setup selection
+lives inside the export example binary. Existing setup, proving,
+GPU scheduling and verifier functions retain their base implementations.
+The normal production path does not call the export code.
+
+When verification exposes a production defect, record the source evidence and
+required property in [FINDINGS.md](FINDINGS.md). State that property explicitly
+as a temporary Lean interface assumption, linked to the finding, and keep the
+conditional theorem's scope visible. This is a theorem premise, not a new Lean
+axiom or evidence that production enforces the property. Retain the finding and
+assumption until the production repair is validated and the relevant artifacts
+are regenerated; do not repair production behavior in this PR.
+
+AIH-334 is already fixed upstream by #548 in the base: the EVM verifier pins
+window top bits and rejects differing preimage values. Its selection interface
+retains formal deployment/layout correspondence. Decoder setup, preprocessing
+and query agreement remain part of the external decoder binding. The finding
+register distinguishes these obligations from open production defects.
+
 ## Review entry points
 
 Start with the [Review guide](Airbender/Review/README.md), then the selected

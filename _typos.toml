@@ -10,9 +10,7 @@ extend-exclude = [
     "*.bak",
     "*.svg",
     ".git/",
-    "SECURITY.md",
-    # Keep the pinned upstream document unchanged.
-    "formal_verification/lean/vendor/airbender/00-master.md"
+    "SECURITY.md"
 ]
 
 [default.extend-words]
@@ -31,27 +29,7 @@ ot = "ot"
 optin = "optin"
 Optin = "Optin"
 setp = "setp" # PTX set-predicate instruction.
-# Proof terms also occur in generator strings and Markdown code blocks.
-hom = "hom" # Ring homomorphisms.
-Hom = "Hom"
-thm = "thm" # Lean declaration constructors.
-ue = "ue" # Sail exception type argument.
 
 [type.asm.extend-words]
 Wich = "Wich"
 TRE = "TRE"
-
-[type.lean]
-extend-glob = ["*.lean"]
-
-[type.lean.extend-words]
-Alo = "Alo" # Low limb of word A.
-NTO = "NTO" # Sail non-timeout wait reason.
-iz = "iz" # Index-zero proof names and generated Sail identifiers.
-Iz = "Iz"
-
-[type.sail]
-extend-glob = ["*.sail"]
-
-[type.sail.extend-words]
-nto = "nto" # Non-timeout wait configuration.

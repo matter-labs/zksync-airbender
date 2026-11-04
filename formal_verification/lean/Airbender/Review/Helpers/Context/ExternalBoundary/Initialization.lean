@@ -11,9 +11,10 @@ structure Geometry where
   positive : 0 < words
   extent : slots * (4 * words) ≤ 2 ^ 32
 
-/-- Explicit logical interface for AIH-334 window validation. The EVM source
-    check is implemented and tested; its formal correspondence to this record
-    remains external. External statement validation selects distinct windows.
+/-- Logical interface for AIH-334 window selection. Upstream #548 pins the
+    supported EVM deployment windows and rejects differing preimage values.
+    Binding those constants and their geometry to this record remains external.
+    External statement validation selects distinct windows.
     Strict ordering or a checked production constant may establish this field; sparse windows and
     reversed distinct windows have the same memory-uniqueness meaning. -/
 structure Selection (geometry : Geometry) where
