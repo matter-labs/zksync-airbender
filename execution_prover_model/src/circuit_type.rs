@@ -9,8 +9,8 @@ use crate::upstream::{
 use crate::MachineType;
 use circuit_common::GKRCircuitArtifact;
 use circuit_common::{
-    CircuitGeometry, ConfigSelectionError, DelegationCircuit, ProverConfig, ProvingSelection,
-    RiscVCycleCircuit, SecurityLevel,
+    CircuitGeometry, DelegationCircuit, ProverConfig, ProvingSelection, RiscVCycleCircuit,
+    SecurityLevel,
 };
 use common_constants::circuit_families::{
     ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX,
@@ -55,17 +55,14 @@ pub enum CircuitType {
 }
 
 impl CircuitType {
-    /// Resolve this circuit's selected schedule from its actual compiled columns.
-    pub fn try_prover_config_in_mode(
+    /// This circuit's config under `selection`, from its actual compiled columns.
+    pub fn prover_config_in_mode(
         &self,
         compiled: &GKRCircuitArtifact<BabyBearField>,
         selection: ProvingSelection,
-    ) -> Result<ProverConfig, ConfigSelectionError> {
-        self.geometry().try_prover_config(
-            compiled,
-            selection.security_level,
-            selection.soundness_mode,
-        )
+    ) -> ProverConfig {
+        self.geometry()
+            .prover_config(compiled, selection.security_level, selection.soundness_mode)
     }
 
     /// Pessimistic compatibility wrapper: the config of this circuit at `level`, straight from the circuit

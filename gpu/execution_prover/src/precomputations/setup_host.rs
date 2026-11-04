@@ -13,7 +13,7 @@ use crate::upstream::{
     BaseColumns, BaseCommitmentGeometry, CommitmentMode, CpuGKRSetup, GKRCircuitArtifact,
     MerkleTreeCapVarLength, PrimeField, ProverConfig, SecurityLevel, UnrolledCircuitWitnessEvalFn,
 };
-use execution_prover::config::{ProvingSelection, SelectionError};
+use execution_prover::config::ProvingSelection;
 use execution_prover::setup::CanonicalCircuitSetup;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -294,7 +294,7 @@ impl CircuitPrecomputations {
         circuit_type: CircuitType,
         setup: CanonicalCircuitSetup,
         selection: ProvingSelection,
-    ) -> Result<Self, SelectionError> {
+    ) -> Self {
         let (compiled_circuit, cpu_setup, decoder_table) = match setup {
             CanonicalCircuitSetup::Riscv(setup) => {
                 let decoder_table = setup.witness_eval_fn.map(|evaluator| match evaluator {
@@ -315,7 +315,7 @@ impl CircuitPrecomputations {
             circuit_type,
             &compiled_circuit,
             selection,
-        )?;
+        );
         let compiled_circuit = Arc::new(compiled_circuit);
         let resolved_config = Arc::new(ResolvedProverConfig::for_selection(
             circuit_type,
@@ -343,11 +343,11 @@ impl CircuitPrecomputations {
             }
             _ => None,
         };
-        Ok(Self {
+        Self {
             gkr_programs,
             setup_host,
             decoder_host,
             resolved_config,
-        })
+        }
     }
 }

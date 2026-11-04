@@ -13,7 +13,6 @@
 
 use super::*;
 use prover::definitions::{SecurityLevel, SoundnessMode};
-use prover::gkr::prover_config::example_configs::ConfigSelectionError;
 use prover::gkr::prover_config::ProverConfig;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -54,7 +53,7 @@ pub fn compute_unrolled_program_setups_in_mode<C: MachineConfig, A: GoodAllocato
     security_level: SecurityLevel,
     soundness_mode: SoundnessMode,
     worker: &Worker,
-) -> Result<Setups, ConfigSelectionError> {
+) -> Setups {
     let per_family = get_unrolled_circuits_setups_for_machine_type::<C, A>(
         binary_image,
         text_section,
@@ -64,15 +63,11 @@ pub fn compute_unrolled_program_setups_in_mode<C: MachineConfig, A: GoodAllocato
     let configs_and_setups = per_family
         .into_iter()
         .map(|(family_idx, setup)| {
-            let config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
-            Ok((family_idx as u32, config, setup.setup))
+            let config = setup.prover_config_in_mode(security_level, soundness_mode);
+            (family_idx as u32, config, setup.setup)
         })
-        .collect::<Result<Vec<_>, ConfigSelectionError>>()?;
-    Ok(commit_setup_params(
-        configs_and_setups.into_iter(),
-        security_level,
-        worker,
-    ))
+        .collect::<Vec<_>>();
+    commit_setup_params(configs_and_setups.into_iter(), security_level, worker)
 }
 
 /// Mode-explicit unified setup reconstruction from actual compiled columns.
@@ -83,11 +78,11 @@ pub fn compute_unified_program_setups_in_mode<A: GoodAllocator + 'static>(
     security_level: SecurityLevel,
     soundness_mode: SoundnessMode,
     worker: &Worker,
-) -> Result<Setups, ConfigSelectionError> {
+) -> Setups {
     let unified_setup =
         unified_reduced_machine_circuit_setup::<A>(binary_image, text_section, use_caches, worker);
-    let config = unified_setup.try_prover_config_in_mode(security_level, soundness_mode)?;
-    Ok(commit_setup_params(
+    let config = unified_setup.prover_config_in_mode(security_level, soundness_mode);
+    commit_setup_params(
         core::iter::once((
             common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
             config,
@@ -95,7 +90,7 @@ pub fn compute_unified_program_setups_in_mode<A: GoodAllocator + 'static>(
         )),
         security_level,
         worker,
-    ))
+    )
 }
 
 /// Commit every setup with ITS circuit's prover config (the geometry the

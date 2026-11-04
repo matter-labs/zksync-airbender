@@ -32,9 +32,7 @@ use prover::tests::gkr::large_field::{
     build_unified_trace_without_precompiles, evm_production_packed_prover_config,
     EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
 };
-use prover::tests::gkr::orchestration::common::{
-    dummy_external_challenges, run_vm_and_capture, ProgramConfig,
-};
+use prover::tests::gkr::orchestration::common::{dummy_external_challenges, run_words_and_capture};
 use prover::tests::gkr::unified_reduced_machine_proth120;
 use prover::transcript::Keccak256Transcript;
 use prover::worker::Worker;
@@ -59,8 +57,16 @@ fn serialize_pretty_to_file<T: serde::Serialize>(el: &T, path: &Path) {
 /// `circuit_layout_path` is the compiled
 /// `unified_reduced_machine_layout_gkr_proth120.json`. The run must fit one
 /// 2^22 chunk and make no delegation calls.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the program's words and run bounds, the layout and both output paths"
+)]
 pub fn prove_l1_wrap_in_recompute_mode(
-    program: &ProgramConfig,
+    binary: Vec<u32>,
+    text_section: Vec<u32>,
+    non_determinism_reads: &[u32],
+    cycles_bound: usize,
+    ram_bound_bytes: usize,
     circuit_layout_path: &Path,
     proof_output_path: &Path,
     aux_output_path: &Path,
@@ -74,8 +80,13 @@ pub fn prove_l1_wrap_in_recompute_mode(
     let trace_len = 1usize << prover_config.trace_len_log2;
 
     // 1. Run the program on the reduced machine and capture the execution.
-    let vm = run_vm_and_capture::<DelegationsAndUnifiedCounters, ReducedMachineDecoderConfig>(
-        program, worker,
+    let vm = run_words_and_capture::<DelegationsAndUnifiedCounters, ReducedMachineDecoderConfig>(
+        binary,
+        text_section,
+        non_determinism_reads,
+        cycles_bound,
+        ram_bound_bytes,
+        worker,
     );
     println!(
         "L1 wrap: program finished at PC = 0x{:08x}, timestamp {}",

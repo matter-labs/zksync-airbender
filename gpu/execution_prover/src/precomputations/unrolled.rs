@@ -22,5 +22,5 @@ pub(crate) fn build_unrolled_circuit_precomputation(
         worker,
     );
     let circuit_type = CircuitType::Unrolled(circuit_type);
-    CircuitPrecomputations::from_canonical(circuit_type, setup, selection).unwrap()
+    CircuitPrecomputations::from_canonical(circuit_type, setup, selection)
 }

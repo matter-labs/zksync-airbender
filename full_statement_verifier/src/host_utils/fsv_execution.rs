@@ -7,7 +7,7 @@
 //! (`program_prover::unrolled::run_unrolled_machine_in_full` on the reduced machine) over the
 //! exact words [`load_fsv_exact`](super::load_fsv_exact) verified, without recording snapshots.
 
-use super::{fsv_stream, load_fsv_exact, FsvDigest, FsvLoadError, VerifiedFsvProgram};
+use super::{fsv_stream, load_fsv_exact, FsvDigest, VerifiedFsvProgram};
 use crate::program_proof::ProgramProof;
 use common_constants::{INITIAL_TIMESTAMP, ROM_SECOND_WORD_BITS, TIMESTAMP_STEP};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -22,7 +22,8 @@ use std::fmt;
 use std::path::Path;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::fsv_binaries::{
-    BlakeMode, FsvDescriptor, FsvProfile, FsvProgram, SecurityLevel, SoundnessMode, FSV_REGISTRY,
+    BlakeMode, FsvDescriptor, FsvProfile, FsvProgram, SecurityLevel, SoundnessMode,
+    UnsupportedFsvVariant, FSV_REGISTRY,
 };
 
 /// The most cycles one guest execution may take: the 32-bit timestamp bound
@@ -214,7 +215,8 @@ fn execute(
 /// Load and execute every built blake variant of the standard-profile `program` for
 /// `(security, soundness_mode)` on `proof`, in registry order: compression and special
 /// opcodes for the unified recursion layer, compression for the others. A program with no
-/// built variant is [`FsvLoadError::Unsupported`].
+/// built variant is an [`UnsupportedFsvVariant`]; a guest that does not load panics as in
+/// [`load_fsv_exact`].
 pub fn measure_fsv_blake_variants(
     dir: impl AsRef<Path>,
     security: SecurityLevel,
@@ -222,7 +224,7 @@ pub fn measure_fsv_blake_variants(
     program: FsvProgram,
     setups: &Setups,
     proof: &ProgramProof,
-) -> Result<Vec<Result<FsvExecutionRecord, FsvExecutionError>>, FsvLoadError> {
+) -> Result<Vec<Result<FsvExecutionRecord, FsvExecutionError>>, UnsupportedFsvVariant> {
     let descriptors: Vec<FsvDescriptor> = FSV_REGISTRY
         .iter()
         .map(|entry| entry.descriptor)
@@ -236,18 +238,15 @@ pub fn measure_fsv_blake_variants(
     if descriptors.is_empty() {
         let compression =
             FsvDescriptor::new(security, soundness_mode, program, BlakeMode::Compression);
-        return Err(FsvLoadError::Unsupported(
-            compression
-                .registry_entry()
-                .expect_err("no standard-profile variant of the program is built"),
-        ));
+        return Err(compression
+            .registry_entry()
+            .expect_err("no standard-profile variant of the program is built"));
     }
     descriptors
         .into_iter()
         .map(|descriptor| {
-            let guest = load_fsv_exact(dir.as_ref(), &descriptor)?;
-            let stream =
-                fsv_stream(setups, proof, &descriptor).map_err(FsvLoadError::Unsupported)?;
+            let guest = load_fsv_exact(dir.as_ref(), &descriptor);
+            let stream = fsv_stream(setups, proof, &descriptor)?;
             Ok(measure_fsv_execution(&guest, stream))
         })
         .collect()
@@ -426,7 +425,7 @@ mod tests {
             if entry.descriptor.soundness_mode != SoundnessMode::EthproofsSoundnessCalc {
                 continue;
             }
-            let guest = load_fsv_exact(canonical_fsv_dir(), &entry.descriptor).unwrap();
+            let guest = load_fsv_exact(canonical_fsv_dir(), &entry.descriptor);
             let err = measure_fsv_execution(&guest, vec![0x5555_5555; 4096]).unwrap_err();
             assert!(
                 matches!(
@@ -479,7 +478,7 @@ mod tests {
             &setups,
             &proof,
         ) {
-            Err(FsvLoadError::Unsupported(err)) => assert_eq!(err.descriptor, unified_base),
+            Err(err) => assert_eq!(err.descriptor, unified_base),
             other => panic!("expected Unsupported, got {other:?}"),
         }
     }

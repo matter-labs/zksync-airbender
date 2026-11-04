@@ -1,8 +1,7 @@
 //! Reading RISC-V guest programs straight from their ELF files.
 //!
-//! This replaces the `objcopy -O binary` (flat ROM image) and
-//! `objcopy -O binary --only-section=.text` (text section) dumps that used to be read as raw
-//! byte files. [`read_elf`] parses an ELF32 executable with the `object` crate, validates it
+//! The flat ROM image and the text section are what `objcopy -O binary` and
+//! `objcopy -O binary --only-section=.text` would dump. [`read_elf`] parses an ELF32 executable with the `object` crate, validates it
 //! against the memory layout the linker scripts describe (`riscv_common/src/lds/*` and
 //! `examples/scripts/lds`: a ROM of [`ROM_BYTE_SIZE`] bytes at address 0 holding `.text`, RAM
 //! above it) and hands out the pieces the VM, the prover and the verifiers consume.

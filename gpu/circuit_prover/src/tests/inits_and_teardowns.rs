@@ -230,11 +230,8 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
     };
     let top_bits: Vec<u32> = (0..num_sets as u32).collect();
 
-    let prover_config = crate::config::prover_config(
-        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
-        SecurityLevel::Sec100,
-    )
-    .unwrap();
+    let prover_config = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
+        .prover_config(SecurityLevel::Sec100);
     let whir_schedule = prover_config.whir_schedule.clone();
 
     // --- CPU memory witness (memory-only trace) ---

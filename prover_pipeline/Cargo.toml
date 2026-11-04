@@ -57,11 +57,5 @@ gpu = ["dep:gpu_execution_prover"]
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 riscv_transpiler = { path = "../riscv_transpiler", features = ["jit"] }
 
-[dev-dependencies]
-# Offline guest execution for the ignored estimate-vs-measurement test only.
-full_statement_verifier = { path = "../full_statement_verifier", default-features = false, features = [
-    "fsv_execution",
-] }
-
 [lints]
 workspace = true

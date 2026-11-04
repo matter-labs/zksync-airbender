@@ -197,7 +197,7 @@ fn legacy_mode_reproduces_committed_objcopy_dumps() {
 
 /// Legacy mode must produce exactly what `llvm-objcopy -O binary` (flat ROM image) and
 /// `llvm-objcopy -O binary --only-section=.text` (text section) emit for every committed ELF
-/// that carries its text. This replaces the committed dumps the verifier set used to ship.
+/// that carries its text.
 /// Runs only when the toolchain's `llvm-tools` component is installed.
 #[test]
 fn legacy_mode_matches_llvm_objcopy() {

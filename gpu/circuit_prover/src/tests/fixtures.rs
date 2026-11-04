@@ -130,8 +130,7 @@ pub(super) fn replay_delegation_trace_buffer_for_workload<W: Clone, OPT: Decodin
 }
 
 pub(super) fn delegation_prover_config(circuit_type: DelegationCircuitType) -> ProverConfig {
-    crate::config::prover_config(CircuitType::Delegation(circuit_type), SecurityLevel::Sec100)
-        .unwrap()
+    CircuitType::Delegation(circuit_type).prover_config(SecurityLevel::Sec100)
 }
 
 /// `circuit_type`'s prover config under `mode` at `level`. The default mode is
@@ -144,14 +143,13 @@ pub(super) fn prover_config_in_mode(
     mode: circuit_common::SoundnessMode,
 ) -> ProverConfig {
     if mode == circuit_common::SoundnessMode::DEFAULT {
-        return crate::config::prover_config(circuit_type, level).unwrap();
+        return circuit_type.prover_config(level);
     }
     let selection = ProvingSelection {
         security_level: level,
         soundness_mode: mode,
     };
     crate::config::prover_config_for_selection(circuit_type, compiled_circuit, selection)
-        .unwrap_or_else(|error| panic!("{circuit_type:?}/{mode:?}: {error}"))
 }
 
 pub(super) fn test_external_challenges() -> GKRExternalChallenges<BF, E4> {

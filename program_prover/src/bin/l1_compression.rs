@@ -1,7 +1,7 @@
 //! Standalone L1 compression test program: takes the recursion pipeline's
 //! stable point (1 unified + 1 blake proof) and compresses it all the way to
 //! the single Proth120 packed L1 proof with ALL oracles in memory
-//! (`program_prover::compression::compress_fixed_point_to_l1_in_mode`).
+//! (`program_prover::compression::compress_fixed_point_to_l1`).
 //!
 //! Meant for large external machines (target shape: 192 cores + enough RAM to
 //! materialize the ~2^31 packed RS codewords). Build for such a box with
@@ -22,25 +22,18 @@
 //! circuit layout are read from the checkout by default). The input is a
 //! versioned JSON proof bundle (`--bundle`, the format of
 //! `program_prover::bundle::write_program_proof_bundle`), which carries its
-//! soundness mode and is read in the expected mode. At this revision nothing
-//! in the recursion flow writes that bundle (only tests call the writer), so
-//! this program has no producer for its input. The retired `--proof` +
-//! `--setups` pair of bincode caches is rejected without being read
-//! (`L1InputError::LegacyBincodeUnsupported`). The supported L1 route is the
-//! L1 stack's pipeline targets (`ProofTarget::{L1Feeder, L1}`) once that stack
-//! is rebased. Outputs:
+//! soundness mode. The L1 feeder/wrap/EVM profile exists only in
+//! pessimistic_conjecture, so the bundle is read as a pessimistic_conjecture
+//! bundle and any other is refused. At this revision nothing in the recursion
+//! flow writes that bundle (only tests call the writer), so this program has
+//! no producer for its input. Outputs:
 //! `unified_circuit_proof_proth120.json` +
 //! `unified_circuit_proof_proth120_commitment_mod_aux_data.json` in the
 //! output directory — the exact fixture pair the EVM tooling consumes.
-//!
-//! `--soundness-mode` (default `pessimistic-conjecture`) is the expected mode
-//! of the input and of every layer. `ethproofs-soundcalc` is rejected before
-//! any input is read: the L1 feeder/wrap/EVM profile exists only in
-//! pessimistic_conjecture.
 
 use full_statement_verifier::program_proof::ProgramProof;
-use program_prover::bundle::{read_l1_input, read_program_proof_bundle, ProgramProofBundleV1};
-use program_prover::compression::{compress_fixed_point_to_l1_in_mode, validate_l1_soundness_mode};
+use program_prover::bundle::{read_program_proof_bundle, ProgramProofBundleV1};
+use program_prover::compression::compress_fixed_point_to_l1;
 use prover::definitions::SoundnessMode;
 use prover::gkr::prover::WhirOracleStorage;
 use prover::worker::Worker;
@@ -55,18 +48,9 @@ fn serialize_pretty_to_file<T: serde::Serialize>(el: &T, path: &PathBuf) {
     std::io::Write::flush(&mut dst).unwrap();
 }
 
-/// The proof and setups to compress.
-#[derive(Debug, PartialEq, Eq)]
-enum Input {
-    /// A versioned proof bundle.
-    Bundle(PathBuf),
-    /// The legacy zlib-compressed bincode pair.
-    Legacy { proof: PathBuf, setups: PathBuf },
-}
-
 struct Args {
-    input: Input,
-    soundness_mode: SoundnessMode,
+    /// The versioned proof bundle to compress.
+    bundle: PathBuf,
     fsv_dir: PathBuf,
     circuit: PathBuf,
     out_dir: PathBuf,
@@ -75,17 +59,13 @@ struct Args {
     feeder_recompute: bool,
 }
 
-const USAGE: &str = "usage: l1_compression (--bundle <file> | --proof <file> --setups <file>) \
-    [--soundness-mode <pessimistic-conjecture|ethproofs-soundcalc=pessimistic-conjecture>] \
+const USAGE: &str = "usage: l1_compression --bundle <file> \
     [--fsv-dir <dir=tools/gkr_verifier/full_statement_verifiers>] \
     [--circuit <file=cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json>] \
     [--out-dir <dir=.>] [--threads <n=all cores>] [--no-caches] [--feeder-recompute]";
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> Args {
     let mut bundle = None;
-    let mut proof = None;
-    let mut setups = None;
-    let mut soundness_mode = SoundnessMode::DEFAULT;
     let mut fsv_dir = PathBuf::from("tools/gkr_verifier/full_statement_verifiers");
     let mut circuit =
         PathBuf::from("cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json");
@@ -102,13 +82,6 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Args {
         };
         match arg.as_str() {
             "--bundle" => bundle = Some(PathBuf::from(value("--bundle"))),
-            "--proof" => proof = Some(PathBuf::from(value("--proof"))),
-            "--setups" => setups = Some(PathBuf::from(value("--setups"))),
-            "--soundness-mode" => {
-                let name = value("--soundness-mode");
-                soundness_mode = SoundnessMode::from_cli_name(&name)
-                    .unwrap_or_else(|| panic!("unknown --soundness-mode `{name}`\n{USAGE}"))
-            }
             "--fsv-dir" => fsv_dir = PathBuf::from(value("--fsv-dir")),
             "--circuit" => circuit = PathBuf::from(value("--circuit")),
             "--out-dir" => out_dir = PathBuf::from(value("--out-dir")),
@@ -128,15 +101,8 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Args {
             other => panic!("unknown argument `{other}`\n{USAGE}"),
         }
     }
-    let input = match (bundle, proof, setups) {
-        (Some(bundle), None, None) => Input::Bundle(bundle),
-        (None, Some(proof), Some(setups)) => Input::Legacy { proof, setups },
-        (Some(_), _, _) => panic!("--bundle replaces --proof and --setups\n{USAGE}"),
-        (None, _, _) => panic!("give --bundle, or both --proof and --setups\n{USAGE}"),
-    };
     Args {
-        input,
-        soundness_mode,
+        bundle: bundle.unwrap_or_else(|| panic!("give --bundle\n{USAGE}")),
         fsv_dir,
         circuit,
         out_dir,
@@ -146,27 +112,20 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Args {
     }
 }
 
-/// The proof and setups to compress. An unsupported soundness mode is rejected before any
-/// input is read; the legacy bincode pair is rejected without reading it.
+/// The proof and setups to compress: a pessimistic_conjecture bundle; one in another mode is
+/// refused, not rebound.
 fn load_input(args: &Args) -> Result<(ProgramProof, Setups), String> {
-    validate_l1_soundness_mode(args.soundness_mode).map_err(|e| e.to_string())?;
-    match &args.input {
-        Input::Bundle(path) => read_program_proof_bundle(path, args.soundness_mode)
-            .map(ProgramProofBundleV1::into_parts),
-        Input::Legacy { proof, setups } => {
-            read_l1_input(proof, setups, args.soundness_mode).map_err(|e| e.to_string())
-        }
-    }
+    read_program_proof_bundle(&args.bundle, SoundnessMode::PessimisticConjecture)
+        .map(ProgramProofBundleV1::into_parts)
 }
 
 fn main() {
     let args = parse_args(std::env::args().skip(1));
     let (proof, setups) = load_input(&args).unwrap_or_else(|e| panic!("l1_compression: {e}"));
     println!(
-        "l1_compression: input {:?} ({} cycles executed), soundness mode {}, fsv dir {}",
-        args.input,
+        "l1_compression: input {} ({} cycles executed), fsv dir {}",
+        args.bundle.display(),
         proof.executed_cycles(),
-        args.soundness_mode.cli_name(),
         args.fsv_dir.display(),
     );
 
@@ -193,7 +152,7 @@ fn main() {
         .name("l1_compression".to_string())
         .stack_size(1 << 26)
         .spawn(move || {
-            compress_fixed_point_to_l1_in_mode(
+            compress_fixed_point_to_l1(
                 &proof,
                 &setups,
                 &args.fsv_dir,
@@ -201,13 +160,11 @@ fn main() {
                 args.use_caches,
                 feeder_storage,
                 &worker,
-                args.soundness_mode,
             )
         })
         .expect("spawn compression thread")
         .join()
-        .expect("compression must not panic")
-        .unwrap_or_else(|e| panic!("l1_compression: {e}"));
+        .expect("compression must not panic");
 
     std::fs::create_dir_all(&args.out_dir).expect("create output directory");
     let proof_path = args.out_dir.join("unified_circuit_proof_proth120.json");
@@ -226,76 +183,93 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use prover::definitions::ProvingSelection;
 
     fn parse(args: &[&str]) -> Args {
         parse_args(args.iter().map(|arg| arg.to_string()))
     }
 
     #[test]
-    fn soundness_mode_defaults_to_pessimistic_conjecture() {
-        let args = parse(&["--proof", "p.bin", "--setups", "s.bin"]);
-        assert_eq!(args.soundness_mode, SoundnessMode::PessimisticConjecture);
+    fn bundle_and_defaults_are_parsed() {
+        let args = parse(&["--bundle", "b.json"]);
+        assert_eq!(args.bundle, PathBuf::from("b.json"));
         assert_eq!(
-            args.input,
-            Input::Legacy {
-                proof: "p.bin".into(),
-                setups: "s.bin".into()
-            }
+            args.fsv_dir,
+            PathBuf::from("tools/gkr_verifier/full_statement_verifiers")
         );
+        assert!(args.use_caches && !args.feeder_recompute && args.threads.is_none());
     }
 
     #[test]
-    fn every_mode_is_accepted_by_its_cli_name() {
-        for mode in SoundnessMode::ALL {
-            let args = parse(&["--bundle", "b.json", "--soundness-mode", mode.cli_name()]);
-            assert_eq!(args.soundness_mode, *mode);
-            assert_eq!(args.input, Input::Bundle("b.json".into()));
-        }
+    #[should_panic(expected = "give --bundle")]
+    fn bundle_is_required() {
+        parse(&[]);
     }
 
     #[test]
-    #[should_panic(expected = "unknown --soundness-mode `ethproofs`")]
-    fn other_spellings_are_rejected() {
-        parse(&["--bundle", "b.json", "--soundness-mode", "ethproofs"]);
-    }
-
-    #[test]
-    #[should_panic(expected = "--bundle replaces --proof and --setups")]
-    fn bundle_excludes_the_legacy_pair() {
-        parse(&["--bundle", "b.json", "--setups", "s.bin"]);
-    }
-
-    #[test]
-    #[should_panic(expected = "give --bundle, or both --proof and --setups")]
-    fn legacy_pair_needs_both_files() {
-        parse(&["--proof", "p.bin"]);
-    }
-
-    #[test]
-    fn unsupported_mode_is_rejected_before_the_input() {
-        let args = parse(&[
+    #[should_panic(expected = "unknown argument `--soundness-mode`")]
+    fn soundness_mode_is_not_an_option() {
+        parse(&[
             "--bundle",
-            "missing.json",
+            "b.json",
             "--soundness-mode",
-            "ethproofs-soundcalc",
+            "pessimistic-conjecture",
         ]);
-        let err = load_input(&args).err().unwrap();
-        assert!(err.contains("(deferred product scope)"), "{err}");
     }
 
     #[test]
-    fn legacy_pair_is_rejected_without_reading() {
-        let args = parse(&["--proof", "missing.bin", "--setups", "missing.bin"]);
-        assert_eq!(
-            load_input(&args).err().unwrap(),
-            program_prover::bundle::L1InputError::LegacyBincodeUnsupported.to_string()
-        );
+    #[should_panic(expected = "unknown argument `--proof`")]
+    fn bincode_pair_is_not_an_input() {
+        parse(&["--proof", "p.bin", "--setups", "s.bin"]);
     }
 
     #[test]
-    fn bundle_is_read_in_the_expected_mode() {
-        let args = parse(&["--bundle", "missing.json"]);
-        let err = load_input(&args).err().unwrap();
+    fn missing_bundle_is_reported() {
+        let err = load_input(&parse(&["--bundle", "missing.json"]))
+            .err()
+            .unwrap();
         assert!(err.starts_with("open missing.json"), "{err}");
+    }
+
+    /// An ethproofs bundle is refused by its mode binding, not read as pessimistic.
+    #[test]
+    fn ethproofs_bundle_is_refused() {
+        let dir = std::env::temp_dir().join(format!("l1-compression-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ethproofs.json");
+        let proof = ProgramProof {
+            riscv_proofs: Default::default(),
+            compiled_riscv_circuits: Default::default(),
+            inits_and_teardown_proofs: Vec::new(),
+            inits_and_teardowns_circuit: None,
+            delegation_proofs: Default::default(),
+            compiled_delegation_circuits: Default::default(),
+            register_final_values: Vec::new(),
+            final_pc: 0,
+            final_timestamp: 4,
+            end_params: [0; 8],
+            recursion_chain_preimage: None,
+            recursion_chain_hash: None,
+            pow_challenge: 0,
+            num_it_circuits: None,
+        };
+        program_prover::bundle::write_program_proof_bundle(
+            &path,
+            ProvingSelection {
+                soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+                ..ProvingSelection::default()
+            },
+            &proof,
+            &Setups::new(),
+        )
+        .unwrap();
+        let err = load_input(&parse(&["--bundle", path.to_str().unwrap()]))
+            .err()
+            .unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(
+            err,
+            "SoundnessModeMismatch: expected PessimisticConjecture, bundle is EthproofsSoundnessCalc"
+        );
     }
 }

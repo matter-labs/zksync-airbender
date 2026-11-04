@@ -3,11 +3,13 @@ pub mod fixture_codec;
 mod fsv;
 #[cfg(feature = "fsv_execution")]
 mod fsv_execution;
+#[cfg(test)]
+mod reduced_isa_gate;
 
 pub use fsv::{
     canonical_fsv_dir, fsv_digest, fsv_manifest, fsv_manifest_entry, load_fsv_exact,
-    load_fsv_program, render_fsv_manifest, FsvDigest, FsvLoadError, FsvManifestEntry,
-    VerifiedFsvProgram, FSV_DIGEST_RECIPE, FSV_MANIFEST_FILE,
+    render_fsv_manifest, FsvDigest, FsvManifestEntry, VerifiedFsvProgram, FSV_DIGEST_RECIPE,
+    FSV_MANIFEST_FILE,
 };
 #[cfg(feature = "fsv_execution")]
 pub use fsv_execution::{
@@ -115,24 +117,9 @@ fn run_native_verifier(
         .map_err(NativeVerificationError::InvalidProof)
 }
 
-/// Pessimistic compatibility wrapper for a proof expected to be valid.
-#[cfg(feature = "verifiers")]
-pub fn native_verify_unrolled(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
-    native_verify_unrolled_in_mode(stream, is_base, SoundnessMode::PessimisticConjecture)
-}
-
-#[cfg(feature = "verifiers")]
-pub fn native_verify_unrolled_in_mode(
-    stream: Vec<u32>,
-    is_base: bool,
-    mode: SoundnessMode,
-) -> [u32; 16] {
-    try_native_verify_unrolled_in_mode(stream, is_base, mode).expect("unrolled proof must verify")
-}
-
 /// Verify under the caller-selected schedule, returning malformed/invalid proof errors.
 #[cfg(feature = "verifiers")]
-pub fn try_native_verify_unrolled_in_mode(
+pub fn native_verify_unrolled_in_mode(
     stream: Vec<u32>,
     is_base: bool,
     mode: SoundnessMode,
@@ -157,24 +144,9 @@ pub fn try_native_verify_unrolled_in_mode(
     })
 }
 
-/// Pessimistic compatibility wrapper for a proof expected to be valid.
-#[cfg(feature = "verifiers")]
-pub fn native_verify_unified(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
-    native_verify_unified_in_mode(stream, is_base, SoundnessMode::PessimisticConjecture)
-}
-
-#[cfg(feature = "verifiers")]
-pub fn native_verify_unified_in_mode(
-    stream: Vec<u32>,
-    is_base: bool,
-    mode: SoundnessMode,
-) -> [u32; 16] {
-    try_native_verify_unified_in_mode(stream, is_base, mode).expect("unified proof must verify")
-}
-
 /// Verify under the caller-selected schedule, returning malformed/invalid proof errors.
 #[cfg(feature = "verifiers")]
-pub fn try_native_verify_unified_in_mode(
+pub fn native_verify_unified_in_mode(
     stream: Vec<u32>,
     is_base: bool,
     mode: SoundnessMode,
@@ -292,8 +264,8 @@ mod native_mode_tests {
     fn malformed_native_proofs_return_errors_in_each_mode() {
         for &mode in SoundnessMode::ALL {
             for is_base in [true, false] {
-                assert!(try_native_verify_unrolled_in_mode(Vec::new(), is_base, mode).is_err());
-                assert!(try_native_verify_unified_in_mode(Vec::new(), is_base, mode).is_err());
+                assert!(native_verify_unrolled_in_mode(Vec::new(), is_base, mode).is_err());
+                assert!(native_verify_unified_in_mode(Vec::new(), is_base, mode).is_err());
             }
         }
     }

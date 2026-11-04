@@ -298,7 +298,6 @@ impl SyntheticInputFactory {
                     &self.worker,
                 );
                 CircuitPrecomputations::from_canonical(circuit, setup, self.selection)
-                    .expect("Blake2GFunction precomputations must be supported")
             }
             CircuitType::Delegation(_)
             | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {

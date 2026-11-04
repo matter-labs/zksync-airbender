@@ -23,19 +23,17 @@ fn whir_schedule(
         virtual_packing: packing.virtual_packing,
         num_committed_polys: None,
     };
-    try_whir_schedule(level, &input).unwrap_or_else(|error| panic!("{error}"))
+    schedule_for_input(level, &input)
 }
 
 /// The schedule for `2^message_size_log2` committed polynomials under
 /// `packing` (the physical packing is recorded on the base round; virtual
 /// packing is the [`WhirSchedule::to_virtual_packing`] twin of the ladder).
-pub(super) fn try_whir_schedule(
-    level: SecurityLevel,
-    input: &WhirInput,
-) -> Result<WhirSchedule, ConfigSelectionError> {
+/// Panics when no ladder exists for that shape.
+pub(super) fn schedule_for_input(level: SecurityLevel, input: &WhirInput) -> WhirSchedule {
     let packing = input.packing();
     let mut schedule = match level {
-        SecurityLevel::Sec100 => ladder_for_100_bits(input)?,
+        SecurityLevel::Sec100 => ladder_for_100_bits(input),
     };
     let security_bits = level.security_bits() as u32;
     if packing.virtual_packing {
@@ -47,7 +45,7 @@ pub(super) fn try_whir_schedule(
         schedule = schedule.to_virtual_packing(security_bits, &PessimisticConjectureMode);
     }
     lower_queries_pow_to_minimum(&mut schedule, security_bits);
-    Ok(schedule)
+    schedule
 }
 
 /// Lowers every round's query PoW to the smallest for which the
@@ -85,12 +83,12 @@ fn lower_queries_pow_to_minimum(schedule: &mut WhirSchedule, security_bits: u32)
 /// [`DEFAULT_LDE_FACTOR`], cap [`DEFAULT_CAP_SIZE`], a round-0 fold of 1
 /// (two values per column per base leaf), one OOD sample per intermediate
 /// oracle, no OOD or folding PoW.
-fn ladder_for_100_bits(input: &WhirInput) -> Result<WhirSchedule, ConfigSelectionError> {
+fn ladder_for_100_bits(input: &WhirInput) -> WhirSchedule {
     let (steps, queries, lde_factors, pows): (&[usize], &[usize], &[usize], &[u32]) =
         match input.message_size_log2 {
             // Oracle 0's 12 queries need only 20 bits, to which the query PoW
             // is lowered; its 26 is what the virtual twin's query count is
-            // derived from (see `try_whir_schedule`).
+            // derived from (see `schedule_for_input`).
             20 => (
                 &[1, 5, 5, 4, 4],
                 &[89, 12, 8, 7, 7],
@@ -126,15 +124,13 @@ fn ladder_for_100_bits(input: &WhirInput) -> Result<WhirSchedule, ConfigSelectio
                 &[16, 512, 8192, 16384, 131072],
                 &[26, 24, 25, 14, 19, 15],
             ),
-            _ => {
-                return Err(ConfigSelectionError::MissingSchedule {
-                    mode: SoundnessMode::PessimisticConjecture,
-                    level: SecurityLevel::Sec100,
-                    input: *input,
-                })
-            }
+            _ => panic!(
+                "MissingSchedule: no {:?} WHIR schedule for {:?}, input {input:?}",
+                SoundnessMode::PessimisticConjecture,
+                SecurityLevel::Sec100
+            ),
         };
-    Ok(WhirSchedule::from_legacy_arrays(
+    WhirSchedule::from_legacy_arrays(
         DEFAULT_LDE_FACTOR,
         DEFAULT_CAP_SIZE,
         input.physical_packing_log2,
@@ -142,7 +138,7 @@ fn ladder_for_100_bits(input: &WhirInput) -> Result<WhirSchedule, ConfigSelectio
         queries,
         lde_factors,
         pows,
-    ))
+    )
 }
 
 /// The unpacked standard config of a `2^trace_len_log2` trace at `level`
@@ -377,7 +373,7 @@ mod tests {
         assert_eq!(virtual_.whir_schedule.final_poly_size_log2(20), 1);
         let round0 = &virtual_.whir_schedule.internal_rounds[0];
         // the query count is derived one bit of query PoW above the ladder's
-        // oracle-0 entry (26; see `try_whir_schedule`), then the PoW is lowered
+        // oracle-0 entry (26; see `schedule_for_input`), then the PoW is lowered
         // to the minimum, as the standard schedule's is (12 queries, 20 bits)
         let ladder_pow = 26;
         assert_eq!(

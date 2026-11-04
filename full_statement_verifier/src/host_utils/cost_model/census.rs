@@ -19,18 +19,6 @@ use verifier_common::fsv_binaries::{
     BlakeMode, FsvDescriptor, FsvProgram, SecurityLevel, SoundnessMode,
 };
 
-/// The Sec100 pessimistic-conjecture standard-profile guest of `program` built with
-/// `mode`: what the legacy `(program, mode)` entry points price.
-#[must_use]
-pub const fn pessimistic_descriptor(program: FsvProgram, mode: BlakeMode) -> FsvDescriptor {
-    FsvDescriptor::new(
-        SecurityLevel::Sec100,
-        SoundnessMode::PessimisticConjecture,
-        program,
-        mode,
-    )
-}
-
 pub const NUM_CENSUS_DIMS: usize = 10;
 pub const NUM_FAMILY_DIMS: usize = 6;
 pub type CensusVec = [u64; NUM_CENSUS_DIMS];
@@ -81,16 +69,6 @@ pub fn estimate_verifier_census_for(
         .into_iter()
         .zip(census_totals(proof, descriptor)?)
         .collect())
-}
-
-/// [`estimate_verifier_census_for`] the [`pessimistic_descriptor`] of `program` built
-/// with `mode`.
-pub fn estimate_verifier_census(
-    proof: &ProgramProof,
-    program: FsvProgram,
-    mode: BlakeMode,
-) -> Result<Vec<(CircuitId, u64)>, EstimateError> {
-    estimate_verifier_census_for(proof, &pessimistic_descriptor(program, mode))
 }
 
 /// The table calibrated for exactly `descriptor`. [`EstimateError::UnknownDescriptor`]
@@ -463,15 +441,6 @@ mod tests {
                 })
             );
         }
-        // The legacy entry points price the pessimistic descriptor.
-        assert_eq!(
-            super::super::estimate_verifier_cycles(
-                &proof,
-                FsvProgram::UnrolledBaseLayer,
-                BlakeMode::Compression
-            ),
-            Err(EstimateError::UnexpectedInitsAndTeardowns { found: 0 })
-        );
     }
 
     #[test]
@@ -499,7 +468,6 @@ mod tests {
         assert_eq!(CENSUS_TABLES.len(), switch_guests.len());
         for (descriptor, table) in CENSUS_TABLES {
             let digest = crate::host_utils::fsv_manifest_entry(descriptor)
-                .unwrap()
                 .digest
                 .to_string();
             assert_eq!(

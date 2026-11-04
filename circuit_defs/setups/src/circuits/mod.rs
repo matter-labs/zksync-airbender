@@ -48,17 +48,6 @@ pub struct DelegationCircuitSetup {
 }
 
 impl DelegationCircuitSetup {
-    /// Fallible lookup keyed by security level and soundness mode.
-    pub fn try_prover_config_in_mode(
-        &self,
-        level: SecurityLevel,
-        mode: circuit_common::SoundnessMode,
-    ) -> Result<prover::gkr::prover_config::ProverConfig, circuit_common::ConfigSelectionError>
-    {
-        self.geometry
-            .try_prover_config(&self.compiled_circuit, level, mode)
-    }
-
     /// The circuit's config under `mode` at `level`, from its geometry and
     /// compiled circuit.
     pub fn prover_config_in_mode(

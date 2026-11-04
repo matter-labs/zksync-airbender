@@ -7,7 +7,6 @@ use field::baby_bear::base::BabyBearField;
 use field::PrimeField;
 
 pub use prover::definitions::{ProvingSelection, SecurityLevel};
-pub use prover::gkr::prover_config::example_configs::ConfigSelectionError;
 pub use prover::gkr::prover_config::{
     BaseColumns, BasePacking, ProverConfig, SoundnessMode, WhirInput,
 };
@@ -39,25 +38,8 @@ impl CircuitGeometry {
         level: SecurityLevel,
         mode: SoundnessMode,
     ) -> ProverConfig {
-        self.try_prover_config(compiled_circuit, level, mode)
-            .unwrap_or_else(|error| panic!("{error}"))
-    }
-
-    /// Resolve a certified config using the compiled circuit's column count.
-    pub fn try_prover_config<F: PrimeField>(
-        &self,
-        compiled_circuit: &GKRCircuitArtifact<F>,
-        level: SecurityLevel,
-        mode: SoundnessMode,
-    ) -> Result<ProverConfig, ConfigSelectionError> {
-        let declared = 1usize << self.trace_len_log2;
-        if declared != compiled_circuit.trace_len {
-            return Err(ConfigSelectionError::TraceLengthMismatch {
-                declared,
-                compiled: compiled_circuit.trace_len,
-            });
-        }
-        prover::gkr::prover_config::example_configs::try_prover_config(
+        self.assert_trace_len(compiled_circuit);
+        prover::gkr::prover_config::example_configs::prover_config(
             mode,
             level,
             self.trace_len_log2 as usize,
@@ -110,10 +92,12 @@ impl CircuitGeometry {
     }
 
     fn assert_trace_len<F: PrimeField>(&self, compiled_circuit: &GKRCircuitArtifact<F>) {
-        assert_eq!(
-            1usize << self.trace_len_log2,
-            compiled_circuit.trace_len,
-            "the declared trace length must match the compiled circuit's"
+        let declared = 1usize << self.trace_len_log2;
+        assert!(
+            declared == compiled_circuit.trace_len,
+            "TraceLengthMismatch: declared trace length {declared} differs from compiled trace \
+             length {}",
+            compiled_circuit.trace_len
         );
     }
 }

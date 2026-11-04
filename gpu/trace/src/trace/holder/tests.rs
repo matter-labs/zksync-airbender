@@ -1252,9 +1252,9 @@ fn partial_tree_from_physical_leaves_matches_natural_path() {
                 let _range = gpu_core::primitives::nvtx::scoped_range(
                     Some("ab"),
                     match depth {
-                        5 => "g2.tree.depth5",
-                        6 => "g2.tree.depth6",
-                        _ => "g2.tree.other",
+                        5 => "partial_tree.depth5",
+                        6 => "partial_tree.depth6",
+                        _ => "partial_tree.other",
                     },
                 );
                 let log_tree_cap_size = log_lde_factor + log_subtree_cap_size;

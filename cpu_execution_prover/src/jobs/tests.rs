@@ -54,8 +54,7 @@ fn prove(
             security_level: SECURITY_LEVEL,
             soundness_mode: SoundnessMode::DEFAULT,
         },
-    )
-    .unwrap();
+    );
     jobs.execute::<CpuTraceAllocator>(
         WorkRequest::SetupInitialization(SetupInitializationRequest {
             batch_id: 0,

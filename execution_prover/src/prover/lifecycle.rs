@@ -6,22 +6,14 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         Self::with_configuration(ExecutionProverConfiguration::default())
     }
 
-    pub fn with_configuration(
-        configuration: ExecutionProverConfiguration<B::Configuration>,
-    ) -> Self {
-        Self::try_with_configuration(configuration).unwrap_or_else(|error| panic!("{error}"))
-    }
-
     pub fn selection(&self) -> crate::config::ProvingSelection {
         self.configuration.selection()
     }
 
-    /// Reject unsupported selections before creating workers or allocating backend resources.
-    pub fn try_with_configuration(
+    pub fn with_configuration(
         configuration: ExecutionProverConfiguration<B::Configuration>,
-    ) -> Result<Self, crate::config::SelectionError> {
+    ) -> Self {
         let selection = configuration.selection();
-        B::validate_selection(selection)?;
         let ExecutionProverConfiguration {
             max_thread_pool_threads,
             expected_concurrent_jobs,
@@ -78,12 +70,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let common_precomputations: BTreeMap<_, _> = build_common_setups(&worker)
             .into_iter()
             .map(|(circuit_type, setup)| {
-                Ok((
+                (
                     circuit_type,
-                    backend.prepare_with_selection(circuit_type, setup, selection)?,
-                ))
+                    backend.prepare(circuit_type, setup, selection),
+                )
             })
-            .collect::<Result<_, crate::config::SelectionError>>()?;
+            .collect();
         let pending_setup_initialization = request_setup_initialization(
             &backend,
             selection,
@@ -108,7 +100,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
         pending_setup_initialization.wait();
         info!("PROVER initialized");
-        Ok(Self {
+        Self {
             configuration,
             backend,
             worker,
@@ -121,7 +113,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             common_precomputations,
             free_allocators_sender,
             free_allocators_receiver,
-        })
+        }
     }
 
     pub(super) fn free_inits_and_teardowns(

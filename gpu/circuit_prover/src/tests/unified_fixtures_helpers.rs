@@ -210,7 +210,7 @@ pub(super) fn build_unified_full_trace_for_test(
 ///
 /// The resulting `prover_config` (`config_for_security_level_under_pessimistic_conjecture`
 /// at `num_delegation_cycles.trailing_zeros()`) is bit-identical to
-/// `crate::config::prover_config(CircuitType::Delegation(_), Sec100)`,
+/// `CircuitType::Delegation(_).prover_config(Sec100)`,
 /// so the GPU `prove()` path reproduces this proof exactly.
 pub(super) fn prove_delegation_proof<O>(
     circuit: &GKRCircuitArtifact<BF>,

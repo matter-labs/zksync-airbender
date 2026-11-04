@@ -9,25 +9,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         text_section: Vec<u32>,
         cycles_bound: Option<u32>,
     ) -> BinaryHandle {
-        self.try_add_binary(
-            execution_kind,
-            machine_type,
-            binary_image,
-            text_section,
-            cycles_bound,
-        )
-        .unwrap_or_else(|error| panic!("{error}"))
-    }
-
-    /// Register a binary without panicking on an unavailable selected config.
-    pub fn try_add_binary(
-        &mut self,
-        execution_kind: ExecutionKind,
-        machine_type: MachineType,
-        binary_image: Vec<u32>,
-        text_section: Vec<u32>,
-        cycles_bound: Option<u32>,
-    ) -> Result<BinaryHandle, crate::config::SelectionError> {
         let key = self.next_binary_id;
         info!("PROVER inserting binary with key {key:?}");
         let preprocessed_bytecode = match machine_type {
@@ -82,14 +63,14 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     &padded_text_section,
                     &self.worker,
                 );
-                let precomp = self.backend.prepare_with_selection(
+                let precomp = self.backend.prepare(
                     CircuitType::Unrolled(circuit_type),
                     setup,
                     self.configuration.selection(),
-                )?;
-                Ok((circuit_type, precomp))
+                );
+                (circuit_type, precomp)
             })
-            .collect::<Result<_, crate::config::SelectionError>>()?;
+            .collect();
         let pending_setup_initialization = request_setup_initialization(
             &self.backend,
             self.configuration.selection(),
@@ -116,6 +97,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         };
         assert!(self.binary_holders.insert(key, holder).is_none());
         self.next_binary_id += 1;
-        Ok(BinaryHandle(key))
+        BinaryHandle(key)
     }
 }

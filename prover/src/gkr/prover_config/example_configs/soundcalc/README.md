@@ -98,13 +98,13 @@ pessimistic rule's own count) at which all of the oracle's terms reach the base 
 level; it also prints each oracle's LDE-versus-queries frontier. The result is uniform
 69-bit ladders with 2^5..2^7 smaller last oracles, one or two extra queries per late round,
 22-37 % less intermediate LDE work and 5-11 % more opened leaf values. These are the
-ladders in `pessimistic_conjecture.rs` since 2026-10-27; the delegation circuits' virtual
+ladders in `pessimistic_conjecture.rs`; the delegation circuits' virtual
 twin keeps 18 queries on its oracle 0 with one more bit of query PoW (26), which the driver
 shows restores the plain ladder's level (oracle 2's 27-bit PoW is tight: 8 queries at rate
 2^-11 are 42 bits, and its 2^27 domain leaves no room for a larger LDE). The SHAPES table
 holds the PRE-rebalance ladders so the run reproduces the analysis.
 
-The production ladders keep these LDE factors and query counts but no longer hold the
-69-bit level: each round, the virtual twin's included, grinds the smallest query PoW that
+The production ladders keep these LDE factors and query counts but not the 69-bit
+level: each round, the virtual twin's included, grinds the smallest query PoW that
 keeps its count under the pessimistic rule (`6 * pow + 5 * queries * r >= 600`), and
 oracle 2 of the 2^22 ladder takes 9 queries at 18 bits instead of 8 at 27.

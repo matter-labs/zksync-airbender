@@ -70,9 +70,9 @@ fn assert_recursive_commitment_matches_live_cpu(
         let _range = gpu_core::primitives::nvtx::scoped_range(
             Some("ab"),
             match depth {
-                5 => "g2.tree.depth5",
-                6 => "g2.tree.depth6",
-                _ => "g2.tree.other",
+                5 => "partial_tree.depth5",
+                6 => "partial_tree.depth6",
+                _ => "partial_tree.other",
             },
         );
         let mut gpu = GpuWhirExtensionOracle::from_monomial_coeffs(

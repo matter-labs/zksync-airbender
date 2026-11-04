@@ -1,7 +1,8 @@
 //! Delegation-free unified proving under `CommitmentMode::MergedMemoryAndWitness` (the config's commitment mode)
 //! — the "transition"/feeder driver of the L1 recursion tail.
 //!
-//! Mirrors [`crate::unified::prove_unified_execution_with_replayer`] with three
+//! Mirrors the `Standard` path of
+//! [`crate::unified::prove_unified_execution_with_replayer_in_profile`] with three
 //! deliberate differences:
 //!
 //! 1. NO precompiles: the traced program must make zero delegation calls
@@ -15,8 +16,8 @@
 //!    enough for the L1 wrapper. Committing the merged tree before the
 //!    permutation-argument Fiat-Shamir requires the FULL witness, so witness
 //!    evaluation happens once for the commit and once inside proving.
-//! 3. The unified circuit's [`ProverConfig`] is an EXPLICIT parameter (the
-//!    high-LDE "L1 feeder" schedule), and the WHIR oracle storage policy is
+//! 3. The unified circuit's [`ProverConfig`](prover::gkr::prover_config::ProverConfig) is an
+//!    EXPLICIT parameter (the high-LDE "L1 feeder" schedule), and the WHIR oracle storage policy is
 //!    caller-chosen: RS/tree RECOMPUTATION on memory-constrained machines
 //!    (the feeder LDE factors make materialized codewords large), fully
 //!    in-memory on large boxes where recompute dominates the proving time.
@@ -79,7 +80,8 @@ pub struct UnifiedTransitionTimings {
 }
 
 /// Prove a delegation-free execution as unified circuits committed in
-/// `MergedMemoryAndWitness` mode under an explicit (feeder) [`ProverConfig`],
+/// `MergedMemoryAndWitness` mode under an explicit (feeder)
+/// [`ProverConfig`](prover::gkr::prover_config::ProverConfig),
 /// with the RECOMPUTATION oracle storage policy (the memory-light default the
 /// local research tests use). Panics if the traced program performed ANY
 /// delegation call.

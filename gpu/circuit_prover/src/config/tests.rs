@@ -87,8 +87,7 @@ fn cpu_builds_prover_config_for_all_supported_security_levels() {
         let compiled = artifact(name);
         let columns = BaseColumns::of(&compiled);
         for level in GPU_SUPPORTED_SECURITY_LEVELS {
-            let cfg = prover_config(circuit, level).unwrap();
-            assert_eq!(cfg, circuit.prover_config(level));
+            let cfg = circuit.prover_config(level);
             assert_eq!(cfg.security_level, level);
             assert!(
                 cfg.cap_size >= cfg.lde_factor(),
@@ -171,7 +170,7 @@ fn cpu_current_configs_isolate_the_virtual_recursive_shape() {
                 &config.whir_schedule,
                 27,
             );
-            eprintln!("qualified physical recursive shapes: ({n},{k})/{level:?}: {shapes:?}");
+            eprintln!("admitted physical recursive shapes: ({n},{k})/{level:?}: {shapes:?}");
             checked += 1;
         }
     }
@@ -183,7 +182,7 @@ fn cpu_current_configs_isolate_the_virtual_recursive_shape() {
 fn unified_uses_its_canonical_schedule() {
     let circuit = CircuitType::Unrolled(Unrolled::Unified);
     for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {
-        let actual = prover_config(circuit, level).unwrap();
+        let actual = circuit.prover_config(level);
         let expected = config_for_security_level_under_pessimistic_conjecture(23, level);
         assert_eq!(actual.whir_schedule, expected.whir_schedule);
     }
@@ -197,7 +196,7 @@ fn cpu_virtual_defaults_admit_proof_geometry_independently_of_physical_packing()
             continue;
         }
         for level in GPU_SUPPORTED_SECURITY_LEVELS {
-            let cfg = prover_config(circuit, level).unwrap();
+            let cfg = circuit.prover_config(level);
             let compiled = artifact(name);
             let geometry =
                 BaseCommitmentGeometry::from_config(&cfg, BaseColumns::of(&compiled)).unwrap();

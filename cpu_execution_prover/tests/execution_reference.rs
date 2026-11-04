@@ -99,24 +99,26 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
     };
 
     let worker = worker::Worker::new();
-    let (legacy, legacy_setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer::<
-        riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
-        std::alloc::Global,
-        _,
-        _,
-    >(
-        CYCLES_BOUND,
-        &binary,
-        &text,
-        true,
-        non_determinism(),
-        RAM_BOUND,
-        &worker,
-        prover::definitions::SecurityLevel::Sec100,
-        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
-        &prover::gkr::prover::DefaultBabyBearBackend::default(),
-        &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
-    );
+    let (legacy, legacy_setups) =
+        program_prover::unrolled::prove_unrolled_execution_with_replayer_in_mode::<
+            riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
+            std::alloc::Global,
+            _,
+            _,
+        >(
+            CYCLES_BOUND,
+            &binary,
+            &text,
+            true,
+            non_determinism(),
+            RAM_BOUND,
+            &worker,
+            prover::definitions::SecurityLevel::Sec100,
+            prover::definitions::SoundnessMode::PessimisticConjecture,
+            verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+            &prover::gkr::prover::DefaultBabyBearBackend::default(),
+            &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
+        );
 
     assert_eq!(mine.final_pc, legacy.final_pc, "final pc");
     assert_eq!(

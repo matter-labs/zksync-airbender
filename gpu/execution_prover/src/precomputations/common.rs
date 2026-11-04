@@ -16,7 +16,7 @@ pub(crate) fn get_common_precomputations_for_all(
         .into_iter()
         .map(|(circuit_type, setup)| {
             let precomputations =
-                CircuitPrecomputations::from_canonical(circuit_type, setup, selection).unwrap();
+                CircuitPrecomputations::from_canonical(circuit_type, setup, selection);
             (circuit_type, precomputations)
         })
         .collect()

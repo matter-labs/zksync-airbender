@@ -43,9 +43,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         memory_caps,
         selection,
     } = request;
-    let config = precomputations
-        .config_for_request(circuit_type, selection)
-        .unwrap_or_else(|error| panic!("{error}"));
+    let config = precomputations.config_for_request(circuit_type, selection);
     let twiddles = jobs.twiddles(1usize << config.whir_message_size_log2(), worker);
     let setup_commitment = precomputations
         .setup_commitment

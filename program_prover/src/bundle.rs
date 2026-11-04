@@ -109,33 +109,6 @@ pub fn write_program_proof_bundle(
         .map_err(|error| format!("flush proof bundle {}: {error}", path.display()))
 }
 
-/// Legacy pairs have no functioning decoder at this revision; use the JSON bundle.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum L1InputError {
-    LegacyBincodeUnsupported,
-}
-
-impl std::fmt::Display for L1InputError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::LegacyBincodeUnsupported => f.write_str(
-                "legacy bincode proof pairs are not decodable at this revision; use --bundle",
-            ),
-        }
-    }
-}
-impl std::error::Error for L1InputError {}
-
-/// Explicitly reject the retired legacy pair syntax before any file I/O.
-#[cfg(feature = "l1")]
-pub fn read_l1_input(
-    _proof: &Path,
-    _setups: &Path,
-    _expected: SoundnessMode,
-) -> Result<(ProgramProof, Setups), L1InputError> {
-    Err(L1InputError::LegacyBincodeUnsupported)
-}
-
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -208,19 +181,5 @@ pub(crate) mod tests {
             .unwrap_err()
             .contains("soundness_mode"));
         std::fs::remove_dir_all(dir).unwrap();
-    }
-
-    #[cfg(feature = "l1")]
-    #[test]
-    fn legacy_pairs_report_a_typed_error_without_io() {
-        let missing = Path::new("/missing/task-s-legacy.bin");
-        for &mode in SoundnessMode::ALL {
-            let error = read_l1_input(missing, missing, mode).unwrap_err();
-            assert_eq!(error, L1InputError::LegacyBincodeUnsupported);
-            assert_eq!(
-                error.to_string(),
-                "legacy bincode proof pairs are not decodable at this revision; use --bundle"
-            );
-        }
     }
 }

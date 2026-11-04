@@ -1512,8 +1512,7 @@ fn cpu_ethproofs_schedules_pass_recursive_whir_admission() {
                 soundness_mode: mode,
             };
             let config =
-                crate::config::prover_config_for_selection(circuit_type, &compiled, selection)
-                    .unwrap_or_else(|error| panic!("{circuit_type:?}/{mode:?}: {error}"));
+                crate::config::prover_config_for_selection(circuit_type, &compiled, selection);
             let committed: ProverConfig = deserialize_json_for_test(&format!(
                 "circuit_defs/{dir}/generated/prover_config_sec_100_{}.json",
                 mode.file_suffix()
@@ -1522,7 +1521,7 @@ fn cpu_ethproofs_schedules_pass_recursive_whir_admission() {
             if mode == circuit_common::SoundnessMode::PessimisticConjecture {
                 assert_eq!(
                     config,
-                    crate::config::prover_config(circuit_type, SecurityLevel::Sec100).unwrap(),
+                    circuit_type.prover_config(SecurityLevel::Sec100),
                     "{circuit_type:?}"
                 );
                 continue;

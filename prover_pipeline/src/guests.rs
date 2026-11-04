@@ -50,39 +50,37 @@ impl FsvPrograms {
         let recursion = target != ProofTarget::Base;
         let unified = target == ProofTarget::RecursionUnified;
         let mut loaded: Vec<Arc<VerifiedFsvProgram>> = Vec::new();
-        let mut load =
-            |needed: bool, program, blake| -> Result<Option<Arc<VerifiedFsvProgram>>, String> {
-                if !needed {
-                    return Ok(None);
-                }
-                let descriptor = FsvDescriptor::new(
-                    selection.security_level,
-                    selection.soundness_mode,
-                    program,
-                    blake,
-                );
-                if let Some(guest) = loaded
-                    .iter()
-                    .find(|guest| *guest.descriptor() == descriptor)
-                {
-                    return Ok(Some(Arc::clone(guest)));
-                }
-                let guest =
-                    Arc::new(load_fsv_exact(dir, &descriptor).map_err(|error| error.to_string())?);
-                loaded.push(Arc::clone(&guest));
-                Ok(Some(guest))
-            };
+        let mut load = |needed: bool, program, blake| -> Option<Arc<VerifiedFsvProgram>> {
+            if !needed {
+                return None;
+            }
+            let descriptor = FsvDescriptor::new(
+                selection.security_level,
+                selection.soundness_mode,
+                program,
+                blake,
+            );
+            if let Some(guest) = loaded
+                .iter()
+                .find(|guest| *guest.descriptor() == descriptor)
+            {
+                return Some(Arc::clone(guest));
+            }
+            let guest = Arc::new(load_fsv_exact(dir, &descriptor));
+            loaded.push(Arc::clone(&guest));
+            Some(guest)
+        };
         let programs = Self {
             selection,
-            unrolled_base: load(recursion, FsvProgram::UnrolledBaseLayer, unrolled_blake)?,
+            unrolled_base: load(recursion, FsvProgram::UnrolledBaseLayer, unrolled_blake),
             unrolled_recursion: load(
                 recursion,
                 FsvProgram::UnrolledRecursionLayer,
                 unrolled_blake,
-            )?,
-            bridge_base: load(unified, FsvProgram::UnrolledBaseLayer, bridge_blake)?,
-            bridge_recursion: load(unified, FsvProgram::UnrolledRecursionLayer, bridge_blake)?,
-            unified: load(unified, FsvProgram::UnifiedRecursionLayer, final_blake)?,
+            ),
+            bridge_base: load(unified, FsvProgram::UnrolledBaseLayer, bridge_blake),
+            bridge_recursion: load(unified, FsvProgram::UnrolledRecursionLayer, bridge_blake),
+            unified: load(unified, FsvProgram::UnifiedRecursionLayer, final_blake),
             unrolled_blake,
             bridge_blake,
             final_blake,
@@ -191,10 +189,7 @@ mod tests {
                     let expected =
                         FsvDescriptor::new(selection.security_level, mode, program, expected_blake);
                     assert_eq!(*guest.descriptor(), expected);
-                    assert_eq!(
-                        guest.digest(),
-                        fsv_manifest_entry(&expected).unwrap().digest
-                    );
+                    assert_eq!(guest.digest(), fsv_manifest_entry(&expected).digest);
                 }
                 for program in [
                     FsvProgram::UnrolledBaseLayer,
@@ -210,100 +205,22 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(
+        expected = "MissingArtifact: missing full-statement verifier sec_100/ethproofs_soundcalc/unrolled_base_layer/standard/blake2_with_compression at /missing/fsv/"
+    )]
     fn missing_selected_guest_cannot_load_a_different_mode() {
         let selection = ProvingSelection {
             soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
             ..ProvingSelection::default()
         };
-        let error = FsvPrograms::load_from_dir(
-            Path::new("/missing/task-s-fsv"),
+        let _ = FsvPrograms::load_from_dir(
+            Path::new("/missing/fsv"),
             ProofTarget::RecursionUnified,
             selection,
             BlakeMode::Compression,
             BlakeMode::Compression,
             BlakeMode::Compression,
-        )
-        .err()
-        .expect("selected guest is absent");
-        assert!(error.contains("ethproofs_soundcalc"), "{error}");
-    }
-
-    #[test]
-    #[ignore = "requires the preserved real v3 base and unified CPU CLI artifacts"]
-    fn pessimistic_pipeline_roles_match_legacy_words_and_streams() {
-        use full_statement_verifier::host_utils::{
-            build_unified_stream, build_unrolled_stream, load_fsv_program,
-        };
-        let dir =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/soundness-mode/v3-compat-inputs");
-        let read = |name| {
-            serde_json::from_reader::<_, crate::ProofArtifact>(std::io::BufReader::new(
-                std::fs::File::open(dir.join(name)).unwrap(),
-            ))
-            .unwrap()
-        };
-        let base = read("base.json");
-        let unified = read("recursion_unified.json");
-        for final_blake in [BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes] {
-            let guests = FsvPrograms::load_from_dir(
-                &canonical_fsv_dir(),
-                ProofTarget::RecursionUnified,
-                ProvingSelection::default(),
-                BlakeMode::Compression,
-                BlakeMode::Compression,
-                final_blake,
-            )
-            .unwrap();
-            for (program, machine, blake, input) in [
-                (
-                    FsvProgram::UnrolledBaseLayer,
-                    SetupMachine::UnrolledReduced,
-                    BlakeMode::Compression,
-                    &base,
-                ),
-                (
-                    FsvProgram::UnrolledRecursionLayer,
-                    SetupMachine::UnrolledReduced,
-                    BlakeMode::Compression,
-                    &base,
-                ),
-                (
-                    FsvProgram::UnrolledBaseLayer,
-                    SetupMachine::Unified,
-                    BlakeMode::Compression,
-                    &base,
-                ),
-                (
-                    FsvProgram::UnrolledRecursionLayer,
-                    SetupMachine::Unified,
-                    BlakeMode::Compression,
-                    &base,
-                ),
-                (
-                    FsvProgram::UnifiedRecursionLayer,
-                    SetupMachine::Unified,
-                    final_blake,
-                    &unified,
-                ),
-            ] {
-                let guest = guests.get(program, machine).unwrap();
-                let (bin, text) = load_fsv_program(canonical_fsv_dir(), program, blake);
-                assert_eq!(guest.bin(), bin, "{program:?}/{machine:?}/{blake:?}");
-                assert_eq!(guest.text(), text, "{program:?}/{machine:?}/{blake:?}");
-                // Serializer identity only: the base payload exercises both unrolled guest roles.
-                let legacy = match program {
-                    FsvProgram::UnifiedRecursionLayer => {
-                        build_unified_stream(&input.setups, &input.proof, blake)
-                    }
-                    _ => build_unrolled_stream(&input.setups, &input.proof, blake),
-                };
-                assert_eq!(
-                    fsv_input(guest, &input.setups, &input.proof).unwrap(),
-                    legacy,
-                    "{program:?}/{machine:?}/{blake:?}"
-                );
-            }
-        }
+        );
     }
 
     #[test]
@@ -334,44 +251,5 @@ mod tests {
                 census_table(&descriptor).unwrap_or_else(|error| panic!("{error}"));
             }
         }
-    }
-
-    #[test]
-    #[ignore = "requires the recovered real ethproofs base proof; executes its selected FSV"]
-    fn ethproofs_switch_estimate_matches_the_executed_guest() {
-        use full_statement_verifier::host_utils::cost_model::proof_counts;
-        use full_statement_verifier::host_utils::measure_fsv_execution;
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../target/soundness-mode/ethproofs-base-recovered-v1.json");
-        let bundle = program_prover::bundle::read_program_proof_bundle(
-            &path,
-            SoundnessMode::EthproofsSoundnessCalc,
-        )
-        .unwrap();
-        let guest = load_fsv_exact(
-            canonical_fsv_dir(),
-            &FsvDescriptor::new(
-                bundle.security_level,
-                bundle.soundness_mode,
-                FsvProgram::UnrolledBaseLayer,
-                BlakeMode::Compression,
-            ),
-        )
-        .unwrap();
-        let estimate = unrolled_verifier_cost(&guest, &bundle.proof).unwrap();
-        let words = fsv_input(&guest, &bundle.setups, &bundle.proof).unwrap();
-        let measured = measure_fsv_execution(&guest, words).unwrap().cycles;
-        // The census acceptance budget of the total row (`tests/trace/calibrate.rs`).
-        let table = census_table(guest.descriptor()).unwrap();
-        let proofs: u64 = proof_counts(&bundle.proof)
-            .iter()
-            .map(|(_, n)| *n as u64)
-            .sum();
-        let spread = proofs * table.per_proof_spread[table.per_proof_spread.len() - 1];
-        let budget = measured.saturating_sub(spread) / 2000 + spread;
-        assert!(
-            estimate.abs_diff(measured) <= budget,
-            "estimate {estimate} vs measured {measured}: budget {budget}"
-        );
     }
 }

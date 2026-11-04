@@ -364,8 +364,7 @@ fn unified_base_layer_guest_execution_is_measured_and_rejects_tampering() {
             FsvProgram::UnifiedBaseLayer,
             BlakeMode::Compression,
         ),
-    )
-    .unwrap_or_else(|err| panic!("{err}"));
+    );
 
     let stream = build_stream(&proof, &setup_cap, BlakeMode::Compression);
     let record =

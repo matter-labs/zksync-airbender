@@ -24,6 +24,7 @@ sha3 = { workspace = true, optional = true }
 [dev-dependencies]
 serde_json = "*"
 riscv_transpiler = { workspace = true }
+object = { workspace = true }
 
 [features]
 verifiers = []

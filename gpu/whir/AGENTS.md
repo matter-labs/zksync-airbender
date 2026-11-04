@@ -82,7 +82,7 @@ rather than letting the duplicate drift by convention.
 Base fold0 skips the base sumcheck and commits the batched polynomial itself as
 intermediate oracle0. Its base queries use one BF value per physical column and
 the full base LDE domain. Admission validates the requested message, LDE, cap
-and folding dimensions rather than a qualified message/ladder tuple. Cap
+and folding dimensions rather than a fixed message/ladder tuple. Cap
 absorption precedes OOD, and fresh delinearization follows the query draw.
 Schedule admission permits the CPU batching-PoW override independently of that
 geometry.

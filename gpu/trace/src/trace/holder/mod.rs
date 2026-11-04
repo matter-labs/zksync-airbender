@@ -65,7 +65,8 @@ pub enum TreesCacheMode {
     CacheFull,
 }
 
-/// BF opening dispatch qualification before a packed holder or workspace is allocated.
+/// Checks that a BF opening of `geometry` can be dispatched, before a packed holder or workspace
+/// is allocated.
 pub fn validate_baby_bear_base_opening(
     geometry: &BaseCommitmentGeometry,
     policy: OpeningStrategy,
@@ -96,7 +97,7 @@ pub fn validate_baby_bear_base_opening(
     }
 }
 
-/// `PerCoset` and `InPlace` require `log_domain_size` in `13..=24`.
+/// `PerCoset` and `InPlace` require `log_domain_size` in `20..=24`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum OpeningStrategy {
     #[default]
@@ -105,7 +106,7 @@ pub enum OpeningStrategy {
     InPlace,
 }
 
-/// `PerCoset` and `InPlace` require `log_domain_size` in `13..=24`.
+/// `PerCoset` and `InPlace` require `log_domain_size` in `20..=24`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WitnessCommitmentStrategy {
     #[default]

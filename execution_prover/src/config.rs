@@ -1,48 +1,7 @@
 use crate::upstream::{ProverConfig, SecurityLevel};
 use execution_prover_model::circuit_type::CircuitType;
 pub use prover::definitions::{ProvingSelection, SoundnessMode};
-use prover::gkr::prover_config::example_configs::ConfigSelectionError;
 use riscv_transpiler::jit::JitRunnerRam;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SelectionError {
-    UnsupportedBackendSoundnessMode {
-        backend: &'static str,
-        selection: ProvingSelection,
-    },
-    ConfigSelection(ConfigSelectionError),
-    PreparedSelectionMismatch {
-        prepared: ProvingSelection,
-        requested: ProvingSelection,
-    },
-    PreparedCircuitMismatch {
-        prepared: CircuitType,
-        requested: CircuitType,
-    },
-}
-
-impl std::fmt::Display for SelectionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::UnsupportedBackendSoundnessMode { backend, selection } => write!(f,
-                "UnsupportedBackendSoundnessMode: {backend} cannot prove {:?}: missing internal folding-PoW and OOD-PoW",
-                selection.soundness_mode),
-            Self::ConfigSelection(error) => write!(f, "ConfigSelectionFailed: {error}"),
-            Self::PreparedSelectionMismatch { prepared, requested } => write!(f,
-                "prepared selection {prepared:?} differs from requested selection {requested:?}"),
-            Self::PreparedCircuitMismatch { prepared, requested } => write!(f,
-                "prepared circuit {prepared:?} differs from requested circuit {requested:?}"),
-        }
-    }
-}
-
-impl std::error::Error for SelectionError {}
-
-impl From<ConfigSelectionError> for SelectionError {
-    fn from(error: ConfigSelectionError) -> Self {
-        Self::ConfigSelection(error)
-    }
-}
 
 /// Commitments and proofs must use the same geometry on both backends: the
 /// circuit definition's own config (`CircuitType::prover_config`).

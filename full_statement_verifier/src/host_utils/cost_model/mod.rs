@@ -65,7 +65,7 @@ impl core::fmt::Display for EstimateError {
 
 /// Estimated cycles for verifying `proof` with the guest of `descriptor`, from that
 /// guest's own table. Valid canonical proofs only (the verifier returns early on
-/// content checks). Held to the frozen acceptance budget on every calibration
+/// content checks). Held to the calibrated acceptance budget on every calibration
 /// fixture. A descriptor without a table is an error.
 pub fn estimate_verifier_cycles_for(
     proof: &ProgramProof,
@@ -74,16 +74,6 @@ pub fn estimate_verifier_cycles_for(
     // Family dims partition the cycle count (census_family_cycles_sum_to_total).
     let totals = census::census_totals(proof, descriptor)?;
     Ok(totals[..census::NUM_FAMILY_DIMS].iter().sum())
-}
-
-/// [`estimate_verifier_cycles_for`] the [`census::pessimistic_descriptor`] of `program`
-/// built with `mode`.
-pub fn estimate_verifier_cycles(
-    proof: &ProgramProof,
-    program: FsvProgram,
-    mode: BlakeMode,
-) -> Result<u64, EstimateError> {
-    estimate_verifier_cycles_for(proof, &census::pessimistic_descriptor(program, mode))
 }
 
 #[must_use]

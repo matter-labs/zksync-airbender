@@ -4,21 +4,23 @@
 //! mode) to the canonical upstream `ProverConfig`, and owns the
 //! GPU-supported-security-level contract. The
 //! canonical configs include virtual packing, with independent physical
-//! packing in the Blake compression default. The proof backend qualifies
-//! separate physical-only configurations and the qualified merged Blake shape
-//! through shared geometry admission.
-//! Workers retain one resolved CPU config for setup and both request phases;
-//! virtual defaults remain closed at that execution boundary. The qualified
-//! physical merged Blake shape uses the same immutable config binding.
+//! packing in the Blake compression default. The proof backend admits
+//! separate physical-only configurations and the merged Blake shape through
+//! shared geometry admission.
+//! Workers retain one resolved CPU config and its commitment geometry for
+//! setup and both request phases; the canonical virtual defaults and the
+//! physical merged Blake shape are admitted through that immutable binding.
 //! Lives in
 //! the prover layer because `ProverConfig` is a `prove()` input (see
 //! `proof/mod.rs`): `execution` calls down into this and threads the result
-//! into `prove()`. The low `witness::circuit_type` enum stays a pure
-//! domain type with no `ProverConfig`/`SecurityLevel` coupling.
+//! into `prove()`. `witness::circuit_type::CircuitType` is the shared
+//! `execution_prover_model` type: it resolves its own artifact-free
+//! `ProverConfig` at a security level and the explicit-mode config from a
+//! compiled circuit, and this module delegates to those resolvers.
 
 use crate::upstream::{
-    pow_bits, BaseCommitmentGeometry, ConfigSelectionError, GKRCircuitArtifact, ProverConfig,
-    ProvingSelection, SecurityLevel,
+    pow_bits, BaseCommitmentGeometry, GKRCircuitArtifact, ProverConfig, ProvingSelection,
+    SecurityLevel,
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_trace::witness::circuit_type::CircuitType;
@@ -26,26 +28,9 @@ use gpu_trace::witness::circuit_type::CircuitType;
 /// Security levels the GPU prover supports.
 pub const GPU_SUPPORTED_SECURITY_LEVELS: [SecurityLevel; 1] = [SecurityLevel::Sec100];
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct UnsupportedGpuSecurityLevel {
-    pub requested: SecurityLevel,
-}
-
-impl std::fmt::Display for UnsupportedGpuSecurityLevel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "GPU prover does not support security level {:?}; supported levels: {:?}",
-            self.requested, GPU_SUPPORTED_SECURITY_LEVELS,
-        )
-    }
-}
-
-impl std::error::Error for UnsupportedGpuSecurityLevel {}
-
 /// Canonical `ProverConfig` for `circuit_type` under `selection`, resolved from
 /// the compiled circuit's committed columns. Delegates to the CPU resolver
-/// (`CircuitType::try_prover_config_in_mode`) so GPU and CPU agree on the WHIR
+/// (`CircuitType::prover_config_in_mode`) so GPU and CPU agree on the WHIR
 /// schedule in every soundness mode (the per-circuit lookup-challenge and
 /// WHIR-batching PoWs are ground on device — see [`lookup_challenges_pow_bits`] /
 /// [`batched_proximity_check_pow_bits_for_geometry`] — and so are the
@@ -54,29 +39,8 @@ pub fn prover_config_for_selection(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     selection: ProvingSelection,
-) -> Result<ProverConfig, ConfigSelectionError> {
-    circuit_type.try_prover_config_in_mode(compiled_circuit, selection)
-}
-
-/// Pessimistic-conjecture `ProverConfig` for `circuit_type` at
-/// `security_level`: the circuit definition's own config, equal to
-/// [`prover_config_for_selection`] in that mode.
-///
-/// The `Result` is retained for API stability (`SecurityLevel` currently has no
-/// unsupported variant, so both arms are `Ok`).
-pub fn prover_config(
-    circuit_type: CircuitType,
-    security_level: SecurityLevel,
-) -> Result<ProverConfig, UnsupportedGpuSecurityLevel> {
-    Ok(config_for_supported_level(circuit_type, security_level))
-}
-
-fn config_for_supported_level(
-    circuit_type: CircuitType,
-    security_level: SecurityLevel,
 ) -> ProverConfig {
-    // the circuit definition's own config (`CircuitType::prover_config`)
-    circuit_type.prover_config(security_level)
+    circuit_type.prover_config_in_mode(compiled_circuit, selection)
 }
 
 /// PoW bit count for the lookup challenges (`lookup_alpha`, `lookup_additive`),

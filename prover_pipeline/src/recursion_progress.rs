@@ -4,42 +4,33 @@ use verifier_common::fsv_binaries::BlakeMode;
 
 /// Proof counts in the well-founded order used after the first final-program transition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct FinalProofShape {
+pub(super) struct FinalProofShape {
     pub unified_chunks: usize,
     pub delegation_proofs: usize,
 }
 
-/// Typed proving/continuation failure. Compatibility entry points return its Display text.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PipelineError {
-    Operation(String),
-    NoProgress {
-        final_blake: BlakeMode,
-        round: usize,
-        before: FinalProofShape,
-        after: FinalProofShape,
-        executed_cycles: u64,
-        unified_chunk_capacity: u64,
-    },
-}
-
-impl std::fmt::Display for PipelineError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Operation(message) => f.write_str(message),
-            Self::NoProgress { final_blake, round, before, after, executed_cycles, unified_chunk_capacity } => write!(f,
-                "NoProgress: final Blake {} round {round} did not reduce (unified chunks, delegation proofs): ({}, {}) -> ({}, {}); terminal target is (1, {}); produced proof executed {executed_cycles} cycles with unified chunk capacity {unified_chunk_capacity}. One bridge-to-final transition is allowed; subsequent rounds require strict lexicographic progress. No verifier fallback was attempted",
-                final_blake.tag(), before.unified_chunks, before.delegation_proofs,
-                after.unified_chunks, after.delegation_proofs,
-                usize::from(*final_blake != BlakeMode::BlakeSpecialOpcodes)),
-        }
-    }
-}
-impl std::error::Error for PipelineError {}
-impl From<String> for PipelineError {
-    fn from(message: String) -> Self {
-        Self::Operation(message)
-    }
+/// The NoProgress diagnostic of a final round that did not reduce the proof shape.
+fn final_no_progress(
+    final_blake: BlakeMode,
+    round: usize,
+    before: FinalProofShape,
+    after: FinalProofShape,
+    executed_cycles: u64,
+    unified_chunk_capacity: u64,
+) -> String {
+    format!(
+        "NoProgress: final Blake {} round {round} did not reduce (unified chunks, delegation \
+         proofs): ({}, {}) -> ({}, {}); terminal target is (1, {}); produced proof executed \
+         {executed_cycles} cycles with unified chunk capacity {unified_chunk_capacity}. One \
+         bridge-to-final transition is allowed; subsequent rounds require strict lexicographic \
+         progress. No verifier fallback was attempted",
+        final_blake.tag(),
+        before.unified_chunks,
+        before.delegation_proofs,
+        after.unified_chunks,
+        after.delegation_proofs,
+        usize::from(final_blake != BlakeMode::BlakeSpecialOpcodes)
+    )
 }
 
 pub(super) struct FinalRoundSummary {
@@ -52,9 +43,9 @@ pub(super) struct FinalRoundSummary {
 pub(super) fn drive_final_rounds<S>(
     mut state: S,
     final_blake: BlakeMode,
-    mut prove: impl FnMut(S, usize) -> Result<S, PipelineError>,
+    mut prove: impl FnMut(S, usize) -> Result<S, String>,
     summarize: impl Fn(&S) -> FinalRoundSummary,
-) -> Result<S, PipelineError> {
+) -> Result<S, String> {
     let mut round = 0;
     let mut previous = None;
     loop {
@@ -73,16 +64,18 @@ pub(super) fn drive_final_rounds<S>(
         // The bridge proves a different program. Its first final-program transition
         // may increase either count; only repeated final-program rounds must decrease.
         if let Some(before) = previous {
-            if summary.shape >= before {
-                return Err(PipelineError::NoProgress {
+            assert!(
+                summary.shape < before,
+                "{}",
+                final_no_progress(
                     final_blake,
                     round,
                     before,
-                    after: summary.shape,
-                    executed_cycles: summary.executed_cycles,
-                    unified_chunk_capacity: summary.unified_chunk_capacity,
-                });
-            }
+                    summary.shape,
+                    summary.executed_cycles,
+                    summary.unified_chunk_capacity,
+                )
+            );
         }
         previous = Some(summary.shape);
     }
@@ -95,32 +88,41 @@ pub(super) fn check_unrolled_progress(
     previous_cycles: Option<u64>,
     cycles: u64,
     switch_cycles: u64,
-) -> Result<(), PipelineError> {
-    match previous_cycles {
-        Some(previous) if cycles >= previous => Err(PipelineError::Operation(format!(
+) {
+    if let Some(previous) = previous_cycles {
+        assert!(
+            cycles < previous,
             "NoProgress: unrolled recursion did not lower the estimated verifier cost \
              ({previous} -> {cycles} cycles) while at or above the switch threshold \
              {switch_cycles}"
-        ))),
-        _ => Ok(()),
+        );
     }
 }
 
+/// The end of a session operation run under `catch_unwind`. An error or a panic shuts down the
+/// backend before it leaves the session: ExecutionBackend's Drop contract drains accepted work
+/// and joins workers before setup and allocation owners are destroyed. A panic then resumes.
 pub(super) fn finish_operation<B, T>(
     backend: &mut Option<B>,
-    result: Result<T, PipelineError>,
-) -> Result<T, PipelineError> {
-    if result.is_err() {
-        // ExecutionBackend's Drop contract drains accepted work and joins workers
-        // before setup/allocation owners are destroyed. Do this before returning.
-        drop(backend.take());
+    result: std::thread::Result<Result<T, String>>,
+) -> Result<T, String> {
+    match result {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => {
+            drop(backend.take());
+            Err(error)
+        }
+        Err(panic) => {
+            drop(backend.take());
+            std::panic::resume_unwind(panic)
+        }
     }
-    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{mpsc, Arc, Weak};
     use std::thread::JoinHandle;
@@ -166,6 +168,24 @@ mod tests {
         }
     }
 
+    /// The message `operation` panics with.
+    fn panic_message<T>(operation: impl FnOnce() -> T) -> String {
+        let payload = catch_unwind(AssertUnwindSafe(operation))
+            .err()
+            .expect("the operation must panic");
+        match payload.downcast::<String>() {
+            Ok(message) => *message,
+            Err(payload) => (*payload.downcast::<&str>().unwrap()).to_owned(),
+        }
+    }
+
+    fn shape(unified_chunks: usize, delegation_proofs: usize) -> FinalProofShape {
+        FinalProofShape {
+            unified_chunks,
+            delegation_proofs,
+        }
+    }
+
     fn summary(shape: &(usize, usize)) -> FinalRoundSummary {
         FinalRoundSummary {
             shape: FinalProofShape {
@@ -181,71 +201,101 @@ mod tests {
     #[test]
     fn special_opcodes_final_stall_stops_after_the_transition() {
         let mut calls = 0;
-        let error = drive_final_rounds(
-            (1, 1),
-            BlakeMode::BlakeSpecialOpcodes,
-            |_, _| {
-                calls += 1;
-                // Bound the pre-fix reproduction so the regression itself cannot loop forever.
-                if calls > 2 {
-                    return Err(PipelineError::Operation(
-                        "unexpected third final round".into(),
-                    ));
-                }
-                Ok((2, 0))
-            },
-            summary,
-        )
-        .unwrap_err();
-        assert!(matches!(
-            error,
-            PipelineError::NoProgress {
-                round: 2,
-                final_blake: BlakeMode::BlakeSpecialOpcodes,
-                before: FinalProofShape {
-                    unified_chunks: 2,
-                    delegation_proofs: 0
+        let message = panic_message(|| {
+            drive_final_rounds(
+                (1, 1),
+                BlakeMode::BlakeSpecialOpcodes,
+                |_, _| {
+                    calls += 1;
+                    // Bound the pre-fix reproduction so the regression itself cannot loop forever.
+                    if calls > 2 {
+                        return Err("unexpected third final round".to_owned());
+                    }
+                    Ok((2, 0))
                 },
-                after: FinalProofShape {
-                    unified_chunks: 2,
-                    delegation_proofs: 0
-                },
-                executed_cycles: 10_696_157,
-                unified_chunk_capacity: 8_388_608
-            }
-        ));
+                summary,
+            )
+        });
         assert_eq!(calls, 2);
-        let text = error.to_string();
-        assert!(text.contains("special_opcodes_extension"));
-        assert!(text.contains("terminal target is (1, 0)"));
-        assert!(text.contains("10696157"));
+        assert_eq!(
+            message,
+            final_no_progress(
+                BlakeMode::BlakeSpecialOpcodes,
+                2,
+                shape(2, 0),
+                shape(2, 0),
+                10_696_157,
+                8_388_608
+            )
+        );
+        assert!(message.starts_with("NoProgress: final Blake "));
+        assert!(message.contains("special_opcodes_extension"));
+        assert!(message.contains("terminal target is (1, 0)"));
+        assert!(message.contains("10696157"));
     }
 
     #[test]
     fn a_failed_operation_joins_its_producer_and_releases_allocation() {
         let (producer, joined, allocation) = Producer::new();
         let mut backend = Some(producer);
-        let mut calls = 0;
-        let result = drive_final_rounds(
-            (1, 1),
-            BlakeMode::BlakeSpecialOpcodes,
-            |_, _| {
-                backend.as_mut().unwrap().prove();
-                calls += 1;
-                if calls > 2 {
-                    return Err(PipelineError::Operation(
-                        "unexpected third final round".into(),
-                    ));
-                }
-                Ok((2, 0))
-            },
-            summary,
-        );
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            drive_final_rounds(
+                (1, 1),
+                BlakeMode::BlakeSpecialOpcodes,
+                |_, round| {
+                    backend.as_mut().unwrap().prove();
+                    if round == 1 {
+                        return Err("the backend failed".to_owned());
+                    }
+                    Ok((2, 0))
+                },
+                summary,
+            )
+        }));
         let result = finish_operation(&mut backend, result);
-        assert!(matches!(result, Err(PipelineError::NoProgress { .. })));
+        assert_eq!(result, Err("the backend failed".to_owned()));
         assert!(
             backend.is_none(),
             "failed operation must release the owned backend before returning"
+        );
+        assert!(
+            joined.load(Ordering::SeqCst),
+            "producer worker must be joined"
+        );
+        assert!(
+            allocation.upgrade().is_none(),
+            "producer allocation must be released"
+        );
+    }
+
+    /// The caller catches the NoProgress panic and keeps its session: by then the backend is
+    /// already dropped, its worker joined and its allocation released.
+    #[test]
+    fn a_no_progress_panic_joins_its_producer_before_reaching_the_caller() {
+        let (producer, joined, allocation) = Producer::new();
+        let mut backend = Some(producer);
+        let mut calls = 0;
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            drive_final_rounds(
+                (1, 1),
+                BlakeMode::BlakeSpecialOpcodes,
+                |_, _| {
+                    backend.as_mut().unwrap().prove();
+                    calls += 1;
+                    if calls > 2 {
+                        return Err("unexpected third final round".to_owned());
+                    }
+                    Ok((2, 0))
+                },
+                summary,
+            )
+        }));
+        assert!(!joined.load(Ordering::SeqCst));
+        let message = panic_message(|| finish_operation(&mut backend, result));
+        assert!(message.starts_with("NoProgress: final Blake "), "{message}");
+        assert!(
+            backend.is_none(),
+            "the panic must release the owned backend before it reaches the caller"
         );
         assert!(
             joined.load(Ordering::SeqCst),
@@ -261,7 +311,7 @@ mod tests {
     fn a_successful_operation_keeps_the_session_available() {
         let (producer, joined, allocation) = Producer::new();
         let mut backend = Some(producer);
-        finish_operation(&mut backend, Ok(())).unwrap();
+        finish_operation(&mut backend, Ok(Ok(()))).unwrap();
         assert!(backend.is_some());
         assert!(!joined.load(Ordering::SeqCst));
         assert!(allocation.upgrade().is_some());
@@ -269,6 +319,7 @@ mod tests {
         assert!(joined.load(Ordering::SeqCst));
         assert!(allocation.upgrade().is_none());
     }
+
     #[test]
     fn every_strict_reduction_is_accepted_after_the_transition() {
         let mut sequence = [(3, 0), (2, 5), (2, 4), (1, 0)].into_iter();
@@ -286,31 +337,29 @@ mod tests {
     #[test]
     fn equal_unified_count_with_more_delegations_is_refused() {
         let mut sequence = [(2, 0), (2, 1)].into_iter();
-        let error = drive_final_rounds(
-            (1, 1),
-            BlakeMode::BlakeSpecialOpcodes,
-            |_, _| {
-                Ok(sequence
-                    .next()
-                    .expect("must stop at the first non-reduction"))
-            },
-            summary,
-        )
-        .unwrap_err();
-        assert!(matches!(
-            error,
-            PipelineError::NoProgress {
-                before: FinalProofShape {
-                    unified_chunks: 2,
-                    delegation_proofs: 0
+        let message = panic_message(|| {
+            drive_final_rounds(
+                (1, 1),
+                BlakeMode::BlakeSpecialOpcodes,
+                |_, _| {
+                    Ok(sequence
+                        .next()
+                        .expect("must stop at the first non-reduction"))
                 },
-                after: FinalProofShape {
-                    unified_chunks: 2,
-                    delegation_proofs: 1
-                },
-                ..
-            }
-        ));
+                summary,
+            )
+        });
+        assert_eq!(
+            message,
+            final_no_progress(
+                BlakeMode::BlakeSpecialOpcodes,
+                2,
+                shape(2, 0),
+                shape(2, 1),
+                10_696_157,
+                8_388_608
+            )
+        );
     }
 
     #[test]
@@ -374,24 +423,9 @@ mod tests {
                     shape == target
                 );
             }
-            let error = PipelineError::NoProgress {
-                final_blake: mode,
-                round: 2,
-                before: FinalProofShape {
-                    unified_chunks: 2,
-                    delegation_proofs: 2,
-                },
-                after: FinalProofShape {
-                    unified_chunks: 2,
-                    delegation_proofs: 2,
-                },
-                executed_cycles: 12_345_678,
-                unified_chunk_capacity: 1 << 23,
-            };
+            let message = final_no_progress(mode, 2, shape(2, 2), shape(2, 2), 12_345_678, 1 << 23);
             assert!(
-                error
-                    .to_string()
-                    .contains(&format!("terminal target is ({}, {})", target.0, target.1)),
+                message.contains(&format!("terminal target is ({}, {})", target.0, target.1)),
                 "the diagnostic target must agree with the existing predicate"
             );
             let mut calls = 0;
@@ -421,15 +455,17 @@ mod tests {
 
     #[test]
     fn unrolled_recursion_must_lower_the_estimate() {
-        assert!(check_unrolled_progress(None, 70_000_000, 52_000_000).is_ok());
-        assert!(check_unrolled_progress(Some(70_000_000), 60_000_000, 52_000_000).is_ok());
-        let error = check_unrolled_progress(Some(20_000_000), 20_000_000, 16_777_216)
-            .unwrap_err()
-            .to_string();
-        assert!(
-            error.starts_with("NoProgress: unrolled recursion"),
-            "{error}"
-        );
-        assert!(check_unrolled_progress(Some(20_000_000), 21_000_000, 16_777_216).is_err());
+        check_unrolled_progress(None, 70_000_000, 52_000_000);
+        check_unrolled_progress(Some(70_000_000), 60_000_000, 52_000_000);
+        for cycles in [20_000_000, 21_000_000] {
+            assert_eq!(
+                panic_message(|| check_unrolled_progress(Some(20_000_000), cycles, 16_777_216)),
+                format!(
+                    "NoProgress: unrolled recursion did not lower the estimated verifier cost \
+                     (20000000 -> {cycles} cycles) while at or above the switch threshold \
+                     16777216"
+                )
+            );
+        }
     }
 }

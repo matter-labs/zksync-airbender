@@ -370,16 +370,7 @@ impl EthproofsSoundcalcEntry {
             "- this schedule: {}",
             schedule_summary(&self.schedule(input.physical_packing_log2))
         );
-        let pessimistic = match try_whir_schedule(pessimistic_mode, level, input) {
-            Ok(pessimistic) => pessimistic,
-            Err(error) => {
-                let _ = writeln!(
-                    out,
-                    "- pessimistic conjecture: none for this shape ({error})"
-                );
-                return out;
-            }
-        };
+        let pessimistic = whir_schedule(pessimistic_mode, level, input);
         let _ = writeln!(
             out,
             "- pessimistic conjecture (`prover_config_{}_{}.json`, same shape, security level and packing): {}\n",
@@ -599,17 +590,11 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
     },
 ];
 
-/// The entry for `input` at `level`; panics when no schedule was certified
-/// for that shape, or when the circuit commits more polynomials than the
-/// entry's ceiling.
+/// The entry for `input` at `level`. Panics when no schedule was certified
+/// for that shape, when the committed-polynomial count is missing, or when
+/// the circuit commits more polynomials than the entry's ceiling.
 pub(super) fn entry(level: SecurityLevel, input: &WhirInput) -> &'static EthproofsSoundcalcEntry {
-    try_entry(level, input).unwrap_or_else(|error| panic!("{error}"))
-}
-
-pub(super) fn try_entry(
-    level: SecurityLevel,
-    input: &WhirInput,
-) -> Result<&'static EthproofsSoundcalcEntry, ConfigSelectionError> {
+    let mode = SoundnessMode::EthproofsSoundnessCalc;
     let entry = ENTRIES
         .iter()
         .find(|e| {
@@ -617,21 +602,22 @@ pub(super) fn try_entry(
                 && e.message_size_log2 == input.message_size_log2
                 && e.virtual_packing == input.virtual_packing
         })
-        .ok_or(ConfigSelectionError::MissingSchedule {
-            mode: SoundnessMode::EthproofsSoundnessCalc,
-            level,
-            input: *input,
-        })?;
-    let actual = input
-        .num_committed_polys
-        .ok_or(ConfigSelectionError::MissingColumnCount)?;
-    if actual > entry.max_committed_polys {
-        return Err(ConfigSelectionError::CommittedPolynomialCeiling {
-            actual,
-            ceiling: entry.max_committed_polys,
+        .unwrap_or_else(|| {
+            panic!("MissingSchedule: no {mode:?} WHIR schedule for {level:?}, input {input:?}")
         });
-    }
-    Ok(entry)
+    let actual = input.num_committed_polys.unwrap_or_else(|| {
+        panic!(
+            "MissingColumnCount: the EthproofsSoundnessCalc schedule is certified for a \
+             committed-polynomial ceiling: provide the compiled circuit's column count"
+        )
+    });
+    assert!(
+        actual <= entry.max_committed_polys,
+        "CommittedPolynomialCeiling: {actual} committed polynomials exceed the {} ceiling \
+         certified for EthproofsSoundnessCalc",
+        entry.max_committed_polys
+    );
+    entry
 }
 
 #[cfg(test)]

@@ -209,7 +209,7 @@ fn every_fixture_verifies_natively() {
             &proof,
             verifier_common::BLAKE_MODE,
         );
-        full_statement_verifier::host_utils::try_native_verify_unrolled_in_mode(
+        full_statement_verifier::host_utils::native_verify_unrolled_in_mode(
             stream,
             *program == FsvProgram::UnrolledBaseLayer,
             descriptor.soundness_mode,
@@ -231,7 +231,7 @@ fn acceptance_budget(
 }
 
 /// One row per fixture: measured and estimated cycles, error, budget and both switch
-/// decisions. Fails on an error above the frozen budget, or on a switch decision that differs
+/// decisions. Fails on an error above the calibrated budget, or on a switch decision that differs
 /// from the measured one while the measurement is farther than the budget from the threshold.
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]

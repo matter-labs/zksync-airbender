@@ -212,8 +212,8 @@ gkr_recompute_test!(
     super::proof_matrix::prepare_inits_and_teardowns_matrix_proof_fixture
 );
 
-/// The existing production table is the policy authority. Regeneration of that
-/// table must requalify these bytes; the fixture arena alone is not a fit claim.
+/// The existing production table is the policy authority. Regenerating that table
+/// must recheck these bytes; the fixture arena alone does not establish a fit.
 fn check_production_presets(fixture: &BasicUnrolledProofFixture) {
     let policies = [21usize << 30, 30usize << 30].map(|arena| {
         let policy = presets::policy(fixture.base.circuit_type, arena);
@@ -391,12 +391,9 @@ fn merged_blake20_pack4_memory_policies_parity_and_reuse() {
     check_gkr_recompute(&fixture, GkrMemoryPolicy::candidates());
 }
 
-// Geometry-audit cases use the existing CPU oracle, GPU cap producer and
-// two-queued-proof policy driver. They stay ignored until the combined gate.
-fn geometry_guard_g_check_policies(
-    mut fixture: BasicUnrolledProofFixture,
-    first: ProofMemoryPolicy,
-) {
+// Policy-pair cases: one fresh CPU proof against two queued GPU proofs under different opening
+// policies, through the existing CPU oracle, GPU cap producer and policy driver.
+fn check_policy_pair(mut fixture: BasicUnrolledProofFixture, first: ProofMemoryPolicy) {
     let geometry = BaseCommitmentGeometry::from_config(
         &fixture.base.prover_config,
         BaseColumns::of(&fixture.base.compiled_circuit),
@@ -421,7 +418,7 @@ fn geometry_guard_g_check_policies(
     }
     assert!(first.witness.is_valid() && second.witness.is_valid());
     eprintln!(
-        "geometry guard: config={:?} setup_memory_peak={} arena_bytes={}",
+        "policy pair: config={:?} setup_memory_peak={} arena_bytes={}",
         fixture.base.prover_config,
         fixture.base.context.get_used_mem_peak(),
         fixture.base.context.get_mem_size()
@@ -430,102 +427,102 @@ fn geometry_guard_g_check_policies(
 }
 
 #[test]
-#[ignore = "geometry audit F1: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f01_blake_physical_k1() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_physical_k1() {
     let config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(20, 1, SecurityLevel::Sec100);
     config.validate_for_whir_message_size(config.whir_message_size_log2());
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F2: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f02_blake_physical_k3() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_physical_k3() {
     let config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(20, 3, SecurityLevel::Sec100);
     config.validate_for_whir_message_size(config.whir_message_size_log2());
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F3: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f03_blake_virtual_k0() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_virtual_k0() {
     let config = prover::gkr::prover_config::example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(20, 0, SecurityLevel::Sec100);
     config.validate_for_whir_message_size(config.whir_message_size_log2());
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F4: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f04_blake_virtual_k1() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_virtual_k1() {
     let config = prover::gkr::prover_config::example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(20, 1, SecurityLevel::Sec100);
     // Physical column packing and a virtual base round are independent:
-    // this is the full-proof physical-k1/f0 case as well as virtual F4.
+    // this is also the full-proof physical-k1/f0 case.
     assert_eq!(config.pack_log2(), 1);
     assert_eq!(config.base_round().fold_log2, 0);
     config.validate_for_whir_message_size(config.whir_message_size_log2());
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F5: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f05_blake_virtual_k3() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_virtual_k3() {
     let config = prover::gkr::prover_config::example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(20, 3, SecurityLevel::Sec100);
     config.validate_for_whir_message_size(config.whir_message_size_log2());
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F6: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f06_blake_virtual_k4() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_virtual_k4() {
     let config = prover::gkr::prover_config::example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(20, 4, SecurityLevel::Sec100);
     config.validate_for_whir_message_size(config.whir_message_size_log2());
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F7: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f07_blake_merged_virtual_k2() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_merged_virtual_k2() {
     let mut config = prover::gkr::prover_config::example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(20, 2, SecurityLevel::Sec100);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
     config.validate_for_whir_message_size(config.whir_message_size_log2());
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F8: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f08_blake_merged_physical_k2() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_merged_physical_k2() {
     let mut config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(20, 2, SecurityLevel::Sec100);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
     config.validate_for_whir_message_size(config.whir_message_size_log2());
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F9: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f09_bigint_merged_virtual_k0() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_bigint_merged_virtual_k0() {
     let mut config = prover::gkr::prover_config::example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(22, 0, SecurityLevel::Sec100);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
     config.validate_for_whir_message_size(config.whir_message_size_log2());
@@ -546,12 +543,12 @@ fn geometry_guard_g_f09_bigint_merged_virtual_k0() {
     );
     drop(buffer);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F10: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f10_bigint_merged_physical_k1() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_bigint_merged_physical_k1() {
     let mut config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(22, 1, SecurityLevel::Sec100);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
     config.validate_for_whir_message_size(config.whir_message_size_log2());
@@ -572,7 +569,7 @@ fn geometry_guard_g_f10_bigint_merged_physical_k1() {
     );
     drop(buffer);
     let first = fixture.base.memory_policy();
-    // The approved F10 exception keeps the preset GKR level but avoids
+    // This case keeps the preset GKR level but avoids
     // materializing the combined memory/witness cosets for either proof.
     let first = ProofMemoryPolicy {
         memory: OpeningStrategy::InPlace,
@@ -583,29 +580,29 @@ fn geometry_guard_g_f10_bigint_merged_physical_k1() {
         },
         ..first
     };
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F11: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f11_blake_virtual_lde4() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_virtual_lde4() {
     let mut config = prover::gkr::prover_config::example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(20, 2, SecurityLevel::Sec100);
     config.whir_schedule.base_round.lde_factor_log2 = 2;
     config.validate_for_whir_message_size(config.whir_message_size_log2());
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
-// F11 companions: per-coset memory caps are in natural coset order, which only
+// LDE-4 and LDE-8 cases: per-coset memory caps are in natural coset order, which only
 // LDE >= 4 distinguishes from the bit-reversed tree order.
 // The all-cosets preset policy does not fit LDE8 in the 30 GiB fixture arena,
 // so this companion checks the memory caps only; virtual_whir_k2_lde8_cpu_parity
 // covers the LDE8 proof.
 #[test]
-#[ignore = "geometry audit F11 companion: fresh CPU proof and GPU memory caps"]
-fn geometry_guard_g_f11_blake_virtual_lde8_memory_caps() {
+#[ignore = "fresh CPU proof and GPU memory caps"]
+fn blake_virtual_lde8_memory_caps() {
     let mut config = prover::gkr::prover_config::example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(20, 2, SecurityLevel::Sec100);
     config.whir_schedule.base_round.lde_factor_log2 = 3;
     config.validate_for_whir_message_size(config.whir_message_size_log2());
@@ -620,20 +617,20 @@ fn geometry_guard_g_f11_blake_virtual_lde8_memory_caps() {
 }
 
 #[test]
-#[ignore = "geometry audit F11 companion: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f11_blake_physical_k1_lde4() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_physical_k1_lde4() {
     let mut config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(20, 1, SecurityLevel::Sec100);
     config.whir_schedule.base_round.lde_factor_log2 = 2;
     config.validate_for_whir_message_size(config.whir_message_size_log2());
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F11 companion: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f11_blake_merged_virtual_k2_lde4() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_merged_virtual_k2_lde4() {
     let mut config = prover::gkr::prover_config::example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(20, 2, SecurityLevel::Sec100);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
     config.whir_schedule.base_round.lde_factor_log2 = 2;
@@ -641,12 +638,12 @@ fn geometry_guard_g_f11_blake_merged_virtual_k2_lde4() {
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F11 companion: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f11_blake_merged_physical_k2_lde4() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_merged_physical_k2_lde4() {
     let mut config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(20, 2, SecurityLevel::Sec100);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
     config.whir_schedule.base_round.lde_factor_log2 = 2;
@@ -654,12 +651,12 @@ fn geometry_guard_g_f11_blake_merged_physical_k2_lde4() {
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F12: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f12_blake_virtual_cap32() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_virtual_cap32() {
     let mut config = prover::gkr::prover_config::example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(20, 2, SecurityLevel::Sec100);
     config.cap_size = 32;
     config.whir_schedule.cap_size = 32;
@@ -667,12 +664,12 @@ fn geometry_guard_g_f12_blake_virtual_cap32() {
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
-#[ignore = "geometry audit F13: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_f13_blake_physical_naive() {
+#[ignore = "fresh CPU proof and two queued GPU proofs"]
+fn policy_pair_blake_physical_naive() {
     let mut config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(20, 2, SecurityLevel::Sec100);
     config.same_size_sumcheck_schedule.clear();
     assert_eq!(
@@ -684,12 +681,12 @@ fn geometry_guard_g_f13_blake_physical_naive() {
     let fixture =
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }
 
 #[test]
 #[ignore = "direct-circuit short-DR wiring: fresh CPU proof and two queued GPU proofs"]
-fn geometry_guard_g_short_dr_six_rounds_cpu_parity() {
+fn policy_pair_short_dr_six_rounds_cpu_parity() {
     let mut config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
         20, 2, SecurityLevel::Sec100,
     );
@@ -699,5 +696,5 @@ fn geometry_guard_g_short_dr_six_rounds_cpu_parity() {
         super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     assert_eq!(fixture.base.final_trace_size_log_2, 14);
     let first = fixture.base.memory_policy();
-    geometry_guard_g_check_policies(fixture, first);
+    check_policy_pair(fixture, first);
 }

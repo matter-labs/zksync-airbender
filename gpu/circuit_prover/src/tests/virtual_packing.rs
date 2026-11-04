@@ -510,7 +510,7 @@ fn bounded_virtual_config() -> ProverConfig {
 }
 
 #[test]
-fn cpu_g4_nondefault_virtual_slab_schema() {
+fn cpu_nondefault_virtual_slab_schema() {
     let config = bounded_virtual_config();
     assert_eq!(config.whir_message_size_log2(), 13);
     config.validate_for_whir_message_size(13);
@@ -552,7 +552,7 @@ fn cpu_g4_nondefault_virtual_slab_schema() {
 
 #[test]
 #[ignore = "bounded nondefault zero-fold ladder with physical packing, LDE4 and cap32"]
-fn geometry_guard_g_virtual_whir_m13_nondefault_cpu_parity() {
+fn virtual_whir_m13_nondefault_cpu_parity() {
     standalone_for_config(&bounded_virtual_config(), 32);
 }
 
@@ -577,7 +577,7 @@ fn standalone_with_base_lde(trace_len_log2: usize, k: usize, lde_factor_log2: us
 }
 
 #[test]
-#[ignore = "zero-fold k2 m22 protocol at base LDE4 and cap16 (the F11 geometry)"]
+#[ignore = "zero-fold k2 m22 protocol at base LDE4 and cap16"]
 fn virtual_whir_k2_lde4_cpu_parity() {
     standalone_with_base_lde(20, 2, 2);
 }

@@ -74,10 +74,10 @@ summary — the contract document is the source of truth.
   `#[cfg(test)]` `test_utils`/`tests`).
 - `src/config.rs`: prover configuration policy — maps a `CircuitType` +
   `SecurityLevel` to the canonical upstream `ProverConfig`, and owns
-  `GPU_SUPPORTED_SECURITY_LEVELS` / `UnsupportedGpuSecurityLevel`. The proof
+  `GPU_SUPPORTED_SECURITY_LEVELS`. The proof
   entry and DR preflight admit separate physical `(trace log, pack log)` shapes
   `(20,4)`, `(20,2)` and `(23,1)`, independent of circuit type, with base fold1.
-  Virtual base fold0 is admitted at `(n,k)=(22,0)` and `(20,2)` with the qualified
+  Virtual base fold0 is admitted at `(n,k)=(22,0)` and `(20,2)` with the
   m22 `[0,6,5,5,5]` schedule. Memory policies are admitted by their representation,
   MAIN omission bounds and actual per-role backend constraints, not by membership
   in a default or preset tuple. Presets select defaults only; regenerated presets
@@ -85,10 +85,10 @@ summary — the contract document is the source of truth.
   witness storage contract and direct-holder/backend limits are documented in
   [`../execution_prover/docs/memory_policies.md`](../execution_prover/docs/memory_policies.md).
   Physical merge is keyed on k independently of the zero-fold protocol. No
-  canonical #584 default is physical-only. `ProofPreflight<F>` binds config,
+  canonical default is physical-only. `ProofPreflight<F>` binds config,
   geometry, artifact identity, policy, PoW and DR resources before transfers.
   Legacy k0/f1 holders and policies retain their existing route. Config-driven
-  memory commitments share the qualified base geometry. Setup warmup produces
+  memory commitments share the admitted base geometry. Setup warmup produces
   geometry-bearing entries for physical or virtual packing, including pure
   virtual k0; geometry-None entries cannot supply either. Execution worker/probe
   requests validate virtual geometry and the same immutable resolved config
@@ -96,7 +96,7 @@ summary — the contract document is the source of truth.
   with the same policy-validity checks. Its explicit merged-cap producer concatenates
   memory then witness and pads only the end. Worker and memory-sweep requests
   dispatch that producer from the same immutable resolved config, after the
-  qualified shape/circuit, cache and cap identity checks. The lower trace
+  shape/circuit, cache and cap identity checks. The lower trace
   memory-only producer remains separate-only. No canonical BF config selects
   merged mode, so this execution branch is structurally open but unreachable
   from current defaults.

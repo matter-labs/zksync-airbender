@@ -94,7 +94,7 @@ mod tests {
                     .unwrap();
                     assert_eq!(
                         on_disk,
-                        geometry.try_prover_config(&compiled, level, mode).unwrap(),
+                        geometry.prover_config(&compiled, level, mode),
                         "{} is stale: regenerate the prover config fixtures",
                         path.display()
                     );
@@ -116,6 +116,30 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A geometry whose declared trace length differs from the compiled circuit's is
+    /// refused before any schedule is resolved.
+    #[test]
+    #[should_panic(
+        expected = "TraceLengthMismatch: declared trace length 8388608 differs from compiled trace length 16777216"
+    )]
+    fn mismatched_trace_length_is_refused() {
+        let circuit = CIRCUITS
+            .iter()
+            .find(|circuit| circuit.name == "add_sub_lui_auipc_mop")
+            .expect("fixture circuit");
+        let geometry = geometry_of(circuit.name);
+        assert_eq!(geometry.trace_len_log2, 24);
+        let mismatched = CircuitGeometry {
+            trace_len_log2: 23,
+            ..geometry
+        };
+        mismatched.prover_config(
+            &circuit.compiled_circuit(),
+            SecurityLevel::Sec100,
+            SoundnessMode::PessimisticConjecture,
+        );
     }
 
     /// Rewrite every circuit's config (and notes) files from its geometry.

@@ -335,7 +335,7 @@ mod cpu_short_dr {
             .values()
             .all(|lengths| *lengths == [16384, 16384]));
         eprintln!(
-            "G4 short DR metadata: widths={widths:?}, claim_capacity={}, plans={:?}",
+            "short DR metadata: widths={widths:?}, claim_capacity={}, plans={:?}",
             MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN,
             plans
                 .iter()

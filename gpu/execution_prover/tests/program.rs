@@ -6,18 +6,20 @@
 #![allow(unused_imports)]
 
 mod upstream {
-    pub use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles;
+    pub use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles_for;
     pub use full_statement_verifier::host_utils::{
         bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
-        final_blake_mode, load_fsv_program, unified_switch_cycles, unrolled_blake_mode,
+        final_blake_mode, load_fsv_exact, unified_switch_cycles, unrolled_blake_mode,
         FsvRecursionChain,
     };
     #[cfg(feature = "verifiers")]
-    pub use full_statement_verifier::host_utils::{native_verify_unified, native_verify_unrolled};
+    pub use full_statement_verifier::host_utils::{
+        native_verify_unified_in_mode, native_verify_unrolled_in_mode,
+    };
     pub use full_statement_verifier::program_proof::ProgramProof;
-    pub use prover::definitions::SecurityLevel;
+    pub use prover::definitions::{SecurityLevel, SoundnessMode};
     pub use setups::Setups;
-    pub use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+    pub use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram};
 }
 
 use crate::upstream::build_unrolled_stream;
@@ -236,7 +238,12 @@ fn test_program_prover_base_layer_verify() {
     );
 
     let stream = build_unrolled_stream(&setups, &proof, verifier_common::BLAKE_MODE);
-    let output = crate::upstream::native_verify_unrolled(stream, true);
+    let output = crate::upstream::native_verify_unrolled_in_mode(
+        stream,
+        true,
+        crate::upstream::SoundnessMode::PessimisticConjecture,
+    )
+    .expect("unrolled proof must verify");
     log::info!("base layer verified natively; output registers: {output:?}");
 }
 
@@ -294,15 +301,20 @@ fn test_program_prover_unified_base_layer_verify() {
 
     let stream =
         crate::upstream::build_unified_stream(&setups, &proof, verifier_common::BLAKE_MODE);
-    let output = crate::upstream::native_verify_unified(stream, true);
+    let output = crate::upstream::native_verify_unified_in_mode(
+        stream,
+        true,
+        crate::upstream::SoundnessMode::PessimisticConjecture,
+    )
+    .expect("unified proof must verify");
     log::info!("unified base layer verified natively; output registers: {output:?}");
 }
 
 /// Unified counterpart of `test_program_prover_cpu_gpu_proof_diff`: prove
 /// multi_family_smoke on the CPU reference
-/// (`program_prover::unified::prove_unified_execution_with_replayer`, which
-/// asserts internal closure to ONE), verify it natively, then prove on GPU and
-/// diff the two `ProgramProof`s field by field.
+/// (`program_prover::unified::prove_unified_execution_with_replayer_in_profile` with the
+/// `Standard` profile, which asserts internal closure to ONE), verify it natively, then prove
+/// on GPU and diff the two `ProgramProof`s field by field.
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
@@ -325,7 +337,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
     let security_level = configuration.security_level;
 
     let (cpu_proof, cpu_setups) =
-        program_prover::unified::prove_unified_execution_with_replayer::<_, _>(
+        program_prover::unified::prove_unified_execution_with_replayer_in_profile::<_, _>(
             1 << 31,
             &padded_binary_image,
             &padded_text_section,
@@ -334,15 +346,19 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
             1 << 30,
             &worker,
             security_level,
+            prover::definitions::SoundnessMode::PessimisticConjecture,
+            prover::definitions::ProverConfigProfile::Standard,
             verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
             &prover::gkr::prover::DefaultBabyBearBackend::default(),
             &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
         );
     log::info!("CPU reference proved (internal closure passed); verifying natively");
-    let cpu_output = crate::upstream::native_verify_unified(
+    let cpu_output = crate::upstream::native_verify_unified_in_mode(
         crate::upstream::build_unified_stream(&cpu_setups, &cpu_proof, verifier_common::BLAKE_MODE),
         true,
-    );
+        crate::upstream::SoundnessMode::PessimisticConjecture,
+    )
+    .expect("unified proof must verify");
     log::info!("CPU reference verifies; output registers: {cpu_output:?}");
 
     // GPU flow.
@@ -424,7 +440,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
 }
 
 /// Diagnostic: prove the same binary + ND inputs on the CPU reference
-/// (`program_prover::prove_unrolled_execution_with_replayer`), sanity-verify
+/// (`program_prover::prove_unrolled_execution_with_replayer_in_mode`), sanity-verify
 /// the CPU proof natively, then diff the CPU-assembled `(ProgramProof, Setups)`
 /// against the GPU-assembled pair field by field to localize any divergence.
 #[test]
@@ -442,29 +458,33 @@ fn test_program_prover_cpu_gpu_proof_diff() {
     )
     .load();
     let worker = worker::Worker::new_with_num_threads(8);
-    let (cpu_proof, cpu_setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer::<
-        riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
-        std::alloc::Global,
-        _,
-        _,
-    >(
-        1 << 31,
-        &padded_binary_image,
-        &padded_text_section,
-        true,
-        QuasiUARTSource::new_with_reads(vec![100, 5]),
-        1 << 30,
-        &worker,
-        crate::upstream::SecurityLevel::Sec100,
-        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
-        &prover::gkr::prover::DefaultBabyBearBackend::default(),
-        &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
-    );
+    let (cpu_proof, cpu_setups) =
+        program_prover::unrolled::prove_unrolled_execution_with_replayer_in_mode::<
+            riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
+            std::alloc::Global,
+            _,
+            _,
+        >(
+            1 << 31,
+            &padded_binary_image,
+            &padded_text_section,
+            true,
+            QuasiUARTSource::new_with_reads(vec![100, 5]),
+            1 << 30,
+            &worker,
+            crate::upstream::SecurityLevel::Sec100,
+            prover::definitions::SoundnessMode::PessimisticConjecture,
+            verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+            &prover::gkr::prover::DefaultBabyBearBackend::default(),
+            &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
+        );
     log::info!("CPU reference proved; verifying natively");
-    let cpu_output = crate::upstream::native_verify_unrolled(
+    let cpu_output = crate::upstream::native_verify_unrolled_in_mode(
         build_unrolled_stream(&cpu_setups, &cpu_proof, verifier_common::BLAKE_MODE),
         true,
-    );
+        crate::upstream::SoundnessMode::PessimisticConjecture,
+    )
+    .expect("unrolled proof must verify");
     log::info!("CPU reference verifies; output registers: {cpu_output:?}");
 
     // GPU flow.
@@ -635,7 +655,9 @@ fn test_program_prover_cpu_gpu_proof_diff() {
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
 fn test_program_prover_recursion_layer_verify() {
-    use crate::upstream::{compute_end_params, native_verify_unrolled, FsvRecursionChain};
+    use crate::upstream::{
+        compute_end_params, native_verify_unrolled_in_mode, FsvRecursionChain, SoundnessMode,
+    };
 
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
@@ -651,10 +673,12 @@ fn test_program_prover_recursion_layer_verify() {
         text_section,
         vec![100, 5],
     );
-    native_verify_unrolled(
+    native_verify_unrolled_in_mode(
         build_unrolled_stream(&base_setups, &base_proof, verifier_common::BLAKE_MODE),
         true,
-    );
+        SoundnessMode::PessimisticConjecture,
+    )
+    .expect("unrolled proof must verify");
     log::info!(
         "base layer proved on GPU + verified natively ({} cycles)",
         base_proof.executed_cycles()
@@ -688,14 +712,16 @@ fn test_program_prover_recursion_layer_verify() {
         recursion_proof.executed_cycles()
     );
 
-    let output = native_verify_unrolled(
+    let output = native_verify_unrolled_in_mode(
         build_unrolled_stream(
             &recursion_setups,
             &recursion_proof,
             verifier_common::BLAKE_MODE,
         ),
         false,
-    );
+        SoundnessMode::PessimisticConjecture,
+    )
+    .expect("unrolled proof must verify");
     log::info!("recursion layer verified natively; output registers: {output:?}");
 }
 
@@ -779,8 +805,10 @@ fn test_generate_sec100_cost_model_fixtures() {
                 .unwrap_or_else(|| panic!("unknown COST_MODEL_SOUNDNESS_MODE={name}"))
         },
     );
-    let native_verify_unrolled =
-        |stream, is_base| native_verify_unrolled_in_mode(stream, is_base, soundness_mode);
+    let native_verify_unrolled = |stream, is_base| {
+        native_verify_unrolled_in_mode(stream, is_base, soundness_mode)
+            .expect("unrolled proof must verify")
+    };
 
     let fixture_dir = std::env::var_os("COST_MODEL_FIXTURE_DIR")
         .map(std::path::PathBuf::from)
@@ -847,8 +875,7 @@ fn test_generate_sec100_cost_model_fixtures() {
                 program,
                 BlakeMode::Compression,
             ),
-        )
-        .unwrap_or_else(|error| panic!("{error}"));
+        );
         prover.add_binary(
             ExecutionKind::Unrolled,
             MachineType::Reduced,
@@ -1072,9 +1099,10 @@ fn run_gpu_recursive_pipeline(
     force_first_layer: bool,
 ) {
     use crate::upstream::{
-        bridge_blake_mode, build_unified_stream, compute_end_params, estimate_verifier_cycles,
-        final_blake_mode, load_fsv_program, native_verify_unified, native_verify_unrolled,
-        unified_switch_cycles, unrolled_blake_mode, FsvProgram, FsvRecursionChain,
+        bridge_blake_mode, build_unified_stream, compute_end_params, estimate_verifier_cycles_for,
+        final_blake_mode, load_fsv_exact, native_verify_unified_in_mode,
+        native_verify_unrolled_in_mode, unified_switch_cycles, unrolled_blake_mode, FsvDescriptor,
+        FsvProgram, FsvRecursionChain, SecurityLevel, SoundnessMode,
     };
 
     let switch_cycles = unified_switch_cycles();
@@ -1091,10 +1119,12 @@ fn run_gpu_recursive_pipeline(
         base_text_section,
         base_non_determinism,
     );
-    native_verify_unrolled(
+    native_verify_unrolled_in_mode(
         build_unrolled_stream(&base_setups, &base_proof, verifier_common::BLAKE_MODE),
         true,
-    );
+        SoundnessMode::PessimisticConjecture,
+    )
+    .expect("unrolled proof must verify");
     log::info!(
         "stage 1: base layer proved + verified ({} cycles)",
         base_proof.executed_cycles()
@@ -1118,10 +1148,26 @@ fn run_gpu_recursive_pipeline(
         bridge_blake.tag(),
         final_blake.tag()
     );
-    let (unrolled_base_bin, unrolled_base_text) =
-        load_fsv_program(&fsv_dir, FsvProgram::UnrolledBaseLayer, unrolled_blake);
-    let (unrolled_rec_bin, unrolled_rec_text) =
-        load_fsv_program(&fsv_dir, FsvProgram::UnrolledRecursionLayer, unrolled_blake);
+    let (unrolled_base_bin, unrolled_base_text) = load_fsv_exact(
+        &fsv_dir,
+        &FsvDescriptor::new(
+            SecurityLevel::Sec100,
+            SoundnessMode::PessimisticConjecture,
+            FsvProgram::UnrolledBaseLayer,
+            unrolled_blake,
+        ),
+    )
+    .into_words();
+    let (unrolled_rec_bin, unrolled_rec_text) = load_fsv_exact(
+        &fsv_dir,
+        &FsvDescriptor::new(
+            SecurityLevel::Sec100,
+            SoundnessMode::PessimisticConjecture,
+            FsvProgram::UnrolledRecursionLayer,
+            unrolled_blake,
+        ),
+    )
+    .into_words();
 
     let mut proof = base_proof;
     let mut setups = base_setups;
@@ -1142,8 +1188,16 @@ fn run_gpu_recursive_pipeline(
                 &unrolled_rec_text,
             )
         };
-        let estimated = estimate_verifier_cycles(&proof, program, unrolled_blake)
-            .expect("cannot estimate verifier cycles");
+        let estimated = estimate_verifier_cycles_for(
+            &proof,
+            &FsvDescriptor::new(
+                SecurityLevel::Sec100,
+                SoundnessMode::PessimisticConjecture,
+                program,
+                unrolled_blake,
+            ),
+        )
+        .expect("cannot estimate verifier cycles");
         log::info!("layer-{layer} verifier estimates ~{estimated} cycles");
         // Forced first layer (small workloads only): run one unrolled
         // recursion layer even when the base already estimates below the
@@ -1162,10 +1216,12 @@ fn run_gpu_recursive_pipeline(
             build_unrolled_stream(&setups, &proof, unrolled_blake),
         );
         new_proof.set_recursion_chain(&chain);
-        native_verify_unrolled(
+        native_verify_unrolled_in_mode(
             build_unrolled_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
             false,
-        );
+            SoundnessMode::PessimisticConjecture,
+        )
+        .expect("unrolled proof must verify");
         log::info!(
             "stage 2: unrolled recursion layer {layer} proved + verified ({} cycles)",
             new_proof.executed_cycles()
@@ -1186,7 +1242,16 @@ fn run_gpu_recursive_pipeline(
     } else {
         FsvProgram::UnrolledRecursionLayer
     };
-    let (bridge_bin, bridge_text) = load_fsv_program(&fsv_dir, bridge_program, bridge_blake);
+    let (bridge_bin, bridge_text) = load_fsv_exact(
+        &fsv_dir,
+        &FsvDescriptor::new(
+            SecurityLevel::Sec100,
+            SoundnessMode::PessimisticConjecture,
+            bridge_program,
+            bridge_blake,
+        ),
+    )
+    .into_words();
     let (bridge_bin, bridge_text) = (&bridge_bin, &bridge_text);
     let (mut bridge_proof, bridge_setups) = prove_on_gpu(
         &mut prover,
@@ -1197,10 +1262,12 @@ fn run_gpu_recursive_pipeline(
         build_unrolled_stream(&setups, &proof, bridge_blake),
     );
     bridge_proof.set_recursion_chain(&chain);
-    native_verify_unified(
+    native_verify_unified_in_mode(
         build_unified_stream(&bridge_setups, &bridge_proof, verifier_common::BLAKE_MODE),
         false,
-    );
+        SoundnessMode::PessimisticConjecture,
+    )
+    .expect("unified proof must verify");
     log::info!(
         "stage 4: bridge proved in unified mode + verified ({} cycles)",
         bridge_proof.executed_cycles()
@@ -1210,8 +1277,16 @@ fn run_gpu_recursive_pipeline(
     chain.extend(&bridge_end_params);
 
     // === Stage 5: final — fsv_unified_recursion_layer in unified mode. ===
-    let (final_bin, final_text) =
-        load_fsv_program(&fsv_dir, FsvProgram::UnifiedRecursionLayer, final_blake);
+    let (final_bin, final_text) = load_fsv_exact(
+        &fsv_dir,
+        &FsvDescriptor::new(
+            SecurityLevel::Sec100,
+            SoundnessMode::PessimisticConjecture,
+            FsvProgram::UnifiedRecursionLayer,
+            final_blake,
+        ),
+    )
+    .into_words();
     let (mut final_proof, final_setups) = prove_on_gpu(
         &mut prover,
         ExecutionKind::Unified,
@@ -1221,10 +1296,12 @@ fn run_gpu_recursive_pipeline(
         build_unified_stream(&bridge_setups, &bridge_proof, final_blake),
     );
     final_proof.set_recursion_chain(&chain);
-    let output = native_verify_unified(
+    let output = native_verify_unified_in_mode(
         build_unified_stream(&final_setups, &final_proof, verifier_common::BLAKE_MODE),
         false,
-    );
+        SoundnessMode::PessimisticConjecture,
+    )
+    .expect("unified proof must verify");
     log::info!(
         "stage 5: final unified recursion proof verified ({} cycles); output registers: {output:?}",
         final_proof.executed_cycles()
@@ -1251,10 +1328,12 @@ fn run_gpu_recursive_pipeline(
             build_unified_stream(&setups, &proof, final_blake),
         );
         new_proof.set_recursion_chain(&chain);
-        native_verify_unified(
+        native_verify_unified_in_mode(
             build_unified_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
             false,
-        );
+            SoundnessMode::PessimisticConjecture,
+        )
+        .expect("unified proof must verify");
         log::info!(
             "extra final round {round}: verified ({} cycles)",
             new_proof.executed_cycles()

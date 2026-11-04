@@ -15,7 +15,7 @@ fn geometry(config: &ProverConfig) -> BaseCommitmentGeometry {
 }
 
 #[test]
-fn cpu_g4_nonlisted_physical_geometry_is_admitted() {
+fn cpu_nonlisted_physical_geometry_is_admitted() {
     let config = packed_config(20, 1, SecurityLevel::Sec100);
     validate_separate_base_commitment_geometry(&geometry(&config));
 }

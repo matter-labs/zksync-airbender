@@ -12,9 +12,9 @@
 //!    (`fsv_unified_recursion_layer_sec_100_special_opcodes_extension`)
 //!    verifies the input pair; proving that run takes one or more 2^23 feeder
 //!    chunks.
-//! 2. The MERGED-mode feeder fsv
-//!    (`fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension`)
-//!    verifies those feeder proofs; proving it must fit ONE feeder chunk.
+//! 2. The MERGED-mode feeder fsv (the pinned `FsvProfile::L1Feeder` guest of
+//!    the unified recursion layer, special opcodes) verifies those feeder
+//!    proofs; proving it must fit ONE feeder chunk.
 //! 3. The same feeder fsv verifies that single proof in <= 2^22 cycles;
 //!    proving THAT run with the EVM-production Proth120 packed parameters
 //!    ([`crate::l1::prove_l1_wrap_in_memory`], all oracles in memory) yields
@@ -24,27 +24,25 @@
 //! `recursion_chain_preimage` and threaded through the stages exactly like the
 //! research test does.
 
-use crate::l1::{prove_l1_wrap_in_memory_in_mode, L1Proof, L1WrapTimings};
+use crate::l1::{prove_l1_wrap_in_memory, L1Proof, L1WrapTimings};
 use crate::unified_transition::{
     prove_unified_transition_with_replayer_precommitted_timed,
     prove_unified_transition_with_replayer_timed, UnifiedTransitionTimings,
 };
 use full_statement_verifier::host_utils::{
-    build_unified_stream, compute_end_params, load_fsv_program, load_program, FsvRecursionChain,
+    build_unified_stream, compute_end_params, fsv_manifest_entry, load_fsv_exact, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
-use prover::definitions::{ProverConfigProfile, ProvingSelection, SecurityLevel, SoundnessMode};
+use prover::definitions::{SecurityLevel, SoundnessMode};
 use prover::gkr::prover::{
     DefaultBabyBearBackend, DefaultBabyBearGKRBackend, OperationMode, RsCodewordSource,
     WhirOracleStorage,
 };
-use prover::gkr::prover_config::example_configs::ConfigSelectionError;
-use prover::tests::gkr::orchestration::common::ProgramConfig;
 use prover::worker::Worker;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use setups::Setups;
 use std::path::Path;
-use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile, FsvProgram};
 
 /// Cycle/RAM bounds of the BabyBear feeder stages (mirrors the research test).
 const UNIFIED_CYCLES_BOUND: usize = 1 << 27;
@@ -52,10 +50,44 @@ const RAM_BOUND: usize = 1 << 30;
 /// The final verifier run must fit the single 2^22 Proth120 unified chunk.
 const L1_CYCLES_BOUND: usize = 1 << 22;
 
-/// File stem of the MERGED-mode L1-feeder special-opcodes fsv binary (it has
-/// no `FsvProgram` variant — the research test loads it by explicit path too).
-const FEEDER_FSV_STEM: &str =
-    "fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension";
+/// The MERGED-mode L1-feeder guest: the unified recursion layer with special
+/// opcodes, under the pinned `L1Feeder` profile.
+const L1_FEEDER_GUEST: FsvDescriptor = FsvDescriptor {
+    profile: FsvProfile::L1Feeder,
+    ..FsvDescriptor::new(
+        SecurityLevel::Sec100,
+        SoundnessMode::PessimisticConjecture,
+        FsvProgram::UnifiedRecursionLayer,
+        BlakeMode::BlakeSpecialOpcodes,
+    )
+};
+
+/// The L1-feeder guest, read once through its pin ([`load_fsv_exact`]): the
+/// ROM-padded words the BabyBear stages prove and the unpadded image and text
+/// the Proth120 stage runs. Both are views of the same verified file.
+struct FeederGuest {
+    bin: Vec<u32>,
+    text: Vec<u32>,
+    unpadded_bin: Vec<u32>,
+    unpadded_text: Vec<u32>,
+}
+
+/// Load [`L1_FEEDER_GUEST`] from `fsv_dir`; panics as [`load_fsv_exact`] does on
+/// any file other than the pinned one.
+fn load_feeder_guest(fsv_dir: &Path) -> FeederGuest {
+    let (bin, text) = load_fsv_exact(fsv_dir, &L1_FEEDER_GUEST).into_words();
+    // The pinned sizes of the same image: the ROM padding and the text
+    // padding are trailing zero words.
+    let pinned = fsv_manifest_entry(&L1_FEEDER_GUEST);
+    let unpadded_bin = bin[..pinned.rom_bytes / 4].to_vec();
+    let unpadded_text = text[..pinned.text_bytes / 4].to_vec();
+    FeederGuest {
+        bin,
+        text,
+        unpadded_bin,
+        unpadded_text,
+    }
+}
 
 /// Everything [`compress_fixed_point_to_l1`] produces: the L1 proof + its
 /// commitment-mode aux data (the fixture pair the EVM tooling consumes) and
@@ -91,43 +123,6 @@ pub fn compress_fixed_point_to_l1(
     feeder_storage: WhirOracleStorage,
     worker: &Worker,
 ) -> L1CompressionResult {
-    compress_fixed_point_to_l1_in_mode(
-        input_proof,
-        input_setups,
-        fsv_dir,
-        proth120_circuit_layout_path,
-        use_caches,
-        feeder_storage,
-        worker,
-        SoundnessMode::PessimisticConjecture,
-    )
-    .expect("pessimistic L1 compression is supported")
-}
-
-/// Reject unsupported scope before reading artifacts, loading guests or allocating setups.
-pub fn validate_l1_soundness_mode(mode: SoundnessMode) -> Result<(), ConfigSelectionError> {
-    ProverConfigProfile::L1Feeder.validate_selection(ProvingSelection {
-        security_level: SecurityLevel::Sec100,
-        soundness_mode: mode,
-    })
-}
-
-/// Mode-explicit L1 boundary; the ethproofs extension is deferred product scope.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "compatibility API plus an explicit soundness mode"
-)]
-pub fn compress_fixed_point_to_l1_in_mode(
-    input_proof: &ProgramProof,
-    input_setups: &Setups,
-    fsv_dir: &Path,
-    proth120_circuit_layout_path: &Path,
-    use_caches: bool,
-    feeder_storage: WhirOracleStorage,
-    worker: &Worker,
-    soundness_mode: SoundnessMode,
-) -> Result<L1CompressionResult, ConfigSelectionError> {
-    validate_l1_soundness_mode(soundness_mode)?;
     let total_started = std::time::Instant::now();
 
     // The input must be the stable point: 1 unified chunk + 1 blake proof.
@@ -157,19 +152,19 @@ pub fn compress_fixed_point_to_l1_in_mode(
 
     // Stage-1 verifier: the STANDARD special-opcodes unified fsv (verifies
     // separate-commitment proofs). Stages 2/3: the MERGED-mode feeder fsv.
-    let (std_bin, std_text) = load_fsv_program(
+    let (std_bin, std_text) = load_fsv_exact(
         fsv_dir,
-        FsvProgram::UnifiedRecursionLayer,
-        BlakeMode::BlakeSpecialOpcodes,
-    );
-    let (feeder_bin, feeder_text) = load_program(&fsv_dir.join(format!("{FEEDER_FSV_STEM}.elf")));
+        &FsvDescriptor::new(
+            SecurityLevel::Sec100,
+            SoundnessMode::PessimisticConjecture,
+            FsvProgram::UnifiedRecursionLayer,
+            BlakeMode::BlakeSpecialOpcodes,
+        ),
+    )
+    .into_words();
+    let feeder = load_feeder_guest(fsv_dir);
 
-    let feeder_config = prover::gkr::prover_config::example_configs::try_l1_feeder_config_for_2_23(
-        ProvingSelection {
-            security_level: SecurityLevel::Sec100,
-            soundness_mode,
-        },
-    )?;
+    let feeder_config = prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
     println!(
         "[l1-compression] feeder config: base lde {}, whir steps {:?}, queries {:?}, pow {:?}; \
          feeder oracle storage: {feeder_storage:?}",
@@ -188,7 +183,7 @@ pub fn compress_fixed_point_to_l1_in_mode(
         let (run_bin, run_text) = if stage == 0 {
             (&std_bin, &std_text)
         } else {
-            (&feeder_bin, &feeder_text)
+            (&feeder.bin, &feeder.text)
         };
         println!(
             "[l1-compression] stage {}: proving the {} verifier over the current proof",
@@ -276,20 +271,15 @@ pub fn compress_fixed_point_to_l1_in_mode(
         "[l1-compression] stage 3: proving the feeder verifier with the L1 (Proth120) parameters"
     );
     let stream = build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes);
-    let program = ProgramConfig {
-        program: riscv_transpiler::elf::ProgramSource::elf(
-            fsv_dir.join(format!("{FEEDER_FSV_STEM}.elf")),
-        ),
-        non_determinism_reads: stream,
-        cycles_bound: L1_CYCLES_BOUND,
-        ram_bound_bytes: RAM_BOUND,
-    };
-    let (l1_proof, l1_operation_mode, l1_timings) = prove_l1_wrap_in_memory_in_mode(
-        &program,
+    let (l1_proof, l1_operation_mode, l1_timings) = prove_l1_wrap_in_memory(
+        feeder.unpadded_bin,
+        feeder.unpadded_text,
+        &stream,
+        L1_CYCLES_BOUND,
+        RAM_BOUND,
         proth120_circuit_layout_path,
         worker,
-        soundness_mode,
-    )?;
+    );
 
     // ── Timing marks: setup-commitment work vs proving work, per stage and
     //    in total. ──
@@ -327,12 +317,12 @@ pub fn compress_fixed_point_to_l1_in_mode(
         total_started.elapsed().as_millis() / 1000,
     );
 
-    Ok(L1CompressionResult {
+    L1CompressionResult {
         l1_proof,
         l1_operation_mode,
         stage_timings,
         l1_timings,
-    })
+    }
 }
 
 #[cfg(test)]
@@ -377,11 +367,16 @@ mod diagnostics {
             "../circuit_defs/prover_examples/final_layer_0_setups_{tags}.json.zlib"
         ));
         let stream = build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes);
-        let (bin, text) = load_fsv_program(
+        let (bin, text) = load_fsv_exact(
             "../tools/gkr_verifier/full_statement_verifiers",
-            FsvProgram::UnifiedRecursionLayer,
-            BlakeMode::BlakeSpecialOpcodes,
-        );
+            &FsvDescriptor::new(
+                SecurityLevel::Sec100,
+                SoundnessMode::PessimisticConjecture,
+                FsvProgram::UnifiedRecursionLayer,
+                BlakeMode::BlakeSpecialOpcodes,
+            ),
+        )
+        .into_words();
 
         let (
             (final_pc, final_timestamp),
@@ -441,29 +436,57 @@ mod diagnostics {
 }
 
 #[cfg(test)]
-mod soundness_boundary_tests {
+mod feeder_guest_tests {
     use super::*;
+    use full_statement_verifier::host_utils::{canonical_fsv_dir, load_program};
+    use riscv_transpiler::elf::ProgramSource;
 
+    fn feeder_path(fsv_dir: &Path) -> std::path::PathBuf {
+        fsv_dir.join(L1_FEEDER_GUEST.registry_entry().unwrap().relative_path)
+    }
+
+    /// The pinned feeder words are what each stage read from the file before the pin: the
+    /// ROM-padded words of `load_program` (stages 1 and 2) and the unpadded words of
+    /// `ProgramSource::load_unpadded` (stage 3).
     #[test]
-    fn ethproofs_l1_compression_rejects_before_input_and_path_checks() {
-        let worker = Worker::new_with_num_threads(1);
-        let error = compress_fixed_point_to_l1_in_mode(
-            &crate::bundle::tests::empty_proof(),
-            &Setups::new(),
-            Path::new("/missing/fsv"),
-            Path::new("/missing/layout.json"),
-            false,
-            WhirOracleStorage::fully_recompute(),
-            &worker,
-            SoundnessMode::EthproofsSoundnessCalc,
+    fn pinned_feeder_words_match_the_unpinned_reads() {
+        let feeder = load_feeder_guest(&canonical_fsv_dir());
+        let path = feeder_path(&canonical_fsv_dir());
+        assert_eq!((feeder.bin, feeder.text), load_program(&path));
+        assert_eq!(
+            (feeder.unpadded_bin, feeder.unpadded_text),
+            ProgramSource::elf(&path).load_unpadded()
+        );
+    }
+
+    struct ScratchDir(std::path::PathBuf);
+
+    impl Drop for ScratchDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// The standard special-opcodes guest placed at the feeder path is refused.
+    #[test]
+    #[should_panic(
+        expected = "holds the full-statement verifier sec_100/pessimistic_conjecture/unified_recursion_layer/standard/"
+    )]
+    fn another_guest_at_the_feeder_path_is_refused() {
+        let dir = ScratchDir(
+            std::env::temp_dir().join(format!("l1-feeder-guest-{}", std::process::id())),
+        );
+        let standard = FsvDescriptor {
+            profile: FsvProfile::Standard,
+            ..L1_FEEDER_GUEST
+        };
+        let to = feeder_path(&dir.0);
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::copy(
+            canonical_fsv_dir().join(standard.registry_entry().unwrap().relative_path),
+            &to,
         )
-        .err()
-        .expect("ethproofs L1 compression must reject");
-        assert!(matches!(error,
-            prover::gkr::prover_config::example_configs::ConfigSelectionError::UnsupportedSpecialConfigMode {
-                profile: prover::definitions::ProverConfigProfile::L1Feeder,
-                mode: prover::definitions::SoundnessMode::EthproofsSoundnessCalc,
-            }));
-        assert!(error.to_string().contains("ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope)"));
+        .unwrap();
+        load_feeder_guest(&dir.0);
     }
 }

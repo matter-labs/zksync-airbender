@@ -25,14 +25,9 @@ holders retain their separate routing; it is not substituted for these paths.
 | Memory-only production uses the separate producer | A merged proof needs the concatenating memory/witness producer. Configuration, artifact, cap, program and cached request identities must agree before work. | [merged commitment](../circuit_prover/src/proof/merged_commitment.rs), [setup host](../execution_prover/src/precomputations/setup_host.rs) |
 | Destructive transforms require exclusive raw backing | Logical readers and merged aliases must finish before raw is consumed. InPlace commitment restores every raw value, including padded zeros, before logical readers resume. | [openings](../trace/src/trace/holder/openings.rs) |
 
-InPlace and retained monomials share the base-transform range `13..=24`.
-At m13..19, raw-to-monomials uses the existing compact Mobius passes; forward
-cosets use initial-eight plus last-K stages, `K = m - 8`. The inverse explicitly
-uses compact K+8 DIF, including at m13 where the ordinary Forward selector may
-choose DIT. Its final-eight pass normalizes and removes the coset shift once.
-Raw restoration uses the existing addition-stage kernel: m launches per nonempty
-column, each with `N/512` blocks of 256 threads and no shared memory. It adds no
-full-column scratch allocation. The m20..24 routes retain their existing wiring.
+Geometry-backed `InPlace` and retained-monomial `PerCoset` openings cover base
+message logs `20..=24`, the domains of the generated exact-aliasing and
+retained-monomial transforms; message logs `13..=19` are opened with `AllCosets`.
 See [InPlace](../ntt/src/ntt/in_place.rs),
 [retained monomials](../ntt/src/ntt/retained_monomials.rs) and
 [hypercube transforms](../ntt/src/ntt/hypercube.rs).
@@ -63,11 +58,8 @@ route; a fast-path limit is not a global rejection.
 | Retained hashing/gather | `r >= 5`, `v <= 13` | A coset needs the 32-leaf boundary. Four BF limb columns times `2^v` must fit CUDA grid Y (65535); v14 needs 65536 columns. [admission](../whir/src/lib.rs), [gather](../hash/src/blake2s/gather.rs) |
 | Retained forward transform | Generated dispatch through `r <= 24`; current staging further requires `r <= 20` | A complete coset must fit the fixed 32 MiB / `2^20`-digest staging buffer before hashing. [oracle commitment](../whir/src/oracle_commit.rs) |
 
-The r21..24 retained limit is a fixed-staging implementation limit. A follow-up
-could size staging as `max(2^20, per_coset_leaves).min(total_leaves)` and account
-for that allocation in preflight. It would use 64–512 MiB at r21..24 and needs a
-CPU-oracle boundary case at r21 (message log at least 22), with measured resource
-cost. This wiring and its heavier validation are not part of the current path.
+The r21..24 retained limit is a fixed-staging implementation limit: a complete
+coset must fit the 32 MiB staging buffer before hashing.
 
 ## Schedule and protocol constraints
 
@@ -77,9 +69,9 @@ The schedule validator checks these actual dimensions rather than a fixed
 message size, fold ladder, LDE or cap tuple.
 
 The GPU validates Naive and Windowed same-size schedule grammar but executes its
-compiled windows. It does not construct a different Naive GPU scheduler. F13
-compares fresh Naive CPU proof bytes with two queued GPU proofs; the same-pin
-Windowed control has identical main/DR launch dispatch.
+compiled windows. It does not construct a different Naive GPU scheduler.
+`policy_pair_blake_physical_naive` compares fresh Naive CPU proof bytes with two
+queued GPU proofs.
 
 The DR fused prefix is a selector: chains of at least seven rounds use seven;
 shorter positive chains use zero pairs and the existing tower from round zero.
@@ -105,4 +97,5 @@ Allocation failure describes the actual workload, policy, arena and pending
 jobs. A paired-proof non-fit is not a single-proof capability limit. Default
 selection and tuning may prefer cheaper policies, but do not restrict callable
 combinations. Primitive/holder parity establishes small-domain correctness;
-full-circuit proof coverage is recorded separately in the stage evidence.
+full-circuit coverage comes from the CPU/GPU proof parity tests
+([proof matrix](../circuit_prover/src/tests/proof_matrix.rs)).

@@ -101,8 +101,8 @@ selection. They do not add a policy allowlist to an admitted geometry.
 
 | Constraint | Reason and source |
 | --- | --- |
-| InPlace transform domain log 13..24 | Existing compact inverse/forward passes and the addition-stage restore cover 13..19; the 20..24 routes are preserved. The shared `gpu_ntt::ntt::log_size_supports_in_place` predicate is checked at the BabyBear boundary before cap/workspace allocation or taking the raw owner. |
-| Geometry-backed retained-monomial PerCoset domain log 13..24 | The compact raw-to-monomials and coset-regeneration paths cover the smaller domains; it checks aligned whole columns and root order. See [`retained_monomials.rs`](../../ntt/src/ntt/retained_monomials.rs). |
+| InPlace transform domain log 20..24 | The generated exact-aliasing transforms cover these domains. The shared `gpu_ntt::ntt::log_size_supports_in_place` predicate is checked at the BabyBear boundary before cap/workspace allocation or taking the raw owner. |
+| Geometry-backed retained-monomial PerCoset domain log 20..24 | The generated retained-monomial dispatch covers these domains; it checks aligned whole columns and root order. See [`retained_monomials.rs`](../../ntt/src/ntt/retained_monomials.rs). |
 | Geometry-backed base transform message log 13..24, codeword log at most 27 and at most the live twiddle capacity | Natural-order coefficient labeling and the BabyBear root order must match the committed domain. The small legacy MSB route is not a substitute. The limits follow the generated transform family, not a fixed message tuple. |
 | Cap at least LDE; Partial trees require room for the fixed 32-leaf boundary | Per-coset cap arithmetic and the cached partial-tree layout require these dimensions. The field-free holder validation owns them. |
 | Recomputed direct-holder queries require None or Partial trees | The current gather reconstructs paths through partial-tree boundary roots; a Full tree needs a different gather. Current proof policies never construct Full trees. |
@@ -118,8 +118,7 @@ structural holder and geometry interfaces remain field-generic.
 
 Geometry admission follows the actual field, kernel, storage and ownership
 requirements in [commitment geometry](../../docs/commitment_geometry.md).
-The old physical/virtual tuple, circuit, message22, LDE2, cap16 and fold-ladder
-qualification lists are removed. Presets select defaults; they do not restrict
+Presets select defaults; they do not restrict
 callable policies or geometries that satisfy those requirements.
 
 The generated base batching reader supports fold log 0 or 1. Recursive route
@@ -129,8 +128,8 @@ the one-warp merge kernel. The memory-only producer remains separate-only;
 merged jobs use the concatenating producer.
 
 The GPU validates the configured same-size schedule but ignores it for window
-selection: execution uses compiled windows. F13 establishes fresh Naive-CPU byte
-parity and the same-pin Windowed control has identical main/DR dispatch. Short
+selection: execution uses compiled windows. `policy_pair_blake_physical_naive`
+checks fresh Naive-CPU byte parity. Short
 positive DR chains use the existing tower from round zero. Execution workers
 request explicit output log 4, which preflight binds to the config; other output
 logs are available through the direct circuit-prover API.
@@ -165,13 +164,12 @@ failures must not be classified as non-fit. No policy is pruned as dominated.
 
 Preset replay checks fit and stable GPU fingerprints with the largest follower's
 inputs resident, in both allocation directions. It is separate from the
-independent CPU-byte oracle. A Cartesian `--fit-only` map is tuning work, not a
-prerequisite or a claim of this compatibility change. Regenerating presets still
+independent CPU-byte oracle. A Cartesian `--fit-only` map is tuning work. Regenerating presets still
 requires the per-circuit CPU policy parity and exact-arena replay checks.
 
 ## Measure and install a preset
 
-Set `ARENA_GIB` to the budget to qualify and `ROUNDS` to the number of timed rounds.
+Set `ARENA_GIB` to the arena budget to measure and `ROUNDS` to the number of timed rounds.
 Build with default features plus `memory_sweep`, outside the GPU lock:
 
 ```sh

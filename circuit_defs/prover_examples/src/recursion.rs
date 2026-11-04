@@ -37,15 +37,16 @@ mod tests {
     use crate::*;
     use full_statement_verifier::host_utils::{
         bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
-        final_blake_mode, load_fsv_program, load_program, native_verify_unified,
-        native_verify_unrolled, unified_switch_cycles, unrolled_blake_mode, FsvRecursionChain,
+        final_blake_mode, load_fsv_exact, native_verify_unified_in_mode,
+        native_verify_unrolled_in_mode, unified_switch_cycles, unrolled_blake_mode,
+        FsvRecursionChain,
     };
     use full_statement_verifier::program_proof::ProgramProof;
-    use program_prover::unified::prove_unified_execution_with_replayer;
+    use program_prover::unified::prove_unified_execution_with_replayer_in_profile;
     use program_prover::unrolled::{
-        prove_unrolled_execution_with_replayer, run_unrolled_machine_in_full,
+        prove_unrolled_execution_with_replayer_in_mode, run_unrolled_machine_in_full,
     };
-    use prover::definitions::SecurityLevel;
+    use prover::definitions::{SecurityLevel, SoundnessMode};
     use prover::gkr::prover::{DefaultBabyBearBackend, DefaultBabyBearGKRBackend};
     use prover::worker::Worker;
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -56,7 +57,21 @@ mod tests {
     use std::alloc::Global;
     use std::path::Path;
     use test_utils::skip_if_ci;
-    use verifier_common::fsv_binaries::FsvProgram;
+    use verifier_common::fsv_binaries::{FsvDescriptor, FsvProfile, FsvProgram};
+
+    /// The pinned MERGED-mode L1-feeder guest: the unified recursion layer with special
+    /// opcodes under the `L1Feeder` profile.
+    fn l1_feeder_guest() -> FsvDescriptor {
+        FsvDescriptor {
+            profile: FsvProfile::L1Feeder,
+            ..FsvDescriptor::new(
+                SecurityLevel::Sec100,
+                SoundnessMode::PessimisticConjecture,
+                FsvProgram::UnifiedRecursionLayer,
+                verifier_common::fsv_binaries::BlakeMode::BlakeSpecialOpcodes,
+            )
+        }
+    }
 
     // Per-stage cycle/RAM bounds (generous; the prover chunks into as many
     // circuit instances as the actual run needs).
@@ -160,7 +175,7 @@ mod tests {
                     try_deserialize_compressed_from_file("base_setups.json.zlib").unwrap(),
                 )
             } else {
-                let (base_proof, base_setups) = prove_unrolled_execution_with_replayer::<
+                let (base_proof, base_setups) = prove_unrolled_execution_with_replayer_in_mode::<
                     IMStandardIsaConfigUnsignedMulDivOnly,
                     Global,
                     _,
@@ -174,6 +189,7 @@ mod tests {
                     RAM_BOUND,
                     &worker,
                     SecurityLevel::Sec100,
+                    prover::definitions::SoundnessMode::PessimisticConjecture,
                     verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
                     &DefaultBabyBearBackend::default(),
                     &DefaultBabyBearGKRBackend::default(),
@@ -186,10 +202,12 @@ mod tests {
             };
 
         // sanity: base proof verifies on the native machine.
-        native_verify_unrolled(
+        native_verify_unrolled_in_mode(
             build_unrolled_stream(&base_setups, &base_proof, verifier_common::BLAKE_MODE),
             true,
-        );
+            SoundnessMode::PessimisticConjecture,
+        )
+        .expect("unrolled proof must verify");
         println!("Base layer proofs pass the verification on native arch");
 
         let base_end_params = compute_end_params(&base_setups, base_proof.final_pc);
@@ -211,10 +229,26 @@ mod tests {
              unified-switch threshold {switch_cycles} cycles"
         );
 
-        let (unrolled_base_bin, unrolled_base_text) =
-            load_fsv_program(FSV_DIR, FsvProgram::UnrolledBaseLayer, unrolled_blake);
-        let (unrolled_rec_bin, unrolled_rec_text) =
-            load_fsv_program(FSV_DIR, FsvProgram::UnrolledRecursionLayer, unrolled_blake);
+        let (unrolled_base_bin, unrolled_base_text) = load_fsv_exact(
+            FSV_DIR,
+            &FsvDescriptor::new(
+                SecurityLevel::Sec100,
+                SoundnessMode::PessimisticConjecture,
+                FsvProgram::UnrolledBaseLayer,
+                unrolled_blake,
+            ),
+        )
+        .into_words();
+        let (unrolled_rec_bin, unrolled_rec_text) = load_fsv_exact(
+            FSV_DIR,
+            &FsvDescriptor::new(
+                SecurityLevel::Sec100,
+                SoundnessMode::PessimisticConjecture,
+                FsvProgram::UnrolledRecursionLayer,
+                unrolled_blake,
+            ),
+        )
+        .into_words();
 
         let mut proof = base_proof;
         let mut setups = base_setups;
@@ -238,14 +272,16 @@ mod tests {
                 ))
                 .unwrap();
                 total_cycles += cached_proof.executed_cycles();
-                native_verify_unrolled(
+                native_verify_unrolled_in_mode(
                     build_unrolled_stream(
                         &cached_setups,
                         &cached_proof,
                         verifier_common::BLAKE_MODE,
                     ),
                     false,
-                );
+                    SoundnessMode::PessimisticConjecture,
+                )
+                .expect("unrolled proof must verify");
                 let end_params = compute_end_params(&cached_setups, cached_proof.final_pc);
                 chain.extend(&end_params);
                 proof = cached_proof;
@@ -261,10 +297,14 @@ mod tests {
                 FsvProgram::UnrolledRecursionLayer
             };
             let estimated =
-                full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles(
+                full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles_for(
                     &proof,
-                    program,
-                    unrolled_blake,
+                    &FsvDescriptor::new(
+                        SecurityLevel::Sec100,
+                        SoundnessMode::PessimisticConjecture,
+                        program,
+                        unrolled_blake,
+                    ),
                 )
                 .expect("cannot estimate verifier cycles");
             println!("running the layer-{layer} verifier would take ~{estimated} cycles");
@@ -277,7 +317,7 @@ mod tests {
                 "=== unrolled recursion over a {} proof (layer {layer}) ===",
                 if input_is_base { "base" } else { "recursion" }
             );
-            let (mut new_proof, new_setups) = prove_unrolled_execution_with_replayer::<
+            let (mut new_proof, new_setups) = prove_unrolled_execution_with_replayer_in_mode::<
                 ReducedMachineWithDelegation,
                 Global,
                 _,
@@ -295,6 +335,7 @@ mod tests {
                 RAM_BOUND,
                 &worker,
                 SecurityLevel::Sec100,
+                prover::definitions::SoundnessMode::PessimisticConjecture,
                 verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
                 &DefaultBabyBearBackend::default(),
                 &DefaultBabyBearGKRBackend::default(),
@@ -314,10 +355,12 @@ mod tests {
             println!("unrolled recursion round ran {round_cycles} cycles (total {total_cycles})");
 
             // sanity verify (this proof carries a recursion preimage).
-            native_verify_unrolled(
+            native_verify_unrolled_in_mode(
                 build_unrolled_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
                 false,
-            );
+                SoundnessMode::PessimisticConjecture,
+            )
+            .expect("unrolled proof must verify");
 
             let end_params = compute_end_params(&new_setups, new_proof.final_pc);
             chain.extend(&end_params);
@@ -339,7 +382,16 @@ mod tests {
         } else {
             FsvProgram::UnrolledRecursionLayer
         };
-        let (bridge_bin, bridge_text) = load_fsv_program(FSV_DIR, bridge_program, bridge_blake);
+        let (bridge_bin, bridge_text) = load_fsv_exact(
+            FSV_DIR,
+            &FsvDescriptor::new(
+                SecurityLevel::Sec100,
+                SoundnessMode::PessimisticConjecture,
+                bridge_program,
+                bridge_blake,
+            ),
+        )
+        .into_words();
         println!(
             "=== bridge: proving the unrolled verifier in unified mode (blake {bridge_tag}) ==="
         );
@@ -356,23 +408,26 @@ mod tests {
                 .unwrap(),
             )
         } else {
-            let (mut bridge_proof, bridge_setups) = prove_unified_execution_with_replayer::<_, _>(
-                UNIFIED_CYCLES_BOUND,
-                &bridge_bin,
-                &bridge_text,
-                use_caches,
-                QuasiUARTSource::new_with_reads(build_unrolled_stream(
-                    &setups,
-                    &proof,
-                    bridge_blake,
-                )),
-                RAM_BOUND,
-                &worker,
-                SecurityLevel::Sec100,
-                verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
-                &DefaultBabyBearBackend::default(),
-                &DefaultBabyBearGKRBackend::default(),
-            );
+            let (mut bridge_proof, bridge_setups) =
+                prove_unified_execution_with_replayer_in_profile::<_, _>(
+                    UNIFIED_CYCLES_BOUND,
+                    &bridge_bin,
+                    &bridge_text,
+                    use_caches,
+                    QuasiUARTSource::new_with_reads(build_unrolled_stream(
+                        &setups,
+                        &proof,
+                        bridge_blake,
+                    )),
+                    RAM_BOUND,
+                    &worker,
+                    SecurityLevel::Sec100,
+                    prover::definitions::SoundnessMode::PessimisticConjecture,
+                    prover::definitions::ProverConfigProfile::Standard,
+                    verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+                    &DefaultBabyBearBackend::default(),
+                    &DefaultBabyBearGKRBackend::default(),
+                );
             bridge_proof.set_recursion_chain(&chain);
 
             serialize_compressed_to_file(
@@ -390,10 +445,12 @@ mod tests {
         total_cycles += bridge_proof_cycles;
         println!("bridge unified proof ran {bridge_proof_cycles} cycles (total {total_cycles})");
 
-        native_verify_unified(
+        native_verify_unified_in_mode(
             build_unified_stream(&bridge_setups, &bridge_proof, verifier_common::BLAKE_MODE),
             false,
-        );
+            SoundnessMode::PessimisticConjecture,
+        )
+        .expect("unified proof must verify");
 
         let bridge_end_params = compute_end_params(&bridge_setups, bridge_proof.final_pc);
         chain.extend(&bridge_end_params);
@@ -407,8 +464,16 @@ mod tests {
         //              blake2-with-compression delegation proof. Each layer is
         //              cached to disk under its index, so an interrupted run
         //              resumes at the first unproven layer. ===
-        let (unified_rec_bin, unified_rec_text) =
-            load_fsv_program(FSV_DIR, FsvProgram::UnifiedRecursionLayer, final_blake);
+        let (unified_rec_bin, unified_rec_text) = load_fsv_exact(
+            FSV_DIR,
+            &FsvDescriptor::new(
+                SecurityLevel::Sec100,
+                SoundnessMode::PessimisticConjecture,
+                FsvProgram::UnifiedRecursionLayer,
+                final_blake,
+            ),
+        )
+        .into_words();
 
         // (total unified chunks, per-delegation-type proof counts)
         fn proof_shape(p: &ProgramProof) -> (usize, Vec<(u32, usize)>) {
@@ -463,23 +528,26 @@ mod tests {
                     try_deserialize_compressed_from_file(&setups_file).unwrap(),
                 )
             } else {
-                let (mut new_proof, new_setups) = prove_unified_execution_with_replayer::<_, _>(
-                    UNIFIED_CYCLES_BOUND,
-                    &unified_rec_bin,
-                    &unified_rec_text,
-                    use_caches,
-                    QuasiUARTSource::new_with_reads(build_unified_stream(
-                        &setups,
-                        &proof,
-                        final_blake,
-                    )),
-                    RAM_BOUND,
-                    &worker,
-                    SecurityLevel::Sec100,
-                    verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
-                    &DefaultBabyBearBackend::default(),
-                    &DefaultBabyBearGKRBackend::default(),
-                );
+                let (mut new_proof, new_setups) =
+                    prove_unified_execution_with_replayer_in_profile::<_, _>(
+                        UNIFIED_CYCLES_BOUND,
+                        &unified_rec_bin,
+                        &unified_rec_text,
+                        use_caches,
+                        QuasiUARTSource::new_with_reads(build_unified_stream(
+                            &setups,
+                            &proof,
+                            final_blake,
+                        )),
+                        RAM_BOUND,
+                        &worker,
+                        SecurityLevel::Sec100,
+                        prover::definitions::SoundnessMode::PessimisticConjecture,
+                        prover::definitions::ProverConfigProfile::Standard,
+                        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+                        &DefaultBabyBearBackend::default(),
+                        &DefaultBabyBearGKRBackend::default(),
+                    );
                 new_proof.set_recursion_chain(&chain);
                 serialize_compressed_to_file(&new_proof, &proof_file);
                 serialize_compressed_to_file(&new_setups, &setups_file);
@@ -495,10 +563,12 @@ mod tests {
                  delegations {new_delegations:?}"
             );
 
-            native_verify_unified(
+            native_verify_unified_in_mode(
                 build_unified_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
                 false,
-            );
+                SoundnessMode::PessimisticConjecture,
+            )
+            .expect("unified proof must verify");
 
             let end_params = compute_end_params(&new_setups, new_proof.final_pc);
             chain.extend(&end_params);
@@ -508,10 +578,12 @@ mod tests {
         }
 
         let (chunks, delegations) = proof_shape(&proof);
-        let final_output = native_verify_unified(
+        let final_output = native_verify_unified_in_mode(
             build_unified_stream(&setups, &proof, verifier_common::BLAKE_MODE),
             false,
-        );
+            SoundnessMode::PessimisticConjecture,
+        )
+        .expect("unified proof must verify");
 
         println!("=== pipeline complete: {total_cycles} total cycles proven ===");
         println!(
@@ -560,7 +632,16 @@ mod tests {
         .unwrap();
 
         for mode in [BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes] {
-            let (bin, text) = load_fsv_program(FSV_DIR, FsvProgram::UnifiedRecursionLayer, mode);
+            let (bin, text) = load_fsv_exact(
+                FSV_DIR,
+                &FsvDescriptor::new(
+                    SecurityLevel::Sec100,
+                    SoundnessMode::PessimisticConjecture,
+                    FsvProgram::UnifiedRecursionLayer,
+                    mode,
+                ),
+            )
+            .into_words();
             let cycles =
                 measure_verifier_cycles(&bin, &text, build_unified_stream(&setups, &proof, mode));
             println!(
@@ -644,11 +725,16 @@ mod tests {
             chain.extend(&compute_end_params(&s, p.final_pc));
         }
 
-        let (spec_bin, spec_text) = load_fsv_program(
+        let (spec_bin, spec_text) = load_fsv_exact(
             FSV_DIR,
-            FsvProgram::UnifiedRecursionLayer,
-            BlakeMode::BlakeSpecialOpcodes,
-        );
+            &FsvDescriptor::new(
+                SecurityLevel::Sec100,
+                SoundnessMode::PessimisticConjecture,
+                FsvProgram::UnifiedRecursionLayer,
+                BlakeMode::BlakeSpecialOpcodes,
+            ),
+        )
+        .into_words();
 
         const MAX_LAYERS: usize = 6;
         for k in 0..MAX_LAYERS {
@@ -684,7 +770,7 @@ mod tests {
                         try_deserialize_compressed_from_file(&s_file).unwrap(),
                     )
                 } else {
-                    let (mut np, ns) = prove_unified_execution_with_replayer::<_, _>(
+                    let (mut np, ns) = prove_unified_execution_with_replayer_in_profile::<_, _>(
                         UNIFIED_CYCLES_BOUND,
                         &spec_bin,
                         &spec_text,
@@ -697,6 +783,8 @@ mod tests {
                         RAM_BOUND,
                         &worker,
                         SecurityLevel::Sec100,
+                        prover::definitions::SoundnessMode::PessimisticConjecture,
+                        prover::definitions::ProverConfigProfile::Standard,
                         verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
                         &DefaultBabyBearBackend::default(),
                         &DefaultBabyBearGKRBackend::default(),
@@ -717,10 +805,12 @@ mod tests {
                 delegations.is_empty(),
                 "special-opcodes verifier run must make no delegation calls"
             );
-            native_verify_unified(
+            native_verify_unified_in_mode(
                 build_unified_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
                 false,
-            );
+                SoundnessMode::PessimisticConjecture,
+            )
+            .expect("unified proof must verify");
             chain.extend(&compute_end_params(&new_setups, new_proof.final_pc));
             proof = new_proof;
             setups = new_setups;
@@ -812,14 +902,17 @@ mod tests {
         // Layer-0 run verifies the STANDARD separate-mode proof (standard
         // special-opcodes fsv); all later runs verify MERGED feeder proofs
         // (merged-mode feeder special-opcodes fsv).
-        let (std_bin, std_text) = load_fsv_program(
+        let (std_bin, std_text) = load_fsv_exact(
             FSV_DIR,
-            FsvProgram::UnifiedRecursionLayer,
-            BlakeMode::BlakeSpecialOpcodes,
-        );
-        let (feeder_bin, feeder_text) = load_program(Path::new(&format!(
-            "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.elf"
-        )));
+            &FsvDescriptor::new(
+                SecurityLevel::Sec100,
+                SoundnessMode::PessimisticConjecture,
+                FsvProgram::UnifiedRecursionLayer,
+                BlakeMode::BlakeSpecialOpcodes,
+            ),
+        )
+        .into_words();
+        let (feeder_bin, feeder_text) = load_fsv_exact(FSV_DIR, &l1_feeder_guest()).into_words();
 
         let feeder_config =
             prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
@@ -932,7 +1025,7 @@ mod tests {
     #[ignore = "manual heavy proving run (Proth120 packed 2^26 commitment)"]
     #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_l1_wrap_proth120() {
-        use prover::tests::gkr::orchestration::common::ProgramConfig;
+        use full_statement_verifier::host_utils::fsv_manifest_entry;
         skip_if_ci!();
 
         let worker = Worker::new_with_num_threads(12);
@@ -954,17 +1047,16 @@ mod tests {
             verifier_common::fsv_binaries::BlakeMode::BlakeSpecialOpcodes,
         );
 
-        let program = ProgramConfig {
-            program: riscv_transpiler::elf::ProgramSource::elf(format!(
-                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.elf"
-            )),
-            non_determinism_reads: stream,
-            cycles_bound: 1 << 22,
-            ram_bound_bytes: 1 << 30,
-        };
-
+        // The VM runs the unpadded image and text: the pinned words up to the pinned sizes.
+        let feeder = l1_feeder_guest();
+        let (bin, text) = load_fsv_exact(FSV_DIR, &feeder).into_words();
+        let pinned = fsv_manifest_entry(&feeder);
         let _l1_proof = crate::l1::prove_l1_wrap_in_recompute_mode(
-            &program,
+            bin[..pinned.rom_bytes / 4].to_vec(),
+            text[..pinned.text_bytes / 4].to_vec(),
+            &stream,
+            1 << 22,
+            1 << 30,
             Path::new(
                 "../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
             ),

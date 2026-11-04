@@ -98,7 +98,7 @@ fn cpu_resolved_request_rejects_identity_and_mode_before_transfers() {
     use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
     let kind = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
     let circuit = artifact("blake2_with_extended_control");
-    let config = gpu_circuit_prover::config::prover_config(kind, SecurityLevel::Sec100).unwrap();
+    let config = kind.prover_config(SecurityLevel::Sec100);
     let resolved = ResolvedProverConfig::new(kind, Arc::clone(&circuit), config.clone());
     resolved.validate_request(kind, SecurityLevel::Sec100, &circuit);
     assert_eq!(
@@ -199,7 +199,7 @@ fn cpu_worker_admission_rejects_metadata_before_transfer_construction() {
     use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
     let kind = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
     let circuit = artifact("inits_and_teardowns");
-    let config = gpu_circuit_prover::config::prover_config(kind, SecurityLevel::Sec100).unwrap();
+    let config = kind.prover_config(SecurityLevel::Sec100);
     let resolved = Arc::new(ResolvedProverConfig::new(
         kind,
         Arc::clone(&circuit),

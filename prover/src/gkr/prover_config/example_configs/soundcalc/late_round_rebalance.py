@@ -38,8 +38,8 @@ JBR = {m: JohnsonBoundRegime(F, explicit_m=m) for m in MS}
 
 # label: message_log2, folds, queries, intermediate LDE factors (log2), per-round query PoW, column ceiling,
 # virtual packing   (base LDE 2)
-# These are the ladders BEFORE the 2026-10-27 rebalance (the driver's input); the rebalanced
-# ones it prints are the ladders in pessimistic_conjecture.rs since then.
+# These are the ladders before the late-round rebalance (the driver's input); the rebalanced
+# ones it prints are the ladders in pessimistic_conjecture.rs.
 SHAPES = [
     ("2^20, fold 1, 114 columns", 20, [1, 5, 5, 4, 4], [89, 11, 7, 6, 5], [8, 13, 15, 19], [26, 27, 25, 25, 21], 114, False),
     ("2^21, fold 1, 114 columns", 21, [1, 5, 5, 5, 4], [89, 15, 8, 6, 5], [6, 11, 15, 19], [26, 25, 27, 25, 21], 114, False),

@@ -1,13 +1,13 @@
 //! A finite host pool with synthetic commitments for orchestration tests.
 
 use crate::backend::{CircuitPrecomputation, ExecutionBackend};
-use crate::config::{BackendConfiguration, ExecutionProverConfiguration};
+use crate::config::{BackendConfiguration, ExecutionProverConfiguration, ProvingSelection};
 use crate::messages::{
     MemoryCommitmentResult, SetupInitializationResult, WorkBatch, WorkRequest, WorkResult,
     WorkerResult,
 };
 use crate::setup::CanonicalCircuitSetup;
-use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel, BF};
+use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, BF};
 use execution_prover_model::allocator::CpuTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
@@ -102,7 +102,7 @@ impl ExecutionBackend for TestBackend {
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
-        _security: SecurityLevel,
+        _selection: ProvingSelection,
     ) -> TestPrecomputations {
         let compiled_circuit = match setup {
             CanonicalCircuitSetup::Riscv(setup) => setup.compiled_circuit,

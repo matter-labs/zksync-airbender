@@ -8,42 +8,34 @@
 use super::*;
 
 impl ProverConfigProfile {
-    /// Validate the named profile before loading artifacts or constructing a prover.
-    pub fn validate_selection(
-        self,
-        selection: ProvingSelection,
-    ) -> Result<(), ConfigSelectionError> {
-        if self != Self::Standard
-            && selection.soundness_mode != SoundnessMode::PessimisticConjecture
-        {
-            return Err(ConfigSelectionError::UnsupportedSpecialConfigMode {
-                profile: self,
-                mode: selection.soundness_mode,
-            });
+    /// The refusal for proving this profile in `mode`, or `None` when the profile supports it.
+    /// The L1 feeder/wrap/EVM profiles are Pessimistic-only; Ethproofs is deferred product
+    /// scope. This is the one rule and text for every boundary that admits a profile.
+    pub fn mode_refusal(self, mode: SoundnessMode) -> Option<String> {
+        if self == Self::Standard || mode == SoundnessMode::PessimisticConjecture {
+            return None;
         }
-        Ok(())
+        let name = match mode {
+            SoundnessMode::PessimisticConjecture => "pessimistic-conjecture",
+            SoundnessMode::EthproofsSoundnessCalc => "ethproofs",
+        };
+        Some(format!(
+            "UnsupportedSpecialConfigMode: {name} soundness mode is not implemented for the L1 \
+             feeder/wrap/EVM profile (deferred product scope); requested {self:?}"
+        ))
     }
-}
 
-pub fn try_l1_feeder_config_for_2_23(
-    selection: ProvingSelection,
-) -> Result<ProverConfig, ConfigSelectionError> {
-    ProverConfigProfile::L1Feeder.validate_selection(selection)?;
-    let config = l1_feeder_config_for_2_23();
-    assert_eq!(
-        config.security_level, selection.security_level,
-        "the certified L1 feeder config must match the requested security level"
-    );
-    Ok(config)
-}
+    pub fn supports(self, mode: SoundnessMode) -> bool {
+        self.mode_refusal(mode).is_none()
+    }
 
-pub fn try_evm_production_packed_prover_config(
-    selection: ProvingSelection,
-) -> Result<ProverConfig, ConfigSelectionError> {
-    ProverConfigProfile::EvmProductionPacked.validate_selection(selection)?;
-    Ok(evm_production_packed_prover_config(
-        selection.security_level,
-    ))
+    /// Panics with the [`Self::mode_refusal`] text when this profile does not support the
+    /// selection's mode. Callers run it before any artifact, setup or device work.
+    pub fn assert_supports(self, selection: ProvingSelection) {
+        if let Some(refusal) = self.mode_refusal(selection.soundness_mode) {
+            panic!("{refusal}");
+        }
+    }
 }
 
 /// The "L1 feeder" configuration for the 2^23 unified circuit: identical to
@@ -156,42 +148,38 @@ mod selection_tests {
     use super::*;
 
     #[test]
-    fn special_profiles_reject_ethproofs() {
-        let selection = ProvingSelection {
-            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
-            ..ProvingSelection::default()
-        };
+    fn special_profiles_refuse_ethproofs() {
+        let mode = SoundnessMode::EthproofsSoundnessCalc;
         for profile in [
             ProverConfigProfile::L1Feeder,
             ProverConfigProfile::EvmProductionPacked,
         ] {
-            let error = profile.validate_selection(selection).unwrap_err();
-            assert!(error.to_string().contains("ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope)"));
+            assert!(!profile.supports(mode));
             assert_eq!(
-                profile.validate_selection(selection),
-                Err(ConfigSelectionError::UnsupportedSpecialConfigMode {
-                    profile,
-                    mode: selection.soundness_mode,
-                })
+                profile.mode_refusal(mode),
+                Some(format!(
+                    "UnsupportedSpecialConfigMode: ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope); requested {profile:?}"
+                ))
             );
         }
-        assert!(ProverConfigProfile::Standard
-            .validate_selection(selection)
-            .is_ok());
-        assert!(try_l1_feeder_config_for_2_23(selection).is_err());
-        assert!(try_evm_production_packed_prover_config(selection).is_err());
+        assert!(ProverConfigProfile::Standard.supports(mode));
+        for profile in [
+            ProverConfigProfile::Standard,
+            ProverConfigProfile::L1Feeder,
+            ProverConfigProfile::EvmProductionPacked,
+        ] {
+            assert!(profile.supports(SoundnessMode::PessimisticConjecture));
+        }
     }
 
     #[test]
-    fn pessimistic_special_profile_configs_are_identical() {
-        let selection = ProvingSelection::default();
-        assert_eq!(
-            try_l1_feeder_config_for_2_23(selection).unwrap(),
-            l1_feeder_config_for_2_23()
-        );
-        assert_eq!(
-            try_evm_production_packed_prover_config(selection).unwrap(),
-            evm_production_packed_prover_config(selection.security_level)
-        );
+    #[should_panic(
+        expected = "UnsupportedSpecialConfigMode: ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope); requested L1Feeder"
+    )]
+    fn ethproofs_l1_feeder_selection_panics() {
+        ProverConfigProfile::L1Feeder.assert_supports(ProvingSelection {
+            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+            ..ProvingSelection::default()
+        });
     }
 }

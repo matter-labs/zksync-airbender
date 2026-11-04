@@ -100,115 +100,16 @@ pub(crate) fn replay_unified_circuit<C: Counters>(
     buffers
 }
 
-/// Prove an execution with the *unified* reduced-machine circuit: a single GKR
-/// circuit that folds every executor family plus its inline inits-and-teardowns,
-/// alongside the delegation circuits. This is the unified-mode analogue of
-/// [`crate::unrolled::prove_unrolled_execution_with_replayer`]; it follows the
-/// same Fiat-Shamir flow (commit memory trees -> derive challenges -> prove) and
-/// asserts that the global permutation grand-product closes to ONE.
-///
-/// The caller chooses the compute backends: the FFT/tree [`Backend`] (whose
-/// [`Backend::TwiddleSet`]s are built here, once per WHIR message length) and the
-/// [`GKRBackend`] sumcheck engine. Proof bytes are backend-independent; pass
-/// `DefaultBabyBearBackend::default()` + `DefaultBabyBearGKRBackend::default()`
-/// for the target-recommended pair.
-/// Pessimistic compatibility entry point; use [`prove_unified_execution_with_replayer_in_mode`]
-/// for an explicit mode.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Keep the replay and proving inputs explicit at the orchestration boundary."
-)]
-pub fn prove_unified_execution_with_replayer<
-    B: Backend<BabyBearField, BabyBearExt4>,
-    GB: GKRBackend<BabyBearField, BabyBearExt4>,
->(
-    cycles_bound: usize,
-    binary_image: &[u32],
-    text_section: &[u32],
-    use_caches: bool,
-    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
-    ram_bound: usize,
-    worker: &worker::Worker,
-    security_level: SecurityLevel,
-    permutation_argument_pow_bits: u32,
-    backend: &B,
-    gkr_backend: &GB,
-) -> (
-    full_statement_verifier::program_proof::ProgramProof,
-    BTreeMap<u32, UnrolledCircuitSetupParams>,
-) {
-    prove_unified_execution_with_replayer_in_mode::<B, GB>(
-        cycles_bound,
-        binary_image,
-        text_section,
-        use_caches,
-        non_determinism,
-        ram_bound,
-        worker,
-        security_level,
-        prover::definitions::SoundnessMode::PessimisticConjecture,
-        permutation_argument_pow_bits,
-        backend,
-        gkr_backend,
-    )
-    .unwrap_or_else(|error| panic!("{error}"))
-}
-
-/// Prove the unified and delegation circuits under one explicit soundness mode.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Keep the replay and proving inputs explicit at the orchestration boundary."
-)]
-pub fn prove_unified_execution_with_replayer_in_mode<
-    B: Backend<BabyBearField, BabyBearExt4>,
-    GB: GKRBackend<BabyBearField, BabyBearExt4>,
->(
-    cycles_bound: usize,
-    binary_image: &[u32],
-    text_section: &[u32],
-    use_caches: bool,
-    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
-    ram_bound: usize,
-    worker: &worker::Worker,
-    security_level: SecurityLevel,
-    soundness_mode: prover::definitions::SoundnessMode,
-    permutation_argument_pow_bits: u32,
-    backend: &B,
-    gkr_backend: &GB,
-) -> Result<
-    (
-        full_statement_verifier::program_proof::ProgramProof,
-        BTreeMap<u32, UnrolledCircuitSetupParams>,
-    ),
-    circuit_common::ConfigSelectionError,
-> {
-    prove_unified_execution_with_replayer_impl::<B, GB>(
-        cycles_bound,
-        binary_image,
-        text_section,
-        use_caches,
-        non_determinism,
-        ram_bound,
-        worker,
-        security_level,
-        soundness_mode,
-        permutation_argument_pow_bits,
-        None,
-        backend,
-        gkr_backend,
-    )
-}
-
 /// Low-level concrete-config API with pessimistic delegation schedules. It does not
 /// certify a named profile; mode-aware production callers use
 /// [`prove_unified_execution_with_replayer_in_profile`].
 ///
-/// [`prove_unified_execution_with_replayer`] with an explicit prover config
-/// for the UNIFIED circuit (delegation circuits keep their standard per-level
-/// configs). Used to prove final recursion layers under special commitment
-/// parameters (e.g. the high-LDE "L1 feeder" config) — the corresponding
-/// generated verifier must be used to verify the result, since the LDE factor
-/// and WHIR schedule are baked into the verify function.
+/// The proving flow of [`prove_unified_execution_with_replayer_in_profile`] under Pessimistic
+/// Conjecture with an explicit prover config for the UNIFIED circuit (delegation circuits keep
+/// their standard per-level configs). Used to prove final recursion layers under special
+/// commitment parameters (e.g. the high-LDE "L1 feeder" config) — the corresponding generated
+/// verifier must be used to verify the result, since the LDE factor and WHIR schedule are baked
+/// into the verify function.
 pub fn prove_unified_execution_with_replayer_with_unified_config<
     B: Backend<BabyBearField, BabyBearExt4>,
     GB: GKRBackend<BabyBearField, BabyBearExt4>,
@@ -244,10 +145,24 @@ pub fn prove_unified_execution_with_replayer_with_unified_config<
         backend,
         gkr_backend,
     )
-    .unwrap_or_else(|error| panic!("{error}"))
 }
 
-/// Select a recognized standard or L1-feeder profile, rejecting uncertified modes before execution.
+/// Prove an execution with the *unified* reduced-machine circuit under one explicit soundness
+/// mode and prover-config profile, rejecting a mode the profile does not certify before
+/// execution.
+///
+/// `Standard` proves with a single GKR circuit that folds every executor family plus its inline
+/// inits-and-teardowns, alongside the delegation circuits. It is the unified-mode analogue of
+/// [`crate::unrolled::prove_unrolled_execution_with_replayer_in_mode`]: the same Fiat-Shamir flow
+/// (commit memory trees -> derive challenges -> prove), and it asserts that the global permutation
+/// grand-product closes to ONE. `L1Feeder` proves with the certified L1 feeder config through the
+/// transition driver.
+///
+/// The caller chooses the compute backends: the FFT/tree [`Backend`] (whose
+/// [`Backend::TwiddleSet`]s are built here, once per WHIR message length) and the
+/// [`GKRBackend`] sumcheck engine. Proof bytes are backend-independent; pass
+/// `DefaultBabyBearBackend::default()` + `DefaultBabyBearGKRBackend::default()`
+/// for the target-recommended pair.
 #[expect(
     clippy::too_many_arguments,
     reason = "Keep the replay, profile and proving inputs explicit at the orchestration boundary."
@@ -269,20 +184,17 @@ pub fn prove_unified_execution_with_replayer_in_profile<
     permutation_argument_pow_bits: u32,
     backend: &B,
     gkr_backend: &GB,
-) -> Result<
-    (
-        full_statement_verifier::program_proof::ProgramProof,
-        BTreeMap<u32, UnrolledCircuitSetupParams>,
-    ),
-    circuit_common::ConfigSelectionError,
-> {
+) -> (
+    full_statement_verifier::program_proof::ProgramProof,
+    BTreeMap<u32, UnrolledCircuitSetupParams>,
+) {
     use prover::definitions::{ProverConfigProfile, ProvingSelection};
-    use prover::gkr::prover_config::example_configs::try_l1_feeder_config_for_2_23;
+    use prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23;
     let selection = ProvingSelection {
         security_level,
         soundness_mode,
     };
-    profile.validate_selection(selection)?;
+    profile.assert_supports(selection);
     match profile {
         ProverConfigProfile::Standard => prove_unified_execution_with_replayer_impl::<B, GB>(
             cycles_bound,
@@ -300,32 +212,31 @@ pub fn prove_unified_execution_with_replayer_in_profile<
             gkr_backend,
         ),
         ProverConfigProfile::L1Feeder => {
-            let config = try_l1_feeder_config_for_2_23(selection)?;
+            let config = l1_feeder_config_for_2_23();
+            assert_eq!(
+                config.security_level, selection.security_level,
+                "the certified L1 feeder config must match the requested security level"
+            );
             // The feeder commits memory+witness together and has no delegations.
             // Its existing transition driver owns that prepass and transcript order.
-            Ok(
-                crate::unified_transition::prove_unified_transition_with_replayer(
-                    cycles_bound,
-                    binary_image,
-                    text_section,
-                    use_caches,
-                    non_determinism,
-                    ram_bound,
-                    worker,
-                    security_level,
-                    permutation_argument_pow_bits,
-                    &config,
-                    backend,
-                    gkr_backend,
-                ),
+            crate::unified_transition::prove_unified_transition_with_replayer(
+                cycles_bound,
+                binary_image,
+                text_section,
+                use_caches,
+                non_determinism,
+                ram_bound,
+                worker,
+                security_level,
+                permutation_argument_pow_bits,
+                &config,
+                backend,
+                gkr_backend,
             )
         }
-        ProverConfigProfile::EvmProductionPacked => Err(
-            circuit_common::ConfigSelectionError::UnsupportedProfileOperation {
-                profile,
-                operation: "BabyBear unified execution",
-            },
-        ),
+        ProverConfigProfile::EvmProductionPacked => {
+            panic!("UnsupportedProfileOperation: BabyBear unified execution cannot use {profile:?}")
+        }
     }
 }
 
@@ -346,13 +257,10 @@ fn prove_unified_execution_with_replayer_impl<
     unified_prover_config_override: Option<&prover::gkr::prover_config::ProverConfig>,
     backend: &B,
     gkr_backend: &GB,
-) -> Result<
-    (
-        full_statement_verifier::program_proof::ProgramProof,
-        BTreeMap<u32, UnrolledCircuitSetupParams>,
-    ),
-    circuit_common::ConfigSelectionError,
-> {
+) -> (
+    full_statement_verifier::program_proof::ProgramProof,
+    BTreeMap<u32, UnrolledCircuitSetupParams>,
+) {
     let mut program_proof = full_statement_verifier::program_proof::ProgramProof {
         riscv_proofs: BTreeMap::new(),
         compiled_riscv_circuits: BTreeMap::new(),
@@ -599,7 +507,7 @@ fn prove_unified_execution_with_replayer_impl<
             );
             config.clone()
         }
-        None => unified_setup.try_prover_config_in_mode(security_level, soundness_mode)?,
+        None => unified_setup.prover_config_in_mode(security_level, soundness_mode),
     };
 
     let mut twiddles: HashMap<usize, B::TwiddleSet> = HashMap::new();
@@ -667,7 +575,7 @@ fn prove_unified_execution_with_replayer_impl<
         let delegation_circuits = &blake_circuits;
         let setup = &blake_round_function_setup;
         if !delegation_circuits.is_empty() {
-            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+            let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
             let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
                 .entry(message_len)
@@ -707,7 +615,7 @@ fn prove_unified_execution_with_replayer_impl<
         let delegation_circuits = &bigint_circuits;
         let setup = &bigint_setup;
         if !delegation_circuits.is_empty() {
-            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+            let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
             let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
                 .entry(message_len)
@@ -748,7 +656,7 @@ fn prove_unified_execution_with_replayer_impl<
         let delegation_circuits = &keccak_special5_circuits;
         let setup = &keccak_special5_setup;
         if !delegation_circuits.is_empty() {
-            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+            let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
             let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
                 .entry(message_len)
@@ -789,7 +697,7 @@ fn prove_unified_execution_with_replayer_impl<
         let delegation_circuits = &blake_g_function_circuits;
         let setup = &blake_g_function_setup;
         if !delegation_circuits.is_empty() {
-            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+            let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
             let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
                 .entry(message_len)
@@ -1003,7 +911,7 @@ fn prove_unified_execution_with_replayer_impl<
     {
         let delegation_type = <setups::Blake2sWithCompressionDelegationCircuit as circuit_common::DelegationCircuit<BabyBearField>>::DELEGATION_TYPE_ID;
         let prover_config =
-            blake_round_function_setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+            blake_round_function_setup.prover_config_in_mode(security_level, soundness_mode);
         if !blake_circuits.is_empty() {
             let (proofs, per_tree_set) = prove_delegation_circuit::<
                 Global,
@@ -1040,8 +948,7 @@ fn prove_unified_execution_with_replayer_impl<
         let delegation_type = <setups::BigIntDelegationCircuit as circuit_common::DelegationCircuit<
             BabyBearField,
         >>::DELEGATION_TYPE_ID;
-        let prover_config =
-            bigint_setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+        let prover_config = bigint_setup.prover_config_in_mode(security_level, soundness_mode);
         if !bigint_circuits.is_empty() {
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, BigintAbiDescription, _, _, _, _, _, _>(
@@ -1073,7 +980,7 @@ fn prove_unified_execution_with_replayer_impl<
                 BabyBearField,
             >>::DELEGATION_TYPE_ID;
         let prover_config =
-            keccak_special5_setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+            keccak_special5_setup.prover_config_in_mode(security_level, soundness_mode);
         if !keccak_special5_circuits.is_empty() {
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, KeccakSpecial5AbiDescription, _, _, _, _, _, _>(
@@ -1105,7 +1012,7 @@ fn prove_unified_execution_with_replayer_impl<
                 BabyBearField,
             >>::DELEGATION_TYPE_ID;
         let prover_config =
-            blake_g_function_setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+            blake_g_function_setup.prover_config_in_mode(security_level, soundness_mode);
         if !blake_g_function_circuits.is_empty() {
             let (proofs, per_tree_set) = prove_delegation_circuit::<
                 Global,
@@ -1156,7 +1063,7 @@ fn prove_unified_execution_with_replayer_impl<
 
     assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
 
-    Ok((program_proof, risc_v_setup_params))
+    (program_proof, risc_v_setup_params)
 }
 
 #[cfg(test)]
@@ -1183,7 +1090,7 @@ pub(crate) mod test {
         let worker = worker::Worker::new_with_num_threads(8);
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
 
-        let (program_proof, setups) = prove_unified_execution_with_replayer::<_, _>(
+        let (program_proof, setups) = prove_unified_execution_with_replayer_in_profile::<_, _>(
             1 << 24,
             &binary_image,
             &text_section,
@@ -1192,6 +1099,8 @@ pub(crate) mod test {
             1 << 30,
             &worker,
             SecurityLevel::Sec100,
+            prover::definitions::SoundnessMode::PessimisticConjecture,
+            prover::definitions::ProverConfigProfile::Standard,
             verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
             &prover::gkr::prover::DefaultBabyBearBackend::default(),
             &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
@@ -1248,42 +1157,14 @@ pub(crate) mod test {
 #[cfg(test)]
 mod profile_selection_tests {
     use super::*;
-    use circuit_common::ConfigSelectionError;
     use prover::definitions::{ProverConfigProfile, SoundnessMode};
     use prover::gkr::prover::{DefaultBabyBearBackend, DefaultBabyBearGKRBackend};
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 
-    #[test]
-    fn unsupported_profile_mode_precedes_execution() {
+    /// Selection is checked before any execution: empty inputs never reach it.
+    fn prove_empty(profile: ProverConfigProfile, mode: SoundnessMode) {
         let worker = worker::Worker::new_with_num_threads(1);
-        let backend = DefaultBabyBearBackend::default();
-        let gkr_backend = DefaultBabyBearGKRBackend::default();
-        for profile in [
-            ProverConfigProfile::L1Feeder,
-            ProverConfigProfile::EvmProductionPacked,
-        ] {
-            let result = prove_unified_execution_with_replayer_in_profile(
-                0,
-                &[],
-                &[],
-                true,
-                QuasiUARTSource::new_with_reads(vec![]),
-                0,
-                &worker,
-                SecurityLevel::Sec100,
-                SoundnessMode::EthproofsSoundnessCalc,
-                profile,
-                0,
-                &backend,
-                &gkr_backend,
-            );
-            assert!(
-                matches!(result, Err(ConfigSelectionError::UnsupportedSpecialConfigMode {
-                profile: rejected, mode: SoundnessMode::EthproofsSoundnessCalc,
-            }) if rejected == profile)
-            );
-        }
-        let result = prove_unified_execution_with_replayer_in_profile(
+        prove_unified_execution_with_replayer_in_profile(
             0,
             &[],
             &[],
@@ -1292,18 +1173,44 @@ mod profile_selection_tests {
             0,
             &worker,
             SecurityLevel::Sec100,
-            SoundnessMode::PessimisticConjecture,
-            ProverConfigProfile::EvmProductionPacked,
+            mode,
+            profile,
             0,
-            &backend,
-            &gkr_backend,
+            &DefaultBabyBearBackend::default(),
+            &DefaultBabyBearGKRBackend::default(),
         );
-        assert!(matches!(
-            result,
-            Err(ConfigSelectionError::UnsupportedProfileOperation {
-                profile: ProverConfigProfile::EvmProductionPacked,
-                ..
-            })
-        ));
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "UnsupportedSpecialConfigMode: ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope); requested L1Feeder"
+    )]
+    fn ethproofs_l1_feeder_is_refused_before_execution() {
+        prove_empty(
+            ProverConfigProfile::L1Feeder,
+            SoundnessMode::EthproofsSoundnessCalc,
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "UnsupportedSpecialConfigMode: ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope); requested EvmProductionPacked"
+    )]
+    fn ethproofs_evm_profile_is_refused_before_execution() {
+        prove_empty(
+            ProverConfigProfile::EvmProductionPacked,
+            SoundnessMode::EthproofsSoundnessCalc,
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "UnsupportedProfileOperation: BabyBear unified execution cannot use EvmProductionPacked"
+    )]
+    fn evm_profile_is_not_a_unified_execution() {
+        prove_empty(
+            ProverConfigProfile::EvmProductionPacked,
+            SoundnessMode::PessimisticConjecture,
+        );
     }
 }

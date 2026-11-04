@@ -42,7 +42,12 @@ fn assert_verifies_unrolled(proof: &ProgramProof, setups: &setups::Setups) {
         proof,
         verifier_common::BLAKE_MODE,
     );
-    let output = full_statement_verifier::host_utils::native_verify_unrolled(stream, true);
+    let output = full_statement_verifier::host_utils::native_verify_unrolled_in_mode(
+        stream,
+        true,
+        prover::definitions::SoundnessMode::PessimisticConjecture,
+    )
+    .expect("unrolled proof must verify");
     assert_ne!(
         output, [0u32; 16],
         "native verification produced an empty output"
@@ -111,7 +116,7 @@ fn a_keccak_workload_delegates_and_verifies() {
 fn legacy_prover_keccak_f1600_workload_delegates_and_verifies() {
     let (binary, text) = workload("keccak", "app");
     let worker = worker::Worker::new();
-    let (proof, setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer::<
+    let (proof, setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer_in_mode::<
         riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
         std::alloc::Global,
         _,
@@ -125,6 +130,7 @@ fn legacy_prover_keccak_f1600_workload_delegates_and_verifies() {
         1 << 30,
         &worker,
         prover::definitions::SecurityLevel::Sec100,
+        prover::definitions::SoundnessMode::PessimisticConjecture,
         verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
         &prover::gkr::prover::DefaultBabyBearBackend::default(),
         &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
@@ -155,51 +161,52 @@ fn a_unified_execution_proves_and_natively_verifies() {
         &proof,
         verifier_common::BLAKE_MODE,
     );
-    let output = full_statement_verifier::host_utils::native_verify_unified(stream, true);
+    let output = full_statement_verifier::host_utils::native_verify_unified_in_mode(
+        stream,
+        true,
+        prover::definitions::SoundnessMode::PessimisticConjecture,
+    )
+    .expect("unified proof must verify");
     assert_ne!(
         output, [0u32; 16],
         "native verification produced an empty output"
     );
 }
 
-/// First Task S resource gate: one standard ethproofs CPU base proof, followed
-/// by verification with the explicitly selected schedule. The optional private
-/// JSON bundle is versioned and includes selection; it is not a pipeline v3 artifact.
+/// A production-size CPU base proof under the ethproofs schedule, verified natively with that
+/// schedule.
 #[test]
-#[ignore = "production circuit dimensions: measure time/RSS before scheduling recursion"]
-fn ethproofs_base_measurement() {
-    selected_base_measurement(prover::definitions::SoundnessMode::EthproofsSoundnessCalc);
+#[ignore = "production circuit dimensions: minutes and many GiB"]
+fn ethproofs_base_proof_verifies() {
+    selected_base_proof_verifies(prover::definitions::SoundnessMode::EthproofsSoundnessCalc);
 }
 
-/// Pessimistic counterpart with exactly the same inputs and execution configuration.
+/// The pessimistic counterpart, with the same inputs and execution configuration.
 #[test]
-#[ignore = "production circuit dimensions: measure time/RSS on the same workload as ethproofs"]
-fn pessimistic_base_measurement() {
-    selected_base_measurement(prover::definitions::SoundnessMode::PessimisticConjecture);
+#[ignore = "production circuit dimensions: minutes and many GiB"]
+fn pessimistic_base_proof_verifies() {
+    selected_base_proof_verifies(prover::definitions::SoundnessMode::PessimisticConjecture);
 }
 
-fn selected_base_measurement(soundness_mode: prover::definitions::SoundnessMode) {
+fn selected_base_proof_verifies(soundness_mode: prover::definitions::SoundnessMode) {
     use prover::definitions::ProvingSelection;
     let selection = ProvingSelection {
         soundness_mode,
         ..ProvingSelection::default()
     };
     let (proof, setups) = {
-        let mut prover = CpuExecutionProver::try_with_configuration(
+        let mut prover = CpuExecutionProver::with_configuration(
             CpuExecutionProverConfiguration::for_selection(selection),
-        )
-        .expect("CPU must support the selected ethproofs schedule");
+        );
         assert_eq!(prover.selection(), selection);
         let (binary, text) = workload("basic_fibonacci", "app");
-        let handle = prover
-            .try_add_binary(
-                ExecutionKind::Unrolled,
-                MachineType::FullUnsigned,
-                binary,
-                text,
-                None,
-            )
-            .expect("basic Fibonacci configs must resolve in ethproofs mode");
+        let handle = prover.add_binary(
+            ExecutionKind::Unrolled,
+            MachineType::FullUnsigned,
+            binary,
+            text,
+            None,
+        );
         let result = prover.commit_memory_and_prove(
             1,
             &handle,
@@ -210,7 +217,7 @@ fn selected_base_measurement(soundness_mode: prover::definitions::SoundnessMode)
     let proof_count: usize = proof.riscv_proofs.values().map(Vec::len).sum();
     assert!(
         proof_count > 0,
-        "measurement must produce actual base proofs"
+        "the base proof must contain RISC-V proof chunks"
     );
     let stream = full_statement_verifier::host_utils::build_unrolled_stream(
         &setups,
@@ -221,16 +228,8 @@ fn selected_base_measurement(soundness_mode: prover::definitions::SoundnessMode)
         stream,
         true,
         selection.soundness_mode,
-    );
+    )
+    .expect("unrolled proof must verify");
     assert_ne!(output, [0u32; 16], "selected base proof must verify");
-    if let Ok(checkpoint) = std::env::var("TASK_S_BASE_PROOF_OUT") {
-        program_prover::bundle::write_program_proof_bundle(
-            std::path::Path::new(&checkpoint),
-            selection,
-            &proof,
-            &setups,
-        )
-        .expect("write the mode-tagged JSON measurement bundle");
-    }
-    println!("Task S CPU base measurement: {selection:?}, {proof_count} RISC-V proof chunks, native verification succeeded");
+    println!("{selection:?}: {proof_count} RISC-V proof chunks verified natively");
 }

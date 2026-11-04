@@ -6,14 +6,11 @@
 //! [`load_fsv_exact`] accepts a file only if it decodes to that image, so an `FSV_DIR` may
 //! relocate the binaries but never re-identify them.
 
-use riscv_transpiler::elf::{read_elf, ElfReadError, ElfReadMode};
+use riscv_transpiler::elf::{read_elf, ElfReadMode};
 use sha3::{Digest, Keccak256};
 use std::fmt;
 use std::path::{Path, PathBuf};
-use verifier_common::fsv_binaries::{
-    BlakeMode, FsvDescriptor, FsvProgram, SecurityLevel, SoundnessMode, UnsupportedFsvVariant,
-    FSV_REGISTRY,
-};
+use verifier_common::fsv_binaries::{FsvDescriptor, FSV_REGISTRY};
 
 /// Name of the digest recipe of [`fsv_digest`], recorded in the manifest header.
 pub const FSV_DIGEST_RECIPE: &str = "fsv-rom-digest-v1";
@@ -81,18 +78,24 @@ pub fn fsv_manifest() -> &'static [FsvManifestEntry] {
     })
 }
 
-/// The pinned manifest row of `descriptor`.
-pub fn fsv_manifest_entry(
-    descriptor: &FsvDescriptor,
-) -> Result<&'static FsvManifestEntry, FsvLoadError> {
-    descriptor
-        .registry_entry()
-        .map_err(FsvLoadError::Unsupported)?;
+/// How to rebuild the guests and their manifest.
+const REBUILD: &str = "run `tools/gkr_verifier/dump_recursive_verifiers.sh`";
+
+/// The pinned manifest row of `descriptor`. Panics, naming the condition, when no guest is
+/// built for the descriptor (`Unsupported`) or the compiled-in manifest has no row for it
+/// (`MissingManifestEntry`).
+pub fn fsv_manifest_entry(descriptor: &FsvDescriptor) -> &'static FsvManifestEntry {
+    if let Err(err) = descriptor.registry_entry() {
+        panic!("Unsupported: {err}");
+    }
     fsv_manifest()
         .iter()
         .find(|entry| entry.descriptor == *descriptor)
-        .ok_or(FsvLoadError::MissingManifestEntry {
-            descriptor: *descriptor,
+        .unwrap_or_else(|| {
+            panic!(
+                "MissingManifestEntry: the compiled-in {FSV_MANIFEST_FILE} has no row for \
+                 {descriptor}; {REBUILD}"
+            )
         })
 }
 
@@ -140,102 +143,6 @@ impl VerifiedFsvProgram {
     }
 }
 
-#[derive(Debug)]
-pub enum FsvLoadError {
-    /// No guest is built for the descriptor.
-    Unsupported(UnsupportedFsvVariant),
-    /// The descriptor is registered but the compiled-in manifest has no row for it.
-    MissingManifestEntry { descriptor: FsvDescriptor },
-    /// The guest file does not exist.
-    MissingArtifact {
-        descriptor: FsvDescriptor,
-        path: PathBuf,
-    },
-    /// The guest file could not be read.
-    Io {
-        descriptor: FsvDescriptor,
-        path: PathBuf,
-        error: std::io::Error,
-    },
-    /// The guest file is not a loadable guest ELF.
-    InvalidElf {
-        descriptor: FsvDescriptor,
-        path: PathBuf,
-        error: ElfReadError,
-    },
-    /// The file is the pinned image of another registered guest.
-    WrongArtifact {
-        descriptor: FsvDescriptor,
-        path: PathBuf,
-        found: FsvDescriptor,
-    },
-    /// The file decodes to an image no registered guest has.
-    DigestMismatch {
-        descriptor: FsvDescriptor,
-        path: PathBuf,
-        expected: FsvDigest,
-        actual: FsvDigest,
-    },
-}
-
-impl fmt::Display for FsvLoadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        const REBUILD: &str = "run `tools/gkr_verifier/dump_recursive_verifiers.sh`";
-        match self {
-            Self::Unsupported(err) => write!(f, "{err}"),
-            Self::MissingManifestEntry { descriptor } => write!(
-                f,
-                "the compiled-in {FSV_MANIFEST_FILE} has no row for {descriptor}; {REBUILD}"
-            ),
-            Self::MissingArtifact { descriptor, path } => write!(
-                f,
-                "missing full-statement verifier {descriptor} at {}; {REBUILD}",
-                path.display()
-            ),
-            Self::Io {
-                descriptor,
-                path,
-                error,
-            } => write!(
-                f,
-                "cannot read full-statement verifier {descriptor} at {}: {error}",
-                path.display()
-            ),
-            Self::InvalidElf {
-                descriptor,
-                path,
-                error,
-            } => write!(
-                f,
-                "full-statement verifier {descriptor} at {} is not a loadable guest: {error}",
-                path.display()
-            ),
-            Self::WrongArtifact {
-                descriptor,
-                path,
-                found,
-            } => write!(
-                f,
-                "{} holds the full-statement verifier {found}, not the requested {descriptor}",
-                path.display()
-            ),
-            Self::DigestMismatch {
-                descriptor,
-                path,
-                expected,
-                actual,
-            } => write!(
-                f,
-                "full-statement verifier {descriptor} at {} has ROM digest {actual}, \
-                 pinned {expected} ({FSV_DIGEST_RECIPE}); the file is modified or stale, {REBUILD}",
-                path.display()
-            ),
-        }
-    }
-}
-
-impl std::error::Error for FsvLoadError {}
-
 /// A guest file decoded the way the prover consumes it.
 struct DecodedGuest {
     bin: Vec<u32>,
@@ -244,95 +151,71 @@ struct DecodedGuest {
     text_bytes: usize,
 }
 
-fn decode_guest(descriptor: &FsvDescriptor, path: &Path) -> Result<DecodedGuest, FsvLoadError> {
-    let bytes = std::fs::read(path).map_err(|error| {
+/// Panics, naming the condition, when the file is missing (`MissingArtifact`), unreadable
+/// (`Io`) or not a loadable guest ELF (`InvalidElf`).
+fn decode_guest(descriptor: &FsvDescriptor, path: &Path) -> DecodedGuest {
+    let bytes = std::fs::read(path).unwrap_or_else(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
-            FsvLoadError::MissingArtifact {
-                descriptor: *descriptor,
-                path: path.to_path_buf(),
-            }
-        } else {
-            FsvLoadError::Io {
-                descriptor: *descriptor,
-                path: path.to_path_buf(),
-                error,
-            }
+            panic!(
+                "MissingArtifact: missing full-statement verifier {descriptor} at {}; {REBUILD}",
+                path.display()
+            )
         }
-    })?;
-    let image =
-        read_elf(&bytes, ElfReadMode::Legacy).map_err(|error| FsvLoadError::InvalidElf {
-            descriptor: *descriptor,
-            path: path.to_path_buf(),
-            error,
-        })?;
+        panic!(
+            "Io: cannot read full-statement verifier {descriptor} at {}: {error}",
+            path.display()
+        )
+    });
+    let image = read_elf(&bytes, ElfReadMode::Legacy).unwrap_or_else(|error| {
+        panic!(
+            "InvalidElf: full-statement verifier {descriptor} at {} is not a loadable guest: \
+             {error}",
+            path.display()
+        )
+    });
     let text = image.padded_text_words();
-    Ok(DecodedGuest {
+    DecodedGuest {
         bin: image
             .flattened_binary
             .expect("legacy mode always produces the flattened image"),
         text,
         rom_bytes: image.flattened_binary_used_bytes,
         text_bytes: image.text.len() * 4,
-    })
+    }
 }
 
 /// Load the guest of `descriptor` from `dir` (the FSV root or a relocated copy of it) and check
-/// it against its pinned digest. No fallback: a missing or different file is an error.
-pub fn load_fsv_exact(
-    dir: impl AsRef<Path>,
-    descriptor: &FsvDescriptor,
-) -> Result<VerifiedFsvProgram, FsvLoadError> {
-    let entry = descriptor
-        .registry_entry()
-        .map_err(FsvLoadError::Unsupported)?;
-    let pinned = fsv_manifest_entry(descriptor)?;
-    let path = dir.as_ref().join(entry.relative_path);
-    let guest = decode_guest(descriptor, &path)?;
+/// it against its pinned digest. No fallback: besides the [`fsv_manifest_entry`] and file
+/// conditions, a file holding another registered guest (`WrongArtifact`) or an image no
+/// registered guest has (`DigestMismatch`) panics, naming the condition.
+pub fn load_fsv_exact(dir: impl AsRef<Path>, descriptor: &FsvDescriptor) -> VerifiedFsvProgram {
+    let pinned = fsv_manifest_entry(descriptor);
+    let path = dir.as_ref().join(pinned.relative_path);
+    let guest = decode_guest(descriptor, &path);
     let digest = fsv_digest(&guest.bin, &guest.text);
     if digest != pinned.digest {
-        return Err(
-            match fsv_manifest().iter().find(|other| other.digest == digest) {
-                Some(other) => FsvLoadError::WrongArtifact {
-                    descriptor: *descriptor,
-                    path,
-                    found: other.descriptor,
-                },
-                None => FsvLoadError::DigestMismatch {
-                    descriptor: *descriptor,
-                    path,
-                    expected: pinned.digest,
-                    actual: digest,
-                },
-            },
-        );
+        match fsv_manifest().iter().find(|other| other.digest == digest) {
+            Some(other) => panic!(
+                "WrongArtifact: {} holds the full-statement verifier {}, not the requested \
+                 {descriptor}",
+                path.display(),
+                other.descriptor
+            ),
+            None => panic!(
+                "DigestMismatch: full-statement verifier {descriptor} at {} has ROM digest \
+                 {digest}, pinned {} ({FSV_DIGEST_RECIPE}); the file is modified or stale, \
+                 {REBUILD}",
+                path.display(),
+                pinned.digest
+            ),
+        }
     }
-    Ok(VerifiedFsvProgram {
+    VerifiedFsvProgram {
         descriptor: *descriptor,
         digest,
         bin: guest.bin,
         text: guest.text,
-    })
-}
-
-/// [`load_fsv_exact`] of the Sec100 pessimistic-conjecture guest, for callers that predate
-/// soundness-mode selection; panics on any [`FsvLoadError`]. Only the pinned builds load:
-/// a directory holding other builds of the same guest (a `no_caches` variant, a local
-/// modification) panics with `DigestMismatch` rather than falling back.
-#[must_use]
-pub fn load_fsv_program(
-    dir: impl AsRef<Path>,
-    program: FsvProgram,
-    blake: BlakeMode,
-) -> (Vec<u32>, Vec<u32>) {
-    let descriptor = FsvDescriptor::new(
-        SecurityLevel::Sec100,
-        SoundnessMode::PessimisticConjecture,
-        program,
-        blake,
-    );
-    load_fsv_exact(dir, &descriptor)
-        .unwrap_or_else(|err| panic!("{err}"))
-        .into_words()
+    }
 }
 
 const MANIFEST_HEADER: &str = "\
@@ -346,8 +229,8 @@ const MANIFEST_HEADER: &str = "\
 ";
 
 /// The manifest of the guests under `dir`, as tracked: one row per [`FSV_REGISTRY`] entry, in
-/// registry order. Fails if any guest is missing or not loadable.
-pub fn render_fsv_manifest(dir: impl AsRef<Path>) -> Result<String, FsvLoadError> {
+/// registry order. Panics, as [`load_fsv_exact`] does, if a guest is missing or not loadable.
+pub fn render_fsv_manifest(dir: impl AsRef<Path>) -> String {
     let mut out = String::from(MANIFEST_HEADER);
     out.push_str(&format!(
         "# digest: {FSV_DIGEST_RECIPE} = keccak256(le_u64(bin words) || le_u64(text words) || \
@@ -357,7 +240,7 @@ pub fn render_fsv_manifest(dir: impl AsRef<Path>) -> Result<String, FsvLoadError
          # security soundness_mode program profile blake path rom_bytes text_bytes digest\n"
     ));
     for entry in FSV_REGISTRY {
-        let guest = decode_guest(&entry.descriptor, &dir.as_ref().join(entry.relative_path))?;
+        let guest = decode_guest(&entry.descriptor, &dir.as_ref().join(entry.relative_path));
         let [security, mode, program, profile, blake] = entry.descriptor.tokens();
         out.push_str(&format!(
             "{security} {mode} {program} {profile} {blake} {} {} {} {}\n",
@@ -367,7 +250,7 @@ pub fn render_fsv_manifest(dir: impl AsRef<Path>) -> Result<String, FsvLoadError
             fsv_digest(&guest.bin, &guest.text),
         ));
     }
-    Ok(out)
+    out
 }
 
 fn parse_manifest(text: &str) -> Result<Vec<FsvManifestEntry>, String> {
@@ -417,7 +300,9 @@ fn parse_manifest(text: &str) -> Result<Vec<FsvManifestEntry>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use verifier_common::fsv_binaries::FsvProfile;
+    use verifier_common::fsv_binaries::{
+        BlakeMode, FsvProfile, FsvProgram, SecurityLevel, SoundnessMode,
+    };
 
     const PESSIMISTIC: SoundnessMode = SoundnessMode::PessimisticConjecture;
     const ETHPROOFS: SoundnessMode = SoundnessMode::EthproofsSoundnessCalc;
@@ -428,6 +313,16 @@ mod tests {
 
     fn path_of(descriptor: &FsvDescriptor) -> &'static str {
         descriptor.registry_entry().unwrap().relative_path
+    }
+
+    /// The message `load_fsv_exact(dir, descriptor)` panics with.
+    fn refusal(dir: &Path, descriptor: &FsvDescriptor) -> String {
+        let payload = std::panic::catch_unwind(|| load_fsv_exact(dir, descriptor))
+            .expect_err("the guest must be refused");
+        match payload.downcast::<String>() {
+            Ok(message) => *message,
+            Err(payload) => (*payload.downcast::<&str>().unwrap()).to_owned(),
+        }
     }
 
     /// A scratch FSV root holding the given canonical guests at the given registry paths.
@@ -461,8 +356,7 @@ mod tests {
     #[test]
     #[ignore = "generator: rewrites tools/gkr_verifier/full_statement_verifiers/fsv_manifest.txt"]
     fn regenerate_fsv_manifest() {
-        let manifest =
-            render_fsv_manifest(canonical_fsv_dir()).unwrap_or_else(|err| panic!("{err}"));
+        let manifest = render_fsv_manifest(canonical_fsv_dir());
         std::fs::write(canonical_fsv_dir().join(FSV_MANIFEST_FILE), manifest).unwrap();
     }
 
@@ -471,8 +365,7 @@ mod tests {
     #[test]
     fn manifest_matches_the_tracked_guests() {
         let tracked = std::fs::read_to_string(canonical_fsv_dir().join(FSV_MANIFEST_FILE)).unwrap();
-        let rendered =
-            render_fsv_manifest(canonical_fsv_dir()).unwrap_or_else(|err| panic!("{err}"));
+        let rendered = render_fsv_manifest(canonical_fsv_dir());
         assert!(
             tracked == rendered,
             "{FSV_MANIFEST_FILE} is stale; run tools/gkr_verifier/dump_recursive_verifiers.sh"
@@ -541,8 +434,7 @@ mod tests {
     #[test]
     fn every_registered_guest_loads_from_the_canonical_dir() {
         for entry in FSV_REGISTRY {
-            let program = load_fsv_exact(canonical_fsv_dir(), &entry.descriptor)
-                .unwrap_or_else(|err| panic!("{err}"));
+            let program = load_fsv_exact(canonical_fsv_dir(), &entry.descriptor);
             assert_eq!(*program.descriptor(), entry.descriptor);
         }
     }
@@ -555,11 +447,8 @@ mod tests {
             BlakeMode::Compression,
         );
         let dir = ScratchDir::new("relocated", &[(&unified, &unified)]);
-        let program = load_fsv_exact(&dir.0, &unified).unwrap();
-        assert_eq!(
-            program.digest(),
-            fsv_manifest_entry(&unified).unwrap().digest
-        );
+        let program = load_fsv_exact(&dir.0, &unified);
+        assert_eq!(program.digest(), fsv_manifest_entry(&unified).digest);
     }
 
     #[test]
@@ -574,10 +463,14 @@ mod tests {
             ..pessimistic
         };
         let dir = ScratchDir::new("pessimistic-at-ethproofs", &[(&pessimistic, &ethproofs)]);
-        match load_fsv_exact(&dir.0, &ethproofs) {
-            Err(FsvLoadError::WrongArtifact { found, .. }) => assert_eq!(found, pessimistic),
-            other => panic!("expected WrongArtifact, got {other:?}"),
-        }
+        assert_eq!(
+            refusal(&dir.0, &ethproofs),
+            format!(
+                "WrongArtifact: {} holds the full-statement verifier {pessimistic}, not the \
+                 requested {ethproofs}",
+                dir.0.join(path_of(&ethproofs)).display()
+            )
+        );
     }
 
     #[test]
@@ -592,10 +485,14 @@ mod tests {
             ..ethproofs
         };
         let dir = ScratchDir::new("ethproofs-at-pessimistic", &[(&ethproofs, &pessimistic)]);
-        match load_fsv_exact(&dir.0, &pessimistic) {
-            Err(FsvLoadError::WrongArtifact { found, .. }) => assert_eq!(found, ethproofs),
-            other => panic!("expected WrongArtifact, got {other:?}"),
-        }
+        assert_eq!(
+            refusal(&dir.0, &pessimistic),
+            format!(
+                "WrongArtifact: {} holds the full-statement verifier {ethproofs}, not the \
+                 requested {pessimistic}",
+                dir.0.join(path_of(&pessimistic)).display()
+            )
+        );
     }
 
     #[test]
@@ -611,10 +508,14 @@ mod tests {
                 ..compression
             };
             let dir = ScratchDir::new("swapped-blake", &[(&compression, &special)]);
-            match load_fsv_exact(&dir.0, &special) {
-                Err(FsvLoadError::WrongArtifact { found, .. }) => assert_eq!(found, compression),
-                other => panic!("expected WrongArtifact, got {other:?}"),
-            }
+            assert_eq!(
+                refusal(&dir.0, &special),
+                format!(
+                    "WrongArtifact: {} holds the full-statement verifier {compression}, not \
+                     the requested {special}",
+                    dir.0.join(path_of(&special)).display()
+                )
+            );
         }
     }
 
@@ -636,12 +537,21 @@ mod tests {
         assert!(size > 0);
         elf[offset + size / 2] ^= 0x01;
         std::fs::write(&path, elf).unwrap();
-        match load_fsv_exact(&dir.0, &target) {
-            Err(FsvLoadError::DigestMismatch {
-                expected, actual, ..
-            }) => assert_ne!(expected, actual),
-            other => panic!("expected DigestMismatch, got {other:?}"),
-        }
+        let message = refusal(&dir.0, &target);
+        let expected = format!(
+            "DigestMismatch: full-statement verifier {target} at {} has ROM digest ",
+            path.display()
+        );
+        assert!(message.starts_with(&expected), "{message}");
+        let pinned = fsv_manifest_entry(&target).digest;
+        assert!(
+            message.contains(&format!(", pinned {pinned} ({FSV_DIGEST_RECIPE})")),
+            "{message}"
+        );
+        assert!(
+            !message.contains(&format!("ROM digest {pinned}")),
+            "{message}"
+        );
     }
 
     #[test]
@@ -652,12 +562,13 @@ mod tests {
             BlakeMode::BlakeSpecialOpcodes,
         );
         let dir = ScratchDir::new("missing", &[]);
-        match load_fsv_exact(&dir.0, &target) {
-            Err(FsvLoadError::MissingArtifact { path, .. }) => {
-                assert_eq!(path, dir.0.join(path_of(&target)));
-            }
-            other => panic!("expected MissingArtifact, got {other:?}"),
-        }
+        assert_eq!(
+            refusal(&dir.0, &target),
+            format!(
+                "MissingArtifact: missing full-statement verifier {target} at {}; {REBUILD}",
+                dir.0.join(path_of(&target)).display()
+            )
+        );
     }
 
     #[test]
@@ -681,26 +592,24 @@ mod tests {
             BlakeMode::GFunction,
         );
         for target in [unified_base, feeder, g_function] {
-            match load_fsv_exact(canonical_fsv_dir(), &target) {
-                Err(FsvLoadError::Unsupported(err)) => assert_eq!(err.descriptor, target),
-                other => panic!("expected Unsupported for {target}, got {other:?}"),
-            }
+            let err = target.registry_entry().unwrap_err();
+            assert_eq!(err.descriptor, target);
+            assert_eq!(
+                refusal(&canonical_fsv_dir(), &target),
+                format!("Unsupported: {err}")
+            );
         }
     }
 
     #[test]
-    fn legacy_wrapper_loads_the_unsuffixed_unified_base() {
-        let (bin, text) = load_fsv_program(
-            canonical_fsv_dir(),
-            FsvProgram::UnifiedBaseLayer,
-            BlakeMode::Compression,
-        );
-        let pinned = fsv_manifest_entry(&descriptor(
+    fn pessimistic_unified_base_loads_from_its_unsuffixed_path() {
+        let unified_base = descriptor(
             PESSIMISTIC,
             FsvProgram::UnifiedBaseLayer,
             BlakeMode::Compression,
-        ))
-        .unwrap();
+        );
+        let (bin, text) = load_fsv_exact(canonical_fsv_dir(), &unified_base).into_words();
+        let pinned = fsv_manifest_entry(&unified_base);
         assert_eq!(fsv_digest(&bin, &text), pinned.digest);
         assert_eq!(pinned.relative_path, "fsv_unified_base_layer_sec_100.elf");
     }

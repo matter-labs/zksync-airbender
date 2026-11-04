@@ -10,8 +10,7 @@ use verifier_common::fsv_binaries::{FsvDescriptor, FsvProfile};
 
 /// The guest of `descriptor`, loaded and digest-checked like the prover loads it.
 pub fn load_guest(descriptor: &FsvDescriptor) -> (Vec<u32>, Vec<u32>) {
-    let guest = full_statement_verifier::host_utils::load_fsv_exact(fsv_dir(), descriptor)
-        .unwrap_or_else(|error| panic!("{descriptor}: {error}"));
+    let guest = full_statement_verifier::host_utils::load_fsv_exact(fsv_dir(), descriptor);
     (guest.bin().to_vec(), guest.text().to_vec())
 }
 
@@ -219,9 +218,7 @@ pub fn render_census_tables(descriptor: &FsvDescriptor, pooled: &PooledCensus) -
         descriptor.soundness_mode,
         descriptor.program,
         descriptor.blake,
-        full_statement_verifier::host_utils::fsv_manifest_entry(descriptor)
-            .unwrap()
-            .digest,
+        full_statement_verifier::host_utils::fsv_manifest_entry(descriptor).digest,
         fmt_vec(c0),
         pooled.spread,
     ));

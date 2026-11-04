@@ -102,14 +102,15 @@ pub struct CircuitSetup<A: GoodAllocator = Global> {
 }
 
 impl<A: GoodAllocator> CircuitSetup<A> {
-    /// Resolve the exact mode using this setup's compiled circuit.
-    pub fn try_prover_config_in_mode(
+    /// The circuit's config under `mode` at `level`, from its geometry and
+    /// compiled circuit.
+    pub fn prover_config_in_mode(
         &self,
         level: SecurityLevel,
         mode: circuit_common::SoundnessMode,
-    ) -> Result<ProverConfig, circuit_common::ConfigSelectionError> {
+    ) -> ProverConfig {
         self.geometry
-            .try_prover_config(&self.compiled_circuit, level, mode)
+            .prover_config(&self.compiled_circuit, level, mode)
     }
 }
 
