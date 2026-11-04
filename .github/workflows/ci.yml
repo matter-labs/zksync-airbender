@@ -21,6 +21,10 @@ on:
         description: Run the complete independent kernel replay and false-proof controls
         type: boolean
         default: false
+      requalify_setups:
+        description: Re-export unchanged setup payloads before promoting changed source receipts
+        type: boolean
+        default: false
 
 permissions: read-all
 
@@ -269,3 +273,4 @@ jobs:
       cold_build: ${{ inputs.cold_build }}
       refresh_axiom_baseline: ${{ inputs.refresh_axiom_baseline }}
       full_assurance: ${{ inputs.full_assurance }}
+      requalify_setups: ${{ inputs.requalify_setups }}

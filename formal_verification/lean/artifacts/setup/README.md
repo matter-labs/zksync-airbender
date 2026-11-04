@@ -144,8 +144,8 @@ python3 scripts/check_native_evidence.py
 python3 -m unittest discover -s scripts -p test_setup_provenance.py -v
 ```
 
-The setup guard checks all thirteen artifact byte hashes, geometry and embedded
-circuit hashes, then compares twelve complete production circuit objects with
+The setup guard checks all sixteen artifact byte hashes, geometry and embedded
+circuit hashes, then compares fifteen complete production circuit objects with
 retained no-cache layouts, including initialization. Smoke has a separately
 pinned ADD/SUB base, native test constructor and derived circuit hash. Its actual
 native constructor is checked again during fresh export; Python does not invent
@@ -185,7 +185,7 @@ python3 scripts/check_setup_freshness.py plan --work-dir /tmp/airbender-setup-fr
 ```
 
 Each printed command is one bounded job. The first twelve deliberately run the
-exact native no-cache circuit generator tests; the next thirteen export all
+exact native no-cache circuit generator tests; the next sixteen export all
 setups. Example steps (place each inside the normal bounded worker):
 
 ```sh
@@ -202,7 +202,7 @@ driver rejects it. Commands use `--locked`, `CARGO_BUILD_JOBS=1`, one test threa
 and an exact full test name. A selected test must really execute once and pass;
 zero selected tests, ignored tests, CI skips and unchanged/missing generator
 outputs fail. Smoke exports through the existing prover roundtrip test and
-`AIRBENDER_SETUP_JSON_FIXTURE`; twelve production setups use the existing
+`AIRBENDER_SETUP_JSON_FIXTURE`; fifteen production setups use the existing
 `execution_prover` exporter, including initialization. Program-bound families use
 the manifest words and native padding/profile builders; smoke retains its native
 four-word unpadded test program. Logs and receipts stay in the scratch directory.
@@ -210,13 +210,32 @@ four-word unpadded test program. Logs and receipts stay in the scratch directory
 Every fresh setup is compared as complete parsed JSON, preserving scalar types,
 array order, physical values, native IDs/offsets, decoder masks, padding, program,
 virtual ranges and the entire circuit. `compare --fresh-dir DIRECTORY` performs
-only those thirteen comparisons and does not claim generator execution. After
-all twenty-five bounded jobs, `verify --work-dir DIRECTORY --dep-info FILE.d`
+only those sixteen comparisons and does not claim generator execution. After
+all twenty-eight bounded jobs, `verify --work-dir DIRECTORY --dep-info FILE.d`
 (repeat `--dep-info` for the scoped native dependency build files) checks all
 execution receipts, complete outputs and source/include coverage. Include actual
 `cs`, `prover`, `execution_prover` and exporter dep-info; an empty or partial set
 missing those selected roots is rejected. Preserve those job logs as freshness
 evidence rather than treating successful retained-data checks as a fresh export.
+
+### Requalifying source receipts
+
+After reviewed source changes, dispatch the FV workflow with `requalify_setups`
+enabled. It runs `prepare-requalification --work-dir DIRECTORY` under the same
+guard, writing an unqualified snapshot outside the checkout. It preserves the
+retained payload hashes, circuit identities, dependency lock and source inventory;
+only current source hashes and the smoke constructor receipt can be candidates.
+The normal retained drift guard continues to reject stale committed receipts.
+
+All native `regenerate` and `export` jobs receive `--requalify` and bind their
+receipts to the same immutable snapshot. Complete JSON mismatch, skipped tests,
+source changes during the run, missing execution receipts and missing dep-info
+remain failures. Only successful `verify --requalify --promote` writes the new
+manifest in the CI checkout. The workflow uploads the qualified manifest and
+execution evidence immediately so its verified receipts can be reviewed and
+committed. No retained payload or production source is repaired by this flow.
+CI success on an uncommitted promoted manifest still requires recording that
+manifest in the PR and validating the final revision before merge.
 
 Focused controls reject changed source without regeneration, a changed physical
 value with unchanged geometry, initialization relation changes, smoke ID/offset/

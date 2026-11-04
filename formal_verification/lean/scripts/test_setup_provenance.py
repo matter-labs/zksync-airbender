@@ -15,11 +15,17 @@ import check_setup_freshness as freshness
 
 
 class ProvenanceControls(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # A candidate is a fixture for drift controls, never native evidence.
+        # The normal strict check must still reject any unqualified source drift.
+        cls.current_sources = freshness.requalification_manifest(retained.REPO)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.scratch = Path(self.temporary.name)
-        self.manifest = retained.read_json(retained.ARTIFACTS / "manifest.json")
+        self.manifest = copy.deepcopy(self.current_sources)
 
     def mutated(self, family, change):
         original = retained.ARTIFACTS / (family + ".json")
@@ -33,8 +39,71 @@ class ProvenanceControls(unittest.TestCase):
             freshness.compare_artifact(output, original)
 
     def test_current_retained_guards(self):
-        self.assertEqual(retained.check()[0], 16)
+        original = retained.read_json(retained.ARTIFACTS / "manifest.json")
+        if original == self.manifest:
+            self.assertEqual(retained.check()[0], 16)
+        else:
+            with self.assertRaises(ValueError):
+                retained.check()
+            self.assertEqual(retained.check(manifest=self.manifest)[0], 16)
         self.assertEqual(evidence.check(), 8)
+
+    def test_candidate_only_refreshes_sources_and_smoke_constructor_receipt(self):
+        expected = retained.read_json(retained.ARTIFACTS / "manifest.json")
+        expected["source_sha256"] = self.manifest["source_sha256"]
+        smoke = expected["circuit_identities"]["decoder-smoke.json"]
+        smoke["constructor_test"] = retained.SMOKE_TEST
+        smoke["constructor_sha256"] = retained.sha256(retained.REPO / smoke["constructor_path"])
+        self.assertEqual(expected, self.manifest)
+
+    def test_candidate_never_promotes_without_fresh_artifacts(self):
+        pinned = freshness.manifest_path(retained.REPO)
+        before = pinned.read_bytes()
+        freshness.prepare_requalification(retained.REPO, self.scratch)
+        self.assertEqual(pinned.read_bytes(), before)
+        freshness.preflight(retained.REPO, self.scratch, requalify=True)
+        with self.assertRaisesRegex(ValueError, "inventory differs"):
+            freshness.verify(self.scratch, retained.REPO, [], requalify=True, promote=True)
+        self.assertFalse((self.scratch / "qualified-manifest.json").exists())
+        self.assertEqual(pinned.read_bytes(), before)
+
+    def test_all_complete_payloads_without_execution_receipts_cannot_promote(self):
+        pinned = freshness.manifest_path(retained.REPO)
+        before = pinned.read_bytes()
+        freshness.prepare_requalification(retained.REPO, self.scratch)
+        for family in freshness.FAMILIES:
+            (self.scratch / "artifacts" / (family + ".json")).symlink_to(retained.ARTIFACTS / (family + ".json"))
+        with self.assertRaises(FileNotFoundError):
+            freshness.verify(self.scratch, retained.REPO, [], requalify=True, promote=True)
+        self.assertFalse((self.scratch / "qualified-manifest.json").exists())
+        self.assertEqual(pinned.read_bytes(), before)
+
+    def test_candidate_tamper_and_stale_baseline_are_rejected(self):
+        freshness.prepare_requalification(retained.REPO, self.scratch)
+        path = self.scratch / "requalification.json"
+        original = retained.read_json(path)
+        for section in ("baseline", "source", "payload", "lock"):
+            record = copy.deepcopy(original)
+            if section == "baseline":
+                record["retained_manifest_sha256"] = "0" * 64
+            elif section == "source":
+                record["manifest"]["source_sha256"]["Cargo.toml"] = "0" * 64
+            elif section == "payload":
+                record["manifest"]["artifacts"]["add-sub.json"]["sha256"] = "0" * 64
+            else:
+                record["manifest"]["cargo_lock_sha256"] = "0" * 64
+            path.write_text(json.dumps(record))
+            with self.subTest(section=section), self.assertRaisesRegex(ValueError, "snapshot changed or inputs drifted"):
+                freshness.preflight(retained.REPO, self.scratch, requalify=True)
+
+    def test_promotion_requires_explicit_requalification(self):
+        with self.assertRaisesRegex(ValueError, "requires explicit requalification"):
+            freshness.verify(self.scratch, retained.REPO, [], promote=True)
+
+    def test_smoke_test_targets_the_export_only_module(self):
+        source = retained.REPO / "prover/src/gkr/prover/setup_artifact.rs"
+        self.assertIn('#[path = "setup_tests.rs"]\nmod setup_tests;', source.read_text())
+        self.assertEqual(retained.SMOKE_TEST, "gkr::prover::setup_artifact::setup_tests::setup_json_roundtrip_preserves_materialized_columns_and_program")
 
     def test_native_json_inputs_are_required_lake_dependencies(self):
         config = tomllib.loads((retained.REPO / "formal_verification/lean/lakefile.toml").read_text())

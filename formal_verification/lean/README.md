@@ -192,6 +192,12 @@ as in the workflow. Independent replay uses a 2,048 MiB stack. Their final verif
 execution receipts, complete JSON identity and the scoped native build's dep-info.
 `CI` must be absent for generators and smoke tests; `CI=false` still skips them.
 
+Reviewed source changes require a manual run with `requalify_setups=true`.
+Candidate receipts stay outside the checkout until all native jobs, complete
+JSON comparisons and dep-info checks pass. CI then uploads the qualified setup
+manifest and receipts for review and committing; a candidate alone is not a
+freshness result. See [setup requalification](artifacts/setup/README.md#requalifying-source-receipts).
+
 The Lean frontend discovers every concrete Airbender, Tests and retained
 Sail module. Its [bounded compilation pool](scripts/compilation_pool/README.md)
 checks cached ordinary Lake freshness with four workers by default,

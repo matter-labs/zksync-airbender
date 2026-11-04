@@ -81,6 +81,16 @@ This is a recorded freshness failure after scope cleanup, not evidence of a new
 circuit defect. Do not rewrite these hashes as if fresh exports had passed;
 regenerate and compare under the existing guard before claiming final fidelity.
 
+Warm run [41815044934](https://github.com/matter-labs/zksync-airbender/actions/runs/41815044934)
+passed the repaired preflight, then rejected the first stale source receipt before
+native reconstruction. The explicit `requalify_setups` CI input now snapshots
+candidate source receipts outside the checkout. All twelve generators, sixteen
+complete setup comparisons and scoped native dep-info checks must pass before
+the job promotes source receipts. Candidate snapshots are unqualified; they do
+not update this finding or establish current native fidelity. Changed payloads
+still fail and must be recorded here without changing production behavior.
+The decoder smoke-test command follows its export-only `setup_artifact` module.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

@@ -18,6 +18,10 @@ on:
         description: Run the complete independent kernel replay and false-proof controls
         type: boolean
         default: false
+      requalify_setups:
+        description: Re-export unchanged setup payloads before promoting changed source receipts
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       cold_build:
@@ -27,6 +31,9 @@ on:
         type: boolean
         default: false
       full_assurance:
+        type: boolean
+        default: false
+      requalify_setups:
         type: boolean
         default: false
 
@@ -134,6 +141,16 @@ jobs:
           PY
           }
           SH
+      - name: Prepare exact native lock or unqualified re-export snapshot
+        env:
+          FV_REQUALIFY_SETUPS: ${{ inputs.requalify_setups == true }}
+        run: |
+          source "$FV_ROOT/guard.sh"
+          if [[ "$FV_REQUALIFY_SETUPS" == true ]]; then
+            fv native-candidate python3 scripts/check_setup_freshness.py prepare-requalification --work-dir "$FV_ROOT/native"
+          else
+            fv native-lock python3 scripts/check_setup_artifacts.py --prepare-lock
+          fi
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         timeout-minutes: 30
         with:
@@ -248,28 +265,31 @@ jobs:
             formal_verification/lean/.lake/config
             formal_verification/lean/.lake/packages
           key: ${{ steps.cache-keys.outputs.lean }}-bootstrap
-      - name: Prepare exact native lock and provenance controls
-        run: |
-          source "$FV_ROOT/guard.sh"
-          fv native-lock python3 scripts/check_setup_artifacts.py --prepare-lock
-          fv provenance-controls python3 -m unittest discover -s scripts -p test_setup_provenance.py -v
       - name: Twelve generators and sixteen complete fresh exports
         id: native-setups
         timeout-minutes: 370
+        env:
+          FV_REQUALIFY_SETUPS: ${{ inputs.requalify_setups == true }}
         run: |
           source "$FV_ROOT/guard.sh"
           fv_stage native-setups 21600 bash -euo pipefail <<'FV_STAGE'
           trap 'exit 124' TERM
           source "$FV_ROOT/guard.sh"
+          qualification=()
+          promotion=()
+          if [[ "$FV_REQUALIFY_SETUPS" == true ]]; then
+            qualification=(--requalify)
+            promotion=(--promote)
+          fi
           families=(add-sub jump-branch mul-div shift-binop word-memory subword-memory
             unified bigint blake-g blake-round keccak inits-and-teardowns)
           for family in "${families[@]}"; do
             fv "regenerate-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
-              regenerate "$family" --work-dir "$FV_ROOT/native"
+              regenerate "$family" --work-dir "$FV_ROOT/native" "${qualification[@]}"
           done
           for family in "${families[@]}" keccak-column-parity keccak-theta-rho keccak-chi5 decoder-smoke; do
             fv "export-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
-              export "$family" --work-dir "$FV_ROOT/native"
+              export "$family" --work-dir "$FV_ROOT/native" "${qualification[@]}"
           done
           # Only this source-keyed, scoped native build's dep-info is supplied.
           mapfile -d '' dep_info < <(find "$CARGO_TARGET_DIR/debug" -type f -name '*.d' -print0)
@@ -277,9 +297,17 @@ jobs:
           dep_args=()
           for path in "${dep_info[@]}"; do dep_args+=(--dep-info "$path"); done
           fv native-receipts python3 scripts/check_setup_freshness.py verify \
-            --work-dir "$FV_ROOT/native" "${dep_args[@]}"
+            --work-dir "$FV_ROOT/native" "${dep_args[@]}" "${qualification[@]}" "${promotion[@]}"
           git diff --quiet -- ../../cs/compiled_circuits
+          fv provenance-controls python3 -m unittest discover -s scripts -p test_setup_provenance.py -v
           FV_STAGE
+      - name: Upload qualified setup manifest and native execution receipts
+        if: steps.native-setups.outcome == 'success' && inputs.requalify_setups == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualified-setups-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.FV_ROOT }}/native
+          if-no-files-found: error
       - name: Save native setup build progress even after a bounded failure
         if: always() && steps.native-cache.outcome == 'success' && steps.native-setups.outcome != 'skipped'
         timeout-minutes: 20

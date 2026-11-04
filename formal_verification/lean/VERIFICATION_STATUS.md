@@ -44,6 +44,15 @@ Native source receipts have ten mismatches against the retained setup manifest;
 [FINDINGS.md](FINDINGS.md) records them pending fresh-export requalification.
 No full FV result qualifies this cleanup yet.
 
+Warm run [41815044934](https://github.com/matter-labs/zksync-airbender/actions/runs/41815044934)
+passed preflight and bootstrap, then failed on the known stale native source
+receipts. Explicit setup requalification now prepares an unqualified snapshot,
+keeps the retained manifest unchanged during native work, and promotes source
+pins only after all 28 native jobs, complete payload comparisons and dep-info
+coverage pass. The workflow also uses the decoder smoke test's current module.
+These requalification changes pass 47 lightweight tests; the actual native
+re-export and current proof validation remain pending.
+
 Warm run [41803197805](https://github.com/matter-labs/zksync-airbender/actions/runs/41803197805)
 failed in source validation on reserved `start` binders in
 `Proofs/UnifiedReduced/WorkerExecution.lean`. The binders and their uses are now

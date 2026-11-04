@@ -30,7 +30,7 @@ PRODUCTION_CIRCUITS = {
     "unified": "unified_reduced_machine", "inits-and-teardowns": "inits_and_teardowns",
 }
 NATIVE_LOCK = "formal_verification/lean/artifacts/setup/native-cargo.lock"
-SMOKE_TEST = "gkr::prover::setup::tests::setup_json_roundtrip_preserves_materialized_columns_and_program"
+SMOKE_TEST = "gkr::prover::setup_artifact::setup_tests::setup_json_roundtrip_preserves_materialized_columns_and_program"
 
 
 def checked_path(root, relative):
@@ -253,10 +253,12 @@ def check_dep_info(repo, manifest, paths, required_inputs=()):
     return len(observed)
 
 
-def check(repo=REPO, artifacts=None, dep_info=()):
+def check(repo=REPO, artifacts=None, dep_info=(), *, manifest=None):
     repo = Path(repo).resolve()
     artifacts = Path(artifacts) if artifacts else repo / "formal_verification/lean/artifacts/setup"
-    manifest = read_json(artifacts / "manifest.json")
+    # Only the explicit fresh-export requalification flow supplies a candidate.
+    # Normal retained checks always read the committed manifest.
+    manifest = read_json(artifacts / "manifest.json") if manifest is None else manifest
     if manifest["schema_version"] != 2:
         raise ValueError("Unsupported setup provenance manifest schema")
     expected = {family + ".json" for family in PRODUCTION_CIRCUITS} | {"decoder-smoke.json"}

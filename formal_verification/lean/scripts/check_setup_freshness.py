@@ -3,10 +3,13 @@
 
 Each regenerate/export invocation is ONE job for the external bounded single
 worker. This script never raises resource limits, schedules parallel jobs, runs
-GPU work, changes native generators or updates retained setup payloads/pins.
+GPU work or changes native generators or retained setup payloads. Explicit
+requalification promotes source receipts only after all native comparisons and
+dep-info checks succeed; candidates alone never satisfy the retained drift guard.
 """
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -15,6 +18,7 @@ import re
 import struct
 import subprocess
 import sys
+import tempfile
 
 import check_setup_artifacts as retained
 import check_native_evidence as evidence
@@ -91,10 +95,53 @@ def compare_directory(directory, artifacts=retained.ARTIFACTS):
     return len(expected)
 
 
-def preflight(repo):
-    retained.check(repo)
+def manifest_path(repo):
+    return repo / "formal_verification/lean/artifacts/setup/manifest.json"
+
+
+def requalification_manifest(repo):
+    """Snapshot current source pins without asserting native reconstruction."""
+    manifest = retained.read_json(manifest_path(repo))
+    sources, crates = retained.source_inventory(repo)
+    inventory = manifest["source_inventory"]
+    if (inventory["root_crates"] != list(retained.SOURCE_ROOT_CRATES) or
+            inventory["local_crates"] != crates or set(sources) != set(manifest["source_sha256"])):
+        raise ValueError("Requalification cannot change the source inventory; review the Cargo closure first")
+    candidate = copy.deepcopy(manifest)
+    candidate["source_sha256"] = {name: retained.sha256(retained.checked_path(repo, name)) for name in sources}
+    smoke = candidate["circuit_identities"]["decoder-smoke.json"]
+    smoke["constructor_test"] = retained.SMOKE_TEST
+    smoke["constructor_sha256"] = retained.sha256(retained.checked_path(repo, smoke["constructor_path"]))
+    return candidate
+
+
+def prepare_requalification(repo, work):
+    """Write an unqualified snapshot outside the checkout; keep retained pins."""
+    retained.prepare_native_lock(repo, retained.read_json(manifest_path(repo)), prepare=True)
+    candidate = requalification_manifest(repo)
+    retained.check(repo, manifest=candidate)
     evidence.check(repo)
-    return retained.read_json(repo / "formal_verification/lean/artifacts/setup/manifest.json")
+    work = work_directory(work, repo)
+    record = {"schema_version": 1, "status": "unqualified",
+              "retained_manifest_sha256": retained.sha256(manifest_path(repo)), "manifest": candidate}
+    path = work / "requalification.json"
+    with path.open("x") as stream:
+        stream.write(json.dumps(record, indent=2) + "\n")
+    print("Prepared UNQUALIFIED source snapshot; retained manifest unchanged; 28 native jobs still required")
+
+
+def preflight(repo, work=None, requalify=False):
+    manifest = retained.read_json(manifest_path(repo))
+    if requalify:
+        record = retained.read_json(Path(work) / "requalification.json")
+        if (record["schema_version"] != 1 or record["status"] != "unqualified" or
+                record["retained_manifest_sha256"] != retained.sha256(manifest_path(repo)) or
+                record["manifest"] != requalification_manifest(repo)):
+            raise ValueError("Requalification snapshot changed or inputs drifted; start again in a new work directory")
+        manifest = record["manifest"]
+    retained.check(repo, manifest=manifest)
+    evidence.check(repo)
+    return manifest
 
 
 def work_directory(path, repo):
@@ -119,10 +166,10 @@ def run_command(command, repo, environment, log):
     return log.read_text()
 
 
-def job(mode, family, repo, work):
+def job(mode, family, repo, work, requalify=False):
     require_native_environment(os.environ)
-    manifest = preflight(repo)
     work = work_directory(work, repo)
+    manifest = preflight(repo, work, requalify)
     receipt_path = work / "receipts" / f"{mode}-{family}.json"
     if receipt_path.exists():
         raise ValueError(f"Native job receipt already exists; use a new work directory: {receipt_path}")
@@ -171,18 +218,21 @@ def job(mode, family, repo, work):
     else:
         compare_artifact(output, repo / "formal_verification/lean/artifacts/setup" / (family + ".json"))
     # Recheck all pinned inputs after the native process as well.
-    preflight(repo)
+    preflight(repo, work, requalify)
     receipt = {"mode": mode, "family": family, "command": command, "ci_absent": True,
                "cargo_build_jobs": 1, "test": test, "executed_tests": 1 if test else None,
                "output_sha256": retained.sha256(output), "log_sha256": retained.sha256(log),
-               "manifest_sha256": retained.sha256(repo / "formal_verification/lean/artifacts/setup/manifest.json")}
+               "manifest_sha256": retained.sha256(manifest_path(repo)),
+               "requalification_sha256": retained.sha256(work / "requalification.json") if requalify else None}
     receipt_path.write_text(json.dumps(receipt, indent=2) + "\n")
     print(f"PASS {mode} {family}; compared full {'circuit' if mode == 'regenerate' else 'setup JSON'}")
 
 
-def verify(work, repo, dep_info):
-    preflight(repo)
+def verify(work, repo, dep_info, requalify=False, promote=False):
+    if promote and not requalify:
+        raise ValueError("Source receipt promotion requires explicit requalification")
     work = Path(work).resolve()
+    manifest = preflight(repo, work, requalify)
     artifacts = repo / "formal_verification/lean/artifacts/setup"
     compare_directory(work / "artifacts", artifacts)
     manifest_sha = retained.sha256(artifacts / "manifest.json")
@@ -191,7 +241,9 @@ def verify(work, repo, dep_info):
             record = retained.read_json(work / "receipts" / f"{mode}-{family}.json")
             if (record["mode"] != mode or record["family"] != family or
                     record["ci_absent"] is not True or record["cargo_build_jobs"] != 1 or
-                    record["manifest_sha256"] != manifest_sha):
+                    record["manifest_sha256"] != manifest_sha or
+                    record.get("requalification_sha256") != (
+                        retained.sha256(work / "requalification.json") if requalify else None)):
                 raise ValueError(f"Invalid or stale native job receipt: {mode} {family}")
             log = work / "logs" / f"{mode}-{family}.log"
             if record["log_sha256"] != retained.sha256(log):
@@ -221,7 +273,34 @@ def verify(work, repo, dep_info):
         raise ValueError("Full freshness verification requires --dep-info from the scoped native build (repeat for dependencies)")
     required = ("cs/src/lib.rs", "prover/src/lib.rs", "execution_prover/src/lib.rs",
                 "execution_prover/examples/export_setup_json.rs")
-    covered = retained.check_dep_info(repo, retained.read_json(artifacts / "manifest.json"), dep_info, required)
+    covered = retained.check_dep_info(repo, manifest, dep_info, required)
+    # Recheck the complete source snapshot after the comparisons and dep-info.
+    preflight(repo, work, requalify)
+    if requalify:
+        qualified = work / "qualified-manifest.json"
+        with qualified.open("x") as stream:
+            stream.write(json.dumps(manifest, indent=2) + "\n")
+        report = {"schema_version": 1, "status": "qualified",
+                  "retained_manifest_sha256": manifest_sha,
+                  "requalification_sha256": retained.sha256(work / "requalification.json"),
+                  "qualified_manifest_sha256": retained.sha256(qualified),
+                  "native_jobs": 28, "complete_setup_comparisons": 16,
+                  "receipts_sha256": {path.name: retained.sha256(path) for path in sorted((work / "receipts").glob("*.json"))},
+                  "dep_info_sha256": {str(path): retained.sha256(path) for path in dep_info}}
+        (work / "qualified-receipt.json").write_text(json.dumps(report, indent=2) + "\n")
+        if promote:
+            # Promotion is reachable only after all 28 execution receipts, full
+            # payload comparisons, input rechecks and native dep-info pass.
+            destination = manifest_path(repo)
+            with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".requalified-", delete=False) as stream:
+                stream.write(qualified.read_bytes())
+                temporary = Path(stream.name)
+            try:
+                os.replace(temporary, destination)
+            finally:
+                temporary.unlink(missing_ok=True)
+            retained.check(repo)
+            print("Promoted verified source receipts; setup payload bytes unchanged")
     print(f"PASS 12 executed native generators, 16 complete fresh setups, 15 production/1 derived identities; {covered} native dep-info inputs covered")
 
 
@@ -231,15 +310,20 @@ def main():
     sub = parser.add_subparsers(dest="mode", required=True)
     plan = sub.add_parser("plan", help="Print the exact serial job inventory; does not run native tools")
     plan.add_argument("--work-dir", type=Path, required=True)
+    item = sub.add_parser("prepare-requalification", help="Snapshot unqualified current source pins; never update retained pins")
+    item.add_argument("--work-dir", type=Path, required=True)
     for mode in ("regenerate", "export"):
         item = sub.add_parser(mode, help="Run one native job inside the external bounded worker")
         item.add_argument("family", choices=tuple(GENERATORS) if mode == "regenerate" else FAMILIES)
         item.add_argument("--work-dir", type=Path, required=True)
+        item.add_argument("--requalify", action="store_true", help="Use the explicit unqualified source snapshot")
     item = sub.add_parser("compare", help="Compare all sixteen complete fresh JSONs only; not execution evidence")
     item.add_argument("--fresh-dir", type=Path, required=True)
     item = sub.add_parser("verify", help="Verify all native execution receipts, outputs and dep-info coverage")
     item.add_argument("--work-dir", type=Path, required=True)
     item.add_argument("--dep-info", type=Path, action="append", required=True)
+    item.add_argument("--requalify", action="store_true", help="Verify the explicit source requalification snapshot")
+    item.add_argument("--promote", action="store_true", help="Promote source pins only after successful full native verification")
     args = parser.parse_args()
     repo = args.repo.resolve()
     if args.mode == "plan":
@@ -247,13 +331,15 @@ def main():
         for mode, families in (("regenerate", GENERATORS), ("export", FAMILIES)):
             for family in families:
                 print(json.dumps([sys.executable, script, "--repo", str(repo), mode, family, "--work-dir", str(args.work_dir)]))
+    elif args.mode == "prepare-requalification":
+        prepare_requalification(repo, args.work_dir)
     elif args.mode in ("regenerate", "export"):
-        job(args.mode, args.family, repo, args.work_dir)
+        job(args.mode, args.family, repo, args.work_dir, args.requalify)
     elif args.mode == "compare":
         preflight(repo)
         print(f"PASS {compare_directory(args.fresh_dir, repo / 'formal_verification/lean/artifacts/setup')} complete fresh JSON comparisons (comparison only)")
     else:
-        verify(args.work_dir, repo, args.dep_info)
+        verify(args.work_dir, repo, args.dep_info, args.requalify, args.promote)
 
 
 if __name__ == "__main__":
