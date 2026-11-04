@@ -97,7 +97,7 @@ theorem path_span_worker_binding [Fact p.Prime] (hp : FieldCapacity.NativeHashCa
     (by simpa using member)
   have read := raw.trans (path_hash_word_canonical ⟨span.span, i⟩)
   refine ⟨family, ?_⟩
-  rcases span with ⟨protocol, start, increasing, aligned, code, control, frames⟩
+  rcases span with ⟨protocol, «start», increasing, aligned, code, control, frames⟩
   cases protocol <;> simpa only [family, path_native_control_port, Delegation.Caller.HashSpan.family] using read
 
 /-- Every indexed worker exists exactly once in the selected native bucket.

@@ -30,9 +30,9 @@ theorem path_worker_call_plan [Fact p.Prime]
   have present : entry ∈ data.program := List.get_mem _ _
   have pcWord : caller.start.word = Word.ofBitVec entry.pc := caller_query_pc_word (by decide) query
   have pc : entry.pc = caller.start.word.toBitVec := by rw [pcWord, Word.ofBitVec_roundtrip]
-  obtain ⟨plan, included, start, family⟩ := inputs.coverage caller (List.mem_of_mem_filter called) entry present pc
+  obtain ⟨plan, included, «start», family⟩ := inputs.coverage caller (List.mem_of_mem_filter called) entry present pc
   have actual := caller_worker_family (by decide) query matched
-  exact ⟨plan, included, family.trans actual.symm, caller, called, start, matched, slot⟩
+  exact ⟨plan, included, family.trans actual.symm, caller, called, «start», matched, slot⟩
 
 /-- Distinct public cuts and native slots give one plan per worker occurrence.
     Equal PCs at different cuts are never identified. -/
@@ -46,12 +46,12 @@ theorem path_worker_call_plan_unique [Fact p.Prime]
   obtain ⟨plan, present, matched⟩ := path_worker_call_plan inverse accepted inputs member
   refine ⟨plan, ⟨present, matched⟩, ?_⟩
   intro other checked
-  obtain ⟨_, caller, called, start, _, slot⟩ := matched
+  obtain ⟨_, caller, called, «start», _, slot⟩ := matched
   obtain ⟨_, otherCaller, otherCalled, otherStart, _, otherSlot⟩ := checked.2
   have same : other.start = plan.start := by
     have first := slot.invocation
     have second := otherSlot.invocation
-    rw [start, otherStart]
+    rw [«start», otherStart]
     omega
   exact List.inj_on_of_nodup_map inputs.distinctPlans checked.1 present same
 
@@ -64,15 +64,15 @@ theorem path_plan_worker_window [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p
     (accepted : RequestChecks data) (publicProgram : RequestInputs data before ca)
     (member : worker ∈ data.workers.rows) (matched : plan.Matches worker) :
     plan.start % 4 = 0 ∧ worker ∈ data.workers.windowRows plan.start (plan.start + 4) := by
-  obtain ⟨_, caller, called, start, _, slot⟩ := matched
+  obtain ⟨_, caller, called, «start», _, slot⟩ := matched
   have clock := machine_clock_facts hp inverse accepted publicProgram (List.mem_of_mem_filter called)
   have write := slot.writes (path_native_control_port worker.family) (path_control_port_member worker)
   have normalized : worker.writeTime =
       (timeOfPair (worker.writeToken (path_native_control_port worker.family)).time).value := by
     cases worker with
     | mk family w => cases family <;> rfl
-  refine ⟨by simpa only [start] using clock.1, List.mem_filter.mpr ⟨member, decide_eq_true ?_⟩⟩
-  rw [normalized, write, ← start]
+  refine ⟨by simpa only [«start»] using clock.1, List.mem_filter.mpr ⟨member, decide_eq_true ?_⟩⟩
+  rw [normalized, write, ← «start»]
   omega
 
 /-- Syntactic preparation plus raw matching derives the actual control read at
@@ -109,7 +109,7 @@ theorem path_plan_hash_binding [Fact p.Prime] (hp : FieldCapacity.NativeHashCapa
     inputs.initialization unique scope (by omega : (plan.start + 4) % 4 = 0)
     (value := position.word.toBitVec)
     (by
-      intro start prefixMatching
+      intro «start» prefixMatching
       have seed := path_controller_dataflow_token hp inverse accepted inputs.publicProgram
         inputs.ordinaryProgram inputs.initialization unique inputs.tables flow nonzero aligned
         (by simpa using prefixMatching)
@@ -214,10 +214,10 @@ theorem path_caller_frame_read [Fact p.Prime] (hp : FieldCapacity.NativeHashCapa
     (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
     (scope : PathCallerPreparation data cut family) (aligned : cut % 4 = 0)
     (nonzero : register ≠ 0) (different : register ≠ callerControlRegister family)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
     {worker : Delegation.Row p} (member : worker ∈ data.workers.windowRows (cut - 4) cut)
     {port : MemoryPort} (portMember : port ∈ worker.ports)
     (portAddress : port.address.code worker.assignment = (Cell.register register).addressCode) :
@@ -227,16 +227,16 @@ theorem path_caller_frame_read [Fact p.Prime] (hp : FieldCapacity.NativeHashCapa
   have first : (cut - 4) % 4 = 0 := by omega
   have requests := request_binding size inverse accepted.toRequestChecks publicProgram
   have facts := mixed_memory_facts size inverse accepted publicProgram image requests
-  obtain ⟨start, earlier, later⟩ := Transfer.split_at facts ((cut - 4) - 1)
+  obtain ⟨«start», earlier, later⟩ := Transfer.split_at facts ((cut - 4) - 1)
   have prefixMatching := earlier.matching
   rw [mixed_prefix_steps data (by omega)] at prefixMatching
-  obtain ⟨source, sourceMember, sourceAddress, sourceWord⟩ := seedToken start prefixMatching
+  obtain ⟨source, sourceMember, sourceAddress, sourceWord⟩ := seedToken «start» prefixMatching
   obtain ⟨finish, window, _⟩ := Transfer.split_at later (cut - 1)
-  change Transfer.Facts ⟨start, finish, Transfer.windowSteps (mixedData data) ((cut - 4) - 1) (cut - 1)⟩ at window
+  change Transfer.Facts ⟨«start», finish, Transfer.windowSteps (mixedData data) ((cut - 4) - 1) (cut - 1)⟩ at window
   rw [← mixed_window_steps size inverse accepted.toRequestChecks publicProgram first aligned (by omega) (by omega)] at window
   have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
-  have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
-  have seed : ∀ token ∈ start, token.address = (Cell.register register).addressCode → token.value = source.value := by
+  have unique : («start».map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
+  have seed : ∀ token ∈ «start», token.address = (Cell.register register).addressCode → token.value = source.value := by
     intro token present address
     exact congrArg MemoryToken.value (List.inj_on_of_nodup_map unique present sourceMember
       (address.trans sourceAddress.symm))
@@ -291,7 +291,7 @@ theorem path_plan_g_pointer_binding [Fact p.Prime] (hp : FieldCapacity.NativeHas
       apply path_caller_frame_read hp inverse accepted inputs.publicProgram inputs.ordinaryProgram
         inputs.initialization unique scope (by omega : (plan.start + 4) % 4 = 0)
         nonzero notControl _ (by simpa using inside) portMember address
-      intro start prefixMatching
+      intro «start» prefixMatching
       exact path_controller_dataflow_token hp inverse accepted inputs.publicProgram inputs.ordinaryProgram
         inputs.initialization unique inputs.tables flow nonzero aligned (by simpa using prefixMatching)
     cases worker with

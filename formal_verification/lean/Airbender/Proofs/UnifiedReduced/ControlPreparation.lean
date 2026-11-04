@@ -864,9 +864,9 @@ theorem control_preparation [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacit
     PreparedBoundaryExecution data before cells cut register literal := by
   have floor := scope.afterInitial
   have window := mixed_window_execution hp clockInverse rotationInverse accepted inputs aligned aligned (by omega) (by omega)
-  obtain ⟨start, finish, earlier, current, atStart, atFinish, earlierPerm, _, earlierHistory, _,
+  obtain ⟨«start», finish, earlier, current, atStart, atFinish, earlierPerm, _, earlierHistory, _,
     matching, _, boundary, _⟩ := window.execution
-  exact ⟨start, earlier, atStart, earlierPerm, earlierHistory, boundary,
+  exact ⟨«start», earlier, atStart, earlierPerm, earlierHistory, boundary,
     preparation_at_boundary hp clockInverse accepted inputs scope nonzero aligned matching boundary⟩
 
 theorem control_preparation_window [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
@@ -883,7 +883,7 @@ theorem control_preparation_window [Fact p.Prime] (hp : FieldCapacity.NativeHash
   have floor := firstScope.afterInitial
   have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   have execution := mixed_window_execution hp clockInverse rotationInverse accepted inputs first last (by omega) ordered
-  obtain ⟨start, finish, earlierEvents, windowEvents, atStart, atFinish, prefixPerm, windowPerm,
+  obtain ⟨«start», finish, earlierEvents, windowEvents, atStart, atFinish, prefixPerm, windowPerm,
     earlierHistory, windowHistory, prefixMatching, windowMatching, startBoundary, finishBoundary⟩ := execution.execution
   have partition := prefix_window_partition size clockInverse accepted.toRequestChecks inputs.publicProgram first last (by omega) ordered
   have finalMatching := prefix_window_matching prefixMatching windowMatching
@@ -891,7 +891,7 @@ theorem control_preparation_window [Fact p.Prime] (hp : FieldCapacity.NativeHash
       (finish ++ (data.prefixSteps upper).map Prod.fst) :=
     ((partition.map Prod.snd).symm.append_left _).trans
       (finalMatching.trans ((partition.map Prod.fst).append_left _))
-  exact ⟨start, finish, earlierEvents, windowEvents, atStart, atFinish, prefixPerm, windowPerm,
+  exact ⟨«start», finish, earlierEvents, windowEvents, atStart, atFinish, prefixPerm, windowPerm,
     earlierHistory, windowHistory, startBoundary, finishBoundary,
     preparation_at_boundary hp clockInverse accepted inputs firstScope firstNonzero first prefixMatching startBoundary,
     preparation_at_boundary hp clockInverse accepted inputs lastScope lastNonzero last finalPrefix finishBoundary⟩

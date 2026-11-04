@@ -61,10 +61,10 @@ theorem hash_window_memory_inputs [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap
 
 theorem joint_entry_control [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : RequestTrace p} {before atStart : State} {cells : List Cell} {addresses : List (BitVec 32)}
-    {span : Delegation.Caller.HashSpan} {lower upper : Nat} {start : List (MemoryToken p)}
+    {span : Delegation.Caller.HashSpan} {lower upper : Nat} {«start» : List (MemoryToken p)}
     (accepted : MixedMemoryAccepted data []) (inputs : JointHashWindowInputs data before addresses cells span lower upper)
-    (requests : RequestBinding data before) (prior : Delegation.MemoryAccepted (data.prefixProjection lower start))
-    (history : Delegation.TraceMapping (data.prefixProjection lower start) before atStart (Delegation.Caller.workerCells cells))
+    (requests : RequestBinding data before) (prior : Delegation.MemoryAccepted (data.prefixProjection lower «start»))
+    (history : Delegation.TraceMapping (data.prefixProjection lower «start») before atStart (Delegation.Caller.workerCells cells))
     :
     (Cell.register span.controlRegister).read atStart = .ok span.controlStart atStart := by
   cases span with
@@ -84,11 +84,11 @@ theorem joint_entry_control [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p tim
         Blake2G.importedConstraintsMemoryPorts]
     have tracked := Delegation.Proofs.port_initialized_cell hp projected initialized.toBoundaryInputs member port
       (cell := .register 12) (by rfl)
-    have prefixMemory : Delegation.MemoryInputs (data.prefixProjection lower start) before (Delegation.Caller.workerCells cells) :=
+    have prefixMemory : Delegation.MemoryInputs (data.prefixProjection lower «start») before (Delegation.Caller.workerCells cells) :=
       ⟨initialized.initialization, initialized.distinct,
         (fun row member => (requests.clocks row (List.mem_of_mem_filter member)).2),
         fun row member => (requests.clocks row (List.mem_of_mem_filter member)).1.2⟩
-    have pool : Blake2G.Proofs.ControlPoolInputs (data.prefixProjection lower start) before (Delegation.Caller.workerCells cells) reduced := by
+    have pool : Blake2G.Proofs.ControlPoolInputs (data.prefixProjection lower «start») before (Delegation.Caller.workerCells cells) reduced := by
       refine ⟨prefixMemory.toBoundaryInputs, inputs.tables, ?_, ?_, tracked, inputs.controlStart⟩
       · intro row member
         exact inputs.family row (List.mem_of_mem_filter member)
@@ -109,7 +109,7 @@ theorem joint_entry_control [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p tim
     simpa only [reset] using read
   | blakeRound flags =>
     obtain ⟨events, permutation, actual⟩ := history.history
-    have empty : (data.prefixProjection lower start).steps = [] := by
+    have empty : (data.prefixProjection lower «start»).steps = [] := by
       simp only [RequestTrace.prefixProjection, Delegation.MemoryData.steps, inputs.prefixScope.1, List.flatMap_nil]
     rw [empty, List.map_nil] at permutation
     have noEvents : events = [] := by
@@ -124,7 +124,7 @@ theorem joint_entry_control [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p tim
   | keccak =>
     obtain ⟨events, permutation, actual⟩ := history.history
     have emptyRows : data.workers.prefixRows lower = [] := inputs.prefixScope
-    have empty : (data.prefixProjection lower start).steps = [] := by
+    have empty : (data.prefixProjection lower «start»).steps = [] := by
       simp only [RequestTrace.prefixProjection, Delegation.MemoryData.steps, emptyRows, List.flatMap_nil]
     rw [empty, List.map_nil] at permutation
     have noEvents : events = [] := by
@@ -149,17 +149,17 @@ theorem joint_hash_window [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapac
   have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
   have memoryInputs := hash_window_memory_inputs size accepted inputs requests
   have projection := projected_window (by omega) clockInverse rotationInverse accepted memoryInputs first last positive ordered
-  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm, firstHistory, spanHistory,
+  obtain ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm, firstHistory, spanHistory,
     startBoundary, finishBoundary, prior, priorHistory, selected, initialized, finalBoundary, target⟩ := projection.execution
   have control := joint_entry_control size accepted inputs requests prior priorHistory
-  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection lower upper start finish) atStart span :=
+  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection lower upper «start» finish) atStart span :=
     ⟨inputs.tables, fun row member => inputs.family row (List.mem_of_mem_filter member), control, inputs.calls⟩
   have result := Delegation.Caller.Proofs.hash_span_at_target hp clockInverse selected initialized protocol
     (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))
     (fun cell member => inputs.aligned cell (List.mem_of_mem_filter member)) target finalBoundary.1.addresses
   exact ⟨projection.requests,
     (Delegation.Caller.Proofs.window_call_count projection.requests).trans inputs.calls,
-    start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm, firstHistory, spanHistory,
+    «start», finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm, firstHistory, spanHistory,
     startBoundary, finishBoundary, selected, initialized, result⟩
 
 end Airbender.UnifiedReduced.Caller.Proofs

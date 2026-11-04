@@ -601,7 +601,7 @@ theorem path_span_local_histories
   have clocks := machine_clock_facts (by decide) (by decide) accepted.toRequestChecks inputs.publicProgram nativeMember
   have nativeAligned := clocks.1
   have aligned := span.aligned i
-  have start : Delegation.Caller.startClock caller = span.start i := by omega
+  have «start» : Delegation.Caller.startClock caller = span.start i := by omega
   have floor := path_controller_dataflow_after_initial (span.control i)
   have positive : 0 < Delegation.Caller.startClock caller := by omega
   have cycle := cycle_window_permutation (by decide) (by decide) accepted.toRequestChecks
@@ -609,7 +609,7 @@ theorem path_span_local_histories
   have currentCall : SailHistory cells (events.filter fun event => decide
       (Delegation.Caller.startClock caller < event.1 ∧ event.1 ≤ Delegation.Caller.finishClock caller))
       (before i) (after i) := by
-    simpa only [clocks.2, start] using current i
+    simpa only [clocks.2, «start»] using current i
   obtain ⟨worker, present, same, grouped, history⟩ :=
     caller_cycle_worker_history effects.requests called cycle currentCall
   obtain ⟨_, _, only⟩ := Delegation.Requests.Proofs.unique_fulfillment effects.requests.fulfilled

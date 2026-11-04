@@ -368,10 +368,10 @@ theorem path_caller_control_read [Fact p.Prime] (hp : FieldCapacity.NativeHashCa
     (image : initialImage before cells = some data.machine.initialMemory)
     (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
     (scope : PathCallerPreparation data cut family) (aligned : cut % 4 = 0)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register (callerControlRegister family)).addressCode ∧
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register (callerControlRegister family)).addressCode ∧
         token.word = Word.ofBitVec value)
     {worker : Delegation.Row p} (member : worker ∈ data.workers.windowRows (cut - 4) cut) :
     (readToken worker.assignment (path_native_control_port worker.family)).word = Word.ofBitVec value := by
@@ -380,15 +380,15 @@ theorem path_caller_control_read [Fact p.Prime] (hp : FieldCapacity.NativeHashCa
   have first : (cut - 4) % 4 = 0 := by omega
   have requests := request_binding size inverse accepted.toRequestChecks publicProgram
   have facts := mixed_memory_facts size inverse accepted publicProgram image requests
-  obtain ⟨start, earlier, later⟩ := Transfer.split_at facts ((cut - 4) - 1)
+  obtain ⟨«start», earlier, later⟩ := Transfer.split_at facts ((cut - 4) - 1)
   have prefixMatching := earlier.matching
   rw [mixed_prefix_steps data (by omega)] at prefixMatching
-  obtain ⟨source, sourceMember, sourceAddress, sourceWord⟩ := seedToken start prefixMatching
+  obtain ⟨source, sourceMember, sourceAddress, sourceWord⟩ := seedToken «start» prefixMatching
   obtain ⟨finish, window, _⟩ := Transfer.split_at later (cut - 1)
-  change Transfer.Facts ⟨start, finish, Transfer.windowSteps (mixedData data) ((cut - 4) - 1) (cut - 1)⟩ at window
+  change Transfer.Facts ⟨«start», finish, Transfer.windowSteps (mixedData data) ((cut - 4) - 1) (cut - 1)⟩ at window
   rw [← mixed_window_steps size inverse accepted.toRequestChecks publicProgram first aligned (by omega) (by omega)] at window
   have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
-  have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
+  have unique : («start».map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
   obtain ⟨sameFamily, included, only⟩ := path_caller_control_edge hp inverse accepted publicProgram
     ordinaryProgram image scope aligned member
   have address : (readToken worker.assignment (path_native_control_port worker.family)).address = source.address := by
@@ -634,7 +634,7 @@ theorem path_controller_dataflow_token [Fact p.Prime] (hp : FieldCapacity.Native
     have source := path_caller_control_read hp inverse accepted publicProgram ordinaryProgram image uniqueSeeds
       scope aligned (value := position.word.toBitVec)
       (by
-        intro start prefixMatching
+        intro «start» prefixMatching
         simpa only [path_hash_control_register] using ih nonzero (by omega) prefixMatching) member
     have read : (readToken worker.assignment (path_native_control_port worker.family)).word = position.word :=
       source.trans (path_canonical_word (path_hash_word_bounded position))

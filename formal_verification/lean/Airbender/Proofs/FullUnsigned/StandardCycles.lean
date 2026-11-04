@@ -88,7 +88,7 @@ theorem unrolled_full_standard_caller_cycle
     (fun event present => readonly event (List.mem_filter.mp present).1) source code.1 code.2
   have pcBinding := unrolled_full_standard_pc_binding setup lookup accepted excluded initialPC
     row member family selected worker matched
-  have start : Delegation.Caller.initialPC row.assignment = row.start.word := by
+  have «start» : Delegation.Caller.initialPC row.assignment = row.start.word := by
     cases row with | mk kind assignment => cases family; rfl
   have finish : Delegation.Caller.finalPC row.assignment = row.finish.word := by
     cases row with | mk kind assignment => cases family; rfl
@@ -98,7 +98,7 @@ theorem unrolled_full_standard_caller_cycle
         (retiredState after row.start.word.toBitVec) =
           .ok () (retiredState (retiredState after row.start.word.toBitVec) row.finish.word.toBitVec) := by
       simpa only [finish, retiredState] using pcBinding.sail (retiredState after row.start.word.toBitVec)
-        (by simpa only [start] using retired_state_pc after row.start.word.toBitVec)
+        (by simpa only [«start»] using retired_state_pc after row.start.word.toBitVec)
     simpa only [retired_state_overwrite] using actual
   have clocks := state_clock_inputs (by decide)
     (by decide +kernel : SerializedInverse.Clock babyBearModulus)

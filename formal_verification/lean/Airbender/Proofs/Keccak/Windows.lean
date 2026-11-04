@@ -20,12 +20,12 @@ theorem window_binding [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity
   have memoryInputs : BoundaryMemoryInputs data before cells Controller.rows :=
     ⟨inputs.memory.toBoundaryInputs, inputs.family, by rw [inputs.tables]; rfl, inputs.active⟩
   have rules := Memory.Proofs.memory_rules_at_boundary (by omega) accepted memoryInputs
-  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, _,
+  obtain ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, _,
       selectedAccepted, earlierPerm, spanPerm, earlierHistory, spanHistory, startInputs, finishInputs⟩ :=
     native_span_window_at_boundary size accepted inputs.memory.toBoundaryInputs rules aligned lower upper
   have same := empty_prefix_state inputs.prefixEmpty earlierPerm earlierHistory
   subst atStart
-  let selected : Delegation.MemoryData p := ⟨data.setup, data.windowRows lower upper, start, finish⟩
+  let selected : Delegation.MemoryData p := ⟨data.setup, data.windowRows lower upper, «start», finish⟩
   have memory : Delegation.BoundaryMemoryInputs selected before cells :=
     native_window_boundary_inputs_at_boundary inputs.memory.toBoundaryInputs startInputs
   have publicABI : NativeCallInputs selected before cells :=
@@ -57,7 +57,7 @@ theorem window_binding [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity
     exact ⟨low, high,
       terminal_mapping_read source target finishInputs.addresses lowTracked lowRead,
       terminal_mapping_read source target finishInputs.addresses highTracked highRead, value, bound⟩
-  refine ⟨start, finish, earlierEvents, spanEvents, before, atFinish,
+  refine ⟨«start», finish, earlierEvents, spanEvents, before, atFinish,
     ?_, spanPerm, earlierHistory, spanHistory, selectedAccepted, memory,
     pointer, input, output, ⟨mapping.pointerRead, mapping.inputLanes, lanes⟩, target, result⟩
   simpa only [native_prefix_steps] using earlierPerm

@@ -115,14 +115,14 @@ theorem unrolled_full_cycle_transition_of_selected_inputs
       · intro read
         have binding := unrolled_full_standard_pc_binding setup lookup accepted excluded initialPC
           row member caller.1 caller.2 worker matched
-        have start : Delegation.Caller.initialPC row.assignment = row.start.word := by
+        have «start» : Delegation.Caller.initialPC row.assignment = row.start.word := by
           cases row with | mk kind w => cases caller.1; rfl
         have finish : Delegation.Caller.finalPC row.assignment = row.finish.word := by
           cases row with | mk kind w => cases caller.1; rfl
         refine Or.inl (Or.inr ⟨sameCount.symm, entry, included, allowed,
           source, pc ▸ read, after, raw, ?_⟩)
         simpa only [finish, retiredState] using binding.sail after
-          (by simpa only [start] using sail_history_pc_read current read)
+          (by simpa only [«start»] using sail_history_pc_read current read)
     · obtain ⟨worker, present, matched⟩ := List.mem_map.mp split
       obtain ⟨before, after, past, current, _, entry, included, source, pc, query, sameKind, executes⟩ :=
         unrolled_full_split_caller_cycle setup lookup accepted excluded initialPC workerFamilies equations
@@ -137,13 +137,13 @@ theorem unrolled_full_cycle_transition_of_selected_inputs
       · intro read
         have binding := unrolled_full_split_pc_binding setup lookup accepted excluded initialPC workerFamilies
           equations active initialClock initialAligned row member caller.1 caller.2 worker matched
-        have start : Delegation.Caller.initialPC row.assignment = row.start.word := by
+        have «start» : Delegation.Caller.initialPC row.assignment = row.start.word := by
           cases row with | mk kind w => cases caller.1; rfl
         have finish : Delegation.Caller.finalPC row.assignment = row.finish.word := by
           cases row with | mk kind w => cases caller.1; rfl
         refine Or.inr ⟨sameCount.symm, entry, included, source, pc ▸ read, after, sameKind ▸ raw, ?_⟩
         simpa only [finish, retiredState] using binding.sail after
-          (by simpa only [start] using sail_history_pc_read current read)
+          (by simpa only [«start»] using sail_history_pc_read current read)
   · obtain ⟨entry, included, family, query, clause, next, selected, counter,
         before, after, past, current, _, retired⟩ :=
       unrolled_full_ordinary_cycle setup lookup accepted excluded initialPC closure equations active

@@ -158,6 +158,16 @@ Only compiler input receipts changed. Both manifests are the exact verified
 downloads and pass their strict checkers locally. Lean validation and final full
 assurance remain separate pending gates.
 
+The same run subsequently failed while rebuilding
+`Proofs/UnifiedReduced/WindowProjection.lean`. Lean rejected unquoted local
+`parts` at line 88 and `start` at line 109. The guarded build exited with code 1
+after 4.96 seconds, with 411.79 MiB charged footprint and no remaining owned
+processes. The repair quotes those identifiers and corresponding local binding
+patterns in the remaining private proofs. Quote-normalized source is identical
+to the previous revision; no Review statement, production code or artifact
+manifest is changed. Current Lean validation and final full assurance remain
+pending.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

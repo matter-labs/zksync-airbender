@@ -24,11 +24,11 @@ theorem window_binding [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
     rw [inputs.tables]
     rfl
   have rules := memory_rules (by omega) inverse accepted inputs.family table
-  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, prefixFacts,
+  obtain ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, prefixFacts,
       selectedAccepted, earlierPerm, spanPerm, earlierHistory, spanHistory, startInputs, finishInputs⟩ :=
     native_span_window size accepted inputs.memory rules aligned lower upper
-  let selected : Delegation.MemoryData p := ⟨data.setup, data.windowRows lower upper, start, finish⟩
-  let priorData : Delegation.MemoryData p := ⟨data.setup, data.prefixRows lower, data.initial, start⟩
+  let selected : Delegation.MemoryData p := ⟨data.setup, data.windowRows lower upper, «start», finish⟩
+  let priorData : Delegation.MemoryData p := ⟨data.setup, data.prefixRows lower, data.initial, «start»⟩
   have prefixAccepted : Delegation.MemoryAccepted priorData := by
     refine ⟨?_, ?_⟩
     · intro row member
@@ -96,7 +96,7 @@ theorem window_binding [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
   have atWindow : WorkVector.WordMapping atStart atFinish statePointer messagePointer input message output :=
     ⟨mapping.pointers, mapping.inputWords, mapping.messageWords,
       transfer stateTracked mapping.outputWords, transfer messageTracked mapping.messageUnchanged⟩
-  refine ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish,
+  refine ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish,
     ?_, spanPerm, earlierHistory, spanHistory, selectedAccepted, memory,
     statePointer, messagePointer, input, message, output, atWindow, target, result⟩
   simpa only [native_prefix_steps] using earlierPerm

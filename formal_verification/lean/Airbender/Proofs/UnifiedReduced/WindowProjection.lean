@@ -85,9 +85,9 @@ theorem prefix_filtered_tokens [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p 
     simp only [decide_eq_true_eq]
     omega
   rw [clock] at projection
-  have parts : data.prefixSteps lower = priorMachine ++ priorWorkers := by
+  have «parts» : data.prefixSteps lower = priorMachine ++ priorWorkers := by
     simp only [RequestTrace.prefixSteps, RequestTrace.mixedSteps, List.filter_append, priorMachine, priorWorkers]
-  rw [parts, clock]
+  rw [«parts», clock]
   exact projection
 
 theorem native_boundary_restriction {tokens : List (MemoryToken p)} {state : State} {cells : List Cell}
@@ -106,7 +106,7 @@ theorem projected_window [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p
   have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
   have window := mixed_window_execution hp clockInverse rotationInverse accepted inputs first last positive ordered
-  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
+  obtain ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
     firstHistory, spanHistory, prefixMatching, matching, startBoundary, finishBoundary⟩ := window.execution
   have selectedMatching := matching.filter fun token => token.address != (Cell.register 0).addressCode
   have writes := window_filtered_tokens accepted requests lower upper true
@@ -182,7 +182,7 @@ theorem projected_window [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p
   obtain ⟨workerEvents, workerPerm, workerHistory⟩ := histories spanEvents _ spanPerm atStart atFinish spanHistory
   rw [prefixSteps] at prefixPerm
   rw [spanSteps] at workerPerm
-  refine ⟨window.requests, start, finish, earlierEvents, spanEvents, atStart, atFinish,
+  refine ⟨window.requests, «start», finish, earlierEvents, spanEvents, atStart, atFinish,
     firstPerm, spanPerm, firstHistory, spanHistory, startBoundary, finishBoundary,
     ⟨?_, priorMatching⟩, ⟨⟨prefixEvents, prefixPerm, prefixHistory⟩, ?_⟩,
     ⟨?_, selectedMatching⟩, ⟨startProjected.1, inputs.distinct.sublist (List.filter_sublist.map Cell.addressCode),

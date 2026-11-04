@@ -254,10 +254,10 @@ theorem frame_value_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity 
     (initialization : initialImage before cells = some data.machine.initialMemory)
     (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
     (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
     (aligned : cut % 4 = 0)
     (refreshes : ∀ edge ∈ data.windowSteps (cut - 4) cut,
       edge.1.address = (Cell.register register).addressCode → edge.2.value = edge.1.value)
@@ -268,16 +268,16 @@ theorem frame_value_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity 
   have first : (cut - 4) % 4 = 0 := by omega
   have requests := request_binding size clockInverse accepted.toRequestChecks publicProgram
   have facts := mixed_memory_facts size clockInverse accepted publicProgram initialization requests
-  obtain ⟨start, earlier, later⟩ := Transfer.split_at facts ((cut - 4) - 1)
+  obtain ⟨«start», earlier, later⟩ := Transfer.split_at facts ((cut - 4) - 1)
   have prefixMatching := earlier.matching
   rw [mixed_prefix_steps data (by omega)] at prefixMatching
-  obtain ⟨sourceToken, sourceMember, sourceAddress, sourceWord⟩ := seedToken start prefixMatching
+  obtain ⟨sourceToken, sourceMember, sourceAddress, sourceWord⟩ := seedToken «start» prefixMatching
   obtain ⟨finish, window, _⟩ := Transfer.split_at later (cut - 1)
-  change Transfer.Facts ⟨start, finish, Transfer.windowSteps (mixedData data) ((cut - 4) - 1) (cut - 1)⟩ at window
+  change Transfer.Facts ⟨«start», finish, Transfer.windowSteps (mixedData data) ((cut - 4) - 1) (cut - 1)⟩ at window
   rw [← mixed_window_steps size clockInverse accepted.toRequestChecks publicProgram first aligned (by omega) (by omega)] at window
   have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
-  have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
-  have seed : ∀ token ∈ start, token.address = (Cell.register register).addressCode → token.value = sourceToken.value := by
+  have unique : («start».map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
+  have seed : ∀ token ∈ «start», token.address = (Cell.register register).addressCode → token.value = sourceToken.value := by
     intro token present address
     have equal := List.inj_on_of_nodup_map unique present sourceMember (address.trans sourceAddress.symm)
     exact congrArg MemoryToken.value equal
@@ -312,10 +312,10 @@ theorem public_frame_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity
     (scope : RegisterFramePreparation data program cut destination)
     (destinationNonzero : destination ≠ 0) (preserves : destination ≠ register)
     (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
     (aligned : cut % 4 = 0)
     (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
       (tokens ++ (data.prefixSteps cut).map Prod.fst)) :
@@ -378,10 +378,10 @@ theorem arithmetic_frame_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapa
     (scope : ArithmeticFramePreparation data program cut destination)
     (destinationNonzero : destination ≠ 0) (preserves : destination ≠ register)
     (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
     (aligned : cut % 4 = 0)
     (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
       (tokens ++ (data.prefixSteps cut).map Prod.fst)) :
@@ -416,10 +416,10 @@ theorem register_frame_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapaci
     (scope : RegisterImmediatePreparation data program cut source destination immediate)
     (destinationNonzero : destination ≠ 0) (preserves : destination ≠ register)
     (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
     (aligned : cut % 4 = 0)
     (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
       (tokens ++ (data.prefixSteps cut).map Prod.fst)) :
@@ -528,10 +528,10 @@ theorem load_frame_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p
     (scope : LoadFramePreparation data program cut source destination immediate)
     (preserves : destination ≠ register)
     (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
     (aligned : cut % 4 = 0)
     (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
       (tokens ++ (data.prefixSteps cut).map Prod.fst)) :
@@ -567,10 +567,10 @@ theorem store_frame_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity 
     (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
     (scope : StoreFramePreparation data program cut source stored immediate)
     (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register register).addressCode ∧ token.word = Word.ofBitVec value)
     (aligned : cut % 4 = 0)
     (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
       (tokens ++ (data.prefixSteps cut).map Prod.fst)) :
@@ -929,7 +929,7 @@ theorem bigint_return_preparation_token [Fact p.Prime] (hp : FieldCapacity.Nativ
   have afterInitial := scope.caller.afterInitial
   obtain ⟨w, member, last, ordinary, present, timestamp, bound⟩ := preparation_output_token hp clockInverse
     accepted publicProgram initialization scope.prefixScope (by omega) scope.beforeTerminal aligned matching
-  obtain ⟨start, prefixMatching, inStart, unique⟩ := first_port_prefix_token hp clockInverse
+  obtain ⟨«start», prefixMatching, inStart, unique⟩ := first_port_prefix_token hp clockInverse
     accepted publicProgram initialization uniqueSeeds (by omega) member ordinary last
   obtain ⟨token, included, address, _, bit⟩ := bigint_control_token hp clockInverse setup accepted publicProgram
     ordinaryProgram initialization scope.tables scope.caller (by omega) prefixMatching

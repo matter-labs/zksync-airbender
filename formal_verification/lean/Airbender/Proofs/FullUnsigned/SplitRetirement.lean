@@ -76,7 +76,7 @@ theorem unrolled_full_split_caller_retirement
     exact reads _ (List.mem_append.mpr (Or.inr inWorkers))
   have pcBinding := unrolled_full_split_pc_binding setup lookup accepted excluded initialPC families equations
     active initialClock initialAligned row member family selected worker matched
-  have start : Delegation.Caller.initialPC row.assignment = row.start.word := by
+  have «start» : Delegation.Caller.initialPC row.assignment = row.start.word := by
     cases row with | mk kind assignment => cases family; rfl
   have finish : Delegation.Caller.finalPC row.assignment = row.finish.word := by
     cases row with | mk kind assignment => cases family; rfl
@@ -86,7 +86,7 @@ theorem unrolled_full_split_caller_retirement
         (retiredState after row.start.word.toBitVec) =
           .ok () (retiredState (retiredState after row.start.word.toBitVec) row.finish.word.toBitVec) := by
       simpa only [finish, retiredState] using pcBinding.sail (retiredState after row.start.word.toBitVec)
-        (by simpa only [start] using retired_state_pc after row.start.word.toBitVec)
+        (by simpa only [«start»] using retired_state_pc after row.start.word.toBitVec)
     simpa only [retired_state_overwrite] using actual
   refine ⟨before, after, past, ?_, future⟩
   intro index arguments

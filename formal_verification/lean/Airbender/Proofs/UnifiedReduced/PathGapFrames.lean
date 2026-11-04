@@ -87,10 +87,10 @@ theorem path_gap_value_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapaci
     (image : initialImage before cells = some data.machine.initialMemory)
     (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
     (frames : PathRegisterGapFrames data program lower upper register) (nonzero : register ≠ 0)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps lower).map Prod.snd).Perm
-        (start ++ (data.prefixSteps lower).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register register).addressCode ∧ token.value = value)
+        («start» ++ (data.prefixSteps lower).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register register).addressCode ∧ token.value = value)
     (matching : (data.machine.initialMemory ++ (data.prefixSteps upper).map Prod.snd).Perm
       (tokens ++ (data.prefixSteps upper).map Prod.fst)) :
     ∃ token ∈ tokens, token.address = (Cell.register register).addressCode ∧ token.value = value := by
@@ -98,17 +98,17 @@ theorem path_gap_value_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapaci
   have positive : 2 ≤ lower := by have := frames.afterInitial; omega
   have requests := request_binding size inverse accepted.toRequestChecks publicProgram
   have facts := mixed_memory_facts size inverse accepted publicProgram image requests
-  obtain ⟨start, earlier, later⟩ := Transfer.split_at facts (lower - 1)
+  obtain ⟨«start», earlier, later⟩ := Transfer.split_at facts (lower - 1)
   have prefixMatching := earlier.matching
   rw [mixed_prefix_steps data (by omega)] at prefixMatching
-  obtain ⟨source, sourceMember, sourceAddress, sourceValue⟩ := seedToken start prefixMatching
+  obtain ⟨source, sourceMember, sourceAddress, sourceValue⟩ := seedToken «start» prefixMatching
   obtain ⟨finish, window, _⟩ := Transfer.split_at later (upper - 1)
-  change Transfer.Facts ⟨start, finish, Transfer.windowSteps (mixedData data) (lower - 1) (upper - 1)⟩ at window
+  change Transfer.Facts ⟨«start», finish, Transfer.windowSteps (mixedData data) (lower - 1) (upper - 1)⟩ at window
   rw [← mixed_window_steps size inverse accepted.toRequestChecks publicProgram
     frames.lowerAligned frames.upperAligned positive frames.ordered] at window
   have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
-  have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
-  have seed : ∀ token ∈ start, token.address = (Cell.register register).addressCode → token.value = value := by
+  have unique : («start».map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
+  have seed : ∀ token ∈ «start», token.address = (Cell.register register).addressCode → token.value = value := by
     intro token present address
     exact (congrArg MemoryToken.value (List.inj_on_of_nodup_map unique present sourceMember
       (address.trans sourceAddress.symm))).trans sourceValue
@@ -143,27 +143,27 @@ theorem path_gap_read_value [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacit
     (image : initialImage before cells = some data.machine.initialMemory)
     (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
     (frames : PathRegisterGapFrames data program lower upper register) (nonzero : register ≠ 0)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps lower).map Prod.snd).Perm
-        (start ++ (data.prefixSteps lower).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register register).addressCode ∧ token.value = value)
+        («start» ++ (data.prefixSteps lower).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register register).addressCode ∧ token.value = value)
     (included : edge ∈ data.windowSteps lower upper)
     (address : edge.1.address = (Cell.register register).addressCode) : edge.1.value = value := by
   have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   have positive : 2 ≤ lower := by have := frames.afterInitial; omega
   have requests := request_binding size inverse accepted.toRequestChecks publicProgram
   have facts := mixed_memory_facts size inverse accepted publicProgram image requests
-  obtain ⟨start, earlier, later⟩ := Transfer.split_at facts (lower - 1)
+  obtain ⟨«start», earlier, later⟩ := Transfer.split_at facts (lower - 1)
   have prefixMatching := earlier.matching
   rw [mixed_prefix_steps data (by omega)] at prefixMatching
-  obtain ⟨source, sourceMember, sourceAddress, sourceValue⟩ := seedToken start prefixMatching
+  obtain ⟨source, sourceMember, sourceAddress, sourceValue⟩ := seedToken «start» prefixMatching
   obtain ⟨finish, window, _⟩ := Transfer.split_at later (upper - 1)
-  change Transfer.Facts ⟨start, finish, Transfer.windowSteps (mixedData data) (lower - 1) (upper - 1)⟩ at window
+  change Transfer.Facts ⟨«start», finish, Transfer.windowSteps (mixedData data) (lower - 1) (upper - 1)⟩ at window
   rw [← mixed_window_steps size inverse accepted.toRequestChecks publicProgram
     frames.lowerAligned frames.upperAligned positive frames.ordered] at window
   have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
-  have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
-  have seed : ∀ token ∈ start, token.address = (Cell.register register).addressCode → token.value = value := by
+  have unique : («start».map MemoryToken.address).Nodup := keys.nodup_iff.mp uniqueSeeds
+  have seed : ∀ token ∈ «start», token.address = (Cell.register register).addressCode → token.value = value := by
     intro token present same
     exact (congrArg MemoryToken.value (List.inj_on_of_nodup_map unique present sourceMember
       (same.trans sourceAddress.symm))).trans sourceValue

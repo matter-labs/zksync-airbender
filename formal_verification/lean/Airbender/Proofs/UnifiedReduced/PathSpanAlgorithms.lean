@@ -145,11 +145,11 @@ private theorem path_span_algorithm_of_gap_evidence
     rw [gapValues i j adjacent _ (tracked ⟨word, bound⟩) (protectedBlock ⟨word, bound⟩)]
   have result : PathSpanAlgorithmResult span.span
       (before (PathCompleteSpan.first span.span)) (after (PathCompleteSpan.last span.span)) := by
-    rcases span with ⟨family, start, increasing, aligned, code, control, gFrames⟩
+    rcases span with ⟨family, «start», increasing, aligned, code, control, gFrames⟩
     cases family with
     | blakeG reduced =>
       let span : PathCompleteSpan data program :=
-        ⟨.blakeG reduced, start, increasing, aligned, code, control, gFrames⟩
+        ⟨.blakeG reduced, «start», increasing, aligned, code, control, gFrames⟩
       let first := PathCompleteSpan.first span.span
       let last := PathCompleteSpan.last span.span
       let assignments := fun i : Fin (Blake2G.callCount reduced) => (rows i).assignment
@@ -250,7 +250,7 @@ private theorem path_span_algorithm_of_gap_evidence
       · exact folded
     | blakeRound flags =>
       let span : PathCompleteSpan data program :=
-        ⟨.blakeRound flags, start, increasing, aligned, code, control, gFrames⟩
+        ⟨.blakeRound flags, «start», increasing, aligned, code, control, gFrames⟩
       let first := PathCompleteSpan.first span.span
       let last := PathCompleteSpan.last span.span
       let assignments := fun i : Fin span.span.callCount => (rows i).assignment
@@ -359,7 +359,7 @@ private theorem path_span_algorithm_of_gap_evidence
           Blake2Round.Proofs.block_at extendedTracked (afterReadable last)⟩
       · exact folded
     | keccak =>
-      let span : PathCompleteSpan data program := ⟨.keccak, start, increasing, aligned, code, control, gFrames⟩
+      let span : PathCompleteSpan data program := ⟨.keccak, «start», increasing, aligned, code, control, gFrames⟩
       let first := PathCompleteSpan.first span.span
       let last := PathCompleteSpan.last span.span
       let assignments := fun i : Fin 649 => (rows i).assignment

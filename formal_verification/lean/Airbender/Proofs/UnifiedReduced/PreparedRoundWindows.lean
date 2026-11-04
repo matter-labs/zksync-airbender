@@ -144,7 +144,7 @@ theorem prepared_round_masks [Fact p.Prime] (hp : FieldCapacity.NativeHashCapaci
   have positive : 2 ≤ lower := by omega
   have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
   have facts := mixed_memory_facts size clockInverse accepted inputs.publicProgram inputs.initialization requests
-  obtain ⟨start, earlier, later⟩ := Transfer.split_at facts (lower - 1)
+  obtain ⟨«start», earlier, later⟩ := Transfer.split_at facts (lower - 1)
   have prefixEqual : Transfer.beforeSteps (mixedData data) (lower - 1) = data.prefixSteps lower := by
     apply List.filter_congr
     intro edge _
@@ -162,7 +162,7 @@ theorem prepared_round_masks [Fact p.Prime] (hp : FieldCapacity.NativeHashCapaci
     omega
   let keep := fun token : MemoryToken p => token.address != (Cell.register 0).addressCode
   let projected : Delegation.MemoryData p :=
-    ⟨data.workers.setup, data.workers.rows, start.filter keep, data.machine.terminalMemory.filter keep⟩
+    ⟨data.workers.setup, data.workers.rows, «start».filter keep, data.machine.terminalMemory.filter keep⟩
   have matching := later.matching.filter keep
   have writes := prepared_round_suffix_tokens size clockInverse accepted inputs first positive requests true
   have reads := prepared_round_suffix_tokens size clockInverse accepted inputs first positive requests false
@@ -171,7 +171,7 @@ theorem prepared_round_masks [Fact p.Prime] (hp : FieldCapacity.NativeHashCapaci
   simp only [List.filter_append, writes, reads] at matching
   have selected : Delegation.MemoryAccepted projected := ⟨accepted.workerConstraints, matching⟩
   have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
-  have unique : (start.map MemoryToken.address).Nodup := keys.nodup_iff.mp (by
+  have unique : («start».map MemoryToken.address).Nodup := keys.nodup_iff.mp (by
     change (data.machine.initialMemory.map MemoryToken.address).Nodup
     rw [image_addresses inputs.initialization]
     exact inputs.distinct)
@@ -211,21 +211,21 @@ theorem prepared_round_window [Fact p.Prime] (hp : FieldCapacity.NativeWideHashC
   have duration := inputs.spanDuration
   have projection := mixed_projected_window (by omega) clockInverse rotationInverse accepted memory first last
     (by omega) (by omega) (by omega) inputs.beforeTerminal (by simpa only [inputs.calls] using duration)
-  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
+  obtain ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
     firstHistory, spanHistory, prefixMatching, _, startBoundary, finishBoundary,
     selected, initialized, finalBoundary, target⟩ := projection.execution
   have control := preparation_at_boundary (by omega) clockInverse accepted memory inputs.preparation
     (by decide) first prefixMatching startBoundary
   have entry : (Cell.register 12).read atStart = .ok (Delegation.Caller.HashSpan.blakeRound flags).controlStart atStart := by
     simpa only [hash_preparation_value] using control.1
-  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection lower upper start finish) atStart (.blakeRound flags) :=
+  have protocol : Delegation.Caller.HashSpan.Protocol (data.windowProjection lower upper «start» finish) atStart (.blakeRound flags) :=
     ⟨inputs.tables, fun row member => inputs.family row (List.mem_of_mem_filter member), entry, inputs.calls⟩
   have result := Delegation.Caller.Proofs.hash_span_at_target hp clockInverse selected initialized protocol
     (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))
     (fun cell member => inputs.aligned cell (List.mem_of_mem_filter member)) target finalBoundary.1.addresses
   exact ⟨projection.requests,
     (Delegation.Caller.Proofs.window_call_count projection.requests).trans inputs.calls,
-    start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
+    «start», finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
     firstHistory, spanHistory, startBoundary, finishBoundary, selected, initialized, result⟩
 
 theorem prepared_round_region_masks [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
@@ -253,19 +253,19 @@ theorem prepared_protocol_reference_at_states [Fact p.Prime] (hp : FieldCapacity
     (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before atStart atFinish : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion} {window : HashWindow}
-    {start finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
+    {«start» finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
     (accepted : MixedMemoryAccepted data program)
     (inputs : PreparedProtocolInputs data before ca oa cells program regions)
     (scope : PreparedProtocolWindowInputs data program window)
     (first : window.lower % 4 = 0) (last : window.upper % 4 = 0)
     (prefixMatching : (data.machine.initialMemory ++ (data.prefixSteps window.lower).map Prod.snd).Perm
-      (start ++ (data.prefixSteps window.lower).map Prod.fst))
-    (matching : (start ++ (data.windowSteps window.lower window.upper).map Prod.snd).Perm
+      («start» ++ (data.prefixSteps window.lower).map Prod.fst))
+    (matching : («start» ++ (data.windowSteps window.lower window.upper).map Prod.snd).Perm
       (finish ++ (data.windowSteps window.lower window.upper).map Prod.fst))
-    (startBoundary : NativeBoundary start atStart cells) (finishBoundary : NativeBoundary finish atFinish cells)
+    (startBoundary : NativeBoundary «start» atStart cells) (finishBoundary : NativeBoundary finish atFinish cells)
     (spanPerm : spanEvents.Perm ((data.windowSteps window.lower window.upper).map transferEvent))
     (spanHistory : SailHistory cells spanEvents atStart atFinish) :
-    window.span.Result (data.windowProjection window.lower window.upper start finish) atStart atFinish
+    window.span.Result (data.windowProjection window.lower window.upper «start» finish) atStart atFinish
       (Delegation.Caller.workerCells cells) :=
   computed_protocol_reference_at_states hp clockInverse accepted (literal_computed_protocol_inputs inputs)
     (literal_computed_protocol_window_inputs scope) first last prefixMatching matching startBoundary finishBoundary spanPerm spanHistory

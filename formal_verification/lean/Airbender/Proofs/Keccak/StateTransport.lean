@@ -74,11 +74,11 @@ theorem call_lane_observations [Fact p.Prime] (hp : FieldCapacity.NativeWideHash
     ∃ (pointer : BitVec 32) (ordered : List (Delegation.Row p)) (after : State),
       (Cell.register 11).read initial = .ok pointer initial ∧ ordered.Perm data.rows ∧
       GroupedSailHistory cells (fun row => row.memorySteps.map transferEvent) ordered initial after ∧
-      ∀ row ∈ ordered, ∃ events start finish, events.Perm (row.memorySteps.map transferEvent) ∧
-        SailHistory cells events start finish ∧
+      ∀ row ∈ ordered, ∃ events «start» finish, events.Perm (row.memorySteps.map transferEvent) ∧
+        SailHistory cells events «start» finish ∧
         ∀ lane : Fin 6,
           let address := pointer + BitVec.ofNat 32 (8 * (row.assignment (7 + lane.val)).val)
-          Native.readLane row.assignment lane = ramLane start address ∧
+          Native.readLane row.assignment lane = ramLane «start» address ∧
             Native.writtenLane row.assignment lane = ramLane finish address := by
   obtain ⟨ordered, after, permutation, history, observed⟩ :=
     call_atomic_observations hp inverse accepted inputs tables aligned
@@ -91,8 +91,8 @@ theorem call_lane_observations [Fact p.Prime] (hp : FieldCapacity.NativeWideHash
   refine ⟨pointer, ordered, after, pointerRead, permutation, history, ?_⟩
   intro row member
   have included := permutation.mem_iff.mp member
-  obtain ⟨events, start, finish, eventsPerm, current, ports⟩ := observed row member
-  refine ⟨events, start, finish, eventsPerm, current, ?_⟩
+  obtain ⟨events, «start», finish, eventsPerm, current, ports⟩ := observed row member
+  refine ⟨events, «start», finish, eventsPerm, current, ?_⟩
   intro lane
   have native : row = ⟨.keccak, row.assignment⟩ := by
     cases row with
@@ -108,7 +108,7 @@ theorem call_lane_observations [Fact p.Prime] (hp : FieldCapacity.NativeWideHash
     simpa only [← native] using bounds.2.1 row included
   have actual : ∀ port ∈ (⟨.keccak, row.assignment⟩ : Delegation.Row p).ports,
       ∃ cell : Cell, cell.addressCode = port.address.code row.assignment ∧
-        cell.read start = .ok (memoryWord (port.readCode row.assignment)) start ∧
+        cell.read «start» = .ok (memoryWord (port.readCode row.assignment)) «start» ∧
         cell.read finish = .ok (memoryWord (port.writeCode row.assignment)) finish := by
     intro port member
     obtain ⟨cell, _, code, read, written⟩ := ports port (by simpa only [← native] using member)

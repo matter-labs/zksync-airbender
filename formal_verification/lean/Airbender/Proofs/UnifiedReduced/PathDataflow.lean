@@ -320,18 +320,18 @@ theorem path_addi_source_word [Fact p.Prime] (hp : FieldCapacity.NativeHashCapac
       (.ITYPE (immediate, .Regidx source, .Regidx register, .ADDI)))
     (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
     (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register source).addressCode ∧ token.word = Word.ofBitVec value)
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register source).addressCode ∧ token.word = Word.ofBitVec value)
     (nonzero : register ≠ 0)
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
     (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
     (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
     (readToken w importedConstraintsMemoryPorts[0]).word = Word.ofBitVec value := by
-  obtain ⟨start, prefixMatching, inStart, unique⟩ := first_port_prefix_token hp clockInverse
+  obtain ⟨«start», prefixMatching, inStart, unique⟩ := first_port_prefix_token hp clockInverse
     accepted publicProgram initialization uniqueSeeds (by omega) member ordinary last
-  obtain ⟨token, present, address, word⟩ := seedToken start prefixMatching
+  obtain ⟨token, present, address, word⟩ := seedToken «start» prefixMatching
   obtain ⟨entry, _, query, metadata⟩ := path_addi_entry (by norm_num [timestampBase]; omega) accepted
     ordinaryProgram scope nonzero member ordinary last
   have indices := native_query_indices (by dsimp [limbBase]; omega) query
@@ -357,10 +357,10 @@ theorem path_addi_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
       (.ITYPE (immediate, .Regidx source, .Regidx register, .ADDI)))
     (uniqueSeeds : (data.machine.initialMemory.map MemoryToken.address).Nodup)
     (sourceFloor : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut - 4)
-    (seedToken : ∀ start : List (MemoryToken p),
+    (seedToken : ∀ «start» : List (MemoryToken p),
       (data.machine.initialMemory ++ (data.prefixSteps (cut - 4)).map Prod.snd).Perm
-        (start ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
-      ∃ token ∈ start, token.address = (Cell.register source).addressCode ∧ token.word = Word.ofBitVec value)
+        («start» ++ (data.prefixSteps (cut - 4)).map Prod.fst) →
+      ∃ token ∈ «start», token.address = (Cell.register source).addressCode ∧ token.word = Word.ofBitVec value)
     (nonzero : register ≠ 0) (aligned : cut % 4 = 0)
     (matching : (data.machine.initialMemory ++ (data.prefixSteps cut).map Prod.snd).Perm
       (tokens ++ (data.prefixSteps cut).map Prod.fst)) :

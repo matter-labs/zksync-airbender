@@ -36,12 +36,12 @@ theorem window_binding [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
   have masks := pool_masks size accepted pool
   have table : data.setup.blakeRound = setupTable := by rw [inputs.tables]; rfl
   have rules := memory_rules hp inverse accepted inputs.family table masks
-  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, _,
+  obtain ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, _,
       selectedAccepted, earlierPerm, spanPerm, earlierHistory, spanHistory, startInputs, finishInputs⟩ :=
     native_span_window_at_boundary size accepted inputs.memory.toBoundaryInputs rules aligned lower upper
   have same := empty_prefix_state inputs.prefixEmpty earlierPerm earlierHistory
   subst atStart
-  let selected : Delegation.MemoryData p := ⟨data.setup, data.windowRows lower upper, start, finish⟩
+  let selected : Delegation.MemoryData p := ⟨data.setup, data.windowRows lower upper, «start», finish⟩
   have memory : Delegation.BoundaryMemoryInputs selected before cells :=
     native_window_boundary_inputs_at_boundary inputs.memory.toBoundaryInputs startInputs
   have abi : BoundaryCallInputs selected before cells flags :=
@@ -75,7 +75,7 @@ theorem window_binding [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
   have atWindow : Compression.WordMapping before atFinish statePointer messagePointer input output message :=
     ⟨mapping.pointers, mapping.inputState, mapping.inputExtended, mapping.messageWords,
       transfer stateTracked mapping.outputState, transfer extendedTracked mapping.outputExtended⟩
-  refine ⟨start, finish, earlierEvents, spanEvents, before, atFinish,
+  refine ⟨«start», finish, earlierEvents, spanEvents, before, atFinish,
     ?_, spanPerm, earlierHistory, spanHistory, selectedAccepted, memory,
     statePointer, messagePointer, input, message, output, atWindow, target, result⟩
   simpa only [native_prefix_steps] using earlierPerm

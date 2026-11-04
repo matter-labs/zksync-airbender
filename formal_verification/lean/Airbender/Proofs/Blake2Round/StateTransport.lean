@@ -57,13 +57,13 @@ theorem call_word_observations [Fact p.Prime] (hp : FieldCapacity.NativeHashCapa
       (Cell.register 10).read initial = .ok statePointer initial ∧
       (Cell.register 11).read initial = .ok messagePointer initial ∧ ordered.Perm data.rows ∧
       GroupedSailHistory cells (fun row => row.memorySteps.map transferEvent) ordered initial after ∧
-      ∀ row ∈ ordered, ∃ round : Fin 10, ∃ events start finish,
+      ∀ row ∈ ordered, ∃ round : Fin 10, ∃ events «start» finish,
         Row.spec (Native.input round row.assignment) (Native.output row.assignment) ∧
-        events.Perm (row.memorySteps.map transferEvent) ∧ SailHistory cells events start finish ∧
+        events.Perm (row.memorySteps.map transferEvent) ∧ SailHistory cells events «start» finish ∧
         ∀ index : Fin 40,
           let address := if index.val < 24 then statePointer + BitVec.ofNat 32 (4 * index.val)
             else messagePointer + BitVec.ofNat 32 (4 * (index.val - 24))
-          ramWord start address =
+          ramWord «start» address =
             ((⟨.blakeRound, row.assignment⟩ : Delegation.Row p).readWord (wordIndex index)).value ∧
           ramWord finish address =
             ((⟨.blakeRound, row.assignment⟩ : Delegation.Row p).writtenWord (wordIndex index)).value := by
@@ -78,8 +78,8 @@ theorem call_word_observations [Fact p.Prime] (hp : FieldCapacity.NativeHashCapa
   intro row member
   have included := permutation.mem_iff.mp member
   obtain ⟨round, _, effect⟩ := effects row included
-  obtain ⟨events, start, finish, eventPerm, current, ports⟩ := observed row member
-  refine ⟨round, events, start, finish, effect, eventPerm, current, ?_⟩
+  obtain ⟨events, «start», finish, eventPerm, current, ports⟩ := observed row member
+  refine ⟨round, events, «start», finish, effect, eventPerm, current, ?_⟩
   intro index
   have native : row = ⟨.blakeRound, row.assignment⟩ := by
     have native : row = ⟨row.family, row.assignment⟩ := rfl
@@ -92,7 +92,7 @@ theorem call_word_observations [Fact p.Prime] (hp : FieldCapacity.NativeHashCapa
     simpa only [← native] using bounds.writes row included
   have actual : ∀ port ∈ (⟨.blakeRound, row.assignment⟩ : Delegation.Row p).ports,
       ∃ cell : Cell, cell.addressCode = port.address.code row.assignment ∧
-        cell.read start = .ok (memoryWord (port.readCode row.assignment)) start ∧
+        cell.read «start» = .ok (memoryWord (port.readCode row.assignment)) «start» ∧
         cell.read finish = .ok (memoryWord (port.writeCode row.assignment)) finish := by
     intro port present
     obtain ⟨cell, _, code, read, written⟩ := ports port (by simpa only [← native] using present)

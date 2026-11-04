@@ -83,7 +83,7 @@ theorem path_protocol_worker_covered
   let entry := data.program.get i
   have pcWord : caller.start.word = Word.ofBitVec entry.pc := caller_query_pc_word (by decide) query
   have pc : entry.pc = caller.start.word.toBitVec := by rw [pcWord, Word.ofBitVec_roundtrip]
-  obtain ⟨call, included, start, _⟩ := inputs.coverage caller (List.mem_of_mem_filter called)
+  obtain ⟨call, included, «start», _⟩ := inputs.coverage caller (List.mem_of_mem_filter called)
     entry (List.get_mem _ _) pc
   have write := slot.writes (path_native_control_port worker.family) (path_control_port_member worker)
   have normalized : worker.writeTime =
@@ -91,7 +91,7 @@ theorem path_protocol_worker_covered
     cases worker with
     | mk family w => cases family <;> rfl
   refine ⟨call, included, List.mem_filter.mpr ⟨member, decide_eq_true ?_⟩⟩
-  rw [normalized, write, ← start]
+  rw [normalized, write, ← «start»]
   omega
 
 /-- Exact full-pool occurrence bijection and list multiplicity. Every protocol
@@ -187,14 +187,14 @@ theorem path_protocol_count
 def path_span_call_plan [Fact p.Prime] {data : RequestTrace p}
     {program : List UnifiedReduced.ProgramEntry} (span : PathCompleteSpan data program)
     (i : Fin span.span.callCount) : PathCallPlan data program := by
-  rcases span with ⟨family, start, increasing, aligned, code, control, gFrames⟩
+  rcases span with ⟨family, «start», increasing, aligned, code, control, gFrames⟩
   cases family with
   | blakeG reduced =>
-    refine ⟨start i, .hash ⟨.blakeG reduced, i⟩, code i, control i, ?_⟩
-    change PathGPointerPreparation data program (start i)
+    refine ⟨«start» i, .hash ⟨.blakeG reduced, i⟩, code i, control i, ?_⟩
+    change PathGPointerPreparation data program («start» i)
     right
     let first := PathCompleteSpan.first (.blakeG reduced)
-    have seedControl : PathControllerDataflow data program (start first) 12
+    have seedControl : PathControllerDataflow data program («start» first) 12
         (Blake2G.controlAt reduced 0).toBitVec := control first
     by_cases zero : i.val = 0
     · have same : i = first := Fin.ext zero
@@ -202,19 +202,19 @@ def path_span_call_plan [Fact p.Prime] {data : RequestTrace p}
       exact .atSeed reduced (code first) seedControl
     · have frames := gFrames rfl i (by omega)
       exact .afterSeed reduced (code first) seedControl frames.1 frames.2
-  | blakeRound flags => exact ⟨start i, .hash ⟨.blakeRound flags, i⟩, code i, control i, trivial⟩
-  | keccak => exact ⟨start i, .hash ⟨.keccak, i⟩, code i, control i, trivial⟩
+  | blakeRound flags => exact ⟨«start» i, .hash ⟨.blakeRound flags, i⟩, code i, control i, trivial⟩
+  | keccak => exact ⟨«start» i, .hash ⟨.keccak, i⟩, code i, control i, trivial⟩
 
 theorem path_span_call_plan_start [Fact p.Prime] {data : RequestTrace p}
     {program : List UnifiedReduced.ProgramEntry} (span : PathCompleteSpan data program)
     (i : Fin span.span.callCount) : (path_span_call_plan span i).start = span.start i := by
-  rcases span with ⟨family, start, increasing, aligned, code, control, frames⟩
+  rcases span with ⟨family, «start», increasing, aligned, code, control, frames⟩
   cases family <;> rfl
 
 theorem path_span_call_plan_family [Fact p.Prime] {data : RequestTrace p}
     {program : List UnifiedReduced.ProgramEntry} (span : PathCompleteSpan data program)
     (i : Fin span.span.callCount) : (path_span_call_plan span i).position.family = span.span.family := by
-  rcases span with ⟨family, start, increasing, aligned, code, control, frames⟩
+  rcases span with ⟨family, «start», increasing, aligned, code, control, frames⟩
   cases family <;> rfl
 
 def path_span_call_plans [Fact p.Prime] {data : RequestTrace p}
@@ -265,13 +265,13 @@ def path_spans_call_inputs [Fact p.Prime]
     rw [starts]
     exact inputs.distinctOccurrences
   · intro row member entry included pc
-    obtain ⟨call, present, start, family⟩ := inputs.coverage row member entry included pc
+    obtain ⟨call, present, «start», family⟩ := inputs.coverage row member entry included pc
     have pairMember : (call.start, call.family) ∈
         (path_spans_call_plans bigints spans).map (fun plan => (plan.start, plan.position.family)) := by
       rw [metadata]
       exact List.mem_map.mpr ⟨call, present, rfl⟩
     obtain ⟨plan, planned, pair⟩ := List.mem_map.mp pairMember
-    exact ⟨plan, planned, (congrArg Prod.fst pair).trans start, (congrArg Prod.snd pair).trans family⟩
+    exact ⟨plan, planned, (congrArg Prod.fst pair).trans «start», (congrArg Prod.snd pair).trans family⟩
 
 /-- Complete spans and bigint calls realize the whole actual mixed path. -/
 theorem path_spans_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]

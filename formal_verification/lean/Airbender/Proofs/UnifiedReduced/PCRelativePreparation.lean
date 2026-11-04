@@ -177,9 +177,9 @@ theorem pc_relative_control_preparation [Fact p.Prime] (hp : FieldCapacity.Nativ
     PCRelativePreparedBoundaryExecution data before cells cut register immediate := by
   have floor := scope.afterInitial
   have window := mixed_window_execution hp clockInverse rotationInverse accepted inputs aligned aligned (by omega) (by omega)
-  obtain ⟨start, finish, earlier, current, atStart, atFinish, earlierPerm, _, earlierHistory, _,
+  obtain ⟨«start», finish, earlier, current, atStart, atFinish, earlierPerm, _, earlierHistory, _,
     matching, _, boundary, _⟩ := window.execution
-  exact ⟨start, earlier, atStart, earlierPerm, earlierHistory, boundary,
+  exact ⟨«start», earlier, atStart, earlierPerm, earlierHistory, boundary,
     pc_relative_preparation_at_boundary hp clockInverse accepted inputs scope nonzero aligned matching boundary⟩
 
 end Airbender.UnifiedReduced.Caller.Proofs

@@ -82,6 +82,15 @@ Python guard/provenance/preflight controls pass. Complete setup equality is now
 qualified, as are the compiler input receipts after exact payload reproduction.
 No full FV result qualifies the current proof revision.
 
+Run [41832547126](https://github.com/matter-labs/zksync-airbender/actions/runs/41832547126)
+later failed in `Proofs/UnifiedReduced/WindowProjection.lean`: the local names
+`parts` (line 88) and `start` (line 109) collided with imported parser tokens.
+The failed build exited in 4.96 seconds at 411.79 MiB charged footprint.
+Those names and the same local binding patterns in the remaining private proofs
+are now quoted. Normalizing identifier quotes gives exactly the previous source;
+Review files, theorem names, production code and qualified artifact manifests
+are unchanged. This syntax repair still requires Lean CI validation.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;
