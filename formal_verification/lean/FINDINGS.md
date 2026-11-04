@@ -263,6 +263,19 @@ The worker section is byte-identical. No native query or constraint is removed;
 Review statements, production, artifacts and all trust/resource limits remain.
 The query helpers and complete native acceptance still require Lean CI.
 
+Run [41898007151](https://github.com/matter-labs/zksync-airbender/actions/runs/41898007151)
+on `a99f6c4ce` eliminated the query proof errors. Its only diagnostic was the
+unused `notStore` simp argument at `PathGLoopNativeQueries.lean:305:77`.
+The failed leaf took 86.13 seconds at 822.34 MiB charged footprint, with no owned
+processes left. The obsolete argument and unused local proof are removed;
+the simp proof and every query remain checked. The full native prelude and
+large cache upload made this small correction expensive to iterate. An
+explicitly partial `diagnose_modules` CI mode now checks selected modules using
+the existing guarded frontend without those native stages or cache uploads.
+This is diagnosis evidence only; ordinary warm validation, the environment
+audit and final full assurance remain required. No production defect is
+identified by this linter failure.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

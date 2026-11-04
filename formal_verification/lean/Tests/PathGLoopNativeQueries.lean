@@ -296,13 +296,8 @@ private theorem loop_pooled_coordinate (variant : Variant) (index : Fin 55) (pha
     (column : Nat) (lower : 82 ≤ column) (upper : column ≤ 121) :
     machineAssignment variant (gapRow index phase) column =
       loopPooledAssignment variant index phase column := by
-  have notStore : isStore variant (gapRow index phase) = false := by
-    have indexBound := index.isLt
-    have phaseBound := phase.isLt
-    have different : (gapRow index phase).val ≠ 226 := by dsimp [gapRow]; omega
-    simp [isStore, different]
   interval_cases column
-  all_goals simp [machineAssignment, loopPooledAssignment, pooledAssignment, notStore]
+  all_goals simp [machineAssignment, loopPooledAssignment, pooledAssignment]
 
 private theorem query_environment_get (assignment : Nat → ZMod babyBearModulus)
     (column : Nat) : (Verification.environment assignment).get column = assignment column := by

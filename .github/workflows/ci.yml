@@ -9,6 +9,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      diagnose_modules:
+        description: "Partial Lean diagnosis only: space-separated project modules; no FV assurance"
+        type: string
+        default: ""
       cold_build:
         description: Build every project module without restored Lean objects
         type: boolean
@@ -270,6 +274,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/formal-verification.yml
     with:
+      diagnose_modules: ${{ inputs.diagnose_modules }}
       cold_build: ${{ inputs.cold_build }}
       refresh_axiom_baseline: ${{ inputs.refresh_axiom_baseline }}
       full_assurance: ${{ inputs.full_assurance }}

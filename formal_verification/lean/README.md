@@ -217,6 +217,18 @@ the source build if attempted, otherwise the partial or completed bootstrap.
 This preserves progress after failures without delaying the next verification
 stage or uploading the same Lean build twice on successful runs.
 
+For proof-only diagnosis, dispatch `ci.yml` with `diagnose_modules` set to a
+space-separated list of up to sixteen existing `Airbender.*` or `Tests.*`
+modules, for example `Tests.PathGLoopNative`. This explicitly partial job uses
+normal Lake freshness, the pinned toolchain and the existing per-child resource
+guards. It omits fresh native producers, compiler captures, complete source and
+runtime checks, generated-source/decoder checks, environment/axiom audit and
+independent full assurance. It also omits large cache uploads. It cannot be
+combined with cold-build, requalification, baseline-refresh or full-assurance
+flags. A passing diagnosis is not PR validation: follow it with standard warm
+validation, the environment audit and final full assurance. Leaving
+`diagnose_modules` empty retains every normal verification stage.
+
 Reviewed source changes require a manual run with `requalify_setups=true`.
 Candidate receipts stay outside the checkout until all native jobs, complete
 JSON comparisons and dep-info checks pass. CI then uploads the qualified setup

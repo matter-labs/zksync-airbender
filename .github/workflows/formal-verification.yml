@@ -6,6 +6,10 @@ on:
     - cron: '0 2 * * 0'
   workflow_dispatch:
     inputs:
+      diagnose_modules:
+        description: "Partial Lean diagnosis only: space-separated project modules; no FV assurance"
+        type: string
+        default: ""
       cold_build:
         description: Build every project module without restored Lean objects
         type: boolean
@@ -24,6 +28,10 @@ on:
         default: false
   workflow_call:
     inputs:
+      diagnose_modules:
+        description: "Partial Lean diagnosis only: space-separated project modules; no FV assurance"
+        type: string
+        default: ""
       cold_build:
         type: boolean
         default: false
@@ -47,13 +55,18 @@ concurrency:
 
 jobs:
   verification:
-    name: ${{ (github.event_name == 'schedule' || inputs.full_assurance == true) && 'full assurance' || 'iteration validation' }}
+    name: ${{ inputs.diagnose_modules && 'scoped Lean diagnosis (partial)' || (github.event_name == 'schedule' || inputs.full_assurance == true) && 'full assurance' || 'iteration validation' }}
     runs-on: [matterlabs-ci-runner-high-performance]
     # A shared 22-hour work deadline leaves two hours for cleanup, immutable
     # partial-cache snapshots and logs before this runner/job boundary.
     # Each actual worker keeps its existing 900/1800s resource cap.
     timeout-minutes: 1440
     env:
+      FV_DIAGNOSE_MODULES: ${{ inputs.diagnose_modules }}
+      FV_COLD_BUILD: ${{ inputs.cold_build == true }}
+      FV_FULL_ASSURANCE: ${{ inputs.full_assurance == true || github.event_name == 'schedule' }}
+      FV_REFRESH_AXIOM_BASELINE: ${{ inputs.refresh_axiom_baseline == true }}
+      FV_REQUALIFY_SETUPS: ${{ inputs.requalify_setups == true }}
       CARGO_BUILD_JOBS: '1'
       RAYON_NUM_THREADS: '1'
       # Omit DWARF metadata; keep the pinned compiler, optimization and assertions.
@@ -73,6 +86,16 @@ jobs:
           FV_COLD_BUILD: ${{ inputs.cold_build == true }}
           FV_FULL_ASSURANCE: ${{ inputs.full_assurance == true || github.event_name == 'schedule' }}
         run: |
+          set -euo pipefail
+          python3 scripts/run_lean_diagnosis.py --validate-only
+          if [[ -n "$FV_DIAGNOSE_MODULES" ]]; then
+            {
+              echo '## Scoped Lean diagnosis — partial result only'
+              printf 'Selected modules: %s\n\n' "$FV_DIAGNOSE_MODULES"
+              echo 'Uses normal Lake freshness and per-child resource guards. Fresh native exports, compiler captures, complete source/runtime checks, generated-source/decoder checks, environment/axiom audit and full assurance are omitted. This run cannot qualify the PR; standard iteration validation and final full assurance remain required. Large cache uploads are omitted.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           if [[ "$FV_COLD_BUILD" == true ]]; then
             echo 'Cold source benchmark: enabled' >> "$GITHUB_STEP_SUMMARY"
           else
@@ -108,6 +131,7 @@ jobs:
           # children sequentially. An outer guard would deadlock the host lock.
           python3 -m unittest discover -s scripts -p test_bounded_fv.py -v 2>&1 | tee "$FV_ROOT/guard-controls.log"
           python3 scripts/compilation_pool/test_pool.py --process-tests --process-output "$FV_ROOT/pool-controls"
+          python3 -m unittest discover -s scripts -p test_run_lean_diagnosis.py -v
           PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports test_olean_hashes test_replay_cache test_proof_boundaries test_native_lookup_bindings test_native_memory_policy -v
           cat > "$FV_ROOT/guard.sh" <<'SH'
           set -euo pipefail
@@ -157,12 +181,14 @@ jobs:
           }
           SH
       - name: Qualify explicit native artifact memory budget
+        if: ${{ !inputs.diagnose_modules }}
         run: |
           source "$FV_ROOT/guard.sh"
           fv native-memory-policy python3 scripts/qualify_native_memory.py --report "$FV_ROOT/native-memory-policy.json"
           echo 'Native artifact and decoder differential jobs: 8192 MiB footprint / 12288 MiB resident; 900s per worker' >> "$GITHUB_STEP_SUMMARY"
           echo 'Lean source, proof audit and kernel replay limits remain 2560 MiB footprint / 5120 MiB resident' >> "$GITHUB_STEP_SUMMARY"
       - name: Prepare exact native lock or unqualified re-export snapshot
+        if: ${{ !inputs.diagnose_modules }}
         env:
           FV_REQUALIFY_SETUPS: ${{ inputs.requalify_setups == true }}
         run: |
@@ -173,6 +199,7 @@ jobs:
             fv native-lock python3 scripts/check_setup_artifacts.py --prepare-lock
           fi
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        if: ${{ !inputs.diagnose_modules }}
         timeout-minutes: 30
         with:
           toolchain: nightly-2026-08-09
@@ -220,6 +247,7 @@ jobs:
           echo "replay=$replay-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
         id: native-cache
+        if: ${{ !inputs.diagnose_modules }}
         timeout-minutes: 20
         with:
           path: |
@@ -231,6 +259,7 @@ jobs:
             ${{ steps.cache-keys.outputs.native-tool-prefix }}
       - name: Twelve generators and sixteen complete fresh exports
         id: native-setups
+        if: ${{ !inputs.diagnose_modules }}
         timeout-minutes: 370
         env:
           FV_REQUALIFY_SETUPS: ${{ inputs.requalify_setups == true }}
@@ -330,6 +359,7 @@ jobs:
           FV_STAGE
       - name: Fresh cached compiler captures and provenance controls
         id: compiler-captures
+        if: ${{ !inputs.diagnose_modules }}
         timeout-minutes: 130
         env:
           FV_REQUALIFY_SETUPS: ${{ inputs.requalify_setups == true }}
@@ -415,8 +445,17 @@ jobs:
                     + str(result['footprint_peak_mib']) + ' |']
           (output / 'modules.md').write_text('\n'.join(lines) + '\n')
           PY
+      - name: Selected Lean modules only — no FV assurance
+        id: lean-diagnosis
+        if: inputs.diagnose_modules
+        timeout-minutes: 190
+        run: |
+          source "$FV_ROOT/guard.sh"
+          # The existing frontend guards every real child; no outer host lock.
+          fv_stage lean-diagnosis 10800 python3 scripts/run_lean_diagnosis.py --output "$FV_ROOT/diagnosis"
       - name: Complete serial Lean source and runtime verification
         id: lean-verification
+        if: ${{ !inputs.diagnose_modules }}
         timeout-minutes: 910
         run: |
           source "$FV_ROOT/guard.sh"
@@ -428,11 +467,13 @@ jobs:
             --module Tests.PathGLoopNative
           fv_stage lean-verification 54000 python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean"
       - name: Generated source freshness
+        if: ${{ !inputs.diagnose_modules }}
         timeout-minutes: 130
         run: |
           source "$FV_ROOT/guard.sh"
           fv_stage generated-source-freshness 7200 python3 scripts/generate.py check
       - name: Public program decoder row differential
+        if: ${{ !inputs.diagnose_modules }}
         timeout-minutes: 75
         run: |
           source "$FV_ROOT/guard.sh"
@@ -470,6 +511,7 @@ jobs:
           FV_STAGE
       - name: Environment-origin proof inventory and standard axioms
         id: axiom-audit
+        if: ${{ !inputs.diagnose_modules }}
         timeout-minutes: 190
         run: |
           source "$FV_ROOT/guard.sh"
@@ -555,7 +597,7 @@ jobs:
       # Keep large cache uploads off the verification path. A source attempt
       # already contains bootstrap progress, so save only one Lean snapshot.
       - name: Save bootstrap progress when no source stage ran
-        if: always() && steps.cache-keys.outcome == 'success' && steps.bootstrap.outcome != 'skipped' && steps.cold-source-build.outcome == 'skipped' && steps.lean-verification.outcome == 'skipped'
+        if: always() && !inputs.diagnose_modules && steps.cache-keys.outcome == 'success' && steps.bootstrap.outcome != 'skipped' && steps.cold-source-build.outcome == 'skipped' && steps.lean-verification.outcome == 'skipped'
         timeout-minutes: 20
         uses: actions/cache/save@v4
         with:
@@ -565,7 +607,7 @@ jobs:
             formal_verification/lean/.lake/packages
           key: ${{ steps.cache-keys.outputs.lean }}-bootstrap
       - name: Save Lean build progress even after a bounded failure
-        if: always() && steps.cache-keys.outcome == 'success' && (steps.cold-source-build.outcome != 'skipped' || steps.lean-verification.outcome != 'skipped')
+        if: always() && !inputs.diagnose_modules && steps.cache-keys.outcome == 'success' && (steps.cold-source-build.outcome != 'skipped' || steps.lean-verification.outcome != 'skipped')
         timeout-minutes: 20
         uses: actions/cache/save@v4
         with:

@@ -159,6 +159,18 @@ behavior, artifact, resource limit or trust gate is removed or weakened. Complet
 query/acceptance, source/runtime, environment and final full assurance validation
 remain pending.
 
+Run [41898007151](https://github.com/matter-labs/zksync-airbender/actions/runs/41898007151)
+on `a99f6c4ce` typechecked the corrected query helpers and rejected only an
+unused `notStore` simp argument at `PathGLoopNativeQueries.lean:305:77`.
+The unused argument and its unused local proof are removed. CI now offers
+explicit `diagnose_modules` selection for proof-only diagnosis with normal Lake
+freshness and unchanged per-child guards. It skips native reconstruction and
+the complete source/runtime, generated/decoder, environment/axiom and assurance
+stages, reports that partial scope, and never uploads a large Lean cache.
+It rejects combinations with assurance, cold-build, baseline-refresh and
+requalification flags. This mode does not qualify the PR; standard warm
+verification, the environment audit and final full assurance remain pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;
