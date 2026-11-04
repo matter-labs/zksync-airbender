@@ -13,17 +13,17 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2800000
 
 private def assignment (immediate : Bool) : Nat → ZMod babyBearModulus
-  | 4 | 7 | 23 | 44 | 84 | 88 | 130 | 131 | 132 | 133 => 1
-  | 2 | 30 | 40 | 81 | 120 | 122 => 4
-  | 8 | 9 | 60 | 102 => if immediate then 65535 else 0
+  | 4 | 7 | 23 | 44 | 82 | 123 | 124 | 125 => 1
+  | 2 | 30 | 40 | 64 | 114 | 116 => 4
+  | 8 | 9 | 60 | 96 => if immediate then 65535 else 0
   | 10 => 3
   | 32 => 8
-  | 50 | 52 | 53 | 59 | 61 | 78 | 89 | 103 | 112 => if immediate then 1 else 0
-  | 57 | 90 => if immediate then 0 else 1
-  | 92 | 101 => 5
-  | 110 => 51
-  | 111 => if immediate then 53 else 56
-  | 119 => 2
+  | 50 | 52 | 53 | 59 | 61 | 74 | 83 | 97 | 106 => if immediate then 1 else 0
+  | 57 | 84 => if immediate then 0 else 1
+  | 86 | 95 => 5
+  | 104 => 51
+  | 105 => if immediate then 53 else 56
+  | 113 => 2
   | _ => 0
 
 private def row (immediate : Bool) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment immediate⟩
@@ -160,7 +160,8 @@ private def wrappedBefore : State :=
 private def wrappedCompareAssignment (column : Nat) : ZMod babyBearModulus :=
   if column = 0 then 65532 else if column = 1 then 65535
   else if column = 7 || column = 44 then 12
-  else if column = 30 || column = 81 || column = 120 || column = 122 then 0
+  else if column = 30 || column = 64 || column = 114 || column = 116 then 0
+  else if column = 122 then 1
   else if column = 48 || column = 49 || column = 54 || column = 55 then 1
   else assignment true column
 private def wrappedResetAssignment (column : Nat) : ZMod babyBearModulus :=
@@ -168,8 +169,8 @@ private def wrappedResetAssignment (column : Nat) : ZMod babyBearModulus :=
   else if column = 30 then 4 else if column = 32 then 12
   else if column = 34 then 5 else if column = 46 then 6
   else if column = 7 || column = 44 then 12
-  else if column = 4 || column = 11 || column = 48 || column = 129 || column = 130 ||
-      column = 131 || column = 132 || column = 133 then 1
+  else if column = 4 || column = 11 || column = 48 || column = 123 ||
+      column = 124 || column = 125 then 1
   else 0
 private def wrappedCompareRow : Row babyBearModulus UnifiedFamily := ⟨.machine, wrappedCompareAssignment⟩
 private def wrappedResetRow : Row babyBearModulus UnifiedFamily := ⟨.machine, wrappedResetAssignment⟩

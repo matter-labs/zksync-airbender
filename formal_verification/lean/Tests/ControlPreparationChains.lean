@@ -27,7 +27,7 @@ def arithmeticGapAssignment (negative : Bool) (stage : Fin 3) (column : Nat) : Z
     else if column = 11 then if negative then 0 else 1
     else if column = 12 then if negative then 1 else 0
     else if column = 50 then if negative then 0 else 254
-    else if column = 80 then if negative then 943710600 else 943710840
+    else if column = 78 then if negative then 943710600 else 943710840
     else gapAssignment negative stage column
   else if stage = 2 then
     if column = 34 then 9

@@ -209,7 +209,7 @@ private def issuedWorker : Delegation.Row babyBearModulus := ⟨.blakeG, issuedA
 private def issuedCallerAssignment (column : Nat) : ZMod babyBearModulus :=
   if column = 2 || column = 30 || column = 46 then 4
   else if column = 32 then 8
-  else if column = 4 || column = 18 || column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+  else if column = 4 || column = 18 || column = 123 || column = 124 || column = 125 then 1
   else if column = 6 || column = 38 then Delegation.Requests.csr .blakeG else 0
 private def issuedCaller : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, issuedCallerAssignment⟩
 private def issuedBefore : Reference.RiscV.Sail.State :=

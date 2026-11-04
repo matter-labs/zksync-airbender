@@ -171,6 +171,17 @@ It rejects combinations with assurance, cold-build, baseline-refresh and
 requalification flags. This mode does not qualify the PR; standard warm
 verification, the environment audit and final full assurance remain pending.
 
+The connected delegation, comparison and control-preparation test witnesses
+also used obsolete CPU auxiliaries. Eleven test files now use native borrow
+columns 123–125, multiplication scratch 78, the pooled slots at 82–121 and
+current comparison/control scratch positions. The wrapped-PC comparison keeps
+the actual low-limb carry at 122. An independent source parser checked 84
+representative constructed rows against every native equation, range/timestamp
+query, port clock bound and complete pooled row in the retained setup JSON.
+This is supplementary diagnosis, not Lean validation of their theorems. No
+theorem, native constraint, Review statement, production function or artifact
+is changed. The affected modules still require Lean CI.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

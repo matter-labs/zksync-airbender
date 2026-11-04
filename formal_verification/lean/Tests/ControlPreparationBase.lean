@@ -35,7 +35,7 @@ def assignment (mode : Fin 3) (column : Nat) : ZMod babyBearModulus :=
   else if column = 8 || column = 50 then low mode
   else if column = 9 || column = 51 then high mode
   else if column = 4 || column = 11 || column = 48 || column = 49 ||
-      column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+      column = 123 || column = 124 || column = 125 then 1
   else 0
 def row (mode : Fin 3) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, assignment mode⟩
 def data (mode : Fin 3) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
@@ -311,8 +311,7 @@ def chainedAssignment (column : Nat) : ZMod babyBearModulus :=
   else if column = 46 then 6
   else if column = 48 then 128
   else if column = 7 || column = 44 then 12
-  else if column = 4 || column = 11 || column = 129 || column = 130 ||
-      column = 131 || column = 132 || column = 133 then 1
+  else if column = 4 || column = 11 || column = 123 || column = 124 || column = 125 then 1
   else 0
 def chainedRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, chainedAssignment⟩
 def chainedProgram : List UnifiedReduced.ProgramEntry := [entry 0, chainedEntry]
@@ -841,7 +840,7 @@ def sequentialAssignment (custom : Bool) (second : Bool) (column : Nat) : ZMod b
     else if column = 5 || column = 6 || column = 7 || column = 38 || column = 44 then 12
     else if column = 50 || column = 51 then (if custom then 3 else 2)
     else if column = 46 then 5
-    else if column = 80 then 65537 * 65537 * 943718400
+    else if column = 78 then 65537 * 65537 * 943718400
     else if column = 36 || column = 37 || column = 42 || column = 43 || column = 48 || column = 49 then 1
     else if column = 8 then 0 else assignment 0 column
 def sequentialRow (custom : Bool) (second : Bool) : Trace.Row babyBearModulus UnifiedFamily :=

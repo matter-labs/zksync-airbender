@@ -30,14 +30,14 @@ def comparisonCustomGapAssignment (negative : Bool) (stage : Fin 3) (column : Na
       else if column = 51 then 1
       else arithmeticGapAssignment negative stage column
     else
-      if column = 23 || column = 57 || column = 84 || column = 88 || column = 90 then 1
+      if column = 23 || column = 57 || column = 82 || column = 84 then 1
       else if column = 10 then 3
-      else if column = 81 || column = 120 || column = 122 then 8
-      else if column = 92 || column = 101 then 5
-      else if column = 110 then 51
-      else if column = 111 then 56
-      else if column = 119 then 2
-      else if column = 50 || column = 129 then 0
+      else if column = 64 || column = 114 || column = 116 then 8
+      else if column = 86 || column = 95 then 5
+      else if column = 104 then 51
+      else if column = 105 then 56
+      else if column = 113 then 2
+      else if column = 50 then 0
       else arithmeticGapAssignment negative stage column
   else arithmeticGapAssignment negative stage column
 def comparisonCustomGapRow (negative : Bool) (stage : Fin 3) : Trace.Row babyBearModulus UnifiedFamily :=

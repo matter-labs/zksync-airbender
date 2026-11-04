@@ -12,11 +12,11 @@ abbrev assignment (one : Bool) (stage : Fin 2) (column : Nat) : ZMod babyBearMod
     else if column = 32 || column = 5 || column = 7 || column = 44 then 12
     else if column = 34 then 7
     else if column = 40 then 6
-    else if column = 36 || column = 48 || column = 74 || column = 93 then if one then 1 else 0
-    else if column = 10 || column = 92 || column = 101 || column = 110 || column = 119 then 53
-    else if column = 88 then 3
-    else if column = 4 || column = 8 || column = 27 || column = 50 || column = 58 || column = 94 || column = 95 ||
-        column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+    else if column = 36 || column = 48 || column = 74 || column = 87 then if one then 1 else 0
+    else if column = 10 || column = 86 || column = 95 || column = 104 || column = 113 then 53
+    else if column = 82 then 3
+    else if column = 4 || column = 8 || column = 27 || column = 50 || column = 58 || column = 88 || column = 89 ||
+        column = 123 || column = 124 || column = 125 then 1
     else 0
   else
     if column = 0 then 8
@@ -27,7 +27,7 @@ abbrev assignment (one : Bool) (stage : Fin 2) (column : Nat) : ZMod babyBearMod
     else if column = 8 then 127
     else if column = 50 then 128
     else if column = 4 || column = 11 || column = 36 || column = 48 ||
-        column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+        column = 123 || column = 124 || column = 125 then 1
     else 0
 theorem fixedMember (initial : State) (index : Fin 524545)
     (value : Vector (ZMod babyBearModulus) 10)

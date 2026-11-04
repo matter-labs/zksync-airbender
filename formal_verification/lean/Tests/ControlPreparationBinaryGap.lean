@@ -23,11 +23,11 @@ def binaryGapAssignment (negative : Bool) (stage : Fin 3) (column : Nat) : ZMod 
   if stage = 1 then
     if column = 11 || column = 12 then 0
     else if column = 27 then 1
-    else if column = 10 || column = 92 || column = 101 || column = 110 || column = 119 then
+    else if column = 10 || column = 86 || column = 95 || column = 104 || column = 113 then
       if negative then 54 else 52
-    else if column = 50 || column = 58 || column = 95 then if negative then 129 else 0
-    else if column = 74 || column = 76 || column = 93 || column = 94 then if negative then 129 else 127
-    else if column = 88 then 3
+    else if column = 50 || column = 58 || column = 89 then if negative then 129 else 0
+    else if column = 74 || column = 76 || column = 87 || column = 88 then if negative then 129 else 127
+    else if column = 82 then 3
     else arithmeticGapAssignment negative stage column
   else arithmeticGapAssignment negative stage column
 def binaryGapRow (negative : Bool) (stage : Fin 3) : Trace.Row babyBearModulus UnifiedFamily :=

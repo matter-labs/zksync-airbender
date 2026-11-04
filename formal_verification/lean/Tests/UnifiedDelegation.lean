@@ -488,7 +488,7 @@ private def frameAssignment (stage : Fin 3) (column : Nat) : ZMod babyBearModulu
     else if column = 32 then 8
     else if column = 7 || column = 44 then 13
     else if column = 8 || column = 50 then 127
-    else if column = 4 || column = 11 || column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+    else if column = 4 || column = 11 || column = 123 || column = 124 || column = 125 then 1
     else 0
   else
     if column = 0 then 8
@@ -501,7 +501,7 @@ private def frameAssignment (stage : Fin 3) (column : Nat) : ZMod babyBearModulu
     else if column = 46 then 11
     else if column = 36 then 127
     else if column = 50 then 128
-    else if column = 4 || column = 8 || column = 11 || column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+    else if column = 4 || column = 8 || column = 11 || column = 123 || column = 124 || column = 125 then 1
     else 0
 private def frameRow (stage : Fin 3) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, frameAssignment stage⟩
 private abbrev frameWorkerAssignment := BigintFixtures.frameWorkerAssignment

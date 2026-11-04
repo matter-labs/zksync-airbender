@@ -34,14 +34,14 @@ private def memoryGapAssignment (kind : Fin 3) (stage : Fin 3) (column : Nat) : 
     if column = 0 then 4
     else if column = 2 || column = 30 then 8
     else if column = 32 then 12
-    else if column = 4 || column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+    else if column = 4 || column = 123 || column = 124 || column = 125 then 1
     else if kind.val = 0 then
       if column = 5 || column = 7 || column = 44 then 10
       else if column = 28 then 1
       else if column = 37 || column = 39 || column = 49 || column = 58 then 64
       else if column = 46 then 8
       else if column = 42 || column = 50 then 42
-      else if column = 80 then 4194304 * 42 * 943718400
+      else if column = 78 then 4194304 * 42 * 943718400
       else 0
     else if kind.val = 1 then
       if column = 5 then 10
@@ -51,7 +51,7 @@ private def memoryGapAssignment (kind : Fin 3) (stage : Fin 3) (column : Nat) : 
       else if column = 40 then 6
       else if column = 42 || column = 50 then 129
       else if column = 48 then 42
-      else if column = 80 then 4194304 * 129 * 943718400
+      else if column = 78 then 4194304 * 129 * 943718400
       else 0
     else
       if column = 11 then 1
@@ -486,7 +486,7 @@ theorem public_memory_gap_fabricated_fresh_source_native (kind : Fin 3) :
 
 private def forgedMemoryLoadAssignment (column : Nat) : ZMod babyBearModulus :=
   if column = 42 || column = 50 then 43
-  else if column = 80 then 4194304 * 43 * 943718400
+  else if column = 78 then 4194304 * 43 * 943718400
   else memoryGapAssignment 0 1 column
 private def forgedMemoryLoadData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
   { memoryGapData 0 with machine := { (memoryGapData 0).machine with

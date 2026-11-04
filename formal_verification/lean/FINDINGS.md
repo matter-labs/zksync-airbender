@@ -276,6 +276,27 @@ This is diagnosis evidence only; ordinary warm validation, the environment
 audit and final full assurance remain required. No production defect is
 identified by this linter failure.
 
+### Connected native CPU test witnesses
+
+Inspection of the other consumers found the same stale auxiliary coordinates
+in delegation, comparison and control-preparation fixtures. Eleven test files
+now place clock borrows at 123–125, multiplication scratch at 78, pooled slots
+at 82–121, and comparison/control witnesses at the current native coordinates.
+The wrapped-PC comparison explicitly sets native low-limb carry 122; it does
+not reuse an old pooled-result column as a carry. Actual test theorems and all
+their imported native constraints and queries remain unchanged.
+
+A separate source parser reconstructed 84 representative witness rows directly
+from the edited definitions and checked all 120 native structured equations,
+thirteen range queries, eight timestamp queries, six port clock bounds and five
+complete ten-field pooled rows per row against the retained native JSON. The
+checks cover arithmetic, CSR, custom operations, binary/comparison/control,
+PC wrap, normalization and the control-preparation chains. The memory-forgery
+counterexample still satisfies native row constraints; its unchanged history
+theorem states rejection. These supplementary checks are not Lean theorem validation;
+the affected modules must still pass CI. This identifies stale constructed
+test witnesses, with no production defect established.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

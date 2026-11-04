@@ -26,7 +26,7 @@ def pcRelativeAssignment (wrap : Bool) (column : Nat) : ZMod babyBearModulus :=
   else if column = 50 then if wrap then 61444 else 4
   else if column = 51 then if wrap then 0 else 8
   else if column = 4 || column = 13 || column = 48 || column = 49 ||
-      column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+      column = 123 || column = 124 || column = 125 then 1
   else 0
 def pcRelativeRow (wrap : Bool) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, pcRelativeAssignment wrap⟩
 def pcRelativeData (wrap : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
