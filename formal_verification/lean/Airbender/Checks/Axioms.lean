@@ -349,6 +349,7 @@ import Airbender.Review.Trace.Workers.Keccak.Call
 import Airbender.Review.Trace.Workers.Keccak.Permutation
 import Airbender.Review.Trace.Workers.Keccak.ReferenceCalls
 import Airbender.Review.Trace.Workers.Keccak.SplitNative
+import Airbender.Review.Trace.Workers.Keccak.SplitPermutation
 import Airbender.Review.Trace.Workers.Keccak.SplitRequests
 import Airbender.Review.Trace.Workers.Keccak.SplitSchedule
 import Airbender.Review.Trace.Workers.Keccak.SplitUse
