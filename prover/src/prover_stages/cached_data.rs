@@ -282,12 +282,13 @@ pub struct ProverCachedData {
     pub delegation_type: Mersenne31Field,
 
     pub memory_argument_challenges: ExternalMemoryArgumentChallenges,
+    pub machine_state_argument_challenges: ExternalMachineStateArgumentChallenges,
 
     pub execute_delegation_argument: bool,
     pub delegation_challenges: ExternalDelegationArgumentChallenges,
 
     pub process_shuffle_ram_init: bool,
-    pub shuffle_ram_inits_and_teardowns: ShuffleRamInitAndTeardownLayout,
+    pub shuffle_ram_inits_and_teardowns: Vec<ShuffleRamInitAndTeardownLayout>,
     pub lazy_init_address_range_check_16: OptimizedOraclesForLookupWidth1,
 
     pub handle_delegation_requests: bool,
@@ -343,7 +344,7 @@ pub struct ProverCachedData {
 impl ProverCachedData {
     pub fn new(
         compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
-        external_values: &ExternalValues,
+        external_challenges: &ExternalChallenges,
         trace_len: usize,
         circuit_sequence: usize,
         delegation_processing_type: u16,
@@ -364,10 +365,7 @@ impl ProverCachedData {
                 let circuit_sequence_bits_shift = (trace_len.trailing_zeros()
                     + num_bits_in_timestamp_for_index_log_2)
                     - TIMESTAMP_COLUMNS_NUM_BITS;
-                assert!(
-                    (circuit_sequence << circuit_sequence_bits_shift)
-                        < (1 << TIMESTAMP_COLUMNS_NUM_BITS)
-                );
+                assert!((circuit_sequence << circuit_sequence_bits_shift) <= u16::MAX as usize);
 
                 let memory_timestamp_high_from_circuit_idx =
                     Mersenne31Field::from_u64_with_reduction(
@@ -376,83 +374,40 @@ impl ProverCachedData {
 
                 memory_timestamp_high_from_circuit_idx
             } else {
-                assert!(
-                    compiled_circuit.memory_layout.batched_ram_accesses.len() > 0
-                        || compiled_circuit
-                            .memory_layout
-                            .register_and_indirect_accesses
-                            .len()
-                            > 0
-                );
                 Mersenne31Field::ZERO
             };
 
         let delegation_type = Mersenne31Field(delegation_processing_type as u32);
 
-        //
-        let num_set_polys_for_memory_shuffle =
-            if compiled_circuit.memory_layout.shuffle_ram_access_sets.len() > 0 {
-                assert!(compiled_circuit
-                    .memory_layout
-                    .batched_ram_accesses
-                    .is_empty());
+        assert!(
+            compiled_circuit
+                .memory_layout
+                .batched_ram_accesses
+                .is_empty(),
+            "deprecated"
+        );
 
-                assert!(compiled_circuit
-                    .memory_layout
-                    .register_and_indirect_accesses
-                    .is_empty());
-
-                1 + compiled_circuit.memory_layout.shuffle_ram_access_sets.len() + 1
-            } else {
-                assert!(
-                    compiled_circuit.memory_layout.batched_ram_accesses.len() > 0
-                        || compiled_circuit
-                            .memory_layout
-                            .register_and_indirect_accesses
-                            .len()
-                            > 0
-                );
-
-                let num_intermediate_polys_for_batched_ram =
-                    compiled_circuit.memory_layout.batched_ram_accesses.len();
-                let mut num_intermediate_polys_for_register_accesses = 0;
-                for el in compiled_circuit
-                    .memory_layout
-                    .register_and_indirect_accesses
-                    .iter()
-                {
-                    num_intermediate_polys_for_register_accesses += 1;
-                    num_intermediate_polys_for_register_accesses += el.indirect_accesses.len();
-                }
-                // intermediate accumulators per access + grand product accumulator
-                let num_set_polys_for_memory_shuffle = num_intermediate_polys_for_batched_ram
-                    + num_intermediate_polys_for_register_accesses
-                    + 1;
-
-                num_set_polys_for_memory_shuffle
-            };
-
-        let offset_for_grand_product_accumulation_poly = num_set_polys_for_memory_shuffle - 1;
+        let num_set_polys_for_memory_shuffle = compiled_circuit
+            .stage_2_layout
+            .intermediate_polys_for_memory_argument
+            .num_elements;
+        let offset_for_grand_product_accumulation_poly = 0;
 
         let process_shuffle_ram_init = compiled_circuit
             .memory_layout
             .shuffle_ram_inits_and_teardowns
-            .is_some();
+            .is_empty()
+            == false;
         if process_shuffle_ram_init {
             assert!(compiled_circuit
                 .stage_2_layout
                 .lazy_init_address_range_check_16
                 .is_some());
         }
-        let shuffle_ram_inits_and_teardowns = if let Some(shuffle_ram_inits_and_teardowns) =
-            compiled_circuit
-                .memory_layout
-                .shuffle_ram_inits_and_teardowns
-        {
-            shuffle_ram_inits_and_teardowns
-        } else {
-            ShuffleRamInitAndTeardownLayout::empty()
-        };
+        let shuffle_ram_inits_and_teardowns = compiled_circuit
+            .memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .clone();
         let lazy_init_address_range_check_16 = if let Some(lazy_init_address_range_check_16) =
             compiled_circuit
                 .stage_2_layout
@@ -517,18 +472,23 @@ impl ProverCachedData {
             AlignedColumnSet::empty()
         };
 
-        let memory_argument_challenges = external_values.challenges.memory_argument;
-
-        let execute_delegation_argument = external_values.challenges.delegation_argument.is_some();
-        if execute_delegation_argument {
-            assert!(handle_delegation_requests | process_delegations);
-        }
-        let delegation_challenges =
-            if let Some(values) = external_values.challenges.delegation_argument {
+        let memory_argument_challenges = external_challenges.memory_argument;
+        let machine_state_argument_challenges =
+            if let Some(values) = external_challenges.machine_state_permutation_argument {
                 values
             } else {
-                ExternalDelegationArgumentChallenges::default()
+                ExternalMachineStateArgumentChallenges::default()
             };
+
+        let execute_delegation_argument = handle_delegation_requests | process_delegations;
+        if execute_delegation_argument {
+            assert!(external_challenges.delegation_argument.is_some());
+        }
+        let delegation_challenges = if let Some(values) = external_challenges.delegation_argument {
+            values
+        } else {
+            ExternalDelegationArgumentChallenges::default()
+        };
 
         #[cfg(feature = "debug_logs")]
         {
@@ -626,11 +586,16 @@ impl ProverCachedData {
             .witness_layout
             .multiplicities_columns_for_timestamp_range_check
             .start();
-        let timestamp_range_check_multiplicities_dst = compiled_circuit
-            .stage_2_layout
-            .intermediate_poly_for_timestamp_range_check_multiplicity
-            .get_range(0)
-            .start;
+        let timestamp_range_check_multiplicities_dst = {
+            let columns = compiled_circuit
+                .stage_2_layout
+                .intermediate_poly_for_timestamp_range_check_multiplicity;
+            if columns.num_elements == 0 {
+                0
+            } else {
+                columns.get_range(0).start
+            }
+        };
         let timestamp_range_check_setup_column = compiled_circuit
             .setup_layout
             .timestamp_range_check_setup_column
@@ -666,11 +631,16 @@ impl ProverCachedData {
             .generic_lookup_setup_columns
             .start();
 
-        let memory_accumulator_dst_start = compiled_circuit
-            .stage_2_layout
-            .intermediate_polys_for_memory_argument
-            .get_range(0)
-            .start;
+        let memory_accumulator_dst_start = {
+            let columns = compiled_circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_argument;
+            if columns.num_elements == 0 {
+                0
+            } else {
+                columns.get_range(0).start
+            }
+        };
 
         let num_stage_3_quotient_terms = compiled_circuit.compute_num_quotient_terms();
 
@@ -679,6 +649,7 @@ impl ProverCachedData {
             memory_timestamp_high_from_circuit_idx,
             delegation_type,
             memory_argument_challenges,
+            machine_state_argument_challenges,
             execute_delegation_argument,
             delegation_challenges,
             process_shuffle_ram_init,

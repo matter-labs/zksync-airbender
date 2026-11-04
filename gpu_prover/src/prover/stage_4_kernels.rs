@@ -1,13 +1,15 @@
-use super::arg_utils::get_grand_product_col;
 use crate::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride,
     PtrAndStride,
 };
 use crate::field::{BaseField, Ext2Field, Ext4Field};
 use crate::ops_complex::BatchInv;
+use crate::prover::arg_utils::{
+    get_grand_product_src_dst_cols, StateLinkageConstraints, MAX_LAZY_INIT_TEARDOWN_SETS,
+};
 use crate::utils::WARP_SIZE;
 
-use cs::one_row_compiler::{ColumnAddress, CompiledCircuitArtifact};
+use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
@@ -22,10 +24,13 @@ type BF = BaseField;
 type E2 = Ext2Field;
 type E4 = Ext4Field;
 
+// There's nothing wrong with tweaking these, within reason.
+// Their purpose is to double-check our understanding of current circuits.
 const MAX_WITNESS_COLS: usize = 672;
+const MAX_MEMORY_COLS: usize = 256;
+const NUM_STATE_LINKAGE_CONSTRAINTS: usize = 2;
+
 const DOES_NOT_NEED_Z_OMEGA: u32 = u32::MAX;
-const MAX_NON_WITNESS_TERMS_AT_Z: usize = 704;
-const MAX_NON_WITNESS_TERMS_AT_Z_OMEGA: usize = 3;
 
 cuda_kernel!(
     DeepDenomAtZ,
@@ -63,21 +68,18 @@ pub fn compute_deep_denom_at_z_on_main_domain(
 pub struct ColIdxsToChallengeIdxsMap {
     // these could be u16, but there's no need to economize,
     // args fit comfortably in < 8KB regardless
-    pub map: [u32; MAX_WITNESS_COLS],
+    pub map: [u32; MAX_MEMORY_COLS],
 }
 
 #[derive(Clone, Default)]
 #[repr(C)]
-pub struct NonWitnessChallengesAtZOmega {
-    pub challenges: [E4; MAX_NON_WITNESS_TERMS_AT_Z_OMEGA],
-}
-
-#[derive(Clone, Default)]
-#[repr(C)]
-pub(super) struct ChallengesTimesEvals {
+pub(super) struct ChallengesTimesEvalsSums {
     at_z_sum_neg: E4,
     at_z_omega_sum_neg: E4,
+    deep_poly_beta: E4,
 }
+
+const _: [(); 48] = [(); std::mem::size_of::<ChallengesTimesEvalsSums>()];
 
 cuda_kernel!(
     DeepQuotient,
@@ -89,75 +91,51 @@ cuda_kernel!(
     stage_2_e4_cols: PtrAndStride<BF>,
     composition_col: PtrAndStride<BF>,
     denom_at_z: *const E4,
+    setup_challenges_at_z: *const E4,
     witness_challenges_at_z: *const E4,
+    memory_challenges_at_z: *const E4,
+    stage_2_bf_challenges_at_z: *const E4,
+    stage_2_e4_challenges_at_z: *const E4,
+    composition_challenge_at_z: *const E4,
+    state_linkage_constraints: StateLinkageConstraints,
+    memory_cols_to_challenges_at_z_omega_map: ColIdxsToChallengeIdxsMap,
     witness_challenges_at_z_omega: *const E4,
-    witness_cols_to_challenges_at_z_omega_map: ColIdxsToChallengeIdxsMap,
-    non_witness_challenges_at_z: *const E4,
-    non_witness_challenges_at_z_omega: *const NonWitnessChallengesAtZOmega,
-    challenges_times_evals: *const ChallengesTimesEvals,
+    memory_challenges_at_z_omega: *const E4,
+    grand_product_challenge_at_z_omega: *const E4,
+    challenges_times_evals_sums: *const ChallengesTimesEvalsSums,
     quotient: MutPtrAndStride<BF>,
     num_setup_cols: u32,
     num_witness_cols: u32,
     num_memory_cols: u32,
     num_stage_2_bf_cols: u32,
     num_stage_2_e4_cols: u32,
-    process_shuffle_ram_init: bool,
-    memory_lazy_init_addresses_cols_start: u32,
+    stage_2_memory_grand_product_offset: u32,
     log_n: u32,
     bit_reversed: bool,
 );
 
 deep_quotient!(ab_deep_quotient_kernel);
 
-pub fn get_e4_scratch_count_for_deep_quotiening() -> usize {
-    let e4_scratch_elems = 2 * MAX_WITNESS_COLS + MAX_NON_WITNESS_TERMS_AT_Z;
-    e4_scratch_elems
-}
-
-#[derive(Clone)]
-pub(super) struct Metadata {
-    witness_cols_to_challenges_at_z_omega_map: ColIdxsToChallengeIdxsMap,
-    memory_lazy_init_addresses_cols_start: usize,
-    num_non_witness_terms_at_z: usize,
-}
-
-pub(super) fn get_metadata(
+pub(super) fn prepare_async_challenge_data(
     evals: &[E4],
     alpha: E4,
+    deep_poly_beta: E4,
     omega_inv: E2,
-    cached_data: &ProverCachedData,
-    circuit: &CompiledCircuitArtifact<BF>,
+    num_terms_at_z: usize,
+    num_terms_at_z_omega: usize,
     scratch_e4: &mut [E4],
-    challenges_times_evals: &mut ChallengesTimesEvals,
-    non_witness_challenges_at_z_omega: &mut NonWitnessChallengesAtZOmega,
-) -> Metadata {
-    let num_setup_cols = circuit.setup_layout.total_width;
-    let num_witness_cols = circuit.witness_layout.total_width;
-    let num_memory_cols = circuit.memory_layout.total_width;
-    let num_stage_2_bf_cols = circuit.stage_2_layout.num_base_field_polys();
-    let num_stage_2_e4_cols = circuit.stage_2_layout.num_ext4_field_polys();
-    // for convenience, demarcate bf and vectorized e4 sections of stage_2_cols
-    let e4_cols_offset = circuit.stage_2_layout.ext4_polys_offset;
-    assert_eq!(e4_cols_offset % 4, 0);
-    assert!(num_stage_2_bf_cols <= e4_cols_offset);
-    assert!(e4_cols_offset - num_stage_2_bf_cols < 4);
-    let num_terms_at_z = circuit.num_openings_at_z();
-    let mut num_terms_at_z_doublecheck = num_setup_cols;
-    num_terms_at_z_doublecheck += num_witness_cols;
-    num_terms_at_z_doublecheck += num_memory_cols;
-    num_terms_at_z_doublecheck += num_stage_2_bf_cols;
-    num_terms_at_z_doublecheck += num_stage_2_e4_cols;
-    num_terms_at_z_doublecheck += 1; // composition quotient
-    assert_eq!(num_terms_at_z, num_terms_at_z_doublecheck);
-    let num_terms_at_z_omega = circuit.num_openings_at_z_omega();
+    challenges_times_evals_sums: &mut ChallengesTimesEvalsSums,
+) {
     let num_terms_total = num_terms_at_z + num_terms_at_z_omega;
+    assert_eq!(num_terms_total, evals.len());
+    assert_eq!(num_terms_total, scratch_e4.len());
     let mut challenges =
         materialize_powers_serial_starting_with_one::<_, Global>(alpha, num_terms_total);
     // Fold omega adjustment into challenges at z * omega
     for challenge in (&mut challenges[num_terms_at_z..]).iter_mut() {
         challenge.mul_assign_by_base(&omega_inv);
     }
-    assert_eq!(evals.len(), num_terms_total);
+    // accumulate challenges * evals at z
     let challenges_at_z = &challenges[0..num_terms_at_z];
     let evals_at_z = &evals[0..num_terms_at_z];
     let challenges_times_evals_at_z_sum_neg = *challenges_at_z
@@ -167,6 +145,7 @@ pub(super) fn get_metadata(
             *acc.clone().add_assign(challenge.clone().mul_assign(&eval))
         })
         .negate();
+    // accumulate challenges * evals at z * omega
     let challenges_at_z_omega = &challenges[num_terms_at_z..];
     let evals_at_z_omega = &evals[num_terms_at_z..];
     let challenges_times_evals_at_z_omega_sum_neg = *challenges_at_z_omega
@@ -176,110 +155,15 @@ pub(super) fn get_metadata(
             *acc.clone().add_assign(challenge.clone().mul_assign(&eval))
         })
         .negate();
-    // Organize challenges so the kernel can associate them with cols
-    // the same way zksync_airbender does
-    let mut flat_offset = 0;
-    // Organize challenges at z
-    let setup_challenges = &challenges[0..num_setup_cols];
-    flat_offset += num_setup_cols;
-    (&mut scratch_e4[0..num_witness_cols])
-        .copy_from_slice(&challenges[flat_offset..flat_offset + num_witness_cols]);
-    flat_offset += num_witness_cols;
-    let memory_challenges_at_z = &challenges[flat_offset..flat_offset + num_memory_cols];
-    flat_offset += num_memory_cols;
-    let stage_2_bf_challenges = &challenges[flat_offset..flat_offset + num_stage_2_bf_cols];
-    flat_offset += num_stage_2_bf_cols;
-    let stage_2_e4_challenges = &challenges[flat_offset..flat_offset + num_stage_2_e4_cols];
-    flat_offset += num_stage_2_e4_cols;
-    let composition_challenge = &challenges[flat_offset..flat_offset + 1];
-    flat_offset += 1;
-    assert_eq!(flat_offset, num_terms_at_z);
-    // Organize challenges at z * omega
-    assert!(num_witness_cols <= MAX_WITNESS_COLS);
-    let mut witness_cols_to_challenges_at_z_omega_map = ColIdxsToChallengeIdxsMap {
-        map: [DOES_NOT_NEED_Z_OMEGA; MAX_WITNESS_COLS],
-    };
-    // I could move this logic to a ColIdxsToChallengeIdxsMap;:new method but there
-    // are too many side effects
-    for (i, (_src, dst)) in circuit.state_linkage_constraints.iter().enumerate() {
-        let ColumnAddress::WitnessSubtree(col_idx) = *dst else {
-            panic!()
-        };
-        assert_eq!(
-            witness_cols_to_challenges_at_z_omega_map.map[col_idx],
-            DOES_NOT_NEED_Z_OMEGA
-        );
-        assert!(i < (MAX_WITNESS_COLS as usize));
-        witness_cols_to_challenges_at_z_omega_map.map[col_idx] = i as u32;
-        scratch_e4[num_witness_cols + i] = challenges[flat_offset];
-        flat_offset += 1;
-    }
-    let num_witness_terms_at_z_omega = circuit.state_linkage_constraints.len();
-    let (memory_challenges_at_z_omega, memory_lazy_init_addresses_cols_start) =
-        if let Some(shuffle_ram_inits_and_teardowns) =
-            circuit.memory_layout.shuffle_ram_inits_and_teardowns
-        {
-            assert!(cached_data.process_shuffle_ram_init);
-            let challenges = (&challenges[flat_offset..flat_offset + 2]).to_vec();
-            let start = shuffle_ram_inits_and_teardowns
-                .lazy_init_addresses_columns
-                .start();
-            flat_offset += 2;
-            (challenges, start)
-        } else {
-            assert!(!cached_data.process_shuffle_ram_init);
-            (vec![], 0)
-        };
-    let stage_2_memory_grand_product_challenge = &challenges[flat_offset..flat_offset + 1];
-    flat_offset += 1;
-    assert_eq!(flat_offset, num_terms_total);
-    // Now marshal arguments for GPU transfer
-    let flat_non_witness_challenges_at_z: Vec<E4> = setup_challenges
-        .iter()
-        .chain(memory_challenges_at_z.iter())
-        .chain(stage_2_bf_challenges.iter())
-        .chain(stage_2_e4_challenges.iter())
-        .chain(composition_challenge.iter())
-        .map(|x| *x)
-        .collect();
-    let num_non_witness_terms_at_z = flat_non_witness_challenges_at_z.len();
-    assert!(num_non_witness_terms_at_z < MAX_NON_WITNESS_TERMS_AT_Z);
-    let flat_non_witness_challenges_at_z_omega: Vec<E4> = memory_challenges_at_z_omega
-        .iter()
-        .chain(stage_2_memory_grand_product_challenge.iter())
-        .map(|x| *x)
-        .collect();
-    assert!(flat_non_witness_challenges_at_z_omega.len() <= MAX_NON_WITNESS_TERMS_AT_Z_OMEGA);
-    assert_eq!(
-        flat_non_witness_challenges_at_z_omega.len() + num_witness_terms_at_z_omega,
-        num_terms_at_z_omega
-    );
-    let num_witness_terms = num_witness_cols + num_witness_terms_at_z_omega;
-    assert_eq!(
-        flat_non_witness_challenges_at_z.len()
-            + flat_non_witness_challenges_at_z_omega.len()
-            + num_witness_terms,
-        num_terms_total,
-    );
-    assert!(num_witness_terms + num_non_witness_terms_at_z <= scratch_e4.len());
-    (&mut scratch_e4[num_witness_terms..num_witness_terms + num_non_witness_terms_at_z])
-        .copy_from_slice(&flat_non_witness_challenges_at_z);
-    *challenges_times_evals = ChallengesTimesEvals {
+    (&mut scratch_e4[..num_terms_total]).copy_from_slice(&challenges);
+    *challenges_times_evals_sums = ChallengesTimesEvalsSums {
         at_z_sum_neg: challenges_times_evals_at_z_sum_neg,
         at_z_omega_sum_neg: challenges_times_evals_at_z_omega_sum_neg,
+        deep_poly_beta,
     };
-    for (i, challenge) in flat_non_witness_challenges_at_z_omega.iter().enumerate() {
-        non_witness_challenges_at_z_omega.challenges[i] = *challenge;
-    }
-    Metadata {
-        witness_cols_to_challenges_at_z_omega_map,
-        memory_lazy_init_addresses_cols_start,
-        num_non_witness_terms_at_z,
-    }
 }
 
 pub fn compute_deep_quotient_on_main_domain(
-    metadata: Metadata,
     setup_cols: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     witness_cols: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     memory_cols: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -287,19 +171,21 @@ pub fn compute_deep_quotient_on_main_domain(
     composition_col: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     denom_at_z: &DeviceSlice<E4>,
     scratch_e4: &DeviceSlice<E4>,
-    challenges_times_evals: &DeviceVariable<ChallengesTimesEvals>,
-    non_witness_challenges_at_z_omega: &DeviceVariable<NonWitnessChallengesAtZOmega>,
+    challenges_times_evals_sums: &DeviceVariable<ChallengesTimesEvalsSums>,
     quotient: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     cached_data: &ProverCachedData,
     circuit: &CompiledCircuitArtifact<BF>,
     log_n: u32,
     bit_reversed: bool,
+    is_unrolled: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let n = 1 << log_n;
     let num_setup_cols = circuit.setup_layout.total_width;
     let num_witness_cols = circuit.witness_layout.total_width;
+    assert!(num_witness_cols <= MAX_WITNESS_COLS);
     let num_memory_cols = circuit.memory_layout.total_width;
+    assert!(num_memory_cols <= MAX_MEMORY_COLS);
     let num_stage_2_bf_cols = circuit.stage_2_layout.num_base_field_polys();
     let num_stage_2_e4_cols = circuit.stage_2_layout.num_ext4_field_polys();
     assert_eq!(setup_cols.rows(), n);
@@ -318,11 +204,6 @@ pub fn compute_deep_quotient_on_main_domain(
         stage_2_cols.cols(),
         4 * (((num_stage_2_bf_cols + 3) / 4) + num_stage_2_e4_cols)
     );
-    let Metadata {
-        witness_cols_to_challenges_at_z_omega_map,
-        memory_lazy_init_addresses_cols_start,
-        num_non_witness_terms_at_z,
-    } = metadata;
     // for convenience, demarcate bf and vectorized e4 sections of stage_2_cols
     let e4_cols_offset = circuit.stage_2_layout.ext4_polys_offset;
     assert_eq!(e4_cols_offset % 4, 0);
@@ -345,10 +226,60 @@ pub fn compute_deep_quotient_on_main_domain(
             DeviceMatrixChunk::new(e4_slice, stride, offset, n),
         )
     };
+    if !is_unrolled && cached_data.process_shuffle_ram_init {
+        assert_eq!(
+            circuit.state_linkage_constraints.len(),
+            NUM_STATE_LINKAGE_CONSTRAINTS
+        );
+    } else {
+        assert_eq!(circuit.state_linkage_constraints.len(), 0);
+    }
     let num_witness_terms_at_z_omega = circuit.state_linkage_constraints.len();
-    let num_witness_terms = num_witness_cols + num_witness_terms_at_z_omega;
-    let stage_2_memory_grand_product_offset = get_grand_product_col(circuit, cached_data);
-    assert_eq!(stage_2_memory_grand_product_offset, num_stage_2_e4_cols - 1);
+    let state_linkage_constraints = if is_unrolled {
+        StateLinkageConstraints::default()
+    } else {
+        StateLinkageConstraints::new(circuit)
+    };
+    let mut memory_cols_to_challenges_at_z_omega_map = ColIdxsToChallengeIdxsMap {
+        map: [DOES_NOT_NEED_Z_OMEGA; MAX_MEMORY_COLS],
+    };
+    let mut num_memory_terms_at_z_omega: usize = 0;
+    if cached_data.process_shuffle_ram_init {
+        assert!(cached_data.shuffle_ram_inits_and_teardowns.len() > 0);
+        assert!(cached_data.shuffle_ram_inits_and_teardowns.len() <= MAX_LAZY_INIT_TEARDOWN_SETS);
+        for init_and_teardown in cached_data.shuffle_ram_inits_and_teardowns.iter() {
+            let start = init_and_teardown.lazy_init_addresses_columns.start();
+            memory_cols_to_challenges_at_z_omega_map.map[start] =
+                num_memory_terms_at_z_omega as u32;
+            num_memory_terms_at_z_omega += 1;
+            memory_cols_to_challenges_at_z_omega_map.map[start + 1] =
+                num_memory_terms_at_z_omega as u32;
+            num_memory_terms_at_z_omega += 1;
+        }
+    } else {
+        assert_eq!(cached_data.shuffle_ram_inits_and_teardowns.len(), 0);
+    }
+    // double-check number of terms at z
+    let num_terms_at_z = circuit.num_openings_at_z();
+    let mut num_terms_at_z_doublecheck = num_setup_cols;
+    num_terms_at_z_doublecheck += num_witness_cols;
+    num_terms_at_z_doublecheck += num_memory_cols;
+    num_terms_at_z_doublecheck += num_stage_2_bf_cols;
+    num_terms_at_z_doublecheck += num_stage_2_e4_cols;
+    num_terms_at_z_doublecheck += 1; // composition quotient
+    assert_eq!(num_terms_at_z, num_terms_at_z_doublecheck);
+    // double-check number of terms at z * omega
+    let num_terms_at_z_omega = circuit.num_openings_at_z_omega();
+    let mut num_terms_at_z_omega_doublecheck = num_witness_terms_at_z_omega;
+    num_terms_at_z_omega_doublecheck += num_memory_terms_at_z_omega;
+    num_terms_at_z_omega_doublecheck += 1; // grand product
+    assert_eq!(num_terms_at_z_omega, num_terms_at_z_omega_doublecheck);
+    // double-check number of challenges passed by the caller
+    let num_terms_total = num_terms_at_z + num_terms_at_z_omega;
+    assert_eq!(num_terms_total, scratch_e4.len());
+    // prepare data matrix args
+    let (_, stage_2_memory_grand_product_offset) =
+        get_grand_product_src_dst_cols(circuit, is_unrolled);
     let setup_cols = setup_cols.as_ptr_and_stride();
     let witness_cols = witness_cols.as_ptr_and_stride();
     let memory_cols = memory_cols.as_ptr_and_stride();
@@ -356,16 +287,27 @@ pub fn compute_deep_quotient_on_main_domain(
     let stage_2_e4_cols = stage_2_e4_cols.as_ptr_and_stride();
     let composition_col = composition_col.as_ptr_and_stride();
     let denom_at_z = denom_at_z.as_ptr();
-    let witness_challenges_at_z = &scratch_e4[0..num_witness_cols];
+    // prepare challenges for each matrix
+    let (setup_challenges_at_z, rest) = scratch_e4.split_at(num_setup_cols);
+    let (witness_challenges_at_z, rest) = rest.split_at(num_witness_cols);
+    let (memory_challenges_at_z, rest) = rest.split_at(num_memory_cols);
+    let (stage_2_bf_challenges_at_z, rest) = rest.split_at(num_stage_2_bf_cols);
+    let (stage_2_e4_challenges_at_z, rest) = rest.split_at(num_stage_2_e4_cols);
+    let (composition_challenge_at_z, rest) = rest.split_at(1);
+    let (witness_challenges_at_z_omega, rest) = rest.split_at(num_witness_terms_at_z_omega);
+    let (memory_challenges_at_z_omega, rest) = rest.split_at(num_memory_terms_at_z_omega);
+    let (grand_product_challenge_at_z_omega, rest) = rest.split_at(1);
+    assert_eq!(rest.len(), 0);
+    let setup_challenges_at_z = setup_challenges_at_z.as_ptr();
     let witness_challenges_at_z = witness_challenges_at_z.as_ptr();
-    let witness_challenges_at_z_omega =
-        &scratch_e4[num_witness_cols..num_witness_cols + num_witness_terms_at_z_omega];
+    let memory_challenges_at_z = memory_challenges_at_z.as_ptr();
+    let stage_2_bf_challenges_at_z = stage_2_bf_challenges_at_z.as_ptr();
+    let stage_2_e4_challenges_at_z = stage_2_e4_challenges_at_z.as_ptr();
+    let composition_challenge_at_z = composition_challenge_at_z.as_ptr();
     let witness_challenges_at_z_omega = witness_challenges_at_z_omega.as_ptr();
-    let non_witness_challenges_at_z =
-        &scratch_e4[num_witness_terms..num_witness_terms + num_non_witness_terms_at_z];
-    let non_witness_challenges_at_z = non_witness_challenges_at_z.as_ptr();
-    let non_witness_challenges_at_z_omega = non_witness_challenges_at_z_omega.as_ptr();
-    let challenges_times_evals = challenges_times_evals.as_ptr();
+    let memory_challenges_at_z_omega = memory_challenges_at_z_omega.as_ptr();
+    let grand_product_challenge_at_z_omega = grand_product_challenge_at_z_omega.as_ptr();
+    let challenges_times_evals_sums = challenges_times_evals_sums.as_ptr();
     let quotient = quotient.as_mut_ptr_and_stride();
     // denom at z * omega loads are offset by 16B.
     // A wide block modestly amortizes the unaligned loads.
@@ -380,20 +322,25 @@ pub fn compute_deep_quotient_on_main_domain(
         stage_2_e4_cols,
         composition_col,
         denom_at_z,
+        setup_challenges_at_z,
         witness_challenges_at_z,
+        memory_challenges_at_z,
+        stage_2_bf_challenges_at_z,
+        stage_2_e4_challenges_at_z,
+        composition_challenge_at_z,
+        state_linkage_constraints,
+        memory_cols_to_challenges_at_z_omega_map,
         witness_challenges_at_z_omega,
-        witness_cols_to_challenges_at_z_omega_map,
-        non_witness_challenges_at_z,
-        non_witness_challenges_at_z_omega,
-        challenges_times_evals,
+        memory_challenges_at_z_omega,
+        grand_product_challenge_at_z_omega,
+        challenges_times_evals_sums,
         quotient,
         num_setup_cols as u32,
         num_witness_cols as u32,
         num_memory_cols as u32,
         num_stage_2_bf_cols as u32,
         num_stage_2_e4_cols as u32,
-        cached_data.process_shuffle_ram_init,
-        memory_lazy_init_addresses_cols_start as u32,
+        stage_2_memory_grand_product_offset as u32,
         log_n,
         bit_reversed,
     );
@@ -406,12 +353,17 @@ pub(crate) mod tests {
     use crate::device_context::DeviceContext;
     use crate::device_structures::DeviceMatrixMut;
     use crate::ops_complex::bit_reverse_in_place;
+    use crate::ops_complex::transpose;
 
     use era_cudart::memory::{
         memory_copy_async, CudaHostAllocFlags, DeviceAllocation, HostAllocation,
     };
     use field::Field;
-    use prover::tests::{run_basic_delegation_test_impl, GpuComparisonArgs};
+    use prover::tests::{
+        run_basic_unrolled_test_in_transpiler_with_word_specialization_impl,
+        run_unrolled_test_program_in_transpiler_with_word_specialization_impl, GpuComparisonArgs,
+        KECCAK_F1600_TRANSPILER_TEST_PROGRAM,
+    };
     use serial_test::serial;
 
     type BF = BaseField;
@@ -421,25 +373,26 @@ pub(crate) mod tests {
         let GpuComparisonArgs {
             circuit,
             setup,
-            external_values,
+            external_challenges,
+            aux_boundary_values: _,
             public_inputs: _,
             twiddles,
             lde_precomputations: _,
-            table_driver: _,
             lookup_mapping: _,
             log_n,
             circuit_sequence,
             delegation_processing_type,
+            is_unrolled,
             prover_data,
         } = gpu_comparison_args;
         let log_n = *log_n;
-        let circuit_sequence = *circuit_sequence;
+        let circuit_sequence = circuit_sequence.unwrap_or(0);
         let delegation_processing_type = delegation_processing_type.unwrap_or(0);
         let domain_size = 1 << log_n;
 
         let cached_data = ProverCachedData::new(
             &circuit,
-            &external_values,
+            &external_challenges,
             domain_size,
             circuit_sequence,
             delegation_processing_type,
@@ -448,99 +401,94 @@ pub(crate) mod tests {
         let evals = &prover_data.deep_poly_result.values_at_z;
         let z = prover_data.deep_poly_result.z;
         let alpha = prover_data.deep_poly_result.alpha;
+        let deep_poly_beta = prover_data.deep_poly_result.beta;
         // Repackage row-major data as column-major for GPU
-        let range = 0..domain_size;
         let domain_index = 0;
-        let mut trace_view = prover_data.stage_1_result.ldes[domain_index]
-            .trace
-            .row_view(range.clone());
-        let mut stage_2_trace_view = prover_data.stage_2_result.ldes[domain_index]
-            .trace
-            .row_view(range.clone());
-        let mut setup_trace_view = setup.ldes[domain_index].trace.row_view(range.clone());
-        let mut quotient_trace_view = prover_data.quotient_commitment_result.ldes[domain_index]
-            .trace
-            .row_view(range.clone());
         let num_setup_cols = circuit.setup_layout.total_width;
         let num_witness_cols = circuit.witness_layout.total_width;
         let num_memory_cols = circuit.memory_layout.total_width;
         let num_trace_cols = num_witness_cols + num_memory_cols;
         let num_stage_2_cols = circuit.stage_2_layout.total_width;
-        // let num_stage_2_bf_cols = circuit.stage_2_layout.num_base_field_polys();
-        // let num_stage_2_e4_cols = circuit.stage_2_layout.num_ext4_field_polys();
-        let mut h_setup_cols: Vec<BF> = vec![BF::ZERO; domain_size * num_setup_cols];
-        let mut h_trace_cols: Vec<BF> = vec![BF::ZERO; domain_size * num_trace_cols];
-        let mut h_stage_2_cols: Vec<BF> = vec![BF::ZERO; domain_size * num_stage_2_cols];
+        let h_setup = &setup.ldes[domain_index].trace;
+        let h_trace = &prover_data.stage_1_result.ldes[domain_index].trace;
+        let h_stage_2 = &prover_data.stage_2_result.ldes[domain_index].trace;
+        let h_setup_slice = h_setup.as_slice();
+        let h_trace_slice = h_trace.as_slice();
+        let h_stage_2_slice = h_stage_2.as_slice();
+        assert_eq!(h_setup_slice.len(), domain_size * h_setup.padded_width);
+        assert_eq!(h_trace_slice.len(), domain_size * h_trace.padded_width);
+        assert_eq!(h_stage_2_slice.len(), domain_size * h_stage_2.padded_width);
+        // Repack composition poly as vectorized BF
         let mut h_composition_col: Vec<BF> = vec![BF::ZERO; 4 * domain_size];
-        // imitating access patterns in zksync_airbender's prover_stages/stage4.rs
+        let mut quotient_trace_view = prover_data.quotient_commitment_result.ldes[domain_index]
+            .trace
+            .row_view(0..domain_size);
         unsafe {
             for i in 0..domain_size {
-                let setup_trace_view_row = setup_trace_view.current_row_ref();
-                let trace_view_row = trace_view.current_row_ref();
-                let stage_2_trace_view_row = stage_2_trace_view.current_row_ref();
                 let quotient_trace_view_row = quotient_trace_view.current_row_ref();
-                {
-                    let mut src = setup_trace_view_row.as_ptr();
-                    for j in 0..num_setup_cols {
-                        h_setup_cols[i + j * domain_size] = src.read();
-                        src = src.add(1);
-                    }
+                let src = quotient_trace_view_row.as_ptr().cast::<E4>();
+                assert!(src.is_aligned());
+                let coeffs = src.read().into_coeffs_in_base();
+                for (j, coeff) in coeffs.iter().enumerate() {
+                    h_composition_col[i + j * domain_size] = *coeff;
                 }
-                {
-                    let mut src = trace_view_row.as_ptr();
-                    for j in 0..num_trace_cols {
-                        h_trace_cols[i + j * domain_size] = src.read();
-                        src = src.add(1);
-                    }
-                }
-                {
-                    let mut src = stage_2_trace_view_row.as_ptr();
-                    for j in 0..num_stage_2_cols {
-                        h_stage_2_cols[i + j * domain_size] = src.read();
-                        src = src.add(1);
-                    }
-                }
-                {
-                    let src = quotient_trace_view_row.as_ptr().cast::<E4>();
-                    assert!(src.is_aligned());
-                    let coeffs = src.read().into_coeffs_in_base();
-                    for (j, coeff) in coeffs.iter().enumerate() {
-                        h_composition_col[i + j * domain_size] = *coeff;
-                    }
-                }
-                setup_trace_view.advance_row();
-                trace_view.advance_row();
-                stage_2_trace_view.advance_row();
                 quotient_trace_view.advance_row();
             }
         }
         // Allocate GPU args
         let stream = CudaStream::default();
-        let mut d_alloc_setup_cols =
-            DeviceAllocation::<BF>::alloc(domain_size * num_setup_cols).unwrap();
-        let mut d_alloc_trace_cols =
-            DeviceAllocation::<BF>::alloc(domain_size * num_trace_cols).unwrap();
-        let mut d_alloc_stage_2_cols =
-            DeviceAllocation::<BF>::alloc(domain_size * num_stage_2_cols).unwrap();
         let mut d_alloc_composition_col = DeviceAllocation::<BF>::alloc(4 * domain_size).unwrap();
         let mut d_z = DeviceAllocation::<E4>::alloc(1).unwrap();
         let mut d_denom_at_z = DeviceAllocation::<E4>::alloc(domain_size).unwrap();
-        let e4_scratch_elems = get_e4_scratch_count_for_deep_quotiening();
+        let num_terms_at_z = circuit.num_openings_at_z();
+        let num_terms_at_z_omega = circuit.num_openings_at_z_omega();
+        let num_terms_total = num_terms_at_z + num_terms_at_z_omega;
+        // Copy CPU setup to device and transpose to column major
+        let mut d_setup_row_major = DeviceAllocation::<BF>::alloc(h_setup_slice.len()).unwrap();
+        let mut d_setup_column_major =
+            DeviceAllocation::<BF>::alloc(domain_size * num_setup_cols).unwrap();
+        memory_copy_async(&mut d_setup_row_major, &h_setup_slice, &stream).unwrap();
+        let d_setup_row_major_matrix =
+            DeviceMatrixChunk::new(&d_setup_row_major, h_setup.padded_width, 0, num_setup_cols);
+        let mut d_setup_cols = DeviceMatrixMut::new(&mut d_setup_column_major, domain_size);
+        transpose(&d_setup_row_major_matrix, &mut d_setup_cols, &stream).unwrap();
+        drop(d_setup_row_major_matrix);
+        d_setup_row_major.free().unwrap();
+        // Copy CPU trace to device and transpose to column major
+        let mut d_trace_row_major = DeviceAllocation::<BF>::alloc(h_trace_slice.len()).unwrap();
+        let mut d_trace_column_major =
+            DeviceAllocation::<BF>::alloc(domain_size * num_trace_cols).unwrap();
+        memory_copy_async(&mut d_trace_row_major, &h_trace_slice, &stream).unwrap();
+        let d_trace_row_major_matrix =
+            DeviceMatrixChunk::new(&d_trace_row_major, h_trace.padded_width, 0, num_trace_cols);
+        let mut d_trace_cols = DeviceMatrixMut::new(&mut d_trace_column_major, domain_size);
+        transpose(&d_trace_row_major_matrix, &mut d_trace_cols, &stream).unwrap();
+        drop(d_trace_row_major_matrix);
+        d_trace_row_major.free().unwrap();
+        // Copy CPU stage 2 to device and transpose to column major
+        let mut d_stage_2_row_major = DeviceAllocation::<BF>::alloc(h_stage_2_slice.len()).unwrap();
+        let mut d_stage_2_column_major =
+            DeviceAllocation::<BF>::alloc(domain_size * num_stage_2_cols).unwrap();
+        memory_copy_async(&mut d_stage_2_row_major, &h_stage_2_slice, &stream).unwrap();
+        let d_stage_2_row_major_matrix = DeviceMatrixChunk::new(
+            &d_stage_2_row_major,
+            h_stage_2.padded_width,
+            0,
+            num_stage_2_cols,
+        );
+        let mut d_stage_2_cols = DeviceMatrixMut::new(&mut d_stage_2_column_major, domain_size);
+        transpose(&d_stage_2_row_major_matrix, &mut d_stage_2_cols, &stream).unwrap();
+        drop(d_stage_2_row_major_matrix);
+        d_stage_2_row_major.free().unwrap();
         // TODO: In practice, we should also experiment with CudaHostAllocFlags::WRITE_COMBINED
         let mut h_e4_scratch =
-            HostAllocation::<E4>::alloc(e4_scratch_elems, CudaHostAllocFlags::DEFAULT).unwrap();
-        let mut d_e4_scratch = DeviceAllocation::<E4>::alloc(e4_scratch_elems).unwrap();
+            HostAllocation::<E4>::alloc(num_terms_total, CudaHostAllocFlags::DEFAULT).unwrap();
+        let mut d_e4_scratch = DeviceAllocation::<E4>::alloc(num_terms_total).unwrap();
         let mut d_alloc_quotient = DeviceAllocation::<BF>::alloc(4 * domain_size).unwrap();
         let mut h_quotient =
             HostAllocation::<BF>::alloc(4 * domain_size, CudaHostAllocFlags::DEFAULT).unwrap();
-        memory_copy_async(&mut d_alloc_setup_cols, &h_setup_cols, &stream).unwrap();
-        memory_copy_async(&mut d_alloc_trace_cols, &h_trace_cols, &stream).unwrap();
-        memory_copy_async(&mut d_alloc_stage_2_cols, &h_stage_2_cols, &stream).unwrap();
         memory_copy_async(&mut d_alloc_composition_col, &h_composition_col, &stream).unwrap();
         memory_copy_async(&mut d_z, &[z], &stream).unwrap();
-        let mut d_setup_cols = DeviceMatrixMut::new(&mut d_alloc_setup_cols, domain_size);
-        let mut d_trace_cols = DeviceMatrixMut::new(&mut d_alloc_trace_cols, domain_size);
-        let mut d_stage_2_cols = DeviceMatrixMut::new(&mut d_alloc_stage_2_cols, domain_size);
         let mut d_composition_col = DeviceMatrixMut::new(&mut d_alloc_composition_col, domain_size);
         let mut d_quotient = DeviceMatrixMut::new(&mut d_alloc_quotient, domain_size);
         for &bit_reversed in [false, true].iter() {
@@ -550,43 +498,7 @@ pub(crate) mod tests {
                 bit_reverse_in_place(&mut d_stage_2_cols, &stream).unwrap();
                 bit_reverse_in_place(&mut d_composition_col, &stream).unwrap();
             }
-            compute_deep_denom_at_z_on_main_domain(
-                &mut d_denom_at_z,
-                &d_z[0],
-                log_n as u32,
-                bit_reversed,
-                &stream,
-            )
-            .unwrap();
-            let mut h_challenges_times_evals = ChallengesTimesEvals::default();
-            let mut h_non_witness_challenges_at_z_omega = NonWitnessChallengesAtZOmega::default();
-            let metadata = get_metadata(
-                evals,
-                alpha,
-                twiddles.omega_inv,
-                &cached_data,
-                &circuit,
-                &mut h_e4_scratch,
-                &mut h_challenges_times_evals,
-                &mut h_non_witness_challenges_at_z_omega,
-            );
-            let mut d_challenges_times_evals =
-                DeviceAllocation::<ChallengesTimesEvals>::alloc(1).unwrap();
-            let mut d_non_witness_challenges_at_z_omega =
-                DeviceAllocation::<NonWitnessChallengesAtZOmega>::alloc(1).unwrap();
-            memory_copy_async(&mut d_e4_scratch, &h_e4_scratch, &stream).unwrap();
-            memory_copy_async(
-                &mut d_challenges_times_evals,
-                &[h_challenges_times_evals],
-                &stream,
-            )
-            .unwrap();
-            memory_copy_async(
-                &mut d_non_witness_challenges_at_z_omega,
-                &[h_non_witness_challenges_at_z_omega],
-                &stream,
-            )
-            .unwrap();
+            // Mark witness and memory regions in trace
             let slice = d_trace_cols.slice();
             let stride = d_trace_cols.stride();
             let offset = d_trace_cols.offset();
@@ -602,8 +514,35 @@ pub(crate) mod tests {
                 offset,
                 domain_size,
             );
+            compute_deep_denom_at_z_on_main_domain(
+                &mut d_denom_at_z,
+                &d_z[0],
+                log_n as u32,
+                bit_reversed,
+                &stream,
+            )
+            .unwrap();
+            let mut h_challenges_times_evals_sums = ChallengesTimesEvalsSums::default();
+            prepare_async_challenge_data(
+                evals,
+                alpha,
+                deep_poly_beta,
+                twiddles.omega_inv,
+                num_terms_at_z,
+                num_terms_at_z_omega,
+                &mut h_e4_scratch,
+                &mut h_challenges_times_evals_sums,
+            );
+            let mut d_challenges_times_evals_sums =
+                DeviceAllocation::<ChallengesTimesEvalsSums>::alloc(1).unwrap();
+            memory_copy_async(&mut d_e4_scratch, &h_e4_scratch, &stream).unwrap();
+            memory_copy_async(
+                &mut d_challenges_times_evals_sums,
+                &[h_challenges_times_evals_sums],
+                &stream,
+            )
+            .unwrap();
             compute_deep_quotient_on_main_domain(
-                metadata,
                 &d_setup_cols,
                 &d_witness_cols,
                 &d_memory_cols,
@@ -611,13 +550,13 @@ pub(crate) mod tests {
                 &d_composition_col,
                 &d_denom_at_z,
                 &d_e4_scratch,
-                &d_challenges_times_evals[0],
-                &d_non_witness_challenges_at_z_omega[0],
+                &d_challenges_times_evals_sums[0],
                 &mut d_quotient,
                 &cached_data,
                 &circuit,
                 log_n as u32,
                 bit_reversed,
+                *is_unrolled,
                 &stream,
             )
             .unwrap();
@@ -648,19 +587,24 @@ pub(crate) mod tests {
         }
     }
 
-    // #[test]
-    // #[serial]
-    // fn test_stage_4_for_basic_circuit() {
-    //     let ctx = Context::create(12).unwrap();
-    //     run_basic_test_impl(Some(Box::new(comparison_hook)));
-    //     ctx.destroy().unwrap();
-    // }
-
     #[test]
     #[serial]
-    fn test_stage_4_for_delegation_circuit() {
+    fn test_standalone_stage_4_with_transpiler_for_current_path() {
         let ctx = DeviceContext::create(12).unwrap();
-        run_basic_delegation_test_impl(
+        run_basic_unrolled_test_in_transpiler_with_word_specialization_impl(
+            Some(Box::new(comparison_hook)),
+            Some(Box::new(comparison_hook)),
+        );
+        ctx.destroy().unwrap();
+    }
+
+    #[test]
+    #[ignore = "manual heavy GPU comparison test"]
+    #[serial]
+    fn test_standalone_stage_4_with_transpiler_for_keccak() {
+        let ctx = DeviceContext::create(12).unwrap();
+        run_unrolled_test_program_in_transpiler_with_word_specialization_impl(
+            KECCAK_F1600_TRANSPILER_TEST_PROGRAM,
             Some(Box::new(comparison_hook)),
             Some(Box::new(comparison_hook)),
         );

@@ -1,89 +1,109 @@
-# Running the prover end to end
+# Running prover end to end
 
-This guide demonstrates how to prove the execution of RISC‑V binaries and generate SNARKs. You can either prove some Ethereum transaction (using `zksync-os-server`) or prove execution of a custom binary.
+This document focuses on the Airbender side of the flow: starting from a RISC-V binary, confirming the program output, generating a proof artifact, and validating that artifact locally.
 
-> [!NOTE]
-> **Prerequisites**: Before proving, you need a RISC‑V binary. If you haven't written one yet, see the [Writing Programs guide](./writing_programs.md) to learn how to create, build, and test your program.
+## 1. Prepare the binary and input
 
-To run the prover end-to-end, from the RISC-V binary to a SNARK, you will need three pieces:
-* `cli` from the [`zksync-airbender` repository](../tools/cli).
-* `cli` from the `zkos_wrapper` repository.
-* `cli` from [`era-boojum-validator-cli` repository](https://github.com/matter-labs/era-boojum-validator-cli).
+If you want to prove a custom program, start by checking that it runs and returns the expected output:
 
-## Preparing binary & data
-- Rust nightly toolchain
-  - `rustup toolchain install nightly`  
-- Install both `cargo‑binutils` and `objcopy`
-  - `rustup component add llvm-tools-preview`
-  - `cargo install cargo-binutils`
-
-### Custom code
-
-If you want to prove some custom RISC-V code, first check if the execution is successful. The example command below runs a hashed Fibonacci:
 ```shell
-cargo run --release -p cli run --bin examples/hashed_fibonacci/app.bin --input-file examples/hashed_fibonacci/input.txt
+cargo run --release -p cli -- run --bin examples/hashed_fibonacci/app.bin --input-file examples/hashed_fibonacci/input.txt
 ```
 
-Remember the final register outputs, as you should compare them with the ones from step 3.
+Keep the final register outputs handy so you can compare them with the verified proof output later.
 
-> [!NOTE]
-> If you're writing your own program, follow the [Writing Programs guide](./writing_programs.md) to create a proper RISC‑V binary with the correct runtime setup and exit convention.
+## 2. Generate a proof artifact
 
-## Proving
+### CPU backend
 
-There are three different setups for proving:
-* CPU only; you don't have a GPU
-* You have a GPU with 24GB VRAM
-* You have a GPU with 32GB VRAM
-
-### CPU only
-
-If you run your custom code:
 ```shell
-cargo run --release -p cli prove --bin examples/hashed_fibonacci/app.bin --input-file examples/hashed_fibonacci/input.txt  --until final-proof --tmp-dir /tmp
+cargo run --release -p cli -- prove \
+  --bin examples/hashed_fibonacci/app.bin \
+  --input-file examples/hashed_fibonacci/input.txt \
+  --output-dir /tmp \
+  --output-file proof.json
 ```
 
-### GPU - 24GB VRAM
+### GPU backend
 
-If you have a GPU, you can compile with `--features gpu` flag, and then pass `--gpu` - to make proving go a lot faster:
 ```shell
-cargo run --release -p cli --features gpu prove --bin ../zksync-os/zksync_os/app.bin  --input-rpc http://localhost:8011 --input-batch 1 --output-dir /tmp --gpu --until final-proof
+cargo run --release -p cli --features gpu -- prove \
+  --bin examples/hashed_fibonacci/app.bin \
+  --input-file examples/hashed_fibonacci/input.txt \
+  --output-dir /tmp \
+  --output-file proof.json \
+  --backend gpu
 ```
 
-Where `bin` is your RISC-V binary, and `input-file` (optional) is any input data that your binary consumes.
+Notes:
 
-### GPU - 32GB VRAM
+- `prove` defaults to the `recursion-unified` target, so the artifact already contains the full active recursion pipeline.
+- If your `.text` section is not the default sibling file, pass it explicitly with `--text`.
+- If you need to tighten resource limits, use `--cpu-cycles-bound` and `--cpu-ram-bound`.
 
-Having 32GB VRAM allows you to also run the final proof on a GPU.
+## 3. Verify the artifact
 
-After a while, you'll end up with a single 'final' file in the output dir, called `final_program_proof.json`
-
-## Wrapping the RISC-V into SNARK
-
-This step works only if you have over 150GB of RAM, and have done the `--until final-prove` before. You need to get the `zkos-wrapper` repo, and run:
-```
-cargo run --release -- --input /tmp/final_program_proof.json --input-binary ../zksync-airbender/examples/hashed_fibonacci/app.bin   --output-dir /tmp
-```
-
-Make sure that you pass the same `input-binary` that you used during proving. If not, you'll get a failed assert quickly.
-
-This step will wrap your boojum 2 prover proof, first into original boojum (together with compression), and then finally into a single SNARK.
-
-### Verify the SNARK
-
-For this step, please use the tool from `era-boojum-validator-cli` repo:
-
-```
-cargo run -- verify-snark-boojum-os /tmp/snark_proof.json /tmp/snark_vk.json
-```
-
-This tool will verify that the proof and verification key match.
-
-### Generating verification keys
-
-The code above is using 'fake' CRS - for production use cases, you should pass `--trusted-setup-file` during ZKsync OS wrapper.
-
-You can also generate a verification key for SNARK by running the following from the `zkos_wrapper` repo:
 ```shell
-cargo run --release generate-vk --input-binary ../zksync-airbender/examples/hashed_fibonacci/app.bin --output-dir /tmp --trusted-setup-file crs/setup.key
+cargo run --release -p cli -- verify \
+  --proof /tmp/proof.json \
+  --bin examples/hashed_fibonacci/app.bin \
+  --security-level 80 \
+  --target recursion-unified
 ```
+
+The verifier prints the public output on success. It should match the output from step 1.
+
+## 4. Optional staged proving
+
+If you want to keep the base proof and continue later, split the work into two steps:
+
+```shell
+cargo run --release -p cli -- prove \
+  --bin examples/hashed_fibonacci/app.bin \
+  --input-file examples/hashed_fibonacci/input.txt \
+  --target base \
+  --output-dir /tmp \
+  --output-file base.json
+
+cargo run --release -p cli -- continue-proof \
+  --proof /tmp/base.json \
+  --bin examples/hashed_fibonacci/app.bin \
+  --security-level 80 \
+  --target recursion-unified \
+  --output-dir /tmp \
+  --output-file proof.json
+```
+
+`continue-proof` currently supports only CPU-produced artifacts.
+
+## 5. Optional: combine multiple proofs into one
+
+Multiple `recursion-unified` artifacts of the same program (e.g. proofs of several
+batches) can be combined into a single proof before SNARK wrapping:
+
+```shell
+cargo run --release -p cli -- combine \
+  --proofs /tmp/proof_batch_1.json /tmp/proof_batch_2.json \
+  --bin examples/hashed_fibonacci/app.bin \
+  --security-level 80 \
+  --output-dir /tmp \
+  --output-file combined.json
+
+cargo run --release -p cli -- verify \
+  --proof /tmp/combined.json \
+  --bin examples/hashed_fibonacci/app.bin \
+  --security-level 80 \
+  --target recursion-combined
+```
+
+The combined artifact proves that every input proof was verified and that all of
+them belong to the same recursion chain. Words 0..8 of its public output are the
+keccak rolling hash of the input proofs' outputs — `keccak(out_1[0..8] || ... ||
+out_n[0..8])` — and words 8..16 carry the shared recursion chain through unchanged,
+so the combined proof binds to the same program as its inputs.
+
+## 6. SNARK wrapping status
+
+The current flow in this repository ends at a verified Airbender proof artifact.
+
+Wrapping that artifact into a SNARK is not implemented yet, but it is expected to be supported soon. Once that lands, this document should be extended with the concrete wrapping and verification steps.

@@ -1,2 +1,6 @@
 output/*.json
 output/*.rs
+output/*.cuh
+output/unrolled/*.json
+output/unrolled/*.rs
+output/unrolled/*.cuh

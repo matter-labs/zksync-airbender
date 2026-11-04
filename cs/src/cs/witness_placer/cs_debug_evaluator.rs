@@ -1,30 +1,56 @@
 use super::scalar_witness_type_set::ScalarWitnessTypeSet;
 use super::*;
-use crate::cs::oracle::Oracle;
+use crate::cs::oracle::{ExecutorFamilyDecoderData, Oracle};
 use crate::definitions::Variable;
 use crate::tables::TableDriver;
 use field::PrimeField;
 
 use super::WitnessPlacer;
 
+#[derive(Clone, Copy)]
+struct ResolverWriteRecord<F: PrimeField> {
+    variable: Variable,
+    was_assigned: bool,
+    previous_value: F,
+}
+
 pub struct CSDebugWitnessEvaluator<F: PrimeField> {
     pub(crate) values: Vec<F>,
+    assigned: Vec<bool>,
     pub oracle: Option<Box<dyn Oracle<F>>>,
     pub(crate) table_driver: TableDriver<F>,
+    pub(crate) preprocessed_decoder_table: Option<Vec<ExecutorFamilyDecoderData>>,
+    read_unassigned_during_resolver: bool,
+    written_during_resolver: Vec<ResolverWriteRecord<F>>,
 }
 
 impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
     pub fn new() -> Self {
         Self {
             values: Vec::new(),
+            assigned: Vec::new(),
             oracle: None,
             table_driver: TableDriver::new(),
+            preprocessed_decoder_table: None,
+            read_unassigned_during_resolver: false,
+            written_during_resolver: Vec::new(),
         }
     }
 
     pub fn new_with_oracle<O: Oracle<F> + 'static>(oracle: O) -> Self {
         let mut new = Self::new();
         new.oracle = Some(Box::new(oracle));
+
+        new
+    }
+
+    pub fn new_with_oracle_and_preprocessed_decoder<O: Oracle<F> + 'static>(
+        oracle: O,
+        preprocessed_decoder_table: Vec<ExecutorFamilyDecoderData>,
+    ) -> Self {
+        let mut new = Self::new();
+        new.oracle = Some(Box::new(oracle));
+        new.preprocessed_decoder_table = Some(preprocessed_decoder_table);
 
         new
     }
@@ -41,8 +67,80 @@ impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
         }
     }
 
-    pub fn evaluate(&mut self, node: &impl WitnessResolutionDescription<F, Self>) {
-        node.evaluate(self);
+    pub(crate) fn get_assigned_value(&self, variable: Variable) -> Option<F> {
+        if variable.is_placeholder() {
+            panic!("variable is placeholder");
+        }
+        let idx = variable.0 as usize;
+        if idx >= self.values.len() || self.assigned.get(idx).copied().unwrap_or(false) == false {
+            None
+        } else {
+            Some(self.values[idx])
+        }
+    }
+
+    pub fn num_assigned(&self) -> usize {
+        self.assigned.iter().filter(|x| **x).count()
+    }
+
+    pub fn evaluate<R: WitnessResolutionDescription<F, Self> + ?Sized>(&mut self, node: &R) {
+        self.evaluate_resolver(node);
+    }
+
+    fn resize_to_include(&mut self, variable: Variable) -> usize {
+        if variable.is_placeholder() {
+            panic!("variable is placeholder");
+        }
+        let idx = variable.0 as usize;
+        if idx >= self.values.len() {
+            self.values.resize(idx + 1, F::ZERO);
+            self.assigned.resize(idx + 1, false);
+        }
+
+        idx
+    }
+
+    fn record_assignment(&mut self, variable: Variable, value: F) {
+        let idx = self.resize_to_include(variable);
+        self.written_during_resolver.push(ResolverWriteRecord {
+            variable,
+            was_assigned: self.assigned[idx],
+            previous_value: self.values[idx],
+        });
+        self.values[idx] = value;
+        self.assigned[idx] = true;
+    }
+
+    fn mark_unassigned_read(&mut self, variable: Variable) {
+        let idx = self.resize_to_include(variable);
+        if self.assigned[idx] == false {
+            self.read_unassigned_during_resolver = true;
+        }
+    }
+
+    fn evaluate_resolver<R: WitnessResolutionDescription<F, Self> + ?Sized>(
+        &mut self,
+        resolver: &R,
+    ) {
+        let previous_read_unassigned = self.read_unassigned_during_resolver;
+        let previous_written_len = self.written_during_resolver.len();
+
+        self.read_unassigned_during_resolver = false;
+        resolver.evaluate(self);
+
+        if self.read_unassigned_during_resolver {
+            for record in self.written_during_resolver[previous_written_len..]
+                .iter()
+                .rev()
+            {
+                let idx = record.variable.0 as usize;
+                self.values[idx] = record.previous_value;
+                self.assigned[idx] = record.was_assigned;
+            }
+        }
+
+        self.written_during_resolver.truncate(previous_written_len);
+        self.read_unassigned_during_resolver = previous_read_unassigned;
     }
 
     pub fn resolve_placeholder(
@@ -56,11 +154,7 @@ impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
         }
         if let Some(oracle) = self.oracle.as_ref() {
             let value = oracle.get_witness_from_placeholder(placeholder, subindex, 0);
-            let idx = variable.0 as usize;
-            if idx >= self.values.len() {
-                self.values.resize(idx + 1, F::ZERO);
-            }
-            self.values[idx] = value;
+            self.record_assignment(variable, value);
         }
     }
 }
@@ -84,7 +178,7 @@ impl<F: PrimeField> WitnessTypeSet<F> for CSDebugWitnessEvaluator<F> {
 
 impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
     fn record_resolver(&mut self, resolver: impl WitnessResolutionDescription<F, Self>) {
-        resolver.evaluate(self);
+        self.evaluate_resolver(&resolver);
     }
 
     fn get_oracle_field(&mut self, placeholder: Placeholder, subindex: usize) -> Self::Field {
@@ -132,10 +226,8 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
         if variable.is_placeholder() {
             panic!("variable is placeholder");
         }
-        let idx = variable.0 as usize;
-        if idx >= self.values.len() {
-            self.values.resize(idx + 1, F::ZERO);
-        }
+        self.mark_unassigned_read(variable);
+        let idx = self.resize_to_include(variable);
         self.values[idx]
     }
 
@@ -159,11 +251,7 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
         if variable.is_placeholder() {
             panic!("variable is placeholder");
         }
-        let idx = variable.0 as usize;
-        if idx >= self.values.len() {
-            self.values.resize(idx + 1, F::ZERO);
-        }
-        self.values[idx] = F::from_boolean(*value);
+        self.record_assignment(variable, F::from_boolean(*value));
     }
 
     #[inline(always)]
@@ -171,11 +259,7 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
         if variable.is_placeholder() {
             panic!("variable is placeholder");
         }
-        let idx = variable.0 as usize;
-        if idx >= self.values.len() {
-            self.values.resize(idx + 1, F::ZERO);
-        }
-        self.values[idx] = *value;
+        self.record_assignment(variable, *value);
     }
 
     #[inline(always)]
@@ -261,23 +345,34 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
             .table_driver
             .enforce_values_and_get_absolute_index(inputs, *table_id as u32);
     }
-}
 
-pub fn witness_early_branch_if_possible<
-    F: PrimeField,
-    W: WitnessPlacer<F>,
-    T: WitnessResolutionDescription<F, W>,
->(
-    branch_mask: W::Mask,
-    placer: &mut W,
-    node: &T,
-) {
-    if W::CAN_BRANCH {
-        if W::branch(&branch_mask) {
-            node.evaluate(placer);
+    fn assume_assigned(&mut self, _variable: Variable) {
+        // nothing
+    }
+
+    fn spec_decoder_relation(&mut self, pc: [Variable; 2], decoder_data: &DecoderData<F>) {
+        let pc = self.get_u32_from_u16_parts(pc);
+        let Some(table) = self.preprocessed_decoder_table.as_ref() else {
+            panic!("Decoder table is not specified");
+        };
+
+        assert!(pc % 4 == 0);
+        let idx = (pc / 4) as usize;
+        let entry = table[idx];
+
+        self.assign_u8(decoder_data.rs1_index, &entry.rs1_index);
+        self.assign_u8(decoder_data.rs2_index, &entry.rs2_index);
+        self.assign_u8(decoder_data.rd_index, &entry.rd_index);
+        self.assign_mask(decoder_data.rd_is_zero, &entry.rd_is_zero);
+        self.assign_u32_from_u16_parts(decoder_data.imm, &entry.imm);
+        self.assign_u8(decoder_data.funct3, &entry.funct3);
+        if let Some(funct7) = decoder_data.funct7 {
+            self.assign_u8(funct7, &entry.funct7.unwrap());
         }
-    } else {
-        // we should use conditional assignment anyway
-        node.evaluate(placer);
+        assert!(entry.opcode_family_bits <= 1 << (F::CHAR_BITS - 1));
+        self.assign_field(
+            decoder_data.circuit_family_extra_mask,
+            &F::from_u64_unchecked(entry.opcode_family_bits as u64),
+        );
     }
 }

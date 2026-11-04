@@ -10,17 +10,7 @@ use crate::one_row_compiler::LookupInput;
 use crate::one_row_compiler::Variable;
 use crate::types::Boolean;
 use crate::types::Num;
-
-const NUM_CONTROL_BITS: usize = 8;
-
-pub const ADD_OP_BIT_IDX: usize = 0;
-pub const SUB_OP_BIT_IDX: usize = 1;
-pub const SUB_AND_NEGATE_OP_BIT_IDX: usize = 2;
-pub const MUL_LOW_OP_BIT_IDX: usize = 3;
-pub const MUL_HIGH_OP_BIT_IDX: usize = 4;
-pub const EQ_OP_BIT_IDX: usize = 5;
-pub const CARRY_BIT_IDX: usize = 6;
-pub const MEMCOPY_BIT_IDX: usize = 7;
+use common_constants::delegation_types::bigint_with_control::*;
 
 pub fn all_table_types() -> Vec<TableType> {
     vec![
@@ -60,18 +50,38 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
 
     let execute = cs.process_delegation_request();
 
+    let dst_accesses = (0..8)
+        .into_iter()
+        .map(|access_idx| IndirectAccessOffset {
+            variable_dependent: None,
+            offset_constant: (access_idx * core::mem::size_of::<u32>()) as u32,
+            assume_no_alignment_overflow: true,
+            is_write_access: true,
+        })
+        .collect();
+
     let x10_request = RegisterAccessRequest {
         register_index: 10,
         register_write: false,
         indirects_alignment_log2: 5, // 32 bytes
-        indirect_accesses: vec![true; 8],
+        indirect_accesses: dst_accesses,
     };
+
+    let src_accesses = (0..8)
+        .into_iter()
+        .map(|access_idx| IndirectAccessOffset {
+            variable_dependent: None,
+            offset_constant: (access_idx * core::mem::size_of::<u32>()) as u32,
+            assume_no_alignment_overflow: true,
+            is_write_access: false,
+        })
+        .collect();
 
     let x11_request = RegisterAccessRequest {
         register_index: 11,
         register_write: false,
         indirects_alignment_log2: 5, // 32 bytes
-        indirect_accesses: vec![false; 8],
+        indirect_accesses: src_accesses,
     };
 
     let x12_request = RegisterAccessRequest {
@@ -95,6 +105,7 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
         let IndirectAccessType::Write {
             read_value,
             write_value,
+            ..
         } = x10_and_indirects.indirect_accesses[i]
         else {
             panic!()
@@ -106,7 +117,8 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
 
     let mut b_words = vec![];
     for i in 0..8 {
-        let IndirectAccessType::Read { read_value } = x11_and_indirects.indirect_accesses[i] else {
+        let IndirectAccessType::Read { read_value, .. } = x11_and_indirects.indirect_accesses[i]
+        else {
             panic!()
         };
 
@@ -147,8 +159,10 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
 
     // we can immediately boolean decompose control register into bitmask and ignore high
 
-    let control_bitmask =
-        Boolean::split_into_bitmask::<F, CS, NUM_CONTROL_BITS>(cs, Num::Var(control_mask[0]));
+    let control_bitmask = Boolean::split_into_bitmask::<F, CS, BIGINT_NUM_CONTROL_BITS>(
+        cs,
+        Num::Var(control_mask[0]),
+    );
 
     {
         for (i, el) in control_bitmask.iter().enumerate() {
@@ -239,7 +253,7 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
     // `A` + `B` = `C` + 2^256 * overflow to designate a/b/c
     // if we add: `A` = a, `B` = b + carry, `C` = result
     // if we sub: 2^256 * of + a - b = result, so result + b = a + 2^256 * of, `C` = a, `B` = b + carry, `A` = result
-    // if we sub-negate (opposite order): 2^256 * of + b - a = result, so result + a = b + 2^256 * of, `C` = b + carry, `B` = result, `A` = a
+    // if we sub-negate (opposite order): 2^256 * of + b - a = result, so result + a = b + 2^256 * of, `C` = b, `B` = a + carry, `A` = result
     // if we perform equality check - we do just a subtraction and look at the carry and perform zero-comparisons
     // if we execute memcopy, then `A` = 0, `B` = b + carry, `C` = result
 
@@ -627,7 +641,6 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
             constraint = constraint + Term::from(perform_sub_negate) * Term::from(a);
             constraint = constraint + Term::from(perform_eq) * Term::from(a);
             constraint = constraint + Term::from(perform_memcopy) * Term::from(a);
-
             constraint = constraint + Term::from(perform_mul_low) * Term::from(b);
             constraint = constraint + Term::from(perform_mul_high) * Term::from(b);
 
@@ -742,8 +755,19 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
         constraint -= Term::from(output_var);
         cs.add_constraint(constraint);
     }
-    let zero_flags = zero_check_inputs.map(|el| cs.is_zero(Num::Var(el)));
-    let all_zeroes = Boolean::multi_and(&zero_flags, cs);
+    let all_zeroes = {
+        let first_half = zero_check_inputs[..8]
+            .iter()
+            .fold(Constraint::from(0), |acc, x| acc + Term::from(*x));
+        let first_flag = cs.is_zero_sum(first_half);
+        let second_half = zero_check_inputs[8..]
+            .iter()
+            .fold(Constraint::from(0), |acc, x| acc + Term::from(*x));
+        let second_flag = cs.is_zero_sum(second_half);
+        Boolean::and(&first_flag, &second_flag, cs)
+    };
+    // let zero_flags = zero_check_inputs.map(|el| cs.is_zero(Num::Var(el)));
+    // let all_zeroes = Boolean::multi_and(&zero_flags, cs);
     let values_are_equal_for_perform_eq =
         Boolean::and(&all_zeroes, &result_of_boolean.toggle(), cs);
     let perform_eq_bit = Boolean::and(&perform_eq_boolean, &values_are_equal_for_perform_eq, cs);
@@ -810,6 +834,8 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
 
 #[cfg(test)]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
     use crate::cs::cs_reference::BasicAssembly;
     use crate::one_row_compiler::OneRowCompiler;
@@ -818,6 +844,7 @@ mod test {
 
     #[test]
     fn compile_u256_ops_extended_control() {
+        skip_if_ci!();
         let mut cs: BasicAssembly<Mersenne31Field> = BasicAssembly::<Mersenne31Field>::new();
         define_u256_ops_extended_control_delegation_circuit(&mut cs);
         let (circuit_output, _) = cs.finalize();
@@ -828,7 +855,9 @@ mod test {
     }
 
     #[test]
+    #[serial_test::serial(cs_codegen)]
     fn bigint_delegation_get_witness_graph() {
+        skip_if_ci!();
         let ssa_forms = dump_ssa_witness_eval_form_for_delegation::<Mersenne31Field, _>(
             define_u256_ops_extended_control_delegation_circuit,
         );

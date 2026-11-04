@@ -16,6 +16,7 @@ worker = { workspace = true, optional = true }
 
 [features]
 pow = ["worker"]
+deterministic_pow = []
 blake2_with_compression = ["blake2s_u32/blake2_with_compression"]
 
 default = []

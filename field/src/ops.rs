@@ -114,7 +114,7 @@ pub(crate) const fn fma_mod(a: u32, b: u32, c: u32) -> u32 {
     add_mod(c, t)
 }
 
-// RISC-V target specific implementation
+// risc-v target specific implementation
 
 #[cfg(target_arch = "riscv32")]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]

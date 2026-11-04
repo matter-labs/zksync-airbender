@@ -12,7 +12,7 @@ pub fn evaluate_delegation_memory_witness<O: Oracle<Mersenne31Field>, A: GoodAll
     assert!(compiled_circuit
         .memory_layout
         .shuffle_ram_inits_and_teardowns
-        .is_none());
+        .is_empty());
     assert!(compiled_circuit
         .memory_layout
         .shuffle_ram_access_sets
@@ -77,21 +77,21 @@ pub(crate) unsafe fn process_delegation_requests_execution<O: Oracle<Mersenne31F
     if let Some(delegation_processor_layout) =
         compiled_circuit.memory_layout.delegation_processor_layout
     {
-        write_boolean_placeholder_into_memory_columns(
+        write_boolean_placeholder_into_columns(
             delegation_processor_layout.multiplicity,
             Placeholder::ExecuteDelegation,
             oracle,
             memory_row,
             absolute_row_idx,
         );
-        write_u16_placeholder_into_memory_columns(
+        write_u16_placeholder_into_columns(
             delegation_processor_layout.abi_mem_offset_high,
-            Placeholder::DegelationABIOffset,
+            Placeholder::DelegationABIOffset,
             oracle,
             memory_row,
             absolute_row_idx,
         );
-        write_timestamp_placeholder_into_memory_columns(
+        write_timestamp_placeholder_into_columns(
             delegation_processor_layout.write_timestamp,
             Placeholder::DelegationWriteTimestamp,
             oracle,
@@ -166,14 +166,14 @@ pub(crate) unsafe fn evaluate_indirect_memory_accesses<
     {
         let register_index = mem_query.register_access.get_register_index() as usize;
         // first serve register access by itself
-        write_timestamp_placeholder_into_memory_columns(
+        write_timestamp_placeholder_into_columns(
             mem_query.register_access.get_read_timestamp_columns(),
             Placeholder::DelegationRegisterReadTimestamp(register_index),
             oracle,
             memory_row,
             absolute_row_idx,
         );
-        write_u32_placeholder_into_memory_columns(
+        write_u32_placeholder_into_columns(
             mem_query.register_access.get_read_value_columns(),
             Placeholder::DelegationRegisterReadValue(register_index),
             oracle,
@@ -182,7 +182,7 @@ pub(crate) unsafe fn evaluate_indirect_memory_accesses<
         );
 
         if let RegisterAccessColumns::WriteAccess { write_value, .. } = &mem_query.register_access {
-            write_u32_placeholder_into_memory_columns(
+            write_u32_placeholder_into_columns(
                 *write_value,
                 Placeholder::DelegationRegisterWriteValue(register_index),
                 oracle,
@@ -250,12 +250,7 @@ pub(crate) unsafe fn evaluate_indirect_memory_accesses<
             for (indirect_access_idx, indirect_access) in
                 mem_query.indirect_accesses.iter().enumerate()
             {
-                debug_assert_eq!(
-                    indirect_access_idx * 4,
-                    indirect_access.get_offset() as usize
-                );
-
-                write_timestamp_placeholder_into_memory_columns(
+                write_timestamp_placeholder_into_columns(
                     indirect_access.get_read_timestamp_columns(),
                     Placeholder::DelegationIndirectReadTimestamp {
                         register_index,
@@ -265,7 +260,7 @@ pub(crate) unsafe fn evaluate_indirect_memory_accesses<
                     memory_row,
                     absolute_row_idx,
                 );
-                write_u32_placeholder_into_memory_columns(
+                write_u32_placeholder_into_columns(
                     indirect_access.get_read_value_columns(),
                     Placeholder::DelegationIndirectReadValue {
                         register_index,
@@ -276,7 +271,7 @@ pub(crate) unsafe fn evaluate_indirect_memory_accesses<
                     absolute_row_idx,
                 );
                 if let IndirectAccessColumns::WriteAccess { write_value, .. } = indirect_access {
-                    write_u32_placeholder_into_memory_columns(
+                    write_u32_placeholder_into_columns(
                         *write_value,
                         Placeholder::DelegationIndirectWriteValue {
                             register_index,
@@ -288,19 +283,26 @@ pub(crate) unsafe fn evaluate_indirect_memory_accesses<
                     );
                 }
 
-                if indirect_access_idx > 0 {
-                    let carry_bit_column =
-                        indirect_access.get_address_derivation_carry_bit_column();
-                    if carry_bit_column.num_elements() > 0 {
-                        // and the only non-trivial part is to compute address derivation carry bit
-                        let (derived_address, of) = base_address.overflowing_add(
-                            (indirect_access_idx * std::mem::size_of::<u32>()) as u32,
-                        );
-                        assert!(of == false);
-                        let carry_bit = (derived_address >> 16) != high;
+                let carry_bit_column = indirect_access.get_address_derivation_carry_bit_column();
 
-                        memory_row[carry_bit_column.start()] = Mersenne31Field(carry_bit as u32);
-                    }
+                if carry_bit_column.num_elements() > 0 {
+                    assert!(indirect_access.variable_dependent().is_none());
+                    // and the only non-trivial part is to compute address derivation carry bit
+                    let (derived_address, of) = base_address
+                        .overflowing_add((indirect_access_idx * std::mem::size_of::<u32>()) as u32);
+                    assert!(of == false);
+                    let carry_bit = (derived_address >> 16) != high;
+
+                    memory_row[carry_bit_column.start()] = Mersenne31Field(carry_bit as u32);
+                }
+
+                if let Some((_, v, i)) = indirect_access.variable_dependent() {
+                    // need oracle support for that, as we can not have a generic logic to derive it
+                    let placeholder =
+                        Placeholder::DelegationIndirectAccessVariableOffset { variable_index: i };
+                    let offset =
+                        oracle.get_u16_witness_from_placeholder(placeholder, absolute_row_idx);
+                    memory_row[v.start()] = Mersenne31Field(offset as u32);
                 }
 
                 if COMPUTE_WITNESS {
@@ -328,7 +330,7 @@ pub(crate) unsafe fn evaluate_indirect_memory_accesses<
                         );
                     assert_eq!(
                         predicate, final_borrow,
-                        "failed to compare indirect memory access timestamps at row {} for access {}: read is {}, writes {}",
+                        "failed to compare indirect memory access timestamps at row {} for access {}: read is {}, write is {}",
                         absolute_row_idx,
                         indirect_access_idx,
                         ((read_timestamp_high as TimestampScalar) << TIMESTAMP_COLUMNS_NUM_BITS) | (read_timestamp_low as TimestampScalar),

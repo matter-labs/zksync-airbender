@@ -122,10 +122,16 @@ impl<F: PrimeField> DecoderOutputSource<F, RegisterDecompositionWithSign<F>>
     }
 }
 
+pub fn pad_bytecode_bytes<const ROM_ADDRESS_SPACE_BOUND: u32>(bytecode: &mut Vec<u8>) {
+    assert!(ROM_ADDRESS_SPACE_BOUND.is_power_of_two());
+    assert!(bytecode.len() as u32 <= ROM_ADDRESS_SPACE_BOUND);
+    bytecode.resize(ROM_ADDRESS_SPACE_BOUND as usize, 0);
+}
+
 pub fn pad_bytecode<const ROM_ADDRESS_SPACE_BOUND: u32>(bytecode: &mut Vec<u32>) {
     assert!(ROM_ADDRESS_SPACE_BOUND.is_power_of_two());
     assert!(bytecode.len() as u32 <= ROM_ADDRESS_SPACE_BOUND / 4);
-    bytecode.resize((ROM_ADDRESS_SPACE_BOUND / 4) as usize, UNIMP_OPCODE);
+    bytecode.resize((ROM_ADDRESS_SPACE_BOUND / 4) as usize, 0);
 }
 
 /// Creating a table with ROM (program) data.
@@ -210,6 +216,70 @@ pub fn create_table_for_rom_image<
 
             index
         }),
+        id,
+    )
+}
+
+/// Creating a table with word-grained ROM (program) data.
+/// The table will have a constant size (ROM_ADDRESS_SPACE_BOUND / 4), and look like this:
+/// (0, image bytes 0..2, image bytes 2..4)
+/// (1, image bytes 4..6, image bytes 6..8)
+// We have to do this his way, as our prime field is a little bit smaller than 32 bits.
+// All the entries larger than the image will be filled with UNIMP_OPCODE.
+pub fn create_table_for_aligned_rom_image<
+    F: PrimeField,
+    const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
+>(
+    image: &[u32],
+    id: u32,
+) -> LookupTable<F, 3> {
+    use crate::tables::*;
+
+    assert!(ROM_ADDRESS_SPACE_SECOND_WORD_BITS > 0);
+
+    assert!(
+        image.len() * 4 <= 1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS),
+        "ROM size can be at most {} bytes ({} words), but input is {} words",
+        1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS),
+        (1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)) / 4,
+        image.len()
+    );
+
+    let keys = key_for_continuous_log2_range(16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS - 2);
+
+    const TABLE_NAME: &'static str = "Word-grained ROM table";
+    let image = image.to_vec();
+    LookupTable::<F, 3>::create_table_from_key_and_key_generation_closure(
+        &keys,
+        TABLE_NAME.to_string(),
+        1,
+        move |key| {
+            let word_index = key[0].as_u64_reduced();
+            assert!(
+                word_index < 1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS - 2) as u64,
+                "Word index = {} is too large for ROM bound {} words",
+                word_index,
+                1 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS - 2)
+            );
+            let word_index = word_index as usize;
+            let opcode = if word_index < image.len() {
+                let opcode = image[word_index];
+
+                opcode
+            } else {
+                // UNIMP opcodes
+                UNIMP_OPCODE
+            };
+            let low = opcode as u16;
+            let high = (opcode >> 16) as u16;
+
+            let mut result = [F::ZERO; 3];
+            result[0] = F::from_u64_unchecked(low as u64);
+            result[1] = F::from_u64_unchecked(high as u64);
+
+            (word_index as usize, result)
+        },
+        Some(first_key_index_gen_fn::<F, 3>),
         id,
     )
 }
@@ -441,7 +511,7 @@ mod tests {
     #[test]
     fn rom_table_test() {
         let image = [100_000, 200_000, 0];
-        let table = create_table_for_rom_image::<Mersenne31Field, 16>(&image, 15);
+        let table = create_table_for_rom_image::<Mersenne31Field, 4>(&image, 15);
 
         // Now table should have entries:
         // 0 -- 0x86a0 0x1

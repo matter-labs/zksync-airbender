@@ -14,14 +14,20 @@ use field::{Mersenne31Field, Mersenne31Quartic};
 use quote::quote;
 use std::collections::BTreeSet;
 
+mod bytecode_preprocessed_executor;
+mod compile_init_and_teardown_circuit;
+mod compile_layout;
+mod decoder_compilation;
+mod executor_compilation;
+
 pub mod delegation;
 pub mod layout_utils;
 pub mod stage_2_layout;
 
-mod compile_layout;
-
 pub use self::layout_utils::*;
 pub use self::stage_2_layout::*;
+
+pub const SHIFT_16: u64 = 1 << 16;
 
 pub fn array_to_tokens<T: quote::ToTokens, const N: usize>(
     els: &[T; N],
@@ -700,22 +706,36 @@ impl quote::ToTokens for IndirectAccessColumns {
             IndirectAccessColumns::ReadAccess {
                 read_timestamp,
                 read_value,
-                offset,
                 address_derivation_carry_bit,
+                offset_constant,
+                variable_dependent,
             } => {
-                quote! {
-                    IndirectAccessColumns::ReadAccess { read_timestamp: #read_timestamp, read_value: #read_value, offset: #offset, address_derivation_carry_bit: #address_derivation_carry_bit }
+                if let Some((c, v, i)) = variable_dependent {
+                    quote! {
+                        IndirectAccessColumns::ReadAccess { read_timestamp: #read_timestamp, read_value: #read_value, address_derivation_carry_bit: #address_derivation_carry_bit, offset_constant: #offset_constant, variable_dependent: Some((#c, #v, #i)) }
+                    }
+                } else {
+                    quote! {
+                        IndirectAccessColumns::ReadAccess { read_timestamp: #read_timestamp, read_value: #read_value, address_derivation_carry_bit: #address_derivation_carry_bit, offset_constant: #offset_constant, variable_dependent: None }
+                    }
                 }
             }
             IndirectAccessColumns::WriteAccess {
                 read_timestamp,
                 read_value,
                 write_value,
-                offset,
                 address_derivation_carry_bit,
+                offset_constant,
+                variable_dependent,
             } => {
-                quote! {
-                    IndirectAccessColumns::WriteAccess { read_timestamp: #read_timestamp, read_value: #read_value, write_value: #write_value, offset: #offset, address_derivation_carry_bit: #address_derivation_carry_bit }
+                if let Some((c, v, i)) = variable_dependent {
+                    quote! {
+                        IndirectAccessColumns::WriteAccess { read_timestamp: #read_timestamp, read_value: #read_value, write_value: #write_value, address_derivation_carry_bit: #address_derivation_carry_bit, offset_constant: #offset_constant, variable_dependent: Some((#c, #v, #i)) }
+                    }
+                } else {
+                    quote! {
+                        IndirectAccessColumns::WriteAccess { read_timestamp: #read_timestamp, read_value: #read_value, write_value: #write_value, address_derivation_carry_bit: #address_derivation_carry_bit, offset_constant: #offset_constant, variable_dependent: None }
+                    }
                 }
             }
         };
@@ -803,61 +823,6 @@ impl quote::ToTokens for DelegationProcessingLayout {
     }
 }
 
-// #[derive(Clone, Debug)]
-// pub struct CompiledWitnessEvaluator<F: PrimeField> {
-//     pub sources: Range<usize>,
-//     pub targets: Range<usize>,
-//     pub condition: Option<ColumnAddress>,
-//     pub constants: Range<usize>,
-//     pub table_type: TableType,
-//     pub func: fn(WitnessGenSource<'_, F>, WitnessGenDest<'_, F>, &[F], &TableDriver<F>, TableType),
-// }
-
-// pub fn add_copy_constraint_if_needed<F: PrimeField>(
-//     variable: Variable,
-//     num_variables: &mut u64,
-//     constraints: &mut Vec<(Constraint<F>, bool)>,
-//     witness_evaluators: &mut Vec<WitnessEvaluator<F>>,
-//     all_variables_to_place: &mut BTreeSet<Variable>,
-// ) -> Variable {
-//     if all_variables_to_place.contains(&variable) {
-//         return variable;
-//     }
-
-//     let new_var = Variable(*num_variables);
-//     *num_variables += 1;
-
-//     all_variables_to_place.insert(new_var);
-
-//     // add copy constraint
-//     let mut constraint = Constraint::from(Term::from(variable) - Term::from(new_var));
-//     constraint.normalize();
-//     // can not be used for optimizations!
-//     constraints.push((constraint, true));
-
-//     // and add witness evaluator
-//     let value_fn = |input: WitnessGenSource<'_, F>,
-//                     mut output: WitnessGenDest<'_, F>,
-//                     constants: &[F],
-//                     table_driver: &TableDriver<F>,
-//                     table_type: TableType| {
-//         debug_assert!(constants.is_empty());
-//         output[0] = input[0];
-//     };
-
-//     let wit_resolution = WitnessEvaluator {
-//         sources: SmallVec::from_slice(&[variable]),
-//         targets: SmallVec::from_slice(&[new_var]),
-//         condition: None,
-//         constants: SmallVec::new(),
-//         table_type: TableType::ZeroEntry,
-//         func: value_fn,
-//     };
-//     witness_evaluators.push(wit_resolution);
-
-//     new_var
-// }
-
 impl quote::ToTokens for BoundaryConstraintLocation {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let stream = match *self {
@@ -882,7 +847,60 @@ impl quote::ToTokens for BoundaryConstraintLocation {
     }
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+impl quote::ToTokens for MachineStatePermutationVariables {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let MachineStatePermutationVariables { pc, timestamp } = self;
+        let stream = quote! {
+            MachineStatePermutationVariables {
+                pc: #pc,
+                timestamp: #timestamp,
+            }
+        };
+
+        tokens.extend(stream);
+    }
+}
+
+impl quote::ToTokens for IntermediateStatePermutationVariables {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let IntermediateStatePermutationVariables {
+            pc,
+            timestamp,
+            execute,
+            rs1_index,
+            rs2_index,
+            rd_index,
+            decoder_witness_is_in_memory,
+            rd_is_zero,
+            imm,
+            funct3,
+            funct7,
+            circuit_family,
+            circuit_family_extra_mask,
+        } = self;
+        let stream = quote! {
+            IntermediateStatePermutationVariables {
+                pc: #pc,
+                timestamp: #timestamp,
+                execute: #execute,
+                rs1_index: #rs1_index,
+                rs2_index: #rs2_index,
+                rd_index: #rd_index,
+                decoder_witness_is_in_memory: #decoder_witness_is_in_memory,
+                rd_is_zero: #rd_is_zero,
+                imm: #imm,
+                funct3: #funct3,
+                funct7: #funct7,
+                circuit_family: #circuit_family,
+                circuit_family_extra_mask: #circuit_family_extra_mask,
+            }
+        };
+
+        tokens.extend(stream);
+    }
+}
+
+#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub struct CompiledCircuitArtifact<F: PrimeField> {
     pub witness_layout: WitnessSubtree<F>,
     pub memory_layout: MemorySubtree,
@@ -897,14 +915,16 @@ pub struct CompiledCircuitArtifact<F: PrimeField> {
 
     pub scratch_space_size_for_witness_gen: usize,
 
-    pub lazy_init_address_aux_vars: Option<ShuffleRamAuxComparisonSet>,
+    pub lazy_init_address_aux_vars: Vec<ShuffleRamAuxComparisonSet>,
 
     // we need the field below to generate witness only
     pub memory_queries_timestamp_comparison_aux_vars: Vec<ColumnAddress>,
     pub batched_memory_access_timestamp_comparison_aux_vars: BatchedRamTimestampComparisonAuxVars,
     pub register_and_indirect_access_timestamp_comparison_aux_vars:
         RegisterAndIndirectAccessTimestampComparisonAuxVars,
+    pub executor_family_circuit_next_timestamp_aux_var: Option<ColumnAddress>,
 
+    pub executor_family_decoder_table_size: usize,
     pub trace_len: usize,
     pub table_offsets: Vec<u32>,
     pub total_tables_size: usize,
@@ -946,7 +966,7 @@ impl<F: PrimeField> CompiledCircuitArtifact<F> {
             degree_1_constraints: &*degree_1_buffer,
             state_linkage_constraints: &self.state_linkage_constraints,
             public_inputs: &self.public_inputs,
-            lazy_init_address_aux_vars: self.lazy_init_address_aux_vars,
+            lazy_init_address_aux_vars: &self.lazy_init_address_aux_vars,
             // memory_queries_timestamp_comparison_aux_vars: &self
             //     .memory_queries_timestamp_comparison_aux_vars,
             // batched_memory_access_timestamp_comparison_aux_vars: self
@@ -1020,7 +1040,8 @@ fn layout_witness_subtree_variable_at_column(
         variable
     );
     let address = ColumnAddress::WitnessSubtree(offset);
-    layout.insert(variable, address);
+    let existing = layout.insert(variable, address);
+    assert!(existing.is_none());
 
     address
 }
@@ -1063,7 +1084,8 @@ fn layout_witness_subtree_multiple_variables<const N: usize>(
             "variable {:?} was already placed",
             variable
         );
-        layout.insert(variable, place);
+        let existing = layout.insert(variable, place);
+        assert!(existing.is_none());
     }
 
     assert_eq!(place_offset, *offset);
@@ -1071,6 +1093,7 @@ fn layout_witness_subtree_multiple_variables<const N: usize>(
     columns
 }
 
+#[track_caller]
 fn layout_memory_subtree_multiple_variables<const N: usize>(
     offset: &mut usize,
     variables: [Variable; N],
@@ -1088,7 +1111,8 @@ fn layout_memory_subtree_multiple_variables<const N: usize>(
             "variable {:?} was already placed",
             variable
         );
-        layout.insert(variable, place);
+        let existing = layout.insert(variable, place);
+        assert!(existing.is_none());
     }
 
     assert_eq!(place_offset, *offset);

@@ -1,11 +1,13 @@
 # GPU proving
 
-You can use a GPU to greatly improve proving speed.
+GPU proving uses the same proof targets as the CPU flow, but swaps the proving backend with `--backend gpu`.
+
 ```shell
-cargo run -p cli --release --no-default-features --features gpu prove --bin prover/app.bin --output-dir /tmp/foo --gpu
+cargo run -p cli --release --features gpu -- prove --bin prover/app.bin --output-dir /tmp/foo --backend gpu
 ```
 
-You must compile with the 'gpu' feature flag for the relevant libraries ro be linked, and you must pass the '--gpu' parameter.
+Notes:
 
-Current issues:
-* It works only on a basic & recursion level - final proofs are still done on CPU (as they require 150GB of RAM).
+* Build the CLI with the `gpu` feature so the CUDA libraries are linked.
+* Select the GPU backend explicitly with `--backend gpu`.
+* Current deployments should plan for at least 32GB of VRAM.

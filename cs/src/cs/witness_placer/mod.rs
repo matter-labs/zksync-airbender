@@ -1,9 +1,8 @@
-use crate::definitions::Variable;
+use super::placeholder::Placeholder;
+use crate::definitions::*;
 use core::fmt::Debug;
 use field::{Field, PrimeField};
 use std::any::Any;
-
-use super::placeholder::Placeholder;
 
 pub mod cs_debug_evaluator;
 pub mod graph_description;
@@ -123,6 +122,7 @@ pub struct WitnessResolutionGraph<F: PrimeField, W: WitnessPlacer<F>> {
             Box<dyn WitnessResolutionDescription<F, W>>,
         >,
     >,
+    ordered_resolvers: Vec<Box<dyn WitnessResolutionDescription<F, W>>>,
     _marker: std::marker::PhantomData<(F, W)>,
 }
 
@@ -139,19 +139,24 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
                 b: Box::new(EmptyResolution),
                 _marker: core::marker::PhantomData,
             }),
+            ordered_resolvers: vec![],
             _marker: core::marker::PhantomData,
         }
     }
     pub fn append<T: WitnessResolutionDescription<F, W>>(self, node: T) -> Self {
         let Self {
-            inner, reorder_fn, ..
+            inner,
+            reorder_fn,
+            mut ordered_resolvers,
+            ..
         } = self;
 
         // we manually make next step via dyn cast
 
         let WitnessResolutionNode { a, b, .. } = inner;
         let next_step = Box::new(node) as Box<dyn WitnessResolutionDescription<F, W>>;
-        let result = (reorder_fn)(a, b, next_step);
+        let result = (reorder_fn)(a, b, next_step.clone());
+        ordered_resolvers.push(next_step);
 
         let reorder_fn = Box::new(
             |a: Box<dyn WitnessResolutionDescription<F, W>>,
@@ -179,6 +184,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
         Self {
             inner: result,
             reorder_fn,
+            ordered_resolvers,
             _marker: core::marker::PhantomData,
         }
     }
@@ -186,6 +192,16 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
     pub fn append_inplace<T: WitnessResolutionDescription<F, W>>(&mut self, node: T) {
         let this = core::mem::replace(self, Self::placeholder());
         *self = this.append(node);
+    }
+
+    pub fn evaluate(&self, placer: &mut W) {
+        self.inner.evaluate(placer);
+    }
+
+    pub fn replay_resolvers(&self, placer: &mut W) {
+        for resolver in self.ordered_resolvers.iter() {
+            placer.record_resolver(resolver.clone());
+        }
     }
 
     pub fn new() -> Self {
@@ -221,6 +237,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
         Self {
             inner: first_step,
             reorder_fn,
+            ordered_resolvers: vec![],
             _marker: core::marker::PhantomData,
         }
     }
@@ -394,6 +411,9 @@ pub trait WitnessPlacer<F: PrimeField>: WitnessTypeSet<F> {
     ) -> [Self::Field; N];
 
     fn lookup_enforce<const M: usize>(&mut self, inputs: &[Self::Field; M], table_id: &Self::U16);
+
+    fn assume_assigned(&mut self, variable: Variable);
+    fn spec_decoder_relation(&mut self, pc: [Variable; 2], decoder_data: &DecoderData<F>);
 }
 
 pub trait WitnessMask: 'static + Sized + Clone + Debug {
@@ -473,6 +493,11 @@ pub trait WitnessComputationalInteger<T: 'static + Sized>: WitnessComputationCor
     fn get_bit(&self, bit_idx: u32) -> Self::Mask;
     fn equal_to_constant(&self, value: T) -> Self::Mask;
     fn get_lowest_bits(&self, num_bits: u32) -> Self;
+    // we need some bitwise ops
+    fn or(&self, other: &Self) -> Self;
+    fn and(&self, other: &Self) -> Self;
+    fn xor(&self, other: &Self) -> Self;
+    fn not(&self) -> Self;
 }
 
 pub trait WitnessComputationalU32: WitnessComputationalInteger<u32> {
@@ -769,11 +794,11 @@ macro_rules! impl_comp_core {
             }
             #[inline(always)]
             fn shl(&self, shift_magnitude: u32) -> Self {
-                *self << shift_magnitude
+                self.unbounded_shl(shift_magnitude)
             }
             #[inline(always)]
             fn shr(&self, shift_magnitude: u32) -> Self {
-                *self >> shift_magnitude
+                self.unbounded_shr(shift_magnitude)
             }
             #[inline(always)]
             fn get_bit(&self, bit_idx: u32) -> Self::Mask {
@@ -786,6 +811,24 @@ macro_rules! impl_comp_core {
             #[inline(always)]
             fn get_lowest_bits(&self, num_bits: u32) -> Self {
                 *self & ((1 << num_bits) - 1)
+            }
+            #[inline(always)]
+            fn not(&self) -> Self {
+                !*self
+            }
+            #[inline(always)]
+            fn and(&self, other: &Self) -> Self {
+                self & other
+            }
+
+            #[inline(always)]
+            fn or(&self, other: &Self) -> Self {
+                self | other
+            }
+
+            #[inline(always)]
+            fn xor(&self, other: &Self) -> Self {
+                self ^ other
             }
         }
     };
@@ -905,10 +948,45 @@ impl WitnessComputationalI32 for i32 {
     }
     #[inline(always)]
     fn div_rem_assume_nonzero_divisor_no_overflow(divident: &Self, divisor: &Self) -> (Self, Self) {
-        let q = divident / divisor;
-        let r = divident % divisor;
+        // we should follow RISC-V convention
+        if *divident == i32::MIN && *divisor == -1 {
+            let q = i32::MIN;
+            let r = 0;
 
-        (q, r)
-        // divident.div_rem(*divisor)
+            (q, r)
+        } else {
+            let q = divident / divisor;
+            let r = divident % divisor;
+
+            (q, r)
+        }
+
+        // if divident.checked_div(*divisor).is_none() {
+        //     panic!("Dividing {} by {} with overflow", divident, divisor);
+        // }
+
+        // let q = divident / divisor;
+        // let r = divident % divisor;
+
+        // (q, r)
+    }
+}
+
+pub fn witness_early_branch_if_possible<
+    F: PrimeField,
+    W: WitnessPlacer<F>,
+    T: WitnessResolutionDescription<F, W>,
+>(
+    branch_mask: W::Mask,
+    placer: &mut W,
+    node: &T,
+) {
+    if W::CAN_BRANCH {
+        if W::branch(&branch_mask) {
+            node.evaluate(placer);
+        }
+    } else {
+        // we should use conditional assignment anyway
+        node.evaluate(placer);
     }
 }

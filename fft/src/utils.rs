@@ -338,7 +338,7 @@ pub const fn bitreverse_index(index: usize, num_bits: u32) -> usize {
 }
 
 /// Allocate a vector of type T, but with extra restriction that it has an alignment
-/// of type U. Capacity should be divisible by size_of::<U>/size_of::<T>
+/// of type U. Capacity should be divisible by `size_of::<U>() / size_of::<T>()`.
 #[inline]
 pub fn allocate_in_with_alignment_of<T: Sized, U: Sized, A: GoodAllocator>(
     capacity: usize,

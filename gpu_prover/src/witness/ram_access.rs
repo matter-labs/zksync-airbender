@@ -1,4 +1,5 @@
 use super::column::*;
+use super::option::u32::*;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
@@ -126,8 +127,8 @@ pub struct ShuffleRamAuxComparisonSet {
     pub final_borrow: ColumnAddress,
 }
 
-impl From<&cs::definitions::ShuffleRamAuxComparisonSet> for ShuffleRamAuxComparisonSet {
-    fn from(value: &cs::definitions::ShuffleRamAuxComparisonSet) -> Self {
+impl From<cs::definitions::ShuffleRamAuxComparisonSet> for ShuffleRamAuxComparisonSet {
+    fn from(value: cs::definitions::ShuffleRamAuxComparisonSet) -> Self {
         Self {
             aux_low_high: [value.aux_low_high[0].into(), value.aux_low_high[1].into()],
             intermediate_borrow: value.intermediate_borrow.into(),
@@ -237,32 +238,44 @@ impl From<cs::definitions::RegisterAccessColumns> for RegisterAccessColumns {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
+pub struct IndirectAccessVariableDependency {
+    pub offset: u32,
+    pub variable: ColumnSet<1>,
+    pub index: u32,
+}
+
 #[repr(C, u32)]
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
 pub enum IndirectAccessColumns {
     ReadAccess {
-        offset: u32,
         read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
         read_value: ColumnSet<REGISTER_SIZE>,
         address_derivation_carry_bit: ColumnSet<1>,
+        variable_dependent: Option<IndirectAccessVariableDependency>,
+        offset_constant: u32,
     },
     WriteAccess {
-        offset: u32,
         read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
         read_value: ColumnSet<REGISTER_SIZE>,
         write_value: ColumnSet<REGISTER_SIZE>,
         address_derivation_carry_bit: ColumnSet<1>,
+        variable_dependent: Option<IndirectAccessVariableDependency>,
+        offset_constant: u32,
     },
 }
 
 impl Default for IndirectAccessColumns {
     fn default() -> Self {
         Self::ReadAccess {
-            offset: 0,
             read_timestamp: ColumnSet::default(),
             read_value: ColumnSet::default(),
             address_derivation_carry_bit: ColumnSet::default(),
+            variable_dependent: Option::None,
+            offset_constant: 0,
         }
     }
 }
@@ -271,28 +284,48 @@ impl From<cs::definitions::IndirectAccessColumns> for IndirectAccessColumns {
     fn from(value: cs::definitions::IndirectAccessColumns) -> Self {
         match value {
             cs::definitions::IndirectAccessColumns::ReadAccess {
-                offset,
                 read_timestamp,
                 read_value,
                 address_derivation_carry_bit,
+                variable_dependent,
+                offset_constant,
             } => Self::ReadAccess {
-                offset,
                 read_timestamp: read_timestamp.into(),
                 read_value: read_value.into(),
                 address_derivation_carry_bit: address_derivation_carry_bit.into(),
+                variable_dependent: variable_dependent
+                    .map(
+                        |(offset, variable, index)| IndirectAccessVariableDependency {
+                            offset,
+                            variable: variable.into(),
+                            index: index as u32,
+                        },
+                    )
+                    .into(),
+                offset_constant,
             },
             cs::definitions::IndirectAccessColumns::WriteAccess {
-                offset,
                 read_timestamp,
                 read_value,
                 write_value,
                 address_derivation_carry_bit,
+                variable_dependent,
+                offset_constant,
             } => Self::WriteAccess {
-                offset,
                 read_timestamp: read_timestamp.into(),
                 read_value: read_value.into(),
                 write_value: write_value.into(),
                 address_derivation_carry_bit: address_derivation_carry_bit.into(),
+                variable_dependent: variable_dependent
+                    .map(
+                        |(offset, variable, index)| IndirectAccessVariableDependency {
+                            offset,
+                            variable: variable.into(),
+                            index: index as u32,
+                        },
+                    )
+                    .into(),
+                offset_constant,
             },
         }
     }
@@ -380,15 +413,15 @@ pub struct RegisterAndIndirectAccessTimestampComparisonAuxVars {
     pub aux_borrow_sets: [AuxBorrowSet; MAX_AUX_BORROW_SETS_COUNT],
 }
 
-impl From<&cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars>
+impl From<cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars>
     for RegisterAndIndirectAccessTimestampComparisonAuxVars
 {
-    fn from(value: &cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars) -> Self {
+    fn from(value: cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars) -> Self {
         let aux_borrow_sets_count = value.aux_borrow_sets.len() as u32;
         assert!(aux_borrow_sets_count <= MAX_AUX_BORROW_SETS_COUNT as u32);
         let mut aux_borrow_sets = [AuxBorrowSet::default(); MAX_AUX_BORROW_SETS_COUNT];
-        for (i, value) in value.aux_borrow_sets.iter().enumerate() {
-            aux_borrow_sets[i] = value.clone().into();
+        for (i, value) in value.aux_borrow_sets.into_iter().enumerate() {
+            aux_borrow_sets[i] = value.into();
         }
         Self {
             predicate: value.predicate.into(),

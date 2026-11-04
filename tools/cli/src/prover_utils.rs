@@ -1,732 +1,2712 @@
 use clap::ValueEnum;
-use execution_utils::Machine;
-use execution_utils::{
-    generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
-    get_padded_binary, ProgramProof, ProofList, ProofMetadata, RecursionStrategy,
-    UNIVERSAL_CIRCUIT_VERIFIER,
+use execution_utils::setups::{
+    binary_u8_to_u32, get_unified_circuit_artifact_for_machine_type,
+    get_unrolled_circuits_artifacts_for_machine_type, pad_bytecode_bytes_for_proving,
+    pad_bytecode_for_proving,
 };
-use verifier_common::parse_field_els_as_u32_from_u16_limbs_checked;
+use execution_utils::unified_circuit::verify_proof_in_unified_layer;
+use execution_utils::unified_circuit::{
+    flatten_proof_into_responses_for_unified_recursion,
+    prove_unified_for_machine_configuration_into_program_proof,
+};
+use execution_utils::unrolled::verify_unrolled_layer_proof;
+use execution_utils::unrolled::{
+    compute_setup_for_machine_configuration, flatten_proof_into_responses_for_unrolled_recursion,
+    prove_unrolled_for_machine_configuration_into_program_proof, UnrolledProgramProof,
+    UnrolledProgramSetup,
+};
+#[cfg(feature = "gpu")]
+use execution_utils::unrolled_gpu::{
+    UnifiedRecursionProverHostState, UnrolledProver, UnrolledProverLevel,
+};
+use execution_utils::verifier_binaries::{recursion_artifact, recursion_setup};
+use execution_utils::{RecursionArtifact, RecursionLayer};
+use prover::transcript::Blake2sBufferingTranscript;
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::cycle::{
+    IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation,
+};
+use serde::{Deserialize, Serialize};
+use sha3::{Digest, Keccak256};
+use std::borrow::Cow;
+use std::path::{Path, PathBuf};
+use std::time::Instant;
 
-use prover::{
-    prover_stages::Proof,
-    risc_v_simulator::abstractions::non_determinism::QuasiUARTSource,
-    transcript::{Blake2sBufferingTranscript, Seed},
-};
-use std::{alloc::Global, fs, io::Read, path::Path};
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
+pub enum SecurityLevel {
+    #[value(name = "80")]
+    Security80,
+    #[value(name = "100")]
+    Security100,
+}
+
+impl SecurityLevel {
+    pub const fn model(self) -> verifier_common::SecurityModel {
+        match self {
+            Self::Security80 => verifier_common::SecurityModel::Security80,
+            Self::Security100 => verifier_common::SecurityModel::Security100,
+        }
+    }
+
+    pub const fn unified_recursion_target_family_proofs(self) -> usize {
+        match self {
+            Self::Security80 => 1,
+            Self::Security100 => 2,
+        }
+    }
+
+    pub const fn unified_recursion_has_converged(self, family_proof_count: usize) -> bool {
+        family_proof_count == self.unified_recursion_target_family_proofs()
+    }
+}
+
+impl Default for SecurityLevel {
+    fn default() -> Self {
+        Self::Security80
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
+pub enum ProofTarget {
+    Base,
+    RecursionUnrolled,
+    RecursionUnified,
+    /// Multiple recursion-unified proofs of the same program combined into one
+    /// proof. Words 0..8 of the output are the keccak rolling hash of the
+    /// combined proofs' outputs; words 8..16 carry the shared recursion chain.
+    RecursionCombined,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
+pub enum ProverBackend {
+    Cpu,
+    Gpu,
+}
+
+#[derive(Clone, Debug)]
+pub struct CpuConfig {
+    pub cycles_bound: usize,
+    pub ram_bound: usize,
+    pub worker_threads: Option<usize>,
+}
+
+impl Default for CpuConfig {
+    fn default() -> Self {
+        Self {
+            cycles_bound: 1 << 31,
+            ram_bound: 1 << 30,
+            worker_threads: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct GpuConfig {
+    pub replay_worker_threads_count: usize,
+    pub memory_preset: GpuMemoryPreset,
+    /// Preallocated 64 MiB host buffers per concurrent job. Smaller pools save
+    /// pinned RAM but can stall proving when workers exhaust the pool.
+    pub host_allocators_per_job_count: usize,
+    /// Additional 64 MiB host buffers per GPU. With one job and one GPU, the
+    /// total pool size is the sum of the per-job and per-device counts.
+    pub host_allocators_per_device_count: usize,
+}
+
+impl Default for GpuConfig {
+    fn default() -> Self {
+        Self {
+            replay_worker_threads_count: 8,
+            memory_preset: GpuMemoryPreset::Auto,
+            host_allocators_per_job_count: 256,
+            host_allocators_per_device_count: 128,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum GpuMemoryPreset {
+    #[default]
+    Auto,
+    Normal,
+    Low,
+}
 
 #[cfg(feature = "gpu")]
-pub use gpu_prover::circuit_type::MainCircuitType;
-
-fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).expect(&format!("{filename}"));
-    serde_json::from_reader(src).unwrap()
+impl From<GpuMemoryPreset> for gpu_prover::prover::gpu_memory::GpuMemoryPreset {
+    fn from(value: GpuMemoryPreset) -> Self {
+        match value {
+            GpuMemoryPreset::Auto => Self::Auto,
+            GpuMemoryPreset::Normal => Self::Normal,
+            GpuMemoryPreset::Low => Self::Low,
+        }
+    }
 }
+
+#[derive(Clone, Debug)]
+pub struct ProgramProverConfig {
+    pub security_level: SecurityLevel,
+    pub target: ProofTarget,
+    pub backend: ProverBackend,
+    pub cpu: CpuConfig,
+    pub gpu: GpuConfig,
+}
+
+impl Default for ProgramProverConfig {
+    fn default() -> Self {
+        Self {
+            security_level: SecurityLevel::default(),
+            target: ProofTarget::RecursionUnified,
+            backend: default_backend_for_build(),
+            cpu: CpuConfig::default(),
+            gpu: GpuConfig::default(),
+        }
+    }
+}
+
+/// The app program to prove: its binary image and its `.text` section.
+#[derive(Clone)]
+pub enum ProgramSource {
+    /// Read from these files whenever the program is loaded.
+    Paths { bin_path: String, text_path: String },
+    /// Held in memory, e.g. embedded in the executable that proves it.
+    Bytes {
+        bin: Cow<'static, [u8]>,
+        text: Cow<'static, [u8]>,
+    },
+}
+
+impl ProgramSource {
+    pub fn from_paths(bin_path: String, text_path: Option<String>) -> Self {
+        let text_path = text_path.unwrap_or_else(|| derive_text_path(&bin_path));
+        Self::Paths {
+            bin_path,
+            text_path,
+        }
+    }
+
+    pub fn from_bytes(
+        bin: impl Into<Cow<'static, [u8]>>,
+        text: impl Into<Cow<'static, [u8]>>,
+    ) -> Self {
+        Self::Bytes {
+            bin: bin.into(),
+            text: text.into(),
+        }
+    }
+
+    /// The binary image and the `.text` section, read from their files if given as paths.
+    pub fn contents(&self) -> Result<(Cow<'_, [u8]>, Cow<'_, [u8]>), String> {
+        match self {
+            Self::Paths {
+                bin_path,
+                text_path,
+            } => {
+                let read = |path: &str, what: &str| {
+                    std::fs::read(path).map_err(|err| format!("{what} not found: {path} ({err})"))
+                };
+                Ok((
+                    Cow::Owned(read(bin_path, "binary")?),
+                    Cow::Owned(read(text_path, "text section")?),
+                ))
+            }
+            Self::Bytes { bin, text } => Ok((Cow::Borrowed(bin), Cow::Borrowed(text))),
+        }
+    }
+}
+
+impl std::fmt::Debug for ProgramSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Paths {
+                bin_path,
+                text_path,
+            } => f
+                .debug_struct("Paths")
+                .field("bin_path", bin_path)
+                .field("text_path", text_path)
+                .finish(),
+            Self::Bytes { bin, text } => f
+                .debug_struct("Bytes")
+                .field("bin_len", &bin.len())
+                .field("text_len", &text.len())
+                .finish(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct ProofTimingsMs {
+    pub total_ms: u64,
+    pub base_ms: u64,
+    pub unrolled_recursion_ms: Vec<u64>,
+    pub unified_recursion_ms: Vec<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct ProofCounts {
+    pub family_proof_count: usize,
+    pub inits_and_teardowns_proof_count: usize,
+    pub delegation_proof_count: usize,
+    pub delegation_proof_count_by_type: Vec<(u32, usize)>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProofArtifact {
+    pub schema_version: u32,
+    pub security_level: SecurityLevel,
+    pub target: ProofTarget,
+    pub backend: ProverBackend,
+    pub batch_id: u64,
+    pub cycles: u64,
+    pub program_bin_keccak: [u8; 32],
+    pub program_text_keccak: [u8; 32],
+    pub timings_ms: ProofTimingsMs,
+    pub proof_counts: ProofCounts,
+    pub proof: UnrolledProgramProof,
+}
+
+#[derive(Clone)]
+struct LoadedProgram {
+    bin_bytes: Vec<u8>,
+    text_bytes: Vec<u8>,
+    padded_bin_bytes: Vec<u8>,
+    padded_text_bytes: Vec<u8>,
+    padded_bin_u32: Vec<u32>,
+    padded_text_u32: Vec<u32>,
+}
+
+/// An embedded recursion verifier program together with its precomputed layer setup
+/// (`execution_utils::verifier_binaries::recursion_setup`), so no level ever derives
+/// the setup of an embedded binary at runtime.
+#[derive(Clone)]
+struct EmbeddedProgram {
+    padded_bin_u32: Vec<u32>,
+    padded_text_u32: Vec<u32>,
+    setup: UnrolledProgramSetup,
+}
+
+#[derive(Clone)]
+struct RecursionLevelData {
+    setup: UnrolledProgramSetup,
+    layouts: execution_utils::setups::CompiledCircuitsSet,
+    hash_chain: [u32; 8],
+    preimage: [u32; 16],
+}
+
+enum ProgramProverInner {
+    Cpu,
+    #[cfg(feature = "gpu")]
+    Gpu(UnrolledProver),
+}
+
+pub struct ProgramProver {
+    source: ProgramSource,
+    config: ProgramProverConfig,
+    inner: ProgramProverInner,
+}
+
 pub fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &Path) {
     let mut dst = std::fs::File::create(filename).unwrap();
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
 }
 
-/// Default amount of cycles, if no flag is set.
-pub const DEFAULT_CYCLES: usize = 32_000_000;
-
-// Determines when to stop proving.
-#[derive(Clone, Debug, ValueEnum)]
-pub enum ProvingLimit {
-    /// Does base + 1st recursion layer.
-    FinalRecursion,
-    /// Does base + both recursion layers.
-    FinalProof,
-    /// Also creates a final snark (requires zkos_wrapper)
-    Snark,
+pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
+    let src = std::fs::File::open(filename).expect(filename);
+    serde_json::from_reader(src).unwrap()
 }
 
 pub fn u32_from_hex_string(hex_string: &str) -> Vec<u32> {
-    // Check the string length is a multiple of 8 (for valid u32 chunks)
     if hex_string.len() % 8 != 0 {
         panic!("Hex string length is not a multiple of 8");
     }
-    // Parse the string in chunks of 8 characters
-    let numbers: Vec<u32> = hex_string
+
+    hex_string
         .as_bytes()
         .chunks(8)
         .map(|chunk| {
             let chunk_str = std::str::from_utf8(chunk).expect("Invalid UTF-8");
             u32::from_str_radix(chunk_str, 16).expect("Invalid hex number")
         })
-        .collect();
-
-    numbers
+        .collect()
 }
 
-pub fn create_proofs(
-    bin_path: &String,
-    output_dir: &String,
-    final_proof_name: &String,
-    input_data: Option<Vec<u32>>,
-    prev_metadata: &Option<String>,
-    machine: &Machine,
-    cycles: &Option<usize>,
-    until: &Option<ProvingLimit>,
-    recursion_mode: RecursionStrategy,
-    tmp_dir: &Option<String>,
-    use_gpu: bool,
-) {
-    let prev_metadata: Option<ProofMetadata> = prev_metadata
-        .as_ref()
-        .map(|prev_metadata| deserialize_from_file(&prev_metadata));
+pub fn default_backend_for_build() -> ProverBackend {
+    #[cfg(feature = "gpu")]
+    {
+        ProverBackend::Gpu
+    }
+    #[cfg(not(feature = "gpu"))]
+    {
+        ProverBackend::Cpu
+    }
+}
 
-    let binary = load_binary_from_path(bin_path);
+impl ProgramProver {
+    pub fn new(source: ProgramSource, config: ProgramProverConfig) -> Result<Self, String> {
+        if config.target == ProofTarget::RecursionCombined {
+            return Err(
+                "recursion-combined proofs are produced from existing recursion-unified \
+                 artifacts via `combine_artifacts` (CLI `combine` command), not by proving"
+                    .to_string(),
+            );
+        }
+        let inner = match config.backend {
+            ProverBackend::Cpu => ProgramProverInner::Cpu,
+            ProverBackend::Gpu => {
+                #[cfg(feature = "gpu")]
+                {
+                    let (binary, text) = source.contents()?;
+                    let mut prover_configuration =
+                        gpu_prover::execution::prover::ExecutionProverConfiguration::default();
+                    prover_configuration.replay_worker_threads_count =
+                        config.gpu.replay_worker_threads_count;
+                    prover_configuration.host_allocators_per_job_count =
+                        config.gpu.host_allocators_per_job_count;
+                    prover_configuration.host_allocators_per_device_count =
+                        config.gpu.host_allocators_per_device_count;
+                    prover_configuration.prover_context_config.gpu_memory_preset =
+                        config.gpu.memory_preset.into();
 
-    let num_instances = (cycles.unwrap_or(DEFAULT_CYCLES) / risc_v_cycles::NUM_CYCLES) + 1;
+                    let max_level = match config.target {
+                        ProofTarget::Base => UnrolledProverLevel::Base,
+                        ProofTarget::RecursionUnrolled => UnrolledProverLevel::RecursionUnrolled,
+                        ProofTarget::RecursionUnified => UnrolledProverLevel::RecursionUnified,
+                        ProofTarget::RecursionCombined => {
+                            unreachable!("rejected before backend selection")
+                        }
+                    };
 
-    println!(
-        "Will try proving now, with up to {} circuits.",
-        num_instances
-    );
+                    ProgramProverInner::Gpu(UnrolledProver::from_program(
+                        config.security_level.model(),
+                        &binary,
+                        &text,
+                        prover_configuration,
+                        max_level,
+                    ))
+                }
+                #[cfg(not(feature = "gpu"))]
+                {
+                    return Err(
+                        "CLI was compiled without `gpu` feature, but `--backend gpu` was requested"
+                            .to_string(),
+                    );
+                }
+            }
+        };
 
-    let non_determinism_data = input_data.unwrap_or_default();
+        Ok(Self {
+            source,
+            config,
+            inner,
+        })
+    }
 
-    // Serialization and deserialization of artifacts
-    // (as requested by user arguments) can take a lot of time,
-    // and typically won't be needed in production.
-    // total_proof_time accumulates the actual time spent on
-    // the production critical path
-    // (tracing, witness generation, proving, recursion).
-    let (mut gpu_state, mut total_proof_time) = if use_gpu {
-        // In this function we only use the GPU for the base and 1st recursion layer (reduced 2^22 machine).
-        // In order to use it for the 2nd recursion layer, you should call `create_final_proofs_from_program_proof`
-        #[cfg(feature = "gpu")]
-        {
-            let recursion_circuit_type = MainCircuitType::ReducedRiscVMachine;
-            (
-                Some(GpuSharedState::new(&binary, recursion_circuit_type)),
-                Some(0f64),
+    pub fn prove_words(
+        &self,
+        batch_id: u64,
+        input_words: Vec<u32>,
+    ) -> Result<ProofArtifact, String> {
+        match &self.inner {
+            ProgramProverInner::Cpu => self.prove_words_cpu(batch_id, input_words),
+            #[cfg(feature = "gpu")]
+            ProgramProverInner::Gpu(gpu_prover) => {
+                self.prove_words_gpu(gpu_prover, batch_id, input_words)
+            }
+        }
+    }
+
+    /// The app program's recursion-chain commitment (base -> unrolled -> unified), as carried
+    /// in a proof's final registers `18..=25`.
+    ///
+    /// Already derived while building the per-level setups, so this is a map lookup - callers
+    /// should use it instead of recomputing the setups from the binary, which costs minutes.
+    /// `None` on the CPU backend, which does not build setups up front.
+    pub fn program_commitment(&self) -> Option<[u32; 8]> {
+        match &self.inner {
+            ProgramProverInner::Cpu => None,
+            #[cfg(feature = "gpu")]
+            ProgramProverInner::Gpu(prover) => prover
+                .level_data
+                .get(&UnrolledProverLevel::RecursionUnified)
+                .map(|data| data.hash_chain),
+        }
+    }
+
+    pub fn continue_artifact(&self, artifact: ProofArtifact) -> Result<ProofArtifact, String> {
+        match &self.inner {
+            ProgramProverInner::Cpu => self.continue_artifact_cpu(artifact),
+            #[cfg(feature = "gpu")]
+            ProgramProverInner::Gpu(_) => {
+                Err("continue-proof currently supports only the CPU backend".to_string())
+            }
+        }
+    }
+
+    #[cfg(feature = "gpu")]
+    fn prove_words_gpu(
+        &self,
+        prover: &UnrolledProver,
+        batch_id: u64,
+        input_words: Vec<u32>,
+    ) -> Result<ProofArtifact, String> {
+        let start = Instant::now();
+        let source = QuasiUARTSource::new_with_reads(input_words);
+        let (proof, cycles) = prover.prove(batch_id, source);
+
+        let total_ms = elapsed_ms(start);
+        let timings = ProofTimingsMs {
+            total_ms,
+            base_ms: total_ms,
+            unrolled_recursion_ms: Vec::new(),
+            unified_recursion_ms: Vec::new(),
+        };
+
+        let loaded = load_program(&self.source)?;
+        Ok(make_artifact(
+            self.config.security_level,
+            self.config.target,
+            self.config.backend,
+            batch_id,
+            cycles,
+            program_keccaks(&loaded),
+            timings,
+            proof,
+        ))
+    }
+
+    fn prove_words_cpu(
+        &self,
+        batch_id: u64,
+        input_words: Vec<u32>,
+    ) -> Result<ProofArtifact, String> {
+        let security = self.config.security_level.model();
+        let loaded = load_program(&self.source)?;
+        let worker = make_cpu_worker(&self.config.cpu);
+
+        let start_base = Instant::now();
+        let source = QuasiUARTSource::new_with_reads(input_words);
+        let mut proof = prove_unrolled_for_machine_configuration_into_program_proof::<
+            IMStandardIsaConfigWithUnsignedMulDiv,
+        >(
+            &loaded.padded_bin_u32,
+            &loaded.padded_text_u32,
+            self.config.cpu.cycles_bound,
+            source,
+            self.config.cpu.ram_bound,
+            &worker,
+            security,
+        );
+        let base_ms = elapsed_ms(start_base);
+        let cycles = (proof.final_timestamp
+            - riscv_transpiler::common_constants::INITIAL_TIMESTAMP)
+            / riscv_transpiler::common_constants::TIMESTAMP_STEP;
+
+        let mut timings = ProofTimingsMs {
+            total_ms: 0,
+            base_ms,
+            unrolled_recursion_ms: Vec::new(),
+            unified_recursion_ms: Vec::new(),
+        };
+
+        if self.config.target == ProofTarget::Base {
+            return Ok(finalize_artifact(
+                self.config.security_level,
+                self.config.target,
+                self.config.backend,
+                batch_id,
+                cycles,
+                program_keccaks(&loaded),
+                timings,
+                proof,
+            ));
+        }
+
+        let base_level = make_base_level_data(&loaded);
+        let recursion_unrolled =
+            load_embedded_recursion_program(self.config.security_level, RecursionLayer::Unrolled);
+        let unrolled_level = make_unrolled_recursion_level_data(&base_level, &recursion_unrolled);
+        proof = continue_with_unrolled_recursion(
+            proof,
+            &mut timings,
+            &self.config.cpu,
+            &worker,
+            security,
+            &base_level,
+            &unrolled_level,
+            &recursion_unrolled,
+        );
+
+        if self.config.target == ProofTarget::RecursionUnrolled {
+            return Ok(finalize_artifact(
+                self.config.security_level,
+                self.config.target,
+                self.config.backend,
+                batch_id,
+                cycles,
+                program_keccaks(&loaded),
+                timings,
+                proof,
+            ));
+        }
+
+        let recursion_unified =
+            load_embedded_recursion_program(self.config.security_level, RecursionLayer::Unified);
+        let unified_level = make_unified_recursion_level_data(&unrolled_level, &recursion_unified);
+        proof = continue_with_unified_recursion(
+            proof,
+            &mut timings,
+            &self.config.cpu,
+            &worker,
+            self.config.security_level,
+            security,
+            &unrolled_level,
+            &unified_level,
+            &recursion_unified,
+        );
+
+        Ok(finalize_artifact(
+            self.config.security_level,
+            self.config.target,
+            self.config.backend,
+            batch_id,
+            cycles,
+            program_keccaks(&loaded),
+            timings,
+            proof,
+        ))
+    }
+
+    fn continue_artifact_cpu(&self, artifact: ProofArtifact) -> Result<ProofArtifact, String> {
+        validate_continuation_request(&artifact, self.config.target, self.config.backend)?;
+
+        // Continuation still reuses the CPU proving pipeline. We only swap in the
+        // persisted proof artifact as the previous stage instead of reproving base.
+        let security = self.config.security_level.model();
+        let loaded =
+            load_and_validate_program(&self.source, &artifact, Some(self.config.security_level))?;
+        let worker = make_cpu_worker(&self.config.cpu);
+
+        let input_target = artifact.target;
+        let batch_id = artifact.batch_id;
+        let cycles = artifact.cycles;
+        let mut timings = artifact.timings_ms;
+        let mut proof = artifact.proof;
+
+        let base_level = make_base_level_data(&loaded);
+        let recursion_unrolled =
+            load_embedded_recursion_program(self.config.security_level, RecursionLayer::Unrolled);
+        let unrolled_level = make_unrolled_recursion_level_data(&base_level, &recursion_unrolled);
+
+        if input_target == ProofTarget::Base {
+            proof = continue_with_unrolled_recursion(
+                proof,
+                &mut timings,
+                &self.config.cpu,
+                &worker,
+                security,
+                &base_level,
+                &unrolled_level,
+                &recursion_unrolled,
+            );
+        }
+
+        if self.config.target == ProofTarget::RecursionUnrolled {
+            return Ok(finalize_artifact(
+                self.config.security_level,
+                self.config.target,
+                self.config.backend,
+                batch_id,
+                cycles,
+                program_keccaks(&loaded),
+                timings,
+                proof,
+            ));
+        }
+
+        let recursion_unified =
+            load_embedded_recursion_program(self.config.security_level, RecursionLayer::Unified);
+        let unified_level = make_unified_recursion_level_data(&unrolled_level, &recursion_unified);
+        proof = continue_with_unified_recursion(
+            proof,
+            &mut timings,
+            &self.config.cpu,
+            &worker,
+            self.config.security_level,
+            security,
+            &unrolled_level,
+            &unified_level,
+            &recursion_unified,
+        );
+
+        Ok(finalize_artifact(
+            self.config.security_level,
+            self.config.target,
+            self.config.backend,
+            batch_id,
+            cycles,
+            program_keccaks(&loaded),
+            timings,
+            proof,
+        ))
+    }
+}
+
+pub fn verify_artifact(
+    artifact: &ProofArtifact,
+    source: &ProgramSource,
+    expected_security_level: SecurityLevel,
+    expected_target: ProofTarget,
+) -> Result<[u32; 16], String> {
+    validate_trusted_verification_policy(artifact, expected_security_level, expected_target)?;
+    let loaded = load_and_validate_program(source, artifact, None)?;
+    let security = expected_security_level.model();
+
+    match expected_target {
+        ProofTarget::Base => {
+            let base_level = make_base_level_data(&loaded);
+            let output = verify_unrolled_layer_proof(
+                &artifact.proof,
+                &base_level.setup,
+                &base_level.layouts,
+                true,
+                security,
             )
+            .map_err(|_| "base proof verification failed".to_string())?;
+            ensure_recursion_chain_binds_program(&output, &base_level.hash_chain)?;
+            Ok(output)
         }
-        #[cfg(not(feature = "gpu"))]
-        {
-            panic!("Compiled without GPU support, but --use-gpu is set.");
-        }
-    } else {
-        (None, None)
-    };
-    let mut gpu_state = gpu_state.as_mut();
+        ProofTarget::RecursionUnrolled => {
+            let base_level = make_base_level_data(&loaded);
+            let recursion_unrolled =
+                load_embedded_recursion_program(expected_security_level, RecursionLayer::Unrolled);
+            let unrolled_level =
+                make_unrolled_recursion_level_data(&base_level, &recursion_unrolled);
 
-    let (proof_list, proof_metadata) = create_proofs_internal(
-        &binary,
-        non_determinism_data,
-        machine,
-        num_instances,
-        prev_metadata.map(|x| x.create_prev_metadata()),
-        &mut gpu_state,
-        &mut total_proof_time,
-    );
+            let preimage = validate_recursion_chain(&artifact.proof)?;
+            let previous_end_params: [u32; 8] =
+                preimage[8..16].try_into().expect("slice with exact length");
 
-    // Now we finished 'basic' proving - check if there is a need for recursion.
-    if let Some(until) = until {
-        assert_eq!(
-            machine,
-            &Machine::Standard,
-            "Recursion is only supported after Standard machine"
-        );
-
-        if let Some(tmp_dir) = tmp_dir {
-            let base_tmp_dir = Path::new(tmp_dir).join("base");
-            if !base_tmp_dir.exists() {
-                fs::create_dir_all(&base_tmp_dir).expect("Failed to create tmp dir");
+            if previous_end_params == base_level.setup.end_params {
+                let output = verify_unrolled_layer_proof(
+                    &artifact.proof,
+                    &base_level.setup,
+                    &base_level.layouts,
+                    true,
+                    security,
+                )
+                .map_err(|_| "recursion(unrolled over base) verification failed".to_string())?;
+                ensure_unrolled_target_binds_program(&output, &unrolled_level.hash_chain)?;
+                Ok(output)
+            } else if previous_end_params == unrolled_level.setup.end_params {
+                let output = verify_unrolled_layer_proof(
+                    &artifact.proof,
+                    &unrolled_level.setup,
+                    &unrolled_level.layouts,
+                    false,
+                    security,
+                )
+                .map_err(|_| {
+                    "recursion(unrolled over recursion-unrolled) verification failed".to_string()
+                })?;
+                ensure_unrolled_target_binds_program(&output, &unrolled_level.hash_chain)?;
+                Ok(output)
+            } else {
+                Err("unable to infer previous layer for recursion-unrolled proof".to_string())
             }
-            proof_list.write_to_directory(&base_tmp_dir);
-            serialize_to_file(&proof_metadata, &base_tmp_dir.join("metadata.json"))
         }
-        let (recursion_proof_list, recursion_proof_metadata) = create_recursion_proofs(
-            proof_list,
-            proof_metadata,
-            recursion_mode,
-            tmp_dir,
-            &mut gpu_state,
-            &mut total_proof_time,
-        );
-        match until {
-            ProvingLimit::FinalRecursion => {
-                recursion_proof_list.write_to_directory(Path::new(output_dir));
+        ProofTarget::RecursionUnified => {
+            let loaded_unrolled =
+                load_embedded_recursion_program(expected_security_level, RecursionLayer::Unrolled);
+            let loaded_unified =
+                load_embedded_recursion_program(expected_security_level, RecursionLayer::Unified);
 
-                serialize_to_file(
-                    &recursion_proof_metadata,
-                    &Path::new(output_dir).join("metadata.json"),
-                );
-                let program_proof = ProgramProof::from_proof_list_and_metadata(
-                    &recursion_proof_list,
-                    &recursion_proof_metadata,
-                );
-                serialize_to_file(
-                    &program_proof,
-                    &Path::new(output_dir).join("recursion_program_proof.json"),
-                );
-            }
-            ProvingLimit::FinalProof => {
-                // Here we support only CPU proving, mostly for testing purposes.
-                // In order to use GPU for 2nd recursion layer, please call `create_final_proofs_from_program_proof`
-                let program_proof = create_final_proofs(
-                    recursion_proof_list,
-                    recursion_proof_metadata,
-                    recursion_mode,
-                    tmp_dir,
-                    &mut None,
-                    &mut None,
-                );
+            let base_level = make_base_level_data(&loaded);
+            let unrolled_level = make_unrolled_recursion_level_data(&base_level, &loaded_unrolled);
+            let unified_level = make_unified_recursion_level_data(&unrolled_level, &loaded_unified);
 
-                serialize_to_file(
-                    &program_proof,
-                    &Path::new(output_dir).join(final_proof_name),
-                );
-            }
-            ProvingLimit::Snark => todo!(),
+            validate_recursion_chain(&artifact.proof)?;
+
+            let output = verify_proof_in_unified_layer(
+                &artifact.proof,
+                &unified_level.setup,
+                &unified_level.layouts,
+                false,
+                security,
+            )
+            .map_err(|_| "recursion(unified) verification failed".to_string())?;
+            let (family_count, _, _) = artifact.proof.get_proof_counts();
+            ensure_unified_recursion_target_converged(expected_security_level, family_count)?;
+            ensure_recursion_chain_binds_program(&output, &unified_level.hash_chain)?;
+            Ok(output)
         }
-    } else {
-        proof_list.write_to_directory(Path::new(output_dir));
+        ProofTarget::RecursionCombined => {
+            let loaded_unrolled =
+                load_embedded_recursion_program(expected_security_level, RecursionLayer::Unrolled);
+            let loaded_unified =
+                load_embedded_recursion_program(expected_security_level, RecursionLayer::Unified);
 
-        serialize_to_file(
-            &proof_metadata,
-            &Path::new(output_dir).join("metadata.json"),
+            let base_level = make_base_level_data(&loaded);
+            let unrolled_level = make_unrolled_recursion_level_data(&base_level, &loaded_unrolled);
+            let unified_level = make_unified_recursion_level_data(&unrolled_level, &loaded_unified);
+
+            validate_recursion_chain(&artifact.proof)?;
+
+            let output = verify_proof_in_unified_layer(
+                &artifact.proof,
+                &unified_level.setup,
+                &unified_level.layouts,
+                false,
+                security,
+            )
+            .map_err(|_| "recursion(combined) verification failed".to_string())?;
+            let (family_count, _, _) = artifact.proof.get_proof_counts();
+            ensure_unified_recursion_target_converged(expected_security_level, family_count)?;
+            // The combined statement carries the shared recursion chain of the
+            // combined proofs through unchanged, so the same chain binding as for
+            // a single recursion-unified proof applies. Words 0..8 of the output
+            // are the keccak rolling hash of the combined proofs' outputs and
+            // must be checked by the caller against the expected batch outputs.
+            ensure_recursion_chain_binds_program(&output, &unified_level.hash_chain)?;
+            Ok(output)
+        }
+    }
+}
+
+/// Combine multiple recursion-unified proof artifacts of the same program into a
+/// single proof artifact. Every input artifact is verified first; the combined
+/// statement is then proved with the unified-layer recursion program and shrunk
+/// via unified self-recursion until it converges. The resulting proof's output is
+/// `keccak(out_1[0..8] || ... || out_n[0..8]) || shared_recursion_chain`,
+/// and is checked against the outputs of the input proofs before returning.
+pub fn combine_artifacts(
+    artifacts: &[ProofArtifact],
+    source: &ProgramSource,
+    security_level: SecurityLevel,
+    cpu: &CpuConfig,
+) -> Result<ProofArtifact, String> {
+    combine_artifacts_with_program(artifacts, source, security_level, CombineBackend::Cpu(cpu))
+}
+
+/// GPU variant of [`combine_artifacts`]: input verification, witness building,
+/// recursion-chain stamping and the final self-check stay on the host; only the
+/// unified-layer proving passes run on the GPU.
+#[cfg(feature = "gpu")]
+pub fn combine_artifacts_gpu(
+    artifacts: &[ProofArtifact],
+    source: &ProgramSource,
+    security_level: SecurityLevel,
+    gpu: &GpuConfig,
+) -> Result<ProofArtifact, String> {
+    combine_artifacts_with_program(artifacts, source, security_level, CombineBackend::Gpu(gpu))
+}
+
+/// Variant of [`combine_artifacts`] that does not bind the inputs to a locally supplied
+/// program: every input proof must instead carry — and prove — the same recursion chain,
+/// which the combined proof then carries through unchanged. Use this when the combined
+/// proof is handed to a downstream verifier that authenticates the chain itself (e.g. a
+/// SNARK wrapper exposing it in the public input); that verifier is then responsible for
+/// binding the chain to the expected program.
+///
+/// One-shot convenience over [`CarriedChainCombiner`]; callers combining repeatedly
+/// should hold a combiner instead to reuse its cached setup state across combines.
+pub fn combine_artifacts_carried_chain(
+    artifacts: &[ProofArtifact],
+    security_level: SecurityLevel,
+    cpu: &CpuConfig,
+) -> Result<ProofArtifact, String> {
+    CarriedChainCombiner::new_cpu(security_level, cpu.clone()).combine(artifacts)
+}
+
+/// GPU variant of [`combine_artifacts_carried_chain`].
+///
+/// One-shot convenience over [`CarriedChainCombiner`]; callers combining repeatedly
+/// should hold a combiner instead to reuse its cached setup state across combines.
+#[cfg(feature = "gpu")]
+pub fn combine_artifacts_carried_chain_gpu(
+    artifacts: &[ProofArtifact],
+    security_level: SecurityLevel,
+    gpu: &GpuConfig,
+) -> Result<ProofArtifact, String> {
+    CarriedChainCombiner::new_gpu(security_level, gpu.clone()).combine(artifacts)
+}
+
+enum CombineBackend<'a> {
+    Cpu(&'a CpuConfig),
+    #[cfg(feature = "gpu")]
+    Gpu(&'a GpuConfig),
+}
+
+/// Reusable carried-chain combiner (see [`combine_artifacts_carried_chain`]). Caches
+/// everything that does not depend on the input proofs — the embedded unified-layer
+/// recursion program, its setup and compiled layouts, and (with the `gpu` feature) the
+/// GPU prover's host state (pinned host memory pools and circuit precomputations) — so
+/// repeated combines only pay for verification and the proving passes themselves.
+///
+/// The caches build lazily on the first [`Self::combine`]; call [`Self::warm_up`] to
+/// pay that cost up front (e.g. at service startup). GPU combines still create the
+/// CUDA contexts and the device memory pool per call and release them on return, so
+/// the device is free for other work (e.g. SNARK wrapping) between combines.
+pub struct CarriedChainCombiner {
+    security_level: SecurityLevel,
+    recursion_unified: EmbeddedProgram,
+    unified_setup_and_layouts: Option<(
+        UnrolledProgramSetup,
+        execution_utils::setups::CompiledCircuitsSet,
+    )>,
+    backend: CombinerBackendState,
+}
+
+enum CombinerBackendState {
+    Cpu(CpuConfig),
+    #[cfg(feature = "gpu")]
+    Gpu {
+        config: GpuConfig,
+        host_state: Option<UnifiedRecursionProverHostState>,
+    },
+}
+
+/// Device memory pool size for the combiner's GPU prover, in allocator blocks
+/// (1 MiB each, see `allocator_block_log_size`). The measured allocation peak of
+/// a combine run is 21,564 blocks at security 100 (security 80 peaks lower);
+/// the extra 256 blocks absorb placement-dependent fragmentation — a pool sized
+/// exactly at the peak fails to find a contiguous 128 MiB range even though
+/// enough total bytes are free. Fixing the pool size instead of taking all VRAM
+/// leaves the rest of the device to other tenants (e.g. the SNARK wrapper).
+#[cfg(feature = "gpu")]
+const COMBINER_DEVICE_POOL_BLOCKS: usize = 21_820;
+
+impl CarriedChainCombiner {
+    pub fn new_cpu(security_level: SecurityLevel, cpu: CpuConfig) -> Self {
+        Self::new(security_level, CombinerBackendState::Cpu(cpu))
+    }
+
+    #[cfg(feature = "gpu")]
+    pub fn new_gpu(security_level: SecurityLevel, gpu: GpuConfig) -> Self {
+        Self::new(
+            security_level,
+            CombinerBackendState::Gpu {
+                config: gpu,
+                host_state: None,
+            },
         )
     }
 
-    if gpu_state.is_some() {
-        println!(
-            "**** Total time on production critical path {:.3}s ****",
-            total_proof_time.unwrap(),
-        );
-    }
-}
-
-pub fn load_binary_from_path(path: &String) -> Vec<u32> {
-    let mut file = std::fs::File::open(path).expect("must open provided file");
-    let mut buffer = vec![];
-    file.read_to_end(&mut buffer).expect("must read the file");
-    get_padded_binary(&buffer)
-}
-
-// For now, we share the setup cache, only for GPU (as we really care for performance there).
-#[cfg(feature = "gpu")]
-pub struct GpuSharedState {
-    pub prover: gpu_prover::execution::prover::ExecutionProver<usize>,
-}
-
-#[cfg(feature = "gpu")]
-impl GpuSharedState {
-    const MAIN_BINARY_KEY: usize = 0;
-    const RECURSION_BINARY_KEY: usize = 1;
-
-    #[cfg(feature = "gpu")]
-    pub fn new(binary: &Vec<u32>, recursion_circuit_type: MainCircuitType) -> Self {
-        use gpu_prover::execution::prover::ExecutableBinary;
-        use gpu_prover::execution::prover::ExecutionProver;
-
-        // We don't support MainCircuitType::FinalReducedRiscVMachine on GPU for now
-        // it's too big (2^25 rows).
-        assert!(
-            recursion_circuit_type == MainCircuitType::ReducedRiscVMachine
-                || recursion_circuit_type == MainCircuitType::ReducedRiscVLog23Machine
-        );
-
-        let main_binary = ExecutableBinary {
-            key: Self::MAIN_BINARY_KEY,
-            circuit_type: MainCircuitType::RiscVCycles,
-            bytecode: binary.clone(),
-        };
-        let recursion_binary = ExecutableBinary {
-            key: Self::RECURSION_BINARY_KEY,
-            circuit_type: recursion_circuit_type,
-            bytecode: get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER),
-        };
-        let prover = ExecutionProver::new(1, vec![main_binary, recursion_binary]);
-        Self { prover }
-    }
-}
-
-#[cfg(not(feature = "gpu"))]
-pub struct GpuSharedState<'a> {
-    _phantom: std::marker::PhantomData<&'a ()>,
-}
-
-#[cfg(not(feature = "gpu"))]
-impl<'a> GpuSharedState<'a> {
-    pub fn new(_binary: &Vec<u32>) -> Self {
+    fn new(security_level: SecurityLevel, backend: CombinerBackendState) -> Self {
+        let recursion_unified =
+            load_embedded_recursion_program(security_level, RecursionLayer::Unified);
         Self {
-            _phantom: std::marker::PhantomData,
+            security_level,
+            recursion_unified,
+            unified_setup_and_layouts: None,
+            backend,
         }
     }
-}
 
-pub fn create_proofs_internal(
-    binary: &Vec<u32>,
-    non_determinism_data: Vec<u32>,
-    machine: &Machine,
-    num_instances: usize,
-    prev_end_params_output: Option<([u32; 8], Option<[u32; 16]>)>,
-    gpu_shared_state: &mut Option<&mut GpuSharedState>,
-    total_proof_time: &mut Option<f64>,
-) -> (ProofList, ProofMetadata) {
-    let worker = worker::Worker::new();
-
-    let mut non_determinism_source = QuasiUARTSource::default();
-
-    for entry in non_determinism_data {
-        non_determinism_source.oracle.push_back(entry);
+    pub fn security_level(&self) -> SecurityLevel {
+        self.security_level
     }
 
-    let (proof_list, register_values) = match machine {
-        Machine::Standard => {
-            if prev_end_params_output.is_some() {
-                panic!("Are you sure that you want to pass --prev-metadata to basic proof?");
-            }
-            let (basic_proofs, delegation_proofs, register_values) =
-                if let Some(gpu_shared_state) = gpu_shared_state {
-                    #[cfg(feature = "gpu")]
-                    {
-                        println!("**** proving using GPU ****");
-                        let timer = std::time::Instant::now();
-                        let (final_register_values, basic_proofs, delegation_proofs) =
-                            gpu_shared_state.prover.commit_memory_and_prove(
-                                0,
-                                &GpuSharedState::MAIN_BINARY_KEY,
-                                num_instances,
-                                non_determinism_source,
-                            );
-                        let elapsed = timer.elapsed().as_secs_f64();
-                        *total_proof_time.as_mut().unwrap() += elapsed;
-                        println!("**** proofs generated in {:.3}s ****", elapsed,);
-                        (
-                            basic_proofs,
-                            delegation_proofs,
-                            final_register_values.into(),
-                        )
-                    }
-                    #[cfg(not(feature = "gpu"))]
-                    {
-                        let _ = gpu_shared_state;
-                        let _ = total_proof_time;
-                        panic!("GPU not enabled - please compile with --features gpu flag.")
-                    }
-                } else {
-                    let main_circuit_precomputations =
-                        setups::get_main_riscv_circuit_setup::<Global, Global>(&binary, &worker);
-                    let delegation_precomputations =
-                        setups::all_delegation_circuits_precomputations::<Global, Global>(&worker);
-
-                    prover_examples::prove_image_execution(
-                        num_instances,
-                        &binary,
-                        non_determinism_source,
-                        &main_circuit_precomputations,
-                        &delegation_precomputations,
-                        &worker,
-                    )
-                };
-
-            (
-                ProofList {
-                    basic_proofs,
-                    reduced_proofs: vec![],
-                    reduced_log_23_proofs: vec![],
-                    delegation_proofs,
-                },
-                register_values,
-            )
+    /// Builds the cached state up front (the unified-level setup and layouts and, on
+    /// the GPU backend, the prover's host state) so the first combine doesn't pay for
+    /// it. Idempotent.
+    pub fn warm_up(&mut self) {
+        if self.unified_setup_and_layouts.is_none() {
+            let start = Instant::now();
+            // The setup is the precomputed snapshot of the embedded unified verifier
+            // (`recursion_setup`); only the circuit layouts are derived here.
+            let setup = self.recursion_unified.setup.clone();
+            let layouts = get_unified_circuit_artifact_for_machine_type::<
+                IWithoutByteAccessIsaConfigWithDelegation,
+            >(&self.recursion_unified.padded_bin_u32);
+            log::info!(
+                "COMBINER unified-level setup and layouts computed in {} ms",
+                elapsed_ms(start)
+            );
+            self.unified_setup_and_layouts = Some((setup, layouts));
         }
-        Machine::Reduced => {
-            let (reduced_proofs, delegation_proofs, register_values) =
-                if let Some(gpu_shared_state) = gpu_shared_state {
-                    #[cfg(feature = "gpu")]
-                    {
-                        println!("**** proving using GPU ****");
-                        let timer = std::time::Instant::now();
-                        let (final_register_values, basic_proofs, delegation_proofs) =
-                            gpu_shared_state.prover.commit_memory_and_prove(
-                                0,
-                                &GpuSharedState::RECURSION_BINARY_KEY,
-                                num_instances,
-                                non_determinism_source,
-                            );
-                        let elapsed = timer.elapsed().as_secs_f64();
-                        *total_proof_time.as_mut().unwrap() += elapsed;
-                        println!("**** proofs generated in {:.3}s ****", elapsed);
-                        (
-                            basic_proofs,
-                            delegation_proofs,
-                            final_register_values.into(),
-                        )
-                    }
-                    #[cfg(not(feature = "gpu"))]
-                    {
-                        let _ = gpu_shared_state;
-                        let _ = total_proof_time;
-                        panic!("GPU not enabled - please compile with --features gpu flag.")
-                    }
-                } else {
-                    let main_circuit_precomputations =
-                        setups::get_reduced_riscv_circuit_setup::<Global, Global>(&binary, &worker);
-                    let delegation_precomputations =
-                        setups::all_delegation_circuits_precomputations::<Global, Global>(&worker);
-
-                    prover_examples::prove_image_execution_on_reduced_machine(
-                        num_instances,
-                        &binary,
-                        non_determinism_source,
-                        &main_circuit_precomputations,
-                        &delegation_precomputations,
-                        &worker,
-                    )
-                };
-
-            (
-                ProofList {
-                    basic_proofs: vec![],
-                    reduced_proofs,
-                    reduced_log_23_proofs: vec![],
-                    delegation_proofs,
-                },
-                register_values,
-            )
-        }
-        Machine::ReducedLog23 => {
-            let (reduced_log_23_proofs, delegation_proofs, register_values) =
-                if let Some(gpu_shared_state) = gpu_shared_state {
-                    #[cfg(feature = "gpu")]
-                    {
-                        println!("**** proving using GPU ****");
-                        let timer = std::time::Instant::now();
-                        let (final_register_values, basic_proofs, delegation_proofs) =
-                            gpu_shared_state.prover.commit_memory_and_prove(
-                                0,
-                                &GpuSharedState::RECURSION_BINARY_KEY,
-                                num_instances,
-                                non_determinism_source,
-                            );
-                        let elapsed = timer.elapsed().as_secs_f64();
-                        *total_proof_time.as_mut().unwrap() += elapsed;
-                        println!("**** proofs generated in {:.3}s ****", elapsed);
-                        (
-                            basic_proofs,
-                            delegation_proofs,
-                            final_register_values.into(),
-                        )
-                    }
-                    #[cfg(not(feature = "gpu"))]
-                    {
-                        let _ = gpu_shared_state;
-                        let _ = total_proof_time;
-                        panic!("GPU not enabled - please compile with --features gpu flag.")
-                    }
-                } else {
-                    let main_circuit_precomputations =
-                        setups::get_reduced_riscv_log_23_circuit_setup::<Global, Global>(
-                            &binary, &worker,
-                        );
-
-                    let delegation_precomputations =
-                        setups::all_delegation_circuits_precomputations::<Global, Global>(&worker);
-
-                    prover_examples::prove_image_execution_on_reduced_machine(
-                        num_instances,
-                        &binary,
-                        non_determinism_source,
-                        &main_circuit_precomputations,
-                        &delegation_precomputations,
-                        &worker,
-                    )
-                };
-
-            (
-                ProofList {
-                    basic_proofs: vec![],
-                    reduced_proofs: vec![],
-                    reduced_log_23_proofs,
-                    delegation_proofs,
-                },
-                register_values,
-            )
-        }
-        Machine::ReducedFinal => panic!("ReducedFinal no longer supported"),
-    };
-
-    let total_delegation_proofs: usize = proof_list
-        .delegation_proofs
-        .iter()
-        .map(|(_, x)| x.len())
-        .sum();
-
-    println!(
-        "Created {} basic proofs, {} reduced proofs, {} reduced (log23) proofs and {} delegation proofs.",
-        proof_list.basic_proofs.len(),
-        proof_list.reduced_proofs.len(),
-        proof_list.reduced_log_23_proofs.len(),
-        total_delegation_proofs,
-    );
-    let last_proof = proof_list.get_last_proof();
-
-    let (end_params, prev_end_params_output) =
-        get_end_params_output(last_proof, prev_end_params_output);
-
-    let prev_end_params_output_hash = prev_end_params_output.map(|data| {
-        let mut tmp_hash = Blake2sBufferingTranscript::new();
-        tmp_hash.absorb(&data);
-        tmp_hash.finalize().0
-    });
-
-    let proof_metadata = ProofMetadata {
-        basic_proof_count: proof_list.basic_proofs.len(),
-        reduced_proof_count: proof_list.reduced_proofs.len(),
-        reduced_log_23_proof_count: proof_list.reduced_log_23_proofs.len(),
-        deprecated_final_proof_count: 0,
-        delegation_proof_count: proof_list
-            .delegation_proofs
-            .iter()
-            .map(|(i, x)| (i.clone() as u32, x.len()))
-            .collect::<Vec<_>>(),
-        register_values,
-        end_params,
-        prev_end_params_output_hash,
-        prev_end_params_output,
-    };
-
-    (proof_list, proof_metadata)
-}
-
-pub fn create_recursion_proofs(
-    proof_list: ProofList,
-    proof_metadata: ProofMetadata,
-    recursion_mode: RecursionStrategy,
-    tmp_dir: &Option<String>,
-    gpu_shared_state: &mut Option<&mut GpuSharedState>,
-    total_proof_time: &mut Option<f64>,
-) -> (ProofList, ProofMetadata) {
-    assert!(
-        proof_metadata.basic_proof_count > 0,
-        "Recursion proofs can be created only for basic proofs.",
-    );
-    let binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
-
-    let mut recursion_level = 0;
-    let mut current_proof_list = proof_list;
-    let mut current_proof_metadata = proof_metadata.clone();
-
-    loop {
-        if recursion_mode.skip_first_layer() {
-            println!("Skipping recursion.");
-            break;
-        }
-
-        println!("*** Starting recursion level {} ***", recursion_level);
-        let non_determinism_data = generate_oracle_data_for_universal_verifier(
-            &current_proof_metadata,
-            &current_proof_list,
-        );
-
-        (current_proof_list, current_proof_metadata) = create_proofs_internal(
-            &binary,
-            non_determinism_data,
-            &Machine::Reduced,
-            current_proof_metadata.total_proofs(),
-            Some(current_proof_metadata.create_prev_metadata()),
-            gpu_shared_state,
-            total_proof_time,
-        );
-
-        if let Some(tmp_dir) = tmp_dir {
-            let base_tmp_dir = Path::new(tmp_dir).join(format!("recursion_{}", recursion_level));
-            if !base_tmp_dir.exists() {
-                fs::create_dir_all(&base_tmp_dir).expect("Failed to create tmp dir");
-            }
-            current_proof_list.write_to_directory(&base_tmp_dir);
-            serialize_to_file(&current_proof_metadata, &base_tmp_dir.join("metadata.json"))
-        }
-
-        recursion_level += 1;
-
-        if recursion_mode.switch_to_second_recursion_layer(&current_proof_metadata) {
-            println!("Stopping 1st recursion layer.");
-            break;
-        }
-    }
-    (current_proof_list, current_proof_metadata)
-}
-
-pub fn create_final_proofs_from_program_proof(
-    input: ProgramProof,
-    recursion_mode: RecursionStrategy,
-    use_gpu: bool,
-) -> ProgramProof {
-    let (proof_metadata, proof_list) = input.to_metadata_and_proof_list();
-
-    let (mut gpu_state, mut total_proof_time) = if use_gpu {
         #[cfg(feature = "gpu")]
-        {
-            // Here we use GPU for final recursion layer only.
-            use gpu_prover::circuit_type::MainCircuitType;
-            let recursion_circuit_type = MainCircuitType::ReducedRiscVLog23Machine;
-            let binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
-            (
-                Some(GpuSharedState::new(&binary, recursion_circuit_type)),
-                Some(0f64),
-            )
+        if let CombinerBackendState::Gpu { config, host_state } = &mut self.backend {
+            if host_state.is_none() {
+                let start = Instant::now();
+                let mut prover_configuration =
+                    gpu_prover::execution::prover::ExecutionProverConfiguration::default();
+                prover_configuration.replay_worker_threads_count =
+                    config.replay_worker_threads_count;
+                prover_configuration.host_allocators_per_job_count =
+                    config.host_allocators_per_job_count;
+                prover_configuration.host_allocators_per_device_count =
+                    config.host_allocators_per_device_count;
+                prover_configuration
+                    .prover_context_config
+                    .max_device_allocation_blocks_count = Some(COMBINER_DEVICE_POOL_BLOCKS);
+                // An exact pool size requires an explicit cache preset; Normal
+                // (full coset caching) is what COMBINER_DEVICE_POOL_BLOCKS was
+                // measured under.
+                prover_configuration.prover_context_config.gpu_memory_preset =
+                    gpu_prover::prover::gpu_memory::GpuMemoryPreset::Normal;
+                *host_state = Some(UnifiedRecursionProverHostState::new(
+                    self.security_level.model(),
+                    prover_configuration,
+                ));
+                log::info!(
+                    "COMBINER GPU prover host state built in {} ms",
+                    elapsed_ms(start)
+                );
+            }
+        }
+    }
+
+    /// Releases the GPU backend's prover host state — the pinned host memory pools and
+    /// circuit precomputations [`Self::warm_up`] builds — returning tens of gigabytes of
+    /// page-locked host RAM to the OS. The CPU backend has no such state and this does
+    /// nothing there.
+    ///
+    /// The next combine rebuilds it through the same lazy warm-up path, so this trades
+    /// memory for latency and nothing else. Keeping the state warm is the right default;
+    /// release it when the combiner will sit idle while another phase needs that RAM (a
+    /// prover service alternating FRI proving with SNARK wrapping, say), not between
+    /// combines that follow each other closely.
+    ///
+    /// The cached unified-level setup and layouts are deliberately kept: they are plain
+    /// heap, small next to the pinned pools, and expensive to derive again.
+    pub fn release_host_state(&mut self) {
+        #[cfg(feature = "gpu")]
+        if let CombinerBackendState::Gpu { host_state, .. } = &mut self.backend {
+            if let Some(state) = host_state.take() {
+                let pinned_bytes = state.pinned_host_bytes();
+                let start = Instant::now();
+                drop(state);
+                log::info!(
+                    "COMBINER GPU prover host state released ({:.2} GiB of pinned host memory) \
+                     in {} ms",
+                    pinned_bytes as f64 / (1u64 << 30) as f64,
+                    elapsed_ms(start)
+                );
+            }
+        }
+    }
+
+    /// End params of the embedded unrolled-layer recursion verifier for the active
+    /// security level. Precomputed: deriving them from the embedded binary is a full
+    /// layer-setup computation (~2 minutes on the CPU), which used to be paid by
+    /// every single-proof carried-chain advance on a cold combiner.
+    fn unrolled_end_params(&self) -> [u32; 8] {
+        execution_utils::verifier_binaries::recursion_end_params(
+            self.security_level.model(),
+            RecursionLayer::Unrolled,
+        )
+    }
+
+    /// Combines the artifacts into one carried-chain proof; see
+    /// [`combine_artifacts_carried_chain`] for the semantics.
+    pub fn combine(&mut self, artifacts: &[ProofArtifact]) -> Result<ProofArtifact, String> {
+        if artifacts.len() < 2 {
+            return Err(format!(
+                "combining requires at least two proof artifacts, got {}",
+                artifacts.len()
+            ));
         }
 
-        #[cfg(not(feature = "gpu"))]
-        {
-            panic!("GPU not enabled - please compile with --features gpu flag.")
+        // Per-artifact chain validation is cheap and independent of the cached state,
+        // so malformed inputs fail before a cold combiner pays for its warm-up.
+        let stored_chains = validate_carried_chains(artifacts)?;
+        let expected_keccaks = (
+            artifacts[0].program_bin_keccak,
+            artifacts[0].program_text_keccak,
+        );
+
+        self.warm_up();
+        let (setup, layouts) = self
+            .unified_setup_and_layouts
+            .as_ref()
+            .expect("warmed up above");
+
+        // A proof's stored chain pair is the chain state carried in its registers, and
+        // the unified verifier still continues that chain with the unified program's
+        // end params unless it already ends there (a unified proof that converges on
+        // its first pass carries the unrolled-level chain in its registers). Apply the
+        // same carry-or-continue rule to derive the chain each proof's verification
+        // outputs, and require every input to prove the same one.
+        let mut output_chains = stored_chains.iter().map(|(hash_chain, preimage)| {
+            UnrolledProgramSetup::continue_recursion_chain(&setup.end_params, hash_chain, preimage)
+        });
+        let (hash_chain, preimage) = output_chains.next().expect("at least two artifacts");
+        for (idx, chain) in output_chains.enumerate() {
+            if chain != (hash_chain, preimage) {
+                return Err(format!(
+                    "input proof {} proves a different recursion chain than input proof 0",
+                    idx + 1
+                ));
+            }
         }
-    } else {
-        (None, None)
+
+        let unified_level = RecursionLevelData {
+            setup: setup.clone(),
+            layouts: layouts.clone(),
+            hash_chain,
+            preimage,
+        };
+
+        let mut prover = match &self.backend {
+            CombinerBackendState::Cpu(cpu) => {
+                CombinedUnifiedProver::new_cpu(cpu, &self.recursion_unified)
+            }
+            #[cfg(feature = "gpu")]
+            CombinerBackendState::Gpu { host_state, .. } => CombinedUnifiedProver::new_gpu(
+                host_state.as_ref().expect("warmed up above"),
+                artifacts[0].batch_id,
+            ),
+        };
+
+        run_combine(
+            artifacts,
+            &unified_level,
+            expected_keccaks,
+            self.security_level,
+            &mut prover,
+        )
+    }
+
+    /// Run one unified self-recursion pass over a single proof so the recursion chain in
+    /// its registers becomes the one its verification outputs.
+    ///
+    /// A unified proof that converged on its first pass carries the *unrolled*-level
+    /// chain; one that took a further pass carries the unified-level chain. Both verify
+    /// to the same output chain — that is the carry-or-continue rule [`Self::combine`]
+    /// applies to its inputs — so a verifier that authenticates the chain is indifferent,
+    /// but a consumer reading it straight out of the registers is not: a SNARK wrapper
+    /// built with `check_aux_params` constrains registers 18..=25 to one baked-in value,
+    /// and only the unified-level chain matches it. Multi-proof jobs get that fold from
+    /// the combine pass; a single proof has to take it here.
+    ///
+    /// Output words are carried through unchanged, so the resulting proof attests to the
+    /// input proof's statement, public input included.
+    ///
+    /// Returns the artifact untouched when its chain is already the unified-level one
+    /// (the continuation is idempotent there), so callers can apply it unconditionally.
+    /// A chain at any other position than those two is rejected: the base -> unrolled ->
+    /// unified pipeline never produces one, and advancing it would only defer the
+    /// failure to the downstream wrapper's register check.
+    pub fn advance_carried_chain(
+        &mut self,
+        artifact: &ProofArtifact,
+    ) -> Result<ProofArtifact, String> {
+        let stored_chains = validate_carried_chains(std::slice::from_ref(artifact))?;
+        let (stored_hash, stored_preimage) = stored_chains[0];
+
+        self.warm_up();
+        let unified_end_params = self
+            .unified_setup_and_layouts
+            .as_ref()
+            .expect("warmed up above")
+            .0
+            .end_params;
+
+        // Branch on the stored chain's position instead of continuing it blindly.
+        // Already at the unified level: the continuation below would be idempotent,
+        // so return the artifact untouched without paying for the unrolled-level
+        // end params.
+        if &stored_preimage[8..] == &unified_end_params[..] {
+            return Ok(artifact.clone());
+        }
+
+        // Otherwise the chain must sit exactly one fold short, at the unrolled level.
+        // (The base program's own end params are not available here — the combiner is
+        // deliberately app-binary-agnostic — so the chain's *start* is authenticated
+        // downstream; its position is what can and must be pinned locally.)
+        let unrolled_end_params = self.unrolled_end_params();
+        ensure_preimage_at_unrolled_level(
+            &stored_preimage,
+            &unrolled_end_params,
+            &unified_end_params,
+        )?;
+
+        let (setup, layouts) = self
+            .unified_setup_and_layouts
+            .as_ref()
+            .expect("warmed up above");
+        let (hash_chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
+            &setup.end_params,
+            &stored_hash,
+            &stored_preimage,
+        );
+
+        let unified_level = RecursionLevelData {
+            setup: setup.clone(),
+            layouts: layouts.clone(),
+            hash_chain,
+            preimage,
+        };
+
+        let mut prover = match &self.backend {
+            CombinerBackendState::Cpu(cpu) => {
+                CombinedUnifiedProver::new_cpu(cpu, &self.recursion_unified)
+            }
+            #[cfg(feature = "gpu")]
+            CombinerBackendState::Gpu { host_state, .. } => CombinedUnifiedProver::new_gpu(
+                host_state.as_ref().expect("warmed up above"),
+                artifact.batch_id,
+            ),
+        };
+
+        run_advance(
+            artifact,
+            &unified_level,
+            (artifact.program_bin_keccak, artifact.program_text_keccak),
+            self.security_level,
+            &mut prover,
+        )
+    }
+}
+
+/// The unified-layer prover used by the combine flow. Both backends prove the
+/// same embedded unified recursion program over host-built witness words.
+enum CombinedUnifiedProver<'a> {
+    Cpu {
+        cpu: &'a CpuConfig,
+        worker: worker::Worker,
+        recursion_unified: &'a EmbeddedProgram,
+    },
+    #[cfg(feature = "gpu")]
+    Gpu {
+        prover: execution_utils::unrolled_gpu::UnifiedRecursionProver,
+        // Distinct per-pass ids for the GPU prover, following the
+        // `UnrolledProver` convention of `batch_id * 10 + pass`.
+        next_batch_id: u64,
+    },
+}
+
+impl<'a> CombinedUnifiedProver<'a> {
+    fn new_cpu(cpu: &'a CpuConfig, recursion_unified: &'a EmbeddedProgram) -> Self {
+        Self::Cpu {
+            cpu,
+            worker: make_cpu_worker(cpu),
+            recursion_unified,
+        }
+    }
+
+    /// Derives the GPU prover from prebuilt host state: only CUDA contexts and the
+    /// device memory pool are created here, and dropping the prover releases them.
+    #[cfg(feature = "gpu")]
+    fn new_gpu(host_state: &UnifiedRecursionProverHostState, batch_id: u64) -> Self {
+        Self::Gpu {
+            prover: execution_utils::unrolled_gpu::UnifiedRecursionProver::from_host_state(
+                host_state,
+            ),
+            // Distinct per-pass ids for the GPU prover, following the
+            // `UnrolledProver` convention of `batch_id * 10 + pass`.
+            next_batch_id: batch_id * 10,
+        }
+    }
+
+    fn kind(&self) -> ProverBackend {
+        match self {
+            Self::Cpu { .. } => ProverBackend::Cpu,
+            #[cfg(feature = "gpu")]
+            Self::Gpu { .. } => ProverBackend::Gpu,
+        }
+    }
+
+    fn prove_unified_pass(
+        &mut self,
+        witness: Vec<u32>,
+        security: verifier_common::SecurityModel,
+    ) -> UnrolledProgramProof {
+        match self {
+            Self::Cpu {
+                cpu,
+                worker,
+                recursion_unified,
+            } => {
+                let source_witness = QuasiUARTSource::new_with_reads(witness);
+                prove_unified_for_machine_configuration_into_program_proof::<
+                    IWithoutByteAccessIsaConfigWithDelegation,
+                >(
+                    &recursion_unified.padded_bin_u32,
+                    &recursion_unified.padded_text_u32,
+                    cpu.cycles_bound,
+                    source_witness,
+                    cpu.ram_bound,
+                    worker,
+                    security,
+                )
+            }
+            #[cfg(feature = "gpu")]
+            Self::Gpu {
+                prover,
+                next_batch_id,
+            } => {
+                let batch_id = *next_batch_id;
+                *next_batch_id += 1;
+                prover.prove(batch_id, witness)
+            }
+        }
+    }
+}
+
+/// Combine bound to a locally supplied program: derives the expected recursion chain
+/// from the program's own base -> unrolled -> unified chain and validates the
+/// artifacts' program keccaks against its files.
+fn combine_artifacts_with_program(
+    artifacts: &[ProofArtifact],
+    source: &ProgramSource,
+    security_level: SecurityLevel,
+    backend: CombineBackend,
+) -> Result<ProofArtifact, String> {
+    if artifacts.len() < 2 {
+        return Err(format!(
+            "combining requires at least two proof artifacts, got {}",
+            artifacts.len()
+        ));
+    }
+
+    let recursion_unified =
+        load_embedded_recursion_program(security_level, RecursionLayer::Unified);
+
+    let loaded = load_and_validate_program(source, &artifacts[0], Some(security_level))?;
+    let base_level = make_base_level_data(&loaded);
+    let recursion_unrolled =
+        load_embedded_recursion_program(security_level, RecursionLayer::Unrolled);
+    let unrolled_level = make_unrolled_recursion_level_data(&base_level, &recursion_unrolled);
+    let unified_level = make_unified_recursion_level_data(&unrolled_level, &recursion_unified);
+    let expected_keccaks = program_keccaks(&loaded);
+
+    let mut prover = match backend {
+        CombineBackend::Cpu(cpu) => CombinedUnifiedProver::new_cpu(cpu, &recursion_unified),
+        #[cfg(feature = "gpu")]
+        CombineBackend::Gpu(gpu) => {
+            let mut prover_configuration =
+                gpu_prover::execution::prover::ExecutionProverConfiguration::default();
+            prover_configuration.replay_worker_threads_count = gpu.replay_worker_threads_count;
+            prover_configuration.host_allocators_per_job_count = gpu.host_allocators_per_job_count;
+            prover_configuration.host_allocators_per_device_count =
+                gpu.host_allocators_per_device_count;
+            prover_configuration
+                .prover_context_config
+                .max_device_allocation_blocks_count = Some(COMBINER_DEVICE_POOL_BLOCKS);
+            // An exact pool size requires an explicit cache preset; Normal
+            // (full coset caching) is what COMBINER_DEVICE_POOL_BLOCKS was
+            // measured under.
+            prover_configuration.prover_context_config.gpu_memory_preset =
+                gpu_prover::prover::gpu_memory::GpuMemoryPreset::Normal;
+            let host_state =
+                UnifiedRecursionProverHostState::new(security_level.model(), prover_configuration);
+            CombinedUnifiedProver::new_gpu(&host_state, artifacts[0].batch_id)
+        }
     };
-    let mut gpu_state = gpu_state.as_mut();
 
-    create_final_proofs(
-        proof_list,
-        proof_metadata,
-        recursion_mode,
-        &None,
-        &mut gpu_state,
-        &mut total_proof_time,
+    run_combine(
+        artifacts,
+        &unified_level,
+        expected_keccaks,
+        security_level,
+        &mut prover,
     )
 }
 
-pub fn create_final_proofs(
-    proof_list: ProofList,
-    proof_metadata: ProofMetadata,
-    recursion_mode: RecursionStrategy,
-    tmp_dir: &Option<String>,
-    gpu_shared_state: &mut Option<&mut GpuSharedState>,
-    total_proof_time: &mut Option<f64>,
-) -> ProgramProof {
-    let binary = recursion_mode.get_second_layer_binary();
-    let machine = recursion_mode.get_second_layer_machine();
+/// Core of a combine, shared by the program-bound and carried-chain flows: verify
+/// every input against the unified level, prove the combined statement, shrink it to
+/// convergence via unified self-recursion and self-check the result.
+fn run_combine(
+    artifacts: &[ProofArtifact],
+    unified_level: &RecursionLevelData,
+    expected_keccaks: ([u8; 32], [u8; 32]),
+    security_level: SecurityLevel,
+    prover: &mut CombinedUnifiedProver,
+) -> Result<ProofArtifact, String> {
+    let security = security_level.model();
 
-    let mut final_proof_level = 0;
-    let mut current_proof_list = proof_list;
-    let mut current_proof_metadata = proof_metadata.clone();
+    // Verify every input artifact (security level, target, convergence of each proof,
+    // keccak consistency, and that each proof proves the expected recursion chain),
+    // and collect the outputs to compute the expected combined output.
+    let verify_start = Instant::now();
+    let mut outputs = Vec::with_capacity(artifacts.len());
+    for (idx, artifact) in artifacts.iter().enumerate() {
+        let output = verify_combine_artifact_against_level(
+            artifact,
+            unified_level,
+            expected_keccaks,
+            security_level,
+            ProofTarget::RecursionUnified,
+        )
+        .map_err(|e| format!("input proof {} failed verification: {}", idx, e))?;
+        outputs.push(output);
+    }
+    log::info!(
+        "COMBINER verified {} input proofs in {} ms",
+        artifacts.len(),
+        elapsed_ms(verify_start)
+    );
+    let expected_output =
+        execution_utils::unified_circuit::compute_combined_recursion_layers_output(&outputs);
 
+    let mut timings = ProofTimingsMs::default();
+
+    // Prove the combined statement with the unified-layer recursion program.
+    let inputs: Vec<_> = artifacts
+        .iter()
+        .map(
+            |artifact| execution_utils::unified_circuit::CombinedRecursionInput {
+                proof: &artifact.proof,
+                setup: &unified_level.setup,
+                compiled_layouts: &unified_level.layouts,
+                input_is_unrolled: false,
+            },
+        )
+        .collect();
+    let witness =
+        execution_utils::unified_circuit::flatten_proofs_into_responses_for_combined_unified_recursion(
+            &inputs,
+        );
+
+    let start = Instant::now();
+    let mut proof = prover.prove_unified_pass(witness, security);
+    timings.unified_recursion_ms.push(elapsed_ms(start));
+    log::info!(
+        "COMBINER combined pass over {} proofs done in {} ms {}",
+        artifacts.len(),
+        elapsed_ms(start),
+        proof.debug_info()
+    );
+
+    // The combined statement carries the shared (converged) recursion chain of the
+    // input proofs through unchanged, so the chain witness stays the unified level's.
+    proof.recursion_chain_hash = Some(unified_level.hash_chain);
+    proof.recursion_chain_preimage = Some(unified_level.preimage);
+
+    // Shrink via unified self-recursion until the proof converges.
+    let mut shrink_pass = 0u64;
     loop {
-        println!("*** Starting final_proofs level {} ***", final_proof_level);
-        let non_determinism_data = generate_oracle_data_for_universal_verifier(
-            &current_proof_metadata,
-            &current_proof_list,
-        );
-        (current_proof_list, current_proof_metadata) = create_proofs_internal(
-            &binary,
-            non_determinism_data,
-            &machine,
-            current_proof_metadata.total_proofs(),
-            Some(current_proof_metadata.create_prev_metadata()),
-            gpu_shared_state,
-            total_proof_time,
-        );
-        if let Some(tmp_dir) = tmp_dir {
-            let base_tmp_dir = Path::new(tmp_dir).join(format!("final_{}", final_proof_level));
-            if !base_tmp_dir.exists() {
-                fs::create_dir_all(&base_tmp_dir).expect("Failed to create tmp dir");
-            }
-            current_proof_list.write_to_directory(&base_tmp_dir);
-            serialize_to_file(&current_proof_metadata, &base_tmp_dir.join("metadata.json"))
-        }
-
-        if recursion_mode.finish_second_recursion_layer(&current_proof_metadata, final_proof_level)
-        {
-            println!("Stopping 2nd recursion layer.");
+        let (family_count, _, _) = proof.get_proof_counts();
+        if security_level.unified_recursion_has_converged(family_count) {
             break;
         }
 
-        final_proof_level += 1;
+        let witness = flatten_proof_into_responses_for_unified_recursion(
+            &proof,
+            &unified_level.setup,
+            &unified_level.layouts,
+            false,
+        );
+
+        let start = Instant::now();
+        let mut new_proof = prover.prove_unified_pass(witness, security);
+        timings.unified_recursion_ms.push(elapsed_ms(start));
+        log::info!(
+            "COMBINER shrink pass {shrink_pass} done in {} ms {}",
+            elapsed_ms(start),
+            new_proof.debug_info()
+        );
+        shrink_pass += 1;
+
+        new_proof.recursion_chain_hash = Some(unified_level.hash_chain);
+        new_proof.recursion_chain_preimage = Some(unified_level.preimage);
+        proof = new_proof;
     }
 
-    ProgramProof::from_proof_list_and_metadata(&current_proof_list, &current_proof_metadata)
+    let cycles = artifacts.iter().map(|artifact| artifact.cycles).sum();
+    let artifact = finalize_artifact(
+        security_level,
+        ProofTarget::RecursionCombined,
+        prover.kind(),
+        artifacts[0].batch_id,
+        cycles,
+        expected_keccaks,
+        timings,
+        proof,
+    );
+
+    // Self-check: the combined proof must verify and produce exactly the expected
+    // rolling hash of the input proofs' outputs.
+    let self_check_start = Instant::now();
+    let output = verify_combine_artifact_against_level(
+        &artifact,
+        unified_level,
+        expected_keccaks,
+        security_level,
+        ProofTarget::RecursionCombined,
+    )
+    .map_err(|e| format!("combined proof failed verification: {}", e))?;
+    if output != expected_output {
+        return Err(format!(
+            "combined proof output {:?} does not match expected combined output {:?}",
+            output, expected_output
+        ));
+    }
+    log::info!(
+        "COMBINER self-checked the combined proof in {} ms",
+        elapsed_ms(self_check_start)
+    );
+
+    Ok(artifact)
 }
 
-pub fn get_end_params_output_suffix_from_proof(last_proof: &Proof) -> Option<Seed> {
-    if last_proof.public_inputs.len() != 4 {
-        // We can compute this only for proofs with public inputs.
-        return None;
-    }
+/// Core of a chain advance (see [`CarriedChainCombiner::advance_carried_chain`]): verify
+/// the input against the unified level, re-prove it there, shrink to convergence and
+/// self-check that the result carries the input's statement through unchanged.
+fn run_advance(
+    artifact: &ProofArtifact,
+    unified_level: &RecursionLevelData,
+    expected_keccaks: ([u8; 32], [u8; 32]),
+    security_level: SecurityLevel,
+    prover: &mut CombinedUnifiedProver,
+) -> Result<ProofArtifact, String> {
+    let security = security_level.model();
 
-    let end_pc = parse_field_els_as_u32_from_u16_limbs_checked([
-        last_proof.public_inputs[2],
-        last_proof.public_inputs[3],
-    ]);
+    let verify_start = Instant::now();
+    let expected_output = verify_combine_artifact_against_level(
+        artifact,
+        unified_level,
+        expected_keccaks,
+        security_level,
+        ProofTarget::RecursionUnified,
+    )
+    .map_err(|e| format!("input proof failed verification: {}", e))?;
+    log::info!(
+        "COMBINER verified the proof to advance in {} ms",
+        elapsed_ms(verify_start)
+    );
 
-    // We have to compute the the hash of the final program counter, and program binary (setup tree).
-    let mut hasher = Blake2sBufferingTranscript::new();
-    hasher.absorb(&[end_pc]);
+    let mut timings = ProofTimingsMs::default();
+    let mut proof = artifact.proof.clone();
+    let mut pass = 0u64;
+    loop {
+        let witness = flatten_proof_into_responses_for_unified_recursion(
+            &proof,
+            &unified_level.setup,
+            &unified_level.layouts,
+            false,
+        );
 
-    for cap in &last_proof.setup_tree_caps {
-        for entry in cap.cap.iter() {
-            hasher.absorb(entry);
+        let start = Instant::now();
+        let mut new_proof = prover.prove_unified_pass(witness, security);
+        timings.unified_recursion_ms.push(elapsed_ms(start));
+        log::info!(
+            "COMBINER advance pass {pass} done in {} ms {}",
+            elapsed_ms(start),
+            new_proof.debug_info()
+        );
+        pass += 1;
+
+        new_proof.recursion_chain_hash = Some(unified_level.hash_chain);
+        new_proof.recursion_chain_preimage = Some(unified_level.preimage);
+        proof = new_proof;
+
+        let (family_count, _, _) = proof.get_proof_counts();
+        if security_level.unified_recursion_has_converged(family_count) {
+            break;
         }
     }
-    Some(hasher.finalize_reset())
+
+    // The point of the pass. Verification alone would not catch a chain that stayed put:
+    // it continues whatever the registers hold, and the continuation is idempotent, so
+    // an unadvanced proof verifies to the very same output.
+    let carried = carried_recursion_chain(&proof);
+    if carried != unified_level.hash_chain {
+        return Err(format!(
+            "advanced proof carries {:?} instead of the unified-level chain {:?}",
+            carried, unified_level.hash_chain
+        ));
+    }
+
+    let advanced = finalize_artifact(
+        security_level,
+        ProofTarget::RecursionUnified,
+        prover.kind(),
+        artifact.batch_id,
+        artifact.cycles,
+        expected_keccaks,
+        timings,
+        proof,
+    );
+
+    let self_check_start = Instant::now();
+    let output = verify_combine_artifact_against_level(
+        &advanced,
+        unified_level,
+        expected_keccaks,
+        security_level,
+        ProofTarget::RecursionUnified,
+    )
+    .map_err(|e| format!("advanced proof failed verification: {}", e))?;
+    if output != expected_output {
+        return Err(format!(
+            "advanced proof output {:?} does not match the input proof's output {:?}",
+            output, expected_output
+        ));
+    }
+    log::info!(
+        "COMBINER self-checked the advanced proof in {} ms",
+        elapsed_ms(self_check_start)
+    );
+
+    Ok(advanced)
 }
 
-/// Returns end_params, prev params
-fn get_end_params_output(
-    last_proof: &Proof,
-    prev_end_params_output: Option<([u32; 8], Option<[u32; 16]>)>,
-) -> ([u32; 8], Option<[u32; 16]>) {
-    // we need PC from the last proof.
-    let end_params_output_suffix = get_end_params_output_suffix_from_proof(last_proof).unwrap();
-    // This describes the binary that we run.
-    let end_params = end_params_output_suffix.0;
+/// The recursion chain a proof carries in its final registers 18..=25, as opposed to the
+/// chain its verification outputs (that one is the carried chain continued with the
+/// verifying level's end params).
+fn carried_recursion_chain(proof: &UnrolledProgramProof) -> [u32; 8] {
+    std::array::from_fn(|i| proof.register_final_values[18 + i].value)
+}
 
-    let new_preimage = match prev_end_params_output {
-        // This arm means, that we're in the recursion layer.
-        Some((prev_bin, prev_params)) => match prev_params {
-            // We know that this was the previous binary, and the parameters that it accepted.
-            Some(prev_params) => {
-                // Now there are 2 options - either the previous binary was proving its own code
-                // (if we're in the second stage of recursion). Then let's not change the prev params.
-                if prev_params[8..16] == prev_bin {
-                    Some(prev_params)
-                } else {
-                    // Or previous binary could be different - then we should update the chain,
-                    // by computing (hash(previous) || prev_bin).
-                    let mut end_params_output = [0u32; 16];
-                    let mut hasher = Blake2sBufferingTranscript::new();
-                    hasher.absorb(&prev_params);
-                    let prev_params_hash = hasher.finalize().0;
+/// Checks that a stored chain preimage whose chain still needs the unified fold sits
+/// exactly at the unrolled level — the only position other than the unified level
+/// itself that a unified-target proof of the base -> unrolled -> unified pipeline can
+/// carry. See [`CarriedChainCombiner::advance_carried_chain`].
+fn ensure_preimage_at_unrolled_level(
+    stored_preimage: &[u32; 16],
+    unrolled_end_params: &[u32; 8],
+    unified_end_params: &[u32; 8],
+) -> Result<(), String> {
+    if &stored_preimage[8..] == &unrolled_end_params[..] {
+        return Ok(());
+    }
+    Err(format!(
+        "proof carries a recursion chain at an unexpected position: its preimage ends \
+         with {:?}, not the unrolled-level end params {:?} (one unified fold short) or \
+         the unified-level end params {:?} (already advanced)",
+        &stored_preimage[8..],
+        unrolled_end_params,
+        unified_end_params,
+    ))
+}
 
-                    for i in 0..8 {
-                        end_params_output[i] = prev_params_hash[i];
-                    }
-                    for i in 8..16 {
-                        end_params_output[i] = prev_bin[i - 8];
-                    }
+/// Checks that every artifact carries an internally consistent recursion chain and
+/// returns each artifact's stored `(hash_chain, preimage)` pair. The stored pair is
+/// the chain state carried in the proof's registers, which is not necessarily the
+/// chain its verification outputs; see [`CarriedChainCombiner::combine`] for the
+/// carry-or-continue rule that maps one to the other.
+fn validate_carried_chains(
+    artifacts: &[ProofArtifact],
+) -> Result<Vec<([u32; 8], [u32; 16])>, String> {
+    artifacts
+        .iter()
+        .enumerate()
+        .map(|(idx, artifact)| {
+            let preimage = validate_recursion_chain(&artifact.proof)
+                .map_err(|e| format!("input proof {}: {}", idx, e))?;
+            let hash_chain = artifact
+                .proof
+                .recursion_chain_hash
+                .expect("chain validated above, so the hash is present");
+            Ok((hash_chain, preimage))
+        })
+        .collect()
+}
 
-                    Some(end_params_output)
-                }
-            }
-            // This means that we're verifying the base layer.
-            None => {
-                let mut end_params_output = [0u32; 16];
-                for i in 8..16 {
-                    end_params_output[i] = prev_bin[i - 8];
-                }
-                Some(end_params_output)
-            }
-        },
-        // For base layer.
-        None => None,
+/// Verify one proof artifact of a combine (an input, or the combined result) against
+/// already-built unified-level data. Mirrors the checks [`verify_artifact`] performs for
+/// the same targets, without re-deriving the level data per proof and with the program
+/// keccaks checked against the combine's binding instead of files on disk.
+fn verify_combine_artifact_against_level(
+    artifact: &ProofArtifact,
+    unified_level: &RecursionLevelData,
+    expected_keccaks: ([u8; 32], [u8; 32]),
+    expected_security_level: SecurityLevel,
+    expected_target: ProofTarget,
+) -> Result<[u32; 16], String> {
+    validate_trusted_verification_policy(artifact, expected_security_level, expected_target)?;
+    if (artifact.program_bin_keccak, artifact.program_text_keccak) != expected_keccaks {
+        return Err(
+            "proof artifact program keccaks do not match the combine's program binding".to_string(),
+        );
+    }
+    validate_recursion_chain(&artifact.proof)?;
+
+    let output = verify_proof_in_unified_layer(
+        &artifact.proof,
+        &unified_level.setup,
+        &unified_level.layouts,
+        false,
+        expected_security_level.model(),
+    )
+    .map_err(|_| match expected_target {
+        ProofTarget::RecursionCombined => "recursion(combined) verification failed".to_string(),
+        _ => "recursion(unified) verification failed".to_string(),
+    })?;
+    let (family_count, _, _) = artifact.proof.get_proof_counts();
+    ensure_unified_recursion_target_converged(expected_security_level, family_count)?;
+    ensure_recursion_chain_binds_program(&output, &unified_level.hash_chain)?;
+    Ok(output)
+}
+
+fn validate_trusted_verification_policy(
+    artifact: &ProofArtifact,
+    expected_security_level: SecurityLevel,
+    expected_target: ProofTarget,
+) -> Result<(), String> {
+    if artifact.security_level != expected_security_level {
+        return Err(format!(
+            "proof security level ({:?}) does not match requested security level ({:?})",
+            artifact.security_level, expected_security_level
+        ));
+    }
+
+    if artifact.target != expected_target {
+        return Err(format!(
+            "proof target ({:?}) does not match requested target ({:?})",
+            artifact.target, expected_target
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_recursion_chain(proof: &UnrolledProgramProof) -> Result<[u32; 16], String> {
+    let Some(preimage) = proof.recursion_chain_preimage else {
+        return Err("proof is missing recursion_chain_preimage".to_string());
+    };
+    let Some(hash) = proof.recursion_chain_hash else {
+        return Err("proof is missing recursion_chain_hash".to_string());
     };
 
-    return (end_params, new_preimage);
+    let mut hasher = Blake2sBufferingTranscript::new();
+    hasher.absorb(&preimage);
+    let expected_hash = hasher.finalize().0;
+    if expected_hash != hash {
+        return Err("recursion chain hash mismatch".to_string());
+    }
+
+    Ok(preimage)
 }
 
-pub fn generate_oracle_data_from_metadata(metadata_path: &String) -> (ProofMetadata, Vec<u32>) {
-    // This will handle all the verifictations - we just have to pass it the data in the right format.
+/// Bind a verified proof to the program supplied by the caller.
+///
+/// The cryptographic verifier returns the recursion chain it actually proved in
+/// `output[8..16]`. That chain authenticates the whole tower of verified programs back
+/// to the base program (see `begin_recursion_chain` / `continue_recursion_chain`): it is
+/// `continue_recursion_chain(this_layer_end_params, previous_chain)`, exactly how the
+/// matching `*_level.hash_chain` is derived from the supplied program.
+///
+/// `expected_chain` is the `hash_chain` of the level whose setup was verified against,
+/// derived from the supplied `--bin`/`--text`. If the proof proved a chain for a
+/// different base program, the two differ and we reject.
+///
+/// This is the binding step: the recursion verifier's setup is the (program-independent)
+/// embedded verifier program, and the `program_*_keccak` metadata is attacker-mutable, so
+/// neither constrains which base program the STARK proof actually attests to — only this
+/// chain comparison does.
+fn ensure_recursion_chain_binds_program(
+    verifier_output: &[u32; 16],
+    expected_chain: &[u32; 8],
+) -> Result<(), String> {
+    if &verifier_output[8..16] != expected_chain {
+        return Err(
+            "recursion chain proven by the proof does not match the supplied program".to_string(),
+        );
+    }
+    Ok(())
+}
 
-    let metadata: ProofMetadata = deserialize_from_file(&metadata_path);
-    let parent = Path::new(metadata_path).parent().unwrap();
-    println!("Guessing parent to be {:?}", parent);
+/// Bind a verified recursion-unrolled proof to the supplied program and target stage.
+///
+/// A `RecursionUnrolled` artifact must prove one unrolled-recursion wrapper around the
+/// supplied program's base layer, regardless of whether the wrapped proof came directly
+/// from the base layer or from a prior unrolled wrapper. In both cases, the authenticated
+/// output chain must therefore match the supplied program's unrolled recursion level.
+fn ensure_unrolled_target_binds_program(
+    verifier_output: &[u32; 16],
+    expected_unrolled_chain: &[u32; 8],
+) -> Result<(), String> {
+    ensure_recursion_chain_binds_program(verifier_output, expected_unrolled_chain)
+}
 
-    let proof_list =
-        ProofList::load_from_directory(&parent.to_str().unwrap().to_string(), &metadata);
-    let oracle_data = generate_oracle_data_from_metadata_and_proof_list(&metadata, &proof_list);
-    (metadata, oracle_data)
+fn ensure_unified_recursion_target_converged(
+    security_level: SecurityLevel,
+    family_count: usize,
+) -> Result<(), String> {
+    if security_level.unified_recursion_has_converged(family_count) {
+        return Ok(());
+    }
+
+    Err(format!(
+        "recursion(unified) proof has not converged for {:?}: got {} family proof(s), need {}",
+        security_level,
+        family_count,
+        security_level.unified_recursion_target_family_proofs()
+    ))
+}
+
+fn program_keccaks(loaded: &LoadedProgram) -> ([u8; 32], [u8; 32]) {
+    (keccak256(&loaded.bin_bytes), keccak256(&loaded.text_bytes))
+}
+
+fn make_artifact(
+    security_level: SecurityLevel,
+    target: ProofTarget,
+    backend: ProverBackend,
+    batch_id: u64,
+    cycles: u64,
+    (program_bin_keccak, program_text_keccak): ([u8; 32], [u8; 32]),
+    timings: ProofTimingsMs,
+    proof: UnrolledProgramProof,
+) -> ProofArtifact {
+    let (family_proof_count, inits_and_teardowns_proof_count, delegation_proof_count) =
+        proof.get_proof_counts();
+
+    let proof_counts = ProofCounts {
+        family_proof_count,
+        inits_and_teardowns_proof_count,
+        delegation_proof_count,
+        delegation_proof_count_by_type: proof
+            .delegation_proofs
+            .iter()
+            .map(|(k, v)| (*k, v.len()))
+            .collect(),
+    };
+
+    ProofArtifact {
+        schema_version: 1,
+        security_level,
+        target,
+        backend,
+        batch_id,
+        cycles,
+        program_bin_keccak,
+        program_text_keccak,
+        timings_ms: timings,
+        proof_counts,
+        proof,
+    }
+}
+
+// ==============================================================================
+// Staged Proving Helpers
+// ==============================================================================
+//
+// Fresh proving and staged continuation share the same recursion transitions.
+// The only difference is the starting proof artifact: freshly generated base
+// proof vs. a proof loaded from disk.
+
+fn continue_with_unrolled_recursion(
+    mut proof: UnrolledProgramProof,
+    timings: &mut ProofTimingsMs,
+    cpu: &CpuConfig,
+    worker: &worker::Worker,
+    security: verifier_common::SecurityModel,
+    base_level: &RecursionLevelData,
+    unrolled_level: &RecursionLevelData,
+    recursion_unrolled: &EmbeddedProgram,
+) -> UnrolledProgramProof {
+    let mut recursion_level = 0usize;
+    loop {
+        let previous_is_base = recursion_level == 0;
+        let previous_level = if previous_is_base {
+            base_level
+        } else {
+            unrolled_level
+        };
+
+        let witness = flatten_proof_into_responses_for_unrolled_recursion(
+            &proof,
+            &previous_level.setup,
+            &previous_level.layouts,
+            previous_is_base,
+        );
+        let source = QuasiUARTSource::new_with_reads(witness);
+
+        let start = Instant::now();
+        let mut new_proof = prove_unrolled_for_machine_configuration_into_program_proof::<
+            IWithoutByteAccessIsaConfigWithDelegation,
+        >(
+            &recursion_unrolled.padded_bin_u32,
+            &recursion_unrolled.padded_text_u32,
+            cpu.cycles_bound,
+            source,
+            cpu.ram_bound,
+            worker,
+            security,
+        );
+        timings.unrolled_recursion_ms.push(elapsed_ms(start));
+
+        new_proof.recursion_chain_hash = Some(previous_level.hash_chain);
+        new_proof.recursion_chain_preimage = Some(previous_level.preimage);
+        proof = new_proof;
+
+        let (_, _, delegation_count) = proof.get_proof_counts();
+        if delegation_count == 1 {
+            break;
+        }
+
+        recursion_level += 1;
+    }
+
+    proof
+}
+
+fn continue_with_unified_recursion(
+    mut proof: UnrolledProgramProof,
+    timings: &mut ProofTimingsMs,
+    cpu: &CpuConfig,
+    worker: &worker::Worker,
+    security_level: SecurityLevel,
+    security: verifier_common::SecurityModel,
+    unrolled_level: &RecursionLevelData,
+    unified_level: &RecursionLevelData,
+    recursion_unified: &EmbeddedProgram,
+) -> UnrolledProgramProof {
+    let mut unified_level_idx = 0usize;
+    loop {
+        let previous_is_unrolled = unified_level_idx == 0;
+        let previous_level = if previous_is_unrolled {
+            unrolled_level
+        } else {
+            unified_level
+        };
+
+        let witness = flatten_proof_into_responses_for_unified_recursion(
+            &proof,
+            &previous_level.setup,
+            &previous_level.layouts,
+            previous_is_unrolled,
+        );
+        let source = QuasiUARTSource::new_with_reads(witness);
+
+        let start = Instant::now();
+        let mut new_proof = prove_unified_for_machine_configuration_into_program_proof::<
+            IWithoutByteAccessIsaConfigWithDelegation,
+        >(
+            &recursion_unified.padded_bin_u32,
+            &recursion_unified.padded_text_u32,
+            cpu.cycles_bound,
+            source,
+            cpu.ram_bound,
+            worker,
+            security,
+        );
+        timings.unified_recursion_ms.push(elapsed_ms(start));
+
+        new_proof.recursion_chain_hash = Some(previous_level.hash_chain);
+        new_proof.recursion_chain_preimage = Some(previous_level.preimage);
+        proof = new_proof;
+
+        let (family_count, _, _) = proof.get_proof_counts();
+        if security_level.unified_recursion_has_converged(family_count) {
+            break;
+        }
+
+        unified_level_idx += 1;
+    }
+
+    proof
+}
+
+fn finalize_artifact(
+    security_level: SecurityLevel,
+    target: ProofTarget,
+    backend: ProverBackend,
+    batch_id: u64,
+    cycles: u64,
+    keccaks: ([u8; 32], [u8; 32]),
+    mut timings: ProofTimingsMs,
+    proof: UnrolledProgramProof,
+) -> ProofArtifact {
+    timings.total_ms = aggregate_timing_ms(&timings);
+    make_artifact(
+        security_level,
+        target,
+        backend,
+        batch_id,
+        cycles,
+        keccaks,
+        timings,
+        proof,
+    )
+}
+
+fn aggregate_timing_ms(timings: &ProofTimingsMs) -> u64 {
+    timings.base_ms
+        + timings.unrolled_recursion_ms.iter().sum::<u64>()
+        + timings.unified_recursion_ms.iter().sum::<u64>()
+}
+
+fn make_cpu_worker(cpu: &CpuConfig) -> worker::Worker {
+    if let Some(threads) = cpu.worker_threads {
+        worker::Worker::new_with_num_threads(threads)
+    } else {
+        worker::Worker::new()
+    }
+}
+
+fn load_and_validate_program(
+    source: &ProgramSource,
+    artifact: &ProofArtifact,
+    expected_security_level: Option<SecurityLevel>,
+) -> Result<LoadedProgram, String> {
+    let loaded = load_program(source)?;
+    validate_artifact_against_program(artifact, &loaded, expected_security_level)?;
+    Ok(loaded)
+}
+
+fn validate_artifact_against_program(
+    artifact: &ProofArtifact,
+    loaded: &LoadedProgram,
+    expected_security_level: Option<SecurityLevel>,
+) -> Result<(), String> {
+    if let Some(expected_security_level) = expected_security_level {
+        // Some callers also want this helper to enforce a trusted security-level
+        // contract in addition to program-hash binding.
+        if artifact.security_level != expected_security_level {
+            return Err(format!(
+                "proof security level ({:?}) does not match requested security level ({:?})",
+                artifact.security_level, expected_security_level
+            ));
+        }
+    }
+
+    let actual_bin_keccak = keccak256(&loaded.bin_bytes);
+    if actual_bin_keccak != artifact.program_bin_keccak {
+        return Err(format!(
+            "proof artifact program_bin_keccak does not match provided --bin file"
+        ));
+    }
+
+    let actual_text_keccak = keccak256(&loaded.text_bytes);
+    if actual_text_keccak != artifact.program_text_keccak {
+        return Err(
+            "proof artifact program_text_keccak does not match provided --text file".to_string(),
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_continuation_request(
+    artifact: &ProofArtifact,
+    target: ProofTarget,
+    backend: ProverBackend,
+) -> Result<(), String> {
+    if backend != ProverBackend::Cpu {
+        return Err("continue-proof currently supports only the CPU backend".to_string());
+    }
+
+    // TODO: Support continuation for GPU-produced artifacts once the GPU prover
+    // exposes a way to resume from an existing proof artifact.
+    if artifact.backend != ProverBackend::Cpu {
+        return Err(
+            "continue-proof currently supports only artifacts produced with the CPU backend"
+                .to_string(),
+        );
+    }
+
+    match (artifact.target, target) {
+        (ProofTarget::Base, ProofTarget::RecursionUnrolled)
+        | (ProofTarget::Base, ProofTarget::RecursionUnified)
+        | (ProofTarget::RecursionUnrolled, ProofTarget::RecursionUnified) => {}
+        (current, requested) if current == requested => {
+            return Err(format!(
+                "proof artifact is already at target {:?}; choose a later stage",
+                current
+            ));
+        }
+        (current, requested) => {
+            return Err(format!(
+                "cannot continue proof from {:?} to {:?}",
+                current, requested
+            ));
+        }
+    }
+
+    if artifact.target == ProofTarget::RecursionUnrolled {
+        validate_recursion_chain(&artifact.proof)?;
+    }
+
+    Ok(())
+}
+
+fn load_program(source: &ProgramSource) -> Result<LoadedProgram, String> {
+    let (bin, text) = source.contents()?;
+    let (bin_bytes, text_bytes) = (bin.into_owned(), text.into_owned());
+    let mut bin_u32 = binary_u8_to_u32(&bin_bytes);
+    let mut text_u32 = binary_u8_to_u32(&text_bytes);
+
+    let mut padded_bin_bytes = bin_bytes.clone();
+    let mut padded_text_bytes = text_bytes.clone();
+    pad_bytecode_bytes_for_proving(&mut padded_bin_bytes);
+    pad_bytecode_bytes_for_proving(&mut padded_text_bytes);
+
+    pad_bytecode_for_proving(&mut bin_u32);
+    pad_bytecode_for_proving(&mut text_u32);
+
+    Ok(LoadedProgram {
+        bin_bytes,
+        text_bytes,
+        padded_bin_bytes,
+        padded_text_bytes,
+        padded_bin_u32: bin_u32,
+        padded_text_u32: text_u32,
+    })
+}
+
+fn load_embedded_program(
+    binary: &[u8],
+    text: &[u8],
+    setup: UnrolledProgramSetup,
+) -> EmbeddedProgram {
+    let mut padded_bin_u32 = binary_u8_to_u32(binary);
+    let mut padded_text_u32 = binary_u8_to_u32(text);
+    pad_bytecode_for_proving(&mut padded_bin_u32);
+    pad_bytecode_for_proving(&mut padded_text_u32);
+
+    EmbeddedProgram {
+        padded_bin_u32,
+        padded_text_u32,
+        setup,
+    }
+}
+
+fn load_embedded_recursion_program(
+    security_level: SecurityLevel,
+    recursion_layer: RecursionLayer,
+) -> EmbeddedProgram {
+    let security = security_level.model();
+    let binary = recursion_artifact(security, recursion_layer, RecursionArtifact::Bin);
+    let text = recursion_artifact(security, recursion_layer, RecursionArtifact::Txt);
+    load_embedded_program(
+        binary,
+        text,
+        recursion_setup(security, recursion_layer).clone(),
+    )
+}
+
+fn make_base_level_data(loaded: &LoadedProgram) -> RecursionLevelData {
+    let setup = compute_setup_for_machine_configuration::<IMStandardIsaConfigWithUnsignedMulDiv>(
+        &loaded.padded_bin_bytes,
+        &loaded.padded_text_bytes,
+    );
+    let layouts = get_unrolled_circuits_artifacts_for_machine_type::<
+        IMStandardIsaConfigWithUnsignedMulDiv,
+    >(&loaded.padded_bin_u32);
+
+    let (hash_chain, preimage) = UnrolledProgramSetup::begin_recursion_chain(&setup.end_params);
+
+    RecursionLevelData {
+        setup,
+        layouts,
+        hash_chain,
+        preimage,
+    }
+}
+
+fn make_unrolled_recursion_level_data(
+    previous: &RecursionLevelData,
+    loaded: &EmbeddedProgram,
+) -> RecursionLevelData {
+    let setup = loaded.setup.clone();
+    let layouts = get_unrolled_circuits_artifacts_for_machine_type::<
+        IWithoutByteAccessIsaConfigWithDelegation,
+    >(&loaded.padded_bin_u32);
+
+    let (hash_chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
+        &setup.end_params,
+        &previous.hash_chain,
+        &previous.preimage,
+    );
+
+    RecursionLevelData {
+        setup,
+        layouts,
+        hash_chain,
+        preimage,
+    }
+}
+
+fn make_unified_recursion_level_data(
+    previous: &RecursionLevelData,
+    loaded: &EmbeddedProgram,
+) -> RecursionLevelData {
+    let setup = loaded.setup.clone();
+    let layouts = get_unified_circuit_artifact_for_machine_type::<
+        IWithoutByteAccessIsaConfigWithDelegation,
+    >(&loaded.padded_bin_u32);
+
+    let (hash_chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
+        &setup.end_params,
+        &previous.hash_chain,
+        &previous.preimage,
+    );
+
+    RecursionLevelData {
+        setup,
+        layouts,
+        hash_chain,
+        preimage,
+    }
+}
+
+fn derive_text_path(bin_path: &str) -> String {
+    let bin = Path::new(bin_path);
+    if let Some(stem_path) = strip_bin_suffix(bin) {
+        return format!("{}.text", stem_path.to_string_lossy());
+    }
+
+    let mut text_path = bin.to_path_buf();
+    text_path.set_extension("text");
+    text_path.to_string_lossy().to_string()
+}
+
+fn strip_bin_suffix(path: &Path) -> Option<PathBuf> {
+    let path_str = path.to_string_lossy();
+    let stripped = path_str.strip_suffix(".bin")?;
+    Some(PathBuf::from(stripped))
+}
+
+fn elapsed_ms(start: Instant) -> u64 {
+    start.elapsed().as_millis() as u64
+}
+
+fn keccak256(data: &[u8]) -> [u8; 32] {
+    let mut hasher = Keccak256::new();
+    hasher.update(data);
+    hasher.finalize().into()
+}
+
+#[cfg(test)]
+mod recursion_binding_tests {
+    use super::*;
+    use execution_utils::unrolled::UnrolledProgramSetup;
+
+    /// The recursion chain a top-layer proof carries for a base program with the given
+    /// `end_params` (the value the verifier authenticates in `output[8..16]`).
+    fn chain_for_program(base_end_params: [u32; 8]) -> [u32; 8] {
+        let (hash_chain, _preimage) = UnrolledProgramSetup::begin_recursion_chain(&base_end_params);
+        hash_chain
+    }
+
+    fn verifier_output_with_chain(chain: [u32; 8]) -> [u32; 16] {
+        let mut out = [0u32; 16];
+        out[8..16].copy_from_slice(&chain);
+        out
+    }
+
+    #[test]
+    fn accepts_when_proven_chain_matches_supplied_program() {
+        let chain = chain_for_program([1, 2, 3, 4, 5, 6, 7, 8]);
+        let output = verifier_output_with_chain(chain);
+        assert!(ensure_recursion_chain_binds_program(&output, &chain).is_ok());
+    }
+
+    /// Regression test for proof replay across programs: a valid proof generated for
+    /// program Q must not verify as a proof for a different program P, even though the
+    /// program-hash metadata can be freely rewritten to P's hashes.
+    #[test]
+    fn rejects_proof_whose_chain_encodes_a_different_program() {
+        // Two distinct base programs produce two distinct authenticated chains.
+        let chain_p = chain_for_program([10, 11, 12, 13, 14, 15, 16, 17]);
+        let chain_q = chain_for_program([99, 98, 97, 96, 95, 94, 93, 92]);
+        assert_ne!(
+            chain_p, chain_q,
+            "different programs must yield different chains"
+        );
+
+        // The attacker holds a valid proof for Q; the verifier authenticates Q's chain.
+        let proven_output = verifier_output_with_chain(chain_q);
+
+        // Claiming it is a proof for P must be rejected by the binding check.
+        let err = ensure_recursion_chain_binds_program(&proven_output, &chain_p)
+            .expect_err("a proof whose chain encodes a different program must be rejected");
+        assert!(
+            err.contains("does not match the supplied program"),
+            "unexpected error message: {err}"
+        );
+
+        // And it still verifies against the program it was actually generated for.
+        assert!(ensure_recursion_chain_binds_program(&proven_output, &chain_q).is_ok());
+    }
+
+    #[test]
+    fn rejects_base_chain_when_target_claims_recursion_unrolled() {
+        let base_end_params = [1, 2, 3, 4, 5, 6, 7, 8];
+        let unrolled_end_params = [11, 12, 13, 14, 15, 16, 17, 18];
+        let (base_chain, base_preimage) =
+            UnrolledProgramSetup::begin_recursion_chain(&base_end_params);
+        let (unrolled_chain, _) = UnrolledProgramSetup::continue_recursion_chain(
+            &unrolled_end_params,
+            &base_chain,
+            &base_preimage,
+        );
+
+        let base_output = verifier_output_with_chain(base_chain);
+        let err = ensure_unrolled_target_binds_program(&base_output, &unrolled_chain)
+            .expect_err("base output chain must not satisfy a recursion-unrolled target");
+        assert!(
+            err.contains("does not match the supplied program"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn accepts_unrolled_chain_for_recursion_unrolled_target() {
+        let base_end_params = [21, 22, 23, 24, 25, 26, 27, 28];
+        let unrolled_end_params = [31, 32, 33, 34, 35, 36, 37, 38];
+        let (base_chain, base_preimage) =
+            UnrolledProgramSetup::begin_recursion_chain(&base_end_params);
+        let (unrolled_chain, _) = UnrolledProgramSetup::continue_recursion_chain(
+            &unrolled_end_params,
+            &base_chain,
+            &base_preimage,
+        );
+
+        let unrolled_output = verifier_output_with_chain(unrolled_chain);
+        assert!(ensure_unrolled_target_binds_program(&unrolled_output, &unrolled_chain).is_ok());
+    }
+
+    /// The carried-chain combiner relies on `continue_recursion_chain` mirroring the
+    /// in-circuit rule: continuing a chain with end params it already ends with must
+    /// carry it through unchanged rather than extend it again.
+    #[test]
+    fn continue_recursion_chain_carries_when_chain_already_ends_with_end_params() {
+        let base_end_params = [41, 42, 43, 44, 45, 46, 47, 48];
+        let unified_end_params = [51, 52, 53, 54, 55, 56, 57, 58];
+        let (base_chain, base_preimage) =
+            UnrolledProgramSetup::begin_recursion_chain(&base_end_params);
+        let (chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
+            &unified_end_params,
+            &base_chain,
+            &base_preimage,
+        );
+        assert_ne!((chain, preimage), (base_chain, base_preimage));
+
+        let carried =
+            UnrolledProgramSetup::continue_recursion_chain(&unified_end_params, &chain, &preimage);
+        assert_eq!(carried, (chain, preimage));
+    }
+
+    /// The single-proof advance only ever folds a chain sitting exactly at the
+    /// unrolled level; these pin the position check it applies to its input.
+    mod advance_position_checks {
+        use super::*;
+
+        const BASE_END_PARAMS: [u32; 8] = [61, 62, 63, 64, 65, 66, 67, 68];
+        const UNROLLED_END_PARAMS: [u32; 8] = [71, 72, 73, 74, 75, 76, 77, 78];
+        const UNIFIED_END_PARAMS: [u32; 8] = [81, 82, 83, 84, 85, 86, 87, 88];
+
+        fn unrolled_level_preimage() -> [u32; 16] {
+            let (base_chain, base_preimage) =
+                UnrolledProgramSetup::begin_recursion_chain(&BASE_END_PARAMS);
+            let (_, preimage) = UnrolledProgramSetup::continue_recursion_chain(
+                &UNROLLED_END_PARAMS,
+                &base_chain,
+                &base_preimage,
+            );
+            preimage
+        }
+
+        #[test]
+        fn accepts_a_chain_at_the_unrolled_level() {
+            assert!(ensure_preimage_at_unrolled_level(
+                &unrolled_level_preimage(),
+                &UNROLLED_END_PARAMS,
+                &UNIFIED_END_PARAMS,
+            )
+            .is_ok());
+        }
+
+        #[test]
+        fn rejects_a_chain_that_never_took_the_unrolled_fold() {
+            let (_, base_preimage) = UnrolledProgramSetup::begin_recursion_chain(&BASE_END_PARAMS);
+            let err = ensure_preimage_at_unrolled_level(
+                &base_preimage,
+                &UNROLLED_END_PARAMS,
+                &UNIFIED_END_PARAMS,
+            )
+            .expect_err("a base-level chain must not be advanced directly");
+            assert!(
+                err.contains("unexpected position"),
+                "unexpected error message: {err}"
+            );
+        }
+
+        #[test]
+        fn rejects_a_chain_ending_with_arbitrary_end_params() {
+            let mut preimage = unrolled_level_preimage();
+            preimage[8] ^= 1;
+            assert!(ensure_preimage_at_unrolled_level(
+                &preimage,
+                &UNROLLED_END_PARAMS,
+                &UNIFIED_END_PARAMS,
+            )
+            .is_err());
+        }
+
+        /// The unified-level position is legitimate for the advance as a whole but is
+        /// handled by its idempotent early return, never by the fold path this check
+        /// guards.
+        #[test]
+        fn rejects_a_chain_already_at_the_unified_level() {
+            let (base_chain, base_preimage) =
+                UnrolledProgramSetup::begin_recursion_chain(&BASE_END_PARAMS);
+            let (unrolled_chain, unrolled_preimage) =
+                UnrolledProgramSetup::continue_recursion_chain(
+                    &UNROLLED_END_PARAMS,
+                    &base_chain,
+                    &base_preimage,
+                );
+            let (_, unified_preimage) = UnrolledProgramSetup::continue_recursion_chain(
+                &UNIFIED_END_PARAMS,
+                &unrolled_chain,
+                &unrolled_preimage,
+            );
+            assert!(ensure_preimage_at_unrolled_level(
+                &unified_preimage,
+                &UNROLLED_END_PARAMS,
+                &UNIFIED_END_PARAMS,
+            )
+            .is_err());
+        }
+    }
+
+    fn minimal_artifact(security_level: SecurityLevel, target: ProofTarget) -> ProofArtifact {
+        ProofArtifact {
+            schema_version: 1,
+            security_level,
+            target,
+            backend: ProverBackend::Cpu,
+            batch_id: 0,
+            cycles: 0,
+            program_bin_keccak: [0u8; 32],
+            program_text_keccak: [0u8; 32],
+            timings_ms: ProofTimingsMs::default(),
+            proof_counts: ProofCounts::default(),
+            proof: UnrolledProgramProof {
+                final_pc: 0,
+                final_timestamp: 0,
+                circuit_families_proofs: Default::default(),
+                inits_and_teardowns_proofs: vec![],
+                delegation_proofs: Default::default(),
+                register_final_values: [trace_and_split::FinalRegisterValue {
+                    value: 0,
+                    last_access_timestamp: 0,
+                }; 32],
+                recursion_chain_preimage: None,
+                recursion_chain_hash: None,
+                pow_challenge: 0,
+            },
+        }
+    }
+
+    #[test]
+    fn rejects_verification_policy_with_mismatched_security_level() {
+        let artifact = minimal_artifact(SecurityLevel::Security80, ProofTarget::Base);
+        let err = validate_trusted_verification_policy(
+            &artifact,
+            SecurityLevel::Security100,
+            ProofTarget::Base,
+        )
+        .expect_err("verification must reject artifacts whose metadata disagrees with the trusted security level");
+        assert!(
+            err.contains("does not match requested security level"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_verification_policy_with_mismatched_target() {
+        let artifact = minimal_artifact(SecurityLevel::Security80, ProofTarget::Base);
+        let err = validate_trusted_verification_policy(
+            &artifact,
+            SecurityLevel::Security80,
+            ProofTarget::RecursionUnified,
+        )
+        .expect_err(
+            "verification must reject artifacts whose metadata disagrees with the trusted target",
+        );
+        assert!(
+            err.contains("does not match requested target"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_unified_target_before_security100_convergence() {
+        let err = ensure_unified_recursion_target_converged(SecurityLevel::Security100, 1)
+            .expect_err("Security100 must require two unified family proofs");
+        assert!(
+            err.contains("has not converged"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn accepts_unified_target_after_security100_convergence() {
+        assert!(ensure_unified_recursion_target_converged(SecurityLevel::Security100, 2).is_ok());
+    }
+
+    /// The opcode smoke program given as bytes loads exactly as it does from its files.
+    #[test]
+    fn programs_given_as_bytes_load_like_their_files() {
+        let from_paths =
+            ProgramSource::from_paths("../../examples/opcode_smoke/app.bin".to_string(), None);
+        let (bin, text) = from_paths.contents().unwrap();
+        let from_bytes = ProgramSource::from_bytes(bin.into_owned(), text.into_owned());
+
+        let files = load_program(&from_paths).unwrap();
+        let bytes = load_program(&from_bytes).unwrap();
+        assert_eq!(files.bin_bytes, bytes.bin_bytes);
+        assert_eq!(files.text_bytes, bytes.text_bytes);
+        assert_eq!(files.padded_bin_bytes, bytes.padded_bin_bytes);
+        assert_eq!(files.padded_text_bytes, bytes.padded_text_bytes);
+        assert_eq!(files.padded_bin_u32, bytes.padded_bin_u32);
+        assert_eq!(files.padded_text_u32, bytes.padded_text_u32);
+        assert_eq!(
+            format!("{from_bytes:?}"),
+            format!(
+                "Bytes {{ bin_len: {}, text_len: {} }}",
+                files.bin_bytes.len(),
+                files.text_bytes.len()
+            )
+        );
+    }
+
+    #[test]
+    fn missing_program_files_are_reported() {
+        let missing = ProgramSource::from_paths("missing/app.bin".to_string(), None);
+        let err = load_program(&missing).err().unwrap();
+        assert!(
+            err.starts_with("binary not found: missing/app.bin"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn rejects_combining_fewer_than_two_artifacts() {
+        let artifact = minimal_artifact(SecurityLevel::Security80, ProofTarget::RecursionUnified);
+        let source = ProgramSource::from_paths("app.bin".to_string(), None);
+        let err = combine_artifacts(
+            &[artifact],
+            &source,
+            SecurityLevel::Security80,
+            &CpuConfig::default(),
+        )
+        .expect_err("combining must require at least two artifacts");
+        assert!(
+            err.contains("at least two proof artifacts"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    fn stamp_recursion_chain(artifact: &mut ProofArtifact, preimage: [u32; 16]) {
+        let mut hasher = Blake2sBufferingTranscript::new();
+        hasher.absorb(&preimage);
+        artifact.proof.recursion_chain_preimage = Some(preimage);
+        artifact.proof.recursion_chain_hash = Some(hasher.finalize().0);
+    }
+
+    #[test]
+    fn carried_chain_combine_rejects_inputs_without_chain() {
+        let artifact_1 = minimal_artifact(SecurityLevel::Security80, ProofTarget::RecursionUnified);
+        let artifact_2 = minimal_artifact(SecurityLevel::Security80, ProofTarget::RecursionUnified);
+        let err = combine_artifacts_carried_chain(
+            &[artifact_1, artifact_2],
+            SecurityLevel::Security80,
+            &CpuConfig::default(),
+        )
+        .expect_err("inputs without a carried recursion chain must be rejected");
+        assert!(
+            err.contains("recursion_chain"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn carried_chain_combine_rejects_mismatched_chains() {
+        let mut artifact_1 =
+            minimal_artifact(SecurityLevel::Security80, ProofTarget::RecursionUnified);
+        let mut artifact_2 =
+            minimal_artifact(SecurityLevel::Security80, ProofTarget::RecursionUnified);
+        stamp_recursion_chain(&mut artifact_1, [1u32; 16]);
+        stamp_recursion_chain(&mut artifact_2, [2u32; 16]);
+        let err = combine_artifacts_carried_chain(
+            &[artifact_1, artifact_2],
+            SecurityLevel::Security80,
+            &CpuConfig::default(),
+        )
+        .expect_err("inputs carrying different recursion chains must be rejected");
+        assert!(
+            err.contains("different recursion chain"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_recursion_combined_as_proving_target() {
+        let source = ProgramSource::from_paths("app.bin".to_string(), None);
+        let config = ProgramProverConfig {
+            target: ProofTarget::RecursionCombined,
+            backend: ProverBackend::Cpu,
+            ..Default::default()
+        };
+        let err = ProgramProver::new(source, config)
+            .err()
+            .expect("recursion-combined must not be a direct proving target");
+        assert!(err.contains("combine"), "unexpected error message: {err}");
+    }
+
+    /// End-to-end: prove a small program twice through the full CPU pipeline
+    /// (base -> unrolled recursion -> unified recursion), then combine the two
+    /// recursion-unified artifacts into a single proof and check that its output
+    /// is the keccak rolling hash of the two proofs' outputs with the shared
+    /// recursion chain carried through. `combine_artifacts` itself re-verifies
+    /// the combined proof against the expected output before returning.
+    #[test]
+    #[ignore = "manual heavy proving test"]
+    fn test_combine_recursion_unified_artifacts() {
+        test_utils::skip_if_ci!();
+
+        let source =
+            ProgramSource::from_paths("../../examples/opcode_smoke/app.bin".to_string(), None);
+        let input_hex = std::fs::read_to_string("../../examples/opcode_smoke/input.txt")
+            .expect("opcode_smoke input");
+        let input_words = u32_from_hex_string(input_hex.trim());
+
+        let security_level = SecurityLevel::Security80;
+        let cpu = CpuConfig {
+            cycles_bound: 1 << 24,
+            ram_bound: 1 << 30,
+            worker_threads: None,
+        };
+        let config = ProgramProverConfig {
+            security_level,
+            target: ProofTarget::RecursionUnified,
+            backend: ProverBackend::Cpu,
+            cpu: cpu.clone(),
+            gpu: GpuConfig::default(),
+        };
+
+        let prover = ProgramProver::new(source.clone(), config).expect("prover");
+        let artifact_1 = prover.prove_words(0, input_words.clone()).expect("proof 1");
+        let artifact_2 = prover.prove_words(1, input_words).expect("proof 2");
+
+        let output_1 = verify_artifact(
+            &artifact_1,
+            &source,
+            security_level,
+            ProofTarget::RecursionUnified,
+        )
+        .expect("proof 1 verifies");
+        let output_2 = verify_artifact(
+            &artifact_2,
+            &source,
+            security_level,
+            ProofTarget::RecursionUnified,
+        )
+        .expect("proof 2 verifies");
+
+        let artifacts = [artifact_1, artifact_2];
+        let combined_artifact = combine_artifacts(&artifacts, &source, security_level, &cpu)
+            .expect("combining succeeds");
+
+        let combined_output = verify_artifact(
+            &combined_artifact,
+            &source,
+            security_level,
+            ProofTarget::RecursionCombined,
+        )
+        .expect("combined proof verifies");
+
+        let expected_output =
+            execution_utils::unified_circuit::compute_combined_recursion_layers_output(&[
+                output_1, output_2,
+            ]);
+        assert_eq!(combined_output, expected_output);
+
+        // The carried-chain variant must combine the same inputs without access to the
+        // program files and prove the same combined statement. A single combiner is
+        // reused across two combines to cover the cached-state path: the second call
+        // must reuse the warm unified-level setup and produce the same output.
+        let mut combiner = CarriedChainCombiner::new_cpu(security_level, cpu.clone());
+        for round in 0..2 {
+            let combined_detached = combiner
+                .combine(&artifacts)
+                .unwrap_or_else(|e| panic!("carried-chain combine round {round} succeeds: {e}"));
+            let detached_output = verify_artifact(
+                &combined_detached,
+                &source,
+                security_level,
+                ProofTarget::RecursionCombined,
+            )
+            .expect("carried-chain combined proof verifies");
+            assert_eq!(detached_output, expected_output);
+        }
+    }
+
+    #[test]
+    fn carried_chain_advance_rejects_input_without_chain() {
+        let artifact = minimal_artifact(SecurityLevel::Security80, ProofTarget::RecursionUnified);
+        let err = CarriedChainCombiner::new_cpu(SecurityLevel::Security80, CpuConfig::default())
+            .advance_carried_chain(&artifact)
+            .expect_err("an input without a carried recursion chain must be rejected");
+        assert!(
+            err.contains("recursion_chain"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    /// End-to-end: prove a small program through the full CPU pipeline
+    /// (base -> unrolled recursion -> unified recursion), then advance the carried chain
+    /// of that single proof and check the pass moved the chain into the registers without
+    /// touching the statement.
+    #[test]
+    #[ignore = "manual heavy proving test"]
+    fn test_advance_carried_chain_of_a_single_artifact() {
+        test_utils::skip_if_ci!();
+
+        let source =
+            ProgramSource::from_paths("../../examples/opcode_smoke/app.bin".to_string(), None);
+        let input_hex = std::fs::read_to_string("../../examples/opcode_smoke/input.txt")
+            .expect("opcode_smoke input");
+        let input_words = u32_from_hex_string(input_hex.trim());
+
+        let security_level = SecurityLevel::Security80;
+        let cpu = CpuConfig {
+            cycles_bound: 1 << 24,
+            ram_bound: 1 << 30,
+            worker_threads: None,
+        };
+        let config = ProgramProverConfig {
+            security_level,
+            target: ProofTarget::RecursionUnified,
+            backend: ProverBackend::Cpu,
+            cpu: cpu.clone(),
+            gpu: GpuConfig::default(),
+        };
+
+        let prover = ProgramProver::new(source.clone(), config).expect("prover");
+        let artifact = prover.prove_words(0, input_words).expect("proof");
+        let output = verify_artifact(
+            &artifact,
+            &source,
+            security_level,
+            ProofTarget::RecursionUnified,
+        )
+        .expect("proof verifies");
+
+        let mut combiner = CarriedChainCombiner::new_cpu(security_level, cpu);
+        let advanced = combiner
+            .advance_carried_chain(&artifact)
+            .expect("advancing succeeds");
+
+        let advanced_output = verify_artifact(
+            &advanced,
+            &source,
+            security_level,
+            ProofTarget::RecursionUnified,
+        )
+        .expect("advanced proof verifies");
+        assert_eq!(advanced_output, output);
+        assert_eq!(
+            &carried_recursion_chain(&advanced.proof)[..],
+            &output[8..16]
+        );
+
+        // Idempotent: a proof already carrying the unified-level chain comes back as is.
+        let again = combiner
+            .advance_carried_chain(&advanced)
+            .expect("advancing an already-advanced proof succeeds");
+        assert_eq!(
+            carried_recursion_chain(&again.proof),
+            carried_recursion_chain(&advanced.proof)
+        );
+    }
 }

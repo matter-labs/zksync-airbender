@@ -1,6 +1,6 @@
-# RISC-V common
+# RiscV common
 
-Crate that should be used by programs that are proven with RISC-V prover.
+Crate that should be used by programs that are proven with risc_v prover.
 
 It contains the functions to access CSR registers, and to return results at the end of computation.
 

@@ -14,10 +14,7 @@ use field::PrimeField;
 pub const LIMB_WIDTH: usize = 16;
 pub const LIMB_MASK: u64 = (1 << LIMB_WIDTH) - 1;
 
-/// A numeric value that is either a circuit variable or a known constant
-/// field element (`Constant`).  Passing `Num` around allows gadget code to avoid
-/// allocating unnecessary variables when operands are known constants.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Num<F: PrimeField> {
     Var(Variable),
     Constant(F),
@@ -71,13 +68,7 @@ impl<F: PrimeField> Num<F> {
     }
 }
 
-/// Boolean value represented inside the circuit.
-///
-/// Variants:
-/// * `Is` – direct variable holding 0/1.
-/// * `Not` – logical negation of an existing variable (no extra allocation).
-/// * `Constant` – compile-time known value.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Boolean {
     /// Existential view of the boolean variable
     Is(Variable),
@@ -112,8 +103,7 @@ impl Boolean {
             Boolean::Constant(_) => None,
         }
     }
-    /// Creates and allocates a new boolean variable.
-    /// Constraint: (1 - a) * a = 0
+
     pub fn new<F: PrimeField, C: Circuit<F>>(circuit: &mut C) -> Self {
         circuit.add_boolean_variable()
     }
@@ -151,10 +141,6 @@ impl Boolean {
         }
     }
 
-    /// Decompose an integer into its little-endian binary representation.
-    /// Internally, a single linear constraint: sum_{i=0}^{N-1} b_i 2^i = full_bitmask
-    /// ensures correctness, and witness generation simply reads the input value and assigns
-    /// each bit.
     pub fn split_into_bitmask<F: PrimeField, CS: Circuit<F>, const N: usize>(
         circuit: &mut CS,
         full_bitmask: Num<F>,
@@ -400,10 +386,6 @@ impl Boolean {
         }
     }
 
-    /// The logical AND of many booleans.
-    /// Up to Boolean::USE_SMART_AND_OR_BOUND inputs are hashed together recursively to
-    /// reduce constraint count. Larger arrays use an alternative “sum equals length” trick (basically linear combination of all booleans + zero check)
-    /// which is cheaper when many operands are involved.
     pub fn multi_and<F: PrimeField, C: Circuit<F>>(arr: &[Self], cs: &mut C) -> Self {
         let mut meaningful_terms = Vec::with_capacity(arr.len());
         for el in arr.iter() {
@@ -444,7 +426,6 @@ impl Boolean {
         new_var
     }
 
-    /// Compute the logical OR of many booleans using an optimized strategy analogous to multi_and.  
     pub fn multi_or<F: PrimeField, C: Circuit<F>>(arr: &[Self], cs: &mut C) -> Self {
         let mut meaningful_terms = Vec::with_capacity(arr.len());
         for el in arr.iter() {
@@ -485,8 +466,6 @@ impl Boolean {
         new_var
     }
 
-    /// Combine orthogonal condition ∧ flag pairs into a single boolean that is true if
-    /// any of the pairs evaluates to true.
     #[track_caller]
     pub fn choose_from_orthogonal_flags<F: PrimeField, C: Circuit<F>>(
         cs: &mut C,
@@ -613,8 +592,29 @@ impl Boolean {
                         Boolean::Is(new_var)
                     }
 
-                    &Boolean::Not(_cond) => {
-                        unreachable!();
+                    &Boolean::Not(cond) => {
+                        // new_var = flag * b + (1-flag) * a
+                        let new_var = cs.add_variable();
+
+                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                            use crate::cs::witness_placer::*;
+                            let mask = placer.get_boolean(cond).negate();
+                            let selection_result =
+                                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                                    &mask,
+                                    &placer.get_boolean(a),
+                                    &placer.get_boolean(b),
+                                );
+                            placer.assign_mask(new_var, &selection_result);
+                        };
+                        cs.set_values(value_fn);
+
+                        cs.add_constraint(
+                            Constraint::from(new_var)
+                                - (Term::from(cond) * Term::from(b)
+                                    + (Term::from(1) - Term::from(cond)) * Term::from(a)),
+                        );
+                        Boolean::Is(new_var)
                     }
                 }
             }
@@ -923,9 +923,6 @@ impl Boolean {
     }
 }
 
-/// Representation of a 32-bit register split into two 16-bit Num limbs.
-///
-/// The least-significant limb is at index 0 and the most-significant limb at index 1.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Register<F: PrimeField>(pub [Num<F>; REGISTER_SIZE]);
 
@@ -1053,12 +1050,6 @@ impl<F: PrimeField> Register<F> {
 
 #[deprecated]
 #[derive(Clone, Debug, Copy)]
-/// Helper that exposes both 16-bit limbs and an explicit little-endian
-/// byte decomposition of a 32-bit register.
-///
-/// A Register already stores its value as two 16-bit limbs.
-/// Some older gadgets, however, need direct access to the four 8-bit chunks —
-/// for instance when performing per-byte look-ups or range checks.
 pub struct RegisterDecomposition<F: PrimeField> {
     pub u16_limbs: [Num<F>; 2],
     pub u8_decomposition: [Num<F>; 4],
@@ -1070,14 +1061,6 @@ impl<F: PrimeField> RegisterDecomposition<F> {
         Register(self.u16_limbs)
     }
 
-    /// Split a 32-bit register into four unrange-checked 8-bit chunks.
-    ///
-    /// The routine only enforces the recombination equality
-    /// `byte1 * 2^8 + byte0 = low_u16` and `byte3 * 2^8 + byte2 = high_u16`.
-    /// It does not add range constraints for the individual byte variables –
-    /// they are created with cs.add_variable() rather than add_variable_with_range_check(8).
-    /// The caller is responsible for adding the necessary range checks.
-    /// If you need a safe version, use parse_reg or split_reg_with_opt_ctx
     pub unsafe fn split_unchecked<CS: Circuit<F>>(cs: &mut CS, reg: &Register<F>) -> Self {
         let chunks: [Num<F>; 4] = std::array::from_fn(|_: usize| Num::Var(cs.add_variable()));
         cs.add_constraint(

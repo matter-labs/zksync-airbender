@@ -134,10 +134,11 @@ fn pow(c: &mut Criterion<CudaMeasurement>) {
         group.throughput(Throughput::Elements(max_nonce));
         group.bench_function(BenchmarkId::from_parameter(bits_count), |b| {
             b.iter(|| {
-                blake2s_pow(&d_seed, 32, max_nonce, &mut d_result[0], &stream).unwrap();
+                blake2s_pow(&d_seed, bits_count, max_nonce, &mut d_result[0], &stream).unwrap();
             })
         });
     }
+
     group.finish();
 }
 

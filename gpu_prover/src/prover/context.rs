@@ -5,8 +5,11 @@ use crate::allocator::device::{
 use crate::allocator::host::{ConcurrentStaticHostAllocator, NonConcurrentStaticHostAllocator};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_context::DeviceContext;
+use crate::prover::gpu_memory::{
+    allocate_arena_with, GpuMemoryPreset, ProductionMemoryPreset, PRODUCTION_SMALL_POOL_BYTES,
+};
 use era_cudart::device::{device_get_attribute, get_device, set_device};
-use era_cudart::memory::{memory_get_info, CudaHostAllocFlags};
+use era_cudart::memory::CudaHostAllocFlags;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, CudaSliceMut};
 use era_cudart::stream::CudaStream;
@@ -37,18 +40,24 @@ impl DeviceProperties {
 #[derive(Copy, Clone, Debug)]
 pub struct ProverContextConfig {
     pub powers_of_w_coarse_log_count: u32,
-    pub allocation_block_log_size: u32,
-    pub device_slack_blocks_count: usize,
+    pub allocator_block_log_size: u32,
+    pub device_slack_static_bytes: usize,
+    pub device_slack_per_thread_bytes: usize,
+    pub max_device_allocation_blocks_count: Option<usize>,
     pub host_allocator_blocks_count: usize,
+    pub gpu_memory_preset: GpuMemoryPreset,
 }
 
 impl Default for ProverContextConfig {
     fn default() -> Self {
         Self {
             powers_of_w_coarse_log_count: 12,
-            allocation_block_log_size: 22,    // 4 MB blocks
-            device_slack_blocks_count: 64,    // 256 MB slack
-            host_allocator_blocks_count: 128, // 512 MB host allocator pool
+            allocator_block_log_size: 20,             // 1 MB blocks
+            device_slack_static_bytes: 1 << 27,       // 128 MB static slack
+            device_slack_per_thread_bytes: 1 << 11,   // 2 KB per thread slack
+            max_device_allocation_blocks_count: None, // use preset arena size
+            host_allocator_blocks_count: 1024,        // 1 GB host allocator pool
+            gpu_memory_preset: GpuMemoryPreset::Auto,
         }
     }
 }
@@ -56,6 +65,20 @@ impl Default for ProverContextConfig {
 pub type DeviceAllocator = NonConcurrentStaticDeviceAllocator;
 pub type DeviceAllocation<T> = NonConcurrentStaticDeviceAllocation<T>;
 pub type HostAllocator = NonConcurrentStaticHostAllocator;
+
+const SMALL_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 8;
+
+fn allocator_chunk_bytes(log_chunk_size: u32) -> CudaResult<usize> {
+    let chunk_bytes = 1usize
+        .checked_shl(log_chunk_size)
+        .ok_or(CudaError::ErrorInvalidValue)?;
+    if log_chunk_size <= SMALL_ALLOCATOR_BLOCK_LOG_SIZE
+        || !PRODUCTION_SMALL_POOL_BYTES.is_multiple_of(chunk_bytes)
+    {
+        return Err(CudaError::ErrorInvalidValue);
+    }
+    Ok(chunk_bytes)
+}
 
 pub struct ProverContext {
     _device_context: DeviceContext,
@@ -65,6 +88,7 @@ pub struct ProverContext {
     aux_stream: CudaStream,
     h2d_stream: CudaStream,
     device_allocator_mem_size: usize,
+    memory_preset: ProductionMemoryPreset,
     device_id: i32,
     device_properties: DeviceProperties,
     reversed_allocation_placement: bool,
@@ -107,50 +131,68 @@ impl ProverContext {
     }
 
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
-        let slack_size = config.device_slack_blocks_count << config.allocation_block_log_size;
-        let slack = era_cudart::memory::DeviceAllocation::<u8>::alloc(slack_size)?;
+        let chunk_bytes = allocator_chunk_bytes(config.allocator_block_log_size)?;
         let device_id = get_device()?;
+        let mpc = device_get_attribute(CudaDeviceAttr::MultiProcessorCount, device_id)? as usize;
+        let max_threads_per_mpc =
+            device_get_attribute(CudaDeviceAttr::MaxThreadsPerMultiProcessor, device_id)? as usize;
+        let max_threads_count = mpc * max_threads_per_mpc;
+        let device_slack_threads_bytes = config.device_slack_per_thread_bytes * max_threads_count;
+        let slack_size = config.device_slack_static_bytes + device_slack_threads_bytes;
+        let slack = era_cudart::memory::DeviceAllocation::<u8>::alloc(slack_size)?;
+        let allocator_block_log_size = config.allocator_block_log_size;
         let device_context = DeviceContext::create(config.powers_of_w_coarse_log_count)?;
         let exec_stream = CudaStream::create()?;
         let aux_stream = CudaStream::create()?;
         let h2d_stream = CudaStream::create()?;
-        let (free, _) = memory_get_info()?;
-        let mut device_blocks_count = free >> config.allocation_block_log_size;
-        let device_allocation = loop {
-            let result = era_cudart::memory::DeviceAllocation::<u8>::alloc(
-                device_blocks_count << config.allocation_block_log_size,
-            );
-            match result {
-                Ok(allocation) => break allocation,
-                Err(CudaError::ErrorMemoryAllocation) => {
-                    let last_error = era_cudart::error::get_last_error();
-                    if last_error != CudaError::ErrorMemoryAllocation {
-                        return Err(last_error);
-                    }
-                    device_blocks_count -= 1;
-                    continue;
+
+        let exact_arena_bytes = config
+            .max_device_allocation_blocks_count
+            .map(|blocks| {
+                blocks
+                    .checked_mul(chunk_bytes)
+                    .ok_or(CudaError::ErrorInvalidValue)
+            })
+            .transpose()?;
+        let (memory_preset, (arena_bytes, device_allocation)) =
+            allocate_arena_with(config.gpu_memory_preset, exact_arena_bytes, |arena_bytes| {
+                if arena_bytes == 0
+                    || !arena_bytes.is_multiple_of(chunk_bytes)
+                    || PRODUCTION_SMALL_POOL_BYTES >= arena_bytes
+                {
+                    return Err(CudaError::ErrorInvalidValue);
                 }
-                Err(e) => return Err(e),
-            };
-        };
+                era_cudart::memory::DeviceAllocation::<u8>::alloc(arena_bytes)
+                    .map(|allocation| (arena_bytes, allocation))
+            })?;
+        if config.gpu_memory_preset == GpuMemoryPreset::Auto
+            && memory_preset == ProductionMemoryPreset::Low
+        {
+            let _ = era_cudart::error::get_last_error();
+        }
         slack.free()?;
+        log::debug!(
+            "GPU device memory pool created: {} bytes ({} blocks of 2^{} bytes) on device {device_id}",
+            arena_bytes,
+            arena_bytes >> allocator_block_log_size,
+            allocator_block_log_size,
+        );
         let device_allocation_backend =
             StaticDeviceAllocationBackend::DeviceAllocation(device_allocation);
-        let device_allocator = NonConcurrentStaticDeviceAllocator::new(
+        let device_allocator = NonConcurrentStaticDeviceAllocator::new_with_small_allocator(
             [device_allocation_backend],
-            config.allocation_block_log_size,
+            allocator_block_log_size,
+            SMALL_ALLOCATOR_BLOCK_LOG_SIZE,
+            PRODUCTION_SMALL_POOL_BYTES,
         );
-        let device_allocator_mem_size = device_blocks_count << config.allocation_block_log_size;
-        let host_allocation_size =
-            config.host_allocator_blocks_count << config.allocation_block_log_size;
+        let device_allocator_mem_size = arena_bytes;
+        let host_allocation_size = config.host_allocator_blocks_count << allocator_block_log_size;
         let host_allocation = era_cudart::memory::HostAllocation::alloc(
             host_allocation_size,
             CudaHostAllocFlags::DEFAULT,
         )?;
-        let host_allocator = NonConcurrentStaticHostAllocator::new(
-            [host_allocation],
-            config.allocation_block_log_size,
-        );
+        let host_allocator =
+            NonConcurrentStaticHostAllocator::new([host_allocation], allocator_block_log_size);
         let device_properties = DeviceProperties::new()?;
         let context = Self {
             _device_context: device_context,
@@ -160,6 +202,7 @@ impl ProverContext {
             aux_stream,
             h2d_stream,
             device_allocator_mem_size,
+            memory_preset,
             device_id,
             device_properties,
             reversed_allocation_placement: false,
@@ -196,7 +239,6 @@ impl ProverContext {
         size: usize,
         placement: AllocationPlacement,
     ) -> CudaResult<DeviceAllocation<T>> {
-        assert_ne!(size, 0);
         let placement = if self.reversed_allocation_placement {
             match placement {
                 AllocationPlacement::BestFit => AllocationPlacement::BestFit,
@@ -209,10 +251,13 @@ impl ProverContext {
         let result = self.device_allocator.alloc(size, placement);
         if result.is_err() {
             error!(
-                "failed to allocate {} bytes from GPU memory allocator of device ID {}, currently allocated {} bytes",
+                "failed to allocate {} bytes from GPU memory allocator of device ID {}, currently allocated {} bytes (pool capacity {} bytes, peak used {} bytes, largest free range {} bytes)",
                 size * size_of::<T>(),
                 self.device_id,
-                self.get_used_mem_current()
+                self.get_used_mem_current(),
+                self.device_allocator.get_capacity(),
+                self.get_used_mem_peak(),
+                self.device_allocator.get_largest_free_range(),
             );
         }
         result
@@ -233,8 +278,17 @@ impl ProverContext {
         self.device_allocator_mem_size
     }
 
+    pub(crate) fn get_memory_preset(&self) -> ProductionMemoryPreset {
+        self.memory_preset
+    }
+
     pub fn get_used_mem_current(&self) -> usize {
         self.device_allocator.get_used_mem_current()
+    }
+
+    #[cfg(feature = "memory_sweep")]
+    pub(crate) fn get_device_allocator(&self) -> &DeviceAllocator {
+        &self.device_allocator
     }
 
     pub fn get_used_mem_peak(&self) -> usize {
@@ -327,6 +381,30 @@ impl<T: ?Sized> Copy for UnsafeMutAccessor<T> {}
 
 unsafe impl<T: ?Sized> Send for UnsafeMutAccessor<T> {}
 unsafe impl<T: ?Sized> Sync for UnsafeMutAccessor<T> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn allocator_block_size_must_support_the_small_pool() {
+        assert_eq!(allocator_chunk_bytes(9).unwrap(), 1 << 9);
+        assert_eq!(allocator_chunk_bytes(20).unwrap(), 1 << 20);
+        assert_eq!(allocator_chunk_bytes(21).unwrap(), 1 << 21);
+        assert_eq!(
+            allocator_chunk_bytes(8).unwrap_err(),
+            CudaError::ErrorInvalidValue
+        );
+        assert_eq!(
+            allocator_chunk_bytes(22).unwrap_err(),
+            CudaError::ErrorInvalidValue
+        );
+        assert_eq!(
+            allocator_chunk_bytes(usize::BITS).unwrap_err(),
+            CudaError::ErrorInvalidValue
+        );
+    }
+}
 
 pub(crate) struct HostAllocation<T: ?Sized>(Box<T, HostAllocator>);
 

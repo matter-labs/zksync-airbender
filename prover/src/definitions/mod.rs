@@ -104,27 +104,308 @@ impl ExternalDelegationArgumentChallenges {
     }
 }
 
-#[derive(Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash,
+)]
+#[repr(C)]
+pub struct ExternalMachineStateArgumentChallenges {
+    pub linearization_challenges: [Mersenne31Quartic; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    pub additive_term: Mersenne31Quartic,
+}
+
+impl ExternalMachineStateArgumentChallenges {
+    pub fn flatten(&self) -> [u32; (NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES + 1) * 4] {
+        // we must normalize
+        let mut result = [0u32; (NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES + 1) * 4];
+        let mut it = result.iter_mut();
+
+        for el in self.linearization_challenges.iter() {
+            let flattened = el
+                .into_coeffs_in_base()
+                .map(|el: Mersenne31Field| el.to_reduced_u32());
+            for src in flattened.into_iter() {
+                *it.next().unwrap() = src;
+            }
+        }
+
+        let flattened = self
+            .additive_term
+            .into_coeffs_in_base()
+            .map(|el: Mersenne31Field| el.to_reduced_u32());
+        for src in flattened.into_iter() {
+            *it.next().unwrap() = src;
+        }
+
+        assert!(it.next().is_none());
+
+        result
+    }
+}
+
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash,
+)]
+#[repr(C)]
+pub struct ExternalMachineIntermediateStateArgumentChallenges {
+    pub linearization_challenges:
+        [Mersenne31Quartic; NUM_INTERMEDIATE_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    pub additive_term: Mersenne31Quartic,
+}
+
+impl ExternalMachineIntermediateStateArgumentChallenges {
+    pub fn flatten(&self) -> [u32; NUM_INTERMEDIATE_MACHINE_STATE_LINEARIZATION_CHALLENGES * 4] {
+        // we must normalize
+        let mut result = [0u32; NUM_INTERMEDIATE_MACHINE_STATE_LINEARIZATION_CHALLENGES * 4];
+        let mut it = result.iter_mut();
+
+        for el in self.linearization_challenges.iter() {
+            let flattened = el
+                .into_coeffs_in_base()
+                .map(|el: Mersenne31Field| el.to_reduced_u32());
+            for src in flattened.into_iter() {
+                *it.next().unwrap() = src;
+            }
+        }
+
+        let flattened = self
+            .additive_term
+            .into_coeffs_in_base()
+            .map(|el: Mersenne31Field| el.to_reduced_u32());
+        for src in flattened.into_iter() {
+            *it.next().unwrap() = src;
+        }
+
+        assert!(it.next().is_none());
+
+        result
+    }
+}
+
+#[derive(Clone, Copy, Debug, Hash, Default, serde::Serialize, serde::Deserialize, PartialEq)]
 #[repr(C)]
 pub struct ExternalChallenges {
-    // #[serde(bound(deserialize = "ExternalMemoryArgumentChallenges: serde::Deserialize<'de>"))]
-    // #[serde(bound(serialize = "ExternalMemoryArgumentChallenges: serde::Serialize"))]
     pub memory_argument: ExternalMemoryArgumentChallenges,
-    // #[serde(bound(deserialize = "ExternalDelegationArgumentChallenges: serde::Deserialize<'de>"))]
-    // #[serde(bound(serialize = "ExternalDelegationArgumentChallenges: serde::Serialize"))]
     pub delegation_argument: Option<ExternalDelegationArgumentChallenges>,
+    pub machine_state_permutation_argument: Option<ExternalMachineStateArgumentChallenges>,
 }
 
 impl ExternalChallenges {
-    pub fn draw_from_transcript_seed(mut seed: Seed, produce_delegation_challenge: bool) -> Self {
+    pub fn draw_from_transcript_seed(
+        mut seed: Seed,
+        produce_delegation_challenge: bool,
+        pow_bits: usize,
+        pow_challenge: u64,
+    ) -> Self {
+        if pow_bits > 0 {
+            Transcript::verify_pow(&mut seed, pow_challenge, pow_bits as u32);
+        }
+
         unsafe {
             if produce_delegation_challenge == false {
-                let mut transcript_challenges = [0u32;
-                    ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4)
+                if pow_bits > 0 {
+                    let mut transcript_challenges = [0u32;
+                        ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4 + 1)
+                            .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
+                    Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
+
+                    let mut it = transcript_challenges[1..].as_chunks::<4>().0.iter();
+                    let memory_argument_linearization_challenges: [Mersenne31Quartic;
+                        NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
+                        Mersenne31Quartic::from_coeffs_in_base(
+                            &it.next()
+                                .unwrap_unchecked()
+                                .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                        )
+                    });
+                    let memory_argument_gamma = Mersenne31Quartic::from_coeffs_in_base(
+                        &it.next()
+                            .unwrap_unchecked()
+                            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                    );
+
+                    let memory_argument = ExternalMemoryArgumentChallenges {
+                        memory_argument_linearization_challenges,
+                        memory_argument_gamma,
+                    };
+
+                    Self {
+                        memory_argument,
+                        delegation_argument: None,
+                        machine_state_permutation_argument: None,
+                    }
+                } else {
+                    let mut transcript_challenges = [0u32;
+                        ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4)
+                            .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
+                    Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
+
+                    let mut it = transcript_challenges.as_chunks::<4>().0.iter();
+                    let memory_argument_linearization_challenges: [Mersenne31Quartic;
+                        NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
+                        Mersenne31Quartic::from_coeffs_in_base(
+                            &it.next()
+                                .unwrap_unchecked()
+                                .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                        )
+                    });
+                    let memory_argument_gamma = Mersenne31Quartic::from_coeffs_in_base(
+                        &it.next()
+                            .unwrap_unchecked()
+                            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                    );
+
+                    let memory_argument = ExternalMemoryArgumentChallenges {
+                        memory_argument_linearization_challenges,
+                        memory_argument_gamma,
+                    };
+
+                    Self {
+                        memory_argument,
+                        delegation_argument: None,
+                        machine_state_permutation_argument: None,
+                    }
+                }
+            } else {
+                if pow_bits > 0 {
+                    let mut transcript_challenges = [0u32;
+                        ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES
+                            + 1
+                            + NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES
+                            + 1)
+                            * 4
+                            + 1)
                         .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
+                    Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
+
+                    let mut it = transcript_challenges[1..].as_chunks::<4>().0.iter();
+                    let memory_argument_linearization_challenges: [Mersenne31Quartic;
+                        NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
+                        Mersenne31Quartic::from_coeffs_in_base(
+                            &it.next()
+                                .unwrap_unchecked()
+                                .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                        )
+                    });
+                    let memory_argument_gamma = Mersenne31Quartic::from_coeffs_in_base(
+                        &it.next()
+                            .unwrap_unchecked()
+                            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                    );
+
+                    let delegation_argument_linearization_challenges: [Mersenne31Quartic;
+                        NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
+                        core::array::from_fn(|_| {
+                            Mersenne31Quartic::from_coeffs_in_base(
+                                &it.next()
+                                    .unwrap_unchecked()
+                                    .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                            )
+                        });
+                    let delegation_argument_gamma = Mersenne31Quartic::from_coeffs_in_base(
+                        &it.next()
+                            .unwrap_unchecked()
+                            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                    );
+
+                    let memory_argument = ExternalMemoryArgumentChallenges {
+                        memory_argument_linearization_challenges,
+                        memory_argument_gamma,
+                    };
+
+                    let delegation_argument = ExternalDelegationArgumentChallenges {
+                        delegation_argument_linearization_challenges,
+                        delegation_argument_gamma,
+                    };
+
+                    Self {
+                        memory_argument,
+                        delegation_argument: Some(delegation_argument),
+                        machine_state_permutation_argument: None,
+                    }
+                } else {
+                    let mut transcript_challenges = [0u32;
+                        ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES
+                            + 1
+                            + NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES
+                            + 1)
+                            * 4)
+                        .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
+                    Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
+
+                    let mut it = transcript_challenges.as_chunks::<4>().0.iter();
+                    let memory_argument_linearization_challenges: [Mersenne31Quartic;
+                        NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
+                        Mersenne31Quartic::from_coeffs_in_base(
+                            &it.next()
+                                .unwrap_unchecked()
+                                .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                        )
+                    });
+                    let memory_argument_gamma = Mersenne31Quartic::from_coeffs_in_base(
+                        &it.next()
+                            .unwrap_unchecked()
+                            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                    );
+
+                    let delegation_argument_linearization_challenges: [Mersenne31Quartic;
+                        NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
+                        core::array::from_fn(|_| {
+                            Mersenne31Quartic::from_coeffs_in_base(
+                                &it.next()
+                                    .unwrap_unchecked()
+                                    .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                            )
+                        });
+                    let delegation_argument_gamma = Mersenne31Quartic::from_coeffs_in_base(
+                        &it.next()
+                            .unwrap_unchecked()
+                            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                    );
+
+                    let memory_argument = ExternalMemoryArgumentChallenges {
+                        memory_argument_linearization_challenges,
+                        memory_argument_gamma,
+                    };
+
+                    let delegation_argument = ExternalDelegationArgumentChallenges {
+                        delegation_argument_linearization_challenges,
+                        delegation_argument_gamma,
+                    };
+
+                    Self {
+                        memory_argument,
+                        delegation_argument: Some(delegation_argument),
+                        machine_state_permutation_argument: None,
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn draw_from_transcript_seed_with_delegation_and_state_permutation(
+        mut seed: Seed,
+        pow_bits: usize,
+        pow_challenge: u64,
+    ) -> Self {
+        if pow_bits > 0 {
+            Transcript::verify_pow(&mut seed, pow_challenge, pow_bits as u32);
+        }
+
+        unsafe {
+            if pow_bits > 0 {
+                let mut transcript_challenges = [0u32;
+                    ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES
+                        + 1
+                        + NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES
+                        + 1
+                        + NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES
+                        + 1)
+                        * 4
+                        + 1)
+                    .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
                 Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
 
-                let mut it = transcript_challenges.as_chunks::<4>().0.iter();
+                let mut it = transcript_challenges[1..].as_chunks::<4>().0.iter();
                 let memory_argument_linearization_challenges: [Mersenne31Quartic;
                     NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
                     Mersenne31Quartic::from_coeffs_in_base(
@@ -139,20 +420,65 @@ impl ExternalChallenges {
                         .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
                 );
 
+                let delegation_argument_linearization_challenges: [Mersenne31Quartic;
+                    NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
+                    core::array::from_fn(|_| {
+                        Mersenne31Quartic::from_coeffs_in_base(
+                            &it.next()
+                                .unwrap_unchecked()
+                                .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                        )
+                    });
+                let delegation_argument_gamma = Mersenne31Quartic::from_coeffs_in_base(
+                    &it.next()
+                        .unwrap_unchecked()
+                        .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                );
+
+                let machine_state_permutation_argument_linearization_challenges: [Mersenne31Quartic;
+                    NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
+                    Mersenne31Quartic::from_coeffs_in_base(
+                        &it.next()
+                            .unwrap_unchecked()
+                            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                    )
+                });
+
+                let machine_state_permutation_argument_additive_term =
+                    Mersenne31Quartic::from_coeffs_in_base(
+                        &it.next()
+                            .unwrap_unchecked()
+                            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                    );
+
                 let memory_argument = ExternalMemoryArgumentChallenges {
                     memory_argument_linearization_challenges,
                     memory_argument_gamma,
                 };
 
+                let delegation_argument = ExternalDelegationArgumentChallenges {
+                    delegation_argument_linearization_challenges,
+                    delegation_argument_gamma,
+                };
+
+                let machine_state_permutation_argument = ExternalMachineStateArgumentChallenges {
+                    linearization_challenges:
+                        machine_state_permutation_argument_linearization_challenges,
+                    additive_term: machine_state_permutation_argument_additive_term,
+                };
+
                 Self {
                     memory_argument,
-                    delegation_argument: None,
+                    delegation_argument: Some(delegation_argument),
+                    machine_state_permutation_argument: Some(machine_state_permutation_argument),
                 }
             } else {
                 let mut transcript_challenges = [0u32;
                     ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES
                         + 1
                         + NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES
+                        + 1
+                        + NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES
                         + 1)
                         * 4)
                     .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
@@ -188,6 +514,22 @@ impl ExternalChallenges {
                         .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
                 );
 
+                let machine_state_permutation_argument_linearization_challenges: [Mersenne31Quartic;
+                    NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
+                    Mersenne31Quartic::from_coeffs_in_base(
+                        &it.next()
+                            .unwrap_unchecked()
+                            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                    )
+                });
+
+                let machine_state_permutation_argument_additive_term =
+                    Mersenne31Quartic::from_coeffs_in_base(
+                        &it.next()
+                            .unwrap_unchecked()
+                            .map(|el| Mersenne31Field::from_nonreduced_u32(el)),
+                    );
+
                 let memory_argument = ExternalMemoryArgumentChallenges {
                     memory_argument_linearization_challenges,
                     memory_argument_gamma,
@@ -198,9 +540,16 @@ impl ExternalChallenges {
                     delegation_argument_gamma,
                 };
 
+                let machine_state_permutation_argument = ExternalMachineStateArgumentChallenges {
+                    linearization_challenges:
+                        machine_state_permutation_argument_linearization_challenges,
+                    additive_term: machine_state_permutation_argument_additive_term,
+                };
+
                 Self {
                     memory_argument,
                     delegation_argument: Some(delegation_argument),
+                    machine_state_permutation_argument: Some(machine_state_permutation_argument),
                 }
             }
         }
@@ -289,7 +638,7 @@ pub struct ExternalValues {
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ProofAuxValues {
-    pub memory_grand_product_accumulator_final_value: Mersenne31Quartic,
+    pub grand_product_accumulator_final_value: Mersenne31Quartic,
     pub delegation_argument_accumulator_sum: Mersenne31Quartic,
 }
 
@@ -360,6 +709,52 @@ fn split_u32_into_pair_u16(num: u32) -> (u32, u32) {
     (low_word, high_word)
 }
 
+/// (PC, timestamp)
+pub fn produce_pc_into_permutation_accumulator_raw(
+    initial_pc: u32,
+    initial_timestamp: (u32, u32),
+    final_pc: u32,
+    final_timestamp: (u32, u32),
+    state_permutation_argument_linearization_challenges: &[Mersenne31Quartic;
+        NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    state_permutation_argument_gamma: &Mersenne31Quartic,
+) -> Mersenne31Quartic {
+    let mut write_set_contribution = Mersenne31Quartic::ONE;
+    let mut read_set_contribution = Mersenne31Quartic::ONE;
+
+    for (dst, (pc, (ts_low, ts_high))) in [&mut write_set_contribution, &mut read_set_contribution]
+        .into_iter()
+        .zip([(initial_pc, initial_timestamp), (final_pc, final_timestamp)].into_iter())
+    {
+        let (pc_low, pc_high) = split_u32_into_pair_u16(pc);
+        // PC low without challenge
+        let mut contribution = Mersenne31Quartic::from_base(Mersenne31Field(pc_low));
+        // PC high
+        let mut t = state_permutation_argument_linearization_challenges
+            [MACHINE_STATE_CHALLENGE_POWERS_PC_HIGH_IDX];
+        t.mul_assign_by_base(&Mersenne31Field(pc_high));
+        contribution.add_assign(&t);
+        // timestamp low
+        let mut t = state_permutation_argument_linearization_challenges
+            [MACHINE_STATE_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+        t.mul_assign_by_base(&Mersenne31Field(ts_low));
+        contribution.add_assign(&t);
+        // timestamp high
+        let mut t = state_permutation_argument_linearization_challenges
+            [MACHINE_STATE_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+        t.mul_assign_by_base(&Mersenne31Field(ts_high));
+        contribution.add_assign(&t);
+        // additive term
+        contribution.add_assign(state_permutation_argument_gamma);
+        dst.mul_assign(&contribution);
+    }
+
+    let mut result = write_set_contribution;
+    result.mul_assign(&read_set_contribution.inverse().unwrap());
+
+    result
+}
+
 // Joint structure for RAM init/teardown
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash,
@@ -369,4 +764,12 @@ pub struct LazyInitAndTeardown {
     pub address: u32,
     pub teardown_value: u32,
     pub teardown_timestamp: TimestampData,
+}
+
+impl LazyInitAndTeardown {
+    pub const EMPTY: Self = LazyInitAndTeardown {
+        address: 0,
+        teardown_value: 0,
+        teardown_timestamp: TimestampData::EMPTY,
+    };
 }

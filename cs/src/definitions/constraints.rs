@@ -1,13 +1,13 @@
 use super::*;
 use alloc::boxed::Box;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VerifierCompiledDegree1Constraint<'a, F: PrimeField> {
     pub linear_terms: &'a [(F, ColumnAddress)],
     pub constant_term: F,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VerifierCompiledDegree2Constraint<'a, F: PrimeField> {
     pub quadratic_terms: &'a [(F, ColumnAddress, ColumnAddress)],
     pub linear_terms: &'a [(F, ColumnAddress)],
@@ -19,7 +19,7 @@ pub type StaticVerifierCompiledDegree1Constraint<F: PrimeField> =
 pub type StaticVerifierCompiledDegree2Constraint<F: PrimeField> =
     VerifierCompiledDegree2Constraint<'static, F>;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BoundaryConstraintLocation {
     FirstRow,
     LastRow,

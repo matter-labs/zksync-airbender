@@ -9,6 +9,8 @@ use alloc::vec::Vec;
 mod columns;
 mod constants;
 mod constraints;
+mod cycle_state;
+mod decoding_utils;
 mod delegation;
 mod lookup;
 mod memory_tree;
@@ -16,11 +18,14 @@ mod ram_access;
 mod setup_tree;
 mod stage2;
 mod table_type;
+mod unrolled_families;
 mod witness_tree;
 
 pub use self::columns::*;
 pub use self::constants::*;
 pub use self::constraints::*;
+pub use self::cycle_state::*;
+pub use self::decoding_utils::*;
 pub use self::delegation::*;
 pub use self::lookup::*;
 pub use self::memory_tree::*;
@@ -28,13 +33,8 @@ pub use self::ram_access::*;
 pub use self::setup_tree::*;
 pub use self::stage2::*;
 pub use self::table_type::*;
+pub use self::unrolled_families::*;
 pub use self::witness_tree::*;
-
-pub const NUM_TIMESTAMP_DATA_LIMBS: usize = 3;
-pub type TimestampScalar = u64;
-
-pub const INITIAL_TIMESTAMP_AT_CHUNK_START: TimestampScalar = 4;
-pub const TIMESTAMP_STEP: TimestampScalar = 1 << NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
 
 #[inline]
 pub const fn timestamp_from_absolute_cycle_index(
@@ -165,7 +165,7 @@ pub struct VerifierCompiledCircuitArtifact<'a, F: PrimeField> {
     pub degree_1_constraints: &'a [VerifierCompiledDegree1Constraint<'a, F>],
     pub state_linkage_constraints: &'a [(ColumnAddress, ColumnAddress)],
     pub public_inputs: &'a [(BoundaryConstraintLocation, ColumnAddress)],
-    pub lazy_init_address_aux_vars: Option<ShuffleRamAuxComparisonSet>,
+    pub lazy_init_address_aux_vars: &'a [ShuffleRamAuxComparisonSet],
     // pub memory_queries_timestamp_comparison_aux_vars: &'a [ColumnAddress],
     // pub batched_memory_access_timestamp_comparison_aux_vars: CompiledBatchedRamTimestampComparisonAuxVars<'a>,
     pub trace_len_log2: usize,
@@ -201,10 +201,9 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
         // we open state-linking boundary constraints
         num_deep_poly_terms_at_z_omega += self.state_linkage_constraints.len();
 
-        if self.memory_layout.shuffle_ram_inits_and_teardowns.is_some() {
-            // then we open lazy init columns in memory
-            num_deep_poly_terms_at_z_omega += REGISTER_SIZE; // width of lazy inits
-        }
+        // then we open lazy init columns in memory
+        num_deep_poly_terms_at_z_omega +=
+            REGISTER_SIZE * self.memory_layout.shuffle_ram_inits_and_teardowns.len(); // width of lazy inits
 
         // and accumulator for grand product in stage 2
         num_deep_poly_terms_at_z_omega += 1;
@@ -227,18 +226,10 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
                     || self.memory_layout.register_and_indirect_accesses.len() > 0
             );
 
-            let num_mem_accesses = self.memory_layout.batched_ram_accesses.len();
-            let mut num_writes = 0;
-            let mut i = 0;
-            let bound = self.memory_layout.batched_ram_accesses.len();
-            while i < bound {
-                if let BatchedRamAccessColumns::WriteAccess { .. } =
-                    self.memory_layout.batched_ram_accesses[i]
-                {
-                    num_writes += 1;
-                }
-                i += 1;
-            }
+            assert!(
+                self.memory_layout.batched_ram_accesses.is_empty(),
+                "deprecated"
+            );
 
             // we do not care about values in the set if we do NOT process,
             // so we do:
@@ -248,14 +239,6 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
             num_quotient_terms += 1;
             // - write timestamp == 0
             num_quotient_terms += NUM_TIMESTAMP_COLUMNS_FOR_RAM;
-
-            // Also batch ram specific constraints
-            // for every value we check that read timestamp == 0
-            num_quotient_terms += NUM_TIMESTAMP_COLUMNS_FOR_RAM * num_mem_accesses;
-            // for every read value we check that value == 0
-            num_quotient_terms += REGISTER_SIZE * num_mem_accesses;
-            // for every written value value we check that value == 0
-            num_quotient_terms += REGISTER_SIZE * num_writes;
 
             // this way our contributions to read/write sets are reads/writes to 0 address at timestamp 0
 
@@ -311,36 +294,31 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
             .intermediate_polys_for_range_check_16
             .num_pairs;
 
+        // 1 constraint for remainders
+        if let Some(_remainder_for_range_check_16) =
+            self.stage_2_layout.remainder_for_range_check_16.as_ref()
+        {
+            todo!()
+        }
+
+        // and special case of range check 16 for lazy init columns
+
+        // 2 constraints for columns itself (comparison), and 3*2 for padding values
+
+        num_quotient_terms +=
+            (2 + 3 * 2) * self.memory_layout.shuffle_ram_inits_and_teardowns.len();
+
         // same for timestamps
         num_quotient_terms += 2 * self
             .stage_2_layout
             .intermediate_polys_for_timestamp_range_checks
             .num_pairs;
 
-        if let Some(shuffle_ram_inits_and_teardowns) =
-            self.memory_layout.shuffle_ram_inits_and_teardowns
-        {
-            // and special case of range check 16 for lazy init columns
-            assert!(
-                shuffle_ram_inits_and_teardowns
-                    .lazy_init_addresses_columns
-                    .num_elements()
-                    == 1
-            );
-            num_quotient_terms += 2;
-
-            // 3 * 2 constraints for the case of padding values checks
-            num_quotient_terms += 3 * 2;
-        }
-
-        // 1 constraint for remainders
-        num_quotient_terms += self.stage_2_layout.remainder_for_range_check_16.is_some() as usize;
-
-        if let Some(_remainder_for_range_check_16) =
-            self.stage_2_layout.remainder_for_range_check_16.as_ref()
-        {
-            todo!()
-        }
+        // if there is a decoder table - it's like a lookup
+        num_quotient_terms += self
+            .stage_2_layout
+            .intermediate_poly_for_decoder_accesses
+            .num_elements();
 
         // 1 constraint per every generic lookup column
         num_quotient_terms += self
@@ -356,6 +334,10 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
         num_quotient_terms += self
             .stage_2_layout
             .intermediate_poly_for_timestamp_range_check_multiplicity
+            .num_elements();
+        num_quotient_terms += self
+            .stage_2_layout
+            .intermediate_polys_for_decoder_multiplicities
             .num_elements();
         num_quotient_terms += self
             .stage_2_layout
@@ -380,7 +362,31 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
         // 1 constraint per every memory column. This includes final column to accumulate grand product
         num_quotient_terms += self
             .stage_2_layout
+            .intermediate_polys_for_memory_init_teardown
+            .num_elements();
+
+        // 1 constraint per every memory column. This includes final column to accumulate grand product
+        num_quotient_terms += self
+            .stage_2_layout
             .intermediate_polys_for_memory_argument
+            .num_elements();
+
+        // 1 constraint for every state permutation
+        num_quotient_terms += self
+            .stage_2_layout
+            .intermediate_polys_for_state_permutation
+            .num_elements();
+
+        // 1 constraint for permutation masking
+        num_quotient_terms += self
+            .stage_2_layout
+            .intermediate_polys_for_permutation_masking
+            .num_elements();
+
+        // 1 constraint for grand product accumulation
+        num_quotient_terms += self
+            .stage_2_layout
+            .intermediate_poly_for_grand_product
             .num_elements();
 
         num_quotient_terms
@@ -391,10 +397,8 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
         // constraints that link state variables, every rows except last two
         num_quotient_terms += self.state_linkage_constraints.len();
 
-        if let Some(_) = self.memory_layout.shuffle_ram_inits_and_teardowns {
-            // two constraints from comparison of lazy init addresses (we stop at one before last and output it)
-            num_quotient_terms += 2;
-        }
+        // two constraints from comparison of lazy init addresses (we stop at one before last and output it)
+        num_quotient_terms += 2 * self.memory_layout.shuffle_ram_inits_and_teardowns.len();
 
         num_quotient_terms
     }
@@ -407,10 +411,8 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
         num_quotient_terms += 1;
 
         // we need to output lazy init addresses + teardown values/timestamps
-        if let Some(_) = self.memory_layout.shuffle_ram_inits_and_teardowns {
-            // 2 limbs per each address, final value and final timestamp
-            num_quotient_terms += 2 * 3;
-        }
+        // 2 limbs per each address, final value and final timestamp
+        num_quotient_terms += 2 * 3 * self.memory_layout.shuffle_ram_inits_and_teardowns.len();
 
         // and public inputs
         let mut i = 0;
@@ -435,10 +437,8 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
         // one before last row
 
         // we need to output lazy init addresses + teardown values/timestamps
-        if let Some(_) = self.memory_layout.shuffle_ram_inits_and_teardowns {
-            // 2 limbs per each address, final value and final timestamp
-            num_quotient_terms += 2 * 3;
-        }
+        // 2 limbs per each address, final value and final timestamp
+        num_quotient_terms += 2 * 3 * self.memory_layout.shuffle_ram_inits_and_teardowns.len();
 
         // and public inputs
         let mut i = 0;
@@ -485,6 +485,13 @@ impl<'a, F: PrimeField> VerifierCompiledCircuitArtifact<'a, F> {
         num_quotient_terms += (self
             .stage_2_layout
             .intermediate_poly_for_timestamp_range_check_multiplicity
+            .num_elements()
+            > 0) as usize;
+
+        // decoder table
+        num_quotient_terms += (self
+            .stage_2_layout
+            .intermediate_polys_for_decoder_multiplicities
             .num_elements()
             > 0) as usize;
 

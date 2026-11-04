@@ -1,0 +1,18 @@
+[package]
+name = "zksync_os_opcode_smoke"
+version = "0.1.0"
+edition = "2021"
+authors = ["The Matter Labs Team <hello@matterlabs.dev>"]
+homepage = "https://zksync.io/"
+repository = "https://github.com/matter-labs/zksync-airbender/"
+license = "MIT OR Apache-2.0"
+keywords = ["blockchain", "zksync", "zk", "risc-v"]
+categories = ["cryptography"]
+
+[dependencies]
+riscv_common = { path = "../../riscv_common" }
+
+[profile.release]
+lto = true
+
+[workspace]

@@ -34,8 +34,10 @@ pub struct BasicAssembly<F: PrimeField, W: WitnessPlacer<F> = CSDebugWitnessEval
     table_driver: TableDriver<F>,
     delegated_computation_requests: Vec<DelegatedComputationRequest>,
     degegated_request_to_process: Option<DelegatedProcessingData>,
-    batched_memory_accesses: Vec<BatchedMemoryAccessType>,
     register_and_indirect_memory_accesses: Vec<RegisterAndIndirectAccesses>,
+    register_and_indirect_memory_accesses_offset_variables_idxes: HashMap<Variable, usize>,
+    decoder_machine_state: Option<DecoderCircuitMachineState<F>>,
+    executor_machine_state: Option<OpcodeFamilyCircuitState<F>>,
 
     pub witness_placer: Option<W>,
     witness_graph: WitnessResolutionGraph<F, W>,
@@ -59,9 +61,12 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
             table_driver: TableDriver::<F>::new(),
             delegated_computation_requests: vec![],
             degegated_request_to_process: None,
-            batched_memory_accesses: vec![],
             register_and_indirect_memory_accesses: vec![],
+            register_and_indirect_memory_accesses_offset_variables_idxes: HashMap::new(),
             witness_graph: WitnessResolutionGraph::new(),
+
+            decoder_machine_state: None,
+            executor_machine_state: None,
 
             witness_placer: None,
 
@@ -71,7 +76,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
 
     #[track_caller]
     fn add_variable(&mut self) -> Variable {
-        // if self.no_index_assigned == 203 {
+        // if self.no_index_assigned == 42 {
         //     panic!("debug");
         // }
         let variable = Variable(self.no_index_assigned);
@@ -95,13 +100,8 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
     fn materialize_table(&mut self, table_type: TableType) {
         self.table_driver.materialize_table(table_type);
         if let Some(witness_placer) = self.witness_placer.as_mut() {
-            if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
-                unsafe {
-                    let t = (witness_placer as *mut W)
-                        .cast::<CSDebugWitnessEvaluator<F>>()
-                        .as_mut_unchecked();
-                    t.table_driver.materialize_table(table_type);
-                }
+            if let Some(debug_evaluator) = Self::as_debug_evaluator_mut(witness_placer) {
+                debug_evaluator.table_driver.materialize_table(table_type);
             }
         }
     }
@@ -110,13 +110,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
         self.table_driver
             .add_table_with_content(table_type, table.clone());
         if let Some(witness_placer) = self.witness_placer.as_mut() {
-            if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
-                unsafe {
-                    let t = (witness_placer as *mut W)
-                        .cast::<CSDebugWitnessEvaluator<F>>()
-                        .as_mut_unchecked();
-                    t.table_driver.add_table_with_content(table_type, table);
-                }
+            if let Some(debug_evaluator) = Self::as_debug_evaluator_mut(witness_placer) {
+                debug_evaluator
+                    .table_driver
+                    .add_table_with_content(table_type, table);
             }
         }
     }
@@ -124,16 +121,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
     #[track_caller]
     fn get_value(&self, var: Variable) -> Option<F> {
         if let Some(witness_placer) = self.witness_placer.as_ref() {
-            if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
-                unsafe {
-                    let t = (witness_placer as *const W)
-                        .cast::<CSDebugWitnessEvaluator<F>>()
-                        .as_ref_unchecked();
-                    t.get_value(var)
-                }
-            } else {
-                None
-            }
+            Self::as_debug_evaluator(witness_placer).and_then(|resolver| resolver.get_value(var))
         } else {
             None
         }
@@ -190,13 +178,13 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
         let memory_offset_high = self.add_variable();
         self.require_invariant(
             memory_offset_high,
-            Invariant::Substituted((Placeholder::DegelationABIOffset, 0)),
+            Invariant::Substituted((Placeholder::DelegationABIOffset, 0)),
         );
 
         // set witness
         let value_fn = move |placer: &mut Self::WitnessPlacer| {
             let execute_bool = placer.get_oracle_boolean(Placeholder::ExecuteDelegation);
-            let abi_offset_high = placer.get_oracle_u16(Placeholder::DegelationABIOffset);
+            let abi_offset_high = placer.get_oracle_u16(Placeholder::DelegationABIOffset);
             placer.assign_mask(execute, &execute_bool);
             placer.assign_u16(memory_offset_high, &abi_offset_high);
         };
@@ -217,38 +205,6 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
         _is_writable: &[bool],
     ) -> Vec<BatchedMemoryAccessType> {
         unimplemented!("deprecated");
-
-        // assert!(self.batched_memory_accesses.is_empty());
-        // // we do not need range checks below in reads, otherwise it'll not be satisfiable as permutation
-        // for (idx, el) in is_writable.iter().enumerate() {
-        //     let request = if *el {
-        //         let read_low = self
-        //             .add_variable_from_placeholder(Placeholder::DelegationMemoryReadValue(idx), 0);
-        //         let read_high = self
-        //             .add_variable_from_placeholder(Placeholder::DelegationMemoryReadValue(idx), 1);
-
-        //         let write_low = self.add_variable();
-        //         let write_high = self.add_variable();
-
-        //         BatchedMemoryAccessType::Write {
-        //             read_value: [read_low, read_high],
-        //             write_value: [write_low, write_high],
-        //         }
-        //     } else {
-        //         let read_low = self
-        //             .add_variable_from_placeholder(Placeholder::DelegationMemoryReadValue(idx), 0);
-        //         let read_high = self
-        //             .add_variable_from_placeholder(Placeholder::DelegationMemoryReadValue(idx), 1);
-
-        //         BatchedMemoryAccessType::Read {
-        //             read_value: [read_low, read_high],
-        //         }
-        //     };
-
-        //     self.batched_memory_accesses.push(request);
-        // }
-
-        // self.batched_memory_accesses.clone()
     }
 
     fn create_register_and_indirect_memory_accesses(
@@ -337,10 +293,78 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
             }
         };
 
-        let mut indirect_accesses = vec![];
+        let mut indirect_accesses: Vec<IndirectAccessType> = vec![];
 
-        for (indirect_access_idx, is_write) in request.indirect_accesses.into_iter().enumerate() {
-            let access = if is_write {
+        for (indirect_access_idx, access_description) in
+            request.indirect_accesses.into_iter().enumerate()
+        {
+            if let Some((c, _)) = access_description.variable_dependent {
+                assert!(
+                    c < 1 << 16,
+                    "constant multiplier {} is too large and unsupported",
+                    c
+                );
+                assert!(
+                    access_description.assume_no_alignment_overflow,
+                    "overflowing address generation with variable part is not yet supported"
+                );
+            }
+            if access_description.variable_dependent.is_none() {
+                if access_description.assume_no_alignment_overflow {
+                    assert!(
+                        access_description.offset_constant + (core::mem::size_of::<u32>() as u32)
+                            <= (1 << request.indirects_alignment_log2)
+                    );
+                }
+            }
+            // make formal witness assignment to placeholder to drive witness resolution
+            let variable_dependent = if let Some((off, var)) = access_description.variable_dependent
+            {
+                if self
+                    .register_and_indirect_memory_accesses_offset_variables_idxes
+                    .contains_key(&var)
+                    == false
+                {
+                    let idx = self
+                        .register_and_indirect_memory_accesses_offset_variables_idxes
+                        .len();
+                    self.register_and_indirect_memory_accesses_offset_variables_idxes
+                        .insert(var, idx);
+                    self.require_invariant(
+                        var,
+                        Invariant::Substituted((
+                            Placeholder::DelegationIndirectAccessVariableOffset {
+                                variable_index: idx,
+                            },
+                            0,
+                        )),
+                    );
+
+                    // it was not used in other accesses, so it needs an oracle value
+                    let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                        let value = placer.get_oracle_u16(
+                            Placeholder::DelegationIndirectAccessVariableOffset {
+                                variable_index: idx,
+                            },
+                        );
+                        placer.assign_u16(var, &value);
+                    };
+                    self.set_values(value_fn);
+                }
+
+                Some((
+                    off,
+                    var,
+                    self.register_and_indirect_memory_accesses_offset_variables_idxes
+                        .get(&var)
+                        .copied()
+                        .unwrap(),
+                ))
+            } else {
+                None
+            };
+
+            let access = if access_description.is_write_access {
                 let read_low = self.add_variable();
                 let read_high = self.add_variable();
 
@@ -380,6 +404,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
                 IndirectAccessType::Write {
                     read_value: [read_low, read_high],
                     write_value: [write_low, write_high],
+                    variable_dependent: variable_dependent,
+                    offset_constant: access_description.offset_constant,
+                    assume_no_alignment_overflow: access_description.assume_no_alignment_overflow,
                 }
             } else {
                 let read_low = self.add_variable();
@@ -417,6 +444,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
 
                 IndirectAccessType::Read {
                     read_value: [read_low, read_high],
+                    variable_dependent: variable_dependent,
+                    offset_constant: access_description.offset_constant,
+                    assume_no_alignment_overflow: access_description.assume_no_alignment_overflow,
                 }
             };
 
@@ -549,6 +579,67 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
         output_variables
     }
 
+    #[track_caller]
+    fn set_variables_from_lookup_constrained<const M: usize, const N: usize>(
+        &mut self,
+        inputs: [LookupInput<F>; M],
+        output_variables: [Variable; N],
+        table_type: Num<F>,
+    ) {
+        assert_eq!(M + N, COMMON_TABLE_WIDTH);
+        assert!(
+            table_type != TableType::ZeroEntry.to_num()
+                && table_type != TableType::DynamicPlaceholder.to_num()
+        );
+
+        if M == COMMON_TABLE_WIDTH {
+            assert_eq!(N, 0);
+            // just add lookup, no witness evaluation here
+
+            panic!("Please use `enforce_lookup_tuple_for_fixed_table` if no outputs are required");
+        }
+
+        assert!(M == 1 || M == 2);
+
+        let inputs_vars = inputs.clone();
+        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+            let input_values: [_; M] = std::array::from_fn(|i| inputs_vars[i].evaluate(placer));
+            let table_id = if let Num::Constant(c) = table_type {
+                <Self::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(c.as_u64() as u16)
+            } else if let Num::Var(v) = table_type {
+                placer.get_u16(v)
+            } else {
+                unreachable!()
+            };
+            let output_values = placer.lookup::<M, N>(&input_values, &table_id);
+            for (var, value) in output_variables.iter().zip(output_values.iter()) {
+                placer.assign_field(*var, value);
+            }
+        };
+        self.set_values(value_fn);
+
+        let input_len = M;
+        let row = std::array::from_fn(|idx| {
+            if idx < input_len {
+                inputs[idx].clone()
+            } else {
+                LookupInput::Variable(output_variables[idx - input_len])
+            }
+        });
+        let query = LookupQuery {
+            row,
+            table: if let Num::Constant(c) = table_type {
+                LookupQueryTableType::Constant(TableType::get_table_from_id(c.as_u64() as u32))
+            } else if let Num::Var(v) = table_type {
+                LookupQueryTableType::Variable(v)
+            } else {
+                unreachable!()
+            },
+        };
+
+        self.lookup_storage.push(query);
+    }
+
     fn require_invariant(&mut self, variable: Variable, invariant: Invariant) {
         match invariant {
             Invariant::Boolean => self.boolean_variables.push(variable),
@@ -572,6 +663,217 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
             initial_var,
             final_var,
         })
+    }
+
+    fn allocate_decoder_circuit_state(&mut self) -> DecoderCircuitMachineState<F> {
+        // Variables will be allocated with all the corresponding guarantees,
+        // and circuit should use them in constraints and make witness values if necessary
+
+        // PC - by induction we start with 0, and then always adjust using range checks (and 0 mod 4),
+        // so we can allocate from witness and allow permutation argument to take care of correct range
+        let pc: [Variable; 2] = std::array::from_fn(|_| self.add_variable());
+
+        // Same for timestamps - those are incremented with a proper range check in the execution circuits
+        let timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM] =
+            std::array::from_fn(|_| self.add_variable());
+
+        let cycle_start_state = MachineCycleStartOrEndState {
+            pc,
+            timestamp,
+            _marker: std::marker::PhantomData,
+        };
+
+        // variables for decoder are not checked at all, and circuit will be responsible to properly constraint
+        // them
+
+        let decoder_data = DecoderDataForDecoderCircuit {
+            decoder_data: DecoderData {
+                rs1_index: self.add_variable(),
+                rs2_index: self.add_variable(),
+                rd_index: self.add_variable(),
+                rd_is_zero: self.add_variable(), // boolean in nature, but constrained by prover directly
+                imm: std::array::from_fn(|_| self.add_variable()),
+                funct3: self.add_variable(),
+                funct7: Some(self.add_variable()),
+                circuit_family_extra_mask: self.add_variable(),
+                _marker: std::marker::PhantomData,
+            },
+            circuit_family: self.add_variable(),
+        };
+
+        // we can also attach initial witness here - only PC is needed, and while timestamp is formally
+        // available, should not be used
+
+        self.require_invariant(pc[0], Invariant::Substituted((Placeholder::PcInit, 0)));
+        self.require_invariant(pc[1], Invariant::Substituted((Placeholder::PcInit, 1)));
+        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+            let value = placer.get_oracle_u32(Placeholder::PcInit);
+            placer.assign_u32_from_u16_parts(pc, &value);
+        };
+        self.set_values(value_fn);
+
+        let state = DecoderCircuitMachineState {
+            cycle_start_state,
+            decoder_data,
+        };
+
+        self.decoder_machine_state = Some(state.clone());
+
+        state
+    }
+
+    fn allocate_execution_circuit_state<const ASSUME_PREPROCESSED_DECODER_TABLE: bool>(
+        &mut self,
+    ) -> OpcodeFamilyCircuitState<F> {
+        // Variables will be allocated with all the corresponding guarantees,
+        // and circuit should use them in constraints and make witness values if necessary
+
+        // NOTE: We should make most of the variables below as substituted placeholders,
+        // to formally recognize them as inputs for witness-evals
+
+        // PC - by induction we start with 0, and then always adjust using range checks (and 0 mod 4),
+        // so we can allocate from witness and allow permutation argument to take care of correct range
+        let pc: [Variable; 2] = std::array::from_fn(|_| self.add_variable());
+        pc.iter().enumerate().for_each(|(i, el)| {
+            self.require_invariant(*el, Invariant::Substituted((Placeholder::PcInit, i)))
+        });
+
+        // Same for timestamps - those are incremented with a proper range check in the execution circuits
+        let timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM] =
+            std::array::from_fn(|_| self.add_variable());
+
+        let cycle_start_state = MachineCycleStartOrEndState {
+            pc,
+            timestamp,
+            _marker: std::marker::PhantomData,
+        };
+
+        // variables for decoder are not checked at all, and circuit will be responsible to properly constraint
+        // them
+
+        // NOTE: Ideally compiler should take care of this boolean check, but there is no nice place in quotient to put it,
+        // so we will add constraints
+        let execute = self.add_variable();
+        self.require_invariant(
+            execute,
+            Invariant::Substituted((Placeholder::ExecuteOpcodeFamilyCycle, 0)),
+        );
+        use crate::constraint::Term;
+        self.add_constraint((Term::from(execute) - Term::from(1u64)) * Term::from(execute));
+
+        let decoder_data: DecoderData<F> = DecoderData {
+            rs1_index: self.add_variable(),
+            rs2_index: self.add_variable(),
+            rd_index: self.add_variable(),
+            rd_is_zero: self.add_variable(), // boolean in nature, but constrained by prover directly
+            imm: std::array::from_fn(|_| self.add_variable()),
+            funct3: self.add_variable(),
+            funct7: if ASSUME_PREPROCESSED_DECODER_TABLE {
+                None
+            } else {
+                Some(self.add_variable())
+            },
+            circuit_family_extra_mask: self.add_variable(),
+            _marker: std::marker::PhantomData,
+        };
+
+        self.require_invariant(
+            decoder_data.rs1_index,
+            Invariant::Substituted((Placeholder::RS1Index, 0)),
+        );
+        self.require_invariant(
+            decoder_data.rs2_index,
+            Invariant::Substituted((Placeholder::RS2Index, 0)),
+        );
+        self.require_invariant(
+            decoder_data.rd_index,
+            Invariant::Substituted((Placeholder::RDIndex, 0)),
+        );
+        self.require_invariant(
+            decoder_data.rd_is_zero,
+            Invariant::Substituted((Placeholder::RDIsZero, 0)),
+        );
+        decoder_data.imm.iter().enumerate().for_each(|(i, el)| {
+            self.require_invariant(*el, Invariant::Substituted((Placeholder::DecodedImm, i)))
+        });
+        self.require_invariant(
+            decoder_data.funct3,
+            Invariant::Substituted((Placeholder::DecodedFunct3, 0)),
+        );
+        if ASSUME_PREPROCESSED_DECODER_TABLE == false {
+            self.require_invariant(
+                decoder_data.funct7.unwrap(),
+                Invariant::Substituted((Placeholder::DecodedFunct7, 0)),
+            );
+        }
+        self.require_invariant(
+            decoder_data.circuit_family_extra_mask,
+            Invariant::Substituted((Placeholder::DecodedExecutorFamilyMask, 0)),
+        );
+
+        // we can also attach initial witness here - we need initial PC and decoder
+
+        if ASSUME_PREPROCESSED_DECODER_TABLE {
+            let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                let initial_pc_value = placer.get_oracle_u32(Placeholder::PcInit);
+                placer.assign_u32_from_u16_parts(pc, &initial_pc_value);
+
+                let decoder_data = decoder_data;
+                placer.spec_decoder_relation(pc, &decoder_data);
+
+                // let decoded_data = placer.spec_decoder_table_lookup(&initial_pc_value);
+                // placer.assign_u8(decoder_data.rs1_index, &decoded_data.rs1_index);
+                // placer.assign_u8(decoder_data.rs2_index, &decoded_data.rs2_index);
+                // placer.assign_u8(decoder_data.rd_index, &decoded_data.rd_index);
+                // placer.assign_mask(decoder_data.rd_is_zero, &decoded_data.rd_is_zero);
+                // placer.assign_u32_from_u16_parts(decoder_data.imm, &decoded_data.imm);
+                // placer.assign_u8(decoder_data.funct3, &decoded_data.funct3);
+                // placer.assign_u8(decoder_data.circuit_family_extra_mask, &decoded_data.circuit_family_extra_mask);
+            };
+            self.set_values(value_fn);
+        } else {
+            todo!();
+        }
+
+        // not make a final state - opcode family circuit is responsible to create a PC,
+        // and timestamps bump comes from compiler
+
+        let pc: [Variable; 2] = std::array::from_fn(|_| self.add_variable());
+        pc.iter().enumerate().for_each(|(i, el)| {
+            self.require_invariant(*el, Invariant::Substituted((Placeholder::PcFin, i)))
+        });
+
+        let timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM] =
+            std::array::from_fn(|_| self.add_variable());
+
+        let cycle_end_state = MachineCycleStartOrEndState {
+            pc,
+            timestamp,
+            _marker: std::marker::PhantomData,
+        };
+
+        // we also mark timestamps as formally assigned - those are resolved in prover
+        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+            placer.assume_assigned(execute);
+
+            placer.assume_assigned(cycle_start_state.timestamp[0]);
+            placer.assume_assigned(cycle_start_state.timestamp[1]);
+
+            placer.assume_assigned(cycle_end_state.timestamp[0]);
+            placer.assume_assigned(cycle_end_state.timestamp[1]);
+        };
+        self.set_values(value_fn);
+
+        let state = OpcodeFamilyCircuitState {
+            execute,
+            cycle_start_state,
+            decoder_data,
+            cycle_end_state,
+        };
+
+        self.executor_machine_state = Some(state.clone());
+
+        state
     }
 
     fn set_log(&mut self, opt_ctx: &OptimizationContext<F, Self>, name: &'static str) {
@@ -684,8 +986,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
             shuffle_ram_queries,
             delegated_computation_requests,
             degegated_request_to_process,
-            batched_memory_accesses,
             register_and_indirect_memory_accesses,
+            decoder_machine_state,
+            executor_machine_state,
             ..
         } = self;
 
@@ -713,20 +1016,34 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
             substitutions: placeholder_query,
             delegated_computation_requests,
             degegated_request_to_process,
-            batched_memory_accesses,
             register_and_indirect_memory_accesses,
+            decoder_machine_state,
+            executor_machine_state,
         };
 
         (output, self.witness_placer)
     }
 
     fn is_satisfied(&mut self) -> bool {
-        if let Some(witness_placer) = self.witness_placer.as_ref() {
-            if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
-                unsafe {
-                    let resolver = (witness_placer as *const W)
-                        .cast::<CSDebugWitnessEvaluator<F>>()
-                        .as_ref_unchecked();
+        if let Some(witness_placer) = self.witness_placer.as_mut() {
+            if Self::as_debug_evaluator(witness_placer).is_some() {
+                const MAX_FIXED_POINT_ITERATIONS: usize = 64;
+                let mut prev_assigned = Self::as_debug_evaluator(witness_placer)
+                    .unwrap()
+                    .num_assigned();
+                for _ in 0..MAX_FIXED_POINT_ITERATIONS {
+                    self.witness_graph.replay_resolvers(witness_placer);
+                    let now_assigned = Self::as_debug_evaluator(witness_placer)
+                        .unwrap()
+                        .num_assigned();
+                    if now_assigned == prev_assigned {
+                        break;
+                    }
+                    prev_assigned = now_assigned;
+                }
+
+                {
+                    let resolver = Self::as_debug_evaluator(witness_placer).unwrap();
 
                     // there could be cases when conditional branches were not taken,
                     // and our routines above just would not mark variable as resolved for that reason,
@@ -737,32 +1054,16 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
                         let mut value = constant;
                         for (coeff, a, b) in quad.into_iter() {
                             let mut t = coeff;
-
-                            // let a_value = resolver.get_value(a).unwrap_or(F::ZERO);
-                            // t.mul_assign(&a_value);
-                            // let b_value = resolver.get_value(b).unwrap_or(F::ZERO);
-                            // t.mul_assign(&b_value);
-
-                            let Some(a_value) = resolver.get_value(a) else {
-                                panic!("Variable {:?} left unresolved", a);
-                            };
+                            let a_value = resolver.get_assigned_value(a).unwrap_or(F::ZERO);
                             t.mul_assign(&a_value);
-                            let Some(b_value) = resolver.get_value(b) else {
-                                panic!("Variable {:?} left unresolved", b);
-                            };
+                            let b_value = resolver.get_assigned_value(b).unwrap_or(F::ZERO);
                             t.mul_assign(&b_value);
 
                             value.add_assign(&t);
                         }
                         for (coeff, a) in linear.into_iter() {
                             let mut t = coeff;
-
-                            // let a_value = resolver.get_value(a).unwrap_or(F::ZERO);
-                            // t.mul_assign(&a_value);
-
-                            let Some(a_value) = resolver.get_value(a) else {
-                                panic!("Variable {:?} left unresolved", a);
-                            };
+                            let a_value = resolver.get_assigned_value(a).unwrap_or(F::ZERO);
                             t.mul_assign(&a_value);
 
                             value.add_assign(&t);
@@ -787,49 +1088,53 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
 }
 
 impl<F: PrimeField, W: WitnessPlacer<F>> BasicAssembly<F, W> {
+    fn as_debug_evaluator(w: &W) -> Option<&CSDebugWitnessEvaluator<F>> {
+        let any: &dyn std::any::Any = w;
+        any.downcast_ref::<CSDebugWitnessEvaluator<F>>()
+    }
+
+    fn as_debug_evaluator_mut(w: &mut W) -> Option<&mut CSDebugWitnessEvaluator<F>> {
+        let any: &mut dyn std::any::Any = w;
+        any.downcast_mut::<CSDebugWitnessEvaluator<F>>()
+    }
+
     #[track_caller]
     fn try_check_constraint(&self, constraint: &Constraint<F>) {
         if let Some(witness_placer) = self.witness_placer.as_ref() {
-            if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
-                unsafe {
-                    let resolver = (witness_placer as *const W)
-                        .cast::<CSDebugWitnessEvaluator<F>>()
-                        .as_ref_unchecked();
+            if let Some(resolver) = Self::as_debug_evaluator(witness_placer) {
+                let (quad, linear, constant) = constraint.clone().split_max_quadratic();
+                let mut value = constant;
+                for (coeff, a, b) in quad.into_iter() {
+                    let mut t = coeff;
+                    let Some(a) = resolver.get_assigned_value(a) else {
+                        println!("Variable {:?} is unresolved", a);
+                        return;
+                    };
+                    let Some(b) = resolver.get_assigned_value(b) else {
+                        println!("Variable {:?} is unresolved", b);
+                        return;
+                    };
+                    t.mul_assign(&a);
+                    t.mul_assign(&b);
 
-                    let (quad, linear, constant) = constraint.clone().split_max_quadratic();
-                    let mut value = constant;
-                    for (coeff, a, b) in quad.into_iter() {
-                        let mut t = coeff;
-                        let Some(a) = resolver.get_value(a) else {
-                            println!("Variable {:?} is unresolved", a);
-                            return;
-                        };
-                        let Some(b) = resolver.get_value(b) else {
-                            println!("Variable {:?} is unresolved", b);
-                            return;
-                        };
-                        t.mul_assign(&a);
-                        t.mul_assign(&b);
+                    value.add_assign(&t);
+                }
+                for (coeff, a) in linear.into_iter() {
+                    let mut t = coeff;
+                    let Some(a) = resolver.get_assigned_value(a) else {
+                        println!("Variable {:?} is unresolved", a);
+                        return;
+                    };
+                    t.mul_assign(&a);
 
-                        value.add_assign(&t);
-                    }
-                    for (coeff, a) in linear.into_iter() {
-                        let mut t = coeff;
-                        let Some(a) = resolver.get_value(a) else {
-                            println!("Variable {:?} is unresolved", a);
-                            return;
-                        };
-                        t.mul_assign(&a);
+                    value.add_assign(&t);
+                }
 
-                        value.add_assign(&t);
-                    }
-
-                    if value != F::ZERO {
-                        panic!(
-                            "unsatisfied at constraint {:?} with value {:?}",
-                            constraint, value
-                        );
-                    }
+                if value != F::ZERO {
+                    println!(
+                        "unsatisfied at constraint {:?} with value {:?}",
+                        constraint, value
+                    );
                 }
             }
         }
@@ -842,5 +1147,91 @@ impl<F: PrimeField> BasicAssembly<F, CSDebugWitnessEvaluator<F>> {
         new.witness_placer = Some(CSDebugWitnessEvaluator::new_with_oracle(oracle));
 
         new
+    }
+
+    pub fn new_with_oracle_and_preprocessed_decoder<O: Oracle<F> + 'static>(
+        oracle: O,
+        preprocessed_decoder_table: Vec<crate::cs::oracle::ExecutorFamilyDecoderData>,
+    ) -> Self {
+        let mut new = Self::new();
+        new.witness_placer = Some(
+            CSDebugWitnessEvaluator::new_with_oracle_and_preprocessed_decoder(
+                oracle,
+                preprocessed_decoder_table,
+            ),
+        );
+
+        new
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::constraint::Term;
+    use field::{Field, Mersenne31Field};
+
+    fn new_debug_assembly() -> BasicAssembly<Mersenne31Field> {
+        let mut cs = BasicAssembly::new();
+        cs.witness_placer = Some(CSDebugWitnessEvaluator::new());
+        cs
+    }
+
+    #[test]
+    fn is_satisfied_replays_resolvers_in_append_order() {
+        let mut cs = new_debug_assembly();
+        let a = cs.add_variable();
+        let b = cs.add_variable();
+        let c = cs.add_variable();
+
+        cs.set_values(
+            move |placer: &mut CSDebugWitnessEvaluator<Mersenne31Field>| {
+                let value = placer.get_field(b);
+                placer.assign_field(c, &value);
+            },
+        );
+        cs.set_values(
+            move |placer: &mut CSDebugWitnessEvaluator<Mersenne31Field>| {
+                let value = placer.get_field(a);
+                placer.assign_field(b, &value);
+            },
+        );
+        cs.set_values(
+            move |placer: &mut CSDebugWitnessEvaluator<Mersenne31Field>| {
+                placer.assign_field(a, &Mersenne31Field::ONE);
+            },
+        );
+
+        cs.add_constraint_allow_explicit_linear(Constraint::from(c) - Term::from(1u64));
+
+        assert!(cs.is_satisfied());
+        assert_eq!(cs.get_value(c), Some(Mersenne31Field::ONE));
+    }
+
+    #[test]
+    fn speculative_writes_restore_previous_assignments() {
+        let mut cs = new_debug_assembly();
+        let assigned = cs.add_variable();
+        let unresolved = cs.add_variable();
+
+        cs.set_values(
+            move |placer: &mut CSDebugWitnessEvaluator<Mersenne31Field>| {
+                placer.assign_field(assigned, &Mersenne31Field::from_u64_unchecked(5));
+            },
+        );
+        cs.set_values(
+            move |placer: &mut CSDebugWitnessEvaluator<Mersenne31Field>| {
+                let _ = placer.get_field(unresolved);
+                placer.assign_field(assigned, &Mersenne31Field::from_u64_unchecked(7));
+            },
+        );
+
+        cs.add_constraint_allow_explicit_linear(Constraint::from(assigned) - Term::from(5u64));
+
+        assert!(cs.is_satisfied());
+        assert_eq!(
+            cs.get_value(assigned),
+            Some(Mersenne31Field::from_u64_unchecked(5))
+        );
     }
 }

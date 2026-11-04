@@ -38,6 +38,8 @@ pub enum Placeholder {
     InvalidEncoding,
     FirstRegMem,
     SecondRegMem,
+    WriteRegMemReadWitness,
+    WriteRegMemWriteValue,
     MemoryLoadOp,
     WriteRdReadSetWitness,
     ShuffleRamLazyInitAddressThis,
@@ -49,7 +51,7 @@ pub enum Placeholder {
     ShuffleRamWriteValue(usize),
     ExecuteDelegation,
     DelegationType,
-    DegelationABIOffset,
+    DelegationABIOffset,
     DelegationWriteTimestamp,
     DelegationMemoryReadValue(usize),
     DelegationMemoryReadTimestamp(usize),
@@ -71,6 +73,23 @@ pub enum Placeholder {
     },
     DelegationNondeterminismAccess(usize),
     DelegationNondeterminismAccessNoSplits(usize),
+    ExecuteOpcodeFamilyCycle,
+    OpcodeFamilyCycleInitialTimestamp,
+    OpcodeFamilyCycleFinalTimestamp,
+    RS1Index,
+    RS2Index,
+    MemLoadAddress,
+    RDIndex,
+    RDIsZero,
+    DecodedImm,
+    DecodedFunct3,
+    DecodedFunct7,
+    DecodedExecutorFamilyMask,
+    LoadStoreRamValue,
+    MemStoreAddress,
+    DelegationIndirectAccessVariableOffset {
+        variable_index: usize,
+    },
 }
 
 impl std::fmt::Display for Placeholder {
@@ -237,6 +256,9 @@ impl quote::ToTokens for Placeholder {
             }
             Placeholder::DelegationNondeterminismAccessNoSplits(access_idx) => {
                 quote! { Placeholder::DelegationNondeterminismAccessNoSplits( #access_idx ) }
+            }
+            Placeholder::DelegationIndirectAccessVariableOffset { variable_index } => {
+                quote! { Placeholder::DelegationIndirectAccessVariableOffset( variable_index: #variable_index ) }
             }
             a @ _ => {
                 panic!("unsupported {:?}", a);

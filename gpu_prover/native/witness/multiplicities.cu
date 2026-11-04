@@ -1,9 +1,11 @@
 #include "../arg_utils.cuh"
 #include "../memory.cuh"
 #include "common.cuh"
+#include "memory.cuh"
 
 using namespace ::airbender::arg_utils;
 using namespace ::airbender::memory;
+using namespace ::airbender::witness::memory;
 
 namespace airbender::witness::multiplicities {
 
@@ -23,12 +25,12 @@ EXTERN __global__ void ab_generate_multiplicities_kernel(const u32 *const __rest
   multiplicities.set(row, col, value);
 }
 
-EXTERN __launch_bounds__(128, 8) __global__ void ab_generate_range_check_lookup_mappings_kernel(
+EXTERN __launch_bounds__(128, 8) __global__ void ab_generate_range_check_lookup_mapping_kernel(
     matrix_getter<bf, ld_modifier::cg> setup_cols, matrix_getter<bf, ld_modifier::cg> witness_cols, matrix_getter<bf, ld_modifier::cg> memory_cols,
     matrix_setter<unsigned, st_modifier::cs> range_check_16_lookup_mapping, matrix_setter<unsigned, st_modifier::cs> timestamp_lookup_mapping,
     __grid_constant__ const RangeCheckArgsLayout explicit_range_check_16_layout, __grid_constant__ const FlattenedLookupExpressionsLayout expressions,
     __grid_constant__ const FlattenedLookupExpressionsForShuffleRamLayout expressions_for_shuffle_ram, const bf memory_timestamp_high_from_circuit_idx,
-    const bool process_shuffle_ram_init, const unsigned lazy_init_address_start, const unsigned trace_len) {
+    __grid_constant__ const ShuffleRamInitAndTeardownLayouts init_and_teardown_layouts, const unsigned trace_len) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid > trace_len)
     return;
@@ -84,12 +86,14 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_generate_range_check_lookup_
     timestamp_lookup_mapping.add_col(1);
   }
 
-  if (process_shuffle_ram_init) {
-    const bf val0 = memory_cols.get_at_col(lazy_init_address_start);
-    const bf val1 = memory_cols.get_at_col(lazy_init_address_start + 1);
+  for (u32 i = 0; i < init_and_teardown_layouts.count; ++i) {
+    const auto offset = init_and_teardown_layouts.layouts[i].lazy_init_addresses_columns.offset;
+    const bf val0 = memory_cols.get_at_col(offset);
+    const bf val1 = memory_cols.get_at_col(offset + 1);
     range_check_16_lookup_mapping.set(bf::into_canonical_u32(val0));
     range_check_16_lookup_mapping.add_col(1);
     range_check_16_lookup_mapping.set(bf::into_canonical_u32(val1));
+    range_check_16_lookup_mapping.add_col(1);
   }
 }
 

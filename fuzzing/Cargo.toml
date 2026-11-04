@@ -1,0 +1,64 @@
+[package]
+name = "fuzzing"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "witgen-fuzz"
+path = "src/bin/witgen.rs"
+
+[[bin]]
+name = "rv32im-afl"
+path = "src/bin/rv32im.rs"
+
+[[bin]]
+name = "prover-fuzz"
+path = "src/bin/prover.rs"
+
+[dependencies]
+clap = { workspace = true }
+env_logger = "0.11"
+log = "0.4"
+serde = { workspace = true, features = ["derive"] }
+serde_json = "*"
+anyhow = "1"
+similar = "2"
+
+# witgen dependencies
+prover = { workspace = true, features = ["prover"] }
+add_sub_lui_auipc_mop = { path = "../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop" }
+rand = "0.10"
+sha2 = "0.10"
+verifier_common = { workspace = true, features = ["proof_utils", "replace_csr"] }
+add_sub_lui_auipc_mop_verifier = { path = "../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/verifier", features = ["proof_utils", "replace_csr"] }
+inits_and_teardowns_verifier = { path = "../circuit_defs/unrolled_circuits/inits_and_teardowns/verifier", features = ["proof_utils", "replace_csr"] }
+jump_branch_slt_verifier = { path = "../circuit_defs/unrolled_circuits/jump_branch_slt/verifier", features = ["proof_utils", "replace_csr"] }
+load_store_subword_only_verifier = { path = "../circuit_defs/unrolled_circuits/load_store_subword_only/verifier", features = ["proof_utils", "replace_csr"] }
+load_store_word_only_verifier = { path = "../circuit_defs/unrolled_circuits/load_store_word_only/verifier", features = ["proof_utils", "replace_csr"] }
+mul_div_unsigned_verifier = { path = "../circuit_defs/unrolled_circuits/mul_div_unsigned/verifier", features = ["proof_utils", "replace_csr"] }
+shift_binary_csr_verifier = { path = "../circuit_defs/unrolled_circuits/shift_binary_csr/verifier", features = ["proof_utils", "replace_csr"] }
+
+# rv32im dependencies
+afl = "0.17"
+riscv_transpiler = { path = "../riscv_transpiler/", features = ["fuzzing-support"] }
+# risc_v_simulator = { path = "../risc_v_simulator" }
+unicorn-engine = "2.1.5"
+
+[target.'cfg(unix)'.dependencies]
+libc = {version = "0.2", optional = true }
+
+[dev-dependencies]
+rstest = "0.26"
+simplelog = {version = "0.12", features = ["test"] }
+
+[features]
+default = []
+prover = ["prover/test"]
+prover-messages = []
+mute = ["dep:libc"]

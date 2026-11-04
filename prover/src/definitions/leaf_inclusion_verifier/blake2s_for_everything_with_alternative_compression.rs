@@ -2,6 +2,7 @@ use core::mem::MaybeUninit;
 
 use super::*;
 use blake2s_u32::state_with_extended_control::*;
+use blake2s_u32::AlignedArray64;
 use blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
 
 #[derive(Debug)]
@@ -28,7 +29,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifierWithAlternativeCompre
         coset_index: u32,
         leaf_index: u32,
         depth: usize,
-        leaf_encoding: &[u32],
+        leaf_encoding: &AlignedSlice64<u32>,
         merkle_cap: &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
     ) -> bool {
         self.hasher.reset();
@@ -37,7 +38,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifierWithAlternativeCompre
         let mut num_full_rounds = input_len_words / BLAKE2S_BLOCK_SIZE_U32_WORDS;
         let mut last_round_len = input_len_words % BLAKE2S_BLOCK_SIZE_U32_WORDS;
         if last_round_len == 0 {
-            if num_full_rounds > 1 {
+            if num_full_rounds > 0 {
                 num_full_rounds -= 1;
             }
             last_round_len = BLAKE2S_BLOCK_SIZE_U32_WORDS;
@@ -46,7 +47,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifierWithAlternativeCompre
         // full rounds, unrolled
         let mut src_ptr = leaf_encoding
             .as_ptr()
-            .cast::<[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS]>();
+            .cast::<AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>>();
         for _ in 0..num_full_rounds {
             // here we do not need to copy anything
             self.hasher
@@ -61,7 +62,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifierWithAlternativeCompre
         // last round unrolled padding, and here we will copy to temporary buffer
         {
             // NOTE: here we have to "touch" full buffer
-            let mut buffer: [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS] =
+            let mut buffer: AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS> =
                 MaybeUninit::uninit().assume_init();
             blake2s_u32::spec_memzero_u32(
                 buffer.as_mut_ptr_range().start,

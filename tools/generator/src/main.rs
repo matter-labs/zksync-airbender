@@ -8,7 +8,11 @@ use std::{
     process::{Command, Stdio},
 };
 
+#[cfg(test)]
+use test_utils::skip_if_ci;
+
 mod all_layouts;
+mod unrolled_layouts;
 
 use prover::{
     cs::{
@@ -141,6 +145,13 @@ fn create_all(
 
 use all_layouts::*;
 
+use crate::unrolled_layouts::{
+    add_sub_lui_auipc_mop_circuit_layout, inits_and_teardowns_circuit_layout,
+    jump_branch_slt_circuit_layout, load_store_subword_only_circuit_layout,
+    load_store_word_only_circuit_layout, mul_div_circuit_layout, mul_div_unsigned_circuit_layout,
+    shift_binary_csr_circuit_layout, unified_reduced_machine_circuit_layout,
+};
+
 const ALL_LAYOUTS: &[(
     fn() -> (
         CompiledCircuitArtifact<Mersenne31Field>,
@@ -148,23 +159,6 @@ const ALL_LAYOUTS: &[(
     ),
     &str,
 )] = &[
-    (create_main_machine_layout_with_delegation, "risc_v_cycles"),
-    (
-        create_reduced_machine_layout_with_delegation,
-        "reduced_risc_v_machine",
-    ),
-    (
-        create_reduced_machine_log_23_layout_with_delegation,
-        "reduced_risc_v_log_23_machine",
-    ),
-    (
-        create_final_reduced_machine_layout_with_delegation,
-        "final_reduced_risc_v_machine",
-    ),
-    (
-        create_machine_without_signed_mul_div_layout_with_delegation,
-        "machine_without_signed_mul_div",
-    ),
     (
         create_blake_with_compression_delegation_layout,
         "blake2_with_compression",
@@ -173,12 +167,41 @@ const ALL_LAYOUTS: &[(
         create_bigint_with_control_delegation_layout,
         "bigint_with_control",
     ),
+    (create_keccak_special5_delegation_layout, "keccak_special5"),
+];
+
+const ALL_UNROLLED_LAYOUTS: &[(
+    fn() -> (
+        CompiledCircuitArtifact<Mersenne31Field>,
+        Vec<Vec<RawExpression<Mersenne31Field>>>,
+    ),
+    &str,
+)] = &[
+    (
+        add_sub_lui_auipc_mop_circuit_layout,
+        "add_sub_lui_auipc_mop",
+    ),
+    (inits_and_teardowns_circuit_layout, "inits_and_teardowns"),
+    (jump_branch_slt_circuit_layout, "jump_branch_slt"),
+    (
+        load_store_subword_only_circuit_layout,
+        "load_store_subword_only",
+    ),
+    (load_store_word_only_circuit_layout, "load_store_word_only"),
+    (mul_div_circuit_layout, "mul_div"),
+    (mul_div_unsigned_circuit_layout, "mul_div_unsigned"),
+    (shift_binary_csr_circuit_layout, "shift_binary_csr"),
+    (
+        unified_reduced_machine_circuit_layout,
+        "unified_reduced_machine",
+    ),
 ];
 
 fn main() {
     let cli = Cli::parse();
 
     let output_dir = cli.output_dir;
+    let unrolled_outputs_dir = format!("{}/unrolled", output_dir);
 
     for (gen_fn, prefix) in ALL_LAYOUTS.iter() {
         create_all(*gen_fn, prefix, &output_dir);
@@ -186,8 +209,14 @@ fn main() {
 
     println!("Layout, quotient and witness eval fns were generated");
 
+    for (gen_fn, prefix) in ALL_UNROLLED_LAYOUTS.iter() {
+        create_all(*gen_fn, prefix, &unrolled_outputs_dir);
+    }
+
+    println!("Layout, quotient and witness eval fns for unrolled circuits were generated");
+
     // All delegations circuit params
-    let description = format_rust_code(&setups::generate_artifacts()).unwrap();
+    let description = format_rust_code(&setups::generate_delegation_circuits_artifacts()).unwrap();
 
     std::fs::write(
         Path::new(&output_dir).join("all_delegation_circuits_params.rs"),
@@ -202,8 +231,10 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     serde_json::from_reader(src).unwrap()
 }
 
+#[cfg(test)]
 #[test]
 fn generate_verifier() {
+    skip_if_ci!();
     let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
         deserialize_from_file("../../prover/full_machine_layout.json");
 

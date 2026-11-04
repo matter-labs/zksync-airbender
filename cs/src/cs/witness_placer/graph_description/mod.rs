@@ -3,7 +3,6 @@ mod field;
 mod integer;
 
 use core::hash::Hash;
-use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -56,31 +55,6 @@ pub enum RawExpression<F: PrimeField> {
 }
 
 impl<F: PrimeField> Expression<F> {
-    pub fn report_origins(
-        &self,
-        dst: &mut BTreeSet<Variable>,
-        oracles: &mut BTreeSet<(Placeholder, usize)>,
-        lookup_fn: &impl Fn(usize, usize) -> Vec<Expression<F>>,
-    ) {
-        match self {
-            Self::Bool(inner) => {
-                inner.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::Field(inner) => {
-                inner.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::U8(inner) => {
-                inner.report_origins(dst, oracles, lookup_fn);
-            }
-            Self::U16(inner) => {
-                inner.report_origins(dst, oracles, lookup_fn);
-            }
-            _ => {
-                unreachable!()
-            }
-        }
-    }
-
     pub fn make_subexpressions(
         &mut self,
         set: &mut SubexpressionsMapper<F>,
@@ -215,6 +189,7 @@ pub struct WitnessGraphCreator<F: PrimeField> {
         usize,
     )>,
     current_stats_resolver: Option<ResolverDetails<F>>,
+    variables_considered_assigned: BTreeSet<Variable>, // We will consider some variables as assigned by external source
     pub resolvers_data: Vec<ResolverDetails<F>>,
     _marker: core::marker::PhantomData<F>,
 }
@@ -485,6 +460,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
             maybe_lookups: Vec::new(),
             current_stats_resolver: None,
             resolvers_data: Vec::new(),
+            variables_considered_assigned: BTreeSet::new(),
             _marker: core::marker::PhantomData,
         }
     }
@@ -513,12 +489,19 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
 
         for (idx, el) in self.values.iter().enumerate() {
             let variable = Variable(idx as u64);
+            if self.variables_considered_assigned.contains(&variable) {
+                // Some external source is responsible for it
+                unconditionally_resolved_variables.insert(variable);
+                assert!(el.is_none());
+                continue;
+            }
+
             let Some(el) = el else {
                 panic!("unassigned value for variable {:?}", variable);
             };
 
             match el {
-                AssignedExpression::Unconditional(_expr) => {
+                AssignedExpression::Unconditional(..) => {
                     // easy
                     unconditionally_resolved_variables.insert(variable);
                 }
@@ -526,7 +509,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                     temporary_assignments,
                     final_assignment,
                 } => {
-                    if let Some(_final_assignment) = final_assignment {
+                    if let Some(_) = final_assignment {
                         unconditionally_resolved_variables.insert(variable);
                         conditional_with_unconditional_overwrites.insert(variable);
                     } else {
@@ -559,6 +542,11 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
         let mut resolved_variables = BTreeSet::new();
         for idx in 0..total_vars {
             unresolved_variables.insert(Variable(idx as u64));
+        }
+
+        for var in self.variables_considered_assigned.iter() {
+            unresolved_variables.remove(var);
+            resolved_variables.insert(*var);
         }
 
         let mut resolution_sequence = BTreeMap::new();
@@ -689,7 +677,6 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                 // skip this resolver in the future
                 // println!("Resolver {} will be skipped in the future from considerations", resolver_idx);
                 idxes_to_skip.insert(resolver_idx);
-
                 let idx = resolution_sequence.len();
                 resolution_sequence.insert(idx, details.clone());
             }
@@ -705,7 +692,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
             let made_progress = final_num_resolved > initial_num_resolved
                 || final_len > initial_len
                 || final_skipped > initial_skipped
-                || initial_conditional_resolved > final_conditional_resolved;
+                || final_conditional_resolved > initial_conditional_resolved;
 
             if made_progress == false {
                 println!("Left unresolved: {:?}", unresolved_variables);
@@ -729,6 +716,36 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                 }
 
                 panic!("Graph resolver is stuck");
+            }
+        }
+
+        assert!(resolution_sequence.len() <= idxes_to_skip.len());
+
+        // there may be some resolvers purely responsible for lookup enforcement,
+        // when even the inputs are not generated
+        if idxes_to_skip.len() != self.resolvers_data.len() {
+            let old_sequence = std::mem::replace(&mut resolution_sequence, BTreeMap::new());
+            for (resolver_idx, resolver) in self.resolvers_data.iter().enumerate() {
+                if idxes_to_skip.contains(&resolver_idx) {
+                    continue;
+                }
+
+                // we only try to handle a special case if it's lookup-enforce without outputs
+                if resolver.outputs.len() == 0
+                    && resolver.quasi_outputs_for_lookup_enforcements.len() > 0
+                {
+                    assert!(resolver.lookup_inputs.len() == 1);
+                    assert!(resolver.maybe_lookup_inputs.is_empty());
+                    assert_eq!(resolver.quasi_outputs_for_lookup_enforcements.len(), 1);
+                    let idx = resolution_sequence.len();
+                    resolution_sequence.insert(idx, resolver.clone());
+                }
+            }
+
+            // append the old ones
+            for (_, el) in old_sequence.into_iter() {
+                let idx = resolution_sequence.len();
+                resolution_sequence.insert(idx, el);
             }
         }
 
@@ -756,7 +773,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                         a @ FieldNodeExpression::OracleValue { .. } => {
                             let mut subexpr = a.clone();
                             mapper.add_field_subexprs(&mut subexpr);
-                            assert_matches!(subexpr, FieldNodeExpression::SubExpression(..));
+                            assert!(matches!(subexpr, FieldNodeExpression::SubExpression(..)));
                         }
                         _ => {
                             unreachable!();
@@ -766,10 +783,10 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                         a @ FixedWidthIntegerNodeExpression::U32OracleValue { .. } => {
                             let mut subexpr = a.clone();
                             mapper.add_integer_subexprs(&mut subexpr);
-                            assert_matches!(
+                            assert!(matches!(
                                 subexpr,
                                 FixedWidthIntegerNodeExpression::U32SubExpression(..)
-                            );
+                            ));
                         }
                         _ => {
                             unreachable!();
@@ -779,10 +796,10 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                         a @ FixedWidthIntegerNodeExpression::U16OracleValue { .. } => {
                             let mut subexpr = a.clone();
                             mapper.add_integer_subexprs(&mut subexpr);
-                            assert_matches!(
+                            assert!(matches!(
                                 subexpr,
                                 FixedWidthIntegerNodeExpression::U16SubExpression(..)
-                            );
+                            ));
                         }
                         _ => {
                             unreachable!();
@@ -792,7 +809,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                         a @ BoolNodeExpression::OracleValue { .. } => {
                             let mut subexpr = a.clone();
                             mapper.add_boolean_subexprs(&mut subexpr);
-                            assert_matches!(subexpr, BoolNodeExpression::SubExpression(..));
+                            assert!(matches!(subexpr, BoolNodeExpression::SubExpression(..)));
                         }
                         _ => {
                             unreachable!();
@@ -811,7 +828,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                             assert_eq!(input_var, input_var_2);
                             let mut subexpr = a.clone();
                             mapper.add_field_subexprs(&mut subexpr);
-                            assert_matches!(subexpr, FieldNodeExpression::SubExpression(..));
+                            assert!(matches!(subexpr, FieldNodeExpression::SubExpression(..)));
                         }
                         _ => {
                             unreachable!();
@@ -822,7 +839,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                             assert_eq!(input_var, input_var_2);
                             let mut subexpr = a.clone();
                             mapper.add_boolean_subexprs(&mut subexpr);
-                            assert_matches!(subexpr, BoolNodeExpression::SubExpression(..));
+                            assert!(matches!(subexpr, BoolNodeExpression::SubExpression(..)));
                         }
                         _ => {
                             unreachable!();
@@ -833,10 +850,10 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                             assert_eq!(input_var, input_var_2);
                             let mut subexpr = a.clone();
                             mapper.add_integer_subexprs(&mut subexpr);
-                            assert_matches!(
+                            assert!(matches!(
                                 subexpr,
                                 FixedWidthIntegerNodeExpression::U8SubExpression(..)
-                            );
+                            ));
                         }
                         _ => {
                             unreachable!();
@@ -847,10 +864,10 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                             assert_eq!(input_var, input_var_2);
                             let mut subexpr = a.clone();
                             mapper.add_integer_subexprs(&mut subexpr);
-                            assert_matches!(
+                            assert!(matches!(
                                 subexpr,
                                 FixedWidthIntegerNodeExpression::U16SubExpression(..)
-                            );
+                            ));
                         }
                         _ => {
                             unreachable!();
@@ -870,6 +887,15 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                     assert!(*num_outputs > 0, "not yet supported");
                 }
             } else {
+                if exprs.inputs.is_empty()
+                    && exprs.lookup_inputs.is_empty()
+                    && exprs.maybe_lookup_inputs.is_empty()
+                    && exprs.quasi_outputs_for_lookup_enforcements.is_empty()
+                    && exprs.outputs.is_empty()
+                {
+                    // there are expressions with no ins or outs that are just marks for resolver - skip them
+                    continue;
+                }
                 // very basic logic for now
                 assert!(exprs.lookup_inputs.len() == 1);
                 assert!(exprs.maybe_lookup_inputs.is_empty());
@@ -902,16 +928,16 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                         let mut expr = expr.clone();
                         expr.make_subexpressions(&mut mapper, &lookup_fn);
                         match expr {
-                            Expression::Field(FieldNodeExpression::SubExpression(_idx))
-                            | Expression::Bool(BoolNodeExpression::SubExpression(_idx))
+                            Expression::Field(FieldNodeExpression::SubExpression(..))
+                            | Expression::Bool(BoolNodeExpression::SubExpression(..))
                             | Expression::U8(FixedWidthIntegerNodeExpression::U8SubExpression(
-                                _idx,
+                                ..,
                             ))
                             | Expression::U16(FixedWidthIntegerNodeExpression::U16SubExpression(
-                                _idx,
+                                ..,
                             ))
                             | Expression::U32(FixedWidthIntegerNodeExpression::U32SubExpression(
-                                _idx,
+                                ..,
                             )) => {
                                 let write_expr = RawExpression::WriteVariable {
                                     into_variable: *output_var,
@@ -938,16 +964,16 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                         };
 
                         match value {
-                            Expression::Field(FieldNodeExpression::SubExpression(_idx))
-                            | Expression::Bool(BoolNodeExpression::SubExpression(_idx))
+                            Expression::Field(FieldNodeExpression::SubExpression(..))
+                            | Expression::Bool(BoolNodeExpression::SubExpression(..))
                             | Expression::U8(FixedWidthIntegerNodeExpression::U8SubExpression(
-                                _idx,
+                                ..,
                             ))
                             | Expression::U16(FixedWidthIntegerNodeExpression::U16SubExpression(
-                                _idx,
+                                ..,
                             ))
                             | Expression::U32(FixedWidthIntegerNodeExpression::U32SubExpression(
-                                _idx,
+                                ..,
                             )) => {
                                 let write_expr = RawExpression::WriteVariable {
                                     into_variable: *output_var,
@@ -1281,10 +1307,17 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
                 );
             };
             assert!(final_assignment.is_none());
-            assert_matches!(
-                temporary_assignments.last().unwrap(),
-                (_, Expression::Bool(..))
-            );
+            // match temporary_assignments.last().unwrap() {
+            //     (_, Expression::Bool(..)) => {
+            //         // we are fine to overwrite another U8
+            //     },
+            //     (_, Expression::Field(FieldNodeExpression::MaybeLookupOutput { .. })) => {
+            //         // we are fine to overwrite some lookup output
+            //     },
+            //     (_, a) => {
+            //         panic!("Can not overwrite expression of type {:?} with Boolean in conditional assignment", a);
+            //     }
+            // }
             temporary_assignments.push((mask.clone(), Expression::Bool(value.clone())));
         } else {
             let expr = AssignedExpression::Conditional {
@@ -1323,10 +1356,14 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
                 );
             };
             assert!(final_assignment.is_none());
-            assert_matches!(
-                temporary_assignments.last().unwrap(),
-                (_, Expression::Field(..))
-            );
+            // match temporary_assignments.last().unwrap() {
+            //     (_, Expression::Field(..)) => {
+            //         // we are fine to overwrite another U8
+            //     },
+            //     (_, a) => {
+            //         panic!("Can not overwrite expression of type {:?} with Field in conditional assignment", a);
+            //     }
+            // }
             temporary_assignments.push((mask.clone(), Expression::Field(value.clone())));
         } else {
             let expr = AssignedExpression::Conditional {
@@ -1365,10 +1402,17 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
                 );
             };
             assert!(final_assignment.is_none());
-            assert_matches!(
-                temporary_assignments.last().unwrap(),
-                (_, Expression::U16(..))
-            );
+            // match temporary_assignments.last().unwrap() {
+            //     (_, Expression::U16(..)) => {
+            //         // we are fine to overwrite another U8
+            //     },
+            //     (_, Expression::Field(FieldNodeExpression::MaybeLookupOutput { .. })) => {
+            //         // we are fine to overwrite some lookup output
+            //     },
+            //     (_, a) => {
+            //         panic!("Can not overwrite expression of type {:?} with U16 in conditional assignment", a);
+            //     }
+            // }
             temporary_assignments.push((mask.clone(), Expression::U16(value.clone())));
         } else {
             let expr = AssignedExpression::Conditional {
@@ -1402,10 +1446,17 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
                 );
             };
             assert!(final_assignment.is_none());
-            assert_matches!(
-                temporary_assignments.last().unwrap(),
-                (_, Expression::U8(..))
-            );
+            // match temporary_assignments.last().unwrap() {
+            //     (_, Expression::U8(..)) => {
+            //         // we are fine to overwrite another U8
+            //     },
+            //     (_, Expression::Field(FieldNodeExpression::MaybeLookupOutput { .. })) => {
+            //         // we are fine to overwrite some lookup output
+            //     },
+            //     (_, a) => {
+            //         panic!("Can not overwrite expression of type {:?} with U8 in conditional assignment", a);
+            //     }
+            // }
             temporary_assignments.push((mask.clone(), Expression::U8(value.clone())));
         } else {
             let expr = AssignedExpression::Conditional {
@@ -1485,23 +1536,34 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
             stats.quasi_outputs_for_lookup_enforcements.push(lookup_idx);
         }
     }
-}
 
-pub fn witness_early_branch_if_possible<
-    F: PrimeField,
-    W: WitnessPlacer<F>,
-    T: WitnessResolutionDescription<F, W>,
->(
-    branch_mask: W::Mask,
-    placer: &mut W,
-    node: &T,
-) {
-    if W::CAN_BRANCH {
-        if W::branch(&branch_mask) {
-            node.evaluate(placer);
+    fn assume_assigned(&mut self, variable: Variable) {
+        self.variables_considered_assigned.insert(variable);
+    }
+
+    fn spec_decoder_relation(&mut self, _pc: [Variable; 2], decoder_data: &DecoderData<F>) {
+        // formally we make values assigned
+        // self.variables_considered_assigned.insert(pc[0]);
+        // self.variables_considered_assigned.insert(pc[1]);
+
+        self.variables_considered_assigned
+            .insert(decoder_data.rs1_index);
+        self.variables_considered_assigned
+            .insert(decoder_data.rs2_index);
+        self.variables_considered_assigned
+            .insert(decoder_data.rd_index);
+        self.variables_considered_assigned
+            .insert(decoder_data.rd_is_zero);
+        self.variables_considered_assigned
+            .insert(decoder_data.imm[0]);
+        self.variables_considered_assigned
+            .insert(decoder_data.imm[1]);
+        self.variables_considered_assigned
+            .insert(decoder_data.funct3);
+        if let Some(funct7) = decoder_data.funct7 {
+            self.variables_considered_assigned.insert(funct7);
         }
-    } else {
-        // we should use conditional assignment anyway
-        node.evaluate(placer);
+        self.variables_considered_assigned
+            .insert(decoder_data.circuit_family_extra_mask);
     }
 }

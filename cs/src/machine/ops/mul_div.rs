@@ -1,6 +1,4 @@
-use crate::cs::witness_placer::{
-    cs_debug_evaluator::witness_early_branch_if_possible, WitnessPlacer,
-};
+use crate::cs::witness_placer::*;
 
 use super::*;
 
@@ -306,7 +304,7 @@ impl<
                 // default value is as-is it was divisor == 0
 
                 let quotient = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(u32::MAX);
-                let remainder = divident_unsigned.clone();
+                let remainder = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
 
                 let masked_divisor = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
                     &divisor_is_non_zero,

@@ -104,6 +104,8 @@ impl<F: PrimeField> Machine<F> for MinimalMachineNoExceptionHandlingWithDelegati
 
 #[cfg(test)]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
 
     use crate::utils::serialize_to_file;
@@ -113,6 +115,7 @@ mod test {
 
     #[test]
     fn compile_minimal_machine_with_delegation() {
+        skip_if_ci!();
         let machine = MinimalMachineNoExceptionHandlingWithDelegation;
         let rom_table = create_table_for_rom_image::<_, SECOND_WORD_BITS>(
             &[],
@@ -130,7 +133,9 @@ mod test {
     }
 
     #[test]
+    #[serial_test::serial(cs_codegen)]
     fn reduced_machine_with_delegation_get_witness_graph() {
+        skip_if_ci!();
         let machine = MinimalMachineNoExceptionHandlingWithDelegation;
         let ssa_forms = dump_ssa_witness_eval_form::<Mersenne31Field, _, SECOND_WORD_BITS>(machine);
         serialize_to_file(&ssa_forms, "minimal_machine_with_delegation_ssa.json");

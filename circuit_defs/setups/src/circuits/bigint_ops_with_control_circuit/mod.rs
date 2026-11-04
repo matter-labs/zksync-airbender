@@ -1,13 +1,13 @@
 use super::*;
 
-pub fn get_bigint_with_control_circuit_setup<A: GoodAllocator, B: GoodAllocator>(
+pub fn get_bigint_with_control_circuit_setup<A: GoodAllocator + 'static, B: GoodAllocator>(
     worker: &Worker,
 ) -> DelegationCircuitPrecomputations<A, B> {
     let machine: DelegationProcessorDescription = bigint_with_control::get_delegation_circuit();
     let table_driver = bigint_with_control::get_table_driver();
 
-    let twiddles: Twiddles<_, A> = Twiddles::new(bigint_with_control::DOMAIN_SIZE, &worker);
-    let lde_precomputations = LdePrecomputations::new(
+    let twiddles = Twiddles::get(bigint_with_control::DOMAIN_SIZE, &worker);
+    let lde_precomputations = LdePrecomputations::get(
         bigint_with_control::DOMAIN_SIZE,
         bigint_with_control::LDE_FACTOR,
         bigint_with_control::LDE_SOURCE_COSETS,

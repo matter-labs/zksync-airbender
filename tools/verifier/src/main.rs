@@ -4,22 +4,32 @@
 #![feature(generic_const_exprs)]
 #![no_main]
 
-extern "C" {
-    // Boundaries of the heap
-    static mut _sheap: usize;
-    static mut _eheap: usize;
+#[cfg(all(feature = "security_80", feature = "security_100"))]
+compile_error!("enable exactly one security selector: `security_80` or `security_100`");
+#[cfg(all(not(feature = "security_80"), not(feature = "security_100")))]
+compile_error!("enable exactly one security selector: `security_80` or `security_100`");
 
-    // Boundaries of the stack
-    static mut _sstack: usize;
-    static mut _estack: usize;
+// =============================================================================
+// Compiled Security Dispatch
+// =============================================================================
+//
+// The recursive verifier payloads are still selected by artifact name, so the CSR
+// witness format does not carry a runtime security selector yet. Keep that external
+// contract intact here by compiling one artifact per security level while routing
+// every workload through the migrated explicit-security verifier entrypoints.
+macro_rules! dispatch_compiled_security {
+    ($security_80:expr, $security_100:expr $(,)?) => {{
+        #[cfg(feature = "security_80")]
+        {
+            $security_80
+        }
+
+        #[cfg(feature = "security_100")]
+        {
+            $security_100
+        }
+    }};
 }
-#[cfg(any(
-    feature = "universal_circuit",
-    feature = "universal_circuit_no_delegation"
-))]
-use reduced_keccak::Keccak32;
-
-core::arch::global_asm!(include_str!("asm/asm_reduced.S"));
 
 #[no_mangle]
 extern "C" fn eh_personality() {}
@@ -28,29 +38,6 @@ extern "C" fn eh_personality() {}
 #[export_name = "_start_rust"]
 unsafe extern "C" fn start_rust() -> ! {
     main()
-}
-
-#[export_name = "_setup_interrupts"]
-pub unsafe fn custom_setup_interrupts() {
-    extern "C" {
-        fn _machine_start_trap();
-    }
-}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct MachineTrapFrame {
-    pub registers: [u32; 32],
-}
-
-/// Exception (trap) handler in rust.
-/// Called from the asm/asm.S
-#[link_section = ".trap.rust"]
-#[export_name = "_machine_start_trap_rust"]
-pub extern "C" fn machine_start_trap_rust(_trap_frame: *mut MachineTrapFrame) -> usize {
-    {
-        unsafe { core::hint::unreachable_unchecked() }
-    }
 }
 
 #[cfg(feature = "panic_output")]
@@ -107,166 +94,116 @@ fn print_panic(_info: &core::panic::PanicInfo) {
     }
 }
 
-#[cfg(feature = "base_layer")]
-unsafe fn workload() -> ! {
-    let output = full_statement_verifier::verify_base_layer();
-    riscv_common::zksync_os_finish_success_extended(&output);
-}
+// #[cfg(feature = "base_layer")]
+// unsafe fn workload() -> ! {
+//     let output = full_statement_verifier::verify_base_layer();
+//     riscv_common::zksync_os_finish_success_extended(&output);
+// }
 
-#[cfg(any(feature = "recursion_step", feature = "recursion_step_no_delegation"))]
-unsafe fn workload() -> ! {
-    let output = full_statement_verifier::verify_recursion_layer();
-    riscv_common::zksync_os_finish_success_extended(&output);
-}
+// #[cfg(any(feature = "recursion_step", feature = "recursion_step_no_delegation"))]
+// unsafe fn workload() -> ! {
+//     let output = full_statement_verifier::verify_recursion_layer();
+//     riscv_common::zksync_os_finish_success_extended(&output);
+// }
 
-#[cfg(any(feature = "recursion_log_23_step"))]
-unsafe fn workload() -> ! {
-    let output = full_statement_verifier::verify_recursion_log_23_layer();
-    riscv_common::zksync_os_finish_success_extended(&output);
-}
+// #[cfg(any(feature = "recursion_log_23_step"))]
+// unsafe fn workload() -> ! {
+//     let output = full_statement_verifier::verify_recursion_log_23_layer();
+//     riscv_common::zksync_os_finish_success_extended(&output);
+// }
 
-#[cfg(feature = "final_recursion_step")]
-unsafe fn workload() -> ! {
-    let output = full_statement_verifier::verify_final_recursion_layer();
-    riscv_common::zksync_os_finish_success_extended(&output);
-}
+// #[cfg(any(
+//     feature = "universal_circuit",
+//     feature = "universal_circuit_no_delegation"
+// ))]
+// // This verifier can handle any circuit and any layer.
+// // It uses the first word in the input to determine which circuit to verify.
+// unsafe fn workload() -> ! {
+//     use reduced_keccak::Keccak32;
 
-#[cfg(any(
-    feature = "universal_circuit",
-    feature = "universal_circuit_no_delegation"
-))]
-// This verifier can handle any circuit and any layer.
-// It uses the first word in the input to determine which circuit to verify.
-unsafe fn workload() -> ! {
-    let metadata = riscv_common::csr_read_word();
+//     let metadata = riscv_common::csr_read_word();
 
-    // These values should match VerifierCircuitsIdentifiers.
-    match metadata {
-        0 => {
-            let output = full_statement_verifier::verify_base_layer();
-            riscv_common::zksync_os_finish_success_extended(&output);
-        }
-        1 => {
-            let output = full_statement_verifier::verify_recursion_layer();
-            riscv_common::zksync_os_finish_success_extended(&output);
-        }
-        // 2 used to be final layer, but we don't have that anymore.
-        3 => {
-            full_statement_verifier::RISC_V_VERIFIER_PTR(
-                &mut core::mem::MaybeUninit::uninit().assume_init_mut(),
-                &mut full_statement_verifier::verifier_common::ProofPublicInputs::uninit(),
-            );
-            riscv_common::zksync_os_finish_success(&[1, 2, 3, 0, 0, 0, 0, 0]);
-        }
-        // Combine 2 proofs into one.
-        4 => {
-            // First - verify both proofs (keep reading from the CSR).
-            let output1 = full_statement_verifier::verify_recursion_layer();
-            let output2 = full_statement_verifier::verify_recursion_layer();
+//     // These values should match VerifierCircuitsIdentifiers.
+//     match metadata {
+//         0 => {
+//             let output = full_statement_verifier::verify_base_layer();
+//             riscv_common::zksync_os_finish_success_extended(&output);
+//         }
+//         1 => {
+//             let output = full_statement_verifier::verify_recursion_layer();
+//             riscv_common::zksync_os_finish_success_extended(&output);
+//         }
+//         // 2 used to be final layer, but we don't have that anymore.
+//         3 => {
+//             full_statement_verifier::RISC_V_VERIFIER_PTR(
+//                 &mut core::mem::MaybeUninit::uninit().assume_init_mut(),
+//                 &mut full_statement_verifier::verifier_common::ProofPublicInputs::uninit(),
+//             );
+//             riscv_common::zksync_os_finish_success(&[1, 2, 3, 0, 0, 0, 0, 0]);
+//         }
+//         // Combine 2 proofs into one.
+//         4 => {
+//             // First - verify both proofs (keep reading from the CSR).
+//             let output1 = full_statement_verifier::verify_recursion_layer();
+//             let output2 = full_statement_verifier::verify_recursion_layer();
+//             // Proving chains must be equal.
+//             for i in 8..16 {
+//                 assert_eq!(output1[i], output2[i], "Proving chains must be equal");
+//             }
 
-            // merge the inputs together
-            let result = merge_recursive_circuit_output(output1, output2);
+//             // The first 8 words of the result are the hash of the two outputs.
+//             // This way, to verify the combined proof, we can check that it matches
+//             // the rolling hash of the public inputs.
+//             let mut hasher = Keccak32::new();
+//             // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too).
+//             // and we'll actually shift them all by 1.
+//             // So our output is the keccak(input1[0..8]>>32, input2[0..8]>>32)
 
-            riscv_common::zksync_os_finish_success_extended(&result);
-        }
-        5 => {
-            let output = full_statement_verifier::verify_recursion_log_23_layer();
-            riscv_common::zksync_os_finish_success_extended(&output);
-        }
-        // Combine multiple proofs into one.
-        // This is similar to 4, combine 2 proofs into one, but now we combine N proofs into one.
-        // The advantage is in the number of proving rounds you need to do.
-        // Option 4 requires O(n) rounds of proving, whilst this requires a single round (time will be closer to O(logn), due to recursion).
-        //
-        // The right way to think about this method is a rolling hash over circuits:
-        // keccak(..., keccak(keccak(output1 || output2), output3), output4, ... outputN)
-        6 => {
-            let no_circuits = riscv_common::csr_read_word();
-            assert!(no_circuits >= 2, "Requires at least two circuits to verify");
+//             // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
+//             hasher.update(&[0u32]); // 0 after shift
+//             for i in 0..7 {
+//                 hasher.update(&[output1[i]]);
+//             }
+//             hasher.update(&[0u32]); // 0 after shift
+//             for i in 0..7 {
+//                 hasher.update(&[output2[i]]);
+//             }
+//             let mut result = [0u32; 16];
+//             // TODO: in the future - set the result[7] to be equal to 0.
+//             result[0..8].copy_from_slice(&hasher.finalize());
+//             result[8..16].copy_from_slice(&output1[8..16]);
 
-            // verify first proof & use it as the seed for the rolling hash
-            //
-            // the proof's outputs are as follows:
-            // output[0..8] - the actual output of the circuit
-            // output[8..16] - the verification key (should be the same across all proofs, checked inside merge_recursive_circuit_output)
-            // merging is done over inputs [0..8], whilst key is not modified (being copied over and over)
-            let mut rolling_hash = full_statement_verifier::verify_recursion_layer();
-
-            // iterate over remaining circuits
-            for _ in 1..no_circuits {
-                // verify proof
-                let output = full_statement_verifier::verify_recursion_layer();
-
-                // build the rolling hash over the remaining proofs' outputs (ensuring they belong to same proving chain)
-                rolling_hash = merge_recursive_circuit_output(rolling_hash, output);
-            }
-
-            riscv_common::zksync_os_finish_success_extended(&rolling_hash);
-        }
-        // Unknown metadata.
-        _ => {
-            riscv_common::zksync_os_finish_error();
-        }
-    }
-}
-
-#[cfg(any(
-    feature = "universal_circuit",
-    feature = "universal_circuit_no_delegation"
-))]
-/// Merges proof outputs from two recursive circuits into one output.
-/// TL;DR; Keccaks the two outputs together.
-///
-/// Note, a proof is structured as follows:
-/// - first 8 u32s are the actual proof output
-/// - last 8 u32s are the verification key identifier (proving chain)
-fn merge_recursive_circuit_output(first: [u32; 16], second: [u32; 16]) -> [u32; 16] {
-    // Proving chain must be equal
-    for i in 8..16 {
-        assert_eq!(first[i], second[i], "Proving chains must be equal");
-    }
-
-    // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too).
-    // and we'll actually shift them all by 1.
-
-    // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
-    let mut hasher = Keccak32::new();
-    hasher.update(&[0u32]);
-
-    for val in &first[0..7] {
-        hasher.update(&[*val]);
-    }
-
-    // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
-    hasher.update(&[0u32]);
-
-    for val in &second[0..7] {
-        hasher.update(&[*val]);
-    }
-
-    let mut result = [0u32; 16];
-    // merged outputs
-    result[0..8].copy_from_slice(&hasher.finalize());
-    // same vk
-    result[8..16].copy_from_slice(&first[8..16]);
-
-    result
-}
+//             riscv_common::zksync_os_finish_success_extended(&result);
+//         }
+//         5 => {
+//             let output = full_statement_verifier::verify_recursion_log_23_layer();
+//             riscv_common::zksync_os_finish_success_extended(&output);
+//         }
+//         // Unknown metadata.
+//         _ => {
+//             riscv_common::zksync_os_finish_error();
+//         }
+//     }
+// }
 
 #[cfg(feature = "verifier_tests")]
 unsafe fn workload() -> ! {
     use core::mem::MaybeUninit;
-    use verifier::concrete::size_constants::*;
-    use verifier::verify;
     use verifier::ProofPublicInputs;
 
     use verifier::verifier_common::ProofOutput;
 
-    let mut proof_output: ProofOutput<TREE_CAP_SIZE, NUM_COSETS, NUM_DELEGATION_CHALLENGES, 1> =
+    #[allow(invalid_value)]
+    let mut proof_output: ProofOutput<_, _, _, _, _> =
         unsafe { MaybeUninit::uninit().assume_init() };
     let mut state_variables = ProofPublicInputs::uninit();
 
-    unsafe { verify(&mut proof_output, &mut state_variables) };
+    unsafe {
+        dispatch_compiled_security!(
+            verifier::verify_80(&mut proof_output, &mut state_variables),
+            verifier::verify_100(&mut proof_output, &mut state_variables),
+        )
+    };
 
     let mut output = [0u32; 16];
     for i in 0..16 {
@@ -275,7 +212,54 @@ unsafe fn workload() -> ! {
     riscv_common::zksync_os_finish_success_extended(&output)
 }
 
+// #[cfg(feature = "unrolled_base_layer")]
+// unsafe fn workload() -> ! {
+//     let output = full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer();
+//     riscv_common::zksync_os_finish_success_extended(&output);
+// }
+
+// #[cfg(feature = "unrolled_recursion_layer")]
+// unsafe fn workload() -> ! {
+//     let output =
+//         full_statement_verifier::unrolled_proof_statement::verify_unrolled_recursion_layer();
+//     riscv_common::zksync_os_finish_success_extended(&output);
+// }
+
+// #[cfg(feature = "unified_reduced_machine")]
+// unsafe fn workload() -> ! {
+//     let output =
+//         full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer();
+//     riscv_common::zksync_os_finish_success_extended(&output);
+// }
+
+#[cfg(feature = "recursion_in_unrolled_layer")]
+unsafe fn workload() -> ! {
+    let output = dispatch_compiled_security!(
+        full_statement_verifier::unrolled_proof_statement::verify_base_or_recursion_unrolled_circuits(
+            full_statement_verifier::verifier_common::SecurityModel::Security80,
+        ),
+        full_statement_verifier::unrolled_proof_statement::verify_base_or_recursion_unrolled_circuits(
+            full_statement_verifier::verifier_common::SecurityModel::Security100,
+        ),
+    );
+    riscv_common::zksync_os_finish_success_extended(&output);
+}
+
+#[cfg(feature = "recursion_in_unified_layer")]
+unsafe fn workload() -> ! {
+    let output = dispatch_compiled_security!(
+        full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer(
+            full_statement_verifier::verifier_common::SecurityModel::Security80,
+        ),
+        full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer(
+            full_statement_verifier::verifier_common::SecurityModel::Security100,
+        ),
+    );
+    riscv_common::zksync_os_finish_success_extended(&output);
+}
+
 #[inline(never)]
 fn main() -> ! {
+    riscv_common::boot_sequence::init();
     unsafe { workload() }
 }

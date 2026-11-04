@@ -1,6 +1,8 @@
+use verifier_common::{blake2s_u32::AlignedArray64, SizedProofPowChallenges};
+
 use super::*;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 #[repr(C, align(16))]
 pub struct ProofSkeleton<
     const SKELETON_PADDING: usize,
@@ -8,15 +10,17 @@ pub struct ProofSkeleton<
     const NUM_COSETS: usize,
     const NUM_PUBLIC_INPUTS: usize,
     const NUM_DELEGATION_CHALLENGES: usize,
+    const NUM_MACHINE_STATE_PERMUTATION_CHALLENGES: usize,
     const NUM_AUX_BOUNDARY_VALUES: usize,
     const NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS: usize,
     const NUM_OPENINGS_AT_Z: usize,
     const NUM_OPENINGS_AT_Z_OMEGA: usize,
+    const NUM_FRI_STEPS: usize,
     const NUM_FRI_STEPS_WITH_ORACLES: usize,
     const FINAL_FRI_STEP_LEAF_SIZE_PER_COSET: usize,
     const FRI_FINAL_DEGREE: usize,
 > {
-    pub _padding: [u32; SKELETON_PADDING],
+    pub _padding: [MaybeUninit<u32>; SKELETON_PADDING],
     pub circuit_sequence_idx: u32,
     pub delegation_type: u32,
     pub public_inputs: [Mersenne31Field; NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS],
@@ -24,11 +28,13 @@ pub struct ProofSkeleton<
     pub memory_argument_challenges: ExternalMemoryArgumentChallenges,
     pub delegation_argument_challenges:
         [ExternalDelegationArgumentChallenges; NUM_DELEGATION_CHALLENGES],
+    pub machine_state_permutation_challenges:
+        [ExternalMachineStateArgumentChallenges; NUM_MACHINE_STATE_PERMUTATION_CHALLENGES],
     pub aux_boundary_values: [AuxArgumentsBoundaryValues; NUM_AUX_BOUNDARY_VALUES],
     pub witness_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
     pub memory_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
     pub stage_2_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-    pub memory_grand_product_accumulator: Mersenne31Quartic,
+    pub grand_product_accumulator: Mersenne31Quartic,
     pub delegation_argument_accumulator: [Mersenne31Quartic; NUM_DELEGATION_CHALLENGES],
     pub quotient_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
     pub openings_at_z: [Mersenne31Quartic; NUM_OPENINGS_AT_Z],
@@ -37,7 +43,65 @@ pub struct ProofSkeleton<
         [[MerkleTreeCap<CAP_SIZE>; NUM_COSETS]; NUM_FRI_STEPS_WITH_ORACLES],
     pub fri_final_step_leafs: [[Mersenne31Quartic; FINAL_FRI_STEP_LEAF_SIZE_PER_COSET]; NUM_COSETS],
     pub monomial_coeffs: [Mersenne31Quartic; FRI_FINAL_DEGREE],
-    pub pow_nonce: u64,
+    pub pow_challenges: SizedProofPowChallenges<NUM_FRI_STEPS>,
+}
+
+impl<
+        const SKELETON_PADDING: usize,
+        const CAP_SIZE: usize,
+        const NUM_COSETS: usize,
+        const NUM_PUBLIC_INPUTS: usize,
+        const NUM_DELEGATION_CHALLENGES: usize,
+        const NUM_MACHINE_STATE_PERMUTATION_CHALLENGES: usize,
+        const NUM_AUX_BOUNDARY_VALUES: usize,
+        const NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS: usize,
+        const NUM_OPENINGS_AT_Z: usize,
+        const NUM_OPENINGS_AT_Z_OMEGA: usize,
+        const NUM_FRI_STEPS: usize,
+        const NUM_FRI_STEPS_WITH_ORACLES: usize,
+        const FINAL_FRI_STEP_LEAF_SIZE_PER_COSET: usize,
+        const FRI_FINAL_DEGREE: usize,
+    > core::hash::Hash
+    for ProofSkeleton<
+        SKELETON_PADDING,
+        CAP_SIZE,
+        NUM_COSETS,
+        NUM_PUBLIC_INPUTS,
+        NUM_DELEGATION_CHALLENGES,
+        NUM_MACHINE_STATE_PERMUTATION_CHALLENGES,
+        NUM_AUX_BOUNDARY_VALUES,
+        NUM_PUBLIC_INPUTS_FROM_STATE_ELEMENTS,
+        NUM_OPENINGS_AT_Z,
+        NUM_OPENINGS_AT_Z_OMEGA,
+        NUM_FRI_STEPS,
+        NUM_FRI_STEPS_WITH_ORACLES,
+        FINAL_FRI_STEP_LEAF_SIZE_PER_COSET,
+        FRI_FINAL_DEGREE,
+    >
+{
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        // ignore padding
+        self.circuit_sequence_idx.hash(state);
+        self.delegation_type.hash(state);
+        self.public_inputs.hash(state);
+        self.setup_caps.hash(state);
+        self.memory_argument_challenges.hash(state);
+        self.delegation_argument_challenges.hash(state);
+        self.machine_state_permutation_challenges.hash(state);
+        self.aux_boundary_values.hash(state);
+        self.witness_caps.hash(state);
+        self.memory_caps.hash(state);
+        self.stage_2_caps.hash(state);
+        self.grand_product_accumulator.hash(state);
+        self.delegation_argument_accumulator.hash(state);
+        self.quotient_caps.hash(state);
+        self.openings_at_z.hash(state);
+        self.openings_at_z_omega.hash(state);
+        self.fri_intermediate_oracles.hash(state);
+        self.fri_final_step_leafs.hash(state);
+        self.monomial_coeffs.hash(state);
+        self.pow_challenges.hash(state);
+    }
 }
 
 // NOTE: leaf is tightly packed, we can fill it in the tight loop
@@ -56,12 +120,12 @@ pub struct QueryValues<
     const NUM_FRI_STEPS: usize, // we will still bind it here
 > {
     pub query_index: u32,
-    pub setup_leaf: [Mersenne31Field; LEAF_SIZE_SETUP],
-    pub witness_leaf: [Mersenne31Field; LEAF_SIZE_WITNESS_TREE],
-    pub memory_leaf: [Mersenne31Field; LEAF_SIZE_MEMORY_TREE],
-    pub stage_2_leaf: [Mersenne31Field; LEAF_SIZE_STAGE_2],
-    pub quotient_leaf: [Mersenne31Field; LEAF_SIZE_QUOTIENT],
-    pub fri_oracles_leafs: [Mersenne31Field; TOTAL_FRI_LEAFS_SIZES],
+    pub setup_leaf: AlignedArray64<Mersenne31Field, LEAF_SIZE_SETUP>,
+    pub witness_leaf: AlignedArray64<Mersenne31Field, LEAF_SIZE_WITNESS_TREE>,
+    pub memory_leaf: AlignedArray64<Mersenne31Field, LEAF_SIZE_MEMORY_TREE>,
+    pub stage_2_leaf: AlignedArray64<Mersenne31Field, LEAF_SIZE_STAGE_2>,
+    pub quotient_leaf: AlignedArray64<Mersenne31Field, LEAF_SIZE_QUOTIENT>,
+    pub fri_oracles_leafs: AlignedArray64<Mersenne31Field, TOTAL_FRI_LEAFS_SIZES>,
 }
 
 #[cfg(test)]
