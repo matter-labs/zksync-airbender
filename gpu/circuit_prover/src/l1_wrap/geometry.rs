@@ -2,8 +2,8 @@ use gpu_trace::witness::circuit_type::CircuitType;
 
 use super::L1_WRAP_NTT_LOG_MAX_DOMAIN;
 use crate::upstream::{
-    l1_wrap_2p21, pow_bits, GKRCircuitArtifact, L1WrapSetup, ProofProfile, Proth120, ProverConfig,
-    RomGeometry,
+    l1_wrap_2p21, pow_bits, BaseColumns, BaseCommitmentGeometry, BaseOracleRole,
+    GKRCircuitArtifact, L1WrapSetup, ProofProfile, Proth120, ProverConfig, RomGeometry,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,14 +77,17 @@ impl L1WrapGeometry {
                 && config.base_oracles_values_per_leaf().is_power_of_two(),
             "{circuit_type:?} requires power-of-two LDE, cap and leaf widths"
         );
-        let pack_log2 = u32::try_from(config.pack_log2()).expect("L1Wrap pack_log2 exceeds u32");
+        // The field-free base commitment dimensions; the Proth120 bounds are checked below.
+        let base = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit))
+            .unwrap_or_else(|error| panic!("{circuit_type:?}: {error}"));
+        let pack_log2 = u32::try_from(base.pack_log2()).expect("L1Wrap pack_log2 exceeds u32");
         let external_pow_bits = match circuit_type {
             CircuitType::L1Wrap21 => l1_wrap_2p21::EXTERNAL_CHALLENGES_POW_BITS,
             _ => unreachable!(),
         };
-        let log_message = u32::try_from(config.whir_message_size_log2())
-            .expect("L1Wrap message size exceeds u32");
-        let log_base_lde = config.lde_factor().trailing_zeros();
+        let log_message =
+            u32::try_from(base.message_size_log2()).expect("L1Wrap message size exceeds u32");
+        let log_base_lde = base.lde_factor().trailing_zeros();
         assert!(
             log_message + log_base_lde <= L1_WRAP_NTT_LOG_MAX_DOMAIN,
             "{circuit_type:?} base codeword 2^{} exceeds the Proth120 NTT domain 2^{L1_WRAP_NTT_LOG_MAX_DOMAIN}",
@@ -101,7 +104,6 @@ impl L1WrapGeometry {
             rom.word_size(),
             "{circuit_type:?} decoder table must cover the ROM"
         );
-        let packed = |columns: usize| columns.div_ceil(1 << pack_log2);
         let geometry = Self {
             circuit_type,
             trace_log,
@@ -109,16 +111,15 @@ impl L1WrapGeometry {
             pack_log2,
             log_message,
             log_base_lde,
-            log_base_values_per_leaf: config.base_oracles_values_per_leaf().trailing_zeros(),
-            cap_log: config.cap_size.trailing_zeros(),
+            log_base_values_per_leaf: base.values_per_leaf().trailing_zeros(),
+            cap_log: base.cap_size().trailing_zeros(),
             memory_columns: circuit.memory_layout.total_width,
             witness_columns: circuit.witness_layout.total_width,
             scratch_columns: circuit.scratch_space_size,
             setup_columns: circuit.generic_lookup_tables_width,
-            packed_base_columns: packed(
-                circuit.memory_layout.total_width + circuit.witness_layout.total_width,
-            ),
-            packed_setup_columns: packed(circuit.generic_lookup_tables_width),
+            // The profile commits memory and witness merged: one packed base oracle.
+            packed_base_columns: base.oracle(BaseOracleRole::Memory).physical_columns(),
+            packed_setup_columns: base.oracle(BaseOracleRole::Setup).physical_columns(),
             num_it_sets: circuit_type.get_num_inits_and_teardowns_sets(),
             rom,
             decoder_offset: circuit.offset_for_decoder_table,

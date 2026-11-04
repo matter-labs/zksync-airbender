@@ -13,8 +13,11 @@ log, `v` for the leaf-value log and `r = t - v` for the residue log.
 
 ## Base commitments and ownership
 
-This table describes geometry-backed, naturally labeled base commitments. Legacy
-holders retain their separate routing; it is not substituted for these paths.
+This table describes geometry-backed, naturally labeled BabyBear base
+commitments. Legacy holders retain their separate routing; it is not substituted
+for these paths. The Proth120 L1 wrap shares the field-free dimensions and keeps
+its own field bound (`L1_WRAP_NTT_LOG_MAX_DOMAIN` in
+[the L1 wrap](../circuit_prover/src/l1_wrap/mod.rs)) and kernels.
 
 | Requirement | Mechanism | Source |
 | --- | --- | --- |

@@ -18,6 +18,10 @@ use crate::upstream::{
 
 pub type L1Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 
+/// Largest Proth120 evaluation domain (log2) the L1 wrap's NTT covers. The base
+/// commitment dimensions come from the field-free `BaseCommitmentGeometry`; this
+/// field bound replaces the BabyBear `m + ell <= 27` of
+/// `gpu/docs/commitment_geometry.md`.
 pub const L1_WRAP_NTT_LOG_MAX_DOMAIN: u32 = 31;
 
 pub fn validate_l1_wrap_preconditions(
