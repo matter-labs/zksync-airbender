@@ -148,13 +148,13 @@ theorem native_suffix_execution : ∃ (middle : List (MemoryToken 17))
   exact ⟨middle, earlierEvents, laterEvents, atCut, after, boundary, clocks, prefixPerm, suffixPerm,
     prefixHistory, suffixHistory, combined, firstRead, readA, readB⟩
 
-theorem bounded_nonzero_window : ∃ (start finish : List (MemoryToken 17))
+theorem bounded_nonzero_window : ∃ («start» finish : List (MemoryToken 17))
     (earlierEvents spanEvents : List MemoryAccess) (atStart atFinish : State),
-    start.Perm [middleA, finalB] ∧ finish.Perm [finalA, finalB] ∧
-    (start.map MemoryToken.time).Perm [(3, 0), (3, 0)] ∧
+    «start».Perm [middleA, finalB] ∧ finish.Perm [finalA, finalB] ∧
+    («start».map MemoryToken.time).Perm [(3, 0), (3, 0)] ∧
     spanEvents.Perm [(transferEvent (middleA, finalA))] ∧
     SailHistory cells earlierEvents before atStart ∧ SailHistory cells spanEvents atStart atFinish ∧
-    Transfer.NativeInputs ⟨start, finish, Transfer.windowSteps data 3 6⟩ atStart cells ∧
+    Transfer.NativeInputs ⟨«start», finish, Transfer.windowSteps data 3 6⟩ atStart cells ∧
     (Cell.register 1).read atStart = .ok 31 atStart ∧
     (Cell.register 1).read atFinish = .ok 42 atFinish := by
   have rules : Transfer.WriteRules data := by
@@ -181,7 +181,7 @@ theorem bounded_nonzero_window : ∃ (start finish : List (MemoryToken 17))
     rcases member with rfl | rfl | rfl
     all_goals revert same
     all_goals decide +kernel
-  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, earlier, spanFacts,
+  obtain ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, earlier, spanFacts,
       _, spanPerm, firstHistory, spanHistory, startInputs, finishInputs⟩ :=
     Transfer.split_native_sail_window accepted inputs rules writes aligned zero 3 6
   have boundary := boundary_correct earlier
@@ -190,7 +190,7 @@ theorem bounded_nonzero_window : ∃ (start finish : List (MemoryToken 17))
   have finalBoundary : finish.Perm [finalA, finalB] :=
     (List.perm_append_right_iff _).mp
       (spanFacts.matching.symm.trans ((boundary.append_right _).trans expected))
-  have clocks : (start.map MemoryToken.time).Perm [(3, 0), (3, 0)] := by
+  have clocks : («start».map MemoryToken.time).Perm [(3, 0), (3, 0)] := by
     simpa only [List.map_cons, List.map_nil, middleA, finalB] using boundary.map MemoryToken.time
   obtain ⟨first, _, firstCode, firstRead⟩ := startInputs.reads middleA
     (boundary.mem_iff.mpr List.mem_cons_self)
@@ -205,7 +205,7 @@ theorem bounded_nonzero_window : ∃ (start finish : List (MemoryToken 17))
   rw [middleWord] at firstRead
   rw [finalWord] at lastRead
   change spanEvents.Perm [transferEvent (middleA, finalA)] at spanPerm
-  exact ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, boundary, finalBoundary,
+  exact ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, boundary, finalBoundary,
     clocks, spanPerm, firstHistory, spanHistory, startInputs, firstRead, lastRead⟩
 
 theorem wrapped_boundary_rejected (state : State) :

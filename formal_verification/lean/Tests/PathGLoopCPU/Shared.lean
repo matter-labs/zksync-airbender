@@ -10,7 +10,7 @@ def gCpuPolynomials (setup : Table (ZMod babyBearModulus) (fields 10)) :
   FlatOperation.constraints (UnifiedReduced.importedConstraints setup)
 
 theorem g_cpu_polynomial_count (setup : Table (ZMod babyBearModulus) (fields 10)) :
-    (gCpuPolynomials setup).length = 129 := by rfl
+    (gCpuPolynomials setup).length = 120 := by rfl
 
 /-- Caller port1 is excluded by the actual previous definition. These two
 projection facts prevent evaluation of an irrelevant full prefix ledger. -/
@@ -29,7 +29,7 @@ def gCpuEquationsCheck (assignment : Nat → ZMod babyBearModulus)
   expressions.all fun expression =>
     decide (expression.eval (Verification.environment assignment) = 0)
 
-/-- Removing lookup operations leaves the same actual129 polynomial list for
+/-- Removing lookup operations leaves the same actual120 polynomial list for
 all modeled setups. This is a proved definitional equality, not a setup premise. -/
 theorem g_cpu_polynomials_setup_independent
     (setup : Table (ZMod babyBearModulus) (fields 10)) :
@@ -41,7 +41,7 @@ theorem g_cpu_polynomials_setup_independent
 The Boolean evidence is supplied by closed certificates in the fixture modules. -/
 theorem g_cpu_equations_of_check (assignment : Nat → ZMod babyBearModulus)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (first count equation : Nat)
-    (start : first ≤ equation) (stop : equation < first + count) (actual : equation < 129)
+    («start» : first ≤ equation) (stop : equation < first + count) (actual : equation < 120)
     (checked : gCpuEquationsCheck assignment
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop first).take count) = true) :
     ((gCpuPolynomials setup)[equation]'(by

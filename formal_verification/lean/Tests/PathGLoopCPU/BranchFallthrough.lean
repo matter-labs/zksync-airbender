@@ -41,19 +41,14 @@ theorem cpu_loop_branchfallthrough_checked_i000_000_e096_111 :
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 96).take 16) = true := by
   decide +kernel
 
-theorem cpu_loop_branchfallthrough_checked_i000_000_e112_127 :
+theorem cpu_loop_branchfallthrough_checked_i000_000_e112_119 :
     gCpuLoopBatchCheck (fun _index : Fin 1 => gapRow 54 3) 0 1
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 16) = true := by
-  decide +kernel
-
-theorem cpu_loop_branchfallthrough_checked_i000_000_e128_128 :
-    gCpuLoopBatchCheck (fun _index : Fin 1 => gapRow 54 3) 0 1
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 128).take 1) = true := by
+      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 8) = true := by
   decide +kernel
 
 private theorem cpu_loop_branchfallthrough_indices_000_000 (variant : Variant) (index : Fin 1)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (indexStart : 0 ≤ index.val) (indexStop : index.val < 1) (bound : equation < 129) :
+    (indexStart : 0 ≤ index.val) (indexStop : index.val < 1) (bound : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; exact bound)).eval
         (Verification.environment (machineAssignment variant (gapRow 54 3))) = 0 := by
@@ -78,14 +73,11 @@ private theorem cpu_loop_branchfallthrough_indices_000_000 (variant : Variant) (
   by_cases piece96 : equation < 112
   · exact g_cpu_loop_equation_of_batch (fun _index : Fin 1 => gapRow 54 3) variant index setup 0 1 96 16 equation
       indexStart (by omega) (by omega) (by omega) bound cpu_loop_branchfallthrough_checked_i000_000_e096_111
-  by_cases piece112 : equation < 128
-  · exact g_cpu_loop_equation_of_batch (fun _index : Fin 1 => gapRow 54 3) variant index setup 0 1 112 16 equation
-      indexStart (by omega) (by omega) (by omega) bound cpu_loop_branchfallthrough_checked_i000_000_e112_127
-  exact g_cpu_loop_equation_of_batch (fun _index : Fin 1 => gapRow 54 3) variant index setup 0 1 128 1 equation
-    indexStart (by omega) (by omega) (by omega) bound cpu_loop_branchfallthrough_checked_i000_000_e128_128
+  exact g_cpu_loop_equation_of_batch (fun _index : Fin 1 => gapRow 54 3) variant index setup 0 1 112 8 equation
+      indexStart (by omega) (by omega) (by omega) bound cpu_loop_branchfallthrough_checked_i000_000_e112_119
 
 theorem cpu_loop_branch_fallthrough_equation (variant : Variant)
-    (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat) (bound : equation < 129) :
+    (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat) (bound : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; exact bound)).eval
         (Verification.environment (machineAssignment variant (gapRow 54 3))) = 0 := by

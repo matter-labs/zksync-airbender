@@ -17,7 +17,7 @@ theorem g_cpu_projected_loop_batch_at {n : Nat} (row : Fin n → Fin 228) (first
     (expressions : List (Expression (ZMod babyBearModulus)))
     (checked : gCpuProjectedLoopBatchCheck row first count expressions = true)
     (variant : Variant) (index : Fin n)
-    (start : first ≤ index.val) (stop : index.val < first + count) :
+    («start» : first ≤ index.val) (stop : index.val < first + count) :
     gCpuEquationsCheck (gCpuCoreAssignment (machineAssignment variant (row index))) expressions = true := by
   have variantMember : variant ∈ ([.baseline, .scratch, .protectedMessage] : List Variant) := by
     cases variant <;> simp
@@ -41,7 +41,7 @@ theorem g_cpu_projected_loop_equation_of_batch {n : Nat} (row : Fin n → Fin 22
     (setup : Table (ZMod babyBearModulus) (fields 10))
     (indexFirst indexCount first count equation : Nat)
     (indexStart : indexFirst ≤ index.val) (indexStop : index.val < indexFirst + indexCount)
-    (start : first ≤ equation) (stop : equation < first + count) (actual : equation < 129)
+    («start» : first ≤ equation) (stop : equation < first + count) (actual : equation < 120)
     (checked : gCpuProjectedLoopBatchCheck row indexFirst indexCount
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop first).take count) = true)
     (ordinary : machineAssignment variant (row index) 18 = 0) :
@@ -49,7 +49,7 @@ theorem g_cpu_projected_loop_equation_of_batch {n : Nat} (row : Fin n → Fin 22
       rw [g_cpu_polynomial_count]; exact actual)).eval
         (Verification.environment (machineAssignment variant (row index))) = 0 := by
   exact g_cpu_core_equations_of_check (machineAssignment variant (row index))
-    setup first count equation start stop actual ordinary
+    setup first count equation «start» stop actual ordinary
     (g_cpu_projected_loop_batch_at row indexFirst indexCount _ checked variant index indexStart indexStop)
 
 /-- Actual ADDI decoder fields at loop phase2 derive the zero caller selector. -/

@@ -1323,17 +1323,17 @@ theorem bigint_return_normalized_protocol_preparation (kind : Fin 4) :
     (.bigintReturn (normalizeScope kind)) (normalizeLastScope kind) (by decide) (by decide +kernel) (by decide)
 
 theorem bigint_return_normalized_actual (kind : Fin 4) :
-    ∃ (seeds finishTokens : List (MemoryToken babyBearModulus)) (earlier current : List MemoryAccess) (start finish : State),
+    ∃ (seeds finishTokens : List (MemoryToken babyBearModulus)) (earlier current : List MemoryAccess) («start» finish : State),
       earlier.Perm (((normalizeData kind).prefixSteps 8).map transferEvent) ∧
       current.Perm (((normalizeData kind).windowSteps 8 16).map transferEvent) ∧
-      SailHistory cells earlier (normalizeBefore kind) start ∧ SailHistory cells current start finish ∧
+      SailHistory cells earlier (normalizeBefore kind) «start» ∧ SailHistory cells current «start» finish ∧
       (Cell.register 12).read (normalizeBefore kind) =
         .ok (if kind = 0 then 128 else if kind = 1 then 192 else if kind = 2 then 0 else 65537) (normalizeBefore kind) ∧
-      (Cell.register 12).read start = .ok (if kind = 1 then 1 else 0) start ∧
+      (Cell.register 12).read «start» = .ok (if kind = 1 then 1 else 0) «start» ∧
       (Cell.register 12).read finish = .ok 128 finish ∧
       (⟨(Cell.register 12).addressCode, (7, 0), Nat.pair (if kind = 1 then 1 else 0) 0⟩ : MemoryToken babyBearModulus) ∈ seeds ∧
       (⟨(Cell.register 12).addressCode, (14, 0), Nat.pair 128 0⟩ : MemoryToken babyBearModulus) ∈ finishTokens := by
-  obtain ⟨seeds, finishTokens, earlier, current, start, finish, earlierPerm, currentPerm,
+  obtain ⟨seeds, finishTokens, earlier, current, «start», finish, earlierPerm, currentPerm,
     earlierHistory, currentHistory, prefixMatching, matching, startBoundary, finishBoundary⟩ :=
     (UnifiedReduced.Caller.Proofs.mixed_window_execution (lower := 8) (upper := 16)
       (by decide +kernel) (by decide +kernel) (by decide +kernel) (normalizeAccepted kind) (normalizeInputs kind)
@@ -1365,7 +1365,7 @@ theorem bigint_return_normalized_actual (kind : Fin 4) :
   have outputWord : output.word.toBitVec = (128 : BitVec 32) := by decide +kernel
   rw [sourceWord] at sourceRead
   rw [outputWord] at outputRead
-  refine ⟨seeds, finishTokens, earlier, current, start, finish, earlierPerm, currentPerm,
+  refine ⟨seeds, finishTokens, earlier, current, «start», finish, earlierPerm, currentPerm,
     earlierHistory, currentHistory, ?_, sourceRead, outputRead, sourcePresent, outputPresent⟩
   apply read_register
   fin_cases kind

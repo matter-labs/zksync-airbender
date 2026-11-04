@@ -166,13 +166,13 @@ theorem copy_call_native_slot : ∃ caller ∈ (data 0).callers, ∃ worker ∈ 
   have member : caller ∈ (data 0).callers := by
     change caller ∈ [caller]
     exact List.mem_singleton_self caller
-  have start : Caller.startClock caller = 4 := by decide +kernel
+  have «start» : Caller.startClock caller = 4 := by decide +kernel
   obtain ⟨worker, matched, _⟩ := issued_worker_schedule.callers caller member
-  refine ⟨caller, member, worker, matched.1, matched.2.2, start, ?_, ?_, ?_⟩
-  · simpa only [start] using matched.2.2.invocation
+  refine ⟨caller, member, worker, matched.1, matched.2.2, «start», ?_, ?_, ?_⟩
+  · simpa only [«start»] using matched.2.2.invocation
   · intro port present
-    simpa only [start] using matched.2.2.writes port present
-  · simpa only [start] using matched.2.2.finish
+    simpa only [«start»] using matched.2.2.writes port present
+  · simpa only [«start»] using matched.2.2.finish
 
 theorem dependent_control_read :
     (readToken (arithmetic 0) AddSub.importedConstraintsMemoryPorts[0]).word = ⟨0, 0⟩ ∧

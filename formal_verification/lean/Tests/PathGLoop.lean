@@ -970,7 +970,7 @@ private theorem g_pointer_frames (variant : Variant) (i : Fin 56) (positive : 0 
 
 private def completeSpan (variant : Variant) : PathCompleteSpan (data variant) (ordinaryProgram variant) where
   span := .blakeG true
-  start := callStart
+  «start» := callStart
   increasing := by
     intro i j less
     have first := i.isLt

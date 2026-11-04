@@ -259,12 +259,12 @@ private theorem ledger_balance_compose {α : Type*}
     ((ledger_commute_middle _ _ _).trans (last.trans (ledger_commute_middle _ _ _)))
 
 private theorem ledger_balance_update {α β : Type*} [DecidableEq α]
-    (domain : List α) (distinct : domain.Nodup) (start : α → β) (cell : α)
+    (domain : List α) (distinct : domain.Nodup) («start» : α → β) (cell : α)
     (member : cell ∈ domain) (value : β) :
-    (domain.map start ++ [value]).Perm
-      (domain.map (Function.update start cell value) ++ [start cell]) := by
-  apply Trace.FiniteFootprint.balance_of_nodup domain [cell] start
-    (Function.update start cell value) [start cell] [value] distinct (by simp)
+    (domain.map «start» ++ [value]).Perm
+      (domain.map (Function.update «start» cell value) ++ [«start» cell]) := by
+  apply Trace.FiniteFootprint.balance_of_nodup domain [cell] «start»
+    (Function.update «start» cell value) [«start» cell] [value] distinct (by simp)
   · intro selected present
     have same := List.mem_singleton.mp present
     exact same.symm ▸ member
@@ -273,33 +273,33 @@ private theorem ledger_balance_update {α β : Type*} [DecidableEq α]
     simp only [Function.update_of_ne different]
   · simpa only [List.map_cons, List.map_nil, List.cons_append, List.nil_append,
       Function.update_self] using
-        (List.perm_append_comm (l₁ := [start cell]) (l₂ := [value]))
+        (List.perm_append_comm (l₁ := [«start» cell]) (l₂ := [value]))
 
 private def writeTokenOf (write : Write) : MemoryToken babyBearModulus :=
   ⟨write.cell.addressCode, (write.stamp, 0), Nat.pair write.value.lo write.value.hi⟩
 
-private def ledgerPut (start : Cell → MemoryToken babyBearModulus) (write : Write) :=
-  Function.update start write.cell (writeTokenOf write)
+private def ledgerPut («start» : Cell → MemoryToken babyBearModulus) (write : Write) :=
+  Function.update «start» write.cell (writeTokenOf write)
 
-private def ledgerRun (start : Cell → MemoryToken babyBearModulus) (writes : List Write) :=
-  writes.foldl ledgerPut start
+private def ledgerRun («start» : Cell → MemoryToken babyBearModulus) (writes : List Write) :=
+  writes.foldl ledgerPut «start»
 
-private def ledgerReads (start : Cell → MemoryToken babyBearModulus) :
+private def ledgerReads («start» : Cell → MemoryToken babyBearModulus) :
     List Write → List (MemoryToken babyBearModulus)
   | [] => []
-  | write :: rest => start write.cell :: ledgerReads (ledgerPut start write) rest
+  | write :: rest => «start» write.cell :: ledgerReads (ledgerPut «start» write) rest
 
 private theorem ledger_balance (domain : List Cell) (distinct : domain.Nodup)
     (writes : List Write) (members : ∀ write ∈ writes, write.cell ∈ domain)
-    (start : Cell → MemoryToken babyBearModulus) :
-    (domain.map start ++ writes.map writeTokenOf).Perm
-      (domain.map (ledgerRun start writes) ++ ledgerReads start writes) := by
-  induction writes generalizing start with
+    («start» : Cell → MemoryToken babyBearModulus) :
+    (domain.map «start» ++ writes.map writeTokenOf).Perm
+      (domain.map (ledgerRun «start» writes) ++ ledgerReads «start» writes) := by
+  induction writes generalizing «start» with
   | nil => exact List.Perm.refl _
   | cons write rest ih =>
-      have first := ledger_balance_update domain distinct start write.cell
+      have first := ledger_balance_update domain distinct «start» write.cell
         (members write (by simp)) (writeTokenOf write)
-      have later := ih (fun item member => members item (by simp [member])) (ledgerPut start write)
+      have later := ih (fun item member => members item (by simp [member])) (ledgerPut «start» write)
       simpa only [ledgerRun, List.foldl_cons, List.map_cons, ledgerReads, ledgerPut,
         List.singleton_append] using ledger_balance_compose first later
 
@@ -307,12 +307,12 @@ private theorem ledger_balance (domain : List Cell) (distinct : domain.Nodup)
 assumed terminal value or supplied read token. -/
 private theorem ledger_final (variant : Variant) :
     ledgerRun old (prefixWrites variant 228) = final variant := by
-  have fold (writes : List Write) (start : Cell → MemoryToken babyBearModulus) (cell : Cell) :
-      (writes.foldl ledgerPut start) cell = writes.foldl
+  have fold (writes : List Write) («start» : Cell → MemoryToken babyBearModulus) (cell : Cell) :
+      (writes.foldl ledgerPut «start») cell = writes.foldl
         (fun token write => if write.cell = cell then
           ⟨cell.addressCode, (write.stamp, 0), Nat.pair write.value.lo write.value.hi⟩ else token)
-        (start cell) := by
-    induction writes generalizing start with
+        («start» cell) := by
+    induction writes generalizing «start» with
     | nil => rfl
     | cons write rest ih =>
         rw [List.foldl_cons, List.foldl_cons, ih]
@@ -451,81 +451,81 @@ theorem machine_native_timing (variant : Variant) (index : Fin 228) :
 /- Value/time projections of the chronological ledger and exact grouping of
    all native CPU/worker steps. No matching or accepted witness is assumed. -/
 
-private def wordPut (start : Cell → Word) (write : Write) : Cell → Word :=
-  Function.update start write.cell write.value
+private def wordPut («start» : Cell → Word) (write : Write) : Cell → Word :=
+  Function.update «start» write.cell write.value
 
-private def wordRun (start : Cell → Word) (writes : List Write) : Cell → Word :=
-  writes.foldl wordPut start
+private def wordRun («start» : Cell → Word) (writes : List Write) : Cell → Word :=
+  writes.foldl wordPut «start»
 
-private theorem wordRun_append (start : Cell → Word) (one two : List Write) :
-    wordRun start (one ++ two) = wordRun (wordRun start one) two := by
+private theorem wordRun_append («start» : Cell → Word) (one two : List Write) :
+    wordRun «start» (one ++ two) = wordRun (wordRun «start» one) two := by
   exact List.foldl_append
 
-private theorem wordPut_refresh (start : Cell → Word) (write : Write)
-    (same : start write.cell = write.value) : wordPut start write = start := by
+private theorem wordPut_refresh («start» : Cell → Word) (write : Write)
+    (same : «start» write.cell = write.value) : wordPut «start» write = «start» := by
   funext cell
   by_cases equal : cell = write.cell
   · subst cell; simpa only [wordPut, Function.update_self] using same.symm
   · simp only [wordPut, Function.update_of_ne equal]
 
-private theorem wordRun_refreshes (start : Cell → Word) (writes : List Write)
-    (refreshes : ∀ write ∈ writes, start write.cell = write.value) :
-    wordRun start writes = start := by
+private theorem wordRun_refreshes («start» : Cell → Word) (writes : List Write)
+    (refreshes : ∀ write ∈ writes, «start» write.cell = write.value) :
+    wordRun «start» writes = «start» := by
   revert refreshes
   induction writes with
   | nil => intro _; rfl
   | cons write rest ih =>
       intro refreshes
-      change wordRun (wordPut start write) rest = start
-      rw [wordPut_refresh start write (refreshes write (by simp))]
+      change wordRun (wordPut «start» write) rest = «start»
+      rw [wordPut_refresh «start» write (refreshes write (by simp))]
       exact ih (fun item member => refreshes item (by simp [member]))
 
-private theorem wordRun_cpu_three (start : Cell → Word) (first second last : Write)
-    (readFirst : start first.cell = first.value) (readSecond : start second.cell = second.value) :
-    wordRun start [first, second, last] = Function.update start last.cell last.value := by
-  change wordPut (wordPut (wordPut start first) second) last = _
-  rw [wordPut_refresh start first readFirst, wordPut_refresh start second readSecond]
+private theorem wordRun_cpu_three («start» : Cell → Word) (first second last : Write)
+    (readFirst : «start» first.cell = first.value) (readSecond : «start» second.cell = second.value) :
+    wordRun «start» [first, second, last] = Function.update «start» last.cell last.value := by
+  change wordPut (wordPut (wordPut «start» first) second) last = _
+  rw [wordPut_refresh «start» first readFirst, wordPut_refresh «start» second readSecond]
   rfl
 
-private theorem wordRun_cpu_two (start : Cell → Word) (first last : Write)
-    (readFirst : start first.cell = first.value) :
-    wordRun start [first, last] = Function.update start last.cell last.value := by
-  change wordPut (wordPut start first) last = _
-  rw [wordPut_refresh start first readFirst]
+private theorem wordRun_cpu_two («start» : Cell → Word) (first last : Write)
+    (readFirst : «start» first.cell = first.value) :
+    wordRun «start» [first, last] = Function.update «start» last.cell last.value := by
+  change wordPut (wordPut «start» first) last = _
+  rw [wordPut_refresh «start» first readFirst]
   rfl
 
-private theorem ledger_word_run (start : Cell → MemoryToken babyBearModulus) (writes : List Write) :
-    (fun cell => (ledgerRun start writes cell).word) =
-      wordRun (fun cell => (start cell).word) writes := by
-  induction writes generalizing start with
+private theorem ledger_word_run («start» : Cell → MemoryToken babyBearModulus) (writes : List Write) :
+    (fun cell => (ledgerRun «start» writes cell).word) =
+      wordRun (fun cell => («start» cell).word) writes := by
+  induction writes generalizing «start» with
   | nil => rfl
   | cons write rest ih =>
-      have seed : (fun cell => (ledgerPut start write cell).word) =
-          wordPut (fun cell => (start cell).word) write := by
+      have seed : (fun cell => (ledgerPut «start» write cell).word) =
+          wordPut (fun cell => («start» cell).word) write := by
         funext cell
         by_cases equal : cell = write.cell
         · subst cell
           simp only [ledgerPut, wordPut, Function.update_self, writeTokenOf,
             MemoryToken.word, Nat.unpair_pair]
         · simp only [ledgerPut, wordPut, Function.update_of_ne equal]
-      change (fun cell => (ledgerRun (ledgerPut start write) rest cell).word) =
-        wordRun (wordPut (fun cell => (start cell).word) write) rest
-      rw [ih (ledgerPut start write), seed]
+      change (fun cell => (ledgerRun (ledgerPut «start» write) rest cell).word) =
+        wordRun (wordPut (fun cell => («start» cell).word) write) rest
+      rw [ih (ledgerPut «start» write), seed]
 
-private theorem ledger_time_run (start : Cell → MemoryToken babyBearModulus) (writes : List Write) :
-    ∀ cell, (ledgerRun start writes cell).time =
+private theorem ledger_time_run («start» : Cell → MemoryToken babyBearModulus) (writes : List Write) :
+    ∀ cell, (ledgerRun «start» writes cell).time =
       writes.foldl
         (fun time write => if write.cell = cell then ((write.stamp : ZMod babyBearModulus), 0) else time)
-        (start cell).time := by
-  induction writes generalizing start with
+        («start» cell).time := by
+  induction writes generalizing «start» with
   | nil => intro cell; rfl
   | cons write rest ih =>
       intro cell
-      change (ledgerRun (ledgerPut start write) rest cell).time =
+      change (ledgerRun (ledgerPut «start» write) rest cell).time =
         rest.foldl
           (fun time write => if write.cell = cell then ((write.stamp : ZMod babyBearModulus), 0) else time)
-          (if write.cell = cell then ((write.stamp : ZMod babyBearModulus), 0) else (start cell).time)
-      rw [ih (ledgerPut start write) cell]
+          (if write.cell = cell then ((write.stamp : ZMod babyBearModulus), 0) else («start» cell).time)
+      rw [ih (ledgerPut «start» write) cell]
       apply congrArg (fun seed => rest.foldl
         (fun time write => if write.cell = cell then ((write.stamp : ZMod babyBearModulus), 0) else time) seed)
       by_cases equal : write.cell = cell
@@ -706,13 +706,13 @@ query membership are kept as additional proof obligations, not premises here. -/
 private theorem worker_word_run (index : Fin 56) (counter link : Nat) :
     wordRun (loopWords (128 + index.val) counter link none) (workerWrites index) =
       loopWords (128 + (index.val + 1) % 56) counter link none := by
-  let start := loopWords (128 + index.val) counter link none
+  let «start» := loopWords (128 + index.val) counter link none
   let makeWrite (port : Fin 9) : Write :=
     ⟨(workerCells index)[port], callStart index + 3, workerValue index port⟩
-  have refreshes : ∀ port : Fin 8, start (makeWrite port.castSucc).cell = (makeWrite port.castSucc).value := by
+  have refreshes : ∀ port : Fin 8, «start» (makeWrite port.castSucc).cell = (makeWrite port.castSucc).value := by
     intro port
-    fin_cases port <;> simp [start, makeWrite, workerCells, workerValue, loopWords]
-  have unchanged : wordRun start ((List.finRange 8).map fun port => makeWrite port.castSucc) = start := by
+    fin_cases port <;> simp [«start», makeWrite, workerCells, workerValue, loopWords]
+  have unchanged : wordRun «start» ((List.finRange 8).map fun port => makeWrite port.castSucc) = «start» := by
     apply wordRun_refreshes
     intro write member
     obtain ⟨port, _, rfl⟩ := List.mem_map.mp member
@@ -725,12 +725,12 @@ private theorem worker_word_run (index : Fin 56) (counter link : Nat) :
       have := Nat.mod_lt (index.val + 1) (by decide : 0 < 56); omega
     rw [wordOfNat_small small]
     rfl
-  change wordRun start ((List.finRange 9).map makeWrite) = _
+  change wordRun «start» ((List.finRange 9).map makeWrite) = _
   rw [List.finRange_succ_last, List.map_append, List.map_map, wordRun_append]
   change wordRun
-    (wordRun start ((List.finRange 8).map fun port => makeWrite port.castSucc)) [makeWrite 8] = _
+    (wordRun «start» ((List.finRange 8).map fun port => makeWrite port.castSucc)) [makeWrite 8] = _
   rw [unchanged]
-  change Function.update start (makeWrite 8).cell (makeWrite 8).value = _
+  change Function.update «start» (makeWrite 8).cell (makeWrite 8).value = _
   rw [cell, value]
   exact loopWords_control _ _ _ _ _
 
@@ -1022,17 +1022,17 @@ private theorem store_gap_words (variant : Variant) :
 private theorem final_worker_words (variant : Variant) :
     wordRun (loopWords 183 0 136 (storedAddress variant)) (workerWrites 55) =
       loopWords 128 0 136 (storedAddress variant) := by
-  let start := loopWords 183 0 136 (storedAddress variant)
+  let «start» := loopWords 183 0 136 (storedAddress variant)
   let makeWrite (port : Fin 9) : Write :=
     ⟨(workerCells 55)[port], callStart 55 + 3, workerValue 55 port⟩
-  have refreshes : ∀ port : Fin 8, start (makeWrite port.castSucc).cell = (makeWrite port.castSucc).value := by
+  have refreshes : ∀ port : Fin 8, «start» (makeWrite port.castSucc).cell = (makeWrite port.castSucc).value := by
     intro port
     fin_cases port <;> cases variant
-    all_goals simp [start, makeWrite, workerCells, workerValue, loopWords, storedAddress,
+    all_goals simp [«start», makeWrite, workerCells, workerValue, loopWords, storedAddress,
       Blake2G.Control.step, Blake2G.controllerAt, Blake2G.controlAt, Blake2G.callCount,
       Blake2G.Control.stateLanes, Blake2G.Control.messageSchedule,
       stateAddress, messageAddress, scratchAddress]
-  have unchanged : wordRun start ((List.finRange 8).map fun port => makeWrite port.castSucc) = start := by
+  have unchanged : wordRun «start» ((List.finRange 8).map fun port => makeWrite port.castSucc) = «start» := by
     apply wordRun_refreshes
     intro write member
     obtain ⟨port, _, rfl⟩ := List.mem_map.mp member
@@ -1041,12 +1041,12 @@ private theorem final_worker_words (variant : Variant) :
   have value : (makeWrite 8).value = wordOfNat 128 := by
     change (Blake2G.Control.step (Blake2G.controllerAt true 55)).register = wordOfNat 128
     decide +kernel
-  change wordRun start ((List.finRange 9).map makeWrite) = _
+  change wordRun «start» ((List.finRange 9).map makeWrite) = _
   rw [List.finRange_succ_last, List.map_append, List.map_map, wordRun_append]
   change wordRun
-    (wordRun start ((List.finRange 8).map fun port => makeWrite port.castSucc)) [makeWrite 8] = _
+    (wordRun «start» ((List.finRange 8).map fun port => makeWrite port.castSucc)) [makeWrite 8] = _
   rw [unchanged]
-  change Function.update start (makeWrite 8).cell (makeWrite 8).value = _
+  change Function.update «start» (makeWrite 8).cell (makeWrite 8).value = _
   rw [cell, value]
   exact loopWords_control _ _ _ _ _
 
@@ -1184,13 +1184,13 @@ private theorem prefix_writes_mem (variant : Variant) (count : Nat) :
   · cases member
 
 private theorem ledger_address_invariant (writes : List Write)
-    (start : Cell → MemoryToken babyBearModulus)
-    (initial : ∀ cell, (start cell).address = cell.addressCode) :
-    ∀ cell, (ledgerRun start writes cell).address = cell.addressCode := by
-  induction writes generalizing start with
+    («start» : Cell → MemoryToken babyBearModulus)
+    (initial : ∀ cell, («start» cell).address = cell.addressCode) :
+    ∀ cell, (ledgerRun «start» writes cell).address = cell.addressCode := by
+  induction writes generalizing «start» with
   | nil => exact initial
   | cons write rest ih =>
-      change ∀ cell, (ledgerRun (ledgerPut start write) rest cell).address = cell.addressCode
+      change ∀ cell, (ledgerRun (ledgerPut «start» write) rest cell).address = cell.addressCode
       apply ih
       intro cell
       by_cases equal : cell = write.cell
@@ -1468,56 +1468,56 @@ private theorem worker_native_write_clocks (variant : Variant) (index : Fin 56) 
 /- Atomic ledger serialization and exact imported physical address projections.
    Matching still requires the concrete predecessor-value and raw-token identities. -/
 
-private def ledgerSteps (start : Cell → MemoryToken babyBearModulus) :
+private def ledgerSteps («start» : Cell → MemoryToken babyBearModulus) :
     List Write → List (MemoryToken babyBearModulus × MemoryToken babyBearModulus)
   | [] => []
   | write :: rest =>
-      (start write.cell, writeTokenOf write) :: ledgerSteps (ledgerPut start write) rest
+      («start» write.cell, writeTokenOf write) :: ledgerSteps (ledgerPut «start» write) rest
 
-private theorem ledgerSteps_append (start : Cell → MemoryToken babyBearModulus)
+private theorem ledgerSteps_append («start» : Cell → MemoryToken babyBearModulus)
     (first second : List Write) :
-    ledgerSteps start (first ++ second) =
-      ledgerSteps start first ++ ledgerSteps (ledgerRun start first) second := by
-  induction first generalizing start with
+    ledgerSteps «start» (first ++ second) =
+      ledgerSteps «start» first ++ ledgerSteps (ledgerRun «start» first) second := by
+  induction first generalizing «start» with
   | nil => rfl
   | cons write rest ih =>
       simp only [List.cons_append, ledgerSteps, List.cons.injEq]
-      exact ⟨True.intro, ih (ledgerPut start write)⟩
+      exact ⟨True.intro, ih (ledgerPut «start» write)⟩
 
-private theorem ledgerSteps_reads (start : Cell → MemoryToken babyBearModulus) (writes : List Write) :
-    (ledgerSteps start writes).map Prod.fst = ledgerReads start writes := by
-  induction writes generalizing start with
+private theorem ledgerSteps_reads («start» : Cell → MemoryToken babyBearModulus) (writes : List Write) :
+    (ledgerSteps «start» writes).map Prod.fst = ledgerReads «start» writes := by
+  induction writes generalizing «start» with
   | nil => rfl
   | cons write rest ih => simp only [ledgerSteps, List.map_cons, ledgerReads, ih]
 
-private theorem ledgerSteps_writes (start : Cell → MemoryToken babyBearModulus) (writes : List Write) :
-    (ledgerSteps start writes).map Prod.snd = writes.map writeTokenOf := by
-  induction writes generalizing start with
+private theorem ledgerSteps_writes («start» : Cell → MemoryToken babyBearModulus) (writes : List Write) :
+    (ledgerSteps «start» writes).map Prod.snd = writes.map writeTokenOf := by
+  induction writes generalizing «start» with
   | nil => rfl
   | cons write rest ih => simp only [ledgerSteps, List.map_cons, ih]
 
-private theorem ledgerPut_frame (start : Cell → MemoryToken babyBearModulus)
+private theorem ledgerPut_frame («start» : Cell → MemoryToken babyBearModulus)
     (writes : List Write) (cell : Cell) (outside : ∀ write ∈ writes, write.cell ≠ cell) :
-    ledgerRun start writes cell = start cell := by
-  induction writes generalizing start with
+    ledgerRun «start» writes cell = «start» cell := by
+  induction writes generalizing «start» with
   | nil => rfl
   | cons write rest ih =>
-      change ledgerRun (ledgerPut start write) rest cell = _
-      rw [ih (ledgerPut start write) (fun item member => outside item (by simp [member]))]
+      change ledgerRun (ledgerPut «start» write) rest cell = _
+      rw [ih (ledgerPut «start» write) (fun item member => outside item (by simp [member]))]
       simp only [ledgerPut, Function.update_of_ne (Ne.symm (outside write (by simp)))]
 
 /-- Atomic native workers have one original predecessor per distinct cell,
 even when all their writes share the same actual clock. Serializing their
 ports therefore preserves every raw predecessor token without dropping events. -/
-private theorem ledgerSteps_distinct (start : Cell → MemoryToken babyBearModulus)
+private theorem ledgerSteps_distinct («start» : Cell → MemoryToken babyBearModulus)
     (writes : List Write) (distinct : (writes.map Write.cell).Nodup) :
-    ledgerSteps start writes = writes.map (fun write => (start write.cell, writeTokenOf write)) := by
-  induction writes generalizing start with
+    ledgerSteps «start» writes = writes.map (fun write => («start» write.cell, writeTokenOf write)) := by
+  induction writes generalizing «start» with
   | nil => rfl
   | cons write rest ih =>
       have facts := List.nodup_cons.mp distinct
       simp only [ledgerSteps, List.map_cons, List.cons.injEq]
-      refine ⟨True.intro, (ih (ledgerPut start write) facts.2).trans ?_⟩
+      refine ⟨True.intro, (ih (ledgerPut «start» write) facts.2).trans ?_⟩
       apply List.map_congr_left
       intro other member
       have different : other.cell ≠ write.cell := by
@@ -2000,15 +2000,15 @@ private theorem cpu_native_read_token (variant : Variant) (index : Fin 228) (por
       ((value : ZMod babyBearModulus), 0)) clock)).trans time.symm
   · exact (cpu_native_read_words variant index port).trans (words.trans values).symm
 
-private theorem ledgerRun_append (start : Cell → MemoryToken babyBearModulus) (first second : List Write) :
-    ledgerRun start (first ++ second) = ledgerRun (ledgerRun start first) second := by
+private theorem ledgerRun_append («start» : Cell → MemoryToken babyBearModulus) (first second : List Write) :
+    ledgerRun «start» (first ++ second) = ledgerRun (ledgerRun «start» first) second := by
   exact List.foldl_append
 
 private theorem cpu_ledger_filtered (variant : Variant) (index : Fin 228)
-    (start : Cell → MemoryToken babyBearModulus) :
-    ledgerSteps start (machineWrites variant index) =
+    («start» : Cell → MemoryToken babyBearModulus) :
+    ledgerSteps «start» (machineWrites variant index) =
       (cpuPortIndices variant index).map fun port =>
-        (ledgerRun start (cpuBefore variant index port) ((machineCells variant index)[port]),
+        (ledgerRun «start» (cpuBefore variant index port) ((machineCells variant index)[port]),
           writeTokenOf (cpuWrite variant index port)) := by
   cases caller : isCaller index
   all_goals simp [machineWrites, cpuPortIndices, caller, cpuBefore, cpuWrite, cpuWrittenWord,

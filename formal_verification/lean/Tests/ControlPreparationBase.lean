@@ -677,27 +677,27 @@ theorem public_round_empty_cut_has_exact_coverage :
     cases member
 
 theorem round_region_seed_retains_preparation_timestamp :
-    ∃ start finish : List (MemoryToken babyBearModulus),
+    ∃ «start» finish : List (MemoryToken babyBearModulus),
       ((data 1).machine.initialMemory ++ ((data 1).prefixSteps 8).map Prod.snd).Perm
-        (start ++ ((data 1).prefixSteps 8).map Prod.fst) ∧
-      (start ++ ((data 1).windowSteps 8 8).map Prod.snd).Perm
+        («start» ++ ((data 1).prefixSteps 8).map Prod.fst) ∧
+      («start» ++ ((data 1).windowSteps 8 8).map Prod.snd).Perm
         (finish ++ ((data 1).windowSteps 8 8).map Prod.fst) ∧
-      ∃ token ∈ start, token.address = (Cell.register 12).addressCode ∧
+      ∃ token ∈ «start», token.address = (Cell.register 12).addressCode ∧
         (timeOfPair token.time).value = 6 ∧ token.word = ⟨0, 8⟩ := by
   have requests := UnifiedReduced.Caller.Proofs.request_binding (by decide +kernel) (by decide +kernel)
     (accepted 1).toRequestChecks protocol_inputs.publicProgram
   have facts := UnifiedReduced.Caller.Proofs.mixed_memory_facts (by decide +kernel) (by decide +kernel)
     (accepted 1) protocol_inputs.publicProgram protocol_inputs.initialization requests
-  obtain ⟨start, prefixFacts, suffix⟩ := Proofs.Transfer.split_at facts 7
+  obtain ⟨«start», prefixFacts, suffix⟩ := Proofs.Transfer.split_at facts 7
   obtain ⟨finish, window, _⟩ := Proofs.Transfer.split_at suffix 7
   have prefixMatching := prefixFacts.matching
   rw [UnifiedReduced.Caller.Proofs.mixed_prefix_steps (data 1) (cut := 8) (by decide)] at prefixMatching
-  change Proofs.Transfer.Facts ⟨start, finish,
+  change Proofs.Transfer.Facts ⟨«start», finish,
     Proofs.Transfer.windowSteps (UnifiedReduced.Caller.Proofs.mixedData (data 1)) 7 7⟩ at window
   rw [← UnifiedReduced.Caller.Proofs.mixed_window_steps (by decide +kernel) (by decide +kernel)
     (lower := 8) (upper := 8) (accepted 1).toRequestChecks protocol_inputs.publicProgram
     (by decide) (by decide) (by decide) (by decide)] at window
-  exact ⟨start, finish, prefixMatching, window.matching,
+  exact ⟨«start», finish, prefixMatching, window.matching,
     UnifiedReduced.Caller.Proofs.preparation_token (by decide +kernel) (by decide +kernel) (accepted 1)
       protocol_inputs.publicProgram protocol_inputs.ordinaryProgram protocol_inputs.initialization
       round_region_scope.preparation (by decide) (by decide) prefixMatching⟩

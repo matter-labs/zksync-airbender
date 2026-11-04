@@ -41,14 +41,9 @@ theorem cpu_loop_jal_checked_i000_007_e096_111 :
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 96).take 16) = true := by
   decide +kernel
 
-theorem cpu_loop_jal_checked_i000_007_e112_127 :
+theorem cpu_loop_jal_checked_i000_007_e112_119 :
     gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 0 8
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 16) = true := by
-  decide +kernel
-
-theorem cpu_loop_jal_checked_i000_007_e128_128 :
-    gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 0 8
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 128).take 1) = true := by
+      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 8) = true := by
   decide +kernel
 
 theorem cpu_loop_jal_checked_i008_015_e000_015 :
@@ -86,14 +81,9 @@ theorem cpu_loop_jal_checked_i008_015_e096_111 :
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 96).take 16) = true := by
   decide +kernel
 
-theorem cpu_loop_jal_checked_i008_015_e112_127 :
+theorem cpu_loop_jal_checked_i008_015_e112_119 :
     gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 8 8
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 16) = true := by
-  decide +kernel
-
-theorem cpu_loop_jal_checked_i008_015_e128_128 :
-    gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 8 8
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 128).take 1) = true := by
+      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 8) = true := by
   decide +kernel
 
 theorem cpu_loop_jal_checked_i016_023_e000_015 :
@@ -131,14 +121,9 @@ theorem cpu_loop_jal_checked_i016_023_e096_111 :
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 96).take 16) = true := by
   decide +kernel
 
-theorem cpu_loop_jal_checked_i016_023_e112_127 :
+theorem cpu_loop_jal_checked_i016_023_e112_119 :
     gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 16 8
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 16) = true := by
-  decide +kernel
-
-theorem cpu_loop_jal_checked_i016_023_e128_128 :
-    gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 16 8
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 128).take 1) = true := by
+      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 8) = true := by
   decide +kernel
 
 theorem cpu_loop_jal_checked_i024_031_e000_015 :
@@ -176,14 +161,9 @@ theorem cpu_loop_jal_checked_i024_031_e096_111 :
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 96).take 16) = true := by
   decide +kernel
 
-theorem cpu_loop_jal_checked_i024_031_e112_127 :
+theorem cpu_loop_jal_checked_i024_031_e112_119 :
     gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 24 8
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 16) = true := by
-  decide +kernel
-
-theorem cpu_loop_jal_checked_i024_031_e128_128 :
-    gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 24 8
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 128).take 1) = true := by
+      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 8) = true := by
   decide +kernel
 
 theorem cpu_loop_jal_checked_i032_039_e000_015 :
@@ -221,14 +201,9 @@ theorem cpu_loop_jal_checked_i032_039_e096_111 :
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 96).take 16) = true := by
   decide +kernel
 
-theorem cpu_loop_jal_checked_i032_039_e112_127 :
+theorem cpu_loop_jal_checked_i032_039_e112_119 :
     gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 32 8
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 16) = true := by
-  decide +kernel
-
-theorem cpu_loop_jal_checked_i032_039_e128_128 :
-    gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 32 8
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 128).take 1) = true := by
+      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 8) = true := by
   decide +kernel
 
 theorem cpu_loop_jal_checked_i040_047_e000_015 :
@@ -266,14 +241,9 @@ theorem cpu_loop_jal_checked_i040_047_e096_111 :
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 96).take 16) = true := by
   decide +kernel
 
-theorem cpu_loop_jal_checked_i040_047_e112_127 :
+theorem cpu_loop_jal_checked_i040_047_e112_119 :
     gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 40 8
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 16) = true := by
-  decide +kernel
-
-theorem cpu_loop_jal_checked_i040_047_e128_128 :
-    gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 40 8
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 128).take 1) = true := by
+      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 8) = true := by
   decide +kernel
 
 theorem cpu_loop_jal_checked_i048_054_e000_015 :
@@ -311,19 +281,14 @@ theorem cpu_loop_jal_checked_i048_054_e096_111 :
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 96).take 16) = true := by
   decide +kernel
 
-theorem cpu_loop_jal_checked_i048_054_e112_127 :
+theorem cpu_loop_jal_checked_i048_054_e112_119 :
     gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 48 7
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 16) = true := by
-  decide +kernel
-
-theorem cpu_loop_jal_checked_i048_054_e128_128 :
-    gCpuProjectedLoopBatchCheck (fun index : Fin 55 => gapRow index 1) 48 7
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 128).take 1) = true := by
+      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 8) = true := by
   decide +kernel
 
 private theorem cpu_loop_jal_indices_000_007 (variant : Variant) (index : Fin 55)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (indexStart : 0 ≤ index.val) (indexStop : index.val < 8) (bound : equation < 129) :
+    (indexStart : 0 ≤ index.val) (indexStop : index.val < 8) (bound : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; exact bound)).eval
         (Verification.environment (machineAssignment variant (gapRow index 1))) = 0 := by
@@ -348,15 +313,12 @@ private theorem cpu_loop_jal_indices_000_007 (variant : Variant) (index : Fin 55
   by_cases piece96 : equation < 112
   · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 0 8 96 16 equation
       indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i000_007_e096_111 (g_cpu_jal_ordinary variant index)
-  by_cases piece112 : equation < 128
-  · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 0 8 112 16 equation
-      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i000_007_e112_127 (g_cpu_jal_ordinary variant index)
-  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 0 8 128 1 equation
-    indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i000_007_e128_128 (g_cpu_jal_ordinary variant index)
+  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 0 8 112 8 equation
+      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i000_007_e112_119 (g_cpu_jal_ordinary variant index)
 
 private theorem cpu_loop_jal_indices_008_015 (variant : Variant) (index : Fin 55)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (indexStart : 8 ≤ index.val) (indexStop : index.val < 16) (bound : equation < 129) :
+    (indexStart : 8 ≤ index.val) (indexStop : index.val < 16) (bound : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; exact bound)).eval
         (Verification.environment (machineAssignment variant (gapRow index 1))) = 0 := by
@@ -381,15 +343,12 @@ private theorem cpu_loop_jal_indices_008_015 (variant : Variant) (index : Fin 55
   by_cases piece96 : equation < 112
   · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 8 8 96 16 equation
       indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i008_015_e096_111 (g_cpu_jal_ordinary variant index)
-  by_cases piece112 : equation < 128
-  · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 8 8 112 16 equation
-      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i008_015_e112_127 (g_cpu_jal_ordinary variant index)
-  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 8 8 128 1 equation
-    indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i008_015_e128_128 (g_cpu_jal_ordinary variant index)
+  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 8 8 112 8 equation
+      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i008_015_e112_119 (g_cpu_jal_ordinary variant index)
 
 private theorem cpu_loop_jal_indices_016_023 (variant : Variant) (index : Fin 55)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (indexStart : 16 ≤ index.val) (indexStop : index.val < 24) (bound : equation < 129) :
+    (indexStart : 16 ≤ index.val) (indexStop : index.val < 24) (bound : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; exact bound)).eval
         (Verification.environment (machineAssignment variant (gapRow index 1))) = 0 := by
@@ -414,15 +373,12 @@ private theorem cpu_loop_jal_indices_016_023 (variant : Variant) (index : Fin 55
   by_cases piece96 : equation < 112
   · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 16 8 96 16 equation
       indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i016_023_e096_111 (g_cpu_jal_ordinary variant index)
-  by_cases piece112 : equation < 128
-  · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 16 8 112 16 equation
-      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i016_023_e112_127 (g_cpu_jal_ordinary variant index)
-  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 16 8 128 1 equation
-    indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i016_023_e128_128 (g_cpu_jal_ordinary variant index)
+  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 16 8 112 8 equation
+      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i016_023_e112_119 (g_cpu_jal_ordinary variant index)
 
 private theorem cpu_loop_jal_indices_024_031 (variant : Variant) (index : Fin 55)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (indexStart : 24 ≤ index.val) (indexStop : index.val < 32) (bound : equation < 129) :
+    (indexStart : 24 ≤ index.val) (indexStop : index.val < 32) (bound : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; exact bound)).eval
         (Verification.environment (machineAssignment variant (gapRow index 1))) = 0 := by
@@ -447,15 +403,12 @@ private theorem cpu_loop_jal_indices_024_031 (variant : Variant) (index : Fin 55
   by_cases piece96 : equation < 112
   · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 24 8 96 16 equation
       indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i024_031_e096_111 (g_cpu_jal_ordinary variant index)
-  by_cases piece112 : equation < 128
-  · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 24 8 112 16 equation
-      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i024_031_e112_127 (g_cpu_jal_ordinary variant index)
-  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 24 8 128 1 equation
-    indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i024_031_e128_128 (g_cpu_jal_ordinary variant index)
+  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 24 8 112 8 equation
+      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i024_031_e112_119 (g_cpu_jal_ordinary variant index)
 
 private theorem cpu_loop_jal_indices_032_039 (variant : Variant) (index : Fin 55)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (indexStart : 32 ≤ index.val) (indexStop : index.val < 40) (bound : equation < 129) :
+    (indexStart : 32 ≤ index.val) (indexStop : index.val < 40) (bound : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; exact bound)).eval
         (Verification.environment (machineAssignment variant (gapRow index 1))) = 0 := by
@@ -480,15 +433,12 @@ private theorem cpu_loop_jal_indices_032_039 (variant : Variant) (index : Fin 55
   by_cases piece96 : equation < 112
   · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 32 8 96 16 equation
       indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i032_039_e096_111 (g_cpu_jal_ordinary variant index)
-  by_cases piece112 : equation < 128
-  · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 32 8 112 16 equation
-      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i032_039_e112_127 (g_cpu_jal_ordinary variant index)
-  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 32 8 128 1 equation
-    indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i032_039_e128_128 (g_cpu_jal_ordinary variant index)
+  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 32 8 112 8 equation
+      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i032_039_e112_119 (g_cpu_jal_ordinary variant index)
 
 private theorem cpu_loop_jal_indices_040_047 (variant : Variant) (index : Fin 55)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (indexStart : 40 ≤ index.val) (indexStop : index.val < 48) (bound : equation < 129) :
+    (indexStart : 40 ≤ index.val) (indexStop : index.val < 48) (bound : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; exact bound)).eval
         (Verification.environment (machineAssignment variant (gapRow index 1))) = 0 := by
@@ -513,15 +463,12 @@ private theorem cpu_loop_jal_indices_040_047 (variant : Variant) (index : Fin 55
   by_cases piece96 : equation < 112
   · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 40 8 96 16 equation
       indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i040_047_e096_111 (g_cpu_jal_ordinary variant index)
-  by_cases piece112 : equation < 128
-  · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 40 8 112 16 equation
-      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i040_047_e112_127 (g_cpu_jal_ordinary variant index)
-  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 40 8 128 1 equation
-    indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i040_047_e128_128 (g_cpu_jal_ordinary variant index)
+  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 40 8 112 8 equation
+      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i040_047_e112_119 (g_cpu_jal_ordinary variant index)
 
 private theorem cpu_loop_jal_indices_048_054 (variant : Variant) (index : Fin 55)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (indexStart : 48 ≤ index.val) (indexStop : index.val < 55) (bound : equation < 129) :
+    (indexStart : 48 ≤ index.val) (indexStop : index.val < 55) (bound : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; exact bound)).eval
         (Verification.environment (machineAssignment variant (gapRow index 1))) = 0 := by
@@ -546,14 +493,11 @@ private theorem cpu_loop_jal_indices_048_054 (variant : Variant) (index : Fin 55
   by_cases piece96 : equation < 112
   · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 48 7 96 16 equation
       indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i048_054_e096_111 (g_cpu_jal_ordinary variant index)
-  by_cases piece112 : equation < 128
-  · exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 48 7 112 16 equation
-      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i048_054_e112_127 (g_cpu_jal_ordinary variant index)
-  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 48 7 128 1 equation
-    indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i048_054_e128_128 (g_cpu_jal_ordinary variant index)
+  exact g_cpu_projected_loop_equation_of_batch (fun index : Fin 55 => gapRow index 1) variant index setup 48 7 112 8 equation
+      indexStart (by omega) (by omega) (by omega) bound cpu_loop_jal_checked_i048_054_e112_119 (g_cpu_jal_ordinary variant index)
 
 theorem cpu_loop_jal_equation (variant : Variant) (index : Fin 55)
-    (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat) (bound : equation < 129) :
+    (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat) (bound : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; exact bound)).eval
         (Verification.environment (machineAssignment variant (gapRow index 1))) = 0 := by

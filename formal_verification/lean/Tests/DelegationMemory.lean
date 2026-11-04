@@ -244,7 +244,7 @@ theorem native_atomic_reads_and_writes :
       cell.read after = .ok (Trace.memoryWord (port.writeCode native.assignment)) after := by
   obtain ⟨after, grouped, _⟩ := native_grouped_call
   cases grouped with
-  | @cons actual rest start middle finish events past permutation current =>
+  | @cons actual rest «start» middle finish events past permutation current =>
     cases past with
     | nil =>
       have aligned : ∀ cell ∈ cells, cell.Aligned := by
@@ -363,13 +363,13 @@ theorem native_window_keeps_all_ports :
   · rw [← Delegation.Proofs.native_window_steps]
     rfl
 
-theorem native_window_nonzero_boundary : ∃ (start finish : List (MemoryToken babyBearModulus))
+theorem native_window_nonzero_boundary : ∃ («start» finish : List (MemoryToken babyBearModulus))
     (earlierEvents spanEvents : List MemoryAccess) (atStart atFinish : Reference.RiscV.Sail.State),
-    start.Perm data.terminal ∧ finish.Perm data.terminal ∧ spanEvents = [] ∧
-    (∀ token ∈ start, token.time = (7, 0) ∧ token.word.Bounded) ∧
-    Delegation.MemoryAccepted ⟨data.setup, [], start, finish⟩ ∧
+    «start».Perm data.terminal ∧ finish.Perm data.terminal ∧ spanEvents = [] ∧
+    (∀ token ∈ «start», token.time = (7, 0) ∧ token.word.Bounded) ∧
+    Delegation.MemoryAccepted ⟨data.setup, [], «start», finish⟩ ∧
     SailHistory cells earlierEvents before atStart ∧ SailHistory cells spanEvents atStart atFinish ∧
-    ∀ token ∈ start, ∃ cell ∈ cells, cell.addressCode = token.address ∧
+    ∀ token ∈ «start», ∃ cell ∈ cells, cell.addressCode = token.address ∧
       cell.read atStart = .ok token.word.toBitVec atStart := by
   have aligned : ∀ cell ∈ cells, cell.Aligned := by
     intro cell member
@@ -378,7 +378,7 @@ theorem native_window_nonzero_boundary : ∃ (start finish : List (MemoryToken b
     all_goals simp [Cell.Aligned]
   have rules : Delegation.Proofs.WriteBoundsFromReads data :=
     fun actual member _ port present => native_word_bounds.2.1 actual member port present
-  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, firstFacts, spanAccepted,
+  obtain ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, firstFacts, spanAccepted,
       _, spanPerm, firstHistory, spanHistory, startInputs, _⟩ :=
     Delegation.Proofs.native_span_window (by decide) accepted inputs rules aligned 7 7
   have empty : Delegation.Proofs.windowRows data 7 7 = [] := by decide +kernel
@@ -386,13 +386,13 @@ theorem native_window_nonzero_boundary : ∃ (start finish : List (MemoryToken b
   have noEvents : spanEvents = [] := by simpa using spanPerm
   have firstSteps : Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData data) 7 = data.steps :=
     by decide +kernel
-  have startBoundary : start.Perm data.terminal := by
+  have startBoundary : «start».Perm data.terminal := by
     rw [firstSteps] at firstFacts
     exact (List.perm_append_right_iff _).mp (firstFacts.matching.symm.trans accepted.matching)
   have finishBoundary : finish.Perm data.terminal := by
-    have same : start.Perm finish := by simpa [Delegation.MemoryData.steps] using spanAccepted.matching
+    have same : «start».Perm finish := by simpa [Delegation.MemoryData.steps] using spanAccepted.matching
     exact same.symm.trans startBoundary
-  refine ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, startBoundary,
+  refine ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, startBoundary,
     finishBoundary, noEvents, ?_, spanAccepted, firstHistory, spanHistory, startInputs.reads⟩
   intro token member
   constructor
@@ -403,27 +403,27 @@ theorem native_window_nonzero_boundary : ∃ (start finish : List (MemoryToken b
     rfl
   · exact startInputs.words token member
 
-theorem native_boundary_image_retains_clocks : ∃ (start finish : List (MemoryToken babyBearModulus))
+theorem native_boundary_image_retains_clocks : ∃ («start» finish : List (MemoryToken babyBearModulus))
     (atCut : Reference.RiscV.Sail.State),
-    start.Perm data.terminal ∧
-    Delegation.BoundaryMemoryInputs ⟨data.setup, [], start, finish⟩ atCut cells ∧
-    ¬ Delegation.MemoryInputs ⟨data.setup, [], start, finish⟩ atCut cells := by
-  obtain ⟨start, finish, _, _, atCut, _, boundary, _, _, clocks, _, _, _, reads⟩ :=
+    «start».Perm data.terminal ∧
+    Delegation.BoundaryMemoryInputs ⟨data.setup, [], «start», finish⟩ atCut cells ∧
+    ¬ Delegation.MemoryInputs ⟨data.setup, [], «start», finish⟩ atCut cells := by
+  obtain ⟨«start», finish, _, _, atCut, _, boundary, _, _, clocks, _, _, _, reads⟩ :=
     native_window_nonzero_boundary
   have facts := Delegation.Proofs.transfer_facts (by decide) accepted inputs.toBoundaryInputs
   have keys := Trace.Proofs.boundary_keys MemoryToken.address facts.matching facts.addresses
-  have addresses : (start.map MemoryToken.address).Perm (cells.map Cell.addressCode) :=
+  have addresses : («start».map MemoryToken.address).Perm (cells.map Cell.addressCode) :=
     ((boundary.map MemoryToken.address).trans keys.symm).trans
       (List.Perm.of_eq (Trace.Proofs.image_addresses inputs.initialization))
-  have bounded : ∀ token ∈ start, (timeOfPair token.time).Bounded := by
+  have bounded : ∀ token ∈ «start», (timeOfPair token.time).Bounded := by
     intro token member
     rw [(clocks token member).1]
     dsimp [timeOfPair, Timestamp.Bounded]
     decide +kernel
   have cutInputs : Trace.Proofs.Transfer.NativeInputs
-      (Delegation.Proofs.transferData ⟨data.setup, [], start, finish⟩) atCut cells :=
+      (Delegation.Proofs.transferData ⟨data.setup, [], «start», finish⟩) atCut cells :=
     ⟨⟨addresses, inputs.distinct, reads⟩, fun token member => (clocks token member).2, bounded⟩
-  refine ⟨start, finish, atCut, boundary,
+  refine ⟨«start», finish, atCut, boundary,
     ⟨Delegation.Proofs.boundary_image cutInputs, inputs.distinct, bounded, by simp, by simp⟩, ?_⟩
   intro fresh
   have member : native.writeToken Keccak.importedConstraintsMemoryPorts[0] ∈ data.terminal := by

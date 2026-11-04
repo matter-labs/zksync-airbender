@@ -13,11 +13,11 @@ theorem invalid_control : rowByte 0 0 255 4 = 0 := by decide +kernel
 
 theorem packed_signed_fill : digit 65536 (expectedRow 0 896) 251 = 255 := by decide +kernel
 
-theorem packed_matches_reference (lane start count index : Nat) (laneBound : lane < 4)
-    (inside : start + count ≤ 262144) (spanBound : start % 256 + count ≤ 4096)
+theorem packed_matches_reference (lane «start» count index : Nat) (laneBound : lane < 4)
+    (inside : «start» + count ≤ 262144) (spanBound : «start» % 256 + count ≤ 4096)
     (within : index < count) :
-    digit 65536 (expectedSpan lane start count) index =
-      Airbender.Verification.ShiftCertificate.outputNatByte lane (start + index) :=
-  expectedSpan_digit lane start count index laneBound inside spanBound within
+    digit 65536 (expectedSpan lane «start» count) index =
+      Airbender.Verification.ShiftCertificate.outputNatByte lane («start» + index) :=
+  expectedSpan_digit lane «start» count index laneBound inside spanBound within
 
 end Tests.ShiftPackedReference

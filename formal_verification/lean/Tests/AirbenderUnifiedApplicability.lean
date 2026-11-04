@@ -49,7 +49,7 @@ run_cmd do
     let .ok expression := circuit.lookupExpression relation
       | throwError "physical unified memory column{column} has no unique logical variable"
     let logicalResult : Option Nat := match expression with
-      | .Sum parts => match parts.toList with
+      | .Sum «parts» => match «parts».toList with
         | [.Constant _, .Product factors] => match factors.toList with
           | [.Constant _, .Var logicalId] => some logicalId
           | _ => none

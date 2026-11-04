@@ -26,7 +26,7 @@ private theorem boot_cpu_equations (variant : Variant) (index : Fin 6)
         (machineAssignment variant ⟨index.val, Nat.lt_trans index.isLt (by decide)⟩)) = 0 := by
   rw [List.forall_mem_iff_forall_getElem]
   intro equation bound
-  have short : equation < 129 := by simpa only [UnifiedReduced.constraint_count] using bound
+  have short : equation < 120 := by simpa only [UnifiedReduced.constraint_count] using bound
   change ((gCpuPolynomials setup)[equation]'bound).eval _ = 0
   fin_cases index
   · exact cpu_boot_row0_equation variant setup equation short
@@ -42,7 +42,7 @@ private theorem loop_cpu_equations (variant : Variant) (index : Fin 55) (phase :
       expression.eval (Verification.environment (machineAssignment variant (gapRow index phase))) = 0 := by
   rw [List.forall_mem_iff_forall_getElem]
   intro equation bound
-  have short : equation < 129 := by simpa only [UnifiedReduced.constraint_count] using bound
+  have short : equation < 120 := by simpa only [UnifiedReduced.constraint_count] using bound
   change ((gCpuPolynomials setup)[equation]'bound).eval _ = 0
   fin_cases phase
   · exact cpu_loop_caller_equation variant index setup equation short
@@ -64,7 +64,7 @@ private theorem final_cpu_equations (variant : Variant) (last : Fin 2)
         (machineAssignment variant ⟨226 + last.val, by have := last.isLt; omega⟩)) = 0 := by
   rw [List.forall_mem_iff_forall_getElem]
   intro equation bound
-  have short : equation < 129 := by simpa only [UnifiedReduced.constraint_count] using bound
+  have short : equation < 120 := by simpa only [UnifiedReduced.constraint_count] using bound
   change ((gCpuPolynomials setup)[equation]'bound).eval _ = 0
   fin_cases last
   · cases variant
@@ -73,7 +73,7 @@ private theorem final_cpu_equations (variant : Variant) (last : Fin 2)
     · exact cpu_final_protectedMessage_equation setup equation short
   · exact cpu_final_csr_equation variant setup equation short
 
-/-- All129 actual CPU equations for all228 rows and all3variants. The branch
+/-- All120 actual CPU equations for all228 rows and all3variants. The branch
 case is derived from the real iteration index used by machineAssignment. -/
 
 theorem machine_equations (variant : Variant) (index : Fin 228)

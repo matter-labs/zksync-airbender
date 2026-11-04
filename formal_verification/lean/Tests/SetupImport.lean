@@ -238,15 +238,15 @@ def run : IO Unit := do
     Keccak.rotationTemplatesRepetitions.size == 10 && Keccak.rotationTemplatesStrides.size == 10)
     "Keccak stored templates retain exact source and native region metadata"
   for k in List.finRange 10 do
-    let start := Keccak.rotationTemplatesRegion.offset + Keccak.rotationTemplatesRowOffsets[k.val]!
+    let «start» := Keccak.rotationTemplatesRegion.offset + Keccak.rotationTemplatesRowOffsets[k.val]!
     check ((templates[k].zipIdx).all fun (value, index) =>
       keccakSetup.columns[Keccak.rotationTemplatesColumn]?.bind (fun column =>
-        column.get? (start + index)) == some value)
+        column.get? («start» + index)) == some value)
       s!"Keccak stored template {k.val}: every value equals the parsed physical rows"
     let some physical := keccakSetup.columns[Keccak.rotationTemplatesColumn]?
       | throw (IO.userError "Keccak stored-template column absent")
     let (_, selected) := physical.blocks.foldl (fun (position, found) block =>
-      (position + block.length, if position == start then some block else found))
+      (position + block.length, if position == «start» then some block else found))
       ((0 : Nat), (none : Option Setup.Block))
     let some (.periodic count stride original) := selected
       | throw (IO.userError "Keccak stored-template native block absent")

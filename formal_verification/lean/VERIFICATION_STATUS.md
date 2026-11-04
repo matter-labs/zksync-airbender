@@ -128,6 +128,16 @@ validation. Review statements, production behavior, artifacts and all trust and
 resource limits are unchanged. Full source/runtime validation, the environment
 audit and final full assurance remain pending.
 
+Run [41882490544](https://github.com/matter-labs/zksync-airbender/actions/runs/41882490544)
+on `e94380e9f` passed the corrected COPY native-acceptance fixture, then failed
+at `PathGLoopNativeBase.lean:262:49` on an unquoted `start` parameter. Remaining
+test identifiers are quoted, with actual macro keywords preserved. Static review
+also found stale 129-equation Path-G certificate bounds; the native list has 120.
+The repaired chunks cover exactly indices 0–119 across all 41 finite groups,
+retaining the complete imported-list conclusion. No Review statement, production
+function, native artifact, resource limit or trust gate changes. Path-G/full
+source validation, the environment audit and final full assurance remain pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

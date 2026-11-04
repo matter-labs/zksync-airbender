@@ -5,7 +5,7 @@ open Airbender Trace Arithmetic Reference.RiscV.Sail Reference.Sail PathGLoopPro
 set_option warningAsError true
 set_option Elab.async false
 
-/- All129 actual row226 assertions for thescratch variant.
+/- All120 actual row226 assertions for thescratch variant.
    Nine closed certificates use the actual assignment and pinned setup. -/
 
 private theorem cpu_final_scratch_checked_000_015 :
@@ -15,12 +15,12 @@ private theorem cpu_final_scratch_checked_000_015 :
 
 private theorem cpu_final_scratch_000_015
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 0 ≤ equation) (stop : equation < 16) :
+    («start» : 0 ≤ equation) (stop : equation < 16) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .scratch 226)) = 0 := by
   exact g_cpu_equations_of_check (machineAssignment .scratch 226) setup
-    0 16 equation start (by omega) (by omega) cpu_final_scratch_checked_000_015
+    0 16 equation «start» (by omega) (by omega) cpu_final_scratch_checked_000_015
 
 private theorem cpu_final_scratch_checked_016_031 :
     gCpuEquationsCheck (machineAssignment .scratch 226)
@@ -29,12 +29,12 @@ private theorem cpu_final_scratch_checked_016_031 :
 
 private theorem cpu_final_scratch_016_031
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 16 ≤ equation) (stop : equation < 32) :
+    («start» : 16 ≤ equation) (stop : equation < 32) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .scratch 226)) = 0 := by
   exact g_cpu_equations_of_check (machineAssignment .scratch 226) setup
-    16 16 equation start (by omega) (by omega) cpu_final_scratch_checked_016_031
+    16 16 equation «start» (by omega) (by omega) cpu_final_scratch_checked_016_031
 
 private theorem cpu_final_scratch_checked_032_047 :
     gCpuEquationsCheck (machineAssignment .scratch 226)
@@ -43,12 +43,12 @@ private theorem cpu_final_scratch_checked_032_047 :
 
 private theorem cpu_final_scratch_032_047
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 32 ≤ equation) (stop : equation < 48) :
+    («start» : 32 ≤ equation) (stop : equation < 48) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .scratch 226)) = 0 := by
   exact g_cpu_equations_of_check (machineAssignment .scratch 226) setup
-    32 16 equation start (by omega) (by omega) cpu_final_scratch_checked_032_047
+    32 16 equation «start» (by omega) (by omega) cpu_final_scratch_checked_032_047
 
 private theorem cpu_final_scratch_checked_048_063 :
     gCpuEquationsCheck (machineAssignment .scratch 226)
@@ -57,12 +57,12 @@ private theorem cpu_final_scratch_checked_048_063 :
 
 private theorem cpu_final_scratch_048_063
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 48 ≤ equation) (stop : equation < 64) :
+    («start» : 48 ≤ equation) (stop : equation < 64) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .scratch 226)) = 0 := by
   exact g_cpu_equations_of_check (machineAssignment .scratch 226) setup
-    48 16 equation start (by omega) (by omega) cpu_final_scratch_checked_048_063
+    48 16 equation «start» (by omega) (by omega) cpu_final_scratch_checked_048_063
 
 private theorem cpu_final_scratch_checked_064_079 :
     gCpuEquationsCheck (machineAssignment .scratch 226)
@@ -71,12 +71,12 @@ private theorem cpu_final_scratch_checked_064_079 :
 
 private theorem cpu_final_scratch_064_079
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 64 ≤ equation) (stop : equation < 80) :
+    («start» : 64 ≤ equation) (stop : equation < 80) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .scratch 226)) = 0 := by
   exact g_cpu_equations_of_check (machineAssignment .scratch 226) setup
-    64 16 equation start (by omega) (by omega) cpu_final_scratch_checked_064_079
+    64 16 equation «start» (by omega) (by omega) cpu_final_scratch_checked_064_079
 
 private theorem cpu_final_scratch_checked_080_095 :
     gCpuEquationsCheck (machineAssignment .scratch 226)
@@ -85,12 +85,12 @@ private theorem cpu_final_scratch_checked_080_095 :
 
 private theorem cpu_final_scratch_080_095
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 80 ≤ equation) (stop : equation < 96) :
+    («start» : 80 ≤ equation) (stop : equation < 96) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .scratch 226)) = 0 := by
   exact g_cpu_equations_of_check (machineAssignment .scratch 226) setup
-    80 16 equation start (by omega) (by omega) cpu_final_scratch_checked_080_095
+    80 16 equation «start» (by omega) (by omega) cpu_final_scratch_checked_080_095
 
 private theorem cpu_final_scratch_checked_096_111 :
     gCpuEquationsCheck (machineAssignment .scratch 226)
@@ -99,44 +99,30 @@ private theorem cpu_final_scratch_checked_096_111 :
 
 private theorem cpu_final_scratch_096_111
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 96 ≤ equation) (stop : equation < 112) :
+    («start» : 96 ≤ equation) (stop : equation < 112) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .scratch 226)) = 0 := by
   exact g_cpu_equations_of_check (machineAssignment .scratch 226) setup
-    96 16 equation start (by omega) (by omega) cpu_final_scratch_checked_096_111
+    96 16 equation «start» (by omega) (by omega) cpu_final_scratch_checked_096_111
 
-private theorem cpu_final_scratch_checked_112_127 :
+private theorem cpu_final_scratch_checked_112_119 :
     gCpuEquationsCheck (machineAssignment .scratch 226)
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 16) = true := by
+      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 8) = true := by
   decide +kernel
 
-private theorem cpu_final_scratch_112_127
+private theorem cpu_final_scratch_112_119
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 112 ≤ equation) (stop : equation < 128) :
+    («start» : 112 ≤ equation) (stop : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .scratch 226)) = 0 := by
   exact g_cpu_equations_of_check (machineAssignment .scratch 226) setup
-    112 16 equation start (by omega) (by omega) cpu_final_scratch_checked_112_127
-
-private theorem cpu_final_scratch_checked_128_128 :
-    gCpuEquationsCheck (machineAssignment .scratch 226)
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 128).take 1) = true := by
-  decide +kernel
-
-private theorem cpu_final_scratch_128_128
-    (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 128 ≤ equation) (stop : equation < 129) :
-    ((gCpuPolynomials setup)[equation]'(by
-      rw [g_cpu_polynomial_count]; omega)).eval
-        (Verification.environment (machineAssignment .scratch 226)) = 0 := by
-  exact g_cpu_equations_of_check (machineAssignment .scratch 226) setup
-    128 1 equation start (by omega) (by omega) cpu_final_scratch_checked_128_128
+    112 8 equation «start» (by omega) (by omega) cpu_final_scratch_checked_112_119
 
 theorem cpu_final_scratch_equation
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (bound : equation < 129) :
+    (bound : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .scratch 226)) = 0 := by
@@ -154,8 +140,6 @@ theorem cpu_final_scratch_equation
   · exact cpu_final_scratch_080_095  setup equation (by omega) piece80
   by_cases piece96 : equation < 112
   · exact cpu_final_scratch_096_111  setup equation (by omega) piece96
-  by_cases piece112 : equation < 128
-  · exact cpu_final_scratch_112_127  setup equation (by omega) piece112
-  exact cpu_final_scratch_128_128  setup equation (by omega) bound
+  exact cpu_final_scratch_112_119  setup equation (by omega) bound
 
 end Tests.PathGLoopNative

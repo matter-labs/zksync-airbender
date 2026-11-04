@@ -216,6 +216,25 @@ phase exposed it after 161.65 seconds. CI also frontloads the Path-G native
 acceptance module to exercise the other affected fixture. Review statements,
 production functions, source artifacts and resource/trust limits are unchanged.
 
+Run [41882490544](https://github.com/matter-labs/zksync-airbender/actions/runs/41882490544)
+on `e94380e9f` verified the corrected `Tests.DynamicCopyLoopNative` module. The
+early phase then failed in `Tests.PathGLoopNativeBase.lean:262:49` on an unquoted
+`start` parameter. Its failed leaf exited in 28.93 seconds at 544.04 MiB charged
+footprint, with no owned processes left; the early phase took 140.71 seconds.
+The repair quotes remaining `start`/`parts` identifiers throughout the test
+sources, while preserving the five actual macro-keyword uses in three tests.
+All identifier-only edits are identical after quote normalization.
+
+Static inspection also found Path-G CPU certificates still indexing 129
+polynomials, while the retained native JSON and existing `constraint_count`
+theorem give 120. The private certificate bounds and final chunks now cover
+exactly 0–119: seven sixteen-equation chunks and an eight-equation final chunk.
+The obsolete 128-only chunks are removed. A static coverage check confirms all
+41 finite certificate groups cover every native equation without an extra index.
+The final claims still quantify over the complete actual imported constraint
+list. Review statements, production behavior and artifact data are unchanged;
+the revised certificates still require Lean CI validation.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

@@ -57,7 +57,7 @@ private theorem g_cpu_history_free_suffix :
   decide +kernel
 
 theorem g_cpu_history_free_at (setup : Table (ZMod babyBearModulus) (fields 10))
-    (equation : Nat) (bound : equation < 129) (different : equation ≠ 8) :
+    (equation : Nat) (bound : equation < 120) (different : equation ≠ 8) :
     gCpuHistoryFree ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; exact bound)) = true := by
   change gCpuHistoryFree
@@ -88,7 +88,7 @@ theorem g_cpu_history_gate (assignment : Nat → ZMod babyBearModulus)
 core equation is unchanged by the test-only coordinate projection. -/
 theorem g_cpu_core_assignment_eval (assignment : Nat → ZMod babyBearModulus)
     (setup : Table (ZMod babyBearModulus) (fields 10))
-    (equation : Nat) (bound : equation < 129) (ordinary : assignment 18 = 0) :
+    (equation : Nat) (bound : equation < 120) (ordinary : assignment 18 = 0) :
     ((gCpuPolynomials setup)[equation]'(by rw [g_cpu_polynomial_count]; exact bound)).eval
         (Verification.environment (gCpuCoreAssignment assignment)) =
       ((gCpuPolynomials setup)[equation]'(by rw [g_cpu_polynomial_count]; exact bound)).eval
@@ -103,7 +103,7 @@ theorem g_cpu_core_assignment_eval (assignment : Nat → ZMod babyBearModulus)
 
 theorem g_cpu_core_equations_of_check (assignment : Nat → ZMod babyBearModulus)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (first count equation : Nat)
-    (start : first ≤ equation) (stop : equation < first + count) (actual : equation < 129)
+    («start» : first ≤ equation) (stop : equation < first + count) (actual : equation < 120)
     (ordinary : assignment 18 = 0)
     (checked : gCpuEquationsCheck (gCpuCoreAssignment assignment)
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop first).take count) = true) :
@@ -111,7 +111,7 @@ theorem g_cpu_core_equations_of_check (assignment : Nat → ZMod babyBearModulus
       (Verification.environment assignment) = 0 := by
   rw [← g_cpu_core_assignment_eval assignment setup equation actual ordinary]
   exact g_cpu_equations_of_check (gCpuCoreAssignment assignment) setup first count equation
-    start stop actual checked
+    «start» stop actual checked
 
 /-- Original decoder fields at the actual loop JAL position give the zero
 caller selector for every index and variant. -/

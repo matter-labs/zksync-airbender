@@ -5,7 +5,7 @@ open Airbender Trace Arithmetic Reference.RiscV.Sail Reference.Sail PathGLoopPro
 set_option warningAsError true
 set_option Elab.async false
 
-/- All129 actual boot-row5 assertions, in nine closed kernel checks. -/
+/- All120 actual boot-row5 assertions, in nine closed kernel checks. -/
 
 private theorem cpu_boot5_assignment (variant : Variant) :
     machineAssignment variant 5 = machineAssignment .baseline 5 := by
@@ -18,12 +18,12 @@ private theorem cpu_boot5_checked_000_015 :
 
 private theorem cpu_boot_row5_000_015 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 0 ≤ equation) (stop : equation < 16) :
+    («start» : 0 ≤ equation) (stop : equation < 16) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 5)) = 0 := by
   apply g_cpu_equations_of_check (machineAssignment variant 5) setup 0 16 equation
-    start (by omega) (by omega)
+    «start» (by omega) (by omega)
   rw [cpu_boot5_assignment variant]
   exact cpu_boot5_checked_000_015
 
@@ -34,12 +34,12 @@ private theorem cpu_boot5_checked_016_031 :
 
 private theorem cpu_boot_row5_016_031 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 16 ≤ equation) (stop : equation < 32) :
+    («start» : 16 ≤ equation) (stop : equation < 32) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 5)) = 0 := by
   apply g_cpu_equations_of_check (machineAssignment variant 5) setup 16 16 equation
-    start (by omega) (by omega)
+    «start» (by omega) (by omega)
   rw [cpu_boot5_assignment variant]
   exact cpu_boot5_checked_016_031
 
@@ -50,12 +50,12 @@ private theorem cpu_boot5_checked_032_047 :
 
 private theorem cpu_boot_row5_032_047 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 32 ≤ equation) (stop : equation < 48) :
+    («start» : 32 ≤ equation) (stop : equation < 48) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 5)) = 0 := by
   apply g_cpu_equations_of_check (machineAssignment variant 5) setup 32 16 equation
-    start (by omega) (by omega)
+    «start» (by omega) (by omega)
   rw [cpu_boot5_assignment variant]
   exact cpu_boot5_checked_032_047
 
@@ -66,12 +66,12 @@ private theorem cpu_boot5_checked_048_063 :
 
 private theorem cpu_boot_row5_048_063 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 48 ≤ equation) (stop : equation < 64) :
+    («start» : 48 ≤ equation) (stop : equation < 64) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 5)) = 0 := by
   apply g_cpu_equations_of_check (machineAssignment variant 5) setup 48 16 equation
-    start (by omega) (by omega)
+    «start» (by omega) (by omega)
   rw [cpu_boot5_assignment variant]
   exact cpu_boot5_checked_048_063
 
@@ -82,12 +82,12 @@ private theorem cpu_boot5_checked_064_079 :
 
 private theorem cpu_boot_row5_064_079 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 64 ≤ equation) (stop : equation < 80) :
+    («start» : 64 ≤ equation) (stop : equation < 80) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 5)) = 0 := by
   apply g_cpu_equations_of_check (machineAssignment variant 5) setup 64 16 equation
-    start (by omega) (by omega)
+    «start» (by omega) (by omega)
   rw [cpu_boot5_assignment variant]
   exact cpu_boot5_checked_064_079
 
@@ -98,12 +98,12 @@ private theorem cpu_boot5_checked_080_095 :
 
 private theorem cpu_boot_row5_080_095 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 80 ≤ equation) (stop : equation < 96) :
+    («start» : 80 ≤ equation) (stop : equation < 96) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 5)) = 0 := by
   apply g_cpu_equations_of_check (machineAssignment variant 5) setup 80 16 equation
-    start (by omega) (by omega)
+    «start» (by omega) (by omega)
   rw [cpu_boot5_assignment variant]
   exact cpu_boot5_checked_080_095
 
@@ -114,50 +114,34 @@ private theorem cpu_boot5_checked_096_111 :
 
 private theorem cpu_boot_row5_096_111 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 96 ≤ equation) (stop : equation < 112) :
+    («start» : 96 ≤ equation) (stop : equation < 112) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 5)) = 0 := by
   apply g_cpu_equations_of_check (machineAssignment variant 5) setup 96 16 equation
-    start (by omega) (by omega)
+    «start» (by omega) (by omega)
   rw [cpu_boot5_assignment variant]
   exact cpu_boot5_checked_096_111
 
-private theorem cpu_boot5_checked_112_127 :
+private theorem cpu_boot5_checked_112_119 :
     gCpuEquationsCheck (machineAssignment .baseline 5)
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 16) = true := by
+      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 112).take 8) = true := by
   decide +kernel
 
-private theorem cpu_boot_row5_112_127 (variant : Variant)
+private theorem cpu_boot_row5_112_119 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 112 ≤ equation) (stop : equation < 128) :
+    («start» : 112 ≤ equation) (stop : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 5)) = 0 := by
-  apply g_cpu_equations_of_check (machineAssignment variant 5) setup 112 16 equation
-    start (by omega) (by omega)
+  apply g_cpu_equations_of_check (machineAssignment variant 5) setup 112 8 equation
+    «start» (by omega) (by omega)
   rw [cpu_boot5_assignment variant]
-  exact cpu_boot5_checked_112_127
-
-private theorem cpu_boot5_checked_128_128 :
-    gCpuEquationsCheck (machineAssignment .baseline 5)
-      (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop 128).take 1) = true := by
-  decide +kernel
-
-private theorem cpu_boot_row5_128_128 (variant : Variant)
-    (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (start : 128 ≤ equation) (stop : equation < 129) :
-    ((gCpuPolynomials setup)[equation]'(by
-      rw [g_cpu_polynomial_count]; omega)).eval
-        (Verification.environment (machineAssignment variant 5)) = 0 := by
-  apply g_cpu_equations_of_check (machineAssignment variant 5) setup 128 1 equation
-    start (by omega) (by omega)
-  rw [cpu_boot5_assignment variant]
-  exact cpu_boot5_checked_128_128
+  exact cpu_boot5_checked_112_119
 
 theorem cpu_boot_row5_equation (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    (bound : equation < 129) :
+    (bound : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 5)) = 0 := by
@@ -175,8 +159,6 @@ theorem cpu_boot_row5_equation (variant : Variant)
   · exact cpu_boot_row5_080_095 variant setup equation (by omega) piece80
   by_cases piece96 : equation < 112
   · exact cpu_boot_row5_096_111 variant setup equation (by omega) piece96
-  by_cases piece112 : equation < 128
-  · exact cpu_boot_row5_112_127 variant setup equation (by omega) piece112
-  exact cpu_boot_row5_128_128 variant setup equation (by omega) bound
+  exact cpu_boot_row5_112_119 variant setup equation (by omega) bound
 
 end Tests.PathGLoopNative

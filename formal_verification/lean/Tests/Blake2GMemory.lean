@@ -389,7 +389,7 @@ theorem native_window_from_retained_seeds :
     simp [cells] at member
     rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
     all_goals simp [Cell.Aligned]
-  obtain ⟨start, _, earlier, _, atStart, _, facts, _, permutation, _, history, _, inputs, _⟩ :=
+  obtain ⟨«start», _, earlier, _, atStart, _, facts, _, permutation, _, history, _, inputs, _⟩ :=
     Delegation.Proofs.native_span_window_at_boundary (by decide) boundaryAccepted
       boundaryMemory.toBoundaryInputs rules aligned 7 7
   have steps : Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData boundaryData) 7 =
@@ -399,12 +399,12 @@ theorem native_window_from_retained_seeds :
   have matching := facts.matching
   change (boundaryData.initial ++
     (Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData boundaryData) 7).map Prod.snd).Perm
-    (start ++ (Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData boundaryData) 7).map Prod.fst) at matching
+    («start» ++ (Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData boundaryData) 7).map Prod.fst) at matching
   rw [steps, reads, writes] at matching
-  have exactBoundary : start.Perm boundaryData.terminal :=
+  have exactBoundary : «start».Perm boundaryData.terminal :=
     ((List.perm_append_left_iff boundaryData.initial).mp
       (matching.trans List.perm_append_comm)).symm
-  refine ⟨start, earlier, atStart, exactBoundary, ?_, history, ?_, Delegation.Proofs.boundary_image inputs⟩
+  refine ⟨«start», earlier, atStart, exactBoundary, ?_, history, ?_, Delegation.Proofs.boundary_image inputs⟩
   · simpa only [steps] using permutation
   · intro token member
     refine ⟨?_, inputs.words token member⟩

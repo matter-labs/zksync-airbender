@@ -461,10 +461,10 @@ theorem boundary_control {tokens : List (MemoryToken babyBearModulus)} {state : 
   subst cell
   simpa only [MemoryToken.word, Nat.unpair_pair] using read
 
-theorem endpoint_permutation {start finish target : List (MemoryToken babyBearModulus)}
+theorem endpoint_permutation {«start» finish target : List (MemoryToken babyBearModulus)}
     {steps : List (MemoryToken babyBearModulus × MemoryToken babyBearModulus)}
-    (matching : (start ++ steps.map Prod.snd).Perm (finish ++ steps.map Prod.fst))
-    (expected : (start ++ steps.map Prod.snd).Perm (target ++ steps.map Prod.fst)) : finish.Perm target :=
+    (matching : («start» ++ steps.map Prod.snd).Perm (finish ++ steps.map Prod.fst))
+    (expected : («start» ++ steps.map Prod.snd).Perm (target ++ steps.map Prod.fst)) : finish.Perm target :=
   (List.perm_append_right_iff _).mp (matching.symm.trans expected)
 
 theorem mixed_projected_prefix_control : ∃ tokens events state,
@@ -473,26 +473,26 @@ theorem mixed_projected_prefix_control : ∃ tokens events state,
     UnifiedReduced.Caller.NativeBoundary tokens state cells ∧
     (Cell.register 12).read state = .ok 1 state ∧
     (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus) ∈ tokens := by
-  obtain ⟨start, finish, earlier, current, atStart, atFinish, earlierPerm, _,
+  obtain ⟨«start», finish, earlier, current, atStart, atFinish, earlierPerm, _,
     earlierHistory, _, prefixMatching, _, startBoundary, _⟩ := empty_region_after_preparation.execution
   have allSteps : (mixedData 0).prefixSteps 12 = (mixedData 0).mixedSteps := by decide +kernel
   rw [allSteps] at prefixMatching
-  have actual : start.Perm (mixedData 0).machine.terminalMemory :=
+  have actual : «start».Perm (mixedData 0).machine.terminalMemory :=
     (List.perm_append_right_iff _).mp (prefixMatching.symm.trans mixedAccepted.memory)
-  have present : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus) ∈ start :=
+  have present : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus) ∈ «start» :=
     actual.mem_iff.mpr (by decide +kernel)
-  refine ⟨start, earlier, atStart, earlierPerm, earlierHistory, startBoundary, ?_, present⟩
+  refine ⟨«start», earlier, atStart, earlierPerm, earlierHistory, startBoundary, ?_, present⟩
   have word : (Word.mk 1 0).toBitVec = (1 : BitVec 32) := by decide +kernel
   simpa only [word] using boundary_control startBoundary present
 
-theorem joint_copy_controls : ∃ earlier current start finish,
+theorem joint_copy_controls : ∃ earlier current «start» finish,
     earlier.Perm (((mixedData 0).prefixSteps 4).map transferEvent) ∧
     current.Perm (((mixedData 0).windowSteps 4 8).map transferEvent) ∧
-    Trace.SailHistory cells earlier mixedBefore start ∧ Trace.SailHistory cells current start finish ∧
-    (Cell.register 12).read start = .ok 128 start ∧ (Cell.register 12).read finish = .ok 0 finish ∧
+    Trace.SailHistory cells earlier mixedBefore «start» ∧ Trace.SailHistory cells current «start» finish ∧
+    (Cell.register 12).read «start» = .ok 128 «start» ∧ (Cell.register 12).read finish = .ok 0 finish ∧
     ∃ tokens, UnifiedReduced.Caller.NativeBoundary tokens finish cells ∧
       (⟨(Cell.register 12).addressCode, (7, 0), 0⟩ : MemoryToken babyBearModulus) ∈ tokens := by
-  obtain ⟨seeds, finalTokens, earlier, current, start, finish, earlierPerm, currentPerm,
+  obtain ⟨seeds, finalTokens, earlier, current, «start», finish, earlierPerm, currentPerm,
     earlierHistory, currentHistory, prefixMatching, matching, seedImage, finalImage⟩ := joint_copy_window.execution
   have empty : (mixedData 0).prefixSteps 4 = [] := by decide +kernel
   have initial : seeds.Perm (mixedData 0).machine.initialMemory := by
@@ -506,18 +506,18 @@ theorem joint_copy_controls : ∃ earlier current start finish,
       seeds := initial.mem_iff.mpr (by decide +kernel)
   have finalMember : (⟨(Cell.register 12).addressCode, (7, 0), 0⟩ : MemoryToken babyBearModulus) ∈
       finalTokens := finalPerm.mem_iff.mpr (by decide +kernel)
-  exact ⟨earlier, current, start, finish, earlierPerm, currentPerm, earlierHistory, currentHistory,
+  exact ⟨earlier, current, «start», finish, earlierPerm, currentPerm, earlierHistory, currentHistory,
     boundary_control seedImage initialMember, boundary_control finalImage finalMember,
     finalTokens, finalImage, finalMember⟩
 
-theorem joint_preparation_controls : ∃ earlier current start finish,
+theorem joint_preparation_controls : ∃ earlier current «start» finish,
     earlier.Perm (((mixedData 0).prefixSteps 8).map transferEvent) ∧
     current.Perm (((mixedData 0).windowSteps 8 12).map transferEvent) ∧
-    Trace.SailHistory cells earlier mixedBefore start ∧ Trace.SailHistory cells current start finish ∧
-    (Cell.register 12).read start = .ok 0 start ∧ (Cell.register 12).read finish = .ok 1 finish ∧
-    ∃ tokens, UnifiedReduced.Caller.NativeBoundary tokens start cells ∧
+    Trace.SailHistory cells earlier mixedBefore «start» ∧ Trace.SailHistory cells current «start» finish ∧
+    (Cell.register 12).read «start» = .ok 0 «start» ∧ (Cell.register 12).read finish = .ok 1 finish ∧
+    ∃ tokens, UnifiedReduced.Caller.NativeBoundary tokens «start» cells ∧
       (⟨(Cell.register 12).addressCode, (7, 0), 0⟩ : MemoryToken babyBearModulus) ∈ tokens := by
-  obtain ⟨seeds, finalTokens, earlier, current, start, finish, earlierPerm, currentPerm,
+  obtain ⟨seeds, finalTokens, earlier, current, «start», finish, earlierPerm, currentPerm,
     earlierHistory, currentHistory, prefixMatching, matching, seedImage, finalImage⟩ := joint_preparation_window.execution
   have expected : ((mixedData 0).machine.initialMemory ++ ((mixedData 0).prefixSteps 8).map Prod.snd).Perm
       (base.machine.terminalMemory ++ ((mixedData 0).prefixSteps 8).map Prod.fst) := by decide +kernel
@@ -530,7 +530,7 @@ theorem joint_preparation_controls : ∃ earlier current start finish,
       seeds := initial.mem_iff.mpr (by decide +kernel)
   have finalMember : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus) ∈
       finalTokens := finalPerm.mem_iff.mpr (by decide +kernel)
-  exact ⟨earlier, current, start, finish, earlierPerm, currentPerm, earlierHistory, currentHistory,
+  exact ⟨earlier, current, «start», finish, earlierPerm, currentPerm, earlierHistory, currentHistory,
     boundary_control seedImage initialMember, boundary_control finalImage finalMember,
     seeds, seedImage, initialMember⟩
 
@@ -579,12 +579,12 @@ theorem worker_window_ignores_supplied_boundaries :
     callerOnlyAccepted callerOnlyInputs (by decide) (by decide) (by decide) (by decide)
 
 theorem projected_window_native_control : callerOnlyData.workers.initial = [] ∧ callerOnlyData.workers.terminal = [] ∧
-    ∃ start finish : State, ∃ workerData : Delegation.MemoryData babyBearModulus,
-      Delegation.BoundaryMemoryInputs workerData start (Delegation.Caller.workerCells cells) ∧
-      Delegation.TraceMapping workerData start finish (Delegation.Caller.workerCells cells) ∧
-      (Cell.register 12).read start = .ok 128 start ∧ (Cell.register 12).read finish = .ok 0 finish ∧
+    ∃ «start» finish : State, ∃ workerData : Delegation.MemoryData babyBearModulus,
+      Delegation.BoundaryMemoryInputs workerData «start» (Delegation.Caller.workerCells cells) ∧
+      Delegation.TraceMapping workerData «start» finish (Delegation.Caller.workerCells cells) ∧
+      (Cell.register 12).read «start» = .ok 128 «start» ∧ (Cell.register 12).read finish = .ok 0 finish ∧
       (⟨(Cell.register 12).addressCode, (7, 0), 0⟩ : MemoryToken babyBearModulus) ∈ workerData.terminal := by
-  obtain ⟨seeds, terminal, _, _, start, finish, _, _, _, _, _, _, prior, _, selected,
+  obtain ⟨seeds, terminal, _, _, «start», finish, _, _, _, _, _, _, prior, _, selected,
     initialized, _, mapping⟩ := worker_window_ignores_supplied_boundaries.execution
   have empty : (callerOnlyData.prefixProjection 4 seeds).steps = [] := by
     change ((callerOnlyData.workers.prefixRows 4).flatMap Delegation.Row.memorySteps) = []
@@ -617,7 +617,7 @@ theorem projected_window_native_control : callerOnlyData.workers.initial = [] �
   have lastEq := Trace.Proofs.cell_address_injective lastCode
   subst firstCell
   subst lastCell
-  refine ⟨rfl, rfl, start, finish, _, initialized, mapping, ?_, lastRead, lastToken⟩
+  refine ⟨rfl, rfl, «start», finish, _, initialized, mapping, ?_, lastRead, lastToken⟩
   have value : (Word.mk 128 0).toBitVec = (128 : BitVec 32) := by decide +kernel
   simpa only [memoryWord, Nat.unpair_pair, value] using firstRead
 
@@ -632,15 +632,15 @@ theorem actual_terminal_control : ∃ after : State, (Cell.register 12).read aft
   have value : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus).word.toBitVec = 1 := by decide +kernel
   exact ⟨after, by simpa only [value] using read⟩
 
-theorem actual_copy_call_boundaries : ∃ start finish after : State, ∃ newer : List MemoryAccess,
-    (Cell.register 12).read start = .ok 128 start ∧
+theorem actual_copy_call_boundaries : ∃ «start» finish after : State, ∃ newer : List MemoryAccess,
+    (Cell.register 12).read «start» = .ok 128 «start» ∧
     (Cell.register 12).read finish = .ok 0 finish ∧
     Trace.SailHistory cells newer finish after ∧
     (Cell.register 12).read after = .ok 1 after := by
   obtain ⟨events, after, _, _, _, calls, _, final⟩ := shared_machine_worker_effects.execution
   have member : worker ∈ (mixedData 0).workers.rows := List.get_mem requests.workers.rows ⟨0, by decide +kernel⟩
   have live : Delegation.Requests.Live (Delegation.Requests.fulfillment worker) := by decide +kernel
-  obtain ⟨_, _, newer, start, finish, _, _, _, _, future, ports⟩ := calls worker member live
+  obtain ⟨_, _, newer, «start», finish, _, _, _, _, future, ports⟩ := calls worker member live
   let port := Bigint.importedConstraintsMemoryPorts[18]
   have present : port ∈ worker.ports := by decide +kernel
   obtain ⟨cell, _, code, read, written⟩ := ports port present
@@ -656,7 +656,7 @@ theorem actual_copy_call_boundaries : ∃ start finish after : State, ∃ newer 
   have same := Trace.Proofs.cell_address_injective code
   subst cell
   have value : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus).word.toBitVec = 1 := by decide +kernel
-  exact ⟨start, finish, after, newer, by simpa only [old] using read,
+  exact ⟨«start», finish, after, newer, by simpa only [old] using read,
     by simpa only [result] using written, future, by simpa only [value] using last⟩
 
 def arithmeticView : Input :=
@@ -689,7 +689,7 @@ theorem copy_then_native_addi : ∃ middle after : State,
   have bounds : ∀ event ∈ (mixedData 0).mixedSteps.map transferEvent, 4 < event.1 ∧ event.1 ≤ 12 := by decide +kernel
   have actual : ∀ event ∈ events, 4 < event.1 ∧ event.1 ≤ 12 :=
     fun event member => bounds event (permutation.mem_iff.mp member)
-  obtain ⟨start, middle, _, past, call, future⟩ := Trace.Proofs.history_window order history (by omega : 4 ≤ 8)
+  obtain ⟨«start», middle, _, past, call, future⟩ := Trace.Proofs.history_window order history (by omega : 4 ≤ 8)
   have empty : (events.filter fun event => decide (event.1 ≤ 4)) = [] := by
     apply List.filter_eq_nil_iff.mpr
     intro event member less
