@@ -11,16 +11,15 @@ noncomputable section
 namespace Airbender.Trace
 open Arithmetic
 
-/-- RV sibling of `programEntryWith`: the instruction is our spec's decoding `RV.decode` of the public bytes,
-    viewed in Sail's vocabulary (`toSail`); no Sail decoder call. The ROM-aligned fetch guard is the same. -/
+/-- RV sibling of `programEntryWith`: the public encoding is read from our spec's byte memory (`RV.read`), the
+    instruction is `RV.decode` of it viewed in Sail's vocabulary (`toSail`); no Sail state or decoder call. The fetch
+    guard is the ROM bound and alignment of `RV.ROM_END` (equal to `ROM.limit`). -/
 noncomputable abbrev rvProgramEntryWith {Kind : Type}
     (projection : SailRV32.instruction → Option (DecoderData Kind))
-    (before : Reference.RiscV.Sail.State) (pc : BitVec 32) :
+    (before : RV.State) (pc : BitVec 32) :
     Option (ProgramEntry Kind) := do
-  if ¬(pc.toNat < ROM.limit ∧ pc.toNat % 4 = 0) then none else
-  let bits ← match (Cell.ram pc).read before with
-    | .ok bits _ => some bits
-    | .error _ _ => none
+  if ¬(pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0) then none else
+  let bits := RV.read before.mem pc 4
   let i ← RV.decode bits
   let instruction := Airbender.toSail i
   let data ← projection instruction
@@ -29,7 +28,7 @@ noncomputable abbrev rvProgramEntryWith {Kind : Type}
 /-- RV sibling of `programImageWith`. -/
 noncomputable abbrev rvProgramImageWith {Kind : Type}
     (projection : SailRV32.instruction → Option (DecoderData Kind))
-    (before : Reference.RiscV.Sail.State) (addresses : List (BitVec 32)) :
+    (before : RV.State) (addresses : List (BitVec 32)) :
     Option (List (ProgramEntry Kind)) := addresses.mapM (rvProgramEntryWith projection before)
 
 noncomputable abbrev rvProgramEntry := rvProgramEntryWith decoderFields
