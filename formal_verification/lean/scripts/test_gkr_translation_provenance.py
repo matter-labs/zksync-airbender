@@ -6,10 +6,12 @@ import shutil
 import tempfile
 import tomllib
 import unittest
+from unittest.mock import patch
 
 import check_gkr_translations as checker
 from check_compiler_export_bytes import compare
-from export_gkr_translations import LEAN, digest
+from export_gkr_translations import COMPILER_INPUTS, LEAN, ROOT, digest
+import check_setup_freshness as setup_freshness
 
 
 class CompilerProvenance(unittest.TestCase):
@@ -32,6 +34,17 @@ class CompilerProvenance(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name) / "compiler"
         shutil.copytree(LEAN / "artifacts/compiler", self.directory)
+        # Payload mutation controls use an explicitly unqualified input fixture.
+        # This does not update retained pins or claim a native re-export result.
+        manifest = self.directory / "manifest.json"
+        data = json.loads(manifest.read_text())
+        data["compiler_inputs"] = {name: digest(ROOT / name) for name in COMPILER_INPUTS}
+        manifest.write_text(json.dumps(data))
+        original_check = checker.setup.check
+        candidate = setup_freshness.requalification_manifest(ROOT)
+        fixture = patch.object(checker.setup, 'check', side_effect=lambda repo: original_check(repo, manifest=candidate))
+        fixture.start()
+        self.addCleanup(fixture.stop)
 
     def mutate(self, suffix, change, repin=False, name="add-sub-cached"):
         path = self.directory / (name + suffix)
@@ -46,8 +59,48 @@ class CompilerProvenance(unittest.TestCase):
             data["files"][name][key] = digest(path)
             manifest.write_text(json.dumps(data))
 
-    def test_current(self):
+    def test_payload_with_explicit_current_input_fixture(self):
         self.assertEqual(checker.check(self.directory), 11)
+
+    def test_stale_retained_inputs_are_still_rejected(self):
+        original = json.loads((LEAN / "artifacts/compiler/manifest.json").read_text())
+        current = {name: digest(ROOT / name) for name in COMPILER_INPUTS}
+        if original['compiler_inputs'] == current:
+            self.assertEqual(checker.check(LEAN / "artifacts/compiler"), 11)
+        else:
+            with self.assertRaises(ValueError):
+                checker.check(LEAN / "artifacts/compiler")
+
+    def test_requalification_promotes_only_input_receipts(self):
+        destination = Path(self.temporary.name) / 'retained'
+        shutil.copytree(LEAN / 'artifacts/compiler', destination)
+        before = {path.name: path.read_bytes() for path in destination.iterdir() if path.is_file()}
+        self.assertEqual(compare(destination, self.directory, requalify=True), 34)
+        for name, data in before.items():
+            if name != 'manifest.json':
+                self.assertEqual((destination / name).read_bytes(), data)
+        self.assertEqual((destination / 'manifest.json').read_bytes(), (self.directory / 'manifest.json').read_bytes())
+
+    def test_requalification_rejects_changed_payload_before_promotion(self):
+        destination = Path(self.temporary.name) / 'retained'
+        shutil.copytree(LEAN / 'artifacts/compiler', destination)
+        before = (destination / 'manifest.json').read_bytes()
+        self.mutate('.json', lambda data: data['circuit'].__setitem__('scratch_space_size', 1), True)
+        with self.assertRaisesRegex(ValueError, 'export differs'):
+            compare(destination, self.directory, requalify=True)
+        self.assertEqual((destination / 'manifest.json').read_bytes(), before)
+
+    def test_requalification_rejects_changed_manifest_metadata(self):
+        destination = Path(self.temporary.name) / 'retained'
+        shutil.copytree(LEAN / 'artifacts/compiler', destination)
+        before = (destination / 'manifest.json').read_bytes()
+        path = self.directory / 'manifest.json'
+        data = json.loads(path.read_text())
+        data['scope'] = 'changed scope'
+        path.write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, 'only producer input receipts'):
+            compare(destination, self.directory, requalify=True)
+        self.assertEqual((destination / 'manifest.json').read_bytes(), before)
 
     def test_changed_native_output_metadata(self):
         self.mutate(".json", lambda data: data["circuit"].__setitem__("scratch_space_size", 1))
@@ -77,9 +130,11 @@ class CompilerProvenance(unittest.TestCase):
 
     def test_export_bytes_ignore_derived_directories_but_reject_file_changes(self):
         retained = LEAN / 'artifacts/compiler'
+        # This byte-only control starts with the original exact manifest.
+        shutil.copyfile(retained / 'manifest.json', self.directory / 'manifest.json')
         shutil.rmtree(self.directory / 'interpretation')
         shutil.rmtree(self.directory / 'lookup')
-        self.assertEqual(compare(retained, self.directory), 67)
+        self.assertEqual(compare(retained, self.directory), 34)
         path = self.directory / 'manifest.json'
         original = path.read_bytes()
         path.write_bytes(original + b'\n')

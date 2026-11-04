@@ -198,6 +198,22 @@ jobs:
           echo "replay-prefix=$replay-" >> "$GITHUB_OUTPUT"
           echo "replay=$replay-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
+        id: native-cache
+        timeout-minutes: 20
+        with:
+          path: |
+            ${{ env.CARGO_TARGET_DIR }}
+            ${{ env.FV_COMPILER_TARGET_DIR }}
+          key: ${{ steps.cache-keys.outputs.native }}-compiler
+          restore-keys: |
+            ${{ steps.cache-keys.outputs.native-source-prefix }}
+            ${{ steps.cache-keys.outputs.native-tool-prefix }}
+      - name: Native ROM export equivalence controls
+        run: |
+          source "$FV_ROOT/guard.sh"
+          fv native-rom-controls env -u CI -u RUST_MIN_STACK cargo test --locked -p cs \
+            --manifest-path ../../Cargo.toml --example export_subword_circuit -- --nocapture --test-threads=1
+      - uses: actions/cache/restore@v4
         id: lean-cache
         if: inputs.cold_build != true
         timeout-minutes: 20
@@ -211,17 +227,6 @@ jobs:
           restore-keys: |
             ${{ steps.cache-keys.outputs.lean-source-prefix }}
             ${{ steps.cache-keys.outputs.lean-tool-prefix }}
-      - uses: actions/cache/restore@v4
-        id: native-cache
-        timeout-minutes: 20
-        with:
-          path: |
-            ${{ env.CARGO_TARGET_DIR }}
-            ${{ env.FV_COMPILER_TARGET_DIR }}
-          key: ${{ steps.cache-keys.outputs.native }}-compiler
-          restore-keys: |
-            ${{ steps.cache-keys.outputs.native-source-prefix }}
-            ${{ steps.cache-keys.outputs.native-tool-prefix }}
       - uses: actions/cache/restore@v4
         id: replay-cache
         if: env.FV_REPLAY_CACHE_TRUSTED == 'true' && (inputs.full_assurance == true || github.event_name == 'schedule')
@@ -320,6 +325,8 @@ jobs:
       - name: Fresh cached compiler captures and provenance controls
         id: compiler-captures
         timeout-minutes: 130
+        env:
+          FV_REQUALIFY_SETUPS: ${{ inputs.requalify_setups == true }}
         run: |
           source "$FV_ROOT/guard.sh"
           fv_stage compiler-captures 7200 bash -euo pipefail <<'FV_STAGE'
@@ -327,11 +334,23 @@ jobs:
           source "$FV_ROOT/guard.sh"
           fv compiler-export env -u CI -u RUST_MIN_STACK CARGO_TARGET_DIR="$FV_COMPILER_TARGET_DIR" \
             python3 scripts/generate.py compiler --output "$FV_ROOT/compiler"
-          fv compiler-retained python3 scripts/check_gkr_translations.py
           fv compiler-fresh python3 scripts/check_gkr_translations.py --directory "$FV_ROOT/compiler"
-          fv compiler-bytes python3 scripts/check_compiler_export_bytes.py "$FV_ROOT/compiler"
+          qualification=()
+          if [[ "$FV_REQUALIFY_SETUPS" == true ]]; then qualification=(--requalify); fi
+          fv compiler-bytes python3 scripts/check_compiler_export_bytes.py "$FV_ROOT/compiler" "${qualification[@]}"
+          fv compiler-retained python3 scripts/check_gkr_translations.py
+          fv compiler-provenance-controls env PYTHONPATH=scripts python3 -m unittest test_gkr_translation_provenance -v
           fv native-window-semantics python3 scripts/check_gkr_window_semantics.py
           FV_STAGE
+      - name: Upload qualified compiler input receipts
+        if: steps.compiler-captures.outcome == 'success' && inputs.requalify_setups == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualified-compiler-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            formal_verification/lean/artifacts/compiler/manifest.json
+            ${{ env.FV_ROOT }}/qualified-compiler-receipt.json
+          if-no-files-found: error
       - name: Save compiler capture build progress even after a bounded failure
         if: always() && steps.native-cache.outcome == 'success' && steps.compiler-captures.outcome != 'skipped'
         timeout-minutes: 20

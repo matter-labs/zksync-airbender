@@ -1,6 +1,6 @@
 # Native setup artifacts
 
-<!-- source-names: AIRBENDER_SETUP_JSON_FIXTURE Cargo.lock airbender_tests bigint cs execution_prover keccak manifest.json prover unified -->
+<!-- source-names: AIRBENDER_SETUP_JSON_FIXTURE Cargo.lock airbender_tests bigint cs execution_prover keccak manifest.json prover unified export_subword_circuit requalify_setups -->
 
 The Rust setup command exports the actual materialized columns, native table
 regions, decoder rows, unused setup rows and virtual 16-/19-bit range tables.
@@ -184,8 +184,16 @@ external scratch directory and print the exact job inventory:
 python3 scripts/check_setup_freshness.py plan --work-dir /tmp/airbender-setup-fresh
 ```
 
-Each printed command is one bounded job. The first twelve deliberately run the
-exact native no-cache circuit generator tests; the next sixteen export all
+Each printed command is one bounded job. Eleven generation jobs deliberately run
+exact native no-cache circuit tests. Subword uses `export_subword_circuit`, an
+artifact-only harness for the same native circuit builder and GKR compiler.
+Its shared ROM helper invokes the original table constructors in 128 KiB chunks,
+relocates address/tag bits into the full domain, and preserves every row/value
+in physical order. This avoids full-domain witness index maps. Two guarded Rust
+controls compare its complete rows with the original constructors on a smaller
+domain, including empty-image padding and cross-chunk signed values. The original
+full-domain generator exceeds the 2,560 MiB bound; production remains unchanged.
+The next sixteen jobs export all
 setups. Example steps (place each inside the normal bounded worker):
 
 ```sh
@@ -198,8 +206,8 @@ env -u CI python3 scripts/check_setup_freshness.py export decoder-smoke \
 ```
 
 CI must be **absent**: `CI=false` still triggers the native skip macro and the
-driver rejects it. Commands use `--locked`, `CARGO_BUILD_JOBS=1`, one test thread
-and an exact full test name. A selected test must really execute once and pass;
+driver rejects it. Commands use `--locked`, `CARGO_BUILD_JOBS=1`; test jobs use
+one test thread and an exact full test name. A selected test must really execute once and pass;
 zero selected tests, ignored tests, CI skips and unchanged/missing generator
 outputs fail. Smoke exports through the existing prover roundtrip test and
 `AIRBENDER_SETUP_JSON_FIXTURE`; fifteen production setups use the existing
@@ -223,8 +231,10 @@ evidence rather than treating successful retained-data checks as a fresh export.
 After reviewed source changes, dispatch the FV workflow with `requalify_setups`
 enabled. It runs `prepare-requalification --work-dir DIRECTORY` under the same
 guard, writing an unqualified snapshot outside the checkout. It preserves the
-retained payload hashes, circuit identities, dependency lock and source inventory;
-only current source hashes and the smoke constructor receipt can be candidates.
+retained payload hashes, circuit identities, dependency lock and Cargo closure.
+Additional reviewed artifact-helper paths are registered explicitly; other
+source inventory changes are rejected. Only current source hashes and the smoke
+constructor receipt can be candidates.
 The normal retained drift guard continues to reject stale committed receipts.
 
 All native `regenerate` and `export` jobs receive `--requalify` and bind their
@@ -236,6 +246,13 @@ execution evidence immediately so its verified receipts can be reviewed and
 committed. No retained payload or production source is repaired by this flow.
 CI success on an uncommitted promoted manifest still requires recording that
 manifest in the PR and validating the final revision before merge.
+
+The compiler manifest pins the setup manifest as an input. Requalification
+therefore regenerates the eleven cached compiler captures and compares all 33
+source-pair, sidecar and arithmetic-certificate files byte for byte. Only after
+fresh provenance checks pass may compiler input pins change; manifest scope,
+toolchain and payload metadata must remain identical. The qualified compiler
+manifest is uploaded separately. Commit it with the qualified setup manifest.
 
 Focused controls reject changed source without regeneration, a changed physical
 value with unchanged geometry, initialization relation changes, smoke ID/offset/

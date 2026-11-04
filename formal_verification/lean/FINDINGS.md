@@ -1,6 +1,6 @@
 # Findings: assumptions and circuit bindings
 
-<!-- source-names: keccak_special5 keccak_f1600.rs keccak_special5_layout_no_caches_gkr.json KECCAK_COLUMN_PARITY_CSR_REGISTER KECCAK_THETA_RHO_CSR_REGISTER KECCAK_CHI5_CSR_REGISTER KECCAK_SPECIAL5_CSR_REGISTER SUPPORTED_CSRS -->
+<!-- source-names: keccak_special5 keccak_f1600.rs keccak_special5_layout_no_caches_gkr.json KECCAK_COLUMN_PARITY_CSR_REGISTER KECCAK_THETA_RHO_CSR_REGISTER KECCAK_CHI5_CSR_REGISTER KECCAK_SPECIAL5_CSR_REGISTER SUPPORTED_CSRS requalify_setups setup_artifact -->
 
 Current native target: upstream `av_gkr_compiler` at
 `c1a662222cafcd96db4383dce737edb79fa62b09`. Current totals and completed validation
@@ -90,6 +90,27 @@ the job promotes source receipts. Candidate snapshots are unqualified; they do
 not update this finding or establish current native fidelity. Changed payloads
 still fail and must be recorded here without changing production behavior.
 The decoder smoke-test command follows its export-only `setup_artifact` module.
+
+Run [41818079338](https://github.com/matter-labs/zksync-airbender/actions/runs/41818079338)
+passed the first five circuit regenerations, then the original subword generator
+exceeded the 2,560 MiB footprint bound (2,577.18 MiB observed after 9.86 seconds).
+This is a resource failure, with no Rust constraint or setup mismatch diagnosed.
+Production table construction remains unchanged. The artifact-only subword path
+now uses the original native ROM constructors on 128 KiB image chunks, lifting
+their address/tag keys back into the unchanged full domain. It retains all row
+values, physical order, table IDs and widths; each chunk's witness index maps are
+discarded. Native controls compare the assembled tables with the original whole
+constructor on a smaller domain, including cross-chunk images and signed values.
+The full setup comparison remains mandatory on the production domain. The
+subword circuit uses the same native circuit builder and GKR compiler through a
+new export example; the other eleven generation jobs still run exact tests.
+
+Setup receipt promotion also invalidates the compiler's pin of the setup
+manifest. Requalification now refreshes compiler input receipts only after all
+33 compiler payload files reproduce byte for byte and the freshly exported
+sidecars, certificates, circuit identities and input pins pass their checks.
+The verified compiler manifest must be committed together with the verified
+setup manifest. No receipt has been promoted locally by these changes.
 
 ## Kernel fixed-setup provenance
 

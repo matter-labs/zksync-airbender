@@ -59,6 +59,12 @@ def test_command(package, test):
             "--", "--exact", "--nocapture", "--test-threads=1"]
 
 
+def regeneration_command(family, output):
+    if family == "subword-memory":
+        return ["cargo", "run", "--locked", "-p", "cs", "--example", "export_subword_circuit", "--", str(output)]
+    return test_command("cs", generator_test(family))
+
+
 def validate_test_output(output, test):
     if re.search(r"skipping\b.*\bCI\b", output, re.IGNORECASE):
         raise ValueError(f"Native generator skipped in CI: {test}")
@@ -104,8 +110,10 @@ def requalification_manifest(repo):
     manifest = retained.read_json(manifest_path(repo))
     sources, crates = retained.source_inventory(repo)
     inventory = manifest["source_inventory"]
+    added = set(sources) - set(manifest["source_sha256"])
+    removed = set(manifest["source_sha256"]) - set(sources)
     if (inventory["root_crates"] != list(retained.SOURCE_ROOT_CRATES) or
-            inventory["local_crates"] != crates or set(sources) != set(manifest["source_sha256"])):
+            inventory["local_crates"] != crates or removed or added - retained.NATIVE_EXPORT_SOURCES):
         raise ValueError("Requalification cannot change the source inventory; review the Cargo closure first")
     candidate = copy.deepcopy(manifest)
     candidate["source_sha256"] = {name: retained.sha256(retained.checked_path(repo, name)) for name in sources}
@@ -180,10 +188,10 @@ def job(mode, family, repo, work, requalify=False):
     if mode == "regenerate":
         if family not in GENERATORS:
             raise ValueError(f"No native generator is registered for {family}")
-        test = generator_test(family)
-        command = test_command("cs", test)
         relative = manifest["circuit_identities"][family + ".json"]["retained_path"]
         output = retained.checked_path(repo, relative)
+        test = None if family == "subword-memory" else generator_test(family)
+        command = regeneration_command(family, output)
         before = (output.stat().st_mtime_ns, output.stat().st_ctime_ns)
     else:
         output = work / "artifacts" / (family + ".json")
@@ -248,7 +256,7 @@ def verify(work, repo, dep_info, requalify=False, promote=False):
             log = work / "logs" / f"{mode}-{family}.log"
             if record["log_sha256"] != retained.sha256(log):
                 raise ValueError(f"Changed native job log: {mode} {family}")
-            if mode == "regenerate" or family == "decoder-smoke":
+            if (mode == "regenerate" and family != "subword-memory") or family == "decoder-smoke":
                 test = generator_test(family) if mode == "regenerate" else retained.SMOKE_TEST
                 if record["test"] != test or record["executed_tests"] != 1:
                     raise ValueError(f"Missing exact native test execution: {mode} {family}")
@@ -258,6 +266,9 @@ def verify(work, repo, dep_info, requalify=False, promote=False):
                     raise ValueError(f"Wrong native test command receipt: {mode} {family}")
             if mode == "regenerate":
                 output = repo / retained.read_json(artifacts / "manifest.json")["circuit_identities"][family + ".json"]["retained_path"]
+                if family == "subword-memory":
+                    if record["command"] != regeneration_command(family, output) or record["test"] is not None or record["executed_tests"] is not None:
+                        raise ValueError("Wrong bounded subword circuit export receipt")
             else:
                 output = work / "artifacts" / (family + ".json")
                 if family != "decoder-smoke":
@@ -272,7 +283,8 @@ def verify(work, repo, dep_info, requalify=False, promote=False):
     if not dep_info:
         raise ValueError("Full freshness verification requires --dep-info from the scoped native build (repeat for dependencies)")
     required = ("cs/src/lib.rs", "prover/src/lib.rs", "execution_prover/src/lib.rs",
-                "execution_prover/examples/export_setup_json.rs")
+                "execution_prover/examples/export_setup_json.rs", "cs/examples/export_subword_circuit.rs",
+                "formal_verification/native/rom_tables.rs")
     covered = retained.check_dep_info(repo, manifest, dep_info, required)
     # Recheck the complete source snapshot after the comparisons and dep-info.
     preflight(repo, work, requalify)

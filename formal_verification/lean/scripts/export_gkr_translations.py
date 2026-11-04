@@ -18,6 +18,11 @@ ROOT = Path(__file__).resolve().parents[3]
 LEAN = Path(__file__).resolve().parents[1]
 FAMILIES = ["add-sub", "jump-branch", "mul-div", "shift-binop", "word-memory",
             "subword-memory", "unified", "bigint", "blake-g", "blake-round", "keccak"]
+COMPILER_INPUTS = {"Cargo.lock", "cs/examples/export_gkr_translation.rs",
+                   "formal_verification/native/rom_tables.rs",
+                   "formal_verification/lean/scripts/export_gkr_translations.py",
+                   "formal_verification/lean/scripts/gkr_arithmetic_certificate.py",
+                   "formal_verification/lean/artifacts/setup/manifest.json"}
 
 
 def digest(path):
@@ -81,9 +86,7 @@ def main():
                 errors.append(name + ": " + str(error))
                 print("UNSUPPORTED", errors[-1], flush=True)
             records[name] = record
-    pinned = [ROOT / "Cargo.lock", ROOT / "cs/examples/export_gkr_translation.rs",
-              Path(__file__).resolve(), Path(__file__).with_name("gkr_arithmetic_certificate.py"),
-              LEAN / "artifacts/setup/manifest.json"]
+    pinned = [ROOT / name for name in sorted(COMPILER_INPUTS)]
     manifest = {"format_version": 1,
                 "scope": "cached source arithmetic slice; lookup/memory/cache protocol lowering is not certified",
                 "compiler_inputs": {str(path.relative_to(ROOT)): digest(path) for path in pinned},

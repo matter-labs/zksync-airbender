@@ -185,7 +185,10 @@ python3 scripts/check_assurance_controls.py --guard scripts/bounded_fv.py \
   --ledger .lake/verification/replay-ledger
 ```
 
-The 28 native jobs execute twelve production generators and sixteen exports.
+The 28 native jobs execute eleven production generator tests, one artifact-only
+subword circuit generator and sixteen exports. The subword generator invokes the
+same native circuit builder/compiler with native ROM rows assembled in bounded
+chunks; it preserves the full domain and avoids unused witness index maps.
 The export list is the twelve `families` above plus `keccak-column-parity`,
 `keccak-theta-rho`, `keccak-chi5` and the derived `decoder-smoke` fixture, exactly
 as in the workflow. Independent replay uses a 2,048 MiB stack. Their final verification checks
@@ -197,6 +200,8 @@ Candidate receipts stay outside the checkout until all native jobs, complete
 JSON comparisons and dep-info checks pass. CI then uploads the qualified setup
 manifest and receipts for review and committing; a candidate alone is not a
 freshness result. See [setup requalification](artifacts/setup/README.md#requalifying-source-receipts).
+Compiler receipt requalification checks all 33 payload files byte for byte
+before refreshing their input pins. Both verified manifests must be committed.
 
 The Lean frontend discovers every concrete Airbender, Tests and retained
 Sail module. Its [bounded compilation pool](scripts/compilation_pool/README.md)

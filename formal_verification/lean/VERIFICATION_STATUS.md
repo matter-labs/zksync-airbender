@@ -53,6 +53,17 @@ coverage pass. The workflow also uses the decoder smoke test's current module.
 These requalification changes pass 47 lightweight tests; the actual native
 re-export and current proof validation remain pending.
 
+Run [41818079338](https://github.com/matter-labs/zksync-airbender/actions/runs/41818079338)
+passed five native circuit comparisons and then hit the footprint limit in the
+subword generator. An artifact-only chunked ROM materializer and subword circuit
+example now preserve the full domain while avoiding full-domain witness index
+maps. Production functions and resource bounds are unchanged. Sixty-one Python
+provenance/preflight tests pass; the two Rust equivalence controls and full-domain
+exports still need CI. The workflow checks those controls before restoring the
+Lean cache. Compiler input receipts are promoted only after all 33 payload files
+match exactly and fresh compiler provenance passes; both verified manifests
+still need committing after actual requalification succeeds.
+
 Warm run [41803197805](https://github.com/matter-labs/zksync-airbender/actions/runs/41803197805)
 failed in source validation on reserved `start` binders in
 `Proofs/UnifiedReduced/WorkerExecution.lean`. The binders and their uses are now

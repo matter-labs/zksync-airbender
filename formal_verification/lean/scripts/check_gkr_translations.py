@@ -11,7 +11,7 @@ import subprocess
 import tomllib
 
 import check_setup_artifacts as setup
-from export_gkr_translations import FAMILIES, ROOT, LEAN, digest
+from export_gkr_translations import COMPILER_INPUTS, FAMILIES, ROOT, LEAN, digest
 from gkr_arithmetic_certificate import synthesis
 
 
@@ -68,10 +68,7 @@ def check(directory=LEAN / "artifacts/compiler", repo=ROOT):
     manifest = read(directory / "manifest.json")
     if manifest["format_version"] != 1:
         raise ValueError("Unsupported compiler manifest version")
-    pinned = {"Cargo.lock", "cs/examples/export_gkr_translation.rs",
-              "formal_verification/lean/scripts/export_gkr_translations.py",
-              "formal_verification/lean/scripts/gkr_arithmetic_certificate.py",
-              "formal_verification/lean/artifacts/setup/manifest.json"}
+    pinned = COMPILER_INPUTS
     if set(manifest["compiler_inputs"]) != pinned:
         raise ValueError("Compiler producer input inventory changed")
     for relative, expected in manifest["compiler_inputs"].items():
