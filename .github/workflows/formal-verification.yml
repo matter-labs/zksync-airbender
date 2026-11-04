@@ -421,6 +421,10 @@ jobs:
         run: |
           source "$FV_ROOT/guard.sh"
           # No outer guard: the frontend guards each real child and checks reap metadata.
+          # Exercise concrete timestamp witnesses before traversing the full project.
+          fv_stage delegation-fixtures 10800 python3 scripts/check_lean.py --guard scripts/bounded_fv.py \
+            --output "$FV_ROOT/fixture-lean" --module Tests.BigintMemory \
+            --module Tests.DelegationTimestamps --module Tests.DynamicCopyLoopNative
           fv_stage lean-verification 54000 python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean"
       - name: Generated source freshness
         timeout-minutes: 130

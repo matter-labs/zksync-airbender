@@ -152,14 +152,14 @@ def workerAssignment (index : Fin 2) (column : Nat) : ZMod babyBearModulus :=
   else if column = 5 || column = 99 then if index.val = 0 then 0 else 7
   else if column = 7 || column = 39 || column = 67 || column = 115 || column = 194 then 7
   else if column = 131 || column = 163 then if index.val = 0 then 0 else 49
-  else if 217 ≤ column && column < 274 then
-    if (column - 217) % 3 = 2 then 1
-    else if (column - 217) % 3 = 1 then 0
-    else if index.val = 1 then if column = 271 then 46 else 35
-    else if column = 217 then 12
-    else if column = 244 then 20
-    else if column = 247 then 22
-    else if column = 271 then 30
+  else if 216 ≤ column && column < 273 then
+    if (column - 216) % 3 = 2 then 1
+    else if (column - 216) % 3 = 1 then 0
+    else if index.val = 1 then if column = 270 then 46 else 35
+    else if column = 216 then 12
+    else if column = 243 then 20
+    else if column = 246 then 22
+    else if column = 270 then 30
     else 0
   else 0
 

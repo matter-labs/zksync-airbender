@@ -181,6 +181,23 @@ changed files are identical after removing identifier quotes. Review statements,
 production behavior and qualified manifests are unchanged. CI must validate the
 repair; no completed full assurance result is claimed.
 
+Run [41853518121](https://github.com/matter-labs/zksync-airbender/actions/runs/41853518121)
+on `c4eb40e6687939103089f8d78e7febfb7fe1f7e5` passed native setup and compiler
+checks, then failed in `Tests/BigintMemory.lean:63`. The concrete fixture started
+its nineteen timestamp triples at column 217, one column after the native layout:
+previous low/high are `216 + 3*i` / `217 + 3*i`, and borrow is `218 + 3*i`.
+It consequently put borrow bits into the next port's previous-low column and left
+the real borrows zero. Lean correctly rejected negative low differences and an
+upper difference equal to the excluded 524,288 boundary. The guarded leaf build
+failed in 31.44 seconds at 608.83 MiB charged footprint, after 116 minutes of
+serial source work. This is a constructed-fixture error, with no production defect
+identified. The fixture ranges and predecessor-clock columns are corrected in
+`BigintMemory`, `DelegationTimestamps` and `DynamicCopyLoopNative`. CI now checks
+these three actual Lean fixtures and their dependencies before the complete
+source traversal, using the existing guarded frontend and unchanged limits.
+Review statements, production functions and qualified artifacts are unchanged.
+The corrected fixtures still require Lean CI validation.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

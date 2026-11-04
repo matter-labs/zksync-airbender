@@ -34,7 +34,7 @@ private theorem keccak_queries (clock : Fin 2) :
     all_goals decide +kernel
 
 private theorem bigint_queries :
-    FlatOperation.ConstraintsHoldFlat (Verification.environment (clockRow 217 19 4 0))
+    FlatOperation.ConstraintsHoldFlat (Verification.environment (clockRow 216 19 4 0))
       (Bigint.importedConstraintsTimestampLookups (p := babyBearModulus)) := by
   simp only [FlatOperation.constraintsHoldFlat_iff_forall_mem]
   constructor
@@ -85,7 +85,7 @@ theorem nativeQueries :
     (∀ clock : Fin 2, FlatOperation.ConstraintsHoldFlat
       (Verification.environment (clockRow 222 14 (if clock = 0 then 4 else 524284) 0))
       Keccak.importedConstraintsTimestampLookups) ∧
-    FlatOperation.ConstraintsHoldFlat (Verification.environment (clockRow 217 19 4 0))
+    FlatOperation.ConstraintsHoldFlat (Verification.environment (clockRow 216 19 4 0))
       Bigint.importedConstraintsTimestampLookups ∧
     FlatOperation.ConstraintsHoldFlat (Verification.environment (clockRow 83 9 4 0))
       Blake2G.importedConstraintsTimestampLookups ∧

@@ -103,6 +103,18 @@ failure took 5.76 seconds at 441.29 MiB charged footprint. Diagnostic upload ran
 before cache saving as intended. This wider syntax repair requires Lean CI;
 the environment/axiom audit and final full assurance remain pending.
 
+Run [41853518121](https://github.com/matter-labs/zksync-airbender/actions/runs/41853518121)
+on `c4eb40e66` passed native setup/compiler checks, then failed in
+`Tests/BigintMemory.lean:63`: constructed timestamp triples started at 217 instead
+of the native column 216. Borrow bits and predecessor clocks were shifted by one.
+The same fixture offset is corrected in `DelegationTimestamps` and
+`DynamicCopyLoopNative`. The failing leaf took 31.44 seconds at 608.83 MiB charged
+footprint; the source stage had run for 116 minutes before reaching it. CI now
+frontloads these three actual Lean fixtures through the existing guarded frontend
+before the complete source/runtime traversal. Review statements, production code,
+artifact manifests and all resource/trust limits are unchanged. Current fixture
+validation, the environment/axiom audit and final full assurance remain pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;
