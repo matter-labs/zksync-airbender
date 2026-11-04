@@ -85,11 +85,11 @@ relation.
 
 For Airbender machine/circuit work, consult only the relevant sibling references:
 
-- [RISC-V baseline](../zk-circuit-review/references/riscv32-machine-baseline.md)
-- [machine history/profile](../zk-circuit-review/references/airbender-v3-machine-profile.md)
-- [circuit architecture](../zk-circuit-review/references/airbender-v3-circuit-architecture.md)
-- [GKR wiring](../zk-circuit-review/references/gkr-wiring-and-aggregation.md)
-- [global arguments](../zk-circuit-review/references/global-arguments-scope.md)
+- [RISC-V baseline](../../../.agents/skills/zk-circuit-review/references/riscv32-machine-baseline.md)
+- [machine history/profile](../../../.agents/skills/zk-circuit-review/references/airbender-v3-machine-profile.md)
+- [circuit architecture](../../../.agents/skills/zk-circuit-review/references/airbender-v3-circuit-architecture.md)
+- [GKR wiring](../../../.agents/skills/zk-circuit-review/references/gkr-wiring-and-aggregation.md)
+- [global arguments](../../../.agents/skills/zk-circuit-review/references/global-arguments-scope.md)
 
 Treat these as versioned priors and reconcile them with current entrypoints.
 
