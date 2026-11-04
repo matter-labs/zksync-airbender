@@ -325,7 +325,7 @@ def Circuit.unifiedReducedQueries (c : Circuit) : Except String (Array (Array Ex
     590081, 590081, 590081, 590081, 590081, 590081, 590081, 590081, 590081, 590081,
     590081, 590081, 590081, 590081, 590081, 1638657, 1638657, 1638657, 1638657, 1638657,
     1638657, 1638657, 1638657, 1638657, 1638657, 1638657, 1638657, 1638657, 1704193, 1769729,
-    1835265, 1900801, 1900929, 1966465, 2032001]
+    1835265, 1900801, 1900929, 1966465, 2032001] ++ Array.replicate 12 2097537
   unless c.table_offsets.size == offsets.size do throw "unified reduced table offsets are incomplete"
   for id in [:offsets.size] do
     unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
@@ -353,7 +353,7 @@ def Circuit.blakeGQueries (c : Circuit) : Except String (Array (Array Expr)) := 
     82240, 344384, 344384, 344384, 344384, 344384, 344384, 344384, 344384, 344896,
     344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896,
     344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896,
-    344896, 344896, 344896, 344896, 344896]
+    344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896]
   unless c.table_offsets.size == offsets.size do throw "BLAKE2 G table offsets are incomplete"
   for id in [:offsets.size] do
     unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
@@ -409,7 +409,7 @@ def Circuit.keccakQueries (c : Circuit) : Except String (Array (Array Expr)) := 
   unless !c.has_decoder_lookup && c.offset_for_decoder_table == 1249281 &&
       c.total_tables_size == 1249281 do throw "unexpected Keccak setup boundary"
   let offsets := #[0] ++ Array.replicate 4 1 ++ Array.replicate 33 65537 ++
-    #[69633, 135169, 200705] ++ Array.replicate 14 1249281
+    #[69633, 135169, 200705] ++ Array.replicate 26 1249281
   unless c.table_offsets.size == offsets.size do throw "Keccak table offsets are incomplete"
   for id in [:offsets.size] do
     unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
