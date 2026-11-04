@@ -211,6 +211,12 @@ as in the workflow. Independent replay uses a 2,048 MiB stack. Their final verif
 execution receipts, complete JSON identity and the scoped native build's dep-info.
 `CI` must be absent for generators and smoke tests; `CI=false` still skips them.
 
+Large Lean cache uploads run after verification and diagnostic upload. A source
+attempt already includes bootstrap progress, so CI saves one Lean snapshot:
+the source build if attempted, otherwise the partial or completed bootstrap.
+This preserves progress after failures without delaying the next verification
+stage or uploading the same Lean build twice on successful runs.
+
 Reviewed source changes require a manual run with `requalify_setups=true`.
 Candidate receipts stay outside the checkout until all native jobs, complete
 JSON comparisons and dep-info checks pass. CI then uploads the qualified setup

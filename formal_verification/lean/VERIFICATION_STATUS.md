@@ -40,8 +40,19 @@ static checks. The wrapper and current source tree still require Lean CI validat
 The 4 November production-scope cleanup restores every existing production
 function to the base. A static diff audit checks exact restored bytes, unchanged
 setup bodies and serialization-only derives. Exporter formatting passes.
-Native source receipts have ten mismatches against the retained setup manifest;
-[FINDINGS.md](FINDINGS.md) records them pending fresh-export requalification.
+The ten native source receipt mismatches from cleanup were requalified by
+run [41832547126](https://github.com/matter-labs/zksync-airbender/actions/runs/41832547126)
+on `6c53a9a1201b579bebd341f29866d87da6d528c4`: all twelve exact native
+generators, sixteen complete setup comparisons and scoped dep-info checks passed.
+The setup manifest is the exact downloaded qualified manifest, SHA-256
+`20f680f0a08551ad3f1a3674686988f7fcac53ebec4117c8bdaea75bb53cad3e`.
+All 28 execution receipt hashes and all sixteen downloaded payloads were checked.
+Compiler receipt requalification also passed in that run: all 33 payload files
+reproduced byte for byte and all eleven retained cached native identities passed.
+The exact downloaded compiler manifest's SHA-256 is
+`ba55c93d53f3a689abccf6b628331f9df07ea8c779e3595f0efce04db914df71`.
+Both exact verified manifests pass their strict checkers locally. Current Lean
+validation and final full assurance remain pending.
 No full FV result qualifies this cleanup yet.
 
 Warm run [41815044934](https://github.com/matter-labs/zksync-airbender/actions/runs/41815044934)
@@ -50,8 +61,8 @@ receipts. Explicit setup requalification now prepares an unqualified snapshot,
 keeps the retained manifest unchanged during native work, and promotes source
 pins only after all 28 native jobs, complete payload comparisons and dep-info
 coverage pass. The workflow also uses the decoder smoke test's current module.
-These requalification changes pass 47 lightweight tests; the actual native
-re-export and current proof validation remain pending.
+These requalification changes initially passed 47 lightweight tests. The actual
+native re-export has now passed in the run above; current proof validation remains pending.
 
 Run [41818079338](https://github.com/matter-labs/zksync-airbender/actions/runs/41818079338)
 passed five native circuit comparisons and then hit the footprint limit in the
@@ -66,10 +77,17 @@ explicit 8,192 / 12,288 MiB memory profile, with the same 900-second limit and
 single-worker lock. A per-job Linux capacity check requires 14 GiB effective
 capacity/available memory, including cgroup hard limits and reclaimable file
 cache. Lean source, proof audits and kernel replay retain 2,560 / 5,120 MiB limits.
-Native reconstruction runs before Lean cache restore. Sixty-seven lightweight
-Python controls pass; actual native peaks and complete output equality remain
-pending. Both verified setup and compiler manifests must be committed after real
-requalification succeeds. No current manifest or full FV result is qualified.
+Native reconstruction runs before Lean cache restore. Ninety-three focused
+Python guard/provenance/preflight controls pass. Complete setup equality is now
+qualified, as are the compiler input receipts after exact payload reproduction.
+No full FV result qualifies the current proof revision.
+
+The successful bootstrap cache upload in run 41832547126 delayed compiler
+verification by 8m14s. The workflow now saves its one Lean snapshot after
+verification and diagnostic upload. A source attempt includes bootstrap progress;
+if no source stage ran, CI saves the partial or completed bootstrap instead.
+Workflow lint and all 64 stage-outcome combinations pass. The new cache ordering
+still requires final-revision CI validation.
 
 Run [41830870517](https://github.com/matter-labs/zksync-airbender/actions/runs/41830870517)
 passed Linux capacity qualification, but its first native command was rejected
@@ -77,7 +95,7 @@ by the guard's old CLI maxima before execution. The guard now requires an
 explicit native-artifact profile for 8,192 / 12,288 MiB, with another capacity
 check under the worker lock. Unflagged calls retain the original caps, and native
 calls cannot request the extended review timeout. The profile boundary controls
-pass; actual original native reconstruction still requires CI.
+pass; original native reconstruction subsequently passed in run 41832547126.
 
 Warm run [41803197805](https://github.com/matter-labs/zksync-airbender/actions/runs/41803197805)
 failed in source validation on reserved `start` binders in

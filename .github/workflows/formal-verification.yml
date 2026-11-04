@@ -328,16 +328,6 @@ jobs:
           fv prepare-clean python3 scripts/prepare_clean.py
           git diff --quiet -- lake-manifest.json lean-toolchain
           FV_STAGE
-      - name: Save bootstrap progress even after a bounded failure
-        if: always() && steps.cache-keys.outcome == 'success' && steps.bootstrap.outcome != 'skipped'
-        timeout-minutes: 20
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            formal_verification/lean/.lake/build
-            formal_verification/lean/.lake/config
-            formal_verification/lean/.lake/packages
-          key: ${{ steps.cache-keys.outputs.lean }}-bootstrap
       - name: Fresh cached compiler captures and provenance controls
         id: compiler-captures
         timeout-minutes: 130
@@ -432,16 +422,6 @@ jobs:
           source "$FV_ROOT/guard.sh"
           # No outer guard: the frontend guards each real child and checks reap metadata.
           fv_stage lean-verification 54000 python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean"
-      - name: Save Lean build progress even after a bounded failure
-        if: always() && steps.cache-keys.outcome == 'success' && (steps.cold-source-build.outcome != 'skipped' || steps.lean-verification.outcome != 'skipped')
-        timeout-minutes: 20
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            formal_verification/lean/.lake/build
-            formal_verification/lean/.lake/config
-            formal_verification/lean/.lake/packages
-          key: ${{ steps.cache-keys.outputs.lean }}-build
       - name: Generated source freshness
         timeout-minutes: 130
         run: |
@@ -567,3 +547,25 @@ jobs:
           name: formal-verification-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.FV_ROOT }}
           if-no-files-found: warn
+      # Keep large cache uploads off the verification path. A source attempt
+      # already contains bootstrap progress, so save only one Lean snapshot.
+      - name: Save bootstrap progress when no source stage ran
+        if: always() && steps.cache-keys.outcome == 'success' && steps.bootstrap.outcome != 'skipped' && steps.cold-source-build.outcome == 'skipped' && steps.lean-verification.outcome == 'skipped'
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            formal_verification/lean/.lake/build
+            formal_verification/lean/.lake/config
+            formal_verification/lean/.lake/packages
+          key: ${{ steps.cache-keys.outputs.lean }}-bootstrap
+      - name: Save Lean build progress even after a bounded failure
+        if: always() && steps.cache-keys.outcome == 'success' && (steps.cold-source-build.outcome != 'skipped' || steps.lean-verification.outcome != 'skipped')
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            formal_verification/lean/.lake/build
+            formal_verification/lean/.lake/config
+            formal_verification/lean/.lake/packages
+          key: ${{ steps.cache-keys.outputs.lean }}-build

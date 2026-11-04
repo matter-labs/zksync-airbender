@@ -2,8 +2,8 @@
   "compiler_inputs": {
     "Cargo.lock": "816e559e5b7e5f7d9be0cf3fbd56c016357ba6a98684b7f32a5c5c9627c8c62d",
     "cs/examples/export_gkr_translation.rs": "8d9a39ecbd303e4c6d206f82380b28d919489e84cea18ec1b428ebe77d6ea474",
-    "formal_verification/lean/artifacts/setup/manifest.json": "0879fbac8f1bab9eb501b4c283569f9fdaf6ed7a79f91ab6d2cfa2715d770cfb",
-    "formal_verification/lean/scripts/export_gkr_translations.py": "ee96cbd53b50cd970d25ebc384b940b118c586a4abce1d808c0e71a2d10678bf",
+    "formal_verification/lean/artifacts/setup/manifest.json": "20f680f0a08551ad3f1a3674686988f7fcac53ebec4117c8bdaea75bb53cad3e",
+    "formal_verification/lean/scripts/export_gkr_translations.py": "d5492ee9376d16d38b9b8321bdc560ede00896834c1bd442bd7c23745ee937a3",
     "formal_verification/lean/scripts/gkr_arithmetic_certificate.py": "7e990516d9f8380b0b68cb85c3073f329b6c932beeac6ebb726020e956846f48"
   },
   "files": {

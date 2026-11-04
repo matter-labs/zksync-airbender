@@ -71,15 +71,15 @@ artifact bytes and older validation results alone are not current freshness
 receipts. Any resulting mismatch belongs in this register, not in a production
 code repair.
 
-Static comparison with the retained setup manifest's `source_sha256` currently
-reports ten changed source receipts: `circuit_defs/setups/src/lib.rs`,
+Static comparison after cleanup initially reported ten changed source receipts:
+`circuit_defs/setups/src/lib.rs`,
 `cs/src/gkr_circuits/decoder_trait.rs`, `cs/src/tables/mod.rs`, the three
 `execution_prover/src/setup/{common,mod,unrolled}.rs` files, and
 `prover/src/gkr/prover/{setup,setup_artifact,setup_tests}.rs`, plus
 `execution_prover/examples/export_setup_json.rs`.
-This is a recorded freshness failure after scope cleanup, not evidence of a new
-circuit defect. Do not rewrite these hashes as if fresh exports had passed;
-regenerate and compare under the existing guard before claiming final fidelity.
+This was a freshness failure after scope cleanup, with no new circuit defect
+established. These source receipts were subsequently requalified through actual
+native execution, as recorded below; payloads were unchanged.
 
 Warm run [41815044934](https://github.com/matter-labs/zksync-airbender/actions/runs/41815044934)
 passed the repaired preflight, then rejected the first stale source receipt before
@@ -116,7 +116,8 @@ source verification, environment/axiom audits and independent kernel replay keep
 the original 2,560 / 5,120 MiB limits. Native reconstruction runs before restoring
 the Lean cache so complete circuit/setup checks happen before Lean preparation.
 Future mismatches record the first differing JSON field and retain the fresh
-circuit for inspection. Actual reconstruction under the new budget is pending.
+circuit for inspection. Actual setup reconstruction under this budget has now
+passed in run 41832547126 below; Lean validation remains pending.
 
 Run [41830870517](https://github.com/matter-labs/zksync-airbender/actions/runs/41830870517)
 qualified the runner at 111,377 MiB effective capacity and over 110,000 MiB
@@ -129,12 +130,33 @@ exercise profile acceptance, rejection of unflagged/high/extended requests, and
 budget decisions for native-sized process samples. No native result is
 claimed from the argument-validation failure.
 
+Run [41832547126](https://github.com/matter-labs/zksync-airbender/actions/runs/41832547126)
+on `6c53a9a1201b579bebd341f29866d87da6d528c4` passed all twelve exact native
+generator tests, sixteen complete setup comparisons and scoped dep-info checks.
+The downloaded `qualified-receipt.json` reports 28 native execution jobs and
+sixteen complete comparisons. Its SHA-256 is
+`ec752d357458d70d21b5f68b8575bba70d303d8d0d2771032bb4017f18e85565`;
+the exact qualified setup manifest's SHA-256 is
+`20f680f0a08551ad3f1a3674686988f7fcac53ebec4117c8bdaea75bb53cad3e`.
+All 28 receipt hashes, the exact current-source candidate and all sixteen
+downloaded payloads were checked against the retained data. This resolves the
+ten stale setup source receipts without changing a production function or a
+retained setup payload. This qualification alone does not validate the Lean proofs.
+
 Setup receipt promotion also invalidates the compiler's pin of the setup
 manifest. Requalification now refreshes compiler input receipts only after all
 33 compiler payload files reproduce byte for byte and the freshly exported
 sidecars, certificates, circuit identities and input pins pass their checks.
-The verified compiler manifest must be committed together with the verified
-setup manifest. No receipt has been promoted locally by these changes.
+Run 41832547126 also passed compiler requalification: all 33 payload files
+reproduced byte for byte, the fresh provenance checks passed, and all eleven
+retained cached native identities passed. The exact downloaded compiler manifest
+has SHA-256
+`ba55c93d53f3a689abccf6b628331f9df07ea8c779e3595f0efce04db914df71`;
+its qualified receipt has SHA-256
+`2f8f2293fb470f84ea52bef5b37f2a3686d3f030983d624114c3cfbb2848a084`.
+Only compiler input receipts changed. Both manifests are the exact verified
+downloads and pass their strict checkers locally. Lean validation and final full
+assurance remain separate pending gates.
 
 ## Kernel fixed-setup provenance
 
