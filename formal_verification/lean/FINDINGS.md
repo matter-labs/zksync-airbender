@@ -246,6 +246,23 @@ edit normalizes byte-identically after removing identifier quotes. The native
 120-equation coverage, Review statements, production and trust/resource policy
 are unchanged. CI must validate the remaining certificate modules.
 
+Run [41891337613](https://github.com/matter-labs/zksync-airbender/actions/runs/41891337613)
+on `fd7c0fee5` compiled `Tests.PathGLoopCPU.Equations`, verifying all 120 native
+CPU equations for all 228 rows and three variants. The early phase then failed
+in `Tests.PathGLoopNativeQueries`: its helper vector still named range columns
+78/79/81/86 instead of native 74/75/64/80, its pooled stencil and support lists
+still used the old 88–127 region instead of 82–121, and its abstract clock helper
+still expected borrow columns 131–133 instead of 123–125. The first diagnostic
+is `PathGLoopNativeQueries.lean:195:4`, a bound for column 78 where native query0
+requires column 74. The failed leaf took 85.61 seconds at 823.25 MiB charged
+footprint, with no owned processes left; the early phase took 458.4 seconds.
+These CPU-only helper coordinates now match the corrected candidate witnesses.
+An independent structural check derives all thirteen range coordinates and all
+five complete pooled-expression support lists from the retained native JSON.
+The worker section is byte-identical. No native query or constraint is removed;
+Review statements, production, artifacts and all trust/resource limits remain.
+The query helpers and complete native acceptance still require Lean CI.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

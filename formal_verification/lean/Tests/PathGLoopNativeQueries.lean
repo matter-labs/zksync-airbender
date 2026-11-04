@@ -174,7 +174,7 @@ private theorem boot_machine_query (variant : Variant) (index : Fin 6) (slot : N
           cases variant <;> decide +kernel)
 
 private def queryRangeColumns : Vector Nat 13 :=
-  #v[78, 79, 50, 51, 1, 81, 38, 39, 44, 45, 86, 30, 31]
+  #v[74, 75, 50, 51, 1, 64, 38, 39, 44, 45, 80, 30, 31]
 
 private theorem query_range_nat (value : Nat) (bound : value < 65536) :
     (value : ZMod babyBearModulus).val < 65536 := by
@@ -273,15 +273,15 @@ private theorem loop_range_bounded (variant : Variant) (index : Fin 55) (phase :
 next PC. This stencil is connected to every actual queried column below. -/
 private def pooledAssignment (family branch taken : Bool) (saved pc : Nat)
     (column : Nat) : ZMod babyBearModulus :=
-  if column = 88 then if family then 1 else 0
-  else if column = 89 then if family then saved else 0
-  else if column = 90 then if branch && !taken then 1 else 0
-  else if column = 92 ∨ column = 101 then if family then 5 else 0
-  else if column = 110 then if family then 51 else 0
-  else if column = 111 then if branch then if taken then 16 else 24 else 0
-  else if column = 112 then if taken then 1 else 0
-  else if column = 119 then if family then 2 else 0
-  else if column = 120 ∨ column = 122 then if family then pc else 0
+  if column = 82 then if family then 1 else 0
+  else if column = 83 then if family then saved else 0
+  else if column = 84 then if branch && !taken then 1 else 0
+  else if column = 86 ∨ column = 95 then if family then 5 else 0
+  else if column = 104 then if family then 51 else 0
+  else if column = 105 then if branch then if taken then 16 else 24 else 0
+  else if column = 106 then if taken then 1 else 0
+  else if column = 113 then if family then 2 else 0
+  else if column = 114 ∨ column = 116 then if family then pc else 0
   else 0
 
 private def loopPooledAssignment (variant : Variant) (index : Fin 55) (phase : Fin 4) :
@@ -293,7 +293,7 @@ private def loopPooledAssignment (variant : Variant) (index : Fin 55) (phase : F
       else (codeEntry variant (rowCodeIndex row)).pc.toNat + 4) (nextPC row)
 
 private theorem loop_pooled_coordinate (variant : Variant) (index : Fin 55) (phase : Fin 4)
-    (column : Nat) (lower : 86 ≤ column) (upper : column ≤ 127) :
+    (column : Nat) (lower : 82 ≤ column) (upper : column ≤ 121) :
     machineAssignment variant (gapRow index phase) column =
       loopPooledAssignment variant index phase column := by
   have notStore : isStore variant (gapRow index phase) = false := by
@@ -367,7 +367,7 @@ private theorem loop_pooled_phase (variant : Variant) (index : Fin 55) (phase : 
   fin_cases phase <;> norm_num
 
 private theorem loop_pooled_phase_coordinate (variant : Variant) (index : Fin 55) (phase : Fin 4)
-    (column : Nat) (lower : 86 ≤ column) (upper : column ≤ 127) :
+    (column : Nat) (lower : 82 ≤ column) (upper : column ≤ 121) :
     machineAssignment variant (gapRow index phase) column = phasePooledAssignment index phase column := by
   rw [loop_pooled_coordinate variant index phase column lower upper, loop_pooled_phase]
 
@@ -449,22 +449,22 @@ private theorem queryAt_eval_congr (queries : List (Lookup (ZMod babyBearModulus
 four variables are the three real query columns followed by the actual tag. -/
 private theorem machine_query13_variables (variant : Variant) :
     ((gMachineQueries variant)[13]?.map fun query => query.entry.toList.flatMap pooledVariables) =
-      some [89, 90, 91, 88] := by
+      some [83, 84, 85, 82] := by
   cases variant <;> decide +kernel
 
 private theorem loop_pooled_13_phase_0 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 13
       (Verification.environment (machineAssignment variant (gapRow index 0))) := by
-  have agree : ∀ column ∈ ([89, 90, 91, 88] : List Nat),
+  have agree : ∀ column ∈ ([83, 84, 85, 82] : List Nat),
       machineAssignment variant (gapRow index 0) column = phasePooledAssignment index 0 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 0 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 13
     (machineAssignment variant (gapRow index 0)) (phasePooledAssignment index 0)
-    [89, 90, 91, 88] (machine_query13_variables variant) agree).mpr
+    [83, 84, 85, 82] (machine_query13_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -480,40 +480,40 @@ private theorem loop_pooled_13_phase_0 (variant : Variant) (index : Fin 55) :
 /-- Exact kernel certificate for the actual imported query14 entry AST. -/
 private theorem machine_query14_variables (variant : Variant) :
     ((gMachineQueries variant)[14]?.map fun query => query.entry.toList.flatMap pooledVariables) =
-      some [93, 94, 95, 96, 97, 98, 99, 100, 92] := by
+      some [87, 88, 89, 90, 91, 92, 93, 94, 86] := by
   cases variant <;> decide +kernel
 
 /-- Exact kernel certificate for the actual imported query15 entry AST. -/
 private theorem machine_query15_variables (variant : Variant) :
     ((gMachineQueries variant)[15]?.map fun query => query.entry.toList.flatMap pooledVariables) =
-      some [102, 103, 104, 105, 106, 107, 108, 109, 101] := by
+      some [96, 97, 98, 99, 100, 101, 102, 103, 95] := by
   cases variant <;> decide +kernel
 
 /-- Exact kernel certificate for the actual imported query16 entry AST. -/
 private theorem machine_query16_variables (variant : Variant) :
     ((gMachineQueries variant)[16]?.map fun query => query.entry.toList.flatMap pooledVariables) =
-      some [111, 112, 113, 114, 115, 116, 117, 118, 110] := by
+      some [105, 106, 107, 108, 109, 110, 111, 112, 104] := by
   cases variant <;> decide +kernel
 
 /-- Exact kernel certificate for the actual imported query17 entry AST. -/
 private theorem machine_query17_variables (variant : Variant) :
     ((gMachineQueries variant)[17]?.map fun query => query.entry.toList.flatMap pooledVariables) =
-      some [120, 121, 122, 123, 124, 125, 126, 127, 119] := by
+      some [114, 115, 116, 117, 118, 119, 120, 121, 113] := by
   cases variant <;> decide +kernel
 
 private theorem loop_pooled_13_phase_1 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 13
       (Verification.environment (machineAssignment variant (gapRow index 1))) := by
-  have agree : ∀ column ∈ ([89, 90, 91, 88] : List Nat),
+  have agree : ∀ column ∈ ([83, 84, 85, 82] : List Nat),
       machineAssignment variant (gapRow index 1) column = phasePooledAssignment index 1 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 1 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 13
     (machineAssignment variant (gapRow index 1)) (phasePooledAssignment index 1)
-    [89, 90, 91, 88] (machine_query13_variables variant) agree).mpr
+    [83, 84, 85, 82] (machine_query13_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -529,16 +529,16 @@ private theorem loop_pooled_13_phase_1 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_13_phase_2 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 13
       (Verification.environment (machineAssignment variant (gapRow index 2))) := by
-  have agree : ∀ column ∈ ([89, 90, 91, 88] : List Nat),
+  have agree : ∀ column ∈ ([83, 84, 85, 82] : List Nat),
       machineAssignment variant (gapRow index 2) column = phasePooledAssignment index 2 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 2 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 13
     (machineAssignment variant (gapRow index 2)) (phasePooledAssignment index 2)
-    [89, 90, 91, 88] (machine_query13_variables variant) agree).mpr
+    [83, 84, 85, 82] (machine_query13_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -556,16 +556,16 @@ private theorem loop_pooled_13_phase_3 (variant : Variant) (index : Fin 55) :
       (Verification.environment (machineAssignment variant (gapRow index 3))) := by
   have indexBound := index.isLt
   have counterZero : (54 - index.val = 0) ↔ ¬index.val < 54 := by omega
-  have agree : ∀ column ∈ ([89, 90, 91, 88] : List Nat),
+  have agree : ∀ column ∈ ([83, 84, 85, 82] : List Nat),
       machineAssignment variant (gapRow index 3) column = phasePooledAssignment index 3 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 3 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 13
     (machineAssignment variant (gapRow index 3)) (phasePooledAssignment index 3)
-    [89, 90, 91, 88] (machine_query13_variables variant) agree).mpr
+    [83, 84, 85, 82] (machine_query13_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -581,16 +581,16 @@ private theorem loop_pooled_13_phase_3 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_14_phase_0 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 14
       (Verification.environment (machineAssignment variant (gapRow index 0))) := by
-  have agree : ∀ column ∈ ([93, 94, 95, 96, 97, 98, 99, 100, 92] : List Nat),
+  have agree : ∀ column ∈ ([87, 88, 89, 90, 91, 92, 93, 94, 86] : List Nat),
       machineAssignment variant (gapRow index 0) column = phasePooledAssignment index 0 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 0 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 14
     (machineAssignment variant (gapRow index 0)) (phasePooledAssignment index 0)
-    [93, 94, 95, 96, 97, 98, 99, 100, 92] (machine_query14_variables variant) agree).mpr
+    [87, 88, 89, 90, 91, 92, 93, 94, 86] (machine_query14_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -606,16 +606,16 @@ private theorem loop_pooled_14_phase_0 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_14_phase_1 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 14
       (Verification.environment (machineAssignment variant (gapRow index 1))) := by
-  have agree : ∀ column ∈ ([93, 94, 95, 96, 97, 98, 99, 100, 92] : List Nat),
+  have agree : ∀ column ∈ ([87, 88, 89, 90, 91, 92, 93, 94, 86] : List Nat),
       machineAssignment variant (gapRow index 1) column = phasePooledAssignment index 1 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 1 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 14
     (machineAssignment variant (gapRow index 1)) (phasePooledAssignment index 1)
-    [93, 94, 95, 96, 97, 98, 99, 100, 92] (machine_query14_variables variant) agree).mpr
+    [87, 88, 89, 90, 91, 92, 93, 94, 86] (machine_query14_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -631,16 +631,16 @@ private theorem loop_pooled_14_phase_1 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_14_phase_2 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 14
       (Verification.environment (machineAssignment variant (gapRow index 2))) := by
-  have agree : ∀ column ∈ ([93, 94, 95, 96, 97, 98, 99, 100, 92] : List Nat),
+  have agree : ∀ column ∈ ([87, 88, 89, 90, 91, 92, 93, 94, 86] : List Nat),
       machineAssignment variant (gapRow index 2) column = phasePooledAssignment index 2 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 2 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 14
     (machineAssignment variant (gapRow index 2)) (phasePooledAssignment index 2)
-    [93, 94, 95, 96, 97, 98, 99, 100, 92] (machine_query14_variables variant) agree).mpr
+    [87, 88, 89, 90, 91, 92, 93, 94, 86] (machine_query14_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -656,16 +656,16 @@ private theorem loop_pooled_14_phase_2 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_14_phase_3 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 14
       (Verification.environment (machineAssignment variant (gapRow index 3))) := by
-  have agree : ∀ column ∈ ([93, 94, 95, 96, 97, 98, 99, 100, 92] : List Nat),
+  have agree : ∀ column ∈ ([87, 88, 89, 90, 91, 92, 93, 94, 86] : List Nat),
       machineAssignment variant (gapRow index 3) column = phasePooledAssignment index 3 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 3 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 14
     (machineAssignment variant (gapRow index 3)) (phasePooledAssignment index 3)
-    [93, 94, 95, 96, 97, 98, 99, 100, 92] (machine_query14_variables variant) agree).mpr
+    [87, 88, 89, 90, 91, 92, 93, 94, 86] (machine_query14_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -681,16 +681,16 @@ private theorem loop_pooled_14_phase_3 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_15_phase_0 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 15
       (Verification.environment (machineAssignment variant (gapRow index 0))) := by
-  have agree : ∀ column ∈ ([102, 103, 104, 105, 106, 107, 108, 109, 101] : List Nat),
+  have agree : ∀ column ∈ ([96, 97, 98, 99, 100, 101, 102, 103, 95] : List Nat),
       machineAssignment variant (gapRow index 0) column = phasePooledAssignment index 0 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 0 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 15
     (machineAssignment variant (gapRow index 0)) (phasePooledAssignment index 0)
-    [102, 103, 104, 105, 106, 107, 108, 109, 101] (machine_query15_variables variant) agree).mpr
+    [96, 97, 98, 99, 100, 101, 102, 103, 95] (machine_query15_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -706,16 +706,16 @@ private theorem loop_pooled_15_phase_0 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_15_phase_1 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 15
       (Verification.environment (machineAssignment variant (gapRow index 1))) := by
-  have agree : ∀ column ∈ ([102, 103, 104, 105, 106, 107, 108, 109, 101] : List Nat),
+  have agree : ∀ column ∈ ([96, 97, 98, 99, 100, 101, 102, 103, 95] : List Nat),
       machineAssignment variant (gapRow index 1) column = phasePooledAssignment index 1 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 1 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 15
     (machineAssignment variant (gapRow index 1)) (phasePooledAssignment index 1)
-    [102, 103, 104, 105, 106, 107, 108, 109, 101] (machine_query15_variables variant) agree).mpr
+    [96, 97, 98, 99, 100, 101, 102, 103, 95] (machine_query15_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -731,16 +731,16 @@ private theorem loop_pooled_15_phase_1 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_15_phase_2 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 15
       (Verification.environment (machineAssignment variant (gapRow index 2))) := by
-  have agree : ∀ column ∈ ([102, 103, 104, 105, 106, 107, 108, 109, 101] : List Nat),
+  have agree : ∀ column ∈ ([96, 97, 98, 99, 100, 101, 102, 103, 95] : List Nat),
       machineAssignment variant (gapRow index 2) column = phasePooledAssignment index 2 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 2 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 15
     (machineAssignment variant (gapRow index 2)) (phasePooledAssignment index 2)
-    [102, 103, 104, 105, 106, 107, 108, 109, 101] (machine_query15_variables variant) agree).mpr
+    [96, 97, 98, 99, 100, 101, 102, 103, 95] (machine_query15_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -756,16 +756,16 @@ private theorem loop_pooled_15_phase_2 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_15_phase_3 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 15
       (Verification.environment (machineAssignment variant (gapRow index 3))) := by
-  have agree : ∀ column ∈ ([102, 103, 104, 105, 106, 107, 108, 109, 101] : List Nat),
+  have agree : ∀ column ∈ ([96, 97, 98, 99, 100, 101, 102, 103, 95] : List Nat),
       machineAssignment variant (gapRow index 3) column = phasePooledAssignment index 3 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 3 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 15
     (machineAssignment variant (gapRow index 3)) (phasePooledAssignment index 3)
-    [102, 103, 104, 105, 106, 107, 108, 109, 101] (machine_query15_variables variant) agree).mpr
+    [96, 97, 98, 99, 100, 101, 102, 103, 95] (machine_query15_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -781,16 +781,16 @@ private theorem loop_pooled_15_phase_3 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_16_phase_0 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 16
       (Verification.environment (machineAssignment variant (gapRow index 0))) := by
-  have agree : ∀ column ∈ ([111, 112, 113, 114, 115, 116, 117, 118, 110] : List Nat),
+  have agree : ∀ column ∈ ([105, 106, 107, 108, 109, 110, 111, 112, 104] : List Nat),
       machineAssignment variant (gapRow index 0) column = phasePooledAssignment index 0 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 0 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 16
     (machineAssignment variant (gapRow index 0)) (phasePooledAssignment index 0)
-    [111, 112, 113, 114, 115, 116, 117, 118, 110] (machine_query16_variables variant) agree).mpr
+    [105, 106, 107, 108, 109, 110, 111, 112, 104] (machine_query16_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -806,16 +806,16 @@ private theorem loop_pooled_16_phase_0 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_16_phase_1 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 16
       (Verification.environment (machineAssignment variant (gapRow index 1))) := by
-  have agree : ∀ column ∈ ([111, 112, 113, 114, 115, 116, 117, 118, 110] : List Nat),
+  have agree : ∀ column ∈ ([105, 106, 107, 108, 109, 110, 111, 112, 104] : List Nat),
       machineAssignment variant (gapRow index 1) column = phasePooledAssignment index 1 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 1 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 16
     (machineAssignment variant (gapRow index 1)) (phasePooledAssignment index 1)
-    [111, 112, 113, 114, 115, 116, 117, 118, 110] (machine_query16_variables variant) agree).mpr
+    [105, 106, 107, 108, 109, 110, 111, 112, 104] (machine_query16_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -831,16 +831,16 @@ private theorem loop_pooled_16_phase_1 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_16_phase_2 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 16
       (Verification.environment (machineAssignment variant (gapRow index 2))) := by
-  have agree : ∀ column ∈ ([111, 112, 113, 114, 115, 116, 117, 118, 110] : List Nat),
+  have agree : ∀ column ∈ ([105, 106, 107, 108, 109, 110, 111, 112, 104] : List Nat),
       machineAssignment variant (gapRow index 2) column = phasePooledAssignment index 2 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 2 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 16
     (machineAssignment variant (gapRow index 2)) (phasePooledAssignment index 2)
-    [111, 112, 113, 114, 115, 116, 117, 118, 110] (machine_query16_variables variant) agree).mpr
+    [105, 106, 107, 108, 109, 110, 111, 112, 104] (machine_query16_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -856,16 +856,16 @@ private theorem loop_pooled_16_phase_2 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_16_phase_3 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 16
       (Verification.environment (machineAssignment variant (gapRow index 3))) := by
-  have agree : ∀ column ∈ ([111, 112, 113, 114, 115, 116, 117, 118, 110] : List Nat),
+  have agree : ∀ column ∈ ([105, 106, 107, 108, 109, 110, 111, 112, 104] : List Nat),
       machineAssignment variant (gapRow index 3) column = phasePooledAssignment index 3 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 3 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 16
     (machineAssignment variant (gapRow index 3)) (phasePooledAssignment index 3)
-    [111, 112, 113, 114, 115, 116, 117, 118, 110] (machine_query16_variables variant) agree).mpr
+    [105, 106, 107, 108, 109, 110, 111, 112, 104] (machine_query16_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -888,16 +888,16 @@ private theorem loop_pooled_16_phase_3 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_17_phase_0 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 17
       (Verification.environment (machineAssignment variant (gapRow index 0))) := by
-  have agree : ∀ column ∈ ([120, 121, 122, 123, 124, 125, 126, 127, 119] : List Nat),
+  have agree : ∀ column ∈ ([114, 115, 116, 117, 118, 119, 120, 121, 113] : List Nat),
       machineAssignment variant (gapRow index 0) column = phasePooledAssignment index 0 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 0 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 17
     (machineAssignment variant (gapRow index 0)) (phasePooledAssignment index 0)
-    [120, 121, 122, 123, 124, 125, 126, 127, 119] (machine_query17_variables variant) agree).mpr
+    [114, 115, 116, 117, 118, 119, 120, 121, 113] (machine_query17_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -913,16 +913,16 @@ private theorem loop_pooled_17_phase_0 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_17_phase_1 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 17
       (Verification.environment (machineAssignment variant (gapRow index 1))) := by
-  have agree : ∀ column ∈ ([120, 121, 122, 123, 124, 125, 126, 127, 119] : List Nat),
+  have agree : ∀ column ∈ ([114, 115, 116, 117, 118, 119, 120, 121, 113] : List Nat),
       machineAssignment variant (gapRow index 1) column = phasePooledAssignment index 1 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 1 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 17
     (machineAssignment variant (gapRow index 1)) (phasePooledAssignment index 1)
-    [120, 121, 122, 123, 124, 125, 126, 127, 119] (machine_query17_variables variant) agree).mpr
+    [114, 115, 116, 117, 118, 119, 120, 121, 113] (machine_query17_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -938,16 +938,16 @@ private theorem loop_pooled_17_phase_1 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_17_phase_2 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 17
       (Verification.environment (machineAssignment variant (gapRow index 2))) := by
-  have agree : ∀ column ∈ ([120, 121, 122, 123, 124, 125, 126, 127, 119] : List Nat),
+  have agree : ∀ column ∈ ([114, 115, 116, 117, 118, 119, 120, 121, 113] : List Nat),
       machineAssignment variant (gapRow index 2) column = phasePooledAssignment index 2 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 2 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 17
     (machineAssignment variant (gapRow index 2)) (phasePooledAssignment index 2)
-    [120, 121, 122, 123, 124, 125, 126, 127, 119] (machine_query17_variables variant) agree).mpr
+    [114, 115, 116, 117, 118, 119, 120, 121, 113] (machine_query17_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -963,16 +963,16 @@ private theorem loop_pooled_17_phase_2 (variant : Variant) (index : Fin 55) :
 private theorem loop_pooled_17_phase_3 (variant : Variant) (index : Fin 55) :
     queryAt (gMachineQueries variant) 17
       (Verification.environment (machineAssignment variant (gapRow index 3))) := by
-  have agree : ∀ column ∈ ([120, 121, 122, 123, 124, 125, 126, 127, 119] : List Nat),
+  have agree : ∀ column ∈ ([114, 115, 116, 117, 118, 119, 120, 121, 113] : List Nat),
       machineAssignment variant (gapRow index 3) column = phasePooledAssignment index 3 column := by
     intro column member
-    have bounded : 86 ≤ column ∧ column ≤ 127 := by
+    have bounded : 82 ≤ column ∧ column ≤ 121 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
     exact loop_pooled_phase_coordinate variant index 3 column bounded.1 bounded.2
   apply (queryAt_eval_congr (gMachineQueries variant) 17
     (machineAssignment variant (gapRow index 3)) (phasePooledAssignment index 3)
-    [120, 121, 122, 123, 124, 125, 126, 127, 119] (machine_query17_variables variant) agree).mpr
+    [114, 115, 116, 117, 118, 119, 120, 121, 113] (machine_query17_variables variant) agree).mpr
   dsimp only [queryAt, gMachineQueries, UnifiedReduced.importedConstraints,
     FlatOperation.lookups, List.getElem?_cons_zero, List.getElem?_cons_succ]
   dsimp only [Lookup.Contains, Table.toRaw, fromElements]
@@ -1116,8 +1116,8 @@ private theorem machine_timestamps_of_coordinates
     (c34 : assignment 34 = prior 0) (c35 : assignment 35 = 0)
     (c40 : assignment 40 = prior 1) (c41 : assignment 41 = 0)
     (c46 : assignment 46 = prior 2) (c47 : assignment 47 = 0)
-    (c131 : assignment 131 = 1) (c132 : assignment 132 = 1)
-    (c133 : assignment 133 = 1) :
+    (c123 : assignment 123 = 1) (c124 : assignment 124 = 1)
+    (c125 : assignment 125 = 1) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment assignment)
       UnifiedReduced.importedConstraintsTimestampLookups := by
   rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
@@ -1137,23 +1137,23 @@ private theorem machine_timestamps_of_coordinates
         timestampBase, babyBearModulus]
     · have low := query_borrowed_low (current + (0 : Fin 3).val) (prior 0)
         (past 0) (small 0)
-      simpa [Expression.eval, query_environment_get, c2, c34, c131, Nat.cast_add,
+      simpa [Expression.eval, query_environment_get, c2, c34, c123, Nat.cast_add,
         sub_eq_add_neg, add_assoc, add_left_comm, add_comm] using low
-    · norm_num [Expression.eval, query_environment_get, c3, c35, c131,
+    · norm_num [Expression.eval, query_environment_get, c3, c35, c123,
         timestampBase, babyBearModulus]
       exact query_timestamp_nat 524287 (by decide)
     · have low := query_borrowed_low (current + (1 : Fin 3).val) (prior 1)
         (past 1) (small 1)
-      simpa [Expression.eval, query_environment_get, c2, c40, c132, Nat.cast_add,
+      simpa [Expression.eval, query_environment_get, c2, c40, c124, Nat.cast_add,
         sub_eq_add_neg, add_assoc, add_left_comm, add_comm] using low
-    · norm_num [Expression.eval, query_environment_get, c3, c41, c132,
+    · norm_num [Expression.eval, query_environment_get, c3, c41, c124,
         timestampBase, babyBearModulus]
       exact query_timestamp_nat 524287 (by decide)
     · have low := query_borrowed_low (current + (2 : Fin 3).val) (prior 2)
         (past 2) (small 2)
-      simpa [Expression.eval, query_environment_get, c2, c46, c133, Nat.cast_add,
+      simpa [Expression.eval, query_environment_get, c2, c46, c125, Nat.cast_add,
         sub_eq_add_neg, add_assoc, add_left_comm, add_comm] using low
-    · norm_num [Expression.eval, query_environment_get, c3, c47, c133,
+    · norm_num [Expression.eval, query_environment_get, c3, c47, c125,
         timestampBase, babyBearModulus]
       exact query_timestamp_nat 524287 (by decide)
 

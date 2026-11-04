@@ -147,6 +147,18 @@ quote normalization. The 120 native equations and every Review premise, resource
 limit and trust gate are unchanged. Remaining Path-G/full source validation,
 the environment audit and final full assurance are still pending.
 
+Run [41891337613](https://github.com/matter-labs/zksync-airbender/actions/runs/41891337613)
+on `fd7c0fee5` passed `Tests.PathGLoopCPU.Equations`: all 120 native CPU equations
+for 228 rows and three variants are checked. It then failed in the query helpers
+at `PathGLoopNativeQueries.lean:195:4`, which still referenced old auxiliary
+positions. The thirteen range coordinates, five pooled support/stencil regions
+and three timestamp-borrow coordinates are aligned with the current native JSON
+and corrected witness. Structural checks pin every range/support entry to that
+JSON; the worker section is unchanged. No query, Review premise, production
+behavior, artifact, resource limit or trust gate is removed or weakened. Complete
+query/acceptance, source/runtime, environment and final full assurance validation
+remain pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;
