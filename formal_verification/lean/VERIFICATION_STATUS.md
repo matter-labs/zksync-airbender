@@ -223,6 +223,17 @@ Four lightweight inventory controls compare bounds and interval coverage with
 the native JSON, including missing/overlapping/outside-domain negative controls.
 CI runs them before toolchain and native work. Lean validation remains pending.
 
+Diagnosis [41909111177](https://github.com/matter-labs/zksync-airbender/actions/runs/41909111177)
+on `6dba399d9` compiled the corrected native program certificates and Path-G
+acceptance, then failed in the consumed-message transport helpers. Their tag
+lists still named old columns 88/92/101/110/119; they now name native
+82/86/95/104/113. A preflight control derives those tag coordinates from the
+native lookup AST and checks both helper contracts and their five applications.
+The proof tolerates simplification having already removed conditional branches.
+The failed leaf exited 1 in 32.62 seconds at 575.23 MiB, with no owned children
+left; the selected-source phase took 899.54 seconds. Complete derivative,
+fixture-set, warm and full-assurance validation remain pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

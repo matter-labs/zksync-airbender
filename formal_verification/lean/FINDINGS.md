@@ -350,6 +350,22 @@ outside-domain intervals. They run before compiler/native work. The import-only
 fixture gate includes the consumed-message derivative. These source checks
 pass; Lean still must validate the repaired certificates and derivative.
 
+Diagnosis [41909111177](https://github.com/matter-labs/zksync-airbender/actions/runs/41909111177)
+on `6dba399d9` compiled the corrected `AirbenderUnifiedNative` certificates,
+Path-G query/acceptance modules and consumed-message data. It then failed at
+`PathGConsumedMessage/Core.lean:64:12`: `split_ifs` had no remaining conditional
+after simplification. Five transport goals also exposed stale CPU pooled-tag
+coordinates 88/92/101/110/119 instead of native 82/86/95/104/113. Both helper
+contracts and their five applications now cover the actual native tags; the
+tactic tolerates branches already simplified away. The no-ROM transport claim
+and complete native-acceptance conclusions are retained.
+
+A new lightweight preflight control derives the five coordinates from the
+native generic-lookup AST and checks those contracts/applications. The failed
+leaf exited 1 in 32.62 seconds at 575.23 MiB charged footprint, with no owned
+children left. This was a stale test-proof interface, with no production
+defect identified. Lean CI still must validate the derivative and full set.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

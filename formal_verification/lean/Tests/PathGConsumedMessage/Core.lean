@@ -55,17 +55,18 @@ private def cpuQueries (state : State) : List (Lookup (ZMod babyBearModulus)) :=
   FlatOperation.lookups (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table state))
 
 private theorem cpu_tags (index : Fin 228) :
-    ∀ column ∈ ([88, 92, 101, 110, 119] : List Nat),
+    ∀ column ∈ ([82, 86, 95, 104, 113] : List Nat),
       PathGLoopNative.machineAssignment .protectedMessage index column ≠ 34 := by
   intro column member
   simp only [List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl | rfl | rfl
   all_goals simp [PathGLoopNative.machineAssignment]
-  all_goals split_ifs <;> decide +kernel
+  all_goals try split_ifs
+  all_goals decide +kernel
 
 private theorem cpu_query_transport {oldState newState : State}
     (assignment : Nat → ZMod babyBearModulus)
-    (tags : ∀ column ∈ ([88, 92, 101, 110, 119] : List Nat), assignment column ≠ 34)
+    (tags : ∀ column ∈ ([82, 86, 95, 104, 113] : List Nat), assignment column ≠ 34)
     (query : Fin 18)
     (member : queryAt (cpuQueries oldState) query.val
       (Verification.environment assignment)) :
@@ -77,11 +78,11 @@ private theorem cpu_query_transport {oldState newState : State}
     | exact member
     | refine setup_lookup_transport (newState := newState) ?_ member
   all_goals first
-    | simpa [Expression.eval, Verification.environment] using tags 88 (by decide)
-    | simpa [Expression.eval, Verification.environment] using tags 92 (by decide)
-    | simpa [Expression.eval, Verification.environment] using tags 101 (by decide)
-    | simpa [Expression.eval, Verification.environment] using tags 110 (by decide)
-    | simpa [Expression.eval, Verification.environment] using tags 119 (by decide)
+    | simpa [Expression.eval, Verification.environment] using tags 82 (by decide)
+    | simpa [Expression.eval, Verification.environment] using tags 86 (by decide)
+    | simpa [Expression.eval, Verification.environment] using tags 95 (by decide)
+    | simpa [Expression.eval, Verification.environment] using tags 104 (by decide)
+    | simpa [Expression.eval, Verification.environment] using tags 113 (by decide)
 
 private theorem setup_zero (state : State) :
     (UnifiedReduced.Setup.table state (p := babyBearModulus)).Contains #[]

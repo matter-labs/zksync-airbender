@@ -31,7 +31,30 @@ class NativeCPUCertificates(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         layout = REPO / "cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json"
-        cls.count = len(json.loads(layout.read_text())["structured_statements"])
+        cls.layout = json.loads(layout.read_text())
+        cls.count = len(cls.layout["structured_statements"])
+
+    def test_consumed_message_transport_checks_every_native_pooled_tag(self):
+        placement = {json.dumps(arg, sort_keys=True): int(column)
+                     for column, arg in self.layout["placement_data"].items()}
+        tags = []
+        for query in self.layout["generic_lookups"]:
+            tag = query["columns"][-1]
+            self.assertEqual(tag["constant"], 0)
+            self.assertEqual(len(tag["linear_terms"]), 1)
+            coefficient, arg = tag["linear_terms"][0]
+            self.assertEqual(coefficient, (1 << 32) % 2013265921)
+            if "ScratchSpace" in arg:
+                arg = self.layout["scratch_space_mapping_rev"][str(arg["ScratchSpace"])]
+            tags.append(placement[json.dumps(arg, sort_keys=True)])
+        source = (ROOT / "Tests/PathGConsumedMessage/Core.lean").read_text()
+        contracts = []
+        for match in re.finditer(r"private theorem cpu_(?:tags|query_transport)\b([\s\S]*?)(?=\nprivate theorem |\Z)", source):
+            explicit = re.search(r"\(\[([\d, ]+)\] : List Nat\)", match[1])
+            self.assertIsNotNone(explicit)
+            contracts.append([int(value) for value in explicit[1].split(",")])
+        self.assertEqual(contracts, [tags, tags])
+        self.assertEqual([int(value) for value in re.findall(r"using tags (\d+) \(by decide\)", source)], tags)
 
     def test_every_explicit_unified_count_matches_native(self):
         checked = 0
