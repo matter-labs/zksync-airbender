@@ -1,4 +1,5 @@
 import Human.Helpers.Memory.Values
+import Human.Helpers.Memory.InitialImage
 import Human.Helpers.Context.PCState.Model
 import Human.ISA.State
 
