@@ -244,9 +244,9 @@ theorem public_dataflow_protocol_source (negative : Bool) : UnifiedReduced.Calle
 
 theorem public_dataflow_protocol_preparation (negative : Bool) : UnifiedReduced.Caller.PreparedBoundaryExecution
     (gapData negative) (gapBefore negative) chainCells 16 12 (UnifiedReduced.Caller.hashPreparation (.blakeG true)) :=
-  UnifiedReduced.Caller.register_dataflow_hash_preparation_soundness (span := .blakeG true) (by decide +kernel) (by decide +kernel)
-    (by decide +kernel) (gapAccepted negative) (gapInputs negative) (gapFramed negative) (gapLastScope negative)
-    (by decide) (by cases negative <;> decide +kernel) (by decide)
+  UnifiedReduced.Caller.hash_control_preparation_soundness (span := .blakeG true)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (gapAccepted negative) (gapInputs negative) (public_dataflow_protocol_source negative) (by decide)
 
 theorem public_dataflow_gap_retains_refresh_and_write (negative : Bool) :
     ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (atGap : State),

@@ -228,6 +228,9 @@ combined with cold-build, requalification, baseline-refresh or full-assurance
 flags. A passing diagnosis is not PR validation: follow it with standard warm
 validation, the environment audit and final full assurance. Leaving
 `diagnose_modules` empty retains every normal verification stage.
+`Tests.NativeCPUFixtures` is an import-only gate for the concrete CPU witness
+tests, including the connected delegation/control and Path-G examples. Select
+it to diagnose that set and its dependencies in one run.
 
 Reviewed source changes require a manual run with `requalify_setups=true`.
 Candidate receipts stay outside the checkout until all native jobs, complete

@@ -149,7 +149,7 @@ private theorem abiCurrentFetch (highControl : Bool) : ∃ events finalState,
 
 theorem issued_bigint_abi_gap_caller_cycles (highControl : Bool) :
     UnifiedReduced.Caller.CallerCycleEffects (abiData highControl) [] (abiBefore highControl) cells :=
-  UnifiedReduced.Caller.caller_cycles_soundness (abiAccepted highControl) (abiInputs highControl) (abiCode highControl)
+  UnifiedReduced.Caller.Proofs.caller_cycles (abiAccepted highControl) (abiInputs highControl) (abiCode highControl)
     (by change (0 : Nat) < 4; decide)
 
 theorem issued_bigint_without_opcode :
@@ -739,9 +739,9 @@ theorem caller_gap_protocol_source : UnifiedReduced.Caller.HashControlPreparatio
 
 theorem caller_gap_protocol_preparation : UnifiedReduced.Caller.PreparedBoundaryExecution frameData frameBefore frameCells 16 12
     (UnifiedReduced.Caller.hashPreparation (.blakeG true)) :=
-  UnifiedReduced.Caller.register_dataflow_hash_preparation_soundness (span := .blakeG true)
-    (by decide +kernel) (by decide +kernel) (by decide +kernel) frameAccepted frameInputs framePrior frameLastScope
-    (by decide) (by decide +kernel) (by decide)
+  UnifiedReduced.Caller.hash_control_preparation_soundness (span := .blakeG true)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (frameAccepted) (frameInputs) (caller_gap_protocol_source) (by decide)
 
 theorem caller_gap_actual_worker_effects :
     ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (atGap : State),
@@ -1318,9 +1318,9 @@ theorem bigint_return_normalized_protocol_source (kind : Fin 4) :
 theorem bigint_return_normalized_protocol_preparation (kind : Fin 4) :
     UnifiedReduced.Caller.PreparedBoundaryExecution (normalizeData kind) (normalizeBefore kind) cells 16 12
       (UnifiedReduced.Caller.hashPreparation (.blakeG true)) :=
-  UnifiedReduced.Caller.register_dataflow_hash_preparation_soundness (span := .blakeG true)
-    (by decide +kernel) (by decide +kernel) (by decide +kernel) (normalizeAccepted kind) (normalizeInputs kind)
-    (.bigintReturn (normalizeScope kind)) (normalizeLastScope kind) (by decide) (by decide +kernel) (by decide)
+  UnifiedReduced.Caller.hash_control_preparation_soundness (span := .blakeG true)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (normalizeAccepted kind) (normalizeInputs kind) (bigint_return_normalized_protocol_source kind) (by decide)
 
 theorem bigint_return_normalized_actual (kind : Fin 4) :
     ∃ (seeds finishTokens : List (MemoryToken babyBearModulus)) (earlier current : List MemoryAccess) («start» finish : State),

@@ -316,6 +316,25 @@ These are diagnostic checks, not Lean validation. The affected modules still
 require CI; production code, Review statements and retained artifacts remain
 unchanged.
 
+Diagnosis [41905482598](https://github.com/matter-labs/zksync-airbender/actions/runs/41905482598)
+on `a23f1aa01` then found a stale public theorem alias at
+`ControlPreparationBase.lean:291:26`: `prepared_round_masks_soundness` is no
+longer declared. The existing implementation theorem
+`Caller.Proofs.prepared_round_masks` has the same field-capacity, inverse,
+acceptance, prepared-input and alignment premises and the same mask conclusion.
+The test now calls it directly. The failed leaf exited 1 in 37.01 seconds at
+917.14 MiB charged footprint, with no owned children left. This repair changes
+one proof reference and no premise, Review statement or production code.
+
+Checking the connected tests' `_soundness` references against current
+declarations found three more removed alias names. Eight hash-preparation
+applications now pass their already-proved `HashControlPreparation` source
+certificates to public `hash_control_preparation_soundness`. Two caller-cycle
+applications use the existing implementation theorem `Caller.Proofs.caller_cycles`
+with unchanged arguments. This composes the current theorems without adding
+aliases to Review or changing any test statement or premise. Lean CI must
+validate the new applications.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

@@ -264,9 +264,9 @@ theorem public_binary_gap_protocol_source (negative : Bool) : UnifiedReduced.Cal
 
 theorem public_binary_gap_protocol_preparation (negative : Bool) : UnifiedReduced.Caller.PreparedBoundaryExecution
     (binaryGapData negative) (binaryGapBefore negative) chainCells 16 12 (UnifiedReduced.Caller.hashPreparation (.blakeG true)) :=
-  UnifiedReduced.Caller.register_dataflow_hash_preparation_soundness (span := .blakeG true) (by decide +kernel) (by decide +kernel)
-    (by decide +kernel) (binaryGapAccepted negative) (binaryGapInputs negative) (binaryGapFramed negative) (binaryGapLastScope negative)
-    (by decide) (by cases negative <;> decide +kernel) (by decide)
+  UnifiedReduced.Caller.hash_control_preparation_soundness (span := .blakeG true)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (binaryGapAccepted negative) (binaryGapInputs negative) (public_binary_gap_protocol_source negative) (by decide)
 
 theorem public_binary_gap_gap_retains_refresh_and_write (negative : Bool) :
     ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (atGap : State),

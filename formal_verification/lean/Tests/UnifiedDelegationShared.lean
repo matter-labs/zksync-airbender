@@ -1717,7 +1717,7 @@ theorem copy_then_ram_current_fetch (store : Bool) : ∃ events finalState,
 
 theorem copy_then_ram_caller_cycles (store : Bool) :
     UnifiedReduced.Caller.CallerCycleEffects (memoryData store) [memoryEntry store] (memoryBefore store) cells :=
-  UnifiedReduced.Caller.caller_cycles_soundness (memoryAccepted store) (memoryInputs store) (memoryCode store)
+  UnifiedReduced.Caller.Proofs.caller_cycles (memoryAccepted store) (memoryInputs store) (memoryCode store)
     (by change (0 : Nat) < 4; decide)
 
 

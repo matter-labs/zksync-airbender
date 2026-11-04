@@ -288,7 +288,7 @@ theorem prepared_round_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤ p)
     {first last : Fin 10} (different : first ≠ last)
     (firstBit : worker.assignment Blake2Round.Variables.roundBits[first] = 1)
     (lastBit : worker.assignment Blake2Round.Variables.roundBits[last] = 1) : False := by
-  obtain ⟨round, mask⟩ := UnifiedReduced.Caller.prepared_round_masks_soundness hp clockInverse accepted context aligned worker member
+  obtain ⟨round, mask⟩ := UnifiedReduced.Caller.Proofs.prepared_round_masks hp clockInverse accepted context aligned worker member
   haveI : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
   by_cases same : first = round
   · have other : last ≠ round := by omega

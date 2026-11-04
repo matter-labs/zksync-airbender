@@ -194,6 +194,25 @@ no clock-acceptance claim and receive no added one. Shift/bitwise helpers are
 evaluated independently with their declared bit-vector semantics. These checks
 do not replace Lean CI or final assurance.
 
+Diagnosis [41905482598](https://github.com/matter-labs/zksync-airbender/actions/runs/41905482598)
+on `a23f1aa01` failed at `ControlPreparationBase.lean:291:26`: a test still called
+the removed public alias `prepared_round_masks_soundness`. It now calls the
+existing `Caller.Proofs.prepared_round_masks` directly, with the same arguments,
+premises and conclusion. The leaf exited 1 in 37.01 seconds at 917.14 MiB, with
+no owned processes left. No resource or trust gate was involved. The repair
+requires another Lean diagnosis; full verification and assurance are pending.
+
+A declaration audit also found three obsolete public alias names used by
+connected tests. Eight preparation proofs now compose their existing
+`HashControlPreparation` source certificates with the current public
+`hash_control_preparation_soundness` theorem. Two caller-cycle tests call the
+existing `Caller.Proofs.caller_cycles` theorem with their original arguments.
+The test statements, acceptance/initialization/alignment premises and Review
+API remain unchanged. These proof applications await Lean CI validation.
+`Tests.NativeCPUFixtures` now imports the complete affected CPU test set and
+its dependencies for one selected-module diagnosis. It adds no statements or
+assumptions and does not replace full verification or assurance.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

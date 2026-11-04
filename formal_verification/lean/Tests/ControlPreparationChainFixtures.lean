@@ -240,9 +240,9 @@ theorem public_register_chain_protocol_source (negative : Bool) : UnifiedReduced
 
 theorem public_register_chain_protocol_preparation (negative : Bool) : UnifiedReduced.Caller.PreparedBoundaryExecution
     (chainData negative) (chainBefore negative) chainCells 16 12 (UnifiedReduced.Caller.hashPreparation (.blakeG true)) :=
-  UnifiedReduced.Caller.register_chain_hash_preparation_soundness (span := .blakeG true) (by decide +kernel) (by decide +kernel)
-    (by decide +kernel) (chainAccepted negative) (chainInputs negative) (chainPreparation negative)
-    (by cases negative <;> decide +kernel) (by decide)
+  UnifiedReduced.Caller.hash_control_preparation_soundness (span := .blakeG true)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (chainAccepted negative) (chainInputs negative) (public_register_chain_protocol_source negative) (by decide)
 
 theorem public_register_chain_wrong_value_rejected (negative : Bool) : chainValue negative ≠
     (Delegation.Caller.HashSpan.blakeG false).controlStart := by cases negative <;> decide +kernel

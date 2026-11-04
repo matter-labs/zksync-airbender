@@ -312,9 +312,9 @@ theorem public_memory_gap_protocol_source (kind : Fin 3) : UnifiedReduced.Caller
 
 theorem public_memory_gap_protocol_preparation (kind : Fin 3) : UnifiedReduced.Caller.PreparedBoundaryExecution
     (memoryGapData kind) (memoryGapBefore kind) memoryGapCells 16 12 (UnifiedReduced.Caller.hashPreparation (.blakeG true)) :=
-  UnifiedReduced.Caller.register_dataflow_hash_preparation_soundness (span := .blakeG true) (by decide +kernel) (by decide +kernel)
-    (by decide +kernel) (memoryGapAccepted kind) (memoryGapInputs kind) (memoryGapFramed kind) (memoryGapLastScope kind)
-    (by decide) (by fin_cases kind <;> decide +kernel) (by decide)
+  UnifiedReduced.Caller.hash_control_preparation_soundness (span := .blakeG true)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (memoryGapAccepted kind) (memoryGapInputs kind) (public_memory_gap_protocol_source kind) (by decide)
 
 theorem public_memory_gap_actual_final_cycle (kind : Fin 3) :
     ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess) (atSource atCut : State),
