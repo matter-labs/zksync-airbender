@@ -56,6 +56,24 @@ class NativeCPUCertificates(unittest.TestCase):
         self.assertEqual(contracts, [tags, tags])
         self.assertEqual([int(value) for value in re.findall(r"using tags (\d+) \(by decide\)", source)], tags)
 
+    def test_consumed_message_store_and_stencil_use_native_word_address_column(self):
+        word = self.layout["range_check_16_lookup_expressions"][0]["input"]
+        self.assertEqual(word["constant"], 0)
+        self.assertEqual(len(word["linear_terms"]), 1)
+        coefficient, arg = word["linear_terms"][0]
+        self.assertEqual(coefficient, (1 << 32) % 2013265921)
+        if "ScratchSpace" in arg:
+            arg = self.layout["scratch_space_mapping_rev"][str(arg["ScratchSpace"])]
+        placement = {json.dumps(value, sort_keys=True): int(column)
+                     for column, value in self.layout["placement_data"].items()}
+        column = placement[json.dumps(arg, sort_keys=True)]
+        for filename, name in (("Data", "cpuStoreAssignment"), ("Native", "newStoreStencil")):
+            source = (ROOT / f"Tests/PathGConsumedMessage/{filename}.lean").read_text()
+            body = re.search(r"(?:private )?def " + name + r"\b([\s\S]*?)(?=\n(?:private )?(?:def|theorem) |\Z)", source)
+            self.assertIsNotNone(body)
+            indices = re.findall(r"else if column = (\d+) then 24\b", body[1])
+            self.assertEqual(indices, [str(column)], name)
+
     def test_every_explicit_unified_count_matches_native(self):
         checked = 0
         for path in (ROOT / "Tests").rglob("*.lean"):

@@ -366,6 +366,17 @@ leaf exited 1 in 32.62 seconds at 575.23 MiB charged footprint, with no owned
 children left. This was a stale test-proof interface, with no production
 defect identified. Lean CI still must validate the derivative and full set.
 
+Focused diagnosis [41914965398](https://github.com/matter-labs/zksync-airbender/actions/runs/41914965398)
+on `01734ad19` passed consumed-message Core and Inputs, then rejected
+`Native.lean:207:79`: its permutation stencil put word address 24 at old column
+78, while the validated data assignment uses native 74. The stencil is aligned
+with the actual row. Its unchanged extensional-equality theorem and complete
+native-acceptance conclusions remain required; no worker column is changed.
+A preflight control checks both definitions against the native range-column
+AST. The failed leaf exited 1 in 61.12 seconds at 889.54 MiB charged footprint,
+with no owned children left. This is another stale constructed test helper,
+with no production defect identified.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

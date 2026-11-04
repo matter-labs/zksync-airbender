@@ -234,6 +234,15 @@ The failed leaf exited 1 in 32.62 seconds at 575.23 MiB, with no owned children
 left; the selected-source phase took 899.54 seconds. Complete derivative,
 fixture-set, warm and full-assurance validation remain pending.
 
+Focused diagnosis [41914965398](https://github.com/matter-labs/zksync-airbender/actions/runs/41914965398)
+on `01734ad19` compiled consumed-message Core and Inputs. It then found the
+separate native-permutation stencil still assigning word address 24 at old
+column 78 (`Native.lean:207:79`). The stencil now uses native column 74, matching
+the already-validated data assignment. A preflight control binds both versions
+to the native range-column AST. Worker column 78 is unchanged. The leaf exited
+1 in 61.12 seconds at 889.54 MiB with no owned children; the focused phase took
+308.06 seconds. Complete derivative and standard verification remain pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

@@ -201,7 +201,7 @@ private def newStoreStencil (column : Nat) : ZMod babyBearModulus :=
   if column = 8 then 32
   else if column = 44 ∨ column = 57 then 96
   else if column = 46 then 719
-  else if column = 78 then 24
+  else if column = 74 then 24
   else oldStoreStencil column
 
 private theorem new_store_assignment : cpuStoreAssignment = newStoreStencil := by
