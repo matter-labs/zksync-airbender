@@ -1,6 +1,6 @@
 # ZK verifier example.
 
-Verifies the RISC-V circuit FRI proof within RISC-V.
+Verifies the riscV circuit FRI proof within riscV.
 
 
 This example is special - as verification requires to run on the `mini` machine, and has to be compiled in release mode.

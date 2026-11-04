@@ -6,24 +6,23 @@ const USE_REDUCED_BLAKE2_ROUNDS: bool = true;
 use fft::GoodAllocator;
 use field::Mersenne31Field;
 use field::Mersenne31Quartic;
-use poseidon2::m31::HASH_SIZE_U32_WORDS;
 use trace_holder::ColumnMajorTrace;
 use trace_holder::RowMajorTrace;
 use worker::Worker;
 
 pub mod blake2s_for_everything_tree;
-pub mod blake2s_for_leafs_poseidon2_for_nodes_tree;
 pub mod blake2s_hash_leafs;
+
+// Rustdoc currently struggles to normalize the inline `[u32; DIGEST_SIZE_U32_WORDS]`
+// return type of `MerkleTreeConstructor::get_proof` when another crate documents APIs
+// that depend on this trait. Giving the digest a stable alias keeps the public API the
+// same while avoiding the problematic method-local const normalization path.
+pub type MerkleTreeDigest = [u32; DIGEST_SIZE_U32_WORDS];
 
 pub type DefaultTreeConstructor =
     crate::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap<
         std::alloc::Global,
     >;
-
-// pub type DefaultTreeConstructor =
-//     crate::merkle_trees::blake2s_for_leafs_poseidon2_for_nodes_tree::Blake2sU32ForLeafsPoseidon2ForNodesTree<
-//         std::alloc::Global,
-//     >;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct MerkleTreeCapVarLength {
@@ -78,10 +77,7 @@ pub trait MerkleTreeConstructor: Sized + Send + Sync {
     fn get_proof<C: GoodAllocator>(
         &self,
         idx: usize,
-    ) -> (
-        [u32; HASH_SIZE_U32_WORDS],
-        Vec<[u32; HASH_SIZE_U32_WORDS], C>,
-    );
+    ) -> (MerkleTreeDigest, Vec<MerkleTreeDigest, C>);
 
     // pub fn verify_proof_over_cap(
     //     _proof: &[[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]],

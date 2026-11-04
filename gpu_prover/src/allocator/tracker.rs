@@ -46,6 +46,10 @@ impl AllocationsTracker {
         }
     }
 
+    pub fn capacity(&self) -> usize {
+        self.lens.iter().sum()
+    }
+
     fn insert_remainder(
         &mut self,
         free_ptr: NonNull<u8>,
@@ -134,6 +138,9 @@ impl AllocationsTracker {
         len: usize,
         placement: AllocationPlacement,
     ) -> Result<NonNull<u8>, AllocError> {
+        if len == 0 {
+            return Ok(self.ptrs[0]);
+        }
         let result = match placement {
             AllocationPlacement::BestFit => self.alloc_best_fit(len),
             AllocationPlacement::Bottom => self.alloc_bottom(len),
@@ -147,7 +154,10 @@ impl AllocationsTracker {
     }
 
     pub fn free(&mut self, mut ptr: NonNull<u8>, mut len: usize) {
-        assert_ne!(len, 0, "attempt to free zero-length allocation");
+        if len == 0 {
+            assert_eq!(ptr, self.ptrs[0]);
+            return;
+        }
         self.used_mem_current -= len;
         unsafe {
             let idx = match self.ptrs.binary_search(&ptr) {
@@ -197,6 +207,16 @@ impl AllocationsTracker {
 
     pub fn get_used_mem_current(&self) -> usize {
         self.used_mem_current
+    }
+
+    /// Largest contiguous free range, i.e. the biggest allocation that can currently
+    /// succeed. `capacity - used` bigger than a failing request means fragmentation.
+    pub fn get_largest_free_range(&self) -> usize {
+        self.free_ptrs_by_len
+            .keys()
+            .next_back()
+            .copied()
+            .unwrap_or(0)
     }
 
     pub fn get_used_mem_peak(&self) -> usize {

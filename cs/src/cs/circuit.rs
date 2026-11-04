@@ -1,12 +1,7 @@
 use super::spec_selection::*;
-use super::witness_placer::WitnessPlacer;
-use super::witness_placer::WitnessResolutionDescription;
 use crate::cs::placeholder::*;
 use crate::cs::utils::collapse_max_quadratic_constraint_into;
-use crate::cs::witness_placer::cs_debug_evaluator::witness_early_branch_if_possible;
-use crate::cs::witness_placer::WitnessComputationalField;
-use crate::cs::witness_placer::WitnessComputationalInteger;
-use crate::cs::witness_placer::WitnessTypeSet;
+use crate::cs::witness_placer::*;
 use crate::definitions::*;
 use crate::devices::optimization_context::OptimizationContext;
 use crate::one_row_compiler::LookupInput;
@@ -33,7 +28,7 @@ pub enum Invariant {
     Substituted((Placeholder, usize)),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShuffleRamQueryType {
     RegisterOnly {
         register_index: Variable,
@@ -93,7 +88,7 @@ impl ShuffleRamQueryType {
 // Prover would have to substitute global timestamp here
 // but itself, and ensure that eventually global read timestamp
 // is < global write timestamp + local offset
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ShuffleRamMemQuery {
     pub query_type: ShuffleRamQueryType,
     pub local_timestamp_in_cycle: usize,
@@ -133,24 +128,25 @@ impl ShuffleRamMemQuery {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LookupQuery<F: PrimeField> {
     pub row: [LookupInput<F>; COMMON_TABLE_WIDTH],
     pub table: LookupQueryTableType,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LookupQueryTableType {
     Variable(Variable),
     Constant(TableType),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LinkedVariablesPair {
     pub initial_var: Variable,
     pub final_var: Variable,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RangeCheckQuery<F: PrimeField> {
     pub input: LookupInput<F>,
     pub width: usize,
@@ -172,7 +168,7 @@ impl<F: PrimeField> RangeCheckQuery<F> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct DelegatedComputationRequest {
     pub execute: Variable,            // assumed boolean
-    pub degegation_type: Variable,    // abstract index
+    pub delegation_type: Variable,    // abstract index
     pub memory_offset_high: Variable, // 16 bit variable
 }
 
@@ -194,11 +190,19 @@ pub enum BatchedMemoryAccessType {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct IndirectAccessOffset {
+    pub variable_dependent: Option<(u32, Variable)>,
+    pub offset_constant: u32,
+    pub assume_no_alignment_overflow: bool,
+    pub is_write_access: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RegisterAccessRequest {
     pub register_index: u32,
     pub register_write: bool,
     pub indirects_alignment_log2: u32,
-    pub indirect_accesses: Vec<bool>,
+    pub indirect_accesses: Vec<IndirectAccessOffset>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -216,11 +220,54 @@ pub enum RegisterAccessType {
 pub enum IndirectAccessType {
     Read {
         read_value: [Variable; REGISTER_SIZE],
+        variable_dependent: Option<(u32, Variable, usize)>,
+        offset_constant: u32,
+        assume_no_alignment_overflow: bool,
     },
     Write {
         read_value: [Variable; REGISTER_SIZE],
         write_value: [Variable; REGISTER_SIZE],
+        variable_dependent: Option<(u32, Variable, usize)>,
+        offset_constant: u32,
+        assume_no_alignment_overflow: bool,
     },
+}
+
+impl IndirectAccessType {
+    pub const fn consider_aligned(&self) -> bool {
+        match self {
+            Self::Read {
+                assume_no_alignment_overflow,
+                ..
+            } => *assume_no_alignment_overflow,
+            Self::Write {
+                assume_no_alignment_overflow,
+                ..
+            } => *assume_no_alignment_overflow,
+        }
+    }
+
+    pub const fn offset_constant(&self) -> u32 {
+        match self {
+            Self::Read {
+                offset_constant, ..
+            } => *offset_constant,
+            Self::Write {
+                offset_constant, ..
+            } => *offset_constant,
+        }
+    }
+
+    pub const fn variable_dependent(&self) -> Option<(u32, Variable, usize)> {
+        match self {
+            Self::Read {
+                variable_dependent, ..
+            } => *variable_dependent,
+            Self::Write {
+                variable_dependent, ..
+            } => *variable_dependent,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -231,6 +278,7 @@ pub struct RegisterAndIndirectAccesses {
     pub indirect_accesses: Vec<IndirectAccessType>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CircuitOutput<F: PrimeField> {
     pub state_input: Vec<Variable>,
     pub state_output: Vec<Variable>,
@@ -241,8 +289,9 @@ pub struct CircuitOutput<F: PrimeField> {
     pub shuffle_ram_queries: Vec<ShuffleRamMemQuery>,
     pub delegated_computation_requests: Vec<DelegatedComputationRequest>,
     pub degegated_request_to_process: Option<DelegatedProcessingData>,
-    pub batched_memory_accesses: Vec<BatchedMemoryAccessType>,
     pub register_and_indirect_memory_accesses: Vec<RegisterAndIndirectAccesses>,
+    pub decoder_machine_state: Option<DecoderCircuitMachineState<F>>,
+    pub executor_machine_state: Option<OpcodeFamilyCircuitState<F>>,
     pub linked_variables: Vec<LinkedVariablesPair>,
     pub range_check_expressions: Vec<RangeCheckQuery<F>>,
     pub boolean_vars: Vec<Variable>,
@@ -417,8 +466,27 @@ pub trait Circuit<F: PrimeField>: Sized {
                         Num::Var(new_var)
                     }
 
-                    Boolean::Not(_cond) => {
-                        unreachable!()
+                    Boolean::Not(cond) => {
+                        // new_var = flag * b + (1 - flag) * a
+                        let new_var = self.add_variable();
+
+                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            let mask = placer.get_boolean(cond).negate();
+                            let selection_result = WitnessComputationalField::select(
+                                &mask,
+                                &placer.get_field(a),
+                                &placer.get_field(b),
+                            );
+                            placer.assign_field(new_var, &selection_result);
+                        };
+                        self.set_values(value_fn);
+
+                        self.add_constraint(
+                            Constraint::from(new_var)
+                                - (Term::from(cond) * Term::from(b)
+                                    + (Term::from(1) - Term::from(cond)) * Term::from(a)),
+                        );
+                        Num::Var(new_var)
 
                         // // new_var = flag * b + (1 - flag) * a = flag * (b - a) + a
                         // let cnstr: Constraint<F> =
@@ -608,6 +676,47 @@ pub trait Circuit<F: PrimeField>: Sized {
             }
             _ => unreachable!(),
         }
+    }
+
+    // more generic version of is_zero_reg, only works with limbs
+    fn is_zero_sum(&mut self, sum: Constraint<F>) -> Boolean {
+        assert!(sum.degree() <= 1);
+        let is_zero_flag = self.add_variable();
+        let not_zero_flag = Constraint::from(1) - Term::from(is_zero_flag);
+        let inv = self.add_variable();
+
+        let sum_clone = sum.clone();
+        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+            let mut sum_value =
+                <Self::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO);
+            for term in &sum_clone.terms {
+                match term {
+                    Term::Constant(c) => {
+                        let c_value =
+                            <Self::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(*c);
+                        sum_value.add_assign(&c_value);
+                    }
+                    Term::Expression {
+                        coeff,
+                        inner,
+                        degree,
+                    } => {
+                        assert!(*coeff == F::ONE && *degree == 1);
+                        let inner_value = placer.get_field(inner[0]);
+                        sum_value.add_assign(&inner_value);
+                    }
+                }
+            }
+            let inv_value = sum_value.inverse_or_zero();
+            let zflag_value = sum_value.is_zero();
+            placer.assign_field(inv, &inv_value);
+            placer.assign_mask(is_zero_flag, &zflag_value);
+        };
+        self.set_values(value_fn);
+
+        self.add_constraint(Constraint::from(inv) * sum.clone() - not_zero_flag.clone());
+        self.add_constraint((Constraint::from(1) - not_zero_flag) * sum);
+        Boolean::Is(is_zero_flag)
     }
 
     fn equals_to(&mut self, a: Num<F>, b: Num<F>) -> Boolean {
@@ -800,9 +909,23 @@ pub trait Circuit<F: PrimeField>: Sized {
         table_type: TableType,
     ) -> [Variable; N];
 
+    #[track_caller]
+    fn set_variables_from_lookup_constrained<const M: usize, const N: usize>(
+        &mut self,
+        inputs: [LookupInput<F>; M],
+        output_variables: [Variable; N],
+        table_type: Num<F>,
+    );
+
     fn set_log(&mut self, opt_ctx: &OptimizationContext<F, Self>, name: &'static str);
     fn view_log(&self, name: &'static str);
     fn is_satisfied(&mut self) -> bool;
+
+    fn allocate_decoder_circuit_state(&mut self) -> DecoderCircuitMachineState<F>;
+
+    fn allocate_execution_circuit_state<const ASSUME_PREPROCESSED_DECODER_TABLE: bool>(
+        &mut self,
+    ) -> OpcodeFamilyCircuitState<F>;
 }
 
 impl<F: PrimeField> LookupInput<F> {

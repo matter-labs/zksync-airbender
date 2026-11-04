@@ -22,6 +22,7 @@ pub struct ProgramProof {
     pub end_params: [u32; 8],
     pub recursion_chain_preimage: Option<[u32; 16]>,
     pub recursion_chain_hash: Option<[u32; 8]>,
+    pub pow_challenge: u64,
 }
 
 /// This structs covers only the metadata of given set of proofs.
@@ -43,6 +44,7 @@ pub struct ProofMetadata {
     pub prev_end_params_output_hash: Option<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]>,
     // parameters from the previous recursion level.
     pub prev_end_params_output: Option<[u32; 16]>,
+    pub pow_challenge: u64,
 }
 
 /// This struct contains just the proofs.
@@ -80,21 +82,27 @@ impl ProgramProof {
         // basic ones
         responses.push(self.base_layer_proofs.len() as u32);
         for proof in self.base_layer_proofs.iter() {
-            let t = verifier_common::proof_flattener::flatten_full_proof(proof, true);
+            let t = verifier_common::proof_flattener::flatten_full_proof(proof, 1);
             responses.extend(t);
         }
         // then for every allowed delegation circuit
         for delegation_type in allowed_delegation_circuits.iter() {
+            if *delegation_type == riscv_transpiler::common_constants::NON_DETERMINISM_CSR {
+                continue;
+            }
             if let Some(proofs) = self.delegation_proofs.get(&delegation_type) {
                 responses.push(proofs.len() as u32);
                 for proof in proofs.iter() {
-                    let t = verifier_common::proof_flattener::flatten_full_proof(proof, false);
+                    let t = verifier_common::proof_flattener::flatten_full_proof(proof, 0);
                     responses.extend(t);
                 }
             } else {
                 responses.push(0);
             }
         }
+
+        responses.push(self.pow_challenge as u32);
+        responses.push((self.pow_challenge >> 32) as u32);
 
         if let Some(preimage) = self.recursion_chain_preimage {
             responses.extend(preimage);
@@ -130,6 +138,7 @@ impl ProgramProof {
             end_params: proof_metadata.end_params,
             recursion_chain_preimage: proof_metadata.prev_end_params_output,
             recursion_chain_hash: proof_metadata.prev_end_params_output_hash,
+            pow_challenge: proof_metadata.pow_challenge,
         }
     }
     pub fn to_metadata_and_proof_list(self) -> (ProofMetadata, ProofList) {
@@ -152,6 +161,7 @@ impl ProgramProof {
             end_params: self.end_params,
             prev_end_params_output_hash: self.recursion_chain_hash,
             prev_end_params_output: self.recursion_chain_preimage,
+            pow_challenge: self.pow_challenge,
         };
         (proof_metadata, proof_list)
     }

@@ -3,8 +3,8 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 #![feature(iter_advance_by)]
-#![feature(ptr_as_ref_unchecked)]
 #![feature(option_zip)]
+#![feature(allocator_api)]
 
 pub mod definitions;
 

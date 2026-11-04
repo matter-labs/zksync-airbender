@@ -42,6 +42,8 @@ enum PlaceholderTag : u32 {
   InvalidEncoding,
   FirstRegMem,
   SecondRegMem,
+  WriteRegMemReadWitness,
+  WriteRegMemWriteValue,
   MemoryLoadOp,
   WriteRdReadSetWitness,
   ShuffleRamLazyInitAddressThis,
@@ -66,21 +68,26 @@ enum PlaceholderTag : u32 {
   DelegationIndirectWriteValue,
   DelegationNondeterminismAccess,
   DelegationNondeterminismAccessNoSplits,
-};
-
-struct DelegationPayload {
-  u32 register_index;
-  u32 word_index;
-};
-
-union PlaceholderPayload {
-  u32 u32;
-  DelegationPayload delegation_payload;
+  ExecuteOpcodeFamilyCycle,
+  OpcodeFamilyCycleInitialTimestamp,
+  OpcodeFamilyCycleFinalTimestamp,
+  RS1Index,
+  RS2Index,
+  MemLoadAddress,
+  RDIndex,
+  RDIsZero,
+  DecodedImm,
+  DecodedFunct3,
+  DecodedFunct7,
+  DecodedExecutorFamilyMask,
+  LoadStoreRamValue,
+  MemStoreAddress,
+  DelegationIndirectAccessVariableOffset,
 };
 
 struct Placeholder {
   PlaceholderTag tag;
-  PlaceholderPayload payload;
+  u32 payload[2];
 };
 
 } // namespace airbender::witness::placeholder

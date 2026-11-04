@@ -1,299 +1,671 @@
-use super::cpu_worker::{
-    get_cpu_worker_func, CpuWorkerMode, CyclesChunk, NonDeterminism, SetupAndTeardownChunk,
+use super::gpu_manager::GpuManager;
+use super::precomputations::{get_common_precomputations, CircuitPrecomputations};
+use super::A;
+use crate::circuit_type::{
+    CircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
 };
-use super::gpu_manager::{GpuManager, GpuWorkBatch};
-use super::gpu_worker::{
-    GpuWorkRequest, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
-    SetupToCache,
-};
-use super::messages::WorkerResult;
-use super::precomputations::{
-    get_delegation_circuit_precomputations, get_main_circuit_precomputations,
-    CircuitPrecomputations,
-};
-use super::tracer::CycleTracingData;
-use crate::allocator::host::ConcurrentStaticHostAllocator;
-use crate::circuit_type::{CircuitType, DelegationCircuitType, MainCircuitType};
 use crate::cudart::device::get_device_count;
 use crate::cudart::memory::{CudaHostAllocFlags, HostAllocation};
+use crate::execution::cpu_worker::{run_replayer, run_simulator};
+use crate::execution::messages::{
+    GpuWorkBatch, GpuWorkRequest, GpuWorkResult, InitsAndTeardownsData, MemoryCommitmentRequest,
+    MemoryCommitmentResult, ProofRequest, ProofResult, SetupCapsRequest, SimulationResult,
+    TracingData, WorkerResult,
+};
+use crate::execution::simulation_runner::{LockedBoxedMemoryHolder, LockedBoxedTraceChunk};
+use crate::execution::tracing::{SplitTracingType, UnifiedTracingType};
+use crate::machine_type::MachineType;
+use crate::prover::context::ProverContextConfig;
 use crate::prover::tracing_data::TracingDataHost;
-use crate::witness::trace_main::MainTraceHost;
+use crate::witness::trace_unrolled::ShuffleRamInitsAndTeardownsHost;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use crossbeam_utils::sync::WaitGroup;
-use cs::definitions::TimestampData;
-use fft::GoodAllocator;
+use cs::definitions::TimestampScalar;
 use itertools::Itertools;
-use log::{info, trace};
-use prover::definitions::{ExternalChallenges, LazyInitAndTeardown};
+use log::{debug, info, trace, warn};
+use prover::definitions::{
+    AuxArgumentsBoundaryValues, ExternalChallenges, ExternalValues, Transcript,
+};
 use prover::merkle_trees::MerkleTreeCapVarLength;
+use prover::prover_stages::unrolled_prover::UnrolledModeProof;
 use prover::prover_stages::Proof;
-use prover::risc_v_simulator::abstractions::tracer::{
-    RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData,
-};
-use prover::risc_v_simulator::cycle::{
-    IMStandardIsaConfig, IMWithoutSignedMulDivIsaConfig, IWithoutByteAccessIsaConfig,
-    IWithoutByteAccessIsaConfigWithDelegation,
-};
-use prover::tracers::main_cycle_optimized::SingleCycleTracingData;
-use prover::ShuffleRamSetupAndTeardown;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
-use std::alloc::Global;
-use std::cmp::min;
-use std::collections::{HashMap, HashSet, VecDeque};
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::ir::{
+    preprocess_bytecode, FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig,
+    ReducedMachineDecoderConfig,
+};
+use riscv_transpiler::jit::JitRunnerRam;
+use riscv_transpiler::vm::{NonDeterminismCSRSource, RamPeek, SimpleTape};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::ops::Deref;
-use std::sync::Arc;
+use std::marker::PhantomData;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use trace_and_split::{fs_transform_for_memory_and_delegation_arguments, FinalRegisterValue};
+use trace_and_split::{
+    fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits, FinalRegisterValue,
+};
+use type_map::concurrent::TypeMap;
+use verifier_common::security_100::Security100Marker;
+use verifier_common::security_80::Security80Marker;
+use verifier_common::SecurityMarker;
 use worker::Worker;
 
-type A = ConcurrentStaticHostAllocator;
-
-const CPU_WORKERS_COUNT: usize = 6;
-const CYCLES_TRACING_WORKERS_COUNT: usize = CPU_WORKERS_COUNT - 2;
-const CACHE_DELEGATIONS: bool = false;
-
-/// Represents an executable binary that can be proven by the prover
+/// Specifies the execution mode for the prover.
 ///
-///  # Fields
-/// * `key`: unique identifier for the binary, can be for example a &str or usize, anything that implements Clone, Debug, Eq, and Hash
-/// * `circuit_type`: the type of the circuit this binary is for, one of the values from the `MainCircuitType` enumeration
-/// * `bytecode`: the bytecode of the binary, can be a Vec<u32> or any other type that can be converted into Box<[u32]>
-///
+/// Variants:
+/// - `Unrolled`: Uses unrolled circuit types for proof and memory commitment generation.
+/// - `Unified`: Uses a unified circuit type, supported only for the `Reduced` machine type.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ExecutionKind {
+    Unrolled,
+    Unified,
+}
+
+// Cloning shares all heavy state (binaries, JIT cache, precomputations) via `Arc`,
+// so binary holders can be reused across `ExecutionProver` instances.
 #[derive(Clone)]
-pub struct ExecutableBinary<K: Clone + Debug + Eq + Hash, B: Into<Box<[u32]>>> {
-    pub key: K,
-    pub circuit_type: MainCircuitType,
-    pub bytecode: B,
-}
-
 struct BinaryHolder {
-    circuit_type: MainCircuitType,
-    bytecode: Arc<Box<[u32]>>,
-    precomputations: CircuitPrecomputations,
+    execution_kind: ExecutionKind,
+    machine_type: MachineType,
+    binary_image: Arc<Box<[u32]>>,
+    text_section: Arc<Box<[u32]>>,
+    cycles_bound: Option<u32>,
+    jit_cache: Arc<Mutex<TypeMap>>,
+    instruction_tape: Arc<SimpleTape>,
+    precomputations: HashMap<UnrolledCircuitType, CircuitPrecomputations>,
 }
 
-pub struct ExecutionProver<K: Debug + Eq + Hash> {
-    device_count: usize,
-    gpu_manager: GpuManager,
-    worker: Worker,
-    wait_group: Option<WaitGroup>,
-    binaries: HashMap<K, BinaryHolder>,
-    delegation_circuits_precomputations: HashMap<DelegationCircuitType, CircuitPrecomputations>,
-    free_allocator_sender: Sender<A>,
-    free_allocator_receiver: Receiver<A>,
+fn make_binary_holder(
+    worker: &Worker,
+    key: usize,
+    execution_kind: ExecutionKind,
+    machine_type: MachineType,
+    binary_image: Vec<u32>,
+    text_section: Vec<u32>,
+    cycles_bound: Option<u32>,
+) -> BinaryHolder {
+    info!("PROVER inserting binary with key {key:?}");
+    // setups::pad_bytecode_for_proving(&mut binary_image);
+    let preprocess_bytecode_fn = match machine_type {
+        MachineType::Full => preprocess_bytecode::<FullMachineDecoderConfig>,
+        MachineType::FullUnsigned => preprocess_bytecode::<FullUnsignedMachineDecoderConfig>,
+        MachineType::Reduced => preprocess_bytecode::<ReducedMachineDecoderConfig>,
+    };
+    let preprocessed_bytecode = preprocess_bytecode_fn(&text_section);
+    // setups::pad_bytecode_for_proving(&mut text_section);
+    let instruction_tape = Arc::new(SimpleTape::new(&preprocessed_bytecode));
+    let circuit_types = match execution_kind {
+        ExecutionKind::Unrolled => {
+            let memory =
+                UnrolledMemoryCircuitType::get_circuit_types_for_machine_type(machine_type)
+                    .into_iter()
+                    .copied()
+                    .map(|ct| UnrolledCircuitType::Memory(ct));
+            let non_memory =
+                UnrolledNonMemoryCircuitType::get_circuit_types_for_machine_type(machine_type)
+                    .into_iter()
+                    .copied()
+                    .map(|ct| UnrolledCircuitType::NonMemory(ct));
+            memory.chain(non_memory).collect_vec()
+        }
+        ExecutionKind::Unified => {
+            assert_eq!(
+                machine_type,
+                MachineType::Reduced,
+                "Unified execution kind is only supported for Reduced machine type"
+            );
+            vec![UnrolledCircuitType::Unified]
+        }
+    };
+    let precomputations = circuit_types
+        .into_iter()
+        .map(|circuit_type| {
+            debug!("PROVER producing precomputations for circuit {circuit_type:?} and binary with key {key:?}");
+            let mut binary_image = binary_image.clone();
+            setups::pad_bytecode_for_proving(&mut binary_image);
+            let mut text_section = text_section.clone();
+            setups::pad_bytecode_for_proving(&mut text_section);
+            let precomputations = CircuitPrecomputations::new(
+                CircuitType::Unrolled(circuit_type),
+                &binary_image,
+                &text_section,
+                worker,
+            );
+            (circuit_type, precomputations)
+        })
+        .collect();
+    let binary_image = Arc::new(binary_image.into_boxed_slice());
+    let text_section = Arc::new(text_section.into_boxed_slice());
+    let jit_cache = Arc::new(Mutex::new(TypeMap::new()));
+    BinaryHolder {
+        execution_kind,
+        machine_type,
+        binary_image,
+        text_section,
+        cycles_bound,
+        instruction_tape,
+        jit_cache,
+        precomputations,
+    }
 }
 
-struct ChunksCacheEntry<A: GoodAllocator> {
-    circuit_type: CircuitType,
-    circuit_sequence: usize,
-    tracing_data: TracingDataHost<A>,
+/// Configuration for the `ExecutionProver`.
+///
+/// Fields:
+/// - `prover_context_config`: Configuration for the prover context.
+/// - `max_thread_pool_threads`: Optional maximum number of threads for the prover's thread pool.
+/// - `expected_concurrent_jobs`: Expected number of concurrent jobs the prover will handle.
+/// - `replay_worker_threads_count`: Number of threads for replay workers.
+/// - `host_allocator_backing_allocation_size`: Size (in bytes) of each host buffer allocation.
+/// - `host_allocators_per_job_count`: Number of host allocators allocated per job.
+/// - `host_allocators_per_device_count`: Number of host allocators allocated per device.
+/// - `min_free_host_allocators_per_job`: Minimum number of free host allocators per job before cache trimming is triggered.
+#[derive(Clone, Copy, Debug)]
+pub struct ExecutionProverConfiguration {
+    pub prover_context_config: ProverContextConfig,
+    pub max_thread_pool_threads: Option<usize>,
+    pub expected_concurrent_jobs: usize,
+    pub replay_worker_threads_count: usize,
+    pub host_allocator_backing_allocation_size: usize,
+    pub host_allocators_per_job_count: usize,
+    pub host_allocators_per_device_count: usize,
+    pub min_free_host_allocators_per_job: usize,
+    /// Size of the simulated RAM image. `Full` is the only configuration that covers
+    /// the whole 32 bit guest address space, at the cost of a 12 Gb page-locked holder
+    /// per cache entry.
+    pub ram_config: JitRunnerRam,
 }
 
-struct ChunksCache<A: GoodAllocator> {
-    queue: VecDeque<ChunksCacheEntry<A>>,
+impl Default for ExecutionProverConfiguration {
+    fn default() -> Self {
+        Self {
+            prover_context_config: Default::default(),
+            max_thread_pool_threads: None,
+            expected_concurrent_jobs: 1,
+            replay_worker_threads_count: 8,
+            host_allocator_backing_allocation_size: 1 << 26, // 64 MB
+            host_allocators_per_job_count: 256,              // 16 GB
+            host_allocators_per_device_count: 128,           // 8 GB
+            min_free_host_allocators_per_job: 32,            // 2 GB
+            ram_config: JitRunnerRam::Medium,                // 1 GB
+        }
+    }
 }
 
-impl<A: GoodAllocator> ChunksCache<A> {
-    fn new(capacity: usize) -> Self {
-        assert_ne!(capacity, 0);
-        ChunksCache {
-            queue: VecDeque::with_capacity(capacity),
+pub struct CommitMemoryResult {
+    pub final_register_values: [FinalRegisterValue; 32],
+    pub final_pc: u32,
+    pub final_timestamp: TimestampScalar,
+    pub circuit_families_memory_caps: BTreeMap<u8, Vec<Vec<MerkleTreeCapVarLength>>>,
+    pub inits_and_teardowns_memory_caps: Vec<Vec<MerkleTreeCapVarLength>>,
+    pub delegation_circuits_memory_caps: BTreeMap<u32, Vec<Vec<MerkleTreeCapVarLength>>>,
+}
+
+pub struct ProveResult {
+    pub register_final_values: [FinalRegisterValue; 32],
+    pub final_pc: u32,
+    pub final_timestamp: TimestampScalar,
+    pub circuit_families_proofs: BTreeMap<u8, Vec<UnrolledModeProof>>,
+    pub inits_and_teardowns_proofs: Vec<UnrolledModeProof>,
+    pub delegation_proofs: BTreeMap<u32, Vec<Proof>>,
+    pub pow_challenge: u64,
+}
+
+enum ExecutionProverResult {
+    CommitMemory(CommitMemoryResult),
+    Prove(ProveResult),
+}
+
+impl ExecutionProverResult {
+    pub fn into_memory_commitment_result(self) -> CommitMemoryResult {
+        match self {
+            ExecutionProverResult::CommitMemory(result) => result,
+            _ => panic!("expected CommitMemoryResult"),
         }
     }
 
-    fn len(&self) -> usize {
-        self.queue.len()
-    }
-
-    fn capacity(&self) -> usize {
-        self.queue.capacity()
-    }
-
-    fn is_at_capacity(&self) -> bool {
-        assert!(self.len() <= self.capacity());
-        self.len() == self.capacity()
+    pub fn into_proof_result(self) -> ProveResult {
+        match self {
+            ExecutionProverResult::Prove(result) => result,
+            _ => panic!("expected ProveResult"),
+        }
     }
 }
 
-impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
-    ///  Creates a new instance of `ExecutionProver`.
-    ///
-    /// # Arguments
-    ///
-    /// * `max_concurrent_batches`: maximum number of concurrent batches that the prover allocates host buffers for, this is a soft limit, the prover will work with more batches if needed, but it can stall certain operations for some time
-    /// * `binaries`: a vector of executable binaries that the prover can work with, each binary must have a unique key
-    ///
-    /// returns: an instance of `ExecutionProver` that can be used to generate memory commitments and proofs for the provided binaries, it is supposed to be a Singleton instance
-    ///
-    pub fn new(
-        max_concurrent_batches: usize,
-        binaries: Vec<ExecutableBinary<K, impl Into<Box<[u32]>>>>,
-    ) -> Self {
-        assert_ne!(max_concurrent_batches, 0);
-        assert!(!binaries.is_empty());
+struct TraceCacheEntry {
+    pub circuit_type: CircuitType,
+    pub sequence_id: usize,
+    pub inits_and_teardowns: Option<ShuffleRamInitsAndTeardownsHost<A>>,
+    pub tracing_data: Option<TracingDataHost<A>>,
+}
+
+#[derive(Default)]
+struct TraceCache {
+    entries: VecDeque<TraceCacheEntry>,
+    total_requests_count: usize,
+    trivial_unified_inits_and_teardowns_count: usize,
+    simulation_result: Option<SimulationResult>,
+}
+
+impl TraceCache {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn push_back(&mut self, entry: TraceCacheEntry) {
+        self.entries.push_back(entry);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    fn is_not_initialized(&self) -> bool {
+        self.entries.is_empty()
+            && self.total_requests_count == 0
+            && self.trivial_unified_inits_and_teardowns_count == 0
+            && self.simulation_result.is_none()
+    }
+}
+
+pub struct ExecutionProver<S: SecurityMarker> {
+    // The execution prover owns caches, binaries, and GPU workers for a single
+    // security model. Runtime security selection belongs in higher layers.
+    //
+    // Keeping the prover itself marker-generic matches the verifier migration:
+    // once a caller chooses `Security80Marker` or `Security100Marker`, the rest
+    // of the crate stays on that monomorphic path.
+    configuration: ExecutionProverConfiguration,
+    gpu_manager: GpuManager<S>,
+    worker: Arc<Worker>,
+    memory_holders_cache: Arc<Mutex<Vec<LockedBoxedMemoryHolder>>>,
+    trace_chunks_cache: Arc<Mutex<Vec<Vec<LockedBoxedTraceChunk>>>>,
+    binary_holders: BTreeMap<usize, BinaryHolder>,
+    common_precomputations: BTreeMap<CircuitType, CircuitPrecomputations>,
+    free_allocators_sender: Sender<A>,
+    free_allocators_receiver: Receiver<A>,
+    marker: PhantomData<S>,
+}
+
+/// The host-side (CUDA-context-free) state of an [`ExecutionProver`]: the CPU worker
+/// pool, the pinned host memory pools (simulator memory holders, trace chunks, tracing
+/// allocators) and the circuit precomputations for the common circuits and any binaries
+/// registered with [`Self::add_binary`].
+///
+/// Building this state is expensive — it page-locks tens of gigabytes of host memory
+/// and computes setup traces on the CPU — while it holds no GPU resources at all. Build
+/// it once and construct short-lived [`ExecutionProver`]s from it via
+/// [`ExecutionProver::with_host_state`]: each construction then only spins up the GPU
+/// manager (CUDA contexts and the device memory pool), so all device memory is released
+/// when the prover is dropped while the host state stays warm for the next one.
+///
+/// The state is meant to back one `ExecutionProver` at a time; provers built from the
+/// same state share the underlying pools and would contend for them if used
+/// concurrently.
+pub struct ExecutionProverHostState {
+    configuration: ExecutionProverConfiguration,
+    worker: Arc<Worker>,
+    memory_holders_cache: Arc<Mutex<Vec<LockedBoxedMemoryHolder>>>,
+    trace_chunks_cache: Arc<Mutex<Vec<Vec<LockedBoxedTraceChunk>>>>,
+    binary_holders: BTreeMap<usize, BinaryHolder>,
+    common_precomputations: BTreeMap<CircuitType, CircuitPrecomputations>,
+    free_allocators_sender: Sender<A>,
+    free_allocators_receiver: Receiver<A>,
+}
+
+impl ExecutionProverHostState {
+    pub fn new(configuration: ExecutionProverConfiguration) -> Self {
+        let ExecutionProverConfiguration {
+            prover_context_config: _,
+            max_thread_pool_threads,
+            expected_concurrent_jobs,
+            replay_worker_threads_count,
+            host_allocator_backing_allocation_size,
+            host_allocators_per_job_count,
+            host_allocators_per_device_count,
+            min_free_host_allocators_per_job: _,
+            ram_config,
+        } = configuration.clone();
         let device_count = get_device_count().unwrap() as usize;
-        assert_ne!(device_count, 0);
-        let main_circuit_types = binaries
-            .iter()
-            .map(|b| b.circuit_type)
-            .unique()
-            .collect_vec();
-        let delegation_circuit_types = main_circuit_types
-            .iter()
-            .flat_map(|t| t.get_allowed_delegation_circuit_types())
-            .unique()
-            .collect_vec();
-        let max_num_cycles = main_circuit_types
-            .iter()
-            .map(|t| t.get_num_cycles())
-            .max()
-            .unwrap();
-        fn delegation_witness_size(circuit_type: &DelegationCircuitType) -> usize {
-            let factory = circuit_type.get_witness_factory_fn();
-            let witness = factory(Global);
-            witness.write_timestamp.capacity() * size_of::<TimestampData>()
-                + witness.register_accesses.capacity()
-                    * size_of::<RegisterOrIndirectReadWriteData>()
-                + witness.indirect_reads.capacity() * size_of::<RegisterOrIndirectReadData>()
-                + witness.indirect_writes.capacity() * size_of::<RegisterOrIndirectReadWriteData>()
-        }
-        let max_setups_and_teardowns_bytes = max_num_cycles * size_of::<LazyInitAndTeardown>();
-        let max_cycles_tracing_data_bytes = max_num_cycles * size_of::<SingleCycleTracingData>();
-        let max_delegation_bytes = delegation_circuit_types
-            .iter()
-            .map(delegation_witness_size)
-            .max()
-            .unwrap_or_default();
-        let max_bytes = max_setups_and_teardowns_bytes
-            .max(max_cycles_tracing_data_bytes)
-            .max(max_delegation_bytes);
-        let delegation_types_count = delegation_circuit_types.len();
-        let total_allocators_count = max_concurrent_batches
-            * (1 + CYCLES_TRACING_WORKERS_COUNT + delegation_types_count + 1)
-            + device_count * 4;
-        let (free_allocator_sender, free_allocator_receiver) = unbounded();
-        const LOG_CHUNK_SIZE: u32 = 22; // 2^22 = 4 MB
-        const CHUNK_SIZE: usize = 1 << LOG_CHUNK_SIZE;
-        let length = max_bytes.next_multiple_of(CHUNK_SIZE);
-        info!(
-            "PROVER initializing {total_allocators_count} host buffers with {} MB per buffer",
-            length >> 20
-        );
-        let allocations: Vec<HostAllocation<u8>> = (0..total_allocators_count)
-            .into_par_iter()
-            .map(|_| HostAllocation::alloc(length, CudaHostAllocFlags::DEFAULT).unwrap())
-            .collect();
-        info!("PROVER host buffers allocated");
-        for allocation in allocations {
-            let allocator = ConcurrentStaticHostAllocator::new([allocation], LOG_CHUNK_SIZE);
-            free_allocator_sender.send(allocator).unwrap();
-        }
-        let worker = Worker::new();
+        assert_ne!(device_count, 0, "no CUDA capable devices found");
+        let worker = if let Some(thread_pool_threads_count) = max_thread_pool_threads {
+            Worker::new_with_num_threads(thread_pool_threads_count)
+        } else {
+            Worker::new()
+        };
         info!(
             "PROVER thread pool with {} threads created",
             worker.num_cores
         );
-        let wait_group = Some(WaitGroup::new());
-        let binaries: HashMap<K, BinaryHolder> = binaries
-            .into_iter()
-            .map(|b| {
-                let ExecutableBinary {
-                    key,
-                    circuit_type,
-                    bytecode,
-                } = b;
-                let bytecode = Arc::new(bytecode.into());
-                info!(
-                    "PROVER producing precomputations for main circuit {:?} with binary {:?}",
-                    circuit_type, key
-                );
-                let precomputations =
-                    get_main_circuit_precomputations(circuit_type, &bytecode, &worker);
-                info!(
-                    "PROVER produced precomputations for main circuit {:?} with binary {:?}",
-                    circuit_type, key
-                );
-                (
-                    key,
-                    BinaryHolder {
-                        circuit_type,
-                        bytecode,
-                        precomputations,
-                    },
-                )
+        let worker = Arc::new(worker);
+        let simulator_cache_entries_count = expected_concurrent_jobs + 1;
+        info!("PROVER creating memory holders cache with {simulator_cache_entries_count} entries");
+        let memory_holders_cache = (0..simulator_cache_entries_count)
+            .into_par_iter()
+            .map(|_| LockedBoxedMemoryHolder::new(ram_config))
+            .collect();
+        let memory_holders_cache = Arc::new(Mutex::new(memory_holders_cache));
+        let trace_chunks_count = replay_worker_threads_count * 2;
+        info!("PROVER creating trace chunks cache with {simulator_cache_entries_count} x {trace_chunks_count} entries");
+        let trace_chunks_cache = (0..simulator_cache_entries_count)
+            .into_par_iter()
+            .map(|_| {
+                (0..trace_chunks_count)
+                    .into_par_iter()
+                    .map(|_| LockedBoxedTraceChunk::new())
+                    .collect()
             })
             .collect();
-        let delegation_circuits_precomputations: HashMap<
-            DelegationCircuitType,
-            CircuitPrecomputations,
-        > = delegation_circuit_types
-            .into_iter()
-            .map(|t| {
-                info!("PROVER producing precomputations for delegation circuit {t:?}");
-                let result = (t, get_delegation_circuit_precomputations(t, &worker));
-                info!("PROVER produced precomputations for delegation circuit {t:?}");
-                result
-            })
-            .collect();
-        let mut setups_to_cache = vec![];
-        for value in binaries.values() {
-            let setup = SetupToCache {
-                circuit_type: CircuitType::Main(value.circuit_type),
-                precomputations: value.precomputations.clone(),
-            };
-            setups_to_cache.push(setup);
-        }
-        for (&circuit_type, precomputations) in delegation_circuits_precomputations.iter() {
-            let setup = SetupToCache {
-                circuit_type: CircuitType::Delegation(circuit_type),
-                precomputations: precomputations.clone(),
-            };
-            setups_to_cache.push(setup);
-        }
-        let gpu_wait_group = WaitGroup::new();
-        let gpu_manager = GpuManager::new(setups_to_cache, gpu_wait_group.clone());
-        gpu_wait_group.wait();
-        for value in binaries.values() {
-            assert!(value.precomputations.setup_trees_and_caps.get().is_some());
-        }
+        let trace_chunks_cache = Arc::new(Mutex::new(trace_chunks_cache));
+        let binary_holders = BTreeMap::new();
+        info!("PROVER generating common precomputations");
+        let common_precomputations = get_common_precomputations(&worker);
+        // Setup traces dominate the non-pool host footprint, and which backing they got
+        // changes the process's reclaimability, so say it once per prover rather than
+        // leaving it to be inferred from /proc.
+        let mapped_traces = common_precomputations
+            .values()
+            .filter(|p| p.setup_trace.is_mapped())
+            .count();
+        info!(
+            "PROVER {mapped_traces} of {} common setup traces are file-backed, the rest page-locked",
+            common_precomputations.len()
+        );
+        let host_allocators_count = expected_concurrent_jobs * host_allocators_per_job_count
+            + device_count * host_allocators_per_device_count;
+        let host_allocation_size = host_allocator_backing_allocation_size;
+        let host_allocation_log_chunk_size = host_allocation_size.trailing_zeros();
+        info!(
+            "PROVER initializing {} host buffers with {} MB per buffer",
+            host_allocators_count,
+            host_allocation_size >> 20
+        );
+        let (free_allocators_sender, free_allocators_receiver) = unbounded();
+        let free_allocators_sender_ref = &free_allocators_sender;
+        (0..host_allocators_count).into_par_iter().for_each(|_| {
+            let allocation =
+                HostAllocation::alloc(host_allocation_size, CudaHostAllocFlags::DEFAULT).unwrap();
+            let allocator = A::new([allocation], host_allocation_log_chunk_size);
+            free_allocators_sender_ref.send(allocator).unwrap();
+        });
+        info!("PROVER host state initialized");
         Self {
-            device_count,
-            gpu_manager,
+            configuration,
             worker,
-            wait_group,
-            binaries,
-            delegation_circuits_precomputations,
-            free_allocator_sender,
-            free_allocator_receiver,
+            memory_holders_cache,
+            trace_chunks_cache,
+            binary_holders,
+            common_precomputations,
+            free_allocators_sender,
+            free_allocators_receiver,
         }
     }
 
-    fn get_results(
+    /// Registers a binary, computing its circuit precomputations on the host. See
+    /// [`ExecutionProver::add_binary`]; registered binaries are shared by every prover
+    /// constructed from this state.
+    pub fn add_binary(
+        &mut self,
+        key: usize,
+        execution_kind: ExecutionKind,
+        machine_type: MachineType,
+        binary_image: Vec<u32>,
+        text_section: Vec<u32>,
+        cycles_bound: Option<u32>,
+    ) {
+        let holder = make_binary_holder(
+            &self.worker,
+            key,
+            execution_kind,
+            machine_type,
+            binary_image,
+            text_section,
+            cycles_bound,
+        );
+        assert!(self.binary_holders.insert(key, holder).is_none());
+    }
+
+    /// The page-locked host memory this state currently holds: the free host allocator
+    /// buffers plus the simulator memory holders and trace chunks. Every one of those is
+    /// released to the OS when the state is dropped (`cudaFreeHost` / `cudaHostUnregister`
+    /// on their respective drops), and paid for again when it is rebuilt — so this is the
+    /// figure a caller trades against the rebuild cost when it decides to drop a state it
+    /// could otherwise keep warm.
+    ///
+    /// The caches grow on demand, so this reads their current lengths rather than the
+    /// counts the configuration asked for.
+    pub fn pinned_host_bytes(&self) -> usize {
+        let host_allocators = self.free_allocators_receiver.len()
+            * self.configuration.host_allocator_backing_allocation_size;
+        let memory_holders = self.memory_holders_cache.lock().unwrap().len()
+            * LockedBoxedMemoryHolder::pinned_bytes(self.configuration.ram_config);
+        let trace_chunks = self
+            .trace_chunks_cache
+            .lock()
+            .unwrap()
+            .iter()
+            .map(Vec::len)
+            .sum::<usize>()
+            * LockedBoxedTraceChunk::pinned_bytes();
+        host_allocators + memory_holders + trace_chunks
+    }
+}
+
+impl ExecutionProver<Security80Marker> {
+    /// Creates a new 80-bit execution prover with the default configuration.
+    pub fn new_80() -> Self {
+        Self::new()
+    }
+
+    /// Creates a new 80-bit execution prover with the supplied configuration.
+    pub fn with_configuration_80(configuration: ExecutionProverConfiguration) -> Self {
+        Self::with_configuration(configuration)
+    }
+}
+
+impl ExecutionProver<Security100Marker> {
+    /// Creates a new 100-bit execution prover with the default configuration.
+    pub fn new_100() -> Self {
+        Self::new()
+    }
+
+    /// Creates a new 100-bit execution prover with the supplied configuration.
+    pub fn with_configuration_100(configuration: ExecutionProverConfiguration) -> Self {
+        Self::with_configuration(configuration)
+    }
+}
+
+/// Batch id of the setup-tree builds the prover issues for itself, while it is
+/// constructed and in [`ExecutionProver::add_binary`]. Collision with caller-chosen
+/// batch ids is structurally impossible: those builds are fully drained before the
+/// constructor or `add_binary` returns (`add_binary` takes `&mut self`), and the
+/// caller's proving batches are retired from the manager before
+/// `commit_memory_and_prove` returns.
+const SETUP_BATCH_ID: u64 = u64::MAX;
+
+/// The caps of the setup trees a circuit's precomputations memoize once
+/// `ExecutionProver::build_setup_trees` has built them.
+fn memoized_setup_caps(
+    circuit_type: CircuitType,
+    precomputations: &CircuitPrecomputations,
+) -> Vec<MerkleTreeCapVarLength> {
+    precomputations
+        .setup_trees_and_caps
+        .get()
+        .unwrap_or_else(|| {
+            panic!("{circuit_type:?}: setup trees are built when the circuit is registered")
+        })
+        .caps
+        .as_ref()
+        .clone()
+}
+
+impl<S: SecurityMarker> ExecutionProver<S> {
+    /// Creates a new execution prover with the default configuration.
+    pub fn new() -> Self {
+        Self::with_configuration(ExecutionProverConfiguration::default())
+    }
+
+    /// Creates a new execution prover with the supplied configuration.
+    pub fn with_configuration(configuration: ExecutionProverConfiguration) -> Self {
+        let device_count = get_device_count().unwrap() as usize;
+        assert_ne!(device_count, 0, "no CUDA capable devices found");
+        // Spawn the GPU manager first so CUDA context creation overlaps with the
+        // host-state construction.
+        let gpu_wait_group = WaitGroup::new();
+        let gpu_manager =
+            GpuManager::<S>::new(gpu_wait_group.clone(), configuration.prover_context_config);
+        let host_state = ExecutionProverHostState::new(configuration);
+        gpu_wait_group.wait();
+        info!("PROVER initialized");
+        Self::from_parts(gpu_manager, &host_state)
+    }
+
+    /// Creates a new execution prover backed by an existing [`ExecutionProverHostState`].
+    ///
+    /// Only the GPU manager (CUDA contexts and the device memory pool) is created here;
+    /// the worker pool, pinned host memory pools, precomputations and registered
+    /// binaries are shared with the host state, so this is cheap relative to
+    /// [`Self::with_configuration`] and dropping the prover releases all of its device
+    /// memory while the host state stays warm.
+    pub fn with_host_state(host_state: &ExecutionProverHostState) -> Self {
+        let gpu_wait_group = WaitGroup::new();
+        let gpu_manager = GpuManager::<S>::new(
+            gpu_wait_group.clone(),
+            host_state.configuration.prover_context_config,
+        );
+        gpu_wait_group.wait();
+        info!("PROVER initialized from host state");
+        Self::from_parts(gpu_manager, host_state)
+    }
+
+    fn from_parts(gpu_manager: GpuManager<S>, host_state: &ExecutionProverHostState) -> Self {
+        let prover = Self {
+            configuration: host_state.configuration.clone(),
+            gpu_manager,
+            worker: host_state.worker.clone(),
+            memory_holders_cache: host_state.memory_holders_cache.clone(),
+            trace_chunks_cache: host_state.trace_chunks_cache.clone(),
+            binary_holders: host_state.binary_holders.clone(),
+            common_precomputations: host_state.common_precomputations.clone(),
+            free_allocators_sender: host_state.free_allocators_sender.clone(),
+            free_allocators_receiver: host_state.free_allocators_receiver.clone(),
+            marker: PhantomData,
+        };
+        // Build the setup trees of every circuit the prover starts with: the
+        // binary-independent ones and those of the binaries already registered on the
+        // host state. Their caps are then readable at once and the first proofs find
+        // the trees memoized; trees a warm host state already holds cost nothing here.
+        let circuits = prover
+            .common_precomputations
+            .iter()
+            .map(|(circuit_type, precomputations)| (*circuit_type, precomputations.clone()))
+            .chain(prover.binary_holders.values().flat_map(|holder| {
+                holder
+                    .precomputations
+                    .iter()
+                    .map(|(circuit_type, precomputations)| {
+                        (
+                            CircuitType::Unrolled(*circuit_type),
+                            precomputations.clone(),
+                        )
+                    })
+            }))
+            .collect_vec();
+        prover.build_setup_trees(circuits);
+        prover
+    }
+
+    pub fn security(&self) -> verifier_common::SecurityModel {
+        S::MODEL
+    }
+
+    /// Adds a binary to the `ExecutionProver` for proof or memory commitment generation.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - A unique identifier for the binary.
+    /// * `execution_kind` - Specifies the execution mode (`Unrolled` or `Unified`).
+    /// * `machine_type` - The type of machine for which the binary is intended.
+    /// * `binary_image` - The unpadded binary image as a vector of `u32`.
+    /// * `text_section` - The unpadded text section as a vector of `u32`.
+    /// * `cycles_bound` - An optional upper bound on execution cycles.
+    pub fn add_binary(
+        &mut self,
+        key: usize,
+        execution_kind: ExecutionKind,
+        machine_type: MachineType,
+        binary_image: Vec<u32>,
+        text_section: Vec<u32>,
+        cycles_bound: Option<u32>,
+    ) {
+        let holder = make_binary_holder(
+            &self.worker,
+            key,
+            execution_kind,
+            machine_type,
+            binary_image,
+            text_section,
+            cycles_bound,
+        );
+        // Build the binary's setup trees on the GPU now, so its setup caps are readable
+        // right away ([`Self::binary_setup_caps`]) and the first proof of each circuit
+        // finds the trees memoized.
+        let circuits = holder
+            .precomputations
+            .iter()
+            .map(|(circuit_type, precomputations)| {
+                (
+                    CircuitType::Unrolled(*circuit_type),
+                    precomputations.clone(),
+                )
+            })
+            .collect_vec();
+        assert!(self.binary_holders.insert(key, holder).is_none());
+        self.build_setup_trees(circuits);
+    }
+
+    /// Removes a binary from the `ExecutionProver`.
+    ///
+    /// # Arguments
+    ///
+    /// * `key`: A unique identifier for the binary to be removed.
+    ///
+    /// returns: ()
+    ///
+    pub fn remove_binary(&mut self, key: usize) {
+        info!("PROVER removing binary with key {key:?}");
+        assert!(self.binary_holders.remove(&key).is_some());
+    }
+
+    fn get_result(
         &self,
         proving: bool,
-        chunks_cache: &mut Option<ChunksCache<A>>,
+        cache: &mut Option<TraceCache>,
         batch_id: u64,
-        binary_key: &K,
-        num_instances_upper_bound: usize,
-        non_determinism_source: impl NonDeterminism + Send + Sync + 'static,
+        binary_key: usize,
+        non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
+        pow_challenge: u64,
         external_challenges: Option<ExternalChallenges>,
-    ) -> (
-        [FinalRegisterValue; 32],
-        Vec<Vec<MerkleTreeCapVarLength>>,
-        Vec<(u32, Vec<Vec<MerkleTreeCapVarLength>>)>,
-        Vec<Proof>,
-        Vec<(u32, Vec<Proof>)>,
-    ) {
+    ) -> ExecutionProverResult {
+        if let Some(cache) = cache.as_ref() {
+            if proving {
+                assert!(cache.simulation_result.is_some());
+            } else {
+                assert!(cache.is_not_initialized());
+            }
+        }
         assert!(proving ^ external_challenges.is_none());
-        let binary = &self.binaries[&binary_key];
-        let trace_len = binary.precomputations.compiled_circuit.trace_len;
-        assert!(trace_len.is_power_of_two());
-        let cycles_per_circuit = trace_len - 1;
-        let (work_results_sender, worker_results_receiver) = unbounded();
+        let replayers_count = self.configuration.replay_worker_threads_count;
+        let binary_holder = &self.binary_holders[&binary_key];
+        let (work_results_sender, work_results_receiver) = unbounded();
         let (gpu_work_requests_sender, gpu_work_requests_receiver) = unbounded();
+        let (split_snapshot_sender, split_snapshot_receiver) = unbounded();
+        let (unified_snapshot_sender, unified_snapshot_receiver) = unbounded();
         let gpu_work_batch = GpuWorkBatch {
             batch_id,
             receiver: gpu_work_requests_receiver,
@@ -301,527 +673,733 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
         };
         trace!("BATCH[{batch_id}] PROVER sending work batch to GPU manager");
         self.gpu_manager.send_batch(gpu_work_batch);
-        let skip_set = chunks_cache
-            .as_ref()
-            .map(|c| {
-                c.queue
-                    .iter()
-                    .map(|entry| (entry.circuit_type, entry.circuit_sequence))
-                    .collect::<HashSet<(CircuitType, usize)>>()
-            })
-            .unwrap_or_default();
-        let mut main_work_requests_count = 0;
-        if proving {
-            if let Some(cache) = chunks_cache.take() {
-                let external_challenges = external_challenges.unwrap();
-                for entry in cache.queue.into_iter() {
-                    let ChunksCacheEntry {
-                        circuit_type,
-                        circuit_sequence,
-                        tracing_data,
-                    } = entry;
-                    match circuit_type {
-                        CircuitType::Main(main_circuit_type) => {
-                            assert_eq!(main_circuit_type, binary.circuit_type);
-                            let precomputations = binary.precomputations.clone();
-                            let request = ProofRequest {
-                                batch_id,
-                                circuit_type,
-                                circuit_sequence,
-                                precomputations,
-                                tracing_data,
-                                external_challenges,
-                            };
-                            let request = GpuWorkRequest::Proof(request);
-                            trace!("BATCH[{batch_id}] PROVER sending cached main circuit {main_circuit_type:?} chunk {circuit_sequence} proof request to GPU manager");
-                            gpu_work_requests_sender.send(request).unwrap();
-                            main_work_requests_count += 1;
-                        }
-                        CircuitType::Delegation(delegation_circuit_type) => {
-                            let precomputations = self.delegation_circuits_precomputations
-                                [&delegation_circuit_type]
-                                .clone();
-                            let request = ProofRequest {
-                                batch_id,
-                                circuit_type,
-                                circuit_sequence,
-                                precomputations,
-                                tracing_data,
-                                external_challenges,
-                            };
-                            let request = GpuWorkRequest::Proof(request);
-                            trace!("BATCH[{batch_id}] PROVER sending cached delegation circuit {delegation_circuit_type:?} chunk {circuit_sequence} proof request to GPU manager");
-                            gpu_work_requests_sender.send(request).unwrap();
-                        }
-                    }
-                }
+        let mut pending_requests_count = 0;
+        let mut sent_requests_count = 0;
+        let mut requests_served_from_cache = BTreeSet::new();
+        let mut trivial_unified_inits_and_teardowns_count = 0;
+        let mut trivial_unified_inits_and_teardowns = BTreeSet::new();
+        if let Some(cache) = cache.as_mut() {
+            trivial_unified_inits_and_teardowns_count =
+                cache.trivial_unified_inits_and_teardowns_count;
+            for i in 0..trivial_unified_inits_and_teardowns_count {
+                trivial_unified_inits_and_teardowns.insert(i);
             }
-        }
-        trace!("BATCH[{batch_id}] PROVER spawning CPU workers");
-        let non_determinism_source = Arc::new(non_determinism_source);
-        let mut cpu_worker_id = 0;
-        let ram_tracing_mode = CpuWorkerMode::TraceTouchedRam {
-            circuit_type: binary.circuit_type,
-            skip_set: skip_set.clone(),
-            free_allocator: self.free_allocator_receiver.clone(),
-        };
-        self.spawn_cpu_worker(
-            binary.circuit_type,
-            batch_id,
-            cpu_worker_id,
-            num_instances_upper_bound,
-            binary.bytecode.clone(),
-            non_determinism_source.clone(),
-            ram_tracing_mode,
-            work_results_sender.clone(),
-        );
-        cpu_worker_id += 1;
-        for split_index in 0..CYCLES_TRACING_WORKERS_COUNT {
-            let ram_tracing_mode = CpuWorkerMode::TraceCycles {
-                circuit_type: binary.circuit_type,
-                skip_set: skip_set.clone(),
-                split_count: CYCLES_TRACING_WORKERS_COUNT,
-                split_index,
-                free_allocator: self.free_allocator_receiver.clone(),
-            };
-            self.spawn_cpu_worker(
-                binary.circuit_type,
-                batch_id,
-                cpu_worker_id,
-                num_instances_upper_bound,
-                binary.bytecode.clone(),
-                non_determinism_source.clone(),
-                ram_tracing_mode,
-                work_results_sender.clone(),
-            );
-            cpu_worker_id += 1;
-        }
-        let delegation_mode = CpuWorkerMode::TraceDelegations {
-            circuit_type: binary.circuit_type,
-            skip_set,
-            free_allocator: self.free_allocator_receiver.clone(),
-        };
-        self.spawn_cpu_worker(
-            binary.circuit_type,
-            batch_id,
-            cpu_worker_id,
-            num_instances_upper_bound,
-            binary.bytecode.clone(),
-            non_determinism_source.clone(),
-            delegation_mode,
-            work_results_sender.clone(),
-        );
-        trace!("BATCH[{batch_id}] PROVER CPU workers spawned");
-        drop(work_results_sender);
-        let mut final_main_chunks_count = None;
-        let mut final_register_values = None;
-        let mut final_delegation_chunks_counts = None;
-        let mut main_memory_commitments = HashMap::new();
-        let mut delegation_memory_commitments = HashMap::new();
-        let mut main_proofs = HashMap::new();
-        let mut delegation_proofs = HashMap::new();
-        let mut setup_and_teardown_chunks = HashMap::new();
-        let mut cycles_chunks = HashMap::new();
-        let mut delegation_work_sender = Some(gpu_work_requests_sender.clone());
-        let send_main_work_request =
-            move |circuit_sequence: usize,
-                  setup_and_teardown_chunk: Option<ShuffleRamSetupAndTeardown<_>>,
-                  cycles_chunk: CycleTracingData<_>| {
-                let setup_and_teardown = setup_and_teardown_chunk.map(|chunk| chunk.into());
-                let trace = MainTraceHost {
-                    cycles_traced: cycles_chunk.per_cycle_data.len(),
-                    cycle_data: Arc::new(cycles_chunk.per_cycle_data),
-                    num_cycles_chunk_size: cycles_per_circuit,
-                };
-                let tracing_data = TracingDataHost::Main {
-                    setup_and_teardown,
-                    trace,
-                };
-                let main_circuit_type = binary.circuit_type;
-                let circuit_type = CircuitType::Main(main_circuit_type);
-                let precomputations = binary.precomputations.clone();
-                let request = if proving {
-                    let proof_request = ProofRequest {
-                        batch_id,
-                        circuit_type,
-                        circuit_sequence,
-                        precomputations,
-                        tracing_data,
-                        external_challenges: external_challenges.unwrap(),
-                    };
-                    GpuWorkRequest::Proof(proof_request)
-                } else {
-                    let memory_commitment_request = MemoryCommitmentRequest {
-                        batch_id,
-                        circuit_type,
-                        circuit_sequence,
-                        precomputations,
-                        tracing_data,
-                    };
-                    GpuWorkRequest::MemoryCommitment(memory_commitment_request)
-                };
-                if proving {
-                    trace!("BATCH[{batch_id}] PROVER sending main circuit {main_circuit_type:?} chunk {circuit_sequence} proof request to GPU manager");
-                } else {
-                    trace!("BATCH[{batch_id}] PROVER sending main circuit {main_circuit_type:?} chunk {circuit_sequence} memory commitment request to GPU manager");
+            for entry in cache.entries.drain(..) {
+                let TraceCacheEntry {
+                    circuit_type,
+                    sequence_id,
+                    inits_and_teardowns,
+                    tracing_data,
+                } = entry;
+                if matches!(
+                    circuit_type,
+                    CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
+                ) && sequence_id < trivial_unified_inits_and_teardowns_count
+                {
+                    assert!(trivial_unified_inits_and_teardowns.remove(&sequence_id));
                 }
+                let precomputations = match circuit_type {
+                    CircuitType::Delegation(_)
+                    | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+                        self.common_precomputations[&circuit_type].clone()
+                    }
+                    CircuitType::Unrolled(circuit_type) => {
+                        binary_holder.precomputations[&circuit_type].clone()
+                    }
+                };
+                let request = ProofRequest {
+                    batch_id,
+                    circuit_type,
+                    sequence_id,
+                    precomputations,
+                    inits_and_teardowns,
+                    tracing_data,
+                    external_challenges: external_challenges.clone().unwrap(),
+                };
+                let request = GpuWorkRequest::Proof(request);
                 gpu_work_requests_sender.send(request).unwrap();
-            };
-        let mut send_main_work_request = Some(send_main_work_request);
-        for result in worker_results_receiver {
-            match result {
-                WorkerResult::SetupAndTeardownChunk(chunk) => {
-                    let SetupAndTeardownChunk {
-                        index,
-                        chunk: setup_and_teardown_chunk,
-                    } = chunk;
-                    trace!("BATCH[{batch_id}] PROVER received setup and teardown chunk {index}");
-                    if let Some(cycles_chunk) = cycles_chunks.remove(&index) {
-                        let send = send_main_work_request.as_ref().unwrap();
-                        send(index, setup_and_teardown_chunk, cycles_chunk);
-                        main_work_requests_count += 1;
-                    } else {
-                        setup_and_teardown_chunks.insert(index, setup_and_teardown_chunk);
-                    }
-                }
-                WorkerResult::RAMTracingResult {
-                    chunks_traced_count,
-                    final_register_values: values,
-                } => {
-                    trace!("BATCH[{batch_id}] PROVER received RAM tracing result with final register values and {chunks_traced_count} chunk(s) traced");
-                    let previous_count = final_main_chunks_count.replace(chunks_traced_count);
-                    assert!(previous_count.is_none_or(|v| v == chunks_traced_count));
-                    final_register_values = Some(values);
-                }
-                WorkerResult::CyclesChunk(chunk) => {
-                    let CyclesChunk { index, data } = chunk;
-                    trace!("BATCH[{batch_id}] PROVER received cycles chunk {index}");
-                    if let Some(setup_and_teardown_chunk) = setup_and_teardown_chunks.remove(&index)
-                    {
-                        let send = send_main_work_request.as_ref().unwrap();
-                        send(index, setup_and_teardown_chunk, data);
-                        main_work_requests_count += 1;
-                    } else {
-                        cycles_chunks.insert(index, data);
-                    }
-                }
-                WorkerResult::CyclesTracingResult {
-                    chunks_traced_count,
-                } => {
-                    trace!("BATCH[{batch_id}] PROVER received cycles tracing result with {chunks_traced_count} chunk(s) traced");
-                    let previous_count = final_main_chunks_count.replace(chunks_traced_count);
-                    assert!(previous_count.is_none_or(|count| count == chunks_traced_count));
-                }
-                WorkerResult::DelegationWitness {
-                    circuit_sequence,
-                    witness,
-                } => {
-                    let id = witness.delegation_type;
-                    let delegation_circuit_type = DelegationCircuitType::from(id);
-                    if witness.write_timestamp.is_empty() {
-                        trace!("BATCH[{batch_id}] PROVER skipping empty delegation circuit {delegation_circuit_type:?} chunk {circuit_sequence}");
-                        let allocator = witness.write_timestamp.allocator().clone();
-                        drop(witness);
-                        assert_eq!(allocator.get_used_mem_current(), 0);
-                        self.free_allocator_sender.send(allocator).unwrap();
-                    } else {
-                        let circuit_type = CircuitType::Delegation(delegation_circuit_type);
-                        trace!("BATCH[{batch_id}] PROVER received delegation circuit {:?} chunk {circuit_sequence} witnesses", delegation_circuit_type);
-                        let precomputations = self.delegation_circuits_precomputations
-                            [&delegation_circuit_type]
-                            .clone();
-                        let tracing_data = TracingDataHost::Delegation(witness.into());
-                        let request = if proving {
-                            let proof_request = ProofRequest {
-                                batch_id,
-                                circuit_type,
-                                circuit_sequence,
-                                precomputations,
-                                tracing_data,
-                                external_challenges: external_challenges.unwrap(),
-                            };
-                            trace!("BATCH[{batch_id}] PROVER sending delegation circuit {delegation_circuit_type:?} chunk {circuit_sequence} proof request");
-                            GpuWorkRequest::Proof(proof_request)
-                        } else {
-                            let memory_commitment_request = MemoryCommitmentRequest {
-                                batch_id,
-                                circuit_type,
-                                circuit_sequence,
-                                precomputations,
-                                tracing_data,
-                            };
-                            trace!("BATCH[{batch_id}] PROVER sending delegation circuit {delegation_circuit_type:?} chunk {circuit_sequence} memory commitment request");
-                            GpuWorkRequest::MemoryCommitment(memory_commitment_request)
-                        };
-                        delegation_work_sender
-                            .as_ref()
-                            .unwrap()
-                            .send(request)
-                            .unwrap();
-                    }
-                }
-                WorkerResult::DelegationTracingResult {
-                    delegation_chunks_counts,
-                } => {
-                    for (id, count) in delegation_chunks_counts.iter() {
-                        let delegation_circuit_type = DelegationCircuitType::from(*id);
-                        trace!("BATCH[{batch_id}] PROVER received delegation circuit {delegation_circuit_type:?} tracing result with {count} chunk(s) produced", );
-                    }
-                    assert!(final_delegation_chunks_counts
-                        .replace(delegation_chunks_counts)
-                        .is_none());
-                    trace!(
-                        "BATCH[{batch_id}] PROVER sent all delegation memory commitment requests"
-                    );
-                    delegation_work_sender = None;
-                }
-                WorkerResult::MemoryCommitment(commitment) => {
-                    assert!(!proving);
-                    let MemoryCommitmentResult {
-                        batch_id: result_batch_id,
-                        circuit_type,
-                        circuit_sequence,
-                        tracing_data,
-                        merkle_tree_caps,
-                    } = commitment;
-                    assert_eq!(result_batch_id, batch_id);
-                    match tracing_data {
-                        TracingDataHost::Main {
-                            setup_and_teardown,
-                            trace,
-                        } => {
-                            let circuit_type = circuit_type.as_main().unwrap();
-                            trace!("BATCH[{batch_id}] PROVER received main circuit {circuit_type:?} chunk {circuit_sequence} memory commitment");
-                            if chunks_cache
-                                .as_ref()
-                                .map_or(false, |cache| !cache.is_at_capacity())
-                            {
-                                trace!("BATCH[{batch_id}] PROVER caching main circuit {circuit_type:?} chunk {circuit_sequence} trace");
-                                let data = TracingDataHost::Main {
-                                    setup_and_teardown,
-                                    trace,
-                                };
-                                let entry = ChunksCacheEntry {
-                                    circuit_type: CircuitType::Main(circuit_type),
-                                    circuit_sequence,
-                                    tracing_data: data,
-                                };
-                                chunks_cache.as_mut().unwrap().queue.push_back(entry);
-                            } else {
-                                if let Some(setup_and_teardown) = setup_and_teardown {
-                                    let allocator =
-                                        setup_and_teardown.lazy_init_data.allocator().clone();
-                                    drop(setup_and_teardown);
-                                    assert_eq!(allocator.get_used_mem_current(), 0);
-                                    self.free_allocator_sender.send(allocator).unwrap();
-                                }
-                                let allocator = trace.cycle_data.allocator().clone();
-                                drop(trace);
-                                assert_eq!(allocator.get_used_mem_current(), 0);
-                                self.free_allocator_sender.send(allocator).unwrap();
-                            }
-                            assert!(main_memory_commitments
-                                .insert(circuit_sequence, merkle_tree_caps)
-                                .is_none());
-                        }
-                        TracingDataHost::Delegation(witness) => {
-                            let circuit_type = circuit_type.as_delegation().unwrap();
-                            trace!("BATCH[{batch_id}] PROVER received memory commitment for delegation circuit {circuit_type:?} chunk {circuit_sequence}");
-                            if CACHE_DELEGATIONS
-                                && chunks_cache
-                                    .as_ref()
-                                    .map_or(false, |cache| !cache.is_at_capacity())
-                            {
-                                trace!("BATCH[{batch_id}] PROVER caching trace for delegation circuit {circuit_type:?} chunk {circuit_sequence}");
-                                let data = TracingDataHost::Delegation(witness);
-                                let entry = ChunksCacheEntry {
-                                    circuit_type: CircuitType::Delegation(circuit_type),
-                                    circuit_sequence,
-                                    tracing_data: data,
-                                };
-                                chunks_cache.as_mut().unwrap().queue.push_back(entry);
-                            } else {
-                                let allocator = witness.write_timestamp.allocator().clone();
-                                drop(witness);
-                                assert_eq!(allocator.get_used_mem_current(), 0);
-                                self.free_allocator_sender.send(allocator).unwrap();
-                            }
-                            assert!(delegation_memory_commitments
-                                .entry(circuit_type)
-                                .or_insert_with(HashMap::new)
-                                .insert(circuit_sequence, merkle_tree_caps)
-                                .is_none());
-                        }
-                    }
-                }
-                WorkerResult::Proof(proof) => {
-                    assert!(proving);
-                    let ProofResult {
-                        batch_id: result_batch_id,
-                        circuit_type,
-                        circuit_sequence,
-                        tracing_data,
-                        proof,
-                    } = proof;
-                    assert_eq!(result_batch_id, batch_id);
-                    match tracing_data {
-                        TracingDataHost::Main {
-                            setup_and_teardown,
-                            trace,
-                        } => {
-                            let circuit_type = circuit_type.as_main().unwrap();
-                            trace!("BATCH[{batch_id}] PROVER received proof for main circuit {circuit_type:?} chunk {circuit_sequence}");
-                            if let Some(setup_and_teardown) = setup_and_teardown {
-                                let allocator =
-                                    setup_and_teardown.lazy_init_data.allocator().clone();
-                                drop(setup_and_teardown);
-                                assert_eq!(allocator.get_used_mem_current(), 0);
-                                self.free_allocator_sender.send(allocator).unwrap();
-                            }
-                            let allocator = trace.cycle_data.allocator().clone();
-                            drop(trace);
-                            assert_eq!(allocator.get_used_mem_current(), 0);
-                            self.free_allocator_sender.send(allocator).unwrap();
-                            assert!(main_proofs.insert(circuit_sequence, proof).is_none());
-                        }
-                        TracingDataHost::Delegation(witness) => {
-                            let circuit_type = circuit_type.as_delegation().unwrap();
-                            trace!("BATCH[{batch_id}] PROVER received proof for delegation circuit: {circuit_type:?} chunk {circuit_sequence}");
-                            let circuit_type = DelegationCircuitType::from(witness.delegation_type);
-                            let allocator = witness.write_timestamp.allocator().clone();
-                            drop(witness);
-                            assert_eq!(allocator.get_used_mem_current(), 0);
-                            self.free_allocator_sender.send(allocator).unwrap();
-                            assert!(delegation_proofs
-                                .entry(circuit_type)
-                                .or_insert_with(HashMap::new)
-                                .insert(circuit_sequence, proof)
-                                .is_none());
-                        }
-                    }
-                }
-            };
-            if send_main_work_request.is_some() {
-                if let Some(count) = final_main_chunks_count {
-                    if main_work_requests_count == count {
-                        trace!("BATCH[{batch_id}] PROVER sent all main memory commitment requests");
-                        send_main_work_request = None;
-                    }
-                }
+                pending_requests_count += 1;
+                sent_requests_count += 1;
+                requests_served_from_cache.insert((circuit_type, sequence_id));
             }
         }
-        assert!(send_main_work_request.is_none());
-        assert!(delegation_work_sender.is_none());
-        assert!(setup_and_teardown_chunks.is_empty());
-        assert!(cycles_chunks.is_empty());
-        let final_main_chunks_count = final_main_chunks_count.unwrap();
-        assert_ne!(final_main_chunks_count, 0);
-        let final_register_values = final_register_values.unwrap();
-        if proving {
-            assert!(main_memory_commitments.is_empty());
-            assert!(delegation_memory_commitments.is_empty());
-            assert_eq!(main_proofs.len(), final_main_chunks_count);
-            for (id, count) in final_delegation_chunks_counts.unwrap() {
-                assert_eq!(count, delegation_proofs.get(&id.into()).unwrap().len());
+        let mut gpu_work_requests_sender = Some(gpu_work_requests_sender);
+        let execution_kind = binary_holder.execution_kind;
+        let machine_type = binary_holder.machine_type;
+        let abort = Arc::new(AtomicBool::new(false));
+        let mut simulation_result = None;
+        let mut abort_signaled = if let Some(cache) = cache.as_ref() {
+            if proving && cache.total_requests_count == sent_requests_count {
+                gpu_work_requests_sender = None;
+                simulation_result = cache.simulation_result.clone();
+                true
+            } else {
+                false
             }
         } else {
-            assert!(main_proofs.is_empty());
-            assert!(delegation_proofs.is_empty());
-            assert_eq!(main_memory_commitments.len(), final_main_chunks_count);
-            for (id, count) in final_delegation_chunks_counts.unwrap() {
-                assert_eq!(
-                    count,
-                    delegation_memory_commitments.get(&id.into()).unwrap().len()
-                );
+            false
+        };
+        if abort_signaled {
+            debug!("BATCH[{batch_id}] all proof requests have been served from cache, skipping simulation");
+        } else {
+            trace!("BATCH[{batch_id}] PROVER spawning SIMULATOR worker");
+            let (free_trace_chunks_sender, free_trace_chunks_receiver) = unbounded();
+            {
+                let memory_holders_cache = self.memory_holders_cache.clone();
+                let trace_chunks_cache = self.trace_chunks_cache.clone();
+                let free_trace_chunks_sender = free_trace_chunks_sender.clone();
+                let free_allocators_receiver = self.free_allocators_receiver.clone();
+                let binary_image = binary_holder.binary_image.clone();
+                let text_section = binary_holder.text_section.clone();
+                let cycles_bound = binary_holder.cycles_bound;
+                let jit_cache = binary_holder.jit_cache.clone();
+                let non_determinism_source = non_determinism_source.clone();
+                let work_results_sender = work_results_sender.clone();
+                let abort = abort.clone();
+                let worker = self.worker.clone();
+                let ram_config = self.configuration.ram_config;
+                self.worker.pool.spawn(move || {
+                    let mut memory_holder = {
+                        let mut cache = memory_holders_cache.lock().unwrap();
+                        if cache.is_empty() {
+                            drop(cache);
+                            warn!("BATCH[{batch_id}] PROVER memory holders cache is empty, creating a new memory holder");
+                            LockedBoxedMemoryHolder::new(ram_config)
+                        } else {
+                            cache.pop().unwrap()
+                        }
+                    };
+                    let trace_chunks_count = replayers_count * 2;
+                    {
+                        let mut cache = trace_chunks_cache.lock().unwrap();
+                        let chunks = if cache.is_empty() {
+                            drop(cache);
+                            warn!("BATCH[{batch_id}] PROVER trace chunks cache is empty, creating a new set of trace chunks");
+                            (0..trace_chunks_count)
+                                .into_par_iter()
+                                .map(|_| LockedBoxedTraceChunk::new())
+                                .collect()
+                        }
+                        else {
+                            cache.pop().unwrap()
+                        };
+                        for chunk in chunks {
+                            free_trace_chunks_sender.send(chunk).unwrap();
+                        }
+                    }
+                    let free_trace_chunks_receiver_clone = free_trace_chunks_receiver.clone();
+                    match execution_kind {
+                        ExecutionKind::Unrolled => run_simulator::<_, SplitTracingType>(
+                            batch_id,
+                            machine_type,
+                            binary_image,
+                            text_section,
+                            cycles_bound,
+                            jit_cache,
+                            &mut memory_holder,
+                            non_determinism_source,
+                            free_trace_chunks_sender,
+                            free_trace_chunks_receiver,
+                            split_snapshot_sender,
+                            work_results_sender,
+                            free_allocators_receiver,
+                            abort,
+                            &worker,
+                            ram_config,
+                        ),
+                        ExecutionKind::Unified => run_simulator::<_, UnifiedTracingType>(
+                            batch_id,
+                            machine_type,
+                            binary_image,
+                            text_section,
+                            cycles_bound,
+                            jit_cache,
+                            &mut memory_holder,
+                            non_determinism_source,
+                            free_trace_chunks_sender,
+                            free_trace_chunks_receiver,
+                            unified_snapshot_sender,
+                            work_results_sender,
+                            free_allocators_receiver,
+                            abort,
+                            &worker,
+                            ram_config,
+                        ),
+                    };
+                    memory_holders_cache.lock().unwrap().push(memory_holder);
+                    let trace_chunks = free_trace_chunks_receiver_clone.iter().collect_vec();
+                    assert_eq!(trace_chunks.len(), trace_chunks_count);
+                    trace_chunks_cache.lock().unwrap().push(trace_chunks);
+                });
+            }
+            trace!("BATCH[{batch_id}] PROVER spawning REPLAY workers");
+            for worker_id in 0..replayers_count {
+                let instruction_tape = binary_holder.instruction_tape.clone();
+                let split_snapshot_receiver = split_snapshot_receiver.clone();
+                let free_trace_chunks_sender = free_trace_chunks_sender.clone();
+                let unified_snapshot_receiver = unified_snapshot_receiver.clone();
+                let work_results_sender = work_results_sender.clone();
+                let abort = abort.clone();
+                self.worker.pool.spawn(move || match execution_kind {
+                    ExecutionKind::Unrolled => run_replayer::<SplitTracingType>(
+                        batch_id,
+                        worker_id,
+                        instruction_tape,
+                        split_snapshot_receiver,
+                        free_trace_chunks_sender,
+                        work_results_sender,
+                        abort,
+                    ),
+                    ExecutionKind::Unified => run_replayer::<UnifiedTracingType>(
+                        batch_id,
+                        worker_id,
+                        instruction_tape,
+                        unified_snapshot_receiver,
+                        free_trace_chunks_sender,
+                        work_results_sender,
+                        abort,
+                    ),
+                });
+            }
+            drop(free_trace_chunks_sender);
+        }
+        drop(split_snapshot_receiver);
+        drop(unified_snapshot_receiver);
+        drop(work_results_sender);
+        let mut uninitialized_tracing_data = BTreeMap::new();
+        let mut uninitialized_tracing_data_key_by_snapshot_index = BTreeMap::new();
+        let mut processed_snapshots = BTreeSet::<usize>::new();
+        let mut unpaired_unified_inits_and_teardowns = BTreeMap::new();
+        let mut unpaired_unified_tracing_data = BTreeMap::new();
+        let mut circuit_families_memory_caps = BTreeMap::new();
+        let mut inits_and_teardowns_memory_caps = BTreeMap::new();
+        let mut delegation_circuits_memory_caps = BTreeMap::new();
+        let mut circuit_families_proofs = BTreeMap::new();
+        let mut inits_and_teardowns_proofs = BTreeMap::new();
+        let mut delegation_circuits_proofs = BTreeMap::new();
+        for sequence_id in trivial_unified_inits_and_teardowns {
+            let data = InitsAndTeardownsData {
+                circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                sequence_id,
+                inits_and_teardowns: None,
+            };
+            unpaired_unified_inits_and_teardowns.insert(sequence_id, data);
+        }
+        match execution_kind {
+            ExecutionKind::Unrolled => {
+                let non_memory =
+                    UnrolledNonMemoryCircuitType::get_circuit_types_for_machine_type(machine_type)
+                        .iter()
+                        .map(|t| t.get_family_idx());
+                let memory =
+                    UnrolledMemoryCircuitType::get_circuit_types_for_machine_type(machine_type)
+                        .iter()
+                        .map(|t| t.get_family_idx());
+                for family_idx in non_memory.chain(memory) {
+                    circuit_families_memory_caps.insert(family_idx, BTreeMap::new());
+                    circuit_families_proofs.insert(family_idx, BTreeMap::new());
+                }
+            }
+            ExecutionKind::Unified => {
+                let family_idx = UnrolledCircuitType::Unified.get_family_idx();
+                circuit_families_memory_caps.insert(family_idx, BTreeMap::new());
+                circuit_families_proofs.insert(family_idx, BTreeMap::new());
             }
         }
-        let main_memory_commitments = main_memory_commitments
-            .into_iter()
-            .sorted_by_key(|(index, _)| *index)
-            .map(|(_, caps)| caps)
-            .collect_vec();
-        let delegation_memory_commitments = delegation_memory_commitments
-            .into_iter()
-            .sorted_by_key(|(t, _)| *t)
-            .map(|(t, c)| {
-                let caps = c
-                    .into_iter()
-                    .sorted_by_key(|(index, _)| *index)
-                    .map(|(_, caps)| caps)
-                    .collect_vec();
-                (t as u32, caps)
-            })
-            .collect_vec();
-        let main_proofs = main_proofs
-            .into_iter()
-            .sorted_by_key(|(index, _)| *index)
-            .map(|(_, proof)| proof)
-            .collect_vec();
-        let delegation_proofs = delegation_proofs
-            .into_iter()
-            .sorted_by_key(|(t, _)| *t)
-            .map(|(t, p)| {
-                let proofs = p
-                    .into_iter()
-                    .sorted_by_key(|(id, _)| *id)
-                    .map(|(_, proofs)| proofs)
-                    .collect_vec();
-                (t as u32, proofs)
-            })
-            .collect_vec();
-        (
+        let get_gpu_work_request = |inits_and_teardowns: Option<InitsAndTeardownsData<A>>,
+                                    tracing_data: Option<TracingData<A>>|
+         -> GpuWorkRequest<A> {
+            let mut circuit_type_value = None;
+            let mut sequence_id_value = None;
+            let inits_and_teardowns = if let Some(inits_and_teardowns) = inits_and_teardowns {
+                let InitsAndTeardownsData {
+                    circuit_type,
+                    sequence_id,
+                    inits_and_teardowns,
+                } = inits_and_teardowns;
+                circuit_type_value = Some(circuit_type);
+                sequence_id_value = Some(sequence_id);
+                inits_and_teardowns
+            } else {
+                None
+            };
+            let tracing_data = if let Some(tracing_data) = tracing_data {
+                let TracingData {
+                    circuit_type,
+                    sequence_id,
+                    tracing_data,
+                    ..
+                } = tracing_data;
+                assert_eq!(
+                    circuit_type_value.get_or_insert(circuit_type),
+                    &circuit_type
+                );
+                assert_eq!(sequence_id_value.get_or_insert(sequence_id), &sequence_id);
+                Some(tracing_data)
+            } else {
+                None
+            };
+            let circuit_type = circuit_type_value.unwrap();
+            let sequence_id = sequence_id_value.unwrap();
+            let precomputations = match circuit_type {
+                CircuitType::Delegation(_)
+                | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+                    self.common_precomputations[&circuit_type].clone()
+                }
+                CircuitType::Unrolled(circuit_type) => {
+                    binary_holder.precomputations[&circuit_type].clone()
+                }
+            };
+            if proving {
+                let request = ProofRequest {
+                    batch_id,
+                    circuit_type,
+                    sequence_id,
+                    precomputations,
+                    inits_and_teardowns,
+                    tracing_data,
+                    external_challenges: external_challenges.clone().unwrap(),
+                };
+                GpuWorkRequest::Proof(request)
+            } else {
+                let request = MemoryCommitmentRequest {
+                    batch_id,
+                    circuit_type,
+                    sequence_id,
+                    precomputations,
+                    inits_and_teardowns,
+                    tracing_data,
+                };
+                GpuWorkRequest::MemoryCommitment(request)
+            }
+        };
+        for work_result in work_results_receiver {
+            let mut gpu_work_requests = VecDeque::new();
+            match work_result {
+                WorkerResult::SnapshotProduced => {
+                    if !proving {
+                        if let Some(cache) = cache.as_mut() {
+                            self.trim_cache(cache)
+                        }
+                    }
+                }
+                WorkerResult::InitsAndTeardownsData(data) => match data.circuit_type {
+                    CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+                        let request = get_gpu_work_request(Some(data), None);
+                        gpu_work_requests.push_back(request);
+                    }
+                    CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
+                        let sequence_id = data.sequence_id;
+                        if sequence_id < trivial_unified_inits_and_teardowns_count {
+                            assert!(data.inits_and_teardowns.is_none());
+                        }
+                        if !proving
+                            || cache.is_none()
+                            || sequence_id >= trivial_unified_inits_and_teardowns_count
+                        {
+                            assert!(
+                                !unpaired_unified_inits_and_teardowns.contains_key(&sequence_id)
+                            );
+                            if sequence_id >= trivial_unified_inits_and_teardowns_count {
+                                if proving && cache.is_some() {
+                                    assert!(data.inits_and_teardowns.is_some())
+                                } else if data.inits_and_teardowns.is_none() {
+                                    trivial_unified_inits_and_teardowns_count = sequence_id + 1;
+                                }
+                            }
+                            if let Some(tracing_data) =
+                                unpaired_unified_tracing_data.remove(&sequence_id)
+                            {
+                                let request = get_gpu_work_request(Some(data), Some(tracing_data));
+                                gpu_work_requests.push_back(request);
+                            } else {
+                                assert!(unpaired_unified_inits_and_teardowns
+                                    .insert(sequence_id, data)
+                                    .is_none());
+                            }
+                        }
+                    }
+                    _ => panic!("unexpected circuit type for inits and teardowns data"),
+                },
+                WorkerResult::TracingData(data) => {
+                    if data
+                        .participating_snapshot_indexes
+                        .is_subset(&processed_snapshots)
+                    {
+                        match data.circuit_type {
+                            CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+                                panic!(
+                                    "tracing data can not have the inits and teardowns circuit_type"
+                                )
+                            }
+                            CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
+                                let sequence_id = data.sequence_id;
+                                assert!(!unpaired_unified_tracing_data.contains_key(&sequence_id));
+                                if let Some(inits_and_teardowns) =
+                                    unpaired_unified_inits_and_teardowns.remove(&sequence_id)
+                                {
+                                    let request =
+                                        get_gpu_work_request(Some(inits_and_teardowns), Some(data));
+                                    gpu_work_requests.push_back(request);
+                                } else {
+                                    assert!(unpaired_unified_tracing_data
+                                        .insert(sequence_id, data)
+                                        .is_none());
+                                }
+                            }
+                            _ => {
+                                let request = get_gpu_work_request(None, Some(data));
+                                gpu_work_requests.push_back(request);
+                            }
+                        }
+                    } else {
+                        let key = (data.circuit_type, data.sequence_id);
+                        for snapshot_index in data.participating_snapshot_indexes.iter().copied() {
+                            let entry = uninitialized_tracing_data_key_by_snapshot_index
+                                .entry(snapshot_index)
+                                .or_insert_with(|| BTreeSet::new());
+                            assert!(!entry.contains(&key));
+                            entry.insert(key);
+                        }
+                        assert!(uninitialized_tracing_data.insert(key, data).is_none());
+                    }
+                }
+                WorkerResult::SimulationResult(result) => {
+                    simulation_result = Some(result);
+                }
+                WorkerResult::SnapshotReplayed(sequence_id) => {
+                    assert!(processed_snapshots.insert(sequence_id));
+                    if let Some(keys) =
+                        uninitialized_tracing_data_key_by_snapshot_index.get_mut(&sequence_id)
+                    {
+                        for key in keys.clone().into_iter() {
+                            if uninitialized_tracing_data
+                                .get(&key)
+                                .unwrap()
+                                .participating_snapshot_indexes
+                                .is_subset(&processed_snapshots)
+                            {
+                                keys.remove(&key);
+                                let data = uninitialized_tracing_data.remove(&key).unwrap();
+                                match data.circuit_type {
+                                    CircuitType::Unrolled(
+                                        UnrolledCircuitType::InitsAndTeardowns,
+                                    ) => {
+                                        panic!(
+                                            "tracing data can not have the inits and teardowns circuit_type"
+                                        )
+                                    }
+                                    CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
+                                        let sequence_id = data.sequence_id;
+                                        assert!(!unpaired_unified_tracing_data
+                                            .contains_key(&sequence_id));
+                                        if let Some(inits_and_teardowns) =
+                                            unpaired_unified_inits_and_teardowns
+                                                .remove(&sequence_id)
+                                        {
+                                            let request = get_gpu_work_request(
+                                                Some(inits_and_teardowns),
+                                                Some(data),
+                                            );
+                                            gpu_work_requests.push_back(request);
+                                        } else {
+                                            assert!(unpaired_unified_tracing_data
+                                                .insert(sequence_id, data)
+                                                .is_none());
+                                        }
+                                    }
+                                    _ => {
+                                        let request = get_gpu_work_request(None, Some(data));
+                                        gpu_work_requests.push_back(request);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                WorkerResult::GpuWorkResult(result) => {
+                    assert_ne!(pending_requests_count, 0);
+                    pending_requests_count -= 1;
+                    match result {
+                        GpuWorkResult::SetupCaps(_) => {
+                            unreachable!("proving batches never request setup caps")
+                        }
+                        GpuWorkResult::MemoryCommitment(commitment) => {
+                            assert!(!proving);
+                            let MemoryCommitmentResult {
+                                batch_id,
+                                circuit_type,
+                                sequence_id,
+                                inits_and_teardowns,
+                                tracing_data,
+                                merkle_tree_caps,
+                            } = commitment;
+                            trace!("BATCH[{batch_id}] PROVER received memory commitment for circuit {circuit_type:?}[{sequence_id}]");
+                            if let Some(cache) = cache.as_mut() {
+                                let cache_entry = TraceCacheEntry {
+                                    circuit_type,
+                                    sequence_id,
+                                    inits_and_teardowns,
+                                    tracing_data,
+                                };
+                                cache.push_back(cache_entry);
+                                if simulation_result.is_none() {
+                                    self.trim_cache(cache);
+                                }
+                            } else {
+                                self.free_traces(inits_and_teardowns, tracing_data)
+                            }
+                            let caps = match circuit_type {
+                                CircuitType::Delegation(circuit_type) => {
+                                    &mut delegation_circuits_memory_caps
+                                        .entry(circuit_type as u32)
+                                        .or_insert_with(|| BTreeMap::new())
+                                }
+                                CircuitType::Unrolled(circuit_type) => match circuit_type {
+                                    UnrolledCircuitType::InitsAndTeardowns => {
+                                        &mut inits_and_teardowns_memory_caps
+                                    }
+                                    _ => &mut circuit_families_memory_caps
+                                        .get_mut(&circuit_type.get_family_idx())
+                                        .unwrap(),
+                                },
+                            };
+                            assert!(caps.insert(sequence_id, merkle_tree_caps).is_none());
+                        }
+                        GpuWorkResult::Proof(proof) => {
+                            assert!(proving);
+                            let ProofResult {
+                                batch_id,
+                                circuit_type,
+                                sequence_id,
+                                inits_and_teardowns,
+                                tracing_data,
+                                proof,
+                            } = proof;
+                            trace!("BATCH[{batch_id}] PROVER received proof for circuit {circuit_type:?}[{sequence_id}]");
+                            self.free_traces(inits_and_teardowns, tracing_data);
+                            match circuit_type {
+                                CircuitType::Delegation(circuit_type) => {
+                                    assert!(delegation_circuits_proofs
+                                        .entry(circuit_type as u32)
+                                        .or_insert_with(|| BTreeMap::new())
+                                        .insert(sequence_id, unrolled_proof_into_proof(proof))
+                                        .is_none())
+                                }
+                                CircuitType::Unrolled(circuit_type) => match circuit_type {
+                                    UnrolledCircuitType::InitsAndTeardowns => {
+                                        assert!(inits_and_teardowns_proofs
+                                            .insert(sequence_id, proof)
+                                            .is_none())
+                                    }
+                                    _ => assert!(circuit_families_proofs
+                                        .get_mut(&circuit_type.get_family_idx())
+                                        .unwrap()
+                                        .insert(sequence_id, proof)
+                                        .is_none()),
+                                },
+                            };
+                        }
+                    }
+                }
+            }
+            for request in gpu_work_requests {
+                let key = (request.circuit_type(), request.sequence_id());
+                if requests_served_from_cache.contains(&key) {
+                    match request {
+                        GpuWorkRequest::Proof(request) => {
+                            let ProofRequest {
+                                batch_id,
+                                circuit_type,
+                                sequence_id,
+                                inits_and_teardowns,
+                                tracing_data,
+                                ..
+                            } = request;
+                            trace!("BATCH[{batch_id}] PROVER skipping cached proof request for circuit {circuit_type:?}[{sequence_id}]");
+                            self.free_traces(inits_and_teardowns, tracing_data);
+                        }
+                        _ => panic!("only proof requests are cached"),
+                    }
+                    continue;
+                }
+                gpu_work_requests_sender
+                    .as_ref()
+                    .unwrap()
+                    .send(request)
+                    .unwrap();
+                pending_requests_count += 1;
+                sent_requests_count += 1;
+            }
+            if simulation_result.is_some()
+                && uninitialized_tracing_data.is_empty()
+                && unpaired_unified_inits_and_teardowns.is_empty()
+                && unpaired_unified_tracing_data.is_empty()
+            {
+                gpu_work_requests_sender = None;
+            }
+            if let Some(cache) = cache.as_mut() {
+                if proving
+                    && !abort_signaled
+                    && gpu_work_requests_sender.is_some()
+                    && cache.total_requests_count == sent_requests_count
+                {
+                    debug!("BATCH[{batch_id}] PROVER all remaining proof requests have been served from cache, signaling abort of simulation");
+                    gpu_work_requests_sender = None;
+                    abort.store(true, std::sync::atomic::Ordering::Relaxed);
+                    simulation_result = cache.simulation_result.clone();
+                    abort_signaled = true;
+                }
+            }
+        }
+        assert_eq!(pending_requests_count, 0);
+        if abort_signaled {
+            uninitialized_tracing_data.into_values().for_each(|data| {
+                self.free_tracing_data(data.tracing_data);
+            });
+            unpaired_unified_inits_and_teardowns
+                .into_values()
+                .for_each(|data| {
+                    if let Some(inits_and_teardowns) = data.inits_and_teardowns {
+                        self.free_inits_and_teardowns(inits_and_teardowns);
+                    }
+                });
+            unpaired_unified_tracing_data
+                .into_values()
+                .for_each(|data| {
+                    self.free_tracing_data(data.tracing_data);
+                });
+        } else {
+            assert!(uninitialized_tracing_data.is_empty());
+            assert!(unpaired_unified_inits_and_teardowns.is_empty());
+            assert!(unpaired_unified_tracing_data.is_empty());
+        }
+        if let Some(cache) = cache.as_mut() {
+            if proving {
+                assert!(cache.is_empty())
+            } else {
+                cache.total_requests_count = sent_requests_count;
+                cache.trivial_unified_inits_and_teardowns_count =
+                    trivial_unified_inits_and_teardowns_count;
+                cache.simulation_result = simulation_result.clone();
+            }
+        }
+        let SimulationResult {
             final_register_values,
-            main_memory_commitments,
-            delegation_memory_commitments,
-            main_proofs,
-            delegation_proofs,
-        )
+            final_pc,
+            final_timestamp,
+        } = simulation_result.unwrap();
+        if proving {
+            let circuit_families_proofs = circuit_families_proofs
+                .into_iter()
+                .map(|(i, v)| (i, v.into_values().collect_vec()))
+                .collect();
+            let inits_and_teardowns_proofs = inits_and_teardowns_proofs
+                .into_iter()
+                .map(|(_, v)| v)
+                .collect_vec();
+            let delegation_circuits_proofs = delegation_circuits_proofs
+                .into_iter()
+                .map(|(i, v)| (i, v.into_values().collect_vec()))
+                .collect();
+            let result = ProveResult {
+                register_final_values: final_register_values,
+                final_pc,
+                final_timestamp,
+                circuit_families_proofs,
+                inits_and_teardowns_proofs,
+                delegation_proofs: delegation_circuits_proofs,
+                pow_challenge,
+            };
+            ExecutionProverResult::Prove(result)
+        } else {
+            let circuit_families_memory_caps = circuit_families_memory_caps
+                .into_iter()
+                .map(|(i, v)| (i, v.into_values().collect_vec()))
+                .collect();
+            let inits_and_teardowns_memory_caps = inits_and_teardowns_memory_caps
+                .into_iter()
+                .map(|(_, v)| v)
+                .collect_vec();
+            let delegation_circuits_memory_caps = delegation_circuits_memory_caps
+                .into_iter()
+                .map(|(i, v)| (i, v.into_values().collect_vec()))
+                .collect();
+            let result = CommitMemoryResult {
+                final_register_values,
+                final_pc,
+                final_timestamp,
+                circuit_families_memory_caps,
+                inits_and_teardowns_memory_caps,
+                delegation_circuits_memory_caps,
+            };
+            ExecutionProverResult::CommitMemory(result)
+        }
+    }
+
+    fn free_inits_and_teardowns(&self, inits_and_teardowns: ShuffleRamInitsAndTeardownsHost<A>) {
+        for allocator in inits_and_teardowns.into_allocators() {
+            self.free_allocators_sender.send(allocator).unwrap();
+        }
+    }
+
+    fn free_tracing_data(&self, tracing_data: TracingDataHost<A>) {
+        for allocator in tracing_data.into_allocators() {
+            self.free_allocators_sender.send(allocator).unwrap();
+        }
+    }
+
+    fn free_traces(
+        &self,
+        inits_and_teardowns: Option<ShuffleRamInitsAndTeardownsHost<A>>,
+        tracing_data: Option<TracingDataHost<A>>,
+    ) {
+        if let Some(inits_and_teardowns) = inits_and_teardowns {
+            self.free_inits_and_teardowns(inits_and_teardowns);
+        }
+        if let Some(tracing_data) = tracing_data {
+            self.free_tracing_data(tracing_data);
+        }
+    }
+
+    fn trim_cache(&self, cache: &mut TraceCache) {
+        let entries = &mut cache.entries;
+        let min = self.configuration.min_free_host_allocators_per_job
+            * self.configuration.expected_concurrent_jobs;
+        while self.free_allocators_sender.len() < min && !entries.is_empty() {
+            let evicted_entry = entries.pop_front().unwrap();
+            let TraceCacheEntry {
+                inits_and_teardowns,
+                tracing_data,
+                ..
+            } = evicted_entry;
+            self.free_traces(inits_and_teardowns, tracing_data);
+        }
     }
 
     fn commit_memory_inner(
         &self,
-        chunks_cache: &mut Option<ChunksCache<A>>,
+        cache: &mut Option<TraceCache>,
         batch_id: u64,
-        binary_key: &K,
-        num_instances_upper_bound: usize,
-        non_determinism_source: impl NonDeterminism + Send + Sync + 'static,
-    ) -> (
-        [FinalRegisterValue; 32],
-        Vec<Vec<MerkleTreeCapVarLength>>,
-        Vec<(u32, Vec<Vec<MerkleTreeCapVarLength>>)>,
-    ) {
-        info!(
-            "BATCH[{batch_id}] PROVER producing memory commitments for binary with key {:?}",
-            &binary_key
-        );
+        binary_key: usize,
+        non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
+    ) -> CommitMemoryResult {
+        info!("BATCH[{batch_id}] PROVER producing memory commitments for binary with key {binary_key:?}");
         let timer = Instant::now();
-        let (
-            final_register_values,
-            main_memory_commitments,
-            delegation_memory_commitments,
-            main_proofs,
-            delegation_proofs,
-        ) = self.get_results(
-            false,
-            chunks_cache,
-            batch_id,
-            binary_key,
-            num_instances_upper_bound,
-            non_determinism_source,
-            None,
-        );
-        assert!(main_proofs.is_empty());
-        assert!(delegation_proofs.is_empty());
-        info!(
-            "BATCH[{batch_id}] PROVER produced memory commitments for binary with key {:?} in {:.3}s",
-            binary_key,
-            timer.elapsed().as_secs_f64()
-        );
-        (
-            final_register_values,
-            main_memory_commitments,
-            delegation_memory_commitments,
-        )
+        let result = self
+            .get_result(
+                false,
+                cache,
+                batch_id,
+                binary_key,
+                non_determinism_source,
+                0,
+                None,
+            )
+            .into_memory_commitment_result();
+        let elapsed = timer.elapsed().as_secs_f64();
+        info!("BATCH[{batch_id}] PROVER produced memory commitments for binary with key {binary_key:?} in {elapsed:.3}s");
+        result
     }
 
     ///  Produces memory commitments.
@@ -829,72 +1407,46 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
     /// # Arguments
     ///
     /// * `batch_id`: a unique identifier for the batch of work, used to distinguish batches in a multithreaded scenario
-    /// * `binary_key`: a key that identifies the binary to work with, this key must match one of the keys in the `binaries` map provided during the creation of the `ExecutionProver`
-    /// * `num_instances_upper_bound`: maximum number of main circuit instances that the prover will try to trace, if the simulation does not end within this limit, it will fail
+    /// * `binary_key`: a key that identifies the binary to work with, this key must match one of the keys of the binaries that were previously added to the `ExecutionProver` using the `add_binary` method
     /// * `non_determinism_source`: a value implementing the `NonDeterminism` trait that provides non-deterministic values for the simulation
     ///
-    /// returns: a tuple containing:
-    ///     - final register values for the main circuit,
-    ///     - a vector of memory commitments for the chunks of the main circuit,
-    ///     - a vector of memory commitments for the chunks of the delegation circuits, where each element is a tuple containing the delegation circuit type and a vector of memory commitments for that type
+    /// returns: a CommitMemoryResult structure
     ///
     pub fn commit_memory(
         &self,
         batch_id: u64,
-        binary_key: &K,
-        num_instances_upper_bound: usize,
-        non_determinism_source: impl NonDeterminism + Send + Sync + 'static,
-    ) -> (
-        [FinalRegisterValue; 32],
-        Vec<Vec<MerkleTreeCapVarLength>>,
-        Vec<(u32, Vec<Vec<MerkleTreeCapVarLength>>)>,
-    ) {
-        self.commit_memory_inner(
-            &mut None,
-            batch_id,
-            binary_key,
-            num_instances_upper_bound,
-            non_determinism_source,
-        )
+        binary_key: usize,
+        non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
+    ) -> CommitMemoryResult {
+        let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
+        self.commit_memory_inner(&mut None, batch_id, binary_key, non_determinism_source)
     }
 
     fn prove_inner(
         &self,
-        chunks_cache: &mut Option<ChunksCache<A>>,
+        cache: &mut Option<TraceCache>,
         batch_id: u64,
-        binary_key: &K,
-        num_instances_upper_bound: usize,
-        non_determinism_source: impl NonDeterminism + Send + Sync + 'static,
+        binary_key: usize,
+        non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
+        pow_challenge: u64,
         external_challenges: ExternalChallenges,
-    ) -> ([FinalRegisterValue; 32], Vec<Proof>, Vec<(u32, Vec<Proof>)>) {
-        info!(
-            "BATCH[{batch_id}] PROVER producing proofs for binary with key {:?}",
-            &binary_key
-        );
+    ) -> ProveResult {
+        info!("BATCH[{batch_id}] PROVER producing proofs for binary with key {binary_key:?}");
         let timer = Instant::now();
-        let (
-            final_register_values,
-            main_memory_commitments,
-            delegation_memory_commitments,
-            main_proofs,
-            delegation_proofs,
-        ) = self.get_results(
-            true,
-            chunks_cache,
-            batch_id,
-            binary_key,
-            num_instances_upper_bound,
-            non_determinism_source,
-            Some(external_challenges),
-        );
-        assert!(main_memory_commitments.is_empty());
-        assert!(delegation_memory_commitments.is_empty());
-        info!(
-            "BATCH[{batch_id}] PROVER produced proofs for binary with key {:?} in {:.3}s",
-            binary_key,
-            timer.elapsed().as_secs_f64()
-        );
-        (final_register_values, main_proofs, delegation_proofs)
+        let result = self
+            .get_result(
+                true,
+                cache,
+                batch_id,
+                binary_key,
+                non_determinism_source,
+                pow_challenge,
+                Some(external_challenges),
+            )
+            .into_proof_result();
+        let elapsed = timer.elapsed().as_secs_f64();
+        info!("BATCH[{batch_id}] PROVER produced proofs for binary with key {binary_key:?} in {elapsed:.3}s");
+        result
     }
 
     ///  Produces proofs.
@@ -903,31 +1455,106 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
     ///
     /// * `batch_id`: a unique identifier for the batch of work, used to distinguish batches in a multithreaded scenario
     /// * `binary_key`: a key that identifies the binary to work with, this key must match one of the keys in the `binaries` map provided during the creation of the `ExecutionProver`
-    /// * `num_instances_upper_bound`: maximum number of main circuit instances that the prover will try to trace, if the simulation does not end within this limit, it will fail
     /// * `non_determinism_source`: a value implementing the `NonDeterminism` trait that provides non-deterministic values for the simulation
     /// * `external_challenges`: an instance of `ExternalChallenges` that contains the challenges to be used in the proof generation
     ///
-    /// returns: a tuple containing:
-    ///     - final register values for the main circuit,
-    ///     - a vector of proofs for the chunks of the main circuit,
-    ///     - a vector of proofs for the chunks of the delegation circuits, where each element is a tuple containing the delegation circuit type and a vector of memory commitments for that type
+    /// returns: a ProveResult structure
     ///
     pub fn prove(
         &self,
         batch_id: u64,
-        binary_key: &K,
-        num_instances_upper_bound: usize,
-        non_determinism_source: impl NonDeterminism + Send + Sync + 'static,
+        binary_key: usize,
+        non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
+        pow_challenge: u64,
         external_challenges: ExternalChallenges,
-    ) -> ([FinalRegisterValue; 32], Vec<Proof>, Vec<(u32, Vec<Proof>)>) {
+    ) -> ProveResult {
+        let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
         self.prove_inner(
             &mut None,
             batch_id,
             binary_key,
-            num_instances_upper_bound,
             non_determinism_source,
+            pow_challenge,
             external_challenges,
         )
+    }
+
+    /// Merkle caps of the setup trees of every unrolled circuit the binary registered
+    /// under `binary_key` is proven with, keyed by circuit type. One cap per coset.
+    ///
+    /// The trees were built on the GPU when the binary was registered
+    /// ([`Self::add_binary`]) and are memoized in its precomputations, so this is a plain
+    /// read that replaces the CPU-side setup derivation a caller would otherwise run to
+    /// obtain the caps (minutes for a production binary).
+    ///
+    /// The circuits whose setup does not depend on the binary (inits-and-teardowns, the
+    /// delegations) are not part of any registered binary; see [`Self::common_setup_caps`].
+    pub fn binary_setup_caps(
+        &self,
+        binary_key: usize,
+    ) -> BTreeMap<UnrolledCircuitType, Vec<MerkleTreeCapVarLength>> {
+        self.binary_holders[&binary_key]
+            .precomputations
+            .iter()
+            .map(|(circuit_type, precomputations)| {
+                (
+                    *circuit_type,
+                    memoized_setup_caps(CircuitType::Unrolled(*circuit_type), precomputations),
+                )
+            })
+            .collect()
+    }
+
+    /// Merkle caps of the setup trees of one binary-independent circuit: the
+    /// inits-and-teardowns circuit or a delegation circuit, whose setups are fixed for
+    /// the prover's lifetime. One cap per coset. Built on the GPU when the prover was
+    /// constructed and memoized since, so a plain read like [`Self::binary_setup_caps`].
+    pub fn common_setup_caps(&self, circuit_type: CircuitType) -> Vec<MerkleTreeCapVarLength> {
+        let precomputations = self
+            .common_precomputations
+            .get(&circuit_type)
+            .unwrap_or_else(|| panic!("{circuit_type:?} is not a binary-independent circuit"));
+        memoized_setup_caps(circuit_type, precomputations)
+    }
+
+    /// Builds the setup trees of the listed circuits on the GPU, in one batch, and waits
+    /// for all of them. The trees are memoized in each circuit's precomputations (a
+    /// circuit whose trees already exist costs nothing), so the first proof of each
+    /// circuit reuses them and their caps are readable right away.
+    fn build_setup_trees(&self, circuits: Vec<(CircuitType, CircuitPrecomputations)>) {
+        if circuits.is_empty() {
+            return;
+        }
+        let (work_results_sender, work_results_receiver) = unbounded();
+        let (gpu_work_requests_sender, gpu_work_requests_receiver) = unbounded();
+        trace!("BATCH[{SETUP_BATCH_ID}] PROVER sending setup trees batch to GPU manager");
+        self.gpu_manager.send_batch(GpuWorkBatch {
+            batch_id: SETUP_BATCH_ID,
+            receiver: gpu_work_requests_receiver,
+            sender: work_results_sender,
+        });
+        let count = circuits.len();
+        for (sequence_id, (circuit_type, precomputations)) in circuits.into_iter().enumerate() {
+            let request = SetupCapsRequest {
+                batch_id: SETUP_BATCH_ID,
+                circuit_type,
+                sequence_id,
+                precomputations,
+            };
+            gpu_work_requests_sender
+                .send(GpuWorkRequest::SetupCaps(request))
+                .unwrap();
+        }
+        drop(gpu_work_requests_sender);
+        let mut built = BTreeSet::new();
+        for _ in 0..count {
+            match work_results_receiver.recv().unwrap() {
+                WorkerResult::GpuWorkResult(GpuWorkResult::SetupCaps(result)) => {
+                    assert!(built.insert(result.circuit_type));
+                }
+                _ => unreachable!("a setup trees batch only produces setup caps results"),
+            }
+        }
     }
 
     ///  Commits to memory and produces proofs using challenge derived from the memory commitments.
@@ -936,176 +1563,231 @@ impl<K: Clone + Debug + Eq + Hash> ExecutionProver<K> {
     ///
     /// * `batch_id`: a unique identifier for the batch of work, used to distinguish batches in a multithreaded scenario
     /// * `binary_key`: a key that identifies the binary to work with, this key must match one of the keys in the `binaries` map provided during the creation of the `ExecutionProver`
-    /// * `num_instances_upper_bound`: maximum number of main circuit instances that the prover will try to trace, if the simulation does not end within this limit, it will fail
     /// * `non_determinism_source`: a value implementing the `NonDeterminism` trait that provides non-deterministic values for the simulation
     ///
-    /// returns: a tuple containing:
-    ///     - final register values for the main circuit,
-    ///     - a vector of proofs for the chunks of the main circuit,
-    ///     - a vector of proofs for the chunks of the delegation circuits, where each element is a tuple containing the delegation circuit type and a vector of memory commitments for that type
-    ///
+    /// returns: a ProveResult structure
     pub fn commit_memory_and_prove(
         &self,
         batch_id: u64,
-        binary_key: &K,
-        num_instances_upper_bound: usize,
-        non_determinism_source: impl NonDeterminism + Clone + Send + Sync + 'static,
-    ) -> ([FinalRegisterValue; 32], Vec<Proof>, Vec<(u32, Vec<Proof>)>) {
+        binary_key: usize,
+        non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
+    ) -> ProveResult {
+        let nd_rapper = NonDeterminismWrapper::new(non_determinism_source);
+        let non_determinism_source = Arc::new(Mutex::new(Some(nd_rapper)));
+        let mut cache = Some(TraceCache::new());
         let timer = Instant::now();
-        let cache_capacity = self.device_count * 2;
-        let mut chunks_cache = Some(ChunksCache::new(cache_capacity));
-        let (final_register_values, main_memory_commitments, delegation_memory_commitments) = self
-            .commit_memory_inner(
-                &mut chunks_cache,
-                batch_id,
-                binary_key,
-                num_instances_upper_bound,
-                non_determinism_source.clone(),
-            );
-        let maximum_cached_count = if CACHE_DELEGATIONS {
-            main_memory_commitments.len()
-                + delegation_memory_commitments
-                    .iter()
-                    .map(|(_, v)| v.len())
-                    .sum::<usize>()
-        } else {
-            main_memory_commitments.len()
-        };
-        assert_eq!(
-            chunks_cache.as_ref().unwrap().len(),
-            min(cache_capacity, maximum_cached_count)
-        );
-        let caps = &self.binaries[&binary_key]
-            .precomputations
-            .setup_trees_and_caps
-            .get()
-            .unwrap()
-            .caps;
-        let memory_challenges_seed = fs_transform_for_memory_and_delegation_arguments(
-            caps,
-            &final_register_values,
-            &main_memory_commitments,
-            &delegation_memory_commitments,
-        );
-        let produce_delegation_challenge = self.binaries[&binary_key]
-            .circuit_type
-            .needs_delegation_challenge();
-        let external_challenges = ExternalChallenges::draw_from_transcript_seed(
-            memory_challenges_seed,
-            produce_delegation_challenge,
-        );
-        let result = self.prove_inner(
-            &mut chunks_cache,
+        let memory_commitment_result = self.commit_memory_inner(
+            &mut cache,
             batch_id,
             binary_key,
-            num_instances_upper_bound,
+            non_determinism_source.clone(),
+        );
+        let non_determinism_values = Arc::into_inner(non_determinism_source)
+            .unwrap()
+            .into_inner()
+            .unwrap()
+            .unwrap()
+            .into_values();
+        let non_determinism_source = QuasiUARTSource::new_with_reads(non_determinism_values);
+        let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
+        let CommitMemoryResult {
+            final_register_values,
+            final_pc,
+            final_timestamp,
+            circuit_families_memory_caps,
+            inits_and_teardowns_memory_caps,
+            delegation_circuits_memory_caps,
+        } = memory_commitment_result;
+        let all_challenges_seed =
+            fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits(
+                &final_register_values,
+                final_pc,
+                final_timestamp,
+                &circuit_families_memory_caps
+                    .iter()
+                    .map(|(i, v)| (*i as u32, v.clone()))
+                    .collect_vec(),
+                &inits_and_teardowns_memory_caps,
+                &delegation_circuits_memory_caps
+                    .iter()
+                    .map(|(i, v)| (*i, v.clone()))
+                    .collect_vec(),
+            );
+
+        let memory_delegation_pow_bits = self.security().memory_delegation_pow_bits();
+
+        let pow_challenge = if memory_delegation_pow_bits == 0 {
+            0
+        } else {
+            Transcript::search_pow(
+                &all_challenges_seed,
+                memory_delegation_pow_bits as u32,
+                &self.worker,
+            )
+            .1
+        };
+        let external_challenges =
+            ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
+                all_challenges_seed,
+                memory_delegation_pow_bits,
+                pow_challenge,
+            );
+        let prove_result = self.prove_inner(
+            &mut cache,
+            batch_id,
+            binary_key,
             non_determinism_source,
+            pow_challenge,
             external_challenges,
         );
-        assert!(chunks_cache.is_none());
-        let (prove_final_register_values, main_proofs, delegation_proofs) = &result;
-        assert_eq!(&final_register_values, prove_final_register_values);
-        let prove_main_memory_commitments = main_proofs
-            .iter()
-            .map(|p| p.memory_tree_caps.clone())
-            .collect_vec();
-        assert_eq!(main_memory_commitments, prove_main_memory_commitments);
-        let prove_delegation_memory_commitments = delegation_proofs
-            .iter()
-            .map(|(t, p)| {
-                (
-                    *t,
-                    p.iter()
-                        .map(|proof| proof.memory_tree_caps.clone())
-                        .collect_vec(),
-                )
-            })
-            .collect_vec();
-        assert_eq!(
-            delegation_memory_commitments,
-            prove_delegation_memory_commitments
-        );
-        info!(
-            "BATCH[{batch_id}] PROVER committed to memory and produced proofs for binary with key {:?} in {:.3}s",
-            binary_key,
-            timer.elapsed().as_secs_f64()
-        );
-        result
-    }
-
-    fn spawn_cpu_worker(
-        &self,
-        circuit_type: MainCircuitType,
-        batch_id: u64,
-        worker_id: usize,
-        num_main_chunks_upper_bound: usize,
-        binary: impl Deref<Target = impl Deref<Target = [u32]>> + Send + 'static,
-        non_determinism: impl Deref<Target = impl NonDeterminism> + Send + 'static,
-        mode: CpuWorkerMode<A>,
-        results: Sender<WorkerResult<A>>,
-    ) {
-        let wait_group = self.wait_group.as_ref().unwrap().clone();
-        match circuit_type {
-            MainCircuitType::FinalReducedRiscVMachine => {
-                let func = get_cpu_worker_func::<IWithoutByteAccessIsaConfig, _>(
-                    wait_group,
-                    batch_id,
-                    worker_id,
-                    num_main_chunks_upper_bound,
-                    binary,
-                    non_determinism,
-                    mode,
-                    results,
-                );
-                self.worker.pool.spawn(func);
-            }
-            MainCircuitType::MachineWithoutSignedMulDiv => {
-                let func = get_cpu_worker_func::<IMWithoutSignedMulDivIsaConfig, _>(
-                    wait_group,
-                    batch_id,
-                    worker_id,
-                    num_main_chunks_upper_bound,
-                    binary,
-                    non_determinism,
-                    mode,
-                    results,
-                );
-                self.worker.pool.spawn(func);
-            }
-            MainCircuitType::ReducedRiscVLog23Machine | MainCircuitType::ReducedRiscVMachine => {
-                let func = get_cpu_worker_func::<IWithoutByteAccessIsaConfigWithDelegation, _>(
-                    wait_group,
-                    batch_id,
-                    worker_id,
-                    num_main_chunks_upper_bound,
-                    binary,
-                    non_determinism,
-                    mode,
-                    results,
-                );
-                self.worker.pool.spawn(func);
-            }
-            MainCircuitType::RiscVCycles => {
-                let func = get_cpu_worker_func::<IMStandardIsaConfig, _>(
-                    wait_group,
-                    batch_id,
-                    worker_id,
-                    num_main_chunks_upper_bound,
-                    binary,
-                    non_determinism,
-                    mode,
-                    results,
-                );
-                self.worker.pool.spawn(func);
+        assert_eq!(prove_result.register_final_values, final_register_values);
+        assert_eq!(prove_result.final_pc, final_pc);
+        assert_eq!(prove_result.final_timestamp, final_timestamp);
+        fn assert_caps_mach(
+            a: &Vec<Vec<MerkleTreeCapVarLength>>,
+            b: &Vec<Vec<MerkleTreeCapVarLength>>,
+        ) {
+            for (a, b) in a.iter().zip(b.iter()) {
+                assert_eq!(a, b);
             }
         }
+        prove_result
+            .circuit_families_proofs
+            .iter()
+            .zip(circuit_families_memory_caps.iter())
+            .for_each(|(a, b)| {
+                assert_eq!(a.0, b.0);
+                assert_caps_mach(
+                    &a.1.iter().map(|p| p.memory_tree_caps.clone()).collect_vec(),
+                    &b.1,
+                );
+            });
+        assert_caps_mach(
+            &prove_result
+                .inits_and_teardowns_proofs
+                .iter()
+                .map(|p| p.memory_tree_caps.clone())
+                .collect_vec(),
+            &inits_and_teardowns_memory_caps,
+        );
+        prove_result
+            .delegation_proofs
+            .iter()
+            .zip(delegation_circuits_memory_caps.iter())
+            .for_each(|(a, b)| {
+                assert_eq!(a.0, b.0);
+                assert_caps_mach(
+                    &a.1.iter().map(|p| p.memory_tree_caps.clone()).collect_vec(),
+                    &b.1,
+                );
+            });
+        let elapsed = timer.elapsed().as_secs_f64();
+        info!("BATCH[{batch_id}] PROVER committed to memory and produced proofs for binary with key {binary_key:?} in {elapsed:.3}s");
+        prove_result
     }
 }
 
-impl<'a, K: Debug + Eq + Hash> Drop for ExecutionProver<K> {
-    fn drop(&mut self) {
-        trace!("PROVER waiting for all threads to finish");
-        self.wait_group.take().unwrap().wait();
-        trace!("PROVER all threads finished");
+fn unrolled_proof_into_proof(proof: UnrolledModeProof) -> Proof {
+    assert!(proof.aux_boundary_values.is_empty());
+    Proof {
+        external_values: ExternalValues {
+            challenges: proof.external_challenges,
+            aux_boundary_values: AuxArgumentsBoundaryValues::default(),
+        },
+        public_inputs: proof.public_inputs,
+        witness_tree_caps: proof.witness_tree_caps,
+        memory_tree_caps: proof.memory_tree_caps,
+        setup_tree_caps: proof.setup_tree_caps,
+        stage_2_tree_caps: proof.stage_2_tree_caps,
+        memory_grand_product_accumulator: proof.permutation_grand_product_accumulator,
+        delegation_argument_accumulator: proof.delegation_argument_accumulator,
+        quotient_tree_caps: proof.quotient_tree_caps,
+        evaluations_at_random_points: proof.evaluations_at_random_points,
+        deep_poly_caps: proof.deep_poly_caps,
+        intermediate_fri_oracle_caps: proof.intermediate_fri_oracle_caps,
+        last_fri_step_plain_leaf_values: proof.last_fri_step_plain_leaf_values,
+        final_monomial_form: proof.final_monomial_form,
+        queries: proof.queries,
+        pow_challenges: proof.pow_challenges,
+        circuit_sequence: 0,
+        delegation_type: proof.delegation_type,
+    }
+}
+
+struct NonDeterminismWrapper<N> {
+    inner: N,
+    values: Vec<u32>,
+}
+
+impl<N> NonDeterminismWrapper<N> {
+    fn new(inner: N) -> Self {
+        Self {
+            inner,
+            values: Vec::new(),
+        }
+    }
+
+    fn into_values(self) -> Vec<u32> {
+        self.values
+    }
+}
+
+impl<N: NonDeterminismCSRSource> NonDeterminismCSRSource for NonDeterminismWrapper<N> {
+    fn read(&mut self) -> u32 {
+        let value = self.inner.read();
+        self.values.push(value);
+        value
+    }
+
+    fn write_with_memory_access<R: RamPeek>(&mut self, ram: &R, value: u32) {
+        self.inner.write_with_memory_access(ram, value)
+    }
+
+    fn write_with_memory_access_dyn(&mut self, ram: &dyn RamPeek, value: u32) {
+        self.inner.write_with_memory_access_dyn(ram, value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::execution::prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration};
+    use crate::machine_type::MachineType;
+    use crate::tests::init_logger;
+    use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+    use setups::read_binary;
+    use std::path::Path;
+    use verifier_common::security_80::Security80Marker;
+
+    #[test]
+    fn test_execution_prover() {
+        init_logger();
+        let mut configuration = ExecutionProverConfiguration::default();
+        configuration.replay_worker_threads_count = 8;
+        let mut prover = ExecutionProver::<Security80Marker>::with_configuration_80(configuration);
+        let (_, binary_image) = read_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
+        let (_, text_section) = read_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
+        prover.add_binary(
+            0,
+            ExecutionKind::Unrolled,
+            MachineType::FullUnsigned,
+            binary_image,
+            text_section,
+            None,
+        );
+        let non_determinism_source = QuasiUARTSource::new_with_reads(vec![3 << 25, 0]);
+        let _base_layer_result = prover.commit_memory_and_prove(0, 0, non_determinism_source);
+        let (_, binary_image) =
+            read_binary(&Path::new("../tools/verifier/unrolled_base_layer.bin"));
+        let (_, text_section) =
+            read_binary(&Path::new("../tools/verifier/unrolled_base_layer.text"));
+        prover.add_binary(
+            1,
+            ExecutionKind::Unrolled,
+            MachineType::Reduced,
+            binary_image,
+            text_section,
+            None,
+        );
+        drop(prover);
     }
 }

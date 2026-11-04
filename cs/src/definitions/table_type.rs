@@ -54,8 +54,26 @@ pub enum TableType {
     StoreByteSourceContribution,
     StoreByteExistingContribution,
     TruncateShift,
-    ExtractLower5Bits,
-    DynamicPlaceholder,
+    ConditionalJmpBranchSlt,
+    MemoryGetOffsetAndMaskWithTrap,
+    MemoryLoadHalfwordOrByte,
+    AlignedRomRead,
+    TruncateShiftAmount,
+    SllWith16BitInputLow,
+    SllWith16BitInputHigh,
+    SrlWith16BitInputLow,
+    SrlWith16BitInputHigh,
+    Sra16BitInputSignFill,
+    RangeCheck16WithZeroPads,
+    MemStoreClearOriginalRamValueLimb,
+    MemStoreClearWrittenValueLimb,
+    KeccakPermutationIndices12,
+    KeccakPermutationIndices34,
+    KeccakPermutationIndices56,
+    XorSpecialIota,
+    AndN,
+    RotL,
+    DynamicPlaceholder, // MUST be the last
 }
 
 pub const COMMON_TABLE_WIDTH: usize = 3;

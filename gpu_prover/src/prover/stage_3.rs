@@ -1,25 +1,26 @@
-use super::arg_utils::LookupChallenges;
 use super::callbacks::Callbacks;
 use super::context::{HostAllocation, ProverContext};
 use super::setup::SetupPrecomputations;
 use super::stage_1::StageOneOutput;
 use super::stage_2::StageTwoOutput;
 use super::stage_3_kernels::*;
-use super::trace_holder::{TraceHolder, TreesCacheMode};
-use super::{BF, E4};
+use super::stage_3_utils::*;
+use super::trace_holder::{CosetsCacheMode, TraceHolder, TreesCacheMode};
+use super::{BF, E2, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
+use crate::prover::pow::search_pow_challenge;
 use crate::prover::precomputations::PRECOMPUTATIONS;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use cs::one_row_compiler::CompiledCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use fft::{materialize_powers_serial_starting_with_one, GoodAllocator, LdePrecomputations};
-use field::{Field, FieldExtension};
-use prover::definitions::ExternalValues;
+use fft::{domain_generator_for_size, materialize_powers_serial_starting_with_one};
+use field::FieldExtension;
+use prover::definitions::AuxArgumentsBoundaryValues;
 use prover::prover_stages::cached_data::ProverCachedData;
 use prover::prover_stages::stage3::AlphaPowersLayout;
-use prover::prover_stages::Transcript;
+use prover::prover_stages::{ProofPowChallenges, ProofSecurityConfig};
 use prover::transcript::Seed;
 use std::alloc::Global;
 use std::slice;
@@ -27,15 +28,18 @@ use std::sync::Arc;
 
 pub(crate) struct StageThreeOutput {
     pub(crate) trace_holder: TraceHolder<BF>,
+    pub(crate) pow_challenge: HostAllocation<u64>,
 }
 
 impl StageThreeOutput {
     pub fn new(
         seed: &mut HostAllocation<Seed>,
+        security_config: &ProofSecurityConfig,
+        external_challenges: &Option<ProofPowChallenges>,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
+        is_unrolled: bool,
         cached_data: &ProverCachedData,
-        lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
-        external_values: ExternalValues,
+        aux_boundary_values: Vec<AuxArgumentsBoundaryValues>,
         setup: &mut SetupPrecomputations,
         stage_1_output: &mut StageOneOutput,
         stage_2_output: &mut StageTwoOutput,
@@ -57,19 +61,28 @@ impl StageThreeOutput {
             4,
             true,
             false,
-            false,
+            CosetsCacheMode::CacheFull,
             trees_cache_mode,
             context,
         )?;
         let stream = context.get_exec_stream();
         let seed_accessor = seed.get_mut_accessor();
+        let mut pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
+        let pow_bits = security_config.quotient_alpha_pow_bits;
+        search_pow_challenge(
+            seed,
+            &mut pow_challenge,
+            pow_bits,
+            external_challenges
+                .as_ref()
+                .map(|c| c.quotient_alpha_pow_challenge),
+            callbacks,
+            context,
+        )?;
         let alpha_powers_layout =
             AlphaPowersLayout::new(&circuit, cached_data.num_stage_3_quotient_terms);
         let alpha_powers_count = alpha_powers_layout.precomputation_size;
-        let tau = lde_precomputations.domain_bound_precomputations[COSET_INDEX]
-            .as_ref()
-            .unwrap()
-            .coset_offset;
+        let tau = domain_generator_for_size::<E2>((trace_len as u64) << log_lde_factor);
         let mut h_alpha_powers = unsafe { context.alloc_host_uninit_slice(alpha_powers_count) };
         let h_alpha_powers_accessor = h_alpha_powers.get_mut_accessor();
         let mut h_beta_powers = unsafe { context.alloc_host_uninit_slice(BETA_POWERS_COUNT) };
@@ -84,6 +97,11 @@ impl StageThreeOutput {
             .as_ref()
             .unwrap()
             .get_accessor();
+        let stage_2_decoder_challenges_accessor = stage_2_output
+            .decoder_challenges
+            .as_ref()
+            .unwrap()
+            .get_accessor();
         let stage_2_last_row_accessor = stage_2_output.last_row.as_ref().unwrap().get_accessor();
         let stage_2_offset_for_grand_product_poly = stage_2_output.offset_for_grand_product_poly;
         let offset_for_sum_over_delegation_poly =
@@ -94,15 +112,31 @@ impl StageThreeOutput {
             .as_ref()
             .unwrap()
             .get_accessor();
-        let external_values_clone = external_values.clone();
         let circuit_clone = circuit.clone();
         let omega_index = log_domain_size as usize;
         let omega = PRECOMPUTATIONS.omegas[omega_index];
         let omega_inv = PRECOMPUTATIONS.omegas_inv[omega_index];
+        let static_metadata = StaticMetadata::new(
+            tau,
+            omega_inv,
+            cached_data,
+            &circuit,
+            is_unrolled,
+            log_domain_size,
+        );
+        let static_metadata_clone = static_metadata.clone();
         let get_challenges_and_helpers_fn = move || unsafe {
-            let mut transcript_challenges =
-                [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-            Transcript::draw_randomness(seed_accessor.get_mut(), &mut transcript_challenges);
+            let num_entries = (if pow_bits == 0 { 0usize } else { 1 } + 2 * 4)
+                .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+            let mut transcript_challenges = vec![0u32; num_entries];
+            prover::definitions::Transcript::draw_randomness(
+                seed_accessor.get_mut(),
+                &mut transcript_challenges,
+            );
+            if pow_bits != 0 {
+                // Skip first challenge used for pow
+                transcript_challenges.remove(0);
+            }
             let mut it = transcript_challenges.as_chunks::<4>().0.iter();
             let mut get_challenge =
                 || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
@@ -130,20 +164,19 @@ impl StageThreeOutput {
             )
             .unwrap_or_default();
             let mut helpers = Vec::with_capacity(MAX_HELPER_VALUES);
-            let _ = Metadata::new(
+            prepare_async_challenge_data(
+                &static_metadata_clone,
                 &alpha_powers,
                 &beta_powers,
-                tau,
                 omega,
-                omega_inv,
                 stage_2_lookup_challenges_accessor.get(),
+                stage_2_decoder_challenges_accessor.get(),
                 &cached_data_clone,
                 &circuit_clone,
-                &external_values_clone,
+                &aux_boundary_values,
                 public_inputs_accessor.get(),
                 grand_product_accumulator,
                 sum_over_delegation_poly,
-                log_domain_size,
                 &mut helpers,
                 h_constants_times_challenges_accessor.get_mut(),
             );
@@ -171,55 +204,28 @@ impl StageThreeOutput {
             slice::from_ref(unsafe { h_constants_times_challenges_accessor.get() }),
             stream,
         )?;
-        let metadata = Metadata::new(
-            &vec![E4::ZERO; alpha_powers_count],
-            &[E4::ZERO; BETA_POWERS_COUNT],
-            tau,
-            omega,
-            omega_inv,
-            &LookupChallenges::default(),
-            cached_data,
-            &circuit,
-            &external_values,
-            &vec![BF::ZERO; circuit.public_inputs.len()],
-            E4::ZERO,
-            E4::ZERO,
-            log_domain_size,
-            &mut Vec::with_capacity(MAX_HELPER_VALUES),
-            &mut ConstantsTimesChallenges::default(),
-        );
-        let d_setup_cols = DeviceMatrix::new(
-            setup
-                .trace_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_witness_cols = DeviceMatrix::new(
-            stage_1_output
-                .witness_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_memory_cols = DeviceMatrix::new(
-            stage_1_output
-                .memory_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_stage_2_cols = DeviceMatrix::new(
-            stage_2_output
-                .trace_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let mut d_quotient = DeviceMatrixMut::new(
-            trace_holder.get_uninit_coset_evaluations_mut(COSET_INDEX),
-            trace_len,
-        );
+        let setup_evaluations = setup
+            .trace_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_setup_cols = DeviceMatrix::new(&setup_evaluations, trace_len);
+        let witness_evaluations = stage_1_output
+            .witness_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_witness_cols = DeviceMatrix::new(&witness_evaluations, trace_len);
+        let memory_evaluations = stage_1_output
+            .memory_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_memory_cols = DeviceMatrix::new(&memory_evaluations, trace_len);
+        let stage_2_evaluations = stage_2_output
+            .trace_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_stage_2_cols = DeviceMatrix::new(&stage_2_evaluations, trace_len);
+        let mut evaluations = trace_holder.get_uninit_coset_evaluations_mut(COSET_INDEX);
+        let mut d_quotient = DeviceMatrixMut::new(&mut evaluations, trace_len);
         compute_stage_3_composition_quotient_on_coset(
             cached_data,
             &circuit,
-            metadata,
+            static_metadata,
             &d_setup_cols,
             &d_witness_cols,
             &d_memory_cols,
@@ -232,9 +238,13 @@ impl StageThreeOutput {
             log_domain_size,
             stream,
         )?;
+        drop(evaluations);
         trace_holder.extend_and_commit(COSET_INDEX, context)?;
         let update_seed_fn = trace_holder.get_update_seed_fn(seed);
         callbacks.schedule(update_seed_fn, stream)?;
-        Ok(Self { trace_holder })
+        Ok(Self {
+            trace_holder,
+            pow_challenge,
+        })
     }
 }

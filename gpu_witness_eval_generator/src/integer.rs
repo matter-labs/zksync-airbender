@@ -190,6 +190,12 @@ impl Generator {
                     "SHR({type_ident}, {new_ident}, {lhs}, {literal})\n"
                 ));
             }
+            FixedWidthIntegerNodeExpression::BinaryNot(value) => {
+                let type_ident = Self::ident_for_integer_unop(value);
+                let value = self.integer_expr_into_var(value);
+                let new_ident = self.create_var();
+                self.push(&format!("INOT({type_ident}, {new_ident}, {value})\n"));
+            }
             FixedWidthIntegerNodeExpression::LowestBits { value, num_bits } => {
                 let type_ident = Self::ident_for_integer_unop(value);
                 let lhs = self.integer_expr_into_var(value);
@@ -303,6 +309,27 @@ impl Generator {
                 let rhs = self.integer_expr_into_var(rhs);
                 let new_ident = self.create_var();
                 self.push(&format!("MIXED_MUL_HIGH({new_ident}, {lhs}, {rhs})\n"));
+            }
+            FixedWidthIntegerNodeExpression::BinaryAnd { lhs, rhs } => {
+                let type_ident = Self::ident_for_integer_binop(lhs, rhs);
+                let lhs = self.integer_expr_into_var(lhs);
+                let rhs = self.integer_expr_into_var(rhs);
+                let new_ident = self.create_var();
+                self.push(&format!("IAND({type_ident}, {new_ident}, {lhs}, {rhs})\n"));
+            }
+            FixedWidthIntegerNodeExpression::BinaryOr { lhs, rhs } => {
+                let type_ident = Self::ident_for_integer_binop(lhs, rhs);
+                let lhs = self.integer_expr_into_var(lhs);
+                let rhs = self.integer_expr_into_var(rhs);
+                let new_ident = self.create_var();
+                self.push(&format!("IOR({type_ident}, {new_ident}, {lhs}, {rhs})\n"));
+            }
+            FixedWidthIntegerNodeExpression::BinaryXor { lhs, rhs } => {
+                let type_ident = Self::ident_for_integer_binop(lhs, rhs);
+                let lhs = self.integer_expr_into_var(lhs);
+                let rhs = self.integer_expr_into_var(rhs);
+                let new_ident = self.create_var();
+                self.push(&format!("IXOR({type_ident}, {new_ident}, {lhs}, {rhs})\n"));
             }
         };
     }

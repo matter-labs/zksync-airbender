@@ -1,6 +1,6 @@
 // Code related to verifiers (creating oracles a.k.a input data etc).
 
-use risc_v_simulator::cycle::{
+use riscv_transpiler::cycle::{
     IMStandardIsaConfig, IWithoutByteAccessIsaConfigWithDelegation, MachineConfig,
 };
 use verifier_common::cs::utils::split_timestamp;
@@ -19,11 +19,6 @@ pub enum VerifierCircuitsIdentifiers {
     // This is used in OhBender to combine previous block proof with current one.
     CombinedRecursionLayers = 4,
     RecursionLog23Layer = 5,
-    /// Combine multiple proofs (from recursion layers) into one.
-    /// Requires u32 to be passed as first word after this one,
-    /// indicating how many proofs are combined.
-    // Used to combine multiple FRIs into a single proof before SNARKing.
-    CombinedMultipleRecursionLayers = 6,
 }
 
 /// Create oracle data for universal verifier.
@@ -72,7 +67,7 @@ pub fn generate_oracle_data_from_metadata_and_proof_list(
         for i in 0..metadata.basic_proof_count {
             let proof = &proofs.basic_proofs[i];
             oracle_data
-                .extend(verifier_common::proof_flattener::flatten_proof_for_skeleton(&proof, true));
+                .extend(verifier_common::proof_flattener::flatten_proof_for_skeleton(&proof, 1));
             for query in proof.queries.iter() {
                 oracle_data.extend(verifier_common::proof_flattener::flatten_query(query));
             }
@@ -86,7 +81,7 @@ pub fn generate_oracle_data_from_metadata_and_proof_list(
         for i in 0..metadata.reduced_proof_count {
             let proof = &proofs.reduced_proofs[i];
             oracle_data
-                .extend(verifier_common::proof_flattener::flatten_proof_for_skeleton(&proof, true));
+                .extend(verifier_common::proof_flattener::flatten_proof_for_skeleton(&proof, 1));
             for query in proof.queries.iter() {
                 oracle_data.extend(verifier_common::proof_flattener::flatten_query(query));
             }
@@ -100,7 +95,7 @@ pub fn generate_oracle_data_from_metadata_and_proof_list(
         for i in 0..metadata.reduced_log_23_proof_count {
             let proof = &proofs.reduced_log_23_proofs[i];
             oracle_data
-                .extend(verifier_common::proof_flattener::flatten_proof_for_skeleton(&proof, true));
+                .extend(verifier_common::proof_flattener::flatten_proof_for_skeleton(&proof, 1));
             for query in proof.queries.iter() {
                 oracle_data.extend(verifier_common::proof_flattener::flatten_query(query));
             }
@@ -127,17 +122,20 @@ pub fn generate_oracle_data_from_metadata_and_proof_list(
 
         for proof in delegation_proofs {
             // Notice, that apply_shuffle is assumed false for delegation proofs.
-            oracle_data.extend(
-                verifier_common::proof_flattener::flatten_proof_for_skeleton(&proof, false),
-            );
+            oracle_data
+                .extend(verifier_common::proof_flattener::flatten_proof_for_skeleton(&proof, 0));
             for query in proof.queries.iter() {
                 oracle_data.extend(verifier_common::proof_flattener::flatten_query(query));
             }
         }
     }
+    // Verifier expects PoW challenge at the end of the oracle stream.
+    oracle_data.push(metadata.pow_challenge as u32);
+    oracle_data.push((metadata.pow_challenge >> 32) as u32);
     if let Some(prev_params) = metadata.prev_end_params_output {
         oracle_data.extend(prev_params);
     }
+
     oracle_data
 }
 

@@ -26,6 +26,8 @@ use trace_holder::*;
 use transcript::Seed;
 use worker::Worker;
 
+pub mod unrolled_prover;
+
 pub mod cached_data;
 pub mod query_producer;
 pub mod stage1;
@@ -33,6 +35,9 @@ pub mod stage2;
 pub mod stage3;
 pub mod stage4;
 pub mod stage5;
+
+pub mod pow_bits;
+pub use pow_bits::*;
 
 pub(crate) mod stage2_utils;
 
@@ -53,7 +58,7 @@ pub struct Proof {
     pub last_fri_step_plain_leaf_values: Vec<Vec<Mersenne31Quartic>>,
     pub final_monomial_form: Vec<Mersenne31Quartic>,
     pub queries: Vec<QuerySet>,
-    pub pow_nonce: u64,
+    pub pow_challenges: ProofPowChallenges,
     pub circuit_sequence: u16,
     pub delegation_type: u16,
 }
@@ -197,6 +202,31 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
         twiddles: &Twiddles<Mersenne31Complex, A>,
         lde_precomputations: &LdePrecomputations<A>,
         lde_factor: usize,
+        tree_cap_size: usize,
+        worker: &Worker,
+    ) -> Self {
+        Self::from_tables_and_trace_len_with_decoder_table(
+            table_driver,
+            &[],
+            trace_len,
+            setup_layout,
+            twiddles,
+            lde_precomputations,
+            lde_factor,
+            tree_cap_size,
+            worker,
+        )
+    }
+
+    pub fn from_tables_and_trace_len_with_decoder_table(
+        table_driver: &TableDriver<Mersenne31Field>,
+        decoder_table_for_execution_circuit: &[[Mersenne31Field;
+              EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH]],
+        trace_len: usize,
+        setup_layout: &SetupLayout,
+        twiddles: &Twiddles<Mersenne31Complex, A>,
+        lde_precomputations: &LdePrecomputations<A>,
+        lde_factor: usize,
         _tree_cap_size: usize,
         worker: &Worker,
     ) -> Self {
@@ -207,8 +237,13 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
         let subtree_cap_size = (1 << optimal_folding.total_caps_size_log2) / lde_factor;
         assert!(subtree_cap_size > 0);
 
-        let mut main_domain_trace =
-            Self::get_main_domain_trace(table_driver, trace_len, setup_layout, worker);
+        let mut main_domain_trace = Self::get_main_domain_trace(
+            table_driver,
+            decoder_table_for_execution_circuit,
+            trace_len,
+            setup_layout,
+            worker,
+        );
 
         // NOTE: we do not use last row of the setup (and in general last of of circuit),
         // and we must adjust it to be c0 == 0
@@ -237,6 +272,8 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
 
     pub fn get_main_domain_trace(
         table_driver: &TableDriver<Mersenne31Field>,
+        decoder_table_for_execution_circuit: &[[Mersenne31Field;
+              EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH]],
         trace_len: usize,
         setup_layout: &SetupLayout,
         worker: &Worker,
@@ -259,11 +296,17 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
 
         // dump tables
         let all_generic_tables = table_driver.dump_tables();
-        assert_eq!(all_generic_tables.len(), table_driver.total_tables_len);
 
-        let range_check_16_table: Vec<_> = (0..(1 << 16))
-            .map(|el| Mersenne31Field(el as u32))
-            .collect();
+        let reference_range_check_16_table =
+            TableType::RangeCheckLarge.generate_table::<Mersenne31Field>();
+        let mut range_check_16_table = table_driver.get_table(TableType::RangeCheckLarge);
+        if range_check_16_table.is_initialized() == false {
+            // we do not keep it in a common width-3 storage
+            range_check_16_table = &reference_range_check_16_table;
+        }
+        let mut range_check_16_table_content = Vec::with_capacity(range_check_16_table.get_size());
+        range_check_16_table.dump_limited_columns::<1>(&mut range_check_16_table_content);
+        assert_eq!(range_check_16_table_content.len(), 1 << 16);
 
         let timestamp_range_check_table: Vec<_> = (0..(1 << TIMESTAMP_COLUMNS_NUM_BITS))
             .map(|el| Mersenne31Field(el as u32))
@@ -278,8 +321,8 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
             setup_layout.generic_lookup_setup_columns.num_elements()
         );
 
-        let range_check_16_table_content_len = range_check_16_table.len();
-        let range_check_16_table_content_ref = &range_check_16_table;
+        let range_check_16_table_content_len = range_check_16_table_content.len();
+        let range_check_16_table_content_ref = &range_check_16_table_content;
 
         let timestamp_range_check_table_content_len = timestamp_range_check_table.len();
         let timestamp_range_check_table_content_ref = &timestamp_range_check_table;
@@ -300,15 +343,36 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
 
                         let trace_view_row = trace_view.current_row();
 
-                        if absolute_row_idx < range_check_16_table_content_len {
-                            trace_view_row[setup_layout.range_check_16_setup_column.start()] =
-                                range_check_16_table_content_ref[absolute_row_idx];
+                        if setup_layout.timestamp_setup_columns.num_elements() > 0 {
+                            let timestamp = (absolute_row_idx as u64) + 1;
+                            let timestamp_shifted = timestamp << NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
+                            let timestamp_low =
+                                timestamp_shifted & ((1 << TIMESTAMP_COLUMNS_NUM_BITS) - 1);
+                            let timestamp_high = timestamp_shifted >> TIMESTAMP_COLUMNS_NUM_BITS;
+
+                            trace_view_row[setup_layout.timestamp_setup_columns.start()] =
+                                Mersenne31Field(timestamp_low as u32);
+                            trace_view_row[setup_layout.timestamp_setup_columns.start() + 1] =
+                                Mersenne31Field(timestamp_high as u32);
                         }
 
-                        if absolute_row_idx < timestamp_range_check_table_content_len {
-                            trace_view_row
-                                [setup_layout.timestamp_range_check_setup_column.start()] =
-                                timestamp_range_check_table_content_ref[absolute_row_idx];
+                        if setup_layout.range_check_16_setup_column.num_elements() > 0 {
+                            if absolute_row_idx < range_check_16_table_content_len {
+                                trace_view_row[setup_layout.range_check_16_setup_column.start()] =
+                                    range_check_16_table_content_ref[absolute_row_idx][0];
+                            }
+                        }
+
+                        if setup_layout
+                            .timestamp_range_check_setup_column
+                            .num_elements()
+                            > 0
+                        {
+                            if absolute_row_idx < timestamp_range_check_table_content_len {
+                                trace_view_row
+                                    [setup_layout.timestamp_range_check_setup_column.start()] =
+                                    timestamp_range_check_table_content_ref[absolute_row_idx];
+                            }
                         }
 
                         for (tuple_idx, encoding_chunk) in all_generic_tables_ref.iter().enumerate()
@@ -322,17 +386,24 @@ impl<const N: usize, A: GoodAllocator, T: MerkleTreeConstructor> SetupPrecomputa
                             }
                         }
 
-                        if setup_layout.timestamp_setup_columns.num_elements() > 0 {
-                            let timestamp = (absolute_row_idx as u64) + 1;
-                            let timestamp_shifted = timestamp << NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
-                            let timestamp_low =
-                                timestamp_shifted & ((1 << TIMESTAMP_COLUMNS_NUM_BITS) - 1);
-                            let timestamp_high = timestamp_shifted >> TIMESTAMP_COLUMNS_NUM_BITS;
-
-                            trace_view_row[setup_layout.timestamp_setup_columns.start()] =
-                                Mersenne31Field(timestamp_low as u32);
-                            trace_view_row[setup_layout.timestamp_setup_columns.start() + 1] =
-                                Mersenne31Field(timestamp_high as u32);
+                        if setup_layout
+                            .preprocessed_decoder_setup_columns
+                            .num_elements()
+                            > 0
+                        {
+                            if absolute_row_idx < decoder_table_for_execution_circuit.len() {
+                                let flattened =
+                                    &decoder_table_for_execution_circuit[absolute_row_idx];
+                                let range =
+                                    setup_layout.preprocessed_decoder_setup_columns.get_range(0);
+                                trace_view_row[range].copy_from_slice(flattened);
+                            } else {
+                                // pad it with something that is unreachable due to range checks on PC pieces
+                                let range =
+                                    setup_layout.preprocessed_decoder_setup_columns.get_range(0);
+                                use cs::machine::ops::unrolled::decoder_table_padding;
+                                trace_view_row[range].copy_from_slice(&decoder_table_padding());
+                            }
                         }
 
                         trace_view.advance_row();
@@ -360,8 +431,7 @@ pub fn prove<const N: usize, A: GoodAllocator>(
     delegation_processing_type: Option<u16>,
     lde_factor: usize,
     _tree_cap_size: usize,
-    num_queries: usize,
-    pow_bits: u32,
+    security_config: &ProofSecurityConfig,
     worker: &Worker,
 ) -> (ProverData<N, A, DefaultTreeConstructor>, Proof) {
     prove_configured::<N, A, DefaultTreeConstructor>(
@@ -376,8 +446,7 @@ pub fn prove<const N: usize, A: GoodAllocator>(
         delegation_processing_type,
         lde_factor,
         _tree_cap_size,
-        num_queries,
-        pow_bits,
+        security_config,
         worker,
     )
 }
@@ -394,8 +463,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
     delegation_processing_type: Option<u16>,
     lde_factor: usize,
     _tree_cap_size: usize,
-    num_queries: usize,
-    pow_bits: u32,
+    security_config: &ProofSecurityConfig,
     worker: &Worker,
 ) -> (ProverData<N, A, T>, Proof) {
     let WitnessEvaluationData {
@@ -417,18 +485,20 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
     // VERY important - we will use the fact that final borrow value is unconstrained
     // when we will define lazy init/teardown padding constraint, so we manually right here write it
     // to the proper value - it must be `1`
-    if let Some(lazy_init_address_aux_vars) = compiled_circuit.lazy_init_address_aux_vars {
-        let ShuffleRamAuxComparisonSet { final_borrow, .. } = lazy_init_address_aux_vars;
+    if compiled_circuit.lazy_init_address_aux_vars.len() > 0 {
+        for lazy_init_address_aux_vars in compiled_circuit.lazy_init_address_aux_vars.iter() {
+            let ShuffleRamAuxComparisonSet { final_borrow, .. } = *lazy_init_address_aux_vars;
 
-        let row_of_interest = trace_len - 2; // one before last
-        let mut exec_trace_view = exec_trace.row_view(row_of_interest..row_of_interest + 1);
-        let (witness_row, _) = exec_trace_view
-            .current_row()
-            .split_at_mut(num_witness_columns);
-        let ColumnAddress::WitnessSubtree(offset) = final_borrow else {
-            unreachable!()
-        };
-        witness_row[offset] = Mersenne31Field::ONE;
+            let row_of_interest = trace_len - 2; // one before last
+            let mut exec_trace_view = exec_trace.row_view(row_of_interest..row_of_interest + 1);
+            let (witness_row, _) = exec_trace_view
+                .current_row()
+                .split_at_mut(num_witness_columns);
+            let ColumnAddress::WitnessSubtree(offset) = final_borrow else {
+                unreachable!()
+            };
+            witness_row[offset] = Mersenne31Field::ONE;
+        }
     }
 
     let optimal_folding =
@@ -465,8 +535,16 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
     if compiled_circuit
         .memory_layout
         .shuffle_ram_inits_and_teardowns
-        .is_some()
+        .is_empty()
+        == false
     {
+        assert_eq!(
+            compiled_circuit
+                .memory_layout
+                .shuffle_ram_inits_and_teardowns
+                .len(),
+            1
+        );
         transcript_input.extend(external_values.aux_boundary_values.flatten().into_iter());
     }
 
@@ -487,13 +565,16 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
 
     let cached_data_values = self::cached_data::ProverCachedData::new(
         compiled_circuit,
-        external_values,
+        &external_values.challenges,
         trace_len,
         circuit_sequence,
         delegation_processing_type,
     );
 
     let mut seed = Transcript::commit_initial(&transcript_input);
+
+    // let pow_bits =
+    //     ProofPowConfig::worst_case_config(security_bits, optimal_folding.folding_sequence.len());
 
     let stage_2_output = stage2::prover_stage_2(
         &mut seed,
@@ -506,6 +587,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         lde_precomputations,
         lde_factor,
         &optimal_folding,
+        security_config,
         worker,
     );
 
@@ -563,11 +645,12 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         &stage_1_output,
         &stage_2_output,
         &setup_precomputations,
-        external_values,
+        &[external_values.aux_boundary_values],
         precomputations,
         lde_precomputations,
         lde_factor,
         &optimal_folding,
+        security_config,
         worker,
     );
 
@@ -589,6 +672,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         lde_precomputations,
         lde_factor,
         &optimal_folding,
+        security_config,
         worker,
     );
 
@@ -602,45 +686,35 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         precomputations,
         lde_factor,
         &optimal_folding,
-        num_queries,
+        security_config,
         worker,
     );
 
-    #[cfg(feature = "debug_logs")]
-    println!("Searching for PoW for {} bits", pow_bits);
-
-    #[cfg(feature = "timing_logs")]
-    let now = std::time::Instant::now();
-    let (mut seed, pow_challenge) = Transcript::search_pow(&seed, pow_bits, worker);
-    #[cfg(feature = "timing_logs")]
-    println!("PoW for {} took {:?}", pow_bits, now.elapsed());
-
-    let mut queries = Vec::with_capacity(num_queries);
+    let mut queries = Vec::with_capacity(security_config.num_queries);
     let tree_index_bits = trace_len.trailing_zeros();
     let tree_index_mask = (1 << tree_index_bits) - 1;
     let coset_index_bits = lde_factor.trailing_zeros();
     let query_index_bits = tree_index_bits + coset_index_bits;
-    let num_required_bits = (query_index_bits as usize) * num_queries;
+    let num_required_bits = (query_index_bits as usize) * security_config.num_queries;
     let num_required_words =
         num_required_bits.next_multiple_of(u32::BITS as usize) / (u32::BITS as usize);
-    // we used 1 top word for PoW
-    let num_required_words_padded =
-        (num_required_words + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
 
     #[cfg(feature = "debug_logs")]
     {
         dbg!(query_index_bits);
         dbg!(num_required_bits);
         dbg!(num_required_words);
-        dbg!(num_required_words_padded);
     }
 
-    let mut source = vec![0u32; num_required_words_padded];
-    Transcript::draw_randomness(&mut seed, &mut source);
-    // Remember - skip top word
-    let mut bit_source = BitSource::new(source[1..].to_vec());
+    let (pow_challenge, source) = get_pow_challenge_and_transcript_challenges(
+        &mut seed,
+        security_config.fri_queries_pow_bits,
+        num_required_words,
+        worker,
+    );
+    let mut bit_source = BitSource::new(source[..].to_vec());
 
-    for _i in 0..num_queries {
+    for _i in 0..security_config.num_queries {
         let query_index = assemble_query_index(query_index_bits as usize, &mut bit_source);
         let tree_index = query_index & tree_index_mask;
         let coset_index = query_index >> tree_index_bits;
@@ -776,6 +850,15 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         None
     };
 
+    let pow_challenges = ProofPowChallenges {
+        lookup_pow_challenge: stage_2_output.pow_challenge,
+        quotient_alpha_pow_challenge: stage_3_output.pow_challenge,
+        quotient_z_pow_challenge: stage_4_output.quotient_z_pow_challenge,
+        deep_poly_alpha_pow_challenge: stage_4_output.deep_poly_alpha_pow_challenge,
+        foldings_pow_challenges: stage_5_output.foldings_pow_challenges.clone(),
+        fri_queries_pow_challenge: pow_challenge,
+    };
+
     let proof = Proof {
         external_values: *external_values,
         public_inputs: public_inputs.to_vec(),
@@ -792,7 +875,7 @@ pub fn prove_configured<const N: usize, A: GoodAllocator, T: MerkleTreeConstruct
         last_fri_step_plain_leaf_values,
         final_monomial_form: stage_5_output.final_monomials.clone(),
         queries,
-        pow_nonce: pow_challenge,
+        pow_challenges,
         circuit_sequence: circuit_sequence as u16,
         delegation_type: cached_data_values.delegation_type.to_reduced_u32() as u16,
     };

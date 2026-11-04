@@ -2,13 +2,13 @@
 name = "gpu_prover"
 version.workspace = true
 edition.workspace = true
-build = "build/main.rs"
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
 keywords.workspace = true
 categories.workspace = true
+build = "build/main.rs"
 
 [build-dependencies]
 cmake = "0.1"
@@ -19,29 +19,41 @@ blake2s_u32 = { workspace = true }
 cs = { workspace = true }
 fft = { workspace = true }
 field = { workspace = true }
-prover = { workspace = true, features = ["default"] }
+prover = { workspace = true }
+riscv_transpiler = { workspace = true, features = ["jit"] }
 setups = { workspace = true }
 trace_and_split = { workspace = true }
+verifier_common = { workspace = true, features = ["proof_utils"] }
 worker = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
+clap = { workspace = true, optional = true }
+csv = { version = "1", optional = true }
+serde = { workspace = true, features = ["derive"], optional = true }
+
 era_cudart = "=0.156.0"
 era_cudart_sys = "=0.156.0"
+
 crossbeam-channel = "0.5"
+libc = "0.2"
 crossbeam-utils = "0.8"
 nvtx = "1"
-rayon = "1.11"
+rayon = "1"
 transpose = "0.2"
+type-map = "0.5"
 
 [features]
-default = []
+deterministic_pow = ["prover/deterministic_pow"]
 log_gpu_mem_usage = []
 log_gpu_stages_timings = []
+memory_sweep = ["dep:clap", "dep:csv", "dep:serde"]
 
 [dev-dependencies]
-execution_utils = { workspace = true }
-prover = { workspace = true, features = ["default", "test"] }
-rand = { workspace = true, default-features = false }
+# execution_utils = { workspace = true }
+prover = { workspace = true, features = ["test"] }
+rand = { workspace = true, features = ["std", "thread_rng", "std_rng"] }
+riscv_common = { workspace = true }
+setups = { workspace = true, features = ["witness_eval_fn"] }
 trace_holder = { workspace = true }
 env_logger = "0.11"
 era_criterion_cuda = "0.2"
@@ -59,3 +71,12 @@ harness = false
 [[bench]]
 name = "other"
 harness = false
+
+[[bench]]
+name = "cpu_pipeline"
+harness = false
+
+[[bin]]
+name = "gpu_memory_sweep"
+path = "src/bin/gpu_memory_sweep.rs"
+required-features = ["memory_sweep"]

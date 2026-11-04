@@ -1,106 +1,41 @@
-use super::messages::WorkerResult;
-use super::precomputations::CircuitPrecomputations;
-use crate::allocator::host::ConcurrentStaticHostAllocator;
-use crate::circuit_type::{CircuitType, MainCircuitType};
+use super::A;
+use crate::circuit_type::CircuitType;
 use crate::cudart::device::set_device;
 use crate::cudart::result::CudaResult;
+use crate::execution::messages::{
+    GpuWorkRequest, GpuWorkResult, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
+    ProofResult, SetupCapsRequest, SetupCapsResult,
+};
 use crate::prover::context::{ProverContext, ProverContextConfig};
+use crate::prover::decoder::DecoderTableTransfer;
+use crate::prover::gpu_memory::{GpuMemoryPreset, ProductionMemoryPreset, NORMAL_ARENA_BYTES};
 use crate::prover::memory::{commit_memory, MemoryCommitmentJob};
 use crate::prover::precomputations::Precomputations;
 use crate::prover::proof::{prove, ProofJob};
 use crate::prover::setup::SetupPrecomputations;
-use crate::prover::trace_holder::TreesCacheMode;
-use crate::prover::tracing_data::{TracingDataHost, TracingDataTransfer};
-use crate::witness::trace_main::get_aux_arguments_boundary_values;
+use crate::prover::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
+use crate::witness::trace_unrolled::get_aux_arguments_boundary_values;
 use crossbeam_channel::{Receiver, Sender};
-use era_cudart::device::{get_device_count, get_device_properties};
-use fft::GoodAllocator;
-use field::Mersenne31Field;
-use log::{debug, error, info, trace};
-use prover::definitions::{
-    AuxArgumentsBoundaryValues, ExternalChallenges, ExternalValues, OPTIMAL_FOLDING_PROPERTIES,
-};
-use prover::merkle_trees::MerkleTreeCapVarLength;
-use prover::prover_stages::Proof;
-use std::cell::RefCell;
+use era_cudart::device::get_device_properties;
+use log::{debug, error, info, trace, warn};
+use prover::definitions::AuxArgumentsBoundaryValues;
 use std::ffi::CStr;
 use std::mem;
+use std::ops::Deref;
 use std::process::exit;
-use std::rc::Rc;
-use std::sync::Arc;
+use verifier_common::SecurityMarker;
 
-type BF = Mersenne31Field;
-
-const NUM_QUERIES: usize = 53;
-const POW_BITS: u32 = 28;
-
-// represents a request to generate and cache a device-side setup from a host-side setup for later use in the GPU worker
-#[derive(Clone)]
-pub struct SetupToCache {
-    pub circuit_type: CircuitType,
-    pub precomputations: CircuitPrecomputations,
-}
-
-pub struct MemoryCommitmentRequest<A: GoodAllocator> {
-    pub batch_id: u64,
-    pub circuit_type: CircuitType,
-    pub circuit_sequence: usize,
-    pub precomputations: CircuitPrecomputations,
-    pub tracing_data: TracingDataHost<A>,
-}
-
-pub struct MemoryCommitmentResult<A: GoodAllocator> {
-    pub batch_id: u64,
-    pub circuit_type: CircuitType,
-    pub circuit_sequence: usize,
-    pub tracing_data: TracingDataHost<A>,
-    pub merkle_tree_caps: Vec<MerkleTreeCapVarLength>,
-}
-
-pub struct ProofRequest<A: GoodAllocator> {
-    pub batch_id: u64,
-    pub circuit_type: CircuitType,
-    pub circuit_sequence: usize,
-    pub precomputations: CircuitPrecomputations,
-    pub tracing_data: TracingDataHost<A>,
-    pub external_challenges: ExternalChallenges,
-}
-
-pub struct ProofResult<A: GoodAllocator> {
-    pub batch_id: u64,
-    pub circuit_type: CircuitType,
-    pub circuit_sequence: usize,
-    pub tracing_data: TracingDataHost<A>,
-    pub proof: Proof,
-}
-
-pub enum GpuWorkRequest<A: GoodAllocator> {
-    MemoryCommitment(MemoryCommitmentRequest<A>),
-    Proof(ProofRequest<A>),
-}
-
-impl<A: GoodAllocator> GpuWorkRequest<A> {
-    pub fn batch_id(&self) -> u64 {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => request.batch_id,
-            GpuWorkRequest::Proof(request) => request.batch_id,
-        }
-    }
-}
-
-pub fn get_gpu_worker_func(
+pub fn get_gpu_worker_func<S: SecurityMarker>(
     device_id: i32,
     prover_context_config: ProverContextConfig,
-    setups_to_cache: Vec<SetupToCache>,
     is_initialized: Sender<()>,
-    requests: Receiver<Option<GpuWorkRequest<ConcurrentStaticHostAllocator>>>,
-    results: Sender<Option<WorkerResult<ConcurrentStaticHostAllocator>>>,
+    requests: Receiver<Option<GpuWorkRequest<A>>>,
+    results: Sender<Option<GpuWorkResult<A>>>,
 ) -> impl FnOnce() + Send + 'static {
     move || {
-        let result = gpu_worker(
+        let result = gpu_worker::<S>(
             device_id,
             prover_context_config,
-            setups_to_cache,
             is_initialized,
             requests,
             results,
@@ -115,37 +50,15 @@ pub fn get_gpu_worker_func(
 enum JobType<'a> {
     MemoryCommitment(MemoryCommitmentJob<'a>),
     Proof(ProofJob<'a>),
+    SetupCaps,
 }
 
-const fn get_tree_cap_size(log_domain_size: u32) -> u32 {
-    OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2 as u32
-}
-
-fn get_trees_cache_mode(circuit_type: CircuitType, context: &ProverContext) -> TreesCacheMode {
-    match circuit_type {
-        CircuitType::Main(main) => match main {
-            MainCircuitType::ReducedRiscVLog23Machine if (context.get_mem_size() >> 30) < 28 => {
-                TreesCacheMode::CacheNone
-            } // less than 28GB
-            _ => TreesCacheMode::CacheFull,
-        },
-        _ => TreesCacheMode::CacheFull,
-    }
-}
-
-#[derive(Clone)]
-struct SetupHolder<'a> {
-    pub setup: Rc<RefCell<SetupPrecomputations<'a>>>,
-    pub trace: Arc<Vec<BF, ConcurrentStaticHostAllocator>>,
-}
-
-fn gpu_worker(
+fn gpu_worker<S: SecurityMarker>(
     device_id: i32,
     prover_context_config: ProverContextConfig,
-    setups_to_cache: Vec<SetupToCache>,
     is_initialized: Sender<()>,
-    requests: Receiver<Option<GpuWorkRequest<ConcurrentStaticHostAllocator>>>,
-    results: Sender<Option<WorkerResult<ConcurrentStaticHostAllocator>>>,
+    requests: Receiver<Option<GpuWorkRequest<A>>>,
+    results: Sender<Option<GpuWorkResult<A>>>,
 ) -> CudaResult<()> {
     trace!("GPU_WORKER[{device_id}] started");
     Precomputations::ensure_initialized();
@@ -158,81 +71,24 @@ fn gpu_worker(
         props.multiProcessorCount,
         props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
     );
+    let requested_preset = prover_context_config.gpu_memory_preset;
     let mut context = ProverContext::new(&prover_context_config)?;
+    let preset = context.get_memory_preset();
+    if preset == ProductionMemoryPreset::Low {
+        match requested_preset {
+            GpuMemoryPreset::Auto => warn!(
+                "GPU_WORKER[{device_id}] Normal arena of {NORMAL_ARENA_BYTES} bytes did not fit; using Low"
+            ),
+            GpuMemoryPreset::Low => {
+                warn!("GPU_WORKER[{device_id}] explicitly using the Low GPU memory preset")
+            }
+            GpuMemoryPreset::Normal => unreachable!(),
+        }
+    }
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
     );
-    let device_count = get_device_count()?;
-    for precomputations in setups_to_cache.iter().enumerate().filter_map(|(i, setup)| {
-        if (i as i32 % device_count) == device_id {
-            Some(&setup.precomputations)
-        } else {
-            None
-        }
-    }) {
-        let lde_factor = precomputations.lde_precomputations.lde_factor;
-        assert!(lde_factor.is_power_of_two());
-        let log_lde_factor = lde_factor.trailing_zeros();
-        let domain_size = precomputations.lde_precomputations.domain_size;
-        assert!(domain_size.is_power_of_two());
-        let log_domain_size = domain_size.trailing_zeros();
-        let log_tree_cap_size = get_tree_cap_size(log_domain_size);
-        let circuit = &precomputations.compiled_circuit;
-        let trace = precomputations.setup_trace.clone();
-        let _ = precomputations.setup_trees_and_caps.get_or_try_init(|| {
-            SetupPrecomputations::get_trees_and_caps(
-                circuit,
-                log_lde_factor,
-                log_tree_cap_size,
-                trace,
-                &context,
-            )
-        })?;
-    }
-    let mut setups = vec![];
-    for setup in setups_to_cache {
-        let SetupToCache {
-            circuit_type,
-            precomputations,
-        } = setup;
-        let lde_factor = precomputations.lde_precomputations.lde_factor;
-        assert!(lde_factor.is_power_of_two());
-        let log_lde_factor = lde_factor.trailing_zeros();
-        let domain_size = precomputations.lde_precomputations.domain_size;
-        assert!(domain_size.is_power_of_two());
-        let log_domain_size = domain_size.trailing_zeros();
-        let log_tree_cap_size = get_tree_cap_size(log_domain_size);
-        let circuit = &precomputations.compiled_circuit;
-        let trees_and_caps = precomputations.setup_trees_and_caps.wait().clone();
-        let mut setup = SetupPrecomputations::new(
-            circuit,
-            log_lde_factor,
-            log_tree_cap_size,
-            false,
-            trees_and_caps,
-            &context,
-        )?;
-        match circuit_type {
-            CircuitType::Main(main) => trace!("GPU_WORKER[{device_id}] transferring setup trace for main circuit {main:?}"),
-            CircuitType::Delegation(delegation) => trace!("GPU_WORKER[{device_id}] transferring setup trace for delegation circuit {delegation:?}"),
-        }
-        let trace = precomputations.setup_trace.clone();
-        setup.schedule_transfer(trace.clone(), &context)?;
-        match circuit_type {
-            CircuitType::Main(main) => {
-                trace!("GPU_WORKER[{device_id}] generating setup for main circuit {main:?}")
-            }
-            CircuitType::Delegation(delegation) => trace!(
-                "GPU_WORKER[{device_id}] generating setup for delegation circuit {delegation:?}"
-            ),
-        }
-        setup.ensure_is_extended(&context)?;
-        context.get_exec_stream().synchronize()?;
-        let setup = Rc::new(RefCell::new(setup));
-        let holder = SetupHolder { setup, trace };
-        setups.push(holder);
-    }
     is_initialized.send(()).unwrap();
     drop(is_initialized);
     let mut even_odd_index = 0;
@@ -241,69 +97,148 @@ fn gpu_worker(
     for request in requests {
         context.set_reversed_allocation_placement(even_odd_index == 1);
         let mut phase_one = if let Some(request) = request {
-            let (batch_id, circuit_type, circuit_sequence, setup, tracing_data) = match &request {
-                GpuWorkRequest::MemoryCommitment(request) => (
-                    request.batch_id,
-                    request.circuit_type,
-                    request.circuit_sequence,
-                    None,
-                    request.tracing_data.clone(),
-                ),
-                GpuWorkRequest::Proof(request) => {
-                    let precomputations = &request.precomputations;
-                    let holder = setups
-                        .iter()
-                        .find(|holder| Arc::ptr_eq(&holder.trace, &precomputations.setup_trace))
-                        .unwrap();
-                    let setup = holder.setup.clone();
-                    (
-                        request.batch_id,
-                        request.circuit_type,
-                        request.circuit_sequence,
-                        Some(setup),
-                        request.tracing_data.clone(),
-                    )
+            let batch_id = request.batch_id();
+            let circuit_type = request.circuit_type();
+            let sequence_id = request.sequence_id();
+            let memory_policy = preset.policy_for(circuit_type);
+            let precomputations = &request.precomputations();
+            // Setup trees and caps are a pure function of the circuit's setup trace and are
+            // built on the device once per circuit and process (memoized in the shared
+            // precomputations), whether a proof or a bare caps request gets there first.
+            let ensure_setup_trees_and_caps = || {
+                let lde_factor = circuit_type.get_lde_factor();
+                assert!(lde_factor.is_power_of_two());
+                let log_lde_factor = lde_factor.trailing_zeros();
+                let tree_cap_size = circuit_type.get_tree_cap_size();
+                assert!(tree_cap_size.is_power_of_two());
+                let log_tree_cap_size = tree_cap_size.trailing_zeros();
+                let circuit = &precomputations.compiled_circuit;
+                let trace = &precomputations.setup_trace;
+                precomputations
+                    .setup_trees_and_caps
+                    .get_or_try_init(|| {
+                        trace!("GPU_WORKER[{device_id}] computing setup trees and caps for circuit {circuit_type:?}");
+                        SetupPrecomputations::get_trees_and_caps(
+                            circuit,
+                            log_lde_factor,
+                            log_tree_cap_size,
+                            trace.clone(),
+                            &context,
+                        )
+                    })
+                    .map(|trees_and_caps| (trees_and_caps.clone(), log_lde_factor, log_tree_cap_size))
+            };
+            let setup = match &request {
+                GpuWorkRequest::MemoryCommitment(_) => None,
+                GpuWorkRequest::SetupCaps(_) => {
+                    ensure_setup_trees_and_caps()?;
+                    None
+                }
+                GpuWorkRequest::Proof(_) => {
+                    let (setup_trees_and_caps, log_lde_factor, log_tree_cap_size) =
+                        ensure_setup_trees_and_caps()?;
+                    let circuit = &precomputations.compiled_circuit;
+                    let trace = &precomputations.setup_trace;
+                    let mut setup = SetupPrecomputations::new(
+                        circuit,
+                        log_lde_factor,
+                        log_tree_cap_size,
+                        memory_policy.setup,
+                        setup_trees_and_caps,
+                        &context,
+                    )?;
+                    trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for circuit {circuit_type:?}");
+                    setup.schedule_transfer(trace.clone(), &context)?;
+                    Some(setup)
                 }
             };
-            match circuit_type {
-                CircuitType::Main(main) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring trace for main circuit {main:?} chunk {circuit_sequence}"),
-                CircuitType::Delegation(delegation) => trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring trace for delegation circuit {delegation:?} chunk {circuit_sequence}"),
-            }
-            let mut transfer = TracingDataTransfer::new(circuit_type, tracing_data, &context)?;
-            transfer.schedule_transfer(&context)?;
-            Some((request, setup, transfer))
+            // A caps request needs no witness-side transfers at all.
+            let needs_transfers = !matches!(request, GpuWorkRequest::SetupCaps(_));
+            let decoder_table_transfer = if let (true, Some(decoder_data)) =
+                (needs_transfers, &precomputations.decoder_data)
+            {
+                trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring decoder table for circuit {circuit_type:?}");
+                let mut decoder_table_transfer =
+                    DecoderTableTransfer::new(decoder_data.clone(), &context)?;
+                decoder_table_transfer.schedule_transfer(&context)?;
+                Some(decoder_table_transfer)
+            } else {
+                None
+            };
+            let inits_and_teardowns_transfer = if let Some(inits_and_teardowns) =
+                request.inits_and_teardowns()
+            {
+                trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring inits and teardowns for circuit {circuit_type:?}[{sequence_id}]");
+                let mut inits_and_teardowns_transfer =
+                    InitsAndTeardownsTransfer::new(inits_and_teardowns.clone(), &context)?;
+                inits_and_teardowns_transfer.schedule_transfer(&context)?;
+                Some(inits_and_teardowns_transfer)
+            } else {
+                None
+            };
+            let tracing_data_transfer = if let Some(tracing_data) = request.tracing_data() {
+                trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring trace for circuit {circuit_type:?}[{sequence_id}]");
+                let mut tracing_data_transfer =
+                    TracingDataTransfer::new(tracing_data.clone(), &context)?;
+                tracing_data_transfer.schedule_transfer(&context)?;
+                Some(tracing_data_transfer)
+            } else {
+                None
+            };
+            Some((
+                request,
+                memory_policy,
+                setup,
+                decoder_table_transfer,
+                inits_and_teardowns_transfer,
+                tracing_data_transfer,
+            ))
         } else {
             None
         };
         mem::swap(&mut current_phase_one, &mut phase_one);
         context.set_reversed_allocation_placement(even_odd_index == 0);
-        let mut phase_two = if let Some((request, setup, transfer)) = phase_one {
+        let mut phase_two = if let Some((
+            request,
+            memory_policy,
+            setup,
+            decoder_table_transfer,
+            inits_and_teardowns_transfer,
+            tracing_data_transfer,
+        )) = phase_one
+        {
+            let batch_id = request.batch_id();
+            let circuit_type = request.circuit_type();
+            let sequence_id = request.sequence_id();
+            let lde_factor = circuit_type.get_lde_factor();
+            assert!(lde_factor.is_power_of_two());
+            let log_lde_factor = lde_factor.trailing_zeros();
+            let tree_cap_size = circuit_type.get_tree_cap_size();
+            assert!(tree_cap_size.is_power_of_two());
+            let log_tree_cap_size = tree_cap_size.trailing_zeros();
+            let precomputations = request.precomputations();
+            let compiled_circuit = &precomputations.compiled_circuit;
+            let decoder_table_allocation = if let Some(transfer) = decoder_table_transfer {
+                let DecoderTableTransfer {
+                    data_device,
+                    transfer,
+                    ..
+                } = transfer;
+                transfer.ensure_transferred(&context)?;
+                Some(data_device)
+            } else {
+                None
+            };
+            let decoder_table = decoder_table_allocation.as_ref().map(|t| t.deref());
             let job = match &request {
-                GpuWorkRequest::MemoryCommitment(request) => {
-                    let batch_id = request.batch_id;
-                    match request.circuit_type {
-                        CircuitType::Main(main) => trace!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for main circuit {:?} chunk {}",
-                            main,
-                            request.circuit_sequence
-                        ),
-                        CircuitType::Delegation(delegation) => trace!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for delegation circuit {:?} chunk {}",
-                            delegation,
-                            request.circuit_sequence
-                        ),
-                    }
-                    let precomputations = &request.precomputations;
-                    let lde_factor = precomputations.lde_precomputations.lde_factor;
-                    assert!(lde_factor.is_power_of_two());
-                    let log_lde_factor = lde_factor.trailing_zeros();
-                    let domain_size = precomputations.lde_precomputations.domain_size;
-                    assert!(domain_size.is_power_of_two());
-                    let log_domain_size = domain_size.trailing_zeros();
-                    let log_tree_cap_size = get_tree_cap_size(log_domain_size);
+                GpuWorkRequest::MemoryCommitment(_) => {
+                    trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for circuit {circuit_type:?}[{sequence_id}]");
                     let job = commit_memory(
-                        transfer,
-                        &precomputations.compiled_circuit,
+                        circuit_type,
+                        compiled_circuit,
+                        decoder_table,
+                        inits_and_teardowns_transfer,
+                        tracing_data_transfer,
                         log_lde_factor,
                         log_tree_cap_size,
                         &context,
@@ -311,68 +246,49 @@ fn gpu_worker(
                     JobType::MemoryCommitment(job)
                 }
                 GpuWorkRequest::Proof(request) => {
-                    let batch_id = request.batch_id;
-                    let circuit_type = request.circuit_type;
-                    match circuit_type {
-                        CircuitType::Main(main) => trace!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for main circuit {:?} chunk {}",
-                            main,
-                            request.circuit_sequence
-                        ),
-                        CircuitType::Delegation(delegation) => trace!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for delegation circuit {:?} chunk {}",
-                            delegation,
-                            request.circuit_sequence
-                        ),
-                    }
-                    let precomputations = &request.precomputations;
-                    let aux_boundary_values = match &transfer.data_host {
-                        TracingDataHost::Main {
-                            setup_and_teardown,
-                            trace: _,
-                        } => {
-                            if let Some(setup_and_teardown) = setup_and_teardown {
-                                get_aux_arguments_boundary_values(
-                                    &setup_and_teardown.lazy_init_data,
-                                    setup_and_teardown.lazy_init_data.len(),
-                                )
-                            } else {
-                                AuxArgumentsBoundaryValues::default()
-                            }
-                        }
-                        TracingDataHost::Delegation(_) => AuxArgumentsBoundaryValues::default(),
-                    };
-                    let external_values = ExternalValues {
-                        challenges: request.external_challenges,
-                        aux_boundary_values,
-                    };
-                    let setup = setup.unwrap();
-                    let circuit_sequence = match circuit_type {
-                        CircuitType::Main(_) => request.circuit_sequence,
-                        CircuitType::Delegation(_) => 0,
-                    };
+                    let aux_boundary_values =
+                        if let Some(inits_and_teardowns) = &inits_and_teardowns_transfer {
+                            let inits_and_teardowns = &inits_and_teardowns.data_host;
+                            get_aux_arguments_boundary_values(compiled_circuit, inits_and_teardowns)
+                        } else {
+                            let sets_count = compiled_circuit
+                                .memory_layout
+                                .shuffle_ram_inits_and_teardowns
+                                .len();
+                            assert_eq!(
+                                sets_count,
+                                compiled_circuit.lazy_init_address_aux_vars.len()
+                            );
+                            vec![AuxArgumentsBoundaryValues::default(); sets_count]
+                        };
+                    let mut setup = setup.unwrap();
                     let delegation_processing_type = match circuit_type {
-                        CircuitType::Main(_) => None,
                         CircuitType::Delegation(delegation) => Some(delegation as u16),
+                        CircuitType::Unrolled(_) => None,
                     };
-                    let trees_cache_mode = get_trees_cache_mode(circuit_type, &context);
+                    let security_config = circuit_type.get_security_config_for::<S>();
+                    trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]");
                     let job = prove(
-                        precomputations.compiled_circuit.clone(),
-                        external_values,
-                        &mut setup.borrow_mut(),
-                        transfer,
-                        &precomputations.lde_precomputations,
-                        circuit_sequence,
+                        circuit_type,
+                        compiled_circuit.clone(),
+                        request.external_challenges,
+                        aux_boundary_values,
+                        &mut setup,
+                        decoder_table,
+                        inits_and_teardowns_transfer,
+                        tracing_data_transfer,
                         delegation_processing_type,
-                        precomputations.lde_precomputations.lde_factor,
-                        NUM_QUERIES,
-                        POW_BITS,
+                        circuit_type.get_lde_factor(),
+                        &security_config,
                         None,
-                        false,
-                        trees_cache_mode,
+                        &memory_policy,
                         &context,
                     )?;
                     JobType::Proof(job)
+                }
+                GpuWorkRequest::SetupCaps(_) => {
+                    // The trees and caps were built (or found memoized) in phase one.
+                    JobType::SetupCaps
                 }
             };
             Some((request, job))
@@ -387,71 +303,73 @@ fn gpu_worker(
                     let MemoryCommitmentRequest {
                         batch_id,
                         circuit_type,
-                        circuit_sequence,
+                        sequence_id,
+                        inits_and_teardowns,
                         tracing_data,
                         ..
                     } = request;
                     let (merkle_tree_caps, commitment_time_ms) = match job {
                         JobType::MemoryCommitment(job) => job.finish()?,
-                        JobType::Proof(_) => unreachable!(),
+                        JobType::Proof(_) | JobType::SetupCaps => unreachable!(),
                     };
-                    match circuit_type {
-                        CircuitType::Main(main) => debug!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for main circuit {:?} chunk {} in {:.3} ms",
-                            main,
-                            circuit_sequence,
-                            commitment_time_ms
-                        ),
-                        CircuitType::Delegation(delegation) => debug!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for delegation circuit {:?} chunk {} in {:.3} ms",
-                            delegation,
-                            circuit_sequence,
-                            commitment_time_ms
-                        ),
-                    }
+                    debug!("BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for circuit {circuit_type:?}[{sequence_id}] in {commitment_time_ms:.3} ms");
                     let result = MemoryCommitmentResult {
                         batch_id,
                         circuit_type,
+                        sequence_id,
+                        inits_and_teardowns,
                         tracing_data,
                         merkle_tree_caps,
-                        circuit_sequence,
                     };
-                    Some(WorkerResult::MemoryCommitment(result))
+                    Some(GpuWorkResult::MemoryCommitment(result))
                 }
                 GpuWorkRequest::Proof(request) => {
                     let ProofRequest {
                         batch_id,
                         circuit_type,
-                        circuit_sequence,
+                        sequence_id,
+                        inits_and_teardowns,
                         tracing_data,
                         ..
                     } = request;
                     let (proof, proof_time_ms) = match job {
-                        JobType::MemoryCommitment(_) => unreachable!(),
+                        JobType::MemoryCommitment(_) | JobType::SetupCaps => unreachable!(),
                         JobType::Proof(job) => job.finish()?,
                     };
-                    match circuit_type {
-                        CircuitType::Main(main) => debug!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for main circuit {:?} chunk {} in {:.3} ms",
-                            main,
-                            circuit_sequence,
-                            proof_time_ms,
-                        ),
-                        CircuitType::Delegation(delegation) => debug!(
-                            "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for delegation circuit {:?} chunk {} in {:.3} ms",
-                            delegation,
-                            circuit_sequence,
-                            proof_time_ms,
-                        ),
-                    }
+                    debug!("BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for circuit {circuit_type:?}[{sequence_id}] in {proof_time_ms:.3} ms");
                     let result = ProofResult {
                         batch_id,
                         circuit_type,
+                        sequence_id,
+                        inits_and_teardowns,
                         tracing_data,
                         proof,
-                        circuit_sequence,
                     };
-                    Some(WorkerResult::Proof(result))
+                    Some(GpuWorkResult::Proof(result))
+                }
+                GpuWorkRequest::SetupCaps(request) => {
+                    assert!(matches!(job, JobType::SetupCaps));
+                    let SetupCapsRequest {
+                        batch_id,
+                        circuit_type,
+                        sequence_id,
+                        precomputations,
+                    } = request;
+                    let merkle_tree_caps = precomputations
+                        .setup_trees_and_caps
+                        .get()
+                        .expect("setup trees and caps were built in phase one")
+                        .caps
+                        .as_ref()
+                        .clone();
+                    debug!("BATCH[{batch_id}] GPU_WORKER[{device_id}] produced setup caps for circuit {circuit_type:?}[{sequence_id}]");
+                    let result = SetupCapsResult {
+                        batch_id,
+                        circuit_type,
+                        sequence_id,
+                        merkle_tree_caps,
+                    };
+                    Some(GpuWorkResult::SetupCaps(result))
                 }
             }
         } else {

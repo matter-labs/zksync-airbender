@@ -2,46 +2,28 @@
 
 # Make sure to run from the main zksync-airbender directory.
 
-set -euo pipefail  # Exit on any error, unset variable, or failure inside a pipeline
+set -e  # Exit on any error
 
 export DOCKER_DEFAULT_PLATFORM=linux/amd64
 
-# SOURCE_DATE_EPOCH is a fixed constant in the Dockerfile, deliberately not derived from
-# git: anything tied to the commit changes on every commit, so artifacts committed at one
-# commit could never reproduce at the next and check_verifiers would fail on unrelated
-# changes. A constant is what makes the committed artifacts verifiable over time.
-
-# Set AIRBENDER_BUILD_JOBS=N to cap how many verifier builds run at once; the default of
-# 0 launches them all, as CI does. Lower it if the build is being OOM-killed.
 # create a fresh docker
-docker build -t airbender-verifiers \
-  --build-arg AIRBENDER_BUILD_JOBS="${AIRBENDER_BUILD_JOBS:-0}" \
-  --build-arg AIRBENDER_VK_JOBS="${AIRBENDER_VK_JOBS:-}" \
-  -f tools/reproduce/Dockerfile .
+docker build --no-cache -t airbender-verifiers  -f tools/reproduce/Dockerfile .
 
 docker create --name verifiers airbender-verifiers
 
 FILES=(
-    base_layer.bin
-    recursion_layer.bin
-    recursion_log_23_layer.bin
-    recursion_layer_no_delegation.bin
-    final_recursion_layer.bin
-    base_layer_with_output.bin
-    recursion_layer_with_output.bin
-    recursion_log_23_layer_with_output.bin
-    recursion_layer_no_delegation_with_output.bin
-    final_recursion_layer_with_output.bin
-    universal.bin
-    universal_no_delegation.bin
-    base_layer.reduced.vk.json
-    universal.reduced.vk.json
-    universal_no_delegation.final.vk.json
-    recursion_layer.reduced.vk.json
-    recursion_layer_no_delegation.final.vk.json
-    final_recursion_layer.final.vk.json
-    universal.reduced_log23.vk.json
-    recursion_log_23_layer.reduced.vk.json
+    recursion_in_unified_layer.bin
+    recursion_in_unified_layer.elf
+    recursion_in_unified_layer.text
+    recursion_in_unified_layer_security_100_bits.bin
+    recursion_in_unified_layer_security_100_bits.elf
+    recursion_in_unified_layer_security_100_bits.text
+    recursion_in_unrolled_layer.bin
+    recursion_in_unrolled_layer.elf
+    recursion_in_unrolled_layer.text
+    recursion_in_unrolled_layer_security_100_bits.bin
+    recursion_in_unrolled_layer_security_100_bits.elf
+    recursion_in_unrolled_layer_security_100_bits.text
 )
 
 for FILE in "${FILES[@]}"; do
@@ -51,3 +33,8 @@ done
 
 
 docker rm verifiers
+
+# The layer setups of the rebuilt binaries are embedded next to them as
+# tools/verifier/*.setup.json snapshots (see execution_utils::verifier_binaries);
+# re-derive them from the fresh binaries so the two never drift apart.
+cargo run --profile cli -p execution_utils --features verifier_binaries --bin regenerate_recursion_setups

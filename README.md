@@ -2,29 +2,17 @@
 
 [![Logo](zksync-airbender-logo.png)](https://zksync.io/)
 
-This repository contains the RISC-V compilation and proving tools for the ZKsync project, including implementations of RISC-V circuits, a RISC-V simulator, and utilities for witness generation, proof creation, and verification.
+This repository contains the RISC-V compilation and proving tools for the ZKsync project, including the transpiler, proving circuits, and utilities for witness generation, proof creation, and verification.
 
 ## Documentation
 
 The most recent documentation can be found here:
 
 - [In-repo docs](./docs/README.md)
-  - [Overview](./docs/overview.md)
-  - [Writing Programs](./docs/writing_programs.md)
   - [RISC-V Prover - Tutorial](./docs/tutorial.md)
-  - [End-to-End Guide](./docs/end_to_end.md)
-  - [Philosophy and Logic](./docs/philosophy_and_logic.md)
-  - [Circuit Overview](./docs/circuit_overview.md)
-  - [Machine Configuration](./docs/machine_configuration.md)
-  - [Delegation Circuits](./docs/delegation_circuits.md)
-  - [AIR-style Constraints](./docs/air_constraints.md)
-  - [Instruction Gadgets](./docs/instruction_gadgets.md)
-  - [Circuit Entry Points](./docs/circuit_entry_points.md)
-  - [Subarguments Used](./docs/subarguments_used.md)
+  - [Philosophy and logic](./docs/philosophy_and_logic.md)
+  - [Subarguments used](./docs/subarguments_used.md)
   - [Code Repository Layout](./docs/repo_layout.md)
-  - [RISC-V Simulator - Supported Instructions](./docs/simulator_supported_instructions.md)
-  - [GPU Acceleration](./docs/gpu.md)
-  - [Test Suites](./docs/tests_overview.md)
 
 ## How to run it
 
@@ -32,6 +20,17 @@ The most recent documentation can be found here:
 - [Running end to end](./docs/end_to_end.md)
 - [CLI tool](./tools/cli/README.md)
 - [Examples](./examples/)
+
+## Test Modes
+
+- Default local tests:
+  - `cargo test --profile cli`
+- CI-oriented test lane (excludes codegen/legacy-only tests):
+  - `CI=1 cargo test --profile cli`
+- Ignored-test sweep (runs all ignored tests across the workspace, including manual fixture/debug tests):
+  - `cargo test --profile cli -- --ignored`
+- Targeted current-pipeline proving regressions:
+  - `cargo test --profile cli -p execution_utils test_prove_unrolled -- --ignored`
 
 ## Policies
 
@@ -60,7 +59,7 @@ Details on third-party notices can be found in [NOTICE.md](./NOTICE.md), in `ACK
 - [Twitter for Developers](https://twitter.com/zkSyncDevs)
 - [Discord](https://join.zksync.dev/)
 - [Mirror](https://zksync.mirror.xyz/)
-- [YouTube](https://www.youtube.com/@zksync-io)
+- [Youtube](https://www.youtube.com/@zkSync-era)
 
 ## Contribution
 

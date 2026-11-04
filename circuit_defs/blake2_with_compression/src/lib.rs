@@ -6,10 +6,11 @@ use prover::cs::cs::witness_placer::graph_description::RawExpression;
 use prover::fft::GoodAllocator;
 use prover::field::Mersenne31Field;
 use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
+use prover::tracers::oracles::transpiler_oracles::delegation::*;
 use prover::*;
 
 pub const DELEGATION_TYPE_ID: u32 =
-    risc_v_simulator::delegations::blake2_round_function_with_compression_mode::BLAKE2_ROUND_FUNCTION_WITH_EXTENDED_CONTROL_ACCESS_ID;
+    common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
 pub const DOMAIN_SIZE: usize = 1 << 20;
 pub const NUM_DELEGATION_CYCLES: usize = DOMAIN_SIZE - 1;
 pub const LDE_FACTOR: usize = 2;
@@ -89,6 +90,18 @@ pub fn witness_eval_fn_for_gpu_tracer<'a, 'b>(
     (fn_ptr)(proxy);
 }
 
+pub fn witness_eval_fn_for_replayer<'a, 'b>(
+    proxy: &'_ mut SimpleWitnessProxy<'a, Blake2sDelegationOracle<'b>>,
+) {
+    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+
+    let fn_ptr = sealed::evaluate_witness_fn::<
+        ScalarWitnessTypeSet<Mersenne31Field, true>,
+        SimpleWitnessProxy<'a, Blake2sDelegationOracle<'b>>,
+    >;
+    (fn_ptr)(proxy);
+}
+
 pub fn generate_artifacts() {
     use std::io::Write;
 
@@ -108,10 +121,13 @@ pub fn generate_artifacts() {
 
 #[cfg(test)]
 mod test {
+    use test_utils::skip_if_ci;
+
     use super::*;
 
     #[test]
     fn generate() {
+        skip_if_ci!();
         generate_artifacts();
     }
 }

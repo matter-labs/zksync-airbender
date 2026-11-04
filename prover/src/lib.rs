@@ -4,10 +4,9 @@
 #![feature(allocator_api)]
 #![feature(iter_array_chunks)]
 #![feature(raw_slice_split)]
-#![feature(ptr_as_ref_unchecked)]
 #![feature(slice_from_ptr_range)]
 #![feature(vec_push_within_capacity)]
-#![feature(maybe_uninit_slice)]
+#![feature(checked_type_aliases)] // NECESSARY TO AVOID UGLY LIFETIME BOUND ISSUE
 
 #[cfg(feature = "debug_satisfiable")]
 pub const DEBUG_QUOTIENT: bool = true;
@@ -21,6 +20,7 @@ use fft::VECTORIZED_MULTIPLE;
 pub const DEFAULT_TRACE_PADDING_MULTIPLE: usize = VECTORIZED_MULTIPLE;
 
 pub mod definitions;
+pub use common_constants;
 pub use cs;
 pub use field;
 pub use transcript;
@@ -59,7 +59,7 @@ pub use self::tracer::*;
 #[cfg(feature = "prover")]
 pub use self::witness_evaluator::*;
 #[cfg(feature = "prover")]
-pub use risc_v_simulator;
+pub use riscv_transpiler;
 
 #[cfg(any(test, feature = "test"))]
 pub mod tests;

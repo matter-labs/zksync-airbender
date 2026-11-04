@@ -57,7 +57,7 @@ impl<F: PrimeField> LookupExpression<F> {
     }
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub struct LookupSetDescription<F: PrimeField, const N: usize> {
     #[serde(bound(deserialize = "[LookupExpression<F>; N]: serde::Deserialize<'de>"))]
     #[serde(bound(serialize = "[LookupExpression<F>; N]: serde::Serialize"))]
@@ -79,7 +79,7 @@ impl<F: PrimeField, const N: usize> LookupSetDescription<F, N> {
     }
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct OptimizedOraclesForLookupWidth1 {
     pub num_pairs: usize,
     pub base_field_oracles: AlignedColumnSet<1>,

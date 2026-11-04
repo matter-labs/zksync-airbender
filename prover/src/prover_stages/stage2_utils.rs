@@ -204,6 +204,7 @@ pub(crate) unsafe fn stage_2_shuffle_ram_add_timestamp_contributions(
 }
 
 #[inline(always)]
+// Kept as reference for the deprecated batched RAM flow and for possible reuse.
 pub(crate) unsafe fn stage_2_batched_ram_assemble_address_contribution(
     memory_trace_row: &[Mersenne31Field],
     mem_offset_high: ColumnSet<1>,
@@ -293,6 +294,8 @@ pub(crate) unsafe fn stage_2_delegation_ram_assemble_timestamp_contribution(
 }
 
 #[inline(always)]
+// Kept as reference for the deprecated batched RAM flow and for possible reuse.
+#[expect(dead_code)]
 pub(crate) unsafe fn stage_2_batched_ram_assemble_read_contribution(
     memory_trace_row: &[Mersenne31Field],
     read_value: ColumnSet<REGISTER_SIZE>,
@@ -345,6 +348,8 @@ pub(crate) unsafe fn stage_2_batched_ram_assemble_read_contribution(
 }
 
 #[inline(always)]
+// Kept as reference for the deprecated batched RAM flow and for possible reuse.
+#[expect(dead_code)]
 pub(crate) unsafe fn stage_2_batched_ram_assemble_write_contribution(
     memory_trace_row: &[Mersenne31Field],
     read_value: ColumnSet<REGISTER_SIZE>,
@@ -435,12 +440,19 @@ pub(crate) unsafe fn stage_2_register_access_assemble_address_contribution(
 #[inline(always)]
 pub(crate) unsafe fn stage_2_indirect_access_assemble_address_contribution(
     base_value: (u16, u16),
-    offset: u16,
+    constant_offset: u16,
+    variable_dependent: (u32, u16),
     memory_argument_challenges: &ExternalMemoryArgumentChallenges,
 ) -> Mersenne31Quartic {
     let (base_low, base_high) = base_value;
-    let (address_low, of) = base_low.overflowing_add(offset);
-    let (address_high, of) = base_high.overflowing_add(of as u16);
+    // NOTE: we assume no contribution into the high part
+    let extra = variable_dependent
+        .0
+        .wrapping_mul(variable_dependent.1 as u32);
+    let extra_low = extra as u16;
+    let (address_low, of_low_0) = base_low.overflowing_add(constant_offset);
+    let (address_low, of_low_1) = address_low.overflowing_add(extra_low);
+    let (address_high, of) = base_high.overflowing_add((of_low_0 | of_low_1) as u16);
     assert!(of == false);
 
     // Numerator is write set, denom is read set
@@ -591,15 +603,24 @@ pub(crate) unsafe fn stage_2_indirect_access_assemble_read_contribution(
     read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
     write_timestamp_contribution: &Mersenne31Quartic,
     base_value: (u16, u16),
-    offset: u16,
+    constant_offset: u16,
+    variable_dependent: Option<(u32, ColumnSet<1>, usize)>,
     memory_argument_challenges: &ExternalMemoryArgumentChallenges,
     numerator_acc_value: &mut Mersenne31Quartic,
     denom_acc_value: &mut Mersenne31Quartic,
 ) {
     // Numerator is write set, denom is read set
+    let variable_dependent = variable_dependent
+        .map(|(c, v, _)| {
+            let v = memory_trace_row.get_unchecked(v.start()).to_reduced_u32() as u16;
+
+            (c, v)
+        })
+        .unwrap_or_default();
     let address_contribution = stage_2_indirect_access_assemble_address_contribution(
         base_value,
-        offset,
+        constant_offset,
+        variable_dependent,
         &memory_argument_challenges,
     );
 
@@ -643,15 +664,24 @@ pub(crate) unsafe fn stage_2_indirect_access_assemble_write_contribution(
     read_timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
     write_timestamp_contribution: &Mersenne31Quartic,
     base_value: (u16, u16),
-    offset: u16,
+    constant_offset: u16,
+    variable_dependent: Option<(u32, ColumnSet<1>, usize)>,
     memory_argument_challenges: &ExternalMemoryArgumentChallenges,
     numerator_acc_value: &mut Mersenne31Quartic,
     denom_acc_value: &mut Mersenne31Quartic,
 ) {
     // Numerator is write set, denom is read set
+    let variable_dependent = variable_dependent
+        .map(|(c, v, _)| {
+            let v = memory_trace_row.get_unchecked(v.start()).to_reduced_u32() as u16;
+
+            (c, v)
+        })
+        .unwrap_or_default();
     let address_contribution = stage_2_indirect_access_assemble_address_contribution(
         base_value,
-        offset,
+        constant_offset,
+        variable_dependent,
         &memory_argument_challenges,
     );
 
@@ -700,4 +730,100 @@ pub(crate) unsafe fn stage_2_indirect_access_assemble_write_contribution(
 
     numerator_acc_value.mul_assign(&numerator);
     denom_acc_value.mul_assign(&denom);
+}
+
+pub(crate) unsafe fn stage2_process_ram_access(
+    memory_trace_row: &[Mersenne31Field],
+    setup_row: &[Mersenne31Field],
+    stage_2_trace: &mut [Mersenne31Field],
+    compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
+    numerator_acc_value: &mut Mersenne31Quartic,
+    denom_acc_value: &mut Mersenne31Quartic,
+    memory_argument_challenges: &ExternalMemoryArgumentChallenges,
+    batch_inverses_input: &mut Vec<Mersenne31Quartic>,
+    memory_timestamp_high_from_circuit_idx: Mersenne31Field,
+) {
+    // now we can continue to accumulate
+    let dst_columns = compiled_circuit
+        .stage_2_layout
+        .intermediate_polys_for_memory_argument;
+    assert_eq!(
+        dst_columns.num_elements(),
+        compiled_circuit.memory_layout.shuffle_ram_access_sets.len()
+    );
+
+    // now we can continue to accumulate
+    for (access_idx, memory_access_columns) in compiled_circuit
+        .memory_layout
+        .shuffle_ram_access_sets
+        .iter()
+        .enumerate()
+    {
+        match memory_access_columns {
+            ShuffleRamQueryColumns::Readonly(columns) => {
+                let address_contribution = stage_2_shuffle_ram_assemble_address_contribution(
+                    memory_trace_row,
+                    memory_access_columns,
+                    &memory_argument_challenges,
+                );
+
+                debug_assert_eq!(columns.read_value.width(), 2);
+
+                stage_2_shuffle_ram_assemble_read_contribution(
+                    memory_trace_row,
+                    setup_row,
+                    &address_contribution,
+                    &columns,
+                    compiled_circuit.setup_layout.timestamp_setup_columns,
+                    &memory_argument_challenges,
+                    access_idx,
+                    memory_timestamp_high_from_circuit_idx,
+                    numerator_acc_value,
+                    denom_acc_value,
+                );
+
+                // NOTE: here we write a chain of accumulator values, and not numerators themselves
+                let dst = stage_2_trace
+                    .as_mut_ptr()
+                    .add(dst_columns.get_range(access_idx).start)
+                    .cast::<Mersenne31Quartic>();
+                debug_assert!(dst.is_aligned());
+                dst.write(*numerator_acc_value);
+
+                // and keep denominators for batch inverse
+                batch_inverses_input.push(*denom_acc_value);
+            }
+            ShuffleRamQueryColumns::Write(columns) => {
+                let address_contribution = stage_2_shuffle_ram_assemble_address_contribution(
+                    memory_trace_row,
+                    memory_access_columns,
+                    &memory_argument_challenges,
+                );
+
+                stage_2_shuffle_ram_assemble_write_contribution(
+                    memory_trace_row,
+                    setup_row,
+                    &address_contribution,
+                    &columns,
+                    compiled_circuit.setup_layout.timestamp_setup_columns,
+                    &memory_argument_challenges,
+                    access_idx,
+                    memory_timestamp_high_from_circuit_idx,
+                    numerator_acc_value,
+                    denom_acc_value,
+                );
+
+                // NOTE: here we write a chain of accumulator values, and not numerators themselves
+                let dst = stage_2_trace
+                    .as_mut_ptr()
+                    .add(dst_columns.get_range(access_idx).start)
+                    .cast::<Mersenne31Quartic>();
+                debug_assert!(dst.is_aligned());
+                dst.write(*numerator_acc_value);
+
+                // and keep denominators for batch inverse
+                batch_inverses_input.push(*denom_acc_value);
+            }
+        }
+    }
 }

@@ -1,7 +1,7 @@
 MEMORY
 {
-  ROM (rx): ORIGIN = 0, LENGTH = 2M
-  RAM (rwa!x) : ORIGIN = 2M, LENGTH = 1022M
+  ROM (rx): ORIGIN = 0, LENGTH = 4M
+  RAM (rwa!x) : ORIGIN = 4M, LENGTH = 1022M
 }
 
 REGION_ALIAS("REGION_TEXT", ROM);

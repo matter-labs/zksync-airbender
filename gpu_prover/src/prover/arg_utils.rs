@@ -1,28 +1,163 @@
 use cs::definitions::{
-    IndirectAccessColumns, LookupExpression, OptimizedOraclesForLookupWidth1,
-    RegisterAccessColumns, RegisterAndIndirectAccessDescription, ShuffleRamAuxComparisonSet,
-    ShuffleRamInitAndTeardownLayout, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    DelegationProcessingLayout, DelegationRequestLayout, IndirectAccessColumns, LookupExpression,
+    OptimizedOraclesForLookupWidth1, RegisterAccessColumns, RegisterAndIndirectAccessDescription,
+    ShuffleRamAuxComparisonSet, ShuffleRamInitAndTeardownLayout,
+    EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES,
+    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, NUM_DELEGATION_ARGUMENT_KEY_PARTS,
-    NUM_LOOKUP_ARGUMENT_KEY_PARTS, NUM_MEM_ARGUMENT_KEY_PARTS, NUM_TIMESTAMP_COLUMNS_FOR_RAM,
-    REGISTER_SIZE,
+    NUM_LOOKUP_ARGUMENT_KEY_PARTS, NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES,
+    NUM_MEM_ARGUMENT_KEY_PARTS, NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE,
 };
 use cs::one_row_compiler::{
-    BatchedRamAccessColumns, ColumnAddress, CompiledCircuitArtifact,
-    LookupWidth1SourceDestInformation, LookupWidth1SourceDestInformationForExpressions,
-    RegisterOnlyAccessAddress, RegisterOrRamAccessAddress, ShuffleRamAddress,
-    ShuffleRamQueryColumns,
+    ColumnAddress, CompiledCircuitArtifact, LookupWidth1SourceDestInformation,
+    LookupWidth1SourceDestInformationForExpressions, RegisterOnlyAccessAddress,
+    RegisterOrRamAccessAddress, ShuffleRamAddress, ShuffleRamQueryColumns,
 };
 use field::{Field, FieldExtension, PrimeField};
-use prover::definitions::{ExternalDelegationArgumentChallenges, ExternalMemoryArgumentChallenges};
-use prover::prover_stages::cached_data::ProverCachedData;
+use prover::definitions::{
+    ExternalDelegationArgumentChallenges, ExternalMachineStateArgumentChallenges,
+    ExternalMemoryArgumentChallenges,
+};
 
 use super::{BF, E4};
 use std::mem::size_of;
 // TODO: Once we have an overall prove function, consider making a big standalone helper
 // that creates all args common to stages 2 and 3.
+
+// explicit repackaging struct ensures layout matches what cuda expects
+#[derive(Clone, Default)]
+#[repr(C)]
+pub struct DelegationChallenges {
+    pub linearization_challenges: [E4; NUM_DELEGATION_ARGUMENT_KEY_PARTS - 1],
+    pub gamma: E4,
+}
+
+impl DelegationChallenges {
+    pub fn new(challenges: &ExternalDelegationArgumentChallenges) -> Self {
+        // ensures size matches corresponding cuda struct
+        assert_eq!(NUM_DELEGATION_ARGUMENT_KEY_PARTS, 4);
+        assert_eq!(
+            challenges
+                .delegation_argument_linearization_challenges
+                .len(),
+            NUM_DELEGATION_ARGUMENT_KEY_PARTS - 1
+        );
+        let linearization_challenges: [E4; NUM_DELEGATION_ARGUMENT_KEY_PARTS - 1] =
+            std::array::from_fn(|i| challenges.delegation_argument_linearization_challenges[i]);
+        Self {
+            linearization_challenges,
+            gamma: challenges.delegation_argument_gamma,
+        }
+    }
+}
+
+// explicit repackaging struct ensures layout matches what cuda expects
+#[derive(Clone, Default)]
+#[repr(C)]
+pub struct MachineStateChallenges {
+    pub linearization_challenges: [E4; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
+    pub additive_term: E4,
+}
+
+impl MachineStateChallenges {
+    pub fn new(challenges: &ExternalMachineStateArgumentChallenges) -> Self {
+        // ensures size matches corresponding cuda struct
+        assert_eq!(NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES, 3);
+        assert_eq!(
+            challenges.linearization_challenges.len(),
+            NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES
+        );
+        let linearization_challenges: [E4; NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES] =
+            std::array::from_fn(|i| challenges.linearization_challenges[i]);
+        Self {
+            linearization_challenges,
+            additive_term: challenges.additive_term,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+#[repr(C)]
+pub struct DelegationRequestMetadata {
+    pub multiplicity_col: u32,
+    pub timestamp_col: u32,
+    pub memory_timestamp_high_from_circuit_idx: BF,
+    pub delegation_type_col: u32,
+    pub in_cycle_write_idx: BF,
+    pub abi_mem_offset_high_col: u32,
+    pub has_abi_mem_offset_high: bool,
+}
+
+impl DelegationRequestMetadata {
+    pub fn new(
+        circuit: &CompiledCircuitArtifact<BF>,
+        memory_timestamp_high_from_circuit_idx: Option<BF>,
+        layout: &DelegationRequestLayout,
+        is_unrolled: bool,
+    ) -> Self {
+        let (timestamp_columns, memory_timestamp_high_from_circuit_idx) = if is_unrolled {
+            assert!(memory_timestamp_high_from_circuit_idx.is_none());
+            (
+                &circuit
+                    .memory_layout
+                    .intermediate_state_layout
+                    .unwrap()
+                    .timestamp,
+                BF::ZERO,
+            )
+        } else {
+            (
+                &circuit.setup_layout.timestamp_setup_columns,
+                memory_timestamp_high_from_circuit_idx.unwrap(),
+            )
+        };
+        let has_abi_mem_offset_high = layout.abi_mem_offset_high.num_elements() > 0;
+        let abi_mem_offset_high_col = if has_abi_mem_offset_high {
+            layout.abi_mem_offset_high.start() as u32
+        } else {
+            0
+        };
+        Self {
+            multiplicity_col: layout.multiplicity.start() as u32,
+            timestamp_col: timestamp_columns.start() as u32,
+            memory_timestamp_high_from_circuit_idx,
+            delegation_type_col: layout.delegation_type.start() as u32,
+            in_cycle_write_idx: BF::from_u64_unchecked(layout.in_cycle_write_index as u64),
+            abi_mem_offset_high_col,
+            has_abi_mem_offset_high,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+#[repr(C)]
+pub struct DelegationProcessingMetadata {
+    pub multiplicity_col: u32,
+    pub delegation_type: BF,
+    pub write_timestamp_col: u32,
+    pub abi_mem_offset_high_col: u32,
+    pub has_abi_mem_offset_high: bool,
+}
+
+impl DelegationProcessingMetadata {
+    pub fn new(layout: &DelegationProcessingLayout, delegation_type: BF) -> Self {
+        let has_abi_mem_offset_high = layout.abi_mem_offset_high.num_elements() > 0;
+        let abi_mem_offset_high_col = if has_abi_mem_offset_high {
+            layout.abi_mem_offset_high.start() as u32
+        } else {
+            0
+        };
+        Self {
+            multiplicity_col: layout.multiplicity.start() as u32,
+            delegation_type,
+            write_timestamp_col: layout.write_timestamp.start() as u32,
+            abi_mem_offset_high_col,
+            has_abi_mem_offset_high,
+        }
+    }
+}
 
 #[derive(Clone, Default)]
 #[repr(C)]
@@ -38,6 +173,36 @@ impl LookupChallenges {
         assert_eq!(NUM_LOOKUP_ARGUMENT_KEY_PARTS, 4);
         assert_eq!(challenges.len(), NUM_LOOKUP_ARGUMENT_KEY_PARTS - 1);
         let linearization_challenges: [E4; NUM_LOOKUP_ARGUMENT_KEY_PARTS - 1] =
+            std::array::from_fn(|i| challenges[i]);
+        Self {
+            linearization_challenges,
+            gamma,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+#[repr(C)]
+pub struct DecoderTableChallenges {
+    pub linearization_challenges:
+        [E4; EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES],
+    pub gamma: E4,
+}
+
+impl DecoderTableChallenges {
+    #[allow(dead_code)]
+    pub fn new(challenges: &[E4], gamma: E4) -> Self {
+        // ensures size matches corresponding cuda struct
+        assert_eq!(
+            EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES,
+            9
+        );
+        assert_eq!(
+            challenges.len(),
+            EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES,
+        );
+        let linearization_challenges: [E4;
+            EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES] =
             std::array::from_fn(|i| challenges[i]);
         Self {
             linearization_challenges,
@@ -104,105 +269,59 @@ impl RangeCheck16ArgsLayout {
     }
 }
 
-#[derive(Clone, Default)]
+const NUM_STATE_LINKAGE_CONSTRAINTS: usize = 2;
+
+#[derive(Clone)]
 #[repr(C)]
-pub struct DelegationChallenges {
-    pub linearization_challenges: [E4; NUM_DELEGATION_ARGUMENT_KEY_PARTS - 1],
-    pub gamma: E4,
+pub(crate) struct StateLinkageConstraints {
+    pub srcs: [u32; NUM_STATE_LINKAGE_CONSTRAINTS],
+    pub dsts: [u32; NUM_STATE_LINKAGE_CONSTRAINTS],
+    pub num_constraints: u32,
 }
 
-// At the time I write this, DelegationChallenges happens to have the same layout as
-// zksync_airbender's ExternalDelegationArgumentChallenges.
-// But I shouldn't pass an ExternalDelegationArgumentChallenges to a kernel launch,
-// because CUDA blindly bitcopies inputs into kernel args, and the kernel expects
-// a certain layout. If zksync_airbender changed its layout, I'd get silent data corruption.
-// Therefore, I always repack zksync_airbender's struct into a struct I explicitly control.
-impl DelegationChallenges {
-    pub fn new(challenges: &ExternalDelegationArgumentChallenges) -> Self {
-        // ensures size matches corresponding cuda struct
-        assert_eq!(NUM_DELEGATION_ARGUMENT_KEY_PARTS, 4);
-        assert_eq!(
-            challenges
-                .delegation_argument_linearization_challenges
-                .len(),
-            NUM_DELEGATION_ARGUMENT_KEY_PARTS - 1
-        );
-        let linearization_challenges: [E4; NUM_DELEGATION_ARGUMENT_KEY_PARTS - 1] =
-            std::array::from_fn(|i| challenges.delegation_argument_linearization_challenges[i]);
+impl StateLinkageConstraints {
+    pub fn new(circuit: &CompiledCircuitArtifact<BF>) -> Self {
+        let num_constraints = circuit.state_linkage_constraints.len();
+        if circuit
+            .memory_layout
+            .shuffle_ram_inits_and_teardowns
+            .is_empty()
+        {
+            assert_eq!(num_constraints, 0);
+        } else {
+            assert_eq!(num_constraints, NUM_STATE_LINKAGE_CONSTRAINTS);
+        }
+        let mut srcs = [0; NUM_STATE_LINKAGE_CONSTRAINTS];
+        let mut dsts = [0; NUM_STATE_LINKAGE_CONSTRAINTS];
+        for (i, (src, dst)) in circuit.state_linkage_constraints.iter().enumerate() {
+            let ColumnAddress::WitnessSubtree(col) = *src else {
+                panic!()
+            };
+            srcs[i] = col as u32;
+            let ColumnAddress::WitnessSubtree(col) = *dst else {
+                panic!()
+            };
+            dsts[i] = col as u32;
+        }
         Self {
-            linearization_challenges,
-            gamma: challenges.delegation_argument_gamma,
+            srcs,
+            dsts,
+            num_constraints: num_constraints as u32,
         }
     }
 }
 
-#[derive(Default)]
-#[repr(C)]
-pub struct DelegationRequestMetadata {
-    pub multiplicity_col: u32,
-    pub timestamp_setup_col: u32,
-    pub memory_timestamp_high_from_circuit_idx: BF,
-    pub delegation_type_col: u32,
-    pub abi_mem_offset_high_col: u32,
-    pub in_cycle_write_idx: BF,
-}
-
-#[derive(Default)]
-#[repr(C)]
-pub struct DelegationProcessingMetadata {
-    pub multiplicity_col: u32,
-    pub delegation_type: BF,
-    pub abi_mem_offset_high_col: u32,
-    pub write_timestamp_col: u32,
-}
-
-pub fn get_delegation_metadata(
-    cached_data: &ProverCachedData,
-    circuit: &CompiledCircuitArtifact<BF>,
-) -> (DelegationRequestMetadata, DelegationProcessingMetadata) {
-    let handle_delegation_requests = cached_data.handle_delegation_requests;
-    let process_delegations = cached_data.process_delegations;
-    let execute_delegation_argument = cached_data.execute_delegation_argument;
-    let delegation_request_layout = cached_data.delegation_request_layout;
-    let delegation_processor_layout = cached_data.delegation_processor_layout;
-    let memory_timestamp_high_from_circuit_idx = cached_data.memory_timestamp_high_from_circuit_idx;
-    let delegation_type = cached_data.delegation_type;
-    assert_eq!(
-        execute_delegation_argument,
-        handle_delegation_requests || process_delegations
-    );
-    // NB: handle_delegation_requests and process_delegations are mutually exclusive
-    if handle_delegation_requests {
-        assert!(!process_delegations);
-        let layout = delegation_request_layout;
-        let request_metadata = DelegationRequestMetadata {
-            multiplicity_col: layout.multiplicity.start() as u32,
-            timestamp_setup_col: circuit.setup_layout.timestamp_setup_columns.start() as u32,
-            memory_timestamp_high_from_circuit_idx,
-            delegation_type_col: layout.delegation_type.start() as u32,
-            abi_mem_offset_high_col: layout.abi_mem_offset_high.start() as u32,
-            in_cycle_write_idx: BF::from_u64_unchecked(layout.in_cycle_write_index as u64),
-        };
-        (request_metadata, DelegationProcessingMetadata::default())
-    } else if process_delegations {
-        assert!(!handle_delegation_requests); // redundant, for clarity
-        let layout = delegation_processor_layout;
-        let processing_metadata = DelegationProcessingMetadata {
-            multiplicity_col: layout.multiplicity.start() as u32,
-            delegation_type,
-            abi_mem_offset_high_col: layout.abi_mem_offset_high.start() as u32,
-            write_timestamp_col: layout.write_timestamp.start() as u32,
-        };
-        (DelegationRequestMetadata::default(), processing_metadata)
-    } else {
-        (
-            DelegationRequestMetadata::default(),
-            DelegationProcessingMetadata::default(),
-        )
+impl Default for StateLinkageConstraints {
+    fn default() -> Self {
+        Self {
+            srcs: [0; NUM_STATE_LINKAGE_CONSTRAINTS],
+            dsts: [0; NUM_STATE_LINKAGE_CONSTRAINTS],
+            num_constraints: 0,
+        }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 #[repr(C)]
 pub struct MemoryChallenges {
     pub address_low_challenge: E4,
@@ -246,8 +365,123 @@ impl ColTypeFlags {
     pub const SETUP: u16 = 1 << 15;
 }
 
+#[derive(Clone)]
+#[repr(C)]
+pub struct TEMPORARYFlattenedLookupExpressionsLayout {
+    pub coeffs: [u32; MAX_EXPRESSION_TERMS],
+    pub col_idxs: [u16; MAX_EXPRESSION_TERMS],
+    pub constant_terms: [BF; MAX_EXPRESSIONS],
+    pub num_terms_per_expression: [u8; MAX_EXPRESSIONS],
+    pub bf_dst_cols: [u8; MAX_EXPRESSION_PAIRS],
+    pub e4_dst_cols: [u8; MAX_EXPRESSION_PAIRS],
+    pub num_expression_pairs: u32,
+    pub constant_terms_are_zero: bool,
+}
+
+impl TEMPORARYFlattenedLookupExpressionsLayout {
+    pub fn new<F: Fn(usize) -> usize>(
+        expression_pairs: &Vec<LookupWidth1SourceDestInformationForExpressions<BF>>,
+        num_stage_2_bf_cols: usize,
+        num_stage_2_e4_cols: usize,
+        expect_constant_terms_are_zero: bool,
+        translate_e4_offset: &F,
+    ) -> Self {
+        assert!(expression_pairs.len() < MAX_EXPRESSION_PAIRS);
+        let mut coeffs = [0 as u32; MAX_EXPRESSION_TERMS];
+        let mut col_idxs = [0 as u16; MAX_EXPRESSION_TERMS];
+        let mut constant_terms = [BF::ZERO; MAX_EXPRESSIONS];
+        let mut num_terms_per_expression = [0 as u8; MAX_EXPRESSIONS];
+        let mut bf_dst_cols = [0 as u8; MAX_EXPRESSION_PAIRS];
+        let mut e4_dst_cols = [0 as u8; MAX_EXPRESSION_PAIRS];
+        let mut constant_terms_are_zero: bool = true;
+        let mut expression_idx: usize = 0;
+        let mut flat_term_idx: usize = 0;
+        let mut stash_expr = |expr: &LookupExpression<BF>,
+                              expression_idx: &mut usize,
+                              flat_term_idx: &mut usize,
+                              constant_terms_are_zero: &mut bool| {
+            let LookupExpression::Expression(a) = expr else {
+                unreachable!()
+            };
+            let num_terms = a.linear_terms.len();
+            assert!(num_terms > 0);
+            assert!(num_terms <= MAX_TERMS_PER_EXPRESSION);
+            if expect_constant_terms_are_zero {
+                assert_eq!(a.constant_term, BF::ZERO);
+            } else {
+                if a.constant_term != BF::ZERO {
+                    *constant_terms_are_zero = false;
+                }
+                constant_terms[*expression_idx] = a.constant_term;
+            };
+            num_terms_per_expression[*expression_idx] = u8::try_from(num_terms).unwrap();
+            for (coeff, column_address) in a.linear_terms.iter() {
+                coeffs[*flat_term_idx] = coeff.0;
+                col_idxs[*flat_term_idx] = match column_address {
+                    ColumnAddress::WitnessSubtree(col) => *col as u16,
+                    ColumnAddress::MemorySubtree(col) => (*col as u16) | ColTypeFlags::MEMORY,
+                    _ => panic!(
+                        "Non-shuffle-ram expressions are expected to use witness and memory cols only",
+                    ),
+                };
+                *flat_term_idx = *flat_term_idx + 1;
+            }
+            *expression_idx = *expression_idx + 1;
+        };
+        let mut i = 0; // expression pair idx
+        for lookup_set in expression_pairs.iter() {
+            stash_expr(
+                &lookup_set.a_expr,
+                &mut expression_idx,
+                &mut flat_term_idx,
+                &mut constant_terms_are_zero,
+            );
+            stash_expr(
+                &lookup_set.b_expr,
+                &mut expression_idx,
+                &mut flat_term_idx,
+                &mut constant_terms_are_zero,
+            );
+            let bf_dst_col = lookup_set.base_field_quadratic_oracle_col;
+            assert!(bf_dst_col < num_stage_2_bf_cols);
+            bf_dst_cols[i] = u8::try_from(bf_dst_col).unwrap();
+            let e4_dst_col = translate_e4_offset(lookup_set.ext4_field_inverses_columns_start);
+            assert!(e4_dst_col < num_stage_2_e4_cols);
+            e4_dst_cols[i] = u8::try_from(e4_dst_col).unwrap();
+            i += 1;
+        }
+        // assert_eq!(timestamp_constant_terms_are_zero, true); // just testing a theory
+        Self {
+            coeffs,
+            col_idxs,
+            constant_terms,
+            num_terms_per_expression,
+            bf_dst_cols,
+            e4_dst_cols,
+            num_expression_pairs: expression_pairs.len() as u32,
+            constant_terms_are_zero,
+        }
+    }
+}
+
+impl Default for TEMPORARYFlattenedLookupExpressionsLayout {
+    fn default() -> Self {
+        Self {
+            coeffs: [0; MAX_EXPRESSION_TERMS],
+            col_idxs: [0; MAX_EXPRESSION_TERMS],
+            constant_terms: [BF::ZERO; MAX_EXPRESSIONS],
+            num_terms_per_expression: [0; MAX_EXPRESSIONS],
+            bf_dst_cols: [0; MAX_EXPRESSION_PAIRS],
+            e4_dst_cols: [0; MAX_EXPRESSION_PAIRS],
+            num_expression_pairs: 0,
+            constant_terms_are_zero: true,
+        }
+    }
+}
+
 // We expect (and assert) that non-shuffle-ram expressions have constant_term = 0
 // and use only memory and witness (not setup) columns.
+// temporary, to support stage 3 while i refactor stage 2
 #[derive(Clone)]
 #[repr(C)]
 pub struct FlattenedLookupExpressionsLayout {
@@ -263,8 +497,6 @@ pub struct FlattenedLookupExpressionsLayout {
     pub timestamp_constant_terms_are_zero: bool,
 }
 
-// I could make separate instances for the range check 16 and timestamp expressions,
-// but flattening them both together is more space-efficient and not too difficult.
 impl FlattenedLookupExpressionsLayout {
     pub fn new<F: Fn(usize) -> usize>(
         range_check_16_expression_pairs: &Vec<LookupWidth1SourceDestInformationForExpressions<BF>>,
@@ -366,7 +598,7 @@ impl FlattenedLookupExpressionsLayout {
             e4_dst_cols[i] = u8::try_from(e4_dst_col).unwrap();
             i += 1;
         }
-        assert_eq!(timestamp_constant_terms_are_zero, true); // just testing a theory
+        // assert_eq!(timestamp_constant_terms_are_zero, true); // just testing a theory
         Self {
             coeffs,
             col_idxs,
@@ -498,7 +730,7 @@ impl Default for FlattenedLookupExpressionsForShuffleRamLayout {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Default)]
 #[repr(C)]
 pub struct LazyInitTeardownLayout {
     pub init_address_start: u32,
@@ -510,10 +742,20 @@ pub struct LazyInitTeardownLayout {
     pub init_address_final_borrow: u32,
     pub bf_arg_col: u32,
     pub e4_arg_col: u32,
+}
+
+pub const MAX_LAZY_INIT_TEARDOWN_SETS: usize = 16;
+
+#[derive(Clone)]
+#[repr(C)]
+pub struct LazyInitTeardownLayouts {
+    pub layouts: [LazyInitTeardownLayout; MAX_LAZY_INIT_TEARDOWN_SETS],
+    pub num_init_teardown_sets: u32,
+    pub grand_product_contributions_start: u32,
     pub process_shuffle_ram_init: bool,
 }
 
-impl LazyInitTeardownLayout {
+impl LazyInitTeardownLayouts {
     fn unpack_witness_column_address(column_address: ColumnAddress) -> usize {
         if let ColumnAddress::WitnessSubtree(col) = column_address {
             col
@@ -525,56 +767,177 @@ impl LazyInitTeardownLayout {
     pub fn new<F: Fn(usize) -> usize>(
         circuit: &CompiledCircuitArtifact<BF>,
         lookup_set: &OptimizedOraclesForLookupWidth1,
-        shuffle_ram_inits_and_teardowns: &ShuffleRamInitAndTeardownLayout,
+        shuffle_ram_inits_and_teardowns: &Vec<ShuffleRamInitAndTeardownLayout>,
         translate_e4_offset: &F,
     ) -> Self {
-        let init_address_start = shuffle_ram_inits_and_teardowns
-            .lazy_init_addresses_columns
-            .start();
-        let teardown_value_start = shuffle_ram_inits_and_teardowns
-            .lazy_teardown_values_columns
-            .start();
-        let teardown_timestamp_start = shuffle_ram_inits_and_teardowns
-            .lazy_teardown_timestamps_columns
-            .start();
-        let lazy_init_address_aux_vars = circuit.lazy_init_address_aux_vars.expect("should exist");
-        let ShuffleRamAuxComparisonSet {
-            aux_low_high: [address_aux_low, address_aux_high],
-            intermediate_borrow,
-            final_borrow,
-        } = lazy_init_address_aux_vars;
-        let init_address_aux_low = Self::unpack_witness_column_address(address_aux_low);
-        let init_address_aux_high = Self::unpack_witness_column_address(address_aux_high);
-        let intermediate_borrow = Self::unpack_witness_column_address(intermediate_borrow);
-        let final_borrow = Self::unpack_witness_column_address(final_borrow);
+        let lazy_init_address_aux_vars = &circuit.lazy_init_address_aux_vars;
+        let num_init_teardown_sets = shuffle_ram_inits_and_teardowns.len();
+        assert!(num_init_teardown_sets <= MAX_LAZY_INIT_TEARDOWN_SETS);
+        assert_eq!(num_init_teardown_sets, lazy_init_address_aux_vars.len());
+        assert_eq!(
+            num_init_teardown_sets,
+            lookup_set.base_field_oracles.num_elements()
+        );
+        assert_eq!(
+            num_init_teardown_sets,
+            lookup_set.ext_4_field_oracles.num_elements()
+        );
+        let intermediate_polys_for_memory_init_teardown = &circuit
+            .stage_2_layout
+            .intermediate_polys_for_memory_init_teardown;
+        assert_eq!(
+            num_init_teardown_sets,
+            intermediate_polys_for_memory_init_teardown.num_elements(),
+        );
+        let grand_product_contributions_start =
+            translate_e4_offset(intermediate_polys_for_memory_init_teardown.start()) as u32;
+        let mut layouts = [LazyInitTeardownLayout::default(); MAX_LAZY_INIT_TEARDOWN_SETS];
+        for (i, (init_and_teardown, aux_vars)) in shuffle_ram_inits_and_teardowns
+            .iter()
+            .zip(lazy_init_address_aux_vars.iter())
+            .enumerate()
+        {
+            let init_address_start = init_and_teardown.lazy_init_addresses_columns.start();
+            let teardown_value_start = init_and_teardown.lazy_teardown_values_columns.start();
+            let teardown_timestamp_start =
+                init_and_teardown.lazy_teardown_timestamps_columns.start();
+            let ShuffleRamAuxComparisonSet {
+                aux_low_high: [address_aux_low, address_aux_high],
+                intermediate_borrow,
+                final_borrow,
+            } = aux_vars;
+            let init_address_aux_low = Self::unpack_witness_column_address(*address_aux_low);
+            let init_address_aux_high = Self::unpack_witness_column_address(*address_aux_high);
+            let intermediate_borrow = Self::unpack_witness_column_address(*intermediate_borrow);
+            let final_borrow = Self::unpack_witness_column_address(*final_borrow);
+            layouts[i] = LazyInitTeardownLayout {
+                init_address_start: init_address_start as u32,
+                teardown_value_start: teardown_value_start as u32,
+                teardown_timestamp_start: teardown_timestamp_start as u32,
+                init_address_aux_low: init_address_aux_low as u32,
+                init_address_aux_high: init_address_aux_high as u32,
+                init_address_intermediate_borrow: intermediate_borrow as u32,
+                init_address_final_borrow: final_borrow as u32,
+                bf_arg_col: (lookup_set.base_field_oracles.start() + i) as u32,
+                e4_arg_col: translate_e4_offset(lookup_set.ext_4_field_oracles.start() + 4 * i)
+                    as u32,
+            }
+        }
         Self {
-            init_address_start: init_address_start as u32,
-            teardown_value_start: teardown_value_start as u32,
-            teardown_timestamp_start: teardown_timestamp_start as u32,
-            init_address_aux_low: init_address_aux_low as u32,
-            init_address_aux_high: init_address_aux_high as u32,
-            init_address_intermediate_borrow: intermediate_borrow as u32,
-            init_address_final_borrow: final_borrow as u32,
-            bf_arg_col: lookup_set.base_field_oracles.start() as u32,
-            e4_arg_col: translate_e4_offset(lookup_set.ext_4_field_oracles.start()) as u32,
+            layouts,
+            num_init_teardown_sets: num_init_teardown_sets as u32,
+            grand_product_contributions_start,
             process_shuffle_ram_init: true,
         }
     }
 }
 
-impl Default for LazyInitTeardownLayout {
+impl Default for LazyInitTeardownLayouts {
     fn default() -> Self {
         Self {
-            init_address_start: 0,
-            teardown_value_start: 0,
-            teardown_timestamp_start: 0,
-            init_address_aux_low: 0,
-            init_address_aux_high: 0,
-            init_address_intermediate_borrow: 0,
-            init_address_final_borrow: 0,
-            bf_arg_col: 0,
-            e4_arg_col: 0,
+            layouts: [LazyInitTeardownLayout::default(); MAX_LAZY_INIT_TEARDOWN_SETS],
+            num_init_teardown_sets: 0,
+            grand_product_contributions_start: 0,
             process_shuffle_ram_init: false,
+        }
+    }
+}
+
+#[derive(Clone)]
+#[repr(C)]
+pub struct MachineStateLayout {
+    pub initial_pc_start: u32,
+    pub initial_timestamp_start: u32,
+    pub final_pc_start: u32,
+    pub final_timestamp_start: u32,
+    pub arg_col: u32,
+    pub process_machine_state: bool,
+}
+
+impl MachineStateLayout {
+    pub fn new<F: Fn(usize) -> usize>(
+        circuit: &CompiledCircuitArtifact<BF>,
+        translate_e4_offset: &F,
+    ) -> Self {
+        let initial_machine_state = &circuit.memory_layout.intermediate_state_layout;
+        let final_machine_state = &circuit.memory_layout.machine_state_layout;
+        let intermediate_polys_for_state_permutation = &circuit
+            .stage_2_layout
+            .intermediate_polys_for_state_permutation;
+        if intermediate_polys_for_state_permutation.num_elements() > 0 {
+            assert_eq!(intermediate_polys_for_state_permutation.num_elements(), 1);
+            let initial_machine_state = initial_machine_state.as_ref().unwrap();
+            let final_machine_state = final_machine_state.as_ref().unwrap();
+            return Self {
+                initial_pc_start: initial_machine_state.pc.start() as u32,
+                initial_timestamp_start: initial_machine_state.timestamp.start() as u32,
+                final_pc_start: final_machine_state.pc.start() as u32,
+                final_timestamp_start: final_machine_state.timestamp.start() as u32,
+                arg_col: translate_e4_offset(intermediate_polys_for_state_permutation.start())
+                    as u32,
+                process_machine_state: true,
+            };
+        }
+        assert!(initial_machine_state.is_none());
+        assert!(final_machine_state.is_none());
+        Self::default()
+    }
+}
+
+impl Default for MachineStateLayout {
+    fn default() -> Self {
+        Self {
+            initial_pc_start: 0,
+            initial_timestamp_start: 0,
+            final_pc_start: 0,
+            final_timestamp_start: 0,
+            arg_col: 0,
+            process_machine_state: false,
+        }
+    }
+}
+
+#[derive(Clone)]
+#[repr(C)]
+pub struct MaskArgLayout {
+    pub arg_col: u32,
+    pub execute_col: u32,
+    pub process_mask: bool,
+}
+
+impl MaskArgLayout {
+    pub fn new<F: Fn(usize) -> usize>(
+        circuit: &CompiledCircuitArtifact<BF>,
+        translate_e4_offset: &F,
+    ) -> Self {
+        let poly = circuit
+            .stage_2_layout
+            .intermediate_polys_for_permutation_masking;
+        let process_mask = poly.num_elements() > 0;
+        let (arg_col, execute_col) = if process_mask {
+            let intermediate_state_layout =
+                circuit.memory_layout.intermediate_state_layout.unwrap();
+            (
+                translate_e4_offset(poly.start()),
+                intermediate_state_layout.execute.start(),
+            )
+        } else {
+            (0, 0)
+        };
+        Self {
+            arg_col: arg_col as u32,
+            execute_col: execute_col as u32,
+            process_mask,
+        }
+    }
+}
+
+impl Default for MaskArgLayout {
+    fn default() -> Self {
+        Self {
+            arg_col: 0,
+            execute_col: 0,
+            process_mask: false,
         }
     }
 }
@@ -598,17 +961,26 @@ const MAX_SHUFFLE_RAM_ACCESSES: usize = 3;
 pub struct ShuffleRamAccesses {
     pub accesses: [ShuffleRamAccess; MAX_SHUFFLE_RAM_ACCESSES],
     pub num_accesses: u32,
-    pub write_timestamp_in_setup_start: u32,
+    pub write_timestamp_start: u32,
 }
 
 impl ShuffleRamAccesses {
-    pub fn new(
-        shuffle_ram_access_sets: &Vec<ShuffleRamQueryColumns>,
-        write_timestamp_in_setup_start: usize,
-    ) -> Self {
+    pub fn new(circuit: &CompiledCircuitArtifact<BF>, is_unrolled: bool) -> Self {
         let mut accesses = [ShuffleRamAccess::default(); MAX_SHUFFLE_RAM_ACCESSES];
+        let shuffle_ram_access_sets = &circuit.memory_layout.shuffle_ram_access_sets;
         let num_accesses = shuffle_ram_access_sets.len();
         assert!(num_accesses <= MAX_SHUFFLE_RAM_ACCESSES);
+        let intermediate_state_layout = &circuit.memory_layout.intermediate_state_layout;
+        let write_timestamp_start = if is_unrolled {
+            intermediate_state_layout
+                .as_ref()
+                .unwrap()
+                .timestamp
+                .start()
+        } else {
+            assert!(intermediate_state_layout.is_none());
+            circuit.setup_layout.timestamp_setup_columns.start()
+        };
         // imitates zksync_airbender's stage2.rs
         for (i, memory_access_columns) in shuffle_ram_access_sets.iter().enumerate() {
             match memory_access_columns {
@@ -661,7 +1033,7 @@ impl ShuffleRamAccesses {
         Self {
             accesses,
             num_accesses: num_accesses as u32,
-            write_timestamp_in_setup_start: write_timestamp_in_setup_start as u32,
+            write_timestamp_start: write_timestamp_start as u32,
         }
     }
 }
@@ -671,95 +1043,7 @@ impl Default for ShuffleRamAccesses {
         Self {
             accesses: [ShuffleRamAccess::default(); MAX_SHUFFLE_RAM_ACCESSES],
             num_accesses: 0,
-            write_timestamp_in_setup_start: 0,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Default)]
-#[repr(C)]
-pub struct BatchedRamAccess {
-    pub gamma_plus_address_low_contribution: E4,
-    pub read_timestamp_col: u32,
-    pub read_value_col: u32,
-    pub maybe_write_value_col: u32,
-    pub is_write: bool,
-}
-
-pub const MAX_BATCHED_RAM_ACCESSES: usize = 36;
-
-#[derive(Clone)]
-#[repr(C)]
-pub struct BatchedRamAccesses {
-    pub accesses: [BatchedRamAccess; MAX_BATCHED_RAM_ACCESSES],
-    pub num_accesses: u32,
-    pub write_timestamp_col: u32,
-    pub abi_mem_offset_high_col: u32,
-}
-
-impl BatchedRamAccesses {
-    pub fn new(
-        challenges: &MemoryChallenges,
-        batched_ram_accesses: &Vec<BatchedRamAccessColumns>,
-        write_timestamp_col: usize,
-        abi_mem_offset_high_col: usize,
-    ) -> Self {
-        let mut accesses = [BatchedRamAccess::default(); MAX_BATCHED_RAM_ACCESSES];
-        let num_accesses = batched_ram_accesses.len();
-        assert!(num_accesses <= MAX_BATCHED_RAM_ACCESSES);
-        // imitates zksync_airbender's stage2.rs
-        for (i, memory_access_columns) in batched_ram_accesses.iter().enumerate() {
-            let offset = i * std::mem::size_of::<u32>();
-            let address_low = BF::from_u64_unchecked(offset as u64);
-            let mut gamma_plus_address_low_contribution = challenges.address_low_challenge.clone();
-            gamma_plus_address_low_contribution.mul_assign_by_base(&address_low);
-            gamma_plus_address_low_contribution.add_assign(&challenges.gamma);
-            match memory_access_columns {
-                BatchedRamAccessColumns::ReadAccess {
-                    read_timestamp,
-                    read_value,
-                } => {
-                    accesses[i] = BatchedRamAccess {
-                        gamma_plus_address_low_contribution,
-                        read_timestamp_col: read_timestamp.start() as u32,
-                        read_value_col: read_value.start() as u32,
-                        maybe_write_value_col: 0,
-                        is_write: false,
-                    };
-                }
-                BatchedRamAccessColumns::WriteAccess {
-                    read_timestamp,
-                    read_value,
-                    write_value,
-                } => {
-                    accesses[i] = BatchedRamAccess {
-                        gamma_plus_address_low_contribution,
-                        read_timestamp_col: read_timestamp.start() as u32,
-                        read_value_col: read_value.start() as u32,
-                        maybe_write_value_col: write_value.start() as u32,
-                        is_write: true,
-                    };
-                }
-                #[allow(unreachable_patterns)]
-                _ => unreachable!("Unexpected BatchedRamAccessColumns variant"),
-            }
-        }
-        Self {
-            accesses,
-            num_accesses: num_accesses as u32,
-            write_timestamp_col: write_timestamp_col as u32,
-            abi_mem_offset_high_col: abi_mem_offset_high_col as u32,
-        }
-    }
-}
-
-impl Default for BatchedRamAccesses {
-    fn default() -> Self {
-        Self {
-            accesses: [BatchedRamAccess::default(); MAX_BATCHED_RAM_ACCESSES],
-            num_accesses: 0,
-            write_timestamp_col: 0,
-            abi_mem_offset_high_col: 0,
+            write_timestamp_start: 0,
         }
     }
 }
@@ -777,13 +1061,16 @@ pub struct RegisterAccess {
 #[derive(Clone, Copy, Default)]
 #[repr(C)]
 pub struct IndirectAccess {
-    pub offset: u32,
     pub read_timestamp_col: u32,
     pub read_value_col: u32,
     pub maybe_write_value_col: u32,
-    pub address_derivation_carry_bit_col: u32,
-    pub address_derivation_carry_bit_num_elements: u32,
-    pub is_write: bool,
+    pub maybe_address_derivation_carry_bit_col: u32,
+    pub maybe_variable_dependent_coeff: u32,
+    pub maybe_variable_dependent_col: u32,
+    pub offset_constant: u32,
+    pub has_address_derivation_carry_bit: bool,
+    pub has_variable_dependent: bool,
+    pub has_write: bool,
 }
 
 pub const MAX_REGISTER_ACCESSES: usize = 4;
@@ -812,7 +1099,6 @@ impl RegisterAndIndirectAccesses {
         let mut indirect_accesses_per_register_access = [0; MAX_REGISTER_ACCESSES];
         let num_register_accesses = register_and_indirect_accesses.len();
         assert!(num_register_accesses <= MAX_REGISTER_ACCESSES);
-        // imitates zksync_airbender's stage2.rs
         let mut flat_indirect_idx = 0;
         for (i, register_access_columns) in register_and_indirect_accesses.iter().enumerate() {
             match register_access_columns.register_access {
@@ -865,46 +1151,104 @@ impl RegisterAndIndirectAccesses {
             {
                 match indirect_access_columns {
                     IndirectAccessColumns::ReadAccess {
-                        offset,
                         read_timestamp,
                         read_value,
                         address_derivation_carry_bit,
-                        ..
+                        variable_dependent,
+                        offset_constant,
                     } => {
-                        assert_eq!(j == 0, *offset == 0);
+                        let has_address_derivation_carry_bit =
+                            address_derivation_carry_bit.num_elements() > 0;
+                        if has_address_derivation_carry_bit {
+                            assert_eq!(address_derivation_carry_bit.num_elements(), 1);
+                        }
+                        // The following asserts are sanity checks
+                        // based on our known circuit geometries
+                        // (slightly different from WriteAccess arm below).
+                        assert_eq!(j == 0, *offset_constant == 0);
+                        if j == 0 {
+                            assert!(!has_address_derivation_carry_bit);
+                        }
+                        if has_address_derivation_carry_bit {
+                            assert!(variable_dependent.is_none());
+                        }
+                        let maybe_address_derivation_carry_bit_col =
+                            if has_address_derivation_carry_bit {
+                                address_derivation_carry_bit.start() as u32
+                            } else {
+                                0
+                            };
+                        let (
+                            maybe_variable_dependent_coeff,
+                            maybe_variable_dependent_col,
+                            has_variable_dependent,
+                        ) = if let Some((coeff, col, _)) = variable_dependent {
+                            (*coeff, col.start() as u32, true)
+                        } else {
+                            (0, 0, false)
+                        };
                         indirect_accesses[flat_indirect_idx] = IndirectAccess {
-                            offset: *offset,
                             read_timestamp_col: read_timestamp.start() as u32,
                             read_value_col: read_value.start() as u32,
                             maybe_write_value_col: 0,
-                            address_derivation_carry_bit_col: address_derivation_carry_bit.start()
-                                as u32,
-                            address_derivation_carry_bit_num_elements: address_derivation_carry_bit
-                                .num_elements()
-                                as u32,
-                            is_write: false,
+                            maybe_address_derivation_carry_bit_col,
+                            maybe_variable_dependent_coeff,
+                            maybe_variable_dependent_col,
+                            offset_constant: *offset_constant,
+                            has_address_derivation_carry_bit,
+                            has_variable_dependent,
+                            has_write: false,
                         };
                     }
                     IndirectAccessColumns::WriteAccess {
-                        offset,
                         read_timestamp,
                         read_value,
                         write_value,
                         address_derivation_carry_bit,
-                        ..
+                        variable_dependent,
+                        offset_constant,
                     } => {
-                        assert_eq!(j == 0, *offset == 0);
+                        let has_address_derivation_carry_bit =
+                            address_derivation_carry_bit.num_elements() > 0;
+                        if has_address_derivation_carry_bit {
+                            assert_eq!(address_derivation_carry_bit.num_elements(), 1);
+                        }
+                        // The following asserts are sanity checks
+                        // based on our known circuit geometries
+                        // (slightly different from ReadAccess arm above).
+                        if j == 0 {
+                            assert!(!has_address_derivation_carry_bit);
+                            assert_eq!(*offset_constant, 0);
+                        }
+                        if has_address_derivation_carry_bit {
+                            assert!(variable_dependent.is_none());
+                        }
+                        let maybe_address_derivation_carry_bit_col =
+                            if has_address_derivation_carry_bit {
+                                address_derivation_carry_bit.start() as u32
+                            } else {
+                                0
+                            };
+                        let (
+                            maybe_variable_dependent_coeff,
+                            maybe_variable_dependent_col,
+                            has_variable_dependent,
+                        ) = if let Some((coeff, col, _)) = variable_dependent {
+                            (*coeff, col.start() as u32, true)
+                        } else {
+                            (0, 0, false)
+                        };
                         indirect_accesses[flat_indirect_idx] = IndirectAccess {
-                            offset: *offset,
                             read_timestamp_col: read_timestamp.start() as u32,
                             read_value_col: read_value.start() as u32,
                             maybe_write_value_col: write_value.start() as u32,
-                            address_derivation_carry_bit_col: address_derivation_carry_bit.start()
-                                as u32,
-                            address_derivation_carry_bit_num_elements: address_derivation_carry_bit
-                                .num_elements()
-                                as u32,
-                            is_write: true,
+                            maybe_address_derivation_carry_bit_col,
+                            maybe_variable_dependent_coeff,
+                            maybe_variable_dependent_col,
+                            offset_constant: *offset_constant,
+                            has_address_derivation_carry_bit,
+                            has_variable_dependent,
+                            has_write: true,
                         };
                     }
                     #[allow(unreachable_patterns)]
@@ -941,32 +1285,68 @@ pub fn print_size<T>(name: &str) -> usize {
     size
 }
 
-pub fn get_grand_product_col(
+pub fn get_grand_product_src_dst_cols(
     circuit: &CompiledCircuitArtifact<BF>,
-    cached_data: &ProverCachedData,
-) -> usize {
-    // Get storage offset for grand product in stage_2_e4_cols
-    // It's a little tricky because afaict zksync_airbender regards
-    // bf and e4 stage 2 cols as chunks of a unified allocation,
-    // and uses raw pointer arithmetic and casts to read some cols as e4.
-    // Our case is different: we have a separate allocation for stage_2_e4_cols.
-    // We need to translate zksync_airbender's offset in its unified allocation
-    // to the offset we need in the separate stage_2_e4_cols allocation.
-    // The following code is copied from zksync_airbender's stage4.rs:
-    // TODO: this offset may need to change for batched-ram circuits.
-    // Now translate zksync_airbender's offset into the offset we need:
-    let raw_offset_for_grand_product_poly = circuit
+    unrolled: bool,
+) -> (usize, usize) {
+    let e4_cols_offset = circuit.stage_2_layout.ext4_polys_offset;
+    assert_eq!(e4_cols_offset % 4, 0);
+    let translate_e4_offset = |raw_col: usize| -> usize {
+        assert_eq!(raw_col % 4, 0);
+        assert!(raw_col >= e4_cols_offset);
+        (raw_col - e4_cols_offset) / 4
+    };
+    let raw_grand_product_dst = circuit
         .stage_2_layout
-        .intermediate_polys_for_memory_argument
-        .get_range(cached_data.offset_for_grand_product_accumulation_poly)
-        .start;
-    assert!(raw_offset_for_grand_product_poly >= circuit.stage_2_layout.ext4_polys_offset);
-    assert_eq!(raw_offset_for_grand_product_poly % 4, 0);
-    assert_eq!(circuit.stage_2_layout.ext4_polys_offset % 4, 0);
-    let bf_elems_offset =
-        raw_offset_for_grand_product_poly - circuit.stage_2_layout.ext4_polys_offset;
-    let stage_2_memory_grand_product_offset = bf_elems_offset / 4;
-    stage_2_memory_grand_product_offset
+        .intermediate_poly_for_grand_product
+        .start();
+    let grand_product_dst = translate_e4_offset(raw_grand_product_dst);
+    if unrolled {
+        let mut grand_product_src = usize::MAX;
+        let precedence = [
+            &circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_init_teardown,
+            &circuit
+                .stage_2_layout
+                .intermediate_polys_for_permutation_masking,
+            &circuit
+                .stage_2_layout
+                .intermediate_polys_for_state_permutation,
+            &circuit
+                .stage_2_layout
+                .intermediate_polys_for_memory_argument,
+        ];
+        for next in precedence.iter() {
+            if next.num_elements() > 0 {
+                grand_product_src = translate_e4_offset(next.start());
+                grand_product_src += next.num_elements() - 1;
+                break;
+            }
+        }
+        assert!(grand_product_src != usize::MAX);
+        return (grand_product_src, grand_product_dst);
+    }
+    let memory_args = &circuit
+        .stage_2_layout
+        .intermediate_polys_for_memory_argument;
+    assert!(memory_args.num_elements() > 0);
+    let mut grand_product_src = usize::MAX;
+    let precedence = [
+        &circuit
+            .stage_2_layout
+            .intermediate_polys_for_memory_init_teardown,
+        memory_args,
+    ];
+    for next in precedence.iter() {
+        if next.num_elements() > 0 {
+            grand_product_src = translate_e4_offset(next.start());
+            grand_product_src += next.num_elements() - 1;
+            break;
+        }
+    }
+    assert!(grand_product_src != usize::MAX);
+    (grand_product_src, grand_product_dst)
 }
 
 #[allow(dead_code)]
@@ -984,7 +1364,5 @@ pub fn print_sizes() {
     print_size::<LazyInitTeardownLayout>("LazyInitTeardownLayout");
     print_size::<ShuffleRamAccess>("ShuffleRamAccess");
     print_size::<ShuffleRamAccesses>("ShuffleRamAccesses");
-    print_size::<BatchedRamAccess>("BatchedRamAccess");
-    print_size::<BatchedRamAccesses>("BatchedRamAccesses");
     print_size::<RegisterAndIndirectAccesses>("RegisterAndIndirectAccesses");
 }

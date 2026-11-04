@@ -9,6 +9,6 @@ namespace airbender::witness::circuits::NAME {
 
 #include CIRCUIT_INCLUDE(NAME)
 
-KERNEL(NAME, DelegationTrace)
+KERNEL(NAME, ORACLE)
 
 } // namespace airbender::witness::circuits::NAME

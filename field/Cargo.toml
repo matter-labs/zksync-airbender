@@ -14,12 +14,11 @@ serde.workspace = true
 rand = { workspace = true, default-features = false }
 seq-macro = "0.3"
 proc-macro2 = {version = "1", optional = true }
-syn = {version = "2", optional = true }
 quote = {version = "1", optional = true }
 
 [features]
 use_division = []
-proc_macro_ops = ["proc-macro2", "syn", "quote"]
+proc_macro_ops = ["proc-macro2", "quote"]
 default = []
 modular_ops = ["use_division"]
 modular_ext4_ops = ["modular_ops"]

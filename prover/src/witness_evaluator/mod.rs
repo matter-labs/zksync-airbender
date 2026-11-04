@@ -1,3 +1,4 @@
+use crate::definitions::AuxArgumentsBoundaryValues;
 use crate::definitions::LazyInitAndTeardown;
 use ::field::*;
 use core::u32;
@@ -5,10 +6,7 @@ use cs::cs::oracle::Oracle;
 use cs::cs::placeholder::Placeholder;
 use cs::definitions::ColumnAddress;
 use cs::definitions::LookupExpression;
-use cs::machine::machine_configurations::*;
-use cs::machine::Machine;
 use cs::one_row_compiler::*;
-use cs::tables::LookupWrapper;
 use cs::tables::TableDriver;
 use cs::utils::split_u32_into_pair_u16;
 use fft::*;
@@ -17,10 +15,8 @@ use memory_witness::delegation_circuit::process_delegation_requests_execution;
 use memory_witness::main_circuit::process_delegation_requests;
 use memory_witness::main_circuit::process_lazy_init_work;
 use memory_witness::main_circuit::process_shuffle_ram_accesses;
-use risc_v_simulator::abstractions::non_determinism::*;
-use risc_v_simulator::cycle::state::NUM_REGISTERS;
+use riscv_transpiler::cycle::state::NUM_REGISTERS;
 use std::alloc::Allocator;
-use std::alloc::Global;
 use std::collections::HashMap;
 use trace_holder::*;
 use worker::Worker;
@@ -28,8 +24,8 @@ use worker::Worker;
 mod new;
 
 mod ext_calls;
-mod ext_calls_with_gpu_tracers;
 mod memory_witness;
+pub mod unrolled;
 pub mod witness_proxy;
 
 pub use self::new::{evaluate_witness, SimpleWitnessProxy};
@@ -42,23 +38,22 @@ thread_local! {
     pub(crate) static PROFILING_TABLE: std::cell::RefCell<std::collections::BTreeMap<&'static str, std::time::Duration>> = std::cell::RefCell::new(std::collections::BTreeMap::new());
 }
 
-pub use self::memory_witness::{evaluate_delegation_memory_witness, evaluate_memory_witness};
+pub use self::memory_witness::{
+    evaluate_delegation_memory_witness, evaluate_memory_witness, get_aux_boundary_data,
+};
 
 pub use self::ext_calls::*;
-pub use self::ext_calls_with_gpu_tracers::*;
 use super::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WitnessEvaluationAuxData {
     pub first_row_public_inputs: Vec<Mersenne31Field>,
     pub one_before_last_row_public_inputs: Vec<Mersenne31Field>,
-    pub lazy_init_first_row: [Mersenne31Field; REGISTER_SIZE],
-    pub teardown_value_first_row: [Mersenne31Field; REGISTER_SIZE],
-    pub teardown_timestamp_first_row: [Mersenne31Field; REGISTER_SIZE],
-    pub lazy_init_one_before_last_row: [Mersenne31Field; REGISTER_SIZE],
-    pub teardown_value_one_before_last_row: [Mersenne31Field; REGISTER_SIZE],
-    pub teardown_timestamp_one_before_last_row: [Mersenne31Field; REGISTER_SIZE],
+    pub aux_boundary_data: Vec<AuxArgumentsBoundaryValues>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExecutorFamilyWitnessEvaluationAuxData {}
 
 #[derive(Clone, Copy, Debug)]
 pub struct RegisterFinalData {
@@ -79,6 +74,21 @@ pub struct WitnessEvaluationData<const N: usize, A: Allocator + Clone> {
 #[derive(Clone, Debug)]
 pub struct MemoryOnlyWitnessEvaluationData<const N: usize, A: Allocator + Clone> {
     pub aux_data: WitnessEvaluationAuxData,
+    pub memory_trace: RowMajorTrace<Mersenne31Field, N, A>,
+}
+
+#[derive(Clone, Debug)]
+pub struct WitnessEvaluationDataForExecutionFamily<const N: usize, A: Allocator + Clone> {
+    pub aux_data: ExecutorFamilyWitnessEvaluationAuxData,
+    pub exec_trace: RowMajorTrace<Mersenne31Field, N, A>,
+    pub num_witness_columns: usize,
+    // we will use it for stage 2 - we can map (for free) every lookup tuple into the
+    // corresponding index of the lookup tables (and more precisely - in the concatenation of all the tables)
+    pub lookup_mapping: RowMajorTrace<u32, N, A>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MemoryOnlyWitnessEvaluationDataForExecutionFamily<const N: usize, A: Allocator + Clone> {
     pub memory_trace: RowMajorTrace<Mersenne31Field, N, A>,
 }
 
@@ -150,19 +160,20 @@ unsafe fn count_special_range_check_multiplicities(
         };
         assert!(
             value.to_reduced_u32() <= u16::MAX as u32,
-            "invalid value {:?} in range check 16 expression {:?} at row {}",
-            absolute_row_idx,
+            "invalid value {} in range check 16 expression {:?} at row {:?}",
+            value,
             range_check_expression,
-            value
+            absolute_row_idx,
         );
         let index = value.to_reduced_u32() as usize;
         *range_check_16_multiplicieties.get_unchecked_mut(index) += 1;
     }
 
     // special case for lazy init values
-    if let Some(shuffle_ram_inits_and_teardowns) = compiled_circuit
+    for shuffle_ram_inits_and_teardowns in compiled_circuit
         .memory_layout
         .shuffle_ram_inits_and_teardowns
+        .iter()
     {
         let start = shuffle_ram_inits_and_teardowns
             .lazy_init_addresses_columns
@@ -244,6 +255,7 @@ unsafe fn count_special_range_check_multiplicities(
                     );
                     dbg!(value,);
                 }
+                dbg!(constraint_low.constant_term);
             }
             assert!(
                 low_value.to_reduced_u32() < (1 << TIMESTAMP_COLUMNS_NUM_BITS),
@@ -293,13 +305,14 @@ unsafe fn postprocess_multiplicities<const N: usize, A: Allocator + Clone>(
     mut range_16_multiplicity_subcounters: Vec<Vec<u32>>,
     mut timestamp_range_check_multiplicity_subcounters: Vec<Vec<u32>>,
     mut general_purpose_multiplicity_subcounters: Vec<Vec<u32>>,
+    mut decoder_multiplicity_subcounters: Vec<Vec<u32>>,
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     generic_lookup_multiplicities_total_len: usize,
     trace_len: usize,
     worker: &Worker,
 ) {
     // it's just fine to copy in the non-parallel manner for the range-check 16 and timestamp
-    {
+    if range_16_multiplicity_subcounters.len() > 0 {
         #[cfg(feature = "profiling")]
         let t = std::time::Instant::now();
 
@@ -337,7 +350,7 @@ unsafe fn postprocess_multiplicities<const N: usize, A: Allocator + Clone>(
     }
 
     // add up and write timestamp multiplicities
-    {
+    if timestamp_range_check_multiplicity_subcounters.len() > 0 {
         #[cfg(feature = "profiling")]
         let t = std::time::Instant::now();
 
@@ -367,6 +380,52 @@ unsafe fn postprocess_multiplicities<const N: usize, A: Allocator + Clone>(
                 let (row, _) = view.current_row_split(num_witness_columns);
                 let multiplicity =
                     *timestamp_range_check_multiplicities.get_unchecked(absolute_row_idx);
+                debug_assert!(multiplicity < Mersenne31Field::CHARACTERISTICS as u32);
+                *row.get_unchecked_mut(offset) = Mersenne31Field(multiplicity as u32);
+
+                view.advance_row();
+            }
+        }
+
+        #[cfg(feature = "profiling")]
+        PROFILING_TABLE.with_borrow_mut(|el| {
+            *el.entry("Timestamp range check multiplicity copy-back")
+                .or_default() += t.elapsed();
+        });
+    }
+
+    if compiled_circuit
+        .witness_layout
+        .multiplicities_columns_for_decoder_in_executor_families
+        .num_elements()
+        > 0
+    {
+        let bound = compiled_circuit.executor_family_decoder_table_size;
+
+        // add up and write decoder multiplicities
+        #[cfg(feature = "profiling")]
+        let t = std::time::Instant::now();
+
+        let mut decoder_multiplicities = decoder_multiplicity_subcounters.pop().unwrap();
+        assert_eq!(bound, decoder_multiplicities.len());
+        for el in decoder_multiplicity_subcounters.into_iter() {
+            assert_eq!(decoder_multiplicities.len(), el.len());
+
+            for (dst, src) in decoder_multiplicities.iter_mut().zip(el.into_iter()) {
+                *dst += src;
+            }
+        }
+
+        // write them column_major
+        unsafe {
+            let offset = compiled_circuit
+                .witness_layout
+                .multiplicities_columns_for_decoder_in_executor_families
+                .start();
+            let mut view = exec_trace.row_view(0..bound);
+            for absolute_row_idx in 0..bound {
+                let (row, _) = view.current_row_split(num_witness_columns);
+                let multiplicity = *decoder_multiplicities.get_unchecked(absolute_row_idx);
                 debug_assert!(multiplicity < Mersenne31Field::CHARACTERISTICS as u32);
                 *row.get_unchecked_mut(offset) = Mersenne31Field(multiplicity as u32);
 
@@ -485,7 +544,7 @@ pub(crate) unsafe fn evaluate_witness_inner_static_work<O: Oracle<Mersenne31Fiel
     compiled_circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     oracle: &O,
     absolute_row_idx: usize,
-    is_last_cycle: bool,
+    is_one_before_last_row: bool,
     lazy_init_data: &[LazyInitAndTeardown],
     timestamp_high_from_circuit_sequence: TimestampScalar,
 ) {
@@ -503,7 +562,7 @@ pub(crate) unsafe fn evaluate_witness_inner_static_work<O: Oracle<Mersenne31Fiel
         memory_row,
         compiled_circuit,
         absolute_row_idx,
-        is_last_cycle,
+        is_one_before_last_row,
         lazy_init_data,
     );
 

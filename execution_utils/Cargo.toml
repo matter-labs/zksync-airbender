@@ -9,26 +9,44 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+# Refreshes tools/verifier/*.setup.json from the embedded verifier binaries; run by
+# tools/reproduce/reproduce.sh after it rebuilds them.
+[[bin]]
+name = "regenerate_recursion_setups"
+required-features = ["verifier_binaries"]
+
 [dependencies]
 verifier_common = { workspace = true, features = ["proof_utils", "replace_csr"] }
-risc_v_simulator = { workspace = true, features = ["delegation"] }
+riscv_common = { workspace = true, default-features = false }
+riscv_transpiler = { workspace = true, features = ["delegation"] }
 trace_and_split = { workspace = true }
+setups = { workspace = true }
 clap = { workspace = true }
+log = { workspace = true }
 serde = { workspace = true }
-serde_json = "1.0"
+sha3 = { workspace = true }
+serde_json = "*"
+full_statement_verifier = { path = "../full_statement_verifier", default-features = false, features = ["verifiers", "replace_csr", "security_80", "security_100"] }
+reduced_keccak = { path = "../reduced_keccak" }
+prover_examples = { path = "../circuit_defs/prover_examples", default-features = false, optional = true }
+
+prover = { workspace = true, optional = true, features = ["prover"] }
+gpu_prover = { workspace = true, optional = true }
 
 [dev-dependencies]
-prover_examples = { path = "../circuit_defs/prover_examples" }
+test_utils = { workspace = true }
 bincode = { version = "1.3" }
-# full_statement_verifier = { workspace = true }
-# full_statement_verifier = { path = "../full_statement_verifier" }
+prover_examples = { path = "../circuit_defs/prover_examples" }
+serial_test = "3"
 
 [features]
+prover = ["prover_examples"]
+verifier_binaries = []
 # Will evaluate quotient on main domain for debug
 debug_satisfiable = ["prover_examples/debug_satisfiable"]
 # Will perform satisfiability tests on witness
 precheck_satisfied = ["prover_examples/precheck_satisfied"]
-extended_tests = []
 # debug = ["prover_examples/precheck_satisfied", "prover_examples/debug_satisfiable"]
-default = []
-# default = ["extended_tests"]
+default = ["prover"]
+# default = ["prover"]
+gpu_prover = ["prover", "dep:prover", "dep:gpu_prover"]

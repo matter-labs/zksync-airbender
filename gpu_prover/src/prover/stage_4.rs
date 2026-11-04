@@ -6,12 +6,11 @@ use super::stage_2::StageTwoOutput;
 use super::stage_3::StageThreeOutput;
 use super::stage_4_kernels::{
     compute_deep_denom_at_z_on_main_domain, compute_deep_quotient_on_main_domain,
-    get_e4_scratch_count_for_deep_quotiening, get_metadata, ChallengesTimesEvals,
-    NonWitnessChallengesAtZOmega,
+    prepare_async_challenge_data, ChallengesTimesEvalsSums,
 };
 use super::trace_holder::{
     allocate_tree_caps, compute_coset_evaluations, split_evaluations_pair, transfer_tree_cap,
-    CosetsHolder, TraceHolder, TreesCacheMode, TreesHolder,
+    CosetsCacheMode, CosetsHolder, TraceHolder, TreesCacheMode, TreesHolder,
 };
 use super::{BF, E2, E4};
 use crate::allocator::tracker::AllocationPlacement;
@@ -21,6 +20,7 @@ use crate::barycentric::{
 use crate::blake2s::build_merkle_tree;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use crate::ops_complex::{bit_reverse_in_place, transpose};
+use crate::prover::pow::search_pow_challenge;
 use crate::prover::precomputations::PRECOMPUTATIONS;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use cs::one_row_compiler::CompiledCircuitArtifact;
@@ -30,7 +30,7 @@ use field::{Field, FieldExtension};
 use itertools::Itertools;
 use prover::definitions::FoldingDescription;
 use prover::prover_stages::cached_data::ProverCachedData;
-use prover::prover_stages::Transcript;
+use prover::prover_stages::{ProofPowChallenges, ProofSecurityConfig, Transcript};
 use prover::transcript::Seed;
 use std::ops::DerefMut;
 use std::slice;
@@ -38,13 +38,18 @@ use std::sync::Arc;
 
 pub(crate) struct StageFourOutput {
     pub(crate) trace_holder: TraceHolder<E4>,
+    pub quotient_z_pow_challenge: HostAllocation<u64>,
     pub(crate) values_at_z: HostAllocation<[E4]>,
+    pub deep_poly_alpha_pow_challenge: HostAllocation<u64>,
 }
 
 impl StageFourOutput {
     pub fn new(
         seed: &mut HostAllocation<Seed>,
+        security_config: &ProofSecurityConfig,
+        external_challenges: &Option<ProofPowChallenges>,
         circuit: &Arc<CompiledCircuitArtifact<BF>>,
+        is_unrolled: bool,
         cached_data: &ProverCachedData,
         setup: &mut SetupPrecomputations,
         stage_1_output: &mut StageOneOutput,
@@ -69,7 +74,7 @@ impl StageFourOutput {
             1,
             false,
             true,
-            false,
+            CosetsCacheMode::CacheFull,
             TreesCacheMode::CacheFull,
             context,
         )?;
@@ -83,14 +88,34 @@ impl StageFourOutput {
             vectorized_ldes.push(context.alloc(4 * trace_len, AllocationPlacement::BestFit)?);
         }
         let stream = context.get_exec_stream();
+        let mut quotient_z_pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
+        let quotient_z_pow_bits = security_config.quotient_z_pow_bits;
+        search_pow_challenge(
+            seed,
+            &mut quotient_z_pow_challenge,
+            quotient_z_pow_bits,
+            external_challenges
+                .as_ref()
+                .map(|c| c.quotient_z_pow_challenge),
+            callbacks,
+            context,
+        )?;
         let mut values_at_z = unsafe { context.alloc_host_uninit_slice(num_evals) };
         let values_at_z_accessor = values_at_z.get_mut_accessor();
         let mut h_z = unsafe { context.alloc_host_uninit::<E4>() };
         let h_z_accessor = h_z.get_mut_accessor();
         let get_z = move || unsafe {
-            let mut transcript_challenges =
-                [0u32; (1usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-            Transcript::draw_randomness(seed_accessor.get_mut(), &mut transcript_challenges);
+            let num_entries = (if quotient_z_pow_bits == 0 { 0usize } else { 1 } + 1 * 4)
+                .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+            let mut transcript_challenges = vec![0u32; num_entries];
+            prover::definitions::Transcript::draw_randomness(
+                seed_accessor.get_mut(),
+                &mut transcript_challenges,
+            );
+            if quotient_z_pow_bits != 0 {
+                // Skip first challenge used for pow
+                transcript_challenges.remove(0);
+            }
             let coeffs = transcript_challenges
                 .as_chunks::<4>()
                 .0
@@ -122,36 +147,27 @@ impl StageFourOutput {
             context.alloc(final_cub_reduce_temp_bytes, AllocationPlacement::BestFit)?;
         let mut d_common_factor_storage = context.alloc(1, AllocationPlacement::BestFit)?;
         let mut d_lagrange_coeffs = context.alloc(trace_len, AllocationPlacement::BestFit)?;
-        let d_setup_cols = DeviceMatrix::new(
-            setup
-                .trace_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_witness_cols = DeviceMatrix::new(
-            stage_1_output
-                .witness_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_memory_cols = DeviceMatrix::new(
-            stage_1_output
-                .memory_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_stage_2_cols = DeviceMatrix::new(
-            stage_2_output
-                .trace_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
-        let d_composition_col = DeviceMatrix::new(
-            stage_3_output
-                .trace_holder
-                .get_coset_evaluations(COSET_INDEX, context)?,
-            trace_len,
-        );
+        let setup_evaluations = setup
+            .trace_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_setup_cols = DeviceMatrix::new(&setup_evaluations, trace_len);
+        let witness_evaluations = stage_1_output
+            .witness_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_witness_cols = DeviceMatrix::new(&witness_evaluations, trace_len);
+        let memory_evaluations = stage_1_output
+            .memory_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_memory_cols = DeviceMatrix::new(&memory_evaluations, trace_len);
+        let stage_2_evaluations = stage_2_output
+            .trace_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_stage_2_cols = DeviceMatrix::new(&stage_2_evaluations, trace_len);
+
+        let composition_evaluations = stage_3_output
+            .trace_holder
+            .get_coset_evaluations(COSET_INDEX, context)?;
+        let d_composition_col = DeviceMatrix::new(&composition_evaluations, trace_len);
         let stream = context.get_exec_stream();
         precompute_lagrange_coeffs(
             &d_alloc_z[0],
@@ -175,6 +191,7 @@ impl StageFourOutput {
             &cached_data,
             circuit,
             row_chunk_size,
+            is_unrolled,
             log_domain_size,
             stream,
         )?;
@@ -183,9 +200,7 @@ impl StageFourOutput {
             &d_alloc_evals,
             &stream,
         )?;
-        let mut deep_poly_challenges = unsafe { context.alloc_host_uninit::<[E4; 2]>() };
-        let deep_poly_challenges_accessor = deep_poly_challenges.get_mut_accessor();
-        let get_deep_poly_challenges = move || unsafe {
+        let commit_values_at_z = move || unsafe {
             let transcript_input = values_at_z_accessor
                 .get()
                 .iter()
@@ -193,11 +208,39 @@ impl StageFourOutput {
                 .flatten()
                 .map(|el: BF| el.to_reduced_u32())
                 .collect_vec();
-            let seed = seed_accessor.get_mut();
-            Transcript::commit_with_seed(seed, &transcript_input);
-            let mut transcript_challenges =
-                [0u32; (2usize * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-            Transcript::draw_randomness(seed, &mut transcript_challenges);
+            Transcript::commit_with_seed(seed_accessor.get_mut(), &transcript_input);
+        };
+        callbacks.schedule(commit_values_at_z, stream)?;
+        let mut deep_poly_alpha_pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
+        let deep_poly_alpha_pow_bits = security_config.deep_poly_alpha_pow_bits;
+        search_pow_challenge(
+            seed,
+            &mut deep_poly_alpha_pow_challenge,
+            deep_poly_alpha_pow_bits,
+            external_challenges
+                .as_ref()
+                .map(|c| c.deep_poly_alpha_pow_challenge),
+            callbacks,
+            context,
+        )?;
+        // two challenges: alpha to batch the DEEP terms, and beta for the (1 + beta * x)
+        // degree lift applied by the quotient kernel
+        let mut deep_poly_challenges = unsafe { context.alloc_host_uninit::<[E4; 2]>() };
+        let deep_poly_challenges_accessor = deep_poly_challenges.get_mut_accessor();
+        let get_deep_poly_challenges = move || unsafe {
+            let num_entries_from_pow = if deep_poly_alpha_pow_bits == 0 {
+                0usize
+            } else {
+                1
+            };
+            let num_entries =
+                (num_entries_from_pow + 2 * 4).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+            let mut transcript_challenges = vec![0u32; num_entries];
+            Transcript::draw_randomness(seed_accessor.get_mut(), &mut transcript_challenges);
+            if deep_poly_alpha_pow_bits != 0 {
+                // Skip first challenge used for pow
+                transcript_challenges.remove(0);
+            }
             let mut it = transcript_challenges.as_chunks::<4>().0.iter();
             let mut get_challenge =
                 || E4::from_coeffs_in_base(&it.next().unwrap().map(BF::from_nonreduced_u32));
@@ -212,38 +255,31 @@ impl StageFourOutput {
             false,
             &stream,
         )?;
-        let e4_scratch_elems = get_e4_scratch_count_for_deep_quotiening();
-        let mut h_e4_scratch = unsafe { context.alloc_host_uninit_slice(e4_scratch_elems) };
+        let num_terms_at_z = circuit.num_openings_at_z();
+        let num_terms_at_z_omega = circuit.num_openings_at_z_omega();
+        let num_terms_total = num_terms_at_z + num_terms_at_z_omega;
+        let mut h_e4_scratch = unsafe { context.alloc_host_uninit_slice(num_terms_total) };
         let h_e4_scratch_accessor = h_e4_scratch.get_mut_accessor();
         let mut h_challenges_times_evals =
-            unsafe { context.alloc_host_uninit::<ChallengesTimesEvals>() };
+            unsafe { context.alloc_host_uninit::<ChallengesTimesEvalsSums>() };
         let h_challenges_times_evals_accessor = h_challenges_times_evals.get_mut_accessor();
-        let mut h_non_witness_challenges_at_z_omega =
-            unsafe { context.alloc_host_uninit::<NonWitnessChallengesAtZOmega>() };
-        let h_non_witness_challenges_at_z_omega_accessor =
-            h_non_witness_challenges_at_z_omega.get_mut_accessor();
-        let cached_data_clone = cached_data.clone();
         let omega_inv = PRECOMPUTATIONS.omegas_inv[log_domain_size as usize];
-        let circuit_clone = circuit.clone();
         let get_challenges = move || unsafe {
             let [alpha, deep_poly_beta] = *deep_poly_challenges_accessor.get();
-            let _ = get_metadata(
+            prepare_async_challenge_data(
                 values_at_z_accessor.get(),
                 alpha,
                 deep_poly_beta,
                 omega_inv,
-                &cached_data_clone,
-                &circuit_clone,
+                num_terms_at_z,
+                num_terms_at_z_omega,
                 h_e4_scratch_accessor.get_mut(),
                 h_challenges_times_evals_accessor.get_mut(),
-                h_non_witness_challenges_at_z_omega_accessor.get_mut(),
             );
         };
         callbacks.schedule(get_challenges, stream)?;
-        let mut d_e4_scratch = context.alloc(e4_scratch_elems, AllocationPlacement::BestFit)?;
+        let mut d_e4_scratch = context.alloc(num_terms_total, AllocationPlacement::BestFit)?;
         let mut d_challenges_times_evals = context.alloc(1, AllocationPlacement::BestFit)?;
-        let mut d_non_witness_challenges_at_z_omega =
-            context.alloc(1, AllocationPlacement::BestFit)?;
         memory_copy_async(
             &mut d_e4_scratch,
             unsafe { h_e4_scratch_accessor.get() },
@@ -254,25 +290,8 @@ impl StageFourOutput {
             slice::from_ref(unsafe { h_challenges_times_evals_accessor.get() }),
             stream,
         )?;
-        memory_copy_async(
-            &mut d_non_witness_challenges_at_z_omega,
-            slice::from_ref(unsafe { h_non_witness_challenges_at_z_omega_accessor.get() }),
-            stream,
-        )?;
         let mut d_quotient = DeviceMatrixMut::new(&mut vectorized_ldes[COSET_INDEX], trace_len);
-        let metadata = get_metadata(
-            &vec![E4::ZERO; num_evals],
-            E4::ZERO,
-            E4::ZERO,
-            omega_inv,
-            &cached_data,
-            &circuit,
-            &mut vec![E4::ZERO; e4_scratch_elems],
-            &mut ChallengesTimesEvals::default(),
-            &mut NonWitnessChallengesAtZOmega::default(),
-        );
         compute_deep_quotient_on_main_domain(
-            metadata,
             &d_setup_cols,
             &d_witness_cols,
             &d_memory_cols,
@@ -281,12 +300,12 @@ impl StageFourOutput {
             &d_denom_at_z,
             &mut d_e4_scratch,
             &d_challenges_times_evals[0],
-            &d_non_witness_challenges_at_z_omega[0],
             &mut d_quotient,
             &cached_data,
             &circuit,
             log_domain_size,
-            false,
+            false, // bit_reversed
+            is_unrolled,
             &stream,
         )?;
         assert_eq!(log_lde_factor, 1);
@@ -339,7 +358,9 @@ impl StageFourOutput {
         callbacks.schedule(update_seed_fn, stream)?;
         let result = Self {
             trace_holder,
+            quotient_z_pow_challenge,
             values_at_z,
+            deep_poly_alpha_pow_challenge,
         };
         Ok(result)
     }

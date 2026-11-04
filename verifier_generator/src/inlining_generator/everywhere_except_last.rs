@@ -1,8 +1,12 @@
 use cs::definitions::LookupExpression;
 
+use super::mersenne_wrapper::MersenneWrapper;
 use super::*;
 
-pub(crate) fn produce_boolean_constraint(witness_column: usize, idents: &Idents) -> TokenStream {
+pub(crate) fn produce_boolean_constraint<MW: MersenneWrapper>(
+    witness_column: usize,
+    idents: &Idents,
+) -> TokenStream {
     let place = ColumnAddress::WitnessSubtree(witness_column);
     let read_expr = read_value_expr(place, idents, false);
 
@@ -11,23 +15,26 @@ pub(crate) fn produce_boolean_constraint(witness_column: usize, idents: &Idents)
         ..
     } = idents;
 
+    let t_sub_assign_base_field_one = MW::sub_assign_base(quote! { t }, MW::field_one());
+    let t_mul_assign_value = MW::mul_assign(quote! { t }, quote! { value });
     quote! {
         let #individual_term_ident = {
             let value = #read_expr;
             let mut t = value;
-            t.sub_assign_base(&Mersenne31Field::ONE);
-            t.mul_assign(&value);
+            #t_sub_assign_base_field_one;
+            #t_mul_assign_value;
 
             t
         };
     }
 }
 
-pub(crate) fn transform_degree_2_constraint(
+pub(crate) fn transform_degree_2_constraint<MW: MersenneWrapper>(
     constraint: CompiledDegree2Constraint<Mersenne31Field>,
     idents: &Idents,
 ) -> TokenStream {
-    if let Some(result) = guess_transform_squaring_of_linear_combination(constraint.clone(), idents)
+    if let Some(result) =
+        guess_transform_squaring_of_linear_combination::<MW>(constraint.clone(), idents)
     {
         return result;
     }
@@ -46,6 +53,12 @@ pub(crate) fn transform_degree_2_constraint(
     let mut stream = TokenStream::new();
     let mut is_first = true;
 
+    let a_mul_assign_b = MW::mul_assign(quote! { a }, quote! { b });
+    let individual_term_ident_add_assign_a =
+        MW::add_assign(quote! { #individual_term_ident }, quote! { a });
+    let individual_term_ident_sub_assign_a =
+        MW::sub_assign(quote! { #individual_term_ident }, quote! { a });
+
     for el in quadratic_terms {
         let (coeff, a, b) = el;
         let read_a_expr = read_value_expr(a, idents, false);
@@ -58,30 +71,33 @@ pub(crate) fn transform_degree_2_constraint(
                     let mut #individual_term_ident = {
                         let mut a = #read_a_expr;
                         let b = #read_b_expr;
-                        a.mul_assign(&b);
+                        #a_mul_assign_b;
 
                         a
                     };
                 }
             } else if coeff == Mersenne31Field::MINUS_ONE {
+                let a_negate = MW::negate(quote! { a });
                 quote! {
                     let mut #individual_term_ident = {
                         let mut a = #read_a_expr;
                         let b = #read_b_expr;
-                        a.mul_assign(&b);
-                        a.negate();
+                        #a_mul_assign_b;
+                        #a_negate;
 
                         a
                     };
                 }
             } else {
                 let coeff = coeff.to_reduced_u32();
+                let a_mul_assign_by_base_coeff =
+                    MW::mul_assign_by_base(quote! { a }, MW::field_new(quote! { #coeff }));
                 quote! {
                     let mut #individual_term_ident = {
                         let mut a = #read_a_expr;
                         let b = #read_b_expr;
-                        a.mul_assign(&b);
-                        a.mul_assign_by_base(&Mersenne31Field(#coeff));
+                        #a_mul_assign_b;
+                        #a_mul_assign_by_base_coeff;
 
                         a
                     };
@@ -95,8 +111,8 @@ pub(crate) fn transform_degree_2_constraint(
                     {
                         let mut a = #read_a_expr;
                         let b = #read_b_expr;
-                        a.mul_assign(&b);
-                        #individual_term_ident.add_assign(&a);
+                        #a_mul_assign_b;
+                        #individual_term_ident_add_assign_a;
                     }
                 }
             } else if coeff == Mersenne31Field::MINUS_ONE {
@@ -104,19 +120,21 @@ pub(crate) fn transform_degree_2_constraint(
                     {
                         let mut a = #read_a_expr;
                         let b = #read_b_expr;
-                        a.mul_assign(&b);
-                        #individual_term_ident.sub_assign(&a);
+                        #a_mul_assign_b;
+                        #individual_term_ident_sub_assign_a;
                     }
                 }
             } else {
                 let coeff = coeff.to_reduced_u32();
+                let a_mul_assign_by_base_coeff =
+                    MW::mul_assign_by_base(quote! { a }, MW::field_new(quote! { #coeff }));
                 quote! {
                     {
                         let mut a = #read_a_expr;
                         let b = #read_b_expr;
-                        a.mul_assign(&b);
-                        a.mul_assign_by_base(&Mersenne31Field(#coeff));
-                        #individual_term_ident.add_assign(&a);
+                        #a_mul_assign_b;
+                        #a_mul_assign_by_base_coeff;
+                        #individual_term_ident_add_assign_a;
                     }
                 }
             };
@@ -132,23 +150,25 @@ pub(crate) fn transform_degree_2_constraint(
             quote! {
                 {
                     let a = #read_a_expr;
-                    #individual_term_ident.add_assign(&a);
+                    #individual_term_ident_add_assign_a;
                 }
             }
         } else if coeff == Mersenne31Field::MINUS_ONE {
             quote! {
                 {
                     let a = #read_a_expr;
-                    #individual_term_ident.sub_assign(&a);
+                    #individual_term_ident_sub_assign_a;
                 }
             }
         } else {
             let coeff = coeff.to_reduced_u32();
+            let a_mul_assign_by_base_coeff =
+                MW::mul_assign_by_base(quote! { a }, MW::field_new(quote! { #coeff }));
             quote! {
                 {
                     let mut a = #read_a_expr;
-                    a.mul_assign_by_base(&Mersenne31Field(#coeff));
-                    #individual_term_ident.add_assign(&a);
+                    #a_mul_assign_by_base_coeff;
+                    #individual_term_ident_add_assign_a;
                 }
             }
         };
@@ -158,8 +178,12 @@ pub(crate) fn transform_degree_2_constraint(
 
     if constant_term.is_zero() == false {
         let constant_term = constant_term.to_reduced_u32();
+        let individual_term_ident_add_assign_base_constant = MW::add_assign_base(
+            quote! { #individual_term_ident },
+            MW::field_new(quote! { #constant_term }),
+        );
         let t = quote! {
-            #individual_term_ident.add_assign_base(&Mersenne31Field(#constant_term));
+            #individual_term_ident_add_assign_base_constant;
         };
 
         stream.extend(t);
@@ -174,7 +198,7 @@ pub(crate) fn transform_degree_2_constraint(
     }
 }
 
-pub(crate) fn guess_transform_squaring_of_linear_combination(
+pub(crate) fn guess_transform_squaring_of_linear_combination<MW: MersenneWrapper>(
     constraint: CompiledDegree2Constraint<Mersenne31Field>,
     idents: &Idents,
 ) -> Option<TokenStream> {
@@ -261,17 +285,21 @@ pub(crate) fn guess_transform_squaring_of_linear_combination(
     }
 
     // so we can generate a temporary term for linear combination, before multiplication
+    let quartic_zero = MW::quartic_zero();
+    let t_add_assign_a = MW::add_assign(quote! { t }, quote! { a });
     let mut substream = quote! {
-        let mut t = Mersenne31Quartic::ZERO;
+        let mut t = #quartic_zero;
     };
     for (coeff, place) in lc.into_iter() {
         let read_a_expr = read_value_expr(place, idents, false);
         let coeff = coeff.to_reduced_u32();
+        let a_mul_assign_by_base_coeff =
+            MW::mul_assign_by_base(quote! { a }, MW::field_new(quote! { #coeff }));
         let t = quote! {
             {
                 let mut a = #read_a_expr;
-                a.mul_assign_by_base(&Mersenne31Field(#coeff));
-                t.add_assign(&a);
+                #a_mul_assign_by_base_coeff;
+                #t_add_assign_a;
             }
         };
         substream.extend(t);
@@ -298,6 +326,11 @@ pub(crate) fn guess_transform_squaring_of_linear_combination(
         };
     };
 
+    let individual_term_ident_add_assign_a =
+        MW::add_assign(quote! { #individual_term_ident }, quote! { a });
+    let individual_term_ident_sub_assign_a =
+        MW::sub_assign(quote! { #individual_term_ident }, quote! { a });
+
     for el in linear_terms {
         let (coeff, a) = el;
         let read_a_expr = read_value_expr(a, idents, false);
@@ -305,23 +338,25 @@ pub(crate) fn guess_transform_squaring_of_linear_combination(
             quote! {
                 {
                     let a = #read_a_expr;
-                    #individual_term_ident.add_assign(&a);
+                    #individual_term_ident_add_assign_a;
                 }
             }
         } else if coeff == Mersenne31Field::MINUS_ONE {
             quote! {
                 {
                     let a = #read_a_expr;
-                    #individual_term_ident.sub_assign(&a);
+                    #individual_term_ident_sub_assign_a;
                 }
             }
         } else {
             let coeff = coeff.to_reduced_u32();
+            let a_mul_assign_by_base_coeff =
+                MW::mul_assign_by_base(quote! { a }, MW::field_new(quote! { #coeff }));
             quote! {
                 {
                     let mut a = #read_a_expr;
-                    a.mul_assign_by_base(&Mersenne31Field(#coeff));
-                    #individual_term_ident.add_assign(&a);
+                    #a_mul_assign_by_base_coeff;
+                    #individual_term_ident_add_assign_a;
                 }
             }
         };
@@ -331,8 +366,12 @@ pub(crate) fn guess_transform_squaring_of_linear_combination(
 
     if constant_term.is_zero() == false {
         let constant_term = constant_term.to_reduced_u32();
+        let individual_term_ident_add_assign_base_constant = MW::add_assign_base(
+            quote! { #individual_term_ident },
+            MW::field_new(quote! { #constant_term }),
+        );
         let t = quote! {
-            #individual_term_ident.add_assign_base(&Mersenne31Field(#constant_term));
+            #individual_term_ident_add_assign_base_constant;
         };
 
         stream.extend(t);
@@ -349,7 +388,7 @@ pub(crate) fn guess_transform_squaring_of_linear_combination(
     Some(result)
 }
 
-pub(crate) fn transform_degree_1_constraint(
+pub(crate) fn transform_degree_1_constraint<MW: MersenneWrapper>(
     constraint: CompiledDegree1Constraint<Mersenne31Field>,
     idents: &Idents,
 ) -> TokenStream {
@@ -366,9 +405,10 @@ pub(crate) fn transform_degree_1_constraint(
     if linear_terms.len() == 0 {
         // we can have a case of just literal constant expressed this way
         let constant_term = constant_term.to_reduced_u32();
+        let field_constant = MW::field_new(quote! { #constant_term });
 
         let stream = quote! {
-            let #individual_term_ident = Mersenne31Field(#constant_term);
+            let #individual_term_ident = #field_constant;
         };
 
         return stream;
@@ -378,6 +418,11 @@ pub(crate) fn transform_degree_1_constraint(
 
     let mut stream = TokenStream::new();
     let mut is_first = true;
+
+    let individual_term_ident_add_assign_a =
+        MW::add_assign(quote! { #individual_term_ident }, quote! { a });
+    let individual_term_ident_sub_assign_a =
+        MW::sub_assign(quote! { #individual_term_ident }, quote! { a });
 
     for el in linear_terms {
         let (coeff, a) = el;
@@ -394,20 +439,23 @@ pub(crate) fn transform_degree_1_constraint(
                     };
                 }
             } else if coeff == Mersenne31Field::MINUS_ONE {
+                let a_negate = MW::negate(quote! { a });
                 quote! {
                     let mut #individual_term_ident = {
                         let mut a = #read_a_expr;
-                        a.negate();
+                        #a_negate;
 
                         a
                     };
                 }
             } else {
                 let coeff = coeff.to_reduced_u32();
+                let a_mul_assign_by_base_coeff =
+                    MW::mul_assign_by_base(quote! { a }, MW::field_new(quote! { #coeff }));
                 quote! {
                     let mut #individual_term_ident = {
                         let mut a = #read_a_expr;
-                        a.mul_assign_by_base(&Mersenne31Field(#coeff));
+                        #a_mul_assign_by_base_coeff;
 
                         a
                     };
@@ -420,23 +468,25 @@ pub(crate) fn transform_degree_1_constraint(
                 quote! {
                     {
                         let a = #read_a_expr;
-                        #individual_term_ident.add_assign(&a);
+                        #individual_term_ident_add_assign_a;
                     }
                 }
             } else if coeff == Mersenne31Field::MINUS_ONE {
                 quote! {
                     {
                         let a = #read_a_expr;
-                        #individual_term_ident.sub_assign(&a);
+                        #individual_term_ident_sub_assign_a;
                     }
                 }
             } else {
                 let coeff = coeff.to_reduced_u32();
+                let a_mul_assign_by_base_coeff =
+                    MW::mul_assign_by_base(quote! { a }, MW::field_new(quote! { #coeff }));
                 quote! {
                     {
                         let mut a = #read_a_expr;
-                        a.mul_assign_by_base(&Mersenne31Field(#coeff));
-                        #individual_term_ident.add_assign(&a);
+                        #a_mul_assign_by_base_coeff;
+                        #individual_term_ident_add_assign_a;
                     }
                 }
             };
@@ -447,8 +497,12 @@ pub(crate) fn transform_degree_1_constraint(
 
     if constant_term.is_zero() == false {
         let constant_term = constant_term.to_reduced_u32();
+        let individual_term_ident_add_assign_base_constant = MW::add_assign_base(
+            quote! { #individual_term_ident },
+            MW::field_new(quote! { #constant_term }),
+        );
         let t = quote! {
-            #individual_term_ident.add_assign_base(&Mersenne31Field(#constant_term));
+            #individual_term_ident_add_assign_base_constant;
         };
 
         stream.extend(t);
@@ -463,7 +517,7 @@ pub(crate) fn transform_degree_1_constraint(
     }
 }
 
-fn transform_lookup_expression_for_eval(
+fn transform_lookup_expression_for_eval<MW: MersenneWrapper>(
     expression: LookupExpression<Mersenne31Field>,
     idents: &Idents,
 ) -> TokenStream {
@@ -481,7 +535,7 @@ fn transform_lookup_expression_for_eval(
             }
         }
         LookupExpression::Expression(constraint) => {
-            let t = transform_degree_1_constraint(constraint, idents);
+            let t = transform_degree_1_constraint::<MW>(constraint, idents);
             quote! {
                 {
                     #t
@@ -493,7 +547,7 @@ fn transform_lookup_expression_for_eval(
     }
 }
 
-pub(crate) fn transform_width_1_range_checks_pair(
+pub(crate) fn transform_width_1_range_checks_pair<MW: MersenneWrapper>(
     pair: &[LookupExpression<Mersenne31Field>; 2],
     pair_index: usize,
     optimized_layoyt: OptimizedOraclesForLookupWidth1,
@@ -515,11 +569,15 @@ pub(crate) fn transform_width_1_range_checks_pair(
         .start;
     // our inputs are not just variables, but expressions potentially, so we should parse them
 
-    let a_stream = transform_lookup_expression_for_eval(pair[0].clone(), idents);
-    let b_stream = transform_lookup_expression_for_eval(pair[1].clone(), idents);
+    let a_stream = transform_lookup_expression_for_eval::<MW>(pair[0].clone(), idents);
+    let b_stream = transform_lookup_expression_for_eval::<MW>(pair[1].clone(), idents);
     let c_expr = read_stage_2_value_expr(c_offset, idents, false);
 
     // everything that is accesses across two terms
+    let b_sub_assign_base_timestamp = MW::sub_assign_base(
+        quote! { b },
+        quote! { #memory_timestamp_high_from_sequence_idx_ident },
+    );
     let common_stream = if add_timestamp_contribution == false {
         quote! {
             let a = #a_stream;
@@ -531,18 +589,22 @@ pub(crate) fn transform_width_1_range_checks_pair(
         quote! {
             let a = #a_stream;
             let mut b = #b_stream;
-            b.sub_assign_base(& #memory_timestamp_high_from_sequence_idx_ident);
+            #b_sub_assign_base_timestamp;
             let c = #c_expr;
         }
     };
 
     let mut streams = Vec::with_capacity(2);
 
+    let individual_term_ident_mul_assign_b =
+        MW::mul_assign(quote! { #individual_term_ident }, quote! { b });
+    let individual_term_ident_sub_assign_c =
+        MW::sub_assign(quote! { #individual_term_ident }, quote! { c });
     let t0 = quote! {
         let #individual_term_ident = {
             let mut #individual_term_ident = a;
-            #individual_term_ident.mul_assign(&b);
-            #individual_term_ident.sub_assign(&c);
+            #individual_term_ident_mul_assign_b;
+            #individual_term_ident_sub_assign_c;
 
             #individual_term_ident
         };
@@ -553,27 +615,38 @@ pub(crate) fn transform_width_1_range_checks_pair(
     let acc_offset = optimized_layoyt.get_ext4_poly_index_in_openings(pair_index, stage_2_layout);
     let acc_expr = read_stage_2_value_expr(acc_offset, idents, false);
 
+    let denom_add_assign_a = MW::add_assign(quote! { denom }, quote! { a });
+    let denom_add_assign_b = MW::add_assign(quote! { denom }, quote! { b });
+    let denom_mul_assign_gamma =
+        MW::mul_assign(quote! { denom }, quote! { #lookup_argument_gamma_ident });
+    let denom_add_assign_c = MW::add_assign(quote! { denom }, quote! { c });
+    let denom_mul_assign_acc_value = MW::mul_assign(quote! { denom }, quote! { acc_value });
+    let numerator_add_assign_a = MW::add_assign(quote! { numerator }, quote! { a });
+    let numerator_add_assign_b = MW::add_assign(quote! { numerator }, quote! { b });
+    let individual_term_ident_sub_assign_numerator =
+        MW::sub_assign(quote! { #individual_term_ident }, quote! { numerator });
+
     let t1 = quote! {
         let #individual_term_ident = {
             let acc_value = #acc_expr;
 
             let mut denom = #lookup_argument_gamma_ident;
-            denom.add_assign(&a);
-            denom.add_assign(&b);
-            denom.mul_assign(& #lookup_argument_gamma_ident);
-            denom.add_assign(&c);
+            #denom_add_assign_a;
+            #denom_add_assign_b;
+            #denom_mul_assign_gamma;
+            #denom_add_assign_c;
             // C(x) + gamma * (a(x) + b(x)) + gamma^2
-            denom.mul_assign(&acc_value);
+            #denom_mul_assign_acc_value;
 
             let mut numerator = #lookup_argument_two_gamma_ident;
-            numerator.add_assign(&a);
-            numerator.add_assign(&b);
+            #numerator_add_assign_a;
+            #numerator_add_assign_b;
             // a(x) + b(x) + 2 * gamma
 
             // Acc(x) * (C(x) + gamma * (a(x) + b(x)) + gamma^2) - (a(x) + b(x) + 2 * gamma)
 
             let mut #individual_term_ident = denom;
-            #individual_term_ident.sub_assign(&numerator);
+            #individual_term_ident_sub_assign_numerator;
 
             #individual_term_ident
         };
@@ -583,12 +656,13 @@ pub(crate) fn transform_width_1_range_checks_pair(
     (common_stream, streams)
 }
 
-pub(crate) fn transform_shuffle_ram_lazy_init_range_checks(
+pub(crate) fn transform_shuffle_ram_lazy_init_range_checks<MW: MersenneWrapper>(
     lazy_init_address_range_check_16: OptimizedOraclesForLookupWidth1,
-    shuffle_ram_inits_and_teardowns: ShuffleRamInitAndTeardownLayout,
+    shuffle_ram_inits_and_teardowns: &[ShuffleRamInitAndTeardownLayout],
     idents: &Idents,
     stage_2_layout: &LookupAndMemoryArgumentLayout,
-) -> Vec<TokenStream> {
+    into: &mut TokenStream,
+) {
     let Idents {
         individual_term_ident,
         lookup_argument_gamma_ident,
@@ -596,230 +670,95 @@ pub(crate) fn transform_shuffle_ram_lazy_init_range_checks(
         ..
     } = idents;
 
-    let c_offset = lazy_init_address_range_check_16
-        .base_field_oracles
-        .get_range(0)
-        .start;
-    let a = shuffle_ram_inits_and_teardowns
-        .lazy_init_addresses_columns
-        .start();
-    let b = a + 1;
-    let a_place = ColumnAddress::MemorySubtree(a);
-    let b_place = ColumnAddress::MemorySubtree(b);
+    assert_eq!(
+        lazy_init_address_range_check_16.num_pairs,
+        shuffle_ram_inits_and_teardowns.len()
+    );
 
-    let mut streams = Vec::with_capacity(2);
+    for (init_idx, init_and_teardown) in shuffle_ram_inits_and_teardowns.iter().enumerate() {
+        let c_offset = lazy_init_address_range_check_16
+            .base_field_oracles
+            .get_range(init_idx)
+            .start;
+        let a = init_and_teardown.lazy_init_addresses_columns.start();
+        let b = a + 1;
+        let a_place = ColumnAddress::MemorySubtree(a);
+        let b_place = ColumnAddress::MemorySubtree(b);
 
-    let a_expr = read_value_expr(a_place, idents, false);
-    let b_expr = read_value_expr(b_place, idents, false);
-    let c_expr = read_stage_2_value_expr(c_offset, idents, false);
-
-    let t0 = quote! {
-        let #individual_term_ident = {
+        let a_expr = read_value_expr(a_place, idents, false);
+        let b_expr = read_value_expr(b_place, idents, false);
+        let c_expr = read_stage_2_value_expr(c_offset, idents, false);
+        let common_stream = quote! {
             let a = #a_expr;
             let b = #b_expr;
             let c = #c_expr;
-
-            let mut #individual_term_ident = a;
-            #individual_term_ident.mul_assign(&b);
-            #individual_term_ident.sub_assign(&c);
-
-            #individual_term_ident
         };
-    };
-    streams.push(t0);
 
-    // now accumulator * denom - numerator == 0
-    let acc_offset =
-        lazy_init_address_range_check_16.get_ext4_poly_index_in_openings(0, stage_2_layout);
-    let acc_expr = read_stage_2_value_expr(acc_offset, idents, false);
+        let mut streams = Vec::with_capacity(2);
 
-    let t1 = quote! {
-        let #individual_term_ident = {
-            let a = #a_expr;
-            let b = #b_expr;
-            let c = #c_expr;
-            let acc_value = #acc_expr;
+        let individual_term_ident_mul_assign_b =
+            MW::mul_assign(quote! { #individual_term_ident }, quote! { b });
+        let individual_term_ident_sub_assign_c =
+            MW::sub_assign(quote! { #individual_term_ident }, quote! { c });
+        let t0 = quote! {
+            let #individual_term_ident = {
+                let mut #individual_term_ident = a;
+                #individual_term_ident_mul_assign_b;
+                #individual_term_ident_sub_assign_c;
 
-            let mut denom = #lookup_argument_gamma_ident;
-            denom.add_assign(&a);
-            denom.add_assign(&b);
-            denom.mul_assign(& #lookup_argument_gamma_ident);
-            denom.add_assign(&c);
-            // C(x) + gamma * (a(x) + b(x)) + gamma^2
-            denom.mul_assign(&acc_value);
-
-            let mut numerator = #lookup_argument_two_gamma_ident;
-            numerator.add_assign(&a);
-            numerator.add_assign(&b);
-            // a(x) + b(x) + 2 * gamma
-
-            // Acc(x) * (C(x) + gamma * (a(x) + b(x)) + gamma^2) - (a(x) + b(x) + 2 * gamma)
-
-            let mut #individual_term_ident = denom;
-            #individual_term_ident.sub_assign(&numerator);
-
-            #individual_term_ident
+                #individual_term_ident
+            };
         };
-    };
-    streams.push(t1);
+        streams.push(t0);
 
-    streams
+        // now accumulator * denom - numerator == 0
+        let acc_offset = lazy_init_address_range_check_16
+            .get_ext4_poly_index_in_openings(init_idx, stage_2_layout);
+        let acc_expr = read_stage_2_value_expr(acc_offset, idents, false);
+
+        let denom_add_assign_a = MW::add_assign(quote! { denom }, quote! { a });
+        let denom_add_assign_b = MW::add_assign(quote! { denom }, quote! { b });
+        let denom_mul_assign_gamma =
+            MW::mul_assign(quote! { denom }, quote! { #lookup_argument_gamma_ident });
+        let denom_add_assign_c = MW::add_assign(quote! { denom }, quote! { c });
+        let denom_mul_assign_acc_value = MW::mul_assign(quote! { denom }, quote! { acc_value });
+        let numerator_add_assign_a = MW::add_assign(quote! { numerator }, quote! { a });
+        let numerator_add_assign_b = MW::add_assign(quote! { numerator }, quote! { b });
+        let individual_term_ident_sub_assign_numerator =
+            MW::sub_assign(quote! { #individual_term_ident }, quote! { numerator });
+
+        let t1 = quote! {
+            let #individual_term_ident = {
+                let acc_value = #acc_expr;
+
+                let mut denom = #lookup_argument_gamma_ident;
+                #denom_add_assign_a;
+                #denom_add_assign_b;
+                #denom_mul_assign_gamma;
+                #denom_add_assign_c;
+                // C(x) + gamma * (a(x) + b(x)) + gamma^2
+                #denom_mul_assign_acc_value;
+
+                let mut numerator = #lookup_argument_two_gamma_ident;
+                #numerator_add_assign_a;
+                #numerator_add_assign_b;
+                // a(x) + b(x) + 2 * gamma
+
+                // Acc(x) * (C(x) + gamma * (a(x) + b(x)) + gamma^2) - (a(x) + b(x) + 2 * gamma)
+
+                let mut #individual_term_ident = denom;
+                #individual_term_ident_sub_assign_numerator;
+
+                #individual_term_ident
+            };
+        };
+        streams.push(t1);
+
+        accumulate_contributions::<MW>(into, Some(common_stream), streams, idents);
+    }
 }
 
-// pub(crate) fn transform_generic_lookup(
-//     witness_layout: &WitnessSubtree<Mersenne31Field>,
-//     stage_2_layout: &LookupAndMemoryArgumentLayout,
-//     setup_layout: &SetupLayout,
-//     idents: &Idents,
-// ) -> Vec<TokenStream> {
-//     if stage_2_layout
-//         .intermediate_polys_for_generic_lookup
-//         .num_elements()
-//         == 0
-//     {
-//         return vec![];
-//     }
-
-//     let Idents {
-//         individual_term_ident,
-//         lookup_argument_linearization_challenges_ident,
-//         lookup_argument_gamma_ident,
-//         ..
-//     } = idents;
-
-//     let mut streams = vec![];
-
-//     let mut dst_iter = stage_2_layout.intermediate_polys_for_generic_lookup.iter();
-//     let mut width_3_lookups_with_fixed_col_id = vec![];
-//     for lookup in witness_layout.width_3_lookups.iter() {
-//         if let TableIndex::Constant(table_type) = lookup.table_index {
-//             let src = lookup.input_columns.clone();
-//             let dst = dst_iter.next().unwrap().start;
-//             let column_type =
-//                 Mersenne31Field::from_u64_with_reduction(table_type.to_table_id() as u64);
-//             width_3_lookups_with_fixed_col_id.push((src, dst, column_type));
-//         }
-//     }
-//     let mut width_3_lookups_with_variable_col_id = vec![];
-//     for lookup in witness_layout.width_3_lookups.iter() {
-//         if let TableIndex::Variable(table_type) = lookup.table_index {
-//             let src = lookup.input_columns.clone();
-//             let dst = dst_iter.next().unwrap().start;
-//             let ColumnAddress::WitnessSubtree(table_type_idx) = table_type else {
-//                 panic!();
-//             };
-//             width_3_lookups_with_variable_col_id.push((src, table_type_idx, dst));
-//         }
-//     }
-
-//     assert!(dst_iter.next().is_none());
-
-//     assert_eq!(setup_layout.generic_lookup_setup_columns.width(), 4);
-
-//     // width-3 generic lookup
-//     {
-//         let mut i = 0;
-//         for (src, _dst, table_type) in width_3_lookups_with_fixed_col_id.iter() {
-//             let table_type = table_type.to_reduced_u32();
-//             let acc = stage_2_layout
-//                 .get_intermediate_polys_for_generic_lookup_absolute_poly_idx_for_verifier(i);
-//             let accumulator_expr = read_stage_2_value_expr(acc, idents, false);
-//             let src = src.clone();
-//             let [src0, src1, src2] = src;
-//             let src_0_expr = transform_lookup_expression_for_eval(src0, idents);
-//             let src_1_expr = transform_lookup_expression_for_eval(src1, idents);
-//             let src_2_expr = transform_lookup_expression_for_eval(src2, idents);
-
-//             let t = quote! {
-//                 let #individual_term_ident = {
-//                     let src0 = #src_0_expr;
-//                     let src1 = #src_1_expr;
-//                     let src2 = #src_2_expr;
-
-//                     let mut denom = #lookup_argument_linearization_challenges_ident[2];
-//                     let table_id = Mersenne31Field(#table_type);
-//                     denom.mul_assign_by_base(&table_id);
-
-//                     let mut t = #lookup_argument_linearization_challenges_ident[1];
-//                     t.mul_assign_by_base(&src2);
-//                     denom.add_assign(&t);
-
-//                     let mut t = #lookup_argument_linearization_challenges_ident[0];
-//                     t.mul_assign_by_base(&src1);
-//                     denom.add_assign(&t);
-
-//                     denom.add_assign(&src0);
-
-//                     denom.add_assign(&#lookup_argument_gamma_ident);
-
-//                     let mut #individual_term_ident = denom;
-//                     #individual_term_ident.mul_assign(& #accumulator_expr);
-//                     #individual_term_ident.sub_assign_base(&Mersenne31Field::ONE);
-
-//                     #individual_term_ident
-//                 };
-//             };
-
-//             streams.push(t);
-
-//             i += 1;
-//         }
-
-//         for (src, table_type_offset, _dst) in width_3_lookups_with_variable_col_id.iter() {
-//             let acc = stage_2_layout
-//                 .get_intermediate_polys_for_generic_lookup_absolute_poly_idx_for_verifier(i);
-//             let accumulator_expr = read_stage_2_value_expr(acc, idents, false);
-//             let src = src.clone();
-//             let [src0, src1, src2] = src;
-//             let src_0_expr = transform_lookup_expression_for_eval(src0, idents);
-//             let src_1_expr = transform_lookup_expression_for_eval(src1, idents);
-//             let src_2_expr = transform_lookup_expression_for_eval(src2, idents);
-//             let src_3_expr = read_value_expr(
-//                 ColumnAddress::WitnessSubtree(*table_type_offset),
-//                 idents,
-//                 false,
-//             );
-
-//             let t = quote! {
-//                 let #individual_term_ident = {
-//                     let src0 = #src_0_expr;
-//                     let src1 = #src_1_expr;
-//                     let src2 = #src_2_expr;
-//                     let table_id = #src_3_expr;
-
-//                     let mut denom = #lookup_argument_linearization_challenges_ident[2];
-//                     denom.mul_assign(&table_id);
-
-//                     let mut t = #lookup_argument_linearization_challenges_ident[1];
-//                     t.mul_assign_by_base(&src2);
-//                     denom.add_assign(&t);
-
-//                     let mut t = #lookup_argument_linearization_challenges_ident[0];
-//                     t.mul_assign_by_base(&src1);
-//                     denom.add_assign(&t);
-
-//                     denom.add_assign(&src0);
-
-//                     denom.add_assign(&#lookup_argument_gamma_ident);
-
-//                     let mut #individual_term_ident = denom;
-//                     #individual_term_ident.mul_assign(& #accumulator_expr);
-//                     #individual_term_ident.sub_assign_base(&Mersenne31Field::ONE);
-
-//                     #individual_term_ident
-//                 };
-//             };
-
-//             streams.push(t);
-
-//             i += 1;
-//         }
-//     }
-
-//     streams
-// }
-
-pub(crate) fn transform_generic_lookup(
+pub(crate) fn transform_generic_lookup<MW: MersenneWrapper>(
     witness_layout: &WitnessSubtree<Mersenne31Field>,
     stage_2_layout: &LookupAndMemoryArgumentLayout,
     setup_layout: &SetupLayout,
@@ -843,6 +782,17 @@ pub(crate) fn transform_generic_lookup(
     let mut streams = vec![];
     assert_eq!(setup_layout.generic_lookup_setup_columns.width(), 4);
 
+    let denom_mul_assign_by_base_table_id =
+        MW::mul_assign_by_base(quote! { denom }, quote! { table_id });
+    let t_mul_assign_by_base_src2 = MW::mul_assign_by_base(quote! { t }, quote! { src2 });
+    let denom_add_assign_t = MW::add_assign(quote! { denom }, quote! { t });
+    let t_mul_assign_by_base_src1 = MW::mul_assign_by_base(quote! { t }, quote! { src1 });
+    let denom_add_assign_src0 = MW::add_assign(quote! { denom }, quote! { src0 });
+    let denom_add_assign_gamma =
+        MW::add_assign(quote! { denom }, quote! { #lookup_argument_gamma_ident });
+    let individual_term_ident_sub_assign_base_field_one =
+        MW::sub_assign_base(quote! { #individual_term_ident }, MW::field_one());
+
     for (i, (lookup, dst)) in witness_layout
         .width_3_lookups
         .iter()
@@ -857,12 +807,17 @@ pub(crate) fn transform_generic_lookup(
                 let acc = stage_2_layout
                     .get_intermediate_polys_for_generic_lookup_absolute_poly_idx_for_verifier(i);
                 let accumulator_expr = read_stage_2_value_expr(acc, idents, false);
+                let individual_term_ident_mul_assign_accumulator = MW::mul_assign(
+                    quote! { #individual_term_ident },
+                    quote! { #accumulator_expr },
+                );
                 let src = src.clone();
                 let [src0, src1, src2] = src;
-                let src_0_expr = transform_lookup_expression_for_eval(src0, idents);
-                let src_1_expr = transform_lookup_expression_for_eval(src1, idents);
-                let src_2_expr = transform_lookup_expression_for_eval(src2, idents);
+                let src_0_expr = transform_lookup_expression_for_eval::<MW>(src0, idents);
+                let src_1_expr = transform_lookup_expression_for_eval::<MW>(src1, idents);
+                let src_2_expr = transform_lookup_expression_for_eval::<MW>(src2, idents);
 
+                let table_id_field = MW::field_new(quote! { #table_type });
                 let t = quote! {
                     let #individual_term_ident = {
                         let src0 = #src_0_expr;
@@ -870,24 +825,24 @@ pub(crate) fn transform_generic_lookup(
                         let src2 = #src_2_expr;
 
                         let mut denom = #lookup_argument_linearization_challenges_ident[2];
-                        let table_id = Mersenne31Field(#table_type);
-                        denom.mul_assign_by_base(&table_id);
+                        let table_id = #table_id_field;
+                        #denom_mul_assign_by_base_table_id;
 
                         let mut t = #lookup_argument_linearization_challenges_ident[1];
-                        t.mul_assign_by_base(&src2);
-                        denom.add_assign(&t);
+                        #t_mul_assign_by_base_src2;
+                        #denom_add_assign_t;
 
                         let mut t = #lookup_argument_linearization_challenges_ident[0];
-                        t.mul_assign_by_base(&src1);
-                        denom.add_assign(&t);
+                        #t_mul_assign_by_base_src1;
+                        #denom_add_assign_t;
 
-                        denom.add_assign(&src0);
+                        #denom_add_assign_src0;
 
-                        denom.add_assign(&#lookup_argument_gamma_ident);
+                        #denom_add_assign_gamma;
 
                         let mut #individual_term_ident = denom;
-                        #individual_term_ident.mul_assign(& #accumulator_expr);
-                        #individual_term_ident.sub_assign_base(&Mersenne31Field::ONE);
+                        #individual_term_ident_mul_assign_accumulator;
+                        #individual_term_ident_sub_assign_base_field_one;
 
                         #individual_term_ident
                     };
@@ -902,17 +857,23 @@ pub(crate) fn transform_generic_lookup(
                 let acc = stage_2_layout
                     .get_intermediate_polys_for_generic_lookup_absolute_poly_idx_for_verifier(i);
                 let accumulator_expr = read_stage_2_value_expr(acc, idents, false);
+                let individual_term_ident_mul_assign_accumulator = MW::mul_assign(
+                    quote! { #individual_term_ident },
+                    quote! { #accumulator_expr },
+                );
                 let src = src.clone();
                 let [src0, src1, src2] = src;
-                let src_0_expr = transform_lookup_expression_for_eval(src0, idents);
-                let src_1_expr = transform_lookup_expression_for_eval(src1, idents);
-                let src_2_expr = transform_lookup_expression_for_eval(src2, idents);
+                let src_0_expr = transform_lookup_expression_for_eval::<MW>(src0, idents);
+                let src_1_expr = transform_lookup_expression_for_eval::<MW>(src1, idents);
+                let src_2_expr = transform_lookup_expression_for_eval::<MW>(src2, idents);
                 let src_3_expr = read_value_expr(
                     ColumnAddress::WitnessSubtree(table_type_column),
                     idents,
                     false,
                 );
 
+                let denom_mul_assign_table_id =
+                    MW::mul_assign(quote! { denom }, quote! { table_id });
                 let t = quote! {
                     let #individual_term_ident = {
                         let src0 = #src_0_expr;
@@ -921,23 +882,23 @@ pub(crate) fn transform_generic_lookup(
                         let table_id = #src_3_expr;
 
                         let mut denom = #lookup_argument_linearization_challenges_ident[2];
-                        denom.mul_assign(&table_id);
+                        #denom_mul_assign_table_id;
 
                         let mut t = #lookup_argument_linearization_challenges_ident[1];
-                        t.mul_assign_by_base(&src2);
-                        denom.add_assign(&t);
+                        #t_mul_assign_by_base_src2;
+                        #denom_add_assign_t;
 
                         let mut t = #lookup_argument_linearization_challenges_ident[0];
-                        t.mul_assign_by_base(&src1);
-                        denom.add_assign(&t);
+                        #t_mul_assign_by_base_src1;
+                        #denom_add_assign_t;
 
-                        denom.add_assign(&src0);
+                        #denom_add_assign_src0;
 
-                        denom.add_assign(&#lookup_argument_gamma_ident);
+                        #denom_add_assign_gamma;
 
                         let mut #individual_term_ident = denom;
-                        #individual_term_ident.mul_assign(& #accumulator_expr);
-                        #individual_term_ident.sub_assign_base(&Mersenne31Field::ONE);
+                        #individual_term_ident_mul_assign_accumulator;
+                        #individual_term_ident_sub_assign_base_field_one;
 
                         #individual_term_ident
                     };
@@ -951,7 +912,7 @@ pub(crate) fn transform_generic_lookup(
     streams
 }
 
-pub(crate) fn transform_multiplicities(
+pub(crate) fn transform_multiplicities<MW: MersenneWrapper>(
     witness_layout: &WitnessSubtree<Mersenne31Field>,
     stage_2_layout: &LookupAndMemoryArgumentLayout,
     setup_layout: &SetupLayout,
@@ -963,29 +924,22 @@ pub(crate) fn transform_multiplicities(
         individual_term_ident,
         lookup_argument_linearization_challenges_ident,
         lookup_argument_gamma_ident,
+        decoder_lookup_argument_linearization_challenges_ident,
+        decoder_lookup_argument_gamma_ident,
         ..
     } = idents;
 
-    let range_check_16_multiplicities_src = witness_layout
-        .multiplicities_columns_for_range_check_16
-        .start();
-    let range_check_16_setup_column = setup_layout.range_check_16_setup_column.start();
-
-    let timestamp_range_check_multiplicities_src = witness_layout
-        .multiplicities_columns_for_timestamp_range_check
-        .start();
-    let timestamp_range_check_setup_column =
-        setup_layout.timestamp_range_check_setup_column.start();
-
-    let generic_lookup_multiplicities_src = witness_layout
-        .multiplicities_columns_for_generic_lookup
-        .start();
-    assert_eq!(setup_layout.generic_lookup_setup_columns.width(), 4);
-
-    let generic_lookup_setup_columns_start = setup_layout.generic_lookup_setup_columns.start();
-
     // range check 16
+    if stage_2_layout
+        .intermediate_poly_for_range_check_16_multiplicity
+        .num_elements()
+        > 0
     {
+        let range_check_16_multiplicities_src = witness_layout
+            .multiplicities_columns_for_range_check_16
+            .start();
+        let range_check_16_setup_column = setup_layout.range_check_16_setup_column.start();
+
         let intermediate_poly_expr = read_stage_2_value_expr(
             stage_2_layout
                 .range_check_16_intermediate_poly_for_multiplicities_absolute_poly_idx_for_verifier(
@@ -1006,17 +960,24 @@ pub(crate) fn transform_multiplicities(
             false,
         );
 
+        let denom_add_assign_t = MW::add_assign(quote! { denom }, quote! { t });
+        let individual_term_ident_mul_assign_intermediate = MW::mul_assign(
+            quote! { #individual_term_ident },
+            quote! { #intermediate_poly_expr },
+        );
+        let individual_term_ident_sub_assign_m =
+            MW::sub_assign(quote! { #individual_term_ident }, quote! { m });
         let t = quote! {
             let #individual_term_ident = {
                 let m = #multiplicity_expr;
 
                 let t = #setup_expr;
                 let mut denom = #lookup_argument_gamma_ident;
-                denom.add_assign(&t);
+                #denom_add_assign_t;
 
                 let mut #individual_term_ident = denom;
-                #individual_term_ident.mul_assign(& #intermediate_poly_expr);
-                #individual_term_ident.sub_assign(&m);
+                #individual_term_ident_mul_assign_intermediate;
+                #individual_term_ident_sub_assign_m;
 
                 #individual_term_ident
             };
@@ -1026,7 +987,17 @@ pub(crate) fn transform_multiplicities(
     }
 
     // timestamp range check
+    if stage_2_layout
+        .intermediate_poly_for_timestamp_range_check_multiplicity
+        .num_elements()
+        > 0
     {
+        let timestamp_range_check_multiplicities_src = witness_layout
+            .multiplicities_columns_for_timestamp_range_check
+            .start();
+        let timestamp_range_check_setup_column =
+            setup_layout.timestamp_range_check_setup_column.start();
+
         let intermediate_poly_expr = read_stage_2_value_expr(
             stage_2_layout
                 .timestamp_range_check_intermediate_poly_for_multiplicities_absolute_poly_idx_for_verifier(
@@ -1047,17 +1018,102 @@ pub(crate) fn transform_multiplicities(
             false,
         );
 
+        let denom_add_assign_t = MW::add_assign(quote! { denom }, quote! { t });
+        let individual_term_ident_mul_assign_intermediate = MW::mul_assign(
+            quote! { #individual_term_ident },
+            quote! { #intermediate_poly_expr },
+        );
+        let individual_term_ident_sub_assign_m =
+            MW::sub_assign(quote! { #individual_term_ident }, quote! { m });
         let t = quote! {
             let #individual_term_ident = {
                 let m = #multiplicity_expr;
 
                 let t = #setup_expr;
                 let mut denom = #lookup_argument_gamma_ident;
-                denom.add_assign(&t);
+                #denom_add_assign_t;
 
                 let mut #individual_term_ident = denom;
-                #individual_term_ident.mul_assign(& #intermediate_poly_expr);
-                #individual_term_ident.sub_assign(&m);
+                #individual_term_ident_mul_assign_intermediate;
+                #individual_term_ident_sub_assign_m;
+
+                #individual_term_ident
+            };
+        };
+
+        streams.push(t);
+    }
+
+    if stage_2_layout
+        .intermediate_polys_for_decoder_multiplicities
+        .num_elements()
+        > 0
+    {
+        assert_eq!(
+            witness_layout
+                .multiplicities_columns_for_decoder_in_executor_families
+                .num_elements(),
+            1
+        );
+
+        let offset = stage_2_layout
+            .decoder_lookup_intermediate_poly_for_multiplicities_absolute_poly_idx_for_verifier();
+        let accumulator_expr = read_stage_2_value_expr(offset, idents, false);
+
+        let multiplicity_offset = witness_layout
+            .multiplicities_columns_for_decoder_in_executor_families
+            .start();
+        let multiplicity_expr = read_value_expr(
+            ColumnAddress::WitnessSubtree(multiplicity_offset),
+            idents,
+            false,
+        );
+
+        assert_eq!(
+            setup_layout
+                .preprocessed_decoder_setup_columns
+                .num_elements(),
+            1
+        );
+        let setup_start = setup_layout.preprocessed_decoder_setup_columns.start();
+        let c0_expr = read_value_expr(ColumnAddress::SetupSubtree(setup_start), idents, false);
+
+        let denom_add_assign_c0 = MW::add_assign(quote! { denom }, quote! { #c0_expr });
+        let mut accumulation_expr = quote! {
+            let mut denom = #decoder_lookup_argument_gamma_ident;
+            #denom_add_assign_c0;
+        };
+
+        let denom_add_assign_t = MW::add_assign(quote! { denom }, quote! { t });
+        // now in the cycle
+        for i in 1..EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH {
+            let challenge_idx = i - 1;
+            let setup_column_expr =
+                read_value_expr(ColumnAddress::SetupSubtree(setup_start + i), idents, false);
+
+            let t_mul_assign_setup = MW::mul_assign(quote! { t }, quote! { #setup_column_expr });
+            accumulation_expr.extend(quote! {
+                let mut t = #decoder_lookup_argument_linearization_challenges_ident[#challenge_idx];
+                #t_mul_assign_setup;
+                #denom_add_assign_t;
+            });
+        }
+
+        let individual_term_ident_mul_assign_accumulator = MW::mul_assign(
+            quote! { #individual_term_ident },
+            quote! { #accumulator_expr },
+        );
+        let individual_term_ident_sub_assign_m =
+            MW::sub_assign(quote! { #individual_term_ident }, quote! { m });
+        let t = quote! {
+            let #individual_term_ident = {
+                let m = #multiplicity_expr;
+
+                #accumulation_expr
+
+                let mut #individual_term_ident = denom;
+                #individual_term_ident_mul_assign_accumulator;
+                #individual_term_ident_sub_assign_m;
 
                 #individual_term_ident
             };
@@ -1067,7 +1123,18 @@ pub(crate) fn transform_multiplicities(
     }
 
     // generic lookup
+    if stage_2_layout
+        .intermediate_polys_for_generic_multiplicities
+        .num_elements()
+        > 0
     {
+        let generic_lookup_multiplicities_src = witness_layout
+            .multiplicities_columns_for_generic_lookup
+            .start();
+        assert_eq!(setup_layout.generic_lookup_setup_columns.width(), 4);
+
+        let generic_lookup_setup_columns_start = setup_layout.generic_lookup_setup_columns.start();
+
         let bound = stage_2_layout
             .intermediate_polys_for_generic_multiplicities
             .num_elements();
@@ -1091,30 +1158,42 @@ pub(crate) fn transform_multiplicities(
             let src_3_expr =
                 read_value_expr(ColumnAddress::SetupSubtree(tuple_offset + 3), idents, false);
 
+            let denom_mul_assign_table_id = MW::mul_assign(quote! { denom }, quote! { table_id });
+            let t_mul_assign_src_2 = MW::mul_assign(quote! { t }, quote! { #src_2_expr });
+            let denom_add_assign_t = MW::add_assign(quote! { denom }, quote! { t });
+            let t_mul_assign_src_1 = MW::mul_assign(quote! { t }, quote! { #src_1_expr });
+            let denom_add_assign_gamma =
+                MW::add_assign(quote! { denom }, quote! { #lookup_argument_gamma_ident });
+            let individual_term_ident_mul_assign_acc = MW::mul_assign(
+                quote! { #individual_term_ident },
+                quote! { #accumulator_expr },
+            );
+            let individual_term_ident_sub_assign_m =
+                MW::sub_assign(quote! { #individual_term_ident }, quote! { m });
             let t = quote! {
                 let #individual_term_ident = {
                     let m = #multiplicity_expr;
 
                     let mut denom = #lookup_argument_linearization_challenges_ident[2];
                     let table_id = #src_3_expr;
-                    denom.mul_assign(&table_id);
+                    #denom_mul_assign_table_id;
 
                     let mut t = #lookup_argument_linearization_challenges_ident[1];
-                    t.mul_assign(& #src_2_expr);
-                    denom.add_assign(&t);
+                    #t_mul_assign_src_2;
+                    #denom_add_assign_t;
 
                     let mut t = #lookup_argument_linearization_challenges_ident[0];
-                    t.mul_assign(& #src_1_expr);
-                    denom.add_assign(&t);
+                    #t_mul_assign_src_1;
+                    #denom_add_assign_t;
 
                     let t = #src_0_expr;
-                    denom.add_assign(&t);
+                    #denom_add_assign_t;
 
-                    denom.add_assign(&#lookup_argument_gamma_ident);
+                    #denom_add_assign_gamma;
 
                     let mut #individual_term_ident = denom;
-                    #individual_term_ident.mul_assign(& #accumulator_expr);
-                    #individual_term_ident.sub_assign(&m);
+                    #individual_term_ident_mul_assign_acc;
+                    #individual_term_ident_sub_assign_m;
 
                     #individual_term_ident
                 };
@@ -1127,7 +1206,7 @@ pub(crate) fn transform_multiplicities(
     streams
 }
 
-pub(crate) fn transform_delegation_ram_conventions(
+pub(crate) fn transform_delegation_ram_conventions<MW: MersenneWrapper>(
     memory_layout: &MemorySubtree,
     idents: &Idents,
 ) -> (TokenStream, Vec<TokenStream>) {
@@ -1146,11 +1225,19 @@ pub(crate) fn transform_delegation_ram_conventions(
         idents,
         false,
     );
-    let mem_abi_offset_expr = read_value_expr(
-        ColumnAddress::MemorySubtree(delegation_processor_layout.abi_mem_offset_high.start()),
-        idents,
-        false,
-    );
+    let mem_abi_offset_expr = if delegation_processor_layout
+        .abi_mem_offset_high
+        .num_elements()
+        > 0
+    {
+        read_value_expr(
+            ColumnAddress::MemorySubtree(delegation_processor_layout.abi_mem_offset_high.start()),
+            idents,
+            false,
+        )
+    } else {
+        MW::quartic_zero()
+    };
     let write_timestamp_low_expr = read_value_expr(
         ColumnAddress::MemorySubtree(delegation_processor_layout.write_timestamp.start()),
         idents,
@@ -1162,10 +1249,20 @@ pub(crate) fn transform_delegation_ram_conventions(
         false,
     );
 
+    let predicate_minus_one_sub_assign_base_field_one =
+        MW::sub_assign_base(quote! { predicate_minus_one }, MW::field_one());
+    let individual_term_ident_sub_assign_base_field_one =
+        MW::sub_assign_base(quote! { #individual_term_ident }, MW::field_one());
+    let individual_term_ident_mul_assign_predicate_minus_one = MW::mul_assign(
+        quote! { #individual_term_ident },
+        quote! { predicate_minus_one },
+    );
+    let individual_term_ident_mul_assign_carry_bit =
+        MW::mul_assign(quote! { #individual_term_ident }, quote! { carry_bit });
     let common_stream = quote! {
         let predicate = #predicate_expr;
         let mut predicate_minus_one = predicate;
-        predicate_minus_one.sub_assign_base(&Mersenne31Field::ONE);
+        #predicate_minus_one_sub_assign_base_field_one;
 
         let mem_abi_offset = #mem_abi_offset_expr;
         let write_timestamp_low = #write_timestamp_low_expr;
@@ -1177,7 +1274,7 @@ pub(crate) fn transform_delegation_ram_conventions(
         let t = quote! {
             let #individual_term_ident = {
                 let mut #individual_term_ident = predicate;
-                #individual_term_ident.mul_assign(&predicate_minus_one);
+                #individual_term_ident_mul_assign_predicate_minus_one;
 
                 #individual_term_ident
             };
@@ -1193,7 +1290,7 @@ pub(crate) fn transform_delegation_ram_conventions(
         let t = quote! {
             let #individual_term_ident = {
                 let mut #individual_term_ident = mem_abi_offset;
-                #individual_term_ident.mul_assign(&predicate_minus_one);
+                #individual_term_ident_mul_assign_predicate_minus_one;
 
                 #individual_term_ident
             };
@@ -1206,7 +1303,7 @@ pub(crate) fn transform_delegation_ram_conventions(
         let t = quote! {
             let #individual_term_ident = {
                 let mut #individual_term_ident = write_timestamp_low;
-                #individual_term_ident.mul_assign(&predicate_minus_one);
+                #individual_term_ident_mul_assign_predicate_minus_one;
 
                 #individual_term_ident
             };
@@ -1221,7 +1318,7 @@ pub(crate) fn transform_delegation_ram_conventions(
         let t = quote! {
             let #individual_term_ident = {
                 let mut #individual_term_ident = #write_timestamp_high;
-                #individual_term_ident.mul_assign(&predicate_minus_one);
+                #individual_term_ident_mul_assign_predicate_minus_one;
 
                 #individual_term_ident
             };
@@ -1254,7 +1351,7 @@ pub(crate) fn transform_delegation_ram_conventions(
                                 let low = #low_expr;
 
                                 let mut #individual_term_ident = low;
-                                #individual_term_ident.mul_assign(&predicate_minus_one);
+                                #individual_term_ident_mul_assign_predicate_minus_one;
 
                                 #individual_term_ident
                             };
@@ -1271,7 +1368,7 @@ pub(crate) fn transform_delegation_ram_conventions(
                                 let high = #high_expr;
 
                                 let mut #individual_term_ident = high;
-                                #individual_term_ident.mul_assign(&predicate_minus_one);
+                                #individual_term_ident_mul_assign_predicate_minus_one;
 
                                 #individual_term_ident
                             };
@@ -1298,7 +1395,7 @@ pub(crate) fn transform_delegation_ram_conventions(
                                 let low = #low_expr;
 
                                 let mut #individual_term_ident = low;
-                                #individual_term_ident.mul_assign(&predicate_minus_one);
+                                #individual_term_ident_mul_assign_predicate_minus_one;
 
                                 #individual_term_ident
                             };
@@ -1315,7 +1412,7 @@ pub(crate) fn transform_delegation_ram_conventions(
                                 let high = #high_expr;
 
                                 let mut #individual_term_ident = high;
-                                #individual_term_ident.mul_assign(&predicate_minus_one);
+                                #individual_term_ident_mul_assign_predicate_minus_one;
 
                                 #individual_term_ident
                             };
@@ -1350,7 +1447,7 @@ pub(crate) fn transform_delegation_ram_conventions(
                                 let low = #low_expr;
 
                                 let mut #individual_term_ident = low;
-                                #individual_term_ident.mul_assign(&predicate_minus_one);
+                                #individual_term_ident_mul_assign_predicate_minus_one;
 
                                 #individual_term_ident
                             };
@@ -1367,7 +1464,7 @@ pub(crate) fn transform_delegation_ram_conventions(
                                 let high = #high_expr;
 
                                 let mut #individual_term_ident = high;
-                                #individual_term_ident.mul_assign(&predicate_minus_one);
+                                #individual_term_ident_mul_assign_predicate_minus_one;
 
                                 #individual_term_ident
                             };
@@ -1395,7 +1492,7 @@ pub(crate) fn transform_delegation_ram_conventions(
                                 let low = #low_expr;
 
                                 let mut #individual_term_ident = low;
-                                #individual_term_ident.mul_assign(&predicate_minus_one);
+                                #individual_term_ident_mul_assign_predicate_minus_one;
 
                                 #individual_term_ident
                             };
@@ -1412,7 +1509,7 @@ pub(crate) fn transform_delegation_ram_conventions(
                                 let high = #high_expr;
 
                                 let mut #individual_term_ident = high;
-                                #individual_term_ident.mul_assign(&predicate_minus_one);
+                                #individual_term_ident_mul_assign_predicate_minus_one;
 
                                 #individual_term_ident
                             };
@@ -1445,7 +1542,7 @@ pub(crate) fn transform_delegation_ram_conventions(
                                         let low = #low_expr;
 
                                         let mut #individual_term_ident = low;
-                                        #individual_term_ident.mul_assign(&predicate_minus_one);
+                                        #individual_term_ident_mul_assign_predicate_minus_one;
 
                                         #individual_term_ident
                                     };
@@ -1462,7 +1559,7 @@ pub(crate) fn transform_delegation_ram_conventions(
                                         let high = #high_expr;
 
                                         let mut #individual_term_ident = high;
-                                        #individual_term_ident.mul_assign(&predicate_minus_one);
+                                        #individual_term_ident_mul_assign_predicate_minus_one;
 
                                         #individual_term_ident
                                     };
@@ -1484,8 +1581,8 @@ pub(crate) fn transform_delegation_ram_conventions(
                                     let carry_bit = #carry_bit_expr;
 
                                     let mut #individual_term_ident = carry_bit;
-                                    #individual_term_ident.sub_assign_base(&Mersenne31Field::ONE);
-                                    #individual_term_ident.mul_assign(&carry_bit);
+                                    #individual_term_ident_sub_assign_base_field_one;
+                                    #individual_term_ident_mul_assign_carry_bit;
 
                                     #individual_term_ident
                                 };
@@ -1514,7 +1611,7 @@ pub(crate) fn transform_delegation_ram_conventions(
                                         let low = #low_expr;
 
                                         let mut #individual_term_ident = low;
-                                        #individual_term_ident.mul_assign(&predicate_minus_one);
+                                        #individual_term_ident_mul_assign_predicate_minus_one;
 
                                         #individual_term_ident
                                     };
@@ -1531,7 +1628,7 @@ pub(crate) fn transform_delegation_ram_conventions(
                                         let high = #high_expr;
 
                                         let mut #individual_term_ident = high;
-                                        #individual_term_ident.mul_assign(&predicate_minus_one);
+                                        #individual_term_ident_mul_assign_predicate_minus_one;
 
                                         #individual_term_ident
                                     };
@@ -1556,8 +1653,8 @@ pub(crate) fn transform_delegation_ram_conventions(
                                         let carry_bit = #carry_bit_expr;
 
                                         let mut #individual_term_ident = carry_bit;
-                                        #individual_term_ident.sub_assign_base(&Mersenne31Field::ONE);
-                                        #individual_term_ident.mul_assign(&carry_bit);
+                                        #individual_term_ident_sub_assign_base_field_one;
+                                        #individual_term_ident_mul_assign_carry_bit;
 
                                         #individual_term_ident
                                     };
@@ -1575,7 +1672,7 @@ pub(crate) fn transform_delegation_ram_conventions(
     (common_stream, streams)
 }
 
-pub(crate) fn transform_delegation_requests_creation(
+pub(crate) fn transform_delegation_requests_creation<MW: MersenneWrapper>(
     memory_layout: &MemorySubtree,
     stage_2_layout: &LookupAndMemoryArgumentLayout,
     setup_layout: &SetupLayout,
@@ -1594,8 +1691,51 @@ pub(crate) fn transform_delegation_requests_creation(
     let delegation_argument = memory_layout
         .delegation_request_layout
         .expect("must exists");
-    let timestamp_setup_start = setup_layout.timestamp_setup_columns.start();
+
     let in_cycle_timestamp = delegation_argument.in_cycle_write_index as u32;
+
+    let (timestamp_low_expr, timestamp_high_expr) =
+        if setup_layout.timestamp_setup_columns.num_elements() > 0 {
+            let timestamp_setup_start = setup_layout.timestamp_setup_columns.start();
+
+            let low = read_value_expr(
+                ColumnAddress::SetupSubtree(timestamp_setup_start),
+                idents,
+                false,
+            );
+            let high_expr_base = read_value_expr(
+                ColumnAddress::SetupSubtree(timestamp_setup_start + 1),
+                idents,
+                false,
+            );
+
+            let timestamp_high_add_assign_base = MW::add_assign_base(
+                quote! { timestamp_high },
+                quote! { #memory_timestamp_high_from_sequence_idx_ident },
+            );
+            let timestamp_high_expr = quote! {
+                let mut timestamp_high = #high_expr_base;
+                #timestamp_high_add_assign_base;
+            };
+
+            (low, timestamp_high_expr)
+        } else {
+            let initial_machine_state =
+                memory_layout.intermediate_state_layout.expect("must exist");
+            let timestamp_start = initial_machine_state.timestamp.start();
+            let low = read_value_expr(ColumnAddress::MemorySubtree(timestamp_start), idents, false);
+            let high_expr_base = read_value_expr(
+                ColumnAddress::MemorySubtree(timestamp_start + 1),
+                idents,
+                false,
+            );
+
+            let timestamp_high_expr = quote! {
+                let timestamp_high = #high_expr_base;
+            };
+
+            (low, timestamp_high_expr)
+        };
 
     // multiplicity for width 3 is special, as we need to assemble challenges
     {
@@ -1614,50 +1754,65 @@ pub(crate) fn transform_delegation_requests_creation(
             idents,
             false,
         );
-        let src_1_expr = read_value_expr(
-            ColumnAddress::MemorySubtree(delegation_argument.abi_mem_offset_high.start()),
-            idents,
-            false,
-        );
-        let src_2_expr = read_value_expr(
-            ColumnAddress::SetupSubtree(timestamp_setup_start),
-            idents,
-            false,
-        );
-        let src_3_expr = read_value_expr(
-            ColumnAddress::SetupSubtree(timestamp_setup_start + 1),
-            idents,
-            false,
-        );
+        let src_1_expr = if delegation_argument.abi_mem_offset_high.num_elements() > 0 {
+            read_value_expr(
+                ColumnAddress::MemorySubtree(delegation_argument.abi_mem_offset_high.start()),
+                idents,
+                false,
+            )
+        } else {
+            MW::quartic_zero()
+        };
 
+        let denom_mul_assign_timestamp_high =
+            MW::mul_assign(quote! { denom }, quote! { timestamp_high });
+        let timestamp_low_add_assign_base_in_cycle = MW::add_assign_base(
+            quote! { timestamp_low },
+            MW::field_new(quote! { #in_cycle_timestamp }),
+        );
+        let t_mul_assign_timestamp_low = MW::mul_assign(quote! { t }, quote! { timestamp_low });
+        let denom_add_assign_t = MW::add_assign(quote! { denom }, quote! { t });
+        let t_mul_assign_mem_abi_offset = MW::mul_assign(quote! { t }, quote! { mem_abi_offset });
+        let denom_add_assign_src0 = MW::add_assign(quote! { denom }, quote! { t });
+        let denom_add_assign_gamma = MW::add_assign(
+            quote! { denom },
+            quote! { #delegation_argument_gamma_ident },
+        );
+        let individual_term_ident_mul_assign_accumulator = MW::mul_assign(
+            quote! { #individual_term_ident },
+            quote! { #accumulator_expr },
+        );
+        let individual_term_ident_sub_assign_m =
+            MW::sub_assign(quote! { #individual_term_ident }, quote! { m });
         let t = quote! {
             let #individual_term_ident = {
                 let m = #multiplicity_expr;
 
                 let mut denom = #delegation_argument_linearization_challenges_ident[2];
-                let mut timestamp_high = #src_3_expr;
-                timestamp_high.add_assign_base(&#memory_timestamp_high_from_sequence_idx_ident);
-                denom.mul_assign(&timestamp_high);
 
-                let mut timestamp_low = #src_2_expr;
-                timestamp_low.add_assign_base(&Mersenne31Field(#in_cycle_timestamp));
+                #timestamp_high_expr
+
+                #denom_mul_assign_timestamp_high;
+
+                let mut timestamp_low = #timestamp_low_expr;
+                #timestamp_low_add_assign_base_in_cycle;
                 let mut t = #delegation_argument_linearization_challenges_ident[1];
-                t.mul_assign(&timestamp_low);
-                denom.add_assign(&t);
+                #t_mul_assign_timestamp_low;
+                #denom_add_assign_t;
 
                 let mem_abi_offset = #src_1_expr;
                 let mut t = #delegation_argument_linearization_challenges_ident[0];
-                t.mul_assign(&mem_abi_offset);
-                denom.add_assign(&t);
+                #t_mul_assign_mem_abi_offset;
+                #denom_add_assign_t;
 
                 let t = #src_0_expr;
-                denom.add_assign(&t);
+                #denom_add_assign_src0;
 
-                denom.add_assign(&#delegation_argument_gamma_ident);
+                #denom_add_assign_gamma;
 
                 let mut #individual_term_ident = denom;
-                #individual_term_ident.mul_assign(& #accumulator_expr);
-                #individual_term_ident.sub_assign(&m);
+                #individual_term_ident_mul_assign_accumulator;
+                #individual_term_ident_sub_assign_m;
 
                 #individual_term_ident
             };
@@ -1669,7 +1824,7 @@ pub(crate) fn transform_delegation_requests_creation(
     streams
 }
 
-pub(crate) fn transform_delegation_requests_processing(
+pub(crate) fn transform_delegation_requests_processing<MW: MersenneWrapper>(
     memory_layout: &MemorySubtree,
     stage_2_layout: &LookupAndMemoryArgumentLayout,
     idents: &Idents,
@@ -1701,12 +1856,21 @@ pub(crate) fn transform_delegation_requests_processing(
         );
 
         // delegation type is a verifier-provided constant
-
-        let src_1_expr = read_value_expr(
-            ColumnAddress::MemorySubtree(delegation_processor_layout.abi_mem_offset_high.start()),
-            idents,
-            false,
-        );
+        let src_1_expr = if delegation_processor_layout
+            .abi_mem_offset_high
+            .num_elements()
+            > 0
+        {
+            read_value_expr(
+                ColumnAddress::MemorySubtree(
+                    delegation_processor_layout.abi_mem_offset_high.start(),
+                ),
+                idents,
+                false,
+            )
+        } else {
+            MW::quartic_zero()
+        };
         let src_2_expr = read_value_expr(
             ColumnAddress::MemorySubtree(delegation_processor_layout.write_timestamp.start()),
             idents,
@@ -1718,32 +1882,48 @@ pub(crate) fn transform_delegation_requests_processing(
             false,
         );
 
+        let denom_mul_assign_timestamp_high =
+            MW::mul_assign(quote! { denom }, quote! { timestamp_high });
+        let t_mul_assign_timestamp_low = MW::mul_assign(quote! { t }, quote! { timestamp_low });
+        let denom_add_assign_t = MW::add_assign(quote! { denom }, quote! { t });
+        let t_mul_assign_mem_abi_offset = MW::mul_assign(quote! { t }, quote! { mem_abi_offset });
+        let denom_add_assign_base_t = MW::add_assign_base(quote! { denom }, quote! { t });
+        let denom_add_assign_gamma = MW::add_assign(
+            quote! { denom },
+            quote! { #delegation_argument_gamma_ident },
+        );
+        let individual_term_ident_mul_assign_acc = MW::mul_assign(
+            quote! { #individual_term_ident },
+            quote! { #accumulator_expr },
+        );
+        let individual_term_ident_sub_assign_m =
+            MW::sub_assign(quote! { #individual_term_ident }, quote! { m });
         let t = quote! {
             let #individual_term_ident = {
                 let m = #multiplicity_expr;
 
                 let mut denom = #delegation_argument_linearization_challenges_ident[2];
                 let timestamp_high = #src_3_expr;
-                denom.mul_assign(&timestamp_high);
+                #denom_mul_assign_timestamp_high;
 
                 let timestamp_low = #src_2_expr;
                 let mut t = #delegation_argument_linearization_challenges_ident[1];
-                t.mul_assign(&timestamp_low);
-                denom.add_assign(&t);
+                #t_mul_assign_timestamp_low;
+                #denom_add_assign_t;
 
                 let mem_abi_offset = #src_1_expr;
                 let mut t = #delegation_argument_linearization_challenges_ident[0];
-                t.mul_assign(&mem_abi_offset);
-                denom.add_assign(&t);
+                #t_mul_assign_mem_abi_offset;
+                #denom_add_assign_t;
 
                 let t = #delegation_type_ident;
-                denom.add_assign_base(&t);
+                #denom_add_assign_base_t;
 
-                denom.add_assign(&#delegation_argument_gamma_ident);
+                #denom_add_assign_gamma;
 
                 let mut #individual_term_ident = denom;
-                #individual_term_ident.mul_assign(& #accumulator_expr);
-                #individual_term_ident.sub_assign(&m);
+                #individual_term_ident_mul_assign_acc;
+                #individual_term_ident_sub_assign_m;
 
                 #individual_term_ident
             };
@@ -1755,67 +1935,164 @@ pub(crate) fn transform_delegation_requests_processing(
     streams
 }
 
-pub(crate) fn transform_shuffle_ram_lazy_init_padding(
-    shuffle_ram_inits_and_teardowns: ShuffleRamInitAndTeardownLayout,
-    lazy_init_address_aux_vars: &ShuffleRamAuxComparisonSet,
+pub(crate) fn transform_bytecode_decoding_via_lookup(
+    memory_layout: &MemorySubtree,
+    stage_2_layout: &LookupAndMemoryArgumentLayout,
     idents: &Idents,
-) -> (TokenStream, Vec<TokenStream>) {
+) -> Vec<TokenStream> {
+    let mut streams = vec![];
+
+    let Idents {
+        individual_term_ident,
+        delegation_argument_linearization_challenges_ident,
+        delegation_argument_gamma_ident,
+        delegation_type_ident,
+        ..
+    } = idents;
+
+    let machine_state_layout = memory_layout.machine_state_layout.expect("must exists");
+
+    let intermediate_state_layout = memory_layout
+        .intermediate_state_layout
+        .expect("must exists");
+
+    {
+        let acc = stage_2_layout
+            .get_aux_poly_decoder_absolute_poly_idx_for_verifier()
+            .expect("must exist");
+        let accumulator_expr = read_stage_2_value_expr(acc, idents, false);
+
+        todo!();
+
+        // let multiplicity_expr = read_value_expr(
+        //     ColumnAddress::MemorySubtree(delegation_processor_layout.multiplicity.start()),
+        //     idents,
+        //     false,
+        // );
+
+        // // delegation type is a verifier-provided constant
+
+        // let src_1_expr = read_value_expr(
+        //     ColumnAddress::MemorySubtree(delegation_processor_layout.abi_mem_offset_high.start()),
+        //     idents,
+        //     false,
+        // );
+        // let src_2_expr = read_value_expr(
+        //     ColumnAddress::MemorySubtree(delegation_processor_layout.write_timestamp.start()),
+        //     idents,
+        //     false,
+        // );
+        // let src_3_expr = read_value_expr(
+        //     ColumnAddress::MemorySubtree(delegation_processor_layout.write_timestamp.start() + 1),
+        //     idents,
+        //     false,
+        // );
+
+        // let t = quote! {
+        //     let #individual_term_ident = {
+        //         let m = #multiplicity_expr;
+
+        //         let mut denom = #delegation_argument_linearization_challenges_ident[2];
+        //         let timestamp_high = #src_3_expr;
+        //         denom.mul_assign(&timestamp_high);
+
+        //         let timestamp_low = #src_2_expr;
+        //         let mut t = #delegation_argument_linearization_challenges_ident[1];
+        //         t.mul_assign(&timestamp_low);
+        //         denom.add_assign(&t);
+
+        //         let mem_abi_offset = #src_1_expr;
+        //         let mut t = #delegation_argument_linearization_challenges_ident[0];
+        //         t.mul_assign(&mem_abi_offset);
+        //         denom.add_assign(&t);
+
+        //         let t = #delegation_type_ident;
+        //         denom.add_assign_base(&t);
+
+        //         denom.add_assign(&#delegation_argument_gamma_ident);
+
+        //         let mut #individual_term_ident = denom;
+        //         #individual_term_ident.mul_assign(& #accumulator_expr);
+        //         #individual_term_ident.sub_assign(&m);
+
+        //         #individual_term_ident
+        //     };
+        // };
+
+        // streams.push(t);
+    }
+
+    streams
+}
+
+pub(crate) fn transform_shuffle_ram_lazy_init_padding<MW: MersenneWrapper>(
+    shuffle_ram_inits_and_teardowns: &[ShuffleRamInitAndTeardownLayout],
+    lazy_init_address_aux_vars: &[ShuffleRamAuxComparisonSet],
+    idents: &Idents,
+    into: &mut TokenStream,
+) {
+    assert_eq!(
+        shuffle_ram_inits_and_teardowns.len(),
+        lazy_init_address_aux_vars.len()
+    );
     let Idents {
         individual_term_ident,
         ..
     } = idents;
 
-    let lazy_init_address_start = shuffle_ram_inits_and_teardowns
-        .lazy_init_addresses_columns
-        .start();
+    for (init_and_teardown, aux_vars) in shuffle_ram_inits_and_teardowns
+        .iter()
+        .zip(lazy_init_address_aux_vars.iter())
+    {
+        let lazy_init_address_start = init_and_teardown.lazy_init_addresses_columns.start();
+        let teardown_values_start = init_and_teardown.lazy_teardown_values_columns.start();
+        let teardown_timestamps_start = init_and_teardown.lazy_teardown_timestamps_columns.start();
 
-    let teardown_values_start = shuffle_ram_inits_and_teardowns
-        .lazy_teardown_values_columns
-        .start();
+        let ShuffleRamAuxComparisonSet { final_borrow, .. } = *aux_vars;
 
-    let teardown_timestamps_start = shuffle_ram_inits_and_teardowns
-        .lazy_teardown_timestamps_columns
-        .start();
+        let final_borrow_value_expr = read_value_expr(final_borrow, idents, false);
 
-    let comparison_aux_vars = lazy_init_address_aux_vars;
-    let ShuffleRamAuxComparisonSet { final_borrow, .. } = *comparison_aux_vars;
+        let final_borrow_minus_one_sub_assign_base_field_one =
+            MW::sub_assign_base(quote! { final_borrow_minus_one }, MW::field_one());
+        let common_stream = quote! {
+            let final_borrow_value = #final_borrow_value_expr;
 
-    let final_borrow_value_expr = read_value_expr(final_borrow, idents, false);
-
-    let common_stream = quote! {
-        let final_borrow_value = #final_borrow_value_expr;
-
-        let mut final_borrow_minus_one = final_borrow_value;
-        final_borrow_minus_one.sub_assign_base(&Mersenne31Field::ONE);
-    };
-
-    let mut streams = vec![];
-
-    // and now we enforce that if comparison is not strictly this address < next address, then this
-    // address is 0, along with teardown parts
-
-    for place in [
-        ColumnAddress::MemorySubtree(lazy_init_address_start),
-        ColumnAddress::MemorySubtree(lazy_init_address_start + 1),
-        ColumnAddress::MemorySubtree(teardown_values_start),
-        ColumnAddress::MemorySubtree(teardown_values_start + 1),
-        ColumnAddress::MemorySubtree(teardown_timestamps_start),
-        ColumnAddress::MemorySubtree(teardown_timestamps_start + 1),
-    ] {
-        let place_expr = read_value_expr(place, idents, false);
-        let t = quote! {
-            let #individual_term_ident = {
-                let value_to_constraint = #place_expr;
-
-                let mut #individual_term_ident = final_borrow_minus_one;
-                #individual_term_ident.mul_assign(&value_to_constraint);
-
-                #individual_term_ident
-            };
+            let mut final_borrow_minus_one = final_borrow_value;
+            #final_borrow_minus_one_sub_assign_base_field_one;
         };
 
-        streams.push(t);
-    }
+        let mut streams = vec![];
 
-    (common_stream, streams)
+        // and now we enforce that if comparison is not strictly this address < next address, then this
+        // address is 0, along with teardown parts
+
+        let individual_term_ident_mul_assign_value = MW::mul_assign(
+            quote! { #individual_term_ident },
+            quote! { value_to_constraint },
+        );
+        for place in [
+            ColumnAddress::MemorySubtree(lazy_init_address_start),
+            ColumnAddress::MemorySubtree(lazy_init_address_start + 1),
+            ColumnAddress::MemorySubtree(teardown_values_start),
+            ColumnAddress::MemorySubtree(teardown_values_start + 1),
+            ColumnAddress::MemorySubtree(teardown_timestamps_start),
+            ColumnAddress::MemorySubtree(teardown_timestamps_start + 1),
+        ] {
+            let place_expr = read_value_expr(place, idents, false);
+            let t = quote! {
+                let #individual_term_ident = {
+                    let value_to_constraint = #place_expr;
+
+                    let mut #individual_term_ident = final_borrow_minus_one;
+                    #individual_term_ident_mul_assign_value;
+
+                    #individual_term_ident
+                };
+            };
+
+            streams.push(t);
+        }
+
+        accumulate_contributions::<MW>(into, Some(common_stream), streams, idents);
+    }
 }

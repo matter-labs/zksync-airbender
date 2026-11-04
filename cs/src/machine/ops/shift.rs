@@ -116,11 +116,14 @@ impl<
         if SUPPORT_SRA {
             vec![
                 TableType::ShiftImplementation,
+                TableType::TruncateShiftAmount,
                 TableType::SRASignFiller,
-                TableType::ExtractLower5Bits,
             ]
         } else {
-            vec![TableType::ShiftImplementation, TableType::ExtractLower5Bits]
+            vec![
+                TableType::ShiftImplementation,
+                TableType::TruncateShiftAmount,
+            ]
         }
     }
 
@@ -150,12 +153,15 @@ impl<
             .get_register_with_decomposition_and_sign()
             .unwrap()
             .sign_bit;
+        // This will be constrained by lookup
+        let shift_amount_low_word = src2.get_register().0[0];
 
+        // This will truncate the shift
         let [shift_amount_to_use, _unused] = opt_ctx
             .append_lookup_relation_from_linear_terms::<1, 2>(
                 cs,
-                &[Constraint::from(src2.get_register().0[0])],
-                TableType::ExtractLower5Bits.to_num(),
+                &[Constraint::from(shift_amount_low_word)],
+                TableType::TruncateShiftAmount.to_num(),
                 exec_flag,
             );
 
@@ -165,6 +171,7 @@ impl<
             println!("SHIFT OPCODE");
             dbg!(src1.get_register().get_value_unsigned(cs));
             dbg!(src2.get_register().get_value_unsigned(cs));
+            dbg!(cs.get_value(shift_amount_low_word.get_variable()));
             dbg!(cs.get_value(shift_amount_to_use));
             if is_right_shift.get_value(cs).unwrap() {
                 if SUPPORT_SRA {

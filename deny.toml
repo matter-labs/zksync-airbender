@@ -1,15 +1,10 @@
 [advisories]
 ignore = [
-    # TODO: upgrade to ruint 1.17.1
-    { id = "RUSTSEC-2025-0137", reason = "Unsoundness in reciprocal_mg10, which we do not use" },
-    # TODO: replace paste with pastey
-    { id = "RUSTSEC-2024-0436", reason = "Use of unmaintained crate paste" },
-    # TODO: replace instant with web-time
-    { id = "RUSTSEC-2024-0384", reason = "Use of unmaintained crate instant" },
-    { id = "RUSTSEC-2025-0141", reason = "Use of unmaintained crate bincode" },
-    { id = "RUSTSEC-2024-0388", reason = "Use of unmaintained crate derivative" }
+    { id = "RUSTSEC-2025-0141", reason = "Temporary exception while migrating off bincode across workspace crates." },
+    { id = "RUSTSEC-2024-0388", reason = "Temporary exception while replacing derivative usage in cs tables." },
+    { id = "RUSTSEC-2024-0436", reason = "Temporary exception; paste is currently brought in transitively by era_cudart." },
+    { id = "RUSTSEC-2026-0173", reason = "Temporary exception; proc-macro-error2 (unmaintained) is brought in transitively by dynasm via dynasmrt in riscv_transpiler." },
 ]
-
 
 [bans]
 multiple-versions = "warn"
@@ -34,14 +29,18 @@ allow = [
     "Apache-2.0 WITH LLVM-exception",
     "MIT",
     "MPL-2.0",
+    "CDDL-1.0",
     "BSD-3-Clause",
     "ISC",
     "Unicode-3.0",
     "CC0-1.0",
-    "CDDL-1.0",
-
 ]
 exceptions = [
+    # Unicorn Engine (GPL-2.0) is used only as the reference VM for differential
+    # fuzzing in the `fuzzing` crate; it is a dev/test tool and is not part of any
+    # distributed artifact.
+    { crate = "unicorn-engine", allow = ["GPL-2.0"] },
+    { crate = "unicorn-engine-sys", allow = ["GPL-2.0"] },
 ]
 
 # Sigh

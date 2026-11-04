@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct ColumnSet<const WIDTH: usize> {
     pub start: usize,
     pub num_elements: usize,
@@ -71,7 +71,7 @@ impl<const WIDTH: usize> ColumnSet<WIDTH> {
     }
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct AlignedColumnSet<const WIDTH: usize> {
     pub start: usize,
     pub num_elements: usize,

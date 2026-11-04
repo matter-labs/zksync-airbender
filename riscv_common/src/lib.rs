@@ -1,5 +1,35 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 
+mod memcpy;
+
+#[cfg(test)]
+mod tests;
+
+#[cfg(all(target_arch = "riscv32", feature = "boot_sequence"))]
+pub mod boot_sequence;
+
+/// Exit sequence produced by `zksync_os_finish_success_extended`
+pub const EXIT_SEQUENCE: &[u32] = &[
+    0x000d2503, //	lw	a0, 0x0(s10)
+    0x004d2583, //	lw	a1, 0x4(s10)
+    0x008d2603, //	lw	a2, 0x8(s10)
+    0x00cd2683, //	lw	a3, 0xc(s10)
+    0x010d2703, //	lw	a4, 0x10(s10)
+    0x014d2783, //	lw	a5, 0x14(s10)
+    0x018d2803, //	lw	a6, 0x18(s10)
+    0x01cd2883, //	lw	a7, 0x1c(s10)
+    0x020d2903, //	lw	s2, 0x20(s10)
+    0x024d2983, //	lw	s3, 0x24(s10)
+    0x028d2a03, //	lw	s4, 0x28(s10)
+    0x02cd2a83, //	lw	s5, 0x2c(s10)
+    0x030d2b03, //	lw	s6, 0x30(s10)
+    0x034d2b83, //	lw	s7, 0x34(s10)
+    0x038d2c03, //	lw	s8, 0x38(s10)
+    0x03cd2c83, //	lw	s9, 0x3c(s10)
+    0x0000006f, //	loop
+];
+
+#[cfg(target_arch = "riscv32")]
 #[inline(always)]
 /// Writes a given word into CRS register.
 pub fn csr_write_word(word: usize) {
@@ -12,6 +42,7 @@ pub fn csr_write_word(word: usize) {
     }
 }
 
+#[cfg(target_arch = "riscv32")]
 #[inline(always)]
 /// Reads a word from CRS register.
 pub fn csr_read_word() -> u32 {
@@ -27,12 +58,14 @@ pub fn csr_read_word() -> u32 {
     output
 }
 
+#[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub fn rust_abort() -> ! {
     zksync_os_finish_error()
 }
 
 /// Set data as a output of the current execution. Unsatisfiable in circuits
+#[cfg(target_arch = "riscv32")]
 #[inline(never)]
 pub fn zksync_os_finish_error() -> ! {
     unsafe {
@@ -50,6 +83,7 @@ pub fn zksync_os_finish_error() -> ! {
 /// By convention, the data that is stored in registers 10-17 after
 /// execution has finished is considered 'output' of the computation.
 /// Registers 18-25 will be set to 0 as our convention for recursive chain start
+#[cfg(target_arch = "riscv32")]
 #[inline(never)]
 pub fn zksync_os_finish_success(data: &[u32; 8]) -> ! {
     let mut result = [0u32; 16];
@@ -60,6 +94,7 @@ pub fn zksync_os_finish_success(data: &[u32; 8]) -> ! {
 /// Set data as a output of the current execution.
 /// By convention, the data that is stored in registers 10-25 after
 /// execution has finished is considered 'output' of the computation.
+#[cfg(target_arch = "riscv32")]
 #[inline(never)]
 pub fn zksync_os_finish_success_extended(data: &[u32; 16]) -> ! {
     let data_ptr = core::hint::black_box(data.as_ptr().cast::<u32>());
@@ -106,7 +141,7 @@ pub fn zksync_os_finish_success_extended(data: &[u32; 16]) -> ! {
     }
 }
 
-#[cfg(not(feature = "custom_panic"))]
+#[cfg(all(target_arch = "riscv32", not(feature = "custom_panic")))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     rust_abort();
@@ -134,11 +169,11 @@ unsafe impl core::alloc::GlobalAlloc for NullAllocator {
     }
 }
 
-#[cfg(not(feature = "custom_allocator"))]
+#[cfg(all(target_arch = "riscv32", not(feature = "custom_allocator")))]
 #[global_allocator]
 static GLOBAL_ALLOCATOR_PLACEHOLDER: NullAllocator = NullAllocator;
 
-#[cfg(feature = "uart")]
+#[cfg(all(target_arch = "riscv32", feature = "uart"))]
 #[derive(Default)]
 #[repr(C, align(4))]
 pub struct QuasiUART {
@@ -146,7 +181,7 @@ pub struct QuasiUART {
     len: usize,
 }
 
-#[cfg(feature = "uart")]
+#[cfg(all(target_arch = "riscv32", feature = "uart"))]
 impl QuasiUART {
     const HELLO_MARKER: u32 = u32::MAX;
 
@@ -211,7 +246,7 @@ impl QuasiUART {
     }
 }
 
-#[cfg(feature = "uart")]
+#[cfg(all(target_arch = "riscv32", feature = "uart"))]
 impl core::fmt::Write for QuasiUART {
     fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
         self.write_entry_sequence(s.len());
@@ -223,4 +258,3 @@ impl core::fmt::Write for QuasiUART {
         Ok(())
     }
 }
-

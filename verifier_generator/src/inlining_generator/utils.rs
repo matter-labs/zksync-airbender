@@ -1,3 +1,4 @@
+use super::mersenne_wrapper::MersenneWrapper;
 use super::*;
 
 pub(crate) fn read_value_expr(
@@ -58,49 +59,54 @@ pub(crate) fn read_stage_2_value_expr(
     }
 }
 
-pub(crate) fn accumulate_contributions(
-    is_first: &mut bool,
+pub(crate) fn accumulate_contributions<MW: MersenneWrapper>(
+    into: &mut TokenStream,
     common_stream_for_terms: Option<TokenStream>,
     individual_term_streams: Vec<TokenStream>,
     idents: &Idents,
-) -> TokenStream {
+) {
     if individual_term_streams.is_empty() {
         assert!(common_stream_for_terms.is_none());
-
-        return TokenStream::new();
+        return;
     }
 
     if let Some(common_stream_for_terms) = common_stream_for_terms {
-        // assume not first
-        assert!(*is_first == false, "alternative mode is unsupported");
+        if into.is_empty() {
+            let terms_accumulator_ident = &idents.terms_accumulator_ident;
+            let quartic_zero = MW::quartic_zero();
+            // a little inefficient, but simplifies leaking of common expressions
+            let t = quote! {
+                let mut #terms_accumulator_ident = #quartic_zero;
+            };
+            into.extend(t);
+        }
+
         let mut inner_stream = TokenStream::new();
         for el in individual_term_streams.into_iter() {
-            let t = accumulate_contribution(is_first, el, idents);
-            inner_stream.extend(t);
+            accumulate_contribution::<MW>(&mut inner_stream, false, el, idents);
         }
-        quote! {
+        let t = quote! {
             {
                 #common_stream_for_terms
 
                 #inner_stream
             }
-        }
+        };
+        into.extend(t);
     } else {
-        let mut stream = TokenStream::new();
         for el in individual_term_streams.into_iter() {
-            let t = accumulate_contribution(is_first, el, idents);
-            stream.extend(t);
+            let is_first = into.is_empty();
+            accumulate_contribution::<MW>(into, is_first, el, idents);
         }
-
-        stream
     }
 }
 
-fn accumulate_contribution(
-    is_first: &mut bool,
+fn accumulate_contribution<MW: MersenneWrapper>(
+    into: &mut TokenStream,
+    is_first: bool,
     individual_term_stream: TokenStream,
     idents: &Idents,
-) -> TokenStream {
+) {
     let Idents {
         individual_term_ident,
         terms_accumulator_ident,
@@ -108,9 +114,7 @@ fn accumulate_contribution(
         ..
     } = idents;
 
-    if *is_first {
-        *is_first = false;
-
+    let t = if is_first {
         quote! {
             let mut #terms_accumulator_ident = {
                 #individual_term_stream
@@ -119,16 +123,23 @@ fn accumulate_contribution(
             };
         }
     } else {
+        let terms_accumulator_mul_assign_alpha = MW::mul_assign(
+            quote! { #terms_accumulator_ident },
+            quote! { #quotient_alpha_ident },
+        );
+        let terms_accumulator_add_assign_contribution =
+            MW::add_assign(quote! { #terms_accumulator_ident }, quote! { contribution });
         quote! {
             {
-                #terms_accumulator_ident.mul_assign(& #quotient_alpha_ident);
+                #terms_accumulator_mul_assign_alpha;
                 let contribution = {
                     #individual_term_stream
 
                     #individual_term_ident
                 };
-                #terms_accumulator_ident.add_assign(&contribution);
+                #terms_accumulator_add_assign_contribution;
             }
         }
-    }
+    };
+    into.extend(t);
 }

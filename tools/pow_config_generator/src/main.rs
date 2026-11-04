@@ -1,0 +1,727 @@
+use std::{
+    io::Write,
+    path::Path,
+    process::{Command, Stdio},
+};
+
+use quote::quote;
+
+pub mod pow_computation;
+pub mod soundcalc;
+use pow_computation::*;
+
+fn main() {
+    println!("Running PoW Config Generator");
+
+    let challenge_field_size = verifier_common::MERSENNE31QUARTIC_SIZE_LOG2;
+    let max_number_of_cycles =
+        verifier_common::cs::one_row_compiler::MAX_NUMBER_OF_CYCLES.leading_zeros() as usize;
+
+    let pow_bits_for_queries_for_80 = verifier_common::security_80::POW_BITS;
+    let pow_bits_for_queries_for_100 = verifier_common::security_100::POW_BITS;
+
+    let max_trace_len_log2 = *[
+        blake2_with_compression_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+        bigint_with_control_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+        keccak_special5_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+        add_sub_lui_auipc_mop_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+        jump_branch_slt_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+        load_store_subword_only_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+        load_store_word_only_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+        mul_div_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+        mul_div_unsigned_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+        shift_binary_csr_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+        inits_and_teardowns_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+        unified_reduced_machine_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
+    let max_fri_factor_log2 = *[
+        blake2_with_compression_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+        bigint_with_control_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+        keccak_special5_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+        add_sub_lui_auipc_mop_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+        jump_branch_slt_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+        load_store_subword_only_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+        load_store_word_only_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+        mul_div_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+        mul_div_unsigned_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+        shift_binary_csr_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+        inits_and_teardowns_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+        unified_reduced_machine_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
+    let max_lde_size_log2 = max_trace_len_log2 + max_fri_factor_log2;
+
+    let num_range_16_lookups = *[
+        blake2_with_compression_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        bigint_with_control_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        keccak_special5_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        add_sub_lui_auipc_mop_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        jump_branch_slt_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        load_store_subword_only_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        load_store_word_only_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        mul_div_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        mul_div_unsigned_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        shift_binary_csr_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        inits_and_teardowns_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        unified_reduced_machine_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
+    let num_range_19_lookups = *[
+        blake2_with_compression_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        bigint_with_control_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        keccak_special5_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        add_sub_lui_auipc_mop_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        jump_branch_slt_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        load_store_subword_only_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        load_store_word_only_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        mul_div_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        mul_div_unsigned_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        shift_binary_csr_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        inits_and_teardowns_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        unified_reduced_machine_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
+    let num_width_3_lookups = *[
+        blake2_with_compression_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        bigint_with_control_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        keccak_special5_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        add_sub_lui_auipc_mop_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        jump_branch_slt_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        load_store_subword_only_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        load_store_word_only_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        mul_div_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        mul_div_unsigned_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        shift_binary_csr_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        inits_and_teardowns_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        unified_reduced_machine_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
+    let max_number_of_columns = *[
+        blake2_with_compression_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+            + blake2_with_compression_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+            + blake2_with_compression_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+            + blake2_with_compression_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+        bigint_with_control_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+            + bigint_with_control_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+            + bigint_with_control_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+            + bigint_with_control_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+        keccak_special5_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+            + keccak_special5_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+            + keccak_special5_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+            + keccak_special5_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+        add_sub_lui_auipc_mop_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+            + add_sub_lui_auipc_mop_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+            + add_sub_lui_auipc_mop_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+            + add_sub_lui_auipc_mop_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+        jump_branch_slt_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+            + jump_branch_slt_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+            + jump_branch_slt_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+            + jump_branch_slt_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+        load_store_subword_only_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+            + load_store_subword_only_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+            + load_store_subword_only_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+            + load_store_subword_only_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+        load_store_word_only_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+            + load_store_word_only_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+            + load_store_word_only_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+            + load_store_word_only_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+        mul_div_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+            + mul_div_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+            + mul_div_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+            + mul_div_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+        mul_div_unsigned_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+            + mul_div_unsigned_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+            + mul_div_unsigned_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+            + mul_div_unsigned_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+        shift_binary_csr_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+            + shift_binary_csr_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+            + shift_binary_csr_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+            + shift_binary_csr_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+        inits_and_teardowns_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+            + inits_and_teardowns_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+            + inits_and_teardowns_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+            + inits_and_teardowns_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+        unified_reduced_machine_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+            + unified_reduced_machine_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+            + unified_reduced_machine_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+            + unified_reduced_machine_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
+    let max_num_quotient_terms = *[
+        blake2_with_compression_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+        bigint_with_control_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+        keccak_special5_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+        add_sub_lui_auipc_mop_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+        jump_branch_slt_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+        load_store_subword_only_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+        load_store_word_only_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+        mul_div_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+        mul_div_unsigned_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+        shift_binary_csr_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+        inits_and_teardowns_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+        unified_reduced_machine_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
+    let max_num_openings_at_z = *[
+        blake2_with_compression_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+        bigint_with_control_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+        keccak_special5_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+        add_sub_lui_auipc_mop_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+        jump_branch_slt_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+        load_store_subword_only_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+        load_store_word_only_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+        mul_div_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+        mul_div_unsigned_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+        shift_binary_csr_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+        inits_and_teardowns_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+        unified_reduced_machine_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
+    let max_num_openings_at_z_omega = *[
+        blake2_with_compression_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+        bigint_with_control_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+        keccak_special5_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+        add_sub_lui_auipc_mop_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+        jump_branch_slt_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+        load_store_subword_only_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+        load_store_word_only_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+        mul_div_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+        mul_div_unsigned_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+        shift_binary_csr_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+        inits_and_teardowns_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+        unified_reduced_machine_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
+    let max_fri_folding_factors_log2 = **[
+        blake2_with_compression_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+            .iter()
+            .max()
+            .unwrap(),
+        bigint_with_control_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+            .iter()
+            .max()
+            .unwrap(),
+        keccak_special5_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+            .iter()
+            .max()
+            .unwrap(),
+        add_sub_lui_auipc_mop_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+            .iter()
+            .max()
+            .unwrap(),
+        jump_branch_slt_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+            .iter()
+            .max()
+            .unwrap(),
+        load_store_subword_only_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+            .iter()
+            .max()
+            .unwrap(),
+        load_store_word_only_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+            .iter()
+            .max()
+            .unwrap(),
+        mul_div_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+            .iter()
+            .max()
+            .unwrap(),
+        mul_div_unsigned_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+            .iter()
+            .max()
+            .unwrap(),
+        shift_binary_csr_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+            .iter()
+            .max()
+            .unwrap(),
+        inits_and_teardowns_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+            .iter()
+            .max()
+            .unwrap(),
+        unified_reduced_machine_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+            .iter()
+            .max()
+            .unwrap(),
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
+    let [
+        pow_bits_for_memory_and_delegation_for_80,
+        pow_bits_for_memory_and_delegation_for_100,
+    ] = [80, 100].map(|security_bits| {
+        pow_bits_for_memory_and_delegation(
+            security_bits,
+            max_number_of_cycles,
+            challenge_field_size,
+        )
+    });
+
+    let [lookup_pow_bits_for_80, lookup_pow_bits_for_100] = [80, 100].map(|security_bits| {
+        pow_bits_for_cq_lookup(security_bits, max_trace_len_log2, challenge_field_size)
+    });
+
+    let [
+        quotient_alpha_pow_bits_for_80,
+        quotient_alpha_pow_bits_for_100,
+    ] = [80, 100].map(|security_bits| {
+        pow_bits_for_quotient(
+            security_bits,
+            challenge_field_size,
+            max_num_quotient_terms,
+            max_fri_factor_log2,
+        )
+    });
+
+    let [quotient_z_pow_bits_for_80, quotient_z_pow_bits_for_100] =
+        [80, 100].map(|security_bits| {
+            pow_bits_for_deep_z(security_bits, challenge_field_size, max_lde_size_log2)
+        });
+
+    let [
+        deep_poly_alpha_pow_bits_for_80,
+        deep_poly_alpha_pow_bits_for_100,
+    ] = [80, 100].map(|security_bits| {
+        pow_bits_for_deep_poly_alpha(
+            security_bits,
+            challenge_field_size,
+            max_lde_size_log2,
+            max_num_openings_at_z + max_num_openings_at_z_omega,
+        )
+    });
+
+    let [max_foldings_pow_bits_for_80, max_foldings_pow_bits_for_100] =
+        [80, 100].map(|security_bits| {
+            pow_bits_for_folding_round(
+                security_bits,
+                challenge_field_size,
+                max_lde_size_log2,
+                max_fri_folding_factors_log2,
+            )
+        });
+
+    let num_queries_for_80 =
+        num_queries_for_security_params(80, pow_bits_for_queries_for_80, max_fri_factor_log2);
+
+    let num_queries_for_100 =
+        num_queries_for_security_params(100, pow_bits_for_queries_for_100, max_fri_factor_log2);
+
+    generate_pow_config_worst_constants(
+        max_trace_len_log2,
+        max_fri_factor_log2,
+        challenge_field_size,
+        max_number_of_columns,
+        max_num_quotient_terms,
+        max_num_openings_at_z,
+        max_num_openings_at_z_omega,
+        max_fri_folding_factors_log2,
+        pow_bits_for_memory_and_delegation_for_80,
+        pow_bits_for_memory_and_delegation_for_100,
+        lookup_pow_bits_for_80,
+        lookup_pow_bits_for_100,
+        quotient_alpha_pow_bits_for_80,
+        quotient_alpha_pow_bits_for_100,
+        quotient_z_pow_bits_for_80,
+        quotient_z_pow_bits_for_100,
+        deep_poly_alpha_pow_bits_for_80,
+        deep_poly_alpha_pow_bits_for_100,
+        max_foldings_pow_bits_for_80,
+        max_foldings_pow_bits_for_100,
+        pow_bits_for_queries_for_80,
+        pow_bits_for_queries_for_100,
+        num_queries_for_80,
+        num_queries_for_100,
+    );
+
+    generate_airbender_toml_file(
+        max_trace_len_log2,
+        max_fri_factor_log2,
+        max_number_of_columns,
+        max_num_quotient_terms,
+        max_num_openings_at_z,
+        deep_poly_alpha_pow_bits_for_100,
+        max_foldings_pow_bits_for_100,
+        pow_bits_for_queries_for_100,
+        num_queries_for_100,
+        lookup_pow_bits_for_100,
+        num_width_3_lookups,
+        num_range_16_lookups,
+        num_range_19_lookups,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn generate_pow_config_worst_constants(
+    max_trace_len_log2: usize,
+    max_fri_factor_log2: usize,
+    challenge_field_size: usize,
+    max_number_of_columns: usize,
+    max_num_quotient_terms: usize,
+    max_num_openings_at_z: usize,
+    max_num_openings_at_z_omega: usize,
+    max_fri_folding_factors_log2: usize,
+    pow_bits_for_memory_and_delegation_for_80: usize,
+    pow_bits_for_memory_and_delegation_for_100: usize,
+    lookup_pow_bits_for_80: usize,
+    lookup_pow_bits_for_100: usize,
+    quotient_alpha_pow_bits_for_80: usize,
+    quotient_alpha_pow_bits_for_100: usize,
+    quotient_z_pow_bits_for_80: usize,
+    quotient_z_pow_bits_for_100: usize,
+    deep_poly_alpha_pow_bits_for_80: usize,
+    deep_poly_alpha_pow_bits_for_100: usize,
+    max_foldings_pow_bits_for_80: usize,
+    max_foldings_pow_bits_for_100: usize,
+    pow_bits_for_queries_for_80: usize,
+    pow_bits_for_queries_for_100: usize,
+    num_queries_for_80: usize,
+    num_queries_for_100: usize,
+) {
+    let result_token_stream = quote! {
+        const MAX_TRACE_LEN_LOG2: usize = #max_trace_len_log2;
+        const MAX_FRI_FACTOR_LOG2: usize = #max_fri_factor_log2;
+        const MAX_CHALLENGE_FIELD_SIZE_LOG2: usize = #challenge_field_size;
+        const MAX_NUMBER_OF_COLUMNS: usize = #max_number_of_columns;
+        const MAX_NUM_QUOTIENT_TERMS: usize = #max_num_quotient_terms;
+        const MAX_NUM_OPENINGS_AT_Z: usize = #max_num_openings_at_z;
+        const MAX_NUM_OPENINGS_AT_Z_OMEGA: usize = #max_num_openings_at_z_omega;
+        const MAX_FRI_FOLDING_FACTOR_LOG2: usize = #max_fri_folding_factors_log2;
+
+        const POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_80_SECURITY_BITS: usize = #pow_bits_for_memory_and_delegation_for_80;
+        const POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_100_SECURITY_BITS: usize = #pow_bits_for_memory_and_delegation_for_100;
+
+        const LOOKUP_POW_BITS_FOR_80_SECURITY_BITS: usize = #lookup_pow_bits_for_80;
+        const LOOKUP_POW_BITS_FOR_100_SECURITY_BITS: usize = #lookup_pow_bits_for_100;
+        const QUOTIENT_ALPHA_POW_BITS_FOR_80_SECURITY_BITS: usize = #quotient_alpha_pow_bits_for_80;
+        const QUOTIENT_ALPHA_POW_BITS_FOR_100_SECURITY_BITS: usize = #quotient_alpha_pow_bits_for_100;
+        const QUOTIENT_Z_POW_BITS_FOR_80_SECURITY_BITS: usize = #quotient_z_pow_bits_for_80;
+        const QUOTIENT_Z_POW_BITS_FOR_100_SECURITY_BITS: usize = #quotient_z_pow_bits_for_100;
+        const DEEP_POLY_ALPHA_POW_BITS_FOR_80_SECURITY_BITS: usize = #deep_poly_alpha_pow_bits_for_80;
+        const DEEP_POLY_ALPHA_POW_BITS_FOR_100_SECURITY_BITS: usize = #deep_poly_alpha_pow_bits_for_100;
+        const MAX_FOLDINGS_POW_BITS_FOR_80_SECURITY_BITS: usize = #max_foldings_pow_bits_for_80;
+        const MAX_FOLDINGS_POW_BITS_FOR_100_SECURITY_BITS: usize = #max_foldings_pow_bits_for_100;
+        const FRI_QUERIES_POW_BITS_FOR_80_SECURITY_BITS: usize = #pow_bits_for_queries_for_80;
+        const FRI_QUERIES_POW_BITS_FOR_100_SECURITY_BITS: usize = #pow_bits_for_queries_for_100;
+        const NUM_QUERIES_FOR_80_SECURITY_BITS: usize = #num_queries_for_80;
+        const NUM_QUERIES_FOR_100_SECURITY_BITS: usize = #num_queries_for_100;
+
+        impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
+            pub const fn worst_case_config(security: crate::SecurityModel) -> Self {
+                match security {
+                    crate::SecurityModel::Security80 => SizedProofSecurityConfig {
+                        lookup_pow_bits: LOOKUP_POW_BITS_FOR_80_SECURITY_BITS as u32,
+                        quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_80_SECURITY_BITS as u32,
+                        quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_80_SECURITY_BITS as u32,
+                        deep_poly_alpha_pow_bits: DEEP_POLY_ALPHA_POW_BITS_FOR_80_SECURITY_BITS as u32,
+                        foldings_pow_bits: [MAX_FOLDINGS_POW_BITS_FOR_80_SECURITY_BITS as u32;
+                            NUM_FOLDINGS],
+                        fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_80_SECURITY_BITS as u32,
+                        num_queries: NUM_QUERIES_FOR_80_SECURITY_BITS,
+                    },
+                    crate::SecurityModel::Security100 => SizedProofSecurityConfig {
+                        lookup_pow_bits: LOOKUP_POW_BITS_FOR_100_SECURITY_BITS as u32,
+                        quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_100_SECURITY_BITS as u32,
+                        quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_100_SECURITY_BITS as u32,
+                        deep_poly_alpha_pow_bits: DEEP_POLY_ALPHA_POW_BITS_FOR_100_SECURITY_BITS as u32,
+                        foldings_pow_bits: [MAX_FOLDINGS_POW_BITS_FOR_100_SECURITY_BITS as u32;
+                            NUM_FOLDINGS],
+                        fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_100_SECURITY_BITS as u32,
+                        num_queries: NUM_QUERIES_FOR_100_SECURITY_BITS,
+                    }
+                }
+            }
+        }
+    };
+
+    let result_string = format_rust_code(&result_token_stream.to_string())
+        .expect("Failed to format generated Rust code");
+
+    let verifier_common_path = "../../verifier_common/src";
+    std::fs::write(
+        Path::new(&verifier_common_path).join("pow_config_worst_constants.rs"),
+        result_string,
+    )
+    .expect(&format!("Failed to write to {}", verifier_common_path));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn generate_airbender_toml_file(
+    max_trace_len_log2: usize,
+    max_fri_factor_log2: usize,
+    max_number_of_columns: usize,
+    max_num_quotient_terms: usize,
+    max_num_openings_at_z: usize,
+    deep_poly_alpha_pow_bits_for_100: usize,
+    max_foldings_pow_bits_for_100: usize,
+    pow_bits_for_queries_for_100: usize,
+    num_queries_for_100: usize,
+    lookup_pow_bits_for_100: usize,
+    num_width_3_lookups: usize,
+    num_range_16_lookups: usize,
+    num_range_19_lookups: usize,
+) {
+    let folding_props = prover::definitions::OPTIMAL_FOLDING_PROPERTIES[max_trace_len_log2];
+
+    let trace_length = 1 << max_trace_len_log2;
+
+    let created_date = Command::new("date")
+        .args(["+%Y-%m-%d"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let commit_hash = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let toml_params = soundcalc::AirbenderTomlParams {
+        // Metadata
+        created_date,
+        commit_hash,
+
+        // Constants (fixed for the proof system)
+        rho: (0.5f32).powf(max_fri_factor_log2 as f32) as f64,
+        air_max_degree: 2,
+        max_combo: 2,
+        opening_points: 2,
+        power_batching: true,
+
+        // Worst-case across verifiers
+        trace_length,
+        num_columns: max_number_of_columns,
+        num_constraints: max_num_quotient_terms,
+        batch_size: max_num_openings_at_z,
+
+        // FRI schedule (derived from worst-case trace length)
+        fri_folding_factors: folding_props
+            .folding_sequence
+            .iter()
+            .map(|f| 1usize << f)
+            .collect(),
+        fri_early_stop_degree: 1
+            << (folding_props.final_monomial_degree_log2 + max_fri_factor_log2),
+
+        // Security parameters (100-bit)
+        grinding_deep: deep_poly_alpha_pow_bits_for_100,
+        grinding_commit_phase: max_foldings_pow_bits_for_100,
+        grinding_query_phase: pow_bits_for_queries_for_100,
+        num_queries: num_queries_for_100,
+
+        lookups: vec![
+            soundcalc::LookupParams {
+                name: "generic_lookup".to_string(),
+                logup_type: "univariate".to_string(),
+                rows_l: trace_length - 1,
+                rows_t: trace_length - 1,
+                num_columns_s: 4, // COMMON_TABLE_WIDTH
+                num_lookups_m: num_width_3_lookups,
+                grinding_bits_lookup: lookup_pow_bits_for_100,
+            },
+            soundcalc::LookupParams {
+                name: "range_check_16_lookup".to_string(),
+                logup_type: "univariate".to_string(),
+                rows_l: trace_length - 1,
+                rows_t: 1 << 16,
+                num_columns_s: 1,
+                num_lookups_m: num_range_16_lookups,
+                grinding_bits_lookup: lookup_pow_bits_for_100,
+            },
+            soundcalc::LookupParams {
+                name: "range_check_19_lookup".to_string(),
+                logup_type: "univariate".to_string(),
+                rows_l: trace_length - 1,
+                rows_t: 1 << 19, // TIMESTAMP_COLUMNS_NUM_BITS
+                num_columns_s: 1,
+                num_lookups_m: num_range_19_lookups,
+                grinding_bits_lookup: lookup_pow_bits_for_100,
+            },
+            soundcalc::LookupParams {
+                name: "decoder".to_string(),
+                logup_type: "univariate".to_string(),
+                rows_l: trace_length - 1,
+                rows_t: trace_length - 1,
+                num_columns_s: 10, // EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH
+                num_lookups_m: 1,
+                grinding_bits_lookup: lookup_pow_bits_for_100,
+            },
+        ],
+    };
+
+    let toml_string = soundcalc::generate_airbender_toml(&toml_params);
+    std::fs::write("airbender.toml", toml_string).expect("Failed to write airbender.toml");
+}
+
+/// Runs rustfmt to format the code.
+fn format_rust_code(code: &str) -> Result<String, String> {
+    // Spawn the `rustfmt` process
+    let mut rustfmt = Command::new("rustfmt")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn rustfmt: {}", e))?;
+
+    // Write the Rust code to `rustfmt`'s stdin
+    if let Some(mut stdin) = rustfmt.stdin.take() {
+        stdin
+            .write_all(code.as_bytes())
+            .map_err(|e| format!("Failed to write to rustfmt stdin: {}", e))?;
+    }
+
+    // Wait for `rustfmt` to complete and collect the formatted code
+    let output = rustfmt
+        .wait_with_output()
+        .map_err(|e| format!("Failed to read rustfmt output: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "rustfmt failed with status {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    // Convert the output to a String
+    String::from_utf8(output.stdout).map_err(|e| format!("Invalid UTF-8 in rustfmt output: {}", e))
+}

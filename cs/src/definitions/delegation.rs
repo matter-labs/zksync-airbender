@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DelegationRequestLayout {
     pub multiplicity: ColumnSet<1>,
     pub delegation_type: ColumnSet<1>,
@@ -21,7 +21,7 @@ impl DelegationRequestLayout {
     }
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DelegationProcessingLayout {
     pub multiplicity: ColumnSet<1>,
     pub abi_mem_offset_high: ColumnSet<1>,

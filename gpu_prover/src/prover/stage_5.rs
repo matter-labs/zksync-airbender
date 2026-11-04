@@ -6,19 +6,22 @@ use super::{BF, E2, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::blake2s::{build_merkle_tree, Digest};
 use crate::ops_complex::fold;
+use crate::prover::pow::search_pow_challenge;
 use crate::prover::precomputations::PRECOMPUTATIONS;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
 use fft::{
-    bitreverse_enumeration_inplace, partial_ifft_natural_to_natural, GoodAllocator,
-    LdePrecomputations,
+    bitreverse_enumeration_inplace, domain_generator_for_size,
+    materialize_powers_serial_starting_with_one, partial_ifft_natural_to_natural,
 };
 use field::{Field, FieldExtension, Mersenne31Field};
 use itertools::Itertools;
 use prover::definitions::{FoldingDescription, Transcript};
+use prover::prover_stages::{ProofPowChallenges, ProofSecurityConfig};
 use prover::transcript::Seed;
+use std::alloc::Global;
 use std::iter;
 
 pub(crate) struct FRIStep {
@@ -40,17 +43,18 @@ pub(crate) struct StageFiveOutput {
     pub(crate) fri_oracles: Vec<FRIStep>,
     pub(crate) last_fri_step_plain_leaf_values: Vec<HostAllocation<[E4]>>,
     pub(crate) final_monomials: HostAllocation<[E4]>,
+    pub(crate) pow_challenges: Vec<HostAllocation<u64>>,
 }
 
 impl StageFiveOutput {
     pub fn new<'a>(
         seed: &mut HostAllocation<Seed>,
+        security_config: &ProofSecurityConfig,
+        external_challenges: &Option<ProofPowChallenges>,
         stage_4_output: &mut StageFourOutput,
         log_domain_size: u32,
         log_lde_factor: u32,
         folding_description: &FoldingDescription,
-        num_queries: usize,
-        lde_precomputations: &LdePrecomputations<impl GoodAllocator>,
         callbacks: &mut Callbacks<'a>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
@@ -58,22 +62,26 @@ impl StageFiveOutput {
         let log_tree_cap_size = folding_description.total_caps_size_log2 as u32;
         let lde_factor = 1usize << log_lde_factor;
         let mut log_current_domain_size = log_domain_size;
+        assert_eq!(
+            security_config.foldings_pow_bits.len(),
+            folding_description.folding_sequence.len()
+        );
         let oracles_count = folding_description.folding_sequence.len() - 1;
         let mut fri_oracles: Vec<FRIStep> = vec![];
         let mut last_fri_step_plain_leaf_values = Default::default();
         let stream = context.get_exec_stream();
         let seed_accessor = seed.get_mut_accessor();
-        let taus_clone = lde_precomputations.domain_bound_precomputations[0]
-            .as_ref()
-            .unwrap()
-            .taus
-            .clone();
+        let coset_generator =
+            domain_generator_for_size::<E2>(1u64 << (log_domain_size + log_lde_factor));
+        let taus_clone =
+            materialize_powers_serial_starting_with_one::<E2, Global>(coset_generator, lde_factor);
         let mut taus = unsafe { context.alloc_host_uninit_slice(taus_clone.len()) };
         let taus_accessor = taus.get_mut_accessor();
         let set_taus_fn = move || unsafe {
             taus_accessor.get_mut().copy_from_slice(&taus_clone);
         };
         callbacks.schedule(set_taus_fn, stream)?;
+        let mut pow_challenges = vec![];
         for (i, &current_log_fold) in folding_description
             .folding_sequence
             .iter()
@@ -96,12 +104,27 @@ impl StageFiveOutput {
             } else {
                 &fri_oracles[i - 1].ldes
             };
+            let mut pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
+            let pow_bits = security_config.foldings_pow_bits[i];
+            search_pow_challenge(
+                seed,
+                &mut pow_challenge,
+                pow_bits,
+                external_challenges
+                    .as_ref()
+                    .map(|c| c.foldings_pow_challenges[i]),
+                callbacks,
+                context,
+            )?;
+            pow_challenges.push(pow_challenge);
             let challenges_len = lde_factor * current_log_fold;
             let mut h_challenges = unsafe { context.alloc_host_uninit_slice(challenges_len) };
             let h_challenges_accessor = h_challenges.get_mut_accessor();
             let set_folding_challenges_fn = move || unsafe {
+                let has_pow = pow_bits != 0;
                 Self::set_folding_challenges(
                     seed_accessor.get_mut(),
+                    has_pow,
                     taus_accessor.get_mut(),
                     h_challenges_accessor.get_mut(),
                     current_log_fold,
@@ -129,7 +152,10 @@ impl StageFiveOutput {
             }
             d_challenges.free();
             let expose_all_leafs = if i == oracles_count - 1 {
-                let log_bound = num_queries.next_power_of_two().trailing_zeros();
+                let log_bound = security_config
+                    .num_queries
+                    .next_power_of_two()
+                    .trailing_zeros();
                 log_num_leafs + 1 - log_lde_factor <= log_bound
             } else {
                 false
@@ -220,13 +246,28 @@ impl StageFiveOutput {
                 + folding_description.folding_sequence.last().unwrap()
         );
         let final_monomials = {
+            let mut pow_challenge = unsafe { context.alloc_host_uninit::<u64>() };
+            let pow_bits = security_config.foldings_pow_bits[oracles_count];
+            search_pow_challenge(
+                seed,
+                &mut pow_challenge,
+                pow_bits,
+                external_challenges
+                    .as_ref()
+                    .map(|c| c.foldings_pow_challenges[oracles_count]),
+                callbacks,
+                context,
+            )?;
+            pow_challenges.push(pow_challenge);
             let log_folding_degree = *folding_description.folding_sequence.last().unwrap() as u32;
             let challenges_len = log_folding_degree as usize;
             let mut h_challenges = unsafe { context.alloc_host_uninit_slice(challenges_len) };
             let h_challenges_accessor = h_challenges.get_mut_accessor();
             let set_folding_challenges_fn = move || unsafe {
+                let has_pow = pow_bits != 0;
                 Self::set_folding_challenges(
                     seed_accessor.get_mut(),
+                    has_pow,
                     &mut taus_accessor.get_mut()[..1],
                     h_challenges_accessor.get_mut(),
                     log_folding_degree as usize,
@@ -297,14 +338,20 @@ impl StageFiveOutput {
             fri_oracles,
             last_fri_step_plain_leaf_values,
             final_monomials,
+            pow_challenges,
         };
         Ok(result)
     }
 
-    fn draw_challenge(seed: &mut Seed) -> E4 {
+    fn draw_challenge(seed: &mut Seed, has_pow: bool) -> E4 {
+        let num_entries = if has_pow { 5usize } else { 4usize };
         let mut transcript_challenges =
-            [0u32; 4usize.next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
+            vec![0u32; num_entries.next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
         Transcript::draw_randomness(seed, &mut transcript_challenges);
+        if has_pow {
+            // Skip first challenge used for pow
+            transcript_challenges.remove(0);
+        }
         let coeffs = transcript_challenges
             .as_chunks::<4>()
             .0
@@ -317,12 +364,13 @@ impl StageFiveOutput {
 
     fn set_folding_challenges(
         seed: &mut Seed,
+        has_pow: bool,
         taus: &mut [E2],
         challenges: &mut [E4],
         log_degree: usize,
     ) {
         assert_eq!(challenges.len(), taus.len() * log_degree);
-        let mut challenge = Self::draw_challenge(seed);
+        let mut challenge = Self::draw_challenge(seed, has_pow);
         let challenge_powers = iter::once(challenge)
             .chain((1..log_degree).map(|_| {
                 challenge.square();

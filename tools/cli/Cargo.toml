@@ -17,46 +17,40 @@ path = "src/lib.rs"
 name = "cli"
 path = "src/main.rs"
 
+# CI smoke test for the GPU carried-chain combine flow; see the module docs.
+[[example]]
+name = "gpu_combine_smoke"
+path = "examples/gpu_combine_smoke.rs"
+required-features = ["gpu"]
+
 [dependencies]
 prover = { workspace = true, features = ["prover"] }
-risc_v_cycles = { workspace = true }
 trace_and_split = { workspace = true }
 setups = { workspace = true }
 serde = { workspace = true }
-serde_json = "1.0"
-prover_examples = {path = "../../circuit_defs/prover_examples"}
+serde_json = "*"
+prover_examples = { path = "../../circuit_defs/prover_examples", default-features = false }
 worker = {path = "../../worker"}
 clap = { workspace = true }
 blake2s_u32 = { workspace = true }
-execution_utils = { path = "../../execution_utils"}
+execution_utils = { path = "../../execution_utils", default-features = false, features = ["prover", "verifier_binaries"] }
+riscv_transpiler = { path = "../../riscv_transpiler" }
 field = { workspace = true }
 
-risc_v_cycles_verifier = { path = "../../circuit_defs/risc_v_cycles/verifier", optional = true}
-reduced_risc_v_machine_verifier = { path = "../../circuit_defs/reduced_risc_v_machine/verifier", optional = true }
-
-blake2_with_compression_verifier = { path = "../../circuit_defs/blake2_with_compression/verifier", optional = true }
-
 verifier_common = { workspace = true }
-
-full_statement_verifier = { path = "../../full_statement_verifier", features=["replace_csr"], optional = true }
 reqwest = { version = "0.12.12", features = ["blocking", "json"] }
-sha3 = { package = "sha3_ce", version = "=0.10.6" }
+sha3 = { package = "sha3", version = "*" }
 
-gpu_prover = { workspace = true, optional = true }
+gpu_prover = { workspace = true, optional = true, default-features = false }
 
+log = "0.4"
 env_logger = "0.11"
 base64 = "0.21.7"
 
+[dev-dependencies]
+test_utils = { workspace = true }
 
 [features]
-
-# If include verifiers is disabled, the compilation is a lot faster, but some commands (verify, verify-all) are not available.
-include_verifiers = ["full_statement_verifier", "risc_v_cycles_verifier", "blake2_with_compression_verifier", "reduced_risc_v_machine_verifier", 
-    "risc_v_cycles_verifier/replace_csr", "risc_v_cycles_verifier/proof_utils", 
-    "verifier_common/replace_csr", "verifier_common/proof_utils",
-    "reduced_risc_v_machine_verifier/replace_csr", "reduced_risc_v_machine_verifier/proof_utils",
-    "field/no_inline"]
-
 debug_logs = ["prover/debug_logs", "prover_examples/debug_logs"]
 # if enabled - allow GPU for proving.
-gpu = ["prover_examples/gpu", "gpu_prover"]
+gpu = ["prover_examples/gpu", "gpu_prover", "execution_utils/gpu_prover"]
