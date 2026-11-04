@@ -11,16 +11,16 @@
       "fold_log2": 1,
       "batching_pow_bits": 8,
       "folding_pow_bits": 0,
-      "num_queries": 176,
-      "queries_pow_bits": 27
+      "num_queries": 179,
+      "queries_pow_bits": 26
     },
     "internal_rounds": [
       {
-        "lde_factor_log2": 5,
+        "lde_factor_log2": 3,
         "folding_log2": 5,
-        "num_queries": 31,
-        "queries_pow_bits": 27,
-        "folding_pow_bits": 22,
+        "num_queries": 52,
+        "queries_pow_bits": 26,
+        "folding_pow_bits": 23,
         "num_ood_samples": 1,
         "ood_pow_bits": 8
       },
@@ -36,8 +36,8 @@
       {
         "lde_factor_log2": 11,
         "folding_log2": 5,
-        "num_queries": 14,
-        "queries_pow_bits": 27,
+        "num_queries": 15,
+        "queries_pow_bits": 21,
         "folding_pow_bits": 24,
         "num_ood_samples": 1,
         "ood_pow_bits": 2

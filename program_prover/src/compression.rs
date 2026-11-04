@@ -10,10 +10,11 @@
 //!
 //! 1. The STANDARD special-opcodes unified fsv
 //!    (`fsv_unified_recursion_layer_sec_100_special_opcodes_extension`)
-//!    verifies the input pair; proving that run takes THREE 2^23 feeder chunks.
+//!    verifies the input pair; proving that run takes one or more 2^23 feeder
+//!    chunks.
 //! 2. The MERGED-mode feeder fsv
 //!    (`fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension`)
-//!    verifies those three feeder proofs; proving it fits ONE feeder chunk.
+//!    verifies those feeder proofs; proving it must fit ONE feeder chunk.
 //! 3. The same feeder fsv verifies that single proof in <= 2^22 cycles;
 //!    proving THAT run with the EVM-production Proth120 packed parameters
 //!    ([`crate::l1::prove_l1_wrap_in_memory`], all oracles in memory) yields
@@ -247,17 +248,17 @@ pub fn compress_fixed_point_to_l1_in_mode(
             delegations, 0,
             "feeder layers are delegation-free by construction"
         );
-        // The standard special-opcodes fsv run over the stable point costs
-        // ~19.7M cycles = 3 feeder chunks; the feeder fsv over those 3 proofs
-        // must contract to a single chunk for the L1 wrap.
-        let expected_chunks = if stage == 0 { 3 } else { 1 };
-        assert_eq!(
-            chunks,
-            expected_chunks,
-            "stage {} must produce {expected_chunks} feeder chunk(s), got {chunks} — the \
-             verifier cost / feeder schedule drifted",
-            stage + 1,
-        );
+        // The standard special-opcodes fsv run over the stable point may take
+        // several feeder chunks; the feeder fsv over them must contract to a
+        // single chunk for the L1 wrap.
+        assert!(chunks > 0, "stage {} produced no feeder chunk", stage + 1);
+        if stage == 1 {
+            assert_eq!(
+                chunks, 1,
+                "stage 2 must contract to one feeder chunk for the L1 wrap, got {chunks} — the \
+                 verifier cost / feeder schedule drifted"
+            );
+        }
         println!(
             "[l1-compression] stage {}: {} cycles proven as {chunks} feeder chunk(s)",
             stage + 1,

@@ -3,7 +3,8 @@
 //!
 //! Accounting ([`PessimisticConjectureMode`]): a query into an oracle at rate
 //! `2^-r` is worth `r` bits, the query count is `ceil(1.2 * (100 - pow) / r)`
-//! per round, the batching challenge is gated by the field-size proof of
+//! per round and the query PoW is then the smallest that keeps that count (so
+//! `6 * pow + 5 * queries * r >= 600`), the batching challenge is gated by the field-size proof of
 //! work of [`pow_bits`](super::super::pow_bits), and the folding challenges
 //! and the single OOD sample per oracle draw without proof of work.
 
@@ -36,19 +37,48 @@ pub(super) fn try_whir_schedule(
     let mut schedule = match level {
         SecurityLevel::Sec100 => ladder_for_100_bits(input)?,
     };
+    let security_bits = level.security_bits() as u32;
     if packing.virtual_packing {
         // The twin re-commits the batched polynomial as intermediate oracle 0
-        // at HALF the ladder's LDE factor. Under the Johnson bound that costs
-        // the oracle about one bit (the 2^22 ladder: 69 -> 68 bits, see
-        // `soundcalc/late_round_rebalance.py`); one more bit of query PoW on
-        // that oracle restores the ladder's level at no verifier cost, and the
-        // pessimistic rule's query count is derived at the raised PoW (18 at
-        // 2^22, unchanged).
+        // at HALF the ladder's LDE factor; its query count is derived one bit
+        // of query PoW above the ladder's (18 at 2^22), then that PoW is
+        // lowered with every other round's below.
         schedule.internal_rounds[0].queries_pow_bits += 1;
-        schedule =
-            schedule.to_virtual_packing(level.security_bits() as u32, &PessimisticConjectureMode);
+        schedule = schedule.to_virtual_packing(security_bits, &PessimisticConjectureMode);
     }
+    lower_queries_pow_to_minimum(&mut schedule, security_bits);
     Ok(schedule)
+}
+
+/// Lowers every round's query PoW to the smallest for which the
+/// [`PessimisticConjectureMode`] query count at the round's rate does not
+/// exceed its final query count.
+fn lower_queries_pow_to_minimum(schedule: &mut WhirSchedule, security_bits: u32) {
+    let minimum = |num_queries: usize, rate_log2: usize, pow_bits: u32| {
+        (0..=pow_bits)
+            .find(|&pow| {
+                PessimisticConjectureMode
+                    .num_queries_for_rate_and_bits_of_security(security_bits - pow, rate_log2 as u32)
+                    as usize
+                    <= num_queries
+            })
+            .unwrap_or_else(|| {
+                panic!("{num_queries} queries at rate 2^-{rate_log2} miss the rule at {pow_bits} PoW bits")
+            })
+    };
+    let base = &mut schedule.base_round;
+    base.queries_pow_bits = minimum(
+        base.num_queries,
+        base.lde_factor_log2,
+        base.queries_pow_bits,
+    );
+    for round in &mut schedule.internal_rounds {
+        round.queries_pow_bits = minimum(
+            round.num_queries,
+            round.lde_factor_log2,
+            round.queries_pow_bits,
+        );
+    }
 }
 
 /// The sec-100 ladder for a `2^message_size_log2` message: base LDE factor
@@ -62,19 +92,19 @@ fn ladder_for_100_bits(input: &WhirInput) -> Result<WhirSchedule, ConfigSelectio
                 &[1, 5, 5, 4, 4],
                 &[89, 11, 8, 7, 7],
                 &[256, 4096, 8192, 16384],
-                &[26, 27, 25, 25, 21],
+                &[26, 27, 20, 25, 19],
             ),
             21 => (
                 &[1, 5, 5, 5, 4],
                 &[89, 15, 8, 7, 7],
                 &[64, 2048, 8192, 16384],
-                &[26, 25, 27, 25, 21],
+                &[26, 25, 27, 25, 19],
             ),
             22 => (
                 &[1, 5, 5, 5, 5],
-                &[89, 15, 8, 7, 7],
+                &[89, 15, 9, 7, 7],
                 &[64, 2048, 8192, 16384],
-                &[26, 25, 27, 25, 21],
+                &[26, 25, 18, 25, 19],
             ),
             // Stops at the 2^3 polynomial (plain-text tail): the former sixth
             // round folded 2^3 -> 2^1 through ANOTHER committed oracle — an LDE
@@ -85,13 +115,13 @@ fn ladder_for_100_bits(input: &WhirInput) -> Result<WhirSchedule, ConfigSelectio
                 &[1, 5, 5, 5, 4],
                 &[89, 23, 10, 8, 7],
                 &[16, 512, 8192, 16384],
-                &[26, 24, 25, 19, 21],
+                &[26, 24, 25, 14, 19],
             ),
             24 => (
                 &[1, 5, 5, 5, 4, 3],
                 &[89, 23, 10, 8, 7, 6],
                 &[16, 512, 8192, 16384, 131072],
-                &[26, 24, 25, 19, 21, 21],
+                &[26, 24, 25, 14, 19, 15],
             ),
             _ => {
                 return Err(ConfigSelectionError::MissingSchedule {
@@ -218,6 +248,58 @@ mod tests {
         }
     }
 
+    /// Every round of a ladder config grinds the smallest query PoW that meets the rule.
+    fn assert_every_round_grinds_the_minimum(config: &ProverConfig) {
+        assert_every_round_preserves_security_margin(config);
+        let schedule = &config.whir_schedule;
+        let security_bits = config.security_level.security_bits() as u32;
+        let rates = std::iter::once(schedule.base_lde_factor_log2() as u32).chain(
+            schedule
+                .internal_rounds
+                .iter()
+                .map(|r| r.lde_factor_log2 as u32),
+        );
+        for (round, ((queries, pow), rate_bits)) in schedule
+            .queries_per_round()
+            .into_iter()
+            .zip(schedule.queries_pow_bits_per_round())
+            .zip(rates)
+            .enumerate()
+        {
+            assert!(
+                pow == 0 || 6 * (pow - 1) + 5 * queries as u32 * rate_bits < 6 * security_bits,
+                "round {round}: {queries} queries at rate 2^-{rate_bits} need less than {pow} PoW bits"
+            );
+        }
+    }
+
+    #[test]
+    fn every_ladder_variant_grinds_the_minimal_query_pow() {
+        let level = SecurityLevel::Sec100;
+        for trace_log2 in 20..=24 {
+            assert_every_round_grinds_the_minimum(
+                &config_for_security_level_under_pessimistic_conjecture(trace_log2, level),
+            );
+            assert_every_round_grinds_the_minimum(
+                &virtual_packing_config_for_security_level_under_pessimistic_conjecture(
+                    trace_log2, level,
+                ),
+            );
+        }
+        for pack_log2 in 0..=4 {
+            assert_every_round_grinds_the_minimum(
+                &packed_config_for_security_level_under_pessimistic_conjecture(
+                    20, pack_log2, level,
+                ),
+            );
+            assert_every_round_grinds_the_minimum(
+                &virtual_packed_config_for_security_level_under_pessimistic_conjecture(
+                    20, pack_log2, level,
+                ),
+            );
+        }
+    }
+
     #[test]
     fn standard_and_evm_rounds_preserve_security_margin() {
         for trace_log2 in 20..=24 {
@@ -236,6 +318,11 @@ mod tests {
         assert_every_round_preserves_security_margin(&evm_production_packed_prover_config(
             SecurityLevel::Sec100,
         ));
+    }
+
+    #[test]
+    fn l1_feeder_rounds_preserve_security_margin() {
+        assert_every_round_preserves_security_margin(&l1_feeder_config_for_2_23());
     }
 
     /// The three base-round strategies on the 2^20 (blake delegation) trace
@@ -286,18 +373,17 @@ mod tests {
         );
         assert_eq!(virtual_.whir_schedule.final_poly_size_log2(20), 1);
         let round0 = &virtual_.whir_schedule.internal_rounds[0];
-        // one more bit of query PoW than the ladder's oracle 0 (see `whir_schedule`)
-        assert_eq!(
-            round0.queries_pow_bits,
-            default.whir_schedule.internal_rounds[0].queries_pow_bits + 1
-        );
+        // the query count is derived one bit of query PoW above the ladder's
+        // oracle 0 (see `whir_schedule`), then the PoW is lowered to the minimum
+        let ladder_pow = default.whir_schedule.internal_rounds[0].queries_pow_bits;
         assert_eq!(
             round0.num_queries,
             PessimisticConjectureMode
-                .num_queries_for_rate_and_bits_of_security(100 - round0.queries_pow_bits, 7)
+                .num_queries_for_rate_and_bits_of_security(100 - (ladder_pow + 1), 7)
                 as usize
         );
         assert_eq!(round0.num_queries, 13);
+        assert_eq!((ladder_pow, round0.queries_pow_bits), (27, 25));
         assert_eq!(
             &virtual_.whir_schedule.internal_rounds[1..],
             &default.whir_schedule.internal_rounds[1..]
@@ -307,7 +393,7 @@ mod tests {
     /// The production schedule of the delegation circuits (bigint, keccak,
     /// blake2_g_function on 2^22 traces; blake2_with_compression on a 2^20
     /// trace packed by 2^2): the virtual twin of the 2^22 ladder, oracle 0 at
-    /// 18 queries with 26 bits of query PoW.
+    /// 18 queries with 25 bits of query PoW.
     #[test]
     fn delegation_virtual_twin_of_the_2_22_ladder() {
         let level = SecurityLevel::Sec100;
@@ -318,7 +404,7 @@ mod tests {
             virtual_packed_config_for_security_level_under_pessimistic_conjecture(20, 2, level);
         assert_eq!(
             plain.whir_schedule.queries_per_round(),
-            vec![89, 15, 8, 7, 7]
+            vec![89, 15, 9, 7, 7]
         );
         assert_eq!(
             plain.whir_schedule.intermediate_lde_factors(),
@@ -328,14 +414,14 @@ mod tests {
             assert_every_round_preserves_security_margin(config);
             let schedule = &config.whir_schedule;
             assert_eq!(schedule.fold_steps(), vec![0, 6, 5, 5, 5]);
-            assert_eq!(schedule.queries_per_round(), vec![89, 18, 8, 7, 7]);
+            assert_eq!(schedule.queries_per_round(), vec![89, 18, 9, 7, 7]);
             assert_eq!(
                 schedule.intermediate_lde_factors(),
                 vec![32, 2048, 8192, 16384]
             );
             assert_eq!(
                 schedule.queries_pow_bits_per_round(),
-                vec![26, 26, 27, 25, 21]
+                vec![26, 25, 18, 25, 19]
             );
             assert_eq!(schedule.final_poly_size_log2(22), 1);
         }

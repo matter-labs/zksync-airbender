@@ -49,6 +49,13 @@ PYTHONPATH=/tmp/soundcalc python3.11 late_round_rebalance.py      # JBR-rebalanc
 * The committed-polynomial ceiling of a shape only sets the batching PoW
   (`pow_bits_for_batched_proximity` at the ceiling, batching term 102 bits).
 
+The production shapes (2^22 virtual, 2^23, 2^24) in `ethproofs_soundcalc.rs` are
+not the search's fewest-query output: they are tuned for proving time, with no grind
+above 26 bits (base 179 queries at 26 bits; on the 2^22 and 2^23 shapes oracle 2 one query
+more at a 21-bit query PoW) and oracle 0 committed two LDE steps lower at `m = 12` (a cheaper commit for more
+queries). They were certified at 100 bits with the same pinned WHIR module. The 2^20
+test-circuit shapes keep the search's schedules.
+
 `whir_schedule_search.py` prints each shape as `WhirSchedule` fields with the
 per-step folding PoW list (our `folding_pow_bits` is one value per oracle: the
 maximum), the regime and `m` per oracle, bits per query, and the query count a
@@ -97,3 +104,7 @@ shows restores the plain ladder's level (oracle 2's 27-bit PoW is tight: 8 queri
 2^-11 are 42 bits, and its 2^27 domain leaves no room for a larger LDE). The SHAPES table
 holds the PRE-rebalance ladders so the run reproduces the analysis.
 
+The production ladders keep these LDE factors and query counts but no longer hold the
+69-bit level: each round, the virtual twin's included, grinds the smallest query PoW that
+keeps its count under the pessimistic rule (`6 * pow + 5 * queries * r >= 600`), and
+oracle 2 of the 2^22 ladder takes 9 queries at 18 bits instead of 8 at 27.

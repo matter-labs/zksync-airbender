@@ -57,10 +57,10 @@ pub fn try_evm_production_packed_prover_config(
 /// (then [16, 512, 16384, 524288]) -> [32, 1024, 32768, 1048576] for the post-fold
 /// poly sizes [2^22, 2^17, 2^12, 2^7]; the schedule stops at the 2^3
 /// polynomial (plain-text tail). Under [`PessimisticConjectureMode`]
-/// accounting (`queries = ceil(1.2 * floor((100 - pow) / rate_bits))`, which
-/// reproduces each committed schedule) with per-round PoW pushed to the next
-/// query-count boundary (grinds capped at 2^30), the query ladder drops
-/// [89, 23, 10, 7, 5] -> [21, 17, 9, 5, 4]. Purpose: make proofs of the
+/// accounting (`queries = ceil(1.2 * (100 - pow) / rate_bits)`) with the
+/// fewest queries a 2^30 grind admits per round and the smallest PoW that
+/// keeps them, the query ladder drops [89, 23, 10, 7, 5] -> [21, 17, 9, 6, 5].
+/// Purpose: make proofs of the
 /// LAST BabyBear recursion layer(s) maximally cheap to VERIFY (fewer Merkle
 /// paths + leaf hashes in every round) so the verification run fits the L1
 /// (Proth120) wrapper's 2^22-cycle unified circuit; the LDE prover overhead
@@ -85,22 +85,22 @@ pub fn l1_feeder_config_for_2_23() -> ProverConfig {
         // degree-8 tail (the extra fold-by-2 round on a 2^27-domain oracle is
         // dropped entirely).
         //
-        // rates 2^-4 / 2^-5 / 2^-10 / 2^-15 / 2^-20; per-round PoW pushed
-        // to the next query-count boundary (grinds capped at 2^30):
-        //   ceil(1.2 * floor(71 / 4))  = 21  (pow 29)
-        //   ceil(1.2 * floor(74 / 5))  = 17  (pow 26)
-        //   ceil(1.2 * floor(75 / 10)) = 9   (pow 25; no boundary <= 30)
-        //   ceil(1.2 * floor(74 / 15)) = 5   (pow 26)
-        //   ceil(1.2 * floor(79 / 20)) = 4   (pow 21; no boundary <= 30)
+        // rates 2^-4 / 2^-5 / 2^-10 / 2^-15 / 2^-20; the fewest queries a
+        // 2^30 grind admits, then the smallest PoW that keeps them:
+        //   ceil(1.2 * 70 / 4)  = 21  (pow 30)
+        //   ceil(1.2 * 70 / 5)  = 17  (pow 30)
+        //   ceil(1.2 * 75 / 10) = 9   (pow 25)
+        //   ceil(1.2 * 75 / 15) = 6   (pow 25)
+        //   ceil(1.2 * 83 / 20) = 5   (pow 17)
         // every oracle domain = 2^27 exactly (BabyBear's two-adicity cap)
         whir_schedule: WhirSchedule::from_legacy_arrays(
             L1_FEEDER_BASE_LDE_FACTOR,
             DEFAULT_CAP_SIZE,
             0,
             &[1, 5, 5, 5, 4],
-            &[21, 17, 9, 5, 4],
+            &[21, 17, 9, 6, 5],
             &[32, 1024, 32768, 1048576],
-            &[29, 26, 25, 26, 21],
+            &[30, 30, 25, 25, 17],
         ),
     }
 }

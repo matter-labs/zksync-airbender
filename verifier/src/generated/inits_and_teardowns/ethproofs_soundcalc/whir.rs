@@ -112,13 +112,13 @@ pub fn accumulate_ood_samples<const MAX_POW: usize, const MAX_OOD: usize>(
     (claim_correction, current)
 }
 const INITIAL_QUERY_INDEX_BITS: usize = 24usize;
-const INITIAL_NUM_QUERIES: usize = 176usize;
+const INITIAL_NUM_QUERIES: usize = 179usize;
 #[doc = r" Whether this build opens the base queries as a pruned Merkle"]
 #[doc = r" multiproof (`BlakeMode::merkle_multiproofs`, decided at compile"]
 #[doc = r" time for the build's blake implementation)."]
 const INITIAL_MERKLE_MULTIPROOF: bool =
     ::verifier_common::BLAKE_MODE.merkle_multiproofs(INITIAL_NUM_QUERIES, WHIR_CAP_SIZE);
-const INITIAL_POW_BITS: u32 = 27u32;
+const INITIAL_POW_BITS: u32 = 26u32;
 const INITIAL_DRAW_WORDS: usize = 136usize;
 const INITIAL_RS_DOMAIN_LOG2: usize = 25usize;
 const NUM_COSETS: usize = 2usize;
@@ -310,20 +310,20 @@ use super::common::EXT_DEGREE;
 use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 pub const NUM_INTERNAL_ROUNDS: usize = 4usize;
 const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] =
-    [22usize, 21usize, 18usize, 16usize];
-const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [16usize, 256usize, 1024usize, 4096usize];
-const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [4usize, 8usize, 10usize, 12usize];
+    [20usize, 21usize, 18usize, 16usize];
+const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [4usize, 256usize, 1024usize, 4096usize];
+const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [2usize, 8usize, 10usize, 12usize];
 const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] =
     [262144usize, 8192usize, 256usize, 16usize];
-const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [27usize, 26usize, 23usize, 20usize];
+const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [25usize, 26usize, 23usize, 20usize];
 const MAX_INTERNAL_FOLD_STEPS: usize = 5usize;
 const MAX_INTERNAL_VALUES_PER_LEAF: usize = 32usize;
 const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DEGREE;
 const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS
     .div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS)
     * BLAKE2S_BLOCK_SIZE_U32_WORDS;
-const MAX_INTERNAL_NUM_QUERIES: usize = 39usize;
-const MAX_INTERNAL_DRAW_WORDS: usize = 32usize;
+const MAX_INTERNAL_NUM_QUERIES: usize = 79usize;
+const MAX_INTERNAL_DRAW_WORDS: usize = 56usize;
 #[doc = r" Bit `ir` set: this build opens internal round `ir + 1`'s queries"]
 #[doc = r" as a pruned Merkle multiproof (`BlakeMode::merkle_multiproofs`,"]
 #[doc = r" decided at compile time for the build's blake implementation)."]
@@ -351,7 +351,7 @@ const MAX_INTERNAL_ORACLE_DEPTH: usize = {
     }
     max
 };
-const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [32usize, 16usize, 16usize, 8usize];
+const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [56usize, 16usize, 16usize, 8usize];
 pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,

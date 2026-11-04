@@ -118,7 +118,7 @@ const INITIAL_NUM_QUERIES: usize = 21usize;
 #[doc = r" time for the build's blake implementation)."]
 const INITIAL_MERKLE_MULTIPROOF: bool =
     ::verifier_common::BLAKE_MODE.merkle_multiproofs(INITIAL_NUM_QUERIES, WHIR_CAP_SIZE);
-const INITIAL_POW_BITS: u32 = 29u32;
+const INITIAL_POW_BITS: u32 = 30u32;
 const INITIAL_DRAW_WORDS: usize = 24usize;
 const INITIAL_RS_DOMAIN_LOG2: usize = 27usize;
 const NUM_COSETS: usize = 16usize;
@@ -560,7 +560,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
     }
 }
 const FINAL_FOLD_STEPS: usize = 4usize;
-const FINAL_NUM_QUERIES: usize = 4usize;
+const FINAL_NUM_QUERIES: usize = 5usize;
 const FINAL_VALUES_PER_LEAF: usize = 16usize;
 const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
 const FINAL_HASH_BUF_SIZE: usize =
@@ -571,7 +571,7 @@ const FINAL_NUM_COSETS: usize = 1048576usize;
 const FINAL_NUM_COSETS_LOG2: usize = 20usize;
 const FINAL_COSET_TREE_SIZE: usize = 8usize;
 const FINAL_DRAW_WORDS: usize = 8usize;
-const FINAL_POW_BITS: u32 = 21u32;
+const FINAL_POW_BITS: u32 = 17u32;
 const FINAL_FOLDING_POW_BITS: u32 = 0u32;
 const FINAL_ORACLE_DEPTH_IDX: usize = 3usize;
 const FINAL_ORACLE_DEPTH: usize = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];

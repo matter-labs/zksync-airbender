@@ -80,7 +80,7 @@ pub const DRAW_BUF_CAPACITY: usize = {
 };
 pub const WHIR_FOLD_STEPS: [usize; 6usize] = [1usize, 5usize, 5usize, 5usize, 4usize, 3usize];
 pub const WHIR_QUERIES: [usize; 6usize] = [89usize, 23usize, 10usize, 8usize, 7usize, 6usize];
-pub const WHIR_POW_BITS: [u32; 6usize] = [26u32, 24u32, 25u32, 19u32, 21u32, 21u32];
+pub const WHIR_POW_BITS: [u32; 6usize] = [26u32, 24u32, 25u32, 14u32, 19u32, 15u32];
 #[doc = r" Per round: PoW bits gating each folding-challenge draw (0 = plain draws)."]
 pub const WHIR_FOLDING_POW_BITS: [u32; 6usize] = [0u32, 0u32, 0u32, 0u32, 0u32, 0u32];
 #[doc = r" Per intermediate oracle: its out-of-domain sample count and the PoW"]

@@ -49,12 +49,17 @@
 //! term including that PoW; its separate powers-batching term remains below
 //! 100 bits. These are WHIR PCS component bounds, not whole-system or GKR
 //! soundness claims, and the 62-bit figure applies specifically to unique
-//! decoding. The selected unique-decoding base needs
-//! `ceil((100 − 27) / 0.415) = 176` queries at 27 PoW bits for its 100-bit query
-//! term (base LDE factor and round-0 fold unchanged; no round grinds more than
-//! 27 bits anywhere in this mode). Every later round keeps
+//! decoding. A unique-decoding base at `p` PoW bits needs
+//! `ceil((100 − p) / 0.415)` queries for its 100-bit query term: 176 at 27 bits
+//! for the 2^20 test-circuit shapes, 179 at 26 bits for the production shapes
+//! (base LDE factor and round-0 fold unchanged). Every later round keeps
 //! its fold; the second oracle keeps its LDE factor, the later ones move to a
 //! better rate at the cost of a few queries.
+//!
+//! The production shapes (2^22 virtual, 2^23, 2^24) are tuned for proving time
+//! rather than for the fewest queries: no grind exceeds 26 bits, and oracle 0 is
+//! committed two LDE steps lower (`m = 12`, a cheaper commit for more queries).
+//! They were certified with the same pinned soundcalc WHIR module.
 //!
 //! Each [`EthproofsSoundcalcEntry`] is certified for a CEILING on the number
 //! of physically committed polynomials (it only enters the batching PoW,
@@ -354,10 +359,12 @@ impl EthproofsSoundcalcEntry {
             out,
             "The base round cannot stay at the ladder's 89 queries / 26 PoW bits: under both accepted \
              regimes a query into the rate-1/2 base oracle is worth at most 0.415 bits, so that base round \
-             certifies 62 bits whatever the later rounds do; 100 bits need ceil((100 − 27) / 0.415) = 176 \
-             queries at 27 PoW bits (the mode's grinding cap) with the base LDE factor and round-0 fold unchanged. The later oracles' \
+             certifies 62 bits whatever the later rounds do; 100 bits need ceil((100 − {p}) / 0.415) = {q} \
+             queries at {p} PoW bits (this schedule's grinding cap) with the base LDE factor and round-0 fold unchanged. The later oracles' \
              LDE factors are cut because the Johnson-bound fold term grows with n / ρ^1.5 and must stay \
-             within a 24-bit folding grind."
+             within a 24-bit folding grind.",
+            p = self.base_queries_pow_bits,
+            q = self.base_num_queries,
         );
         out
     }
@@ -373,6 +380,19 @@ const BASE_UDR: RoundAnalysis = RoundAnalysis {
              within any sane batching PoW, and the Johnson radius at rate 1/2 (0.28–0.48 bits/query) \
              is below the unique-decoding one (0.415) anyway; 176 queries at 27 PoW bits (no round of this \
              mode grinds more than 27) put the base query term at exactly 100 bits (no folding PoW needed: the unique-decoding fold term is \
+             above 100 by itself)",
+};
+
+/// [`BASE_UDR`] under the production schedules' 26-bit grind cap: three more
+/// queries for one bit less of query PoW.
+const BASE_UDR_26: RoundAnalysis = RoundAnalysis {
+    regime: ProximityRegime::UniqueDecoding,
+    bits_per_query: 0.415,
+    unique_decoding_queries: 179,
+    folding_pow_bits_per_step: &[],
+    reason: "unique decoding, the only regime certifiable at rate 1/2 (as for the 27-bit base round); \
+             179 queries at 26 PoW bits (no round of the production schedules grinds more than 26) put \
+             the base query term at 100 bits (no folding PoW needed: the unique-decoding fold term is \
              above 100 by itself)",
 };
 
@@ -431,16 +451,16 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         max_committed_polys: 128,
         certified_bits: 100,
         binding_term: "OOD(i=1)",
-        base_num_queries: 176,
-        base_queries_pow_bits: 27,
-        base_analysis: BASE_UDR,
+        base_num_queries: 179,
+        base_queries_pow_bits: 26,
+        base_analysis: BASE_UDR_26,
         rounds: &[
-            round(5, 5, 31, 27, 8, jbr(5, 2.36, 77, &[22, 21, 20, 19, 18],
-                "LDE 2^5 as in the ladder (domain 2^27); rate 2^-5 is still moderate, so m = 5 (above the floor) buys 2.36 bits/query at a 22-bit folding grind — 31 queries where unique decoding would need 77; the OOD term of this largest oracle needs 8 PoW bits with a single sample")),
+            round(3, 5, 52, 26, 8, jbr(12, 1.44, 88, &[23, 22, 21, 20, 19],
+                "LDE 2^3, two steps below the fewest-query 2^5 (domain 2^25): a cheaper commit of this largest oracle for more queries; at rate 2^-3 m = 12 gives 1.44 bits/query at a 23-bit folding grind — 52 queries at 26 bits where unique decoding would need 88; the OOD term needs 8 PoW bits with a single sample")),
             round(9, 5, 18, 24, 5, jbr(3, 4.28, 74, &[24, 23, 22, 21, 20],
                 "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^9 (the ladder's) keeps the domain at 2^26 where the fold grind is 24 bits; 4.28 bits/query")),
-            round(11, 5, 14, 27, 2, jbr(3, 5.28, 74, &[24, 23, 22, 21, 20],
-                "m = 3; LDE cut from the ladder's 2^14 to 2^11 so the 2^23 domain keeps the fold grind at 24 bits; 5.28 bits/query")),
+            round(11, 5, 15, 21, 2, jbr(3, 5.28, 74, &[24, 23, 22, 21, 20],
+                "m = 3; LDE cut from the ladder's 2^14 to 2^11 so the 2^23 domain keeps the fold grind at 24 bits; 5.28 bits/query, 15 queries so that 21 bits of query PoW suffice")),
             round(13, 4, 12, 25, 0, jbr(3, JOHNSON_R13_BITS_PER_QUERY, 74, &[24, 23, 22, 21],
                 "m = 3; LDE cut from the ladder's 2^19 to 2^13 (domain 2^20) so 24 bits of fold grind suffice; 6.28 bits/query, the OOD term needs no grind")),
         ],
@@ -454,12 +474,12 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         max_committed_polys: 128,
         certified_bits: 100,
         binding_term: "OOD(i=1)",
-        base_num_queries: 176,
-        base_queries_pow_bits: 27,
-        base_analysis: BASE_UDR,
+        base_num_queries: 179,
+        base_queries_pow_bits: 26,
+        base_analysis: BASE_UDR_26,
         rounds: &[
-            round(4, 5, 39, 26, 9, jbr(8, 1.91, 80, &[24, 23, 22, 21, 20],
-                "LDE 2^4 as in the ladder (domain 2^27, the field's two-adicity cap); at rate 2^-4 the Johnson radius is close to the unique-decoding one, m = 8 keeps the fold grind of this 2^27 domain at the 24-bit cap for 1.91 bits/query — 39 queries where unique decoding would need 80; the OOD term needs 9 PoW bits")),
+            round(2, 5, 79, 26, 8, jbr(12, 0.94, 108, &[22, 21, 20, 19, 18],
+                "LDE 2^2, two steps below the fewest-query 2^4 (domain 2^25): a cheaper commit of this largest oracle for more queries; at rate 2^-2 m = 12 gives 0.94 bits/query at a 22-bit folding grind — 79 queries at 26 bits where unique decoding would need 108; the OOD term needs 8 PoW bits")),
             round(8, 5, 20, 25, 5, jbr(3, 3.78, 74, &[22, 21, 20, 19, 18],
                 "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE cut from the ladder's 2^9 to 2^8 (domain 2^26) so the fold grind is 22 bits; 3.78 bits/query")),
             round(10, 5, 16, 24, 2, jbr(3, 4.78, 74, &[22, 21, 20, 19, 18],
@@ -479,16 +499,16 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         max_committed_polys: 512,
         certified_bits: 100,
         binding_term: "OOD(i=1)",
-        base_num_queries: 176,
-        base_queries_pow_bits: 27,
-        base_analysis: BASE_UDR,
+        base_num_queries: 179,
+        base_queries_pow_bits: 26,
+        base_analysis: BASE_UDR_26,
         rounds: &[
-            round(5, 6, 31, 27, 8, jbr(5, 2.36, 77, &[22, 21, 20, 19, 18, 17],
-                "the re-committed batched polynomial at LDE 2^5 (the virtual twin's: domain 2^27, folded by 6); rate 2^-5 is still moderate, so m = 5 buys 2.36 bits/query at a 22-bit folding grind — 31 queries where unique decoding would need 77; its OOD term needs 8 PoW bits with a single sample")),
+            round(3, 6, 52, 26, 8, jbr(12, 1.44, 88, &[23, 22, 21, 20, 19, 18],
+                "the re-committed batched polynomial at LDE 2^3, two steps below the fewest-query 2^5 (domain 2^25, folded by 6): a cheaper commit for more queries; m = 12 gives 1.44 bits/query at a 23-bit folding grind — 52 queries at 26 bits where unique decoding would need 88; its OOD term needs 8 PoW bits with a single sample")),
             round(9, 5, 18, 24, 4, jbr(3, 4.28, 74, &[23, 22, 21, 20, 19],
                 "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE cut from the ladder's 2^11 to 2^9 (domain 2^25), fold grind 23 bits; 4.28 bits/query")),
-            round(11, 5, 14, 27, 1, jbr(3, 5.28, 74, &[23, 22, 21, 20, 19],
-                "m = 3; LDE cut from the ladder's 2^15 to 2^11 (domain 2^22), fold grind 23 bits; 5.28 bits/query")),
+            round(11, 5, 15, 21, 1, jbr(3, 5.28, 74, &[23, 22, 21, 20, 19],
+                "m = 3; LDE cut from the ladder's 2^15 to 2^11 (domain 2^22), fold grind 23 bits; 5.28 bits/query, 15 queries so that 21 bits of query PoW suffice")),
             round(13, 5, 12, 25, 0, jbr(3, JOHNSON_R13_BITS_PER_QUERY, 74, &[23, 22, 21, 20, 19],
                 "m = 3; LDE cut from the ladder's 2^19 to 2^13 (domain 2^19), fold grind 23 bits; 6.28 bits/query, no OOD grind")),
         ],
@@ -604,11 +624,31 @@ mod tests {
                 Some(entry.batching_pow_bits())
             );
             assert_eq!(schedule.base_round.folding_pow_bits, 0);
-            assert_eq!(schedule.base_round.num_queries, 176);
-            assert_eq!(schedule.base_round.queries_pow_bits, 27);
+            assert_eq!(schedule.base_round.num_queries, entry.base_num_queries);
+            assert_eq!(
+                schedule.base_round.queries_pow_bits,
+                entry.base_queries_pow_bits
+            );
+            let query_term = |queries: usize, analysis: &RoundAnalysis, pow_bits: u32| {
+                queries as f64 * analysis.bits_per_query + pow_bits as f64
+            };
+            assert!(
+                query_term(
+                    entry.base_num_queries,
+                    &entry.base_analysis,
+                    entry.base_queries_pow_bits
+                ) >= entry.certified_bits as f64
+            );
             for (round, certified) in schedule.internal_rounds.iter().zip(entry.rounds) {
                 assert_eq!(round.num_ood_samples, 1);
-                assert!((24..=27).contains(&round.queries_pow_bits));
+                assert!(round.queries_pow_bits <= 27);
+                assert!(
+                    query_term(
+                        round.num_queries,
+                        &certified.analysis,
+                        round.queries_pow_bits
+                    ) >= entry.certified_bits as f64
+                );
                 assert!(round.folding_pow_bits <= 24);
                 assert!(round.ood_pow_bits <= 27);
                 assert_eq!(
@@ -621,7 +661,7 @@ mod tests {
                 );
                 assert!(matches!(
                     certified.analysis.regime,
-                    ProximityRegime::JohnsonBound { m: 3..=8 }
+                    ProximityRegime::JohnsonBound { m: 3..=12 }
                 ));
             }
             // every oracle domain fits BabyBear's two-adicity
@@ -699,8 +739,19 @@ mod tests {
                 packing,
                 Some(&columns),
             );
-            assert_eq!(config.whir_schedule.base_round.num_queries, 176);
-            assert_eq!(config.whir_schedule.base_round.queries_pow_bits, 27);
+            let schedule = &config.whir_schedule;
+            assert_eq!(schedule.base_round.num_queries, e.base_num_queries);
+            assert_eq!(
+                schedule.base_round.queries_pow_bits,
+                e.base_queries_pow_bits
+            );
+            // the production schedules grind at most 26 bits anywhere
+            assert!(schedule.base_round.queries_pow_bits <= 26);
+            for round in &schedule.internal_rounds {
+                assert!(round.queries_pow_bits <= 26);
+                assert!(round.folding_pow_bits <= 26);
+                assert!(round.ood_pow_bits <= 26);
+            }
         }
     }
 

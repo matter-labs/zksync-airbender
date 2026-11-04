@@ -11,18 +11,18 @@
       "fold_log2": 1,
       "batching_pow_bits": 9,
       "folding_pow_bits": 0,
-      "num_queries": 176,
-      "queries_pow_bits": 27
+      "num_queries": 179,
+      "queries_pow_bits": 26
     },
     "internal_rounds": [
       {
-        "lde_factor_log2": 4,
+        "lde_factor_log2": 2,
         "folding_log2": 5,
-        "num_queries": 39,
+        "num_queries": 79,
         "queries_pow_bits": 26,
-        "folding_pow_bits": 24,
+        "folding_pow_bits": 22,
         "num_ood_samples": 1,
-        "ood_pow_bits": 9
+        "ood_pow_bits": 8
       },
       {
         "lde_factor_log2": 8,
