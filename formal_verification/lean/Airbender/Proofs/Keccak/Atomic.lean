@@ -71,10 +71,10 @@ theorem call_atomic_observations [Fact p.Prime] (hp : FieldCapacity.NativeWideHa
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (ordered : List (Delegation.Row p)) (after : State), ordered.Perm data.rows ∧
       GroupedSailHistory cells (fun row => row.memorySteps.map transferEvent) ordered initial after ∧
-      ∀ row ∈ ordered, ∃ events start finish, events.Perm (row.memorySteps.map transferEvent) ∧
-        SailHistory cells events start finish ∧
+      ∀ row ∈ ordered, ∃ events «start» finish, events.Perm (row.memorySteps.map transferEvent) ∧
+        SailHistory cells events «start» finish ∧
         ∀ port ∈ row.ports, ∃ cell ∈ cells, cell.addressCode = port.address.code row.assignment ∧
-          cell.read start = .ok (memoryWord (port.readCode row.assignment)) start ∧
+          cell.read «start» = .ok (memoryWord (port.readCode row.assignment)) «start» ∧
           cell.read finish = .ok (memoryWord (port.writeCode row.assignment)) finish := by
   obtain ⟨ordered, after, permutation, history, _⟩ := call_history hp inverse accepted inputs tables aligned
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega

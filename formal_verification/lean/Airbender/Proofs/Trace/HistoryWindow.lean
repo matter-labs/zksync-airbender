@@ -8,12 +8,12 @@ set_option warningAsError true
 theorem history_window {cells : List Cell} {events : List MemoryAccess}
     {before after : State} (ordered : events.Pairwise (fun a b => b.1 ≤ a.1))
     (history : SailHistory cells events before after) {low high : Nat} (bounds : low ≤ high) :
-    ∃ start finish,
+    ∃ «start» finish,
       events = (events.filter fun event => decide (high < event.1)) ++
         (events.filter fun event => decide (low < event.1 ∧ event.1 ≤ high)) ++
         (events.filter fun event => decide (event.1 ≤ low)) ∧
-      SailHistory cells (events.filter fun event => decide (event.1 ≤ low)) before start ∧
-      SailHistory cells (events.filter fun event => decide (low < event.1 ∧ event.1 ≤ high)) start finish ∧
+      SailHistory cells (events.filter fun event => decide (event.1 ≤ low)) before «start» ∧
+      SailHistory cells (events.filter fun event => decide (low < event.1 ∧ event.1 ≤ high)) «start» finish ∧
       SailHistory cells (events.filter fun event => decide (high < event.1)) finish after := by
   have outer := Delegation.Proofs.split_clock events ordered (high + 1)
   have inner := Delegation.Proofs.split_clock (events.filter fun event => decide (event.1 < high + 1))
@@ -45,8 +45,8 @@ theorem history_window {cells : List Cell} {events : List MemoryAccess}
   rw [current, older] at inner
   rw [newer, ← inner] at outer
   obtain ⟨finish, past, future⟩ := sail_history_append.mp (outer.symm ▸ history)
-  obtain ⟨start, earlier, current⟩ := sail_history_append.mp past
-  exact ⟨start, finish, by simpa only [List.append_assoc] using outer.symm, earlier, current, future⟩
+  obtain ⟨«start», earlier, current⟩ := sail_history_append.mp past
+  exact ⟨«start», finish, by simpa only [List.append_assoc] using outer.symm, earlier, current, future⟩
 
 theorem history_without_zero {cells : List Cell} {events : List MemoryAccess}
     {before after : State} (history : SailHistory cells events before after) :

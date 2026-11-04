@@ -23,9 +23,9 @@ theorem grouped_positions {rows : List α} {cells : List Cell} {before after : S
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (noZero : ∀ row ∈ rows, ∀ event ∈ accesses row, event.2.1 ≠ (Cell.register 0).addressCode)
     (initial : ∀ cell ∈ cells, ∃ value, cell.read before = .ok value before) :
-    ∀ row ∈ rows, ∃ events start finish, events.Perm (accesses row) ∧
-      SailHistory cells events start finish ∧
-      ∀ cell ∈ cells, ∃ value, cell.read start = .ok value start := by
+    ∀ row ∈ rows, ∃ events «start» finish, events.Perm (accesses row) ∧
+      SailHistory cells events «start» finish ∧
+      ∀ cell ∈ cells, ∃ value, cell.read «start» = .ok value «start» := by
   induction history with
   | nil => intro row member; cases member
   | @cons row rest before middle after events past permutation current ih =>

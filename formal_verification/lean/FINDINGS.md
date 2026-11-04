@@ -168,6 +168,19 @@ to the previous revision; no Review statement, production code or artifact
 manifest is changed. Current Lean validation and final full assurance remain
 pending.
 
+Run [41846991839](https://github.com/matter-labs/zksync-airbender/actions/runs/41846991839)
+on `5141cfccce167f536bea4b99f385a2783f295ce5` passed native and compiler checks,
+then failed at `Proofs/UnifiedReduced/SupportedUsePrefix.lean:18`: its ordinary
+`start` parameter was outside the earlier local-binding scan. The missing
+`state_prefix_matching` error later in that file follows the rejected declaration.
+The guarded build exited with code 1 after 5.76 seconds at 441.29 MiB charged
+footprint, with no owned processes left. The follow-up repair quotes all remaining
+bare `start` and `parts` code identifiers in private proofs opening the affected
+Sail namespaces, including ordinary parameters and references. All seventeen
+changed files are identical after removing identifier quotes. Review statements,
+production behavior and qualified manifests are unchanged. CI must validate the
+repair; no completed full assurance result is claimed.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

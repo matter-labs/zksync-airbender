@@ -33,13 +33,13 @@ private theorem permutation_of_chain (states : Fin 650 → LaneState)
       rw [Nat.mod_eq_of_lt bound]
       omega
     simpa only [forward, startIndex, endIndex, callIndex] using transitions ⟨648 - n, by omega⟩
-  have interval (start count : Nat) (bound : start + count ≤ 649) :
-      forward (start + count) = Fin.foldl count
-        (fun state i => microStep ⟨start + i.val, by omega⟩ state) (forward start) := by
+  have interval («start» count : Nat) (bound : «start» + count ≤ 649) :
+      forward («start» + count) = Fin.foldl count
+        (fun state i => microStep ⟨«start» + i.val, by omega⟩ state) (forward «start») := by
     have result := interval_fold forward (fun n state => microStep (Fin.ofNat 649 n) state)
-      start count (fun i short => advances (start + i) (by omega))
-    have steps : (fun state (i : Fin count) => microStep (Fin.ofNat 649 (start + i.val)) state) =
-        (fun state (i : Fin count) => microStep ⟨start + i.val, by omega⟩ state) := by
+      «start» count (fun i short => advances («start» + i) (by omega))
+    have steps : (fun state (i : Fin count) => microStep (Fin.ofNat 649 («start» + i.val)) state) =
+        (fun state (i : Fin count) => microStep ⟨«start» + i.val, by omega⟩ state) := by
       funext state i
       congr 1
       apply Fin.ext

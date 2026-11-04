@@ -91,6 +91,18 @@ are now quoted. Normalizing identifier quotes gives exactly the previous source;
 Review files, theorem names, production code and qualified artifact manifests
 are unchanged. This syntax repair still requires Lean CI validation.
 
+Run [41846991839](https://github.com/matter-labs/zksync-airbender/actions/runs/41846991839)
+on `5141cfccce167f536bea4b99f385a2783f295ce5` passed native reconstruction,
+compiler capture and bootstrap, then rejected an ordinary `start` parameter in
+`Proofs/UnifiedReduced/SupportedUsePrefix.lean:18`. The earlier binding-pattern
+scan missed ordinary parameters. The repair now quotes every remaining bare
+`start` and `parts` code identifier in private proofs opening the affected Sail
+namespaces: 130 occurrences across seventeen files. Quote-normalized source is
+identical; Review statements and qualified artifacts are unchanged. The guarded
+failure took 5.76 seconds at 441.29 MiB charged footprint. Diagnostic upload ran
+before cache saving as intended. This wider syntax repair requires Lean CI;
+the environment/axiom audit and final full assurance remain pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

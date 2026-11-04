@@ -88,10 +88,10 @@ theorem grouped_atomic_observations [Fact p.Prime] (hp : FieldCapacity.ClockNoWr
     {ordered : List (Row p)} (permutation : ordered.Perm data.rows)
     (history : GroupedSailHistory cells (fun row => row.memorySteps.map transferEvent) ordered initial after)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
-    ∀ row ∈ ordered, ∃ events start finish, events.Perm (row.memorySteps.map transferEvent) ∧
-      SailHistory cells events start finish ∧
+    ∀ row ∈ ordered, ∃ events «start» finish, events.Perm (row.memorySteps.map transferEvent) ∧
+      SailHistory cells events «start» finish ∧
       ∀ port ∈ row.ports, ∃ cell ∈ cells, cell.addressCode = port.address.code row.assignment ∧
-        cell.read start = .ok (memoryWord (port.readCode row.assignment)) start ∧
+        cell.read «start» = .ok (memoryWord (port.readCode row.assignment)) «start» ∧
         cell.read finish = .ok (memoryWord (port.writeCode row.assignment)) finish := by
   have noZero : ∀ row ∈ ordered, ∀ event ∈ row.memorySteps.map transferEvent,
       event.2.1 ≠ (Cell.register 0).addressCode := by
@@ -105,8 +105,8 @@ theorem grouped_atomic_observations [Fact p.Prime] (hp : FieldCapacity.ClockNoWr
     exact boundary_readable inputs
   have positions := grouped_positions history aligned noZero readable
   intro row rowMember
-  obtain ⟨events, start, finish, eventsPerm, current, readable⟩ := positions row rowMember
-  exact ⟨events, start, finish, eventsPerm, current,
+  obtain ⟨events, «start», finish, eventsPerm, current, readable⟩ := positions row rowMember
+  exact ⟨events, «start», finish, eventsPerm, current,
     row_atomic_observations hp accepted inputs (permutation.mem_iff.mp rowMember) current eventsPerm aligned readable⟩
 
 end Airbender.Delegation.Proofs

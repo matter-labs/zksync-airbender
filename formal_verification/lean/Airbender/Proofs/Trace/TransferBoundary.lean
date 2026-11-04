@@ -83,19 +83,19 @@ theorem split_native_sail_window_at_boundary {data : Data p} (facts : Facts data
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (zero : ∀ edge ∈ data.steps, edge.1.address = (Cell.register 0).addressCode →
       memoryWord edge.2.value = 0) (lower upper : Nat) :
-    ∃ (start finish : List (MemoryToken p)) (earlierEvents spanEvents : List MemoryAccess)
+    ∃ («start» finish : List (MemoryToken p)) (earlierEvents spanEvents : List MemoryAccess)
       (atStart atFinish : State),
-      Facts ⟨data.initial, start, beforeSteps data lower⟩ ∧
-      Facts ⟨start, finish, windowSteps data lower upper⟩ ∧
+      Facts ⟨data.initial, «start», beforeSteps data lower⟩ ∧
+      Facts ⟨«start», finish, windowSteps data lower upper⟩ ∧
       earlierEvents.Perm ((beforeSteps data lower).map transferEvent) ∧
       spanEvents.Perm ((windowSteps data lower upper).map transferEvent) ∧
       SailHistory cells earlierEvents before atStart ∧ SailHistory cells spanEvents atStart atFinish ∧
-      NativeInputs ⟨start, finish, windowSteps data lower upper⟩ atStart cells ∧
+      NativeInputs ⟨«start», finish, windowSteps data lower upper⟩ atStart cells ∧
       NativeInputs ⟨finish, data.terminal,
-        afterSteps ⟨start, data.terminal, afterSteps data lower⟩ upper⟩ atFinish cells := by
-  obtain ⟨start, earlierEvents, atStart, earlier, later, firstPerm, _, firstHistory, startInputs⟩ :=
+        afterSteps ⟨«start», data.terminal, afterSteps data lower⟩ upper⟩ atFinish cells := by
+  obtain ⟨«start», earlierEvents, atStart, earlier, later, firstPerm, _, firstHistory, startInputs⟩ :=
     split_native_sail_state facts inputs rules writes aligned zero lower
-  have suffixRules : WriteRules ⟨start, data.terminal, afterSteps data lower⟩ := by
+  have suffixRules : WriteRules ⟨«start», data.terminal, afterSteps data lower⟩ := by
     intro edge member reads
     apply rules edge (List.mem_of_mem_filter member)
     intro previous present beforeEdge
@@ -108,7 +108,7 @@ theorem split_native_sail_window_at_boundary {data : Data p} (facts : Facts data
     split_native_sail_state later startInputs suffixRules
       (fun edge member => writes edge (List.mem_of_mem_filter member)) aligned
       (fun edge member => zero edge (List.mem_of_mem_filter member)) upper
-  exact ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, earlier, spanFacts,
+  exact ⟨«start», finish, earlierEvents, spanEvents, atStart, atFinish, earlier, spanFacts,
     firstPerm, secondPerm, firstHistory, secondHistory,
     ⟨⟨startInputs.addresses, startInputs.distinct, startInputs.reads⟩,
       startInputs.words, startInputs.clocks⟩, finishInputs⟩
@@ -120,16 +120,16 @@ theorem split_native_sail_window {data : Data p} (facts : Facts data)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (zero : ∀ edge ∈ data.steps, edge.1.address = (Cell.register 0).addressCode →
       memoryWord edge.2.value = 0) (lower upper : Nat) :
-    ∃ (start finish : List (MemoryToken p)) (earlierEvents spanEvents : List MemoryAccess)
+    ∃ («start» finish : List (MemoryToken p)) (earlierEvents spanEvents : List MemoryAccess)
       (atStart atFinish : State),
-      Facts ⟨data.initial, start, beforeSteps data lower⟩ ∧
-      Facts ⟨start, finish, windowSteps data lower upper⟩ ∧
+      Facts ⟨data.initial, «start», beforeSteps data lower⟩ ∧
+      Facts ⟨«start», finish, windowSteps data lower upper⟩ ∧
       earlierEvents.Perm ((beforeSteps data lower).map transferEvent) ∧
       spanEvents.Perm ((windowSteps data lower upper).map transferEvent) ∧
       SailHistory cells earlierEvents before atStart ∧ SailHistory cells spanEvents atStart atFinish ∧
-      NativeInputs ⟨start, finish, windowSteps data lower upper⟩ atStart cells ∧
+      NativeInputs ⟨«start», finish, windowSteps data lower upper⟩ atStart cells ∧
       NativeInputs ⟨finish, data.terminal,
-        afterSteps ⟨start, data.terminal, afterSteps data lower⟩ upper⟩ atFinish cells :=
+        afterSteps ⟨«start», data.terminal, afterSteps data lower⟩ upper⟩ atFinish cells :=
   split_native_sail_window_at_boundary facts inputs.toNativeInputs rules writes aligned zero lower upper
 
 end Airbender.Trace.Proofs.Transfer

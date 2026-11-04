@@ -31,7 +31,7 @@ private theorem control_edges [Fact p.Prime] {data : Delegation.MemoryData p}
 
 private theorem forced_path [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
     {setup : Table (ZMod p) (fields 8)} {path : List (MemoryToken p)} {source : MemoryToken p}
-    (size : path.length = 650) (start : path.head? = some source) (startWord : source.word = ⟨0, 0⟩)
+    (size : path.length = 650) («start» : path.head? = some source) (startWord : source.word = ⟨0, 0⟩)
     (steps : ∀ edge ∈ path.zip path.tail, ∃ w : Nat → ZMod p,
       FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup) ∧ w 0 = 1 ∧
       edge.1.word = Word.mk (w 3).val (w 4).val ∧ edge.2.word = Word.mk (w 5).val (w 6).val) :
@@ -45,7 +45,7 @@ private theorem forced_path [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
       intro bound
       have first : (path[0]'(by omega)) = source := by
         have head : path[0]? = some source := by
-          simpa only [List.head?_eq_getElem?] using start
+          simpa only [List.head?_eq_getElem?] using «start»
         simpa [List.getElem?_eq_getElem, size] using head
       rw [first, startWord]
       simp [schedule_start]

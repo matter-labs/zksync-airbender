@@ -15,31 +15,31 @@ set_option maxHeartbeats 2400000
 one of its actual edges. The frontier is that edge's exact input state; no PC,
 reference execution or desired boundary is supplied independently. -/
 theorem state_prefix_matching {S R : Type} [DecidableEq S]
-    (rank : S → Nat) (start finish : R → S)
+    (rank : S → Nat) («start» finish : R → S)
     {initial terminal : S} {rows : List R}
-    (matched : (initial :: rows.map finish).Perm (terminal :: rows.map start))
-    (advance : ∀ row ∈ rows, rank (start row) < rank (finish row))
+    (matched : (initial :: rows.map finish).Perm (terminal :: rows.map «start»))
+    (advance : ∀ row ∈ rows, rank («start» row) < rank (finish row))
     {next : R} (member : next ∈ rows) :
-    (initial :: (rows.filter fun row => decide (rank (start row) < rank (start next))).map finish).Perm
-      (start next :: (rows.filter fun row => decide (rank (start row) < rank (start next))).map start) := by
+    (initial :: (rows.filter fun row => decide (rank («start» row) < rank («start» next))).map finish).Perm
+      («start» next :: (rows.filter fun row => decide (rank («start» row) < rank («start» next))).map «start») := by
   classical
-  let past := rows.filter fun row => decide (rank (start row) < rank (start next))
-  let future := rows.filter fun row => !decide (rank (start row) < rank (start next))
+  let past := rows.filter fun row => decide (rank («start» row) < rank («start» next))
+  let future := rows.filter fun row => !decide (rank («start» row) < rank («start» next))
   have partition : (past ++ future).Perm rows := List.filter_append_perm _ _
-  have covered : List.Subperm (past.map start) (initial :: past.map finish) := by
+  have covered : List.Subperm (past.map «start») (initial :: past.map finish) := by
     apply List.subperm_iff_count.mpr
     intro token
-    by_cases missing : token ∉ past.map start
+    by_cases missing : token ∉ past.map «start»
     · rw [List.count_eq_zero_of_not_mem missing]; exact Nat.zero_le _
     · obtain ⟨row, present, same⟩ := List.mem_map.mp (Classical.not_not.mp missing)
-      have early : rank token < rank (start next) := by
+      have early : rank token < rank («start» next) := by
         rw [← same]
         exact of_decide_eq_true (List.mem_filter.mp present).2
       have absent : token ∉ future.map finish := by
         intro included
         obtain ⟨later, included, equal⟩ := List.mem_map.mp included
         have original := (List.mem_filter.mp included).1
-        have late : ¬ rank (start later) < rank (start next) := by
+        have late : ¬ rank («start» later) < rank («start» next) := by
           intro early
           have rejected := (List.mem_filter.mp included).2
           rw [decide_eq_true early] at rejected
@@ -49,16 +49,16 @@ theorem state_prefix_matching {S R : Type} [DecidableEq S]
         omega
       have matching := matched.count_eq token
       have writes := (partition.map finish).count_eq token
-      have reads := (partition.map start).count_eq token
+      have reads := (partition.map «start»).count_eq token
       simp only [List.map_append, List.count_append, List.count_cons] at writes reads matching ⊢
       rw [List.count_eq_zero_of_not_mem absent] at writes
       omega
   obtain ⟨arranged, permuted, included⟩ := List.subperm_iff.mp covered
   obtain ⟨middle, boundary⟩ := included.exists_perm_append
-  have frontierMatching : (initial :: past.map finish).Perm (middle ++ past.map start) :=
+  have frontierMatching : (initial :: past.map finish).Perm (middle ++ past.map «start») :=
     (permuted.symm.trans boundary).trans List.perm_append_comm
-  have produced : start next ∈ initial :: past.map finish := by
-    have original : start next ∈ initial :: rows.map finish :=
+  have produced : «start» next ∈ initial :: past.map finish := by
+    have original : «start» next ∈ initial :: rows.map finish :=
       matched.mem_iff.mpr (List.mem_cons_of_mem _ (List.mem_map.mpr ⟨next, member, rfl⟩))
     rcases List.mem_cons.mp original with same | written
     · exact List.mem_cons.mpr (Or.inl same)
@@ -67,24 +67,24 @@ theorem state_prefix_matching {S R : Type} [DecidableEq S]
       rw [same] at earlier
       exact List.mem_cons_of_mem _ (List.mem_map.mpr
         ⟨row, List.mem_filter.mpr ⟨present, decide_eq_true earlier⟩, same⟩)
-  have unread : start next ∉ past.map start := by
+  have unread : «start» next ∉ past.map «start» := by
     intro included
     obtain ⟨row, present, equal⟩ := List.mem_map.mp included
     have earlier := of_decide_eq_true (List.mem_filter.mp present).2
     rw [equal] at earlier
     omega
-  have frontier : start next ∈ middle := by
+  have frontier : «start» next ∈ middle := by
     exact (List.mem_append.mp (frontierMatching.mem_iff.mp produced)).resolve_right unread
   have length := frontierMatching.length_eq
   simp only [List.length_cons, List.length_map, List.length_append] at length
   have one : middle.length = 1 := by omega
-  have same : middle = [start next] := by
+  have same : middle = [«start» next] := by
     cases middle with
     | nil => simp at one
     | cons first rest =>
       have empty : rest = [] := List.length_eq_zero_iff.mp (by simp_all)
       subst rest
-      have same : start next = first := by simpa only [List.mem_singleton] using frontier
+      have same : «start» next = first := by simpa only [List.mem_singleton] using frontier
       rw [same]
   simpa only [same, List.singleton_append] using frontierMatching
 

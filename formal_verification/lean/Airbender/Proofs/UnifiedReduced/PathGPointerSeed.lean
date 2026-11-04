@@ -69,12 +69,12 @@ theorem path_g_index_zero_pointer_separation
 
 private theorem path_g_seed_control
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry} {initial : State}
-    {ca oa : List (BitVec 32)} {cells : List Cell} {start : Nat} {reduced : Bool}
+    {ca oa : List (BitVec 32)} {cells : List Cell} {«start» : Nat} {reduced : Bool}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
-    (scope : PathCallerPreparation data (start + 4) .blakeG)
-    (flow : PathControllerDataflow data program start 12 (Blake2G.controlAt reduced 0).toBitVec)
-    (aligned : start % 4 = 0)
-    {worker : Delegation.Row babyBearModulus} (member : worker ∈ data.workers.windowRows start (start + 4)) :
+    (scope : PathCallerPreparation data («start» + 4) .blakeG)
+    (flow : PathControllerDataflow data program «start» 12 (Blake2G.controlAt reduced 0).toBitVec)
+    (aligned : «start» % 4 = 0)
+    {worker : Delegation.Row babyBearModulus} (member : worker ∈ data.workers.windowRows «start» («start» + 4)) :
     worker.family = .blakeG ∧
       (readToken worker.assignment Blake2G.importedConstraintsMemoryPorts[8]).word = Blake2G.controlAt reduced 0 := by
   have unique : (data.machine.initialMemory.map MemoryToken.address).Nodup := by
@@ -132,16 +132,16 @@ theorem path_g_pointer_seed_binding
       change kind = .blakeG at family
       subst kind
       exact path_g_index_zero_pointer_separation accepted inputs (List.mem_of_mem_filter member) control
-  | @afterSeed start target reduced call flow stateFrames messageFrames =>
-    have startAligned : start % 4 = 0 := by have := stateFrames.lowerAligned; omega
+  | @afterSeed «start» target reduced call flow stateFrames messageFrames =>
+    have startAligned : «start» % 4 = 0 := by have := stateFrames.lowerAligned; omega
     obtain ⟨floor, window⟩ := path_caller_window (by decide) (by decide) accepted inputs.publicProgram
       inputs.ordinaryProgram inputs.initialization call (by omega)
-    have count : (data.workers.windowRows start (start + 4)).length = 1 := by
-      have same : (start + 4) - 4 = start := by omega
+    have count : (data.workers.windowRows «start» («start» + 4)).length = 1 := by
+      have same : («start» + 4) - 4 = «start» := by omega
       rw [same] at window
       rw [← window.workerCount, window.machineCount]
       omega
-    have notEmpty : data.workers.windowRows start (start + 4) ≠ [] := by
+    have notEmpty : data.workers.windowRows «start» («start» + 4) ≠ [] := by
       intro empty
       rw [empty] at count
       simp at count
@@ -160,7 +160,7 @@ theorem path_g_pointer_seed_binding
         change kind = .blakeG at firstFamily
         subst kind
         exact path_g_index_zero_pointer_separation accepted inputs (List.mem_of_mem_filter firstMember) firstControl
-    have transport (register : BitVec 5) (frames : PathRegisterGapFrames data program (start + 4) target register)
+    have transport (register : BitVec 5) (frames : PathRegisterGapFrames data program («start» + 4) target register)
         (nonzero : register ≠ 0) (notControl : register ≠ 12) (port : MemoryPort)
         (firstPort : port ∈ first.ports) (targetPort : port ∈ worker.ports)
         (firstAddress : port.address.code first.assignment = (Cell.register register).addressCode)
@@ -169,10 +169,10 @@ theorem path_g_pointer_seed_binding
         (readToken worker.assignment port).word = (readToken first.assignment port).word := by
       have extended := path_extend_frames_caller frames scope notControl
       have included : (readToken worker.assignment port, worker.writeToken port) ∈
-          data.windowSteps (start + 4) (target + 4) := by
+          data.windowSteps («start» + 4) (target + 4) := by
         have range := of_decide_eq_true (List.mem_filter.mp member).2
         have lower := frames.ordered
-        have native : worker ∈ data.workers.windowRows (start + 4) (target + 4) :=
+        have native : worker ∈ data.workers.windowRows («start» + 4) (target + 4) :=
           List.mem_filter.mpr ⟨List.mem_of_mem_filter member, decide_eq_true (by omega)⟩
         exact List.mem_append.mpr (Or.inr (List.mem_flatMap.mpr
           ⟨worker, native, List.mem_map.mpr ⟨port, by simpa using targetPort, rfl⟩⟩))

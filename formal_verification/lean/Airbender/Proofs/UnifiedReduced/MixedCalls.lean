@@ -266,7 +266,7 @@ theorem mixed_worker_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p 
     simp only [time event present, Function.comp_def]
   rw [constant] at keyUnique
   have distinct : (current.map fun event => event.2.1).Nodup := keyUnique.of_map _
-  obtain ⟨start, finish, split, past, call, newer⟩ := Delegation.Proofs.clock_slice ordered history (workerClock worker)
+  obtain ⟨«start», finish, split, past, call, newer⟩ := Delegation.Proofs.clock_slice ordered history (workerClock worker)
   have readable := history_cells_readable past inputs.aligned (by
     intro cell present
     obtain ⟨_, _, value, read, _⟩ := image_cell_source inputs.initialization cell present
@@ -278,7 +278,7 @@ theorem mixed_worker_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p 
     exact Delegation.Proofs.port_not_zero worker (by simpa using portMember)
   have observations := Delegation.Proofs.atomic_observations call inputs.aligned noZero readable distinct
   refine ⟨events.filter (fun event => decide (event.1 < workerClock worker)), current,
-    events.filter (fun event => decide (workerClock worker < event.1)), start, finish,
+    events.filter (fun event => decide (workerClock worker < event.1)), «start», finish,
     split, grouped, past, call, newer, ?_⟩
   intro port present
   have included : transferEvent (readToken worker.assignment port, worker.writeToken port) ∈ current := by

@@ -11,7 +11,7 @@ theorem compose_rebased_cuts_with_count
     {path : List ((Nat × BitVec 32) × Nat)}
     {first last : (Nat × BitVec 32) × Nat} {before after : State}
     (head : path.head? = some first) (endPoint : path.getLast? = some last)
-    (start : CutState cells events initial first.1.1 before)
+    («start» : CutState cells events initial first.1.1 before)
     (finish : CutState cells events initial last.1.1 after)
     (transitions : ∀ edge ∈ path.zip path.tail, ∃ one two,
       CutState cells events initial edge.1.1.1 one ∧
@@ -29,12 +29,12 @@ theorem compose_rebased_cuts_with_count
     | nil =>
       have same : a = last := by simpa using endPoint
       subst last
-      have same := sail_history_deterministic start finish
+      have same := sail_history_deterministic «start» finish
       subst after
       exact .refl
     | cons b rest =>
       obtain ⟨one, two, past, current, transition⟩ := transitions (a, b) (by simp)
-      have same := sail_history_deterministic start past
+      have same := sail_history_deterministic «start» past
       subst one
       exact (Relation.ReflTransGen.single transition).trans
         (ih rfl (by simpa using endPoint) current (fun edge member => transitions edge
@@ -46,7 +46,7 @@ theorem compose_cuts_with_count {step : State × Nat → State × Nat → Prop}
     {path : List ((Nat × BitVec 32) × Nat)} {first last : (Nat × BitVec 32) × Nat}
     (head : path.head? = some first) (endPoint : path.getLast? = some last)
     (pc : run (SailRV32.Functions.get_arch_pc ()) initial = .ok first.1.2 initial)
-    (start : CutState cells events initial first.1.1 initial)
+    («start» : CutState cells events initial first.1.1 initial)
     (finish : CutState cells events initial last.1.1 after)
     (transitions : ∀ edge ∈ path.zip path.tail, ∃ one two,
       CutState cells events initial edge.1.1.1 one ∧
@@ -66,11 +66,11 @@ theorem compose_cuts_with_count {step : State × Nat → State × Nat → Prop}
     | nil =>
       have same : a = last := by simpa using endPoint
       subst last
-      have same := sail_history_deterministic start finish
+      have same := sail_history_deterministic «start» finish
       exact ⟨initial, .refl, Or.inl ⟨same, rfl⟩⟩
     | cons b rest =>
       obtain ⟨one, two, past, current, _, transition⟩ := transitions (a, b) (by simp)
-      have same := sail_history_deterministic start past
+      have same := sail_history_deterministic «start» past
       subst one
       refine ⟨retiredState after last.1.2,
         (Relation.ReflTransGen.single (transition pc)).trans ?_, Or.inr rfl⟩

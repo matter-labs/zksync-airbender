@@ -48,12 +48,12 @@ theorem grouped_history {rows : List α} {events : List MemoryAccess}
 theorem clock_slice {cells : List Cell} {events : List MemoryAccess}
     {before after : State} (ordered : events.Pairwise (fun a b => b.1 ≤ a.1))
     (history : SailHistory cells events before after) (clock : Nat) :
-    ∃ start finish,
+    ∃ «start» finish,
       events = (events.filter fun event => decide (clock < event.1)) ++
         (events.filter fun event => decide (event.1 = clock)) ++
         (events.filter fun event => decide (event.1 < clock)) ∧
-      SailHistory cells (events.filter fun event => decide (event.1 < clock)) before start ∧
-      SailHistory cells (events.filter fun event => decide (event.1 = clock)) start finish ∧
+      SailHistory cells (events.filter fun event => decide (event.1 < clock)) before «start» ∧
+      SailHistory cells (events.filter fun event => decide (event.1 = clock)) «start» finish ∧
       SailHistory cells (events.filter fun event => decide (clock < event.1)) finish after := by
   have outer := split_clock events ordered (clock + 1)
   have inner := split_clock (events.filter fun event => decide (event.1 < clock + 1))
@@ -83,8 +83,8 @@ theorem clock_slice {cells : List Cell} {events : List MemoryAccess}
   rw [equal, old] at inner
   rw [recent, ← inner] at outer
   obtain ⟨finish, earlier, newer⟩ := sail_history_append.mp (outer.symm ▸ history)
-  obtain ⟨start, past, current⟩ := sail_history_append.mp earlier
-  exact ⟨start, finish, by simpa only [List.append_assoc] using outer.symm, past, current, newer⟩
+  obtain ⟨«start», past, current⟩ := sail_history_append.mp earlier
+  exact ⟨«start», finish, by simpa only [List.append_assoc] using outer.symm, past, current, newer⟩
 
 theorem ungrouped_history {rows : List α} {cells : List Cell} {accesses : α → List MemoryAccess}
     {before after : State} (history : GroupedSailHistory cells accesses rows before after) :

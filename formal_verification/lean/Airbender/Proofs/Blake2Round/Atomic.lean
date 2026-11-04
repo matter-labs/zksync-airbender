@@ -17,10 +17,10 @@ theorem call_atomic_observations [Fact p.Prime] (hp : FieldCapacity.NativeHashCa
       GroupedSailHistory cells (fun row => row.memorySteps.map transferEvent) ordered initial after ∧
       (∀ row ∈ data.rows, ∃ round, Memory.RoundMask row.assignment round ∧
         Row.spec (Native.input round row.assignment) (Native.output row.assignment)) ∧
-      (∀ row ∈ ordered, ∃ events start finish, events.Perm (row.memorySteps.map transferEvent) ∧
-        SailHistory cells events start finish ∧
+      (∀ row ∈ ordered, ∃ events «start» finish, events.Perm (row.memorySteps.map transferEvent) ∧
+        SailHistory cells events «start» finish ∧
         ∀ port ∈ row.ports, ∃ cell ∈ cells, cell.addressCode = port.address.code row.assignment ∧
-          cell.read start = .ok (memoryWord (port.readCode row.assignment)) start ∧
+          cell.read «start» = .ok (memoryWord (port.readCode row.assignment)) «start» ∧
           cell.read finish = .ok (memoryWord (port.writeCode row.assignment)) finish) ∧
       ∀ token ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = token.address ∧
         cell.read after = .ok (memoryWord token.value) after := by
