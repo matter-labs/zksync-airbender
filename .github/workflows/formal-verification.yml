@@ -424,7 +424,8 @@ jobs:
           # Exercise concrete timestamp witnesses before traversing the full project.
           fv_stage delegation-fixtures 10800 python3 scripts/check_lean.py --guard scripts/bounded_fv.py \
             --output "$FV_ROOT/fixture-lean" --module Tests.BigintMemory \
-            --module Tests.DelegationTimestamps --module Tests.DynamicCopyLoopNative
+            --module Tests.DelegationTimestamps --module Tests.DynamicCopyLoopNative \
+            --module Tests.PathGLoopNative
           fv_stage lean-verification 54000 python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean"
       - name: Generated source freshness
         timeout-minutes: 130

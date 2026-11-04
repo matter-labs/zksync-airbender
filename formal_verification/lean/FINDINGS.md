@@ -198,6 +198,24 @@ source traversal, using the existing guarded frontend and unchanged limits.
 Review statements, production functions and qualified artifacts are unchanged.
 The corrected fixtures still require Lean CI validation.
 
+Run [41877076050](https://github.com/matter-labs/zksync-airbender/actions/runs/41877076050)
+on `0400e0f36` verified `Tests.BigintMemory` (31.77 seconds) and
+`Tests.DelegationTimestamps` (17.44 seconds). Its early fixture phase then rejected
+`Tests.DynamicCopyLoopNative`: six CPU rows failed imported equations, followed
+by pooled-lookup and timestamp failures. The handwritten auxiliary witness used
+obsolete column roles: the multiplication intermediate belongs at 78, branch
+selection at 79, ROM residue at 80, pooled slots at 82–121, PC carry at 122 and
+timestamp borrows at 123–125. Both the COPY and Path-G fixtures now use those
+native roles and the exact current pooled definitions. No constraint or lookup
+was removed. A lightweight audit parses the corrected COPY assignment clauses
+and checks all sixteen candidate rows against every native equation, every
+native range/timestamp expression and all eighty complete pooled queries against
+the retained setup JSON. This is supplementary evidence; Lean CI remains required.
+The failing leaf took 40.09 seconds at 732.07 MiB charged footprint; the early
+phase exposed it after 161.65 seconds. CI also frontloads the Path-G native
+acceptance module to exercise the other affected fixture. Review statements,
+production functions, source artifacts and resource/trust limits are unchanged.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

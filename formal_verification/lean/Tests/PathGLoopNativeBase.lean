@@ -143,7 +143,7 @@ def machineAssignment (variant : Variant) (index : Fin 228) (column : Nat) : ZMo
   let saved := if isBranch index then source0 variant index else code.pc.toNat + 4
   if column = 0 then code.pc.toNat
   else if column = 2 then machineClock index
-  else if column = 4 ∨ column = 130 ∨ column = 131 ∨ column = 132 ∨ column = 133 then 1
+  else if column = 4 ∨ column = 123 ∨ column = 124 ∨ column = 125 then 1
   else if column = 5 then fields.rs1.toNat
   else if column = 6 then if isCaller index then 0x7c8 else fields.rs2.toNat
   else if column = 7 then fields.rd.toNat
@@ -172,23 +172,20 @@ def machineAssignment (variant : Variant) (index : Fin 228) (column : Nat) : ZMo
   else if column = 57 then if isStore variant index then (Word.ofBitVec (storeAddress variant)).lo
     else if isBranch index && !taken then 1 else 0
   else if column = 58 then if isStore variant index then 512 else 0
-  else if column = 59 ∨ column = 82 ∨ column = 112 then if taken then 1 else 0
-  else if column = 78 then
+  else if column = 59 ∨ column = 79 ∨ column = 106 then if taken then 1 else 0
+  else if column = 64 ∨ column = 114 ∨ column = 116 then if family2 then nextPC index else 0
+  else if column = 74 then
     if isStore variant index then ((Word.ofBitVec (storeAddress variant)).lo / 4 : Nat)
     else if family2 then saved else 0
-  else if column = 80 then (source0 variant index : ZMod babyBearModulus) * source1 variant index * 943718400
-  else if column = 81 ∨ column = 120 ∨ column = 122 then if family2 then nextPC index else 0
-  else if column = 83 then if (rowCodeIndex index).val = 7 then 1 else 0
-  else if column = 85 then if family2 && decide ((rowCodeIndex index).val ≠ 7) then 1 else 0
-  else if column = 86 then if isStore variant index then 448 else 0
-  else if column = 88 then if family2 then 1 else 0
-  else if column = 89 then if family2 then saved else 0
-  else if column = 90 then if isBranch index && !taken then 1 else 0
-  else if column = 92 ∨ column = 101 then if family2 then 5 else 0
-  else if column = 110 then if family2 then 51 else 0
-  else if column = 111 then if isBranch index then if taken then 16 else 24 else 0
-  else if column = 119 then if family2 then 2 else 0
-  else if column = 129 then if family2 then 0 else 1
+  else if column = 78 then (source0 variant index : ZMod babyBearModulus) * source1 variant index * 943718400
+  else if column = 80 then if isStore variant index then 448 else 0
+  else if column = 82 then if family2 then 1 else 0
+  else if column = 83 then if family2 then saved else 0
+  else if column = 84 then if isBranch index && !taken then 1 else 0
+  else if column = 86 ∨ column = 95 then if family2 then 5 else 0
+  else if column = 104 then if family2 then 51 else 0
+  else if column = 105 then if isBranch index then if taken then 16 else 24 else 0
+  else if column = 113 then if family2 then 2 else 0
   else 0
 
 def workerReadStamp (variant : Variant) (index : Fin 56) (port : Fin 9) : Nat :=

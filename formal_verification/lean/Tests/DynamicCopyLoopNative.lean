@@ -92,7 +92,7 @@ def machineAssignment (index : Fin 16) (column : Nat) : ZMod babyBearModulus :=
   let fields := metadata index
   if column = 0 then row.pc
   else if column = 2 then row.clock
-  else if column = 4 || column = 130 || column = 131 || column = 132 || column = 133 then 1
+  else if column = 4 || column = 123 || column = 124 || column = 125 then 1
   else if column = 5 then fields.rs1.toNat
   else if column = 6 then if index.val = 7 || index.val = 11 then 0x7ca else fields.rs2.toNat
   else if column = 7 then fields.rd.toNat
@@ -120,21 +120,18 @@ def machineAssignment (index : Fin 16) (column : Nat) : ZMod babyBearModulus :=
   else if column = 54 || column = 55 then if branchTaken index then 1 else 0
   else if column = 57 then if index.val = 4 then 32 else if index.val = 13 then 1 else 0
   else if column = 58 then if index.val = 4 then 512 else 0
-  else if column = 59 || column = 82 || column = 112 then if branchTaken index then 1 else 0
-  else if column = 78 then if index.val = 4 then 8 else if family2 index then saved index else 0
-  else if column = 80 then (row.source0 : ZMod babyBearModulus) * row.source1 * 943718400
-  else if column = 81 || column = 120 || column = 122 then if family2 index then row.next else 0
-  else if column = 83 then if index.val = 14 then 1 else 0
-  else if column = 85 then if family2 index && index.val != 14 then 1 else 0
-  else if column = 86 then if index.val = 4 then 448 else 0
-  else if column = 88 then if family2 index then 1 else 0
-  else if column = 89 then if family2 index then saved index else 0
-  else if column = 90 then if index.val = 13 then 1 else 0
-  else if column = 92 || column = 101 then if family2 index then 5 else 0
-  else if column = 110 then if family2 index then 51 else 0
-  else if column = 111 then if index.val = 9 then 16 else if index.val = 13 then 24 else 0
-  else if column = 119 then if family2 index then 2 else 0
-  else if column = 129 then if family2 index then 0 else 1
+  else if column = 59 || column = 79 || column = 106 then if branchTaken index then 1 else 0
+  else if column = 64 || column = 114 || column = 116 then if family2 index then row.next else 0
+  else if column = 74 then if index.val = 4 then 8 else if family2 index then saved index else 0
+  else if column = 78 then (row.source0 : ZMod babyBearModulus) * row.source1 * 943718400
+  else if column = 80 then if index.val = 4 then 448 else 0
+  else if column = 82 then if family2 index then 1 else 0
+  else if column = 83 then if family2 index then saved index else 0
+  else if column = 84 then if index.val = 13 then 1 else 0
+  else if column = 86 || column = 95 then if family2 index then 5 else 0
+  else if column = 104 then if family2 index then 51 else 0
+  else if column = 105 then if index.val = 9 then 16 else if index.val = 13 then 24 else 0
+  else if column = 113 then if family2 index then 2 else 0
   else 0
 
 def machineRows : List (Row babyBearModulus UnifiedFamily) :=

@@ -115,6 +115,19 @@ before the complete source/runtime traversal. Review statements, production code
 artifact manifests and all resource/trust limits are unchanged. Current fixture
 validation, the environment/axiom audit and final full assurance remain pending.
 
+Run [41877076050](https://github.com/matter-labs/zksync-airbender/actions/runs/41877076050)
+on `0400e0f36` passed the corrected `BigintMemory` and `DelegationTimestamps`
+modules. The early fixture phase then found obsolete CPU auxiliary-column
+assignments in `DynamicCopyLoopNative`: six equation checks and subsequent
+lookup/clock checks failed. The COPY and Path-G candidate assignments are corrected
+against the native column names and pooled definitions; Path-G native acceptance
+is added to the early scoped check. A supplementary source-parsed audit passes
+all sixteen COPY rows' native equations, ranges, timestamps and eighty complete
+pooled queries against retained native setup data. This does not replace Lean
+validation. Review statements, production behavior, artifacts and all trust and
+resource limits are unchanged. Full source/runtime validation, the environment
+audit and final full assurance remain pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;
