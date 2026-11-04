@@ -407,6 +407,21 @@ is restored beside the materialized model import. Every assertion and proof
 body is unchanged. The leaf exited 1 in 3.90 seconds at 314.51 MiB charged
 footprint, with no owned children left; focused source work took 75.77 seconds.
 
+All five GKR smoke tests passed in run 41927650659. Standard warm
+[41929058872](https://github.com/matter-labs/zksync-airbender/actions/runs/41929058872)
+on `7c222110c` then found `Tests.NativeSetupSemantics` relying on removed
+decoder helpers and absent decoder/ROM imports. Its first error was unknown
+`Trace.NativeDecoder` at line 5. Explicit dependencies restore the actual
+packed decoder and imported ROM. The first decoder row is checked against an
+explicit NOP entry and the original pinned Sail decoder. The unsupported-PC
+test retains its full-domain rejection: the real and committed-padding PC
+column contains only 0, 4, 12 or the unsupported sentinel. The proof follows
+the actual imported dense/affine blocks rather than enumerating sixteen
+million rows or using a removed semantic shortcut. No test premise, Review
+statement, production code or kernel policy is weakened. The failed leaf
+exited 1 in 4.03 seconds at 322.81 MiB charged footprint with no owned children;
+complete-source work reached 1105.42 seconds after a 29.55-second fixture phase.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

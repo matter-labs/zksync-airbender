@@ -274,6 +274,19 @@ The leaf exited 1 in 3.90 seconds at 314.51 MiB with no owned children; the
 focused phase took 75.77 seconds. The five-test diagnosis and standard FV
 remain pending.
 
+All five GKR smoke tests subsequently passed in focused run
+[41927650659](https://github.com/matter-labs/zksync-airbender/actions/runs/41927650659)
+on `7c222110c` (111.76 seconds for selected sources). Standard warm
+[41929058872](https://github.com/matter-labs/zksync-airbender/actions/runs/41929058872)
+then passed native/compiler and early fixtures but found stale dependencies
+and removed decoder helpers in `Tests.NativeSetupSemantics`. The test now
+imports the current decoder/ROM models explicitly, checks the first imported
+instruction against original Sail decoding, and rejects PC 16 over the entire
+16,777,216-row decoder domain using the retained PC column and its sentinel
+tail. No production or Review changes. The failed leaf exited 1 in 4.03 seconds
+at 322.81 MiB with no owned children; complete-source work took 1105.42 seconds
+after 29.55 seconds of early fixtures. The new test proofs await focused CI.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;
