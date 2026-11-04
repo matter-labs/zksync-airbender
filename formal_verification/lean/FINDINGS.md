@@ -235,6 +235,17 @@ The final claims still quantify over the complete actual imported constraint
 list. Review statements, production behavior and artifact data are unchanged;
 the revised certificates still require Lean CI validation.
 
+Run [41887174299](https://github.com/matter-labs/zksync-airbender/actions/runs/41887174299)
+on `1daf1d67e` passed the repaired `PathGLoopNativeBase` module, then rejected
+the separate imported keyword `stop` in `PathGLoopCPU/Shared.lean:44:34`.
+The guarded leaf exited in 5.63 seconds at 400.25 MiB charged footprint with no
+owned processes left; the early phase took 90.1 seconds. The remaining 93 `stop`
+identifiers in fifteen Path-G certificate files are quoted, while the actual
+`column_blocks_part ... stop ...` macro keyword remains unchanged. Every source
+edit normalizes byte-identically after removing identifier quotes. The native
+120-equation coverage, Review statements, production and trust/resource policy
+are unchanged. CI must validate the remaining certificate modules.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

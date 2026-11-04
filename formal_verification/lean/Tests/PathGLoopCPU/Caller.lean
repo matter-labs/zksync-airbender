@@ -18,7 +18,7 @@ private theorem cpu_loop_caller_batch_at (first count : Nat)
     (expressions : List (Expression (ZMod babyBearModulus)))
     (checked : cpu_loop_caller_batch_check first count expressions = true)
     (variant : Variant) (index : Fin 55)
-    («start» : first ≤ index.val) (stop : index.val < first + count) :
+    («start» : first ≤ index.val) («stop» : index.val < first + count) :
     gCpuEquationsCheck (machineAssignment variant (gapRow index 0)) expressions = true := by
   have variantMember : variant ∈ ([.baseline, .scratch, .protectedMessage] : List Variant) := by
     cases variant <;> simp
@@ -41,14 +41,14 @@ private theorem cpu_loop_caller_equation_of_batch (variant : Variant) (index : F
     (setup : Table (ZMod babyBearModulus) (fields 10))
     (indexFirst indexCount first count equation : Nat)
     (indexStart : indexFirst ≤ index.val) (indexStop : index.val < indexFirst + indexCount)
-    («start» : first ≤ equation) (stop : equation < first + count) (actual : equation < 120)
+    («start» : first ≤ equation) («stop» : equation < first + count) (actual : equation < 120)
     (checked : cpu_loop_caller_batch_check indexFirst indexCount
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop first).take count) = true) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; exact actual)).eval
         (Verification.environment (machineAssignment variant (gapRow index 0))) = 0 := by
   exact g_cpu_equations_of_check (machineAssignment variant (gapRow index 0))
-    setup first count equation «start» stop actual
+    setup first count equation «start» «stop» actual
     (cpu_loop_caller_batch_at indexFirst indexCount _ checked variant index indexStart indexStop)
 
 private theorem cpu_loop_caller_checked_i000_007_e000_015 :

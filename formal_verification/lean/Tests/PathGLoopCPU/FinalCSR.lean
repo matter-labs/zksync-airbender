@@ -27,7 +27,7 @@ private theorem cpu_final_csr_checked_protectedMessage_000_015 :
 
 private theorem cpu_final_csr_000_015 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 0 ≤ equation) (stop : equation < 16) :
+    («start» : 0 ≤ equation) («stop» : equation < 16) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 227)) = 0 := by
@@ -55,7 +55,7 @@ private theorem cpu_final_csr_checked_protectedMessage_016_031 :
 
 private theorem cpu_final_csr_016_031 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 16 ≤ equation) (stop : equation < 32) :
+    («start» : 16 ≤ equation) («stop» : equation < 32) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 227)) = 0 := by
@@ -83,7 +83,7 @@ private theorem cpu_final_csr_checked_protectedMessage_032_047 :
 
 private theorem cpu_final_csr_032_047 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 32 ≤ equation) (stop : equation < 48) :
+    («start» : 32 ≤ equation) («stop» : equation < 48) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 227)) = 0 := by
@@ -111,7 +111,7 @@ private theorem cpu_final_csr_checked_protectedMessage_048_063 :
 
 private theorem cpu_final_csr_048_063 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 48 ≤ equation) (stop : equation < 64) :
+    («start» : 48 ≤ equation) («stop» : equation < 64) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 227)) = 0 := by
@@ -139,7 +139,7 @@ private theorem cpu_final_csr_checked_protectedMessage_064_079 :
 
 private theorem cpu_final_csr_064_079 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 64 ≤ equation) (stop : equation < 80) :
+    («start» : 64 ≤ equation) («stop» : equation < 80) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 227)) = 0 := by
@@ -167,7 +167,7 @@ private theorem cpu_final_csr_checked_protectedMessage_080_095 :
 
 private theorem cpu_final_csr_080_095 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 80 ≤ equation) (stop : equation < 96) :
+    («start» : 80 ≤ equation) («stop» : equation < 96) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 227)) = 0 := by
@@ -195,7 +195,7 @@ private theorem cpu_final_csr_checked_protectedMessage_096_111 :
 
 private theorem cpu_final_csr_096_111 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 96 ≤ equation) (stop : equation < 112) :
+    («start» : 96 ≤ equation) («stop» : equation < 112) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 227)) = 0 := by
@@ -223,7 +223,7 @@ private theorem cpu_final_csr_checked_protectedMessage_112_119 :
 
 private theorem cpu_final_csr_112_119 (variant : Variant)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 112 ≤ equation) (stop : equation < 120) :
+    («start» : 112 ≤ equation) («stop» : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment variant 227)) = 0 := by

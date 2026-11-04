@@ -138,6 +138,15 @@ retaining the complete imported-list conclusion. No Review statement, production
 function, native artifact, resource limit or trust gate changes. Path-G/full
 source validation, the environment audit and final full assurance remain pending.
 
+Run [41887174299](https://github.com/matter-labs/zksync-airbender/actions/runs/41887174299)
+on `1daf1d67e` passed `PathGLoopNativeBase`, then failed at
+`PathGLoopCPU/Shared.lean:44:34` on the separate reserved identifier `stop`.
+Its 93 remaining identifier uses in fifteen certificate files are now quoted;
+the real macro keyword remains. These are byte-identical source edits after
+quote normalization. The 120 native equations and every Review premise, resource
+limit and trust gate are unchanged. Remaining Path-G/full source validation,
+the environment audit and final full assurance are still pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

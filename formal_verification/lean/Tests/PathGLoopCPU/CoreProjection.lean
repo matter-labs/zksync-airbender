@@ -103,7 +103,7 @@ theorem g_cpu_core_assignment_eval (assignment : Nat → ZMod babyBearModulus)
 
 theorem g_cpu_core_equations_of_check (assignment : Nat → ZMod babyBearModulus)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (first count equation : Nat)
-    («start» : first ≤ equation) (stop : equation < first + count) (actual : equation < 120)
+    («start» : first ≤ equation) («stop» : equation < first + count) (actual : equation < 120)
     (ordinary : assignment 18 = 0)
     (checked : gCpuEquationsCheck (gCpuCoreAssignment assignment)
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop first).take count) = true) :
@@ -111,7 +111,7 @@ theorem g_cpu_core_equations_of_check (assignment : Nat → ZMod babyBearModulus
       (Verification.environment assignment) = 0 := by
   rw [← g_cpu_core_assignment_eval assignment setup equation actual ordinary]
   exact g_cpu_equations_of_check (gCpuCoreAssignment assignment) setup first count equation
-    «start» stop actual checked
+    «start» «stop» actual checked
 
 /-- Original decoder fields at the actual loop JAL position give the zero
 caller selector for every index and variant. -/

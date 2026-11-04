@@ -15,7 +15,7 @@ private theorem cpu_final_baseline_checked_000_015 :
 
 private theorem cpu_final_baseline_000_015
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 0 ≤ equation) (stop : equation < 16) :
+    («start» : 0 ≤ equation) («stop» : equation < 16) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .baseline 226)) = 0 := by
@@ -29,7 +29,7 @@ private theorem cpu_final_baseline_checked_016_031 :
 
 private theorem cpu_final_baseline_016_031
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 16 ≤ equation) (stop : equation < 32) :
+    («start» : 16 ≤ equation) («stop» : equation < 32) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .baseline 226)) = 0 := by
@@ -43,7 +43,7 @@ private theorem cpu_final_baseline_checked_032_047 :
 
 private theorem cpu_final_baseline_032_047
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 32 ≤ equation) (stop : equation < 48) :
+    («start» : 32 ≤ equation) («stop» : equation < 48) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .baseline 226)) = 0 := by
@@ -57,7 +57,7 @@ private theorem cpu_final_baseline_checked_048_063 :
 
 private theorem cpu_final_baseline_048_063
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 48 ≤ equation) (stop : equation < 64) :
+    («start» : 48 ≤ equation) («stop» : equation < 64) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .baseline 226)) = 0 := by
@@ -71,7 +71,7 @@ private theorem cpu_final_baseline_checked_064_079 :
 
 private theorem cpu_final_baseline_064_079
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 64 ≤ equation) (stop : equation < 80) :
+    («start» : 64 ≤ equation) («stop» : equation < 80) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .baseline 226)) = 0 := by
@@ -85,7 +85,7 @@ private theorem cpu_final_baseline_checked_080_095 :
 
 private theorem cpu_final_baseline_080_095
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 80 ≤ equation) (stop : equation < 96) :
+    («start» : 80 ≤ equation) («stop» : equation < 96) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .baseline 226)) = 0 := by
@@ -99,7 +99,7 @@ private theorem cpu_final_baseline_checked_096_111 :
 
 private theorem cpu_final_baseline_096_111
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 96 ≤ equation) (stop : equation < 112) :
+    («start» : 96 ≤ equation) («stop» : equation < 112) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .baseline 226)) = 0 := by
@@ -113,7 +113,7 @@ private theorem cpu_final_baseline_checked_112_119 :
 
 private theorem cpu_final_baseline_112_119
     (setup : Table (ZMod babyBearModulus) (fields 10)) (equation : Nat)
-    («start» : 112 ≤ equation) (stop : equation < 120) :
+    («start» : 112 ≤ equation) («stop» : equation < 120) :
     ((gCpuPolynomials setup)[equation]'(by
       rw [g_cpu_polynomial_count]; omega)).eval
         (Verification.environment (machineAssignment .baseline 226)) = 0 := by

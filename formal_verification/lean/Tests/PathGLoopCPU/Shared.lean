@@ -41,7 +41,7 @@ theorem g_cpu_polynomials_setup_independent
 The Boolean evidence is supplied by closed certificates in the fixture modules. -/
 theorem g_cpu_equations_of_check (assignment : Nat → ZMod babyBearModulus)
     (setup : Table (ZMod babyBearModulus) (fields 10)) (first count equation : Nat)
-    («start» : first ≤ equation) (stop : equation < first + count) (actual : equation < 120)
+    («start» : first ≤ equation) («stop» : equation < first + count) (actual : equation < 120)
     (checked : gCpuEquationsCheck assignment
       (((gCpuPolynomials (UnifiedReduced.Setup.table (before .baseline))).drop first).take count) = true) :
     ((gCpuPolynomials setup)[equation]'(by
