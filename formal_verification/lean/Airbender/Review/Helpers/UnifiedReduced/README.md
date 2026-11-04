@@ -46,14 +46,15 @@ The [supported-use entrypoint](../../Trace/UnifiedReduced/SupportedUseExecution.
 uses the public [ValidDelegationUse](../../Trace/UnifiedReduced/DelegationUse.lean) predicate instead
 of independently supplied bigint/hash worker conditions. Exact native prefix
 matching connects the reference arguments to actual worker reads. This domain
-covers bigint, G and extended-round wrappers; blessed split Keccak remains
-uncovered (F12). Lower-level entrypoints below retain their original conditional
-interfaces.
+covers bigint, G and extended-round wrappers. The separate proved full unsigned
+target adds blessed split Keccak (F12). Lower-level entrypoints below retain
+their original conditional interfaces.
 
 Initial state/program/configuration, aligned tracked domain, modeled tables,
 exact logical matching and selected protocol shape remain explicit. Native
 initialization adapters derive zero seeds, geometry and register coverage for
-ordinary pooled/unified execution; extended/delegation interfaces retain seeds; register
+ordinary pooled/unified execution. The machine targets compose these adapters
+for one initialization/teardown instance; lower-level APIs retain explicit seeds. Register
 values/teardown and the intended public state are separate inputs. Sampled RAM
 product equality does not establish deterministic token-multiset equality.
 

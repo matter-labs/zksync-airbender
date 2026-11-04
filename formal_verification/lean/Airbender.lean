@@ -39,6 +39,7 @@ import Airbender.Proofs.Keccak.SplitPortOrder
 import Airbender.Proofs.Keccak.SplitMemoryOrder
 import Airbender.Review.Trace.Workers.Keccak.SplitNative
 import Airbender.Review.Trace.Workers.Keccak.SplitRequests
+import Airbender.Review.Trace.Workers.Keccak.SplitPermutation
 import Airbender.Proofs.Keccak.SplitRequests
 import Airbender.Proofs.Keccak.SplitMemory
 import Airbender.Proofs.Tables.UnifiedXorPackedPilotCertificate

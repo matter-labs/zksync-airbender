@@ -153,9 +153,10 @@ and runtime arguments, expressed by the public-data
 [ValidDelegationUse](Airbender/Review/Trace/UnifiedReduced/DelegationUse.lean) predicate.
 This is a program-safety precondition; it does not assert that the verifier
 checks the condition. Exact logical matching, public initialization, the modeled
-registry and setup/reference fidelity remain separate assumptions. The current
-covered registry contains bigint, G and extended round. Blessed split Keccak is
-uncovered (F12), while special5 has only its existing conditional results.
+registry and setup/reference fidelity remain separate assumptions. The unified
+supported registry contains bigint, G and extended round. The proved full unsigned
+target also covers the blessed split Keccak path (F12); special5 retains separate
+conditional results and is excluded from the three machine targets.
 
 | Report | Case | 8 October disposition |
 | --- | --- | --- |
@@ -222,7 +223,7 @@ were read; AIH-113 has none, and no comment pages remained.
 were rechecked; no new comments change the assessments above. The reviewed FV
 source pin for that review was `805909325`; the subsequent rebase target is
 `av_gkr_compiler` at `451884662`. The
-[validation inventory](VERIFICATION_STATUS.md#validation-evidence) states the
+[validation inventory](VERIFICATION_STATUS.md#current-checkpoint) states the
 completed and pending gates; source inclusion is not a full-assurance pass. AIH-315 has a merged upstream correction in
 [PR #526](https://github.com/matter-labs/zksync-airbender/pull/526), detailed below;
 the former description as simply awaiting a source fix was stale.
@@ -378,7 +379,8 @@ Historical integration and rebased validation checkpoints are retained in the
 | F09 | Setup/decoder queries retain implementation-fidelity boundaries | Actual table contents and semantic connections are imported and checked | Rust/parser fidelity, public-program binding, native query binding and commitment authentication remain external |
 | F10 | Caller-cycle effects are weaker than full custom instruction execution | Complete mixed CSR reference execution uses F02 and public protocol/RAM profiles; native participation is derived | General acceptance still admits invalid bigint commands and ROM-shadow behavior; conditional integration does not fix F02/F04 |
 | F11 | Hash witness contracts remain unenforced | Four explicit private-witness contracts exclude known accepted cases; circuit patches were removed | Lower-level control/mask premises stay explicit; the supported-use theorem derives G/round contracts under the blessed wrapper domain |
-| F12 | Blessed split Keccak is uncovered | The provided 361-call split wrapper differs from the modeled 649-call special5 protocol | Split worker models, caller/CSR binding and the blessed-sequence proof are required for the full unsigned target |
+| F12 | Blessed split Keccak | Proved in the full unsigned target; a Review theorem exposes all 361 native calls computing the original permutation | Direct worker constraints/source setup certificates, exact matching and public use remain premises; no split compiler capture and final assurance is pending |
+| F13 | Initialization and submitted instance scope | Current targets cover one initialization/teardown instance and a restricted submitted pool roster | Multi-instance aggregation/global window uniqueness and a derivation excluding omitted submitted worker pools remain pending |
 
 Review F01's external correspondence and F02–F04 first. F05 and F06 establish why current
 participation/profile restrictions matter. F07–F10 identify assumptions or narrower
@@ -964,83 +966,59 @@ protocol definitions directly. The round and special5 schedule definitions moved
 verbatim, preserving their public names and bodies. The public supported-use
 contract remains in the execution layer. Focused consumer checking does not
 establish full review/environment/replay assurance; see the current
-[validation status](VERIFICATION_STATUS.md#validation-evidence).
+[validation status](VERIFICATION_STATUS.md#current-checkpoint).
 
-## F12 — Blessed Keccak path is outside current proof coverage
+## F12 — Blessed split Keccak coverage and validation boundary
 
-**Current status — 31 October 2026.** The full unsigned target now includes the
-blessed split path. Its [kernel proof](Airbender/Proofs/FullUnsigned/Target.lean)
-composes the three native worker layouts, exact shared RAM matching, public
-supported-use induction and initialization. The split source bindings use the
-rebased equations. Special5 remains excluded from the three machine targets.
-Full frontend validation and transitive replay remain pending. The text below
-records the earlier gap and does not describe current target coverage.
+The full unsigned target is proved with the blessed 361-call split path. Its
+[proof](Airbender/Proofs/FullUnsigned/Target.lean) composes the three direct native
+worker layouts, fixed-source certificates, exact shared RAM/request matching,
+public supported use and one initialization/teardown instance. Parity, theta/rho
+and chi5 preserve their grouped timestamp and native port semantics.
 
-### Historical gap
+The [Review split permutation statement](Airbender/Review/Trace/Workers/Keccak/SplitPermutation.lean)
+exposes the existing [native chain proof](Airbender/Proofs/Keccak/SplitNativePermutation.lean):
+all 361 actual calls compute Clean's original `keccakPermutation`, including the
+final delayed iota. Initialized histories, exact event matching, public call
+arguments, active constraints and physical snapshots remain explicit.
 
-**Status — 28 October 2026.** Required, open coverage gap for the unrolled full
-unsigned target. The conditional `keccak_special5` results remain, but they do
-not establish execution of the provided Keccak wrapper.
+This does not compose split compiler captures: none exist. The three machine
+native corollaries certify CPU rows only, while standard worker equations remain
+no-cache flat-constraint premises. Unified/reduced have no represented split
+pools and assume those submitted instances absent. Special5's separate 649-call
+claims remain and the three machine targets exclude its calls.
 
-**Wrapper and modeled circuit differ.** The public
-[`keccak_special5::keccak_f1600` wrapper](../../common_constants/src/delegation_types/keccak_special5.rs)
-forwards to [`keccak_f1600.rs`](../../common_constants/src/delegation_types/keccak_f1600.rs).
-That implementation issues 361 consecutive calls: in each of 24 rounds, five
-column-parity calls, five theta/rho calls and five chi5 calls, followed by one
-final column-parity call. Its three CSRs are
-`KECCAK_COLUMN_PARITY_CSR_REGISTER`, `KECCAK_THETA_RHO_CSR_REGISTER` and
-`KECCAK_CHI5_CSR_REGISTER`. It uses a 256-byte-aligned state pointer in x11.
+Final source/frontend validation, environment auditing and full independent
+replay remain pending. Earlier gap descriptions are historical; see
+[the findings history](FINDINGS_HISTORY.md). They do not describe the proved
+full unsigned target's current split coverage.
 
-In contrast, the [Lean artifact](Airbender/Review/Circuits/Keccak/Artifact.lean)
-imports `keccak_special5_layout_no_caches_gkr.json`. The
-[complete worker claims](Airbender/Review/Trace/Workers/Keccak/README.md)
-cover that circuit's 649-call protocol and its seven local modes. The three
-split compiled circuits now have cached and no-cache Lean imports of their equations, fixed
-lookups and timestamp queries, including explicit grouped timestamp metadata.
-They have no native worker soundness or composed machine execution proof.
-The [pure split reference composition](Airbender/Proofs/Keccak/SplitPermutation.lean)
-now proves the original Keccak permutation for all 361 reference calls.
-It includes the final delayed iota. It does not prove native worker effects.
-The retained chi5 lookup now derives nibble bounds and exact chi from its
-actual input fields. Its native circuit retirement and memory proof remain open.
-Shared state layout does not supply a refinement between the native protocols.
-The [split schedule](Airbender/Review/Trace/Workers/Keccak/SplitSchedule.lean)
-now states the exact public 361-call order and control transition;
-[kernel proofs](Airbender/Proofs/Keccak/SplitSchedule.lean) check the counts and
-progression. The new phase proofs also establish the pure reference result.
-Native worker effects remain open.
+## F13 — Target initialization and submitted instance scope
 
-**Unified setup differs.** The inspected
-[`SUPPORTED_CSRS` list](../../circuit_defs/setups/src/unrolled_circuits/unifier_reduced_machine_circuit/mod.rs)
-includes `KECCAK_SPECIAL5_CSR_REGISTER` and omits all three split Keccak CSRs.
-Current unified verifier programs make no Keccak CSR calls, so the unified
-target explicitly excludes special5 calls. The blessed split path belongs to
-the unrolled full unsigned target, whose machine configuration supports the
-three split CSRs. Its public decoder and exact caller/worker request bindings
-now pass. Native worker functions, fixed-setup provenance and combined memory
-execution remain open.
+**Model scope limitation.** `InitializationBoundary` takes one native witness
+and one window assignment. The three target proofs support several windows
+inside that instance, but not a list of initialization/teardown instances.
+The [unrolled verifier](../../full_statement_verifier/src/unrolled_proof_statement.rs)
+accepts several standalone instances. The
+[unified verifier](../../full_statement_verifier/src/unified_circuit_statement.rs)
+accepts several trailing initialization-carrying instances. Both check bounded,
+strictly increasing window indices across all contributing instances. Honest
+large-memory proofs therefore extend beyond the currently stated Lean scope.
 
-**Supported-use contract.** The developers classify unsupported delegation
-invocations as UB ([AIH-350](https://linear.app/matterlabs/issue/AIH-350)); the
-special5 invalid-control report was also canceled as UB
-([AIH-358](https://linear.app/matterlabs/issue/AIH-358)). The agreed public-data
-contract design, `ValidDelegationUse program initial`, admits the provided
-wrapper shapes with valid entry and runtime arguments and excludes special5
-calls. The implemented covered registry contains bigint, G and extended round;
-the blessed split Keccak path is outside it. Thus the retained special5 theorems
-do not contribute Keccak coverage under this contract. The predicate and native
-prefix bridge compile, while the original conditional entrypoints retain their
-explicit witness contracts for compatibility. Neither the new contract nor the
-bridge supplies missing split-circuit or unified setup coverage.
+Generalization must aggregate each instance's actual RAM tokens, native gates
+and parameters and prove global window distinctness and the combined boot seed.
+Until that is implemented, target docstrings, verification status and the trust
+guide explicitly retain the one-instance limitation. This is a missing model
+composition, not a request to change production or assume its desired result.
 
-**Required open work.** Prove native soundness for the three split circuits.
-Connect their actual read/write effects to the checked 361-call reference.
-Close fixed-setup provenance and combined memory execution. Derive supported
-use from every actual native prefix. Preserve existing special5 claims
-as conditional circuit/protocol results. Do not assume split/special5 equivalence,
-or change circuit constraints, generators or production layouts to make the
-current proof go through. A supported-use execution claim must explicitly leave
-the blessed Keccak path outside its *proved* scope until these obligations are met.
+**Submitted instance premise.** `workerFamilies` restricts the entire represented
+submitted standard-worker pool. Full unsigned has bigint/G/extended round plus
+its dedicated split pool; reduced has only extended round. Unified uses the
+four-family standard pool. Pools omitted from a target, including split pools
+in unified/reduced, are assumed absent. Their absence has not been derived solely
+from public no-call conditions, matching and native clock checks. Native
+corollaries supply CPU row certificates only; their worker assumptions remain
+visible. A broader submitted-instance theorem requires that missing derivation.
 
 ## Public decoder model
 
@@ -1074,9 +1052,9 @@ lower-level witness-conditional APIs:
 | Memory/fetch configuration | [FlatMemoryConfiguration and PlatformWordAddress](Airbender/Review/Helpers/Memory/Platform.lean) select Machine mode, direct memory, PMP disabled and permissive PMA, with device windows determined by the explicit platform configuration; code bounds/alignment and landing-pad restrictions remain explicit. | These are supported public-profile conditions. Full faults, interrupts, MMIO, other privilege/protection configurations and the full fetch driver are not covered. |
 | Independent external input | [ExternalStream.Ports](Airbender/Review/Helpers/Core/ExternalStream.lean) binds responses to an independently supplied stream. | Exact consumption and execution do not authenticate an oracle or establish a particular externally intended stream. |
 | Logical matching | [Accepted](Airbender/Review/Helpers/Context/Model.lean), worker matching and request matching are exact permutations of full tokens. | This is the intended premise for the noncryptographic memory-history result. Product/compression equality must not be silently substituted for it; actual global participation and token construction still need their implementation binding. |
-| Artifact/reference fidelity | [Import/generation boundary](TRUST_AND_REVIEW.md#import-and-generation-fidelity): richer no-cache import, original Sail generation and project-reference applicability. Base-field arithmetic preservation is proved for 22 captured cached/uncached instances. Physical-row APIs derive lookup/helper validity from exact emitted-tuple matching; natural multiplicities are not tied to physical counters. Supplied-program wrappers require retained decoder-table compatibility. [Validation evidence](VERIFICATION_STATUS.md#validation-evidence) records source/runtime checks and the independent pending assurance gates. | Captured-instance results do not prove universal Rust compiler correctness or cryptographic argument soundness; use the [compiler premise table](Airbender/Review/Compiler/README.md#execution-premises). |
+| Artifact/reference fidelity | [Import/generation boundary](TRUST_AND_REVIEW.md#import-and-generation-fidelity): richer no-cache import, original Sail generation and project-reference applicability. Base-field arithmetic preservation is proved for 11 cached compilations. Physical-row APIs derive lookup/helper validity from exact emitted-tuple matching; natural multiplicities are not tied to physical counters. CPU native corollaries keep exact public decoder-table binding explicit; worker equations remain no-cache flat constraints and split workers have no compiler capture. [Validation evidence](VERIFICATION_STATUS.md#current-checkpoint) records source/runtime checks and the independent pending assurance gates. | Captured-instance results do not prove universal Rust compiler correctness or cryptographic argument soundness; use the [compiler premise table](Airbender/Review/Compiler/README.md#execution-premises). |
 | Delegation-use domain | [F11](#f11--hash-witness-contracts-remain-unenforced) records the lower-level HashCommands fields. The public supported-use contract instead states wrapper shapes, entry safety and valid reference-prefix controls/pointers, including the blessed round masks' zero low limb. | Exact prefix matching derives the bigint/hash conditions for the new supported-use entrypoint. G separation remains explicit; arbitrary native enforcement and blessed split Keccak coverage are not claimed. |
-| Keccak wrapper coverage | [Earlier gap](#f12--blessed-keccak-path-is-outside-current-proof-coverage). The full unsigned target now covers the blessed 361-call split protocol. | Full frontend validation and transitive replay remain pending. Special5 stays excluded from the targets. |
+| Keccak wrapper coverage | [Earlier gap](#f12--blessed-split-keccak-coverage-and-validation-boundary). The full unsigned target now covers the blessed 361-call split protocol. | Full frontend validation and transitive replay remain pending. Special5 stays excluded from the targets. |
 | Worker clock ranges | [MemoryInputs](Airbender/Review/Helpers/Delegation/Memory.lean) retains clockRoom and invocationHigh: offset-two writes fit in the low limb and the invocation high limb is bounded. | Worker-only memory proofs have these range premises. Integrated caller/accounting claims derive them; no actual read value or pointer bound is supplied. |
 | Fields and coefficients | The public claims retain prime-field minima and serialized inverse equalities; bigint's integrated operation proof is BabyBear-specific. | These are arithmetic compatibility conditions, not proof defects. A generic field theorem does not establish the actual Proth120 artifact import. |
 
@@ -1111,7 +1089,7 @@ category must never be described simply as public context.
 
 ## Validation and next review
 
-[Verification status](VERIFICATION_STATUS.md#validation-evidence) records completed
+[Verification status](VERIFICATION_STATUS.md#current-checkpoint) records completed
 and pending gates with their source snapshots. The whole-environment audit,
 transitive replay and Linux/CI qualification remain separate from compilation.
 

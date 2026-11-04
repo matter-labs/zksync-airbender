@@ -4,14 +4,13 @@ This directory states the verification claims and their meaning: circuit
 relations, the shared context needed to interpret their witnesses, and complete
 execution contracts. It exposes the selected references, observable mappings and
 assumptions for human review; supporting proof calculations live in Proofs.
-Imported data and data assembly live in Data. Earlier specializations remain in
-[Compatibility](../Compatibility/README.md), re-exported under their original names.
+Imported data and data assembly live in Data.
 
 ## Main checked results
 
 | Result | Where to review it |
 | --- | --- |
-| Captured GKR arithmetic preserves source obligations; physical-row logical APIs compose to Sail execution under exact lookup matching, alongside framed compatibility wrappers. | [Compiler claims and boundaries](Compiler/README.md) |
+| Captured GKR arithmetic preserves source obligations; physical-row logical APIs compose to Sail execution under exact lookup matching. | [Compiler claims and boundaries](Compiler/README.md) |
 | Public bytes and original Sail decoding bind the instruction and metadata used by retirement. | [Decoder connections](Helpers/Decoder/README.md#checked-connections) |
 | Accepted selected circuit rows have the stated reference effects under their visible interfaces. | [Circuit results](Circuits/README.md#checked-results) |
 | Admitted ordinary instruction traces reach the native terminal PC and tracked values; external-read extensions also prove consumption. | [Trace results](Trace/README.md#checked-results) |
@@ -56,17 +55,21 @@ one public initial state. Keep profile deviations and caller limitations explici
 
 Circuit/trace claims concern the imported richer no-cache constraints, using
 Clean and pinned original Sail standard semantics or project custom references.
-Compiler claims cover base-field arithmetic preservation for 22 captured
-cached/uncached compilations. The three machine targets prove conditional
+Compiler claims cover base-field arithmetic preservation for 11 cached
+compilations. Native target corollaries certify CPU rows only; their standard
+worker equations remain no-cache flat constraints and split workers have no
+compiler capture. Each target covers one initialization/teardown instance.
+Submitted worker-family restrictions and omitted pools remain premises. The three machine targets prove conditional
 execution for public text and initial state. Physical-row APIs derive
 membership and helper validity from exact tuple matching. The
 [compiler guide](Compiler/README.md#execution-premises) states those logical
-boundaries. [Validation evidence](../../VERIFICATION_STATUS.md#validation-evidence)
+boundaries. [Validation evidence](../../VERIFICATION_STATUS.md#current-checkpoint)
 records completed checks and pending assurance gates. The
 [supported-use theorem](Trace/UnifiedReduced/SupportedUseExecution.lean) derives
 bigint/G/extended-round contracts from public reference-prefix validity.
 The full unsigned target includes blessed split Keccak and excludes special5.
-Production OS differential coverage and checker rollout remain open.
+Production OS differential checks do not prove OS execution; final environment
+auditing and independent replay remain pending.
 Memory-history/latest-read arguments are supporting proofs
 used internally, not separate public Review statements.
 Field/configuration, public state/program/domain, modeled tables and logical

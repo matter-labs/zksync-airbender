@@ -1,112 +1,58 @@
-# Complete special5 Keccak permutation
+# Keccak worker permutations
 
 <!-- source-names: keccak_special5 keccak_f1600 -->
 
-This directory states the complete permutation effect of a 649-call Keccak span,
-binding Clean's original reference to actual initial/final lane reads. Call and
-window contracts retain seed timestamps and protocol scope, while shared execution
-connects the final state to native terminal tokens.
-
-This is conditional coverage of `keccak_special5`. The provided `keccak_f1600`
-wrapper uses 361 calls to three split circuits, which are absent from the
-inspected unified setup's CSR allowlist. The
-[split schedule](SplitSchedule.lean) and its
-[proofs](../../../../Proofs/Keccak/SplitSchedule.lean) establish the exact
-24-round/final-call order, call counts and control progression. The three
-[split caller forms](../../../Helpers/Delegation/SplitCaller.lean) retain the
-full virtual CSR and original Sail instruction. Their
-[public code-shape interface](SplitUse.lean) requires all 361 positions and
-complete caller coverage, safe initial entry, and the reference x10 control and
-256-byte-aligned x11 state pointer without assuming worker outputs. The three
-cached and no-cache compiled circuits now have native imports for their equations, fixed
-lookups and timestamp queries: [column parity](../../../Circuits/Keccak/SplitColumnParity.lean),
-[theta/rho](../../../Circuits/Keccak/SplitThetaRho.lean) and
-[chi5](../../../Circuits/Keccak/SplitChi5.lean), with their cached variants in the same directory. Theta/rho and chi5 preserve
-grouped timestamp metadata, invocation columns and the native memory ports bound
-to each checked group. The [split native interface](SplitNative.lean) now states
-equations, participation and exact memory-token matching for all six captures.
-The [split request interface](SplitRequests.lean) matches full-width native CSR
-calls to worker invocation clocks under an explicit virtual-token permutation.
-[Request proofs](../../../../Proofs/Keccak/SplitRequests.lean) derive one-to-one
-nonzero fulfillment, clock bounds, no low-limb rollover, the worker kind
-selected by the full-width public Sail CSR, and the caller's canonical PC
-retirement. Complete setup provenance, caller/worker memory composition and
-worker-effect proofs remain open. [Split memory proofs](../../../../Proofs/Keccak/SplitMemory.lean)
-derive bounded clocks for every physical read and write from public seed clocks,
-caller-derived invocation bounds and exact RAM matching. They also establish
-the arithmetic order consequence of a positive grouped read distance. The
-control lookups still need to establish each positive distance.
-The [group equation proofs](../../../../Proofs/Keccak/SplitGroupEquations.lean)
-extract both clock equations and Boolean borrows for all four theta/rho and
-six chi5 groups from both cache modes.
-[Column-parity clock proofs](../../../../Proofs/Keccak/SplitColumnParityClock.lean)
-derive the ordinary per-port comparison facts and strict read-before-write
-order from both compiled captures, conditional on bounded invocation and
-previous clocks.
-The [controller lookup proofs](../../../../Proofs/Keccak/SplitControlLookup.lean)
-derive positive grouped distances and strict order for theta/rho and chi5 in
-both cache modes from the imported lookup queries, bounded read clocks and the
-explicit public [controller-table premise](SplitNative.lean). The fixed setup
-certificate still has to discharge that premise. The
-[physical-port proof](../../../../Proofs/Keccak/SplitPortOrder.lean) checks each
-theta/rho and chi5 port's group membership and proves strict read-before-write
-order for all six worker capture families. The
-[ordered memory proof](../../../../Proofs/Keccak/SplitMemoryOrder.lean) combines
-those facts with exact logical RAM matching and public initial clock bounds to
-derive complete split-pool logical histories. Functional worker effects remain
-open.
-Under the [ValidDelegationUse](../../UnifiedReduced/DelegationUse.lean) contract, special5 calls are
-excluded; these lemmas therefore do not establish blessed Keccak execution.
-Split worker modeling and integration are required open work. See
-[F12](../../../../../FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage).
+The proved full unsigned machine target includes the blessed 361-call split
+Keccak wrapper. The older special5 worker has a separate 649-call permutation
+claim and is excluded by the three machine targets' public caller profiles.
 
 ## Checked results
 
-[`Native.operation_execution`](Theorems.lean) proves actual port/lane effects
-for all seven native modes under the imported native controller.
-[`Native.permutation_soundness` and `Native.permutation_boundary_soundness`](Theorems.lean)
-prove the original full permutation on actual boundary lanes, with shared terminal
-agreement. [`Native.window_soundness`](Theorems.lean) binds the first complete span
-at retained cut states; later workers may remain outside the window.
-Public protocol/domain/alignment/table conditions remain inputs.
+| Path | Review statement | Conditions |
+| --- | --- | --- |
+| Split: parity, theta/rho and chi5 | [`Native.permutation_soundness`](SplitPermutation.lean) | All 361 actual native calls, direct imported constraints, initialized histories, exact event matching, public call arguments and physical snapshots. |
+| Special5 | [`Native.permutation_soundness`](Theorems.lean) | The complete 649-call span, modeled controller tables and the explicit worker ABI/domain profile. |
 
-[`Call.execution_soundness`](ReferenceCalls.lean) additionally executes the
-independent [complete micro-call reference](../../../Circuits/Keccak/Call.lean)
-in the actual full Sail states, with exact writes and frame. The existing
-649-call schedule derives supported full controls; initialized history supplies
-canonical lane reads and the aligned RAM pointer. It adds no per-row ABI or
-expected-output premise. [Full mixed execution](../../UnifiedReduced/FullExecution.lean)
-connects caller fetch/PC retirement with participation derived from native
-caller accounting and active-invocation timestamps. That entrypoint retains its
-straight-line ordinary registry. The newer
-[native-path entrypoint](../../UnifiedReduced/NativePathExecution.lean) supports
-branches, jumps and loops under the
-[F11 hash witness contracts](../../../../../FINDINGS.md#f11--hash-witness-contracts-remain-unenforced).
-[Complete spans](../../UnifiedReduced/PathSpanExecution.lean) retain a per-trace
-protocol plan, complete coverage and valid gaps. No external occurrence ledger
-is supplied to the native participation derivation.
+[Split schedule](SplitSchedule.lean) and [public wrapper use](SplitUse.lean)
+state 24 rounds of five parity, five theta/rho and five chi5 calls, followed by
+one final parity call for delayed iota. The [split native interface](SplitNative.lean)
+preserves the physical ports, grouped timestamps and cached/no-cache constraints.
+[Split requests](SplitRequests.lean) binds the full-width CSR, caller clock and
+canonical retirement to worker fulfillments. The
+[native permutation proof](../../../../Proofs/Keccak/SplitNativePermutation.lean)
+connects the actual 361-call chain to Clean's original `keccakPermutation`.
 
-Read [Theorems](Theorems.lean), [Call](Call.lean) and
-[BoundaryCall](BoundaryCall.lean). [Permutation](Permutation.lean) binds
-the original complete reference to actual initial/final lane reads.
+The [full unsigned target proof](../../../../Proofs/FullUnsigned/Target.lean)
+composes split worker effects, request/RAM matching, public supported use and
+one standalone initialization/teardown instance. Its three source certificates
+bind the original parity, theta/rho and chi5 setup rows; tagged theta/rho and chi5
+queries cannot select zero padding. Final frontend, environment and independent
+replay assurance remain pending as recorded in
+[verification status](../../../../../VERIFICATION_STATUS.md#current-checkpoint).
 
-[Windows](Windows.lean) selects the first complete 649-call span.
-Initialized matching derives the control schedule, fixed pointer, lane/scratch
-coverage and linked intermediate states. Keep native seed timestamps, modeled
-controller tables, public domain and complete-span ABI visible.
+The target corollaries use cached native certificates for CPU rows only.
+Standard worker equations remain no-cache flat constraints, and split circuits
+have no compiler capture. The full unsigned submitted worker roster is restricted
+to its standard families and represented split pool. Unified/reduced omit split
+pools by premise. These are instance-scope restrictions, not absence derived
+merely from the program's caller registry.
 
-[Local modes](../../../Circuits/Keccak/README.md) have a narrower scope.
-Invalid-control fallback does not establish the 24-round protocol.
-[Caller composition](../../Delegation/README.md) and
-[prepared unified spans](../../UnifiedReduced/README.md) retain separate prefix
-and preparation restrictions; completion does not imply automatic restart.
+## Special5 interfaces
 
-Standalone worker inputs retain both `clockRoom` and `invocationHigh`; integrated
-caller/request matching derives them. See the [shared worker boundary](../README.md)
-and [native memory inputs](../../../Helpers/Delegation/Memory.lean). Actual read
-values and pointer bounds are derived from initialized matching.
+[Theorems](Theorems.lean) proves local operation execution, complete permutation
+and boundary/window results. [Reference calls](ReferenceCalls.lean) executes the
+independent [micro-call reference](../../../Circuits/Keccak/Call.lean) in actual
+Sail states with exact writes and frame. [Permutation](Permutation.lean) binds
+the original reference to initial/final lanes; [Windows](Windows.lean) retains
+seed timestamps and the first complete 649-call span.
 
-The [independent known-answer regression](../../../../../Tests/KeccakKnownAnswer.lean)
-checks Clean's 24-round permutation against the pinned XKCP all-zero vector
-and NIST's FIPS 202 SHA3-256 empty-message permutation state, including lane
-order. It does not establish split/special5 circuit coverage.
+[Full mixed execution](../../UnifiedReduced/FullExecution.lean) and
+[native-path execution](../../UnifiedReduced/NativePathExecution.lean) retain
+their separate supported caller and witness contracts. Complete grouped spans
+also retain protocol coverage and valid memory gaps. Worker-only inputs expose
+clock room and the invocation high limb; integrated caller matching derives
+those bounds. Actual lane reads and pointer bounds come from initialized history.
+
+The [known-answer regression](../../../../../Tests/KeccakKnownAnswer.lean)
+compares Clean's permutation with pinned XKCP/NIST vectors. This finite check is
+separate from the universal split and special5 worker theorems.

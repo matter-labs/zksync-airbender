@@ -28,9 +28,16 @@ public boundaries. Native field/mask/helper identities derive source obligations
 compressed/sampled matching and physical multiplicity binding remain external.
 The three machine targets quantify over public text and initial state.
 Native program adapters cover the six unrolled CPU families and the unified circuit.
-The earlier captured-program wrappers are removed.
-Git tag `fv-archive-uncached` retains their source.
-The model covers only the cached circuits. Production sets use_caches = true.
+The three native corollaries are native for CPU rows only. Their cached CPU
+certificates do not supply the bigint, extended-round, G or special5 worker
+equations: those remain no-cache flat-constraint premises. Split Keccak uses
+direct imported worker constraints and fixed-source certificates, with no split
+compiler capture. Compiler preservation covers 11 cached compilations.
+Each target covers one initialization/teardown instance, possibly with several
+windows. Rust's several-instance aggregation with globally distinct windows is
+not covered yet. The submitted circuit roster must be exactly the represented
+CPU/worker pools: `workerFamilies` and the absence of omitted split pools are
+instance-scope premises, not conclusions from public program restrictions.
 The targets exclude special5 calls.
 [Coverage and validation evidence](VERIFICATION_STATUS.md) states the precise
 scope, completed checks, measurements and pending gates. Cryptographic argument
@@ -142,7 +149,7 @@ for family in "${families[@]}"; do
   fv "regenerate-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
     regenerate "$family" --work-dir "$FV_ROOT/native"
 done
-for family in "${families[@]}" decoder-smoke; do
+for family in "${families[@]}" keccak-column-parity keccak-theta-rho keccak-chi5 decoder-smoke; do
   fv "export-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
     export "$family" --work-dir "$FV_ROOT/native"
 done
@@ -171,15 +178,17 @@ python3 scripts/check_axioms.py --guard scripts/bounded_fv.py \
   --dispositions scripts/axiom_dispositions.json
 python3 scripts/check_kernel_replay.py --guard scripts/bounded_fv.py \
   --sysroot "$sysroot" --output "$FV_ROOT/replay" \
-  --stack-mib 32 --fresh-project --ledger .lake/verification/replay-ledger \
+  --stack-mib 2048 --fresh-project --ledger .lake/verification/replay-ledger \
   --axiom-result "$FV_ROOT/axioms/axiom-result.json"
 python3 scripts/check_assurance_controls.py --guard scripts/bounded_fv.py \
   --sysroot "$sysroot" --output "$FV_ROOT/assurance-controls" \
   --ledger .lake/verification/replay-ledger
 ```
 
-The 25 native jobs execute twelve production generators and thirteen exports,
-including the derived decoder smoke fixture. Their final verification checks
+The 28 native jobs execute twelve production generators and sixteen exports.
+The export list is the twelve `families` above plus `keccak-column-parity`,
+`keccak-theta-rho`, `keccak-chi5` and the derived `decoder-smoke` fixture, exactly
+as in the workflow. Independent replay uses a 2,048 MiB stack. Their final verification checks
 execution receipts, complete JSON identity and the scoped native build's dep-info.
 `CI` must be absent for generators and smoke tests; `CI=false` still skips them.
 
@@ -233,7 +242,7 @@ outside the checkout and replay dependencies as well as project roots.
 A failed bounded job stops the run; exact commands, peaks and failed stages remain
 under FV_ROOT.
 
-[Validation evidence](VERIFICATION_STATUS.md#validation-evidence) owns measured
+[Validation evidence](VERIFICATION_STATUS.md#current-checkpoint) owns measured
 durations, peaks and platform limits. Historical estimates do not establish
 current cold-build or replay feasibility.
 
@@ -260,7 +269,7 @@ archive sizes, repository quota and retention still require runner qualification
 
 A cached build is not a final pass marker. Selectively required status follows a
 complete Linux pass. Full current-head gate status is recorded in
-[validation evidence](VERIFICATION_STATUS.md#validation-evidence); these commands do not claim they passed. The reviewed
+[validation evidence](VERIFICATION_STATUS.md#current-checkpoint); these commands do not claim they passed. The reviewed
 disposition file records intended baseline exceptions, not a successful full
 baseline regeneration.
 

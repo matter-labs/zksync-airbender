@@ -24,7 +24,7 @@ proved. The full unsigned target includes the blessed 361-call split Keccak
 sequence. Its [proof](Airbender/Proofs/FullUnsigned/Target.lean) uses the three
 rebased split layouts and their derived borrow equations. It excludes
 `keccak_special5`. Unified and reduced use their own supported caller registries.
-The [earlier coverage finding](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage)
+The [earlier coverage finding](FINDINGS.md#f12--blessed-split-keccak-coverage-and-validation-boundary)
 records the historical gap and the current validation boundary.
 
 For the 11 production cached compilations, base-field arithmetic preservation
@@ -54,10 +54,14 @@ all 22 comparisons. Stateful decoding now reads the public misa state. A kernel
 proof shows that successful decoding preserves that state. These tests bind
 the decoder model to the tested native exports. They do not prove OS execution.
 
-The captured-program compatibility layer is removed.
-The tag `fv-archive-uncached` retains its earlier source in git history.
 [Three native corollaries](Airbender/Review/Compiler/Theorems.lean) start from
-cached native certificates and conclude each machine relation.
+cached native certificates for CPU rows only and conclude each conditional machine
+relation. Bigint, extended-round, G and special5 equations remain no-cache flat
+constraints; native worker certificates are not composed into these corollaries.
+Split Keccak has direct imported constraints and source setup certificates, but
+no compiler capture. Each target quantifies one initialization/teardown instance,
+not the list accepted by Rust. Worker-family restrictions and missing split pools
+are premises on the submitted circuit roster, not derived absence results.
 See the [execution premise table](Airbender/Review/Compiler/README.md#execution-premises).
 
 [Verification status](VERIFICATION_STATUS.md) records completed
@@ -67,7 +71,7 @@ imported constructor-type dependencies and do not replace the environment audit.
 
 ## Arithmetic extension and logical arguments
 
-The [arithmetic claims](Airbender/Proofs/Compatibility/Compiler/Theorems.lean) distinguish
+The [arithmetic claims](Airbender/Proofs/GKRCompiler/Arithmetic.lean) distinguish
 backward preservation from witness extension. Preservation derives every original
 source arithmetic assertion from the whole captured native base-field relation.
 Extension constructs an assignment satisfying only a certificate-selected native

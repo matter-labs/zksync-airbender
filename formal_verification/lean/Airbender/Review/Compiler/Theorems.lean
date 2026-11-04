@@ -11,8 +11,13 @@ set_option Elab.async false
 set_option linter.unusedVariables false
 variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
-/-- Cached native certificates supply CPU acceptance and exact decoder lookup.
-The remaining public setup, matching and initialization premises stay explicit. -/
+/-- Native for CPU rows only: cached CPU certificates supply CPU acceptance
+and exact decoder lookup. Bigint, extended-round, G and special5 equations remain
+no-cache flat-constraint premises; this does not compose their native worker
+certificates. Split Keccak uses direct imported worker constraints and source
+setup certificates, with no split compiler capture. Initialization covers one
+standalone instance. `workerFamilies` and the complete represented split pool
+restrict submitted instances; absence of excluded pools is not derived here. -/
 theorem unrolled_full_from_native :
   ∀ [Fact babyBearModulus.Prime], ∀ (initial : State) (text : List (BitVec 32))
     (bundles : List UnifiedReduced.Caller.DelegationUse.Bundle)
@@ -72,8 +77,11 @@ theorem unrolled_full_from_native :
   exact Proofs.unrolled_full_soundness initial text bundles splitBundles trace workers splitWorkers terminalRegisters geometry windows E embed additive weights boundary capacity masks columns stream
     publicProfile programSetup decoderLookup noSpecial5 validUse loads initialBoundary stateClosure romDomain wordSetup subwordSetup workerSetup workerFamilies splitColumnParitySetup splitThetaRhoSetup splitChi5Setup splitEquations splitActive nativeAcceptance initializationGates initializationBoundary streamPorts
 
-/-- Cached native certificates supply CPU acceptance and exact decoder lookup.
-The remaining public setup, matching and initialization premises stay explicit. -/
+/-- Native for CPU rows only: cached CPU certificates supply CPU acceptance
+and exact decoder lookup. Worker equations remain no-cache flat constraints,
+not composed native worker certificates. This corollary covers one standalone
+initialization/teardown instance. `workerFamilies` restricts submitted workers
+to extended round; all other standard and split pools are assumed absent. -/
 theorem unrolled_reduced_from_native :
   ∀ [Fact babyBearModulus.Prime], ∀ (initial : State) (text : List (BitVec 32))
     (bundles : List UnifiedReduced.Caller.DelegationUse.Bundle)
@@ -122,8 +130,11 @@ theorem unrolled_reduced_from_native :
   exact Proofs.unrolled_reduced_soundness initial text bundles trace workers terminalRegisters geometry windows E embed additive weights boundary capacity masks columns stream
     publicProfile programSetup decoderLookup validUse loads initialBoundary stateClosure romDomain wordSetup subwordSetup workerSetup cpuFamilies workerFamilies nativeAcceptance initializationGates initializationBoundary streamPorts
 
-/-- Cached native certificates supply CPU acceptance and exact decoder lookup.
-The remaining public setup, matching and initialization premises stay explicit. -/
+/-- Native for CPU rows only: cached CPU certificates supply CPU acceptance
+and exact decoder lookup. Bigint, extended-round, G and special5 equations remain
+no-cache flat-constraint premises, not composed native worker certificates.
+Initialization covers one inline initialization/teardown instance. The represented
+standard-worker pool must be complete; split pools are assumed absent. -/
 theorem unified_from_native :
   ∀ [Fact babyBearModulus.Prime], ∀ (initial : State) (text : List (BitVec 32))
     (bundles : List UnifiedReduced.Caller.DelegationUse.Bundle)

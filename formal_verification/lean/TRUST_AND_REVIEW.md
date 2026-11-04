@@ -1,16 +1,20 @@
 # Trust and review boundaries
 
-The model covers only the cached circuits. Production sets use_caches = true.
+The native machine corollaries certify CPU rows only. They use cached CPU
+certificates; bigint, extended-round, G and special5 worker equations remain
+no-cache flat-constraint premises. Split Keccak uses direct imported worker
+constraints and fixed-source certificates, without a compiler capture.
+Compiler preservation covers 11 cached compilations.
 
-The target is the imported richer no-cache relation built from this checkout,
-with upstream `av_gkr_compiler` baseline revision
+The source and captured CPU relations are built from this checkout, with upstream `av_gkr_compiler` baseline revision
 `c1a662222cafcd96db4383dce737edb79fa62b09`. The restored native delegation
 relations admit invalid invocations outside the developers' supported-use domain;
 lower-level conditional proofs retain the explicit
 [F11 hash witness contracts](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced).
 The [supported-use entrypoint](Airbender/Review/Trace/UnifiedReduced/SupportedUseExecution.lean)
 derives those bigint/hash conditions from public program safety and exact native
-prefixes for bigint, G and extended round. Blessed split Keccak remains uncovered.
+prefixes for bigint, G and extended round. The separate proved full unsigned
+target also includes the blessed split Keccak path.
 [Verification status](VERIFICATION_STATUS.md) records completed validation and
 material limits. The [historical integration record](TRUST_AND_REVIEW_HISTORY.md)
 retains earlier experiments and narrower intermediate interfaces.
@@ -72,9 +76,7 @@ complete delegation calls. The full unsigned relation includes blessed split
 Keccak. The native adapters cover the six unrolled CPU families and the unified
 circuit. The [native acceptance adapter](Airbender/Proofs/GKRProtocol/NativeMachineAcceptance.lean)
 closes the CPU and decoder premises. The [three native corollaries](Airbender/Review/Compiler/Theorems.lean)
-compose it with the target proofs. The captured-program compatibility layer
-and uncached paths are removed. The tag `fv-archive-uncached` retains them in
-git history. The canonical graph uses public program setup.
+compose it with the target proofs. The canonical graph uses public program setup.
 Item 3 has stopped. The existing checkers remain. Linux validation runs last.
 
 Upstream #531 merged as `06c15f275` and is in this base. The unified base
@@ -90,6 +92,25 @@ reuses ledgers only on the default branch; other refs start with a fresh ledger
 outside the checkout and replay dependencies too. The full Linux runtime and
 cold-run feasibility of this policy remain unmeasured.
 
+## Target instance scope
+
+Each target quantifies one `InitializationWitness`, one window assignment and
+one initialization/teardown acceptance premise. Several windows are allowed
+within that instance. The Rust unrolled verifier accepts a list of standalone
+instances; the unified verifier accepts several trailing initialization-carrying
+instances. Both check distinct windows across the concatenated list. The current
+Lean boundary and boot-seed proofs do not aggregate that list. Generalization
+requires per-instance native witnesses/parameters, concatenated RAM tokens and
+global window distinctness; it remains pending as [F13](FINDINGS.md#f13--target-initialization-and-submitted-instance-scope).
+
+The quantified CPU/worker data must represent all submitted circuit instances
+in the claimed profile. Full unsigned `workerFamilies` permits bigint, extended
+round and G in the standard pool, plus its represented split pool; special5
+instances are absent. Reduced permits only extended-round workers and no split
+pools. Unified has the four-family standard pool and no split pools. These are
+premises on submitted instances. Public no-call premises do not alone establish
+absence of excluded submitted worker types; that derivation is not claimed.
+
 ## Checked scope boundaries
 
 Claims retain explicit public program/state/configuration, tracked domain,
@@ -103,7 +124,8 @@ precondition on public code and all independent reference prefixes. It states th
 registered wrapper shapes, entry safety and runtime controls/pointers, including
 the blessed round masks' zero low limb. Exact native prefix matching and induction
 derive the existing bigint/hash worker conditions. It assumes neither desired
-execution nor outputs. The current covered registry excludes Keccak (F12); G
+execution nor outputs. This unified registry excludes special5; the full unsigned
+target includes the blessed split registry under its own public-use contract. G
 pointer separation remains a program obligation. It does not prove that the
 verifier checks program safety or that an arbitrary binary satisfies the contract.
 The theorem proves instruction-prefix execution; complete algorithm spans retain
@@ -138,7 +160,7 @@ Standard boot-ROM-data copying remains outside these claims.
 | Bigint commands | F02 controls 0/65537 are outside supported use. The supported-use execution entrypoint derives the worker binding from public reference-prefix validity; lower-level APIs keep the explicit command contract. General native rejection is not claimed. |
 | Worker ROM | F04 ROM-pointer invocations are outside supported use. The physical execution profile retains its public tracked-RAM domain, while the lower-level native-ROM transport API keeps its address binding. The original COPY ROM-shadow witness is preserved. |
 | Hash witness contracts | [F11](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced) records the four lower-level witness premises and the native prefix bridge from public supported use. G separation remains explicit; no circuit repair is pending for the excluded UB cases. |
-| Blessed Keccak coverage | [F12](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage): the provided 361-call split wrapper and its three native workers are required, open obligations for the unrolled full unsigned target. Unified currently excludes special5 calls by public premise. Existing 649-call special5 results remain conditional circuit/protocol coverage. |
+| Blessed Keccak coverage | [F12](FINDINGS.md#f12--blessed-split-keccak-coverage-and-validation-boundary): the proved full unsigned target composes all three split workers and the 361-call wrapper. [The native split permutation statement](Airbender/Review/Trace/Workers/Keccak/SplitPermutation.lean) reaches Clean's `keccakPermutation`. Special5 is excluded from the three machine targets and retains its separate 649-call results. |
 | Worker participation | Current native BabyBear timestamp queries and initialized caller accounting derive participation. The historical zero-clock witness is rejected by current native acceptance; weaker intermediate interfaces retain their own stated scope. |
 | Discarded loads | The original Sail claim retains the [discarded-LW restriction](Tests/DiscardedLoad.lean). The named Airbender PC-only-NOP profile is a distinct reference choice. |
 

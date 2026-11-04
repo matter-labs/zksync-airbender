@@ -1,6 +1,17 @@
 # Verification status
 
-The model covers only the cached circuits. Production sets use_caches = true.
+Native corollaries are native for CPU rows only. Cached CPU certificates supply
+CPU equations and decoder lookup; bigint, extended-round, G and special5 worker
+equations remain no-cache flat-constraint premises. Split Keccak uses direct
+imported worker constraints and source setup certificates, with no compiler capture.
+Compiler preservation covers 11 cached compilations.
+
+All three targets currently cover one initialization/teardown instance, with
+several windows allowed within that instance. Rust accepts several such instances
+and checks distinct windows across the concatenated list; that aggregation is
+not covered. Generalizing the boundary and boot-seed proof to a list remains
+pending. `workerFamilies` and absent split pools restrict submitted circuit
+instances; they are not derived solely from public program no-call premises.
 
 ## Proofs
 
@@ -16,6 +27,15 @@ The initialization-window defect is fixed upstream by #548 in this base. The
 redundant branch-only repair is removed; see [FINDINGS.md](FINDINGS.md).
 
 ## Current checkpoint
+
+The 4 November specification review makes the existing one-instance
+initialization and submitted-pool premises explicit. Native corollaries certify
+CPU rows only; standard worker equations remain no-cache flat constraints and
+split workers have no compiler capture. A new Review statement forwards the
+existing 361-call native split permutation theorem without changing its premises.
+Current-guide links/anchors, workflow export lists and replay-stack settings pass
+static checks. The wrapper and current source tree still require Lean CI validation.
+
 
 The 4 November production-scope cleanup restores every existing production
 function to the base. A static diff audit checks exact restored bytes, unchanged

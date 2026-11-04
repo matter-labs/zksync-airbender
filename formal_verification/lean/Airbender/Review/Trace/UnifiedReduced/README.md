@@ -5,14 +5,16 @@ initialized memory history to reference execution and native terminal PC/cells.
 Original standard instructions use the pinned Sail clauses. TRIADD, XORROT and
 custom CSR effects use the pinned project references.
 
-[StreamCalls](StreamCalls.lean) defines a candidate unified machine relation
-combining ordinary/modular steps, external `0x7C0` reads and complete caller
-retirement. Its [first inclusion proofs](../../../Proofs/UnifiedReduced/StreamCalls.lean)
-establish disjoint decoder registries and lift modular and caller steps. No
-native whole-execution soundness theorem for this combined relation is proved yet.
-Its `ValidDelegationUse` contract quantifies wrapper entry and arguments over
-every possible external stream; this contract has not yet been discharged for
-the native combined execution.
+[StreamCalls](StreamCalls.lean) defines the unified relation combining
+ordinary/modular steps, external `0x7C0` reads and complete caller retirement.
+The [unified target proof](../../../Proofs/UnifiedReduced/MachineTarget.lean)
+establishes that relation under the public setup, exact matching and
+`ValidDelegationUse` premises. The contract ranges over every external stream;
+it remains a public program-safety premise. The target excludes special5 calls
+and assumes the submitted worker roster contains no split pools. It currently
+covers one inline initialization/teardown instance, not Rust's list of trailing
+initialization-carrying instances. Native certificates in the target corollary
+supply CPU rows only; standard workers retain no-cache flat constraints.
 
 ## Checked results
 
@@ -41,8 +43,8 @@ and inducts on its clock; an earlier accepted prefix supplies the reference stat
 whose arguments determine the next worker's inputs. Exact matching and the
 public initialization/RAM/configuration/setup profile remain explicit.
 The covered wrappers are bigint, G and extended round. G separation stays a
-program obligation; blessed split Keccak is a required, open part of the full
-unsigned target (F12).
+program obligation. The separate proved [full unsigned target](../../../Proofs/FullUnsigned/Target.lean)
+extends this standard registry with blessed split Keccak (F12).
 
 The lower-level [native actual-path execution](NativePathExecution.lean) composes branches, JAL,
 JALR and repeated-PC loops with complete calls from all four worker families.
@@ -58,7 +60,7 @@ instructions. No occurrence plan is supplied. The conclusion realizes
 the native terminal PC and every tracked cell. Public program/initialized memory,
 configuration/retirement and the separate bigint command contract remain explicit.
 The older [prepared actual-path interface](PathExecution.lean) retains its
-trace-dependent instruction/caller plan for compatibility.
+trace-dependent instruction/caller plan.
 The repeated-PC G-loop fixture exercises these lower-level conditional APIs;
 its loop around one CSR is not a blessed contiguous wrapper or a supported-use
 example. The supported-use theorem proves instruction-prefix execution; complete
@@ -118,8 +120,9 @@ Start with [FullExecution](FullExecution.lean) and its input records, then follo
 [prepared round windows](PreparedRoundWindows.lean) as required by the chosen scope.
 [Initialization adapters](../Initialization.lean) derive native seed/domain
 properties for ordinary pooled/unified execution from actual standalone/inline
-boundaries. The delegation and other extended registries retain their own seed
-premises; public Sail/profile and exact matching remain explicit.
+boundaries. The proved machine targets compose the single-instance initialization adapters
+with their extended registries. Public Sail/profile and exact matching remain
+explicit; several initialization instances are not aggregated by these targets.
 
 Worker-only clockRoom and invocationHigh are separate from integrated caller
 bounds. Weaker zero-clock and observation interfaces retain their documented

@@ -28,7 +28,7 @@ to divide `2013265921`, so under primality it selects BabyBear even without a si
 bound. The [checked conversions](../../../Proofs/SerializedInverse.lean) reuse
 the common prime-divisor argument. Variable inverse parameters in the arithmetic
 helpers remain generic. Other native fields require separately exported
-coefficients and checked bindings; existing BabyBear and compatibility entrypoints
+coefficients and checked bindings; existing BabyBear entrypoints
 remain available.
 
 [Sail](Sail.lean) names the architectural input/output relation and original

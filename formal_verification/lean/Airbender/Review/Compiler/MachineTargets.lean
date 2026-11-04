@@ -25,8 +25,11 @@ structure InitializationWitness (E : Type) where
   raw : Initialization.Raw babyBearModulus
   wires : Initialization.Wires E
 
-/-- Bind the execution boundary to the actual imported initialization circuit.
-The logical RAM permutation below remains separate from GKR product equality. -/
+/-- Bind the execution boundary to one imported initialization/teardown instance.
+Its witness may contain several windows, with distinctness supplied by `Windows`.
+This is not aggregation of the several instances accepted by the Rust verifiers;
+global distinctness across a list of instances remains outside these targets.
+The logical RAM permutation stays separate from GKR product equality. -/
 def InitializationBoundary {Kind E : Type} [CircuitLayout Kind] [CommRing E]
     (artifact : Initialization.Artifact)
     (parameters : Initialization.Parameters babyBearModulus E)
@@ -65,9 +68,11 @@ def unifiedSteps (trace : UnifiedTrace babyBearModulus) :=
   trace.rows.flatMap fun row => (UnifiedReduced.Caller.machinePorts row).toList.map fun port =>
     (readToken row.assignment port, writeToken row.columns row.assignment port)
 
-/-- Exact native CPU/worker equations and the three permitted logical argument
-boundaries. Decoder matching is supplied against public text-derived columns
-in the targets; no per-row decoded instruction is assumed here. -/
+/-- CPU equations and no-cache flat worker constraints, with exact logical
+argument boundaries. Worker equations are premises, not conclusions of cached
+native worker certificates. The represented pools must include all submitted
+instances in scope: omitted worker types/pools are assumed absent. Decoder
+matching uses public text-derived columns; no decoded instruction is assumed. -/
 structure UnrolledAcceptance (trace : PooledTrace babyBearModulus)
     (workers : Delegation.MemoryData babyBearModulus)
     (extraSteps : List (MemoryToken babyBearModulus × MemoryToken babyBearModulus))
@@ -89,6 +94,9 @@ structure UnrolledAcceptance (trace : PooledTrace babyBearModulus)
     (trace.terminalMemory ++
       (pooledSteps trace ++ workers.steps ++ extraSteps).map Prod.fst)
 
+/-- The unified CPU relation and no-cache flat worker equations. The represented
+four-family worker pool is the entire submitted pool in scope; split Keccak pools
+are absent by this interface, not by a derived theorem about submitted proofs. -/
 structure UnifiedAcceptance (trace : UnifiedTrace babyBearModulus)
     (workers : Delegation.MemoryData babyBearModulus) : Prop where
   cpuEquations : ∀ row ∈ trace.rows,
@@ -136,10 +144,14 @@ def unifiedProgram (initial : State) (text : List (BitVec 32))
   callers := FullUnsigned.entriesWith Delegation.Caller.decoderFields text
   bundles := bundles
 
-/-- Full unsigned production target. Split Keccak is included in the machine
-relation and native worker pool. Only special5 is publicly excluded. The named
-premises expose fixed setup, native circuits, public program binding, exact
-lookup/request/RAM matching and standalone initialization separately. -/
+/-- Full unsigned target with one standalone initialization/teardown instance.
+Split Keccak is included in the machine relation and its dedicated worker pool.
+`workerFamilies` restricts all submitted standard-worker instances to bigint,
+extended round and G; the represented split pool must be complete and special5
+instances must be absent. These are submitted-instance premises, not consequences
+of the public program's `noSpecial5` premise. Fixed setup, CPU certificates,
+flat worker constraints and exact lookup/request/RAM matching stay explicit.
+Several initialization instances with globally distinct windows are not covered. -/
 def UnrolledFullUnsigned : Prop :=
   ∀ [Fact babyBearModulus.Prime], ∀ (initial : State) (text : List (BitVec 32))
     (bundles : List UnifiedReduced.Caller.DelegationUse.Bundle)
@@ -191,8 +203,12 @@ def UnrolledFullUnsigned : Prop :=
       (streamPorts : NonDeterminism.Pooled.StreamPorts trace stream),
     FullUnsigned.Realizes stream program trace initial cells (ROMView.token initial)
 
-/-- Reduced unrolled production target: four CPU families, external input,
-modular operations and the extended-round worker share one initialized history. -/
+/-- Reduced unrolled target with one standalone initialization/teardown instance.
+Four CPU families, external input, modular operations and the extended-round
+worker share one initialized history. `workerFamilies` restricts the submitted
+worker instances to extended round; bigint, G, special5 and split pools are
+assumed absent. This roster is not derived merely from the public program.
+Several initialization instances with globally distinct windows are not covered. -/
 def UnrolledReduced : Prop :=
   ∀ [Fact babyBearModulus.Prime], ∀ (initial : State) (text : List (BitVec 32))
     (bundles : List UnifiedReduced.Caller.DelegationUse.Bundle)
@@ -233,9 +249,13 @@ def UnrolledReduced : Prop :=
     AddSub.Modular.External.Caller.ReducedRealizes stream program.ordinary program.callers
       trace initial cells (ROMView.token initial)
 
-/-- Unified production target: one native CPU circuit combines ordinary,
-TRIADD/XORROT, modular, external-input and complete delegation semantics. Its
-inline initialization circuit supplies the same shared RAM boundary. -/
+/-- Unified target: native CPU rows combine ordinary, TRIADD/XORROT, modular,
+external-input and complete delegation semantics. One inline initialization/
+teardown witness supplies the shared RAM boundary. Several trailing instances
+carrying initialization/teardown, as accepted by Rust, are not covered.
+The four-family standard worker pool must represent every submitted worker;
+split pools are assumed absent by the interface. `noSpecial5` restricts program
+calls and alone does not establish a submitted-instance roster. -/
 def Unified : Prop :=
   ∀ [Fact babyBearModulus.Prime], ∀ (initial : State) (text : List (BitVec 32))
     (bundles : List UnifiedReduced.Caller.DelegationUse.Bundle)

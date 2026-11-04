@@ -8,10 +8,15 @@ components, while address/controller contracts identify the physical indirect
 ports. These local effects are distinct from the complete call schedule and
 permutation-state binding.
 
-The provided `keccak_f1600` wrapper uses three split circuits and a different
-361-call protocol. These models do not cover that path. Split modeling and
-unified CSR/setup integration are deferred; see
-[F12](../../../../FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage).
+The provided `keccak_f1600` wrapper uses the three split circuits in a 361-call
+protocol: [parity](SplitColumnParity.lean), [theta/rho](SplitThetaRho.lean) and
+[chi5](SplitChi5.lean), with cached variants in this directory. Their direct
+native constraints and fixed-source certificates are composed by the proved
+full unsigned machine target. The [Review permutation statement](../../Trace/Workers/Keccak/SplitPermutation.lean)
+connects all 361 actual calls to Clean's `keccakPermutation`; see
+[F12](../../../../FINDINGS.md#f12--blessed-split-keccak-coverage-and-validation-boundary).
+There is no split compiler capture. These results keep initialized history,
+exact matching, public wrapper use and setup binding explicit.
 
 ## Checked results
 

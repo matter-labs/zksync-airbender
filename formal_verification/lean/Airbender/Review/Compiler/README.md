@@ -4,7 +4,7 @@
 
 Start with the three [machine targets](MachineTargets.lean). Each target lists
 its public setup, native acceptance and exact matching premises. The
-[validation status](../../../VERIFICATION_STATUS.md#validation-evidence) records
+[validation status](../../../VERIFICATION_STATUS.md#current-checkpoint) records
 the completed checks and the pending assurance gates.
 
 | Target | Kernel proof |
@@ -57,7 +57,8 @@ It does not prove Rust decoder equivalence for every possible program.
 | Native lookup requests | Actual native encoding fields and leaf weights select the primitive, group and setup column. Checked arithmetic transports the complete tuples to the source interpretation. |
 | Exact lookup matching | Native requests match public setup rows with natural multiplicities. Sampled rational balance does not establish this premise. Physical field counters are not bound to those multiplicities. |
 | Exact state and RAM matching | The stated permutations bind row boundaries and the one shared memory history. Sampled product equality does not imply a permutation. |
-| Public boundaries | Initial state, text, ROM coverage, worker setup, initialization circuit, supported caller use and stream ports remain explicit. |
+| Public boundaries | Initial state, text, ROM coverage, worker setup, one initialization/teardown instance, supported caller use and stream ports remain explicit. |
+| Submitted instance roster | `workerFamilies` restricts the entire submitted standard-worker pool. Missing split pools are assumed absent; a public no-call premise alone does not establish absence of submitted circuit instances. |
 | Retained source constraints and execution | Native transport and exact matching derive the source equations and decoder membership. The target proofs compose those facts with the reference execution. |
 
 [Physical bindings](../../Import/Compiler/Rows/AddSubCached.lean) select the
@@ -74,9 +75,12 @@ of the Rust compiler.
 
 ## Production scope
 
-The model covers only the cached circuits. Production sets use_caches = true.
-The tag `fv-archive-uncached` retains the earlier scope in git history.
-The tree has no unchecked archive of the removed Lean modules.
+Compiler preservation covers 11 cached compilations. Native target corollaries
+are native for CPU rows only. Standard worker equations (bigint, extended round,
+G and special5) are no-cache flat-constraint premises. Split Keccak uses direct
+imported constraints and source setup certificates, without a compiler capture.
+Each target has one initialization/teardown instance; aggregation of several
+instances with globally distinct windows remains pending.
 
 The [native target corollaries](Theorems.lean) compose cached native
 certificates with each machine target. They keep exact lookup, request and

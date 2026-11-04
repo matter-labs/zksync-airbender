@@ -7,19 +7,21 @@ Native boot/ROM and the existing external padding boundary are supported.
 external reads and write hints, consuming exactly the independent stream
 responses selected by native read ports. Authentication stays external.
 
-[ExternalCalls](ExternalCalls.lean) adds complete delegated caller retirement to
-this stream relation, with a public worker-family selector. Its reduced
-variant filters native metadata to the four circuits in the unrolled reduced
-setup and permits only extended-round calls. Its
-[inclusion proofs](../../../Proofs/AddSub/ModularExternalCalls.lean) show the
-decoder registries are disjoint, lift existing modular/external and caller
-steps, and place each reduced step in the pooled relation. This is a relation
-and proof foundation, not a native soundness theorem for either unrolled
-production setup. Split Keccak workers remain open.
+[ExternalCalls](ExternalCalls.lean) adds complete standard delegated caller
+retirement to this stream relation. The proved
+[reduced target](../../../Proofs/Reduced/MachineTarget.lean) composes it with the
+four CPU families and extended-round workers. The proved
+[full unsigned target](../../../Proofs/FullUnsigned/Target.lean) uses
+[FullUnsigned](../FullUnsigned.lean), which also includes the three blessed split
+Keccak worker circuits and their 361-call wrapper.
 
-[ReducedUse](ReducedUse.lean) states public extended-round wrapper shape,
-entry and argument conditions for every external stream. It does not yet prove
-that a native reduced-machine trace satisfies the combined relation.
+[ReducedUse](ReducedUse.lean) states the public extended-round wrapper shape,
+entry and argument premises for every external stream. Native execution under
+those premises is proved. The native target corollaries certify CPU rows only;
+worker flat equations, exact matching and the submitted instance roster remain
+premises. Each target currently has one initialization/teardown instance.
+Reduced `workerFamilies` requires every submitted worker to be extended round;
+other standard workers and all split pools are assumed absent.
 
 [Public decoding](../../Helpers/Decoder/ModularProgram.lean) reads actual bytes
 through pinned Sail decoding, then maps MOP.RR.0–3 to the original ADD/SUB

@@ -8,7 +8,8 @@ instruction or validating its full CSR ABI.
 
 ## Checked results
 
-All four native worker families have selected reference effects on actual Sail
+All four standard worker families, under their no-cache flat constraints, have
+selected reference effects on actual Sail
 port reads/writes in initialized shared memory; operand/address bounds are derived.
 The hash results additionally bind complete initial/final blocks or lanes and
 native terminal tokens, with schedules and intermediate values derived from matching.
@@ -19,6 +20,7 @@ native terminal tokens, with schedules and intermediate values derived from matc
 | Complete G work-vector fold | [`Airbender.Blake2G.Native.workvector_soundness`](Blake2G/Theorems.lean) |
 | Complete extended-BLAKE compression | [`Airbender.Blake2Round.Native.compression_soundness`](Blake2Round/Theorems.lean) |
 | Complete special5 Keccak permutation | [`Airbender.Keccak.Native.permutation_soundness`](Keccak/Theorems.lean) |
+| Complete 361-call split Keccak permutation | [`Airbender.Keccak.Split.Native.permutation_soundness`](Keccak/SplitPermutation.lean) |
 
 Native-boundary/window variants retain timestamps rather than restarting history.
 Public protocol modes/counts, modeled tables, domain/alignment and the existing
@@ -47,7 +49,7 @@ and, for the hash families, complete protocol spans.
 | Bigint | [Guide](Bigint/README.md) | Seven selected operation references; full caller-control ABI remains open. |
 | BLAKE2 G | [Guide](Blake2G/README.md) | The pinned 56/80-call work-vector fold. |
 | Extended BLAKE | [Guide](Blake2Round/README.md) | Seven-/ten-round compression. |
-| Keccak special5 | [Guide](Keccak/README.md) | The complete 649-call permutation span. The provided wrapper's 361-call split path is uncovered; see [F12](../../../../FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage). |
+| Keccak | [Guide](Keccak/README.md) | The 649-call special5 permutation and the 361-call split permutation. The proved full unsigned target composes the split path; special5 is excluded from the three machine targets. |
 
 Start with the public theorem and its input record. Check actual initial/final
 reads, native seed timestamps, tracked domain, modeled tables and logical matching.
@@ -57,3 +59,11 @@ A complete worker protocol is distinct from a caller's instruction retirement.
 [Delegation composition](../Delegation/README.md) and
 [unified windows](../UnifiedReduced/README.md) bind the selected shared scopes.
 Unissued-worker, bigint-control and ROM-shadow counterexamples remain visible.
+
+The three machine corollaries' native certificates apply to CPU rows only.
+They do not compose standard-worker GKR certificates: bigint, extended round,
+G and special5 equations remain no-cache flat-constraint premises. Split workers
+have direct cached/no-cache imports and source setup certificates, with no
+compiler capture. Submitted pool restrictions and missing split pools remain
+instance-scope premises; a program's no-call condition alone does not remove
+submitted circuit instances.

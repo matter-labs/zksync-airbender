@@ -20,12 +20,14 @@ membership over the imported rows. The checked mathematical semantics live in
 [ShiftCharacterization](../../../Proofs/Tables/ShiftCharacterization.lean) and its
 imported-row proofs; the wrapper supplies no replacement table recipe.
 
-Program-dependent compatibility views retain arbitrary public programs.
-[Imported word ROM](../../../Proofs/Compatibility/Circuits/WordMemory/ImportedROM.lean),
-[imported subword setup](../../../Proofs/Compatibility/Circuits/SubwordMemory/ImportedSetup.lean) and
-[unified execution](../../../Proofs/Compatibility/Trace/ImportedDecoder.lean) connect the complete selected
-setup to those views under explicit public byte binding. The retained program
-is a specialization, rather than a restriction on the earlier generalized claims.
+Program-dependent setup quantifies over arbitrary public text and initial state.
+The [public native setup](../../Compiler/NativePublicSetup.lean) supplies decoder
+and full-word ROM rows; the [subword setup](../../Compiler/NativeSubwordSetup.lean)
+also supplies halfword and byte ROM regions. The
+[program decoder proofs](../../../Proofs/GKRProtocol/ProgramRows.lean) and
+[native acceptance adapter](../../../Proofs/GKRProtocol/NativeMachineAcceptance.lean)
+connect these inputs to the proved machine targets under exact lookup matching.
+The theorem quantifies over public programs; retained programs are test fixtures.
 
 Clean supplies logical membership. Parsing/emission fidelity, general Rust setup
 refinement and cryptographic query/table authentication remain separate boundaries.

@@ -8,8 +8,9 @@ variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 /-- A pooled delegated call retires the existing complete custom-operation
 reference without consuming an external-input word. `allowed` selects the
-public machine's supported worker families; split Keccak needs a distinct
-reference branch when its native workers are modeled. -/
+public machine's supported standard worker families. The proved full unsigned
+target composes this clause with the separate split Keccak reference branch in
+`FullUnsigned.Step`; this local standard-worker clause does not include it. -/
 def CallStep (allowed : Delegation.Family → Prop)
     (callers : List Delegation.Caller.ProgramEntry)
     (before after : State × Nat) : Prop :=
@@ -56,8 +57,8 @@ def ReducedStep (stream : List (BitVec 32))
     CallStep reducedCall callers before after
 
 /-- Both unrolled machines retain the exact external-read count and native
-terminal observations. The full unsigned target must extend this relation with
-the three blessed split Keccak workers before claiming production coverage. -/
+terminal observations. The proved full unsigned target uses `FullUnsigned.Realizes`,
+which already extends this standard-worker relation with blessed split Keccak. -/
 def Realizes {p : Nat} [Fact p.Prime] (allowed : Delegation.Family → Prop)
     (stream : List (BitVec 32)) (program : List PooledProgramEntry)
     (callers : List Delegation.Caller.ProgramEntry)

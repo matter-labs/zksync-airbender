@@ -20,11 +20,14 @@ by retirement is derived at the current PC; see
 [`row_execution_step`](../../../Proofs/Trace/Composition.lean) and
 [unified mixed retirement](../../Trace/UnifiedReduced/Theorems.lean).
 [Native setup](NativeData.lean) retains real rows, unsupported slots, the complete
-committed tail and fixed-prefix discriminators. [Imported-data proofs](../../../Proofs/Tables/ImportedDecoder.lean)
-connect those rows to original Sail decoding. [Execution entry points](../../../Proofs/Compatibility/Trace/ImportedDecoder.lean)
-derive the previous semantic membership condition from actual native lookups;
-incoming PC-low bounds follow from accepted constraints and initialized history.
-Public image/configuration binding and logical query authentication stay explicit.
+committed tail and fixed-prefix discriminators. Public-text
+[program row proofs](../../../Proofs/GKRProtocol/ProgramRows.lean) and
+[unified row proofs](../../../Proofs/GKRProtocol/UnifiedProgramRows.lean)
+connect Sail decoding to the current program-dependent table model. The
+[native acceptance adapter](../../../Proofs/GKRProtocol/NativeMachineAcceptance.lean)
+derives CPU equations and decoder membership from cached native CPU certificates
+and exact lookup matching. Public image/configuration binding and logical query
+authentication remain explicit.
 The logical query uses zero extension for omitted native columns; its binding to
 Rust/GKR packed queries remains part of the external query interface.
 
