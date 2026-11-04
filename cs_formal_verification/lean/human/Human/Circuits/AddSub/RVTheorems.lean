@@ -4,11 +4,13 @@ import Human.Helpers.Delegation.Decoder
 import Human.ISA.Sail.View
 
 /-! DRAFT (B2 pilot): the AddSub claims stated against our RV32 spec (`RV.step`, `Human/ISA/RV32.lean`) instead of
-Sail. Not proven yet; not in `test/Checks/Claims.lean`. Open items (see the pilot report):
+Sail. Not yet proven; not in `test/Checks/Claims.lean`. Open items:
 * `InterfaceAssumptions` → `NativeInputs` still carries `configuration : Configured initial`; it is to leave the
   bundle (Configured lives only in `Human/ISA/Sail/Theorems.lean`).
-* Under these premises `RVSoundnessClaim` is not provable: nothing places the row's PC in ROM or 4-byte aligned
-  (finding G1), and nothing ties the word at that PC in the row's pre-state to the decoded entry (finding G2). -/
+* Resolved, not open: PC in ROM and 4-byte aligned (G1) is enforced by the decoder table (c469da87f, `programEntryWith`);
+  the word at the row's PC is tied to the decoded entry (G2) by the existing fetch lemmas (`Proofs.fetched` in
+  `slop/Slop/MulDiv/Decoder.lean`, `pooled_native_rom_unchanged` / `pooled_rom_reads_after_history` in
+  `slop/Slop/Trace/PooledCode.lean`, and the store trap `rom_selection` in `slop/Slop/WordMemory.lean`). -/
 
 namespace Airbender.AddSub
 open Reference.RiscV Reference.RiscV.Sail Trace
