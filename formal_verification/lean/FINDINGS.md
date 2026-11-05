@@ -473,6 +473,27 @@ error; no production or Review statement changes are needed. The failed leaf
 took 120.26 seconds at 702.84 MiB charged footprint with no owned children;
 complete sources took 2805.36 seconds after 29.47 seconds of early fixtures.
 
+Focused run 41950041857 on `d8abd3d9d` subsequently passed the complete modular
+trace and forged-FMA controls, including shared-history and wrong-selector
+rejection. Selected sources took 240.00 seconds; the module took 124.31 seconds
+at 830.74 MiB charged footprint with no owned children. Final freshness/object
+checks passed.
+
+Complete warm [41951803857](https://github.com/matter-labs/zksync-airbender/actions/runs/41951803857)
+on that head then found `Tests.UnifiedShift.queryValues` using legacy pooled
+coordinates 88/92 despite its row assignment already using the native 82/86
+layout. Wrong projected values caused fixed-table index bounds to fail and
+later membership searches to reach the existing heartbeat limit. The private
+helper now projects the actual exported native query coordinates. A lightweight
+guard derives every pooled coordinate from the native JSON before compiler
+work. The row assignments, theorem statements and proofs, production, Review
+and resource limits are unchanged. The failed leaf took 777.00 seconds at
+708.08 MiB charged footprint with no owned children; sources took 1045.20 seconds.
+The repair passes nineteen focused controls and source-derived checks of all
+seven CPU rows and 35 projected queries against complete native table rows.
+Logical fixed-table indices remain below 524545; their layout is distinct from
+the native physical region order, as the existing setup characterization proves.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

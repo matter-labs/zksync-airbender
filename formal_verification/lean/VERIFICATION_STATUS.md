@@ -335,6 +335,24 @@ leaf took 120.26 seconds at 702.84 MiB charged footprint, with no owned children
 complete sources reached 2805.36 seconds after 29.47 seconds of early fixtures.
 Complete source/audit validation and final assurance remain pending.
 
+The modular trace and forged-FMA controls passed in focused run
+[41950041857](https://github.com/matter-labs/zksync-airbender/actions/runs/41950041857)
+on `d8abd3d9d`: selected sources took 240.00 seconds, with the module taking
+124.31 seconds at 830.74 MiB charged footprint. Final freshness/object checks
+passed and no owned children remained. Ordinary PR checks also passed.
+
+Complete warm [41951803857](https://github.com/matter-labs/zksync-airbender/actions/runs/41951803857)
+then exposed the private `Tests.UnifiedShift.queryValues` helper still reading
+the old 88/92 pools while the native layout uses 82/86. Its row-index bounds
+failed and later proof searches hit the existing heartbeat limit. Only helper
+coordinates change; a lightweight guard now compares them to all five pooled
+queries in the actual native JSON. Every theorem statement and proof and all
+resource limits remain unchanged. The failed leaf took 777.00 seconds at
+708.08 MiB charged footprint, with no owned children; sources took 1045.20 seconds.
+Nineteen focused controls pass. Source-derived checks also verify all seven
+native CPU rows, all 35 projected queries and their complete native table rows;
+the logical fixed-table indices stay below 524545. Lean confirmation is pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

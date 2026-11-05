@@ -70,9 +70,9 @@ private def rowIndex (xs : Vector (ZMod babyBearModulus) 10) : Nat :=
   if xs[9].val = 8 then 196865 + xs[0].val * 256 + xs[1].val else
     262401 + xs[0].val * 65536 + xs[1].val * 256 + xs[2].val * 8 + xs[3].val
 private def queryValues (kind : Fin 7) (slot : Fin 5) : Vector (ZMod babyBearModulus) 10 :=
-  if slot.val = 0 then #v[assignment kind 89, assignment kind 90, assignment kind 91,
-    0, 0, 0, 0, 0, 0, assignment kind 88]
-  else let base := 92 + 9 * (slot.val - 1)
+  if slot.val = 0 then #v[assignment kind 83, assignment kind 84, assignment kind 85,
+    0, 0, 0, 0, 0, 0, assignment kind 82]
+  else let base := 86 + 9 * (slot.val - 1)
     #v[assignment kind (base + 1), assignment kind (base + 2), assignment kind (base + 3),
       assignment kind (base + 4), assignment kind (base + 5), assignment kind (base + 6),
       assignment kind (base + 7), assignment kind (base + 8), 0, assignment kind base]

@@ -74,6 +74,37 @@ class NativeCPUCertificates(unittest.TestCase):
             indices = re.findall(r"else if column = (\d+) then 24\b", body[1])
             self.assertEqual(indices, [str(column)], name)
 
+    def test_shift_query_projection_matches_native_pooled_columns(self):
+        placement = {json.dumps(arg, sort_keys=True): int(column)
+                     for column, arg in self.layout["placement_data"].items()}
+        columns = []
+        for query in self.layout["generic_lookups"]:
+            row = []
+            for expression in query["columns"]:
+                self.assertEqual(expression["constant"], 0)
+                terms = expression["linear_terms"]
+                if not terms:
+                    row.append(None)
+                    continue
+                self.assertEqual(len(terms), 1)
+                coefficient, arg = terms[0]
+                self.assertEqual(coefficient, (1 << 32) % 2013265921)
+                if "ScratchSpace" in arg:
+                    arg = self.layout["scratch_space_mapping_rev"][str(arg["ScratchSpace"])]
+                row.append(placement[json.dumps(arg, sort_keys=True)])
+            columns.append(row)
+        source = (ROOT / "Tests/UnifiedShift.lean").read_text()
+        body = source.split("private def queryValues ", 1)[1].split("\nprivate theorem ", 1)[0]
+        literals = [int(value) for value in re.findall(r"assignment kind (\d+)", body)]
+        self.assertEqual(literals, columns[0][:3] + columns[0][-1:])
+        self.assertEqual(columns[0][3:9], [None] * 6)
+        base = re.search(r"base := (\d+) \+ (\d+) \* \(slot.val - 1\)", body)
+        self.assertIsNotNone(base)
+        start, stride = map(int, base.groups())
+        for slot, row in enumerate(columns[1:]):
+            tag = start + stride * slot
+            self.assertEqual(row, list(range(tag + 1, tag + 9)) + [None, tag])
+
     def test_every_explicit_unified_count_matches_native(self):
         checked = 0
         for path in (ROOT / "Tests").rglob("*.lean"):
