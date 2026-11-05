@@ -6,6 +6,7 @@ import Slop.Final.Circuits.Bigint.Theorems
 import Slop.Final.Circuits.Blake2G.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
 import Slop.Final.Circuits.MulDiv.Theorems
+import Slop.Final.Circuits.MulDiv.RVTheorems
 import Slop.Final.Circuits.ShiftBinop.Theorems
 import Slop.Final.Circuits.SubwordMemory.Theorems
 import Slop.Final.Circuits.WordMemory.Theorems
@@ -69,6 +70,8 @@ example : Airbender.JumpBranchSlt.Jump.SoundnessClaim := @Airbender.JumpBranchSl
 example : Airbender.JumpBranchSlt.Jump.BabyBearSoundnessClaim := @Airbender.JumpBranchSlt.Jump.babyBear_soundness
 example : Airbender.MulDiv.SoundnessClaim := @Airbender.MulDiv.soundness
 example : Airbender.MulDiv.BabyBearSoundnessClaim := @Airbender.MulDiv.babyBear_soundness
+example : Airbender.MulDiv.RVSoundnessClaim := @Airbender.MulDiv.rv_soundness
+example : Airbender.MulDiv.BabyBearRVSoundnessClaim := @Airbender.MulDiv.babyBear_rv_soundness
 example : Airbender.ShiftBinop.SoundnessClaim := @Airbender.ShiftBinop.soundness
 example : Airbender.ShiftBinop.BabyBearSoundnessClaim := @Airbender.ShiftBinop.babyBear_soundness
 example : Airbender.SubwordMemory.SoundnessClaim := @Airbender.SubwordMemory.soundness
@@ -161,6 +164,8 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.JumpBranchSlt.Jump.babyBear_soundness
 #print axioms Airbender.MulDiv.soundness
 #print axioms Airbender.MulDiv.babyBear_soundness
+#print axioms Airbender.MulDiv.rv_soundness
+#print axioms Airbender.MulDiv.babyBear_rv_soundness
 #print axioms Airbender.ShiftBinop.soundness
 #print axioms Airbender.ShiftBinop.babyBear_soundness
 #print axioms Airbender.SubwordMemory.soundness

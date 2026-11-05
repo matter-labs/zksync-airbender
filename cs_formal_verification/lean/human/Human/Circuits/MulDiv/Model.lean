@@ -1,4 +1,5 @@
 import Human.Circuits.MulDiv.Artifact
+import Human.Circuits.MulDiv.Operation
 import Human.Helpers.Properties
 import Human.Helpers.Core.Sail
 import Human.Helpers.Decoder.PooledProgram
@@ -9,12 +10,6 @@ namespace Airbender.MulDiv
 open Airbender.Arithmetic
 open Airbender.Reference.RiscV
 open Airbender.Reference.Sail Trace
-
-inductive Operation where
-  | mul | mulhu | divu | remu
-
-def Operation.selector : Operation → Fin 4
-  | .mul => 0 | .mulhu => 1 | .divu => 2 | .remu => 3
 
 /-- Original decoded operation and represented pre-state; registers may alias
     and divisors may be zero. -/

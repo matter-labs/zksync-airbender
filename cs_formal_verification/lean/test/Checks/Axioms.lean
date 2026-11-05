@@ -6,6 +6,7 @@ import Human.ISA.Sail.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
 import Slop.Final.Trace.Families.JumpBranchSlt.Theorems
 import Slop.Final.Circuits.MulDiv.Theorems
+import Slop.Final.Circuits.MulDiv.RVTheorems
 import Slop.Final.Trace.Families.MulDiv.Theorems
 import Slop.Final.Circuits.ShiftBinop.Theorems
 import Slop.Final.Trace.Families.ShiftBinop.Theorems
@@ -2222,3 +2223,11 @@ import Human.Import.Coefficients
 #print axioms Airbender.sail_extensions_off
 #print axioms Airbender.sail_zimop_on
 #print axioms RV.RINV_spec
+#print axioms Airbender.MulDiv.rv_soundness
+#print axioms Airbender.MulDiv.babyBear_rv_soundness
+#print axioms Airbender.MulDiv.Proofs.rv_trace_soundness
+#print axioms Airbender.MulDiv.Proofs.babyBear_rv_trace_soundness
+#print axioms Airbender.MulDiv.Proofs.rv_row_result
+#print axioms Airbender.MulDiv.Proofs.rv_pooled_fields
+#print axioms Airbender.MulDiv.Proofs.rv_query_facts
+#print axioms Airbender.MulDiv.Proofs.rv_muldiv_row_operands
