@@ -18,8 +18,8 @@ theorem rv_addsub_row_position {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase 
     {w : Nat → ZMod p} (member : (⟨.addSub, w⟩ : Row p PooledFamily) ∈ trace.rows)
     (zero : ∀ event ∈ trace.nativeEvents, event.2.1 = (Cell.register 0).addressCode →
       memoryWord event.2.2.2 = 0)
-    (writable : ∀ event ∈ trace.nativeEvents, ∀ cell ∈ cells, cell.addressCode = event.2.1 →
-      ∀ index, cell = .ram index → RV.writable index 4) :
+    (writable : ∀ event ∈ trace.nativeEvents, event.2.2.1 ≠ event.2.2.2 → ∀ cell ∈ cells,
+      cell.addressCode = event.2.1 → ∀ index, cell = .ram index → RV.writable index 4) :
     ∃ before, RVRowPosition trace initial cells (⟨.addSub, w⟩ : Row p PooledFamily) before ∧
       ∀ i j : BitVec 5, w 5 = (i.toNat : ZMod p) → w 6 = (j.toNat : ZMod p) →
         before.getReg i = memoryWord ((importedConstraintsMemoryPorts[0]).readCode w) ∧
