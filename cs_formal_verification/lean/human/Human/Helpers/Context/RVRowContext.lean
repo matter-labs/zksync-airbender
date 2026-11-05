@@ -15,14 +15,21 @@ def Cell.writeRV (cell : Cell) (value : BitVec 32) (before : RV.State) : Option 
   | .register index => some (before.setReg index value)
   | .ram address => if RV.writable address 4 then some (before.store address value 4) else none
 
-/-- RV sibling of `WriteHistory`: applies the native `(address, value)` writes in list order (tail first) to tracked
-    RV cells. -/
+/-- RV update for one native port. A port whose value equals the cell's current RV value leaves the state unchanged
+    (reads are not replayed: a read-only port has `writeCode = readCode`, so it changes nothing). Otherwise the
+    update is `Cell.writeRV`, which fails for a RAM write outside the writable range. ROM-store rejection is therefore
+    RV.step's store rule together with the circuit's store check, not this history's. -/
+def Cell.applyRV (cell : Cell) (value : BitVec 32) (before : RV.State) : Option RV.State :=
+  if cell.readRV before = some value then some before else cell.writeRV value before
+
+/-- RV sibling of `WriteHistory`: applies the native `(address, value)` ports in list order (tail first) to tracked
+    RV cells with `Cell.applyRV` (read-only ports leave the state unchanged). -/
 inductive RVWriteHistory (cells : List Cell) : List (Nat × Nat) → RV.State → RV.State → Prop where
   | nil (before : RV.State) : RVWriteHistory cells [] before before
   | cons {address value rest before middle after}
       (past : RVWriteHistory cells rest before middle)
       (cell : Cell) (member : cell ∈ cells) (atAddress : cell.addressCode = address)
-      (write : cell.writeRV (Word.mk (Nat.unpair value).1 (Nat.unpair value).2).toBitVec middle = some after) :
+      (write : cell.applyRV (Word.mk (Nat.unpair value).1 (Nat.unpair value).2).toBitVec middle = some after) :
       RVWriteHistory cells ((address, value) :: rest) before after
 
 /-- RV sibling of `RowPosition`: locate `row` in `trace` and interpret its pre-state as `before : RV.State`. `initial`
