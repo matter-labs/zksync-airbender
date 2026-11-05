@@ -1,11 +1,10 @@
 import Human.Circuits.AddSub.RVModel
 import Human.Helpers.Core.BabyBearPrime
 import Human.Helpers.Delegation.Decoder
-import Human.ISA.Sail.View
 
 /-! RV32 claims (B2 pilot). The AddSub claims (first block) are stated against our spec (`RV.step`, `Human/ISA/RV32.lean`),
     not Sail: the row's pre-state is `input.before : RV.State`, which carries the input stream (`RV.State.input`), so there is
-    no stream binder. `Same` (`Sail/View.lean`) only compares two `RV.State`s. Not proven yet; not in `test/Checks/Claims.lean`.
+    no stream binder. `RV.Same` (`ISA/State.lean`) compares two `RV.State`s. Not proven yet; not in `test/Checks/Claims.lean`.
     Resolved: PC in ROM and 4-byte aligned is the decoder table's guard (`rvProgramEntryWith`); the word at the row's PC is
     the table's encoding (`RVTraceMapping.instruction`).
     The Delegation.Caller claims (second block) are still Sail-typed; they are not part of the AddSub pilot. -/
@@ -21,14 +20,14 @@ def RVSoundnessClaim : Prop :=
     RVInterfaceAssumptions trace initial cells program →
     ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
       ∃ s', RV.step input.before = some s' ∧
-        Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
+        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
 
 def BabyBearRVSoundnessClaim : Prop :=
   ∀ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell) (program : List PooledProgramEntry),
     RVInterfaceAssumptions trace initial cells program →
     ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
       ∃ s', RV.step input.before = some s' ∧
-        Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
+        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
 
 end Airbender.AddSub
 

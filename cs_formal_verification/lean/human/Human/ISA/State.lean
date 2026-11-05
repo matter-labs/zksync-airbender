@@ -68,3 +68,9 @@ def State.applyEffect (s : State) (e : Effect) : Option State :=
   else none
 
 end RV
+
+namespace RV
+/-- `s` and `t` agree on everything a program can see (x0's stored value is not visible). -/
+def Same (s t : State) : Prop :=
+  s.pc = t.pc ∧ (∀ i, s.getReg i = t.getReg i) ∧ s.mem = t.mem ∧ s.input = t.input
+end RV
