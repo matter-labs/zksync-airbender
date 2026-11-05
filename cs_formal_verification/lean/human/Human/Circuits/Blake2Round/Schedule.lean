@@ -18,7 +18,7 @@ def step (input : Input) : Output :=
 def spec (input : Input) (output : Output) : Prop := output = step input
 
 structure Mapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
-  message : input.message = Preparation.words w Variables.preparedMessage
+  message : input.message = Preparation.messageWords w
   output : output = Preparation.words w Variables.scheduledMessage
 
 /-- The caller selects exactly one round. The local circuit only makes each
