@@ -7,7 +7,8 @@ namespace Airbender.Delegation.Proofs
 set_option warningAsError true
 
 structure ClockFacts {p : Nat} (columns : ClockColumns) (w : Nat → ZMod p) : Prop where
-  invocation : (Trace.decodeTimestamp w columns.invocation).Bounded
+  -- No invocation bound: the new circuits range-check only (lo - execute)/4 and
+  -- no invocation high limb. The per-row assumptions in BoundaryInputs carry it.
   offsets : ∀ port ∈ columns.ports, port.offset < 4
   comparisons : ∀ port ∈ columns.ports,
     w port.borrow * (w port.borrow - 1) = 0 ∧

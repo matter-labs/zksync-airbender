@@ -22,12 +22,7 @@ theorem clock_facts {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 4)}
     Delegation.Proofs.ClockFacts importedConstraintsDelegationColumns w := by
   have timestamps := Verification.holds_of_sublist h
     (List.sublist_append_right (importedConstraints setup) importedConstraintsTimestampLookups)
-  have low := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
-    ⟨0, by rw [timestamp_count]; decide⟩)
-  have high := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
-    ⟨1, by rw [timestamp_count]; decide⟩)
-  simp [Expression.eval, Verification.environment] at low high
-  refine ⟨⟨low, high⟩, ?_, ?_⟩
+  refine ⟨?_, ?_⟩
   · intro port member
     rw [delegation_columns] at member
     simp only [Vector.toArray_ofFn, Array.mem_ofFn] at member

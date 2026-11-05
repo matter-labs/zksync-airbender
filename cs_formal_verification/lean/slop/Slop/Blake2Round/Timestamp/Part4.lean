@@ -28,9 +28,9 @@ theorem clock_ports_4 {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 4
   have bit := Verification.assertion_of_holds core
     ⟨309 + i.val, by rw [constraint_count]; omega⟩
   have lowerLookup := Verification.lookup_of_holds timestamps
-    ⟨2 + 2 * i.val, by rw [timestamp_count]; omega⟩
+    ⟨1 + 2 * i.val, by rw [timestamp_count]; omega⟩
   have upperLookup := Verification.lookup_of_holds timestamps
-    ⟨3 + 2 * i.val, by rw [timestamp_count]; omega⟩
+    ⟨2 + 2 * i.val, by rw [timestamp_count]; omega⟩
   fin_cases i
   all_goals try (simp at lowerIndex upperIndex; done)
   all_goals op_index at bit lowerLookup upperLookup
