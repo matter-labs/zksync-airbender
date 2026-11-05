@@ -121,29 +121,35 @@ theorem wrongRoundOutputRejected (w : Nat → ZMod babyBearModulus) :
     Blake2Round.Proofs.callConstants, Specs.BLAKE3.roundConstants, Specs.BLAKE3.g,
     Arithmetic.Word.value, Arithmetic.limbBase, add32, rotRight32, Fin.getElem_fin] at head
 
-/-- A malformed carry in any column call is rejected through the checked
-    connection to the reusable G fragment. -/
+/-- A malformed carry in any column call is rejected by its imported Boolean assertion. -/
 theorem wrongColumnCarryRejected (call : Fin 4) (w : Nat → ZMod babyBearModulus)
-    (carry : w (268 + 46 * call.val) = 2) :
+    (carry : w (268 + 40 * call.val) = 2) :
     ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints Blake2Round.setupTable) := by
   intro holds
-  have flag := Blake2G.Proofs.mixing_flags (Blake2Round.Proofs.column_g_holds call holds) 0
-  norm_num [Blake2G.Variables.booleanColumns, Blake2Round.Proofs.columnGAssignment,
-    Blake2Round.Proofs.columnGBase, Blake2G.Proofs.assemble, carry] at flag
-  exact (by decide : ¬ ((2 : ZMod babyBearModulus) = 0 ∨ (2 : ZMod babyBearModulus) = 1)) flag
+  have flag := Verification.assertion_of_holds holds
+    ⟨137 + 4 * call.val, by rw [Blake2Round.constraint_count]; omega⟩
+  fin_cases call
+  all_goals op_index at flag
+  all_goals eval_entry at flag
+  all_goals norm_num at carry
+  all_goals rw [carry] at flag
+  all_goals exact absurd flag (by decide)
 
-/-- Each diagonal call is also connected to the native G carry constraints. -/
+/-- Each diagonal call's first carry is rejected by its imported Boolean assertion. -/
 theorem wrongDiagonalCarryRejected (call : Fin 4) (w : Nat → ZMod babyBearModulus)
-    (carry : w (452 + 44 * call.val) = 2) :
+    (carry : w (426 + 30 * call.val) = 2) :
     ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints Blake2Round.setupTable) := by
   intro holds
-  have flag := Blake2G.Proofs.mixing_flags
-    (Blake2Round.Proofs.diagonal_g_holds (by decide) call holds) 0
-  norm_num [Blake2G.Variables.booleanColumns, Blake2Round.Proofs.diagonalGAssignment,
-    Blake2Round.Proofs.diagonalGBase, Blake2G.Proofs.assemble, carry] at flag
-  exact (by decide : ¬ ((2 : ZMod babyBearModulus) = 0 ∨ (2 : ZMod babyBearModulus) = 1)) flag
+  have flag := Verification.assertion_of_holds holds
+    ⟨153 + 2 * call.val, by rw [Blake2Round.constraint_count]; omega⟩
+  fin_cases call
+  all_goals op_index at flag
+  all_goals eval_entry at flag
+  all_goals norm_num at carry
+  all_goals rw [carry] at flag
+  all_goals exact absurd flag (by decide)
 
 /-- A row whose next round mask does not shift is rejected by the imported
     assertions, independently of which XOR setup is supplied. -/

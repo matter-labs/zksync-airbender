@@ -369,11 +369,13 @@ import Human.Import.Coefficients
 #print axioms Airbender.Blake2Round.Proofs.input_after_update
 #print axioms Airbender.Blake2Round.Proofs.phase_reference
 #print axioms Airbender.Blake2Round.Proofs.round_phases
-#print axioms Airbender.Blake2Round.Proofs.diagonal_g_holds
+#print axioms Airbender.Blake2Round.Proofs.diagonal_facts
 #print axioms Airbender.Blake2Round.Proofs.diagonal_g_input_bounds
 #print axioms Airbender.Blake2Round.Proofs.diagonal_g_soundness
 #print axioms Airbender.Blake2Round.Proofs.diagonal_g_output_bounds
 #print axioms Airbender.Blake2Round.Proofs.extended_writes
+#print axioms Airbender.Blake2Round.Proofs.extended_words_bounded
+#print axioms Airbender.Blake2Round.Proofs.GTrace.sound
 #print axioms Airbender.Blake2Round.Proofs.mixing_soundness
 #print axioms Airbender.Blake2Round.Mixing.soundness
 #print axioms Airbender.Blake2Round.Mixing.babyBear_soundness
@@ -416,7 +418,7 @@ import Human.Import.Coefficients
 #print axioms Tests.Blake2Round.lastMessageAddress
 #print axioms Tests.Blake2Round.wrongPortAddressRejected
 #print axioms Airbender.Blake2Round.Proofs.padded_membership
-#print axioms Airbender.Blake2Round.Proofs.column_g_holds
+#print axioms Airbender.Blake2Round.Proofs.column_facts
 #print axioms Airbender.Blake2Round.Proofs.column_g_soundness
 #print axioms Airbender.Blake2Round.Proofs.column_g_output_bounds
 #print axioms Tests.Blake2Round.wrongColumnCarryRejected

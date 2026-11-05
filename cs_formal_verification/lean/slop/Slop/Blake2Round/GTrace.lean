@@ -6,8 +6,8 @@ set_option warningAsError true
 /-!
 One G invocation of the wider-table round, as field values: inputs, the chunks,
 carries and XOR results of its sixteen table queries, and its outputs. Column
-and diagonal invocations fill the same record (`ColumnTrace`, `DiagonalTrace`).
-`GTrace.sound` derives Clean's G function from the chunk facts and limb equations.
+and diagonal invocations fill the same record (`columnTrace`, `diagonalTrace`).
+`GTrace.sound` (GSound) derives Clean's G function from the chunk facts and limb equations.
 -/
 
 namespace Airbender.Blake2Round.Proofs

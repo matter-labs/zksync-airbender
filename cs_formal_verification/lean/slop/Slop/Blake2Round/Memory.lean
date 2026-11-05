@@ -8,27 +8,12 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 12000000
 
-theorem extended_write_bounds [Fact p.Prime] (hp : 65536 ≤ p)
+theorem extended_write_bounds [Fact p.Prime] (_hp : 65536 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
-    ∀ i : Fin 16, (Preparation.words w Mixing.extendedWrites)[i].Bounded := by
-  have bounds (call : Fin 4) := Blake2G.Proofs.mixing_output_bounds hp inverse
-    (diagonal_g_holds inverse call holds)
-  have b0 := bounds 0
-  have b1 := bounds 1
-  have b2 := bounds 2
-  have b3 := bounds 3
-  intro i
-  rw [extended_writes holds (Vector.replicate 16 (⟨0, 0⟩ : Word))]
-  fin_cases i
-  all_goals simp [phaseUpdate, callUpdate, callConstants, Specs.BLAKE3.roundConstants,
-    Blake2G.State.Proofs.update, diagonalOutputs, gOutput]
-  all_goals first
-    | exact b0.1 | exact b0.2.1 | exact b0.2.2.1 | exact b0.2.2.2
-    | exact b1.1 | exact b1.2.1 | exact b1.2.2.1 | exact b1.2.2.2
-    | exact b2.1 | exact b2.2.1 | exact b2.2.2.1 | exact b2.2.2.2
-    | exact b3.1 | exact b3.2.1 | exact b3.2.2.1 | exact b3.2.2.2
+    ∀ i : Fin 16, (Preparation.words w Mixing.extendedWrites)[i].Bounded :=
+  extended_words_bounded inverse holds
 
 private theorem native_write_word (w : Nat → ZMod p) (port : MemoryPort) :
     ((⟨.blakeRound, w⟩ : Delegation.Row p).writeToken port).word =
