@@ -6,6 +6,7 @@ import Human.Circuits.AddSub.RVTheorems
 import Human.Circuits.Bigint.Theorems
 import Human.Circuits.Blake2G.Theorems
 import Human.Circuits.JumpBranchSlt.Theorems
+import Human.Circuits.JumpBranchSlt.RVTheorems
 import Human.Circuits.MulDiv.Theorems
 import Human.Circuits.MulDiv.RVTheorems
 import Human.Circuits.ShiftBinop.Theorems
