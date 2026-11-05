@@ -1,0 +1,207 @@
+import Human.Circuits.JumpBranchSlt.RVTheorems
+import Slop.JumpBranchSlt.RVRow
+import Slop.Trace.RVPooledRow
+import Slop.Trace.RVValues
+import Slop.Trace.PC
+import Slop.BabyBear
+
+/-! RV32 comparison, branch and jump soundness (`Comparison/Branch/Jump.RVSoundnessClaim`), on the RV route: no Sail
+    state, interpreter or `Configured` fact.
+
+    - Fetch/step: the row's program entry is an aligned ROM word of the starting memory (`rvProgram_entry_fetch`)
+      that decodes to `rvInstruction input`; the row's pre-state has the entry's PC, so `RV.step` executes it
+      (`rv_step_of_position`). Its native data is `comparisonData`/`branchData`/`jumpData`.
+    - Row facts (`RVRowFacts`, `rv_row_facts`): selectors, immediate and tag from the decoder query, operand values
+      from the row's RV history (`rv_pooled_row_history`), operand bounds (`rv_pooled_value_bounds`), and the
+      outgoing PC's high limb from PC matching: the next row's decoder-table PC or the terminal PC (`terminalPC`; the
+      circuit does not range-check column 17).
+    - Row calculation: `rv_comparison_exec`, `rv_branch_exec`, `rv_jump_exec`. -/
+
+namespace Airbender.JumpBranchSlt.Proofs
+open Arithmetic Trace Trace.Proofs
+
+/-- Every outgoing PC of an RV-decoded pooled trace is canonical when the terminal PC is (as `pooled_pc_bounds`). -/
+theorem rv_pooled_finish_bounds {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+    {trace : PooledTrace p} (accepted : Accepted trace) {program : List RVPooledProgramEntry}
+    (decoded : RVPooledDecoded trace program) (terminal : trace.terminal.word.Bounded) :
+    ∀ row ∈ trace.rows, row.finish.word.Bounded := by
+  have incoming : ∀ row ∈ trace.rows, row.start.word.Bounded := by
+    intro row member
+    obtain ⟨entry, _, _, query⟩ := rv_decoder_member (decoded row member)
+    have canonical := rv_native_query_pc_word hp query
+    change row.start.word = Word.ofBitVec entry.pc at canonical
+    exact canonical.symm ▸ Word.ofBitVec_bound entry.pc
+  exact outgoing_pc_bounds accepted incoming terminal
+
+/-- The two operand registers of a JumpBranchSlt row hold the values the row read (as `rv_addsub_row_position`). -/
+theorem rv_jbs_row_reads {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : PooledTrace p} (accepted : Accepted trace)
+    {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry}
+    (inputs : RVPooledHistoryInputs trace initial cells program)
+    (decoded : RVPooledDecoded trace program)
+    {w : Nat → ZMod p} {before : RV.State}
+    (position : RVRowPosition trace initial cells (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) before) :
+    ∀ i j : BitVec 5, w 5 = (i.toNat : ZMod p) → w 6 = (j.toNat : ZMod p) →
+      before.getReg i = (Word.mk (w 22).val (w 23).val).toBitVec ∧
+      before.getReg j = (Word.mk (w 26).val (w 27).val).toBitVec := by
+  obtain ⟨middle, events, rawAfter, _, _, current, atState, _⟩ :=
+    rv_pooled_row_history hp inverse accepted inputs decoded position
+  intro i j hi hj
+  have shape : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).ports =
+      #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
+        importedConstraintsMemoryPorts[2]] := by
+    have portsEq : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := rfl
+    rw [portsEq]
+    first
+      | rfl
+      | simp [importedConstraintsMemoryPorts]
+  have boundP : 32 ≤ p := by
+    dsimp [timestampBase] at hp
+    omega
+  have valueLeft : (w 5).val = i.toNat := by
+    rw [hi, ZMod.val_natCast, Nat.mod_eq_of_lt (by have := i.isLt; omega)]
+  have valueRight : (w 6).val = j.toNat := by
+    rw [hj, ZMod.val_natCast, Nat.mod_eq_of_lt (by have := j.isLt; omega)]
+  dsimp only [rowEvents] at current
+  rw [shape] at current
+  have leftAddress : (importedConstraintsMemoryPorts[0]).address.code w =
+      (Cell.register i).addressCode := by
+    simp [importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode, valueLeft]
+  have rightAddress : (importedConstraintsMemoryPorts[1]).address.code w =
+      (Cell.register j).addressCode := by
+    simp [importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode, valueRight]
+  have firstReadonly : (importedConstraintsMemoryPorts[0]).writeValue = none := by
+    simp [importedConstraintsMemoryPorts]
+  have operands := rv_row_operand_reads trace.memoryEpoch firstReadonly leftAddress rightAddress current
+  have leftWord : memoryWord ((importedConstraintsMemoryPorts[0]).readCode w) =
+      (Word.mk (w 22).val (w 23).val).toBitVec := by
+    simp [importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode, memoryWord]
+  have rightWord : memoryWord ((importedConstraintsMemoryPorts[1]).readCode w) =
+      (Word.mk (w 26).val (w 27).val).toBitVec := by
+    simp [importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode, memoryWord]
+  rw [leftWord, rightWord] at operands
+  subst atState
+  exact operands
+
+/-- Everything the row calculation needs, from the trace: the row's facts at its RV pre-state, and `RV.step` of that
+    pre-state is `RV.exec` of the instruction its program entry decodes to. -/
+theorem rv_row_facts {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : PooledTrace p} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry}
+    (assumptions : RVTraceInputs trace initial cells program) (accepted : Accepted trace)
+    (decoded : RVPooledDecoded trace program) {w : Nat → ZMod p}
+    (member : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows) {before : RV.State}
+    (position : RVRowPosition trace initial cells ⟨.jumpBranchSlt, w⟩ before)
+    {entry : RVPooledProgramEntry} (present : entry ∈ program)
+    (query : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).decoderQuery = entry.query)
+    {i : RV.Instr} (decodes : RV.decode entry.bits = some i) {data : DecoderData Unit}
+    (fields : ∀ d, rvPooledDecoderFields i = some d → d = data.mapFamily (fun _ => .jumpBranchSlt))
+    (small : data.mask < 32) :
+    RVRowFacts w before data ∧ RV.step before = RV.exec before i := by
+  have h := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
+  have limbSize : limbBase < p := by dsimp [limbBase]; omega
+  have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
+  obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage
+  obtain ⟨guard, bits, i', decodedI, projection⟩ := rvProgram_entry_fetch programImage entry present
+  have hi : i' = i := Option.some.inj (decodedI.symm.trans decodes)
+  subst hi
+  have dataEq := fields _ projection
+  obtain ⟨pc, entryBits, entryData⟩ := entry
+  change entryData = data.mapFamily (fun _ => .jumpBranchSlt) at dataEq
+  subst dataEq
+  change entryBits = RV.read initial.mem pc 4 at bits
+  change pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0 at guard
+  change RV.decode entryBits = some i' at decodedI
+  have query0 : decoderQuery w = (⟨pc, entryBits, data⟩ : JumpBranchSlt.RVProgramEntry).query := query
+  obtain ⟨beforePC, step⟩ := rv_step_of_position position (rv_query_pc limbSize query) guard
+    (by rw [← bits]; exact decodedI)
+  change before.pc = pc at beforePC
+  refine ⟨?_, step⟩
+  have pcWord := rv_native_query_pc_word limbSize query0
+  change Word.mk (w 0).val (w 1).val = Word.ofBitVec pc at pcWord
+  rw [← beforePC] at pcWord guard
+  have rs1Query := congrArg (fun q : Vector (ZMod p) 9 => q[2]) query0
+  change w 5 = (data.rs1.toNat : ZMod p) at rs1Query
+  have rs2Query := congrArg (fun q : Vector (ZMod p) 9 => q[3]) query0
+  change w 6 = (data.rs2.toNat : ZMod p) at rs2Query
+  have regs := rv_jbs_row_reads clockSize inverse accepted assumptions.toRVPooledHistoryInputs decoded
+    position data.rs1 data.rs2 rs1Query rs2Query
+  have readBounds := (Trace.RVValues.rv_pooled_value_bounds (by omega) inverse accepted
+    assumptions.initialization.clocks assumptions.initialization.image
+    assumptions.wordTable assumptions.subwordTable programImage decoded).1 _ member
+  have left := readBounds importedConstraintsMemoryPorts[0]
+    (by change importedConstraintsMemoryPorts[0] ∈ importedConstraintsMemoryPorts
+        simp [importedConstraintsMemoryPorts])
+  have right := readBounds importedConstraintsMemoryPorts[1]
+    (by change importedConstraintsMemoryPorts[1] ∈ importedConstraintsMemoryPorts
+        simp [importedConstraintsMemoryPorts])
+  have bounds : (Word.mk (w 22).val (w 23).val).Bounded ∧
+      (Word.mk (w 26).val (w 27).val).Bounded := by
+    simpa [read_word, importedConstraintsMemoryPorts] using And.intro left right
+  have finish := rv_pooled_finish_bounds limbSize accepted decoded assumptions.terminalPC _ member
+  change (Word.mk (w 16).val (w 17).val).Bounded at finish
+  have flags := rv_decoder_selectors limbSize h small query0
+  have low := congrArg (fun q : Vector (ZMod p) 9 => q[5]) query0
+  change w 8 = (data.immediate.lo : ZMod p) at low
+  have high := congrArg (fun q : Vector (ZMod p) 9 => q[6]) query0
+  change w 9 = (data.immediate.hi : ZMod p) at high
+  have tag := congrArg (fun q : Vector (ZMod p) 9 => q[7]) query0
+  change w 10 = (data.funct3 : ZMod p) at tag
+  refine ⟨h, pcWord, guard.2, low, high, tag, ?_, regs.1, regs.2, bounds.1, bounds.2, finish.2⟩
+  intro k
+  have flag := flags k
+  fin_cases k <;> simpa [importedConstraintsDecoderColumns] using flag
+
+theorem rv_comparison_trace_soundness : Comparison.RVSoundnessClaim := by
+  intro p _ hp inverse trace initial cells program assumptions input output w relation
+  obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
+  obtain ⟨entry, present, _, query, decodes⟩ := mapping.instruction
+  obtain ⟨facts, step⟩ := rv_row_facts hp inverse assumptions accepted decoded member mapping.state present
+    query decodes (fun _ fields => comparison_pooled_fields fields)
+    (by unfold comparisonData; split <;> simp)
+  obtain ⟨s', exec, same⟩ := rv_comparison_exec (by omega) facts mapping.words.outputLo mapping.words.outputHi
+    mapping.words.finalPCLo mapping.words.finalPCHi
+  exact ⟨s', step.trans exec, same⟩
+
+theorem rv_branch_trace_soundness : Branch.RVSoundnessClaim := by
+  intro p _ hp inverse trace initial cells program assumptions input output w relation
+  obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
+  obtain ⟨entry, present, _, query, decodes⟩ := mapping.instruction
+  obtain ⟨facts, step⟩ := rv_row_facts hp inverse assumptions accepted decoded member mapping.state present
+    query decodes (fun _ fields => branch_pooled_fields fields) (by simp [branchData])
+  obtain ⟨s', exec, same⟩ := rv_branch_exec (by omega) facts (decode_branch_even decodes)
+    mapping.words.finalPCLo mapping.words.finalPCHi
+  exact ⟨s', step.trans exec, same⟩
+
+theorem rv_jump_trace_soundness : Jump.RVSoundnessClaim := by
+  intro p _ hp inverse trace initial cells program assumptions input output w relation
+  obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
+  obtain ⟨entry, present, _, query, decodes⟩ := mapping.instruction
+  obtain ⟨facts, step⟩ := rv_row_facts hp inverse assumptions accepted decoded member mapping.state present
+    query decodes (fun _ fields => jump_pooled_fields fields)
+    (by unfold jumpData; split <;> split <;> simp)
+  have even : ∀ offset, input.instruction = .jal offset → (offset.signExtend 32).toNat % 2 = 0 := by
+    intro offset jal
+    have d := decodes
+    simp only [Jump.rvInstruction, jal] at d
+    exact decode_jal_even d
+  obtain ⟨s', exec, same⟩ := rv_jump_exec (by omega) facts even mapping.words.outputLo mapping.words.outputHi
+    mapping.words.finalPCLo mapping.words.finalPCHi
+  exact ⟨s', step.trans exec, same⟩
+
+theorem babyBear_rv_comparison_trace_soundness : Comparison.BabyBearRVSoundnessClaim := by
+  intro trace initial cells program assumptions input output w relation
+  exact rv_comparison_trace_soundness (p := babyBearModulus) (by decide) (by decide) trace initial cells program
+    assumptions input output w relation
+
+theorem babyBear_rv_branch_trace_soundness : Branch.BabyBearRVSoundnessClaim := by
+  intro trace initial cells program assumptions input output w relation
+  exact rv_branch_trace_soundness (p := babyBearModulus) (by decide) (by decide) trace initial cells program
+    assumptions input output w relation
+
+theorem babyBear_rv_jump_trace_soundness : Jump.BabyBearRVSoundnessClaim := by
+  intro trace initial cells program assumptions input output w relation
+  exact rv_jump_trace_soundness (p := babyBearModulus) (by decide) (by decide) trace initial cells program
+    assumptions input output w relation
+
+end Airbender.JumpBranchSlt.Proofs

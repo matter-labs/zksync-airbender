@@ -1,6 +1,7 @@
 import Slop.Final.Trace.Families.AddSub.Theorems
 import Slop.AddSub.RVTraceSoundness
 import Slop.Final.Circuits.AddSub.RVTheorems
+import Slop.Final.Circuits.JumpBranchSlt.RVTheorems
 import Slop.Final.ISA.Theorems
 import Human.ISA.Sail.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
@@ -2216,6 +2217,12 @@ import Human.Import.Coefficients
 #print axioms Airbender.Trace.RVValues.rv_pooled_value_bounds
 #print axioms Airbender.AddSub.rv_soundness
 #print axioms Airbender.AddSub.babyBear_rv_soundness
+#print axioms Airbender.JumpBranchSlt.Comparison.rv_soundness
+#print axioms Airbender.JumpBranchSlt.Comparison.babyBear_rv_soundness
+#print axioms Airbender.JumpBranchSlt.Branch.rv_soundness
+#print axioms Airbender.JumpBranchSlt.Branch.babyBear_rv_soundness
+#print axioms Airbender.JumpBranchSlt.Jump.rv_soundness
+#print axioms Airbender.JumpBranchSlt.Jump.babyBear_rv_soundness
 #print axioms Airbender.decode_is_sail
 #print axioms Airbender.step_is_airbender
 #print axioms Airbender.configured_bridge

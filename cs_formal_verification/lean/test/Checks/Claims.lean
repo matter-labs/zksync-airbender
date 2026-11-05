@@ -5,6 +5,7 @@ import Slop.Final.Circuits.AddSub.RVTheorems
 import Slop.Final.Circuits.Bigint.Theorems
 import Slop.Final.Circuits.Blake2G.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
+import Slop.Final.Circuits.JumpBranchSlt.RVTheorems
 import Slop.Final.Circuits.MulDiv.Theorems
 import Slop.Final.Circuits.MulDiv.RVTheorems
 import Slop.Final.Circuits.ShiftBinop.Theorems
@@ -32,6 +33,7 @@ import Human.Circuits.AddSub.RVTheorems
 import Human.Circuits.Bigint.Theorems
 import Human.Circuits.Blake2G.Theorems
 import Human.Circuits.JumpBranchSlt.Theorems
+import Human.Circuits.JumpBranchSlt.RVTheorems
 import Human.Circuits.MulDiv.Theorems
 import Human.Circuits.ShiftBinop.Theorems
 import Human.Circuits.SubwordMemory.Theorems
@@ -68,6 +70,12 @@ example : Airbender.JumpBranchSlt.Branch.SoundnessClaim := @Airbender.JumpBranch
 example : Airbender.JumpBranchSlt.Branch.BabyBearSoundnessClaim := @Airbender.JumpBranchSlt.Branch.babyBear_soundness
 example : Airbender.JumpBranchSlt.Jump.SoundnessClaim := @Airbender.JumpBranchSlt.Jump.soundness
 example : Airbender.JumpBranchSlt.Jump.BabyBearSoundnessClaim := @Airbender.JumpBranchSlt.Jump.babyBear_soundness
+example : Airbender.JumpBranchSlt.Comparison.RVSoundnessClaim := @Airbender.JumpBranchSlt.Comparison.rv_soundness
+example : Airbender.JumpBranchSlt.Comparison.BabyBearRVSoundnessClaim := @Airbender.JumpBranchSlt.Comparison.babyBear_rv_soundness
+example : Airbender.JumpBranchSlt.Branch.RVSoundnessClaim := @Airbender.JumpBranchSlt.Branch.rv_soundness
+example : Airbender.JumpBranchSlt.Branch.BabyBearRVSoundnessClaim := @Airbender.JumpBranchSlt.Branch.babyBear_rv_soundness
+example : Airbender.JumpBranchSlt.Jump.RVSoundnessClaim := @Airbender.JumpBranchSlt.Jump.rv_soundness
+example : Airbender.JumpBranchSlt.Jump.BabyBearRVSoundnessClaim := @Airbender.JumpBranchSlt.Jump.babyBear_rv_soundness
 example : Airbender.MulDiv.SoundnessClaim := @Airbender.MulDiv.soundness
 example : Airbender.MulDiv.BabyBearSoundnessClaim := @Airbender.MulDiv.babyBear_soundness
 example : Airbender.MulDiv.RVSoundnessClaim := @Airbender.MulDiv.rv_soundness
@@ -162,6 +170,12 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.JumpBranchSlt.Branch.babyBear_soundness
 #print axioms Airbender.JumpBranchSlt.Jump.soundness
 #print axioms Airbender.JumpBranchSlt.Jump.babyBear_soundness
+#print axioms Airbender.JumpBranchSlt.Comparison.rv_soundness
+#print axioms Airbender.JumpBranchSlt.Comparison.babyBear_rv_soundness
+#print axioms Airbender.JumpBranchSlt.Branch.rv_soundness
+#print axioms Airbender.JumpBranchSlt.Branch.babyBear_rv_soundness
+#print axioms Airbender.JumpBranchSlt.Jump.rv_soundness
+#print axioms Airbender.JumpBranchSlt.Jump.babyBear_rv_soundness
 #print axioms Airbender.MulDiv.soundness
 #print axioms Airbender.MulDiv.babyBear_soundness
 #print axioms Airbender.MulDiv.rv_soundness
