@@ -35,6 +35,8 @@ globs = [
   "Human.Circuits.AddSub.Model",
   "Human.Circuits.AddSub.Modular",
   "Human.Circuits.AddSub.NonDeterminism",
+  "Human.Circuits.AddSub.RVModel",
+  "Human.Circuits.AddSub.RVTheorems",
   "Human.Circuits.AddSub.Reference",
   "Human.Circuits.AddSub.Theorems",
   "Human.Circuits.Bigint.Additive",
@@ -115,6 +117,7 @@ globs = [
   "Human.Circuits.WordMemory.Model",
   "Human.Circuits.WordMemory.Theorems",
   "Human.Helpers.+",
+  "Human.ISA.+",
   "Human.Import.+",
   "Human.Trace.+",
 ]
