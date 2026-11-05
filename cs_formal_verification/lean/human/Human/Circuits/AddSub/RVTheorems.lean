@@ -4,7 +4,8 @@ import Human.Helpers.Delegation.Decoder
 
 /-! RV32 claims (B2 pilot). The AddSub claims (first block) are stated against our spec (`RV.step`, `Human/ISA/RV32.lean`),
     not Sail: the row's pre-state is `input.before : RV.State`, which carries the input stream (`RV.State.input`), so there is
-    no stream binder. `RV.Same` (`ISA/State.lean`) compares two `RV.State`s. Not proven yet; not in `test/Checks/Claims.lean`.
+    no stream binder. `RV.Same` (`ISA/State.lean`) compares two `RV.State`s. Proven in
+    `slop/Slop/Final/Circuits/AddSub/RVTheorems.lean` (checked in `test/Checks/Claims.lean`).
     Resolved: PC in ROM and 4-byte aligned is the decoder table's guard (`rvProgramEntryWith`); the word at the row's PC is
     the table's encoding (`RVTraceMapping.instruction`).
     The Delegation.Caller claims (second block) are still Sail-typed; they are not part of the AddSub pilot. -/

@@ -1,4 +1,5 @@
 import Slop.Final.Trace.Families.AddSub.Theorems
+import Slop.AddSub.RVTraceSoundness
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
 import Slop.Final.Trace.Families.JumpBranchSlt.Theorems
 import Slop.Final.Circuits.MulDiv.Theorems
@@ -2208,3 +2209,7 @@ import Human.Import.Coefficients
 #print axioms Airbender.montgomery_inverse_correct
 #print axioms Airbender.serialized_one_correct
 #print axioms Airbender.serialized_neg_one_correct
+
+#print axioms Airbender.AddSub.Proofs.rv_trace_soundness
+#print axioms Airbender.AddSub.Proofs.babyBear_rv_trace_soundness
+#print axioms Airbender.Trace.RVValues.rv_pooled_value_bounds
