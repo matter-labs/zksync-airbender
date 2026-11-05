@@ -52,7 +52,7 @@ theorem missing_bytes : programImage before [8] = none := by
     simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
       bind, EStateM.bind, EStateM.get, throw, throwThe, MonadExceptOf.throw,
       EStateM.throw, before]
-  simp only [List.mapM_cons, programEntryWith, absent, bind, Option.bind]
+  simp only [List.mapM_cons, programEntryWith, absent, bind, Option.bind, ite_self]
 
 private def addRow : Row babyBearModulus := ⟨.addSub, fun
   | 5 => 1 | 6 => 2 | 7 => 3 | 10 => 1 | _ => 0⟩

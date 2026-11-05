@@ -39,8 +39,9 @@ private theorem extraction (bits : BitVec 32) (instruction : SailRV32.instructio
     UnifiedReduced.programImage (before bits) [0] = some [⟨0, bits, instruction, data⟩] := by
   have bytes : (Cell.ram 0).read (before bits) = .ok bits (before bits) :=
     written_word_read Airbender.Reference.RiscV.Sail.resetMachine 0 bits
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
-    bind, Option.bind, pure]
+  have fetch : (0 : BitVec 32).toNat < ROM.limit ∧ (0 : BitVec 32).toNat % 4 = 0 := by decide
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, fetch, and_self, not_true_eq_false,
+    ↓reduceIte, bytes, decoded, fields, bind, Option.bind, pure]
 
 theorem all_instruction_forms : ∀ sample ∈ samples,
     UnifiedReduced.programImage (before sample.1) [0] = some [⟨0, sample.1, sample.2.1, sample.2.2⟩] := by
