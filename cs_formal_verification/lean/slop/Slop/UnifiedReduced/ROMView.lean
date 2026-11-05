@@ -20,8 +20,8 @@ theorem read_data_unused [Fact p.Prime]
     FlatOperation.ConstraintsHoldFlat (Verification.environment (readData w lo hi)) (clockConstraints setup) := by
   have core := Verification.holds_of_sublist holds
     (List.sublist_append_left (importedConstraints setup) importedConstraintsTimestampLookups)
-  have selected := Verification.assertion_of_holds core ⟨42, by rw [constraint_count]; decide⟩
-  have enabled : w 87 = 1 := by
+  have selected := Verification.assertion_of_holds core ⟨39, by rw [constraint_count]; decide⟩
+  have enabled : w 81 = 1 := by
     op_index at selected
     simp only [Expression.eval, Verification.environment, load, rom] at selected
     push_cast at selected
@@ -43,7 +43,7 @@ theorem read_data_unused [Fact p.Prime]
       obtain ⟨i, rfl⟩ := List.mem_iff_get.mp member
       have original := Verification.assertion_of_holds core i
       obtain ⟨k, hk⟩ := i
-      have bound : k < 129 := by have := hk; rwa [constraint_count] at this
+      have bound : k < 120 := by have := hk; rwa [constraint_count] at this
       interval_cases k
       all_goals first
         | (op_index at original ⊢
