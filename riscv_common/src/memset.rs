@@ -145,11 +145,11 @@ unsafe fn fill_aligned_words(dest: *mut u8, value: u8, mut n: usize) {
     }
 }
 
-/// `checked_word_memory` `memset`: traps unless `dest` and `n` are word multiples; `n == 0` touches
-/// no memory. Fills with the low byte of `value`, as C `memset`.
+/// `checked_word_memory` `memset`: for nonzero `n`, traps unless `dest` and `n` are word multiples;
+/// `n == 0` returns with no memory access whatever the pointer. Fills with the low byte of `value`.
 ///
 /// # Safety
-/// The `memset` contract: a valid, non-wrapping range.
+/// For nonzero `n`, the `memset` contract: a valid, non-wrapping range.
 #[cfg(feature = "checked_word_memory")]
 #[allow(dead_code)]
 #[inline(always)]

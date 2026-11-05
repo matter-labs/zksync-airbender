@@ -468,11 +468,11 @@ unsafe fn copy_bytes_lt4(dest: *mut u8, src: *const u8, n: usize) {
     }
 }
 
-/// `checked_word_memory` `memcpy`: traps unless `dest`, `src` and `n` are word multiples; `n == 0`
-/// touches no memory.
+/// `checked_word_memory` `memcpy`: for nonzero `n`, traps unless `dest`, `src` and `n` are word
+/// multiples; `n == 0` returns with no memory access whatever the pointers.
 ///
 /// # Safety
-/// The `memcpy` contract: valid, non-wrapping ranges that are equal or disjoint.
+/// For nonzero `n`, the `memcpy` contract: valid, non-wrapping ranges, equal or disjoint.
 #[cfg(feature = "checked_word_memory")]
 #[allow(dead_code)]
 #[inline(always)]

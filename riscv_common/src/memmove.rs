@@ -183,12 +183,12 @@ unsafe fn copy_aligned_words_backward(
     (d.cast(), s.cast())
 }
 
-/// `checked_word_memory` `memmove`: traps unless `dest`, `src` and `n` are word multiples; `n == 0`
-/// touches no memory. Overlapping ranges are copied forward (`copy_aligned_words`, ascending) when
-/// `dest` is below `src`, backward otherwise.
+/// `checked_word_memory` `memmove`: for nonzero `n`, traps unless `dest`, `src` and `n` are word
+/// multiples; `n == 0` returns with no memory access whatever the pointers. Overlap is copied
+/// forward (`copy_aligned_words`, ascending) when `dest` is below `src`, backward otherwise.
 ///
 /// # Safety
-/// The `memmove` contract: valid, non-wrapping ranges.
+/// For nonzero `n`, the `memmove` contract: valid, non-wrapping ranges.
 #[cfg(feature = "checked_word_memory")]
 #[allow(dead_code)]
 #[inline(always)]

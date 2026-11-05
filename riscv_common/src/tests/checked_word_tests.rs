@@ -107,7 +107,7 @@ fn every_misaligned_argument_traps() {
         ("memset", memset, false),
     ] {
         for residue in 1..4 {
-            let mut cases = vec![("dst", residue, 0, 64), ("len", 0, 0, 64 - residue)];
+            let mut cases = vec![("dst", residue, 0, 64), ("len", 0, 0, 60 + residue)];
             if has_src {
                 cases.push(("src", 0, residue, 64));
             }
