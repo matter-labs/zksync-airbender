@@ -11,7 +11,7 @@ import_clean importedConstraints from "../../cs/compiled_circuits/blake2_with_ex
 
 /-- Native invocation ranges and every timestamp comparison, in addition to
     the family's retained equations and modeled table queries. -/
-def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 4)) :
+def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
     List (FlatOperation (ZMod p)) :=
   importedConstraints setup ++ importedConstraintsTimestampLookups
 

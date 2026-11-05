@@ -348,6 +348,17 @@ def Circuit.unifiedReducedQueries (c : Circuit) : Except String (Array (Array Ex
       throw "unified reduced query padding must be zero"
     query.columns.mapM c.lookupExpression
 
+/-- Check a prefix of the table offsets; the remaining tables all start at the
+    decoder boundary, as in the upstream circuit JSON. -/
+private def Circuit.checkTableOffsets (c : Circuit) (expected : Array Nat)
+    (family : String) : Except String Unit := do
+  unless expected.size ≤ c.table_offsets.size do
+    throw s!"{family} table offsets are incomplete"
+  for id in [:c.table_offsets.size] do
+    let offset := (expected[id]?).getD c.offset_for_decoder_table
+    unless (c.table_offsets[id]?.map (·.val)) == some offset do
+      throw s!"unexpected {family} table offset"
+
 /-- BLAKE2s G has one eight-data-column control query and eighteen three-data-column
     XOR queries. Keep the control columns, chunk widths/tags and query order intact. -/
 def Circuit.blakeGQueries (c : Circuit) : Except String (Array (Array Expr)) := do
@@ -382,31 +393,35 @@ def Circuit.blakeGQueries (c : Circuit) : Except String (Array (Array Expr)) := 
           throw "BLAKE2 G XOR lookup padding must be zero"
     query.columns.mapM c.lookupExpression
 
-/-- The extended-control round has eight G invocations and final XOR queries.
-    Its setup is exactly the five XOR regions, with three data columns and a tag. -/
+/-- The current extended-control round uses carry-aware and split-XOR tables.
+    Keep all six physical columns and the exact eight-call/finalization schedule. -/
 def Circuit.blakeRoundQueries (c : Circuit) : Except String (Array (Array Expr)) := do
-  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 4 do
-    throw "BLAKE2 round lookups require four columns and explicit table IDs"
-  unless !c.has_decoder_lookup && c.offset_for_decoder_table == 344384 &&
-      c.total_tables_size == 344384 do throw "unexpected BLAKE2 round setup boundary"
-  let offsets := #[0, 0, 0, 0, 0, 65536, 65536, 65536, 65536, 65536,
-    65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65600, 65856, 82240] ++
-    Array.replicate 34 344384
-  unless c.table_offsets.size == offsets.size do throw "BLAKE2 round table offsets are incomplete"
-  for id in [:offsets.size] do
-    unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
-      throw "unexpected BLAKE2 round table offset"
-  let gTags := [4, 4, 4, 4, 17, 20, 18, 17, 20, 18, 4, 4, 4, 4, 19, 20, 19, 20]
-  let tags := ((List.replicate 8 gTags).flatten ++
-    (List.replicate 16 [19, 20]).flatten ++ (List.replicate 8 [20, 19, 4, 4]).flatten).toArray
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 6 do
+    throw "BLAKE2 round lookups require six columns and explicit table IDs"
+  unless !c.has_decoder_lookup && c.offset_for_decoder_table == 606208 &&
+      c.total_tables_size == 606208 do throw "unexpected BLAKE2 round setup boundary"
+  let offsets := Array.replicate 5 0 ++ Array.replicate 15 65536 ++ #[81920] ++
+    Array.replicate 35 344064 ++ #[540672, 589824]
+  c.checkTableOffsets offsets "BLAKE2 round"
+  let columnTags := [55, 4, 55, 4, 20, 20, 57, 57, 4, 4, 55, 55, 20, 20, 19, 19]
+  let diagonalTags := [55, 4, 55, 4, 20, 20, 57, 57, 4, 4, 55, 55, 20, 20, 56, 56]
+  let tags := ((List.replicate 4 columnTags).flatten ++
+    (List.replicate 4 diagonalTags).flatten ++ (List.replicate 16 [19, 20]).flatten ++
+    (List.replicate 8 [20, 19, 4, 4]).flatten).toArray
   unless c.num_generic_lookups == tags.size && c.generic_lookups.size == tags.size do
-    throw "BLAKE2 round requires 208 XOR queries"
+    throw "BLAKE2 round requires 192 native queries"
   c.generic_lookups.mapIdxM fun index query => do
-    unless query.columns.size == 4 && query.lookup_set_index == index do
+    unless query.columns.size == 6 && query.lookup_set_index == index do
       throw "unsupported BLAKE2 round query width or set"
-    let some tag := query.columns[3]? | throw "BLAKE2 round query is missing its table ID"
+    let some tag := query.columns[5]? | throw "BLAKE2 round query is missing its table ID"
     unless tag.linear_terms.isEmpty && some tag.constant.canonical.val == tags[index]? do
       throw "unexpected BLAKE2 round table ID"
+    let tagId := tag.constant.canonical.val
+    let dataWidth := if tagId == 57 then 5 else if tagId == 55 || tagId == 56 then 4 else 3
+    for column in [dataWidth:5] do
+      let some padding := query.columns[column]? | throw "BLAKE2 round query is missing padding"
+      unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
+        throw "BLAKE2 round unused query columns must be zero"
     query.columns.mapM c.lookupExpression
 
 /-- Six-index control query followed by forty variable-tag byte operations.

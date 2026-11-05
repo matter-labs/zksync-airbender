@@ -76,7 +76,7 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     else pure []
   let memoryFamily := memory.isSome || submemory.isSome || unified.isSome || blake.isSome ||
     blakeRound.isSome || bigint.isSome || keccak.isSome
-  let tableWidth := if keccak.isSome then 8 else if bigint.isSome then 3 else if blakeRound.isSome then 4 else if unified.isSome then 10 else 9
+  let tableWidth := if keccak.isSome then 8 else if bigint.isSome then 3 else if blakeRound.isSome then 6 else if unified.isSome then 10 else 9
   let rom := mkIdent (if submemory.isSome || unified.isSome || blake.isSome || blakeRound.isSome ||
     bigint.isSome || keccak.isSome then `setup else `rom)
   let generic ← if memoryFamily then do
