@@ -17,8 +17,8 @@ private def zeroSetup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic 
 }
 
 private def row : Nat → ZMod babyBearModulus
-  | 0 => 65534
-  | 1 | 30 => 2
+  | 0 => 65532
+  | 1 => 2
   | 4 | 11 | 128 | 129 | 130 => 1
   | 31 => 3
   | 32 => 4
@@ -36,9 +36,9 @@ private theorem satisfies :
     | (apply Verification.range16_contains; decide)
     | (exact ⟨⟨0, by decide⟩, rfl⟩)
 
-example : (Word.mk (row 30).val (row 31).val).toBitVec = (Word.mk 65534 2).toBitVec + 4 := by
+example : (Word.mk (row 30).val (row 31).val).toBitVec = (Word.mk 65532 2).toBitVec + 4 := by
   have result := UnifiedReduced.Proofs.pc_successor (p := babyBearModulus)
-    (initial := ⟨65534, 2⟩) (final := ⟨(row 30).val, (row 31).val⟩)
+    (initial := ⟨65532, 2⟩) (final := ⟨(row 30).val, (row 31).val⟩)
     (by decide) satisfies rfl ⟨rfl, rfl, rfl, rfl⟩
     ⟨rfl, rfl, rfl, rfl⟩ ⟨by decide, by decide⟩
   exact result.2.2
@@ -73,10 +73,10 @@ private theorem aliased_satisfies :
 private def before : State :=
   { (default : State) with regs :=
     ((default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .x1 (123 : BitVec 32) |>.insert .PC (196606 : BitVec 32)) }
+      |>.insert .x1 (123 : BitVec 32) |>.insert .PC (196604 : BitVec 32)) }
 
 private def input : Input where
-  row := ⟨.add, ⟨123, 0⟩, ⟨123, 0⟩, ⟨0, 0⟩, ⟨65534, 2⟩⟩
+  row := ⟨.add, ⟨123, 0⟩, ⟨123, 0⟩, ⟨0, 0⟩, ⟨65532, 2⟩⟩
   rs1 := .Regidx 1
   rs2 := .Regidx 1
   rd := .Regidx 1
@@ -100,7 +100,7 @@ private theorem contract : Contract input := by
 
 /-- A complete imported ADD row with both sources/destination aliased and a PC
     carry establishes the same full native Sail state, not just the result word. -/
-example : spec input ⟨⟨246, 0⟩, ⟨2, 3⟩⟩ := by
+example : spec input ⟨⟨246, 0⟩, ⟨0, 3⟩⟩ := by
   apply UnifiedReduced.Proofs.standard_soundness (by decide) zeroSetup input _ aliasedRow
   refine ⟨?_, aliased_satisfies, ?_⟩
   · constructor
@@ -124,7 +124,7 @@ example : ¬ FlatOperation.ConstraintsHoldFlat
 
 private def discarded : Input :=
   { input with
-    row := ⟨.addi, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩, ⟨65534, 2⟩⟩
+    row := ⟨.addi, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩, ⟨65532, 2⟩⟩
     rd := zeroRegister
     encodedImmediate := 4095 }
 
@@ -143,7 +143,7 @@ private theorem discarded_contract : Contract discarded := by
 
 /-- Original ADDI x0,x1,-1 still reads x1, while the circuit uses a zero-operand
     ADD row. No agreement or bound on the discarded original operand is assumed. -/
-example : spec discarded ⟨⟨0, 0⟩, ⟨2, 3⟩⟩ := by
+example : spec discarded ⟨⟨0, 0⟩, ⟨0, 3⟩⟩ := by
   apply UnifiedReduced.Proofs.standard_soundness (by decide) zeroSetup discarded _ row
   refine ⟨?_, satisfies, ?_⟩
   · constructor
@@ -180,7 +180,7 @@ private theorem tri_satisfies :
 private def triBefore : State :=
   { (default : State) with regs :=
     ((default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .x1 (4294967295 : BitVec 32) |>.insert .PC (196606 : BitVec 32)) }
+      |>.insert .x1 (4294967295 : BitVec 32) |>.insert .PC (196604 : BitVec 32)) }
 
 private def triInput : UnifiedReduced.TriAdd.Input where
   left := ⟨65535, 65535⟩
@@ -189,7 +189,7 @@ private def triInput : UnifiedReduced.TriAdd.Input where
   rs1 := .Regidx 1
   rs2 := .Regidx 1
   rd := .Regidx 1
-  pc := ⟨65534, 2⟩
+  pc := ⟨65532, 2⟩
   before := triBefore
 
 private theorem tri_contract : UnifiedReduced.TriAdd.Calculation.RegisterContract triInput := by
@@ -206,7 +206,7 @@ private theorem tri_contract : UnifiedReduced.TriAdd.Calculation.RegisterContrac
 
 /-- Three aliased maximal operands require low/high carries of two and a
     wrapping result. The complete imported row produces the native state effects. -/
-example : UnifiedReduced.TriAdd.spec triInput ⟨⟨65533, 65535⟩, ⟨2, 3⟩⟩ := by
+example : UnifiedReduced.TriAdd.spec triInput ⟨⟨65533, 65535⟩, ⟨0, 3⟩⟩ := by
   apply UnifiedReduced.Proofs.triadd_soundness (by decide) zeroSetup triInput _ triRow
   refine ⟨?_, tri_satisfies, ?_⟩
   · constructor
@@ -242,7 +242,7 @@ private theorem tri_discarded_contract : UnifiedReduced.TriAdd.Calculation.Regis
   · apply read_register
     simp [triDiscarded, triInput, before, Word.toBitVec, Word.value, limbBase]
 
-example : UnifiedReduced.TriAdd.spec triDiscarded ⟨⟨0, 0⟩, ⟨2, 3⟩⟩ := by
+example : UnifiedReduced.TriAdd.spec triDiscarded ⟨⟨0, 0⟩, ⟨0, 3⟩⟩ := by
   apply UnifiedReduced.Proofs.triadd_soundness (by decide) zeroSetup triDiscarded _ row
   refine ⟨?_, satisfies, ?_⟩
   · constructor
@@ -298,8 +298,8 @@ private def nativeToken (timeLo timeHi value : Nat) : MemoryToken babyBearModulu
 private def nativeTrace (rollover : Bool) : UnifiedTrace babyBearModulus where
   rows := [⟨.machine, nativeAssignment rollover⟩]
   rom := zeroSetup
-  initial := ⟨(65534, 2), (if rollover then 524284 else 4, if rollover then 7 else 0)⟩
-  terminal := ⟨(2, 3), (if rollover then 0 else 8, if rollover then 8 else 0)⟩
+  initial := ⟨(65532, 2), (if rollover then 524284 else 4, if rollover then 7 else 0)⟩
+  terminal := ⟨(0, 3), (if rollover then 0 else 8, if rollover then 8 else 0)⟩
   initialMemory := [nativeToken 0 0 123]
   terminalMemory := [nativeToken (if rollover then 524286 else 6) (if rollover then 7 else 0) 246]
 
@@ -393,12 +393,12 @@ theorem initialized_read_history (rollover : Bool) :
     (native_accepted rollover) (native_boundary rollover) (native_image rollover) (by decide)
 
 private def fetchEntry : Airbender.UnifiedReduced.ProgramEntry :=
-  ⟨196606, 0x001080b3, .RTYPE (.Regidx 1, .Regidx 1, .Regidx 1, .ADD),
+  ⟨196604, 0x001080b3, .RTYPE (.Regidx 1, .Regidx 1, .Regidx 1, .ADD),
     ⟨.machine, 1, 1, 1, ⟨0, 0⟩, 1, 0⟩⟩
 /-- `before`'s registers on the Airbender reset state. -/
 private noncomputable def fetchBefore : State :=
   { Reference.RiscV.Sail.resetMachine with
-    regs := Reference.RiscV.Sail.resetMachine.regs.insert .x1 (123 : BitVec 32) |>.insert .PC (196606 : BitVec 32) }
+    regs := Reference.RiscV.Sail.resetMachine.regs.insert .x1 (123 : BitVec 32) |>.insert .PC (196604 : BitVec 32) }
 private noncomputable def fetchState : State := wordWriteState fetchBefore fetchEntry.pc.toNat fetchEntry.bits
 
 theorem airbender_fetchState : Reference.RiscV.Sail.Configured fetchState := by
@@ -435,7 +435,7 @@ private theorem native_public_inputs (rollover : Bool) :
     simp only [initialImage, List.mapM_cons, List.mapM_nil, read]
     rfl
   · refine ⟨⟨if rollover then 524284 else 4, if rollover then 7 else 0⟩, ?_⟩
-    have pc : run (SailRV32.Functions.get_arch_pc ()) fetchState = .ok 196606 fetchState := by
+    have pc : run (SailRV32.Functions.get_arch_pc ()) fetchState = .ok 196604 fetchState := by
       apply read_register
       simp [fetchState, wordWriteState, fetchBefore]
     simp only [initialState, pc]
@@ -455,10 +455,10 @@ theorem native_sail_memory_execution (rollover : Bool) :
   all_goals exact ⟨⟨0, by decide⟩, by decide⟩
 
 private noncomputable def traceInput : Input :=
-  { input with before := Trace.retiredState fetchState (Word.mk 65534 2).toBitVec }
+  { input with before := Trace.retiredState fetchState (Word.mk 65532 2).toBitVec }
 
 theorem initialized_arithmetic_soundness (rollover : Bool) :
-    Sail.spec traceInput ⟨⟨246, 0⟩, ⟨2, 3⟩⟩ := by
+    Sail.spec traceInput ⟨⟨246, 0⟩, ⟨0, 3⟩⟩ := by
   apply Airbender.UnifiedReduced.babyBear_soundness
     (nativeTrace rollover) fetchState [Cell.register 1] [fetchEntry]
     traceInput _ (nativeAssignment rollover)
