@@ -114,13 +114,22 @@ private theorem instruction_decoded (tag : Fin 6) (wrap : Bool) :
   fin_cases tag <;> cases wrap <;> decode_on_reset
 
 set_option maxHeartbeats 8000000 in
-private theorem program_image (tag : Fin 6) (wrap : Bool) :
-    JumpBranchSlt.programImage (before tag wrap) [(Branch.initial wrap).toBitVec] =
-      some [entry tag wrap] := by
-  have bytes : (Cell.ram (Branch.initial wrap).toBitVec).read (before tag wrap) =
-      .ok (entry tag wrap).bits (before tag wrap) := written_word_read _ _ _
+private theorem program_image (tag : Fin 6) :
+    JumpBranchSlt.programImage (before tag false) [(Branch.initial false).toBitVec] =
+      some [entry tag false] := by
+  have bytes : (Cell.ram (Branch.initial false).toBitVec).read (before tag false) =
+      .ok (entry tag false).bits (before tag false) := written_word_read _ _ _
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, instruction_decoded, bind, Option.bind]
-  fin_cases tag <;> cases wrap <;> rfl
+  fin_cases tag <;> rfl
+
+/-- The forward-wrap fixture's PC 0xfffffffc is outside the ROM fetch domain, so the
+    public decoder table rejects it even though its bytes decode. -/
+theorem program_image_outside_rom_rejected (tag : Fin 6) :
+    JumpBranchSlt.programImage (before tag true) [(Branch.initial true).toBitVec] = none := by
+  have outside : ¬((Branch.initial true).toBitVec.toNat < ROM.limit ∧
+      (Branch.initial true).toBitVec.toNat % 4 = 0) := by decide
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, outside,
+    not_false_eq_true, ↓reduceIte, bind, Option.bind]
 
 private theorem query (tag : Fin 6) (wrap : Bool) :
     JumpBranchSlt.decoderQuery (assignment tag wrap) = (entry tag wrap).query := by
@@ -136,49 +145,51 @@ private theorem decoded (tag : Fin 6) (wrap : Bool) (rom : Table (ZMod babyBearM
 
 /-- Each of the six actual public branch encodings retires through its native
     history. Fixtures cover signed/unsigned disagreement, taken/not-taken paths,
-    negative offsets and wraparound in both PC directions. -/
-theorem actual_branch_retirement (tag : Fin 6) (wrap : Bool)
+    negative offsets and backward wraparound (PC 0 to 0xfffffffc). Forward
+    wraparound would fetch from 0xfffffffc, outside the ROM fetch domain:
+    `program_image_outside_rom_rejected`. -/
+theorem actual_branch_retirement (tag : Fin 6)
     (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ after,
-      initialState (retiredState (before tag wrap) (Branch.initial wrap).toBitVec) (4, 0) =
-        some (trace tag wrap rom).initial ∧
-      run (normalStep (SailRV32.Functions.execute_BTYPE (if wrap then 8 else 8188)
+      initialState (retiredState (before tag false) (Branch.initial false).toBitVec) (4, 0) =
+        some (trace tag false rom).initial ∧
+      run (normalStep (SailRV32.Functions.execute_BTYPE 8188
         (.Regidx 2) (.Regidx 1) (opcode tag)))
-        (retiredState (before tag wrap) (Branch.initial wrap).toBitVec) =
-        .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Branch.final tag wrap).toBitVec) ∧
+        (retiredState (before tag false) (Branch.initial false).toBitVec) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Branch.final tag false).toBitVec) ∧
       run (SailRV32.Functions.rX_bits (.Regidx 2)) after = .ok 0xffffffff after := by
   obtain ⟨history, rows, after, _, permutation, _, execution, _⟩ :=
     JumpBranchSlt.Proofs.decoded_native_history (by decide) (by decide)
-      (accepted tag wrap rom) (boundary tag wrap rom) (image tag wrap)
+      (accepted tag false rom) (boundary tag false rom) (image tag false)
       (by decide)
       (by intro cell member; simp [cells] at member; rcases member with rfl | rfl | rfl <;> trivial)
-      (program_image tag wrap) (decoded tag wrap rom)
-  have single : rows = [row tag wrap] := by
+      (program_image tag) (decoded tag false rom)
+  have single : rows = [row tag false] := by
     simpa only [trace] using List.perm_singleton.mp permutation
   subst rows
   have native : SailHistory cells
-      (JumpBranchSlt.Proofs.nativeEvents (trace tag wrap rom).memoryEpoch
-        (assignment tag wrap)).reverse (before tag wrap) after := by
+      (JumpBranchSlt.Proofs.nativeEvents (trace tag false rom).memoryEpoch
+        (assignment tag false)).reverse (before tag false) after := by
     simpa [Trace.rowEvents, row, Row.ports, Row.columns] using execution
   have checked := JumpBranchSlt.Proofs.branch_rebased_step (by decide) (by decide)
-    (accepted tag wrap rom) (boundary tag wrap rom) (image tag wrap)
-    (program_image tag wrap) (decoded tag wrap rom)
-    (by change (⟨(assignment tag wrap 16).val, (assignment tag wrap 17).val⟩ : Word).Bounded
-        fin_cases tag <;> cases wrap <;> constructor <;> decide)
-    (by change (assignment tag wrap 0).val % 4 = 0
-        fin_cases tag <;> cases wrap <;> decide)
-    (by simp [trace, row]) (by simp) (query tag wrap) (opcode tag)
-    (if wrap then 8 else 8188) 1 2 rfl native (.nil _)
+    (accepted tag false rom) (boundary tag false rom) (image tag false)
+    (program_image tag) (decoded tag false rom)
+    (by change (⟨(assignment tag false 16).val, (assignment tag false 17).val⟩ : Word).Bounded
+        fin_cases tag <;> constructor <;> decide)
+    (by change (assignment tag false 0).val % 4 = 0
+        fin_cases tag <;> decide)
+    (by simp [trace, row]) (by simp) (query tag false) (opcode tag)
+    8188 1 2 rfl native (.nil _)
     ⟨Configuration.resetState.regs .misa, by simp [before, wordWriteState, Std.ExtDHashMap.get?_insert, reset_machine_get]⟩
   have written := JumpBranchSlt.Proofs.register_write (by decide)
-    (trace tag wrap rom).memoryEpoch (query tag wrap) native
-  change run (SailRV32.Functions.wX_bits (.Regidx 0) _) (before tag wrap) = .ok () after at written
-  have same : before tag wrap = after := (EStateM.Result.ok.inj written).2
+    (trace tag false rom).memoryEpoch (query tag false) native
+  change run (SailRV32.Functions.wX_bits (.Regidx 0) _) (before tag false) = .ok () after at written
+  have same : before tag false = after := (EStateM.Result.ok.inj written).2
   subst after
-  refine ⟨before tag wrap, ?_, ?_, ?_⟩
+  refine ⟨before tag false, ?_, ?_, ?_⟩
   · rw [initialState, Proofs.retired_state_pc]
-    fin_cases tag <;> cases wrap <;> rfl
-  · fin_cases tag <;> cases wrap <;>
+    fin_cases tag <;> rfl
+  · fin_cases tag <;>
       norm_num [assignment, Branch.row, Word.toBitVec, Word.value, limbBase,
         ZMod.val_ofNat, babyBearModulus] at checked ⊢
     all_goals exact checked
@@ -209,14 +220,14 @@ private theorem pooledAccepted (tag : Fin 6) (wrap : Bool) : Accepted (pooled ta
   · exact (accepted tag wrap (ROM.table cells seed)).states
   · exact (accepted tag wrap (ROM.table cells seed)).memory
 
-private theorem pooledImage (tag : Fin 6) (wrap : Bool) :
-    pooledProgramImage (before tag wrap) [(Branch.initial wrap).toBitVec] = some (pooledProgram tag wrap) := by
-  have source := Proofs.program_sources (program_image tag wrap) (entry tag wrap) (by simp)
+private theorem pooledImage (tag : Fin 6) :
+    pooledProgramImage (before tag false) [(Branch.initial false).toBitVec] = some (pooledProgram tag false) := by
+  have source := Proofs.program_sources (program_image tag) (entry tag false) (by simp)
   have bytes := source.bytes
-  change (Cell.ram (Branch.initial wrap).toBitVec).read (before tag wrap) = .ok (entry tag wrap).bits (before tag wrap) at bytes
+  change (Cell.ram (Branch.initial false).toBitVec).read (before tag false) = .ok (entry tag false).bits (before tag false) at bytes
   simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
     programEntryWith, bytes, instruction_decoded, bind, Option.bind]
-  fin_cases tag <;> cases wrap <;> rfl
+  fin_cases tag <;> rfl
 
 private theorem pooledDecoded (tag : Fin 6) (wrap : Bool) : PooledDecoded (pooled tag wrap) (pooledProgram tag wrap) := by
   intro actual member
@@ -225,60 +236,60 @@ private theorem pooledDecoded (tag : Fin 6) (wrap : Bool) : PooledDecoded (poole
   change ∃ i : Fin 1, _ = _
   exact ⟨0, by fin_cases tag <;> cases wrap <;> decide⟩
 
-private theorem pooledInputs (tag : Fin 6) (wrap : Bool) :
-    NativeInputs pooledDecoderFields (pooled tag wrap) (before tag wrap) cells (pooledProgram tag wrap) := by
-  refine ⟨by decide, ?_, image tag wrap, ?_, ⟨[(Branch.initial wrap).toBitVec], pooledImage tag wrap⟩, ?_, airbender_before tag wrap⟩
+private theorem pooledInputs (tag : Fin 6) :
+    NativeInputs pooledDecoderFields (pooled tag false) (before tag false) cells (pooledProgram tag false) := by
+  refine ⟨by decide, ?_, image tag false, ?_, ⟨[(Branch.initial false).toBitVec], pooledImage tag⟩, ?_, airbender_before tag false⟩
   · intro cell member
     simp [cells] at member
     rcases member with rfl | rfl | rfl <;> trivial
   · refine ⟨(4, 0), ?_⟩
-    have read : run (SailRV32.Functions.get_arch_pc ()) (before tag wrap) = .ok (Branch.initial wrap).toBitVec (before tag wrap) := by
+    have read : run (SailRV32.Functions.get_arch_pc ()) (before tag false) = .ok (Branch.initial false).toBitVec (before tag false) := by
       apply read_register
       simp [before, wordWriteState]
     rw [initialState, read]
-    fin_cases tag <;> cases wrap <;> rfl
-  · exact ⟨(boundary tag wrap (ROM.table cells seed)).initial,
-      (boundary tag wrap (ROM.table cells seed)).aligned,
-      (boundary tag wrap (ROM.table cells seed)).memory⟩
+    fin_cases tag <;> rfl
+  · exact ⟨(boundary tag false (ROM.table cells seed)).initial,
+      (boundary tag false (ROM.table cells seed)).aligned,
+      (boundary tag false (ROM.table cells seed)).memory⟩
 
-private theorem sharedInputs (tag : Fin 6) (wrap : Bool) :
-    JumpBranchSlt.TraceInputs (pooled tag wrap) (before tag wrap) cells (pooledProgram tag wrap) := by
-  refine ⟨⟨pooledInputs tag wrap, rfl, rfl⟩, ?_, ?_⟩
+private theorem sharedInputs (tag : Fin 6) :
+    JumpBranchSlt.TraceInputs (pooled tag false) (before tag false) cells (pooledProgram tag false) := by
+  refine ⟨⟨pooledInputs tag, rfl, rfl⟩, ?_, ?_⟩
   · intro actual member
     simp only [pooledProgram, List.mem_singleton] at member
     subst actual
-    fin_cases tag <;> cases wrap <;> decide
-  · fin_cases tag <;> cases wrap <;> constructor <;> decide
+    fin_cases tag <;> decide
+  · fin_cases tag <;> constructor <;> decide
 
-theorem per_circuit_branch_soundness (tag : Fin 6) (wrap : Bool) :
+theorem per_circuit_branch_soundness (tag : Fin 6) :
     ∃ input : JumpBranchSlt.Branch.Input,
-      (JumpBranchSlt.Branch.circuitModel (pooled tag wrap) (before tag wrap) cells (pooledProgram tag wrap)).relation
-        input (⟨⟨0, 0⟩, Branch.final tag wrap⟩ : Output) ((row tag wrap).assignment) ∧
-      JumpBranchSlt.Branch.InterfaceAssumptions (pooled tag wrap) (before tag wrap) cells (pooledProgram tag wrap) ∧
-      JumpBranchSlt.Branch.spec input (⟨⟨0, 0⟩, Branch.final tag wrap⟩ : Output) := by
-  have member : (⟨.jumpBranchSlt, (row tag wrap).assignment⟩ : Row babyBearModulus PooledFamily) ∈
-      (pooled tag wrap).rows := by simp [pooled]
+      (JumpBranchSlt.Branch.circuitModel (pooled tag false) (before tag false) cells (pooledProgram tag false)).relation
+        input (⟨⟨0, 0⟩, Branch.final tag false⟩ : Output) ((row tag false).assignment) ∧
+      JumpBranchSlt.Branch.InterfaceAssumptions (pooled tag false) (before tag false) cells (pooledProgram tag false) ∧
+      JumpBranchSlt.Branch.spec input (⟨⟨0, 0⟩, Branch.final tag false⟩ : Output) := by
+  have member : (⟨.jumpBranchSlt, (row tag false).assignment⟩ : Row babyBearModulus PooledFamily) ∈
+      (pooled tag false).rows := by simp [pooled]
   obtain ⟨current, position⟩ := Proofs.pooled_row_position_exists (by decide) (by decide)
-    (pooledAccepted tag wrap) (pooledInputs tag wrap).clocks (pooledInputs tag wrap).image
-    (pooledInputs tag wrap).distinct (pooledInputs tag wrap).aligned
-    (pooledImage tag wrap) (pooledDecoded tag wrap) member
-  let input : JumpBranchSlt.Branch.Input := ⟨opcode tag, ⟨0, 0⟩, ⟨65535, 65535⟩, Branch.offset wrap,
-      Branch.initial wrap, .Regidx 1, .Regidx 2, (if wrap then 8 else 8188), current⟩
-  let output : Output := ⟨⟨0, 0⟩, Branch.final tag wrap⟩
-  have mapping : JumpBranchSlt.Branch.TraceMapping (pooled tag wrap) (before tag wrap) cells
-      (pooledProgram tag wrap) input output ((row tag wrap).assignment) := by
+    (pooledAccepted tag false) (pooledInputs tag).clocks (pooledInputs tag).image
+    (pooledInputs tag).distinct (pooledInputs tag).aligned
+    (pooledImage tag) (pooledDecoded tag false) member
+  let input : JumpBranchSlt.Branch.Input := ⟨opcode tag, ⟨0, 0⟩, ⟨65535, 65535⟩, Branch.offset false,
+      Branch.initial false, .Regidx 1, .Regidx 2, 8188, current⟩
+  let output : Output := ⟨⟨0, 0⟩, Branch.final tag false⟩
+  have mapping : JumpBranchSlt.Branch.TraceMapping (pooled tag false) (before tag false) cells
+      (pooledProgram tag false) input output ((row tag false).assignment) := by
     refine ⟨?_, position, ?_⟩
-    · constructor <;> fin_cases tag <;> cases wrap <;> rfl
-    · refine ⟨(entry tag wrap).mapFamily (fun _ => .jumpBranchSlt), by simp [pooledProgram], rfl, ?_, ?_⟩
-      · fin_cases tag <;> cases wrap <;> decide
-      · fin_cases tag <;> cases wrap <;> rfl
-  have assumptions : JumpBranchSlt.Branch.InterfaceAssumptions (pooled tag wrap) (before tag wrap) cells
-      (pooledProgram tag wrap) := ⟨sharedInputs tag wrap, airbender_before tag wrap⟩
-  have relation : (JumpBranchSlt.Branch.circuitModel (pooled tag wrap) (before tag wrap) cells
-      (pooledProgram tag wrap)).relation input output ((row tag wrap).assignment) :=
-    ⟨⟨ pooledAccepted tag wrap, pooledDecoded tag wrap, member⟩, mapping⟩
-  exact ⟨input, relation, assumptions, JumpBranchSlt.Branch.babyBear_soundness (pooled tag wrap)
-    (before tag wrap) cells (pooledProgram tag wrap) assumptions input output _ relation⟩
+    · constructor <;> fin_cases tag <;> rfl
+    · refine ⟨(entry tag false).mapFamily (fun _ => .jumpBranchSlt), by simp [pooledProgram], rfl, ?_, ?_⟩
+      · fin_cases tag <;> decide
+      · fin_cases tag <;> rfl
+  have assumptions : JumpBranchSlt.Branch.InterfaceAssumptions (pooled tag false) (before tag false) cells
+      (pooledProgram tag false) := ⟨sharedInputs tag, airbender_before tag false⟩
+  have relation : (JumpBranchSlt.Branch.circuitModel (pooled tag false) (before tag false) cells
+      (pooledProgram tag false)).relation input output ((row tag false).assignment) :=
+    ⟨⟨ pooledAccepted tag false, pooledDecoded tag false, member⟩, mapping⟩
+  exact ⟨input, relation, assumptions, JumpBranchSlt.Branch.babyBear_soundness (pooled tag false)
+    (before tag false) cells (pooledProgram tag false) assumptions input output _ relation⟩
 
 theorem per_circuit_pc_alias_rejected (current : State) :
     ¬ JumpBranchSlt.Branch.TraceMapping (pooled 0 false) (before 0 false) cells

@@ -1138,6 +1138,7 @@ import Slop.SubwordMemory.MemoryAccess
 #print axioms Tests.ComparisonTrace.per_circuit_pc_alias_rejected
 #print axioms Tests.BranchTrace.per_circuit_branch_soundness
 #print axioms Tests.BranchTrace.per_circuit_pc_alias_rejected
+#print axioms Tests.BranchTrace.program_image_outside_rom_rejected
 #print axioms Tests.JalrTrace.per_circuit_jalr_soundness
 #print axioms Tests.JalrTrace.per_circuit_pc_alias_rejected
 
