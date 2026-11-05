@@ -18,7 +18,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p)
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec := by
   intro input output w ⟨interface, constraints, mapping⟩
   let prepared : Preparation.Output := ⟨Preparation.words w Variables.chainingInputs,
-    Preparation.words w Variables.preparedState, Preparation.words w Variables.preparedMessage⟩
+    Preparation.words w Variables.preparedState, Preparation.messageWords w⟩
   have firstRound : w 142 = if (preparationInput input).firstRound then 1 else 0 := by
     have mask : w 142 = if (0 : Fin 10) = input.round then 1 else 0 := interface.roundMask 0
     by_cases zero : input.round = 0

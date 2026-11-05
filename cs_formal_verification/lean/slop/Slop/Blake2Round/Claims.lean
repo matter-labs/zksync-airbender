@@ -31,10 +31,10 @@ namespace Airbender.Blake2Round.Control
 
 
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 8192 ≤ p)
-    (setup : Table (ZMod p) (fields 4)) :
+    (setup : Table (ZMod p) (fields 6)) :
     Properties.Soundness (circuitModel setup).relation spec := Proofs.soundness hp setup
 
-theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 4)) :
+theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 6)) :
     Properties.Soundness (circuitModel setup).relation spec := soundness (by decide) setup
 
 end Airbender.Blake2Round.Control
@@ -43,10 +43,10 @@ namespace Airbender.Blake2Round.Preparation
 
 
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (setup : Table (ZMod p) (fields 4)) :
+    (setup : Table (ZMod p) (fields 6)) :
     Properties.Soundness (circuitModel setup).relation spec := Proofs.soundness hp setup
 
-theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 4)) :
+theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 6)) :
     Properties.Soundness (circuitModel setup).relation spec := soundness (by decide) setup
 
 end Airbender.Blake2Round.Preparation
@@ -54,10 +54,10 @@ end Airbender.Blake2Round.Preparation
 namespace Airbender.Blake2Round.Schedule
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 4)) :
+theorem soundness {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
     (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := Proofs.soundness setup
 
-theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 4)) :
+theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 6)) :
     (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := soundness setup
 
 end Airbender.Blake2Round.Schedule
