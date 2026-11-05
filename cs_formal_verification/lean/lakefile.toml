@@ -139,6 +139,14 @@ roots = ["Human.Circuits.Blake2G.Artifact"]
 globs = ["Human.Circuits.Blake2G.Artifact"]
 needs = ["blakeGJson"]
 
+# Blake2Round setup: the native fixed tables, read at elaboration time (artifacts/setup/README.md)
+[[lean_lib]]
+name = "Blake2RoundSetupArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.Blake2Round.SetupArtifact"]
+globs = ["Human.Circuits.Blake2Round.SetupArtifact"]
+needs = ["blakeRoundSetupJson"]
+
 # Blake2Round: rebuilt when blake2_with_extended_control_layout_no_caches_gkr.json changes
 [[lean_lib]]
 name = "Blake2RoundArtifact"
@@ -216,6 +224,11 @@ text = true
 [[input_file]]
 name = "blakeGJson"
 path = "../../cs/compiled_circuits/blake2_g_function_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "blakeRoundSetupJson"
+path = "artifacts/setup/blake-round.json"
 text = true
 
 [[input_file]]
