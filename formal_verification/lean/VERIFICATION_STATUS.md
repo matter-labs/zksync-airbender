@@ -400,6 +400,14 @@ Both tests remain independently included in complete source validation, compiled
 environment audit and final kernel replay. Native compilation and elapsed-time
 confirmation still require CI; the active older warm run predates these changes.
 
+The guarded frontend now prints each stage start, concrete leaf target, elapsed
+time every 30 seconds and child exit code into the live Actions log. Query pools
+also report their target count and first/last target. Detailed logs and resource
+receipts remain in diagnostics. A real lightweight child control checks that
+progress polling preserves complete output and a nonzero exit; an interruption
+control checks that exceptions still reach the existing child cleanup. Existing
+resource limits, guard receipts, freshness checks and assurance gates are unchanged.
+
 A static runtime audit also found two stale importer expectations: unified CPU
 equations were 129 rather than the native 120, and bigint equations were 136
 rather than the native 135. The checks and labels now use the actual producer

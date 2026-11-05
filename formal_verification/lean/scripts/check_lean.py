@@ -135,6 +135,14 @@ def script_inputs(root):
                   if path.is_file() and path.suffix in {'.py', '.lean', '.in', '.json'})
 
 
+def communicate_with_progress(child, progress, interval=30):
+    while True:
+        try:
+            return child.communicate(timeout=interval)
+        except subprocess.TimeoutExpired:
+            progress()
+
+
 class Runner:
     def __init__(self, root, guard, output, workers=4):
         self.root, self.guard, self.output, self.workers = root, guard, output, workers
@@ -178,10 +186,20 @@ class Runner:
         invocation += ['--', *command]
         write_json(self.directory / (label + '.command.json'), {'cwd': str(self.root), 'command': invocation})
         self.state('running', log=str(log), command=invocation)
+        started = time.monotonic()
+
+        def progress(phase, **values):
+            print('FV_PROGRESS ' + json.dumps({
+                'stage': label, 'phase': phase,
+                'elapsed_s': round(time.monotonic() - started, 2),
+                'targets': [part for part in command if part.startswith('+')],
+                **values}), flush=True)
+
+        progress('start')
         try:
             self.child = subprocess.Popen(invocation, cwd=self.root, stdout=subprocess.PIPE,
                                           stderr=subprocess.STDOUT, text=True)
-            output, _ = self.child.communicate()
+            output, _ = communicate_with_progress(self.child, lambda: progress('running'))
         except BaseException:
             if self.child is not None and self.child.poll() is None:
                 self.child.send_signal(signal.SIGTERM)
@@ -190,6 +208,7 @@ class Runner:
         finally:
             child = self.child
             self.child = None
+        progress('child_exit', returncode=child.returncode)
         (self.directory / (label + '.guard.log')).write_text(output)
         metrics = []
         for line in output.splitlines():
@@ -238,6 +257,9 @@ class Runner:
     def query_pool(self, label, chunks):
         if not chunks or any(not chunk or len(chunk) > QUERY_LIMIT for chunk in chunks):
             raise ValueError('Require nonempty bounded query chunks')
+        print('FV_QUERY ' + json.dumps({
+            'stage': label, 'targets': sum(map(len, chunks)), 'chunks': len(chunks),
+            'first': chunks[0][0], 'last': chunks[-1][-1]}), flush=True)
         manifest = self.directory / (label + '.pool-manifest.json')
         pool_output = self.directory / (label + '.pool')
         jobs = [{'label': label + '-chunk-' + str(index), 'cwd': str(self.root),
