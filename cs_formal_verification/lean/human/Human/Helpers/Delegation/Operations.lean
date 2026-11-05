@@ -9,7 +9,7 @@ namespace Airbender.Delegation
 /-- The existing modeled tables for all four delegation families. Keccak's
     controller rows stay supplied until physical call scheduling is connected;
     the byte/rotation rows use the same concrete model as its local claims. -/
-def modeledSetup [Fact p.Prime] (control : Fin 4096 → Vector Nat 6) : Setup p :=
+noncomputable def modeledSetup [Fact p.Prime] (control : Fin 4096 → Vector Nat 6) : Setup p :=
   ⟨Bigint.setupTable, Blake2G.setupTable Blake2G.Control.controllerRows,
     Blake2Round.setupTable, Keccak.setupTable control⟩
 
