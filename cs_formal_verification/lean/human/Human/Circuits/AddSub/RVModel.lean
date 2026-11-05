@@ -3,10 +3,11 @@ import Human.Helpers.Context.RVInterfaces
 import Human.Helpers.Context.RVRowContext
 import Human.Helpers.Decoder.PooledProgram
 import Human.ISA.RV32
+import Human.Helpers.Core.CircuitOutput
 
 /-! RV32 vocabulary for the ADD/SUB/ADDI/LUI/AUIPC circuit: the input's instruction fields are RV registers and
     immediates, its pre-state is an `RV.State`, and its instruction is `RV.decode` of the public program entry.
-    `Output` (the circuit's destination word and PC) is reused unchanged: it holds only `Word`s. -/
+    `Circuit.Output` (destination word and PC, `Helpers/Core/CircuitOutput.lean`) is shared with the Sail statements. -/
 
 namespace Airbender.AddSub
 open Arithmetic Reference.RiscV Trace
@@ -34,7 +35,7 @@ def rvInstruction (input : RVInput) : RV.Instr :=
   | .auipc => .auipc input.rd (input.encodedUpperImmediate ++ 0#12)
 
 /-- `WordMapping` (`Model.lean`) for the RV input: the same imported variable IDs. -/
-structure RVWordMapping {p : Nat} (input : RVInput) (output : Reference.RiscV.Sail.Output) (w : Nat → ZMod p) : Prop where
+structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w : Nat → ZMod p) : Prop where
   leftLo : input.row.left.lo = (w 25).val
   leftHi : input.row.left.hi = (w 26).val
   rightLo : input.row.right.lo = (w 29).val
@@ -53,7 +54,7 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Reference.RiscV.Sa
     decoder entry in the public program is `RV.decode` of the entry's encoding, equal to the input's instruction. -/
 structure RVTraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List PooledProgramEntry)
-    (input : RVInput) (output : Reference.RiscV.Sail.Output) (w : Nat → ZMod p) : Prop where
+    (input : RVInput) (output : Circuit.Output) (w : Nat → ZMod p) : Prop where
   /-- Identify the input operands, destination register, result and both PCs with the variables. -/
   words : RVWordMapping input output w
   /-- Locate this row in clock order and obtain `input.before` from the starting state. -/
@@ -67,7 +68,7 @@ structure RVTraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
 /-- ADD/SUB's per-row model in RV32 terms (`circuitModel` with `RVTraceMapping`). -/
 def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List PooledProgramEntry) :
-    Verification.CircuitModel RVInput Reference.RiscV.Sail.Output (Nat → ZMod p) where
+    Verification.CircuitModel RVInput Circuit.Output (Nat → ZMod p) where
   satisfies := fun w => Accepted trace ∧ PooledDecoded trace program ∧ (⟨.addSub, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := RVTraceMapping trace initial cells program
 

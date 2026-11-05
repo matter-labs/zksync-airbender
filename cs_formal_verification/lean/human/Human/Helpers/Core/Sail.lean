@@ -1,5 +1,6 @@
 import SailRV32
 import Human.Helpers.Core.Word
+import Human.Helpers.Core.CircuitOutput
 
 deriving instance DecidableEq for SailRV32.regidx
 
@@ -26,10 +27,7 @@ def writeResult (rd : SailRV32.regidx) (output : Word) : SailRV32.SailM SailRV32
   SailRV32.Functions.wX_bits rd output.toBitVec
   pure SailRV32.Functions.RETIRE_SUCCESS
 
-/-- Observable circuit outputs; all other architectural state is checked through Sail. -/
-structure Output where
-  destination : Word
-  pc : Word
+export Airbender.Circuit (Output)
 
 /-- Circuit memory outputs become an untagged native Sail write. Byte order and
     state updates are supplied by the pinned sequential interpreter. -/
