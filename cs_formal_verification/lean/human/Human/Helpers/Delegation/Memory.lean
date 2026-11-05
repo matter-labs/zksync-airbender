@@ -89,6 +89,14 @@ structure MemoryInputs (data : MemoryData p) (before : Reference.RiscV.Sail.Stat
   distinct : (cells.map Cell.addressCode).Nodup
   clockRoom : ∀ row ∈ data.rows,
     (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase
+  /-- Approved assumption, mirroring PR #585's `BoundaryInputs.invocationHigh`.
+      The new delegation circuits range-check only `(invocation-low - execute) / 4`
+      and never `invocation-high` on its own (the upper limb is related to the
+      workers' memory comparisons, not bounded). Cross-circuit binding should
+      discharge this later: the invocation timestamp equals the main CPU circuit's
+      range-checked delegation request timestamp. It is not derived per circuit. -/
+  invocationHigh : ∀ row ∈ data.rows,
+    (decodeTimestamp row.assignment row.columns.invocation).hi < timestampBase
 
 /-- Native access order and complete per-address paths. Every path starts at
     a public seed, ends at a declared terminal token and contains exactly that
