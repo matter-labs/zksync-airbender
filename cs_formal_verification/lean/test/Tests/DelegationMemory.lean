@@ -187,6 +187,10 @@ theorem inputs : Delegation.MemoryInputs data before cells := by
     simp only [data, List.mem_singleton] at member
     subst actual
     decide
+  · intro actual member
+    simp only [data, List.mem_singleton] at member
+    subst actual
+    decide
 
 theorem native_memory_soundness : Delegation.MemorySoundness data :=
   Delegation.memory_soundness (by decide) accepted inputs
