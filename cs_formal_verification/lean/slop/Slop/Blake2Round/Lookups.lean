@@ -1,170 +1,180 @@
 import Human.Circuits.Blake2Round.Tables.Setup
 import Human.Circuits.Blake2Round.Artifact
 import Human.Helpers.Properties
-import Slop.Blake2G.Tables
+import Slop.Blake2Round.Setup.Rows
 import Slop.Constraints
 import Mathlib.Tactic.IntervalCases
 
 namespace Airbender.Blake2Round.Proofs
 
+open SetupProofs
+
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1200000
 
-private theorem padded_row (i : Fin 344384) :
-    Blake2G.setupRow (fun _ => Vector.replicate 7 0)
-      ⟨i.val, by have size := i.isLt; omega⟩ =
-    #v[(setupRow i)[0], (setupRow i)[1], (setupRow i)[2], 0, 0, 0, 0, 0, (setupRow i)[3]] := by
-  have size := i.isLt
-  unfold setupRow Blake2G.setupRow
-  dsimp only
-  split_ifs <;> simp [Blake2G.xorRow]
+/-- Meaning of one six-column setup row with tag `t`, columns `a b c d e`:
+    plain XOR (4, 19, 20: widths 8, 7, 9), XOR with a carry key in {0, 1, 2}
+    (55, 56: widths 8, 7) and the split (4+3)x(4+3) XOR (57). -/
+def RowFacts (t a b c d e : Nat) : Prop :=
+  match t with
+  | 4 => a < 256 ∧ b < 256 ∧ c = a ^^^ b ∧ d = 0 ∧ e = 0
+  | 19 => a < 128 ∧ b < 128 ∧ c = a ^^^ b ∧ d = 0 ∧ e = 0
+  | 20 => a < 512 ∧ b < 512 ∧ c = a ^^^ b ∧ d = 0 ∧ e = 0
+  | 55 => a < 256 ∧ b < 256 ∧ c < 3 ∧ d = a ^^^ b ∧ e = 0
+  | 56 => a < 128 ∧ b < 128 ∧ c < 3 ∧ d = a ^^^ b ∧ e = 0
+  | 57 => a < 16 ∧ b < 8 ∧ c < 16 ∧ d < 8 ∧ e = (a ^^^ c) ||| ((b ^^^ d) <<< 4)
+  | _ => False
 
-def padXor {F : Type} [Zero F] (row : Vector F 4) : Vector F 9 :=
-  #v[row[0], row[1], row[2], 0, 0, 0, 0, 0, row[3]]
+/-- The six table tags. -/
+def tags : List Nat := [4, 19, 20, 55, 56, 57]
 
-/-- Transfer actual four-column membership to the G fragment's nine-column
-    schema, possibly in a different environment. All evaluated columns agree. -/
-theorem padded_membership {p : Nat} [Fact p.Prime]
-    {source : Vector (Expression (ZMod p)) 4} {target : Vector (Expression (ZMod p)) 9}
-    {sourceEnv targetEnv : Environment (ZMod p)}
-    (h : (Lookup.mk setupTable.toRaw source).Contains sourceEnv)
-    (columns : target.map (Expression.eval targetEnv) = padXor (source.map (Expression.eval sourceEnv))) :
-    (Lookup.mk (Blake2G.setupTable (fun _ => Vector.replicate 7 0)).toRaw target).Contains targetEnv := by
-  change ∃ i : Fin 344384, source.map (Expression.eval sourceEnv) =
-    (setupRow i).map (fun (n : Nat) => (n : ZMod p)) at h
-  obtain ⟨i, row⟩ := h
-  change ∃ j : Fin 344896, target.map (Expression.eval targetEnv) =
-    (Blake2G.setupRow (fun _ => Vector.replicate 7 0) j).map (fun (n : Nat) => (n : ZMod p))
-  refine ⟨⟨i.val, by have size := i.isLt; omega⟩, ?_⟩
-  rw [columns, row, padded_row]
-  ext j hj
-  interval_cases j <;> simp [padXor]
+private theorem xor_lt {a b : Nat} (k : Nat) (ha : a < 2 ^ k) (hb : b < 2 ^ k) (hk : k ≤ 9) :
+    a ^^^ b < 512 :=
+  lt_of_lt_of_le (Nat.xor_lt_two_pow ha hb) (by
+    calc 2 ^ k ≤ 2 ^ 9 := Nat.pow_le_pow_right (by norm_num) hk
+      _ = 512 := by norm_num)
 
-/-- Four-column membership reuses the checked G XOR theorem by padding the
-    same table row. There is one XOR semantics, supplied by native Clean lookups. -/
-theorem xor_lookup {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
-    {entry : Vector (Expression (ZMod p)) 4} {env : Environment (ZMod p)}
-    (kind : Fin 5) (h : (Lookup.mk setupTable.toRaw entry).Contains env)
-    (selected : entry[3].eval env = ((#v[4, 17, 18, 19, 20][kind] : Nat) : ZMod p)) :
-    (entry[0].eval env).val < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
-    (entry[1].eval env).val < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
-    (entry[2].eval env).val < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
-    (entry[2].eval env).val = (entry[0].eval env).val ^^^ (entry[1].eval env).val := by
-  change ∃ i : Fin 344384, entry.map (Expression.eval env) =
-    (setupRow i).map (fun (n : Nat) => (n : ZMod p)) at h
-  obtain ⟨i, row⟩ := h
-  let padded : Vector (Expression (ZMod p)) 9 :=
-    #v[entry[0], entry[1], entry[2], .const 0, .const 0, .const 0, .const 0, .const 0, entry[3]]
-  have member : (Lookup.mk (Blake2G.setupTable (fun _ => Vector.replicate 7 0)).toRaw padded).Contains env := by
-    change ∃ j : Fin 344896, padded.map (Expression.eval env) =
-      (Blake2G.setupRow (fun _ => Vector.replicate 7 0) j).map (fun (n : Nat) => (n : ZMod p))
-    refine ⟨⟨i.val, by have size := i.isLt; omega⟩, ?_⟩
-    rw [padded_row]
-    have column (j : Fin 4) := congrArg (fun v : Vector (ZMod p) 4 => v[j]) row
-    ext j hj
-    interval_cases j <;> simp [padded, Expression.eval]
-    all_goals first
-      | simpa using column 0
-      | simpa using column 1
-      | simpa using column 2
-      | simpa using column 3
-  simpa [padded] using Blake2G.Proofs.xor_lookup hp kind member (by simpa [padded] using selected)
+private theorem split_lt {a b c d : Nat} (ha : a < 16) (hb : b < 8) (hc : c < 16) (hd : d < 8) :
+    ((a ^^^ c) ||| ((b ^^^ d) <<< 4)) < 512 := by
+  have lo : a ^^^ c < 2 ^ 4 := Nat.xor_lt_two_pow (by omega) (by omega)
+  have hi : b ^^^ d < 2 ^ 3 := Nat.xor_lt_two_pow (by omega) (by omega)
+  have shifted : (b ^^^ d) <<< 4 < 2 ^ 9 := by rw [Nat.shiftLeft_eq]; omega
+  have := Nat.or_lt_two_pow (show a ^^^ c < 2 ^ 9 by omega) shifted
+  omega
 
-/-- Reuse the typed theorem for a native Clean lookup with the same table.
-    Eliminating the table equality also identifies the entry's four-column type. -/
-theorem xor_lookup_raw {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
-    {query : Lookup (ZMod p)} {env : Environment (ZMod p)} (kind : Fin 5)
-    (h : query.Contains env) (table : query.table = setupTable.toRaw)
-    (selected : (query.entry.toArray[3]!).eval env =
-      ((#v[4, 17, 18, 19, 20][kind] : Nat) : ZMod p)) :
-    (query.entry.toArray[0]!.eval env).val < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
-    (query.entry.toArray[1]!.eval env).val < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
-    (query.entry.toArray[2]!.eval env).val < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
-    (query.entry.toArray[2]!.eval env).val =
-      (query.entry.toArray[0]!.eval env).val ^^^ (query.entry.toArray[1]!.eval env).val := by
-  rcases query with ⟨raw, entry⟩
-  cases table
-  have get (j : Nat) (hj : j < 4) : entry.toArray[j]! = entry[j] := by
-    rw [getElem!_pos entry.toArray j (by
-      rw [entry.size_toArray]
-      change j < size (fields 4)
-      rw [show size (fields 4) = 4 from rfl]
-      exact hj)]
-    rfl
-  simpa only [get 0 (by decide), get 1 (by decide), get 2 (by decide)] using
-    xor_lookup hp kind h (by simpa only [get 3 (by decide)] using selected)
-
-private theorem row_tag (i : Fin 344384) :
-    ∃ kind : Fin 5, (setupRow i)[3] = (#v[4, 17, 18, 19, 20][kind] : Nat) := by
-  have size := i.isLt
-  unfold setupRow Blake2G.setupRow
-  dsimp only
+macro "spec_bound" : tactic => `(tactic| (
   split_ifs
-  all_goals simp only [Blake2G.xorRow, Vector.getElem_mk, List.getElem_toArray,
-    List.getElem_cons_zero, List.getElem_cons_succ]
   all_goals first
     | omega
-    | exact ⟨0, rfl⟩
-    | exact ⟨1, rfl⟩
-    | exact ⟨2, rfl⟩
-    | exact ⟨3, rfl⟩
-    | exact ⟨4, rfl⟩
+    | (refine xor_lt 8 ?_ ?_ (by norm_num) <;> norm_num <;> omega)
+    | (refine xor_lt 7 ?_ ?_ (by norm_num) <;> norm_num <;> omega)
+    | (refine xor_lt 9 ?_ ?_ (by norm_num) <;> norm_num <;> omega)
+    | (refine split_lt ?_ ?_ ?_ ?_ <;> omega)))
 
-/-- Every row in this setup is a valid tagged XOR row. Its membership supplies
-    the tag/width as well as XOR; no separate per-query tag premise is needed. -/
-theorem xor_lookup_any {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
-    {entry : Vector (Expression (ZMod p)) 4} {env : Environment (ZMod p)}
-    (h : (Lookup.mk setupTable.toRaw entry).Contains env) :
-    ∃ kind : Fin 5,
-      entry[3].eval env = ((#v[4, 17, 18, 19, 20][kind] : Nat) : ZMod p) ∧
-      (entry[0].eval env).val < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
-      (entry[1].eval env).val < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
-      (entry[2].eval env).val < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
-      (entry[2].eval env).val = (entry[0].eval env).val ^^^ (entry[1].eval env).val := by
-  have rows := h
-  change ∃ i : Fin 344384, entry.map (Expression.eval env) =
-    (setupRow i).map (fun (n : Nat) => (n : ZMod p)) at rows
-  obtain ⟨i, row⟩ := rows
-  obtain ⟨kind, tag⟩ := row_tag i
-  have selected : entry[3].eval env = ((#v[4, 17, 18, 19, 20][kind] : Nat) : ZMod p) := by
-    have column := congrArg (fun v : Vector (ZMod p) 4 => v[3]) row
-    simpa only [Vector.getElem_map, tag] using column
-  exact ⟨kind, selected, xor_lookup hp kind h selected⟩
+theorem formula_bound (n : Nat) (c : Fin 6) : (formulaRow n)[c] < 512 := by
+  have b0 : spec0 n < 512 := by unfold spec0; spec_bound
+  have b1 : spec1 n < 512 := by unfold spec1; spec_bound
+  have b2 : spec2 n < 512 := by unfold spec2; spec_bound
+  have b3 : spec3 n < 512 := by unfold spec3; spec_bound
+  have b4 : spec4 n < 512 := by unfold spec4; spec_bound
+  have b5 : spec5 n < 512 := by unfold spec5; spec_bound
+  fin_cases c
+  · exact b0
+  · exact b1
+  · exact b2
+  · exact b3
+  · exact b4
+  · exact b5
 
-/-- Every imported query supplies its tagged chunk bounds and exact XOR,
-    including all eight G invocations and final-output queries. -/
+private theorem formula_facts (n : Nat) (hn : n < 606208) :
+    RowFacts (spec5 n) (spec0 n) (spec1 n) (spec2 n) (spec3 n) (spec4 n) := by
+  simp only [spec0, spec1, spec2, spec3, spec4, spec5]
+  split_ifs <;> simp only [RowFacts] <;> refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;> first | omega | rfl | trivial
+
+private theorem cast_inj {p : Nat} [Fact p.Prime] (hp : 512 ≤ p) {a b : Nat} (ha : a < 512)
+    (hb : b < 512) (h : (a : ZMod p) = (b : ZMod p)) : a = b := by
+  have := congrArg ZMod.val h
+  rwa [ZMod.val_natCast_of_lt (by omega), ZMod.val_natCast_of_lt (by omega)] at this
+
+/-- A table row is a formula row of the native regions or of the zero padding. -/
+theorem table_row {p : Nat} [Fact p.Prime] {x : Vector (ZMod p) 6}
+    (h : ∃ i : Fin blake2RoundSetup.traceLen,
+      x = (setupRow i.val).map (fun (v : Int) => (v : ZMod p))) :
+    ∃ n < 1048576, x = (formulaRow n).map (fun (v : Nat) => (v : ZMod p)) := by
+  obtain ⟨⟨i, hi⟩, row⟩ := h
+  rw [traceLen_eq] at hi
+  refine ⟨i, hi, ?_⟩
+  rw [row, setupRow_eq i hi, Vector.map_map]
+  congr 1
+  funext v
+  simp
+
+/-- Membership with one of the six tags gives that region's row meaning. Padding
+    rows (tag 0) never match. -/
+theorem row_facts {p : Nat} [Fact p.Prime] (hp : 512 ≤ p) {x : Vector (ZMod p) 6}
+    (h : ∃ i : Fin blake2RoundSetup.traceLen,
+      x = (setupRow i.val).map (fun (v : Int) => (v : ZMod p)))
+    {t : Nat} (ht : t ∈ tags) (tag : x[5] = (t : ZMod p)) :
+    RowFacts t x[0].val x[1].val x[2].val x[3].val x[4].val := by
+  obtain ⟨n, hn, row⟩ := table_row h
+  subst row
+  have val (c : Nat) (hc : c < 6) : ((formulaRow n).map (fun (v : Nat) => (v : ZMod p)))[c].val =
+      (formulaRow n)[c] := by
+    have := formula_bound n ⟨c, hc⟩
+    simp only [Fin.getElem_fin] at this
+    rw [Vector.getElem_map, ZMod.val_natCast_of_lt (by omega)]
+  have t512 : t < 512 := by simp only [tags, List.mem_cons, List.not_mem_nil, or_false] at ht; omega
+  have tagEq : spec5 n = t := by
+    rw [Vector.getElem_map] at tag
+    exact cast_inj hp (by have := formula_bound n 5; simpa [formulaRow] using this) t512 tag
+  have native : n < 606208 := by
+    by_contra big
+    have : spec5 n = 0 := by simp only [spec5]; split_ifs <;> omega
+    simp only [tags, List.mem_cons, List.not_mem_nil, or_false] at ht
+    omega
+  have facts := formula_facts n native
+  rw [tagEq] at facts
+  rw [val 0 (by decide), val 1 (by decide), val 2 (by decide), val 3 (by decide),
+    val 4 (by decide)]
+  exact facts
+
+/-- Typed lookup form. -/
+theorem lookup_facts {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+    {entry : Vector (Expression (ZMod p)) 6} {env : Environment (ZMod p)}
+    (h : (Lookup.mk setupTable.toRaw entry).Contains env) {t : Nat} (ht : t ∈ tags)
+    (tag : entry[5].eval env = (t : ZMod p)) :
+    RowFacts t (entry[0].eval env).val (entry[1].eval env).val (entry[2].eval env).val
+      (entry[3].eval env).val (entry[4].eval env).val := by
+  change ∃ i : Fin blake2RoundSetup.traceLen, entry.map (Expression.eval env) =
+    (setupRow i.val).map (fun (v : Int) => (v : ZMod p)) at h
+  have := row_facts hp h ht (by simpa using tag)
+  simpa using this
+
+theorem entry_get {p : Nat} [Fact p.Prime] (entry : Vector (Expression (ZMod p)) 6) (j : Nat) (hj : j < 6) :
+    entry.toArray[j]! = entry[j] := by
+  rw [getElem!_pos entry.toArray j (by
+    rw [entry.size_toArray]
+    change j < size (fields 6)
+    rw [show size (fields 6) = 6 from rfl]
+    exact hj)]
+  rfl
+
+/-- Native Clean lookup form, for queries read off the imported operation list. -/
+theorem lookup_facts_raw {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+    {query : Lookup (ZMod p)} {env : Environment (ZMod p)}
+    (h : query.Contains env) (table : query.table = setupTable.toRaw) {t : Nat} (ht : t ∈ tags)
+    (tag : (query.entry.toArray[5]!).eval env = (t : ZMod p)) :
+    RowFacts t (query.entry.toArray[0]!.eval env).val (query.entry.toArray[1]!.eval env).val
+      (query.entry.toArray[2]!.eval env).val (query.entry.toArray[3]!.eval env).val
+      (query.entry.toArray[4]!.eval env).val := by
+  rcases query with ⟨raw, entry⟩
+  cases table
+  simp only [entry_get entry 0 (by decide), entry_get entry 1 (by decide),
+    entry_get entry 2 (by decide), entry_get entry 3 (by decide), entry_get entry 4 (by decide)]
+  exact lookup_facts hp h ht (by simpa only [entry_get entry 5 (by decide)] using tag)
+
+/-- The 192 fixed-table queries follow the two timestamp-alignment queries. -/
+theorem data_tables {p : Nat} [Fact p.Prime] :
+    ∀ query ∈ (FlatOperation.lookups (importedConstraints (p := p) setupTable)).drop 2,
+      query.table = setupTable.toRaw := by
+  dsimp only [importedConstraints, FlatOperation.lookups, List.drop]
+  simp only [List.forall_mem_cons, true_and]
+  exact List.forall_mem_nil _
+
+/-- Every imported fixed-table query with one of the six tags has that region's row meaning. -/
 theorem data_lookups {p : Nat} [Fact p.Prime] (hp : 512 ≤ p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
     ∀ query ∈ (FlatOperation.lookups (importedConstraints setupTable)).drop 2,
-      ∃ kind : Fin 5,
-        (query.entry.toArray[3]!).eval (Verification.environment w) =
-          ((#v[4, 17, 18, 19, 20][kind] : Nat) : ZMod p) ∧
-        (query.entry.toArray[0]!.eval (Verification.environment w)).val < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
-        (query.entry.toArray[1]!.eval (Verification.environment w)).val < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
-        (query.entry.toArray[2]!.eval (Verification.environment w)).val < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
-        (query.entry.toArray[2]!.eval (Verification.environment w)).val =
-          (query.entry.toArray[0]!.eval (Verification.environment w)).val ^^^
-            (query.entry.toArray[1]!.eval (Verification.environment w)).val := by
-  have tables : ∀ query ∈ (FlatOperation.lookups (importedConstraints (p := p) setupTable)).drop 2,
-      query.table = setupTable.toRaw := by
-    dsimp only [importedConstraints, FlatOperation.lookups, List.drop]
-    simp only [List.forall_mem_cons, true_and]
-    exact List.forall_mem_nil _
-  intro query present
-  have table := tables query present
+      ∀ t ∈ tags, (query.entry.toArray[5]!).eval (Verification.environment w) = (t : ZMod p) →
+        RowFacts t (query.entry.toArray[0]!.eval (Verification.environment w)).val
+          (query.entry.toArray[1]!.eval (Verification.environment w)).val
+          (query.entry.toArray[2]!.eval (Verification.environment w)).val
+          (query.entry.toArray[3]!.eval (Verification.environment w)).val
+          (query.entry.toArray[4]!.eval (Verification.environment w)).val := by
+  intro query present t ht tag
   have member := (FlatOperation.constraintsHoldFlat_iff_forall_mem.mp h).2 query
     (List.mem_of_mem_drop present)
-  rcases query with ⟨raw, entry⟩
-  cases table
-  have get (j : Nat) (hj : j < 4) : entry.toArray[j]! = entry[j] := by
-    rw [getElem!_pos entry.toArray j (by
-      rw [entry.size_toArray]
-      change j < size (fields 4)
-      rw [show size (fields 4) = 4 from rfl]
-      exact hj)]
-    rfl
-  simpa only [get 0 (by decide), get 1 (by decide), get 2 (by decide), get 3 (by decide)] using
-    xor_lookup_any hp member
+  exact lookup_facts_raw hp member (data_tables query present) ht tag
 
 end Airbender.Blake2Round.Proofs
