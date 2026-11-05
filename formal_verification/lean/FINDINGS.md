@@ -473,7 +473,7 @@ error; no production or Review statement changes are needed. The failed leaf
 took 120.26 seconds at 702.84 MiB charged footprint with no owned children;
 complete sources took 2805.36 seconds after 29.47 seconds of early fixtures.
 
-Focused run 41950041857 on `d8abd3d9d` subsequently passed the complete modular
+Focused run 41950041857 on [the FMA repair commit](https://github.com/matter-labs/zksync-airbender/commit/d8abd3d9d30c1406191b02f39b371c1656783370) subsequently passed the complete modular
 trace and forged-FMA controls, including shared-history and wrong-selector
 rejection. Selected sources took 240.00 seconds; the module took 124.31 seconds
 at 830.74 MiB charged footprint with no owned children. Final freshness/object

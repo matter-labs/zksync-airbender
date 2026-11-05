@@ -337,7 +337,7 @@ Complete source/audit validation and final assurance remain pending.
 
 The modular trace and forged-FMA controls passed in focused run
 [41950041857](https://github.com/matter-labs/zksync-airbender/actions/runs/41950041857)
-on `d8abd3d9d`: selected sources took 240.00 seconds, with the module taking
+on [the FMA repair commit](https://github.com/matter-labs/zksync-airbender/commit/d8abd3d9d30c1406191b02f39b371c1656783370): selected sources took 240.00 seconds, with the module taking
 124.31 seconds at 830.74 MiB charged footprint. Final freshness/object checks
 passed and no owned children remained. Ordinary PR checks also passed.
 
