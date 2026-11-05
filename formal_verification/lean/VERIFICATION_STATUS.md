@@ -304,6 +304,14 @@ name the vector/index and prove the imported metadata separately, then apply
 `Nat.zero_add`. No resource increase or domain change. The failed leaf took
 4.80 seconds at 399.63 MiB, with no owned children; sources took 57.39 seconds.
 
+Run [41938404494](https://github.com/matter-labs/zksync-airbender/actions/runs/41938404494)
+on `8c4ecfe2a` accepted those metadata and vector bounds. The finite-prefix
+kernel-decision calls retained local proof variables, and the padding branch
+was not selected before reduction. The proof now splits the row condition
+first and rewrites kernel-proved equalities for both imported PC block streams;
+the four prefix entries use simplification. The failed leaf took 5.07 seconds
+at 406.68 MiB with no owned children; sources took 56.55 seconds.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

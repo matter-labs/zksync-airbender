@@ -52,27 +52,37 @@ private theorem real_offset : addSubSetup.realRows.offset = 0 := rfl
 private theorem padding_offset : addSubSetup.padding.offset = 0 := rfl
 private theorem real_length : addSubSetup.realRows.length = 1048576 := rfl
 
+private theorem real_pc_column : addSubDecoderData.columns[0] =
+    (⟨#[.dense #[0, 4, babyBearModulus - 1, 12],
+      .affine 1048572 (babyBearModulus - 1) 0]⟩ : Setup.Column) := rfl
+
+private theorem padding_pc_column : addSubDecoderDataPadding.columns[0] =
+    (⟨#[.affine 15728640 (babyBearModulus - 1) 0]⟩ : Setup.Column) := rfl
+
 /-- The retained real and padding columns admit only these PC values. -/
 private theorem decoder_pc_domain (index : Fin 16777216) :
     (addSubSetup.row index)[0] ∈ ([0, 4, 12, babyBearModulus - 1] : List Nat) := by
-  by_cases real : index.val < addSubSetup.realRows.length
-  · simp only [PackedSetup.row, if_pos real, normalize_pc, Vector.getElem_map,
-      real_offset, Nat.zero_add]
+  unfold PackedSetup.row
+  split_ifs with real
+  · simp only [normalize_pc, Vector.getElem_map, real_offset, Nat.zero_add]
     change ((addSubDecoderData.columns[0].get? index.val).getD 0) ∈
       ([0, 4, 12, babyBearModulus - 1] : List Nat)
     by_cases short : index.val < 4
     · generalize eq : index.val = n at *
-      interval_cases n <;> decide +kernel
+      interval_cases n <;>
+        simp [real_pc_column, Setup.Column.get?, Setup.getFromBlocks,
+          Setup.Block.length, Setup.Block.get?]
     · have bounded : index.val - 4 < 1048572 := by
         have extent : index.val < 1048576 := real
         omega
       have value : addSubDecoderData.columns[0].get? index.val = some (babyBearModulus - 1) := by
+        rw [real_pc_column]
         change Setup.getFromBlocks [.dense #[0, 4, babyBearModulus - 1, 12],
           .affine 1048572 (babyBearModulus - 1) 0] index.val = _
         simp [Setup.getFromBlocks, Setup.Block.length, Setup.Block.get?, short, bounded]
       rw [value]
       simp
-  · simp only [PackedSetup.row, if_neg real, normalize_pc, Vector.getElem_map,
+  · simp only [normalize_pc, Vector.getElem_map,
       padding_offset, real_length, Nat.zero_add]
     change ((addSubDecoderDataPadding.columns[0].get? (index.val - 1048576)).getD 0) ∈
       ([0, 4, 12, babyBearModulus - 1] : List Nat)
@@ -82,6 +92,7 @@ private theorem decoder_pc_domain (index : Fin 16777216) :
       omega
     have value : addSubDecoderDataPadding.columns[0].get? (index.val - 1048576) =
         some (babyBearModulus - 1) := by
+      rw [padding_pc_column]
       change Setup.getFromBlocks [.affine 15728640 (babyBearModulus - 1) 0]
         (index.val - 1048576) = _
       simp [Setup.getFromBlocks, Setup.Block.length, Setup.Block.get?, bounded]

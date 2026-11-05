@@ -439,6 +439,15 @@ names its vector/index, and explicit imported metadata equalities allow
 `Nat.zero_add` before column comparison. The failed leaf exited 1 in 4.80
 seconds at 399.63 MiB, with no owned children; sources took 57.39 seconds.
 
+Run [41938404494](https://github.com/matter-labs/zksync-airbender/actions/runs/41938404494)
+on `8c4ecfe2a` accepted those bounds and offsets, then rejected the finite
+prefix's kernel-decision calls with local proof variables. Padding reduction
+also ran before selecting the row branch. The repair splits that condition
+first, proves the exact imported PC block streams by reflexivity and simplifies
+the four prefix entries. Full-domain rejection and all resource limits remain
+unchanged. The failed leaf took 5.07 seconds at 406.68 MiB, with no owned
+children; sources took 56.55 seconds.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.
