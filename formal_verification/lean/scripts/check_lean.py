@@ -143,6 +143,15 @@ def communicate_with_progress(child, progress, interval=30):
             progress()
 
 
+def native_object_repair_hints(targets, log):
+    """Choose normal builds from diagnostics; only later Lake queries attest freshness."""
+    if any(not re.fullmatch(r'\+[A-Za-z0-9_.]+:(?:o|olean)', target) for target in targets):
+        return []
+    missing = set(re.findall(
+        r'(?m)^✖ \[\d+/\d+\] Building ([A-Za-z0-9_.]+):c\.o(?:\s|$)', log))
+    return [target for target in targets if target.endswith(':o') and target[1:-2] in missing]
+
+
 class Runner:
     def __init__(self, root, guard, output, workers=4):
         self.root, self.guard, self.output, self.workers = root, guard, output, workers
@@ -155,6 +164,7 @@ class Runner:
         self.frozen, self.records = [], {}
         self.last_query = None
         self.repair_count = 0
+        self.object_repair_hints = {}
         for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
             signal.signal(sig, self.interrupted)
 
@@ -291,6 +301,8 @@ class Runner:
                     or actual.get('exit') not in (0, LAKE_NO_BUILD_EXIT)):
                 raise ValueError('Unexpected query pool member: ' + job['label'])
             if actual['exit'] == LAKE_NO_BUILD_EXIT:
+                self.object_repair_hints[tuple(targets)] = native_object_repair_hints(
+                    targets, log.read_text())
                 failed.append(targets)
                 continue
             members.append({'label': job['label'], 'targets': targets,
@@ -315,6 +327,20 @@ class Runner:
         for targets in chunks:
             self.repair_count += 1
             label = 'stale-repair-' + str(self.repair_count)
+            hints = self.object_repair_hints.pop(tuple(targets), [])
+            if len(targets) > 1 and hints:
+                write_json(self.directory / (label + '.repair-hints.json'), {
+                    'scope': 'candidates_only_normal_builds_and_requery_required',
+                    'targets': targets, 'normal_builds': hints})
+                # Retain one ordinary guarded build per actual object. Avoid
+                # recursively bisecting thousands of explicit native misses.
+                self.repair_chunks([[target] for target in hints])
+                _, remaining = self.query_pool(label + '-hint-recheck', [targets])
+                if not remaining:
+                    continue
+                # Incomplete or changed diagnostics fall back to the original
+                # bisection below; never repeat hints for the same chunk.
+                self.object_repair_hints.pop(tuple(targets), None)
             if len(targets) == 1:
                 # A normal Lake leaf build traverses its real dependencies. This
                 # remains exclusive under the original supplied serial guard.

@@ -131,7 +131,7 @@ jobs:
           # children sequentially. An outer guard would deadlock the host lock.
           python3 -m unittest discover -s scripts -p test_bounded_fv.py -v 2>&1 | tee "$FV_ROOT/guard-controls.log"
           python3 scripts/compilation_pool/test_pool.py --process-tests --process-output "$FV_ROOT/pool-controls"
-          PYTHONPATH=scripts python3 -m unittest test_run_lean_diagnosis test_native_cpu_certificates test_check_lean_progress -v
+          PYTHONPATH=scripts python3 -m unittest test_run_lean_diagnosis test_native_cpu_certificates test_check_lean_progress test_check_lean_repair -v
           PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports test_olean_hashes test_replay_cache test_proof_boundaries test_native_lookup_bindings test_native_memory_policy -v
           cat > "$FV_ROOT/guard.sh" <<'SH'
           set -euo pipefail

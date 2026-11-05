@@ -408,6 +408,24 @@ progress polling preserves complete output and a nonzero exit; an interruption
 control checks that exceptions still reach the existing child cleanup. Existing
 resource limits, guard receipts, freshness checks and assurance gates are unchanged.
 
+Cancellation diagnostics from
+[41963487081](https://github.com/matter-labs/zksync-airbender/actions/runs/41963487081)
+show source-object freshness and compiled hashes completed before native work.
+The retained records include six source builds (43.96 guarded seconds), 1980
+native object builds (2569.91 guarded seconds) and 3943 recursive freshness-query
+steps (4349.12 guarded seconds). These guarded durations exclude orchestration
+overhead and do not sum to elapsed wall time. The interrupted source/runtime stage
+had reached 12202.88 seconds; no runtime or environment audit pass is claimed.
+
+The frontend now uses explicit native-object misses in normal Lake diagnostics
+as build candidates. Each candidate still gets the same ordinary guarded leaf
+build, followed by a normal query of the entire failed chunk and the existing
+final freshness query. Missing or incomplete diagnostic hints retain the original
+bisection fallback. Hints never attest freshness, change guard limits or skip
+the compiled-object hashes. Controls cover complete and incomplete hints and
+reject candidates outside the requested native-object targets. CI qualification
+and elapsed-time measurement of this optimization remain pending.
+
 A static runtime audit also found two stale importer expectations: unified CPU
 equations were 129 rather than the native 120, and bigint equations were 136
 rather than the native 135. The checks and labels now use the actual producer
