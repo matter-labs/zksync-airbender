@@ -71,6 +71,9 @@ theorem call_physical_steps [Fact p.Prime] (hp : 8388608 ≤ p)
   have writes : ∀ port ∈ (⟨.blakeG, row.assignment⟩ : Delegation.Row p).ports,
       ((⟨.blakeG, row.assignment⟩ : Delegation.Row p).writeToken port).word.Bounded := by
     simpa only [← native] using bounds.writes row member
+  -- the serialized inverse fixes p = BabyBear, above Blake2G's 2^25 bound
+  have field : 33554432 ≤ p := by
+    rw [serialized_field inverse]; unfold babyBearModulus; norm_num
   have addresses := native_addresses (by omega) inverse core (inputs.active row member) controlBound reads
   have fixed : addressInput row.assignment controlBound =
       ⟨⟨⟨(row.assignment Variables.controlReadLo).val, controlBound⟩, true⟩,

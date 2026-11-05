@@ -66,6 +66,9 @@ theorem call_block_domain [Fact p.Prime] (hp : 8388608 ≤ p)
       statePointer ≠ messagePointer ∧
       ∀ block : Bool, ∀ word : Fin 16,
         Cell.ram ((if block then statePointer else messagePointer) + BitVec.ofNat 32 (4 * word.val)) ∈ cells := by
+  -- the serialized inverse fixes p = BabyBear, above Blake2G's 2^25 bound
+  have field : 33554432 ≤ p := by
+    rw [serialized_field inverse]; unfold babyBearModulus; norm_num
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   obtain ⟨statePointer, messagePointer, stateRead, messageRead, tracked⟩ :=
     call_block_cells hp inverse accepted inputs

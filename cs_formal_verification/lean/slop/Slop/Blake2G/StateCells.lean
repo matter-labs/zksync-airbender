@@ -64,6 +64,9 @@ theorem call_block_cells [Fact p.Prime] (hp : 8388608 ≤ p)
   have controlBound : (row.assignment Variables.controlReadLo).val < 256 := by
     rw [control]
     exact (scheduledController reduced call.val callBound).register.isLt
+  -- the serialized inverse fixes p = BabyBear, above Blake2G's 2^25 bound
+  have field : 33554432 ≤ p := by
+    rw [serialized_field inverse]; unfold babyBearModulus; norm_num
   have addresses := native_addresses (by omega) inverse core (inputs.active row member) controlBound
     (by simpa only [← native] using bounds.reads row member)
   have mapped : addressInput row.assignment controlBound =
