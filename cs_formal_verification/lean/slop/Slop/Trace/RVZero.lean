@@ -1,13 +1,13 @@
 import Slop.Trace.RVZeroRows
 import Slop.Trace.ZeroValues
-import Slop.Trace.PooledProgram
+import Slop.Trace.RVProgram
 import Slop.Trace.RVHistory
 import Slop.Trace.RVFetch
 
 /-! RV-route x0 law (piece E0). `zero` for the RV AddSub row (`rv_addsub_row_position`) is derived here, with no Sail
     state or interpreter fact: the initial image is `initialImageRV` (register reads are `RV.State.getReg`), the row
     families are the decoder-projection twins in `RVZeroRows`, and the program entries come from `rvProgramImageWith`
-    (`rvProgram_entry_fetch`). The propagation induction is the Sail one (`ZeroValues.lean`) with `initial_zero_value`
+    (`rvProgram_entry_fetch`) with the projection `rvPooledDecoderFields` on `RV.Instr`. The propagation induction is the Sail one (`ZeroValues.lean`) with `initial_zero_value`
     replaced. -/
 
 namespace Airbender.Trace.RVZero
@@ -99,18 +99,18 @@ theorem rv_zero_writes_of_preserving [Fact p.Prime] [ClockLaws Kind p]
   rw [zero]
   rfl
 
-/-- The RV-route pooled row law: the pooled entry's metadata projection is the Sail-free `pooledDecoderFields`
-    (the family split is `pooled_fields_cases`), and each family's twin discharges its local x0 law. -/
+/-- The RV-route pooled row law: the pooled entry's metadata is `rvPooledDecoderFields` of an `RV.Instr` (the family
+    split is `rv_pooled_fields_cases`), and each family's twin discharges its local x0 law. -/
 theorem rv_pooled_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     (setup : PooledSetup p) (row : Row p PooledFamily)
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints setup))
-    {entry : PooledProgramEntry} (fields : pooledDecoderFields entry.instruction = some entry.data)
+    {entry : RVPooledProgramEntry} {i : RV.Instr} (fields : rvPooledDecoderFields i = some entry.data)
     (family : entry.data.family = row.family) (query : row.decoderQuery = entry.query) :
     RowZeroPreserving row := by
   have limbField : limbBase < p := by dsimp [limbBase]; omega
-  obtain ⟨pc, bits, instruction, data⟩ := entry
-  obtain h | h | h | h | h := pooled_fields_cases fields
+  obtain ⟨pc, bits, data⟩ := entry
+  obtain h | h | h | h | h := rv_pooled_fields_cases fields
   · obtain ⟨d, fd, equal⟩ := h
     subst equal
     cases row with
@@ -119,18 +119,18 @@ theorem rv_pooled_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : 196608 < p)
       all_goals simp only [DecoderData.mapFamily, mode, pooledArithmeticFamily] at family
       all_goals subst kind
       all_goals
-        have query' : _ = (⟨pc, bits, instruction, d⟩ : ProgramEntry).query := query
+        have query' : _ = (⟨pc, bits, d⟩ : RVProgramEntry).query := query
         have mask : d.mask < 512 := by
-          have bound := (standardDecoderRules.bounds _ _ fd).2
+          have bound := (rvStandardDecoderRules.bounds _ _ fd).2
           omega
-      · have fetch : RVFetched (⟨.addSub, w⟩ : Row p) decoderFields :=
-          ⟨⟨pc, bits, instruction, d⟩, fd, mode, query',
-            row_query_selectors_of_bound limbField setup.wordMemory constraints mask query'⟩
-        exact row_zero_write_from_reads standardDecoderRules hp ⟨.addSub, w⟩ setup.wordMemory constraints fetch
-      · have fetch : RVFetched (⟨.wordMemory, w⟩ : Row p) decoderFields :=
-          ⟨⟨pc, bits, instruction, d⟩, fd, mode, query',
-            row_query_selectors_of_bound limbField setup.wordMemory constraints mask query'⟩
-        exact row_zero_write_from_reads standardDecoderRules hp ⟨.wordMemory, w⟩ setup.wordMemory constraints fetch
+      · have fetch : RVFetched (⟨.addSub, w⟩ : Row p) rvDecoderFields :=
+          ⟨⟨pc, bits, d⟩, i, fd, mode, query',
+            rv_row_query_selectors_of_bound limbField setup.wordMemory constraints mask query'⟩
+        exact row_zero_write_from_reads rvStandardDecoderRules hp ⟨.addSub, w⟩ setup.wordMemory constraints fetch
+      · have fetch : RVFetched (⟨.wordMemory, w⟩ : Row p) rvDecoderFields :=
+          ⟨⟨pc, bits, d⟩, i, fd, mode, query',
+            rv_row_query_selectors_of_bound limbField setup.wordMemory constraints mask query'⟩
+        exact row_zero_write_from_reads rvStandardDecoderRules hp ⟨.wordMemory, w⟩ setup.wordMemory constraints fetch
   · obtain ⟨d, fd, equal⟩ := h
     subst equal
     cases row with
@@ -139,24 +139,24 @@ theorem rv_pooled_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : 196608 < p)
       subst kind
       have core := Verification.holds_of_sublist constraints
         (List.sublist_append_left JumpBranchSlt.importedConstraints JumpBranchSlt.importedConstraintsTimestampLookups)
-      have bounds := JumpBranchSlt.Proofs.decoder_field_bounds fd
+      have bounds := JumpBranchSlt.Proofs.rv_decoder_field_bounds fd
       exact jumpBranch_row_zero_preserving limbField ⟨.jumpBranchSlt, w⟩ core
-        ⟨pc, bits, instruction, d⟩ fd query
-        (JumpBranchSlt.Proofs.decoder_selectors limbField core bounds.2.1 query)
+        ⟨pc, bits, d⟩ fd query
+        (JumpBranchSlt.Proofs.rv_decoder_selectors limbField core bounds.2.1 query)
   · obtain ⟨d, fd, equal⟩ := h
     subst equal
     cases row with
     | mk kind w =>
       change PooledFamily.mulDiv = kind at family
       subst kind
-      exact mulDiv_row_zero_preserving limbField ⟨.mulDiv, w⟩ ⟨pc, bits, instruction, d⟩ fd query
+      exact mulDiv_row_zero_preserving limbField ⟨.mulDiv, w⟩ ⟨pc, bits, d⟩ fd query
   · obtain ⟨d, fd, equal⟩ := h
     subst equal
     cases row with
     | mk kind w =>
       change PooledFamily.shiftBinop = kind at family
       subst kind
-      exact shiftBinop_row_zero_preserving limbField ⟨.shiftBinop, w⟩ ⟨pc, bits, instruction, d⟩ fd query
+      exact shiftBinop_row_zero_preserving limbField ⟨.shiftBinop, w⟩ ⟨pc, bits, d⟩ fd query
   · obtain ⟨d, fd, equal⟩ := h
     subst equal
     cases row with
@@ -167,21 +167,18 @@ theorem rv_pooled_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : 196608 < p)
         (List.sublist_append_left (SubwordMemory.importedConstraints setup.subwordMemory)
           SubwordMemory.importedConstraintsTimestampLookups)
       exact subword_row_zero_preserving limbField ⟨.subwordMemory, w⟩ setup.subwordMemory core
-        ⟨pc, bits, instruction, d⟩ fd query
+        ⟨pc, bits, d⟩ fd query
 
 /-- Every row of an accepted RV-decoded pooled trace preserves x0, from the public program image alone. -/
 theorem rv_pooled_zero_preserving {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     {trace : PooledTrace p} (accepted : Accepted trace)
     {initial : RV.State} {addresses : List (BitVec 32)}
-    {program : List PooledProgramEntry}
-    (image : rvProgramImageWith pooledDecoderFields initial addresses = some program)
-    (decoded : PooledDecoded trace program) : ZeroPreserving trace := by
+    {program : List RVPooledProgramEntry}
+    (image : rvProgramImageWith rvPooledDecoderFields initial addresses = some program)
+    (decoded : RVPooledDecoded trace program) : ZeroPreserving trace := by
   intro row member
-  obtain ⟨entry, present, family, query⟩ := decoder_member (decoded row member)
-  obtain ⟨_, _, _, _, instruction, projection⟩ := rvProgram_entry_fetch image entry present
-  have fields : pooledDecoderFields entry.instruction = some entry.data := by
-    rw [instruction]
-    exact projection
+  obtain ⟨entry, present, family, query⟩ := rv_decoder_member (decoded row member)
+  obtain ⟨_, _, _, _, fields⟩ := rvProgram_entry_fetch image entry present
   exact rv_pooled_row_zero_preserving hp trace.rom row (accepted.constraints row member) fields family query
 
 /-- The `zero` hypothesis of `rv_addsub_row_position`: every native write to x0 carries zero, derived from the RV
@@ -191,9 +188,9 @@ theorem rv_pooled_zero_writes {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase +
     {trace : PooledTrace p} (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : RV.State} {cells : List Cell}
     (image : initialImageRV initial cells = some trace.initialMemory)
-    {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : rvProgramImageWith pooledDecoderFields initial addresses = some program)
-    (decoded : PooledDecoded trace program) :
+    {addresses : List (BitVec 32)} {program : List RVPooledProgramEntry}
+    (programImage : rvProgramImageWith rvPooledDecoderFields initial addresses = some program)
+    (decoded : RVPooledDecoded trace program) :
     ∀ event ∈ trace.nativeEvents, event.2.1 = (Cell.register 0).addressCode →
       memoryWord event.2.2.2 = 0 :=
   rv_zero_writes_of_preserving hp inverse accepted boundary image

@@ -2,21 +2,20 @@ import Human.Helpers.Decoder.RVProgram
 import Slop.ISA.RV.Mem
 
 /-! Fetch link for the RV program table (piece D). A public entry of `rvProgramImageWith` is an aligned ROM word
-    that `RV.decode` reads from the starting memory; its Sail instruction is `toSail` of the decoded value and its
-    native data is `projection` of that instruction. Structural unpacking only: no Sail interpreter is run. -/
+    that `RV.decode` reads from the starting memory; its native data is `projection` of the decoded instruction.
+    Structural unpacking only. -/
 
 namespace Airbender.Trace
 open Arithmetic
 
 /-- Unpack one successful `rvProgramEntryWith`: the guard, the public bytes, the decoded instruction and its data. -/
 theorem rvProgramEntryWith_some {Kind : Type}
-    {projection : SailRV32.instruction → Option (DecoderData Kind)}
-    {before : RV.State} {pc : BitVec 32} {entry : ProgramEntry Kind}
+    {projection : RV.Instr → Option (DecoderData Kind)}
+    {before : RV.State} {pc : BitVec 32} {entry : RVProgramEntry Kind}
     (h : rvProgramEntryWith projection before pc = some entry) :
     entry.pc = pc ∧ (pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0) ∧
       entry.bits = RV.read before.mem pc 4 ∧
-      ∃ i, RV.decode entry.bits = some i ∧ entry.instruction = Airbender.toSail i ∧
-        projection entry.instruction = some entry.data := by
+      ∃ i, RV.decode entry.bits = some i ∧ projection i = some entry.data := by
   unfold rvProgramEntryWith at h
   split at h
   · cases h
@@ -27,17 +26,17 @@ theorem rvProgramEntryWith_some {Kind : Type}
   cases hd : RV.decode (RV.read before.mem pc 4) with
   | none => simp [hd] at h
   | some i =>
-    cases hp : projection (Airbender.toSail i) with
+    cases hp : projection i with
     | none => simp [hd, hp] at h
     | some data =>
       simp only [hd, hp, bind, Option.bind, pure, Option.some.injEq] at h
       subst h
-      exact ⟨rfl, guard, rfl, i, hd, rfl, hp⟩
+      exact ⟨rfl, guard, rfl, i, hd, hp⟩
 
 /-- Every entry of a successful public image was built at one of the listed addresses. -/
 theorem mem_rvProgramImage {Kind : Type}
-    {projection : SailRV32.instruction → Option (DecoderData Kind)} {before : RV.State} :
-    ∀ {addresses : List (BitVec 32)} {program : List (ProgramEntry Kind)},
+    {projection : RV.Instr → Option (DecoderData Kind)} {before : RV.State} :
+    ∀ {addresses : List (BitVec 32)} {program : List (RVProgramEntry Kind)},
       rvProgramImageWith projection before addresses = some program →
       ∀ entry ∈ program, ∃ pc ∈ addresses, rvProgramEntryWith projection before pc = some entry
   | [], program, image, entry, present => by
@@ -62,21 +61,19 @@ theorem mem_rvProgramImage {Kind : Type}
           exact ⟨pc, by simp [mem], h⟩
 
 /-- Fetch link for a program entry: its PC is an aligned ROM address, its bytes are the starting memory's bytes at
-    that address, and its Sail instruction is `toSail` of the `RV.decode` of those bytes, with native data
-    `projection` of that instruction. -/
+    that address, and they decode (`RV.decode`) to an instruction whose native data (`projection`) is the entry's. -/
 theorem rvProgram_entry_fetch {Kind : Type}
-    {projection : SailRV32.instruction → Option (DecoderData Kind)} {initial : RV.State}
-    {addresses : List (BitVec 32)} {program : List (ProgramEntry Kind)}
+    {projection : RV.Instr → Option (DecoderData Kind)} {initial : RV.State}
+    {addresses : List (BitVec 32)} {program : List (RVProgramEntry Kind)}
     (image : rvProgramImageWith projection initial addresses = some program)
-    (entry : ProgramEntry Kind) (present : entry ∈ program) :
+    (entry : RVProgramEntry Kind) (present : entry ∈ program) :
     (entry.pc.toNat < RV.ROM_END ∧ entry.pc.toNat % 4 = 0) ∧
       entry.bits = RV.read initial.mem entry.pc 4 ∧
-      ∃ i, RV.decode entry.bits = some i ∧ entry.instruction = Airbender.toSail i ∧
-        projection (Airbender.toSail i) = some entry.data := by
+      ∃ i, RV.decode entry.bits = some i ∧ projection i = some entry.data := by
   obtain ⟨pc, _, built⟩ := mem_rvProgramImage image entry present
-  obtain ⟨pcEq, guard, bits, i, decoded, instruction, data⟩ := rvProgramEntryWith_some built
+  obtain ⟨pcEq, guard, bits, i, decoded, data⟩ := rvProgramEntryWith_some built
   subst pcEq
-  exact ⟨guard, bits, i, decoded, instruction, by rw [← instruction]; exact data⟩
+  exact ⟨guard, bits, i, decoded, data⟩
 
 /-- The read of four bytes at `pc` depends only on the ROM bytes when `pc` is a ROM address with room for the word. -/
 theorem rv_read_fetch (s initial : RV.State)
