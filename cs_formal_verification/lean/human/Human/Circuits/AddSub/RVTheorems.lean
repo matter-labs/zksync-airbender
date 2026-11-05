@@ -1,38 +1,34 @@
-import Human.Circuits.AddSub.Model
+import Human.Circuits.AddSub.RVModel
 import Human.Helpers.Core.BabyBearPrime
 import Human.Helpers.Delegation.Decoder
 import Human.ISA.Sail.View
 
-/-! DRAFT (B2 pilot): the AddSub claims stated against our RV32 spec (`RV.step`, `Human/ISA/RV32.lean`) instead of
-Sail. Not yet proven; not in `test/Checks/Claims.lean`. Open items:
-* `InterfaceAssumptions` → `NativeInputs` still carries `configuration : Configured initial`; it is to leave the
-  bundle (Configured lives only in `Human/ISA/Sail/Theorems.lean`).
-* Resolved, not open: PC in ROM and 4-byte aligned (G1) is enforced by the decoder table (c469da87f, `programEntryWith`);
-  the word at the row's PC is tied to the decoded entry (G2) by the existing fetch lemmas (`Proofs.fetched` in
-  `slop/Slop/MulDiv/Decoder.lean`, `pooled_native_rom_unchanged` / `pooled_rom_reads_after_history` in
-  `slop/Slop/Trace/PooledCode.lean`, and the store trap `rom_selection` in `slop/Slop/WordMemory.lean`). -/
+/-! RV32 claims (B2 pilot). The AddSub claims (first block) are stated against our spec (`RV.step`, `Human/ISA/RV32.lean`),
+    not Sail: the row's pre-state is `input.before : RV.State`, which carries the input stream (`RV.State.input`), so there is
+    no stream binder. `Same` (`Sail/View.lean`) only compares two `RV.State`s. Not proven yet; not in `test/Checks/Claims.lean`.
+    Resolved: PC in ROM and 4-byte aligned is the decoder table's guard (`rvProgramEntryWith`); the word at the row's PC is
+    the table's encoding (`RVTraceMapping.instruction`).
+    The Delegation.Caller claims (second block) are still Sail-typed; they are not part of the AddSub pilot. -/
 
 namespace Airbender.AddSub
-open Reference.RiscV Reference.RiscV.Sail Trace
+open Reference.RiscV Trace
 
-/-- Every accepted ADD/ADDI/SUB/LUI/AUIPC row is one step of our spec: from the row's pre-state (for any input), the
-step exists and gives the row's post-state: `rd` := the row's result (x0: discarded), PC := the row's final PC,
-nothing else changed. -/
+/-- Every accepted ADD/ADDI/SUB/LUI/AUIPC row is one step of our spec: from the row's pre-state (`input.before`), the
+    step exists and gives the row's post-state: `rd` := the row's result (x0: discarded), PC := the row's final PC,
+    nothing else changed. -/
 def RVSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1) (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry),
-    InterfaceAssumptions trace initial cells program →
-    ∀ input output w, (circuitModel trace initial cells program).relation input output w →
-    ∀ stream : List RV.Word, let s := view input.before stream
-      ∃ s', RV.step s = some s' ∧
-        Same s' ((s.setReg (regNumber input.rd) output.destination.toBitVec).setPC output.pc.toBitVec)
+  ∀ {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1) (trace : PooledTrace p) (initial : RV.State) (cells : List Cell) (program : List PooledProgramEntry),
+    RVInterfaceAssumptions trace initial cells program →
+    ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
+      ∃ s', RV.step input.before = some s' ∧
+        Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
 
 def BabyBearRVSoundnessClaim : Prop :=
-  ∀ (trace : PooledTrace babyBearModulus) (initial : State) (cells : List Cell) (program : List PooledProgramEntry),
-    InterfaceAssumptions trace initial cells program →
-    ∀ input output w, (circuitModel trace initial cells program).relation input output w →
-    ∀ stream : List RV.Word, let s := view input.before stream
-      ∃ s', RV.step s = some s' ∧
-        Same s' ((s.setReg (regNumber input.rd) output.destination.toBitVec).setPC output.pc.toBitVec)
+  ∀ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell) (program : List PooledProgramEntry),
+    RVInterfaceAssumptions trace initial cells program →
+    ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
+      ∃ s', RV.step input.before = some s' ∧
+        Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
 
 end Airbender.AddSub
 
