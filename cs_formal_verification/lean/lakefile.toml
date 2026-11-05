@@ -1,3 +1,6 @@
+# Lake 4.34: `[[input_file]]` listed in `extraDepTargets` gives a nil trace, so editing a circuit JSON
+# rebuilt nothing. Each Artifact library uses `needs` (which fetches the input file with a content hash)
+# and is its own library, so a JSON change rebuilds only its Artifact module and that module's importers.
 name = "airbender_circuits"
 version = "0.1.0"
 defaultTargets = ["Human", "Slop", "airbender_import", "airbender_tests"]
@@ -20,12 +23,240 @@ git = "https://github.com/leanprover-community/mathlib4.git"
 rev = "v4.34.1"
 
 # what a human reads: every definition a final statement depends on
+# (the Artifact modules are excluded here: each is built by its own library below)
 [[lean_lib]]
 name = "Human"
 srcDir = "human"
 roots = ["Human"]
-globs = ["Human.+"]
-extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson", "blakeGJson", "blakeRoundJson", "bigintJson", "keccakJson"]
+globs = [
+  "Human",
+  "Human.Circuits.AddSub.CallerTheorems",
+  "Human.Circuits.AddSub.Discarded",
+  "Human.Circuits.AddSub.Model",
+  "Human.Circuits.AddSub.Modular",
+  "Human.Circuits.AddSub.NonDeterminism",
+  "Human.Circuits.AddSub.Reference",
+  "Human.Circuits.AddSub.Theorems",
+  "Human.Circuits.Bigint.Additive",
+  "Human.Circuits.Bigint.Addresses",
+  "Human.Circuits.Bigint.Control",
+  "Human.Circuits.Bigint.Equality",
+  "Human.Circuits.Bigint.Execution",
+  "Human.Circuits.Bigint.Memory",
+  "Human.Circuits.Bigint.Multiplication",
+  "Human.Circuits.Bigint.PointerABI",
+  "Human.Circuits.Bigint.Tables.+",
+  "Human.Circuits.Bigint.Theorems",
+  "Human.Circuits.Bigint.Word",
+  "Human.Circuits.Blake2G.Addresses",
+  "Human.Circuits.Blake2G.Control",
+  "Human.Circuits.Blake2G.Controller",
+  "Human.Circuits.Blake2G.Execution",
+  "Human.Circuits.Blake2G.Memory",
+  "Human.Circuits.Blake2G.Model",
+  "Human.Circuits.Blake2G.Protocol",
+  "Human.Circuits.Blake2G.Row",
+  "Human.Circuits.Blake2G.State",
+  "Human.Circuits.Blake2G.Tables.+",
+  "Human.Circuits.Blake2G.Theorems",
+  "Human.Circuits.Blake2Round.Addresses",
+  "Human.Circuits.Blake2Round.Control",
+  "Human.Circuits.Blake2Round.Execution",
+  "Human.Circuits.Blake2Round.Finalization",
+  "Human.Circuits.Blake2Round.Memory",
+  "Human.Circuits.Blake2Round.Mixing",
+  "Human.Circuits.Blake2Round.Preparation",
+  "Human.Circuits.Blake2Round.Row",
+  "Human.Circuits.Blake2Round.Schedule",
+  "Human.Circuits.Blake2Round.Tables.+",
+  "Human.Circuits.JumpBranchSlt.Branch",
+  "Human.Circuits.JumpBranchSlt.Decoder",
+  "Human.Circuits.JumpBranchSlt.Jump",
+  "Human.Circuits.JumpBranchSlt.Model",
+  "Human.Circuits.JumpBranchSlt.Tables.+",
+  "Human.Circuits.JumpBranchSlt.Theorems",
+  "Human.Circuits.Keccak.Addresses",
+  "Human.Circuits.Keccak.Chi",
+  "Human.Circuits.Keccak.ControlUpdate",
+  "Human.Circuits.Keccak.Controller",
+  "Human.Circuits.Keccak.Controls",
+  "Human.Circuits.Keccak.Execution",
+  "Human.Circuits.Keccak.Iota",
+  "Human.Circuits.Keccak.Memory",
+  "Human.Circuits.Keccak.Mix",
+  "Human.Circuits.Keccak.Rho",
+  "Human.Circuits.Keccak.Tables.+",
+  "Human.Circuits.Keccak.Theta",
+  "Human.Circuits.MulDiv.Decoder",
+  "Human.Circuits.MulDiv.Model",
+  "Human.Circuits.MulDiv.Theorems",
+  "Human.Circuits.ShiftBinop.Decoder",
+  "Human.Circuits.ShiftBinop.Model",
+  "Human.Circuits.ShiftBinop.Theorems",
+  "Human.Circuits.SubwordMemory.Decoder",
+  "Human.Circuits.SubwordMemory.Model",
+  "Human.Circuits.SubwordMemory.Theorems",
+  "Human.Circuits.UnifiedReduced.Binary",
+  "Human.Circuits.UnifiedReduced.Control",
+  "Human.Circuits.UnifiedReduced.Decoder",
+  "Human.Circuits.UnifiedReduced.Delegation",
+  "Human.Circuits.UnifiedReduced.Jump",
+  "Human.Circuits.UnifiedReduced.Model",
+  "Human.Circuits.UnifiedReduced.Shift",
+  "Human.Circuits.UnifiedReduced.Tables.+",
+  "Human.Circuits.UnifiedReduced.TriAdd",
+  "Human.Circuits.UnifiedReduced.WordMemory",
+  "Human.Circuits.UnifiedReduced.WordROM",
+  "Human.Circuits.UnifiedReduced.XorRotate",
+  "Human.Circuits.WordMemory.Model",
+  "Human.Circuits.WordMemory.Theorems",
+  "Human.Helpers.+",
+  "Human.Import.+",
+  "Human.Trace.+",
+]
+
+# AddSub: rebuilt when add_sub_lui_auipc_mop_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "AddSubArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.AddSub.Artifact"]
+globs = ["Human.Circuits.AddSub.Artifact"]
+needs = ["addSubJson"]
+
+# Bigint: rebuilt when bigint_with_extended_control_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "BigintArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.Bigint.Artifact"]
+globs = ["Human.Circuits.Bigint.Artifact"]
+needs = ["bigintJson"]
+
+# Blake2G: rebuilt when blake2_g_function_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "Blake2GArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.Blake2G.Artifact"]
+globs = ["Human.Circuits.Blake2G.Artifact"]
+needs = ["blakeGJson"]
+
+# Blake2Round: rebuilt when blake2_with_extended_control_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "Blake2RoundArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.Blake2Round.Artifact"]
+globs = ["Human.Circuits.Blake2Round.Artifact"]
+needs = ["blakeRoundJson"]
+
+# JumpBranchSlt: rebuilt when jump_branch_slt_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "JumpBranchSltArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.JumpBranchSlt.Artifact"]
+globs = ["Human.Circuits.JumpBranchSlt.Artifact"]
+needs = ["jumpBranchSltJson"]
+
+# Keccak: rebuilt when keccak_special5_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "KeccakArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.Keccak.Artifact"]
+globs = ["Human.Circuits.Keccak.Artifact"]
+needs = ["keccakJson"]
+
+# MulDiv: rebuilt when unsigned_mul_div_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "MulDivArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.MulDiv.Artifact"]
+globs = ["Human.Circuits.MulDiv.Artifact"]
+needs = ["unsignedMulDivJson"]
+
+# ShiftBinop: rebuilt when shift_binop_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "ShiftBinopArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.ShiftBinop.Artifact"]
+globs = ["Human.Circuits.ShiftBinop.Artifact"]
+needs = ["shiftBinopJson"]
+
+# SubwordMemory: rebuilt when mem_subword_only_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "SubwordMemoryArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.SubwordMemory.Artifact"]
+globs = ["Human.Circuits.SubwordMemory.Artifact"]
+needs = ["subwordMemoryJson"]
+
+# UnifiedReduced: rebuilt when unified_reduced_machine_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "UnifiedReducedArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.UnifiedReduced.Artifact"]
+globs = ["Human.Circuits.UnifiedReduced.Artifact"]
+needs = ["unifiedReducedJson"]
+
+# WordMemory: rebuilt when mem_word_only_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "WordMemoryArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.WordMemory.Artifact"]
+globs = ["Human.Circuits.WordMemory.Artifact"]
+needs = ["wordMemoryJson"]
+
+[[input_file]]
+name = "addSubJson"
+path = "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "bigintJson"
+path = "../../cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "blakeGJson"
+path = "../../cs/compiled_circuits/blake2_g_function_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "blakeRoundJson"
+path = "../../cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "jumpBranchSltJson"
+path = "../../cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "keccakJson"
+path = "../../cs/compiled_circuits/keccak_special5_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "unsignedMulDivJson"
+path = "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "shiftBinopJson"
+path = "../../cs/compiled_circuits/shift_binop_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "subwordMemoryJson"
+path = "../../cs/compiled_circuits/mem_subword_only_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "unifiedReducedJson"
+path = "../../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "wordMemoryJson"
+path = "../../cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json"
+text = true
 
 # proofs (kernel-checked, not meant to be read)
 [[lean_lib]]
@@ -160,36 +391,6 @@ roots = [
   "Tests.ZeroRegister",
 ]
 
-[[input_file]]
-name = "addSubJson"
-path = "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"
-text = true
-
-[[input_file]]
-name = "jumpBranchSltJson"
-path = "../../cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json"
-text = true
-
-[[input_file]]
-name = "unsignedMulDivJson"
-path = "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
-text = true
-
-[[input_file]]
-name = "shiftBinopJson"
-path = "../../cs/compiled_circuits/shift_binop_layout_no_caches_gkr.json"
-text = true
-
-[[input_file]]
-name = "wordMemoryJson"
-path = "../../cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json"
-text = true
-
-[[input_file]]
-name = "subwordMemoryJson"
-path = "../../cs/compiled_circuits/mem_subword_only_layout_no_caches_gkr.json"
-text = true
-
 [[lean_exe]]
 name = "airbender_import"
 srcDir = "human"
@@ -199,28 +400,3 @@ root = "Human.Import.Main"
 name = "airbender_tests"
 srcDir = "test"
 root = "Tests.ArtifactImport"
-
-[[input_file]]
-name = "unifiedReducedJson"
-path = "../../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json"
-text = true
-
-[[input_file]]
-name = "blakeGJson"
-path = "../../cs/compiled_circuits/blake2_g_function_layout_no_caches_gkr.json"
-text = true
-
-[[input_file]]
-name = "blakeRoundJson"
-path = "../../cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json"
-text = true
-
-[[input_file]]
-name = "bigintJson"
-path = "../../cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json"
-text = true
-
-[[input_file]]
-name = "keccakJson"
-path = "../../cs/compiled_circuits/keccak_special5_layout_no_caches_gkr.json"
-text = true
