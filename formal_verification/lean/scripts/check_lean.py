@@ -85,6 +85,31 @@ def ordered(nodes, imports):
     return result
 
 
+def prioritized_order(nodes, imports, priorities=()):
+    """Check fixture closures early within one complete topological source pass.
+
+    Priority affects order only. Every source remains present exactly once;
+    imports still precede their users, including across priority boundaries.
+    """
+    base = ordered(nodes, imports)
+    nodes = set(base)
+    priorities = list(priorities)
+    if len(priorities) != len(set(priorities)) or set(priorities) - nodes:
+        raise ValueError('Priority modules must be distinct existing project modules')
+    result, emitted = [], set()
+    for module in priorities:
+        needed, pending = {module}, [module]
+        while pending:
+            for dependency in imports[pending.pop()]:
+                if dependency in nodes and dependency not in needed:
+                    needed.add(dependency)
+                    pending.append(dependency)
+        result.extend(name for name in base if name in needed and name not in emitted)
+        emitted.update(needed)
+    result.extend(name for name in base if name not in emitted)
+    return result
+
+
 class Frozen:
     """Full initial/final byte checks; stat changes trigger content revalidation."""
     def __init__(self, paths):
@@ -461,8 +486,12 @@ def main():
     parser.add_argument('--guard', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--module', action='append', default=[])
+    parser.add_argument('--priority-module', action='append', default=[],
+                        help='Check this fixture and its imports early in the complete source pass')
     parser.add_argument('--workers', type=int, choices=range(1, 5), default=4)
     args = parser.parse_args()
+    if args.module and args.priority_module:
+        parser.error('Priority modules apply only to complete project verification')
     root, guard, output = args.root.resolve(), args.guard.resolve(), args.output.resolve()
     if not guard.is_file():
         parser.error('Missing supplied resource guard')
@@ -515,8 +544,9 @@ def main():
                 if dependency in sources and dependency not in selected:
                     selected.add(dependency)
                     pending.append(dependency)
-        queue = ordered(selected, imports)
+        queue = prioritized_order(selected, imports, args.priority_module)
         write_json(runner.directory / 'source-queue.json', {'scope': 'selected_modules' if args.module else 'complete_project',
+                   'priority_modules': args.priority_module,
                    'modules': queue, 'sources': {name: str(path) for name, path in sources.items()}, 'imports': imports})
         source_values, source_freshness = runner.freshness('source-freshness', queue, ['olean'])
         for module, value in zip(queue, source_values):

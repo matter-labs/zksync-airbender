@@ -116,6 +116,12 @@ setup requalification and final/weekly full assurance always regenerate them.
 The receipt is separate from the large Cargo/Lean build caches and does not
 solve the cost of rebuilding missing Lean objects.
 
+The complete source pass checks the four concrete fixture dependency closures
+first, then all remaining modules, once each. This replaces a separate fixture
+pass whose three-hour deadline expired on a cold checkout. Fixture proofs and
+assertions remain unchanged. The complete pass retains its 54,000-second stage
+deadline, normal Lake freshness checks and existing per-child resource limits.
+
 ## Reproduce
 
 Use Python 3.11+, the pinned Lean `leanprover/lean4:v4.31.0` and Rust
@@ -201,7 +207,9 @@ fv compiler-native-requests python3 scripts/generate_native_lookup_requests.py -
 
 # Frontends own their aggregate guard; use no outer guard.
 # Source freshness defaults to four bounded read-only query workers.
-python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean"
+python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean" \
+  --priority-module Tests.BigintMemory --priority-module Tests.DelegationTimestamps \
+  --priority-module Tests.DynamicCopyLoopNative --priority-module Tests.PathGLoopNative
 sysroot="$(lean --print-prefix)"
 python3 scripts/check_axioms.py --guard scripts/bounded_fv.py \
   --sysroot "$sysroot" --output "$FV_ROOT/axioms" \

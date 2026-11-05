@@ -131,7 +131,7 @@ jobs:
           # children sequentially. An outer guard would deadlock the host lock.
           python3 -m unittest discover -s scripts -p test_bounded_fv.py -v 2>&1 | tee "$FV_ROOT/guard-controls.log"
           python3 scripts/compilation_pool/test_pool.py --process-tests --process-output "$FV_ROOT/pool-controls"
-          PYTHONPATH=scripts python3 -m unittest test_run_lean_diagnosis test_native_cpu_certificates test_check_lean_progress test_check_lean_repair test_native_qualification -v
+          PYTHONPATH=scripts python3 -m unittest test_run_lean_diagnosis test_native_cpu_certificates test_check_lean_progress test_check_lean_repair test_check_lean_order test_native_qualification -v
           PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports test_olean_hashes test_replay_cache test_proof_boundaries test_native_lookup_bindings test_native_memory_policy -v
           cat > "$FV_ROOT/guard.sh" <<'SH'
           set -euo pipefail
@@ -521,12 +521,12 @@ jobs:
         run: |
           source "$FV_ROOT/guard.sh"
           # No outer guard: the frontend guards each real child and checks reap metadata.
-          # Exercise concrete timestamp witnesses before traversing the full project.
-          fv_stage delegation-fixtures 10800 python3 scripts/check_lean.py --guard scripts/bounded_fv.py \
-            --output "$FV_ROOT/fixture-lean" --module Tests.BigintMemory \
-            --module Tests.DelegationTimestamps --module Tests.DynamicCopyLoopNative \
-            --module Tests.PathGLoopNative
-          fv_stage lean-verification 54000 python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean"
+          # Exercise concrete witnesses first inside the same complete source pass.
+          # A separate 3h fixture pass exhausted its deadline on a cold checkout.
+          fv_stage lean-verification 54000 python3 scripts/check_lean.py --guard scripts/bounded_fv.py \
+            --output "$FV_ROOT/lean" --priority-module Tests.BigintMemory \
+            --priority-module Tests.DelegationTimestamps \
+            --priority-module Tests.DynamicCopyLoopNative --priority-module Tests.PathGLoopNative
       - name: Generated source freshness
         if: ${{ !inputs.diagnose_modules }}
         timeout-minutes: 130

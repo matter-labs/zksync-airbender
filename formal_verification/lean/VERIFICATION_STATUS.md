@@ -33,13 +33,28 @@ input fingerprint and completed native receipt can omit repeated Rust generation
 and compiler captures after proof-only edits. Strict retained-source/payload
 checks still run; missing or changed evidence requires fresh native work. The
 first run must populate the small receipt cache. Full assurance, cold builds and
-setup requalification always retain fresh native generation. Thirty-two focused
-controls and the real retained-input fingerprint/missing-receipt checks pass
-locally. This optimization has not yet been qualified by CI and provides no new
-assurance result. Current
-run [41987147083](https://github.com/matter-labs/zksync-airbender/actions/runs/41987147083)
-on `c58da5b90f2717f4c3c505c7d6de15242384c95e` predates it and remains in
-complete Lean source/runtime verification; final full assurance is pending.
+setup requalification always retain fresh native generation. Run
+[42008848844](https://github.com/matter-labs/zksync-airbender/actions/runs/42008848844)
+on `5a255e6103bc49f5f321601b8c72829e166cbc90` passed fresh native generation,
+compiler capture, immutable-input revalidation and receipt publication. The saved
+receipt was inspected in its diagnostic artifact. Actual later cache-hit reuse
+remains untested. The older `41987147083` was cancelled with user authorization.
+
+Run `42008848844` then hit the 10,800-second preliminary fixture-stage deadline,
+while normally compiling `Blake2Round.NativeColumnRows3Part1`. The last guard
+reported SIGTERM at 340.77 MiB charged footprint and no owned processes left;
+no proof-error result is claimed. The retained records contain 682 source-build
+and 682 query-pool entries; the full-project frontend had not started. GitHub
+successfully saved a 3,222,126,071-byte Lean snapshot after this failure.
+
+The retry moves the same four fixture closures to the front of the existing
+complete source pass and removes the duplicate preliminary pass. All 4,205
+modules in the actual CI import graph remain present exactly once and every
+import precedes its user. Thirty-six focused controls, the real-graph ordering
+check and workflow lint pass. No Lean source or Review statement changes.
+The full pass retains its 54,000-second stage deadline, per-child time/memory
+guards, final freshness/hash checks and all runtime/audit/replay obligations.
+This scheduling repair requires CI validation; final full assurance is pending.
 
 The 4 November specification review makes the existing one-instance
 initialization and submitted-pool premises explicit. Native corollaries certify
