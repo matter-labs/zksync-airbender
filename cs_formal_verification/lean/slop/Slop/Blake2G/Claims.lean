@@ -61,7 +61,7 @@ theorem Native.call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
 namespace Row
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec :=
   Proofs.soundness hp compatible
@@ -88,7 +88,7 @@ end Control
 namespace Addresses
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec :=
   Proofs.soundness hp compatible
@@ -116,7 +116,7 @@ end State
 namespace Memory
 
 
-theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem soundness [Fact p.Prime] (hp : 33554432 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1) (data : Delegation.MemoryData p)
     (before : Reference.RiscV.Sail.State) (cells : List Trace.Cell) :
     (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Blake2G.spec :=

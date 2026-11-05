@@ -7,7 +7,7 @@ namespace Airbender.Blake2G.Row.Proofs
 
 set_option maxHeartbeats 800000
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec := by
   intro input output w ⟨interface, constraints, mapping⟩

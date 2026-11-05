@@ -1,6 +1,7 @@
 import Human.Circuits.Blake2G.Artifact
 import Human.Helpers.Properties
 import Slop.Constraints
+import Slop.Trace.Timestamps
 import Slop.Arithmetic.Chunks
 import Slop.Blake2G.Lookups
 import Mathlib.Tactic.FinCases
@@ -35,25 +36,25 @@ theorem control_high_zero {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fiel
   simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment] using And.intro read write
 
-private theorem aligned_of_scaled_bound {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+private theorem aligned_of_scaled_bound {p : Nat} [Fact p.Prime] (hp : 33554432 ≤ p)
     {x : ZMod p} (inverse : 64 * (-31457280 : ZMod p) = 1)
-    (bound : ((-31457280 : ZMod p) * x).val < 65536) : x.val % 64 = 0 := by
+    (bound : ((-31457280 : ZMod p) * x).val < 524288) : x.val % 64 = 0 := by
   have value := Arithmetic.value_of_scaled_range hp (by decide) inverse bound
   rw [value]
   simp
 
 /-- The two imported scaled-range queries force both ABI pointers to be 64-byte aligned.
     The serialized inverse identity is an artifact/field compatibility premise. -/
-theorem pointer_alignment {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem pointer_alignment {p : Nat} [Fact p.Prime] (hp : 33554432 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (w Variables.statePointerLo).val % 64 = 0 ∧
       (w Variables.messagePointerLo).val % 64 = 0 := by
-  have state := Verification.range16_bound (Verification.lookup_of_holds h ⟨0, by rw [lookup_count]; decide⟩)
-  have message := Verification.range16_bound (Verification.lookup_of_holds h ⟨1, by rw [lookup_count]; decide⟩)
+  have state := Airbender.Trace.Proofs.range_bound (Verification.lookup_of_holds h ⟨0, by rw [lookup_count]; decide⟩)
+  have message := Airbender.Trace.Proofs.range_bound (Verification.lookup_of_holds h ⟨1, by rw [lookup_count]; decide⟩)
   simp [Expression.eval,
-    Verification.environment, Arithmetic.limbBase] at state message
+    Verification.environment, Trace.timestampBase] at state message
   exact ⟨aligned_of_scaled_bound hp inverse (by simpa only [neg_mul] using state),
     aligned_of_scaled_bound hp inverse (by simpa only [neg_mul] using message)⟩
 
