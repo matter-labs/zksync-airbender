@@ -1,5 +1,5 @@
 import Human.Helpers.Context.RVBoundary
-import Human.Helpers.Decoder.PooledProgram
+import Human.Helpers.Decoder.RVPooledProgram
 import Human.Helpers.Memory.ROM
 import Human.Helpers.Tables.Subword
 
@@ -8,9 +8,9 @@ namespace Airbender.Trace
 /-- RV-typed sibling of `PooledHistoryInputs`: public context shared by per-row claims, with the starting state an
     `RV.State`. Initialization fixes the starting state and program; the two modeled ROM tables use that same state. -/
 structure RVPooledHistoryInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List PooledProgramEntry) : Prop where
+    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop where
   /-- Public cell values, starting PC/clocks and RV-decoded program. -/
-  initialization : RVNativeInputs pooledDecoderFields trace initial cells program
+  initialization : RVNativeInputs rvPooledDecoderFields trace initial cells program
   /-- Modeled word-ROM queries refer to the public initialized cells. -/
   wordTable : trace.rom.wordMemory = ROM.table cells trace.initialMemory
   /-- Modeled subword ROM queries refer to the same public byte image. -/
