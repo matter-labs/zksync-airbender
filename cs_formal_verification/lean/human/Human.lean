@@ -7,6 +7,7 @@ import Human.Circuits.Bigint.Theorems
 import Human.Circuits.Blake2G.Theorems
 import Human.Circuits.JumpBranchSlt.Theorems
 import Human.Circuits.MulDiv.Theorems
+import Human.Circuits.MulDiv.RVTheorems
 import Human.Circuits.ShiftBinop.Theorems
 import Human.Circuits.SubwordMemory.Theorems
 import Human.Circuits.WordMemory.Theorems
