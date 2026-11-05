@@ -32,12 +32,13 @@ private def samples : List (BitVec 32 × SailRV32.instruction × DecoderData Uni
 private theorem extraction (pc bits : BitVec 32) (instruction : SailRV32.instruction)
     (data : DecoderData Unit)
     (decoded : Airbender.Reference.RiscV.Sail.decodeOnReset bits = some instruction)
-    (fields : Airbender.ShiftBinop.decoderFields instruction = some data) :
+    (fields : Airbender.ShiftBinop.decoderFields instruction = some data)
+    (fetch : pc.toNat < ROM.limit ∧ pc.toNat % 4 = 0) :
     Airbender.ShiftBinop.programImage (before pc bits) [pc] = some [⟨pc, bits, instruction, data⟩] := by
   have bytes : (Cell.ram pc).read (before pc bits) = .ok bits (before pc bits) :=
     by simpa only [Cell.read, before] using written_word_read Airbender.Reference.RiscV.Sail.resetMachine pc.toNat bits
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
-    bind, Option.bind, pure]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, fetch, and_self, not_true_eq_false,
+    ↓reduceIte, bytes, decoded, fields, bind, Option.bind, pure]
 
 /-- All twelve standard forms come from real public encodings, including
     negative binary immediates and the largest legal RV32 shift payload. -/
@@ -47,7 +48,7 @@ theorem all_instruction_forms : ∀ sample ∈ samples,
   intro sample member
   simp only [samples, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-  all_goals apply extraction _ _ _ _ <;> first | decode_on_reset | with_unfolding_all rfl
+  all_goals apply extraction _ _ _ _ <;> first | decode_on_reset | with_unfolding_all rfl | decide
 
 /-- The shared trace dispatcher selects the original Sail execution clauses
     for the same twelve publicly decoded instruction forms. -/
@@ -68,7 +69,8 @@ theorem accepted_row_fetched (rollover : Bool) :
     Airbender.ShiftBinop.Fetched (Tests.ShiftBinopTimestamp.assignment rollover)
       (before xorEntry.pc xorEntry.bits) := by
   apply Airbender.ShiftBinop.Proofs.fetched (by decide)
-    (extraction xorEntry.pc xorEntry.bits xorEntry.instruction xorEntry.data (by decode_on_reset) (by rfl))
+    (extraction xorEntry.pc xorEntry.bits xorEntry.instruction xorEntry.data (by decode_on_reset) (by rfl)
+      (by decide))
     (airbender_before _ _)
     (Verification.holds_of_sublist (Tests.ShiftBinopTimestamp.constraints rollover)
       (List.sublist_append_left _ _))

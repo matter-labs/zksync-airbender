@@ -19,13 +19,14 @@ theorem airbender_before (pc bits : BitVec 32) : Reference.RiscV.Sail.Configured
 private theorem extraction (pc bits : BitVec 32) (instruction : SailRV32.instruction)
     (data : DecoderData Unit)
     (decoded : Airbender.Reference.RiscV.Sail.decodeOnReset bits = some instruction)
-    (fields : Airbender.MulDiv.decoderFields instruction = some data) :
+    (fields : Airbender.MulDiv.decoderFields instruction = some data)
+    (fetch : pc.toNat < ROM.limit ∧ pc.toNat % 4 = 0) :
     Airbender.MulDiv.programImage (before pc bits) [pc] = some [⟨pc, bits, instruction, data⟩] := by
   have bytes : (Cell.ram pc).read (before pc bits) = .ok bits (before pc bits) :=
     by simpa only [Cell.read, before] using
       Reference.RiscV.Sail.written_word_read configured pc.toNat bits
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
-    bind, Option.bind, pure]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, fetch, and_self, not_true_eq_false,
+    ↓reduceIte, bytes, decoded, fields, bind, Option.bind, pure]
 
 private def samples : List (BitVec 32 × SailRV32.instruction × DecoderData Unit) := [
   (0x022081b3, .MUL (.Regidx 2, .Regidx 1, .Regidx 3, ⟨.Low, .Signed, .Signed⟩),
@@ -45,7 +46,7 @@ theorem all_instruction_forms : ∀ sample ∈ samples,
   intro sample member
   simp only [samples, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl | rfl
-  all_goals apply extraction _ _ _ _ (fields := by rfl)
+  all_goals apply extraction _ _ _ _ (fields := by rfl) (fetch := by decide)
   all_goals decode_on_reset
 
 private def excluded : List (BitVec 32 × SailRV32.instruction) := [
@@ -64,7 +65,7 @@ private theorem extraction_rejected (bits : BitVec 32) (instruction : SailRV32.i
     Airbender.MulDiv.programImage (before 0 bits) [0] = none := by
   have bytes : (Cell.ram 0).read (before 0 bits) = .ok bits (before 0 bits) :=
     Reference.RiscV.Sail.written_word_read configured 0 bits
-  simp only [List.mapM_cons, programEntryWith, bytes, decoded, fields, bind, Option.bind]
+  simp only [List.mapM_cons, programEntryWith, bytes, decoded, fields, bind, Option.bind, ite_self]
 
 /-- Actual decoding rejects signed-family and discarded-destination forms. -/
 theorem unsupported_forms_rejected : ∀ sample ∈ excluded,
@@ -90,7 +91,8 @@ theorem accepted_row_fetched (remainder rollover : Bool) :
       (before (entry remainder).pc (entry remainder).bits) := by
   apply Airbender.MulDiv.fetched (by decide)
     (extraction (entry remainder).pc (entry remainder).bits (entry remainder).instruction
-      (entry remainder).data (by cases remainder <;> decode_on_reset) (by cases remainder <;> rfl))
+      (entry remainder).data (by cases remainder <;> decode_on_reset) (by cases remainder <;> rfl)
+      (by cases remainder <;> decide))
     (airbender_before _ _)
     (Verification.holds_of_sublist (Tests.MulDivTimestamp.constraints remainder rollover)
       (List.sublist_append_left _ _))
