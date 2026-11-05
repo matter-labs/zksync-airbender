@@ -2,6 +2,7 @@ import Slop.Bigint.ArtifactChecks
 import Human.Circuits.Bigint.Addresses
 import Slop.MemoryPorts
 import Slop.Constraints
+import Slop.Trace.Timestamps
 import Slop.Lookups
 import Slop.Arithmetic.Chunks
 
@@ -11,23 +12,24 @@ set_option warningAsError true
 set_option maxHeartbeats 800000
 set_option maxRecDepth 16384
 
-theorem pointer_alignment {p : Nat} [Fact p.Prime] (hp : 2097152 ≤ p)
+theorem pointer_alignment {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 32 * (-62914560 : ZMod p) = 1) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
     (w 3).val % 32 = 0 ∧ (w 37).val % 32 = 0 := by
-  have left := Verification.range16_bound
+  -- Alignment queries are 2^19 timestamp-table range checks of 2^-5 * x.
+  have left := Airbender.Trace.Proofs.range_bound
     (Verification.lookup_of_holds h ⟨32, by rw [lookup_count]; decide⟩)
-  have right := Verification.range16_bound
+  have right := Airbender.Trace.Proofs.range_bound
     (Verification.lookup_of_holds h ⟨33, by rw [lookup_count]; decide⟩)
-  simp [Expression.eval, Verification.environment, limbBase] at left right
+  simp [Expression.eval, Verification.environment, Trace.timestampBase] at left right
   have lv := value_of_scaled_range hp (by decide) inverse
     (by simpa only [neg_mul] using left)
   have rv := value_of_scaled_range hp (by decide) inverse
     (by simpa only [neg_mul] using right)
   constructor <;> first | (rw [lv]; simp) | (rw [rv]; simp)
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 2097152 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 32 * (-62914560 : ZMod p) = 1) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec := by
   intro input output w ⟨bounds, h, mapping⟩

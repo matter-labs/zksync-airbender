@@ -7,7 +7,7 @@ open Trace Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem addresses_soundness [Fact p.Prime] (hp : 2097152 ≤ p)
+theorem addresses_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 32 * (-62914560 : ZMod p) = 1) (data : Delegation.MemoryData p)
     (before : Reference.RiscV.Sail.State) (cells : List Cell) :
     (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Addresses.spec := by

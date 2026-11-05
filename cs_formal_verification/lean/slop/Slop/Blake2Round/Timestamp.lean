@@ -16,7 +16,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 12000000
 
-theorem clock_facts {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 4)}
+theorem clock_facts {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 6)}
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (clockConstraints setup)) :
     Delegation.Proofs.ClockFacts importedConstraintsDelegationColumns w := by
