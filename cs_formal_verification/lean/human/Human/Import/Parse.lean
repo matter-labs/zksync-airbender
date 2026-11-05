@@ -82,7 +82,8 @@ def Circuit.timestampExpressions (c : Circuit) : Except String (Array Expr) :=
     unless query.lookup_set_index == index do throw "timestamp lookup set order mismatch"
     c.lookupExpression query.input
 
-private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat) :
+private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat)
+    (nonComparisonCount : Nat := 2) :
     Except String (Array Trace.TimestampPort) := do
   let column := fun n => do
     unless n < c.memory_layout.total_width do throw "trace column outside memory layout"
@@ -92,7 +93,7 @@ private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat) 
   let queries := c.memory_layout.ram_access_sets
   let borrows := c.aux_layout_data.shuffle_ram_timestamp_comparison_aux_vars
   unless queries.size == borrows.size do throw "timestamp comparison count differs from memory ports"
-  unless c.timestamp_range_check_lookup_expressions.size == 2 + 2 * queries.size do
+  unless c.timestamp_range_check_lookup_expressions.size == nonComparisonCount + 2 * queries.size do
     throw "timestamp query count differs from state and memory ports"
   let mut ports := #[]
   for i in [:queries.size] do
@@ -127,9 +128,16 @@ def Circuit.delegationColumns (c : Circuit) : Except String Delegation.ClockColu
   let column := fun n => do
     unless n < c.memory_layout.total_width do throw "delegation clock outside memory layout"
     c.logicalVariable (.BaseLayerMemory n)
+  -- The selected native workers range (invocation-low - execute) / 4,
+  -- then the memory comparisons and each indirect base's alignment. They
+  -- no longer range the two invocation limbs independently.
+  let mut alignedRegisters : Array Nat := #[]
+  for port in ← c.indirectPorts do
+    if !alignedRegisters.contains port.register then
+      alignedRegisters := alignedRegisters.push port.register
   pure ⟨← column state.execute,
     #v[← column state.invocation_timestamp.values[0]!, ← column state.invocation_timestamp.values[1]!],
-    ← c.timestampPorts (fun _ => 2)⟩
+    ← c.timestampPorts (fun _ => 2) (1 + alignedRegisters.size)⟩
 
 /-- Native decoder fields use memory columns for rs1 and either memory or
     witness columns for the immediate/funct3 group, as recorded by Rust. -/
