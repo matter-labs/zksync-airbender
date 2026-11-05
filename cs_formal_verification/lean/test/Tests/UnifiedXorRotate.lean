@@ -19,9 +19,9 @@ private def contribution (kind : Fin 4) (i byte : Nat) : Nat :=
     (old.extractLsb' (8 * i) 8).toNat)).rotateRight (rotation kind)).extractLsb' (8 * byte) 8).toNat
 private def assignment (kind : Fin 4) (column : Nat) : ZMod babyBearModulus :=
   if 58 ≤ column ∧ column < 74 then contribution kind ((column - 58) / 4) ((column - 58) % 4)
-  else if 92 ≤ column ∧ column < 128 then
-    let i := (column - 92) / 9
-    match (column - 92) % 9 with
+  else if 86 ≤ column ∧ column < 122 then
+    let i := (column - 86) / 9
+    match (column - 86) % 9 with
     | 0 => (47 + kind.val : Nat)
     | 1 => (left.extractLsb' (8 * i) 8).toNat
     | 2 => (old.extractLsb' (8 * i) 8).toNat
@@ -31,7 +31,7 @@ private def assignment (kind : Fin 4) (column : Nat) : ZMod babyBearModulus :=
     | 6 => contribution kind i 3
     | _ => 0
   else match column with
-    | 4 | 5 | 27 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 5 | 27 | 123 | 124 | 125 => 1
     | 6 | 7 | 38 | 44 => 2
     | 2 | 30 => 4
     | 32 => 8
@@ -41,8 +41,8 @@ private def assignment (kind : Fin 4) (column : Nat) : ZMod babyBearModulus :=
     | 50 => (((result kind).toNat % 65536 : Nat) : ZMod babyBearModulus)
     | 51 => (((result kind).toNat / 65536 : Nat) : ZMod babyBearModulus)
     | 74 => 0x34 | 75 => 0xcd | 76 => 0x78 | 77 => 1
-    | 88 => 3
-    | 80 => 0xabcd1234 * 0xef015678 * 943718400
+    | 82 => 3
+    | 78 => 0xabcd1234 * 0xef015678 * 943718400
     | _ => 0
 private def bits (kind : Fin 4) : BitVec 32 :=
   #[0xc1c0c173, 0x8dc0c173, 0x89c0c173, 0x85f0c173][kind.val]!
