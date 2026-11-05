@@ -6,7 +6,7 @@ import Slop.Trace.MemoryHistory
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail
 
-private theorem last_write_unique (history : MemoryAccessList)
+theorem last_write_unique (history : MemoryAccessList)
     (sorted : history.isTimestampSorted)
     (unique : (history.map (fun event => event.2.1)).Nodup)
     {event : MemoryAccess} (member : List.Mem event history) :
