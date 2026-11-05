@@ -353,6 +353,24 @@ Nineteen focused controls pass. Source-derived checks also verify all seven
 native CPU rows, all 35 projected queries and their complete native table rows;
 the logical fixed-table indices stay below 524545. Lean confirmation is pending.
 
+The shift test subsequently passed in focused run
+[41956480731](https://github.com/matter-labs/zksync-airbender/actions/runs/41956480731):
+selected sources took 283.31 seconds; the module took 168.87 seconds at 1039.26 MiB
+charged footprint, with no owned children and final freshness/object checks passed.
+The two abbreviated commit references rejected by the spelling check now use
+commit links; that gate passed on the documentation repair.
+
+Complete warm [41957810422](https://github.com/matter-labs/zksync-airbender/actions/runs/41957810422)
+on [the shift proof revision](https://github.com/matter-labs/zksync-airbender/commit/2484ebebfdd8481aa46484be195aebb33f2aa982)
+then found undefined input-wrapper names in `Tests.UpstreamPlatformCompatibility`.
+Its test adapters now target actual `BootInputsWith` and `ExecutionInputsWith`.
+The six-field profile adapter accepts boot data to build the complete current
+input record; its callers retain their existing boot data and every ordinary
+address, configuration, register, code and instruction-profile condition.
+Arbitrary original handlers and all Review statements/premises remain unchanged.
+The failed leaf took 6.17 seconds at 424.84 MiB charged footprint, with no owned
+children; source work took 311.51 seconds. Focused Lean confirmation is pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

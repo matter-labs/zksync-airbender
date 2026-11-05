@@ -494,6 +494,23 @@ seven CPU rows and 35 projected queries against complete native table rows.
 Logical fixed-table indices remain below 524545; their layout is distinct from
 the native physical region order, as the existing setup characterization proves.
 
+Focused shift diagnosis 41956480731 subsequently passed, including final
+freshness/object checks: selected sources took 283.31 seconds, and the module
+took 168.87 seconds at 1039.26 MiB charged footprint with no owned children.
+
+Complete warm [41957810422](https://github.com/matter-labs/zksync-airbender/actions/runs/41957810422)
+on [the shift proof revision](https://github.com/matter-labs/zksync-airbender/commit/2484ebebfdd8481aa46484be195aebb33f2aa982)
+then rejected `Tests.UpstreamPlatformCompatibility`'s undefined
+`ImportedBootInputsWith`, `ExecutionPublicInputsWith` and imported-execution
+wrappers. The actual public interface has `BootInputsWith` and one flat
+`ExecutionInputsWith` record. The test adapters now assemble that record from
+the same boot data and six public profile fields, translating only the ordinary
+address condition under arbitrary original handlers. The profile-only adapter
+accepts boot data, already supplied by its full-input callers. No Review
+statement/premise, production behavior, axiom or resource policy changes.
+The failed leaf took 6.17 seconds at 424.84 MiB charged footprint with no owned
+children; complete sources took 311.51 seconds.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

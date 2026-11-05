@@ -645,7 +645,7 @@ structure CompatibilityOldImportedExecutionInputsWith (projection : SailRV32.ins
     [Fact p.Prime] (trace : UnifiedTrace p) (initial : State)
     (cells : List Cell) (program : List ProgramEntry) : Prop
     extends CompatibilityOldExecutionPublicInputsWith projection trace initial cells program where
-  boot : ImportedBootInputsWith projection trace initial cells program
+  boot : BootInputsWith projection trace initial cells program
 
 end Airbender.UnifiedReduced
 
@@ -935,14 +935,12 @@ theorem compatibility_upstream_execution_public_inputs {p : Nat} [Fact p.Prime]
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry}
     (old : CompatibilityOldExecutionPublicInputsWith projection trace initial cells program) :
-    ExecutionPublicInputsWith projection trace initial cells program := by
-  exact {
-    registers := old.registers,
-    code := old.code,
-    configuration := old.configuration,
-    ordinary := fun address member => ordinaryWordAddress_for (old.ordinary address member),
-    landingPadDisabled := old.landingPadDisabled,
-    loads := old.loads }
+    BootInputsWith projection trace initial cells program →
+      ExecutionInputsWith projection trace initial cells program := by
+  intro boot
+  exact PlatformCompatibilityPreparation.execution_inputs_with_from_old_fields
+    (handlers := handlers) projection boot old.registers old.code old.configuration
+    old.ordinary old.landingPadDisabled old.loads
 
 end Airbender.UnifiedReduced
 
@@ -957,10 +955,9 @@ theorem compatibility_upstream_imported_execution_inputs_with {p : Nat} [Fact p.
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry}
     (old : CompatibilityOldImportedExecutionInputsWith projection trace initial cells program) :
-    ImportedExecutionInputsWith projection trace initial cells program := by
-  exact {
-    toExecutionPublicInputsWith := compatibility_upstream_execution_public_inputs (handlers := handlers) old.toCompatibilityOldExecutionPublicInputsWith,
-    boot := old.boot }
+    ExecutionInputsWith projection trace initial cells program := by
+  exact compatibility_upstream_execution_public_inputs (handlers := handlers)
+    old.toCompatibilityOldExecutionPublicInputsWith old.boot
 
 end Airbender.UnifiedReduced
 
@@ -973,7 +970,7 @@ preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_imported_execution_inputs {p : Nat} [Fact p.Prime] {trace : UnifiedTrace p}
     {initial : State} {cells : List Cell} {program : List UnifiedReduced.ProgramEntry}
     (old : CompatibilityOldImportedExecutionInputs trace initial cells program) :
-    ImportedExecutionInputs trace initial cells program :=
+    ExecutionInputs trace initial cells program :=
   compatibility_upstream_imported_execution_inputs_with (handlers := handlers) old
 
 end Airbender.UnifiedReduced
