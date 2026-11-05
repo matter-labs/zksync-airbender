@@ -100,10 +100,10 @@ def main : IO UInt32 := do
     let unifiedSource ← IO.FS.readFile "../../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json"
     let .ok unified := parseCircuit unifiedSource | throw (IO.userError "unified reduced artifact failed import")
     let .ok unifiedQueries := unified.unifiedReducedQueries | throw (IO.userError "unified reduced queries failed import")
-    check (unified.structured_statements.size == 129 && unifiedQueries.size == 5 &&
+    check (unified.structured_statements.size == 120 && unifiedQueries.size == 5 &&
       unifiedQueries.all (·.size == 10) && unified.range_check_16_lookup_expressions.size == 13 &&
       unifiedSource == UnifiedReduced.importedConstraintsSourceBytes)
-      "unified reduced: 129 equations, 13 ranges, five complete pooled queries and source binding"
+      "unified reduced: 120 equations, 13 ranges, five complete pooled queries and source binding"
     check (rejected (Circuit.unifiedReducedQueries {unified with generic_lookups := #[]}))
       "unified reduced: missing pooled queries rejected"
     check (rejected (Circuit.unifiedReducedQueries {unified with generic_lookup_tables_width := 9}))
@@ -235,10 +235,10 @@ def main : IO UInt32 := do
     let bigintSource ← IO.FS.readFile "../../cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json"
     let .ok bigint := parseCircuit bigintSource | throw (IO.userError "bigint artifact failed import")
     let .ok bigintQueries := bigint.bigintQueries | throw (IO.userError "bigint queries failed import")
-    check (bigint.structured_statements.size == 136 && bigintQueries.size == 61 &&
+    check (bigint.structured_statements.size == 135 && bigintQueries.size == 61 &&
       bigint.range_check_16_lookup_expressions.size == 32 &&
       bigintSource == Bigint.importedConstraintsSourceBytes)
-      "bigint: 136 equations, 32 ranges, timestamp alignment, 61 fixed queries and source binding"
+      "bigint: 135 equations, 32 ranges, timestamp alignment, 61 fixed queries and source binding"
     let bigintInspection : Table (ZMod babyBearModulus) (fields 3) :=
       { name := "TagInspection", Contains _ _ := True }
     let bigintLookups := (FlatOperation.lookups (Bigint.importedConstraints bigintInspection)).drop 34

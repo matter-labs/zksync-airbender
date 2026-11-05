@@ -1,4 +1,4 @@
-"""Reject stale finite CPU certificate domains before starting Lean compilation."""
+"""Reject stale native certificate and runtime expectations before Lean compilation."""
 
 import json
 from pathlib import Path
@@ -113,6 +113,34 @@ class NativeCPUCertificates(unittest.TestCase):
             self.assertTrue(all(value == self.count for value in bounds),
                             f"{path.relative_to(ROOT)}: {bounds}; native={self.count}")
         self.assertGreater(checked, 0)
+
+    def test_runtime_importer_metadata_matches_native_artifacts(self):
+        source = (ROOT / "Tests/ArtifactImport.lean").read_text()
+        paths = dict(re.findall(r'let\s+(\w+)\s+←\s+IO\.FS\.readFile\s+"([^"]+)"', source))
+        circuits = {name: json.loads((ROOT / paths[data]).read_text())
+                    for name, data in re.findall(r"let\s+\.ok\s+(\w+)\s*:=\s*parseCircuit\s+(\w+)", source)
+                    if data in paths}
+        self.assertGreaterEqual(len(circuits), 9)
+        fields = {"structured_statements", "range_check_16_lookup_expressions",
+                  "timestamp_range_check_lookup_expressions", "generic_lookups", "layers"}
+        checked = 0
+        for name, circuit in circuits.items():
+            for field, expected in re.findall(r"\b" + re.escape(name) + r"\.(\w+)\.size\s*==\s*(\d+)", source):
+                if field in fields:
+                    checked += 1
+                    with self.subTest(circuit=name, field=field):
+                        self.assertEqual(int(expected), len(circuit[field]))
+        for query, name, method in re.findall(r"let\s+\.ok\s+(\w+)\s*:=\s*(\w+)\.(\w+)", source):
+            if name not in circuits:
+                continue
+            field = ("range_check_16_lookup_expressions" if method == "range16Expressions"
+                     else "generic_lookups" if method.endswith("Queries") else None)
+            if field:
+                for expected in re.findall(r"\b" + re.escape(query) + r"\.size\s*==\s*(\d+)", source):
+                    checked += 1
+                    with self.subTest(circuit=name, query=query):
+                        self.assertEqual(int(expected), len(circuits[name][field]))
+        self.assertGreaterEqual(checked, 23)
 
     def test_all_four_program_rows_cover_exactly_the_native_equations(self):
         source = (ROOT / "Tests/AirbenderUnifiedNative.lean").read_text()

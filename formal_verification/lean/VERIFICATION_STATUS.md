@@ -380,6 +380,14 @@ kernel-replay discovery still independently includes all 249 test modules.
 No Review file or trust gate changes. This measures dependency reduction;
 focused compilation, runtime qualification and timing confirmation remain pending.
 
+A static runtime audit also found two stale importer expectations: unified CPU
+equations were 129 rather than the native 120, and bigint equations were 136
+rather than the native 135. The checks and labels now use the actual producer
+counts. A new preflight derives 23 metadata/query-count checks across nine
+native JSON artifacts; its negative control rejected both old expectations.
+All runtime assertions remain present. No production or Review change is needed;
+the revised runtime executable still requires CI qualification.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

@@ -511,6 +511,16 @@ statement/premise, production behavior, axiom or resource policy changes.
 The failed leaf took 6.17 seconds at 424.84 MiB charged footprint with no owned
 children; complete sources took 311.51 seconds.
 
+While complete warm run 41963487081 was still active, a static audit of
+`Tests.ArtifactImport` identified two runtime checks that would reject current
+native artifacts: unified expected 129 equations instead of 120, and bigint
+expected 136 instead of 135. The assertions and diagnostic labels now follow
+the actual retained producer JSON. A native-derived preflight checks 23 scalar
+and query-count expectations across nine artifacts; it rejected both stale
+counts before the correction. No assertion was removed and no production,
+Review statement, theorem premise, axiom or resource policy changed. Actual
+runtime CI qualification remains pending.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.
