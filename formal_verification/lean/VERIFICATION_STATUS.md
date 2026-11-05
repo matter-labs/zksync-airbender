@@ -391,6 +391,15 @@ source, compiled environment audit and final kernel replay still include every
 proof and all 250 test modules. This predicts less native compilation work;
 CI compilation, actual runtime execution and timing remain unqualified.
 
+`Tests.TraceImport` also imported `Tests.Timestamps` and `Tests.TraceHistory`
+without referencing their declarations. Removing those two imports preserves
+its entire body, including its focused `#eval run`, and removes another 406
+project modules from the executable closure: 631 becomes 225. Neither removed
+test declares an explicit initializer, instance, syntax extension or attribute.
+Both tests remain independently included in complete source validation, compiled
+environment audit and final kernel replay. Native compilation and elapsed-time
+confirmation still require CI; the active older warm run predates these changes.
+
 A static runtime audit also found two stale importer expectations: unified CPU
 equations were 129 rather than the native 120, and bigint equations were 136
 rather than the native 135. The checks and labels now use the actual producer

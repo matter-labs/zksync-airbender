@@ -4,8 +4,6 @@ import Airbender.Review.Circuits.WordMemory.Artifact
 import Airbender.Review.Circuits.JumpBranchSlt.Artifact
 import Airbender.Proofs.ShiftBinop.ArtifactChecks
 import Airbender.Review.Circuits.SubwordMemory.Artifact
-import Tests.Timestamps
-import Tests.TraceHistory
 
 namespace Tests.TraceImport
 open Airbender
