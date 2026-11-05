@@ -202,34 +202,30 @@ pub(crate) unsafe fn copy_aligned_words(dest: *mut u8, src: *const u8, mut n: us
         }
     }
 
-    // and copy the tail - by by u16 and by byte (absent from the checked word-memory runtime,
-    // whose lengths are word multiples)
-    #[cfg(not(feature = "checked_word_memory"))]
-    let mut src = src.cast::<u16>();
-    #[cfg(not(feature = "checked_word_memory"))]
-    let mut dest = dest.cast::<u16>();
+    // The u16/u8 tail; the checked runtime's lengths are word multiples.
     #[cfg(not(feature = "checked_word_memory"))]
     {
-        const BYTE_COPY_SIZE: usize = 2;
+        let mut src = src.cast::<u16>();
+        let mut dest = dest.cast::<u16>();
+        {
+            const BYTE_COPY_SIZE: usize = 2;
 
-        if n & BYTE_COPY_SIZE > 0 {
-            debug_assert_eq!(src.addr() % core::mem::size_of::<u16>(), 0);
-            debug_assert_eq!(dest.addr() % core::mem::size_of::<u16>(), 0);
+            if n & BYTE_COPY_SIZE > 0 {
+                debug_assert_eq!(src.addr() % core::mem::size_of::<u16>(), 0);
+                debug_assert_eq!(dest.addr() % core::mem::size_of::<u16>(), 0);
 
-            dest.write(src.read());
+                dest.write(src.read());
 
-            src = src.add(1);
-            dest = dest.add(1);
+                src = src.add(1);
+                dest = dest.add(1);
+            }
         }
-    }
 
-    #[cfg(not(feature = "checked_word_memory"))]
-    let src = src.cast::<u8>();
-    #[cfg(not(feature = "checked_word_memory"))]
-    let dest = dest.cast::<u8>();
-    #[cfg(not(feature = "checked_word_memory"))]
-    if n & 1 > 0 {
-        dest.write(src.read());
+        let src = src.cast::<u8>();
+        let dest = dest.cast::<u8>();
+        if n & 1 > 0 {
+            dest.write(src.read());
+        }
     }
 }
 
