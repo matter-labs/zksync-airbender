@@ -8,7 +8,7 @@ set_option warningAsError true
 set_option maxHeartbeats 800000
 set_option maxRecDepth 16384
 
-theorem addresses {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p)
+theorem addresses {p : Nat} [Fact p.Prime] (hp : 134217728 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (rowsBounded : ∀ key : Fin 4096, ∀ i : Fin 6, (control key)[i] < 31)

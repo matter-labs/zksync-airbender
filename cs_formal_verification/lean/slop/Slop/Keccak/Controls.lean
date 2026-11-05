@@ -2,6 +2,7 @@ import Slop.Keccak.ArtifactChecks
 import Slop.Keccak.OpIndex
 import Human.Circuits.Keccak.Controls
 import Slop.Constraints
+import Slop.Trace.Timestamps
 import Slop.Arithmetic.Chunks
 import Slop.Arithmetic.OneHot
 import Mathlib.Tactic.FinCases
@@ -91,13 +92,15 @@ theorem selector_counts (hp : 7 < p)
     have flag := bits ⟨7 + i.val, by omega⟩
     fin_cases i <;> exact flag
 
-theorem pointer_alignment (hp : 16777216 ≤ p)
+theorem pointer_alignment (hp : 134217728 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (w 13).val % 256 = 0 := by
-  have bound := Verification.range16_bound
+  -- The native alignment query is now a 2^19 timestamp-table range check of
+  -- The decoded coefficient is -7864320 = 2^-8 (BabyBear): x = 256 * y with y < 2^19.
+  have bound := Airbender.Trace.Proofs.range_bound
     (Verification.lookup_of_holds h ⟨0, by rw [lookup_count]; decide⟩)
-  simp [Expression.eval, Verification.environment, limbBase] at bound
+  simp [Expression.eval, Verification.environment, Trace.timestampBase] at bound
   have value := value_of_scaled_range hp (by decide) inverse
     (by simpa only [neg_mul] using bound)
   rw [value]
@@ -150,7 +153,7 @@ theorem control_read_bound {p : Nat} [Fact p.Prime] (hp : 2048 ≤ p)
     exact ZMod.val_natCast_of_lt packedBound
   omega
 
-theorem local_checks (hp : 16777216 ≤ p)
+theorem local_checks (hp : 134217728 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     LocalChecks w := by
