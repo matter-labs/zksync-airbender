@@ -198,8 +198,10 @@ where
             values_per_leaf,
             cap_size,
             trace_len_log2,
+            None,
             worker,
         )
+        .0
     }
 
     /// Like [`commit`](Self::commit) but PACKS groups of `2^pack_log2` input columns
@@ -218,6 +220,61 @@ where
         pack_log2: usize,
         worker: &Worker,
     ) -> Self {
+        Self::commit_packed_observing_level(
+            input_on_hypercube,
+            twiddles,
+            lde_factor,
+            whir_first_fold_step_log2,
+            cap_size,
+            trace_len_log2,
+            pack_log2,
+            None,
+            worker,
+        )
+        .0
+    }
+
+    /// [`commit_packed`](Self::commit_packed) that also returns the `2^level` node digests
+    /// `level` levels below the root (the cap is level `log2(cap_size)`, the leaves are the
+    /// deepest level), in physical tree order. The commitment is the one `commit_packed`
+    /// builds; the nodes are only observed.
+    #[allow(clippy::too_many_arguments)]
+    pub fn commit_packed_with_level_nodes(
+        input_on_hypercube: &[&[F]],
+        twiddles: &Twiddles<F, Global>,
+        lde_factor: usize,
+        whir_first_fold_step_log2: usize,
+        cap_size: usize,
+        trace_len_log2: usize,
+        pack_log2: usize,
+        level: usize,
+        worker: &Worker,
+    ) -> (Self, Vec<[u32; DIGEST_SIZE_U32_WORDS]>) {
+        Self::commit_packed_observing_level(
+            input_on_hypercube,
+            twiddles,
+            lde_factor,
+            whir_first_fold_step_log2,
+            cap_size,
+            trace_len_log2,
+            pack_log2,
+            Some(level),
+            worker,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn commit_packed_observing_level(
+        input_on_hypercube: &[&[F]],
+        twiddles: &Twiddles<F, Global>,
+        lde_factor: usize,
+        whir_first_fold_step_log2: usize,
+        cap_size: usize,
+        trace_len_log2: usize,
+        pack_log2: usize,
+        level: Option<usize>,
+        worker: &Worker,
+    ) -> (Self, Vec<[u32; DIGEST_SIZE_U32_WORDS]>) {
         assert!(!input_on_hypercube.is_empty());
         let values_per_leaf = 1usize << whir_first_fold_step_log2;
         let packed_trace_len_log2 = trace_len_log2 + pack_log2;
@@ -235,13 +292,16 @@ where
             values_per_leaf,
             cap_size,
             packed_trace_len_log2,
+            level,
             worker,
         )
     }
 
     /// Shared coset-by-coset commit from per-column (already monomial) forms: process
-    /// one LDE coset at a time (peak memory ~one coset), keep only its subtree root,
+    /// one LDE coset at a time (peak memory ~one coset), keep only its subtree root (and,
+    /// when `level` asks for nodes below the coset roots, that level's subtree nodes),
     /// then build the small top tree over the per-coset roots.
+    #[allow(clippy::too_many_arguments)]
     fn from_monomial_forms(
         monomial_forms: Vec<Vec<F>>,
         twiddles: &Twiddles<F, Global>,
@@ -249,8 +309,9 @@ where
         values_per_leaf: usize,
         cap_size: usize,
         trace_len_log2: usize,
+        level: Option<usize>,
         worker: &Worker,
-    ) -> Self {
+    ) -> (Self, Vec<[u32; DIGEST_SIZE_U32_WORDS]>) {
         assert!(lde_factor.is_power_of_two());
         assert!(cap_size.is_power_of_two());
         for m in monomial_forms.iter() {
@@ -272,19 +333,39 @@ where
         // work (per-column LDE, leaf hashing, subtree) is what runs in parallel.
         let verbose = trace_len_log2 >= 20;
         let t0 = std::time::Instant::now();
+        let cosets_log2 = lde_factor.trailing_zeros() as usize;
+        let coset_leaves_log2 = trace_len_log2 - values_per_leaf.trailing_zeros() as usize;
+        if let Some(level) = level {
+            assert!(
+                level > cosets_log2,
+                "observed level must be inside a coset subtree"
+            );
+            assert!(
+                cap_size.trailing_zeros() as usize <= level
+                    && level <= cosets_log2 + coset_leaves_log2,
+                "level {level} lies outside the tree between the cap and the leaves"
+            );
+        }
+        // height above the leaves of the observed level when it lies inside the coset subtrees
+        let subtree_height = level
+            .filter(|level| *level > cosets_log2)
+            .map(|level| coset_leaves_log2 - (level - cosets_log2));
         let mut natural_caps: Vec<Vec<[u32; DIGEST_SIZE_U32_WORDS]>> =
             Vec::with_capacity(lde_factor);
+        let mut natural_nodes: Vec<Vec<[u32; DIGEST_SIZE_U32_WORDS]>> = Vec::new();
         for coset_index in 0..lde_factor {
-            let sub_cap = coset_subtree_cap::<F, T>(
+            let (sub_cap, nodes) = coset_subtree_cap::<F, T>(
                 &monomial_forms,
                 twiddles,
                 lde_factor,
                 values_per_leaf,
                 geometry.subtree_cap,
                 coset_index,
+                subtree_height,
                 worker,
             );
             natural_caps.push(sub_cap);
+            natural_nodes.push(nodes);
             if verbose {
                 println!(
                     "[coset-commit +{:6.1}s] coset {}/{} done ({} cols of 2^{})",
@@ -304,15 +385,26 @@ where
         // Top tree over the per-coset sub-caps -> the commitment cap.
         let top_tree = T::build_over_leaf_hashes(top_leaves, cap_size, worker);
 
-        Self {
-            monomial_forms,
-            trace_len_log2,
-            lde_factor,
-            values_per_leaf,
-            cap_size,
-            top_tree,
-            _marker: PhantomData,
-        }
+        let level_nodes = match level {
+            None => Vec::new(),
+            // inside the coset subtrees: each physical slot contributes its coset's nodes
+            Some(_) => (0..lde_factor)
+                .flat_map(|k| natural_nodes[bitreverse_index(k, cosets_log2 as u32)].clone())
+                .collect(),
+        };
+
+        (
+            Self {
+                monomial_forms,
+                trace_len_log2,
+                lde_factor,
+                values_per_leaf,
+                cap_size,
+                top_tree,
+                _marker: PhantomData,
+            },
+            level_nodes,
+        )
     }
 
     /// Produce the query for a WHIR folded-domain `query_index` (in `[0, tree_size)`):
@@ -439,8 +531,27 @@ where
     }
 }
 
-/// Compute one coset's leaf hashes and build its subtree capped at `subtree_cap`
-/// nodes, returning only that sub-cap (the single root when `subtree_cap == 1`).
+/// The nodes `height` levels above the leaves of a tree with `2^depth` leaves, in index
+/// order: node `j` is the height-`height` sibling on the path of leaf `(j ^ 1) << height`;
+/// the paths end below the cap, so the cap's own level is the cap.
+fn level_nodes_of<T: crate::merkle_trees::PathQueryable>(
+    tree: &T,
+    depth: usize,
+    height: usize,
+) -> Vec<[u32; DIGEST_SIZE_U32_WORDS]> {
+    let cap = tree.get_cap().cap;
+    let path_len = depth - cap.len().trailing_zeros() as usize;
+    assert!(height <= path_len, "height {height} lies above the cap");
+    if height == path_len {
+        return cap;
+    }
+    (0..1usize << (depth - height))
+        .map(|j| tree.get_proof((j ^ 1) << height).1[height])
+        .collect()
+}
+
+/// Compute one coset's leaf hashes and build its subtree capped at `subtree_cap`,
+/// returning the sub-cap and, with `node_height`, the nodes at that height above leaves.
 fn coset_subtree_cap<F, T>(
     monomial_forms: &[Vec<F>],
     twiddles: &Twiddles<F, Global>,
@@ -448,8 +559,12 @@ fn coset_subtree_cap<F, T>(
     values_per_leaf: usize,
     subtree_cap: usize,
     coset_index: usize,
+    node_height: Option<usize>,
     worker: &Worker,
-) -> Vec<[u32; DIGEST_SIZE_U32_WORDS]>
+) -> (
+    Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
+    Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
+)
 where
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -471,7 +586,11 @@ where
     );
     let cap = subtree.get_cap().cap;
     assert_eq!(cap.len(), subtree_cap);
-    cap
+    let nodes = node_height.map_or_else(Vec::new, |height| {
+        let depth = (monomial_forms[0].len() / values_per_leaf).trailing_zeros() as usize;
+        level_nodes_of(&subtree, depth, height)
+    });
+    (cap, nodes)
 }
 
 /// Memory-light preparation of an on-disk PACKED base/setup commitment using the
@@ -1070,6 +1189,78 @@ mod test {
         }
     }
 
+    #[test]
+    fn packed_recompute_setup_matches_materialized() {
+        for num_columns in [3, 10, 104] {
+            packed_recompute_setup_matches_materialized_with(num_columns);
+        }
+    }
+
+    fn packed_recompute_setup_matches_materialized_with(num_columns: usize) {
+        use crate::gkr::prover::setup::GKRSetup;
+        use crate::gkr::prover_config::example_configs::l1_wrap_2p21::packed_prover_config;
+        use std::sync::Arc;
+
+        let worker = Worker::new_with_num_threads(2);
+        let mut config = packed_prover_config(crate::definitions::SecurityLevel::Sec100);
+        config.trace_len_log2 = 6;
+        let trace_len = 1 << config.trace_len_log2;
+        let setup = GKRSetup {
+            hypercube_evals: (0..num_columns)
+                .map(|column| {
+                    let values: Vec<_> = (0..trace_len)
+                        .map(|row| {
+                            Proth120::from_u32_unchecked((17 * column + row * row + 1) as u32)
+                        })
+                        .collect();
+                    Arc::new(values.into())
+                })
+                .collect(),
+        };
+        let twiddles = Twiddles::new(trace_len << config.pack_log2(), &worker);
+        let crate::gkr::prover::SetupCommitment::InMemory(direct) =
+            setup.commit_for_config::<Tree>(&twiddles, &config, &worker)
+        else {
+            panic!("materialized setup must produce an in-memory commitment");
+        };
+        let inputs: Vec<&[Proth120]> = setup
+            .hypercube_evals
+            .iter()
+            .map(|column| &column[..])
+            .collect();
+        let recompute = ColumnMajorBaseOracleForLDE::<Proth120, Tree>::CosetRecompute(
+            CosetByCosetBaseCommitment::commit_packed(
+                &inputs,
+                &twiddles,
+                config.lde_factor(),
+                config.base_oracles_values_per_leaf().trailing_zeros() as usize,
+                config.cap_size,
+                config.trace_len_log2,
+                config.pack_log2(),
+                &worker,
+            ),
+        );
+        assert_eq!(direct.get_cap(), recompute.get_cap());
+        let leaves_per_coset =
+            (trace_len << config.pack_log2()) / config.base_oracles_values_per_leaf();
+        let indices: Vec<_> = (0..config.lde_factor())
+            .flat_map(|coset| [coset, (leaves_per_coset - 1) * config.lde_factor() + coset])
+            .collect();
+        for ((values, query), (expected_values, expected_query)) in recompute
+            .query_many(&indices, &twiddles, &worker)
+            .into_iter()
+            .zip(direct.query_many(&indices, &twiddles, &worker))
+        {
+            assert_eq!(values, expected_values);
+            assert_eq!(query.index, expected_query.index);
+            assert_eq!(
+                query.leaf_values_concatenated,
+                expected_query.leaf_values_concatenated
+            );
+            assert_eq!(query.path, expected_query.path);
+        }
+    }
+
     /// The split on-disk setup preparation (per-coset RS + subtree files + top-tree,
     /// [`serialize_packed_base_commitment_split_to_disk`]) must reproduce the
     /// monolithic packed commitment (`commit_trace_part_packed`) exactly: same cap,
@@ -1352,9 +1543,11 @@ mod test {
             }
             let mut out = [0u8; 32];
             out.copy_from_slice(Keccak256::digest(&pre).as_slice());
-            core::array::from_fn(|i| {
+            let mut digest = core::array::from_fn(|i| {
                 u32::from_be_bytes([out[4 * i], out[4 * i + 1], out[4 * i + 2], out[4 * i + 3]])
-            })
+            });
+            crate::merkle_trees::keccak256_hash_leafs::truncate_keccak_merkle_digest(&mut digest);
+            digest
         };
 
         let tree_size = lde_factor * (trace_len / vpl);

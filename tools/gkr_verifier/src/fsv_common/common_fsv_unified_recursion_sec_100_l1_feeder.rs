@@ -12,7 +12,7 @@ unsafe extern "C" fn start_rust() -> ! {
 }
 
 unsafe fn workload() -> ! {
-    let Ok(regs) = full_statement_verifier::pessimistic_conjecture::verify_unified_circuit_recursion_layer_l1_feeder::<
+    let Ok(regs) = full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder::<
         CSRBasedSource,
         PanicErrorCreator,
         { full_statement_verifier::verifier_common::USE_REDUCED_BLAKE2_ROUNDS },

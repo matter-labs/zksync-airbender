@@ -305,6 +305,9 @@ impl CircuitPrecomputations {
                 (setup.compiled_circuit, setup.setup, decoder_table)
             }
             CanonicalCircuitSetup::Delegation(setup) => (setup.compiled_circuit, setup.setup, None),
+            CanonicalCircuitSetup::L1Wrap(_) => {
+                panic!("GPU backend does not support L1 wrap setups")
+            }
         };
         assert_eq!(
             compiled_circuit.trace_len,

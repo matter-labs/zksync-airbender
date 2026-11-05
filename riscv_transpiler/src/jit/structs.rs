@@ -207,10 +207,13 @@ impl MemoryHolder {
         this.buffer.fill(0);
     }
 
+    /// Touched words as `(address, (last timestamp, value))`, with the values
+    /// of words below `rom_byte_size` masked to zero.
     pub fn collect_inits_and_teardowns<A: Allocator + Clone + Send + Sync>(
         &self,
         worker: &worker::Worker,
         allocator: A,
+        rom_byte_size: usize,
     ) -> Vec<Vec<(u32, (TimestampScalar, u32)), A>> {
         // parallel collect
         // first we will walk over access_bitmask and collect subparts
@@ -235,7 +238,7 @@ impl MemoryHolder {
                         if *ts != 0 {
                             let mut word_value = unsafe { *values.get_unchecked(idx) };
                             // we mask ROM region to be zero-valued
-                            if address < common_constants::rom::ROM_BYTE_SIZE {
+                            if address < rom_byte_size {
                                 word_value = 0;
                             }
                             let last_timestamp: TimestampScalar = *ts;
@@ -255,6 +258,8 @@ impl MemoryHolder {
 #[derive(Debug)]
 pub struct ReplayerMemChunks<'a> {
     pub chunks: &'a mut [(&'a [u32], &'a [TimestampScalar])],
+    /// Reads below it are ROM reads of the circuit being proven.
+    pub rom_byte_size: usize,
 }
 
 impl<'a> RamPeek for ReplayerMemChunks<'a> {
@@ -302,7 +307,7 @@ impl<'a> RAM for ReplayerMemChunks<'a> {
     #[inline(always)]
     fn mask_read_for_witness(&self, address: &mut u32, value: &mut u32) {
         debug_assert_eq!(*address % 4, 0);
-        if (*address as usize) < common_constants::rom::ROM_BYTE_SIZE {
+        if (*address as usize) < self.rom_byte_size {
             // NOTE: we no longer mask an address, just a value as it's only initialized to
             // 0 via inits, and can not be written over by circuits
             // *address = 0u32;

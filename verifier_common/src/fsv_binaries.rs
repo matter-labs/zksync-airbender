@@ -5,6 +5,7 @@
 //! The pinned identity of every row lives in the tracked manifest next to the binaries,
 //! checked by `full_statement_verifier::host_utils::load_fsv_exact`.
 
+use crate::prover::common_constants::{RomGeometry, L1_WRAP_ROM, REGULAR_ROM};
 use crate::prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 
 pub use crate::prover::definitions::{BlakeMode, SecurityLevel, SoundnessMode};
@@ -62,13 +63,17 @@ impl FsvProgram {
     }
 }
 
-/// The statement a guest verifies within its layer.
+/// The statement a guest verifies within its layer, and the ROM it is linked for.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum FsvProfile {
     /// The recursion pipeline's statement.
     Standard,
-    /// Unified recursion verifying the merged-mode L1 feeder schedule.
-    L1Feeder,
+    /// Unified recursion over a proof of the 2^23 L1 feeder profile A: the recurrent
+    /// feeder layer.
+    L1FeederA,
+    /// Unified recursion over the terminal 2^22 L1 feeder proof (profile C), linked for the
+    /// 512 KiB L1 wrap ROM: the program the Proth120 wrap executes.
+    L1FeederWrap,
 }
 
 impl FsvProfile {
@@ -77,7 +82,17 @@ impl FsvProfile {
     pub const fn tag(self) -> &'static str {
         match self {
             Self::Standard => "standard",
-            Self::L1Feeder => "l1_feeder",
+            Self::L1FeederA => "l1_feeder_a",
+            Self::L1FeederWrap => "l1_feeder_wrap",
+        }
+    }
+
+    /// The ROM geometry the guest is linked for and decoded with.
+    #[must_use]
+    pub const fn rom(self) -> RomGeometry {
+        match self {
+            Self::L1FeederWrap => L1_WRAP_ROM,
+            Self::Standard | Self::L1FeederA => REGULAR_ROM,
         }
     }
 }
@@ -107,6 +122,19 @@ impl FsvDescriptor {
             program,
             profile: FsvProfile::Standard,
             blake,
+        }
+    }
+
+    /// The pessimistic Sec100 special-opcodes unified recursion guest of an L1 feeder
+    /// profile, the only build of those statements.
+    #[must_use]
+    pub const fn l1_feeder(profile: FsvProfile) -> Self {
+        Self {
+            security: SecurityLevel::Sec100,
+            soundness_mode: SoundnessMode::PessimisticConjecture,
+            program: FsvProgram::UnifiedRecursionLayer,
+            profile,
+            blake: BlakeMode::BlakeSpecialOpcodes,
         }
     }
 
@@ -189,7 +217,7 @@ const fn entry(
 /// `ethproofs_soundcalc/` subdirectory under the same basenames.
 pub const FSV_REGISTRY: &[FsvRegistryEntry] = {
     use BlakeMode::{BlakeSpecialOpcodes, Compression};
-    use FsvProfile::{L1Feeder, Standard};
+    use FsvProfile::{L1FeederA, L1FeederWrap, Standard};
     use FsvProgram::*;
     use SoundnessMode::{EthproofsSoundnessCalc, PessimisticConjecture};
     &[
@@ -231,9 +259,16 @@ pub const FSV_REGISTRY: &[FsvRegistryEntry] = {
         entry(
             PessimisticConjecture,
             UnifiedRecursionLayer,
-            L1Feeder,
+            L1FeederA,
             BlakeSpecialOpcodes,
-            "fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.elf",
+            "fsv_unified_recursion_layer_sec_100_l1_feeder_a_special_opcodes_extension.elf",
+        ),
+        entry(
+            PessimisticConjecture,
+            UnifiedRecursionLayer,
+            L1FeederWrap,
+            BlakeSpecialOpcodes,
+            "fsv_unified_recursion_layer_sec_100_l1_feeder_wrap_special_opcodes_extension.elf",
         ),
         entry(
             EthproofsSoundnessCalc,
@@ -278,12 +313,12 @@ fn unsupported_reason(descriptor: &FsvDescriptor) -> &'static str {
         (_, _, _, BlakeMode::GFunction | BlakeMode::Software) => {
             "no guest is built with the G-function delegation or software blake"
         }
-        (EthproofsSoundnessCalc, _, FsvProfile::L1Feeder, _) => {
+        (EthproofsSoundnessCalc, _, FsvProfile::L1FeederA | FsvProfile::L1FeederWrap, _) => {
             "ethproofs_soundcalc is not implemented for the L1 feeder/wrap/EVM profile \
              (deferred product scope); its schedule exists only in pessimistic_conjecture"
         }
-        (_, _, FsvProfile::L1Feeder, _) => {
-            "the L1 feeder is built only as the special-opcodes unified recursion verifier"
+        (_, _, FsvProfile::L1FeederA | FsvProfile::L1FeederWrap, _) => {
+            "the L1 feeder guests are built only as the special-opcodes unified recursion verifier"
         }
         (EthproofsSoundnessCalc, UnifiedBaseLayer, _, _) => {
             "the recursion pipeline never selects the unified base layer, so no \
@@ -335,7 +370,7 @@ mod tests {
                 assert_ne!(a.relative_path, b.relative_path);
             }
         }
-        assert_eq!(FSV_REGISTRY.len(), 10);
+        assert_eq!(FSV_REGISTRY.len(), 11);
     }
 
     #[test]
@@ -385,25 +420,34 @@ mod tests {
         let err = unified_base.registry_entry().unwrap_err();
         assert!(err.reason.contains("never selects the unified base layer"));
 
-        let feeder = FsvDescriptor {
-            profile: FsvProfile::L1Feeder,
-            ..FsvDescriptor::new(
-                sec,
-                ethproofs,
-                FsvProgram::UnifiedRecursionLayer,
-                BlakeMode::BlakeSpecialOpcodes,
-            )
-        };
-        let err = feeder.registry_entry().unwrap_err();
-        assert!(err
-            .reason
-            .contains("not implemented for the L1 feeder/wrap/EVM profile"));
-        assert!(FsvDescriptor {
-            soundness_mode: pessimistic,
-            ..feeder
+        for profile in [FsvProfile::L1FeederA, FsvProfile::L1FeederWrap] {
+            let feeder = FsvDescriptor {
+                soundness_mode: ethproofs,
+                ..FsvDescriptor::l1_feeder(profile)
+            };
+            let err = feeder.registry_entry().unwrap_err();
+            assert!(err.reason.contains(
+                "not implemented for the L1 feeder/wrap/EVM profile (deferred product scope)"
+            ));
+            assert!(FsvDescriptor {
+                soundness_mode: pessimistic,
+                ..feeder
+            }
+            .registry_entry()
+            .is_ok());
+            let compression = FsvDescriptor {
+                blake: BlakeMode::Compression,
+                ..FsvDescriptor::l1_feeder(profile)
+            };
+            assert!(compression
+                .registry_entry()
+                .unwrap_err()
+                .reason
+                .contains("built only as the special-opcodes unified recursion verifier"));
         }
-        .registry_entry()
-        .is_ok());
+        assert_eq!(FsvProfile::L1FeederWrap.rom(), L1_WRAP_ROM);
+        assert_eq!(FsvProfile::L1FeederA.rom(), REGULAR_ROM);
+        assert_eq!(FsvProfile::Standard.rom(), REGULAR_ROM);
 
         let special_unrolled = FsvDescriptor::new(
             sec,
@@ -428,7 +472,7 @@ mod tests {
 
     #[test]
     fn display_joins_the_manifest_tokens() {
-        let entry = &FSV_REGISTRY[6];
+        let entry = &FSV_REGISTRY[7];
         assert_eq!(
             alloc::format!("{}", entry.descriptor),
             "sec_100/ethproofs_soundcalc/unrolled_base_layer/standard/blake2_with_compression"

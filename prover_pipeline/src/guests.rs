@@ -1,18 +1,19 @@
 //! The selected, digest-verified guests and the inputs whose executions recursion proves.
 
-use super::{fsv_dir, ProofTarget, SetupMachine};
+use super::{
+    feeder_stage, fsv_dir, FeederProfile, FeederRole, PipelineBlakeModes, ProofTarget, SetupMachine,
+};
 use full_statement_verifier::host_utils::cost_model::census::census_table;
 use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles_for;
-use full_statement_verifier::host_utils::{
-    bridge_blake_mode, final_blake_mode, fsv_stream, load_fsv_exact, unrolled_blake_mode,
-    VerifiedFsvProgram,
-};
+use full_statement_verifier::host_utils::{fsv_stream, load_fsv_exact, VerifiedFsvProgram};
 use full_statement_verifier::program_proof::ProgramProof;
 use prover::definitions::ProvingSelection;
 use setups::Setups;
 use std::path::Path;
 use std::sync::Arc;
-use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram};
+use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile, FsvProgram};
+
+pub(super) type ProgramWords = (Vec<u32>, Vec<u32>);
 
 /// Loaded once, before backend initialization. Unused guests remain absent.
 pub(super) struct FsvPrograms {
@@ -25,17 +26,29 @@ pub(super) struct FsvPrograms {
     bridge_base: Option<Arc<VerifiedFsvProgram>>,
     bridge_recursion: Option<Arc<VerifiedFsvProgram>>,
     unified: Option<Arc<VerifiedFsvProgram>>,
+    /// F1: the special-opcodes unified verifier proved at the L1 feeder profile (a standard
+    /// registry guest).
+    feeder_first: ProgramWords,
+    /// Every later feeder layer verifies A proofs (`FsvProfile::L1FeederA`).
+    feeder_a: ProgramWords,
+    /// The feeder statement linked for the L1 wrap ROM (`FsvProfile::L1FeederWrap`, words
+    /// padded to that ROM): the program the wrap executes over the last feeder proof.
+    pub(super) feeder_wrap: ProgramWords,
 }
 
 impl FsvPrograms {
-    pub(super) fn load(target: ProofTarget, selection: ProvingSelection) -> Result<Self, String> {
+    pub(super) fn load(
+        target: ProofTarget,
+        selection: ProvingSelection,
+        blake: PipelineBlakeModes,
+    ) -> Result<Self, String> {
         Self::load_from_dir(
             &fsv_dir(),
             target,
             selection,
-            unrolled_blake_mode(),
-            bridge_blake_mode(),
-            final_blake_mode(),
+            blake.unrolled,
+            blake.bridge,
+            blake.final_layer,
         )
     }
 
@@ -48,18 +61,22 @@ impl FsvPrograms {
         final_blake: BlakeMode,
     ) -> Result<Self, String> {
         let recursion = target != ProofTarget::Base;
-        let unified = target == ProofTarget::RecursionUnified;
+        let unified = target >= ProofTarget::RecursionUnified;
+        let feeder = target >= ProofTarget::L1Feeder;
         let mut loaded: Vec<Arc<VerifiedFsvProgram>> = Vec::new();
-        let mut load = |needed: bool, program, blake| -> Option<Arc<VerifiedFsvProgram>> {
+        let mut load = |needed: bool, program, profile, blake| -> Option<Arc<VerifiedFsvProgram>> {
             if !needed {
                 return None;
             }
-            let descriptor = FsvDescriptor::new(
-                selection.security_level,
-                selection.soundness_mode,
-                program,
-                blake,
-            );
+            let descriptor = FsvDescriptor {
+                profile,
+                ..FsvDescriptor::new(
+                    selection.security_level,
+                    selection.soundness_mode,
+                    program,
+                    blake,
+                )
+            };
             if let Some(guest) = loaded
                 .iter()
                 .find(|guest| *guest.descriptor() == descriptor)
@@ -70,17 +87,65 @@ impl FsvPrograms {
             loaded.push(Arc::clone(&guest));
             Some(guest)
         };
+        // The feeder programs are owned words, copied out of the shared guests.
+        let words = |guest: Option<Arc<VerifiedFsvProgram>>| {
+            guest.map_or_else(ProgramWords::default, |guest| {
+                (guest.bin().to_vec(), guest.text().to_vec())
+            })
+        };
+        let standard = FsvProfile::Standard;
+        let first = feeder_stage(FeederRole::First, FeederProfile::A);
+        let recurrent = feeder_stage(FeederRole::Recurrent, FeederProfile::A);
         let programs = Self {
             selection,
-            unrolled_base: load(recursion, FsvProgram::UnrolledBaseLayer, unrolled_blake),
+            unrolled_base: load(
+                recursion,
+                FsvProgram::UnrolledBaseLayer,
+                standard,
+                unrolled_blake,
+            ),
             unrolled_recursion: load(
                 recursion,
                 FsvProgram::UnrolledRecursionLayer,
+                standard,
                 unrolled_blake,
             ),
-            bridge_base: load(unified, FsvProgram::UnrolledBaseLayer, bridge_blake),
-            bridge_recursion: load(unified, FsvProgram::UnrolledRecursionLayer, bridge_blake),
-            unified: load(unified, FsvProgram::UnifiedRecursionLayer, final_blake),
+            bridge_base: load(
+                unified,
+                FsvProgram::UnrolledBaseLayer,
+                standard,
+                bridge_blake,
+            ),
+            bridge_recursion: load(
+                unified,
+                FsvProgram::UnrolledRecursionLayer,
+                standard,
+                bridge_blake,
+            ),
+            unified: load(
+                unified,
+                FsvProgram::UnifiedRecursionLayer,
+                standard,
+                final_blake,
+            ),
+            feeder_first: words(load(
+                feeder,
+                first.program,
+                first.fsv_profile,
+                BlakeMode::BlakeSpecialOpcodes,
+            )),
+            feeder_a: words(load(
+                feeder,
+                recurrent.program,
+                recurrent.fsv_profile,
+                BlakeMode::BlakeSpecialOpcodes,
+            )),
+            feeder_wrap: words(load(
+                feeder,
+                FsvProgram::UnifiedRecursionLayer,
+                FsvProfile::L1FeederWrap,
+                BlakeMode::BlakeSpecialOpcodes,
+            )),
             unrolled_blake,
             bridge_blake,
             final_blake,
@@ -93,6 +158,48 @@ impl FsvPrograms {
             census_table(guest.descriptor()).map_err(|error| error.to_string())?;
         }
         Ok(programs)
+    }
+
+    pub(super) fn modes(&self) -> PipelineBlakeModes {
+        PipelineBlakeModes {
+            unrolled: self.unrolled_blake,
+            bridge: self.bridge_blake,
+            final_layer: self.final_blake,
+        }
+    }
+
+    pub(super) fn feeder_program(&self, role: FeederRole) -> &ProgramWords {
+        match role {
+            FeederRole::First => &self.feeder_first,
+            FeederRole::Recurrent => &self.feeder_a,
+        }
+    }
+
+    /// The words of a chain program: a selected guest, or a feeder program.
+    pub(super) fn words(
+        &self,
+        program: FsvProgram,
+        profile: FsvProfile,
+        machine: SetupMachine,
+    ) -> Result<(&[u32], &[u32]), String> {
+        let feeder = match (program, profile, machine) {
+            (
+                FsvProgram::UnifiedRecursionLayer,
+                FsvProfile::Standard,
+                SetupMachine::L1Feeder(_),
+            ) => &self.feeder_first,
+            (
+                FsvProgram::UnifiedRecursionLayer,
+                FsvProfile::L1FeederA,
+                SetupMachine::L1Feeder(_),
+            ) => &self.feeder_a,
+            (_, FsvProfile::Standard, _) => {
+                let guest = self.get(program, machine)?;
+                return Ok((guest.bin(), guest.text()));
+            }
+            other => return Err(format!("unsupported pipeline guest {other:?}")),
+        };
+        Ok((&feeder.0, &feeder.1))
     }
 
     pub(super) fn get(
@@ -137,7 +244,10 @@ pub(super) fn fsv_input(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use full_statement_verifier::host_utils::{canonical_fsv_dir, fsv_manifest_entry};
+    use full_statement_verifier::host_utils::{
+        bridge_blake_mode, canonical_fsv_dir, final_blake_mode, fsv_manifest_entry,
+        unrolled_blake_mode,
+    };
     use prover::definitions::SoundnessMode;
 
     #[test]

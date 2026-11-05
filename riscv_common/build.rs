@@ -1,7 +1,18 @@
 fn main() {
     #[cfg(all(
+        feature = "ram_16mb_no_heap_wrap",
+        any(feature = "ram_32mb_no_heap", feature = "ram_1gb", feature = "ram_4gb")
+    ))]
+    compile_error!("ram_16mb_no_heap_wrap cannot be combined with a regular guest layout");
+
+    #[cfg(all(
         feature = "boot_sequence",
-        not(any(feature = "ram_32mb_no_heap", feature = "ram_1gb", feature = "ram_4gb"))
+        not(any(
+            feature = "ram_16mb_no_heap_wrap",
+            feature = "ram_32mb_no_heap",
+            feature = "ram_1gb",
+            feature = "ram_4gb"
+        ))
     ))]
     {
         panic!("At least one of the RAM size features must be enabled when compiling guest program")
@@ -10,6 +21,7 @@ fn main() {
     #[cfg(feature = "boot_sequence")]
     {
         let path = cfg_select! {
+            feature = "ram_16mb_no_heap_wrap" => "16mb_total_no_heap_wrap",
             feature = "ram_32mb_no_heap" => "32mb_total_no_heap",
             feature = "ram_1gb" => "1gb_total",
             feature = "ram_4gb" => "4gb_total",
@@ -18,7 +30,16 @@ fn main() {
         use std::fs;
         use std::path::PathBuf;
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-        fs::copy(format!("src/lds/{}/link.x", path), out_dir.join("link.x")).unwrap();
+        let link_path = if cfg!(feature = "ram_16mb_no_heap_wrap") {
+            "32mb_total_no_heap"
+        } else {
+            path
+        };
+        fs::copy(
+            format!("src/lds/{}/link.x", link_path),
+            out_dir.join("link.x"),
+        )
+        .unwrap();
         fs::copy(
             format!("src/lds/{}/memory.x", path),
             out_dir.join("memory.x"),

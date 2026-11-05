@@ -11,6 +11,79 @@ pub mod whir_schedule;
 pub use example_configs::{BaseColumns, BasePacking, SoundnessMode, WhirInput};
 pub use whir_schedule::{WhirBaseRoundSchedule, WhirInternalRound, WhirSchedule};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ProofProfile {
+    Standard,
+    /// The 2^22 L1 feeder (profile C).
+    L1Feeder,
+    L1Wrap,
+    /// The 2^23 L1 feeder at base LDE 4 (profile A).
+    L1FeederA,
+}
+
+impl ProofProfile {
+    /// The L1 feeder profiles: merged memory+witness commitment, recomputed
+    /// base oracles, the L1 feeder memory policy.
+    pub fn is_l1_feeder(self) -> bool {
+        matches!(self, Self::L1Feeder | Self::L1FeederA)
+    }
+
+    /// The named special-config profile this proof profile is selected under.
+    pub fn config_profile(self) -> crate::definitions::ProverConfigProfile {
+        use crate::definitions::ProverConfigProfile;
+        match self {
+            Self::Standard => ProverConfigProfile::Standard,
+            Self::L1Feeder | Self::L1FeederA => ProverConfigProfile::L1Feeder,
+            Self::L1Wrap => ProverConfigProfile::EvmProductionPacked,
+        }
+    }
+
+    /// The special config of an L1 profile under `selection`. The L1 profiles exist only under
+    /// [`SoundnessMode::PessimisticConjecture`] (Ethproofs L1 feeder/wrap/EVM is deferred product
+    /// scope): another mode panics with
+    /// [`ProverConfigProfile::mode_refusal`](crate::definitions::ProverConfigProfile::mode_refusal)'s
+    /// text. `Standard` resolves through the circuit's own config.
+    pub fn prover_config(
+        self,
+        trace_len_log2: usize,
+        selection: crate::definitions::ProvingSelection,
+    ) -> ProverConfig {
+        self.config_profile().assert_supports(selection);
+        let config = match self {
+            Self::Standard => {
+                panic!("ProofProfile::Standard resolves through the circuit's own prover_config")
+            }
+            Self::L1Feeder => {
+                assert_eq!(
+                    trace_len_log2, 22,
+                    "ProofProfile::L1Feeder requires the 2^22 unified circuit"
+                );
+                example_configs::l1_feeder_config_for_2_22()
+            }
+            Self::L1FeederA => {
+                assert_eq!(
+                    trace_len_log2, 23,
+                    "ProofProfile::L1FeederA requires the 2^23 unified circuit"
+                );
+                example_configs::l1_feeder_a_config_for_2_23()
+            }
+            Self::L1Wrap => {
+                assert_eq!(
+                    trace_len_log2,
+                    example_configs::l1_wrap_2p21::TRACE_LEN_LOG2,
+                    "ProofProfile::L1Wrap requires the 2^21 Proth120 unified circuit"
+                );
+                example_configs::l1_wrap_2p21::packed_prover_config(selection.security_level)
+            }
+        };
+        assert_eq!(
+            config.security_level, selection.security_level,
+            "the {self:?} config must match the requested security level"
+        );
+        config
+    }
+}
+
 /// One step of a sumcheck schedule: how many variables the step binds and
 /// with which evaluation strategy. The prover binds variables LSB-first
 /// (consistent with monomial ordering and WHIR's RS-codeword folding), so a
@@ -815,9 +888,13 @@ mod test {
             assert_eq!(config.trace_len_log2, log);
             config.validate_for_whir_message_size(log);
         }
-        let feeder = example_configs::l1_feeder_config_for_2_23();
-        assert_eq!(feeder.trace_len_log2, 23);
-        feeder.validate_for_whir_message_size(feeder.trace_len_log2);
+        for config in [
+            example_configs::l1_feeder_config_for_2_22(),
+            example_configs::l1_feeder_a_config_for_2_23(),
+            example_configs::l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100),
+        ] {
+            config.validate_for_whir_message_size(config.whir_message_size_log2());
+        }
     }
 
     #[test]
