@@ -27,7 +27,10 @@ inductive RVWriteHistory (cells : List Cell) : List (Nat × Nat) → RV.State �
 
 /-- RV sibling of `RowPosition`: locate `row` in `trace` and interpret its pre-state as `before : RV.State`. `initial`
     is the public starting state; the earlier rows' writes are applied to it, then the PC is set to the row's start PC.
-    `RV.State.input` is not advanced by earlier rows (no row of this family reads the input stream). -/
+    `RV.State.input` stays the starting input. A CSR 0x7C0 read (`csrrw rd, 0x7c0, x0`) is an oracle read: it is a write
+    of an unconstrained value to `rd`, so a row's pre-state carries that value in its registers, and its input stream is
+    not advanced here. A run-level statement, not this per-row relation, ties the consumed values to the input list.
+    Rows that never read the oracle (ADD/SUB/ADDI/LUI/AUIPC) are unaffected. -/
 def RVRowPosition {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime]
     (trace : Data p Kind) (initial : RV.State) (cells : List Cell)
     (row : Row p Kind) (before : RV.State) : Prop :=
