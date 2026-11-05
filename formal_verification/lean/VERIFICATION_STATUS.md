@@ -371,6 +371,15 @@ Arbitrary original handlers and all Review statements/premises remain unchanged.
 The failed leaf took 6.17 seconds at 424.84 MiB charged footprint, with no owned
 children; source work took 311.51 seconds. Focused Lean confirmation is pending.
 
+The runtime checker's import-only cleanup reduces direct imports from 74 to
+20. Its executable body and every assertion are byte-identical in that change;
+none of the 54 removed test imports declares an explicit initializer. Using
+the CI-produced import graph, the project dependency closure across the three
+configured executables shrinks from 1656 modules to 1147. Complete source and
+kernel-replay discovery still independently includes all 249 test modules.
+No Review file or trust gate changes. This measures dependency reduction;
+focused compilation, runtime qualification and timing confirmation remain pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;
