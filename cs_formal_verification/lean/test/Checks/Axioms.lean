@@ -1,5 +1,8 @@
 import Slop.Final.Trace.Families.AddSub.Theorems
 import Slop.AddSub.RVTraceSoundness
+import Slop.Final.Circuits.AddSub.RVTheorems
+import Slop.Final.ISA.Theorems
+import Human.ISA.Sail.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
 import Slop.Final.Trace.Families.JumpBranchSlt.Theorems
 import Slop.Final.Circuits.MulDiv.Theorems
@@ -2210,3 +2213,12 @@ import Human.Import.Coefficients
 #print axioms Airbender.AddSub.Proofs.rv_trace_soundness
 #print axioms Airbender.AddSub.Proofs.babyBear_rv_trace_soundness
 #print axioms Airbender.Trace.RVValues.rv_pooled_value_bounds
+#print axioms Airbender.AddSub.rv_soundness
+#print axioms Airbender.AddSub.babyBear_rv_soundness
+#print axioms Airbender.decode_is_sail
+#print axioms Airbender.step_is_airbender
+#print axioms Airbender.configured_bridge
+#print axioms Airbender.machine_checks_claim
+#print axioms Airbender.sail_extensions_off
+#print axioms Airbender.sail_zimop_on
+#print axioms RV.RINV_spec
