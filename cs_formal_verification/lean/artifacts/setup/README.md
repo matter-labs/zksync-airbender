@@ -20,3 +20,12 @@ Provenance:
   and to the manifest value.
 - Cargo: no tracked `Cargo.lock` at HEAD, so `--locked` pins nothing here; the
   output depends on the cs/setups source, not dependency versions.
+
+Row meaning (slop/Slop/Blake2Round/Setup/): `Rows.setupRow_eq` proves that every
+one of the 2^20 decoded rows equals the region formula (`Spec.spec0`..`spec5`):
+rows 0..606207 are the six XOR regions, rows 606208.. are all zero (tag 0).
+Short blocks (<= 512 rows) are checked row by row by `decide +kernel` walks in
+`Col*Walk`/`Col*Part*` (12 modules, longest ~75 s); long affine/periodic blocks
+are matched by shape and proved algebraically, never expanded. The padding rows
+cannot satisfy a query: `Circuit.blakeRoundQueries` (human/Human/Import/Parse.lean)
+requires every query's tag column to be a constant in {4, 19, 20, 55, 56, 57}.
