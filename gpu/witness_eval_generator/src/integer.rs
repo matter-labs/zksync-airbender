@@ -1,6 +1,6 @@
 use super::*;
 
-impl Generator {
+impl<F: GpuWitnessField> Generator<F> {
     pub(crate) fn ident_for_integer_unop(lhs: &FixedWidthIntegerNodeExpression<F>) -> &'static str {
         let lhs = lhs.bit_width();
         match lhs {

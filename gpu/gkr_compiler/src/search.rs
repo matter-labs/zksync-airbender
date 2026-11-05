@@ -78,7 +78,14 @@ impl std::error::Error for ForwardSearchError {}
 pub fn search_forward(
     request: ForwardSearchRequest<'_>,
 ) -> Result<ForwardSearchArtifact, ForwardSearchError> {
+    let model = crate::ElementModel::for_dag(request.dag);
     if let Some(incumbent) = request.incumbent {
+        if incumbent.field != model.field {
+            return Err(ForwardSearchError::IncumbentMismatch(format!(
+                "incumbent field {:?} does not match {:?}",
+                incumbent.field, model.field
+            )));
+        }
         if incumbent.circuit != request.circuit {
             return Err(ForwardSearchError::IncumbentMismatch(format!(
                 "incumbent circuit {:?} does not match {:?}",

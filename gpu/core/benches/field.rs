@@ -68,6 +68,26 @@ fn binary_e4(c: &mut Criterion<CudaMeasurement>) {
     group.finish();
 }
 
+fn binary_pr(c: &mut Criterion<CudaMeasurement>) {
+    let mpc = device_get_attribute(MultiProcessorCount, 0).unwrap() as u64;
+    let stream = CudaStream::default();
+    let mut group = c.benchmark_group("field");
+    group.throughput(Throughput::Elements(mpc * 1024 * 1024 * 8 * 8));
+    group.bench_function("add_pr", |b: &mut Bencher<CudaMeasurement>| {
+        b.iter(|| {
+            bench_add_pr(&stream).unwrap();
+            stream.synchronize().unwrap();
+        })
+    });
+    group.bench_function("mul_pr", |b: &mut Bencher<CudaMeasurement>| {
+        b.iter(|| {
+            bench_mul_pr(&stream).unwrap();
+            stream.synchronize().unwrap();
+        })
+    });
+    group.finish();
+}
+
 fn binary_e6(c: &mut Criterion<CudaMeasurement>) {
     let mpc = device_get_attribute(MultiProcessorCount, 0).unwrap() as u64;
     let stream = CudaStream::default();
@@ -91,6 +111,6 @@ fn binary_e6(c: &mut Criterion<CudaMeasurement>) {
 criterion_group!(
     name = bench;
     config = Criterion::default().with_measurement::<CudaMeasurement>(CudaMeasurement{});
-    targets = binary_bf, binary_e2, binary_e4, binary_e6
+    targets = binary_bf, binary_e2, binary_e4, binary_e6, binary_pr
 );
 criterion_main!(bench);

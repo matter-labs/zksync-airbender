@@ -149,7 +149,12 @@ pub(super) fn prover_config_in_mode(
         security_level: level,
         soundness_mode: mode,
     };
-    crate::config::prover_config_for_selection(circuit_type, compiled_circuit, selection)
+    crate::config::prover_config_for_selection(
+        circuit_type,
+        compiled_circuit,
+        crate::upstream::ProofProfile::Standard,
+        selection,
+    )
 }
 
 pub(super) fn test_external_challenges() -> GKRExternalChallenges<BF, E4> {

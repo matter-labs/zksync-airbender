@@ -37,8 +37,9 @@ use setup_init::request_setup_initialization;
 use crate::backend::{CircuitPrecomputation, ExecutionBackend};
 use crate::config::ExecutionProverConfiguration;
 use crate::messages::{
-    InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
-    ProofResult, SimulationResult, TracingData, WorkBatch, WorkRequest, WorkResult, WorkerResult,
+    InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, MemoryPartialTrees,
+    ProofRequest, ProofResult, SimulationResult, TracingData, WorkBatch, WorkRequest, WorkResult,
+    WorkerResult,
 };
 use crate::setup::{build_common_setups, build_unrolled_setup};
 use crate::tracing::{SplitTracingType, UnifiedTracingType};
@@ -66,6 +67,7 @@ use riscv_transpiler::ir::{
     FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
 use riscv_transpiler::vm::{NonDeterminismCSRSource, SimpleTape};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};

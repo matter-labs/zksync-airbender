@@ -2,7 +2,7 @@ use crate::upstream::GKRCircuitArtifact;
 use crate::witness::circuit_type::{
     UnrolledCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
 };
-use crate::witness::memory_unrolled::{AuxLayoutData, UnrolledMemoryLayout};
+use crate::witness::memory_unrolled::{unified_trace_len, AuxLayoutData, UnrolledMemoryLayout};
 use crate::witness::multiplicities::LookupExpressions;
 use crate::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, UnrolledMemoryOracle, UnrolledMemoryTraceDevice,
@@ -238,6 +238,7 @@ generate_witness_unrolled_unified_kernel!(
 );
 
 pub fn generate_witness_values_unrolled_unified(
+    circuit_type: UnrolledCircuitType,
     trace: &UnrolledUnifiedTraceDevice,
     generic_lookup_tables: &impl DeviceMatrixImpl<BF>,
     memory: &impl DeviceMatrixImpl<BF>,
@@ -246,8 +247,9 @@ pub fn generate_witness_values_unrolled_unified(
     lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    let count = UnrolledCircuitType::Unified.get_domain_size();
+    let count = unified_trace_len(circuit_type);
     let stride = generic_lookup_tables.stride();
+    assert_eq!(stride, count);
     assert_eq!(memory.stride(), stride);
     assert_eq!(witness.stride(), stride);
     assert_eq!(scratch.stride(), stride);
@@ -452,6 +454,7 @@ pub fn generate_fused_values_unrolled_non_memory(
 }
 
 pub fn generate_fused_values_unrolled_unified(
+    circuit_type: UnrolledCircuitType,
     circuit: &GKRCircuitArtifact<BF>,
     decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,
     trace: &UnrolledUnifiedTraceDevice,
@@ -465,7 +468,7 @@ pub fn generate_fused_values_unrolled_unified(
     range_check_timestamp_lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    let count = UnrolledCircuitType::Unified.get_domain_size();
+    let count = unified_trace_len(circuit_type);
     assert_eq!(circuit.trace_len, count);
     assert_eq!(memory.stride(), count);
     assert_eq!(memory.cols(), circuit.memory_layout.total_width);

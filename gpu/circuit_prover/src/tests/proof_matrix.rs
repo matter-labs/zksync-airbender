@@ -64,6 +64,7 @@ fn run_mixed_circuit_multi_schedule_test() {
                 transfers,
                 &plan,
                 ProofMemoryPolicy::default(),
+                crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
                 context,
             )
             .unwrap(),
@@ -1073,6 +1074,14 @@ fn run_unified_proof_parity_test() {
     run_proof_parity(&prepare_unified_proof_fixture());
 }
 
+#[test]
+#[ignore]
+fn run_unified_merged_proof_parity_test() {
+    run_proof_parity(&prepare_unified_proof_fixture_with_mode(
+        CommitmentMode::MergedMemoryAndWitness,
+    ));
+}
+
 /// Full e2e unified proof parity + closure-to-ONE.
 ///
 /// Proves the unified_reduced_machine circuit on the GPU and asserts the proof is
@@ -1511,8 +1520,12 @@ fn cpu_ethproofs_schedules_pass_recursive_whir_admission() {
                 security_level: SecurityLevel::Sec100,
                 soundness_mode: mode,
             };
-            let config =
-                crate::config::prover_config_for_selection(circuit_type, &compiled, selection);
+            let config = crate::config::prover_config_for_selection(
+                circuit_type,
+                &compiled,
+                crate::upstream::ProofProfile::Standard,
+                selection,
+            );
             let committed: ProverConfig = deserialize_json_for_test(&format!(
                 "circuit_defs/{dir}/generated/prover_config_sec_100_{}.json",
                 mode.file_suffix()

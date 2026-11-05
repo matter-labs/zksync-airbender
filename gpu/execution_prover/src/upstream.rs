@@ -15,14 +15,23 @@ pub use cs::gkr_compiler::GKRCircuitArtifact;
 pub use common_constants::ROM_WORD_SIZE;
 
 // `prover` — CPU prover types the GPU orchestrator interoperates with.
+pub use execution_prover::setup::L1WrapSetup;
+pub use execution_prover::{L1WrapResult, OperationMode, ProofProfile};
 pub use field::PrimeField;
 pub use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 pub use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub use prover::gkr::prover::GKRProof;
-pub use prover::gkr::prover_config::commitment_geometry::BaseCommitmentGeometry;
+pub use prover::gkr::prover_config::commitment_geometry::{BaseCommitmentGeometry, BaseOracleRole};
+pub use prover::gkr::prover_config::example_configs::l1_wrap_2p21::EXPLICIT_OUTPUT_LOG2 as L1_WRAP_EXPLICIT_OUTPUT_LOG2;
 pub use prover::gkr::prover_config::CommitmentMode;
 pub use prover::gkr::prover_config::{BaseColumns, ProverConfig};
 pub use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 
 // `setups` — per-circuit witness evaluators carrying the decoder tables.
+#[cfg(feature = "memory_sweep")]
+pub use setups::unrolled_circuits::inits_and_teardowns_circuit_setup;
 pub use setups::UnrolledCircuitWitnessEvalFn;
+
+// The capacity rows pin the exact layout and ROM used to build wrap programs.
+#[cfg(feature = "memory_sweep")]
+pub use unified_reduced_machine_proth120::l1_wrap_2p21;

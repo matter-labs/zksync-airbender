@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use gkr_eval_ir::{DagLayer, Expr, ExprId, ReadPlace, RootId, SourceKind};
 
 use crate::forward::artifact::ForwardLayerArtifact;
-use crate::forward::BABYBEAR_NEG_ONE;
+use crate::forward::ElementModel;
 
 use super::super::context::DagForwardContext;
 use super::super::isa::{LdcSub, MovDir, OperandField, Sign, Special, MAX_ARITY};
@@ -137,6 +137,7 @@ impl VInstr {
 // ─────────────────────────────────────────────────────────────────────────────────
 
 struct VirtualLower<'a> {
+    model: ElementModel,
     ctx: &'a mut DagForwardContext,
     cross: &'a HashMap<ReadPlace, gkr_eval_ir::FieldKind>,
     out: Vec<VInstr>,
@@ -169,7 +170,7 @@ impl<'a> VirtualLower<'a> {
                             .widths
                             .get(id)
                             .expect("pending temp must have a recorded width")
-                            .lanes();
+                            .lanes(self.model);
                         ds.live_width -= width;
                     }
                 }
@@ -232,7 +233,7 @@ impl<'a> VirtualLower<'a> {
 
     fn try_admit(&mut self, v: ExprId, field: OperandField) -> Option<ValueId> {
         let admitting_priority = self.decisions.streams.effective_priority(v)?;
-        let need = field.lanes();
+        let need = field.lanes(self.model);
         if !self.evict_to_fit(need, Some(admitting_priority)) {
             return None;
         }
@@ -304,7 +305,7 @@ impl<'a> VirtualLower<'a> {
                     return false; // weakest remaining victim is at least as valuable: skip
                 }
             }
-            freed += f.lanes();
+            freed += f.lanes(self.model);
             to_evict.push((id, f));
         }
         if live_width - freed + need > budget {
@@ -313,14 +314,14 @@ impl<'a> VirtualLower<'a> {
         let ds = &mut self.decisions;
         for (id, f) in to_evict {
             ds.resident.remove(&id);
-            ds.live_width -= f.lanes();
+            ds.live_width -= f.lanes(self.model);
         }
         true
     }
 
     /// Allocate a required expression temporary, evicting residents until it fits.
     fn alloc_temp_evicting(&mut self, field: OperandField) -> Result<ValueId, CompileError> {
-        let need = field.lanes();
+        let need = field.lanes(self.model);
         if !self.evict_to_fit(need, None) {
             return Err(CompileError::BudgetBelowFloor {
                 floor: self.decisions.live_width + need,
@@ -329,7 +330,7 @@ impl<'a> VirtualLower<'a> {
         }
         let t = self.fresh_internal();
         self.widths.insert(t, field);
-        self.decisions.live_width += field.lanes();
+        self.decisions.live_width += field.lanes(self.model);
         self.decisions.pending_temps.insert(t);
         self.emit_evict_to_cell(t, field);
         Ok(t)
@@ -444,12 +445,12 @@ impl<'a> VirtualLower<'a> {
                     sub: LdcSub::Special,
                     idx: Special::One as u16,
                 }),
-                v if v == BABYBEAR_NEG_ONE => Ok(VirtualOp::Ldc {
+                v if v == self.model.minus_one => Ok(VirtualOp::Ldc {
                     sub: LdcSub::Special,
                     idx: Special::NegOne as u16,
                 }),
                 v => {
-                    let idx = self.ctx.consts.intern(v);
+                    let idx = self.ctx.consts.intern(v, self.model);
                     Ok(VirtualOp::Ldc {
                         sub: LdcSub::Const,
                         idx,
@@ -673,7 +674,7 @@ impl<'a> VirtualLower<'a> {
         let mut neg_one_count = 0usize;
         let mut surviving: Vec<ExprId> = Vec::with_capacity(factors.len());
         for &f in &factors {
-            if is_neg_one_factor(layer, f) {
+            if is_neg_one_factor(layer, f, self.model) {
                 neg_one_count += 1;
             } else {
                 surviving.push(f);
@@ -711,7 +712,7 @@ impl<'a> VirtualLower<'a> {
         let mut ops: Vec<(OperandField, VirtualOp, Sign)> = Vec::with_capacity(children.len());
         for &c in children {
             let (to_lower, sign) = if is_add {
-                match classify_additive_child(layer, c) {
+                match classify_additive_child(layer, c, self.model) {
                     AdditiveChild::Product { .. } => (c, Sign::Plus),
                     AdditiveChild::Addend { sign, id } => (id, sign),
                 }
@@ -803,7 +804,7 @@ impl<'a> VirtualLower<'a> {
         let mut products: Vec<(Sign, ExprId, ExprId)> = Vec::with_capacity(children.len());
         let mut addends: Vec<(Sign, ExprId)> = Vec::new();
         for &c in children {
-            match classify_additive_child(layer, c) {
+            match classify_additive_child(layer, c, self.model) {
                 AdditiveChild::Product { sign, lhs, rhs } => products.push((sign, lhs, rhs)),
                 AdditiveChild::Addend { sign, id } => addends.push((sign, id)),
             }
@@ -900,6 +901,7 @@ pub(crate) fn lower_layer_virtual(
     compute_roots: &std::collections::BTreeSet<RootId>,
     decisions: &SiteDecisions,
     budget: usize,
+    model: ElementModel,
 ) -> Result<(Vec<VInstr>, HashMap<ValueId, OperandField>), CompileError> {
     // Cache-only roots are handled by the final sweep below.
     let atom_order = schedule.atom_order(layer);
@@ -930,7 +932,7 @@ pub(crate) fn lower_layer_virtual(
     }
 
     let decisions_state = DecisionsState {
-        streams: OccurrenceStreams::build(layer, &atom_order, compute_roots, decisions),
+        streams: OccurrenceStreams::build(layer, &atom_order, compute_roots, decisions, model),
         resident: HashMap::new(),
         budget,
         live_width: 0,
@@ -940,6 +942,7 @@ pub(crate) fn lower_layer_virtual(
     };
 
     let mut st = VirtualLower {
+        model,
         ctx,
         cross,
         out: Vec::new(),

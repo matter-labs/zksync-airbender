@@ -115,7 +115,7 @@ fn dimension_reducing_forward_tower_matches_reference() {
         final_trace_log_2,
     );
 
-    let prepared = prepare_dimension_reduction_forward::<E4>(
+    let prepared = prepare_dimension_reduction_forward::<BF, E4>(
         &mut storage,
         current_layer_idx,
         &initial_output_map,
@@ -233,7 +233,7 @@ fn forward_tower_binds_adjacent_pairs_vs_cpu() {
         0,
     );
 
-    let prepared = prepare_dimension_reduction_forward::<E4>(
+    let prepared = prepare_dimension_reduction_forward::<BF, E4>(
         &mut storage,
         PROBE_LAYER_IDX,
         &output_map,
@@ -286,7 +286,7 @@ fn forward_production_vm_binds_adjacent_pairs_vs_cpu() {
         final_trace_log_2,
     );
 
-    let prepared = prepare_dimension_reduction_forward::<E4>(
+    let prepared = prepare_dimension_reduction_forward::<BF, E4>(
         &mut storage,
         PROBE_LAYER_IDX,
         &output_map,

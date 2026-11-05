@@ -274,3 +274,63 @@ fn cpu_batching_pow_keeps_base_round_override_and_physical_count() {
         );
     }
 }
+
+/// The GPU-layer L1 configs exist only under `PessimisticConjecture`: under ethproofs each L1
+/// profile is refused with the deferred-scope error by this host-only resolver (no allocation
+/// or CUDA), and its pessimistic config is the profile's own. The L1 arm does not read the
+/// compiled columns, so one artifact serves every row.
+#[test]
+fn cpu_l1_profile_configs_are_pessimistic_only() {
+    use crate::upstream::{ProofProfile, ProvingSelection};
+    use prover::definitions::{ProverConfigProfile, SoundnessMode};
+    let compiled = artifact("unified_reduced_machine");
+    let ethproofs = ProvingSelection {
+        security_level: SecurityLevel::Sec100,
+        soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+    };
+    let pessimistic = ProvingSelection {
+        soundness_mode: SoundnessMode::PessimisticConjecture,
+        ..ethproofs
+    };
+    for (circuit, profile, config_profile) in [
+        (
+            CircuitType::Unrolled(Unrolled::Unified22),
+            ProofProfile::L1Feeder,
+            ProverConfigProfile::L1Feeder,
+        ),
+        (
+            CircuitType::Unrolled(Unrolled::Unified),
+            ProofProfile::L1FeederA,
+            ProverConfigProfile::L1Feeder,
+        ),
+        (
+            CircuitType::L1Wrap21,
+            ProofProfile::L1Wrap,
+            ProverConfigProfile::EvmProductionPacked,
+        ),
+    ] {
+        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            prover_config_for_selection(circuit, &compiled, profile, ethproofs)
+        }))
+        .map(|_| panic!("{profile:?} resolved an ethproofs config"))
+        .unwrap_err();
+        let expected = config_profile.mode_refusal(SoundnessMode::EthproofsSoundnessCalc);
+        assert_eq!(
+            refusal.downcast_ref::<String>(),
+            expected.as_ref(),
+            "{profile:?}"
+        );
+        assert_eq!(
+            expected.unwrap(),
+            format!(
+                "UnsupportedSpecialConfigMode: ethproofs soundness mode is not implemented for the \
+                 L1 feeder/wrap/EVM profile (deferred product scope); requested {config_profile:?}"
+            )
+        );
+        assert_eq!(
+            prover_config_for_selection(circuit, &compiled, profile, pessimistic),
+            profile.prover_config(circuit.get_domain_size_log2() as usize, pessimistic),
+            "{profile:?}"
+        );
+    }
+}

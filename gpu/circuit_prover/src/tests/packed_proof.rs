@@ -31,6 +31,7 @@ fn packed_merged_commit_unpacked_cpu_parity() {
     let baseline = base.context.get_used_mem_current();
     let setup = GpuGKRSetupTransfer::new(
         Arc::clone(base.gpu_setup_host.as_ref().unwrap()),
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         &base.context,
     )
     .unwrap();
@@ -92,6 +93,7 @@ pub(super) fn gpu_memory_caps(
         };
         let setup = gpu_gkr::setup::GpuGKRSetupTransfer::new(
             Arc::clone(base.gpu_setup_host.as_ref().unwrap()),
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )
         .unwrap();
@@ -121,6 +123,7 @@ pub(super) fn gpu_memory_caps(
             inputs,
             &base.prover_config,
             geometry,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )
         .unwrap()
@@ -249,6 +252,7 @@ pub(super) fn geometry_proof(mut fixture: BasicUnrolledProofFixture) {
                 inputs,
                 &preflight,
                 policy,
+                gpu_trace::trace::holder::PartialTreePolicy::DEFAULT,
                 &base.context,
             )
             .unwrap(),

@@ -1,6 +1,7 @@
 #include "common.cuh"
 #include "primitives/field.cuh"
 #include "primitives/memory.cuh"
+#include "primitives/proth120.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
@@ -29,7 +30,9 @@ template <typename F> DEVICE_FORCEINLINE void get_powers(const F &base, const un
 
 GET_POWERS_BY_VAL_KERNEL(bf);
 GET_POWERS_BY_VAL_KERNEL(e4);
+GET_POWERS_BY_VAL_KERNEL(pr);
 GET_POWERS_BY_REF_KERNEL(bf);
 GET_POWERS_BY_REF_KERNEL(e4);
+GET_POWERS_BY_REF_KERNEL(pr);
 
 } // namespace airbender::ops

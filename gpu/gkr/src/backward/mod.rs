@@ -32,9 +32,17 @@ pub(crate) use window::bank::final_evaluation_repoint_probe;
 
 pub(crate) use main_layer::extras::derive_dimension_reducing_inputs;
 
-use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
+use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType, PrimeField};
 use dr_tail::resources::DrTailPlanCursor;
 use main_layer::blueprints::build_dimension_reducing_slots_static;
+
+pub(crate) fn babybear_from_canonical(value: u128) -> BF {
+    let canonical = u32::try_from(value)
+        .ok()
+        .filter(|&canonical| canonical < BF::CHARACTERISTICS_U32)
+        .unwrap_or_else(|| panic!("backward value {value} is not a canonical BabyBear value"));
+    BF::from_u32_with_reduction(canonical)
+}
 
 fn validate_dr_window_layer_program(
     program: &crate::DrWindowLayerProgram,

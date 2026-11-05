@@ -1,7 +1,7 @@
 use super::*;
 use cs::witness_placer::graph_description::BoolNodeExpression;
 
-impl Generator {
+impl<F: GpuWitnessField> Generator<F> {
     pub(crate) fn add_boolean_expr(&mut self, expr: &BoolNodeExpression<F>) {
         match expr {
             BoolNodeExpression::Place(variable) => {

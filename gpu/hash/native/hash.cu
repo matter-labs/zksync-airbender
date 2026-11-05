@@ -179,15 +179,6 @@ EXTERN __launch_bounds__(256) __global__
   }
 }
 
-DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
-  digest children[2] = {left, right};
-  digest state;
-  initialize(state.words);
-  u32 t = 0;
-  compress<true>(state.words, t, reinterpret_cast<const u32 *>(children), BLOCK_SIZE);
-  return state;
-}
-
 template <unsigned LEVEL> DEVICE_FORCEINLINE bool insert_merkle_node(digest (&pending)[LOG_WARP_SIZE], digest &node, const unsigned leaf) {
   if ((leaf & (1u << LEVEL)) == 0) {
     pending[LEVEL] = node;
@@ -243,6 +234,27 @@ EXTERN __launch_bounds__(128) __global__
   const unsigned logical_root = bitreverse_low_bits(physical_root, log_roots_per_coset);
   auto roots = reinterpret_cast<digest *>(tree_backing) + static_cast<size_t>(coset) * per_coset_tree_stride_digests;
   store_cs(roots + logical_root, node);
+}
+
+EXTERN __launch_bounds__(256) __global__ void ab_blake2s_nodes_reduce_kernel(const digest *src, digest *dst, const unsigned layers) {
+  extern __shared__ __align__(32) uint8_t reducer_smem[];
+  auto values = reinterpret_cast<digest *>(reducer_smem);
+  const digest *src_d = src + static_cast<size_t>(blockIdx.x) * 2 * blockDim.x;
+  values[threadIdx.x] = hash_node(load_cs(src_d + 2 * threadIdx.x), load_cs(src_d + 2 * threadIdx.x + 1));
+  __syncthreads();
+  for (unsigned layer = 1; layer < layers; layer++) {
+    const bool enabled = threadIdx.x < (blockDim.x >> layer);
+    digest node;
+    if (enabled)
+      node = hash_node(values[2 * threadIdx.x], values[2 * threadIdx.x + 1]);
+    __syncthreads();
+    if (enabled)
+      values[threadIdx.x] = node;
+    __syncthreads();
+  }
+  const unsigned outputs = (2 * blockDim.x) >> layers;
+  if (threadIdx.x < outputs)
+    store_cs(dst + static_cast<size_t>(blockIdx.x) * outputs + threadIdx.x, values[threadIdx.x]);
 }
 
 // Hash coefficient leaves directly from the residue NTT backing. The staging
@@ -344,38 +356,17 @@ EXTERN __global__ void ab_blake2s_nodes_tower_multi_coset_kernel(const u32 *src,
   }
 }
 
-EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, volatile u64 *result) {
-  const u32 digest_mask = 0xffffffff << 32 - bits_count;
-  const auto result_ptr = reinterpret_cast<unsigned long long *>(const_cast<u64 *>(result));
-  __align__(8) u32 m_u32[BLOCK_SIZE] = {};
-  auto m_u64 = reinterpret_cast<u64 *>(m_u32);
-#pragma unroll
-  for (unsigned i = 0; i < 4; i++)
-    m_u64[i] = seed[i];
-  const unsigned stride = blockDim.x * gridDim.x;
-  for (u64 nonce = threadIdx.x + blockIdx.x * blockDim.x; nonce < max_nonce; nonce += stride) {
-    m_u64[STATE_SIZE / 2] = nonce;
-    u32 state[STATE_SIZE];
-    initialize(state);
-    u32 t = 0;
-    compress<true>(state, t, m_u32, STATE_SIZE + 2);
-    if (!(state[0] & digest_mask)) {
 #ifdef AB_DETERMINISTIC_POW
-      atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
+constexpr bool POW_DETERMINISTIC = true;
 #else
-      atomicCAS(result_ptr, UINT64_MAX, nonce);
+constexpr bool POW_DETERMINISTIC = false;
 #endif
-      __threadfence();
-    }
-    if (*result
-#ifdef AB_DETERMINISTIC_POW
-        <= nonce
-#else
-        != UINT64_MAX
-#endif
-    )
-      return;
-  }
+
+EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result) {
+  if constexpr (POW_DETERMINISTIC)
+    pow_search_counter(seed, bits_count, max_nonce, chunk_steps, counter, result);
+  else
+    pow_search_grid_stride<false>(seed, bits_count, max_nonce, result);
 }
 
 // ---------------------------------------------------------------------------
