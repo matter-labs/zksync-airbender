@@ -1,13 +1,15 @@
 import Slop.Trace.PooledValues
 import Slop.Trace.RVZero
+import Slop.JumpBranchSlt.RVDecoder
+import Slop.ShiftBinop.RVDecoder
 
 /-! RV-route twin of `pooled_value_bounds` (`PooledValues.lean`): every native read, write and terminal word of an
     accepted pooled trace is bounded, from the RV public initialization (`initialImageRV`) and the RV program table
-    (`rvProgramImageWith pooledDecoderFields`). No Sail state, `Configured` or interpreter fact.
+    (`rvProgramImageWith rvPooledDecoderFields`). No Sail state, `Configured` or interpreter fact.
 
     Changes from the Sail proof: the seed and ROM-table facts read `initialImageRV` (`rvImage_reads`); the two family
-    lemmas that took a Sail `Fetched` (jump/branch destination, shift/binop destination) take the projection equation
-    `fields` instead, which is all their proofs read. The chronological induction (`read_bounds_of_rules`, ...) is
+    lemmas that took a Sail `Fetched` (jump/branch destination, shift/binop destination) take the RV projection
+    equation `fields` (`rvDecoderFields i = some data`) instead, which is all their proofs read. The chronological induction (`read_bounds_of_rules`, ...) is
     state-free and reused. -/
 
 namespace Airbender.Trace.RVValues
@@ -94,16 +96,6 @@ end Airbender.Trace.RVValues
 namespace Airbender.JumpBranchSlt.Proofs
 open Arithmetic Trace
 
-private theorem rv_decoder_masks {instruction : SailRV32.instruction}
-    {data : DecoderData Unit} (fields : decoderFields instruction = some data) :
-    data.mask = 1 ∨ data.mask = 2 ∨ data.mask = 4 ∨
-      data.mask = 17 ∨ data.mask = 18 ∨ data.mask = 24 := by
-  unfold decoderFields at fields
-  split at fields
-  all_goals try split at fields
-  all_goals try (simp only [Option.some.injEq] at fields; subst data)
-  all_goals simp_all
-
 private theorem rv_comparison_destination_bounds {p : Nat} [Fact p.Prime]
     (hp : 4194304 ≤ p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
@@ -138,8 +130,8 @@ private theorem rv_comparison_destination_bounds {p : Nat} [Fact p.Prime]
 theorem rv_destination_bounds {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    {instruction : SailRV32.instruction} {data : DecoderData Unit}
-    (fields : decoderFields instruction = some data)
+    {i : RV.Instr} {data : DecoderData Unit}
+    (fields : rvDecoderFields i = some data)
     (flags : ∀ i : Fin 5,
       w importedConstraintsDecoderColumns.flags[i] = if data.mask.testBit i.val then 1 else 0)
     (initialLo : (w 0).val < limbBase) :
@@ -164,8 +156,8 @@ theorem rv_destination_bounds {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 theorem rv_row_write_sources {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     (row : Row p TraceKind)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) importedConstraints)
-    {instruction : SailRV32.instruction} {data : DecoderData Unit}
-    (fields : decoderFields instruction = some data)
+    {i : RV.Instr} {data : DecoderData Unit}
+    (fields : rvDecoderFields i = some data)
     (flags : ∀ i : Fin 5, row.assignment importedConstraintsDecoderColumns.flags[i] =
       if data.mask.testBit i.val then 1 else 0)
     (initialLo : (row.assignment 0).val < limbBase) : Trace.Proofs.RowWriteSources row := by
@@ -187,7 +179,7 @@ open Arithmetic Trace
 theorem rv_row_write_sources {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     (row : Row p TraceKind)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) importedConstraints)
-    {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
+    {entry : RVProgramEntry} {i : RV.Instr} (fields : rvDecoderFields i = some entry.data)
     (query : decoderQuery row.assignment = entry.query) :
     Trace.Proofs.RowWriteSources row := by
   intro port present
@@ -196,16 +188,16 @@ theorem rv_row_write_sources {p : Nat} [Fact p.Prime] (hp : 262144 < p)
   · exact Or.inr ⟨_, by simp [Row.ports, importedConstraintsMemoryPorts], rfl, le_rfl⟩
   · exact Or.inr ⟨_, by simp [Row.ports, importedConstraintsMemoryPorts], rfl, le_rfl⟩
   · left
-    have flags := decoder_selectors (by dsimp [limbBase]; omega) h
-      (decoder_field_bounds fields).2.1 query
+    have flags := rv_decoder_selectors (by dsimp [limbBase]; omega) h
+      (rv_decoder_field_bounds fields).2.1 query
     have tag := congrArg (fun q : Vector (ZMod p) 9 => q[7]) query
     change row.assignment 10 = (entry.data.funct3 : ZMod p) at tag
     have code : (row.assignment 10).val = entry.data.funct3 := by
-      have small := (decoder_field_bounds fields).2.2
+      have small := (rv_decoder_field_bounds fields).2.2
       rw [tag, ZMod.val_natCast, Nat.mod_eq_of_lt (by omega)]
     have destination : (row.assignment 31).val < limbBase ∧
         (row.assignment 32).val < limbBase := by
-      rcases decoder_operation_tags fields with ⟨mask, tags⟩ | ⟨mask, tags⟩
+      rcases rv_decoder_operation_tags fields with ⟨mask, tags⟩ | ⟨mask, tags⟩
       · have selected : row.assignment 11 = 1 ∧ row.assignment 12 = 0 := by
           constructor
           · simpa [importedConstraintsDecoderColumns, mask, Nat.testBit] using flags 0
@@ -223,8 +215,8 @@ end Airbender.ShiftBinop.Proofs
 namespace Airbender.Trace.RVValues
 open Arithmetic Trace.Proofs
 
-/-- RV twin of `pooled_row_write_rule`: the projection equation replaces `PooledSource`, and the word ROM is built
-    from `initialImageRV`. -/
+/-- RV twin of `pooled_row_write_rule`: the RV projection equation replaces `PooledSource`, and the word ROM is
+    built from `initialImageRV`. -/
 theorem rv_pooled_row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     {trace : PooledTrace p} {row : Row p PooledFamily}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
@@ -235,12 +227,12 @@ theorem rv_pooled_row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32}
     (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
-    {entry : PooledProgramEntry} (fields : pooledDecoderFields entry.instruction = some entry.data)
+    {entry : RVPooledProgramEntry} {i : RV.Instr} (fields : rvPooledDecoderFields i = some entry.data)
     (family : entry.data.family = row.family) (query : row.decoderQuery = entry.query) :
     RowWriteBoundsFromReads row := by
   have limbField : limbBase < p := by dsimp [limbBase]; omega
-  obtain ⟨pc, bits, instruction, data⟩ := entry
-  obtain h | h | h | h | h := pooled_fields_cases fields
+  obtain ⟨pc, bits, data⟩ := entry
+  obtain h | h | h | h | h := rv_pooled_fields_cases fields
   · obtain ⟨d, fd, equal⟩ := h
     subst equal
     cases row with
@@ -265,10 +257,10 @@ theorem rv_pooled_row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
       subst kind
       have core := Verification.holds_of_sublist constraints
         (List.sublist_append_left JumpBranchSlt.importedConstraints JumpBranchSlt.importedConstraintsTimestampLookups)
-      have bounds := JumpBranchSlt.Proofs.decoder_field_bounds fd
-      have query' : JumpBranchSlt.decoderQuery w = (⟨pc, bits, instruction, d⟩ : ProgramEntry Unit).query := query
-      have flags := JumpBranchSlt.Proofs.decoder_selectors limbField core bounds.2.1 query'
-      have pc := native_query_pc_word limbField query
+      have bounds := JumpBranchSlt.Proofs.rv_decoder_field_bounds fd
+      have query' : JumpBranchSlt.decoderQuery w = (⟨pc, bits, d⟩ : RVProgramEntry Unit).query := query
+      have flags := JumpBranchSlt.Proofs.rv_decoder_selectors limbField core bounds.2.1 query'
+      have pc := rv_native_query_pc_word limbField query
       have low : (w 0).val < limbBase := by
         have bounds := pc.symm ▸ Word.ofBitVec_bound _
         exact bounds.1
@@ -292,7 +284,7 @@ theorem rv_pooled_row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
       have core := Verification.holds_of_sublist constraints
         (List.sublist_append_left ShiftBinop.importedConstraints ShiftBinop.importedConstraintsTimestampLookups)
       exact row_write_rule_of_sources
-        (ShiftBinop.Proofs.rv_row_write_sources (entry := ⟨pc, bits, instruction, d⟩) (by omega)
+        (ShiftBinop.Proofs.rv_row_write_sources (entry := ⟨pc, bits, d⟩) (by omega)
           ⟨.shiftBinop, w⟩ core fd query)
   · obtain ⟨d, fd, equal⟩ := h
     subst equal
@@ -313,15 +305,12 @@ theorem rv_pooled_write_rules {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     (image : initialImageRV initial cells = some trace.initialMemory)
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
-    {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : rvProgramImageWith pooledDecoderFields initial addresses = some program)
-    (decoded : PooledDecoded trace program) : WriteBoundsFromReads trace := by
+    {addresses : List (BitVec 32)} {program : List RVPooledProgramEntry}
+    (programImage : rvProgramImageWith rvPooledDecoderFields initial addresses = some program)
+    (decoded : RVPooledDecoded trace program) : WriteBoundsFromReads trace := by
   intro row member
-  obtain ⟨entry, present, family, query⟩ := decoder_member (decoded row member)
-  obtain ⟨_, _, _, _, instruction, projection⟩ := rvProgram_entry_fetch programImage entry present
-  have fields : pooledDecoderFields entry.instruction = some entry.data := by
-    rw [instruction]
-    exact projection
+  obtain ⟨entry, present, family, query⟩ := rv_decoder_member (decoded row member)
+  obtain ⟨_, _, _, _, fields⟩ := rvProgram_entry_fetch programImage entry present
   exact rv_pooled_row_write_rule hp (accepted.constraints row member) (accepted.active row member)
     image wordSetup subwordSetup fields family query
 
@@ -334,9 +323,9 @@ theorem rv_pooled_value_bounds {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     (image : initialImageRV initial cells = some trace.initialMemory)
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
-    {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : rvProgramImageWith pooledDecoderFields initial addresses = some program)
-    (decoded : PooledDecoded trace program) :
+    {addresses : List (BitVec 32)} {program : List RVPooledProgramEntry}
+    (programImage : rvProgramImageWith rvPooledDecoderFields initial addresses = some program)
+    (decoded : RVPooledDecoded trace program) :
     (∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧
     (∀ row ∈ trace.rows, ∀ port ∈ row.ports,
       (writeToken row.columns row.assignment port).word.Bounded) ∧

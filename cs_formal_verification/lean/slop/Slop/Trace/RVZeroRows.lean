@@ -1,35 +1,39 @@
 import Slop.Trace.ZeroRegister
-import Slop.Trace.PooledProgram
+import Slop.Trace.RVProgram
 import Slop.JumpBranchSlt.Trace
 import Slop.MulDiv.Trace
 import Slop.ShiftBinop.Trace
 import Slop.SubwordMemory.Trace
+import Slop.JumpBranchSlt.RVDecoder
+import Slop.MulDiv.RVDecoder
+import Slop.ShiftBinop.RVDecoder
+import Slop.SubwordMemory.RVDecoder
 
 /-! RV-route twins of the per-family x0 row lemmas (piece E0, row level).
 
-    The Sail originals take `source : entry.SourceWith before projection` (Sail run of the bytes, Sail decoding, and
-    the metadata projection). Their proofs read only `source.fields : projection entry.instruction = some entry.data`.
-    Here the same arguments are passed as that single fact, so no Sail state or interpreter fact appears. The decoder
-    lemmas they call (`decoder_*`, `native_query_*`, `query_*`) take `fields` already and are reused. -/
+    The originals take `source : entry.SourceWith before projection` (public bytes, decoding and the metadata
+    projection). Their proofs read only the projection equation. Here an `RVProgramEntry` is passed with the
+    equation `projection i = some entry.data` for an `RV.Instr` `i`, and the decoder facts are the RV twins
+    (`rv_decoder_*`, `rv_native_query_*`). -/
 
 namespace Airbender.Trace.RVZero
 open Arithmetic Trace.Proofs
 
-/-- A family row's fetch facts, with the Sail source replaced by the projection equation of the entry. -/
-def RVFetched {p : Nat} (row : Row p) (projection : SailRV32.instruction → Option DecoderData) : Prop :=
-  ∃ entry : ProgramEntry, projection entry.instruction = some entry.data ∧ entry.data.family = row.family ∧
+/-- A family row's fetch facts: its RV program entry, the projection equation, family, query and selectors. -/
+def RVFetched {p : Nat} (row : Row p) (projection : RV.Instr → Option DecoderData) : Prop :=
+  ∃ (entry : RVProgramEntry) (i : RV.Instr), projection i = some entry.data ∧ entry.data.family = row.family ∧
     row.decoderQuery = entry.query ∧
     ∀ i : Fin row.decoderColumns.flags.size,
       row.assignment row.decoderColumns.flags[i] = if entry.data.mask.testBit i.val then 1 else 0
 
 theorem addsub_zero_preprocessing {p : Nat} [Fact p.Prime]
-    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : limbBase < p)
+    {projection : RV.Instr → Option DecoderData} (rules : RVDecoderRules projection) (hp : limbBase < p)
     {w : Nat → ZMod p}
     (fetched : RVFetched (⟨.addSub, w⟩ : Row p) projection)
     (zero : AddSub.importedConstraintsMemoryPorts[2].address.code w = (Cell.register 0).addressCode) :
     w 5 = 0 ∧ w 6 = 0 ∧ w 8 = 0 ∧ w 9 = 0 ∧ w 10 = 1 ∧
       ∀ k, 11 ≤ k → k ≤ 16 → w k = 0 := by
-  obtain ⟨entry, fields, family, query, flags⟩ := fetched
+  obtain ⟨entry, i, fields, family, query, flags⟩ := fetched
   have rd := congrArg (fun q : Vector (ZMod p) 9 => q[4]) query
   change w 7 = (entry.data.rd.toNat : ZMod p) at rd
   have columnZero : (w 7).val = 0 := by
@@ -63,7 +67,7 @@ theorem addsub_zero_preprocessing {p : Nat} [Fact p.Prime]
       | exact flags ⟨6, by decide⟩
 
 theorem word_memory_write_nonzero {p : Nat} [Fact p.Prime]
-    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : limbBase < p)
+    {projection : RV.Instr → Option DecoderData} (rules : RVDecoderRules projection) (hp : limbBase < p)
     {w : Nat → ZMod p} {rom : Table (ZMod p) (fields 9)}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (WordMemory.importedConstraints rom))
@@ -76,7 +80,7 @@ theorem word_memory_write_nonzero {p : Nat} [Fact p.Prime]
     have register := WordMemory.Proofs.register_address false constraints address.1
     change w 25 = w 7 ∧ w 26 = 0 at register
     rw [← register.1, address.2.1]
-  obtain ⟨entry, fields, family, query, flags⟩ := fetched
+  obtain ⟨entry, i, fields, family, query, flags⟩ := fetched
   have packed := congrArg (fun q : Vector (ZMod p) 9 => q[8]) query
   change (∑ i : Fin 1, (2 ^ i.val : Nat) * w #[10][i]) = (entry.data.mask : ZMod p) at packed
   have selected : w 10 = (entry.data.mask : ZMod p) := by simpa using packed
@@ -93,7 +97,7 @@ theorem word_memory_write_nonzero {p : Nat} [Fact p.Prime]
 
 /-- RV twin of `row_zero_write_from_reads` for the ADD-family and load/store families. -/
 theorem row_zero_write_from_reads {p : Nat} [Fact p.Prime]
-    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 196608 < p)
+    {projection : RV.Instr → Option DecoderData} (rules : RVDecoderRules projection) (hp : 196608 < p)
     (row : Row p)
     (setup : Table (ZMod p) (fields 9))
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
@@ -166,7 +170,7 @@ private theorem jumpBranch_zero_destination {p : Nat} [Fact p.Prime] {w : Nat �
 theorem jumpBranch_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
     (row : Row p JumpBranchSlt.TraceKind)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) JumpBranchSlt.importedConstraints)
-    (entry : ProgramEntry Unit) (fields : JumpBranchSlt.decoderFields entry.instruction = some entry.data)
+    (entry : JumpBranchSlt.RVProgramEntry) {i : RV.Instr} (fields : JumpBranchSlt.rvDecoderFields i = some entry.data)
     (query : row.decoderQuery = entry.query)
     (flags : ∀ i : Fin 5, row.assignment JumpBranchSlt.importedConstraintsDecoderColumns.flags[i] =
       if entry.data.mask.testBit i.val then 1 else 0) :
@@ -176,7 +180,7 @@ theorem jumpBranch_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic
   rcases present with rfl | rfl | rfl
   · exact reads _ (by simp [Row.ports, JumpBranchSlt.importedConstraintsMemoryPorts]) le_rfl address
   · exact reads _ (by simp [Row.ports, JumpBranchSlt.importedConstraintsMemoryPorts]) le_rfl address
-  · have index := (Trace.Proofs.native_query_indices hp query).2.2
+  · have index := (Trace.Proofs.rv_native_query_indices hp query).2.2
     change (row.assignment 7).val = entry.data.rd.toNat at index
     have nativeZero : (row.assignment 7).val = 0 := by
       change Nat.pair 0 (Nat.pair (row.assignment 7).val 0) = Nat.pair 0 (Nat.pair 0 0) at address
@@ -185,7 +189,7 @@ theorem jumpBranch_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic
       apply BitVec.eq_of_toNat_eq
       change entry.data.rd.toNat = 0
       exact index.symm.trans nativeZero
-    have mask := JumpBranchSlt.Proofs.decoder_zero_discarded fields zero
+    have mask := JumpBranchSlt.Proofs.rv_decoder_zero_discarded fields zero
     have selected : row.assignment 15 = 1 := by
       simpa [JumpBranchSlt.importedConstraintsDecoderColumns, mask] using flags ⟨4, by decide⟩
     obtain ⟨low, high⟩ := jumpBranch_zero_destination h selected
@@ -193,8 +197,8 @@ theorem jumpBranch_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic
     rfl
 
 theorem mulDiv_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
-    (row : Row p MulDiv.TraceKind) (entry : ProgramEntry Unit)
-    (fields : MulDiv.decoderFields entry.instruction = some entry.data)
+    (row : Row p MulDiv.TraceKind) (entry : MulDiv.RVProgramEntry) {i : RV.Instr}
+    (fields : MulDiv.rvDecoderFields i = some entry.data)
     (query : row.decoderQuery = entry.query) :
     Trace.Proofs.RowZeroPreserving row := by
   intro port present address reads
@@ -202,7 +206,7 @@ theorem mulDiv_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.lim
   rcases present with rfl | rfl | rfl
   · exact reads _ (by simp [Row.ports, MulDiv.importedConstraintsMemoryPorts]) le_rfl address
   · exact reads _ (by simp [Row.ports, MulDiv.importedConstraintsMemoryPorts]) le_rfl address
-  · have index := (Trace.Proofs.native_query_indices hp query).2.2
+  · have index := (Trace.Proofs.rv_native_query_indices hp query).2.2
     change (row.assignment 7).val = entry.data.rd.toNat at index
     have nativeZero : (row.assignment 7).val = 0 := by
       change Nat.pair 0 (Nat.pair (row.assignment 7).val 0) = Nat.pair 0 (Nat.pair 0 0) at address
@@ -211,11 +215,11 @@ theorem mulDiv_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.lim
       apply BitVec.eq_of_toNat_eq
       change entry.data.rd.toNat = 0
       exact index.symm.trans nativeZero
-    exact (MulDiv.Proofs.decoder_nonzero_destination fields zero).elim
+    exact (MulDiv.Proofs.rv_decoder_nonzero_destination fields zero).elim
 
 theorem shiftBinop_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
-    (row : Row p ShiftBinop.TraceKind) (entry : ProgramEntry Unit)
-    (fields : ShiftBinop.decoderFields entry.instruction = some entry.data)
+    (row : Row p ShiftBinop.TraceKind) (entry : ShiftBinop.RVProgramEntry) {i : RV.Instr}
+    (fields : ShiftBinop.rvDecoderFields i = some entry.data)
     (query : row.decoderQuery = entry.query) :
     Trace.Proofs.RowZeroPreserving row := by
   intro port present address reads
@@ -223,7 +227,7 @@ theorem shiftBinop_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic
   rcases present with rfl | rfl | rfl
   · exact reads _ (by simp [Row.ports, ShiftBinop.importedConstraintsMemoryPorts]) le_rfl address
   · exact reads _ (by simp [Row.ports, ShiftBinop.importedConstraintsMemoryPorts]) le_rfl address
-  · have index := (Trace.Proofs.native_query_indices hp query).2.2
+  · have index := (Trace.Proofs.rv_native_query_indices hp query).2.2
     change (row.assignment 7).val = entry.data.rd.toNat at index
     have nativeZero : (row.assignment 7).val = 0 := by
       change Nat.pair 0 (Nat.pair (row.assignment 7).val 0) = Nat.pair 0 (Nat.pair 0 0) at address
@@ -232,13 +236,14 @@ theorem shiftBinop_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic
       apply BitVec.eq_of_toNat_eq
       change entry.data.rd.toNat = 0
       exact index.symm.trans nativeZero
-    exact (ShiftBinop.Proofs.decoder_nonzero_destination fields zero).elim
+    exact (ShiftBinop.Proofs.rv_decoder_nonzero_destination fields zero).elim
 
 theorem subword_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
     (row : Row p SubwordMemory.TraceKind) (setup : Table (ZMod p) (fields 9))
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (SubwordMemory.importedConstraints setup))
-    (entry : ProgramEntry Unit) (fields : SubwordMemory.decoderFields entry.instruction = some entry.data)
+    (entry : SubwordMemory.RVProgramEntry) {i : RV.Instr}
+    (fields : SubwordMemory.rvDecoderFields i = some entry.data)
     (query : row.decoderQuery = entry.query) :
     Trace.Proofs.RowZeroPreserving row := by
   intro port present address reads
@@ -246,8 +251,8 @@ theorem subword_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.li
   rcases present with rfl | rfl | rfl
   · exact reads _ (by simp [Row.ports, SubwordMemory.importedConstraintsMemoryPorts]) le_rfl address
   · exact reads _ (by simp [Row.ports, SubwordMemory.importedConstraintsMemoryPorts]) le_rfl address
-  · have flag := SubwordMemory.Proofs.decoder_selectors hp core
-      (SubwordMemory.Proofs.decoder_field_bounds fields).2.1 query 0
+  · have flag := SubwordMemory.Proofs.rv_decoder_selectors hp core
+      (SubwordMemory.Proofs.rv_decoder_field_bounds fields).2.1 query 0
     change row.assignment 10 = (if entry.data.mask.testBit 0 then 1 else 0) at flag
     change Nat.pair (row.assignment 10).val
       (Nat.pair (row.assignment 27).val (row.assignment 28).val) =
@@ -256,7 +261,7 @@ theorem subword_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.li
     · have selected : row.assignment 10 = 0 := by simpa only [store, Bool.false_eq_true, ite_false] using flag
       have register := SubwordMemory.Proofs.register_address false core selected
       simp only [Bool.false_eq_true, ite_false] at register
-      have index := (Trace.Proofs.native_query_indices hp query).2.2
+      have index := (Trace.Proofs.rv_native_query_indices hp query).2.2
       change (row.assignment 7).val = entry.data.rd.toNat at index
       rw [selected, ZMod.val_zero] at address
       have zeroLo := (Nat.pair_eq_pair.mp (Nat.pair_eq_pair.mp address).2).1
@@ -264,7 +269,7 @@ theorem subword_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.li
       have zero : entry.data.rd = 0 := by
         apply BitVec.eq_of_toNat_eq
         exact index.symm.trans zeroLo
-      exact (SubwordMemory.Proofs.decoder_load_nonzero fields store zero).elim
+      exact (SubwordMemory.Proofs.rv_decoder_load_nonzero fields store zero).elim
     · have selected : row.assignment 10 = 1 := by simpa only [store, ite_true] using flag
       simp [selected, ZMod.val_one] at address
 

@@ -4,14 +4,13 @@ import Slop.AddSub.RVRowPosition
 import Slop.AddSub.PC
 import Slop.AddSub
 import Slop.Trace.RVValues
-import Slop.Trace.RVRom
-import Slop.Trace.RVFetch
+import Slop.Trace.RVPooledRow
 
 /-! RV32 AddSub soundness (`RVSoundnessClaim`), on the RV route: no Sail state, interpreter or `Configured` fact.
 
     - Fetch/step: the row's program entry (`RVTraceMapping.instruction`) is an aligned ROM word of the starting memory
-      (`rvProgram_entry_fetch`); the row's pre-state has the entry's PC (decoder query) and the starting ROM bytes
-      (`rvWriteHistory_rom`), so `RV.step` executes `rvInstruction input` (`rv_step_fetch`).
+      (`rvProgram_entry_fetch`); the row's pre-state has the entry's PC (decoder query) and the starting ROM bytes, so
+      `RV.step` executes `rvInstruction input` (`rv_step_of_position`).
     - Result: `result_word_row` (row-level calculation) from the decoder contract (selectors and preprocessing from the
       entry's data `rvData`, a function of the instruction datatype), the operand bounds (`rv_pooled_value_bounds`) and
       the operand registers (`rv_addsub_row_position`).
@@ -45,39 +44,25 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
   obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage
   -- The row's program entry: its bytes decode to the row's instruction, and its data is `rvData input`.
   obtain ⟨entry, present, _, query, decodes⟩ := mapping.instruction
-  obtain ⟨guard, bits, i, decodedI, instruction, projection⟩ :=
+  obtain ⟨guard, bits, i, decodedI, projection⟩ :=
     rvProgram_entry_fetch programImage entry present
   have hi : i = rvInstruction input := Option.some.inj (decodedI.symm.trans decodes)
   subst hi
   rw [rv_pooled_fields] at projection
-  obtain ⟨pc, entryBits, entryInstruction, data⟩ := entry
+  obtain ⟨pc, entryBits, data⟩ := entry
   have dataEq : data = (rvData input).mapFamily pooledArithmeticFamily := (Option.some.inj projection).symm
   subst dataEq
-  change entryInstruction = Airbender.toSail (rvInstruction input) at instruction
   change entryBits = RV.read initial.mem pc 4 at bits
   change pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0 at guard
   change RV.decode entryBits = some (rvInstruction input) at decodes
-  have fields0 : decoderFields (⟨pc, entryBits, entryInstruction, rvData input⟩ : ProgramEntry).instruction =
-      some (⟨pc, entryBits, entryInstruction, rvData input⟩ : ProgramEntry).data := by
-    change decoderFields entryInstruction = some (rvData input)
-    rw [instruction]
-    exact rv_decoder_fields input
+  have fieldBounds := rv_decoder_field_bounds (rv_decoder_fields input)
   have query0 : (⟨.addSub, w⟩ : Row p).decoderQuery =
-      (⟨pc, entryBits, entryInstruction, rvData input⟩ : ProgramEntry).query := query
+      (⟨pc, entryBits, rvData input⟩ : RVProgramEntry).query := query
   -- Fetch/step: PC and ROM bytes of the pre-state.
-  have pcWord := native_query_pc_word limbSize query0
+  have pcWord := rv_native_query_pc_word limbSize query0
   change Word.mk (w 0).val (w 1).val = Word.ofBitVec pc at pcWord
-  obtain ⟨_, _, middle, _, _, history, atState⟩ := mapping.state
-  have beforePC : input.before.pc = pc := by
-    rw [atState]
-    change (Word.mk (w 0).val (w 1).val).toBitVec = pc
-    rw [pcWord, Word.ofBitVec_roundtrip]
-  have agree : ∀ a : RV.Word, a.toNat < RV.ROM_END → input.before.mem a = initial.mem a := by
-    intro a rom
-    rw [atState]
-    exact rvWriteHistory_rom history a rom
-  obtain ⟨_, step⟩ := rv_step_fetch input.before initial agree pc beforePC guard
-  rw [← bits, decodes] at step
+  obtain ⟨beforePC, step⟩ := rv_step_of_position mapping.state (rv_query_pc limbSize query) guard
+    (by rw [← bits]; exact decodes)
   -- PC successor.
   have arithmeticInverse : (-30720 : ZMod p) * 65536 = 1 := by
     calc
@@ -134,16 +119,16 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
   have rightValue : input.before.getReg (rvData input).rs2 = input.row.right.toBitVec := by
     rw [regs.2, rightWord, rowRight]
   -- Immediate and selectors from the decoder query.
-  have immediateValue := query_immediate_value limbSize fields0 query0
+  have immediateValue := rv_native_query_immediate_word limbSize fieldBounds.1 query0
   change Word.mk (w 8).val (w 9).val = (rvData input).immediate at immediateValue
-  rw [← rowImmediate] at immediateValue
-  have immediateBound := query_immediate limbSize fields0 query0
-  change (Word.mk (w 8).val (w 9).val).Bounded at immediateBound
-  rw [← rowImmediate] at immediateBound
+  have immediateBound : (Word.mk (w 8).val (w 9).val).Bounded := by
+    rw [immediateValue]
+    exact fieldBounds.1
+  rw [← rowImmediate] at immediateValue immediateBound
   have mask : (rvData input).mask < 512 := by
-    unfold rvData
-    split <;> (unfold arithmeticFields; split <;> simp)
-  have flags := row_query_selectors_of_bound limbSize trace.rom.wordMemory (accepted.constraints _ member)
+    have small := fieldBounds.2
+    omega
+  have flags := rv_row_query_selectors_of_bound limbSize trace.rom.wordMemory (accepted.constraints _ member)
     mask query0
   change ∀ i : Fin 9, w #[10, 11, 12, 13, 14, 15, 16, 17, 18][i] =
     if (rvData input).mask.testBit i.val then 1 else 0 at flags
