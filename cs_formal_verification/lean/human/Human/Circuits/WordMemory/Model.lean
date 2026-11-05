@@ -1,5 +1,6 @@
 import Human.Helpers.Decoder.Instruction
 import Human.Circuits.WordMemory.Artifact
+import Human.Circuits.WordMemory.Output
 import Human.Helpers.Core.Sail
 import Human.Helpers.Properties
 import Human.Helpers.Decoder.PooledProgram
@@ -23,12 +24,6 @@ structure Input where
   rd : SailRV32.regidx
   encodedImmediate : BitVec 12
   before : Sail.State
-
-structure Output where
-  address : Word
-  data : Word
-  pc : Word
-
 
 /-- Original Sail constructor used by both public-program binding and execution. -/
 def instruction (input : Input) : SailRV32.instruction :=

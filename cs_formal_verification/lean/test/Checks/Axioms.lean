@@ -99,6 +99,7 @@ import Slop.ShiftBinop.Claims
 import Slop.ShiftBinop.Shifts
 import Slop.Sail.Runtime
 import Slop.Final.Circuits.WordMemory.Theorems
+import Slop.Final.Circuits.WordMemory.RVTheorems
 import Tests.Comparison
 import Tests.NonDeterminism
 import Tests.Blake2G
@@ -2260,3 +2261,12 @@ import Human.Import.Coefficients
 #print axioms Airbender.ShiftBinop.Proofs.rv_shift_zero_read
 #print axioms Airbender.ShiftBinop.Proofs.rv_value_second
 #print axioms Airbender.ShiftBinop.Proofs.rv_exec_row
+#print axioms Airbender.WordMemory.rv_soundness
+#print axioms Airbender.WordMemory.babyBear_rv_soundness
+#print axioms Airbender.WordMemory.Proofs.rv_trace_soundness
+#print axioms Airbender.WordMemory.Proofs.babyBear_rv_trace_soundness
+#print axioms Airbender.WordMemory.Proofs.rv_row_port_reads
+#print axioms Airbender.WordMemory.Proofs.rv_word_fields
+#print axioms Airbender.WordMemory.Proofs.rv_query_facts
+#print axioms Airbender.Trace.RVValues.rv_rom_member_read
+#print axioms Airbender.Trace.RVValues.rv_rom_read

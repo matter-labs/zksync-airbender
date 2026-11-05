@@ -13,6 +13,7 @@ import Human.Circuits.ShiftBinop.Theorems
 import Human.Circuits.ShiftBinop.RVTheorems
 import Human.Circuits.SubwordMemory.Theorems
 import Human.Circuits.WordMemory.Theorems
+import Human.Circuits.WordMemory.RVTheorems
 import Human.Helpers.Context.PCState.Theorems
 import Human.Trace.Delegation.CallerTheorems
 import Human.Trace.Delegation.Theorems
