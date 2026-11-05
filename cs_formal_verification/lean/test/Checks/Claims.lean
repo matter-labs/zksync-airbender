@@ -12,6 +12,7 @@ import Slop.Final.Circuits.ShiftBinop.Theorems
 import Slop.Final.Circuits.ShiftBinop.RVTheorems
 import Slop.Final.Circuits.SubwordMemory.Theorems
 import Slop.Final.Circuits.WordMemory.Theorems
+import Slop.Final.Circuits.WordMemory.RVTheorems
 import Slop.Final.Helpers.Context.PCState.Theorems
 import Slop.Final.ISA.Theorems
 import Slop.Final.Trace.Delegation.CallerTheorems
@@ -89,6 +90,8 @@ example : Airbender.SubwordMemory.SoundnessClaim := @Airbender.SubwordMemory.sou
 example : Airbender.SubwordMemory.BabyBearSoundnessClaim := @Airbender.SubwordMemory.babyBear_soundness
 example : Airbender.WordMemory.SoundnessClaim := @Airbender.WordMemory.soundness
 example : Airbender.WordMemory.BabyBearSoundnessClaim := @Airbender.WordMemory.babyBear_soundness
+example : Airbender.WordMemory.RVSoundnessClaim := @Airbender.WordMemory.rv_soundness
+example : Airbender.WordMemory.BabyBearRVSoundnessClaim := @Airbender.WordMemory.babyBear_rv_soundness
 example : Airbender.PCState.OutgoingBoundsClaim := @Airbender.PCState.outgoing_bounds
 example : Airbender.DecodeIsSailClaim := @Airbender.decode_is_sail
 example : Airbender.StepIsAirbenderClaim := @Airbender.step_is_airbender
@@ -191,6 +194,8 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.SubwordMemory.babyBear_soundness
 #print axioms Airbender.WordMemory.soundness
 #print axioms Airbender.WordMemory.babyBear_soundness
+#print axioms Airbender.WordMemory.rv_soundness
+#print axioms Airbender.WordMemory.babyBear_rv_soundness
 #print axioms Airbender.PCState.outgoing_bounds
 #print axioms Airbender.decode_is_sail
 #print axioms Airbender.step_is_airbender
