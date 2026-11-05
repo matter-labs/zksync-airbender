@@ -1,7 +1,7 @@
-import Human.Circuits.AddSub.Reference
+import Human.Circuits.AddSub.RowInput
 import Human.Helpers.Context.RVInterfaces
 import Human.Helpers.Context.RVRowContext
-import Human.Helpers.Decoder.PooledProgram
+import Human.Helpers.Decoder.RVPooledProgram
 import Human.ISA.RV32
 import Human.Helpers.Core.CircuitOutput
 
@@ -53,7 +53,7 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w
 /-- `TraceMapping` (`Model.lean`) in RV32 terms: the row's pre-state is the RV state at its clock position, and its
     decoder entry in the public program is `RV.decode` of the entry's encoding, equal to the input's instruction. -/
 structure RVTraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List PooledProgramEntry)
+    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry)
     (input : RVInput) (output : Circuit.Output) (w : Nat → ZMod p) : Prop where
   /-- Identify the input operands, destination register, result and both PCs with the variables. -/
   words : RVWordMapping input output w
@@ -67,14 +67,14 @@ structure RVTraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
 
 /-- ADD/SUB's per-row model in RV32 terms (`circuitModel` with `RVTraceMapping`). -/
 def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List PooledProgramEntry) :
+    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) :
     Verification.CircuitModel RVInput Circuit.Output (Nat → ZMod p) where
-  satisfies := fun w => Accepted trace ∧ PooledDecoded trace program ∧ (⟨.addSub, w⟩ : Row p PooledFamily) ∈ trace.rows
+  satisfies := fun w => Accepted trace ∧ RVPooledDecoded trace program ∧ (⟨.addSub, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := RVTraceMapping trace initial cells program
 
 /-- The RV-typed assumptions: public initialization and modeled tables (`InterfaceAssumptions`, no `Configured`). -/
 structure RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List PooledProgramEntry) : Prop
+    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop
     extends RVPooledHistoryInputs trace initial cells program where
   registersInitialized : ∀ index, Cell.register index ∈ cells
 
