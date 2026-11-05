@@ -160,7 +160,8 @@ theorem request_memory_execution [Fact p.Prime] (hp : 2 * Trace.timestampBase + 
     RequestExecution data before cells := by
   have requests := request_binding hp clockInverse pcInverse accepted inputs.publicProgram
   have publicState : MemoryInputs data.workers before cells :=
-    ⟨inputs.initialization, inputs.distinct, requests.clockRoom⟩
+    ⟨inputs.initialization, inputs.distinct, requests.clockRoom,
+      fun row member => (requests.clocks row member).2⟩
   exact ⟨requests, Delegation.memory_soundness hp accepted.workers publicState,
     Delegation.native_memory_execution hp accepted.workers publicState inputs.aligned⟩
 
