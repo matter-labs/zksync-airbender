@@ -432,6 +432,13 @@ lemmas before reading the first imported column. It preserves the full
 6.04 seconds at 406.13 MiB with no owned children; focused sources took
 57.91 seconds. No production or Review change is involved.
 
+Run [41937231684](https://github.com/matter-labs/zksync-airbender/actions/runs/41937231684)
+on `feacc685b` accepted the query projection but found an unspecified index
+bound and missing zero-offset rewrites in the private PC proof. The bound now
+names its vector/index, and explicit imported metadata equalities allow
+`Nat.zero_add` before column comparison. The failed leaf exited 1 in 4.80
+seconds at 399.63 MiB, with no owned children; sources took 57.39 seconds.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

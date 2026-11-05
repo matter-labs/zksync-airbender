@@ -45,13 +45,19 @@ private theorem normalize_pc (packed : Vector Nat addSubSetup.width) :
     (addSubSetup.normalize packed)[0] = packed[0] := by
   simp only [PackedSetup.normalize, Vector.getElem_ofFn]
   change (packed.toArray[0]?).getD 0 = packed[0]
-  simp only [Vector.getElem?_toArray, Vector.getElem?_eq_getElem (by decide), Option.getD_some]
+  simp only [Vector.getElem?_toArray,
+    Vector.getElem?_eq_getElem (xs := packed) (i := 0) (by decide), Option.getD_some]
+
+private theorem real_offset : addSubSetup.realRows.offset = 0 := rfl
+private theorem padding_offset : addSubSetup.padding.offset = 0 := rfl
+private theorem real_length : addSubSetup.realRows.length = 1048576 := rfl
 
 /-- The retained real and padding columns admit only these PC values. -/
 private theorem decoder_pc_domain (index : Fin 16777216) :
     (addSubSetup.row index)[0] ∈ ([0, 4, 12, babyBearModulus - 1] : List Nat) := by
   by_cases real : index.val < addSubSetup.realRows.length
-  · simp only [PackedSetup.row, if_pos real, normalize_pc, Vector.getElem_map]
+  · simp only [PackedSetup.row, if_pos real, normalize_pc, Vector.getElem_map,
+      real_offset, Nat.zero_add]
     change ((addSubDecoderData.columns[0].get? index.val).getD 0) ∈
       ([0, 4, 12, babyBearModulus - 1] : List Nat)
     by_cases short : index.val < 4
@@ -66,7 +72,8 @@ private theorem decoder_pc_domain (index : Fin 16777216) :
         simp [Setup.getFromBlocks, Setup.Block.length, Setup.Block.get?, short, bounded]
       rw [value]
       simp
-  · simp only [PackedSetup.row, if_neg real, normalize_pc, Vector.getElem_map]
+  · simp only [PackedSetup.row, if_neg real, normalize_pc, Vector.getElem_map,
+      padding_offset, real_length, Nat.zero_add]
     change ((addSubDecoderDataPadding.columns[0].get? (index.val - 1048576)).getD 0) ∈
       ([0, 4, 12, babyBearModulus - 1] : List Nat)
     have bounded : index.val - 1048576 < 15728640 := by

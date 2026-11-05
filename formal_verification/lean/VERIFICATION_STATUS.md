@@ -297,6 +297,13 @@ limits, rejection statement and complete domain are unchanged. The failed
 leaf took 6.04 seconds at 406.13 MiB, with no owned children; focused source
 work took 57.91 seconds. The projection repair awaits focused CI.
 
+Run [41937231684](https://github.com/matter-labs/zksync-airbender/actions/runs/41937231684)
+on `feacc685b` accepted the query projection but found an unspecified bound in
+the PC helper and missing zero-offset arithmetic rewrites. Those steps now
+name the vector/index and prove the imported metadata separately, then apply
+`Nat.zero_add`. No resource increase or domain change. The failed leaf took
+4.80 seconds at 399.63 MiB, with no owned children; sources took 57.39 seconds.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;
