@@ -20,7 +20,8 @@ for the imported operation view. Follow [Preparation](Preparation.lean),
 [Mixing](Mixing.lean) and [Finalization](Finalization.lean) for the worker phases.
 
 [Control](Control.lean), [Schedule](Schedule.lean) and [`setup`](Tables/Setup.lean)
-describe controller flags, round selection and modeled lookup contents.
+describe controller flags, round selection and the lookup table, read from the
+exported setup data (`artifacts/setup/blake-round.json`).
 [Addresses](Addresses.lean) and [Memory](Memory.lean) connect native indirect ports
 to initialized worker history.
 
