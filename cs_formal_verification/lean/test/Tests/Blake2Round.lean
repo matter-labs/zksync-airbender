@@ -55,14 +55,14 @@ theorem wrongFinalWriteRejected (w : Nat → ZMod babyBearModulus)
 theorem wrongFinalChunkRejected (w : Nat → ZMod babyBearModulus) :
     ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints Blake2Round.setupTable) ∧
-      w 628 = 3 ∧ w 578 = 5 ∧ w 629 = 7) := by
+      w 536 = 3 ∧ w 502 = 5 ∧ w 537 = 7) := by
   intro ⟨row, left, right, wrong⟩
   have member := Verification.lookup_of_holds row
-    ⟨146, by rw [Blake2Round.lookup_count]; decide⟩
-  have correct := Blake2Round.Proofs.xor_lookup_raw (by decide) 3 member
-    (by rfl) (by simp [Blake2Round.importedConstraints, FlatOperation.lookups,
+    ⟨130, by rw [Blake2Round.lookup_count]; decide⟩
+  have correct := Blake2Round.Proofs.lookup_facts_raw (t := 19) (by decide) member (by rfl)
+    (by decide) (by simp [Blake2Round.importedConstraints, FlatOperation.lookups,
       Expression.eval, Verification.environment])
-  have xor := correct.2.2.2
+  have xor := correct.2.2.1
   simp [Blake2Round.importedConstraints, FlatOperation.lookups, Expression.eval,
     Verification.environment] at xor
   norm_num [left, right, wrong, ZMod.val_ofNat, babyBearModulus] at xor
@@ -153,7 +153,7 @@ theorem wrongDiagonalCarryRejected (call : Fin 4) (w : Nat → ZMod babyBearModu
 
 /-- A row whose next round mask does not shift is rejected by the imported
     assertions, independently of which XOR setup is supplied. -/
-theorem wrongControlRejected (setup : Table (ZMod babyBearModulus) (fields 4))
+theorem wrongControlRejected (setup : Table (ZMod babyBearModulus) (fields 6))
     (w : Nat → ZMod babyBearModulus) :
     ¬ (Blake2Round.Control.circuitModel setup).relation ⟨123, 8⟩ ⟨0, 8⟩ w := by
   intro row
@@ -161,19 +161,19 @@ theorem wrongControlRejected (setup : Table (ZMod babyBearModulus) (fields 4))
   have high := congrArg Arithmetic.Word.hi correct.2
   norm_num [Blake2Round.Control.next] at high
 
-/-- A wrong XOR output at the actual first G query cannot satisfy the artifact.
-    Table provenance and cryptographic lookup enforcement are separate obligations. -/
+/-- A wrong XOR output at the actual first G query (byte XOR with carry) cannot
+    satisfy the artifact. -/
 theorem wrongFirstXorRejected (w : Nat → ZMod babyBearModulus) :
     ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints Blake2Round.setupTable) ∧
-      w 274 = 3 ∧ w 272 = 5 ∧ w 275 = 7) := by
+      w 260 = 3 ∧ w 256 = 5 ∧ w 262 = 7) := by
   intro ⟨row, left, right, wrong⟩
   have member := Verification.lookup_of_holds row
     ⟨2, by rw [Blake2Round.lookup_count]; decide⟩
-  have correct := Blake2Round.Proofs.xor_lookup_raw (by decide) 0 member
-    (by rfl) (by simp [Blake2Round.importedConstraints, FlatOperation.lookups,
+  have correct := Blake2Round.Proofs.lookup_facts_raw (t := 55) (by decide) member (by rfl)
+    (by decide) (by simp [Blake2Round.importedConstraints, FlatOperation.lookups,
       Expression.eval, Verification.environment])
-  have xor := correct.2.2.2
+  have xor := correct.2.2.2.1
   simp [Blake2Round.importedConstraints, FlatOperation.lookups, Expression.eval,
     Verification.environment] at xor
   norm_num [left, right, wrong, ZMod.val_ofNat, babyBearModulus] at xor
@@ -181,7 +181,7 @@ theorem wrongFirstXorRejected (w : Nat → ZMod babyBearModulus) :
 open Blake2Round.Preparation in
 /-- The first normal round must take lane zero from the chaining state,
     even when the old extended-state lane has a different value. -/
-theorem wrongFirstStateRejected (setup : Table (ZMod babyBearModulus) (fields 4))
+theorem wrongFirstStateRejected (setup : Table (ZMod babyBearModulus) (fields 6))
     (w : Nat → ZMod babyBearModulus) :
     ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints setup) ∧
@@ -190,7 +190,7 @@ theorem wrongFirstStateRejected (setup : Table (ZMod babyBearModulus) (fields 4)
   let input : Input := ⟨true, false, false, words w Blake2Round.Variables.stateReads,
     words w Blake2Round.Variables.extendedReads, words w Blake2Round.Variables.messageReads⟩
   let output : Output := ⟨words w Blake2Round.Variables.chainingInputs,
-    words w Blake2Round.Variables.preparedState, words w Blake2Round.Variables.preparedMessage⟩
+    words w Blake2Round.Variables.preparedState, messageWords w⟩
   have correct := babyBear_soundness setup input output w
     ⟨row, ⟨first, compression, right, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
   have low := congrArg (fun result : Output => result.extended[0].lo) correct
@@ -204,40 +204,43 @@ theorem wrongFirstStateRejected (setup : Table (ZMod babyBearModulus) (fields 4)
 open Blake2Round.Preparation in
 /-- In left-node compression mode the first message word comes from the
     chaining state, not the path data. -/
-theorem wrongCompressionOrderRejected (setup : Table (ZMod babyBearModulus) (fields 4))
+theorem wrongCompressionOrderRejected (setup : Table (ZMod babyBearModulus) (fields 6))
     (w : Nat → ZMod babyBearModulus) :
     ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints setup) ∧
-      w 142 = 0 ∧ w 141 = 1 ∧ w 140 = 0 ∧ w 5 = 3 ∧ w 204 = 5) := by
+      w 142 = 0 ∧ w 141 = 1 ∧ w 140 = 0 ∧ w 5 = 3 ∧
+      Blake2Round.Preparation.messageLimb w 0 0 = 5) := by
   intro ⟨row, first, compression, right, stateWord, wrong⟩
   let input : Input := ⟨false, true, false, words w Blake2Round.Variables.stateReads,
     words w Blake2Round.Variables.extendedReads, words w Blake2Round.Variables.messageReads⟩
   let output : Output := ⟨words w Blake2Round.Variables.chainingInputs,
-    words w Blake2Round.Variables.preparedState, words w Blake2Round.Variables.preparedMessage⟩
+    words w Blake2Round.Variables.preparedState, messageWords w⟩
   have correct := babyBear_soundness setup input output w
     ⟨row, ⟨first, compression, right, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
   have low := congrArg (fun result : Output => result.message[0].lo) correct
   have selected : (step input).message[0] = input.state[0] :=
     Vector.getElem_append_left (xs := input.state) (ys := input.message.take 8) (by decide)
   rw [selected] at low
-  norm_num [input, output, words, Blake2Round.Variables.preparedMessage,
-    Blake2Round.Variables.stateReads, stateWord, wrong, babyBearModulus, ZMod.val_ofNat] at low
+  have selectedWords : (messageLimb w 0 0).val = (w 5).val := by
+    simpa [input, output, words, messageWords, Blake2Round.Variables.stateReads] using low
+  norm_num [stateWord, wrong, babyBearModulus, ZMod.val_ofNat] at selectedWords
 
 open Blake2Round.Schedule in
 /-- Round zero's first selected word must equal the prepared first word. -/
-theorem wrongPermutationRejected (setup : Table (ZMod babyBearModulus) (fields 4))
+theorem wrongPermutationRejected (setup : Table (ZMod babyBearModulus) (fields 6))
     (w : Nat → ZMod babyBearModulus) :
     ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints setup) ∧
       (∀ i : Fin 10, w Blake2Round.Variables.roundBits[i] = if i = 0 then 1 else 0) ∧
-      w 204 = 3 ∧ w 236 = 5) := by
+      Blake2Round.Preparation.messageLimb w 0 0 = 3 ∧ w 224 = 5) := by
   intro ⟨row, mask, firstWord, wrong⟩
-  let input : Input := ⟨0, Blake2Round.Preparation.words w Blake2Round.Variables.preparedMessage⟩
+  let input : Input := ⟨0, Blake2Round.Preparation.messageWords w⟩
   let output : Output := Blake2Round.Preparation.words w Blake2Round.Variables.scheduledMessage
   have correct := babyBear_soundness setup input output w ⟨⟨mask⟩, row, ⟨rfl, rfl⟩⟩
   have low := congrArg (fun result : Output => result[0].lo) correct
-  norm_num [input, output, step, Blake2Round.Preparation.words,
-    Blake2Round.Variables.preparedMessage, Blake2Round.Variables.scheduledMessage,
-    Blake2G.Control.messageSchedule, firstWord, wrong, babyBearModulus, ZMod.val_ofNat] at low
+  have selectedWords : (w 224).val = (Blake2Round.Preparation.messageLimb w 0 0).val := by
+    simpa [input, output, step, Blake2Round.Preparation.words, Blake2Round.Preparation.messageWords,
+      Blake2Round.Variables.scheduledMessage, Blake2G.Control.messageSchedule] using low
+  norm_num [firstWord, wrong, babyBearModulus, ZMod.val_ofNat] at selectedWords
 
 end Tests.Blake2Round
