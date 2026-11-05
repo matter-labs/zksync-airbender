@@ -1,8 +1,26 @@
 #![cfg_attr(not(test), no_std)]
 
+#[cfg(feature = "checked_word_memory")]
+mod checked_word;
 mod memcpy;
 mod memmove;
 mod memset;
+
+// The checked runtime replaces riscv_common's own exports; without them the guest would link
+// compiler_builtins' byte-wise fallbacks, and the precompile path is not word-checked.
+#[cfg(all(
+    target_arch = "riscv32",
+    feature = "checked_word_memory",
+    any(
+        feature = "no_memcpy_override",
+        feature = "no_memmove_override",
+        feature = "no_memset_override",
+        feature = "memcpy_via_precompile"
+    )
+))]
+compile_error!(
+    "checked_word_memory needs riscv_common's memcpy/memmove/memset exports and excludes memcpy_via_precompile"
+);
 
 #[cfg(test)]
 mod tests;

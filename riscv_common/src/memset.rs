@@ -1,3 +1,4 @@
+#[cfg(not(feature = "checked_word_memory"))]
 #[allow(dead_code)]
 #[inline(always)]
 pub(crate) unsafe fn memset_impl(dest: *mut u8, value: u32, n: usize) -> *mut u8 {
@@ -42,93 +43,122 @@ pub(crate) unsafe fn memset_impl(dest: *mut u8, value: u32, n: usize) -> *mut u8
     }
 
     // here we only have to work by aligned word
+    fill_aligned_words(dest, value, n);
+
+    return_value
+}
+
+/// Fills the `n` bytes at word-aligned `dest` with `value`, by words; `n` is a nonzero word
+/// multiple.
+///
+/// # Safety
+/// `memset` contract for `n` bytes, `dest % 4 == 0`, `n % 4 == 0` and `n > 0`.
+#[inline(always)]
+unsafe fn fill_aligned_words(dest: *mut u8, value: u8, mut n: usize) {
+    const WORD_SIZE: usize = const { core::mem::size_of::<u32>() };
+
+    debug_assert!(n > 0);
+    debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
+    debug_assert_eq!(n % WORD_SIZE, 0);
+
+    let mut dest = dest.cast::<u32>();
+    let value = u32::from(value);
+    let u32_fill_value = cfg_select! {
+        all(target_arch = "riscv32", target_feature = "m") => {
+            0x01_01_01_01u32.wrapping_mul(value)
+        }
+        target_arch = "riscv32" => {
+            (value << 24) | (value << 16) | (value << 8) | value
+        }
+        _ => 0x01_01_01_01u32.wrapping_mul(value),
+    };
+
     {
-        debug_assert!(n > 0);
-        debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
-        debug_assert_eq!(n % WORD_SIZE, 0);
-
-        let mut dest = dest.cast::<u32>();
-        let value = u32::from(value);
-        let u32_fill_value =
-            cfg_select! {
-                all(target_arch = "riscv32", target_feature = "m") => {
-                    0x01_01_01_01u32.wrapping_mul(value)
-                }
-                target_arch = "riscv32" => (value << 24) | (value << 16) | (value << 8) | value,
-                _ => 0x01_01_01_01u32.wrapping_mul(value),
-            };
-
-        {
-            const BYTE_COPY_SIZE: usize = WORD_SIZE * 16;
-            const WORD_COPY_SIZE: usize = 16;
-            while n >= 16 * WORD_SIZE {
-                debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
-                seq_macro::seq!(N in 0..16 {
-                    dest.add(N).write(u32_fill_value);
-                });
-                dest = dest.add(WORD_COPY_SIZE);
-                n -= BYTE_COPY_SIZE;
-            }
-        }
-
-        // continue unrolling, but now we know that at most we need 1 iteration each time
-
-        core::hint::assert_unchecked(n < 64);
-
-        {
-            const M: usize = 3;
-            const WORD_COPY_SIZE: usize = 1 << M;
-            const BYTE_COPY_SIZE: usize = WORD_COPY_SIZE * WORD_SIZE;
-
-            if n & BYTE_COPY_SIZE > 0 {
-                debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
-                seq_macro::seq!(N in 0..8 {
-                    dest.add(N).write(u32_fill_value);
-                });
-                dest = dest.add(WORD_COPY_SIZE);
-            }
-        }
-
-        {
-            const M: usize = 2;
-            const WORD_COPY_SIZE: usize = 1 << M;
-            const BYTE_COPY_SIZE: usize = WORD_COPY_SIZE * WORD_SIZE;
-
-            if n & BYTE_COPY_SIZE > 0 {
-                debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
-                seq_macro::seq!(N in 0..4 {
-                    dest.add(N).write(u32_fill_value);
-                });
-                dest = dest.add(WORD_COPY_SIZE);
-            }
-        }
-
-        {
-            const M: usize = 1;
-            const WORD_COPY_SIZE: usize = 1 << M;
-            const BYTE_COPY_SIZE: usize = WORD_COPY_SIZE * WORD_SIZE;
-
-            if n & BYTE_COPY_SIZE > 0 {
-                debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
-                seq_macro::seq!(N in 0..2 {
-                    dest.add(N).write(u32_fill_value);
-                });
-                dest = dest.add(WORD_COPY_SIZE);
-            }
-        }
-
-        {
-            const M: usize = 0;
-            const WORD_COPY_SIZE: usize = 1 << M;
-            const BYTE_COPY_SIZE: usize = WORD_COPY_SIZE * WORD_SIZE;
-
-            if n & BYTE_COPY_SIZE > 0 {
-                debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
-                dest.write(u32_fill_value);
-                let _dest = dest.add(WORD_COPY_SIZE);
-            }
+        const BYTE_COPY_SIZE: usize = WORD_SIZE * 16;
+        const WORD_COPY_SIZE: usize = 16;
+        while n >= 16 * WORD_SIZE {
+            debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
+            seq_macro::seq!(N in 0..16 {
+                dest.add(N).write(u32_fill_value);
+            });
+            dest = dest.add(WORD_COPY_SIZE);
+            n -= BYTE_COPY_SIZE;
         }
     }
 
-    return_value
+    // continue unrolling, but now we know that at most we need 1 iteration each time
+
+    core::hint::assert_unchecked(n < 64);
+
+    {
+        const M: usize = 3;
+        const WORD_COPY_SIZE: usize = 1 << M;
+        const BYTE_COPY_SIZE: usize = WORD_COPY_SIZE * WORD_SIZE;
+
+        if n & BYTE_COPY_SIZE > 0 {
+            debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
+            seq_macro::seq!(N in 0..8 {
+                dest.add(N).write(u32_fill_value);
+            });
+            dest = dest.add(WORD_COPY_SIZE);
+        }
+    }
+
+    {
+        const M: usize = 2;
+        const WORD_COPY_SIZE: usize = 1 << M;
+        const BYTE_COPY_SIZE: usize = WORD_COPY_SIZE * WORD_SIZE;
+
+        if n & BYTE_COPY_SIZE > 0 {
+            debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
+            seq_macro::seq!(N in 0..4 {
+                dest.add(N).write(u32_fill_value);
+            });
+            dest = dest.add(WORD_COPY_SIZE);
+        }
+    }
+
+    {
+        const M: usize = 1;
+        const WORD_COPY_SIZE: usize = 1 << M;
+        const BYTE_COPY_SIZE: usize = WORD_COPY_SIZE * WORD_SIZE;
+
+        if n & BYTE_COPY_SIZE > 0 {
+            debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
+            seq_macro::seq!(N in 0..2 {
+                dest.add(N).write(u32_fill_value);
+            });
+            dest = dest.add(WORD_COPY_SIZE);
+        }
+    }
+
+    {
+        const M: usize = 0;
+        const WORD_COPY_SIZE: usize = 1 << M;
+        const BYTE_COPY_SIZE: usize = WORD_COPY_SIZE * WORD_SIZE;
+
+        if n & BYTE_COPY_SIZE > 0 {
+            debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
+            dest.write(u32_fill_value);
+            let _dest = dest.add(WORD_COPY_SIZE);
+        }
+    }
+}
+
+/// `checked_word_memory` `memset`: traps unless `dest` and `n` are word multiples; `n == 0` touches
+/// no memory. Fills with the low byte of `value`, as C `memset`.
+///
+/// # Safety
+/// The `memset` contract: a valid, non-wrapping range.
+#[cfg(feature = "checked_word_memory")]
+#[allow(dead_code)]
+#[inline(always)]
+pub(crate) unsafe fn memset_impl(dest: *mut u8, value: u32, n: usize) -> *mut u8 {
+    if n != 0 {
+        if !(dest.addr() | n).is_multiple_of(4) {
+            crate::checked_word::refuse();
+        }
+        fill_aligned_words(dest, value as u8, n);
+    }
+    dest
 }

@@ -1,3 +1,5 @@
+#[cfg(all(test, feature = "fsv_execution"))]
+mod checked_word_vm;
 pub mod cost_model;
 pub mod fixture_codec;
 mod fsv;
