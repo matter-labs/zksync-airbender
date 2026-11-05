@@ -319,6 +319,22 @@ abstracted before simplifying its constant column, keeping subtraction by
 1,048,576 outside that reduction. The failed leaf took 5.52 seconds at
 416.78 MiB with no owned children; sources took 58.10 seconds.
 
+The complete decoder/ROM test passed in focused run
+[41940857292](https://github.com/matter-labs/zksync-airbender/actions/runs/41940857292)
+on `e89dfdb32`: source work took 62.07 seconds, with the repaired module taking
+4.93 seconds at 347.57 MiB charged footprint. Final freshness/object checks
+passed and no owned children remained.
+
+Complete warm [41942022978](https://github.com/matter-labs/zksync-airbender/actions/runs/41942022978)
+on the same head passed native/compiler checks, early fixtures and 114 guarded
+source stages before `Tests.UnifiedModularExecution` exposed a stale forged-FMA
+overlay. Its auxiliary writes still used columns 78/80; the native layout uses
+74/78. Only those two private witness coordinates change. The local-validity
+and shared-history-rejection statements and proofs are unchanged. The failed
+leaf took 120.26 seconds at 702.84 MiB charged footprint, with no owned children;
+complete sources reached 2805.36 seconds after 29.47 seconds of early fixtures.
+Complete source/audit validation and final assurance remain pending.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

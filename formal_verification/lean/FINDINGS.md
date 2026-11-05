@@ -456,6 +456,23 @@ column, preserving its complete extent and keeping subtraction by 1,048,576
 outside that reduction. The failed leaf took 5.52 seconds at 416.78 MiB, with
 no owned children; sources took 58.10 seconds. Resource limits are unchanged.
 
+The decoder/ROM test subsequently passed in focused run 41940857292 on
+`e89dfdb32`, including complete-domain unsupported-PC rejection and final
+freshness/object checks. Selected sources took 62.07 seconds; the module took
+4.93 seconds at 347.57 MiB charged footprint with no owned children.
+
+Complete warm [41942022978](https://github.com/matter-labs/zksync-airbender/actions/runs/41942022978)
+on that head passed native/compiler checks, early fixtures and 114 guarded
+source stages, then rejected `Tests.UnifiedModularExecution`'s forged-FMA
+overlay: its old 78/80 auxiliary writes corrupt the native product and ROM
+residue columns. The existing honest row already uses the native 74/78
+coordinates; the forged overlay now does too. Its changed old destination,
+recomputed result, local validity and global shared-history rejection remain
+intact. Four failed native equations and one range check exposed this fixture
+error; no production or Review statement changes are needed. The failed leaf
+took 120.26 seconds at 702.84 MiB charged footprint with no owned children;
+complete sources took 2805.36 seconds after 29.47 seconds of early fixtures.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.

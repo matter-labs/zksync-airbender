@@ -620,7 +620,7 @@ theorem complete_unified_modular_trace [MemoryPlatform SailRV32.exception] :
 -- row equations, but cannot consume the initialized shared register history.
 private def forged (column : Nat) : ZMod babyBearModulus :=
   if column = 48 then 65533 else if column = 50 then 3
-  else if column = 78 then 2 else if column = 80 then 576061443
+  else if column = 74 then 2 else if column = 78 then 576061443
   else assignment 5 column
 
 theorem forged_fma_locally_valid : FlatOperation.ConstraintsHoldFlat
