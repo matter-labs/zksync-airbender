@@ -132,16 +132,9 @@ unsafe fn fill_aligned_words(dest: *mut u8, value: u8, mut n: usize) {
         }
     }
 
-    {
-        const M: usize = 0;
-        const WORD_COPY_SIZE: usize = 1 << M;
-        const BYTE_COPY_SIZE: usize = WORD_COPY_SIZE * WORD_SIZE;
-
-        if n & BYTE_COPY_SIZE > 0 {
-            debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
-            dest.write(u32_fill_value);
-            let _dest = dest.add(WORD_COPY_SIZE);
-        }
+    if n & WORD_SIZE != 0 {
+        debug_assert_eq!(dest.addr() % WORD_SIZE, 0);
+        dest.write(u32_fill_value);
     }
 }
 

@@ -1,6 +1,3 @@
-//! `checked_word_memory`. All pointers are into allocated word-backed buffers; zero length on
-//! pointers outside RAM is covered by the reduced-VM oracle in `full_statement_verifier`.
-
 use crate::memcpy::memcpy_impl;
 use crate::memmove::memmove_impl;
 use crate::memset::memset_impl;
@@ -82,14 +79,22 @@ fn memmove_handles_overlap_in_both_directions() {
 
 #[test]
 fn zero_length_touches_nothing() {
+    use core::ptr::{null_mut, without_provenance_mut};
     let mut buffer = pattern(8, 8);
     let before = buffer.clone();
     let p = base(&mut buffer);
-    for (d, s) in [(1, 2), (3, 0), (0, 1), (2, 2)] {
+    // Misaligned pointers into a live buffer (no write), then null and unallocated misaligned
+    // pointers (any access would fault).
+    let pointers = unsafe { [(p.add(1), p.add(18)), (p.add(3), p.add(16))] };
+    let invalid = [
+        (null_mut(), without_provenance_mut(3)),
+        (without_provenance_mut(usize::MAX - 2), null_mut()),
+    ];
+    for (d, s) in pointers.into_iter().chain(invalid) {
         unsafe {
-            assert_eq!(memcpy_impl(p.add(d), p.add(16 + s), 0), p.add(d));
-            assert_eq!(memmove_impl(p.add(d), p.add(16 + s), 0), p.add(d));
-            assert_eq!(memset_impl(p.add(d), 0xff, 0), p.add(d));
+            assert_eq!(memcpy_impl(d, s, 0), d);
+            assert_eq!(memmove_impl(d, s, 0), d);
+            assert_eq!(memset_impl(d, 0xff, 0), d);
         }
     }
     assert_eq!(buffer, before);

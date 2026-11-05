@@ -5,8 +5,6 @@
 /// reaches outside the source range.
 #[cfg(not(feature = "checked_word_memory"))]
 #[allow(dead_code)]
-// seq! expands reverse offsets to literals, including intentional zero/equal operands.
-#[allow(clippy::eq_op, clippy::identity_op)]
 #[inline(always)]
 pub(crate) unsafe fn memmove_impl(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
     #[cfg(not(target_endian = "little"))]
@@ -197,7 +195,7 @@ pub(crate) unsafe fn memmove_impl(dest: *mut u8, src: *const u8, n: usize) -> *m
         if !(dest.addr() | src.addr() | n).is_multiple_of(4) {
             crate::checked_word::refuse();
         }
-        if dest.addr().wrapping_sub(src.addr()) >= n {
+        if dest.addr() < src.addr() {
             crate::memcpy::copy_aligned_words(dest, src, n);
         } else {
             copy_aligned_words_backward(dest.add(n), src.add(n), n);
