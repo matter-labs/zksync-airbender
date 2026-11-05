@@ -22,20 +22,22 @@ private theorem carry_bits {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   · apply Arithmetic.boolean_nat
     simpa [mul_eq_zero, sub_eq_add_neg] using h40
 
-private theorem selected_equations {p : Nat} [Fact p.Prime] {input : Sail.Input}
+private theorem selected_equations_row {p : Nat} [Fact p.Prime] {row : RowInput} {rd : BitVec 5}
     {output : Sail.Output} {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (dc : DecoderContract input w) (nonzero : input.rd ≠ Sail.zeroRegister) (wm : RowWordMapping input output w)
+    (dc : DecoderContractRow row rd w) (nonzero : rd ≠ 0) (wm : RowWordMappingRow row rd output w)
     {c d : Nat} (hc : w 39 = (c : ZMod p)) (hd : w 40 = (d : ZMod p)) :
-    match input.row.opcode with
+    match row.opcode with
     | .sub =>
-      (output.destination.lo : ZMod p) + input.row.right.lo = input.row.left.lo + 65536 * c ∧
-      (c : ZMod p) + output.destination.hi + input.row.right.hi = input.row.left.hi + 65536 * d
+      (output.destination.lo : ZMod p) + row.right.lo = row.left.lo + 65536 * c ∧
+      (c : ZMod p) + output.destination.hi + row.right.hi = row.left.hi + 65536 * d
     | .auipc =>
-      (input.row.pc.lo : ZMod p) + input.row.immediate.lo = output.destination.lo + 65536 * c ∧
-      (c : ZMod p) + input.row.pc.hi + input.row.immediate.hi = output.destination.hi + 65536 * d
+      (row.pc.lo : ZMod p) + row.immediate.lo = output.destination.lo + 65536 * c ∧
+      (c : ZMod p) + row.pc.hi + row.immediate.hi = output.destination.hi + 65536 * d
     | _ =>
-      (input.row.left.lo : ZMod p) + input.row.right.lo + input.row.immediate.lo = output.destination.lo + 65536 * c ∧
-      (c : ZMod p) + input.row.left.hi + input.row.right.hi + input.row.immediate.hi = output.destination.hi + 65536 * d := by
+      (row.left.lo : ZMod p) + row.right.lo + row.immediate.lo = output.destination.lo + 65536 * c ∧
+      (c : ZMod p) + row.left.hi + row.right.hi + row.immediate.hi = output.destination.hi + 65536 * d := by
+  -- `simp` normalises the BitVec literal to `0#5`; the hypothesis must use the same normal form.
+  have nz : rd ≠ 0#5 := nonzero
   have outLo : w 33 = (output.destination.lo : ZMod p) := by
     rw [wm.outputLo]; exact (ZMod.natCast_zmod_val _).symm
   have outHi : w 34 = (output.destination.hi : ZMod p) := by
@@ -47,10 +49,10 @@ private theorem selected_equations {p : Nat} [Fact p.Prime] {input : Sail.Input}
   have s14 := dc.otherSelectors 14 (by omega) (by omega)
   have s15 := dc.otherSelectors 15 (by omega) (by omega)
   have s16 := dc.otherSelectors 16 (by omega) (by omega)
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, dc.addSelector, dc.subSelector, nonzero,
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, dc.addSelector, dc.subSelector, nz, nonzero,
     s12, s13, s14, s15, s16, wm.leftLo, wm.leftHi, wm.rightLo, wm.rightHi,
     wm.immediateLo, wm.immediateHi, wm.pcLo, wm.pcHi, outLo, outHi, hc, hd] at lo hi
-  cases hop : input.row.opcode <;> simp [hop] at lo hi ⊢ <;> constructor
+  cases hop : row.opcode <;> simp [hop] at lo hi ⊢ <;> constructor
   all_goals
     apply sub_eq_zero.mp
     solve
@@ -110,8 +112,53 @@ theorem output_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   have bounds := written_limb_bounds h
   exact ⟨mapping.outputLo ▸ bounds.1, mapping.outputHi ▸ bounds.2⟩
 
-/-- Shared limb calculation for the standard arithmetic clauses, independent
-    of artifact placement and selector gates. Sail supplies the instruction meaning. -/
+/-- Shared limb calculation for the standard arithmetic clauses over `(row, rd)`, independent
+    of artifact placement and selector gates. Callers supply the instruction meaning. -/
+theorem result_of_limbs_row {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+    {row : RowInput} {rd : BitVec 5} {output : Sail.Output} {c d : Nat}
+    (nonzero : rd ≠ 0) (preprocessing : PreprocessingRow row rd)
+    (bounds : InputBounds row) (pcBounds : row.pc.Bounded)
+    (resultBounds : output.destination.Bounded) (cb : c ≤ 1) (db : d ≤ 1)
+    (eqs : match row.opcode with
+      | .sub =>
+        (output.destination.lo : ZMod p) + row.right.lo = row.left.lo + 65536 * c ∧
+        (c : ZMod p) + output.destination.hi + row.right.hi = row.left.hi + 65536 * d
+      | .auipc =>
+        (row.pc.lo : ZMod p) + row.immediate.lo = output.destination.lo + 65536 * c ∧
+        (c : ZMod p) + row.pc.hi + row.immediate.hi = output.destination.hi + 65536 * d
+      | _ =>
+        (row.left.lo : ZMod p) + row.right.lo + row.immediate.lo = output.destination.lo + 65536 * c ∧
+        (c : ZMod p) + row.left.hi + row.right.hi + row.immediate.hi = output.destination.hi + 65536 * d) :
+    output.destination.toBitVec = match row.opcode with
+      | .add => row.left.toBitVec + row.right.toBitVec
+      | .addi => row.left.toBitVec + row.immediate.toBitVec
+      | .sub => row.left.toBitVec - row.right.toBitVec
+      | .lui => row.immediate.toBitVec
+      | .auipc => row.pc.toBitVec + row.immediate.toBitVec := by
+  have nz : rd ≠ 0#5 := nonzero
+  cases hop : row.opcode <;> simp only [hop] at eqs ⊢
+  · have pre := preprocessing
+    simp only [PreprocessingRow, nz, nonzero, ite_false, hop] at pre
+    simpa [pre, Word.toBitVec, Word.value] using
+      (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
+        resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) eqs.1 eqs.2)
+  · have pre := preprocessing
+    simp only [PreprocessingRow, nz, nonzero, ite_false, hop] at pre
+    simpa [pre, Word.toBitVec, Word.value] using
+      (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
+        resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) eqs.1 eqs.2)
+  · exact Word.sub_of_limbs (by omega) bounds.leftBound bounds.rightBound
+      resultBounds cb db eqs.1 eqs.2
+  · have pre := preprocessing
+    simp only [PreprocessingRow, nz, nonzero, ite_false, hop] at pre
+    simpa [pre.1, pre.2, Word.toBitVec, Word.value] using
+      (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
+        resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) eqs.1 eqs.2)
+  · simpa [Word.toBitVec, Word.value] using
+      (Word.add_of_limbs (right := ⟨0, 0⟩) hp pcBounds ⟨by decide, by decide⟩
+        bounds.immediateBound resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) (by simpa using eqs.1) (by simpa using eqs.2))
+
+/-- Sail-typed `result_of_limbs`: the row-level calculation at `input.row` and `rdBits input.rd`. -/
 theorem result_of_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     {input : Sail.Input} {output : Sail.Output} {c d : Nat}
     (nonzero : input.rd ≠ Sail.zeroRegister) (preprocessing : Preprocessing input)
@@ -132,31 +179,31 @@ theorem result_of_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p)
       | .addi => input.row.left.toBitVec + input.row.immediate.toBitVec
       | .sub => input.row.left.toBitVec - input.row.right.toBitVec
       | .lui => input.row.immediate.toBitVec
-      | .auipc => input.row.pc.toBitVec + input.row.immediate.toBitVec := by
-  cases hop : input.row.opcode <;> simp only [hop] at eqs ⊢
-  · have pre := preprocessing
-    simp only [Preprocessing, nonzero, ite_false, hop] at pre
-    simpa [pre, Word.toBitVec, Word.value] using
-      (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
-        resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) eqs.1 eqs.2)
-  · have pre := preprocessing
-    simp only [Preprocessing, nonzero, ite_false, hop] at pre
-    simpa [pre, Word.toBitVec, Word.value] using
-      (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
-        resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) eqs.1 eqs.2)
-  · exact Word.sub_of_limbs (by omega) bounds.leftBound bounds.rightBound
-      resultBounds cb db eqs.1 eqs.2
-  · have pre := preprocessing
-    simp only [Preprocessing, nonzero, ite_false, hop] at pre
-    simpa [pre.1, pre.2, Word.toBitVec, Word.value] using
-      (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
-        resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) eqs.1 eqs.2)
-  · simpa [Word.toBitVec, Word.value] using
-      (Word.add_of_limbs (right := ⟨0, 0⟩) hp pcBounds ⟨by decide, by decide⟩
-        bounds.immediateBound resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) (by simpa using eqs.1) (by simpa using eqs.2))
+      | .auipc => input.row.pc.toBitVec + input.row.immediate.toBitVec :=
+  result_of_limbs_row (row := input.row) (rd := rdBits input.rd) hp (rd_ne_zero nonzero)
+    (preprocessing_toRow preprocessing) bounds pcBounds resultBounds cb db eqs
 
+/-- A calculation lemma over `(row, rd)`, derived from the imported constraints, not an ISA spec. -/
+theorem result_word_row {p : Nat} [Fact p.Prime]
+    (hp : 196608 < p) {row : RowInput} {rd : BitVec 5} {output : Sail.Output} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (dc : DecoderContractRow row rd w) (nonzero : rd ≠ 0) (bounds : InputBounds row) (pcBounds : row.pc.Bounded)
+    (mapping : RowWordMappingRow row rd output w) :
+    output.destination.toBitVec = match row.opcode with
+      | .add => row.left.toBitVec + row.right.toBitVec
+      | .addi => row.left.toBitVec + row.immediate.toBitVec
+      | .sub => row.left.toBitVec - row.right.toBitVec
+      | .lui => row.immediate.toBitVec
+      | .auipc => row.pc.toBitVec + row.immediate.toBitVec := by
+  obtain ⟨⟨c, cb, hc⟩, ⟨d, db, hd⟩⟩ := carry_bits h
+  have written := written_limb_bounds h
+  have resultBounds : output.destination.Bounded :=
+    ⟨mapping.outputLo ▸ written.1, mapping.outputHi ▸ written.2⟩
+  exact result_of_limbs_row hp nonzero dc.preprocessing bounds pcBounds
+    resultBounds cb db (selected_equations_row h dc nonzero mapping hc hd)
 
-/-- A calculation lemma derived from the imported constraints, not an ISA spec. -/
+/-- A calculation lemma derived from the imported constraints, not an ISA spec. The Sail-typed
+    statement is the row-level `result_word_row` at `input.row` and `rdBits input.rd`. -/
 theorem result_word {p : Nat} [Fact p.Prime]
     (hp : 196608 < p) {input : Sail.Input} {output : Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
@@ -167,10 +214,9 @@ theorem result_word {p : Nat} [Fact p.Prime]
       | .addi => input.row.left.toBitVec + input.row.immediate.toBitVec
       | .sub => input.row.left.toBitVec - input.row.right.toBitVec
       | .lui => input.row.immediate.toBitVec
-      | .auipc => input.row.pc.toBitVec + input.row.immediate.toBitVec := by
-  obtain ⟨⟨c, cb, hc⟩, ⟨d, db, hd⟩⟩ := carry_bits h
-  exact result_of_limbs hp nonzero dc.preprocessing bounds pcBounds
-    (output_bounds h mapping) cb db (selected_equations h dc nonzero mapping hc hd)
+      | .auipc => input.row.pc.toBitVec + input.row.immediate.toBitVec :=
+  result_word_row (row := input.row) (rd := rdBits input.rd) hp h dc.toRow (rd_ne_zero nonzero)
+    bounds pcBounds mapping.toRow
 
 /-- Combined destination/PC soundness for the decoded four-byte Sail path. -/
 theorem soundness {p : Nat} [Fact p.Prime]
