@@ -380,6 +380,17 @@ kernel-replay discovery still independently includes all 249 test modules.
 No Review file or trust gate changes. This measures dependency reduction;
 focused compilation, runtime qualification and timing confirmation remain pending.
 
+The runtime executable also needs only the permissive setup value from
+`Tests.Keccak`. That definition now lives in `Tests.KeccakFixture`, imported by
+both consumers under its unchanged name. Its definition, both consumer bodies
+and all runtime assertions are byte-identical. The same CI import graph predicts
+that extracting this fixture removes another 517 existing project dependencies
+and adds one fixture module, reducing the executable closure from 1147 to 631
+modules and removing all generated Sail modules from that closure. Complete
+source, compiled environment audit and final kernel replay still include every
+proof and all 250 test modules. This predicts less native compilation work;
+CI compilation, actual runtime execution and timing remain unqualified.
+
 A static runtime audit also found two stale importer expectations: unified CPU
 equations were 129 rather than the native 120, and bigint equations were 136
 rather than the native 135. The checks and labels now use the actual producer

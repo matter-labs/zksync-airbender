@@ -1,6 +1,7 @@
 import Airbender.Proofs.Keccak.Claims
 import Airbender.Proofs.Keccak.Lookups
 import Mathlib.Tactic.IntervalCases
+import Tests.KeccakFixture
 
 set_option Elab.async false
 
@@ -9,12 +10,6 @@ open Airbender
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 800000
-
--- A deliberately permissive fixed setup isolates the structural guarantees.
--- These tests do not establish the semantics of the XOR/ANDN/rotation tables.
-def permissiveSetup : Table (ZMod babyBearModulus) (fields 8) where
-  name := "StructuralTestsOnly"
-  Contains _ _ := True
 
 def inactiveRow (v : Nat) : ZMod babyBearModulus :=
   if v = 86 then 8192 else if v = 87 then 24640 else

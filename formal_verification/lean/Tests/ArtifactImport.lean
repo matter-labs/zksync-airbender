@@ -6,7 +6,7 @@ import Airbender.Proofs.Keccak.ArtifactChecks
 import Airbender.Proofs.Blake2G.ArtifactChecks
 import Airbender.Proofs.Blake2Round.ArtifactChecks
 import Airbender.Proofs.Bigint.ArtifactChecks
-import Tests.Keccak
+import Tests.KeccakFixture
 import Airbender.Proofs.AddSub.ArtifactChecks
 import Airbender.Review.Circuits.JumpBranchSlt.Artifact
 import Airbender.Import.Parse
