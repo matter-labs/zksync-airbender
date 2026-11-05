@@ -64,7 +64,7 @@ theorem trace_soundness {p : Nat} [Fact p.Prime]
             · exact congrArg₂ Word.mk mapping.words.pcLo mapping.words.pcHi
           have canonicalOutput : output =
               ⟨⟨(w 33).val, (w 34).val⟩, ⟨(w 19).val, (w 20).val⟩⟩ :=
-            congrArg₂ Output.mk (congrArg₂ Word.mk mapping.words.outputLo mapping.words.outputHi)
+            congrArg₂ Airbender.Circuit.Output.mk (congrArg₂ Word.mk mapping.words.outputLo mapping.words.outputHi)
               (congrArg₂ Word.mk mapping.words.finalPCLo mapping.words.finalPCHi)
           have interface := local_arithmetic_interface (by dsimp [ROM.limit]; omega)
             (retired_state_image assumptions.initialization.image
