@@ -10,17 +10,17 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2800000
 
 private def assignment (taken : Bool) : Nat → ZMod babyBearModulus
-  | 4 | 24 | 25 | 57 | 85 | 88 | 90 | 130 | 131 | 132 | 133 => 1
+  | 4 | 24 | 25 | 57 | 82 | 84 | 123 | 124 | 125 => 1
   | 2 | 40 => 4
   | 8 | 32 => 8
   | 46 => 5
   | 10 => if taken then 0 else 1
-  | 30 | 81 | 120 | 122 => if taken then 8 else 4
-  | 59 | 82 | 112 => if taken then 1 else 0
-  | 92 | 101 => 5
-  | 110 => 51
-  | 111 => if taken then 8 else 24
-  | 119 => 2
+  | 30 | 64 | 114 | 116 => if taken then 8 else 4
+  | 59 | 79 | 106 => if taken then 1 else 0
+  | 86 | 95 => 5
+  | 104 => 51
+  | 105 => if taken then 8 else 24
+  | 113 => 2
   | _ => 0
 
 private def row (taken : Bool) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment taken⟩

@@ -20,8 +20,8 @@ private theorem airbender_before (family : Delegation.Family) : Configured (befo
 private def assignmentWith (address : ZMod babyBearModulus) (column : Nat) : ZMod babyBearModulus :=
   if column = 2 ∨ column = 30 then 4
   else if column = 32 then 8
-  else if column = 4 ∨ column = 18 ∨ column = 129 ∨ column = 130 ∨
-      column = 131 ∨ column = 132 ∨ column = 133 then 1
+  else if column = 4 ∨ column = 18 ∨
+      column = 123 ∨ column = 124 ∨ column = 125 then 1
   else if column = 6 ∨ column = 38 then address else 0
 
 private def assignment (family : Delegation.Family) := assignmentWith (Delegation.Requests.csr family)
@@ -236,7 +236,7 @@ private def arithmetic (value : Nat) : Nat → ZMod babyBearModulus
   | 0 => 4
   | 2 | 30 => 8
   | 32 | 5 | 7 | 44 => 12
-  | 4 | 8 | 11 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 8 | 11 | 123 | 124 | 125 => 1
   | 34 => 7
   | 40 => 6
   | 46 => 8
@@ -794,12 +794,12 @@ private noncomputable def customEntry (kind : Fin 5) : UnifiedReduced.ProgramEnt
     ⟨.machine, 0, if kind.val = 0 then 0 else 12, 12, ⟨0, 0⟩,
       if kind.val = 0 then 512 else 65536, if kind.val = 0 then 0 else 46 + kind.val⟩⟩
 private def customAssignment (kind : Fin 5) (column : Nat) : ZMod babyBearModulus :=
-  if 92 ≤ column ∧ column < 128 ∧ (column - 92) % 9 = 0 ∧ kind.val ≠ 0 then (46 + kind.val : Nat)
+  if 86 ≤ column ∧ column < 122 ∧ (column - 86) % 9 = 0 ∧ kind.val ≠ 0 then (46 + kind.val : Nat)
   else match column with
     | 0 => 4
     | 2 | 30 => 8
     | 32 | 7 | 44 => 12
-    | 4 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 123 | 124 | 125 => 1
     | 6 | 38 => if kind.val = 0 then 0 else 12
     | 10 => if kind.val = 0 then 0 else (46 + kind.val : Nat)
     | 20 => if kind.val = 0 then 1 else 0
@@ -807,7 +807,7 @@ private def customAssignment (kind : Fin 5) (column : Nat) : ZMod babyBearModulu
     | 34 => 6
     | 40 => if kind.val = 0 then 8 else 7
     | 46 => if kind.val = 0 then 7 else 9
-    | 88 => if kind.val = 0 then 0 else 3
+    | 82 => if kind.val = 0 then 0 else 3
     | _ => 0
 private def customRow (kind : Fin 5) : Trace.Row babyBearModulus UnifiedFamily :=
   ⟨.machine, customAssignment kind⟩
@@ -977,9 +977,9 @@ private theorem airbender_binaryBefore : Configured binaryBefore := by
 private def binaryEntry : UnifiedReduced.ProgramEntry :=
   ⟨4, 0x00164613, .ITYPE (1, .Regidx 12, .Regidx 12, .XORI), ⟨.machine, 12, 0, 12, ⟨1, 0⟩, 65536, 52⟩⟩
 private def binaryAssignment (column : Nat) : ZMod babyBearModulus :=
-  if column = 10 ∨ column = 92 ∨ column = 101 ∨ column = 110 ∨ column = 119 then 52
-  else if column = 27 ∨ column = 58 ∨ column = 94 ∨ column = 95 then 1
-  else if column = 88 then 3
+  if column = 10 ∨ column = 86 ∨ column = 95 ∨ column = 104 ∨ column = 113 then 52
+  else if column = 27 ∨ column = 58 ∨ column = 88 ∨ column = 89 then 1
+  else if column = 82 then 3
   else if column = 11 then 0 else arithmetic 0 column
 private def binaryRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, binaryAssignment⟩
 private noncomputable def binaryData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
@@ -1102,16 +1102,16 @@ private theorem airbender_comparisonBefore : Configured comparisonBefore := by
 private def comparisonEntry : UnifiedReduced.ProgramEntry :=
   ⟨4, 0xfff63613, .ITYPE (4095, .Regidx 12, .Regidx 12, .SLTIU), ⟨.machine, 12, 0, 12, ⟨65535, 65535⟩, 4096, 3⟩⟩
 private def comparisonAssignment (column : Nat) : ZMod babyBearModulus :=
-  if column = 8 ∨ column = 9 ∨ column = 60 ∨ column = 102 then 65535
+  if column = 8 ∨ column = 9 ∨ column = 60 ∨ column = 96 then 65535
   else if column = 10 then 3
-  else if column = 11 ∨ column = 57 ∨ column = 90 ∨ column = 129 then 0
-  else if column = 23 ∨ column = 52 ∨ column = 53 ∨ column = 59 ∨ column = 61 ∨ column = 78 ∨
-      column = 84 ∨ column = 88 ∨ column = 89 ∨ column = 103 ∨ column = 112 then 1
-  else if column = 81 ∨ column = 120 ∨ column = 122 then 8
-  else if column = 92 ∨ column = 101 then 5
-  else if column = 110 then 51
-  else if column = 111 then 53
-  else if column = 119 then 2
+  else if column = 11 ∨ column = 57 ∨ column = 84 then 0
+  else if column = 23 ∨ column = 52 ∨ column = 53 ∨ column = 59 ∨ column = 61 ∨ column = 74 ∨
+      column = 82 ∨ column = 83 ∨ column = 97 ∨ column = 106 then 1
+  else if column = 64 ∨ column = 114 ∨ column = 116 then 8
+  else if column = 86 ∨ column = 95 then 5
+  else if column = 104 then 51
+  else if column = 105 then 53
+  else if column = 113 then 2
   else arithmetic 0 column
 private def comparisonRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, comparisonAssignment⟩
 private noncomputable def comparisonData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
@@ -1251,22 +1251,21 @@ private def controlAssignment (kind : Fin 4) (column : Nat) : ZMod babyBearModul
   else if column = 7 ∨ column = 44 then (if kind.val < 2 then 0 else 12)
   else if column = 8 then (if kind.val = 3 then 12 else 8)
   else if column = 10 then (if kind.val = 1 then 1 else 0)
-  else if column = 11 ∨ column = 129 then 0
+  else if column = 11 then 0
   else if column = 21 then (if kind.val = 2 then 1 else 0)
   else if column = 22 then (if kind.val = 3 then 1 else 0)
-  else if column = 24 ∨ column = 25 ∨ column = 57 ∨ column = 85 ∨ column = 90 then (if kind.val < 2 then 1 else 0)
-  else if column = 30 ∨ column = 81 ∨ column = 120 ∨ column = 122 then (if kind.val = 1 then 8 else 12)
+  else if column = 24 ∨ column = 25 ∨ column = 57 ∨ column = 84 then (if kind.val < 2 then 1 else 0)
+  else if column = 30 ∨ column = 64 ∨ column = 114 ∨ column = 116 then (if kind.val = 1 then 8 else 12)
   else if column = 34 then (if kind.val = 2 then 6 else 7)
   else if column = 40 then (if kind.val = 2 then 8 else 6)
   else if column = 46 then (if kind.val < 2 then 9 else if kind.val = 2 then 7 else 8)
-  else if column = 50 ∨ column = 78 ∨ column = 89 then (if kind.val < 2 then 0 else 8)
-  else if column = 59 ∨ column = 82 ∨ column = 112 then (if kind.val = 0 then 1 else 0)
-  else if column = 83 then (if kind.val < 2 then 0 else 1)
-  else if column = 88 then 1
-  else if column = 92 ∨ column = 101 then 5
-  else if column = 110 then 51
-  else if column = 111 then (if kind.val < 2 then if kind.val = 0 then 8 else 24 else 0)
-  else if column = 119 then 2
+  else if column = 50 ∨ column = 74 ∨ column = 83 then (if kind.val < 2 then 0 else 8)
+  else if column = 59 ∨ column = 79 ∨ column = 106 then (if kind.val = 0 then 1 else 0)
+  else if column = 82 then 1
+  else if column = 86 ∨ column = 95 then 5
+  else if column = 104 then 51
+  else if column = 105 then (if kind.val < 2 then if kind.val = 0 then 8 else 24 else 0)
+  else if column = 113 then 2
   else arithmetic 0 column
 private def controlRow (kind : Fin 4) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, controlAssignment kind⟩
 private noncomputable def controlTerminal (kind : Fin 4) : List (MemoryToken babyBearModulus) :=
@@ -1698,6 +1697,7 @@ private theorem abiCore (highControl : Bool) : FlatOperation.ConstraintsHoldFlat
   all_goals solve
     | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
+    | (apply Trace.Proofs.range_contains; decide +kernel)
     | (refine ⟨⟨0, by decide +kernel⟩, ?_⟩; decide +kernel)
     | (refine ⟨⟨262144, by decide +kernel⟩, ?_⟩; decide +kernel)
     | (refine ⟨⟨1310720, by decide +kernel⟩, ?_⟩; decide +kernel)

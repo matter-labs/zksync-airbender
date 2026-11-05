@@ -17,14 +17,14 @@ private def setup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic {
   contains_iff _ := Iff.rfl
 }
 private def arithmetic : Nat → ZMod babyBearModulus
-  | 4 | 5 | 7 | 8 | 11 | 44 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 5 | 7 | 8 | 11 | 44 | 123 | 124 | 125 => 1
   | 2 | 30 | 46 => 4
   | 32 => 8
   | 36 | 48 => 123
   | 50 => 124
   | _ => 0
 private def triadd (value : Nat) : Nat → ZMod babyBearModulus
-  | 4 | 5 | 6 | 7 | 20 | 38 | 44 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 5 | 6 | 7 | 20 | 38 | 44 | 123 | 124 | 125 => 1
   | 0 => 4
   | 2 | 30 | 40 => 8
   | 32 => 12
@@ -32,7 +32,7 @@ private def triadd (value : Nat) : Nat → ZMod babyBearModulus
   | 46 => 9
   | 36 | 42 | 48 => value
   | 50 => 3 * value
-  | 80 => value * value * 943718400
+  | 78 => value * value * 943718400
   | _ => 0
 private def standardRow : Row babyBearModulus UnifiedFamily := ⟨.machine, arithmetic⟩
 private def customRow (value : Nat) : Row babyBearModulus UnifiedFamily := ⟨.machine, triadd value⟩
