@@ -55,7 +55,7 @@ theorem port_offset (row : Row p) {port : MemoryPort} (member : port ∈ row.por
   exact (Array.mem_replicate.mp mapped).2
 
 theorem writes_bounded [Fact p.Prime] (hp : timestampBase < p)
-    {data : MemoryData p} (accepted : MemoryAccepted data)
+    {data : MemoryData p} (_accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {row : Row p} (member : row ∈ data.rows) {port : MemoryPort} (present : port ∈ row.ports) :
     (timeOfPair (row.writeToken port).time).Bounded ∧
