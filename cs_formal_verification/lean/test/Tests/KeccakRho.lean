@@ -103,7 +103,7 @@ theorem satisfies (rho : Bool) (column : Fin 5) :
     have bound : i < 42 := by simpa only [Keccak.lookup_count] using hi
     by_cases range : i = 0
     · subst i
-      apply Verification.range16_contains
+      apply Trace.Proofs.range_contains
       cases rho <;> fin_cases column <;> decide
     by_cases controller : i = 1
     · subst i

@@ -49,9 +49,9 @@ private theorem bytesHold (i : Fin 40) :
 
 private theorem controllerHolds :
     ((FlatOperation.lookups (Keccak.importedConstraints setup)).get
-      ⟨2, by rw [Keccak.lookup_count]; decide⟩).Contains (Verification.environment row) := by
+      ⟨1, by rw [Keccak.lookup_count]; decide⟩).Contains (Verification.environment row) := by
   change ∃ index : Fin 1249281,
-    ((FlatOperation.lookups (Keccak.importedConstraints setup))[2]).entry.map
+    ((FlatOperation.lookups (Keccak.importedConstraints setup))[1]).entry.map
       (Expression.eval (Verification.environment row)) =
     (Keccak.setupRow control index).map (fun (n : Nat) => (n : ZMod babyBearModulus))
   refine ⟨⟨67588, by decide⟩, ?_⟩
@@ -59,7 +59,7 @@ private theorem controllerHolds :
       #v[2051, 0, 5, 10, 15, 20, 25, 37] := by decide
   rw [physicalRow]
   change (Vector.map (n := 8) (Expression.eval (Verification.environment row))
-    ((FlatOperation.lookups (Keccak.importedConstraints setup))[2]).entry) =
+    ((FlatOperation.lookups (Keccak.importedConstraints setup))[1]).entry) =
       (#v[2051, 0, 5, 10, 15, 20, 25, 37] : Vector Nat 8).map
         (fun (n : Nat) => (n : ZMod babyBearModulus))
   dsimp [Keccak.importedConstraints, FlatOperation.lookups]
@@ -77,7 +77,7 @@ theorem satisfies : FlatOperation.ConstraintsHoldFlat (Verification.environment 
     have bound : i < 42 := by simpa only [Keccak.lookup_count] using hi
     by_cases range : i = 0
     · subst i
-      apply Verification.range16_contains
+      apply Trace.Proofs.range_contains
       decide
     by_cases controller : i = 1
     · subst i

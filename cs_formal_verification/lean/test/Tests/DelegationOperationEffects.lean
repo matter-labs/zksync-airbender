@@ -4,13 +4,14 @@ import Tests.BigintMemory
 import Slop.Trace.ImageFrame
 
 namespace Tests.DelegationOperationEffects
+noncomputable section
 open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-private def assignment (i : Nat) : ZMod babyBearModulus :=
-  if i = 1 then 5 else Tests.BigintMemory.row i
+-- `Tests.BigintMemory.row` already carries the active invocation clock 5.
+private def assignment (i : Nat) : ZMod babyBearModulus := Tests.BigintMemory.row i
 private def worker : Delegation.Row babyBearModulus := ⟨.bigint, assignment⟩
 private def workers : MemoryData babyBearModulus where
   setup := modeledSetup Keccak.Controller.rows
@@ -37,9 +38,7 @@ theorem airbender_before : Configured before := by
 private theorem worker_constraints : FlatOperation.ConstraintsHoldFlat
     (Verification.environment assignment) (worker.constraints workers.setup) := by
   apply Verification.holds_append
-  · simpa [workers, modeledSetup, Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Verification.environment, Expression.eval, Lookup.Contains, Table.toRaw, fromElements,
-      Verification.range16, assignment, Tests.BigintMemory.row] using Tests.BigintMemory.core
+  · exact Tests.BigintMemory.core
   · simp [Bigint.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
     repeat' apply And.intro
     all_goals apply Trace.Proofs.range_contains
@@ -230,5 +229,7 @@ theorem shared_projection_ignores_private_boundaries :
 theorem shared_projection_accepts_actual_boundaries : MemoryAccepted wrongBoundaryData.workerProjection := by
   rw [shared_projection_ignores_private_boundaries]
   exact projected_shared_copy_memory.1
+
+end
 
 end Tests.DelegationOperationEffects

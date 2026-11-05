@@ -75,6 +75,7 @@ theorem fiveTimesSevenSatisfies (high carryFlag : Bool) :
   all_goals solve
     | decide
     | (apply Verification.range16_contains; decide)
+    | (apply Trace.Proofs.range_contains; decide)
     | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
     | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
     | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
@@ -107,6 +108,7 @@ theorem overflowSatisfies :
   all_goals solve
     | decide
     | (apply Verification.range16_contains; decide)
+    | (apply Trace.Proofs.range_contains; decide)
     | (exact ⟨⟨0, by decide⟩, by decide⟩)
     | (exact ⟨⟨512, by decide⟩, by decide⟩)
     | (exact ⟨⟨262144, by decide⟩, by decide⟩)

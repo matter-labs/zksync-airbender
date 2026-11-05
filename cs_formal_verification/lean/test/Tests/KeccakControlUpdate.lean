@@ -30,8 +30,8 @@ private theorem fixedMembership (w : Nat → ZMod babyBearModulus)
       query.Contains (Verification.environment w) := by
   simp only [Keccak.importedConstraints, FlatOperation.lookups, List.forall_mem_cons]
   constructor
-  · apply Verification.range16_contains
-    simp [Expression.eval, Verification.environment, zeroPointer, Arithmetic.limbBase]
+  · apply Trace.Proofs.range_contains
+    simp [Expression.eval, Verification.environment, zeroPointer, Trace.timestampBase]
   · simp [Lookup.Contains, Tests.Keccak.permissiveSetup, Table.toRaw]
 
 theorem thetaRolloverSatisfies :

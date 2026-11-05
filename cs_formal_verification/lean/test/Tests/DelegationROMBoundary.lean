@@ -7,6 +7,7 @@ import Human.Helpers.Memory.Native
 import Slop.Trace.ROMView
 
 namespace Tests.DelegationROMBoundary
+noncomputable section
 open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
@@ -58,6 +59,7 @@ private theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environme
   all_goals solve
     | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
+    | (apply Trace.Proofs.range_contains; decide +kernel)
     | (refine ⟨⟨0, by decide⟩, ?_⟩; decide +kernel)
     | (refine ⟨⟨262144, by decide⟩, ?_⟩; decide +kernel)
     | (refine ⟨⟨1310720, by decide⟩, ?_⟩; decide +kernel)
@@ -72,7 +74,7 @@ private theorem clocks : FlatOperation.ConstraintsHoldFlat (Verification.environ
   · simp [Bigint.importedConstraintsTimestampLookups, FlatOperation.constraints]
   · rw [List.forall_mem_iff_forall_getElem]
     intro i bound
-    have short : i < 40 := by simpa only [Bigint.timestamp_count] using bound
+    have short : i < 41 := by simpa only [Bigint.timestamp_count] using bound
     interval_cases i
     all_goals apply Trace.Proofs.range_contains
     all_goals decide +kernel
@@ -203,5 +205,7 @@ theorem machine_only_rom_lift_breaks_matching :
     have time := congrArg MemoryToken.time same
     have noZero : ∀ edge ∈ data.sharedSteps, edge.2.time ≠ (0, 0) := by decide +kernel
     exact noZero edge present time
+
+end
 
 end Tests.DelegationROMBoundary

@@ -89,9 +89,9 @@ private theorem bytesHold (second : Bool) (i : Fin 40) :
 
 private theorem controllerHolds (second : Bool) :
     ((FlatOperation.lookups (Keccak.importedConstraints setup)).get
-      ⟨2, by rw [Keccak.lookup_count]; decide⟩).Contains (Verification.environment (row second)) := by
+      ⟨1, by rw [Keccak.lookup_count]; decide⟩).Contains (Verification.environment (row second)) := by
   change ∃ index : Fin 1249281,
-    ((FlatOperation.lookups (Keccak.importedConstraints setup))[2]).entry.map
+    ((FlatOperation.lookups (Keccak.importedConstraints setup))[1]).entry.map
       (Expression.eval (Verification.environment (row second))) =
       (Keccak.setupRow control index).map (fun (n : Nat) => (n : ZMod babyBearModulus))
   refine ⟨⟨if second then 67591 else 67590, by split_ifs <;> decide⟩, ?_⟩
@@ -114,7 +114,7 @@ theorem satisfies (second : Bool) :
     have bound : i < 42 := by simpa only [Keccak.lookup_count] using hi
     by_cases range : i = 0
     · subst i
-      apply Verification.range16_contains
+      apply Trace.Proofs.range_contains
       cases second <;> decide
     by_cases controller : i = 1
     · subst i
