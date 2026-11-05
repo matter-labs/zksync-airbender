@@ -18,7 +18,7 @@ inductive Family where
 structure Setup (p : Nat) where
   bigint : Table (ZMod p) (fields 3)
   blakeG : Table (ZMod p) (fields 9)
-  blakeRound : Table (ZMod p) (fields 4)
+  blakeRound : Table (ZMod p) (fields 6)
   keccak : Table (ZMod p) (fields 8)
 
 /-- One actual delegation assignment and its family. No reads, ranges or

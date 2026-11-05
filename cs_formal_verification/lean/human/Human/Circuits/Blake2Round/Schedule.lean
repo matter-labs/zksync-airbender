@@ -27,7 +27,7 @@ structure InterfaceAssumptions {p : Nat} (input : Input) (_output : Output)
     (w : Nat → ZMod p) : Prop where
   roundMask : Control.RoundMask w input.round
 
-def circuitModel {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 4)) :
+def circuitModel {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
     Verification.CircuitModel Input Output (Nat → ZMod p) where
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w)
     (importedConstraints setup)

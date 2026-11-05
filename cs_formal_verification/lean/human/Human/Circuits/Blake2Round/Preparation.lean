@@ -59,7 +59,7 @@ structure Mapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod 
   messageOutput : output.message = words w Variables.preparedMessage
 
 -- No round-mask exclusivity or memory-transport assumption is needed for preparation.
-def circuitModel {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 4)) :
+def circuitModel {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
     Verification.CircuitModel Input Output (Nat → ZMod p) where
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w)
     (importedConstraints setup)
