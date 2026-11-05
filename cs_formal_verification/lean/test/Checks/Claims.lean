@@ -1,6 +1,7 @@
 -- Each final theorem (slop/Slop/Final) proves the statement of the same name in human/ (UpperCamelCase).
 import Slop.Final.Circuits.AddSub.CallerTheorems
 import Slop.Final.Circuits.AddSub.Theorems
+import Slop.Final.Circuits.AddSub.RVTheorems
 import Slop.Final.Circuits.Bigint.Theorems
 import Slop.Final.Circuits.Blake2G.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
@@ -26,6 +27,7 @@ import Slop.Final.Trace.Workers.Keccak.Theorems
 import Slop.Final.Trace.Workers.KeccakSplit.Theorems
 import Human.Circuits.AddSub.CallerTheorems
 import Human.Circuits.AddSub.Theorems
+import Human.Circuits.AddSub.RVTheorems
 import Human.Circuits.Bigint.Theorems
 import Human.Circuits.Blake2G.Theorems
 import Human.Circuits.JumpBranchSlt.Theorems
@@ -54,6 +56,8 @@ example : Airbender.Delegation.Caller.SoundnessClaim := @Airbender.Delegation.Ca
 example : Airbender.Delegation.Caller.PcSoundnessClaim := @Airbender.Delegation.Caller.pc_soundness
 example : Airbender.AddSub.SoundnessClaim := @Airbender.AddSub.soundness
 example : Airbender.AddSub.BabyBearSoundnessClaim := @Airbender.AddSub.babyBear_soundness
+example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
+example : Airbender.AddSub.BabyBearRVSoundnessClaim := @Airbender.AddSub.babyBear_rv_soundness
 example : Airbender.Bigint.Memory.AddressesSoundnessClaim := @Airbender.Bigint.Memory.addresses_soundness
 example : Airbender.Blake2G.SoundnessClaim := @Airbender.Blake2G.soundness
 example : Airbender.Blake2G.BabyBearSoundnessClaim := @Airbender.Blake2G.babyBear_soundness
@@ -144,6 +148,8 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.Delegation.Caller.pc_soundness
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.babyBear_soundness
+#print axioms Airbender.AddSub.rv_soundness
+#print axioms Airbender.AddSub.babyBear_rv_soundness
 #print axioms Airbender.Bigint.Memory.addresses_soundness
 #print axioms Airbender.Blake2G.soundness
 #print axioms Airbender.Blake2G.babyBear_soundness

@@ -2,6 +2,7 @@
 -- definition they depend on is in human/ (all of Human.* is built).
 import Human.Circuits.AddSub.CallerTheorems
 import Human.Circuits.AddSub.Theorems
+import Human.Circuits.AddSub.RVTheorems
 import Human.Circuits.Bigint.Theorems
 import Human.Circuits.Blake2G.Theorems
 import Human.Circuits.JumpBranchSlt.Theorems
