@@ -90,14 +90,11 @@ private theorem decoder_pc_domain (index : Fin 16777216) :
       have extent := index.isLt
       have outside : ¬ index.val < 1048576 := real
       omega
-    have value : addSubDecoderDataPadding.columns[0].get? (index.val - 1048576) =
-        some (babyBearModulus - 1) := by
-      rw [padding_pc_column]
-      change Setup.getFromBlocks [.affine 15728640 (babyBearModulus - 1) 0]
-        (index.val - 1048576) = _
-      simp [Setup.getFromBlocks, Setup.Block.length, Setup.Block.get?, bounded]
-    rw [value]
-    simp
+    generalize index.val - 1048576 = n at bounded ⊢
+    rw [padding_pc_column]
+    change (Setup.getFromBlocks [.affine 15728640 (babyBearModulus - 1) 0] n).getD 0 ∈
+      ([0, 4, 12, babyBearModulus - 1] : List Nat)
+    simp [Setup.getFromBlocks, Setup.Block.length, Setup.Block.get?, bounded]
 
 /-- The imported complete domain cannot manufacture an instruction at an
     unsupported program slot from a fixed-table prefix or committed filler. -/

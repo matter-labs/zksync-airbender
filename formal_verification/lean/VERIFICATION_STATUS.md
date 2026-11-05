@@ -312,6 +312,13 @@ first and rewrites kernel-proved equalities for both imported PC block streams;
 the four prefix entries use simplification. The failed leaf took 5.07 seconds
 at 406.68 MiB with no owned children; sources took 56.55 seconds.
 
+Run [41939704941](https://github.com/matter-labs/zksync-airbender/actions/runs/41939704941)
+on `e0e5d1815` accepted the prefix and branch-selection repairs. Only padding
+reduction still reached the recursion limit. The bounded padding index is now
+abstracted before simplifying its constant column, keeping subtraction by
+1,048,576 outside that reduction. The failed leaf took 5.52 seconds at
+416.78 MiB with no owned children; sources took 58.10 seconds.
+
 The successful bootstrap cache upload in run 41832547126 delayed compiler
 verification by 8m14s. The workflow now saves its one Lean snapshot after
 verification and diagnostic upload. A source attempt includes bootstrap progress;

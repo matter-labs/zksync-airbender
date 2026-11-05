@@ -448,6 +448,14 @@ the four prefix entries. Full-domain rejection and all resource limits remain
 unchanged. The failed leaf took 5.07 seconds at 406.68 MiB, with no owned
 children; sources took 56.55 seconds.
 
+Run [41939704941](https://github.com/matter-labs/zksync-airbender/actions/runs/41939704941)
+on `e0e5d1815` accepted the finite-prefix and branch-selection repairs. Only
+padding-tail reduction still reached the existing recursion limit. The proof
+now abstracts the bounded padding index before simplifying the constant
+column, preserving its complete extent and keeping subtraction by 1,048,576
+outside that reduction. The failed leaf took 5.52 seconds at 416.78 MiB, with
+no owned children; sources took 58.10 seconds. Resource limits are unchanged.
+
 ## Kernel fixed-setup provenance
 
 All three split Keccak source certificates are proved.
