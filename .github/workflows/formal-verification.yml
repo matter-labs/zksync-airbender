@@ -131,7 +131,7 @@ jobs:
           # children sequentially. An outer guard would deadlock the host lock.
           python3 -m unittest discover -s scripts -p test_bounded_fv.py -v 2>&1 | tee "$FV_ROOT/guard-controls.log"
           python3 scripts/compilation_pool/test_pool.py --process-tests --process-output "$FV_ROOT/pool-controls"
-          PYTHONPATH=scripts python3 -m unittest test_run_lean_diagnosis test_native_cpu_certificates test_check_lean_progress test_check_lean_repair -v
+          PYTHONPATH=scripts python3 -m unittest test_run_lean_diagnosis test_native_cpu_certificates test_check_lean_progress test_check_lean_repair test_native_qualification -v
           PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports test_olean_hashes test_replay_cache test_proof_boundaries test_native_lookup_bindings test_native_memory_policy -v
           cat > "$FV_ROOT/guard.sh" <<'SH'
           set -euo pipefail
@@ -245,9 +245,54 @@ jobs:
           echo "native=$native-$FV_NATIVE_SOURCE-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
           echo "replay-prefix=$replay-" >> "$GITHUB_OUTPUT"
           echo "replay=$replay-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+      - name: Fingerprint and validate all native qualification inputs
+        id: native-inputs
+        if: ${{ !inputs.diagnose_modules && inputs.requalify_setups != true }}
+        run: |
+          source "$FV_ROOT/guard.sh"
+          fv native-inputs python3 scripts/native_qualification.py fingerprint \
+            --fingerprint "$FV_ROOT/native-inputs.json" --outputs "$GITHUB_OUTPUT"
+          fingerprint=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$FV_ROOT/native-inputs.json")
+          mkdir -p .lake/verification
+          receipt="$PWD/.lake/verification/native-qualification-$fingerprint.json"
+          # Accept a restored receipt, never an old runner-local file.
+          rm -f "$receipt"
+          echo "FV_NATIVE_RECEIPT=$receipt" >> "$GITHUB_ENV"
+      - name: Restore exact native qualification receipt
+        id: native-qualification-cache
+        if: ${{ !inputs.diagnose_modules && inputs.requalify_setups != true && inputs.cold_build != true && env.FV_FULL_ASSURANCE != 'true' }}
+        uses: actions/cache/restore@v4
+        continue-on-error: true
+        with:
+          # Small evidence receipt, separate from evictable multi-GB build objects.
+          # No prefix/fallback restore: every producer input must match exactly.
+          # A run-ID path would change actions/cache's version on every run.
+          path: formal_verification/lean/.lake/verification/native-qualification-${{ steps.native-inputs.outputs.fingerprint }}.json
+          key: fv-native-qualified-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.native-inputs.outputs.fingerprint }}
+      - name: Decide whether fresh native qualification is required
+        id: native-reuse
+        if: ${{ !inputs.diagnose_modules && inputs.requalify_setups != true }}
+        run: |
+          source "$FV_ROOT/guard.sh"
+          fv native-reuse python3 scripts/native_qualification.py decide \
+            --fingerprint "$FV_ROOT/native-inputs.json" \
+            --receipt "$FV_NATIVE_RECEIPT" --outputs "$GITHUB_OUTPUT"
+          if [[ -f "$FV_NATIVE_RECEIPT" ]]; then
+            cp "$FV_NATIVE_RECEIPT" "$FV_ROOT/native-qualification.json"
+          fi
+      - name: Report native qualification scope
+        if: ${{ !inputs.diagnose_modules && inputs.requalify_setups != true }}
+        env:
+          FV_NATIVE_REUSE: ${{ steps.native-reuse.outputs.reuse }}
+          FV_NATIVE_REASON: ${{ steps.native-reuse.outputs.reason }}
+        run: |
+          {
+            printf 'Native qualification reuse: %s — %s\n' "$FV_NATIVE_REUSE" "$FV_NATIVE_REASON"
+            echo 'Lean source/runtime verification, compiled-environment audit and requested kernel replay remain required. Reused native evidence is not a fresh export on this commit.'
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/cache/restore@v4
         id: native-cache
-        if: ${{ !inputs.diagnose_modules }}
+        if: ${{ !inputs.diagnose_modules && steps.native-reuse.outputs.reuse != 'true' }}
         timeout-minutes: 20
         with:
           path: |
@@ -259,7 +304,7 @@ jobs:
             ${{ steps.cache-keys.outputs.native-tool-prefix }}
       - name: Twelve generators and sixteen complete fresh exports
         id: native-setups
-        if: ${{ !inputs.diagnose_modules }}
+        if: ${{ !inputs.diagnose_modules && steps.native-reuse.outputs.reuse != 'true' }}
         timeout-minutes: 370
         env:
           FV_REQUALIFY_SETUPS: ${{ inputs.requalify_setups == true }}
@@ -359,7 +404,7 @@ jobs:
           FV_STAGE
       - name: Fresh cached compiler captures and provenance controls
         id: compiler-captures
-        if: ${{ !inputs.diagnose_modules }}
+        if: ${{ !inputs.diagnose_modules && steps.native-reuse.outputs.reuse != 'true' }}
         timeout-minutes: 130
         env:
           FV_REQUALIFY_SETUPS: ${{ inputs.requalify_setups == true }}
@@ -378,6 +423,22 @@ jobs:
           fv compiler-provenance-controls env PYTHONPATH=scripts python3 -m unittest test_gkr_translation_provenance -v
           fv native-window-semantics python3 scripts/check_gkr_window_semantics.py
           FV_STAGE
+      - name: Record successful native qualification for these exact inputs
+        id: native-qualified
+        if: steps.native-setups.outcome == 'success' && steps.compiler-captures.outcome == 'success' && inputs.requalify_setups != true
+        run: |
+          source "$FV_ROOT/guard.sh"
+          fv native-qualified python3 scripts/native_qualification.py record \
+            --fingerprint "$FV_ROOT/native-inputs.json" \
+            --receipt "$FV_NATIVE_RECEIPT"
+          cp "$FV_NATIVE_RECEIPT" "$FV_ROOT/native-qualification.json"
+      - name: Save small native qualification receipt
+        if: steps.native-qualified.outcome == 'success' && steps.native-qualification-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: formal_verification/lean/.lake/verification/native-qualification-${{ steps.native-inputs.outputs.fingerprint }}.json
+          key: fv-native-qualified-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.native-inputs.outputs.fingerprint }}
       - name: Upload qualified compiler input receipts
         if: steps.compiler-captures.outcome == 'success' && inputs.requalify_setups == true
         uses: actions/upload-artifact@v4

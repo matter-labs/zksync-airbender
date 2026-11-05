@@ -28,6 +28,19 @@ redundant branch-only repair is removed; see [FINDINGS.md](FINDINGS.md).
 
 ## Current checkpoint
 
+Warm CI now separates native qualification from Lean proof validation. An exact
+input fingerprint and completed native receipt can omit repeated Rust generation
+and compiler captures after proof-only edits. Strict retained-source/payload
+checks still run; missing or changed evidence requires fresh native work. The
+first run must populate the small receipt cache. Full assurance, cold builds and
+setup requalification always retain fresh native generation. Thirty-two focused
+controls and the real retained-input fingerprint/missing-receipt checks pass
+locally. This optimization has not yet been qualified by CI and provides no new
+assurance result. Current
+run [41987147083](https://github.com/matter-labs/zksync-airbender/actions/runs/41987147083)
+on `c58da5b90f2717f4c3c505c7d6de15242384c95e` predates it and remains in
+complete Lean source/runtime verification; final full assurance is pending.
+
 The 4 November specification review makes the existing one-instance
 initialization and submitted-pool premises explicit. Native corollaries certify
 CPU rows only; standard worker equations remain no-cache flat constraints and

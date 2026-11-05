@@ -96,6 +96,26 @@ family-local native effects avoid the combined delegation-operation implementati
 The [focused boundary check](scripts/check_proof_boundaries.py) verifies these source
 import paths without compiling.
 
+## When CI repeats verification
+
+FV currently runs through manual dispatch and weekly full assurance. A prose-only
+edit needs no new FV dispatch. Model or proof edits require Lean verification,
+even when Rust circuits are unchanged.
+
+Warm runs may reuse completed native setup/compiler qualification for exactly
+the same input fingerprint. The fingerprint covers the complete pinned native
+source/include inventory, exporters, locks, toolchain/runtime identities, retained
+artifacts, producer/checker import closure and workflow commands. An exact small
+receipt cache hit still runs strict source and artifact checks. It reports the
+original qualifying run and commit; it does not claim fresh exports on the new
+head. Lean source/runtime and environment/axiom checks remain required.
+
+A missing, invalid or evicted receipt requires fresh native work. The first run
+of this mechanism therefore regenerates native artifacts. Cold runs, explicit
+setup requalification and final/weekly full assurance always regenerate them.
+The receipt is separate from the large Cargo/Lean build caches and does not
+solve the cost of rebuilding missing Lean objects.
+
 ## Reproduce
 
 Use Python 3.11+, the pinned Lean `leanprover/lean4:v4.31.0` and Rust
