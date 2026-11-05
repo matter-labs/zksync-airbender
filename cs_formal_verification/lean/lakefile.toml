@@ -107,6 +107,8 @@ globs = [
   "Human.Circuits.ShiftBinop.Decoder",
   "Human.Circuits.ShiftBinop.Model",
   "Human.Circuits.ShiftBinop.RVDecoder",
+  "Human.Circuits.ShiftBinop.RVModel",
+  "Human.Circuits.ShiftBinop.RVTheorems",
   "Human.Circuits.ShiftBinop.Theorems",
   "Human.Circuits.SubwordMemory.Decoder",
   "Human.Circuits.SubwordMemory.Model",

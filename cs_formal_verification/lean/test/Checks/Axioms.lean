@@ -10,6 +10,7 @@ import Slop.Final.Circuits.MulDiv.Theorems
 import Slop.Final.Circuits.MulDiv.RVTheorems
 import Slop.Final.Trace.Families.MulDiv.Theorems
 import Slop.Final.Circuits.ShiftBinop.Theorems
+import Slop.Final.Circuits.ShiftBinop.RVTheorems
 import Slop.Final.Trace.Families.ShiftBinop.Theorems
 import Slop.Final.Circuits.SubwordMemory.Theorems
 import Slop.Final.Trace.Families.SubwordMemory.Theorems
@@ -2238,3 +2239,21 @@ import Human.Import.Coefficients
 #print axioms Airbender.MulDiv.Proofs.rv_pooled_fields
 #print axioms Airbender.MulDiv.Proofs.rv_query_facts
 #print axioms Airbender.MulDiv.Proofs.rv_muldiv_row_operands
+#print axioms Airbender.ShiftBinop.rv_soundness
+#print axioms Airbender.ShiftBinop.babyBear_rv_soundness
+#print axioms Airbender.ShiftBinop.Proofs.rv_trace_soundness
+#print axioms Airbender.ShiftBinop.Proofs.babyBear_rv_trace_soundness
+#print axioms Airbender.ShiftBinop.Proofs.rv_fields
+#print axioms Airbender.ShiftBinop.Proofs.rv_query_facts
+#print axioms Airbender.ShiftBinop.Proofs.rv_binary_destination
+#print axioms Airbender.ShiftBinop.Proofs.rv_binary_register
+#print axioms Airbender.ShiftBinop.Proofs.rv_binary_immediate
+#print axioms Airbender.ShiftBinop.Proofs.rv_shift_register_amount
+#print axioms Airbender.ShiftBinop.Proofs.rv_shift_immediate_amount
+#print axioms Airbender.ShiftBinop.Proofs.rv_shift_value
+#print axioms Airbender.ShiftBinop.Proofs.shift_rev8
+#print axioms Airbender.ShiftBinop.Proofs.rv_row_value
+#print axioms Airbender.ShiftBinop.Proofs.rv_shift_row_operands
+#print axioms Airbender.ShiftBinop.Proofs.rv_shift_zero_read
+#print axioms Airbender.ShiftBinop.Proofs.rv_value_second
+#print axioms Airbender.ShiftBinop.Proofs.rv_exec_row
