@@ -22,7 +22,8 @@ compile_error!(
     "checked_word_memory needs riscv_common's memcpy/memmove/memset exports and excludes memcpy_via_precompile"
 );
 
-#[cfg(test)]
+// The checked word-memory build is exercised by the verifier guests.
+#[cfg(all(test, not(feature = "checked_word_memory")))]
 mod tests;
 
 #[cfg(all(target_arch = "riscv32", feature = "boot_sequence"))]

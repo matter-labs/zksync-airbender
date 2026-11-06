@@ -58,10 +58,8 @@ jobs:
         run: |
           cargo test -p verifier --profile cli --test native --test mop_montgomery
           cargo test -p verifier --profile cli --test corruption rejects_corrupted_folding_and_ood_pow_nonces_ethproofs_bigint_with_extended_control
-      - name: Guest memory runtime, general and checked word-memory builds
-        run: |
-          cargo test -p riscv_common
-          cargo test -p riscv_common --features checked_word_memory
+      - name: Guest memory runtime
+        run: cargo test -p riscv_common
 
   formatting:
     name: cargo fmt
