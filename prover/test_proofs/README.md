@@ -79,11 +79,27 @@ Two full CPU passes measured 2,144.78 and 2,178.91 seconds, with peak RSS of
 the optimized CLI profile and produced identical bytes for every entry. The
 [CI job](../../.github/workflows/ci.yml) uses runner label
 `matterlabs-ci-runner-high-performance` and a 90-minute timeout for proving,
-compilation and the remaining checks. The workflow does not specify that
-runner's RAM capacity, and no capacity measurement from that CI runner was
-available for this change. It needs available memory above the observed 66.6 GB
-peak, with headroom for the OS, Cargo and other load; whether the pool provides
-that is unverified. The step logs `MemTotal` and `MemAvailable`.
+compilation and the remaining checks.
+
+Existing [Rust CI run 42184209057](https://github.com/matter-labs/zksync-airbender/actions/runs/42184209057)
+provides supporting capacity evidence at `3af2e8def`:
+
+- [`cli_smoke_verify`](https://github.com/matter-labs/zksync-airbender/actions/runs/42184209057/job/127780580344)
+  passed on the same runner label in 38m53s. Its CPU command uses
+  `soundness_mode_smoke.sh ... cpu --cycles-bound 16777216 --worker-threads 8`.
+  The matching command measured **116,486,524 KiB** peak RSS (about 119.3 GB)
+  locally, with zero swaps. Completion in CI supports headroom above the
+  canonical producer's 66.6 GB peak. This inference assumes comparable effective
+  memory across same-label pods, comparable workload RSS and no swap in CI;
+  the CI memory limit and swap use were not measured.
+- The [`tests` job](https://github.com/matter-labs/zksync-airbender/actions/runs/42184209057/job/127780579911)
+  passed in 40m05s, including the old basic producer. Adding the entire measured
+  36-minute replacement pass, without credit for removing the old producer,
+  gives about 76 minutes within the 90-minute budget. This is an allowance
+  estimate; the new complete job has not been timed.
+
+The step logs `MemTotal` and `MemAvailable`; the workflow specifies a runner
+label rather than a guaranteed memory capacity.
 
 CI will be the first full proving run through the scratch-output routing. Local
 validation exercised that writer on all 28 loaded proofs, reused the two prior
