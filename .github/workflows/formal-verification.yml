@@ -542,6 +542,10 @@ jobs:
           source "$FV_ROOT/guard.sh"
           exporter="$CARGO_TARGET_DIR/debug/examples/export_setup_json"
           oracle=".lake/build/bin/program_rows_oracle"
+          # A native qualification receipt does not retain executable tools.
+          # Cargo also revalidates a restored binary against the current inputs.
+          fv_native decoder-exporter-build env -u CI -u RUST_MIN_STACK \
+            cargo build --locked --jobs 1 -p execution_prover --example export_setup_json
           test -x "$exporter"
           test -x "$oracle"
           python3 scripts/test_program_decoder_rows.py

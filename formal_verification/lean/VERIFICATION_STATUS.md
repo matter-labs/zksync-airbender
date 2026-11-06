@@ -199,6 +199,30 @@ extra, duplicate and forbidden synthetic reports; these are not actual theorem
 axiom results. Actual expanded Lean reports, complete Review/environment auditing
 and final full assurance remain pending.
 
+Run [42180089232](https://github.com/matter-labs/zksync-airbender/actions/runs/42180089232)
+on `895796d5866a6bd8f48398ffc4140d86d0256b64` passed the complete source/runtime
+and Review gate in 417.25 seconds. All 173 explicit reports contain only the three
+permitted axioms; Review covers 170 public theorems and 210 contextual guide
+declarations. Runtime exited 0 after 43.37 seconds at 515 MiB charged footprint;
+Review exited 0 after 94.93 seconds at 505.81 MiB. Both left no owned processes.
+Generated source freshness also passed. The decoder differential then failed
+before a guarded comparison: native qualification reuse skipped the Rust cache
+and builds, while the stage required the setup exporter executable. The retained
+filesystem footprint confirms the setup and compiler target directories absent.
+No decoder row mismatch or resource failure is claimed.
+The decoder stage now builds the existing setup-exporter example through the
+native aggregate guard before requiring its executable. Cargo is scoped, locked
+and serial, with CI and the Rust stack override unset; it also revalidates any
+restored binary. Existing native memory/time/capacity/lock limits and all decoder
+comparisons remain unchanged. Fixtures execute the actual workflow prerequisite
+with isolated fake Cargo for absent/restored binaries and reject build failure
+or a missing executable output. All 55 focused controls, shell syntax and YAML
+parsing pass; actionlint adds no findings beyond its two unchanged runner/action
+baseline findings. No local Cargo or Lean build was run. This workflow change
+changes the conservative native fingerprint, requiring fresh qualification again.
+Actual repaired decoder execution, environment auditing and final full assurance
+remain pending.
+
 The 4 November specification review makes the existing one-instance
 initialization and submitted-pool premises explicit. Native corollaries certify
 CPU rows only; standard worker equations remain no-cache flat constraints and
