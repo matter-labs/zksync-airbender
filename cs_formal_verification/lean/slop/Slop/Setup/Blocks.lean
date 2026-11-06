@@ -272,3 +272,58 @@ theorem placed_le {s : Nat} {bs : List Block} :
     · have := ih p hp; simp only [total]; omega
 
 end Airbender.Import.Setup.Proofs
+
+namespace Airbender.Import.Setup.Proofs
+
+theorem placed_ge {s : Nat} {bs : List Block} : ∀ p ∈ placed s bs, s ≤ p.1 := by
+  induction bs generalizing s with
+  | nil => intro p hp; simp [placed] at hp
+  | cons b bs ih =>
+    intro p hp
+    simp only [placed, List.mem_cons] at hp
+    rcases hp with rfl | hp
+    · exact le_refl _
+    · have := ih p hp; omega
+
+/-- A walk with a chosen size limit that stops at row `hi`: a block whose start is
+    listed in `longs` is matched by its shape, any other block of at most `limit` rows
+    is checked row by row. -/
+def walkUpTo (limit : Nat) (spec : Nat → Int) (lo hi : Nat) (longs : List (Nat × Shape)) :
+    Nat → List Block → Bool
+  | _, [] => true
+  | s, b :: bs =>
+    if hi ≤ s then true
+    else
+      (if lo ≤ s then
+        (match longs.lookup s with
+         | some sh => sh.check spec s b
+         | none => decide (b.len ≤ limit) && checkBlock spec s b)
+       else true) && walkUpTo limit spec lo hi longs (s + b.len) bs
+
+theorem walkUpTo_sound {limit : Nat} {spec : Nat → Int} {lo hi : Nat}
+    {longs : List (Nat × Shape)} (ok : ∀ p ∈ longs, p.2.Ok spec p.1) {s : Nat} {bs : List Block}
+    (h : walkUpTo limit spec lo hi longs s bs = true) :
+    ∀ p ∈ placed s bs, lo ≤ p.1 → p.1 < hi → BlockOk spec p.1 p.2 := by
+  induction bs generalizing s with
+  | nil => intro p hp; simp [placed] at hp
+  | cons b bs ih =>
+    intro p hp hlo hhi
+    have ge := placed_ge p hp
+    simp only [walkUpTo] at h
+    split at h
+    · exfalso; omega
+    simp only [Bool.and_eq_true] at h
+    simp only [placed, List.mem_cons] at hp
+    rcases hp with rfl | hp
+    · have h1 := h.1
+      split at h1
+      swap
+      · rename_i hn; exact absurd hlo hn
+      split at h1
+      · rename_i sh hsh
+        exact Shape.sound h1 (ok (s, sh) (lookup_mem hsh))
+      · simp only [Bool.and_eq_true] at h1
+        exact checkBlock_sound h1.2
+    · exact ih h.2 p hp hlo hhi
+
+end Airbender.Import.Setup.Proofs
