@@ -155,87 +155,77 @@ fn ensure_common() {
     });
 }
 
-/// Where a generated verifier's `gkr` module lives.
-enum GkrModule<'a> {
-    /// `<dir>/gkr.rs`, private to this verifier.
-    Own,
-    /// `<dir>/../gkr.rs`, shared by every soundness mode of the circuit: the first mode writes it
-    /// (before any `mod.rs` that rustfmt resolves it through) and every later mode's GKR verifier
-    /// must render identically.
-    Shared {
-        mode: SoundnessMode,
-        first: &'a mut Option<(SoundnessMode, String)>,
-    },
-}
-
 /// The verifiers of `circuit` for every soundness mode at `level`, generated into
-/// `verifier/src/generated/<circuit>/<mode>/` around one [`GkrModule::Shared`] GKR verifier.
+/// `verifier/src/generated/<circuit>/<mode>/`. Their GKR verifier must be identical in every
+/// mode; it is written once, to `<circuit>/gkr.rs`, before the `mod.rs` files that include it.
 fn generate_standard_verifiers_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     level: SecurityLevel,
 ) {
-    let mut first = None;
-    for &mode in SoundnessMode::ALL {
-        let prover_config = circuit.prover_config_for_mode(level, mode);
-        generate_verifier_for_circuit_with_config::<MW>(
-            circuit,
-            prover_config,
-            verifier_dir_name(mode),
-            GkrModule::Shared {
-                mode,
-                first: &mut first,
+    let parts: Vec<_> = SoundnessMode::ALL
+        .iter()
+        .map(|&mode| {
+            let prover_config = circuit.prover_config_for_mode(level, mode);
+            let (dir, gkr) =
+                generate_verifier_parts::<MW>(circuit, prover_config, verifier_dir_name(mode));
+            (mode, dir, gkr)
+        })
+        .collect();
+    let (first_mode, _, gkr) = &parts[0];
+    for (mode, _, other) in &parts[1..] {
+        assert!(
+            other.to_string() == gkr.to_string(),
+            "{}: the {mode:?} GKR verifier differs from the {first_mode:?} one and cannot be shared",
+            circuit.name
+        );
+    }
+    write_and_fmt(&format!("{}/gkr.rs", circuit.generated_dir()), gkr);
+    for (_, dir, _) in &parts {
+        write_mod_rs::<MW>(
+            dir,
+            quote::quote! {
+                #[path = "../gkr.rs"]
+                pub mod gkr;
             },
         );
     }
 }
 
-/// The verifier of `circuit` for an EXPLICIT prover config, generated into
-/// `verifier/src/generated/<circuit>/<dir_suffix>/`.
+/// The verifier of `circuit` for an EXPLICIT prover config with its own GKR verifier, generated
+/// into `verifier/src/generated/<circuit>/<dir_suffix>/`.
 fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     prover_config: &prover::gkr::prover_config::ProverConfig,
     dir_suffix: &str,
-    gkr_module: GkrModule,
 ) {
-    ensure_common();
+    let (dir, gkr) = generate_verifier_parts::<MW>(circuit, prover_config, dir_suffix);
+    write_and_fmt(&format!("{dir}/gkr.rs"), &gkr);
+    write_mod_rs::<MW>(&dir, quote::quote! { pub mod gkr; });
+}
 
+/// Writes the constants and WHIR verifier of `circuit` for `prover_config` into
+/// `verifier/src/generated/<circuit>/<dir_suffix>/` and returns that directory and the GKR
+/// verifier, which the caller places.
+fn generate_verifier_parts<MW: FieldWrapper<BaseField = BabyBearField>>(
+    circuit: &CircuitData,
+    prover_config: &prover::gkr::prover_config::ProverConfig,
+    dir_suffix: &str,
+) -> (String, proc_macro2::TokenStream) {
+    ensure_common();
+    let dir = format!("{}/{}", circuit.generated_dir(), dir_suffix);
+    std::fs::create_dir_all(&dir).unwrap();
+    let gkr_files = generate_gkr_verifier::<MW>(circuit, prover_config, &dir);
+    generate_whir_verifier::<MW>(prover_config, &dir, &gkr_files);
+    (dir, gkr_files.gkr)
+}
+
+fn write_mod_rs<MW: FieldWrapper<BaseField = BabyBearField>>(
+    dir: &str,
+    gkr_mod: proc_macro2::TokenStream,
+) {
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
     let field_use_stmts = MW::field_use_statements();
-
-    let dir = format!("{}/{}", circuit.generated_dir(), dir_suffix);
-    std::fs::create_dir_all(&dir).unwrap();
-
-    let gkr_files = generate_gkr_verifier::<MW>(circuit, prover_config, &dir);
-    generate_whir_verifier::<MW>(prover_config, &dir, &gkr_files);
-
-    let gkr_mod = match gkr_module {
-        GkrModule::Own => {
-            write_and_fmt(&format!("{}/gkr.rs", dir), &gkr_files.gkr);
-            quote::quote! { pub mod gkr; }
-        }
-        GkrModule::Shared { mode, first } => {
-            let rendered = gkr_files.gkr.to_string();
-            match first {
-                None => {
-                    write_and_fmt(
-                        &format!("{}/gkr.rs", circuit.generated_dir()),
-                        &gkr_files.gkr,
-                    );
-                    *first = Some((mode, rendered));
-                }
-                Some((first_mode, first_rendered)) => assert!(
-                    *first_rendered == rendered,
-                    "{}: the {mode:?} GKR verifier differs from the {first_mode:?} one and cannot be shared",
-                    circuit.name
-                ),
-            }
-            quote::quote! {
-                #[path = "../gkr.rs"]
-                pub mod gkr;
-            }
-        }
-    };
 
     let mod_rs = quote::quote! {
         pub mod constants;
@@ -297,7 +287,6 @@ fn unified_reduced_machine_l1_feeder() {
         circuit,
         &prover_config,
         "pessimistic_conjecture_l1_feeder",
-        GkrModule::Own,
     );
 }
 
