@@ -2,12 +2,12 @@ import Slop.UnifiedReduced.ROMRow
 import Slop.UnifiedReduced.ROMLookups
 import Slop.BabyBear
 import Slop.Trace.Timestamps
+import Slop.UnifiedReduced.Completeness.RomLoad
 
 namespace Tests.UnifiedROM
 open Airbender UnifiedReduced Arithmetic Trace
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1000000
 
 private def before : Reference.RiscV.Sail.State :=
   { (default : Reference.RiscV.Sail.State) with
@@ -51,38 +51,17 @@ theorem wrong_value_rejected :
     with_unfolding_all decide
   exact wrong result
 
-private def assignment : Nat → ZMod babyBearModulus
-  | 4 | 28 | 54 | 81 | 123 | 124 | 125 => 1
-  | 7 | 44 => 3
-  | 2 | 30 => 4
-  | 32 => 8
-  | 50 | 84 => 0xbeef
-  | 51 | 85 => 0xdead
-  | 80 => 65472
-  | 82 => 34
-  | _ => 0
+/-- LW x3, 0(x0) from the ROM word 0xdeadbeef at PC 0, clock 4. -/
+private def witness : Completeness.RomLoad :=
+  ⟨⟨0, 0, 4, 0, 0, 0, 0, 0, 0, 0⟩, 0, 3, 0, 0, 0, 0, 0xbeef, 0xdead, 0, 0, 0, 0⟩
+private def assignment : Nat → ZMod babyBearModulus := witness.honest
 
 theorem native_row_accepted : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment assignment) (clockConstraints (Setup.table before)) := by
-  apply Verification.holds_append
-  · simp [importedConstraints, FlatOperation.ConstraintsHoldFlat, Verification.environment,
-      Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
-    repeat' apply And.intro
-    all_goals solve
-      | decide
-      | (apply Verification.range16_contains; decide)
-      | (exact ⟨⟨0, by decide⟩, by with_unfolding_all decide⟩)
-      | (refine ⟨⟨1048961, by decide⟩, ?_⟩
-         change _ = (#v[0, (Word.ofBitVec (ROM.words before 0)).lo,
-           (Word.ofBitVec (ROM.words before 0)).hi, 0, 0, 0, 0, 0, 0, 34] : Vector Nat 10).map
-             (fun (n : Nat) => (n : ZMod babyBearModulus))
-         rw [public_word]
-         with_unfolding_all decide)
-  · simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment]
-    all_goals decide
+    (Verification.environment assignment) (clockConstraints (Setup.table before)) :=
+  Completeness.RomLoad.complete _
+    (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide)
+    (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) before
+    (by change Word.ofBitVec (ROM.words before 0) = _; rw [public_word]; rfl)
 
 theorem public_read_row_accepted : FlatOperation.ConstraintsHoldFlat
     (Verification.environment
@@ -100,8 +79,11 @@ theorem public_read_is_nonzero :
     simp [Trace.ROMView.publicWord, Word.toBitVec, Word.value, limbBase, Cell.read, _root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte,
       EStateM.run, get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       before, Std.ExtHashMap.getElem_insert]
-  simp only [UnifiedReduced.ROMView.row, assignment, and_self, ↓reduceIte,
-    ZMod.val_zero, word]
+  have load : assignment 28 = 1 := rfl
+  have rom : assignment 54 = 1 := rfl
+  have lo : (assignment 38).val = 0 := rfl
+  have hi : (assignment 39).val = 0 := rfl
+  simp only [UnifiedReduced.ROMView.row, load, rom, lo, hi, and_self, ↓reduceIte, word]
   with_unfolding_all decide
 
 end Tests.UnifiedROM

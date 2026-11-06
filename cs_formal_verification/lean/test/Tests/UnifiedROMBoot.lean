@@ -1,12 +1,12 @@
 import Tests.TraceExecution
 import Slop.UnifiedReduced.Claims
+import Slop.UnifiedReduced.Completeness.RomLoad
 
 namespace Tests.UnifiedROMBoot
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 3000000
 
 private noncomputable def before : State :=
   { Tests.TraceExecution.before with
@@ -18,14 +18,14 @@ private def cells : List Cell := Tests.TraceExecution.cells ++ [.ram 0]
 private def physical : List (MemoryToken babyBearModulus) :=
   ROMView.nativeBootImage Tests.TraceExecution.cells ++ [Cell.initialToken (.ram 0) 0x2083]
 
-private def assignment : Nat → ZMod babyBearModulus
-  | 4 | 7 | 28 | 44 | 54 | 81 | 123 | 124 | 125 => 1
-  | 2 | 30 => 4
-  | 32 => 8
-  | 50 | 84 => 0x2083
-  | 80 => 65472
-  | 82 => 34
-  | _ => 0
+/-- LW x1, 0(x0) from the ROM word 0x2083 at PC 0, clock 4. -/
+private def witness : UnifiedReduced.Completeness.RomLoad :=
+  ⟨⟨0, 0, 4, 0, 0, 0, 0, 0, 0, 0⟩, 0, 1, 0, 0, 0, 0, 0x2083, 0, 0, 0, 0, 0⟩
+private def assignment : Nat → ZMod babyBearModulus := witness.honest
+private theorem load_col : witness.honest 28 = 1 := rfl
+private theorem rom_col : witness.honest 54 = 1 := rfl
+private theorem lo_col : (witness.honest 38).val = 0 := rfl
+private theorem hi_col : (witness.honest 39).val = 0 := rfl
 
 private def nativeRow : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment⟩
 private def terminal : List (MemoryToken babyBearModulus) :=
@@ -107,26 +107,11 @@ private theorem public_word : ROM.words before 0 = 0x2083 := by
   rw [bytes]
 
 private theorem constraints : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment assignment) (UnifiedReduced.clockConstraints trace.rom) := by
-  apply Verification.holds_append
-  · simp [UnifiedReduced.importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
-      Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
-    repeat' apply And.intro
-    all_goals solve
-      | decide
-      | (apply Verification.range16_contains; decide)
-      | (exact ⟨⟨0, by decide⟩, by with_unfolding_all decide⟩)
-      | (refine ⟨⟨1048961, by decide⟩, ?_⟩
-         change _ = (#v[0, (Word.ofBitVec (ROM.words before 0)).lo,
-           (Word.ofBitVec (ROM.words before 0)).hi, 0, 0, 0, 0, 0, 0, 34] : Vector Nat 10).map
-             (fun (n : Nat) => (n : ZMod babyBearModulus))
-         rw [public_word]
-         with_unfolding_all decide)
-  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment]
-    all_goals decide
+    (Verification.environment assignment) (UnifiedReduced.clockConstraints trace.rom) :=
+  UnifiedReduced.Completeness.RomLoad.complete _
+    (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide)
+    (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) before
+    (by change Word.ofBitVec (ROM.words before 0) = _; rw [public_word]; rfl)
 
 private theorem accepted : Accepted trace := by
   constructor
@@ -175,7 +160,7 @@ theorem sail_rom_load  : Airbender.WordMemory.spec input output := by
   · constructor
     · constructor
       all_goals simp [input, output, mapped, UnifiedReduced.ROMView.row, nativeRow, assignment,
-        mapped_word, UnifiedReduced.ROMView.readData, Word.ofBitVec, limbBase]
+        load_col, rom_col, lo_col, hi_col, mapped_word, UnifiedReduced.ROMView.readData, Word.ofBitVec, limbBase]
       all_goals decide
     · exact ⟨[], [], before, List.Perm.refl _, by simp, WriteHistory.nil _, rfl⟩
     · refine ⟨entry, by simp, ?_, rfl⟩
