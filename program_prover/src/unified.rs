@@ -232,7 +232,7 @@ pub fn prove_unified_execution_with_replayer_in_profile<
             )
         }
         ProverConfigProfile::EvmProductionPacked => {
-            panic!("UnsupportedProfileOperation: BabyBear unified execution cannot use {profile:?}")
+            panic!("BabyBear unified execution cannot use {profile:?}")
         }
     }
 }

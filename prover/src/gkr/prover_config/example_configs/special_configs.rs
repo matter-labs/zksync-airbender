@@ -2,39 +2,19 @@
 //! of the last BabyBear recursion layer and the EVM-production Proth120
 //! config. Both are [`SoundnessMode::PessimisticConjecture`] accountings.
 //! Ethproofs L1 feeder/wrap/EVM implementation is deferred product scope;
-//! mode-aware entry points reject that combination explicitly (see
+//! [`ProverConfigProfile::assert_supports`] rejects that combination (see
 //! `soundcalc/README.md`).
 
 use super::*;
 
 impl ProverConfigProfile {
-    /// The refusal for proving this profile in `mode`, or `None` when the profile supports it.
-    /// The L1 feeder/wrap/EVM profiles are Pessimistic-only; Ethproofs is deferred product
-    /// scope. This is the one rule and text for every boundary that admits a profile.
-    pub fn mode_refusal(self, mode: SoundnessMode) -> Option<String> {
-        if self == Self::Standard || mode == SoundnessMode::PessimisticConjecture {
-            return None;
-        }
-        let name = match mode {
-            SoundnessMode::PessimisticConjecture => "pessimistic-conjecture",
-            SoundnessMode::EthproofsSoundnessCalc => "ethproofs",
-        };
-        Some(format!(
-            "UnsupportedSpecialConfigMode: {name} soundness mode is not implemented for the L1 \
-             feeder/wrap/EVM profile (deferred product scope); requested {self:?}"
-        ))
-    }
-
-    pub fn supports(self, mode: SoundnessMode) -> bool {
-        self.mode_refusal(mode).is_none()
-    }
-
-    /// Panics with the [`Self::mode_refusal`] text when this profile does not support the
-    /// `soundness_mode`. Callers run it before any artifact, setup or device work.
+    /// The L1 feeder and EVM profiles exist only in the pessimistic-conjecture
+    /// mode; Ethproofs for them is deferred product scope.
     pub fn assert_supports(self, soundness_mode: SoundnessMode) {
-        if let Some(refusal) = self.mode_refusal(soundness_mode) {
-            panic!("{refusal}");
-        }
+        assert!(
+            self == Self::Standard || soundness_mode == SoundnessMode::PessimisticConjecture,
+            "{self:?} supports only the pessimistic-conjecture soundness mode, not {soundness_mode:?}"
+        );
     }
 }
 
@@ -140,43 +120,5 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
             &[1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23],
             &[30, 30, 27, 25, 21, 24],
         ),
-    }
-}
-
-#[cfg(test)]
-mod selection_tests {
-    use super::*;
-
-    #[test]
-    fn special_profiles_refuse_ethproofs() {
-        let mode = SoundnessMode::EthproofsSoundnessCalc;
-        for profile in [
-            ProverConfigProfile::L1Feeder,
-            ProverConfigProfile::EvmProductionPacked,
-        ] {
-            assert!(!profile.supports(mode));
-            assert_eq!(
-                profile.mode_refusal(mode),
-                Some(format!(
-                    "UnsupportedSpecialConfigMode: ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope); requested {profile:?}"
-                ))
-            );
-        }
-        assert!(ProverConfigProfile::Standard.supports(mode));
-        for profile in [
-            ProverConfigProfile::Standard,
-            ProverConfigProfile::L1Feeder,
-            ProverConfigProfile::EvmProductionPacked,
-        ] {
-            assert!(profile.supports(SoundnessMode::PessimisticConjecture));
-        }
-    }
-
-    #[test]
-    #[should_panic(
-        expected = "UnsupportedSpecialConfigMode: ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope); requested L1Feeder"
-    )]
-    fn ethproofs_l1_feeder_selection_panics() {
-        ProverConfigProfile::L1Feeder.assert_supports(SoundnessMode::EthproofsSoundnessCalc);
     }
 }
