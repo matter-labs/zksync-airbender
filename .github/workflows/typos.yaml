@@ -23,7 +23,7 @@ jobs:
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           CHANGED_FILES="$(
             git diff --name-only --diff-filter=d "$BASE_SHA"...HEAD \
-              | grep -Ev '(\.json|\.lock|\.bin|\.elf|\.pdf|\.png|\.text|\.bak|\.svg)$|^SECURITY\.md$' \
+              | grep -Ev '(\.json|\.lock|\.bin|\.zlib|\.elf|\.pdf|\.png|\.text|\.bak|\.svg)$|^SECURITY\.md$' \
               | tr '\n' ' '
           )"
           echo "files=$CHANGED_FILES" >> "$GITHUB_OUTPUT"
