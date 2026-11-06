@@ -198,3 +198,20 @@ gates pass at unchanged limits. Only original public byte/decode lemmas are reus
 no old native decoder table is equated. This is not a new Rust preprocessing/export
 certificate, universal fixed-ROM correspondence or execution/parity claim. Other
 combined profiles, write preservation and initialized word ranges remain open.
+
+## Initialized actual native shift word ranges and source keys
+
+[Concrete native fixed-pool traces](Airbender/Review/Trace/Families/ReducedMachine/FixedData.lean)
+now support proved masked-write preservation and unchanged shared initialized
+range induction. The [short public range claim](Airbender/Review/Trace/Families/ReducedMachine/Values.lean)
+derives every read/write/terminal word bound; [both source keys](Airbender/Review/Trace/Families/ReducedMachine/Sources.lean)
+then have exact natural limb/amount/direction packing. Earlier-source bounds stay
+internal and are discharged by public seeds, actual native matching and original
+selected-shift decoding. No range, preservation, expected result or table-equivalence
+answer is a public premise. Symbolic stride/gap/complement proofs replaced the
+allocation-heavy arithmetic search without changing proof/resource limits.
+Nine regressions, all 2,548 standard-only axiom roots, 155 public Review roots and exact
+provenance/guide gates pass. Production/native data and dependencies are unchanged.
+This is a checked native connection for the selected shift profile, not all combined
+operations, original Sail GPR/cell/word execution, numerical PC, physical/preprocessing
+fidelity, protocol/terminal closure or parity.

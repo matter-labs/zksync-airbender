@@ -1,3 +1,4 @@
+import Tests.NativeReducedRanges
 import Tests.NativeReducedDecoder
 import Tests.NativeReducedHistory
 import Tests.NativeReducedNumerics
@@ -2717,3 +2718,38 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedDecoder.out_of_profile_rejected
 #print axioms Tests.NativeReducedDecoder.padding_cannot_be_selected
 #print axioms Tests.NativeReducedDecoder.corrupted_zero_flag_rejected
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.arithmetic_small
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.arithmetic_large
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.gap_sum
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.left_small
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.left_large
+#print axioms Airbender.ReducedMachine.NativeShiftBoundedProofs.candidate_values
+#print axioms Airbender.ReducedMachine.NativeShiftBoundedProofs.candidate_bounds
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.arithmetic_bounds
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.left_bounds
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.right_bounds
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.key_fields
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.canonical_key
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.packed_outputs
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.output0
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.output1
+#print axioms Airbender.ReducedMachine.NativeShiftPreservationProofs.written_bounds
+#print axioms Airbender.ReducedMachine.NativeShiftPreservationProofs.row_write_rule
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.right_small_parts
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.right_small
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.right_large_parts
+#print axioms Airbender.ReducedMachine.NativeShiftNaturalProofs.right_large
+#print axioms Airbender.ReducedMachine.NativeShiftRangeProofs.image_source_keys
+#print axioms Airbender.ReducedMachine.NativeShiftRangeProofs.decoded_write_rules
+#print axioms Airbender.ReducedMachine.NativeShiftRangeProofs.image_value_bounds
+#print axioms Airbender.ReducedMachine.Native.public_shift_source_keys
+#print axioms Airbender.ReducedMachine.Native.public_shift_value_bounds
+#print axioms Tests.NativeReducedRanges.sll_last_amount
+#print axioms Tests.NativeReducedRanges.logical_last_amount
+#print axioms Tests.NativeReducedRanges.arithmetic_boundaries
+#print axioms Tests.NativeReducedRanges.positive_arithmetic_no_fill
+#print axioms Tests.NativeReducedRanges.oversized_low_source_rejected
+#print axioms Tests.NativeReducedRanges.oversized_write_rejected
+#print axioms Tests.NativeReducedRanges.fixed_setup_exact
+#print axioms Tests.NativeReducedRanges.both_native_key_boundaries
+#print axioms Tests.NativeReducedRanges.discarded_write_ranges

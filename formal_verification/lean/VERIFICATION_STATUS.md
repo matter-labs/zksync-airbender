@@ -412,6 +412,61 @@ All affected bounded modules, 2,513 standard-only axiom roots, 153 public Review
 roots and exact provenance/guide/layer gates pass at unchanged limits. No native
 defect or new issue-handling assumption is established.
 
+## Native reduced initialized shift ranges and canonical keys (6 November 2026)
+
+The [concrete trace constructor](Airbender/Review/Trace/Families/ReducedMachine/FixedData.lean)
+selects exactly the checked native fixed pool and retains every row and explicit
+state/memory boundary. Acceptance is checked on that constructed trace; no premise
+equates an arbitrary table with the native pool. The retained public fixture and
+its separate compiler/preprocessing/physical setup boundaries are unchanged.
+
+[Canonical key calculations](Airbender/Proofs/ReducedMachine/NativeShiftNatural.lean)
+prove bounded native limb/amount/direction packing and its exact actual tag-37
+arithmetic interpretation. Symbolic gap/divisibility/complement lemmas prove both
+natural assembled limb bounds for every one of the 32 amounts in all three modes.
+They retain logical/positive/arithmetic-zero-shift cases and native right-output
+order. [Actual candidate recovery](Airbender/Proofs/ReducedMachine/NativeShiftBounded.lean)
+uses the real contribution queries, derived sign filler and native equations to
+identify both candidate values and bounds. Its earlier-source premise is internal
+and is removed by initialized history in the public claims.
+
+[Native write preservation](Airbender/Proofs/ReducedMachine/NativeShiftPreservation.lean)
+keeps readonly refreshes and derives actual zero-flag masking from original public
+decoding. The last port depends only on the earlier first read. The
+[shared time induction assembly](Airbender/Proofs/Trace/Families/ReducedMachine/Values.lean)
+therefore derives every native read, actual write and terminal word range from
+original public seeds, actual fixed-pool acceptance and complete selected-shift
+decoder membership. No per-row range, source value, clock, selector, expected
+read/write or preservation rule is supplied. The
+[short public range theorem](Airbender/Review/Trace/Families/ReducedMachine/Values.lean)
+includes discarded reads/writes. The formerly unchecked source-one low limb is
+now bounded in this initialized selected profile.
+
+[Both actual source keys](Airbender/Review/Trace/Families/ReducedMachine/Sources.lean)
+now have their exact natural limb/amount/direction packing, using those derived
+bounds and the original public decoded mask. This is native key/word-range
+soundness, not original Sail GPR/cell transport or complete shifted-word/instruction
+execution. Other combined operation profiles, numerical PC+4/wraparound,
+workers/accounting/protocol/padding/terminal/init remain unfinished. General native
+preprocessing/ROM/physical fidelity remains separately scoped.
+
+[Nine regressions](Tests/NativeReducedRanges.lean) retain left/right last-amount
+results, four negative arithmetic boundaries, positive arithmetic zero fill,
+both native packed-key boundaries and exact setup selection. Initialized public
+claims reject oversized low source reads and actual writes, and derive discarded
+zero writes while preserving bounded source participation. These are not complete
+positive 117-equation execution fixtures.
+
+The first finite large-coefficient bound search hit Lean's allocation cap; a
+scalar-only version and isolated amount31 probe confirmed the cost was arithmetic,
+not imports. All failed workers terminated with no survivors and no ceiling raised.
+Symbolic stride/gap proofs plus tiny complete power/filler identities now pass at
+default proof settings. Successful arithmetic modules stay below500MiB footprint;
+actual candidate recovery used568.67MiB and generic projections804.47MiB, within
+unchanged ceilings. All affected bounded modules, 2,548 explicit standard-only
+axiom roots, 155 public Review roots and exact provenance/guide/layer gates pass.
+No native defect, circuit fix or new issue-handling assumption is introduced.
+
 ## Checked coverage
 
 | Circuit | Coverage |

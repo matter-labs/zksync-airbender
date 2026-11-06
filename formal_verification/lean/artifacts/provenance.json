@@ -7332,6 +7332,122 @@
       "backport_reuse_revision": "00b6fff476d345eeccbcbe4355745336587dc46c",
       "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/NativeData.lean",
       "backport_reuse_sha256": "871c1261bf58c6b610e73fcd41a8336dcb4b97f4faea02ca177ca19f19371c0a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftNatural.lean",
+      "change": "Adapt bounded field-key lifting to actual native limb/amount/direction packing; prove exact22bit key fields and actual certified monolithic table outputs. Natural assembly references stay internal to Proofs.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/ShiftSourceBounds.lean",
+      "backport_reuse_sha256": "8ce7a9b11814561c8e7913a7a8c9520d4d7839c6e5f6e3656c58836841e3034b"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftNaturalViews.lean",
+      "change": "Reuse abstract pair-projection proof method to expose scalar reference limbs without reducing expanded shift arithmetic.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftArithmetic.lean",
+      "backport_reuse_sha256": "287f7fec6a7190e90bb1781051f24e859379da2f35e49bf3d1676e004cfbd10d"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBoundMath.lean",
+      "change": "Redesign disjoint left-limb bound calculation as symbolic quotient/remainder gap and divisibility lemmas. Do not reuse the allocation-heavy finite large-coefficient search; no proof/resource ceiling change.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/SllLimbBounds.lean",
+      "backport_reuse_sha256": "499fb084d8fb3ef451c20381f8326dc9b497b9f3735ad4aa8d065e08863bd51b"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBoundsLeft.lean",
+      "change": "Adapt complete32amount coverage to native scalar assembly using symbolic small/large proofs and tiny complete power identities at default limits.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/SllLimbBounds.lean",
+      "backport_reuse_sha256": "499fb084d8fb3ef451c20381f8326dc9b497b9f3735ad4aa8d065e08863bd51b"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftRightMath.lean",
+      "change": "Derive exact complementary right residues and large-shift quotient forms symbolically, replacing large-coefficient search and retaining actual native output order.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/SrlLimbBounds.lean",
+      "backport_reuse_sha256": "7896a48c7082cc8cd8c100a3fd72083a9f09620deccbe152de19f8f3305a244e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBoundsRight.lean",
+      "change": "Adapt all32logical-right amounts through independently proved small/large arithmetic helpers; no table/output premise.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/SrlLimbBounds.lean",
+      "backport_reuse_sha256": "7896a48c7082cc8cd8c100a3fd72083a9f09620deccbe152de19f8f3305a244e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftArithmeticMath.lean",
+      "change": "Derive disjoint sign-filler/complement bounds symbolically; helper fill identities are discharged by complete closed certificates from the retained native filler reference.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/SraLimbBounds.lean",
+      "backport_reuse_sha256": "fee863256d32c32a6188e2e1b80fcb62a8629286bd2b9906b8a5782bb621f0bd"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBoundsArithmetic.lean",
+      "change": "Adapt all32arithmetic-right amounts including positive inputs and zero-shift exception; use symbolic helpers and complete small filler identities without increased limits.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/SraLimbBounds.lean",
+      "backport_reuse_sha256": "fee863256d32c32a6188e2e1b80fcb62a8629286bd2b9906b8a5782bb621f0bd"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBounded.lean",
+      "change": "Connect actual native contribution/filler/candidate equations to exact bounded-source natural assembly and candidate16bit bounds. The internal source premise is later derived by initialized history.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftContributions.lean",
+      "backport_reuse_sha256": "ec431abaf6d2b1d01f5f75ef69ac9bdd31661685314c35457c8e7a306b6dc00c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftPreservation.lean",
+      "change": "Adapt actual masked write and readonly refresh preservation to regenerated native ports; earlier-read assumptions stay inside the proved shared induction rule. Decoder membership derives the x0 branch.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ShiftBinop/Values.lean",
+      "backport_reuse_sha256": "b1b101b54def6b8efd98aff7b4f836243f2d094a3d15e6e48a79042c4ea02336"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/Values.lean",
+      "change": "Reuse unchanged shared initialized range induction, with actual fixed-pool native acceptance and original public selected shift decoding deriving all local write rules. No public source/range/preservation/result premise.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ShiftBinop/Values.lean",
+      "backport_reuse_sha256": "b1b101b54def6b8efd98aff7b4f836243f2d094a3d15e6e48a79042c4ea02336"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/Sources.lean",
+      "change": "Use derived native source bounds and original public decoded mask to recover exact natural limb/amount/direction packing for both actual keys, including x0 forms.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ShiftBinop/Sources.lean",
+      "backport_reuse_sha256": "36093cda3decc351ed96bfc1ec59e384ad234c01fadfa8b586e884f107655564"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/Values.lean",
+      "change": "Keep a short public initialized native read/write/terminal range theorem for the selected shift profile at the actual fixed pool.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ShiftBinop/Values.lean",
+      "backport_reuse_sha256": "3be9bafdcb3e79b4ecb51728cf6be8cd77121a18c8c02463fd8dd1862a27b6de"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/Sources.lean",
+      "change": "Keep a short public original-source/canonical native-key claim with no supplied low read bound, source answer, selector or expected key.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ShiftBinop/Sources.lean",
+      "backport_reuse_sha256": "96569e768ef2b3801bcf8ec2b1454c8bec4300d066fe5e047cace1caa32ceab2"
+    },
+    {
+      "path": "Tests/NativeReducedRanges.lean",
+      "change": "Nine boundary/initialized rejection/construction/x0 regression roots. Retain discarded-read participation; reject oversized actual reads/writes from proved initialized ranges. Not complete positive117equation execution fixtures.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Tests/NativeReducedNumerics.lean",
+      "backport_reuse_sha256": "e2514c8a63f16d049d77015dba5a78ed7dbc8955ef37dd123cd4945d397c6115"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBounded.lean",
+      "change": "Reuse the proved small-sum/no-Mersenne-rollover argument for actual two/three-part native limb sums; exact native candidate equations provide the field assembly.",
+      "backport_reuse_revision": "7d54f8ed7a19964a4d154f68992ebb607c9a87e7",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/ShiftContributions.lean",
+      "backport_reuse_sha256": "787091b3cffb8af67e81500129ba88c5d387880d9886f57070af670644087f42"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/FixedData.lean",
+      "change": "Construct a trace with the exact checked native fixed pool while retaining all rows and explicit state/memory boundaries. This selects acceptance at a concrete reference and assumes no equivalence with arbitrary tables; native public fixture/fidelity scope unchanged."
     }
   ],
   "setup_artifacts": [

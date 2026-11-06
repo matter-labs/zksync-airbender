@@ -130,6 +130,20 @@ fixture stays unchanged. Other profiles, decoded write preservation, initialized
 word/source bounds, full PC/results and original execution remain separate.
 No expected mask, zero flag, source value or result is an added per-row premise.
 
+[Initialized selected-shift word ranges](Airbender/Review/Trace/Families/ReducedMachine/Values.lean)
+now follow from original public seeds, complete original public decoder membership
+and acceptance against the concrete native fixed pool chosen by
+[fixedData](Airbender/Review/Trace/Families/ReducedMachine/FixedData.lean). The
+constructor preserves all rows and state/memory boundaries and introduces no
+table-equivalence premise. Native decoded masked-write preservation and readonly
+refreshes feed unchanged shared time induction, deriving the low source bound
+rather than assuming it. [Both natural packed keys](Airbender/Review/Trace/Families/ReducedMachine/Sources.lean)
+then follow without a source/key answer. Internal bounded-source calculations are
+proved and their premises discharged by history. This covers the selected shift
+profile, not all combined operations, original Sail GPR/cell/result execution,
+numerical PC or machine/protocol terminal closure. Existing native preprocessing,
+fixed-ROM configuration and physical enforcement boundaries stay separate.
+
 Production circuit and machine code must stay unchanged. Confirmed native issues
 are documented with their exact evidence and, where necessary, narrow explicit
 Review interface assumptions. Those premises neither fix an issue nor establish

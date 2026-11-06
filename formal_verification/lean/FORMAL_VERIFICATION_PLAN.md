@@ -50,9 +50,13 @@ Full combined row effects and execution remain pending. See the
    meanings, including the merged boundary and reversed right outputs. Complete
    native-pool membership derives canonical keys, exact arithmetic outputs and
    bounds; the selected native row derives all four contribution values/bounds
-   at its actual field-packed keys. Next derive canonical source-key binding
-   from native bounds/initialized reads, complete word results, architectural
-   rd/x0/public decoding and numerical PC successor. The former projection
+   at its actual field-packed keys. Initialized selected-shift traces now derive
+   every read/write/terminal word bound and both canonical source keys from public
+   seeds, original public decoding and actual fixed-pool native acceptance. Internal
+   natural candidate values/bounds and masked-write preservation are proved for
+   all 32 amounts, including x0 and arithmetic zero shift. Complete RV32 word/Sail
+   result correspondence, other profiles, architectural cell/GPR execution and
+   numerical PC successor remain open. The former projection
    allocation gap is closed by generic projections and separate proof units,
    without increasing limits or adding result/equivalence premises.
 3. Compose initialized combined histories, public decoding and original execution.
@@ -60,10 +64,12 @@ Full combined row effects and execution remain pending. See the
    now discharge the unchanged shared clock contract. Public seed construction
    plus accepted native state/memory matching derive full logical memory history,
    newest preceding reads, all local/prior clock bounds and terminal four-tick
-   row accounting. This does not derive word ranges: prove decoded native write
-   preservation across supported combined operations before using shared range
-   induction to recover the missing source-one low-limb bound. Public decoding,
-   actual rd/x0 and original execution remain unfinished.
+   row accounting. Proved selected-shift write preservation now feeds shared
+   range induction and derives the formerly unchecked low source limb, all other
+   native word ranges and both canonical source keys. Concrete fixedData selects
+   the actual certified native pool without an equivalence premise. Extend proved
+   local preservation/public decoding to other combined operations; original cell,
+   GPR and full instruction execution remain unfinished.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.
 

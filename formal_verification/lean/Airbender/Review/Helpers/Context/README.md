@@ -121,3 +121,13 @@ and latest reads from original public seeds and native matching. These context
 definitions introduce no whole-execution dependency. Word ranges still need
 proved decoded write preservation and shared range induction; original execution
 and physical/protocol/terminal/init enforcement are separate.
+
+## Actual native reduced initialized shift ranges
+
+[Concrete native setup selection](../../Trace/Families/ReducedMachine/FixedData.lean)
+lets the actual pool's numerical certificates feed proved local masked-write
+preservation. [Initialized ranges](../../Trace/Families/ReducedMachine/Values.lean)
+reuse shared time induction and original public seeds; [canonical source keys](../../Trace/Families/ReducedMachine/Sources.lean)
+derive the native natural packing without a low-read or key premise. These are
+selected-shift trace conclusions; original Sail GPR/cell execution, other combined
+profiles and preprocessing/physical/protocol/terminal boundaries remain open.

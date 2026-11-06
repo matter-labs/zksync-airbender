@@ -46,3 +46,21 @@ not a split-family native table. This does not establish native Rust preprocessi
 exports, universal fixed-ROM binding, other combined operations or a full accepted
 execution fixture. Native write preservation, initialized source ranges and
 complete instruction/execution effects remain next.
+
+## Initialized word ranges and native source keys
+
+[Concrete fixedData](FixedData.lean) selects the actual native pool while retaining
+rows and explicit state/memory boundaries. It assumes no equivalence with another
+table. [Native preservation](../../../../Proofs/ReducedMachine/NativeShiftPreservation.lean)
+proves readonly refreshes and the actual masked destination write preserve ranges
+from earlier reads, using original decoded rd/x0 fields. [Shared range induction](../../../../Proofs/Trace/Families/ReducedMachine/Values.lean)
+then derives all native read/write/terminal word bounds from public seeds and
+accepted matching; the [public interface](Values.lean) has no per-row range or
+preservation-rule premise. [Both source keys](Sources.lean) are now exact natural
+limb/amount/direction packings using the derived low source bound. Calculation
+proofs stay under Proofs, including all32amounts and the arithmetic zero-shift
+exception. [Nine regressions](../../../../../Tests/NativeReducedRanges.lean)
+retain shift/sign boundaries, reject oversized actual reads/writes and preserve
+bounded x0 source participation. No complete positive117-equation execution
+fixture is asserted. Other combined profiles, original Sail GPR/cell/word effects,
+numerical PC and preprocessing/physical/protocol/terminal/init remain separate.

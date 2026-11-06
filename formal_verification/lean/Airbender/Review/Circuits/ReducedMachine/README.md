@@ -159,3 +159,12 @@ other profiles, native write preservation, initialized word ranges and execution
 remain separate. [Regressions](../../../../Tests/NativeReducedDecoder.lean)
 retain twelve ordinary/x0 forms, original public slots, unsupported amounts,
 padding and corrupted-zero-flag rejection.
+
+[Initialized native word ranges](../../Trace/Families/ReducedMachine/Values.lean)
+and [both canonical source keys](../../Trace/Families/ReducedMachine/Sources.lean)
+now discharge the earlier source-bound gap for selected original shifts. Actual
+candidate/filler/query equations and symbolic disjoint-half bounds prove masked
+write preservation; unchanged time induction derives the formerly unchecked low
+source limb from public seeds and matching. [Concrete setup selection](../../Trace/Families/ReducedMachine/FixedData.lean)
+uses the actual pool without table equivalence. Full RV32 word/Sail cell/GPR
+execution, numerical PC, other profiles and protocol/physical boundaries remain open.

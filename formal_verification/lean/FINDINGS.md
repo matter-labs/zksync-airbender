@@ -113,6 +113,14 @@ now derives actual native masks and rd/x0 fields, and native equations reject
 sparse holes/padding. Native Rust decoder-export/fixed-ROM fidelity is still an
 open correspondence boundary, not a confirmed defect. Other combined profiles,
 write preservation and initialized execution remain unfinished proof work.
+[Initialized selected-shift ranges and native source keys](Airbender/Review/Trace/Families/ReducedMachine/Sources.lean)
+now close the missing low-read binding in that profile: proved masked-write
+preservation feeds shared public-seed history induction. No source bound, write
+rule or expected key is supplied publicly. Earlier large-coefficient arithmetic
+attempts hit the allocation cap; symbolic proofs replace them at unchanged limits.
+These resource failures and proof completion are neither native defects nor fixes.
+Other combined profiles, original Sail execution and physical/protocol boundaries
+remain open.
 Confirmed native-v2 defects remain zero.
 
 ## Open bindings
