@@ -5,8 +5,6 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Trace Trace.Proofs Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 65536
-set_option maxHeartbeats 2400000
-set_option Elab.async false
 
 /-- An aligned blessed pointer leaves room for every complete physical lane. -/
 theorem lane_address_value (pointer : BitVec 32) (aligned : pointer.toNat % 256 = 0)

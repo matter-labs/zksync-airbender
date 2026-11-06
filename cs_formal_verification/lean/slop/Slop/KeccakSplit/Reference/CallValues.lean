@@ -5,8 +5,6 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Trace Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 65536
-set_option maxHeartbeats 2400000
-set_option Elab.async false
 
 /-- All original delayed-iota constants are complete sixty-four-bit values. -/
 theorem round_constant_bound (round : Nat) : roundConstant round < 2 ^ 64 := by

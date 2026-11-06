@@ -4,8 +4,6 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Trace Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 65536
-set_option maxHeartbeats 2400000
-set_option Elab.async false
 
 /-- Exact Sail word effects give the unchanged complete physical lane step.
 The unused padding lane needs no initialized memory cell. -/

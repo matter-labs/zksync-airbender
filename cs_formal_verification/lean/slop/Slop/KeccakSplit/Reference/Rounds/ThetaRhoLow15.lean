@@ -5,7 +5,6 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 set_option maxRecDepth 65536
-set_option maxHeartbeats 4000000
 set_option cbv.maxSteps 2000000
 attribute [local cbv_opaque] rotLeft64 not64 Nat.xor Nat.land roundConstants
 

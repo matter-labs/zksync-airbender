@@ -6,7 +6,6 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1600000
 
 /-- All 361 original split reference calls produce the original Keccak permutation.
 This theorem makes no native worker or circuit soundness claim. -/

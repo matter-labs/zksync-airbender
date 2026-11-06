@@ -7,7 +7,6 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 set_option maxRecDepth 65536
-set_option maxHeartbeats 4000000
 
 /-- Call 360 applies the last original iota constant to the final lane layout. -/
 theorem final_iota_reference (state : LaneState) :

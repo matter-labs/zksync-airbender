@@ -7,8 +7,6 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Trace Trace.Proofs Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 65536
-set_option maxHeartbeats 2400000
-set_option Elab.async false
 
 private theorem control_word_bound (index : Fin 361) : controlAt index.val < 2 ^ 32 := by
   have indexBound := index.isLt

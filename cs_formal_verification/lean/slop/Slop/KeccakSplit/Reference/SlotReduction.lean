@@ -3,7 +3,6 @@ import Slop.KeccakSplit.Reference.PermutationDefinitions
 namespace Airbender.Keccak.Split.Call.Proofs
 set_option warningAsError true
 set_option maxRecDepth 65536
-set_option maxHeartbeats 4000000
 
 -- The finite proof below checks every index against the unchanged reference.
 private def slotCache : Vector (Vector (Fin 31) 7) 361 := #v[

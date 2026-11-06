@@ -5,8 +5,6 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Trace Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 65536
-set_option maxHeartbeats 2400000
-set_option Elab.async false
 
 /-- A complete physical snapshot reads the thirty real lane slots. The unused
 padding slot has value zero and requires no Sail memory cell. -/
