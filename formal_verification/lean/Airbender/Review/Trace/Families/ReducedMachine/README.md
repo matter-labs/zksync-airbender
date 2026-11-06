@@ -204,3 +204,14 @@ reject oversized sources/terminal PCs and nonzero x0 events. These do not certif
 positive nonempty arithmetic/mixed accepted native witnesses. Other ordinary
 profiles, native public/physical fidelity and worker/protocol/padding/terminal/init
 boundaries remain open; no parity follows from this selected coverage.
+
+## Bitwise local prerequisite
+
+[Native bitwise numerical roots](../../../Circuits/ReducedMachine/BitwiseTheorems.lean)
+now derive source/selected-operand bounds and complete canonical RV32 candidates
+from actual byte queries under explicit native33/35mask and funct3tag. [Exact pool](../../../Circuits/ReducedMachine/Tables/NativeBitwiseTheorems.lean)
+connections are proved rather than assumed. Original public bitwise decoding,
+rd/x0/operand/GPR/clause/PC transport and common preservation/history remain next.
+SupportedMode and its initialized execution currently still cover only selected
+shifts and ADD/ADDI/SUB/LUI/AUIPC. Positive byte-pool rows do not certify full
+117-equation bitwise accepted execution or physical setup.

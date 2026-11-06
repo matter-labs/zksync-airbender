@@ -432,3 +432,20 @@ x0/terminal rejection. These are not positive nonempty arithmetic/mixed native
 117-equation fixtures. Remaining ordinary combined profiles, workers/accounting,
 protocol/padding/terminal/init and public/compiler/physical/completeness boundaries
 remain open. No native finding/fix/issue assumption or parity claim is added.
+
+## Native bitwise local numerical checkpoint
+
+[Actual reduced bitwise proofs](Airbender/Review/Circuits/ReducedMachine/BitwiseTheorems.lean)
+now derive all18native flags at33/35, actual four byte queries/decompositions,
+full canonical RV32 candidates and both operand ranges without range answers.
+[Actual pool semantics](Airbender/Review/Circuits/ReducedMachine/Tables/NativeBitwiseTheorems.lean)
+use exact independently emitted data identities, checked in Lean, before reusing
+unchanged byte arithmetic. Old split masks/constraints are not transferred. Actual
+masked destination/register-space and default-PC selection are checked; original
+public bitwise decoding/rd/x0/GPR/operand/clause/PC/fetched execution remain next.
+The common supported execution still covers shifts and five arithmetic profiles.
+[Regressions](Tests/NativeReducedBitwise.lean) retain actual byte-row offsets,
+corruption/domain rejection, immediate readonly/x0 participation and sign-bit RV32
+values above M31, without claiming complete positive native bitwise execution.
+No native/imported/generated data or production/Sail/dependency input changed;
+no native finding, issue assumption, fix or parity claim is added.

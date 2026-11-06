@@ -86,10 +86,15 @@ Full combined row effects and execution remain pending. See the
    rules; common initialized induction derives every read/write/terminal bound,
    original Sail state and code/misa/decoder frame. Finite mixed fetched execution
    now follows under exact fixedData acceptance without local answer premises or
-   arbitrary-table equivalence. Next extend actual monolithic native decoding,
-   fixed-table/local effects and preservation to remaining ordinary profiles
-   (including bitwise operations), then workers/protocol/padding/terminal/init.
-   Positive nonempty arithmetic/mixed fixtures remain distinct open test coverage.
+   arbitrary-table equivalence. Native bitwise33/35selector bits, all four byte
+   queries/decompositions, actual literal/full-pool table arithmetic and canonical
+   full RV32 candidates/source/operand bounds are now checked without source-range
+   premises. Actual masked port/address/default-PC selection are checked locally.
+   Next derive original public bitwise register/immediate masks/tags/rd/x0/operands,
+   original GPR/clause/PC execution and extend the common supported projection,
+   preservation/history and fetched execution. Other ordinary combined profiles,
+   workers/protocol/padding/terminal/init and positive nonempty arithmetic/mixed/
+   bitwise fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,
    without increasing limits or adding result/equivalence premises.
 3. Compose initialized combined histories, public decoding and original execution.

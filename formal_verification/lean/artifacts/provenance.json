@@ -587,6 +587,10 @@
     {
       "path": "../../cs/src/machine/instruction_decoding_data/mod.rs",
       "sha256": "4551972c3a76b6963534fe33d0e600a989f889ad3edcc2fa28645999fa545bf4"
+    },
+    {
+      "path": "../../cs/src/machine/ops/binops.rs",
+      "sha256": "7396ab27011f4ec50bf910d9fc523b1e5cd933b73aedcbbc434a3f0dc73d6359"
     }
   ],
   "adaptations": [
@@ -8461,6 +8465,111 @@
       "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
       "backport_reuse_path": "Tests/NativeReducedArithmeticFetched.lean",
       "backport_reuse_sha256": "8069959392000ed53ed0217c284233429888c5c0f909982470f3aa25d2ae3e95"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Bitwise.lean",
+      "change": "Define the actual native33/35header+BINOP bit mask and four actual byte-triple observables. Retain existing shared native source/candidate fields; no old split bitwise masks transfer.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Arithmetic.lean",
+      "backport_reuse_sha256": "5fc0d3efc8a8eee81aa4cf1f7d8e7c05b04c11714616f8090fbc9933105606f2"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseSelectors.lean",
+      "change": "Adapt the unchanged eighteen accepted Boolean bounds/packed112 argument into two small33/35profiles; derive every header/major/minor bit at default proof limits.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticSelectors.lean",
+      "backport_reuse_sha256": "097885b26946bdd6e13882c2f8966eadbfcef1527fbc1fea9791d5c3f0b0cf10"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseData.lean",
+      "change": "Kernel-check exact independently emitted dataT4/dataT6/dataT7 identities against the unchanged previously certified byte literal data; no table-equivalence assumption.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Tables/NativeData.lean",
+      "backport_reuse_sha256": "052b017f835b4dceef65ef23136d99a1b9eff3eb1265afa61fd2f59ec91220df"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseData.lean",
+      "change": "Use exact unchanged prior XOR/OR/AND literal definitions and arithmetic certificates only after actual native data identities are proved.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeBinaryRows.lean",
+      "backport_reuse_sha256": "2363e01af1280299393dad8e21c3e65ba2f759e3a064cb12a31154d273c1fe92"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseFields.lean",
+      "change": "Adapt exact actual native source32/33,readonly60/61/113,destination100..107/114 and PC110/111 proof assembly to the newly derived bitwise flags.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticFields.lean",
+      "backport_reuse_sha256": "0b1aea49ce917d89da3b93abf1443917e9c8d4934ccae474d60b5c7dafb2fd95"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseFields.lean",
+      "change": "Derive all actual82..97 byte-query fields/tags and inverse256 source decompositions, plus actual54/55/98/99byte candidate assembly. No old split query indices/constraints transfer.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftQueries.lean",
+      "backport_reuse_sha256": "7e9f4aa6b644a2a65d95e789e47f42aae0f039c8f48574cf1ca2ff0c74a79d58"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseFields.lean",
+      "change": "Reuse unchanged actual22lookup query extraction at slots18..21 after newly proved bitwise field identities; retain complete actual native fixed pool acceptance.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeQueries.lean",
+      "backport_reuse_sha256": "1c7c86234bc0b73da24d766c656215758119199523e23c241e8c7c83f89d829b"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseTable.lean",
+      "change": "Isolate tags4/6/7 from actual complete5771521row pool, then transport through checked native data identities with an abstract nondependent column getter.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftTable.lean",
+      "backport_reuse_sha256": "fb42b99a06aa8ae4fc3499fa63a9256e980dd66cdcde07e582a6a194d6b965a6"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseTable.lean",
+      "change": "Reuse unchanged certified arithmetic/bounds for all65536rows of each prior byte relation, after the new actual native data/pool connection. No region/equivalence result is supplied.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Airbender/Proofs/Tables/Binary.lean",
+      "backport_reuse_sha256": "e42796d652a97d1889ea6a8e815f8eab36cdc02a5b02598bea5a6965a76b294e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseResult.lean",
+      "change": "Reuse unchanged PURE word_of_byte_pairs/binary_pack after new actual native byte inputs/outputs, inverse256 equations and candidate assembly. Derive both operand/all candidate ranges and full RV32 bits without source-bound premises; do not inherit split masks/constraints.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/BinaryValues.lean",
+      "backport_reuse_sha256": "6ac98718abb84333f875ae933df48379bb566db339fa76be3591c0b7e740ce5e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseResult.lean",
+      "change": "Reuse unchanged byte_pair_value for canonical no-wrap source/operand/candidate limb reconstruction after actual byte-table bounds.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Airbender/Proofs/Arithmetic/Bytes.lean",
+      "backport_reuse_sha256": "0ba857dc6ebaa32eb35055f2c2d92ff92fdfadb954f10aa778f13900b98ab776"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/BitwiseTheorems.lean",
+      "change": "Keep two short actual native bitwise result/masked-port roots. Explicit native mask/rawfunct3 tag remain until original public bitwise decoding/history is composed; no local source/byte/result range answers are supplied.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/ArithmeticTheorems.lean",
+      "backport_reuse_sha256": "0541dcc6068e50df19c3253d89c06ce11483520b25b210e4f25224f39234276b"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Tables/NativeBitwiseTheorems.lean",
+      "change": "Expose one short exact full-pool tag-selected byte arithmetic/bound root, using proved literal transport rather than a table-equivalence premise.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Tables/NativeTheorems.lean",
+      "backport_reuse_sha256": "6a3fa0e5b230b8503504b50fa11c768f9589b7377b4ac524895c36583992b48e"
+    },
+    {
+      "path": "Tests/NativeReducedBitwise.lean",
+      "change": "Lift independently certified actual byte rows at native offsets1/65537/131073; check all row indices and independent zero/crossing/max expected values, corruption/tag/domain rejection. These are table certificates,not complete117equation instruction fixtures.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Tests/NativeReducedNumerics.lean",
+      "backport_reuse_sha256": "e2514c8a63f16d049d77015dba5a78ed7dbc8955ef37dd123cd4945d397c6115"
+    },
+    {
+      "path": "Tests/NativeReducedBitwise.lean",
+      "change": "Adapt immediate/readonly/x0 participation and wholeRV32 conditional numerical checks after the new native bitwise connections, without public source-bound answers.",
+      "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
+      "backport_reuse_path": "Tests/NativeReducedArithmetic.lean",
+      "backport_reuse_sha256": "6b3bbd3b9fccf75e3b9fac64df816bc4808735ea5e8f6750e731940525d0b10a"
     }
   ],
   "setup_artifacts": [

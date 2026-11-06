@@ -228,3 +228,14 @@ now has a specific full-capacity public Sail fidelity certificate. Original raw
 funct3/store fields, negative immediates, x0 and unused-index clearing are retained.
 These metadata checks complement the existing native table certificates; binding
 packed keys to initialized bounded reads and original execution remains open.
+
+## Actual combined reduced binary regions
+
+[Reduced native byte semantics](../../Circuits/ReducedMachine/Tables/NativeBitwiseTheorems.lean)
+now isolate tags4/6/7 from the entire actual pool. [Exact native data identities](../../../Proofs/ReducedMachine/NativeBitwiseData.lean)
+are kernel checked before unchanged certified byte arithmetic is reused. This
+supplies every actual byte key/output bound and exact operation without an
+assumed native/old-table equivalence. [Native word assembly](../../../Proofs/ReducedMachine/NativeBitwiseResult.lean)
+uses newly proved monolithic query/decomposition/candidate equations, not old
+split constraints. Original public bitwise decoding and initialized Sail execution
+remain separate from these numerical results.

@@ -1,3 +1,4 @@
+import Tests.NativeReducedBitwise
 import Tests.NativeReducedSupportedDecoder
 import Tests.NativeReducedSupportedExecution
 import Airbender.Review.Trace.Families.ReducedMachine.SupportedDecoder
@@ -2995,3 +2996,33 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedSupportedExecution.oversized_source_rejected
 #print axioms Tests.NativeReducedSupportedExecution.nonzero_x0_event_rejected
 #print axioms Tests.NativeReducedSupportedExecution.oversized_terminal_rejected
+
+#print axioms Airbender.ReducedMachine.NativeBitwiseSelectorProofs.flags
+#print axioms Airbender.ReducedMachine.NativeBitwiseDataProofs.xor_data
+#print axioms Airbender.ReducedMachine.NativeBitwiseDataProofs.or_data
+#print axioms Airbender.ReducedMachine.NativeBitwiseDataProofs.and_data
+#print axioms Airbender.ReducedMachine.NativeBitwiseFieldProofs.source
+#print axioms Airbender.ReducedMachine.NativeBitwiseFieldProofs.source_port
+#print axioms Airbender.ReducedMachine.NativeBitwiseFieldProofs.query_fields
+#print axioms Airbender.ReducedMachine.NativeBitwiseFieldProofs.candidate
+#print axioms Airbender.ReducedMachine.NativeBitwiseFieldProofs.write
+#print axioms Airbender.ReducedMachine.NativeBitwiseFieldProofs.pc
+#print axioms Airbender.ReducedMachine.NativeBitwiseFieldProofs.queries
+#print axioms Airbender.ReducedMachine.NativeBitwiseTableProofs.membership
+#print axioms Airbender.ReducedMachine.NativeBitwiseTableProofs.result
+#print axioms Airbender.ReducedMachine.NativeBitwiseResultProofs.bytes
+#print axioms Airbender.ReducedMachine.NativeBitwiseResultProofs.pair_values
+#print axioms Airbender.ReducedMachine.NativeBitwiseResultProofs.candidate_result
+#print axioms Airbender.ReducedMachine.Native.bitwise_result
+#print axioms Airbender.ReducedMachine.Native.bitwise_masked_write
+#print axioms Airbender.ReducedMachine.NativeFixed.bitwise_implementation
+#print axioms Tests.NativeReducedBitwise.masks
+#print axioms Tests.NativeReducedBitwise.actual_byte_rows
+#print axioms Tests.NativeReducedBitwise.boundary_rows
+#print axioms Tests.NativeReducedBitwise.corrupted_xor_rejected
+#print axioms Tests.NativeReducedBitwise.wrong_operation_rejected
+#print axioms Tests.NativeReducedBitwise.oversized_byte_rejected
+#print axioms Tests.NativeReducedBitwise.immediate_port
+#print axioms Tests.NativeReducedBitwise.discarded_participation
+#print axioms Tests.NativeReducedBitwise.oversized_source_rejected
+#print axioms Tests.NativeReducedBitwise.cross_limb_results

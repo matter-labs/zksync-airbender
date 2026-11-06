@@ -31,6 +31,64 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Native reduced bitwise byte/word results (6 November 2026)
+
+[Actual reduced bitwise observables](Airbender/Review/Circuits/ReducedMachine/Bitwise.lean)
+retain native masks 33/35 and four byte triples. [Selector proofs](Airbender/Proofs/ReducedMachine/NativeBitwiseSelectors.lean)
+derive every eighteen header/major/minor bit from the actual Boolean assertions
+and packed112 equation in two small profiles. [Native field proofs](Airbender/Proofs/ReducedMachine/NativeBitwiseFields.lean)
+derive register/immediate selection, readonly rs2/register-space addressing,
+all four actual query triples/tags, inverse-256 source decomposition, candidate
+byte assembly, actual masked destination/address and default-PC selection.
+Original public bitwise decoding has not yet supplied those explicit local masks/tags.
+
+[Literal identities](Airbender/Proofs/ReducedMachine/NativeBitwiseData.lean) kernel-check
+exact equality of independently emitted native dataT4/dataT6/dataT7 with the
+unchanged certified XOR/OR/AND byte data. [Full-pool transport](Airbender/Proofs/ReducedMachine/NativeBitwiseTable.lean)
+isolates the actual tags from all 5,771,521 native rows, then transports getters
+through these proved identities. [One short table root](Airbender/Review/Circuits/ReducedMachine/Tables/NativeBitwiseTheorems.lean)
+derives both byte-key bounds, output bound and exact bitwise value. No region,
+table-equivalence or desired-result premise is supplied. All 65,536 rows of each
+actual byte region inherit checked arithmetic only after this native connection.
+
+[Canonical word assembly](Airbender/Proofs/ReducedMachine/NativeBitwiseResult.lean)
+derives the actual source, selected operand and candidate word bounds directly
+from accepted byte queries, including the low source limb w35. It reconstructs
+all six natural limbs using native inverse-256/candidate equations and unchanged
+pure byte/word packing. [Two short row roots](Airbender/Review/Circuits/ReducedMachine/BitwiseTheorems.lean)
+derive complete RV32 XOR/OR/AND candidate bits and actual field-masked rd port.
+No source/read/byte/output bound or result answer is supplied. Explicit native
+mask/register form and raw funct3 tag remain until original public decoding is
+composed. Candidate/source words are actual fields, not yet original pre-row Sail
+GPR observations. The port formula alone does not bind rdZeroFlag to original rd=x0.
+
+[Ten regressions](Tests/NativeReducedBitwise.lean) lift every actual native byte
+row at offsets 1/65,537/131,073, check independent zero/crossing/max expected byte
+values, reject corrupted outputs/wrong operation/oversized byte keys, retain
+immediate readonly rs2/x0 participation and discarded candidate obligations,
+derive local low-source bounds, and retain cross-limb/sign-bit RV32 values above
+M31. Positive byte-pool members and conditional native consequences are not
+complete positive 117-equation bitwise instruction or initialized execution fixtures.
+Native binops.rs is newly hash-pinned to the unchanged v2 base; no production,
+importer/exporter/literal/configuration/Sail/dependency input changed.
+
+Next derive original public XOR/OR/AND register/immediate decoding, rd/x0/operand
+binding and actual Sail local execution, then extend the common supported
+initialized execution. SupportedMode currently still admits only shifts and
+ADD/ADDI/SUB/LUI/AUIPC. Other combined operations, worker/accounting/protocol,
+padding/terminal/init and general public/compiler/preprocessing/ROM/physical/
+cryptographic/completeness boundaries remain open. No native defect, issue-handling
+assumption, fix or parity claim is added.
+
+All affected bounded modules and final gates pass: 2,801 explicit standard-only
+axiom roots, 175 public Review roots, four guide names, 2,770 links/anchors and
+context/trace separation. Full Review used 542.74 MiB footprint / 3104.61 MiB
+resident in 14.10 seconds. Independent provenance passes 189 v3-origin and
+945 backport-origin identities, 80 reused modules, eight circuit artifacts,
+64 native sources, 23 setup artifacts and four exporter files. It used
+19.59 / 36.16 MiB in 7.00 seconds. Every owned worker terminated under unchanged
+3072/4096 MiB ceilings, Lean -j1 -M3072 and default proof limits.
+
 ## Mixed native shift/arithmetic fetched execution (6 November 2026)
 
 [One original public projection](Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean)

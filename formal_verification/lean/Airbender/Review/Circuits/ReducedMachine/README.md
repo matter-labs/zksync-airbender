@@ -318,3 +318,16 @@ now composes mixed supported rows using exact fixedData acceptance and derived
 common ranges/history/decoder replay. [Public image checks](../../../../Tests/NativeReducedSupportedDecoder.lean)
 retain original SLL atPC0 and ADD atPC96 together. Other ordinary operations,
 nonempty arithmetic/mixed native fixtures and broader setup/protocol boundaries remain open.
+
+## Actual native bitwise byte and word meanings
+
+[Native bitwise masks/bytes](Bitwise.lean) use actual33/35, with every18flag
+[derived](../../../Proofs/ReducedMachine/NativeBitwiseSelectors.lean). [Actual field proofs](../../../Proofs/ReducedMachine/NativeBitwiseFields.lean)
+recover all four query triples, inverse256source decomposition, candidate assembly,
+readonly addressing, field-masked port and default-PC selection. [Full-pool byte semantics](Tables/NativeBitwiseTheorems.lean)
+follow only after kernel-checked actual literal identities. [Two short row roots](BitwiseTheorems.lean)
+derive fullRV32candidate/source/selected-operand bounds and bitwise results without
+range/result answers. [Tests](../../../../Tests/NativeReducedBitwise.lean) retain
+actual byte-row offsets, corruption/domain rejection, x0 participation and sign-bit
+values. Explicit mask/tag remain local; original public bitwise decoding, rd/x0/GPR/
+operand and Sail execution are next. Common initialized execution is not yet extended.

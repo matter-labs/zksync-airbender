@@ -327,6 +327,28 @@ fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
 terminal/init boundaries remain open. No native defect or issue-handling assumption
 is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
 
+## Actual native bitwise local boundary
+
+[Full-pool byte semantics](Airbender/Review/Circuits/ReducedMachine/Tables/NativeBitwiseTheorems.lean)
+now follow from exact kernel-checked dataT4/dataT6/dataT7 identities with unchanged
+certified literals and actual complete-pool tag isolation. This is a proved
+native connection, not a supplied table-equivalence premise. [Native row results](Airbender/Review/Circuits/ReducedMachine/BitwiseTheorems.lean)
+derive both source/selected-operand ranges, canonical complete RV32 candidates
+and actual field-masked port writes from accepted native constraints under
+explicit native33/35mask and raw funct3=4/6/7. No source/byte/result range or
+expected result is supplied. All readonly/discarded queries still participate.
+
+Original public bitwise decoding, architectural rs1/rs2/rd/x0 and selected
+immediate binding, original GPR/clause/PC/fetched execution are still to be
+composed. The current mixed SupportedMode projection remains shift/arithmetic
+only. Actual port mask/default-PC selection is not those original execution
+connections. [Positive byte rows and conditional regressions](Tests/NativeReducedBitwise.lean)
+are not complete accepted bitwise instruction fixtures. Native Rust decoder-export,
+public/compiler/preprocessing/ROM/physical setup, worker/protocol/padding/terminal/
+init, cryptography and completeness remain separate. The newly pinned binops.rs
+is an unchanged base object; no production fix, native defect or issue assumption
+is introduced. Original Sail/native/imported/exported/literal/dependency inputs stay unchanged.
+
 ## Import and generation fidelity
 
 Mersenne31 coefficients are non-Montgomery residues in 0..=2147483647; the upper
