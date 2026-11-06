@@ -320,9 +320,9 @@ theorem complete (x : Shift) (hx : x.Valid) (before : Reference.RiscV.Sail.State
     | ring1
     | linear_combination x.frame.pc_low
     | linear_combination -x.frame.pc_high
-    | linear_combination x.frame.ts_square hf
+    | linear_combination x.frame.ts_square hf.clock
     | linear_combination x.frame.ts_high
-    | linear_combination Frame.pcCarry_bool hf
+    | linear_combination Frame.pcCarry_bool hf.clock
     | linear_combination x.frame.borrow0_bool
     | linear_combination x.frame.borrow1_bool
     | linear_combination x.frame.borrow2_bool
@@ -337,9 +337,9 @@ theorem complete (x : Shift) (hx : x.Valid) (before : Reference.RiscV.Sail.State
          | ring1
          | linear_combination x.frame.pc_low
          | linear_combination -x.frame.pc_high
-         | linear_combination x.frame.ts_square hf
+         | linear_combination x.frame.ts_square hf.clock
          | linear_combination x.frame.ts_high
-         | linear_combination Frame.pcCarry_bool hf
+         | linear_combination Frame.pcCarry_bool hf.clock
          | linear_combination x.frame.borrow0_bool
          | linear_combination x.frame.borrow1_bool
          | linear_combination x.frame.borrow2_bool

@@ -160,7 +160,7 @@ theorem rotate_row (before : Reference.RiscV.Sail.State) (k a b : Nat) (hk : k <
   exact congrArg Setup.rotateRow
     (Fin.ext (show 786817 + k * 65536 + a * 256 + b - 786817 = k * 65536 + a * 256 + b by omega))
 
-private theorem row_fixed (before : Reference.RiscV.Sail.State) (n : Nat) (hn : n < 2097537)
+theorem row_fixed (before : Reference.RiscV.Sail.State) (n : Nat) (hn : n < 2097537)
     (h1 : n < 1048961) : Setup.row before ⟨n, hn⟩ = Setup.fixedRow ⟨n, h1⟩ := dite_eq_left h1
 
 /-- Zero-test rows (tag 1). -/

@@ -55,6 +55,14 @@ structure Valid (f : Frame) : Prop where
   prev1 : f.prev1Hi * 524288 + f.prev1Lo < f.tsHi * 524288 + f.tsLo + 1
   prev2 : f.prev2Hi * 524288 + f.prev2Lo < f.tsHi * 524288 + f.tsLo + 2
 
+/-- The PC and clock bounds alone (no ordering of the previous port accesses). -/
+structure Clock (f : Frame) : Prop where
+  pcLo : f.pcLo < 65536
+  pcHi : f.finalPcHi < 65536
+  tsLo : f.tsLo + 2 < 524288
+
+theorem Valid.clock {f : Frame} (h : f.Valid) : f.Clock := ⟨h.pcLo, h.pcHi, h.tsLo⟩
+
 /-- The clock columns an assignment places for a frame. -/
 structure Columns (f : Frame) (w : Nat → ZMod babyBearModulus) : Prop where
   tsLo : w 2 = f.tsLo
@@ -168,13 +176,13 @@ theorem Frame.ts_low (f : Frame) :
   push_cast at h
   exact h
 
-theorem Frame.pcCarry_bool {f : Frame} (hf : f.Valid) :
+theorem Frame.pcCarry_bool {f : Frame} (hf : f.Clock) :
     (f.pcCarry : ZMod babyBearModulus) * ((f.pcCarry : ZMod babyBearModulus) - 1) = 0 := by
   have := hf.pcLo
   have : f.pcCarry = 0 ∨ f.pcCarry = 1 := by unfold Frame.pcCarry; omega
   rcases this with h | h <;> rw [h] <;> simp
 
-theorem Frame.tsCarry_bool {f : Frame} (hf : f.Valid) :
+theorem Frame.tsCarry_bool {f : Frame} (hf : f.Clock) :
     (f.tsCarry : ZMod babyBearModulus) * ((f.tsCarry : ZMod babyBearModulus) - 1) = 0 := by
   have := hf.tsLo
   have : f.tsCarry = 0 ∨ f.tsCarry = 1 := by unfold Frame.tsCarry; omega
@@ -189,7 +197,7 @@ theorem Frame.pc_high (f : Frame) :
   unfold Frame.finalPcHi; push_cast; ring
 
 /-- Constraint 93: the clock low limb advances by 4 with at most one wrap. -/
-theorem Frame.ts_square {f : Frame} (hf : f.Valid) :
+theorem Frame.ts_square {f : Frame} (hf : f.Clock) :
     (14745600 : ZMod babyBearModulus) * ((f.tsLo : ZMod babyBearModulus) + 4 - (f.finalTsLo : Nat)) ^ 2 +
       3840 * ((f.tsLo : ZMod babyBearModulus) + 4 - (f.finalTsLo : Nat)) = 0 := by
   have hX : (f.tsLo : ZMod babyBearModulus) + 4 - (f.finalTsLo : Nat) = 524288 * (f.tsCarry : Nat) := by

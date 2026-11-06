@@ -1,5 +1,6 @@
 import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
+import Slop.UnifiedReduced.Completeness.Arith
 import Slop.BabyBear
 import Slop.Sail.WordMemoryState
 
@@ -16,25 +17,20 @@ private def zeroSetup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic 
   contains_iff _ := Iff.rfl
 }
 
-private def row : Nat → ZMod babyBearModulus
-  | 0 => 65532
-  | 1 => 2
-  | 4 | 11 | 128 | 129 | 130 => 1
-  | 31 => 3
-  | 32 => 4
-  | _ => 0
+private theorem zeroSetup_zero : UnifiedReduced.Completeness.ZeroRow zeroSetup := by
+  intro env entry h
+  change ∃ i : Fin 1, entry.map (Expression.eval env) = #v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  exact ⟨0, h.trans (by decide)⟩
 
-set_option maxRecDepth 8192 in
+private def rowWitness : UnifiedReduced.Completeness.Arith :=
+  ⟨⟨65532, 2, 0, 0, 0, 0, 0, 0, 0, 0⟩, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0⟩
+private def row : Nat → ZMod babyBearModulus := rowWitness.honest
+
 private theorem satisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment row)
-      (UnifiedReduced.importedConstraints zeroSetup) := by
-  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, row, Lookup.Contains, Table.toRaw, fromElements]
-  repeat' apply And.intro
-  all_goals solve
-    | decide
-    | (apply Verification.range16_contains; decide)
-    | (exact ⟨⟨0, by decide⟩, rfl⟩)
+      (UnifiedReduced.importedConstraints zeroSetup) :=
+  UnifiedReduced.Completeness.Arith.complete_core _
+    (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _ zeroSetup_zero
 
 example : (Word.mk (row 30).val (row 31).val).toBitVec = (Word.mk 65532 2).toBitVec + 4 := by
   have result := UnifiedReduced.Proofs.pc_successor (p := babyBearModulus)
@@ -51,24 +47,15 @@ open Airbender.Reference.RiscV
 open Airbender.Reference.RiscV.Sail
 open Airbender.Reference.Sail
 
-private def aliasedRow : Nat → ZMod babyBearModulus
-  | 5 | 6 | 7 | 38 | 44 => 1
-  | 36 | 42 => 123
-  | 50 => 246
-  | 80 => 123 * 123 * 943718400
-  | i => row i
+private def aliasedWitness : UnifiedReduced.Completeness.Arith :=
+  { rowWitness with rs1 := 1, rs2 := 1, rd := 1, aLo := 123, bLo := 123 }
+private def aliasedRow : Nat → ZMod babyBearModulus := aliasedWitness.honest
 
-set_option maxRecDepth 8192 in
 private theorem aliased_satisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment aliasedRow)
-      (UnifiedReduced.importedConstraints zeroSetup) := by
-  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, aliasedRow, row, Lookup.Contains, Table.toRaw, fromElements]
-  repeat' apply And.intro
-  all_goals solve
-    | decide
-    | (apply Verification.range16_contains; decide)
-    | (exact ⟨⟨0, by decide⟩, rfl⟩)
+      (UnifiedReduced.importedConstraints zeroSetup) :=
+  UnifiedReduced.Completeness.Arith.complete_core _
+    (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _ zeroSetup_zero
 
 private def before : State :=
   { (default : State) with regs :=
@@ -156,26 +143,15 @@ example : spec discarded ⟨⟨0, 0⟩, ⟨0, 3⟩⟩ := by
     · exact discarded_contract
   · constructor <;> rfl
 
-private def triRow : Nat → ZMod babyBearModulus
-  | 11 => 0
-  | 20 | 52 | 53 | 54 | 55 => 1
-  | 36 | 37 | 42 | 43 | 48 | 49 | 51 => 65535
-  | 50 => 65533
-  | 80 => 4294967295 * 4294967295 * 943718400
-  | i => aliasedRow i
+private def triWitness : UnifiedReduced.Completeness.Arith :=
+  ⟨rowWitness.frame, 3, 1, 1, 1, 65535, 65535, 65535, 65535, 0, 0, 65535, 65535⟩
+private def triRow : Nat → ZMod babyBearModulus := triWitness.honest
 
-set_option maxRecDepth 8192 in
 private theorem tri_satisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment triRow)
-      (UnifiedReduced.importedConstraints zeroSetup) := by
-  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, triRow, aliasedRow, row,
-    Lookup.Contains, Table.toRaw, fromElements]
-  repeat' apply And.intro
-  all_goals solve
-    | decide
-    | (apply Verification.range16_contains; decide)
-    | (exact ⟨⟨0, by decide⟩, rfl⟩)
+      (UnifiedReduced.importedConstraints zeroSetup) :=
+  UnifiedReduced.Completeness.Arith.complete_core _
+    (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _ zeroSetup_zero
 
 private def triBefore : State :=
   { (default : State) with regs :=
@@ -260,37 +236,22 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-private def nativeAssignment (rollover : Bool) (i : Nat) : ZMod babyBearModulus :=
-  if i = 2 || i = 40 then (if rollover then 524284 else 4)
-  else if i = 3 || i = 41 || i = 47 then (if rollover then 7 else 0)
-  else if i = 32 then (if rollover then 0 else 8)
-  else if i = 33 then (if rollover then 8 else 0)
-  else if i = 46 then (if rollover then 524285 else 5)
-  else if i = 48 then 123
-  else if i = 131 || i = 132 || i = 133 then 1
-  else aliasedRow i
+private def nativeWitness (rollover : Bool) : UnifiedReduced.Completeness.Arith :=
+  { aliasedWitness with
+    frame := ⟨65532, 2, if rollover then 524284 else 4, if rollover then 7 else 0, 0, 0,
+      if rollover then 524284 else 4, if rollover then 7 else 0,
+      if rollover then 524285 else 5, if rollover then 7 else 0⟩
+    oldLo := 123 }
+private def nativeAssignment (rollover : Bool) : Nat → ZMod babyBearModulus :=
+  (nativeWitness rollover).honest
 
 private theorem native_constraints (rollover : Bool) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (nativeAssignment rollover))
     (Airbender.UnifiedReduced.clockConstraints zeroSetup) := by
-  apply Verification.holds_append (left := Airbender.UnifiedReduced.importedConstraints zeroSetup)
-    (right := Airbender.UnifiedReduced.importedConstraintsTimestampLookups)
-  · cases rollover <;>
-      simpa [Airbender.UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-        Lookup.Contains, Vector.map, Expression.eval, Verification.environment,
-        Verification.range16, nativeAssignment, aliasedRow, row,
-        show (4 : ZMod babyBearModulus) + 4 + -8 = 0 by decide,
-        show (14745600 : ZMod babyBearModulus) * (524284 + 4) * (524284 + 4) +
-          3840 * (524284 + 4) = 0 by decide,
-        show (8 : ZMod babyBearModulus) + -7 + 3840 * (524284 + 4) = 0 by decide]
-        using aliased_satisfies
-  · cases rollover <;>
-      simp [Airbender.UnifiedReduced.importedConstraintsTimestampLookups,
-        FlatOperation.ConstraintsHoldFlat]
-    all_goals repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, nativeAssignment, aliasedRow, row]
-    all_goals decide
+  cases rollover <;>
+    exact UnifiedReduced.Completeness.Arith.complete _
+      (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide)
+      (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _ zeroSetup_zero
 
 private def nativeToken (timeLo timeHi value : Nat) : MemoryToken babyBearModulus :=
   ⟨(Cell.register 1).addressCode, (timeLo, timeHi), Nat.pair value 0⟩
@@ -313,9 +274,7 @@ private theorem native_accepted (rollover : Bool) : Accepted (nativeTrace rollov
     simp only [nativeTrace, List.mem_singleton] at member
     subst current
     rfl
-  · change [(nativeTrace rollover).initial, (nativeTrace rollover).terminal].Perm
-      [(nativeTrace rollover).terminal, (nativeTrace rollover).initial]
-    exact List.Perm.swap _ _ []
+  · cases rollover <;> exact List.Perm.swap _ _ []
   · cases rollover <;> decide
 
 private theorem native_boundary (rollover : Bool) : ClockBoundary (nativeTrace rollover) := by
@@ -349,11 +308,9 @@ theorem initialized_word_bounds (rollover : Bool) :
   Airbender.UnifiedReduced.native_value_bounds (by decide) (by decide)
     (native_accepted rollover) (native_boundary rollover) (native_image rollover)
 
-private def fabricatedAssignment (i : Nat) : ZMod babyBearModulus :=
-  if i = 42 then 124
-  else if i = 50 then 247
-  else if i = 80 then 123 * 124 * 943718400
-  else nativeAssignment false i
+private def fabricatedWitness : UnifiedReduced.Completeness.Arith :=
+  { nativeWitness false with bLo := 124 }
+private def fabricatedAssignment : Nat → ZMod babyBearModulus := fabricatedWitness.honest
 
 private def fabricatedTrace : UnifiedTrace babyBearModulus :=
   { (nativeTrace false) with
@@ -362,24 +319,10 @@ private def fabricatedTrace : UnifiedTrace babyBearModulus :=
 
 theorem fabricated_constraints : FlatOperation.ConstraintsHoldFlat
     (Verification.environment fabricatedAssignment)
-    (Airbender.UnifiedReduced.clockConstraints zeroSetup) := by
-  apply Verification.holds_append (left := Airbender.UnifiedReduced.importedConstraints zeroSetup)
-    (right := Airbender.UnifiedReduced.importedConstraintsTimestampLookups)
-  · simp [Airbender.UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Verification.environment, Expression.eval, fabricatedAssignment, nativeAssignment,
-      aliasedRow, row, Lookup.Contains, Table.toRaw, fromElements]
-    repeat' apply And.intro
-    all_goals solve
-      | decide
-      | (apply Verification.range16_contains; decide)
-      | (exact ⟨⟨0, by decide⟩, rfl⟩)
-  · simp [Airbender.UnifiedReduced.importedConstraintsTimestampLookups,
-      FlatOperation.ConstraintsHoldFlat]
-    repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, fabricatedAssignment,
-      nativeAssignment, aliasedRow, row]
-    all_goals decide
+    (Airbender.UnifiedReduced.clockConstraints zeroSetup) :=
+  UnifiedReduced.Completeness.Arith.complete _
+    (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide)
+    (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _ zeroSetup_zero
 
 theorem fabricated_read_rejected : ¬ Accepted fabricatedTrace := by
   intro accepted

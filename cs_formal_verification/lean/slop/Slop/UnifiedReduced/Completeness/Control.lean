@@ -455,7 +455,7 @@ theorem complete (x : Control) (hx : x.Valid) (before : Reference.RiscV.Sail.Sta
     add_zero, zero_add, mul_one, one_mul]
   all_goals first
     | ring1
-    | linear_combination x.frame.ts_square hf
+    | linear_combination x.frame.ts_square hf.clock
     | linear_combination x.frame.ts_high
     | linear_combination x.frame.borrow0_bool
     | linear_combination x.frame.borrow1_bool
