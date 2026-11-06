@@ -1,7 +1,6 @@
 import Slop.JumpBranchSlt.Claims
 import Slop.Sail.ControlFlow
-import Slop.Verification.StaticLookup
-import Mathlib.Tactic.IntervalCases
+import Slop.JumpBranchSlt.Completeness.Witness
 
 namespace Tests.Branch
 open Airbender
@@ -38,20 +37,47 @@ def row (tag : Fin 6) (wrap : Bool) : Nat → ZMod babyBearModulus
   | 44 | 45 => if taken tag then 1 else 0
   | _ => 0
 
+/-- The honest inputs `row` is built from: `0` against `-1`, x0 destination. -/
+def witness (tag : Fin 6) (wrap : Bool) : JumpBranchSlt.Completeness.Inputs where
+  sel := 3
+  rdZero := true
+  funct3 := funct3 tag
+  rs1 := 1
+  rs2 := 2
+  rd := 0
+  pcLo := (initial wrap).lo
+  pcHi := (initial wrap).hi
+  aLo := 0
+  aHi := 0
+  bLo := 65535
+  bHi := 65535
+  immLo := (offset wrap).lo
+  immHi := (offset wrap).hi
+  oldLo := 0
+  oldHi := 0
+  tsLo := 0
+  tsHi := 0
+  prev0Lo := 0
+  prev0Hi := 0
+  prev1Lo := 0
+  prev1Hi := 0
+  prev2Lo := 0
+  prev2Hi := 0
+  borrow0 := 0
+  borrow1 := 0
+  borrow2 := 0
+
+private theorem valid (tag : Fin 6) (wrap : Bool) : (witness tag wrap).Valid := by
+  fin_cases tag <;> cases wrap <;> constructor <;> decide
+
+private theorem agree (tag : Fin 6) (wrap : Bool) : ∀ i ∈ JumpBranchSlt.Completeness.columns,
+    row tag wrap i = (witness tag wrap).honest i := by
+  fin_cases tag <;> cases wrap <;> decide
+
 theorem satisfies (tag : Fin 6) (wrap : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row tag wrap))
-      JumpBranchSlt.importedConstraints := by
-  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
-  constructor
-  · fin_cases tag <;> cases wrap <;> decide
-  · rw [List.forall_mem_iff_forall_getElem]
-    intro i bound
-    have short : i < 8 := by simpa only [JumpBranchSlt.lookup_count] using bound
-    interval_cases i
-    all_goals first
-      | exact Verification.range16_contains (by fin_cases tag <;> cases wrap <;> decide)
-      | exact Verification.static_lookup_contains _ _ _ (by fin_cases tag <;> cases wrap <;> decide +kernel)
-          (by fin_cases tag <;> cases wrap <;> decide +kernel)
+      JumpBranchSlt.importedConstraints :=
+  JumpBranchSlt.Completeness.complete_of_agree _ (valid tag wrap) (agree tag wrap)
 
 /-- Every real branch tag, with opposite signed/unsigned outcomes, has the
     resolved bit required by the local imported relation. -/

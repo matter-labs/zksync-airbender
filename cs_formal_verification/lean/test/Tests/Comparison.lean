@@ -1,4 +1,5 @@
 import Slop.JumpBranchSlt.Claims
+import Slop.JumpBranchSlt.Completeness.Witness
 
 namespace Tests.Comparison
 open Airbender
@@ -65,42 +66,49 @@ def edgeRow (signed immediate wrapPC : Bool) : Nat → ZMod babyBearModulus
   | 43 => 65535
   | _ => 0
 
-set_option maxHeartbeats 600000 in
+/-- The honest inputs `edgeRow` is built from: `0` against `-1`, rd = x1 or x2. -/
+def edgeWitness (signed immediate wrapPC : Bool) : JumpBranchSlt.Completeness.Inputs where
+  sel := 2
+  rdZero := false
+  funct3 := if signed then 2 else 3
+  rs1 := 1
+  rs2 := if immediate then 0 else 2
+  rd := if immediate then 1 else 2
+  pcLo := if wrapPC then 65532 else 0
+  pcHi := if wrapPC then 65535 else 0
+  aLo := 0
+  aHi := 0
+  bLo := if immediate then 0 else 65535
+  bHi := if immediate then 0 else 65535
+  immLo := if immediate then 65535 else 0
+  immHi := if immediate then 65535 else 0
+  oldLo := 0
+  oldHi := 0
+  tsLo := 0
+  tsHi := 0
+  prev0Lo := 0
+  prev0Hi := 0
+  prev1Lo := 0
+  prev1Hi := 0
+  prev2Lo := 0
+  prev2Hi := 0
+  borrow0 := 0
+  borrow1 := 0
+  borrow2 := 0
+
+private theorem edgeValid (signed immediate wrapPC : Bool) :
+    (edgeWitness signed immediate wrapPC).Valid := by
+  cases signed <;> cases immediate <;> cases wrapPC <;> constructor <;> decide
+
+private theorem edgeAgree (signed immediate wrapPC : Bool) : ∀ i ∈ JumpBranchSlt.Completeness.columns,
+    edgeRow signed immediate wrapPC i = (edgeWitness signed immediate wrapPC).honest i := by
+  cases signed <;> cases immediate <;> cases wrapPC <;> decide
+
 theorem edgeSatisfies (signed immediate wrapPC : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (edgeRow signed immediate wrapPC))
-      JumpBranchSlt.importedConstraints := by
-  cases signed <;> cases immediate <;> cases wrapPC <;> simp [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Expression.eval, Verification.environment, edgeRow]
-  repeat' apply And.intro
-  all_goals first
-    | (apply Verification.range16_contains; decide)
-    | (with_unfolding_all change ∃ i : Fin 131072,
-         ((1, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((if i.val = 0 then 1 else 0 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨1, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((0, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 32768 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨0, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 4194304,
-         ((1769471, 1) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-       exact ⟨⟨1769471, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 4194304,
-         ((1245183, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-       exact ⟨⟨1245183, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((4, 0, 4) : fieldTriple (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 2 % 2 : Nat) : ZMod babyBearModulus),
-             ((i.val - i.val % 4 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨4, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((0, 0, 0) : fieldTriple (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 2 % 2 : Nat) : ZMod babyBearModulus),
-             ((i.val - i.val % 4 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨0, by decide⟩, rfl⟩)
-    | decide
+      JumpBranchSlt.importedConstraints :=
+  JumpBranchSlt.Completeness.complete_of_agree _ (edgeValid signed immediate wrapPC)
+    (edgeAgree signed immediate wrapPC)
 
 /-- Unsigned 0 < 0xffffffff requires both subtraction borrows and resolves to one. -/
 example : (⟨(edgeRow false false false 30).val, (edgeRow false false false 31).val⟩ : Arithmetic.Word).value = 1 := by
