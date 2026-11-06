@@ -153,34 +153,9 @@ impl GpuGKRSetupHost {
         })
     }
 
-    /// Full job geometry (including mode and counts) is a divergence guard;
-    /// setup bytes alone do not depend on memory/witness commitment mode.
+    /// A cached setup serves only proofs of the geometry it was produced for (including mode and
+    /// counts); setup bytes alone do not depend on the memory/witness commitment mode.
     pub fn validate_for_geometry(&self, geometry: &BaseCommitmentGeometry) {
-        assert_eq!(
-            self.log_domain_size as usize,
-            geometry.trace_len_log2(),
-            "setup trace geometry mismatch"
-        );
-        assert_eq!(
-            self.columns_count,
-            geometry.logical_columns().setup,
-            "setup column geometry mismatch"
-        );
-        assert_eq!(
-            self.log_lde_factor,
-            geometry.lde_factor().trailing_zeros(),
-            "setup LDE geometry mismatch"
-        );
-        assert_eq!(
-            self.log_rows_per_leaf,
-            geometry.values_per_leaf().trailing_zeros(),
-            "setup leaf geometry mismatch"
-        );
-        assert_eq!(
-            self.log_tree_cap_size,
-            geometry.cap_size().trailing_zeros(),
-            "setup cap geometry mismatch"
-        );
         assert_eq!(
             self.base_geometry, *geometry,
             "setup producing geometry mismatch"

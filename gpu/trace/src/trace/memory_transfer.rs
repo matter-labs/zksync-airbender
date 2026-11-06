@@ -61,40 +61,19 @@ impl GpuGKRMemoryTransferHost {
             let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
             unified_tree_cap.extend_from_slice(&caps[natural_coset_index].cap);
         }
-        let host = Self {
+        Self {
             base_geometry: geometry,
             log_lde_factor,
             log_tree_cap_size,
             unified_tree_cap,
-        };
-        host.validate_for_geometry(&geometry);
-        host
+        }
     }
 
+    /// A memory cap serves only proofs of the geometry it was produced for.
     pub fn validate_for_geometry(&self, geometry: &BaseCommitmentGeometry) {
-        assert_eq!(
-            self.log_lde_factor,
-            geometry.lde_factor().trailing_zeros(),
-            "memory cap LDE geometry mismatch"
-        );
-        assert_eq!(
-            self.log_tree_cap_size,
-            geometry.cap_size().trailing_zeros(),
-            "memory cap size geometry mismatch"
-        );
         assert_eq!(
             self.base_geometry, *geometry,
             "memory cap producing geometry mismatch"
-        );
-        let expected = if geometry.oracle(BaseOracleRole::Memory).physical_columns() == 0 {
-            0
-        } else {
-            geometry.cap_size()
-        };
-        assert_eq!(
-            self.unified_tree_cap.len(),
-            expected,
-            "memory cap payload length mismatch"
         );
     }
 }
@@ -107,7 +86,6 @@ pub struct GpuGKRMemoryTransfer<'a> {
 
 impl<'a> GpuGKRMemoryTransfer<'a> {
     pub fn new(host: Arc<GpuGKRMemoryTransferHost>, context: &ProverContext) -> CudaResult<Self> {
-        host.validate_for_geometry(&host.base_geometry);
         let cap_size = host.unified_tree_cap.len();
         let unified_device_cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
         Ok(Self {

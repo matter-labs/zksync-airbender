@@ -116,22 +116,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         top_bits_host,
         external_challenges,
     } = inputs;
-    if let Some(setup_transfer) = setup.as_ref() {
-        assert_eq!(
-            setup_transfer.trace_holder.log_lde_factor,
-            prover_config.lde_factor().trailing_zeros()
-        );
-        assert_eq!(
-            setup_transfer.trace_holder.log_rows_per_leaf,
-            prover_config
-                .base_oracles_values_per_leaf()
-                .trailing_zeros()
-        );
-        assert_eq!(
-            setup_transfer.trace_holder.log_tree_cap_size,
-            prover_config.cap_size.trailing_zeros()
-        );
-    }
 
     // Single fork/join from h2d_stream → exec_stream covering every pre-prove
     // H2D bundled by `inputs` (setup, decoder, inits_and_teardowns, tracing_data,

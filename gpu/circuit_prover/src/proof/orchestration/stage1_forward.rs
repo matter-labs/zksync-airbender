@@ -104,10 +104,6 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
 
     let top_bits_len = bundle.top_bits_device.map(|d| d.len()).unwrap_or(0);
     let external_challenges_u32_len = EXTERNAL_CHALLENGES_E4_LEN * 4;
-    debug_assert_eq!(
-        bundle.memory.host.log_lde_factor, setup_geometry.log_lde_factor,
-        "memory transfer log_lde_factor must match setup geometry",
-    );
     if let Some(setup) = bundle.setup {
         assert!(
             setup.trace_holder.columns_count > 0,

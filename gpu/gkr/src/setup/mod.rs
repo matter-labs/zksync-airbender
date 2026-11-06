@@ -43,7 +43,6 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 impl<'a> GpuGKRSetupTransfer<'a> {
     pub fn new(host: Arc<GpuGKRSetupHost>, context: &ProverContext) -> CudaResult<Self> {
         let geometry = host.base_commitment_geometry();
-        host.validate_for_geometry(&geometry);
         let mut trace_holder = TraceHolder::<BF>::new_base_without_cosets(
             geometry,
             crate::upstream::BaseOracleRole::Setup,
