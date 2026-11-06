@@ -175,12 +175,12 @@ pub(crate) fn schedule_base_commitment_handoff(
                 };
                 let src = unsafe { DeviceSlice::from_raw_parts(src, src_len) };
                 let dst = unsafe { DeviceSlice::from_raw_parts_mut(dst, dst_len) };
-                gpu_gkr::packed_merge::launch_merge_claims_e4(
+                gpu_gkr::gkr_ops::merge_packed_claims(
                     src,
                     coordinates,
                     u32::try_from(base_geometry.pack_log2()).expect("packing log2 exceeds u32"),
                     dst,
-                    context,
+                    context.get_exec_stream(),
                 )?;
             }
         }
