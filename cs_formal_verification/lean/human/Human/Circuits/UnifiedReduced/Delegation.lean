@@ -1,5 +1,6 @@
 import Human.Circuits.UnifiedReduced.Decoder
 import Human.Helpers.Delegation.Decoder
+import Human.Helpers.Delegation.CallerRequests
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace Arithmetic

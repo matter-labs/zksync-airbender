@@ -2,6 +2,8 @@ import Human.Helpers.Core.BabyBearPrime
 import Human.Helpers.Memory.Native
 import Human.Trace.Families.AddSub.Execution
 import Human.ISA.Sail.View
+import Human.Helpers.Context.ExecutionBoundary
+import Human.Helpers.Decoder.Decoded
 
 /-! DRAFT (B2 pilot): the ADD/SUB + word-memory trace claims stated against runs of our RV32 spec (`RV.run`).
 Not proven yet; not in `test/Checks/Claims.lean`. `ExecutionBoundary`/`NativeBootBoundary` still carry

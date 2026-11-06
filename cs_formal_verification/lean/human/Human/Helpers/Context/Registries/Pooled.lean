@@ -3,6 +3,8 @@ import Human.Circuits.JumpBranchSlt.Artifact
 import Human.Circuits.MulDiv.Artifact
 import Human.Circuits.ShiftBinop.Artifact
 import Human.Circuits.SubwordMemory.Artifact
+import Human.Circuits.AddSub.Artifact
+import Human.Circuits.WordMemory.Artifact
 
 namespace Airbender.Trace
 

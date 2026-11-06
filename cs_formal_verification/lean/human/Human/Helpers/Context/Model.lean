@@ -1,6 +1,8 @@
-import Human.Circuits.AddSub.Artifact
-import Human.Circuits.WordMemory.Artifact
+import Human.Helpers.Context.Columns
 import Human.Helpers.Context.PCState.Model
+import Human.Helpers.Context.Timestamps
+import Human.Helpers.Decoder.Columns
+import Human.Helpers.Memory.Ports
 import Human.Helpers.Properties
 
 namespace Airbender.Trace
@@ -27,20 +29,6 @@ class CircuitLayout (Kind : Type) where
   /-- The richer imported Clean constraints, including clock lookups. -/
   constraints : {p : Nat} → [Fact p.Prime] → Kind → Setup p →
     List (FlatOperation (ZMod p))
-
-instance : CircuitLayout Family where
-  columns
-    | .addSub => AddSub.importedConstraintsTraceColumns
-    | .wordMemory => WordMemory.importedConstraintsTraceColumns
-  ports
-    | .addSub => AddSub.importedConstraintsMemoryPorts
-    | .wordMemory => WordMemory.importedConstraintsMemoryPorts
-  decoderColumns
-    | .addSub => AddSub.importedConstraintsDecoderColumns
-    | .wordMemory => WordMemory.importedConstraintsDecoderColumns
-  constraints
-    | .addSub, _ => AddSub.clockConstraints
-    | .wordMemory, rom => WordMemory.clockConstraints rom
 
 /-- One circuit row: `family` selects its imported artifact, and `assignment`
     maps JSON variable IDs to field values. Bounds and instruction behavior are
