@@ -1,12 +1,12 @@
 import Slop.Sail.ResetState
 import Slop.Final.Trace.UnifiedReduced.Theorems
 import Slop.Sail.WordMemoryState
+import Slop.UnifiedReduced.Completeness.Arith
 
 namespace Tests.ControlPreparation
 open Airbender Trace Arithmetic Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 private def register (mode : Fin 3) : BitVec 5 := if mode.val = 2 then 10 else 12
 private def literal (mode : Fin 3) : UnifiedReduced.Caller.ControlLiteral :=
@@ -31,15 +31,9 @@ private noncomputable def before (mode : Fin 3) : State := wordWriteState initia
 private theorem airbender_before (mode : Fin 3) : Configured (before mode) := by
   configured_fixture [before, wordWriteState, initialState]
 private def cells (mode : Fin 3) : List Cell := [.register 0, .register (register mode)]
-private def assignment (mode : Fin 3) (column : Nat) : ZMod babyBearModulus :=
-  if column = 2 || column = 30 || column = 40 then 4
-  else if column = 32 then 8
-  else if column = 7 || column = 44 then (register mode).toNat
-  else if column = 8 || column = 50 then low mode
-  else if column = 9 || column = 51 then high mode
-  else if column = 4 || column = 11 || column = 48 || column = 49 ||
-      column = 123 || column = 124 || column = 125 then 1
-  else 0
+private def witness (mode : Fin 3) : UnifiedReduced.Completeness.Arith :=
+  ⟨⟨0, 0, 4, 0, 0, 0, 4, 0, 0, 0⟩, 0, 0, 0, (register mode).toNat, 0, 0, 0, 0, low mode, high mode, 1, 1⟩
+private def assignment (mode : Fin 3) : Nat → ZMod babyBearModulus := (witness mode).honest
 private def row (mode : Fin 3) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, assignment mode⟩
 private noncomputable def data (mode : Fin 3) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
@@ -54,31 +48,21 @@ private noncomputable def data (mode : Fin 3) : UnifiedReduced.Caller.RequestTra
   workers := ⟨Delegation.modeledSetup Keccak.Controller.rows, [], [], []⟩
   program := []
 
+private theorem valid (mode : Fin 3) : (witness mode).Valid := by
+  fin_cases mode <;>
+    refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide
+
 private theorem core (mode : Fin 3) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment mode))
-    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (before mode))) := by
-  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
-  repeat' apply And.intro
-  all_goals solve
-    | (fin_cases mode <;> decide +kernel)
-    | (apply Verification.range16_contains; fin_cases mode <;> decide +kernel)
-    | (refine ⟨(0 : Fin 2097537), ?_⟩
-       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
-         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (before mode))) :=
+  UnifiedReduced.Completeness.Arith.complete_core _ (valid mode) _
+    (UnifiedReduced.Completeness.setup_zero _)
 
 private theorem timestamps (mode : Fin 3) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment mode)) UnifiedReduced.importedConstraintsTimestampLookups := by
-  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
-  constructor
-  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
-  · rw [List.forall_mem_iff_forall_getElem]
-    intro i bound
-    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
-    interval_cases i
-    all_goals apply Trace.Proofs.range_contains
-    all_goals fin_cases mode <;> decide +kernel
+  fin_cases mode <;>
+    exact UnifiedReduced.Completeness.Frame.timestamps
+      (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) (witness _).columns
 
 private theorem accepted (mode : Fin 3) : UnifiedReduced.Caller.MixedMemoryAccepted (data mode) [entry mode] := by
   constructor
@@ -306,17 +290,9 @@ private theorem airbender_chainedBefore : Configured chainedBefore := by
 private def chainedEntry : UnifiedReduced.ProgramEntry :=
   ⟨4, 0x00000613, UnifiedReduced.Caller.ControlLiteral.instruction (.addi 0) 12,
     ⟨.machine, 0, 0, 12, ⟨0, 0⟩, 1, 0⟩⟩
-private def chainedAssignment (column : Nat) : ZMod babyBearModulus :=
-  if column = 0 then 4
-  else if column = 2 || column = 30 || column = 40 then 8
-  else if column = 32 then 12
-  else if column = 34 then 5
-  else if column = 46 then 6
-  else if column = 48 then 128
-  else if column = 7 || column = 44 then 12
-  else if column = 4 || column = 11 ||
-      column = 123 || column = 124 || column = 125 then 1
-  else 0
+private def chainedWitness : UnifiedReduced.Completeness.Arith :=
+  ⟨⟨4, 0, 8, 0, 5, 0, 8, 0, 6, 0⟩, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 128, 0⟩
+private def chainedAssignment : Nat → ZMod babyBearModulus := chainedWitness.honest
 private def chainedRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, chainedAssignment⟩
 private def chainedProgram : List UnifiedReduced.ProgramEntry := [entry 0, chainedEntry]
 private noncomputable def chainedData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
@@ -333,28 +309,16 @@ private theorem chainedCore (second : Bool) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (if second then chainedAssignment else assignment 0))
     (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table chainedBefore)) := by
   cases second
-  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, assignment, chainedAssignment, Lookup.Contains, Table.toRaw, fromElements]
-  all_goals repeat' apply And.intro
-  all_goals solve
-    | decide +kernel
-    | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨(0 : Fin 2097537), ?_⟩
-       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
-         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
+  · exact UnifiedReduced.Completeness.Arith.complete_core _ (valid 0) _
+      (UnifiedReduced.Completeness.setup_zero _)
+  · exact UnifiedReduced.Completeness.Arith.complete_core _
+      (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _
+      (UnifiedReduced.Completeness.setup_zero _)
 
 private theorem chainedTimestamps : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment chainedAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
-  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
-  constructor
-  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
-  · rw [List.forall_mem_iff_forall_getElem]
-    intro i bound
-    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
-    interval_cases i
-    all_goals apply Trace.Proofs.range_contains
-    all_goals decide +kernel
+    (Verification.environment chainedAssignment) UnifiedReduced.importedConstraintsTimestampLookups :=
+  UnifiedReduced.Completeness.Frame.timestamps
+    (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) chainedWitness.columns
 
 private theorem chainedAccepted : UnifiedReduced.Caller.MixedMemoryAccepted chainedData chainedProgram := by
   constructor
@@ -666,17 +630,14 @@ private noncomputable def sequentialEntry (custom : Bool) : UnifiedReduced.Progr
   ⟨0, (if custom then 0xc2c64673 else 0x00c60633), (if custom then .ZIMOP_MOP_RR (4, .Regidx 12, .Regidx 12, .Regidx 12) else .RTYPE (.Regidx 12, .Regidx 12, .Regidx 12, .ADD)),
     ⟨.machine, 12, 12, 12, ⟨0, 0⟩, (if custom then 512 else 1), 0⟩⟩
 private noncomputable def sequentialProgram (custom : Bool) : List UnifiedReduced.ProgramEntry := [(sequentialEntry custom), chainedEntry]
-private def sequentialAssignment (custom : Bool) (second : Bool) (column : Nat) : ZMod babyBearModulus :=
+private def sequentialWitness (custom : Bool) (second : Bool) : UnifiedReduced.Completeness.Arith :=
   if second then
-    if column = 34 then 0 else if column = 48 || column = 49 then (if custom then 3 else 2) else chainedAssignment column
+    ⟨⟨4, 0, 8, 0, 0, 0, 8, 0, 6, 0⟩, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0,
+      if custom then 3 else 2, if custom then 3 else 2⟩
   else
-    if custom && column = 11 then 0 else if custom && column = 20 then 1
-    else if column = 5 || column = 6 || column = 7 || column = 38 || column = 44 then 12
-    else if column = 50 || column = 51 then (if custom then 3 else 2)
-    else if column = 46 then 5
-    else if column = 78 then 65537 * 65537 * 943718400
-    else if column = 36 || column = 37 || column = 42 || column = 43 || column = 48 || column = 49 then 1
-    else if column = 8 then 0 else assignment 0 column
+    ⟨⟨0, 0, 4, 0, 0, 0, 4, 0, 5, 0⟩, if custom then 3 else 0, 12, 12, 12, 1, 1, 1, 1, 0, 0, 1, 1⟩
+private def sequentialAssignment (custom : Bool) (second : Bool) : Nat → ZMod babyBearModulus :=
+  (sequentialWitness custom second).honest
 private def sequentialRow (custom : Bool) (second : Bool) : Trace.Row babyBearModulus UnifiedFamily :=
   ⟨.machine, sequentialAssignment custom second⟩
 private noncomputable def sequentialData (custom : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
@@ -687,30 +648,16 @@ private noncomputable def sequentialData (custom : Bool) : UnifiedReduced.Caller
 private theorem sequentialCore (custom : Bool) (second : Bool) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (sequentialAssignment custom second))
     (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (sequentialBefore custom))) := by
-  cases custom <;> cases second
-  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, assignment, chainedAssignment, sequentialAssignment,
-    Lookup.Contains, Table.toRaw, fromElements]
-  all_goals repeat' apply And.intro
-  all_goals solve
-    | decide +kernel
-    | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨(0 : Fin 2097537), ?_⟩
-       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
-         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun n : Nat => (n : ZMod babyBearModulus))
-       decide +kernel)
+  cases custom <;> cases second <;>
+    exact UnifiedReduced.Completeness.Arith.complete_core _
+      (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _
+      (UnifiedReduced.Completeness.setup_zero _)
 
 private theorem sequentialTimestamps (custom : Bool) (second : Bool) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (sequentialAssignment custom second)) UnifiedReduced.importedConstraintsTimestampLookups := by
-  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
-  constructor
-  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
-  · rw [List.forall_mem_iff_forall_getElem]
-    intro i bound
-    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
-    interval_cases i
-    all_goals apply Trace.Proofs.range_contains
-    all_goals cases custom <;> cases second <;> decide +kernel
+  cases custom <;> cases second <;>
+    exact UnifiedReduced.Completeness.Frame.timestamps
+      (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) (sequentialWitness _ _).columns
 
 private theorem sequentialAccepted (custom : Bool) : UnifiedReduced.Caller.MixedMemoryAccepted (sequentialData custom) (sequentialProgram custom) := by
   constructor

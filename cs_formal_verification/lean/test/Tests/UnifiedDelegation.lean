@@ -4,6 +4,9 @@ import Tests.DelegationCaller
 import Tests.BigintMemory
 import Tests.DelegationOperationEffects
 import Slop.UnifiedReduced.Claims
+import Slop.UnifiedReduced.Completeness.Control
+import Slop.UnifiedReduced.Completeness.Binary
+import Slop.UnifiedReduced.Completeness.Arith
 import Human.Circuits.UnifiedReduced.Tables.Setup
 
 namespace Tests.UnifiedDelegation
@@ -232,17 +235,10 @@ private def mixedProgram : List UnifiedReduced.ProgramEntry := [
 private def sharedAssignment (column : Nat) : ZMod babyBearModulus :=
   if column = 46 then 4 else assignment .bigint column
 private def sharedCaller : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, sharedAssignment⟩
-private def arithmetic (value : Nat) : Nat → ZMod babyBearModulus
-  | 0 => 4
-  | 2 | 30 => 8
-  | 32 | 5 | 7 | 44 => 12
-  | 4 | 8 | 11 | 123 | 124 | 125 => 1
-  | 34 => 7
-  | 40 => 6
-  | 46 => 8
-  | 36 | 48 => value
-  | 50 => value + 1
-  | _ => 0
+private def callFrame : UnifiedReduced.Completeness.Frame := ⟨4, 0, 8, 0, 7, 0, 6, 0, 8, 0⟩
+private def arithmeticWitness (value : Nat) : UnifiedReduced.Completeness.Arith :=
+  ⟨callFrame, 0, 12, 0, 12, value, 0, 0, 0, 1, 0, value, 0⟩
+private def arithmetic (value : Nat) : Nat → ZMod babyBearModulus := (arithmeticWitness value).honest
 private def ordinary (value : Nat) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, arithmetic value⟩
 private noncomputable def mixedTerminal (value : Nat) : List (MemoryToken babyBearModulus) :=
   base.machine.terminalMemory.map fun token =>
@@ -277,16 +273,8 @@ private theorem sharedCore : FlatOperation.ConstraintsHoldFlat
 private theorem arithmeticCore (value : Fin 2) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (arithmetic value.val))
     (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table mixedBefore)) := by
-  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, arithmetic, Lookup.Contains, Table.toRaw, fromElements]
-  repeat' apply And.intro
-  all_goals solve
-    | (fin_cases value <;> decide +kernel)
-    | (apply Verification.range16_contains; fin_cases value <;> decide +kernel)
-    | (refine ⟨(0 : Fin 2097537), ?_⟩
-       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
-         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun (n : Nat) => (n : ZMod babyBearModulus))
-       decide +kernel)
+  fin_cases value <;>
+    exact UnifiedReduced.Completeness.Arith.complete_core _ (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _ (UnifiedReduced.Completeness.setup_zero _)
 
 private theorem sharedTimestamps : FlatOperation.ConstraintsHoldFlat
     (Verification.environment sharedAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
@@ -793,22 +781,12 @@ private noncomputable def customEntry (kind : Fin 5) : UnifiedReduced.ProgramEnt
     else .ZIMOP_MOP_R (#[16, 12, 8, 7][kind.val - 1]!, .Regidx 0, .Regidx 12),
     ⟨.machine, 0, if kind.val = 0 then 0 else 12, 12, ⟨0, 0⟩,
       if kind.val = 0 then 512 else 65536, if kind.val = 0 then 0 else 46 + kind.val⟩⟩
-private def customAssignment (kind : Fin 5) (column : Nat) : ZMod babyBearModulus :=
-  if 86 ≤ column ∧ column < 122 ∧ (column - 86) % 9 = 0 ∧ kind.val ≠ 0 then (46 + kind.val : Nat)
-  else match column with
-    | 0 => 4
-    | 2 | 30 => 8
-    | 32 | 7 | 44 => 12
-    | 4 | 123 | 124 | 125 => 1
-    | 6 | 38 => if kind.val = 0 then 0 else 12
-    | 10 => if kind.val = 0 then 0 else (46 + kind.val : Nat)
-    | 20 => if kind.val = 0 then 1 else 0
-    | 27 => if kind.val = 0 then 0 else 1
-    | 34 => 6
-    | 40 => if kind.val = 0 then 8 else 7
-    | 46 => if kind.val = 0 then 7 else 9
-    | 82 => if kind.val = 0 then 0 else 3
-    | _ => 0
+private def customWitness : UnifiedReduced.Completeness.Arith :=
+  ⟨⟨4, 0, 8, 0, 6, 0, 8, 0, 7, 0⟩, 3, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0⟩
+private def rotateWitness (kind : Fin 5) : UnifiedReduced.Completeness.Binary :=
+  ⟨⟨4, 0, 8, 0, 6, 0, 7, 0, 9, 0⟩, 0, true, kind.val - 1, false, 0, 12, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0⟩
+private def customAssignment (kind : Fin 5) : Nat → ZMod babyBearModulus :=
+  if kind.val = 0 then customWitness.honest else (rotateWitness kind).honest
 private def customRow (kind : Fin 5) : Trace.Row babyBearModulus UnifiedFamily :=
   ⟨.machine, customAssignment kind⟩
 private noncomputable def customTerminal (kind : Fin 5) : List (MemoryToken babyBearModulus) :=
@@ -832,18 +810,11 @@ private theorem customCore (kind : Fin 5) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (customAssignment kind))
     (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (customBefore kind))) := by
   fin_cases kind
-  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, customAssignment, Lookup.Contains, Table.toRaw, fromElements]
-  all_goals repeat' apply And.intro
-  all_goals solve
-    | decide +kernel
-    | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨⟨0, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨1, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨786817, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨852353, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨917889, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨983425, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
+  · exact UnifiedReduced.Completeness.Arith.complete_core _ (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _ (UnifiedReduced.Completeness.setup_zero _)
+  all_goals
+    exact Verification.holds_of_sublist (UnifiedReduced.Completeness.Binary.complete _
+      (by refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
+        ?_, ?_⟩ <;> decide) _) (List.sublist_append_left _ _)
 
 private theorem customClocks (kind : Fin 5) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (customAssignment kind)) UnifiedReduced.importedConstraintsTimestampLookups := by
@@ -886,9 +857,10 @@ private theorem customChecks (kind : Fin 5) : UnifiedReduced.Caller.RequestCheck
     · have same := List.mem_singleton.mp member
       subst row
       decide +kernel
-  · change ([sharedCaller.start] ++ [(customRow kind).finish, sharedCaller.finish]).Perm
-      ([(customRow kind).finish, sharedCaller.finish] ++ [sharedCaller.start])
-    exact List.perm_append_comm
+  · fin_cases kind <;>
+    · change ([sharedCaller.start] ++ [(customRow _).finish, sharedCaller.finish]).Perm
+        ([(customRow _).finish, sharedCaller.finish] ++ [sharedCaller.start])
+      exact List.perm_append_comm
   · intro row member
     have same : row = sharedCaller := by
       have callers : (customData kind).callers = [sharedCaller] := by fin_cases kind <;> rfl
@@ -900,7 +872,7 @@ private theorem customChecks (kind : Fin 5) : UnifiedReduced.Caller.RequestCheck
     exact ⟨0, by decide +kernel⟩
   · exact Tests.DelegationOperationEffects.sharedAccepted.workerConstraints
   · exact Tests.DelegationOperationEffects.sharedAccepted.workerActive
-  · exact Tests.DelegationOperationEffects.sharedAccepted.requests
+  · fin_cases kind <;> exact Tests.DelegationOperationEffects.sharedAccepted.requests
 
 private theorem customAccepted (kind : Fin 5) :
     UnifiedReduced.Caller.MixedMemoryAccepted (customData kind) [customEntry kind] := by
@@ -976,11 +948,9 @@ private theorem airbender_binaryBefore : Configured binaryBefore := by
   configured_fixture [binaryBefore, wordWriteState, Tests.DelegationOperationEffects.before, Tests.BigintMemory.before]
 private def binaryEntry : UnifiedReduced.ProgramEntry :=
   ⟨4, 0x00164613, .ITYPE (1, .Regidx 12, .Regidx 12, .XORI), ⟨.machine, 12, 0, 12, ⟨1, 0⟩, 65536, 52⟩⟩
-private def binaryAssignment (column : Nat) : ZMod babyBearModulus :=
-  if column = 10 ∨ column = 86 ∨ column = 95 ∨ column = 104 ∨ column = 113 then 52
-  else if column = 27 ∨ column = 58 ∨ column = 88 ∨ column = 89 then 1
-  else if column = 82 then 3
-  else if column = 11 then 0 else arithmetic 0 column
+private def binaryWitness : UnifiedReduced.Completeness.Binary :=
+  ⟨callFrame, 4, false, 0, true, 12, 0, 12, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0⟩
+private def binaryAssignment : Nat → ZMod babyBearModulus := binaryWitness.honest
 private def binaryRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, binaryAssignment⟩
 private noncomputable def binaryData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
@@ -994,17 +964,10 @@ private noncomputable def binaryData : UnifiedReduced.Caller.RequestTrace babyBe
   program := [Tests.DelegationCaller.entry .bigint]
 
 private theorem binaryCore : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment binaryAssignment) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table binaryBefore)) := by
-  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, binaryAssignment, arithmetic, Lookup.Contains, Table.toRaw, fromElements]
-  repeat' apply And.intro
-  all_goals solve
-    | decide +kernel
-    | (apply Verification.range16_contains; decide +kernel)
-    | exact ⟨⟨0, by decide⟩, rfl⟩
-    | (refine ⟨⟨1, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨257, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
-    | (refine ⟨⟨258, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
+    (Verification.environment binaryAssignment) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table binaryBefore)) :=
+  Verification.holds_of_sublist (UnifiedReduced.Completeness.Binary.complete _
+    (by refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
+        ?_, ?_⟩ <;> decide) _) (List.sublist_append_left _ _)
 
 private theorem binaryClocks : FlatOperation.ConstraintsHoldFlat
     (Verification.environment binaryAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
@@ -1101,18 +1064,9 @@ private theorem airbender_comparisonBefore : Configured comparisonBefore := by
   configured_fixture [comparisonBefore, wordWriteState, Tests.DelegationOperationEffects.before, Tests.BigintMemory.before]
 private def comparisonEntry : UnifiedReduced.ProgramEntry :=
   ⟨4, 0xfff63613, .ITYPE (4095, .Regidx 12, .Regidx 12, .SLTIU), ⟨.machine, 12, 0, 12, ⟨65535, 65535⟩, 4096, 3⟩⟩
-private def comparisonAssignment (column : Nat) : ZMod babyBearModulus :=
-  if column = 8 ∨ column = 9 ∨ column = 60 ∨ column = 96 then 65535
-  else if column = 10 then 3
-  else if column = 11 ∨ column = 57 ∨ column = 84 then 0
-  else if column = 23 ∨ column = 52 ∨ column = 53 ∨ column = 59 ∨ column = 61 ∨ column = 74 ∨
-      column = 82 ∨ column = 83 ∨ column = 97 ∨ column = 106 then 1
-  else if column = 64 ∨ column = 114 ∨ column = 116 then 8
-  else if column = 86 ∨ column = 95 then 5
-  else if column = 104 then 51
-  else if column = 105 then 53
-  else if column = 113 then 2
-  else arithmetic 0 column
+private def comparisonWitness : UnifiedReduced.Completeness.Control :=
+  ⟨callFrame, 2, false, 3, 12, 0, 12, 0, 0, 0, 0, 65535, 65535, 0, 0⟩
+private def comparisonAssignment : Nat → ZMod babyBearModulus := comparisonWitness.honest
 private def comparisonRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, comparisonAssignment⟩
 private noncomputable def comparisonData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
@@ -1126,22 +1080,9 @@ private noncomputable def comparisonData : UnifiedReduced.Caller.RequestTrace ba
   program := [Tests.DelegationCaller.entry .bigint]
 
 private theorem comparisonCore : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment comparisonAssignment) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table comparisonBefore)) := by
-  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, comparisonAssignment, arithmetic, Lookup.Contains, Table.toRaw, fromElements]
-  repeat' apply And.intro
-  all_goals solve
-    | decide +kernel
-    | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨⟨524545, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨524546, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨655617, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨786742, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
-        UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-    | (refine ⟨⟨786745, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
-        UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-    | (refine ⟨⟨721152, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨721161, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    (Verification.environment comparisonAssignment) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table comparisonBefore)) :=
+  Verification.holds_of_sublist (UnifiedReduced.Completeness.Control.complete _
+    (by refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _) (List.sublist_append_left _ _)
 
 private theorem comparisonClocks : FlatOperation.ConstraintsHoldFlat
     (Verification.environment comparisonAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
@@ -1246,27 +1187,13 @@ private def controlEntry (kind : Fin 4) : UnifiedReduced.ProgramEntry :=
       ⟨if kind.val = 3 then 12 else 8, 0⟩,
       if kind.val < 2 then 24576 else if kind.val = 2 then 1024 else 2048,
       if kind.val = 1 then 1 else 0⟩⟩
-private def controlAssignment (kind : Fin 4) (column : Nat) : ZMod babyBearModulus :=
-  if column = 5 then (if kind.val = 2 then 0 else 12)
-  else if column = 7 ∨ column = 44 then (if kind.val < 2 then 0 else 12)
-  else if column = 8 then (if kind.val = 3 then 12 else 8)
-  else if column = 10 then (if kind.val = 1 then 1 else 0)
-  else if column = 11 then 0
-  else if column = 21 then (if kind.val = 2 then 1 else 0)
-  else if column = 22 then (if kind.val = 3 then 1 else 0)
-  else if column = 24 ∨ column = 25 ∨ column = 57 ∨ column = 84 then (if kind.val < 2 then 1 else 0)
-  else if column = 30 ∨ column = 64 ∨ column = 114 ∨ column = 116 then (if kind.val = 1 then 8 else 12)
-  else if column = 34 then (if kind.val = 2 then 6 else 7)
-  else if column = 40 then (if kind.val = 2 then 8 else 6)
-  else if column = 46 then (if kind.val < 2 then 9 else if kind.val = 2 then 7 else 8)
-  else if column = 50 ∨ column = 74 ∨ column = 83 then (if kind.val < 2 then 0 else 8)
-  else if column = 59 ∨ column = 79 ∨ column = 106 then (if kind.val = 0 then 1 else 0)
-  else if column = 82 then 1
-  else if column = 86 ∨ column = 95 then 5
-  else if column = 104 then 51
-  else if column = 105 then (if kind.val < 2 then if kind.val = 0 then 8 else 24 else 0)
-  else if column = 113 then 2
-  else arithmetic 0 column
+private def controlWitness (kind : Fin 4) : UnifiedReduced.Completeness.Control :=
+  ⟨⟨4, 0, 8, 0, if kind.val = 2 then 6 else 7, 0, if kind.val = 2 then 8 else 6, 0,
+      if kind.val < 2 then 9 else if kind.val = 2 then 7 else 8, 0⟩,
+    if kind.val < 2 then 3 else kind.val - 2, decide (kind.val < 2), if kind.val = 1 then 1 else 0,
+    if kind.val = 2 then 0 else 12, 0, if kind.val < 2 then 0 else 12, 0, 0, 0, 0,
+    if kind.val = 3 then 12 else 8, 0, 0, 0⟩
+private def controlAssignment (kind : Fin 4) : Nat → ZMod babyBearModulus := (controlWitness kind).honest
 private def controlRow (kind : Fin 4) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, controlAssignment kind⟩
 private noncomputable def controlTerminal (kind : Fin 4) : List (MemoryToken babyBearModulus) :=
   base.machine.terminalMemory.map fun token =>
@@ -1287,24 +1214,9 @@ private noncomputable def controlData (kind : Fin 4) : UnifiedReduced.Caller.Req
 
 private theorem controlCore (kind : Fin 4) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (controlAssignment kind)) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (controlBefore kind))) := by
-  fin_cases kind
-  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, controlAssignment, arithmetic, Lookup.Contains, Table.toRaw, fromElements]
-  all_goals repeat' apply And.intro
-  all_goals solve
-    | decide +kernel
-    | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨⟨524545, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨524553, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨655617, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨786689, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
-        UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-    | (refine ⟨⟨786697, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
-        UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-    | (refine ⟨⟨786713, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
-        UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-    | (refine ⟨⟨721161, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-    | (refine ⟨⟨721165, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+  fin_cases kind <;>
+    exact Verification.holds_of_sublist (UnifiedReduced.Completeness.Control.complete _
+      (by refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _) (List.sublist_append_left _ _)
 
 private theorem controlClocks (kind : Fin 4) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (controlAssignment kind)) UnifiedReduced.importedConstraintsTimestampLookups := by
