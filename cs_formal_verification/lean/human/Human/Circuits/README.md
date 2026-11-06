@@ -38,6 +38,7 @@ then select a family below.
 | Subword memory | [Guide](SubwordMemory/README.md) | Aligned-cell mapping, merged stores and public ROM bytes. |
 | Unified reduced | [Guide](UnifiedReduced/README.md) | Local selector slices versus mixed execution and callers. |
 | Bigint | [Guide](Bigint/README.md) | Address/operation effects versus full caller-control ABI. |
+| Split Keccak | [Guide](KeccakSplit/README.md) | Three workers, one call protocol; claims at trace level. |
 | BLAKE2 G | [Guide](Blake2G/README.md) | A local G operation versus a complete work-vector span. |
 | Extended BLAKE | [Guide](Blake2Round/README.md) | Worker phases versus complete seven-/ten-round compression. |
 | Keccak | [Guide](Keccak/README.md) | Per-mode effects versus a complete permutation span. |
