@@ -134,7 +134,7 @@ def check_theorems(output, audit):
 
 def check_layers():
     graph = {".".join(path.relative_to(ROOT / src).with_suffix("").parts):
-             re.findall(r"^import (\S+)$", path.read_text(), re.M)
+             re.findall(r"^(?:public\s+)?(?:meta\s+)?import\s+(?:all\s+)?(\S+)$", path.read_text(), re.M)
              for src in ("human", "slop") for path in (ROOT / src).rglob("*.lean")}
     # These existing proof assemblies reuse pooled retirement lemmas. Their
     # circuit models and statements do not require a whole-execution contract.
