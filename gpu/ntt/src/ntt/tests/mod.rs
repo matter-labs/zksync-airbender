@@ -1,13 +1,9 @@
-use std::alloc::Global;
-
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
-use worker::Worker;
 
 use super::{
     hypercube_coeffs_to_evals, hypercube_evals_to_monomial_coeffs, hypercube_evals_to_monomials,
-    natural_evals_to_bitreversed_coeffs,
 };
 use crate::ntt_twiddles::DeviceContext;
 use gpu_core::primitives::context::DeviceProperties;
@@ -161,40 +157,6 @@ fn hypercube_evals_to_monomials_two_pass_compact_range_matches_cpu() {
     }
 }
 
-#[test]
-#[cfg(not(no_cuda))]
-fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
-    let context = make_context();
-    let stream = context.get_exec_stream();
-
-    for &log_n in TEST_LOG_NS {
-        let n = 1usize << log_n;
-        let evals = (0..n)
-            .map(|idx| BF::new((11 + idx * 23) as u32))
-            .collect::<Vec<_>>();
-        let mut expected = evals.clone();
-        fft::naive::cache_friendly_ntt_natural_to_bitreversed(
-            &mut expected,
-            log_n as u32,
-            &fft::Twiddles::<BF, Global>::new(n, &Worker::new()).inverse_twiddles[..],
-        );
-        let scale = BF::from_u32_unchecked(n as u32).inverse().unwrap();
-        for value in expected.iter_mut() {
-            value.mul_assign(&scale);
-        }
-
-        let mut src = context.alloc(n).unwrap();
-        let mut dst = context.alloc(n).unwrap();
-        memory_copy_async(&mut src, &evals, stream).unwrap();
-        natural_evals_to_bitreversed_coeffs(&src, &mut dst, log_n, stream).unwrap();
-
-        let mut actual = vec![BF::ZERO; n];
-        memory_copy_async(&mut actual, &dst, stream).unwrap();
-        stream.synchronize().unwrap();
-        assert_eq!(actual, expected, "log_n={}", log_n);
-    }
-}
-
 // Sole guard for the forward hypercube launcher family; it has no
 // production caller. Asserts two independent facts:
 //
@@ -307,54 +269,6 @@ fn test_hypercube_evals_to_monomials_3_pass_in_place() {
         4,
         wrap_hypercube_evals_to_monomials_3_pass,
         hypercube_evals_to_monomials_cpu_fn,
-        InOrOutOfPlace::In,
-    );
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn test_evals_to_monomials_2_pass_out_of_place() {
-    run_evals_to_monomials(
-        23..25,
-        4,
-        wrap_evals_to_monomials_2_pass,
-        evals_to_monomials_cpu_fn,
-        InOrOutOfPlace::Out,
-    );
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn test_evals_to_monomials_2_pass_in_place() {
-    run_evals_to_monomials(
-        23..25,
-        4,
-        wrap_evals_to_monomials_2_pass,
-        evals_to_monomials_cpu_fn,
-        InOrOutOfPlace::In,
-    );
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn test_evals_to_monomials_3_pass_out_of_place() {
-    run_evals_to_monomials(
-        21..25,
-        4,
-        wrap_evals_to_monomials_3_pass,
-        evals_to_monomials_cpu_fn,
-        InOrOutOfPlace::Out,
-    );
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn test_evals_to_monomials_3_pass_in_place() {
-    run_evals_to_monomials(
-        21..25,
-        4,
-        wrap_evals_to_monomials_3_pass,
-        evals_to_monomials_cpu_fn,
         InOrOutOfPlace::In,
     );
 }
@@ -1532,7 +1446,7 @@ mod helpers;
 mod in_place;
 mod lde_writeback_hybrid;
 mod retained_monomials;
-use crate::upstream::{Field, PrimeField};
+use crate::upstream::Field;
 #[allow(unused_imports)]
 use helpers::*;
 

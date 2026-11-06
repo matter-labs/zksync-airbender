@@ -8,13 +8,16 @@ use fft::{bitreverse_enumeration_inplace, Twiddles};
 use crate::e4_coeffs_to_vectorized;
 use crate::test_utils::make_test_context;
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_ntt::ntt::{MIN_LOG_N_FOR_MULTISTAGE_KERNELS, MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE};
+use gpu_ntt::ntt::MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
 use gpu_trace::trace::holder::TreesCacheMode;
 
 use crate::upstream::{
     make_eq_poly_in_full_lsb, multivariate_coeffs_into_hypercube_evals, PrimeField,
 };
 use worker::Worker;
+
+/// Size of the large initial-state cases: 2^22 rows.
+const LARGE_LOG_COUNT: usize = 22;
 
 fn sample_ext(seed: u32) -> E4 {
     E4::from_array_of_base([
@@ -624,7 +627,7 @@ fn whir_fold_keeps_monomial_labeling() {
 #[test]
 #[cfg(not(no_cuda))]
 fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_large() {
-    run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true);
+    run_whir_initial_state_matches_cpu(LARGE_LOG_COUNT, true);
 }
 
 #[cfg(not(no_cuda))]
@@ -672,7 +675,7 @@ fn whir_initial_state_eq_matches_cpu_lsb_small() {
 #[test]
 #[cfg(not(no_cuda))]
 fn whir_initial_state_eq_matches_cpu_lsb_large() {
-    run_whir_initial_state_eq_matches_cpu_lsb(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true);
+    run_whir_initial_state_eq_matches_cpu_lsb(LARGE_LOG_COUNT, true);
 }
 
 use crate::fold::debug::{

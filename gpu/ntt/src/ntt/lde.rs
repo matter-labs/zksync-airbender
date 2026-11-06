@@ -5,13 +5,12 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
-use super::dispatch::dispatch_strategy;
 use super::dit::monomials_to_evals_dit;
 use super::forward::{
-    monomials_to_evals_2_pass_compact_initial, monomials_to_evals_3_pass,
-    monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed, monomials_to_evals_subwarp,
-    natural_fused_multi_coset_3_pass, natural_monomials_to_bitrev_evals_2_pass,
-    natural_monomials_to_bitrev_evals_2_pass_compact,
+    monomials_to_evals_2_pass_compact_initial, monomials_to_evals_2_pass_smem,
+    monomials_to_evals_3_pass, monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed,
+    monomials_to_evals_subwarp, natural_fused_multi_coset_3_pass,
+    natural_monomials_to_bitrev_evals_2_pass, natural_monomials_to_bitrev_evals_2_pass_compact,
     natural_monomials_to_bitrev_evals_2_pass_compact_from_hypercube_final4,
     natural_monomials_to_bitrev_evals_3_pass,
 };
@@ -485,7 +484,6 @@ fn dispatch_forward_multi_coset(
     // Compact 1-pass (log_n in [4, 12]) and 2-pass-compact-initial (log_n in
     // [13, 20]) kernel families now consume cosets_per_launch directly. Other
     // ranges fall back to a per-coset loop.
-    let mut d_table_scratch = d_table_scratch;
     if strategy.passes.len() == 1 {
         let mut outputs_matrix = DeviceMatrixMut::new(outputs, trace_len);
         return match strategy.passes[0].kernel {
@@ -499,7 +497,7 @@ fn dispatch_forward_multi_coset(
                 num_cosets,
                 num_cols_per_coset_stride,
                 ntt_ctx,
-                d_table_scratch.as_deref_mut().expect(
+                d_table_scratch.expect(
                     "DIT range requires a d_table_scratch (len >= N); caller must \
                      provide one for log_n in [2,13]",
                 ),
@@ -582,29 +580,30 @@ fn dispatch_forward_multi_coset(
             stream,
         );
     }
-    // Fallback for any pass shape not handled above: loop per coset using the
-    // existing single-coset dispatch. Honors num_cols_per_coset_stride by
-    // offsetting each coset's slab by stride * trace_len BFs.
+    // The remaining plan is the two-pass one (log_n in [23, 24], one column
+    // above L2), whose launcher takes one coset at a time. Each coset's slab
+    // starts at coset_offset * stride * trace_len BFs.
+    assert!(
+        strategy.passes.len() == 2
+            && matches!(
+                strategy.passes[1].kernel,
+                super::NttKernelKind::MonomialsToEvalsLast { .. }
+            ),
+        "forward NTT plan has no launcher: {:?}",
+        strategy.passes,
+    );
     for coset_offset in 0..num_cosets {
-        let global_coset = coset_index_base + coset_offset;
         let chunk_start = coset_offset * num_cols_per_coset_stride * trace_len;
         let chunk_end = chunk_start + num_cols * trace_len;
-        let chunk = &mut outputs[chunk_start..chunk_end];
-        let mut outputs_matrix = DeviceMatrixMut::new(chunk, trace_len);
-        dispatch_strategy(
+        let mut outputs_matrix =
+            DeviceMatrixMut::new(&mut outputs[chunk_start..chunk_end], trace_len);
+        monomials_to_evals_2_pass_smem(
             inputs_matrix,
             &mut outputs_matrix,
             log_n,
-            log_lde_factor,
-            global_coset,
-            ntt_ctx,
-            // DIT is always single-pass and handled above; this fallback is for
-            // 2/3-pass-compact shapes that ignore the scratch. Reborrow anyway
-            // so the Option survives the loop.
-            d_table_scratch.as_deref_mut(),
+            (coset_index_base + coset_offset) << coset_factor_shift,
+            strategy.columns_per_launch,
             stream,
-            &strategy,
-            device_properties,
         )?;
     }
     Ok(())

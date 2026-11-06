@@ -8,10 +8,9 @@ namespace airbender::ntt {
 
 // Natural-order monomials -> bitreversed-order evaluations, three-pass regime
 // (log_n in [21, 24]): out_k[p] = f(g_k * omega^rev_n(p)). Descending-stride
-// DIT network (pass structure cloned from evals_to_monomials_three_pass.cu)
-// over FORWARD twiddles, with no 1/N normalization. Pass 1 also carries the
-// multi-coset shape: one shared input column feeds every coset's output slab,
-// with the coset pre-scale g_k^row fused into the load.
+// DIT network over FORWARD twiddles, with no 1/N normalization. Pass 1 also
+// carries the multi-coset shape: one shared input column feeds every coset's
+// output slab, with the coset pre-scale g_k^row fused into the load.
 
 template <bool HYPERCUBE_FINAL4, bool WRITEBACK = false, typename Input>
 DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_initial_8_stages(Input gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,

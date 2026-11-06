@@ -47,13 +47,6 @@ macro_rules! strided_tiles_stages {
     };
 }
 
-// 2-pass evals to monomials
-strided_tiles_stages!(ab_evals_to_monomials_first_9_stages_kernel);
-strided_tiles_stages!(ab_evals_to_monomials_first_10_stages_kernel);
-
-// 3-pass evals to monomials
-strided_tiles_stages!(ab_evals_to_monomials_nonfinal_8_stages_kernel);
-
 // 2-pass monomials to evals
 strided_tiles_stages!(ab_monomials_to_evals_last_9_stages_kernel);
 strided_tiles_stages!(ab_monomials_to_evals_last_10_stages_kernel);
@@ -151,42 +144,6 @@ impl era_cudart::execution::KernelFunction for NaturalMiddleLogN21TwoCosetsFunct
 );
 // evict-first variant for the LAST noninitial pass (hybrid LDE path)
 strided_tiles_stages!(ab_monomials_to_evals_noninitial_8_stages_evict_kernel);
-
-cuda_kernel_signature_and_arguments!(
-    pub(super) EvalsToMonomialsFinal,
-    inputs_matrix: PtrAndStride<BF>,
-    outputs_matrix: MutPtrAndStride<BF>,
-    log_n: i32,
-    num_cols_per_coset: i32,
-    log_cosets_in_tile: i32,
-);
-pub(super) struct EvalsToMonomialsFinalFunction(pub(super) EvalsToMonomialsFinalSignature);
-impl era_cudart::execution::KernelFunction for EvalsToMonomialsFinalFunction {
-    type Signature = EvalsToMonomialsFinalSignature;
-    fn as_ptr(&self) -> *const std::os::raw::c_void {
-        self.0 as *const std::os::raw::c_void
-    }
-}
-macro_rules! evals_to_monomials_final {
-    ($kernel_name:ident) => {
-        ::era_cudart::cuda_kernel_declaration!(pub(super) $kernel_name(
-    inputs_matrix: PtrAndStride<BF>,
-    outputs_matrix: MutPtrAndStride<BF>,
-    log_n: i32,
-    num_cols_per_coset: i32,
-    log_cosets_in_tile: i32,
-        ));
-    };
-}
-
-// 2-pass evals to monomials
-evals_to_monomials_final!(ab_evals_to_monomials_last_14_stages_kernel);
-
-// 3-pass evals to monomials
-evals_to_monomials_final!(ab_evals_to_monomials_final_5_stages_kernel);
-evals_to_monomials_final!(ab_evals_to_monomials_final_6_stages_kernel);
-evals_to_monomials_final!(ab_evals_to_monomials_final_7_stages_kernel);
-evals_to_monomials_final!(ab_evals_to_monomials_final_8_stages_kernel);
 
 cuda_kernel_signature_and_arguments!(
     pub(super) LdeFusedWriteback,

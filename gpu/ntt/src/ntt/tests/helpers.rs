@@ -2,9 +2,7 @@ use era_cudart::memory::{memory_copy_async, CudaHostAllocFlags, DeviceAllocation
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use fft::{
-    ifft_natural_to_natural, precompute_twiddles_for_fft, serial_ct_ntt_bitreversed_to_natural,
-};
+use fft::{precompute_twiddles_for_fft, serial_ct_ntt_bitreversed_to_natural};
 
 use crate::upstream::{
     bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size,
@@ -16,9 +14,8 @@ use std::ops::Range;
 use worker::Worker;
 
 use super::super::{
-    evals_to_monomials_2_pass, evals_to_monomials_3_pass, hypercube_evals_to_monomials_2_pass,
-    hypercube_evals_to_monomials_3_pass, monomials_to_evals_2_pass_smem, monomials_to_evals_3_pass,
-    OMEGA_LOG_ORDER,
+    hypercube_evals_to_monomials_2_pass, hypercube_evals_to_monomials_3_pass,
+    monomials_to_evals_2_pass_smem, monomials_to_evals_3_pass, OMEGA_LOG_ORDER,
 };
 use super::{InOrOutOfPlace, TEST_COSET_INDEX, TEST_LOG_LDE_FACTOR};
 use crate::ntt_twiddles::DeviceContext;
@@ -387,11 +384,6 @@ pub(super) fn run_monomials_to_evals(
 }
 
 #[cfg(not(no_cuda))]
-pub(super) fn evals_to_monomials_cpu_fn(inputs: &mut [BF], twiddles: &[BF], _log_n: usize) {
-    ifft_natural_to_natural::<BF, BF, BF>(inputs, BF::ONE, twiddles);
-}
-
-#[cfg(not(no_cuda))]
 pub(super) fn hypercube_evals_to_monomials_cpu_fn(
     inputs: &mut [BF],
     _twiddles: &[BF],
@@ -421,28 +413,6 @@ pub(super) fn wrap_hypercube_evals_to_monomials_3_pass(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     hypercube_evals_to_monomials_3_pass(inputs, outputs, log_n, stream)
-}
-
-#[cfg(not(no_cuda))]
-pub(super) fn wrap_evals_to_monomials_2_pass(
-    inputs: &DeviceMatrixChunk<BF>,
-    outputs: &mut DeviceMatrixChunkMut<BF>,
-    log_n: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    let columns_per_launch = outputs.cols();
-    evals_to_monomials_2_pass(inputs, outputs, log_n, columns_per_launch, stream)
-}
-
-#[cfg(not(no_cuda))]
-pub(super) fn wrap_evals_to_monomials_3_pass(
-    inputs: &DeviceMatrixChunk<BF>,
-    outputs: &mut DeviceMatrixChunkMut<BF>,
-    log_n: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    let columns_per_launch = outputs.cols();
-    evals_to_monomials_3_pass(inputs, outputs, log_n, columns_per_launch, stream)
 }
 
 #[cfg(not(no_cuda))]

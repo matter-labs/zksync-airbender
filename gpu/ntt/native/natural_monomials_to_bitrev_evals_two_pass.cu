@@ -5,8 +5,7 @@ namespace airbender::ntt {
 
 // Natural-order monomials -> bitreversed-order evaluations, two-pass regime
 // (log_n in [23, 24], one column >= device L2): out_k[p] = f(g_k * omega^rev_n(p)).
-// Descending-stride DIT network (pass structure cloned from
-// evals_to_monomials_two_pass.cu) over FORWARD twiddles, with no 1/N
+// Descending-stride DIT network over FORWARD twiddles, with no 1/N
 // normalization. Pass 1 carries the multi-coset shape: one shared input column
 // feeds every coset's output slab, with the coset pre-scale g_k^row applied on
 // the full global row.
