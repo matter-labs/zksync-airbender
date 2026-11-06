@@ -67,10 +67,14 @@ Full combined row effects and execution remain pending. See the
    for initialized selected-shift traces from actual native matching and public
    decoding. Native ADD/ADDI/SUB/LUI/AUIPC local routing/flags, actual scalar/carry
    equations, candidate/masked-write assembly and default-PC selection are now
-   checked under five explicit native masks. Their bounded-input numerical
-   calculations are INTERNAL; next connect original arithmetic public decoding,
-   rd/x0/immediate fields and initialized preservation/ranges/history before
-   exposing a combined arithmetic execution result. Other combined profiles remain open.
+   checked under five native masks. Original public arithmetic decoding now
+   derives those masks and actual rd/x0/immediate/raw funct3 fields. Proved native
+   preservation feeds initialized induction and derives all read/write/terminal
+   bounds, including the prior LUI immediate gap. Canonical RV32 arithmetic
+   candidates and actual masked writes now follow with every internal range
+   premise discharged. Next connect original arithmetic Sail GPR/cell history,
+   retained clauses and PC retirement/fetched execution, then mix supported
+   shift/arithmetic rows. Other combined profiles remain open.
    The former projection allocation gap is closed by generic projections and separate proof units,
    without increasing limits or adding result/equivalence premises.
 3. Compose initialized combined histories, public decoding and original execution.

@@ -7992,6 +7992,139 @@
       "backport_reuse_revision": "10380058292a567bc791dfe4b68ffed807c40e4b",
       "backport_reuse_path": "Tests/NativeReducedWrite.lean",
       "backport_reuse_sha256": "e24021526b775d895869f6a18d0043c45436dc47da6b16e979046aaf1f227d99"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/ArithmeticDecoder.lean",
+      "change": "Copy original five ADD/SUB/LUI/AUIPC constructor projections and exact sign-extension/U-type funct3 expressions,with actual reduced mode/masks. Preserve x0 constructors and raw source indices;no standalone native table or mask identity transferred.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/Program.lean",
+      "backport_reuse_sha256": "5d4682f64b9d18e3cd615ec4ff6de95a95a56b832336dff710b946cec3823c8b"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/ArithmeticDecoder.lean",
+      "change": "Use the same actual native ten-field query and small recovered-field structure;arithmetic mask is direct and raw U-type funct3 remains entry-specific.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Decoder.lean",
+      "backport_reuse_sha256": "c3842345d45e2c9385b40c124a7a9a166937e57e03a46a16443881951c0eeffd"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecoder.lean",
+      "change": "Adapt original public source/member/field proofs to five arithmetic forms. Reuse unchanged actual eighteen-bit packing padding exclusion,not a new exclusion premise. No new Rust decoder-export or universal physical setup certificate.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftDecoder.lean",
+      "backport_reuse_sha256": "68c12cfd37985cc94287e047c3b0a24aae06196f94fa715b311b8662bed9596d"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecoder.lean",
+      "change": "Adapt canonical immediate word projection from original decoded limb bounds and actual query fields;no native immediate-range answer supplied.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftOperand.lean",
+      "backport_reuse_sha256": "9c35d374bc4da2aa426bb91de891553e9123323c2b1c752a0f76977afb71ed9c"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachineArithmetic.lean",
+      "change": "Retain full original sparse/padded membership at every actual native row query with ArithmeticMode entries;setup fidelity remains a separate logical boundary.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ReducedMachine.lean",
+      "backport_reuse_sha256": "3057cb5449c356588f425a8d3aaf5a93f92d6f86f0bd29ce20fb5107755e77a4"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticDecoder.lean",
+      "change": "Reuse unchanged actual registry row_query and public source transport after new original arithmetic field proofs.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/Decoder.lean",
+      "backport_reuse_sha256": "7bcd5d921956fa4cb7f9ca206e7b8be02f2cf24b51838b53dde4426c3c9da6e2"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticDecoder.lean",
+      "change": "Retain one short original-public-decoding root,deriving mask/rd/x0/immediate/funct3 at the actual imported query.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/Decoder.lean",
+      "backport_reuse_sha256": "b256a93074d0f18b00ba52d1eb4604748ca0bf1c5546cf9da850af3b3c0cb9eb"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPreservation.lean",
+      "change": "Copy unchanged generic masked_bounds lemma and readonly refresh row assembly. Actual arithmetic candidate/masked write is independently derived;no earlier source bound is needed for its destination preservation.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftPreservation.lean",
+      "backport_reuse_sha256": "3e14bcc3077ab54f1c54cc1685f2790ed3788037b4d759c7c4727456da873c2f"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPreservation.lean",
+      "change": "Discharge the prior internal LUI immediate-bound premise from original decoded metadata. Native scalar bounds provide every other arithmetic candidate bound,then original rd/x0 masks provide actual bounded writes.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticResult.lean",
+      "backport_reuse_sha256": "56a3bbdd812911b1f5036bb63ae7a2ccb1dc0a644301a52c1bc13950ff5fe81a"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticValues.lean",
+      "change": "Feed newly proved native arithmetic rules into unchanged initialized time induction. Generic native modeled setup remains explicit because these scalar/word calculations require no dynamic-table numerical meaning;no arbitrary/native table identity is assumed.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/Values.lean",
+      "backport_reuse_sha256": "3033af2cbcc401188f6c6bf1991c9207d44fbc9db38d778f54066b3ab22e84df"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticValues.lean",
+      "change": "Keep one short public all-read/write/terminal range root with ranges derived from original seeds/decoder and native matching,not supplied.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/Values.lean",
+      "backport_reuse_sha256": "74d009b5fa0a037455c1c7ec6f50b8048fbfc91fbd0bef1456dae62ee86f7909"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecodedResult.lean",
+      "change": "Reuse checked actual native arithmetic result theorem after deriving original immediate,selected operand and PC bounds. Source/readonly bounds remain INTERNAL and are discharged in trace assembly.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticResult.lean",
+      "backport_reuse_sha256": "56a3bbdd812911b1f5036bb63ae7a2ccb1dc0a644301a52c1bc13950ff5fe81a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecodedResult.lean",
+      "change": "Reuse exact abstract pair projection/routing technique to distinguish actual readonly rs2 from selected immediate,without expanded foreign-data reductions.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftOperand.lean",
+      "backport_reuse_sha256": "9c35d374bc4da2aa426bb91de891553e9123323c2b1c752a0f76977afb71ed9c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecodedResult.lean",
+      "change": "Adapt canonical Word.eq_of_value/ofBitVec assembly and original rd/x0 mask proof to newly checked arithmetic candidates. No source/range/result or table-equivalence premise is exposed publicly.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftResult.lean",
+      "backport_reuse_sha256": "4cc43474f988aa8d2ae89a00414f78b2f1c5549403e54d2951a921b2c6df659a"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticResults.lean",
+      "change": "Extract both actual native readonly read bounds from initialized arithmetic trace,derive original fields and discharge all internal numerical prerequisites.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/Results.lean",
+      "backport_reuse_sha256": "4c1873d7908ce39ebb7b503802ee77f6fb9075cd38350a8d67b001615c958560"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticResults.lean",
+      "change": "Retain one short numerical public result root with original public image/seed/decoder/native acceptance inputs. Actual native read words are not yet original pre-row GPR/clause/fetched execution.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/Results.lean",
+      "backport_reuse_sha256": "33890a5ed44b0ec19909558c6e8d16d3374fdeb564ea4fa535228c95da2df5d6"
+    },
+    {
+      "path": "Tests/NativeReducedArithmeticDecoder.lean",
+      "change": "Adapt selected-field,original public source,x0,padding and corruption regressions to actual reduced arithmetic masks and raw U-type funct3.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Tests/NativeReducedDecoder.lean",
+      "backport_reuse_sha256": "07a93d6bbdb9b3983f62e79d94fec7b309ae9ebee89ee86c210d48f30653b6a2"
+    },
+    {
+      "path": "Tests/NativeReducedArithmeticDecoder.lean",
+      "change": "Reuse only existing original Sail byte/stateful source evidence for six original entries;old standalone exported table,masks and compiled constraints are not reused as native reduced identities.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Airbender/Proofs/AddSub/NativeSetup.lean",
+      "backport_reuse_sha256": "7095cb9a51026c8fa0351abc8e9739b31fa7d36aec78a178c67206a2b26e1297"
+    },
+    {
+      "path": "Tests/NativeReducedArithmeticValues.lean",
+      "change": "Adapt initialized oversized-source/terminal and discarded-write consequence regressions to new arithmetic public claims. These are conditional consequences,not full positive117equation arithmetic execution fixtures.",
+      "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
+      "backport_reuse_path": "Tests/NativeReducedRanges.lean",
+      "backport_reuse_sha256": "1a80da71a4e0562128359d6816470930af7c4072751f6afb9366de38de94243e"
     }
   ],
   "setup_artifacts": [

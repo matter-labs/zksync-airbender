@@ -359,3 +359,21 @@ All 2,666 standard-only axiom roots and 163 public Review roots pass, with exact
 189/863 origin identities and the unchanged memory ceilings. The next native
 connection is original arithmetic public decoding and initialized preservation,
 ranges, GPR history and retained Sail execution across combined profiles.
+
+## Original decoded and initialized arithmetic values
+
+[Three short native trace claims](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticResults.lean)
+now recover original arithmetic metadata, all initialized word bounds and
+canonical RV32 candidates/actual x0-masked writes. Original byte/stateful decoding
+retains raw U-type funct3 and sign-extended ADDI; native constraints exclude
+holes/tail. Actual scalar checks and decoded immediate fields prove preservation,
+then unchanged shared induction discharges every local read-range prerequisite.
+The generic modeled setup stays explicit because these arithmetic proofs require
+no dynamic-table numerical semantics; no native table-equivalence premise is
+added. [Decoder/source checks](Tests/NativeReducedArithmeticDecoder.lean) and
+[initialized consequences](Tests/NativeReducedArithmeticValues.lean) are not full
+positive arithmetic execution fixtures. Original GPR/cell/retained Sail execution
+and mixed shift/arithmetic traces remain next. No native defect/fix/assumption or
+parity is claimed; production/data/dependency inputs remain unchanged.
+All 2,694 standard-only axiom roots and 166 public Review roots pass, with exact
+189/882 origin identities, unchanged limits and no owned surviving processes.

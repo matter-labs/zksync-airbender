@@ -250,6 +250,19 @@ initialized range/Sail-history discharge are still pending. The two short public
 roots do not claim instruction execution,physical setup or parity. No defect or
 new issue-handling assumption is added.
 
+[Original public arithmetic decoding](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticDecoder.lean),
+[initialized native ranges](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticValues.lean)
+and [canonical arithmetic values](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticResults.lean)
+now discharge the prior internal numerical prerequisites. Inputs are original
+public seed/PC construction, stateful sparse/padded arithmetic decoding and
+actual native acceptance with its explicit modeled setup. No per-row source,
+operand, PC, immediate range, result or intermediate-state answer is supplied.
+The proofs need scalar checks and polynomial arithmetic rather than any assumed
+native/arbitrary table equivalence. This is not native Rust decoder-export,
+universal public ROM/preprocessing/physical setup or original pre-row GPR/Sail
+clause/fetched execution. Mixed-profile execution and broader boundaries remain
+open; no issue-handling assumption or circuit fix is introduced.
+
 ## Import and generation fidelity
 
 Mersenne31 coefficients are non-Montgomery residues in 0..=2147483647; the upper

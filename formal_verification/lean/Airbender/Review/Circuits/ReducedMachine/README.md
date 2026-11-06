@@ -263,3 +263,19 @@ remain pending; internal input bounds are not exposed as public answers.
 [Nine conditional regressions](../../../../Tests/NativeReducedArithmetic.lean)
 are not complete positive accepted arithmetic fixtures. No native fix,defect,
 new issue assumption or full-machine/parity claim is introduced.
+
+## Original decoded arithmetic and initialized values
+
+[The arithmetic reference projection](ArithmeticDecoder.lean) now retains original
+ADD/ADDI/SUB/LUI/AUIPC and x0 forms, sign extension and raw U-type funct3. [Public
+trace decoding](../../Trace/Families/ReducedMachine/ArithmeticDecoder.lean) derives
+all actual native fields and excludes holes/tail from accepted mask equations.
+[Initialized ranges](../../Trace/Families/ReducedMachine/ArithmeticValues.lean)
+and [complete numerical values](../../Trace/Families/ReducedMachine/ArithmeticResults.lean)
+discharge all internal input ranges from original public seeds/decoding and native
+matching. Scalar checks and decoded immediates prove actual write preservation.
+[Decoder/source](../../../../Tests/NativeReducedArithmeticDecoder.lean) and
+[range/x0 regressions](../../../../Tests/NativeReducedArithmeticValues.lean) retain
+their conditional scope below complete arithmetic execution fixtures. Original
+pre-row GPR/cell history, retained Sail clauses/retirement and mixed-profile
+fetched execution remain separate, as does native/physical setup fidelity.

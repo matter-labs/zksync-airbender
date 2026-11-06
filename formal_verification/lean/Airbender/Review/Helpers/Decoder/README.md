@@ -232,3 +232,14 @@ exclude holes/tail; [the short trace claim](../../Trace/Families/ReducedMachine/
 derives the selected entry and actual fields without supplied selectors or
 source values. Native Rust preprocessing exports, general public fixed-ROM
 correspondence, other profiles and initialized execution remain separate.
+
+## Actual native reduced arithmetic profile
+
+[Arithmetic membership](ReducedMachineArithmetic.lean) retains every actual native
+row query and the complete original public sparse/padded setup. [Projection](../../Circuits/ReducedMachine/ArithmeticDecoder.lean)
+keeps the five original arithmetic/x0 constructors, ADDI sign extension and raw
+U-type funct3. [The short source claim](../../Trace/Families/ReducedMachine/ArithmeticDecoder.lean)
+derives actual masks/indices/zero/immediate fields; native Boolean packing excludes
+holes/tail. [Initialized numerical values](../../Trace/Families/ReducedMachine/ArithmeticResults.lean)
+derive all range prerequisites, not pre-row Sail GPR or clause execution. Universal
+native public preprocessing/ROM/physical setup fidelity remains separate.

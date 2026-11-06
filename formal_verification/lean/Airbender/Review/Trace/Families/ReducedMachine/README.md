@@ -146,3 +146,18 @@ checks activity,state/memory matching,original Sail seed reads and complete
 candidate/write participation follow. These are nonempty accepted examples,not
 local-only execution slices. Other mode/alias/multi-row fixtures,combined
 operations and native public/setup/physical/protocol boundaries remain separate.
+
+## Initialized arithmetic profiles
+
+[Original arithmetic decoding](ArithmeticDecoder.lean) derives actual native
+ADD/ADDI/SUB/LUI/AUIPC masks/source/rd/x0/immediate/raw funct3. [Word ranges](ArithmeticValues.lean)
+follow from original public seeds, native preservation and shared initialized
+induction. [Canonical numerical results](ArithmeticResults.lean) derive full
+RV32 candidates and actual masked writes, discharging every internal source,
+operand, PC and immediate-bound premise. [Proof assembly](../../../../Proofs/Trace/Families/ReducedMachine/ArithmeticResults.lean)
+uses explicit modeled setup without a native/arbitrary-table equivalence. These
+are arithmetic-profile traces; original GPR/cell history, retained Sail clauses,
+PC retirement and fetched execution mixed with shifts remain next. [Source checks](../../../../../Tests/NativeReducedArithmeticDecoder.lean)
+and [initialized consequences](../../../../../Tests/NativeReducedArithmeticValues.lean)
+are not complete positive117-equation arithmetic execution fixtures. Native public
+preprocessing/ROM/physical setup and broader protocol boundaries remain separate.

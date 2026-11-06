@@ -1,3 +1,5 @@
+import Tests.NativeReducedArithmeticValues
+import Tests.NativeReducedArithmeticDecoder
 import Tests.NativeReducedArithmetic
 import Tests.NativeReducedPositive
 import Tests.NativeReducedExecution
@@ -2879,3 +2881,31 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedArithmetic.auipc_wrap
 #print axioms Tests.NativeReducedArithmetic.sub_borrow
 #print axioms Tests.NativeReducedArithmetic.lui_high_word
+#print axioms Airbender.ReducedMachine.NativeArithmeticDecoderProofs.field_bounds
+#print axioms Airbender.ReducedMachine.NativeArithmeticDecoderProofs.fetched_sources
+#print axioms Airbender.ReducedMachine.NativeArithmeticDecoderProofs.decoded_fields
+#print axioms Airbender.ReducedMachine.NativeArithmeticDecoderProofs.immediate_word
+#print axioms Airbender.ReducedMachine.NativeArithmeticDecoderProofs.trace_decoding
+#print axioms Airbender.ReducedMachine.NativeArithmeticPreservationProofs.written_bounds
+#print axioms Airbender.ReducedMachine.NativeArithmeticPreservationProofs.row_write_rule
+#print axioms Airbender.ReducedMachine.NativeArithmeticRangeProofs.decoded_write_rules
+#print axioms Airbender.ReducedMachine.NativeArithmeticRangeProofs.image_value_bounds
+#print axioms Airbender.ReducedMachine.NativeArithmeticRangeProofs.image_arithmetic_results
+#print axioms Airbender.ReducedMachine.NativeArithmeticResultProofs.decoded_pc_bound
+#print axioms Airbender.ReducedMachine.NativeArithmeticResultProofs.decoded_operand_bound
+#print axioms Airbender.ReducedMachine.NativeArithmeticResultProofs.decoded_result
+#print axioms Airbender.ReducedMachine.Native.public_arithmetic_decoding
+#print axioms Airbender.ReducedMachine.Native.public_arithmetic_value_bounds
+#print axioms Airbender.ReducedMachine.Native.public_arithmetic_results
+#print axioms Tests.NativeReducedArithmeticDecoder.selected_fields
+#print axioms Tests.NativeReducedArithmeticDecoder.original_public_sources
+#print axioms Tests.NativeReducedArithmeticDecoder.original_entry_construction
+#print axioms Tests.NativeReducedArithmeticDecoder.sign_extension_and_raw_upper_bits
+#print axioms Tests.NativeReducedArithmeticDecoder.original_x0_forms
+#print axioms Tests.NativeReducedArithmeticDecoder.unsupported_shift_rejected
+#print axioms Tests.NativeReducedArithmeticDecoder.padded_membership
+#print axioms Tests.NativeReducedArithmeticDecoder.corrupted_zero_flag_rejected
+#print axioms Tests.NativeReducedArithmeticDecoder.corrupted_upper_funct3_rejected
+#print axioms Tests.NativeReducedArithmeticValues.oversized_source_rejected
+#print axioms Tests.NativeReducedArithmeticValues.initialized_discarded_write
+#print axioms Tests.NativeReducedArithmeticValues.oversized_terminal_rejected

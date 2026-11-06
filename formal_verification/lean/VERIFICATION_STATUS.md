@@ -30,6 +30,57 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Initialized native reduced arithmetic values (6 November 2026)
+
+[Original arithmetic decoding](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticDecoder.lean)
+now derives actual ADD/ADDI/SUB/LUI/AUIPC mask/source/rd/x0/immediate/funct3
+fields from public original Sail bytes, stateful decoding and full sparse/padded
+membership at the actual native ten-field query. [The reference projection](Airbender/Review/Circuits/ReducedMachine/ArithmeticDecoder.lean)
+retains original x0 constructors, sign-extended ADDI and raw U-type funct3 bits.
+[Proofs](Airbender/Proofs/ReducedMachine/NativeArithmeticDecoder.lean) reuse the
+already checked native eighteen-bit mask bound to exclude holes/tail; no
+exclusion, expected selector or immediate-range answer is supplied.
+
+[Initialized range soundness](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticValues.lean)
+now derives every actual read/write/terminal word bound from original public
+seeds and native matching. [Actual arithmetic write preservation](Airbender/Proofs/ReducedMachine/NativeArithmeticPreservation.lean)
+uses native scalar checks and original decoded immediate/rd/x0 fields; it
+discharges the prior LUI immediate-bound gap without a source-bound premise.
+[Shared induction assembly](Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticValues.lean)
+retains readonly refreshes and discarded writes.
+
+[Complete numerical arithmetic results](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticResults.lean)
+now derive canonical RV32 candidate words and actual original-rd/x0 masked
+writes. [Internal decoded composition](Airbender/Proofs/ReducedMachine/NativeArithmeticDecodedResult.lean)
+proves selected operand/immediate/PC bounds; [trace assembly](Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticResults.lean)
+discharges both actual source-read bounds from initialized history. No source,
+operand, PC, immediate range, expected result or intermediate state is a public
+input. The explicit generic native setup remains modeled: arithmetic scalar and
+polynomial proofs need no dynamic-table numerical meaning, and no arbitrary
+setup is equated with the native fixed pool. This does not certify universal
+native decoder-export/preprocessing/ROM/physical setup.
+
+[Nine decoder/source regressions](Tests/NativeReducedArithmeticDecoder.lean)
+include six existing original public byte entries, all five x0 constructors,
+negative ADDI, nonzero U-type funct3, holes/padding and corruption rejection.
+[Three initialized consequences](Tests/NativeReducedArithmeticValues.lean)
+reject oversized source/terminal words and derive discarded zero writes. These
+are original source and conditional native checks, not complete positive
+117-equation arithmetic execution fixtures. Arithmetic native words are not yet
+original pre-row Sail GPRs or original retained clause/fetched execution. Mixed
+shift/arithmetic execution, remaining profiles, workers/accounting/protocol,
+padding/terminal and initialization/teardown remain open. No native circuit,
+importer/exporter/data/dependency input changed; no defect or issue-handling
+assumption is added. All affected bounded modules and final gates pass: 2,694
+standard-only axiom roots, 166 public Review roots, four guide declaration names,
+2,651 links/anchors and context/trace separation. Full Review used 541.93 MiB
+footprint / 3100.08 MiB resident in 14.07 seconds. Independent exact provenance
+passes 189 v3-origin and 882 backport-origin identities; 80 reused modules,
+eight circuit artifacts, 63 native sources, 23 setup artifacts and four exporter
+files remain unchanged. It used 16.44 / 32.48 MiB in 6.69 seconds. All guards
+report no owned survivors, with unchanged memory and proof limits. Earlier
+snapshots below retain their checked scope.
+
 ## Native reduced arithmetic equations (6 November 2026)
 
 [Two short local claims](Airbender/Review/Circuits/ReducedMachine/ArithmeticTheorems.lean)
