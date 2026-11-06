@@ -1,13 +1,13 @@
 import Slop.Sail.ResetState
 import Slop.ShiftBinop.Execution
 import Slop.UnifiedReduced.Claims
+import Slop.UnifiedReduced.Completeness.Shift
 import Slop.BabyBear
 
 namespace Tests.UnifiedShift
 open Airbender Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
-set_option maxHeartbeats 10000000
 
 private def operation (kind : Fin 7) : ShiftBinop.Operation :=
   if kind.val = 6 then .rev8 else if kind.val % 3 = 0 then .sll else if kind.val % 3 = 1 then .srl else .sra
@@ -18,36 +18,13 @@ private def rightWord (kind : Fin 7) : BitVec 32 := if unusedRight kind then 0 e
 private def amount (kind : Fin 7) : Nat := if kind.val = 6 then 0 else if immediateForm kind then 7 else 31
 private def outputWord (kind : Fin 7) : BitVec 32 :=
   Verification.shiftOperation (operation kind).tag 0xabcd1234 (amount kind)
-private def leftByte (i : Nat) : Nat := ((0xabcd1234 : BitVec 32).extractLsb' (8 * i) 8).toNat
-private def part (kind : Fin 7) (i j : Nat) : Nat :=
-  ((Verification.shiftByteContribution i (leftByte i) (amount kind) (operation kind).tag).extractLsb' (8 * j) 8).toNat
+private def rightByte (kind : Fin 7) (i : Nat) : Nat := ((rightWord kind).extractLsb' (8 * i) 8).toNat
 
-private def assignment (kind : Fin 7) : Nat → ZMod babyBearModulus
-  | 4 | 5 | 26 | 123 | 124 | 125 => 1
-  | 6 | 38 => if unusedRight kind then 0 else 2
-  | 7 | 44 => 3
-  | 2 | 30 => 4
-  | 32 => 8
-  | 8 => ((payload kind).toNat : ZMod babyBearModulus)
-  | 10 => ((operation kind).tag : ZMod babyBearModulus)
-  | 36 => 0x1234 | 37 => 0xabcd
-  | 42 => (((rightWord kind).toNat % 65536 : Nat) : ZMod babyBearModulus)
-  | 43 => (((rightWord kind).toNat / 65536 : Nat) : ZMod babyBearModulus)
-  | 50 => (((outputWord kind).toNat % 65536 : Nat) : ZMod babyBearModulus)
-  | 51 => (((outputWord kind).toNat / 65536 : Nat) : ZMod babyBearModulus)
-  | 57 | 85 => if unusedRight kind then 0 else 31
-  | 74 => leftByte 0 | 75 => leftByte 2
-  | 76 | 83 => if unusedRight kind then 0 else 0x1f
-  | 84 => if unusedRight kind then 0 else 0x9b
-  | 82 => 8
-  | 78 => 0xabcd1234 * (rightWord kind).toNat * 943718400
-  | n => if 58 ≤ n ∧ n < 74 then part kind ((n - 58) / 4) ((n - 58) % 4) else
-    if 86 ≤ n ∧ n < 122 then
-      let i := (n - 86) / 9
-      match (n - 86) % 9 with
-      | 0 => 9 | 1 => i | 2 => leftByte i | 3 => amount kind
-      | 4 => (operation kind).tag | j => part kind i (j - 5)
-    else 0
+private def inputs (kind : Fin 7) : UnifiedReduced.Completeness.Shift :=
+  ⟨⟨0, 0, 4, 0, 0, 0, 0, 0, 0, 0⟩, (operation kind).tag, immediateForm kind, (payload kind).toNat, 1,
+    if unusedRight kind then 0 else 2, 3, 0x34, 0x12, 0xcd, 0xab,
+    rightByte kind 0, rightByte kind 1, rightByte kind 2, rightByte kind 3, 0, 0⟩
+private def assignment (kind : Fin 7) : Nat → ZMod babyBearModulus := (inputs kind).honest
 
 private def instructionBits (kind : Fin 7) : BitVec 32 :=
   if kind.val = 0 then 0x002091b3 else if kind.val = 1 then 0x0020d1b3 else if kind.val = 2 then 0x4020d1b3
@@ -64,54 +41,15 @@ private noncomputable def before (kind : Fin 7) : State :=
 
 private def row (kind : Fin 7) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment kind⟩
 
-private def rowIndex (xs : Vector (ZMod babyBearModulus) 10) : Nat :=
-  if xs[9].val = 8 then 196865 + xs[0].val * 256 + xs[1].val else
-    262401 + xs[0].val * 65536 + xs[1].val * 256 + xs[2].val * 8 + xs[3].val
-private def queryValues (kind : Fin 7) (slot : Fin 5) : Vector (ZMod babyBearModulus) 10 :=
-  if slot.val = 0 then #v[assignment kind 83, assignment kind 84, assignment kind 85,
-    0, 0, 0, 0, 0, 0, assignment kind 82]
-  else let base := 86 + 9 * (slot.val - 1)
-    #v[assignment kind (base + 1), assignment kind (base + 2), assignment kind (base + 3),
-      assignment kind (base + 4), assignment kind (base + 5), assignment kind (base + 6),
-      assignment kind (base + 7), assignment kind (base + 8), 0, assignment kind base]
-
-private theorem checkedRows (kind : Fin 7) (slot : Fin 5) :
-    (UnifiedReduced.Setup.table (before kind)).Contains #[] (queryValues kind slot) := by
-  change ∃ i : Fin 2097537, _
-  have bound : rowIndex (queryValues kind slot) < 2097537 := by
-    fin_cases kind <;> fin_cases slot <;> with_unfolding_all decide
-  refine ⟨⟨_, bound⟩, ?_⟩
-  fin_cases kind <;> fin_cases slot <;> with_unfolding_all decide +revert
+private theorem valid (kind : Fin 7) : (inputs kind).Valid := by
+  fin_cases kind <;>
+    refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
+      ?_⟩ <;>
+    decide
 
 private theorem constraints (kind : Fin 7) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment kind)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table (before kind))) := by
-  apply Verification.holds_append
-  · apply FlatOperation.constraintsHoldFlat_iff_forall_mem.mpr
-    constructor
-    · fin_cases kind
-      all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.constraints,
-        Expression.eval, Verification.environment, assignment, amount, leftByte, part, operation, immediateForm,
-        unusedRight, payload, rightWord, outputWord, Verification.shiftByteContribution, Verification.shiftOperation, ShiftBinop.Operation.tag]
-      all_goals with_unfolding_all decide
-    · intro query member
-      obtain ⟨i, rfl⟩ := List.mem_iff_get.mp member
-      fin_cases i
-      all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.lookups, Lookup.Contains,
-        UnifiedReduced.Setup.table, Table.fromStatic, Table.toRaw, fromElements,
-        Expression.eval, Verification.environment]
-      all_goals solve
-        | (apply Verification.range16_contains; fin_cases kind <;> with_unfolding_all decide)
-        | (with_unfolding_all exact checkedRows kind 0)
-        | (with_unfolding_all exact checkedRows kind 1)
-        | (with_unfolding_all exact checkedRows kind 2)
-        | (with_unfolding_all exact checkedRows kind 3)
-        | (with_unfolding_all exact checkedRows kind 4)
-  · fin_cases kind
-    all_goals simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    all_goals repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment]
-    all_goals decide
+    (Verification.environment (assignment kind)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table (before kind))) :=
+  UnifiedReduced.Completeness.Shift.complete _ (valid kind) _
 
 theorem airbender_before (kind : Fin 7) : Configured (before kind) := by
   configured_fixture [before]
