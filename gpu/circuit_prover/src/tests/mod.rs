@@ -71,10 +71,10 @@ const MEM_SUBWORD_ONLY_LAYOUT_PATH: &str = "cs/compiled_circuits/mem_subword_onl
 mod asserts;
 mod commit_memory;
 mod fixtures;
+mod geometry_proof;
 mod inits_and_teardowns;
 mod lsb_commit_pipeline;
 mod memory_policies;
-mod packed_proof;
 mod proof_matrix;
 mod stagewise;
 

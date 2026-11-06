@@ -715,7 +715,7 @@ fn run_bigint_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_bigint_multi_schedule_test() {
-    super::packed_proof::geometry_proof(prepare_bigint_proof_fixture());
+    super::geometry_proof::geometry_proof(prepare_bigint_proof_fixture());
 }
 
 #[test]
@@ -833,7 +833,7 @@ fn run_keccak_special5_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_keccak_special5_multi_schedule_test() {
-    super::packed_proof::geometry_proof(prepare_keccak_special5_proof_fixture());
+    super::geometry_proof::geometry_proof(prepare_keccak_special5_proof_fixture());
 }
 
 #[test]
@@ -972,7 +972,7 @@ fn run_blake2_with_compression_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_blake2_with_compression_multi_schedule_test() {
-    super::packed_proof::geometry_proof(prepare_blake2_with_compression_proof_fixture());
+    super::geometry_proof::geometry_proof(prepare_blake2_with_compression_proof_fixture());
 }
 
 #[test]
@@ -1076,7 +1076,7 @@ fn run_blake2_g_function_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_blake2_g_function_multi_schedule_test() {
-    super::packed_proof::geometry_proof(prepare_blake2_g_function_proof_fixture());
+    super::geometry_proof::geometry_proof(prepare_blake2_g_function_proof_fixture());
 }
 
 #[test]
@@ -1332,7 +1332,7 @@ pub(super) mod keccak_f1600 {
             #[test]
             #[ignore]
             fn $multi_schedule() {
-                super::super::packed_proof::geometry_proof($stem());
+                super::super::geometry_proof::geometry_proof($stem());
             }
 
             #[test]

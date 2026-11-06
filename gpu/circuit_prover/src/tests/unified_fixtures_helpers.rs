@@ -792,7 +792,7 @@ where
             &base.prover_config,
             BaseColumns::of(&base.compiled_circuit),
         );
-        base.memory_tree_caps = super::packed_proof::gpu_memory_caps(&base, geometry);
+        base.memory_tree_caps = super::geometry_proof::gpu_memory_caps(&base, geometry);
     }
     (base, expected_cpu_proof)
 }

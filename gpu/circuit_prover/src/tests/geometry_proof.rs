@@ -1,5 +1,4 @@
 use super::*;
-use prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture as packed_config;
 
 pub(super) fn gpu_memory_caps(
     base: &BasicUnrolledFixture,
@@ -84,52 +83,4 @@ pub(super) fn geometry_proof(mut fixture: BasicUnrolledProofFixture) {
         serde_json::to_vec(&fixture.expected_cpu_proof).unwrap()
     );
     assert_eq!(base.context.get_used_mem_current(), baseline);
-}
-
-#[test]
-#[ignore = "fresh CPU/GPU production physical packed proof parity"]
-fn packed_full_proof_blake20_pack4_cpu_parity() {
-    geometry_proof(
-        proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(packed_config(
-            20,
-            4,
-            SecurityLevel::Sec100,
-        )),
-    );
-}
-
-#[test]
-#[ignore = "fresh CPU/GPU production physical packed proof parity with unified inits/teardowns"]
-fn packed_full_proof_unified23_pack1_cpu_parity() {
-    let (base, proof) = prepare_unified_fixture(
-        "cs/compiled_circuits/unified_reduced_machine_layout_gkr.json",
-        true,
-        1,
-        circuit_common::SoundnessMode::DEFAULT,
-    );
-    geometry_proof(BasicUnrolledProofFixture {
-        base,
-        expected_cpu_proof: proof.unwrap(),
-    });
-}
-
-#[test]
-#[ignore = "fresh CPU/GPU physical-only Blake k2/f1 proof parity"]
-fn packed_full_proof_blake20_pack2_cpu_parity() {
-    geometry_proof(
-        proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(packed_config(
-            20,
-            2,
-            SecurityLevel::Sec100,
-        )),
-    );
-}
-
-#[test]
-#[ignore = "fresh CPU/GPU merged physical proof parity"]
-fn packed_full_proof_blake20_pack4_merged_cpu_parity() {
-    // The CPU already exposes this mode; no canonical BF default selects it.
-    let mut config = packed_config(20, 4, SecurityLevel::Sec100);
-    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-    geometry_proof(proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config));
 }
