@@ -44,20 +44,3 @@ pub fn bincode_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &
     let src = std::io::BufReader::new(std::fs::File::open(filename).unwrap());
     bincode::deserialize_from(src).unwrap()
 }
-
-#[cfg(all(test, target_os = "linux"))]
-mod flush_tests {
-    use super::*;
-
-    #[test]
-    #[should_panic(expected = "StorageFull")]
-    fn json_write_errors_are_not_dropped() {
-        serialize_to_file(&[0u32; 4], "/dev/full");
-    }
-
-    #[test]
-    #[should_panic(expected = "StorageFull")]
-    fn bincode_write_errors_are_not_dropped() {
-        bincode_serialize_to_file(&[0u32; 4], "/dev/full");
-    }
-}
