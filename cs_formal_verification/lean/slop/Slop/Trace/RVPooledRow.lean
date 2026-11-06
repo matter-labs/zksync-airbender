@@ -3,7 +3,7 @@ import Slop.Trace.RVProgram
 import Slop.Trace.RVHistory
 import Slop.Trace.RVRom
 import Slop.Trace.RVZero
-import Slop.Trace.RVWritable
+import Slop.Trace.RVPooledLaws
 
 /-! Shared RV facts for one row of an accepted pooled trace, for every family:
 
@@ -11,7 +11,7 @@ import Slop.Trace.RVWritable
       starting memory that `RV.decode`s to `i` with `rvPooledDecoderFields i = some entry.data`), and the row's start
       PC is the entry's PC. `rv_pooled_fields_family` turns the pooled projection into the row family's own.
     - `rv_pooled_row_history`: the row's native events are an RV history from the row's pre-state (up to its PC),
-      together with the x0 and writable-store laws of the whole trace. Each family derives its operand reads from it
+      together with the x0 and writable-store laws of the whole trace (from the `RVPooledLaws` contract). Each family derives its operand reads from it
       (`rv_row_operand_reads`).
     - `rv_step_of_position` / `rv_step_of_row`: `RV.step` of the row's pre-state executes the entry's instruction. -/
 
@@ -106,7 +106,7 @@ theorem rv_history_with_pc {cells : List Cell} {events : List MemoryAccess} {bef
     history from the starting state to `middle`, the row's own events (`rowEvents`, reversed: first port first) are an
     RV history from `middle` (equivalently from `before`, which is `middle` at the row's start PC), and every native
     write to x0 carries zero and every changing RAM write is RV-writable. -/
-theorem rv_pooled_row_history {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem rv_pooled_row_history (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : PooledTrace p} (accepted : Accepted trace)
     {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry}
     (inputs : RVPooledHistoryInputs trace initial cells program)
@@ -123,11 +123,13 @@ theorem rv_pooled_row_history {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase +
         memoryWord event.2.2.2 = 0) ∧
       (∀ event ∈ trace.nativeEvents, event.2.2.1 ≠ event.2.2.2 → ∀ cell ∈ cells,
         cell.addressCode = event.2.1 → ∀ index, cell = .ram index → RV.writable index 4) := by
+  haveI : ClockLaws PooledFamily p := laws.clockLaws
   have clocks := inputs.initialization.clocks
   obtain ⟨addresses, programImage⟩ := inputs.initialization.programImage
-  have zero := Airbender.Trace.RVZero.rv_pooled_zero_writes hp inverse accepted clocks inputs.initialization.image
-    programImage decoded
-  have writable := Airbender.Trace.RVWritable.rv_pooled_writable hp accepted inputs.initialization.aligned
+  have zero := Airbender.Trace.RVZero.rv_zero_writes_of_preserving hp inverse accepted clocks
+    inputs.initialization.image
+    (laws.zeroPreserving (by dsimp [timestampBase] at hp; omega) accepted programImage decoded)
+  have writable := laws.writable hp accepted inputs.initialization.aligned
   obtain ⟨history, rows, after, _, rowsPermutation, rowsOrdered, native, _⟩ :=
     rv_native_row_history hp inverse accepted clocks inputs.initialization.image
       inputs.initialization.distinct inputs.initialization.aligned zero writable

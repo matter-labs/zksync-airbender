@@ -1,3 +1,4 @@
+import Slop.Trace.RVFamilySelectors
 import Human.Circuits.AddSub.RVTheorems
 import Slop.AddSub.RVDecoder
 import Slop.AddSub.RVRowPosition
@@ -19,22 +20,7 @@ import Slop.Trace.RVPooledRow
 namespace Airbender.AddSub.Proofs
 open Arithmetic Trace Trace.Proofs
 
-/-- Register/PC agreement of one step that writes `x` to `rd` with the claimed post-state. -/
-private theorem same_of_result (s : RV.State) (rd : RV.Reg) (x out pc : BitVec 32)
-    (value : rd ≠ 0 → x = out) (hpc : s.pc + 4 = pc) :
-    RV.Same (s.setReg rd x).nextInstr ((s.setReg rd out).setPC pc) := by
-  refine ⟨?_, ?_, rfl, rfl⟩
-  · simpa [RV.State.nextInstr, RV.State.setPC, RV.State.setReg] using hpc
-  · intro i
-    simp only [RV.State.getReg, RV.State.nextInstr, RV.State.setPC, RV.State.setReg]
-    by_cases hi : i = 0
-    · simp [hi]
-    · by_cases hr : i = rd
-      · subst hr
-        simp [value hi]
-      · simp [hr]
-
-theorem rv_trace_soundness : RVSoundnessClaim := by
+theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
@@ -83,7 +69,7 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
   have hpc : input.before.pc + 4 = output.pc.toBitVec := by
     rw [pcNext.2.2, rowPCBits, beforePC]
   -- Operand bounds.
-  have readBounds := (Trace.RVValues.rv_pooled_value_bounds (by omega) inverse accepted
+  have readBounds := (laws.valueBounds (by omega) inverse accepted
     assumptions.initialization.clocks assumptions.initialization.image
     assumptions.wordTable assumptions.subwordTable programImage decoded).1 _ member
   have left := readBounds importedConstraintsMemoryPorts[0]
@@ -100,7 +86,7 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
   change w 5 = ((rvData input).rs1.toNat : ZMod p) at rs1Query
   have rs2Query := congrArg (fun q : Vector (ZMod p) 9 => q[3]) query0
   change w 6 = ((rvData input).rs2.toNat : ZMod p) at rs2Query
-  have regs := rv_addsub_row_position clockSize inverse accepted assumptions decoded member mapping.state
+  have regs := rv_addsub_row_position laws clockSize inverse accepted assumptions decoded member mapping.state
     (rvData input).rs1 (rvData input).rs2 rs1Query rs2Query
   have leftWord : memoryWord ((importedConstraintsMemoryPorts[0]).readCode w) =
       (Word.mk (w 25).val (w 26).val).toBitVec := by
@@ -201,39 +187,39 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
   dsimp only at step hpc leftValue rightValue immediateValue rowPCBits result beforePC
   cases opcode
   · refine ⟨(before.setReg rd (before.getReg rs1 + before.getReg rs2)).nextInstr, step.trans rfl,
-      same_of_result _ _ _ _ _ ?_ hpc⟩
+      rv_same_of_write _ _ _ _ _ ?_ hpc⟩
     intro hz
     have nz : rd ≠ 0#5 := hz
     simp only [rvData, arithmeticFields, hz, ↓reduceIte] at leftValue rightValue
     rw [result hz, leftValue, rightValue]
   · refine ⟨(before.setReg rd (before.getReg rs1 + e.signExtend 32)).nextInstr, step.trans rfl,
-      same_of_result _ _ _ _ _ ?_ hpc⟩
+      rv_same_of_write _ _ _ _ _ ?_ hpc⟩
     intro hz
     have nz : rd ≠ 0#5 := hz
     simp only [rvData, arithmeticFields, hz, ↓reduceIte] at leftValue immediateValue
     rw [result hz, leftValue, immediateValue, Word.ofBitVec_roundtrip]
   · refine ⟨(before.setReg rd (before.getReg rs1 - before.getReg rs2)).nextInstr, step.trans rfl,
-      same_of_result _ _ _ _ _ ?_ hpc⟩
+      rv_same_of_write _ _ _ _ _ ?_ hpc⟩
     intro hz
     have nz : rd ≠ 0#5 := hz
     simp only [rvData, arithmeticFields, hz, ↓reduceIte] at leftValue rightValue
     rw [result hz, leftValue, rightValue]
   · refine ⟨(before.setReg rd (u ++ 0#12)).nextInstr, step.trans rfl,
-      same_of_result _ _ _ _ _ ?_ hpc⟩
+      rv_same_of_write _ _ _ _ _ ?_ hpc⟩
     intro hz
     have nz : rd ≠ 0#5 := hz
     simp only [rvData, arithmeticFields, hz, ↓reduceIte] at immediateValue
     rw [result hz, immediateValue, Word.ofBitVec_roundtrip]
   · refine ⟨(before.setReg rd (before.pc + (u ++ 0#12))).nextInstr, step.trans rfl,
-      same_of_result _ _ _ _ _ ?_ hpc⟩
+      rv_same_of_write _ _ _ _ _ ?_ hpc⟩
     intro hz
     have nz : rd ≠ 0#5 := hz
     simp only [rvData, arithmeticFields, hz, ↓reduceIte] at immediateValue
     rw [result hz, immediateValue, Word.ofBitVec_roundtrip, rowPCBits, beforePC]
 
-theorem babyBear_rv_trace_soundness : BabyBearRVSoundnessClaim := by
+theorem babyBear_rv_trace_soundness (laws : RVPooledLaws) : BabyBearRVSoundnessClaim := by
   intro trace initial cells program assumptions input output w relation
-  exact rv_trace_soundness (p := babyBearModulus) (by decide) (by decide) trace initial cells program
+  exact rv_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
     assumptions input output w relation
 
 end Airbender.AddSub.Proofs

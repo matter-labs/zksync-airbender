@@ -1,3 +1,5 @@
+import Slop.WordMemory
+import Slop.Trace.Family.Timestamps
 import Slop.Trace.ZeroRegister
 import Slop.Trace.RVProgram
 import Slop.JumpBranchSlt.Trace
@@ -8,6 +10,7 @@ import Slop.JumpBranchSlt.RVDecoder
 import Slop.MulDiv.RVDecoder
 import Slop.ShiftBinop.RVDecoder
 import Slop.SubwordMemory.RVDecoder
+import Slop.AddSub
 
 /-! RV-route twins of the per-family x0 row lemmas (piece E0, row level).
 
