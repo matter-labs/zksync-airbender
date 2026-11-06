@@ -1,0 +1,32 @@
+import Slop.KeccakSplit.Reference.SlotReduction
+import Slop.Keccak.LayoutReduction
+
+namespace Airbender.Keccak.Split.Call.Proofs
+open Specs.Keccak256
+set_option warningAsError true
+set_option maxRecDepth 65536
+set_option maxHeartbeats 4000000
+
+namespace Rounds
+
+/-- Parity calls 15–19 apply the delayed iota of round 1 and keep the other lanes. -/
+theorem parity_lanes_1 (state : LaneState) :
+    logicalLanes 1 (parityPhase 1 state) = iotaState (logicalLanes 1 state) 1 := by
+  apply Vector.ext
+  intro lane bound
+  interval_cases lane
+  all_goals simp only [logicalLanes, Vector.getElem_ofFn, parityPhase,
+      Fin.foldl_succ_last, Fin.foldl_zero, micro_normalized,
+      Airbender.Keccak.Proofs.physical_cached]
+  all_goals rfl'
+
+/-- Parity call 15 writes Keccak's column parity C[0] (after the delayed iota). -/
+theorem parity_column_zero_1 (state : LaneState) :
+    parityPhase 1 state 25 = (thetaC (iotaState (logicalLanes 1 state) 1))[0] := by
+  simp only [logicalLanes, parityPhase,
+      Fin.foldl_succ_last, Fin.foldl_zero, micro_normalized,
+      Airbender.Keccak.Proofs.physical_cached]
+  all_goals rfl'
+
+end Rounds
+end Airbender.Keccak.Split.Call.Proofs
