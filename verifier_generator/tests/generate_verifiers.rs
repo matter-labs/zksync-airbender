@@ -2,7 +2,7 @@ use std::io::Write;
 
 use prover::field::baby_bear::base::BabyBearField;
 use prover::gkr::prover_config::SoundnessMode;
-use verifier_common::test_circuits::{verifier_dir_name, CircuitData, SecurityLevel, CIRCUITS};
+use verifier_common::test_circuits::{verifier_dir_name, CircuitData, SecurityLevel, ALL_CIRCUITS};
 use verifier_generator::field_wrapper::FieldWrapper;
 use verifier_generator::gkr::GKRGeneratedFiles;
 use verifier_generator::{gkr, utils, whir, DefaultBabyBearField};
@@ -37,7 +37,7 @@ fn write_and_fmt(path: &str, content: &proc_macro2::TokenStream) {
 }
 
 fn generate_common<MW: FieldWrapper>() {
-    let max_fold_steps = CIRCUITS
+    let max_fold_steps = ALL_CIRCUITS
         .iter()
         .flat_map(|c| {
             LEVELS_TO_GENERATE.iter().flat_map(move |&level| {
@@ -273,7 +273,7 @@ fn write_mod_rs<MW: FieldWrapper<BaseField = BabyBearField>>(
 /// (a pessimistic-conjecture variant; no soundcalc twin has been designed).
 #[test]
 fn unified_reduced_machine_l1_feeder() {
-    let circuit = CIRCUITS
+    let circuit = ALL_CIRCUITS
         .iter()
         .find(|c| c.name == "unified_reduced_machine")
         .unwrap();
@@ -295,7 +295,7 @@ macro_rules! generate_circuit_tests {
         $(
             #[test]
             fn $name() {
-                let circuit = CIRCUITS.iter().find(|c| c.name == stringify!($name)).unwrap();
+                let circuit = ALL_CIRCUITS.iter().find(|c| c.name == stringify!($name)).unwrap();
                 for level in LEVELS_TO_GENERATE {
                     generate_standard_verifiers_for_circuit::<DefaultBabyBearField>(circuit, *level);
                 }

@@ -11,8 +11,8 @@ use crate::definitions::{
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
 use crate::gkr::prover::{
-    prove_configured_with_gkr_with_storage_and_backend, DefaultBabyBearBackend,
-    DefaultBabyBearGKRBackend, GKRProof, OperationMode, WhirOracleStorage,
+    prove_configured_with_gkr_with_storage_and_backend, DefaultBabyBearGKRBackend, GKRProof,
+    OperationMode, WhirOracleStorage, WorkStealingBackend,
 };
 use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -272,7 +272,7 @@ fn memory_cap(prepared: &Prepared, worker: &Worker) -> MerkleTreeCapVarLength {
         .map(|column| &column[..])
         .collect();
     commit_trace_part_for_config::<BF, BF, DefaultTreeConstructor, _>(
-        &DefaultBabyBearBackend::default(),
+        &WorkStealingBackend,
         &columns,
         &twiddles,
         &prepared.config,
@@ -286,7 +286,7 @@ fn prove(prepared: Prepared, challenges: &GKRExternalChallenges<BF, E4>, worker:
     let started = Instant::now();
     let twiddles =
         Twiddles::<BF, Global>::new(1 << prepared.config.whir_message_size_log2(), worker);
-    let backend = DefaultBabyBearBackend::default();
+    let backend = WorkStealingBackend;
     let setup_commitment = prepared.setup.commit_for_config::<DefaultTreeConstructor>(
         &twiddles,
         &prepared.config,

@@ -25,8 +25,13 @@ macro_rules! make_circuits {
     };
 }
 
+/// The circuits with a committed canonical proof.
 pub static CIRCUITS: LazyLock<Vec<CircuitData>> =
     LazyLock::new(|| gkr_fixture_circuits!(make_circuits));
+
+/// Every circuit with a generated verifier, including those without a canonical proof.
+pub static ALL_CIRCUITS: LazyLock<Vec<CircuitData>> =
+    LazyLock::new(|| gkr_circuits!(make_circuits));
 
 pub use prover::definitions::SecurityLevel;
 
