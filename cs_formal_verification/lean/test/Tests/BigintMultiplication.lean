@@ -5,7 +5,6 @@ import Mathlib.Tactic.IntervalCases
 namespace Tests.BigintMultiplication
 open Airbender Bigint.Multiplication.Proofs
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 
 theorem incorrectLowByteRejected (w : Nat → ZMod babyBearModulus)
     (source : w 5 = 65535) (wrong : w 99 = 0) :

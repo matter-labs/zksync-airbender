@@ -40,7 +40,6 @@ private def row (operation : Fin 4) : Nat → ZMod babyBearModulus
   | 55 => if operation.val < 2 then 0 else 1
   | _ => 0
 
-set_option maxHeartbeats 800000 in
 private theorem satisfies (operation : Fin 4) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row operation))
       Airbender.MulDiv.importedConstraints := by

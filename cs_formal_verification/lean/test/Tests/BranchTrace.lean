@@ -10,7 +10,6 @@ namespace Tests.BranchTrace
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
-set_option maxHeartbeats 2000000
 
 private def opcode (tag : Fin 6) : SailRV32.bop :=
   match tag.val with
@@ -124,7 +123,6 @@ private theorem instruction_decoded (tag : Fin 6) :
     decodeOnReset (entry tag false).bits = some (entry tag false).instruction := by
   fin_cases tag <;> decode_on_reset
 
-set_option maxHeartbeats 8000000 in
 private theorem program_image (tag : Fin 6) :
     JumpBranchSlt.programImage (before tag false) [(Branch.initial false).toBitVec] =
       some [entry tag false] := by

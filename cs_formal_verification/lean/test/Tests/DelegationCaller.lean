@@ -10,7 +10,6 @@ namespace Tests.DelegationCaller
 open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 private def encoding (family : Delegation.Family) : BitVec 32 :=
   BitVec.ofNat 32 (Requests.csr family * 2 ^ 20 + 0x1073)

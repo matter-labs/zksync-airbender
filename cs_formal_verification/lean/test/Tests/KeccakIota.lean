@@ -7,7 +7,6 @@ namespace Tests.KeccakIota
 open Airbender
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 9600000
 
 private def referenceState : Vector Nat 25 := Vector.ofFn fun i =>
   (#v[0xffffffffffffffff, 0x0123456789abcdef, 0x8080808080808080,

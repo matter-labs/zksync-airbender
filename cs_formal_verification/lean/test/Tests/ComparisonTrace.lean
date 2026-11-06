@@ -10,7 +10,6 @@ namespace Tests.ComparisonTrace
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
-set_option maxHeartbeats 2000000
 
 -- All four comparisons of zero with -1, with rd aliasing the selected source.
 private def assignment (signed immediate : Bool) (i : Nat) : ZMod babyBearModulus :=

@@ -7,7 +7,6 @@ namespace Tests.KeccakChi
 open Airbender
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 3200000
 
 private def referenceState : Vector Nat 25 := Vector.ofFn fun i =>
   if i.val % 5 = 2 then

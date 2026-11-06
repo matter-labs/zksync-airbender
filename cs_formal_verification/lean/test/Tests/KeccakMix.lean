@@ -7,7 +7,6 @@ namespace Tests.KeccakMix
 open Airbender
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 4800000
 
 private def parities : Vector Nat 5 :=
   #v[0xffffffffffffffff, 0x0123456789abcdef, 0x8080808080808080,

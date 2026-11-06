@@ -47,7 +47,6 @@ private def row (tag : Fin 4) (immediate zero : Bool) : Nat → ZMod babyBearMod
     else 0
 
 set_option maxRecDepth 4096 in
-set_option maxHeartbeats 6000000 in
 private theorem satisfies (tag : Fin 4) (immediate zero : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row tag immediate zero))
       importedConstraints := by
