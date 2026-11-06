@@ -1,5 +1,6 @@
 import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
+import Slop.UnifiedReduced.Completeness.Control
 import Slop.BabyBear
 
 namespace Tests.UnifiedJump
@@ -7,24 +8,12 @@ open Airbender Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.S
 open Sail.ArchSem
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2800000
 
-private def assignment (indirect : Bool) : Nat → ZMod babyBearModulus
-  | 4 | 7 | 44 | 82 | 123 | 124 | 125 => 1
-  | 5 => if indirect then 1 else 0
-  | 2 | 8 | 50 | 74 | 83 => 4
-  | 32 => 8
-  | 21 => if indirect then 0 else 1
-  | 22 => if indirect then 1 else 0
-  | 30 | 116 => if indirect then 12 else 4
-  | 36 | 48 => if indirect then 9 else 0
-  | 40 => if indirect then 0 else 4
-  | 46 => if indirect then 4 else 0
-  | 64 | 114 => if indirect then 13 else 4
-  | 86 | 95 => 5
-  | 104 => 51
-  | 113 => 2
-  | _ => 0
+private def witness (indirect : Bool) : UnifiedReduced.Completeness.Control :=
+  ⟨⟨0, 0, 4, 0, 0, 0, if indirect then 0 else 4, 0, if indirect then 4 else 0, 0⟩,
+    if indirect then 1 else 0, false, 0, if indirect then 1 else 0, 0, 1,
+    if indirect then 9 else 0, 0, 0, 0, 4, 0, if indirect then 9 else 0, 0⟩
+private def assignment (indirect : Bool) : Nat → ZMod babyBearModulus := (witness indirect).honest
 
 private def row (indirect : Bool) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment indirect⟩
 private def cells : List Cell := [.register 0, .register 1]
@@ -50,27 +39,15 @@ private def entry (indirect : Bool) : UnifiedReduced.ProgramEntry :=
     if indirect then .JALR (4, .Regidx 1, .Regidx 1) else .JAL (4, .Regidx 1),
     ⟨.machine, if indirect then 1 else 0, 0, 1, ⟨4, 0⟩, if indirect then 2048 else 1024, 0⟩⟩
 
+private theorem valid (indirect : Bool) : (witness indirect).Valid := by
+  cases indirect <;>
+    refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
+      ?_⟩ <;>
+    decide
+
 private theorem constraints (indirect : Bool) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment indirect)) (UnifiedReduced.clockConstraints (trace indirect).rom) := by
-  apply Verification.holds_append
-  · cases indirect <;> simp [UnifiedReduced.importedConstraints, trace,
-      FlatOperation.ConstraintsHoldFlat, Verification.environment, Expression.eval, assignment,
-      Lookup.Contains, Table.toRaw, fromElements]
-    all_goals repeat' apply And.intro
-    all_goals solve
-      | decide
-      | (apply Verification.range16_contains; decide)
-      | (refine ⟨⟨524549, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-      | (refine ⟨⟨655617, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-      | (refine ⟨⟨786689, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
-          UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-      | (refine ⟨⟨721157, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-      | (refine ⟨⟨721166, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-  · cases indirect <;> simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    all_goals repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment]
-    all_goals decide
+    (Verification.environment (assignment indirect)) (UnifiedReduced.clockConstraints (trace indirect).rom) :=
+  UnifiedReduced.Completeness.Control.complete _ (valid indirect) _
 
 private theorem accepted (indirect : Bool) : Accepted (trace indirect) := by
   constructor
@@ -114,7 +91,8 @@ private theorem inputs (indirect : Bool) :
       apply read_register
       simp [before, Std.ExtDHashMap.get?_insert]
     simp [initialState, pc, trace, row, Row.start, Row.columns, CircuitLayout.columns,
-      UnifiedReduced.importedConstraintsTraceColumns, rawPair, assignment, PCState.boundary, PCState.encode, limbBase]
+      UnifiedReduced.importedConstraintsTraceColumns, rawPair, assignment, witness, unified_honest,
+      PCState.boundary, PCState.encode, limbBase]
   · constructor
     · cases indirect <;> constructor <;> decide
     · cases indirect <;> decide

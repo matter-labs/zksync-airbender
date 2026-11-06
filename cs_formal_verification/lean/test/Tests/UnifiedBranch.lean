@@ -1,5 +1,6 @@
 import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
+import Slop.UnifiedReduced.Completeness.Control
 import Slop.BabyBear
 
 namespace Tests.UnifiedBranch
@@ -7,21 +8,10 @@ open Airbender Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.S
 open Sail.ArchSem
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2800000
 
-private def assignment (taken : Bool) : Nat → ZMod babyBearModulus
-  | 4 | 24 | 25 | 57 | 82 | 84 | 123 | 124 | 125 => 1
-  | 2 | 40 => 4
-  | 8 | 32 => 8
-  | 46 => 5
-  | 10 => if taken then 0 else 1
-  | 30 | 64 | 114 | 116 => if taken then 8 else 4
-  | 59 | 79 | 106 => if taken then 1 else 0
-  | 86 | 95 => 5
-  | 104 => 51
-  | 105 => if taken then 8 else 24
-  | 113 => 2
-  | _ => 0
+private def witness (taken : Bool) : UnifiedReduced.Completeness.Control :=
+  ⟨⟨0, 0, 4, 0, 0, 0, 4, 0, 5, 0⟩, 3, true, if taken then 0 else 1, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0⟩
+private def assignment (taken : Bool) : Nat → ZMod babyBearModulus := (witness taken).honest
 
 private def row (taken : Bool) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment taken⟩
 private def cells : List Cell := [.register 0]
@@ -44,29 +34,15 @@ private def entry (taken : Bool) : UnifiedReduced.ProgramEntry :=
     .BTYPE (8, .Regidx 0, .Regidx 0, if taken then .BEQ else .BNE),
     ⟨.machine, 0, 0, 0, ⟨8, 0⟩, 24576, if taken then 0 else 1⟩⟩
 
+private theorem valid (taken : Bool) : (witness taken).Valid := by
+  cases taken <;>
+    refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
+      ?_⟩ <;>
+    decide
+
 private theorem constraints (taken : Bool) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment taken)) (UnifiedReduced.clockConstraints (trace taken).rom) := by
-  apply Verification.holds_append
-  · cases taken <;> simp [UnifiedReduced.importedConstraints, trace,
-      FlatOperation.ConstraintsHoldFlat, Verification.environment, Expression.eval, assignment,
-      Lookup.Contains, Table.toRaw, fromElements]
-    all_goals repeat' apply And.intro
-    all_goals solve
-      | decide
-      | (apply Verification.range16_contains; decide)
-      | (refine ⟨⟨524545, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-      | (refine ⟨⟨655617, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-      | (refine ⟨⟨786697, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
-          UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-      | (refine ⟨⟨786713, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
-          UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-      | (refine ⟨⟨721157, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-      | (refine ⟨⟨721161, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-  · cases taken <;> simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    all_goals repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment]
-    all_goals decide
+    (Verification.environment (assignment taken)) (UnifiedReduced.clockConstraints (trace taken).rom) :=
+  UnifiedReduced.Completeness.Control.complete _ (valid taken) _
 
 private theorem accepted (taken : Bool) : Accepted (trace taken) := by
   constructor
@@ -107,7 +83,8 @@ private theorem inputs (taken : Bool) :
       apply read_register
       simp [before]
     simp [initialState, pc, trace, row, Row.start, Row.columns, CircuitLayout.columns,
-      UnifiedReduced.importedConstraintsTraceColumns, rawPair, assignment, PCState.boundary, PCState.encode, limbBase]
+      UnifiedReduced.importedConstraintsTraceColumns, rawPair, assignment, witness, unified_honest,
+      PCState.boundary, PCState.encode, limbBase]
   · constructor
     · cases taken <;> constructor <;> decide
     · cases taken <;> decide

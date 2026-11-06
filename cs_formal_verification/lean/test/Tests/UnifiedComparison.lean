@@ -1,5 +1,6 @@
 import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
+import Slop.UnifiedReduced.Completeness.Control
 import Slop.BabyBear
 
 namespace Tests.UnifiedComparison
@@ -7,21 +8,11 @@ open Airbender Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.S
 open Sail.ArchSem
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2800000
 
-private def assignment (immediate : Bool) : Nat → ZMod babyBearModulus
-  | 4 | 7 | 23 | 44 | 82 | 123 | 124 | 125 => 1
-  | 2 | 30 | 40 | 64 | 114 | 116 => 4
-  | 8 | 9 | 60 | 96 => if immediate then 65535 else 0
-  | 10 => 3
-  | 32 => 8
-  | 50 | 52 | 53 | 59 | 61 | 74 | 83 | 97 | 106 => if immediate then 1 else 0
-  | 57 | 84 => if immediate then 0 else 1
-  | 86 | 95 => 5
-  | 104 => 51
-  | 105 => if immediate then 53 else 56
-  | 113 => 2
-  | _ => 0
+private def witness (immediate : Bool) : UnifiedReduced.Completeness.Control :=
+  ⟨⟨0, 0, 4, 0, 0, 0, 4, 0, 0, 0⟩, 2, false, 3, 0, 0, 1, 0, 0, 0, 0,
+    if immediate then 65535 else 0, if immediate then 65535 else 0, 0, 0⟩
+private def assignment (immediate : Bool) : Nat → ZMod babyBearModulus := (witness immediate).honest
 
 private def row (immediate : Bool) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment immediate⟩
 private def cells : List Cell := [.register 0, .register 1]
@@ -47,30 +38,15 @@ private def entry (immediate : Bool) : UnifiedReduced.ProgramEntry :=
     else .RTYPE (.Regidx 0, .Regidx 0, .Regidx 1, .SLTU),
     ⟨.machine, 0, 0, 1, ⟨if immediate then 65535 else 0, if immediate then 65535 else 0⟩, 4096, 3⟩⟩
 
+private theorem valid (immediate : Bool) : (witness immediate).Valid := by
+  cases immediate <;>
+    refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
+      ?_⟩ <;>
+    decide
+
 private theorem constraints (immediate : Bool) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment immediate)) (UnifiedReduced.clockConstraints (trace immediate).rom) := by
-  apply Verification.holds_append
-  · cases immediate <;> simp [UnifiedReduced.importedConstraints, trace,
-      FlatOperation.ConstraintsHoldFlat, Verification.environment, Expression.eval, assignment,
-      Lookup.Contains, Table.toRaw, fromElements]
-    all_goals repeat' apply And.intro
-    all_goals solve
-      | decide
-      | (apply Verification.range16_contains; decide)
-      | (refine ⟨⟨524545, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-      | (refine ⟨⟨524546, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-      | (refine ⟨⟨655617, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-      | (refine ⟨⟨786742, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
-          UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-      | (refine ⟨⟨786745, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
-          UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
-      | (refine ⟨⟨721157, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-      | (refine ⟨⟨721152, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
-  · cases immediate <;> simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    all_goals repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment]
-    all_goals decide
+    (Verification.environment (assignment immediate)) (UnifiedReduced.clockConstraints (trace immediate).rom) :=
+  UnifiedReduced.Completeness.Control.complete _ (valid immediate) _
 
 private theorem accepted (immediate : Bool) : Accepted (trace immediate) := by
   constructor
@@ -114,7 +90,8 @@ private theorem inputs (immediate : Bool) :
       apply read_register
       simp [before, Std.ExtDHashMap.get?_insert]
     simp [initialState, pc, trace, row, Row.start, Row.columns, CircuitLayout.columns,
-      UnifiedReduced.importedConstraintsTraceColumns, rawPair, assignment, PCState.boundary, PCState.encode, limbBase]
+      UnifiedReduced.importedConstraintsTraceColumns, rawPair, assignment, witness, unified_honest,
+      PCState.boundary, PCState.encode, limbBase]
   · constructor
     · cases immediate <;> constructor <;> decide
     · cases immediate <;> decide
