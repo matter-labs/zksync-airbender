@@ -546,11 +546,58 @@ execution remain open. Other combined profiles, worker/accounting/protocol spans
 padding/terminal/init and compiler/preprocessing/ROM/physical enforcement remain
 separate. No native defect, circuit fix or issue-handling assumption is added.
 
+## Native reduced original Sail shift clauses (6 November 2026)
+
+[The short initialized clause-history claim](Airbender/Review/Trace/Families/ReducedMachine/Clauses.lean)
+now derives execution of every selected retained original Sail shift clause into
+the same after-state as the actual native GPR transfers. Public image/decoder
+construction, seed/domain boundary, concrete fixedData acceptance, full original
+shift decoding and aligned tracked cells are the inputs. Source ranges, actual
+reads, selected register/immediate operands, numerical results, masked writes and
+all states are derived; no per-row result, source, selector or intermediate-state
+answer is supplied. Original x0 instructions and all native readonly accesses
+remain present, including immediate rs2/x0 aliases.
+
+[Operand observables](Airbender/Review/Circuits/ReducedMachine/ShiftOperand.lean)
+separate the actual readonly second-port word from selected operandWord.
+[Native operand recovery](Airbender/Proofs/ReducedMachine/NativeShiftOperand.lean)
+derives the exact register/immediate mask bit from the original Sail constructor,
+then uses actual native routing and bounded public immediate fields. This retains
+encoded SRAI 1055 rather than applying the old split mask threshold or columns.
+[Pure original-clause sequencing](Airbender/Proofs/ReducedMachine/NativeShiftClauseReference.lean)
+reuses the checked original Sail primitive/encoded-amount lemmas; the exact
+ofNat32 logical immediate projection is proved explicitly. [Actual native clause
+assembly](Airbender/Proofs/ReducedMachine/NativeShiftClause.lean) consumes the
+already proved native numerical write and actual GPR transfers, preserving the
+original x0 discard behavior. [Trace composition](Airbender/Proofs/Trace/Families/ReducedMachine/Clauses.lean)
+discharges the internal source bound through initialized ranges.
+[Observable contracts](Airbender/Review/Helpers/Memory/ReducedMachineClauses.lean)
+remain under Review; calculations and sequencing stay under Proofs.
+
+[Eight regression roots](Tests/NativeReducedClauses.lean) check twelve original
+ordinary/x0 projections and concrete numerical outputs, actual original Sail
+clause execution for all twelve forms, six whole-data-state x0 stutters, actual
+native SRAI 1055 selection with the readonly rs2=x0 port retained, conditional
+native x0 clause execution, execution between states derived by initialized
+public history, and rejection of all three illegal 32/63 immediate forms. The
+positive local fixtures establish original Sail execution, not complete accepted
+117-equation native rows. General positive native execution fixtures remain open.
+
+All affected bounded modules, 2,607 explicit standard-only axiom roots and 158
+public Review roots pass with exact provenance, guides and layer gates at unchanged
+limits. Full Review used 538.86 MiB footprint/3090.44 MiB resident in 23.85 seconds,
+with no owned survivors. Numerical PC+4/wrap, normal PC preparation/retirement and fetched initialized
+shift execution remain unfinished; clause execution alone does not establish
+them. Other combined profiles, workers/accounting/protocol/padding/terminal/init
+and compiler/preprocessing/ROM/physical/cryptographic/completeness boundaries
+remain separate. No native defect, production fix or issue-handling assumption
+is introduced.
+
 ## Checked coverage
 
 | Circuit | Coverage |
 | --- | --- |
-| [Native combined reduced](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean) | Actual 117-equation artifact and complete native fixed pool. Selected original public shifts derive initialized ranges, canonical keys and [complete RV32 candidates/actual x0-masked writes](Airbender/Review/Trace/Families/ReducedMachine/Results.lean). [Original Sail register histories](Airbender/Review/Trace/Families/ReducedMachine/Registers.lean) now derive states/GPR transfers/code frames and decoder replay. Selected-operand/clause and numerical PC execution, other profiles and protocol/terminal/init remain open. The historical shipped JSON is distinct. |
+| [Native combined reduced](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean) | Actual 117-equation artifact and complete native fixed pool. Selected original public shifts derive initialized ranges, canonical keys and [complete RV32 candidates/actual x0-masked writes](Airbender/Review/Trace/Families/ReducedMachine/Results.lean). [Original Sail register histories](Airbender/Review/Trace/Families/ReducedMachine/Registers.lean) now derive states/GPR transfers/code frames and decoder replay. [Original shift clause history](Airbender/Review/Trace/Families/ReducedMachine/Clauses.lean) now derives operand selection and original clause execution at the actual GPR after-state. Numerical PC/fetched execution, other profiles and protocol/terminal/init remain open. The historical shipped JSON is distinct. |
 | [ADD/SUB](Airbender/Review/Circuits/AddSub/Theorems.lean) | Conditional ADD/ADDI/SUB/LUI/AUIPC destination and original Sail PC/register effects. Packed native masks derive the eight selector bits. The actual masked destination write is observed. Aligned PC wraparound and discarded x0 writes are included. |
 
 | Integration | Coverage |

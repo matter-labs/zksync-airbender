@@ -125,8 +125,9 @@ remain open.
 now close the selected profile's numerical candidate and actual masked-write
 connection. This is proof progress, not a native defect or fix. Selected-profile
 original Sail cell/GPR transport is now checked from actual mixed-port constraints and initialized
-history. Selected-operand/clause execution, numerical PC and full instruction/
-protocol behavior remain open. No issue-handling assumption is introduced.
+history. Original selected shift operands and Sail clauses are now checked at
+the actual GPR after-states. Numerical PC, fetched execution and full protocol
+behavior remain open. No issue-handling assumption is introduced.
 Confirmed native-v2 defects remain zero.
 
 ## Open bindings

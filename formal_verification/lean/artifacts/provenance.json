@@ -7609,6 +7609,90 @@
       "backport_reuse_revision": "c66cfacb25bc8ab777f86e5934742874025a8f08",
       "backport_reuse_path": "Tests/NativeReducedResults.lean",
       "backport_reuse_sha256": "5a1607fc636976fa7e4a38585d4785fe89c5ee84a693261110f17cd8018493d1"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/ShiftOperand.lean",
+      "change": "Retain actual native word observables; add the actual readonly second-port word separately from selected operandWord and classify the original instruction form. No expected selected flag or word is supplied.",
+      "backport_reuse_revision": "79aeb85139d06829d73ae2b92e29f19694362e88",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/ShiftResult.lean",
+      "backport_reuse_sha256": "31f346357e1ff94e2d01791fc955409022a5e785edc123129e75f6a93bb1be4d"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftOperand.lean",
+      "change": "Adapt native selected-operand lifting to actual reduced equations and metadata. Original RTYPE/SHIFTIOP form determines register/immediate selection; never reuse the split-family mask threshold or columns.",
+      "backport_reuse_revision": "79aeb85139d06829d73ae2b92e29f19694362e88",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/Clauses.lean",
+      "backport_reuse_sha256": "66ac89a7c912e7f17c3996336b2739cfab06470dd6c3be9fc43019b1457f4373"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftOperand.lean",
+      "change": "Reuse original-constructor case analysis and actual immediate bounds/fields. Derive the exact original-form native mask before actual native selected-field routing; readonly immediate/x0 access remains in history.",
+      "backport_reuse_revision": "79aeb85139d06829d73ae2b92e29f19694362e88",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftDecoder.lean",
+      "backport_reuse_sha256": "68c12cfd37985cc94287e047c3b0a24aae06196f94fa715b311b8662bed9596d"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftClauseReference.lean",
+      "change": "Copy the pure encoded-shift/Sail primitive lemmas and adapt original clause sequencing to the reduced selected shift projection. Native logical immediates use ofNat32 rather than the split definition's setWidth, so prove their exact amount connection with the unchanged encoded-shift lemma. Execute retained original clauses; no replacement instruction.",
+      "backport_reuse_revision": "79aeb85139d06829d73ae2b92e29f19694362e88",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/Clauses.lean",
+      "backport_reuse_sha256": "66ac89a7c912e7f17c3996336b2739cfab06470dd6c3be9fc43019b1457f4373"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftClause.lean",
+      "change": "Adapt original GPR/read/write sequencing and x0 handling to independently checked actual reduced native result/operand/port bindings. Any local range/read/result premise is discharged from native history at the public theorem.",
+      "backport_reuse_revision": "79aeb85139d06829d73ae2b92e29f19694362e88",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/Clauses.lean",
+      "backport_reuse_sha256": "66ac89a7c912e7f17c3996336b2739cfab06470dd6c3be9fc43019b1457f4373"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftClause.lean",
+      "change": "Compose the checked actual native canonical result and original decoded masking with actual original Sail transfers. No expected numerical output, intermediate state or split-table equivalence is added publicly.",
+      "backport_reuse_revision": "79aeb85139d06829d73ae2b92e29f19694362e88",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftResult.lean",
+      "backport_reuse_sha256": "4cc43474f988aa8d2ae89a00414f78b2f1c5549403e54d2951a921b2c6df659a"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ReducedMachineClauses.lean",
+      "change": "Retain small original-clause execution/history observables for actual NativeReducedFamily and concrete native acceptance. PC preparation/retirement, fetched execution and setup/physical boundaries remain separate.",
+      "backport_reuse_revision": "79aeb85139d06829d73ae2b92e29f19694362e88",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/ShiftBinopClauses.lean",
+      "backport_reuse_sha256": "42e0dfe928b74c839f4b0e8985c1a144f305ae15e43f878eab383b44ffde6380"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/Clauses.lean",
+      "change": "Reuse public decoder/range/history composition after actual reduced prerequisites. Derive local source bounds and actual original GPR transfers internally; expose no per-row state/read/result/operand answer.",
+      "backport_reuse_revision": "79aeb85139d06829d73ae2b92e29f19694362e88",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ShiftBinop/Clauses.lean",
+      "backport_reuse_sha256": "a87ace4d28bbc3e3f00bcff17ee0a91513b54931b3eee91d832c22668b4348da"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/Clauses.lean",
+      "change": "Retain a short public original-clause history statement using fixedData acceptance, original public image/decoder, seed boundary and aligned tracked cells. The complete initialized PC/fetched execution claim is still open.",
+      "backport_reuse_revision": "79aeb85139d06829d73ae2b92e29f19694362e88",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ShiftBinop/Clauses.lean",
+      "backport_reuse_sha256": "9f7c49792518aa08db5c36b4dc94d48f9712d2da15255b81a029a438ba78680e"
+    },
+    {
+      "path": "Tests/NativeReducedClauses.lean",
+      "change": "Copy the twelve exact original instruction/byte entries and actual reduced data projection only, not old split tables/constraints or accepted rows. Positive original Sail fixtures are scoped separately from full native acceptance.",
+      "backport_reuse_revision": "79aeb85139d06829d73ae2b92e29f19694362e88",
+      "backport_reuse_path": "Tests/NativeReducedDecoder.lean",
+      "backport_reuse_sha256": "07a93d6bbdb9b3983f62e79d94fec7b309ae9ebee89ee86c210d48f30653b6a2"
+    },
+    {
+      "path": "Tests/NativeReducedClauses.lean",
+      "change": "Adapt original-clause/x0 execution and initialized history extraction checks to actual reduced interfaces. Eight roots cover all twelve original Sail forms, six x0 stutters, native SRAI1055 aliasing and illegal RV64-sized immediates; no complete positive117-equation native fixture is claimed.",
+      "backport_reuse_revision": "79aeb85139d06829d73ae2b92e29f19694362e88",
+      "backport_reuse_path": "Tests/ShiftClauses.lean",
+      "backport_reuse_sha256": "7912b55ba9ce21d587e9d64e3117c8b00691ef521792a0bd34fffb2ebe89fe19"
+    },
+    {
+      "path": "Tests/NativeReducedClauses.lean",
+      "change": "Reuse the original tiny Sail GPR-state construction with x1=0x8000ffff/x2=3/x3=0. Actual original Sail reads and writes establish each after-state; native acceptance is not copied or assumed.",
+      "backport_reuse_revision": "79aeb85139d06829d73ae2b92e29f19694362e88",
+      "backport_reuse_path": "Tests/ShiftHistoryFixture.lean",
+      "backport_reuse_sha256": "589d3f257c7fb119d153ed3ee942a3d12cc06a2e91e48e4e7d7a7a62daff4197"
     }
   ],
   "setup_artifacts": [

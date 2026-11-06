@@ -151,3 +151,13 @@ proofs and x0 preservation justify shared history reuse; readonly aliases stay
 in one pre-state. No per-row state/read/write or register-space answer is input.
 Public cell-domain alignment stays explicit. Original operand/clause/PC execution,
 other combined profiles and physical/setup/protocol boundaries remain separate.
+
+## Native reduced original clauses
+
+[The initialized original shift clause history](../../Trace/Families/ReducedMachine/Clauses.lean)
+now executes retained Sail clauses at the actual GPR after-state. Native selected
+operands, original SRAI encoding, source bounds and all read/write/state inputs
+are derived; no per-row result or intermediate state is supplied. Readonly
+immediate/x0 aliases remain in matching. Numerical PC/preparation/retirement
+and fetched execution, other profiles and physical/setup/protocol closure remain
+separate from this original-clause result.

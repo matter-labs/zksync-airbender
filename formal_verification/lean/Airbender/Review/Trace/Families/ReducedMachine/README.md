@@ -92,3 +92,17 @@ address-space/replay answers do not. [Eight regressions](../../../../../Tests/Na
 cover aliases/x0 and malformed mixed fields; the positive group fixture does not
 claim full 117-equation acceptance. Selected-operand/clause, PC/fetched execution,
 other combined profiles and setup/physical/protocol/terminal/init stay open.
+
+## Retained original Sail shift clauses
+
+[The public clause-history claim](Clauses.lean) derives original clause execution
+at the actual native GPR after-state from public seeds/decoder and concrete native
+matching. [Observable contracts](../../../Helpers/Memory/ReducedMachineClauses.lean)
+add no per-row state/read/result premise. Actual selected operands and source
+bounds are derived; original SRAI bits and readonly immediate/x0 aliases stay
+intact. [Trace assembly](../../../../Proofs/Trace/Families/ReducedMachine/Clauses.lean)
+keeps calculations and sequencing under Proofs. [Eight regression roots](../../../../../Tests/NativeReducedClauses.lean)
+include twelve original Sail executions and six state stutters, scoped separately
+from a complete positive native 117-equation fixture. Numerical PC/wrap, normal
+preparation/retirement/fetched execution, other combined profiles and native
+setup/physical/protocol/terminal/init remain open.

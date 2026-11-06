@@ -267,3 +267,23 @@ resource ceilings stay unchanged. The v3 proof reference remains pinned; this
 backport neither resets nor adopts the live checkout's changes. Independent
 provenance checks every exact pinned Git object separately from the observed
 live HEAD and verifies the original tracked checkout/unrelated files are retained.
+
+## Original native reduced shift clauses
+
+[The short original-clause history claim](Airbender/Review/Trace/Families/ReducedMachine/Clauses.lean)
+now derives retained original Sail SLL/SRL/SRA/register/immediate execution at the
+same actual GPR after-state. Native form/mask/routing proofs bind selected operands
+without transferring old split masks/columns, while original readonly rs2/x0
+accesses remain in the relation. Existing initialized ranges, numerical results
+and original GPR histories discharge every internal bound/read/write/state premise.
+No expected selected operand, result or intermediate state is a public input.
+
+Eight regression roots include twelve concrete original Sail ordinary/x0 clause
+executions, six whole-state x0 stutters, actual native SRAI 1055/readonly aliasing,
+derived initialized-state composition and all illegal 32/63 immediate exclusions.
+These local positive Sail fixtures do not establish complete 117-equation native
+acceptance. The bounded audit passes 2,607 standard-only axiom roots and 158 public
+Review roots. Numerical PC/wrap, preparation/retirement/fetched execution, other
+combined profiles and worker/protocol/padding/terminal/init remain open. Native
+preprocessing/ROM/physical and general compiler/crypto/completeness boundaries
+remain unchanged; no native issue, circuit fix or new assumption is added.

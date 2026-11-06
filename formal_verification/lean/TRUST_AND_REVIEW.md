@@ -171,6 +171,21 @@ numerical PC or fetched retirement. Other profiles and native setup/compiler/
 preprocessing/ROM/physical/protocol/terminal/init boundaries stay separate.
 The positive port-group regression does not claim complete native acceptance.
 
+[Original selected-shift Sail clause execution](Airbender/Review/Trace/Families/ReducedMachine/Clauses.lean)
+now follows from the same public initialization/decoder/matching inputs as the
+GPR history. The public theorem derives every local source bound, actual read,
+selected operand and write; it supplies no per-row source, result or intermediate
+state. The actual readonly rs2 word is distinct from the selected immediate on
+immediate/x0 rows. Original instruction form determines the native routing bit,
+and original encoded SRAI bits are retained. Internal pure sequencing lemmas are
+instantiated only after actual native word/port proofs; no split native table,
+mask or constraint equivalence is used. Retained original clauses reach the same
+actual GPR after-states, including x0 stutters. This does not include numerical
+PC advancement, normal preparation/retirement or fetched execution. Other profiles
+and native compiler/preprocessing/ROM/physical/protocol/terminal/init boundaries
+remain explicit. Positive local original Sail fixtures are not complete accepted
+117-equation native rows.
+
 Production circuit and machine code must stay unchanged. Confirmed native issues
 are documented with their exact evidence and, where necessary, narrow explicit
 Review interface assumptions. Those premises neither fix an issue nor establish

@@ -1,3 +1,4 @@
+import Tests.NativeReducedClauses
 import Tests.NativeReducedRegisters
 import Tests.NativeReducedResults
 import Tests.NativeReducedRanges
@@ -2799,3 +2800,18 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedRegisters.discarded_state
 #print axioms Tests.NativeReducedRegisters.initialized_nonzero_x0_rejected
 #print axioms Tests.NativeReducedRegisters.positive_x0_group
+#print axioms Airbender.ReducedMachine.NativeShiftOperandProofs.form_mask
+#print axioms Airbender.ReducedMachine.NativeShiftOperandProofs.entry_selected_operand
+#print axioms Airbender.ReducedMachine.NativeShiftClauseProofs.encoded_shift_amount
+#print axioms Airbender.ReducedMachine.NativeShiftClauseProofs.decoded_clause_of_reads
+#print axioms Airbender.ReducedMachine.NativeShiftClauseProofs.native_clause
+#print axioms Airbender.ReducedMachine.NativeShiftClauseProofs.image_clause_history
+#print axioms Airbender.ReducedMachine.Native.public_shift_clause_history
+#print axioms Tests.NativeReducedClauses.selected_forms
+#print axioms Tests.NativeReducedClauses.reference_outputs
+#print axioms Tests.NativeReducedClauses.original_clauses
+#print axioms Tests.NativeReducedClauses.discarded_original_clauses
+#print axioms Tests.NativeReducedClauses.native_immediate_alias
+#print axioms Tests.NativeReducedClauses.discarded_native_clause
+#print axioms Tests.NativeReducedClauses.initialized_row_clause
+#print axioms Tests.NativeReducedClauses.illegal_immediates

@@ -196,3 +196,16 @@ retain aliases/x0 and reject malformed mixed-port fields. The positive port-grou
 fixture is scoped below complete native 117-equation acceptance. Original operand/
 clause execution, numerical PC, other profiles and physical/protocol boundaries
 remain separate.
+
+## Original selected operands and clauses
+
+[Operand observables](ShiftOperand.lean) keep actual readonly rs2 participation
+separate from the selected register/immediate word. [Native binding](../../../Proofs/ReducedMachine/NativeShiftOperand.lean)
+derives the exact form/mask/routing and canonical original immediate fields.
+[The initialized clause claim](../../Trace/Families/ReducedMachine/Clauses.lean)
+combines those facts with the checked native result and original GPR histories
+to execute retained original Sail clauses at the same after-state, including x0.
+[Eight regression roots](../../../../Tests/NativeReducedClauses.lean) include all
+twelve original Sail forms; positive local execution is not complete native
+117-equation acceptance. Numerical PC/preparation/retirement/fetched execution,
+other profiles and physical/protocol boundaries remain separate.

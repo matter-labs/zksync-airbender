@@ -142,3 +142,15 @@ remains explicit; no expected read, write, intermediate state or replay result
 is supplied. This is not original selected-operand/clause/PC execution or broad
 physical/setup/protocol/terminal closure. [Eight regressions](../../../../Tests/NativeReducedRegisters.lean)
 distinguish positive imported-port mechanics from complete native acceptance.
+
+## Actual native reduced original clauses
+
+[Reduced clause/history observables](ReducedMachineClauses.lean) retain original
+Sail instructions and actual native row states. [The short public claim](../../Trace/Families/ReducedMachine/Clauses.lean)
+derives all original shift clause executions, source bounds, selected operands
+and actual writes from public initialization/decoder and native matching. No
+expected result, read or intermediate state is supplied per row. Actual readonly
+rs2/x0 participation is retained on immediate forms. [Eight regressions](../../../../Tests/NativeReducedClauses.lean)
+distinguish twelve concrete original Sail executions from full 117-equation
+native acceptance. Numerical PC and normal/fetched retirement, other profiles
+and setup/physical/protocol/terminal/init remain separate.
