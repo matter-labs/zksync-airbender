@@ -80,15 +80,23 @@ noncomputable def before (family : Delegation.Family) : State :=
 theorem airbender_before (family : Delegation.Family) : Configured (before family) := by
   configured_fixture [before, wordWriteState]
 
-theorem public_image (family : Delegation.Family) :
-    Caller.programImage (before family) [0] = some [entry family] := by
-  have bytes : (Cell.ram 0).read (before family) = .ok (encoding family) (before family) :=
-    written_word_read resetMachine 0 (encoding family)
-  have decoded := original_decoder family
-  have fields := metadata family
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
+-- One fetched entry, stated over arbitrary words: the kernel checks the image construction once,
+-- not on the concrete Sail state.
+private theorem single_entry {state : State} {pc bits : BitVec 32} {instruction : SailRV32.instruction}
+    {data : DecoderData Delegation.Family}
+    (aligned : pc.toNat < ROM.limit ∧ pc.toNat % 4 = 0)
+    (read : (Cell.ram pc).read state = .ok bits state)
+    (decoded : decodeOnReset bits = some instruction)
+    (fields : Caller.decoderFields instruction = some data) :
+    Caller.programImage state [pc] = some [⟨pc, bits, instruction, data⟩] := by
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, aligned, read, decoded, fields,
     bind, Option.bind, pure]
   rfl
+
+theorem public_image (family : Delegation.Family) :
+    Caller.programImage (before family) [0] = some [entry family] :=
+  single_entry (by decide) (written_word_read resetMachine 0 (encoding family))
+    (original_decoder family) (metadata family)
 
 theorem public_caller (family : Delegation.Family) :
     Caller.Binding (assignment family) (before family) [entry family] := by
