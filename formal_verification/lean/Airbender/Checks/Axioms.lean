@@ -1,3 +1,4 @@
+import Tests.NativeReducedSignFill
 import Tests.NativeReducedShift
 import Tests.NativeReducedPool
 import Tests.ReducedSignHigh
@@ -2576,3 +2577,23 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedShift.immediate_last_limb
 #print axioms Tests.NativeReducedShift.register_zero_limb
 #print axioms Tests.NativeReducedShift.standalone_selector_rejected
+#print axioms Airbender.ReducedMachine.NativeSignFillProofs.rows
+#print axioms Airbender.ReducedMachine.NativeSignFillProofs.output_bounds
+#print axioms Airbender.ReducedMachine.NativeSignFillProofs.result
+#print axioms Airbender.ReducedMachine.NativeShiftMinorProofs.bits
+#print axioms Airbender.ReducedMachine.SignFillReferenceProofs.reference
+#print axioms Airbender.ReducedMachine.NativeShiftFillProofs.query
+#print axioms Airbender.ReducedMachine.NativeShiftFillProofs.result
+#print axioms Airbender.ReducedMachine.NativeFixed.sign_fill
+#print axioms Airbender.ReducedMachine.Native.shift_sign_fill
+#print axioms Tests.NativeReducedSignFill.negative_zero_shift
+#print axioms Tests.NativeReducedSignFill.negative_shift16
+#print axioms Tests.NativeReducedSignFill.negative_shift17
+#print axioms Tests.NativeReducedSignFill.negative_shift31
+#print axioms Tests.NativeReducedSignFill.logical_negative_shift31
+#print axioms Tests.NativeReducedSignFill.positive_arithmetic_shift31
+#print axioms Tests.NativeReducedSignFill.incorrect_last_bit_rejected
+#print axioms Tests.NativeReducedSignFill.zero_shift_nonzero_fill_rejected
+#print axioms Tests.NativeReducedSignFill.arithmetic_zero_amount
+#print axioms Tests.NativeReducedSignFill.logical_right_no_fill
+#print axioms Tests.NativeReducedSignFill.arithmetic_negative_last

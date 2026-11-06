@@ -23,4 +23,13 @@ def shiftAmount (w : Nat → ZMod mersenne31Modulus) : ZMod mersenne31Modulus :=
 def lookupSelectors (w : Nat → ZMod mersenne31Modulus) : Vector (ZMod mersenne31Modulus) 4 :=
   #v[w 103,w 107,w 111,w 115]
 
+/-- The actual native sign-fill limbs, before result assembly and masked writes. -/
+def shiftSignFill (w : Nat → ZMod mersenne31Modulus) : Vector (ZMod mersenne31Modulus) 2 :=
+  #v[w 79,w 80]
+
+/-- RV32 arithmetic right-shift filler. Logical shifts and shift zero fill no bits. -/
+def ShiftMode.filler (mode : ShiftMode) (sourceHigh amount : Nat) : Nat :=
+  if mode = .arithmetic ∧ 32768 ≤ sourceHigh ∧ amount ≠ 0 then
+    4294967296 - 2 ^ (32 - amount) else 0
+
 end Airbender.ReducedMachine.Native

@@ -6758,11 +6758,11 @@
     },
     {
       "path": "Airbender/Review/Circuits/ReducedMachine/Tables/NativeTheorems.lean",
-      "change": "Short actual full-pool sign/high-byte and truncation claims, with calculations under Proofs."
+      "change": "Short actual full-pool sign/high-byte, truncation and ID20sign-fill claims; calculations and literal checks stay under Proofs."
     },
     {
       "path": "Airbender/Review/Circuits/ReducedMachine/Theorems.lean",
-      "change": "Short regenerated native claims for constant sign/high queries, all dynamic tag domains and selected shift routing/truncation; public decoded-mask and execution boundaries remain explicit."
+      "change": "Short native claims for constant queries, dynamic domains, selected shift routing/truncation and actual arithmetic filler; decoded-mask/public execution boundaries remain explicit."
     },
     {
       "path": "Airbender/Proofs/ReducedMachine/NativeArtifactChecks.lean",
@@ -6778,7 +6778,7 @@
     },
     {
       "path": "Airbender/Review/Circuits/ReducedMachine/Row.lean",
-      "change": "Native reduced shift-mask reference and actual source-two/amount/selector observables, with public original decoding explicitly separate."
+      "change": "Native reduced shift-mask and RV32 filler references plus actual source-two/amount/selector/filler observables, with public original decoding separate."
     },
     {
       "path": "Airbender/Proofs/ReducedMachine/NativeSelectors.lean",
@@ -6804,6 +6804,36 @@
     {
       "path": "Tests/NativeReducedShift.lean",
       "change": "Native full-pool oversized/wrong/unused truncation rejection and conditional immediate/register/standalone-tag boundary regressions."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Tables/Shift.lean",
+      "change": "Native ID20 sign/control/amount reference and exact two-limb filler outputs; no table37 meaning or full shift result claim."
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSignFill.lean",
+      "change": "Kernel-check all128actual native ID20literal rows and output bounds, then recover semantics through checked full-pool tag isolation."
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftMinor.lean",
+      "change": "Adapt checked canonical packed-mask/Boolean recovery to derive all3native minor flags for the six explicit shift masks, without supplying control answers.",
+      "backport_reuse_revision": "d873b4ac638414504fdbcad7853914f10b28db57",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeSelectors.lean",
+      "backport_reuse_sha256": "f4758e82996a4a90e0f4d5f4fa5c770a050c63686396f0cd496f70f12e7acbb5"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/SignFillReference.lean",
+      "change": "Natural arithmetic bridge from native seven-bit sign/control/amount key to RV32 zero/logical/positive/arithmetic filler reference."
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftFill.lean",
+      "change": "Reuse original Clean extraction pattern for actual native equations94/95/96 and dynamic slot3. Derive its selector, payload, canonical key, sign/amount and exact bounded filler result; decoded packed mask remains visible.",
+      "backport_reuse_revision": "d873b4ac638414504fdbcad7853914f10b28db57",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftRouting.lean",
+      "backport_reuse_sha256": "6fcc5cc1b5ff7f5baac9793d41009d9d2b0e554026d6fe6af06ec9b913df5f1c"
+    },
+    {
+      "path": "Tests/NativeReducedSignFill.lean",
+      "change": "Eleven native sign-fill boundary/rejection regressions and selected-row consequences; no full instruction or execution claim."
     }
   ],
   "setup_artifacts": [

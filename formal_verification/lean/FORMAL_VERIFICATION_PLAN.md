@@ -25,7 +25,7 @@ is independently reproducible from unchanged pinned Rust: 117 equations,
 retains 119 equations, 141 variables and 13 regions; no equivalence is assumed.
 The complete current native fixed pool and explicit public fixture are imported,
 and original Clean acceptance now derives both actual sign/high-byte queries.
-All other combined row effects and execution remain pending. See the
+Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
 1. Generalize the actual native pool beyond its explicit public image/CSR fixture,
@@ -38,8 +38,11 @@ All other combined row effects and execution remain pending. See the
    derived from the regenerated constraints and complete pool. Shift masks now
    recover the operation flags, all four selected tags, actual register/immediate
    source-two routing and exact five-bit truncation. The explicit decoded mask
-   still needs the original public-decoder connection; shift results, actual
-   writes and PC effects remain open.
+   still needs the original public-decoder connection. Actual sign-fill outputs
+   are now derived, including minor flags and positive/logical/zero-shift cases.
+   Table-37 shift contributions, complete results, actual writes and PC effects
+   remain open; its large literal-column checks must be redesigned to fit the
+   existing resource caps, not retried with higher limits.
 3. Compose initialized combined histories, public decoding and original execution.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.
@@ -82,8 +85,8 @@ an interface. Keep public assumptions visible and v2 findings independent.
 
 The user authorized continuation and regular commits on 17 October, stopped the
 scheduled task on 21 October, and resumed foreground work on 6 November against
-the latest PR #585. A new hourly continuation task, Continue v2 FV to v3 parity,
-is now active at the user's request; the old task remains paused. Keep working
+the latest PR #585. A continuation task, Continue v2 FV to v3 parity,
+is active every 30 minutes at the user's request; the old task remains paused. Keep working
 in the isolated dev-based worktree and make small verified unsigned Conventional
 Commits, with Git signing disabled per invocation rather than configuration.
 Do not push without authorization. Use the

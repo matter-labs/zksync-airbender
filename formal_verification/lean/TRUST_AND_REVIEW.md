@@ -67,6 +67,14 @@ without equating offsets or assuming tables equivalent. The public decoder
 connection must still derive that mask. Neither this row claim nor its operand
 boundaries establish initialized reads, shift results, writes, PC or execution.
 
+The same [native row surface](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+now derives the actual two-limb arithmetic sign filler and its bounds. All 128
+stored tag-20 rows are checked. Minor flags, sign and amount follow from native
+acceptance; the selected query and seven-bit key are recovered without supplied
+payload/control or range answers. Logical shifts, positive values and shift zero
+retain zero filler. This still leaves table-37 contributions, full shift results,
+actual writes/PC and original Sail execution unproved.
+
 Production circuit and machine code must stay unchanged. Confirmed native issues
 are documented with their exact evidence and, where necessary, narrow explicit
 Review interface assumptions. Those premises neither fix an issue nor establish

@@ -104,3 +104,19 @@ no v3 or standalone table-equivalence premise is supplied. The selected IDs are
 The original public-decoder connection, table-37/sign-fill meanings, shift
 results/writes/PC, combined history/execution and protocol boundaries remain
 pending. This is further native reduced coverage, not parity or a finding.
+
+## Native sign-fill result
+
+The [same native row surface](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+now recovers all three minor flags and the actual tag-20 query. All 128 stored
+rows yield exact filler limbs, with positive/logical and zero-shift cases
+retained. The input sign and five-bit amount are derived from accepted native
+queries; canonical packing derives the key bounds. This extends the regenerated
+v2 combined row, with the decoded packed-mask input still explicit. It adds no
+Sail retirement, full shift-result, physical setup or v3 parity claim.
+
+The table-37 literal-column comparison requires a smaller evaluation design:
+whole/sliced cross-artifact checks exceeded the existing resident or Lean
+allocation limits and were terminated without survivors. The attempted draft
+is excluded from coverage and committed source. No limit increase, table
+assumption or circuit change was made to bypass that unfinished proof.

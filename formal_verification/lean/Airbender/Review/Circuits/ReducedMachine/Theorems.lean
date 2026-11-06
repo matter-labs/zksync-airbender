@@ -1,4 +1,4 @@
-import Airbender.Proofs.ReducedMachine.NativeShiftRouting
+import Airbender.Proofs.ReducedMachine.NativeShiftFill
 
 namespace Airbender.ReducedMachine.Native
 open Verification
@@ -34,5 +34,16 @@ theorem shift_routing {w : Nat → ZMod mersenne31Modulus}
   ⟨NativeShiftRoutingProofs.source holds mode useRegister mask,
     NativeShiftRoutingProofs.tags holds mode useRegister mask,
     NativeShiftRoutingProofs.amount holds mode useRegister mask⟩
+
+/-- The actual native filler is derived from the input sign, mode and truncated
+    amount, retaining logical/positive-input/zero-shift cases. -/
+theorem shift_sign_fill {w : Nat → ZMod mersenne31Modulus}
+    (holds : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints NativeFixed.table))
+    (mode : ShiftMode) (useRegister : Bool)
+    (mask : w 12 = (mode.mask useRegister : ZMod mersenne31Modulus)) :
+    (shiftSignFill w)[0].val + 65536 * (shiftSignFill w)[1].val =
+      mode.filler (w 36).val (shiftAmount w).val ∧
+      (shiftSignFill w)[0].val < 65536 ∧ (shiftSignFill w)[1].val < 65536 :=
+  NativeShiftFillProofs.result holds mode useRegister mask
 
 end Airbender.ReducedMachine.Native

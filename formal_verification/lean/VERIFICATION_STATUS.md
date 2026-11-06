@@ -185,6 +185,42 @@ semantics, results, actual masked writes, PC effects, other operations and the
 remaining machine/protocol boundaries remain open. No new native defect or
 issue-handling assumption is introduced.
 
+## Native reduced arithmetic-shift filler (6 November 2026)
+
+The [native row claim](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+now derives the actual sign-fill word and both output-limb bounds for all six
+shift-mask cases. The three minor bits come from accepted Boolean/packed-mask
+constraints, not supplied control answers. The actual fourth dynamic query is
+recovered from equations 94/95/96 and its derived tag 20. Native constant queries
+supply the high-limb sign; truncation supplies the bounded amount. Canonical
+field arithmetic recovers the complete seven-bit key without an extra bound
+premise. The public decoded-mask input remains explicit.
+
+The [literal certificate](Airbender/Proofs/ReducedMachine/NativeSignFill.lean)
+checks all 128 actual tag-20 rows and their output bounds in the kernel. The
+[reference](Airbender/Review/Circuits/ReducedMachine/Tables/Shift.lean) retains
+original native sign/control/amount packing and the explicit zero-shift case.
+[Reference calculations](Airbender/Proofs/ReducedMachine/SignFillReference.lean)
+and [row assembly](Airbender/Proofs/ReducedMachine/NativeShiftFill.lean) stay under
+Proofs. Eleven [regressions](Tests/NativeReducedSignFill.lean) cover shifts
+0/16/17/31, positive/logical controls, wrong filler rejection and actual selected
+row boundary consequences. The affected modules and complete axiom/Review gates
+pass: 2,398 explicit axiom roots, 145 public Review roots and all guide/layer
+checks. The largest successful affected proof used 838.72 MiB footprint and
+3073.80 MiB resident; the complete Review gate used 539.61/3085.50 MiB. All
+completed without owned survivors under unchanged resource caps.
+Native setup/compiler/importer inputs did
+not change, so the preceding 592 importer/eight CLI/47 native controls remain
+applicable.
+
+The attempted table-37 cross-artifact column comparison exceeded the existing
+resident or Lean allocation limits; every owned process terminated. Even a
+small slice through the whole imported column required a different evaluation
+strategy. Its unverified draft is excluded from the source tree and coverage.
+Table-37 meaning, contribution assembly, full results, masked writes/PC, public
+decoding and initialized execution remain open. This resource boundary is not
+a native circuit defect, table-equivalence premise or new interface assumption.
+
 ## Checked coverage
 
 | Circuit | Coverage |

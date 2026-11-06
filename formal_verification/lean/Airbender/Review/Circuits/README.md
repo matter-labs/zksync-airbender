@@ -73,3 +73,8 @@ keeps the historical JSON separate. Its [local shift claim](ReducedMachine/Theor
 derives selected tags, operand routing and five-bit truncation from native
 acceptance plus an explicit decoded packed mask. This is native combined-row
 coverage; public decoding, results/writes/PC and execution remain open.
+
+The [native reduced shift claim](ReducedMachine/Theorems.lean) also derives the
+actual sign filler from accepted native sign/control/amount queries, including
+logical/positive/zero-shift cases. Table-37 contributions, full results/writes/PC,
+public decoding and initialized execution remain separate obligations.

@@ -85,3 +85,17 @@ lemma, with distinct offsets and no equivalence premise.
 wrong/oversized/unused fields and the distinct standalone sign-fill selector.
 Public decoding still needs to supply the packed mask; initialized operands,
 shift results, writes, PC and original execution remain open.
+
+[Native sign-fill results](Theorems.lean) now derive the actual filler word and
+both limb bounds from the same six decoded-mask cases. All three
+[minor bits](../../../Proofs/ReducedMachine/NativeShiftMinor.lean), high-limb sign,
+truncated amount and fourth query are recovered. The
+[128-row literal certificate](../../../Proofs/ReducedMachine/NativeSignFill.lean)
+checks the native ID-20 region; [reference definitions](Tables/Shift.lean) retain
+logical/positive/zero-shift behavior. [Proof assembly](../../../Proofs/ReducedMachine/NativeShiftFill.lean)
+stays separate from the short Review statement.
+[Eleven regressions](../../../../Tests/NativeReducedSignFill.lean) include native
+shift 0/16/17/31 boundaries and altered filler rejection. Table-37 contributions,
+full results/writes/PC, public decoding and execution remain open. The direct
+large column comparison exceeded existing resource caps and is excluded from
+coverage; further work must use a smaller proof evaluation strategy.
