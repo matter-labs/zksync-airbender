@@ -435,7 +435,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckIntermediateProofValue
 #[serde(
     bound = "F: serde::Serialize + serde::de::DeserializeOwned, E: serde::Serialize + serde::de::DeserializeOwned"
 )]
-#[serde(from = "gkr_proof_legacy_compat::GKRProofRepr<F, E, T>")]
 pub struct GKRProof<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -466,61 +465,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
                 .map(|v| v.estimate_size())
                 .sum::<usize>()
             + self.whir_proof.estimate_size()
-    }
-}
-
-// LEGACY-COMPAT (delete once every tracked proof fixture has been regenerated
-// with the refactored layout): a pre-refactor `GKRProof` carried the WHIR
-// batching-challenge PoW nonce (`batched_proximity_check_pow_nonce`, now
-// `WhirPolyCommitProof::batching_challenge_pow_nonce`) and an
-// `intermediate_transcript_seed` (the retired GKR->WHIR handoff, ignored).
-mod gkr_proof_legacy_compat {
-    use super::*;
-
-    #[serde_with::serde_as]
-    #[derive(serde::Deserialize)]
-    #[serde(
-        bound = "F: serde::Serialize + serde::de::DeserializeOwned, E: serde::Serialize + serde::de::DeserializeOwned"
-    )]
-    pub(crate) struct GKRProofRepr<
-        F: PrimeField,
-        E: FieldExtension<F> + Field,
-        T: ColumnMajorMerkleTreeConstructor<F>,
-    > {
-        external_challenges: GKRExternalChallenges<F, E>,
-        #[serde_as(as = "Vec<(_, _)>")]
-        final_explicit_evaluations: BTreeMap<OutputType, [Vec<E>; 2]>,
-        #[serde_as(as = "Vec<(_, _)>")]
-        sumcheck_intermediate_values: BTreeMap<usize, SumcheckIntermediateProofValues<F, E>>,
-        whir_proof: WhirPolyCommitProof<F, E, T>,
-        grand_product_accumulator_computed: E,
-        inits_and_teardowns_top_bits: Vec<u32>,
-        lookup_challenges_pow_nonce: u64,
-        #[serde(default)]
-        batched_proximity_check_pow_nonce: Option<u64>,
-        #[serde(default)]
-        #[allow(dead_code)]
-        intermediate_transcript_seed: Option<[u8; 32]>,
-    }
-
-    impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
-        From<GKRProofRepr<F, E, T>> for GKRProof<F, E, T>
-    {
-        fn from(repr: GKRProofRepr<F, E, T>) -> Self {
-            let mut whir_proof = repr.whir_proof;
-            if let Some(nonce) = repr.batched_proximity_check_pow_nonce {
-                whir_proof.batching_challenge_pow_nonce = nonce;
-            }
-            Self {
-                external_challenges: repr.external_challenges,
-                final_explicit_evaluations: repr.final_explicit_evaluations,
-                sumcheck_intermediate_values: repr.sumcheck_intermediate_values,
-                whir_proof,
-                grand_product_accumulator_computed: repr.grand_product_accumulator_computed,
-                inits_and_teardowns_top_bits: repr.inits_and_teardowns_top_bits,
-                lookup_challenges_pow_nonce: repr.lookup_challenges_pow_nonce,
-            }
-        }
     }
 }
 

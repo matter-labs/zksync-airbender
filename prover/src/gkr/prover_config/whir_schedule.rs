@@ -146,7 +146,6 @@ impl WhirInternalRound {
 
 /// The whole WHIR schedule of a config.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-#[serde(from = "legacy_compat::WhirScheduleRepr")]
 pub struct WhirSchedule {
     /// Merkle cap size (top nodes absorbed into the transcript) of EVERY
     /// committed oracle, base and intermediate.
@@ -172,8 +171,8 @@ impl WhirSchedule {
     /// `(base_lde_factor, steps[0], queries[0], pows[0])` with an explicit
     /// `pack_log2` packing; intermediate oracle `i` is
     /// `(lde_factors[i], steps[i + 1], queries[i + 1], pows[i + 1])` with one
-    /// OOD sample and no OOD / folding PoW. Used by the example configs (whose
-    /// numbers predate the refactor) and by the legacy JSON decoder.
+    /// OOD sample and no OOD / folding PoW. Used by the example configs, whose
+    /// numbers predate the refactor.
     pub fn from_legacy_arrays(
         base_lde_factor: usize,
         cap_size: usize,
@@ -351,67 +350,6 @@ impl WhirSchedule {
     }
 }
 
-// LEGACY-COMPAT (delete once every tracked proof / config fixture has been
-// regenerated with the refactored layout): the pre-refactor JSON shape of
-// `WhirSchedule` was six flat arrays (`base_lde_factor`, `cap_size`,
-// `whir_steps_schedule`, `whir_queries_schedule`, `whir_steps_lde_factors`,
-// `whir_pow_schedule`). The decoder accepts either shape; a legacy schedule
-// decodes as an UNPACKED one — the enclosing `ProverConfig` decoder re-applies
-// a legacy `pack_log2` to it.
-pub(crate) mod legacy_compat {
-    use super::*;
-
-    #[derive(Deserialize)]
-    pub(crate) struct WhirScheduleRepr {
-        pub cap_size: usize,
-        #[serde(default)]
-        pub base_round: Option<WhirBaseRoundSchedule>,
-        #[serde(default)]
-        pub internal_rounds: Option<Vec<WhirInternalRound>>,
-        #[serde(default)]
-        pub base_lde_factor: Option<usize>,
-        #[serde(default)]
-        pub whir_steps_schedule: Option<Vec<usize>>,
-        #[serde(default)]
-        pub whir_queries_schedule: Option<Vec<usize>>,
-        #[serde(default)]
-        pub whir_steps_lde_factors: Option<Vec<usize>>,
-        #[serde(default)]
-        pub whir_pow_schedule: Option<Vec<u32>>,
-    }
-
-    impl From<WhirScheduleRepr> for WhirSchedule {
-        fn from(repr: WhirScheduleRepr) -> Self {
-            match (repr.base_round, repr.internal_rounds) {
-                (Some(base_round), Some(internal_rounds)) => Self {
-                    cap_size: repr.cap_size,
-                    base_round,
-                    internal_rounds,
-                },
-                (None, None) => WhirSchedule::from_legacy_arrays(
-                    repr.base_lde_factor
-                        .expect("legacy WHIR schedule: base_lde_factor"),
-                    repr.cap_size,
-                    0,
-                    &repr
-                        .whir_steps_schedule
-                        .expect("legacy WHIR schedule: whir_steps_schedule"),
-                    &repr
-                        .whir_queries_schedule
-                        .expect("legacy WHIR schedule: whir_queries_schedule"),
-                    &repr
-                        .whir_steps_lde_factors
-                        .expect("legacy WHIR schedule: whir_steps_lde_factors"),
-                    &repr
-                        .whir_pow_schedule
-                        .expect("legacy WHIR schedule: whir_pow_schedule"),
-                ),
-                _ => panic!("WHIR schedule JSON mixes the current and the legacy layout"),
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -441,27 +379,5 @@ mod tests {
         assert_eq!(schedule.base_values_per_leaf(), 2);
         assert_eq!(schedule.final_poly_size_log2(20), 1);
         assert_eq!(schedule.total_ood_samples(), 4);
-    }
-
-    #[test]
-    fn legacy_json_decodes() {
-        let json = r#"{"base_lde_factor": 2, "cap_size": 16, "whir_steps_schedule": [1, 5, 5, 4, 4],
-            "whir_queries_schedule": [89, 11, 7, 6, 5], "whir_steps_lde_factors": [256, 8192, 32768, 524288],
-            "whir_pow_schedule": [26, 27, 25, 25, 21]}"#;
-        let decoded: WhirSchedule = serde_json::from_str(json).unwrap();
-        let expected = WhirSchedule::from_legacy_arrays(
-            2,
-            16,
-            0,
-            &[1, 5, 5, 4, 4],
-            &[89, 11, 7, 6, 5],
-            &[256, 8192, 32768, 524288],
-            &[26, 27, 25, 25, 21],
-        );
-        assert_eq!(decoded, expected);
-        // and the current layout round-trips
-        let reencoded = serde_json::to_string(&expected).unwrap();
-        let decoded: WhirSchedule = serde_json::from_str(&reencoded).unwrap();
-        assert_eq!(decoded, expected);
     }
 }
