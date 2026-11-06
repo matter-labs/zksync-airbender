@@ -334,19 +334,88 @@ fn prove(prepared: Prepared, challenges: &GKRExternalChallenges<BF, E4>, worker:
 }
 
 fn write(
-    root: &Path,
+    output: &Path,
     circuit: CanonicalCircuit,
     mode: SoundnessMode,
     proof: &Proof,
     written: &mut BTreeSet<PathBuf>,
 ) {
-    let path = circuit.proof_path(root, mode);
+    let path = output.join(circuit.proof_path(&root(), mode).file_name().unwrap());
     assert!(
         written.insert(path.clone()),
         "duplicate canonical write: {}",
         path.display()
     );
     std::fs::write(&path, serde_json::to_vec_pretty(proof).unwrap()).unwrap();
+}
+
+fn output_directory() -> PathBuf {
+    if let Some(path) = std::env::var_os("AB_CANONICAL_PROOF_OUTPUT_DIR") {
+        let path = PathBuf::from(path);
+        std::fs::create_dir_all(&path).unwrap();
+        assert!(
+            std::fs::read_dir(&path).unwrap().next().is_none(),
+            "canonical scratch output must be empty: {}",
+            path.display()
+        );
+        path
+    } else {
+        root().join("prover/test_proofs")
+    }
+}
+
+fn inventory() -> Vec<serde_json::Value> {
+    CANONICAL_CIRCUITS
+        .into_iter()
+        .flat_map(|circuit| {
+            SoundnessMode::ALL.iter().map(move |&mode| {
+                serde_json::json!({
+                    "circuit": circuit.stem(),
+                    "soundness_mode": mode.file_suffix(),
+                    "proof_file": circuit.proof_path(&root(), mode).file_name().unwrap().to_str().unwrap(),
+                    "gpu_test": format!("tests::proof_matrix::canonical_{}_{}", circuit.stem(), mode.file_suffix()),
+                })
+            })
+        })
+        .collect()
+}
+
+#[test]
+fn canonical_proof_inventory() {
+    let entries = inventory();
+    let names: BTreeSet<_> = entries
+        .iter()
+        .map(|entry| entry["proof_file"].as_str().unwrap())
+        .collect();
+    assert_eq!(entries.len(), 28);
+    assert_eq!(
+        names.len(),
+        entries.len(),
+        "duplicate canonical proof filename"
+    );
+    if let Some(path) = std::env::var_os("AB_CANONICAL_PROOF_MANIFEST") {
+        std::fs::write(path, serde_json::to_vec_pretty(&entries).unwrap()).unwrap();
+    }
+}
+
+/// Exercise the producer's serialization and scratch destination against the
+/// original committed bytes without evaluating witnesses or proving again.
+#[test]
+#[ignore = "requires AB_CANONICAL_PROOF_OUTPUT_DIR for a fresh scratch directory"]
+fn canonical_proof_serialization_roundtrip() {
+    assert!(std::env::var_os("AB_CANONICAL_PROOF_OUTPUT_DIR").is_some());
+    let output = output_directory();
+    let mut written = BTreeSet::new();
+    for circuit in CANONICAL_CIRCUITS {
+        for &mode in SoundnessMode::ALL {
+            let bytes = std::fs::read(circuit.proof_path(&root(), mode)).unwrap();
+            let proof: Proof = serde_json::from_slice(&bytes).unwrap();
+            write(&output, circuit, mode, &proof, &mut written);
+            let path = output.join(circuit.proof_path(&root(), mode).file_name().unwrap());
+            assert_eq!(std::fs::read(path).unwrap(), bytes);
+        }
+    }
+    assert_eq!(written.len(), 28);
 }
 
 fn compression_pair(mode: SoundnessMode, worker: &Worker) -> (Proof, Proof) {
@@ -404,7 +473,7 @@ fn compression_pair(mode: SoundnessMode, worker: &Worker) -> (Proof, Proof) {
 fn regenerate_canonical_circuit_proofs() {
     assert!(cfg!(feature = "deterministic_pow"));
     assert!(!cfg!(feature = "no_caches"));
-    let root = root();
+    let output = output_directory();
     let worker = Worker::new_with_num_threads(8);
     let mut written = BTreeSet::new();
     for &mode in SoundnessMode::ALL {
@@ -414,9 +483,9 @@ fn regenerate_canonical_circuit_proofs() {
             }
             if circuit == CanonicalCircuit::UnifiedReducedMachine {
                 let (unified, compression) = compression_pair(mode, &worker);
-                write(&root, circuit, mode, &unified, &mut written);
+                write(&output, circuit, mode, &unified, &mut written);
                 write(
-                    &root,
+                    &output,
                     CanonicalCircuit::Blake2WithExtendedControl,
                     mode,
                     &compression,
@@ -425,17 +494,17 @@ fn regenerate_canonical_circuit_proofs() {
             } else {
                 let prepared = prepare(circuit, mode, &worker);
                 let proof = prove(prepared, &circuit.fixed_external_challenges(), &worker);
-                write(&root, circuit, mode, &proof, &mut written);
+                write(&output, circuit, mode, &proof, &mut written);
             }
         }
     }
     let expected: BTreeSet<_> = CANONICAL_CIRCUITS
         .into_iter()
         .flat_map(|circuit| {
-            let root = &root;
-            SoundnessMode::ALL
-                .iter()
-                .map(move |&mode| circuit.proof_path(root, mode))
+            let output = &output;
+            SoundnessMode::ALL.iter().map(move |&mode| {
+                output.join(circuit.proof_path(&root(), mode).file_name().unwrap())
+            })
         })
         .collect();
     assert_eq!(written, expected);
