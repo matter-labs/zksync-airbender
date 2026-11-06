@@ -49,6 +49,9 @@ import Tests.WordMemory
 import Slop.AddSub.ArtifactChecks
 import Human.Circuits.JumpBranchSlt.Artifact
 import Human.Import.Parse
+import Human.Circuits.KeccakSplit.ColumnParity.Artifact
+import Human.Circuits.KeccakSplit.ThetaRho.Artifact
+import Human.Circuits.KeccakSplit.Chi5.Artifact
 import Human.Helpers.Properties
 import Slop.BabyBear
 import Slop.Constraints
@@ -476,6 +479,54 @@ def main : IO UInt32 := do
         s!"{label}: missing comparison borrows rejected"
       check (rejected (Circuit.delegationColumns {circuit with timestamp_range_check_lookup_expressions := #[]}))
         s!"{label}: missing native clock queries rejected"
+    -- split Keccak workers: source bytes, query profiles, grouped clocks and malformed metadata
+    let splitLoad := fun (name : String) => do
+      let source ← IO.FS.readFile s!"../../cs/compiled_circuits/keccak_{name}_layout_no_caches_gkr.json"
+      let .ok circuit := parseCircuit source | throw (IO.userError s!"split {name} failed import")
+      pure (circuit, source)
+    let (parity, paritySource) ← splitLoad "column_parity"
+    let (theta, thetaSource) ← splitLoad "theta_rho"
+    let (chi, chiSource) ← splitLoad "chi5"
+    check (paritySource == Keccak.Split.ColumnParity.importedConstraintsSourceBytes &&
+      thetaSource == Keccak.Split.ThetaRho.importedConstraintsSourceBytes &&
+      chiSource == Keccak.Split.Chi5.importedConstraintsSourceBytes) "split Keccak: embedded sources equal artifact bytes"
+    let .ok parityQueries := parity.keccakColumnParityQueries | throw (IO.userError "column parity queries rejected")
+    let .ok thetaQueries := theta.keccakThetaRhoQueries | throw (IO.userError "theta/rho queries rejected")
+    let .ok chiQueries := chi.keccakChi5Queries | throw (IO.userError "chi5 queries rejected")
+    check (parityQueries.size == 22 && thetaQueries.size == 50 && chiQueries.size == 17)
+      "split Keccak: 22 / 50 / 17 fixed-table queries"
+    let .ok thetaGroups := theta.splitTimestampGroups | throw (IO.userError "theta/rho groups rejected")
+    let .ok chiGroups := chi.splitTimestampGroups | throw (IO.userError "chi5 groups rejected")
+    check (thetaGroups.size == 4 && chiGroups.size == 6 &&
+      thetaGroups == Keccak.Split.ThetaRho.importedConstraintsTimestampGroups &&
+      chiGroups == Keccak.Split.Chi5.importedConstraintsTimestampGroups) "split Keccak: 4 / 6 timestamp groups match"
+    let .ok parityPorts := parity.delegationPorts | throw (IO.userError "column parity ports rejected")
+    let .ok thetaPorts := theta.splitMemoryPorts | throw (IO.userError "theta/rho ports rejected")
+    let .ok chiPorts := chi.splitMemoryPorts | throw (IO.userError "chi5 ports rejected")
+    check (parityPorts == Keccak.Split.ColumnParity.importedConstraintsMemoryPorts &&
+      thetaPorts == Keccak.Split.ThetaRho.importedConstraintsMemoryPorts &&
+      chiPorts == Keccak.Split.Chi5.importedConstraintsMemoryPorts &&
+      parityPorts.size == 14 && thetaPorts.size == 16 && chiPorts.size == 12)
+      "split Keccak: 14 / 16 / 12 memory ports match"
+    let .ok thetaColumns := theta.splitDelegationColumns | throw (IO.userError "theta/rho clocks rejected")
+    let .ok chiColumns := chi.splitDelegationColumns | throw (IO.userError "chi5 clocks rejected")
+    check (thetaColumns == Keccak.Split.ThetaRho.importedConstraintsDelegationColumns &&
+      chiColumns == Keccak.Split.Chi5.importedConstraintsDelegationColumns) "split Keccak: grouped clocks match"
+    check (rejected (Circuit.keccakThetaRhoQueries {theta with generic_lookup_tables_width := 8}))
+      "split Keccak: wrong theta/rho lookup width rejected"
+    let noGroups : Circuit := {chi with aux_layout_data :=
+      {chi.aux_layout_data with relative_timestamp_groups := some #[]}}
+    check (rejected noGroups.splitTimestampGroups && rejected noGroups.splitMemoryPorts &&
+      rejected noGroups.splitDelegationColumns) "split Keccak: missing timestamp groups rejected"
+    let extraGroups := theta.aux_layout_data.relative_timestamp_groups.map fun groups =>
+      match groups[0]? with
+      | some group => groups.push {group with members := #[]}
+      | none => groups
+    let emptyGroup : Circuit := {theta with aux_layout_data :=
+      {theta.aux_layout_data with relative_timestamp_groups := extraGroups}}
+    check (rejected emptyGroup.splitTimestampGroups && rejected emptyGroup.splitMemoryPorts)
+      "split Keccak: empty timestamp group rejected"
+    check (rejected (Circuit.delegationColumns theta)) "split Keccak: grouped layout rejected by the ordinary importer"
     let cached ← loadCircuit "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json"
     check (!rejected cached) "cached sibling decoded with the standard JSON parser"
     return (0 : UInt32)
