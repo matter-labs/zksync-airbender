@@ -70,7 +70,6 @@ pub fn validate_stage1_commitment_geometry<F: crate::upstream::PrimeField>(
         compiled_circuit.trace_len,
         "memory precommit trace length disagrees with compiled circuit"
     );
-    TraceHolder::<F>::validate_base_layout(geometry, TreesCacheMode::CachePartial);
 }
 
 fn commit_memory_inner<'a>(

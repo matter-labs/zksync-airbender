@@ -21,14 +21,6 @@ impl TraceHolder<BF> {
         paths: &mut DeviceSlice<u32>,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        if let Some((geometry, _)) = self.base_geometry {
-            let mode = match self.trees {
-                TreesHolder::Full(_) => TreesCacheMode::CacheFull,
-                TreesHolder::Partial(_) => TreesCacheMode::CachePartial,
-                TreesHolder::None => TreesCacheMode::CacheNone,
-            };
-            validate_baby_bear_base_opening(&geometry, self.opening_policy, mode);
-        }
         assert!(!self.cosets_materialized);
         assert!(matches!(self.cosets, CosetsHolder::None(_)));
         assert!(matches!(

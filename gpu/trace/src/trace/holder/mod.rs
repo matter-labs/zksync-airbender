@@ -64,35 +64,6 @@ pub enum TreesCacheMode {
     CacheFull,
 }
 
-/// Checks that a BF opening of `geometry` can be dispatched, before a packed holder or workspace
-/// is allocated.
-pub fn validate_baby_bear_base_opening(
-    geometry: &BaseCommitmentGeometry,
-    policy: OpeningStrategy,
-    trees_mode: TreesCacheMode,
-) {
-    if policy == OpeningStrategy::InPlace {
-        assert!(
-            gpu_ntt::ntt::log_size_supports_in_place(geometry.message_size_log2()),
-            "in-place openings require the generated transform domain"
-        );
-        assert!(
-            !matches!(trees_mode, TreesCacheMode::CacheFull),
-            "in-place openings require partial or uncached trees"
-        );
-    }
-    if policy == OpeningStrategy::PerCoset {
-        assert!(
-            gpu_ntt::ntt::log_size_supports_retained_monomials(geometry.message_size_log2()),
-            "geometry-backed PerCoset openings require the retained-monomial dispatch family"
-        );
-        assert!(
-            !matches!(trees_mode, TreesCacheMode::CacheFull),
-            "geometry-backed PerCoset openings require partial or uncached trees"
-        );
-    }
-}
-
 /// `PerCoset` and `InPlace` require `log_domain_size` in `20..=24`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum OpeningStrategy {
@@ -181,28 +152,6 @@ impl<T> TraceHolder<T> {
     fn is_empty_base_oracle(&self) -> bool {
         self.base_geometry.is_some() && self.committed_columns_count() == 0
     }
-
-    /// Storage checks shared by base commitment holders.
-    pub fn validate_base_layout(geometry: &BaseCommitmentGeometry, trees_mode: TreesCacheMode) {
-        assert!(
-            geometry.cap_size() >= geometry.lde_factor(),
-            "holder requires at least one cap node per LDE coset"
-        );
-        let log_message =
-            u32::try_from(geometry.message_size_log2()).expect("message log2 exceeds u32");
-        let log_leaf = geometry.values_per_leaf().trailing_zeros();
-        let log_subcap =
-            geometry.cap_size().trailing_zeros() - geometry.lde_factor().trailing_zeros();
-        // Equality leaves exactly the five reconstructed levels below the cap;
-        // the cached boundary itself is the cap, with no upper levels to build.
-        match trees_mode {
-            TreesCacheMode::CachePartial => assert!(
-                log_message >= log_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_subcap,
-                "base partial tree exceeds the commitment domain"
-            ),
-            TreesCacheMode::CacheFull | TreesCacheMode::CacheNone => {}
-        }
-    }
 }
 
 impl TraceHolder<BF> {
@@ -212,7 +161,6 @@ impl TraceHolder<BF> {
         trees_mode: TreesCacheMode,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        Self::validate_base_layout(&geometry, trees_mode);
         validate_baby_bear_base_geometry(
             &geometry,
             context

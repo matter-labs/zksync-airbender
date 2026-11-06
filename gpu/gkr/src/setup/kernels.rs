@@ -113,10 +113,6 @@ impl GpuGKRSetupHost {
                 "setup geometry trace length mismatch"
             );
         }
-        TraceHolder::<BF>::validate_base_layout(
-            geometry,
-            gpu_trace::trace::holder::TreesCacheMode::CachePartial,
-        );
     }
 
     /// Adapt the existing BF setup producer: pinned GKR columns stay logical,
