@@ -3,6 +3,20 @@ import Human.Trace.Workers.Keccak.Permutation
 
 -- The statements proven in slop/Slop/Final/Trace/Workers/KeccakSplit/Theorems.lean (checked by verify.sh).
 
+namespace Airbender.Keccak.Split
+
+set_option maxRecDepth 16384
+
+/-- The claims quantify over call indices through `kindAt`; it is the documented
+    `schedule` (24 rounds of 5 parity, 5 theta+rho, 5 chi calls, then one parity call). -/
+theorem schedule_length : schedule.length = 361 := rfl
+
+theorem schedule_kinds : ∀ index : Fin 361,
+    schedule[index.val]'(by rw [schedule_length]; exact index.isLt) = kindAt index.val := by
+  decide +kernel
+
+end Airbender.Keccak.Split
+
 namespace Airbender.Keccak.Split.Native
 
 /-- In an initialized pool of split Keccak workers, every access executes in Sail and
