@@ -28,6 +28,8 @@ riscv_transpiler = { workspace = true }
 object = { workspace = true }
 
 [features]
+# Opt-in static-input test and host-only compression wire policy.
+miri_fsv = ["verifiers", "verifier_common/test_compression"]
 verifiers = []
 
 # This feature exists to only depend on the verifiers that are needed for
@@ -46,6 +48,14 @@ verifier_stats = ["verifier_common/verifier_stats"]
 # native_verify_* wrappers additionally need `verifiers`.
 host_utils = ["proof_utils", "dep:setups", "dep:flate2", "dep:serde_json", "dep:riscv_transpiler", "dep:sha3"]
 default = ["verifiers", "proof_utils"]
+
+[[test]]
+name = "miri_native"
+required-features = ["miri_fsv"]
+
+[[example]]
+name = "miri_input"
+required-features = ["host_utils", "miri_fsv"]
 
 [lints]
 workspace = true

@@ -31,6 +31,8 @@ name = "l1_compression"
 required-features = ["l1"]
 
 [features]
+# Native-only fixture regeneration; retain deterministic proof-of-work.
+fixture_generation = ["full_statement_verifier/miri_fsv", "prover/deterministic_pow", "prover/cs_debug", "prover/bincode"]
 verifiers = ["verifier_common/no_inline", "full_statement_verifier/verifiers"]
 # L1 compression path: prove the recursion stable point down to ONE Proth120
 # packed proof (pulls in prover's test harness for the Proth120 witness path).
@@ -45,6 +47,10 @@ debug_satisfiable = ["prover/debug_satisfiable"]
 timing_logs = []
 
 default = ["timing_logs", "verifier_common/proof_utils", "gkr_self_checks"]
+
+[[example]]
+name = "hashed_fibonacci_fixture"
+required-features = ["fixture_generation"]
 
 [lints]
 workspace = true

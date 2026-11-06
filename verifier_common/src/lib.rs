@@ -200,30 +200,25 @@ pub use ::prover::definitions::{BlakeMode, GKRExternalChallenges, USE_REDUCED_BL
 /// verifiers decide their proof layout from at compile time, and what a host
 /// must flatten proofs with for a verifier of the same build (a RISC-V
 /// program's mode is its `BlakeMode::tag()` build feature).
-pub const BLAKE_MODE: BlakeMode = {
-    #[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
-    {
-        BlakeMode::Compression
-    }
-    #[cfg(all(target_arch = "riscv32", feature = "blake2_g_function"))]
-    {
-        BlakeMode::GFunction
-    }
-    #[cfg(all(target_arch = "riscv32", feature = "special_opcodes_extension"))]
-    {
-        BlakeMode::BlakeSpecialOpcodes
-    }
-    #[cfg(not(all(
-        target_arch = "riscv32",
-        any(
-            feature = "blake2_with_compression",
-            feature = "blake2_g_function",
-            feature = "special_opcodes_extension"
-        )
-    )))]
-    {
-        BlakeMode::Software
-    }
+// The opt-in host test switch changes opening layout only; host hashing stays
+// in Rust and normal host / RISC-V builds retain their existing selection.
+pub const BLAKE_MODE: BlakeMode = if cfg!(all(
+    not(target_arch = "riscv32"),
+    feature = "test_compression"
+)) || cfg!(all(
+    target_arch = "riscv32",
+    feature = "blake2_with_compression"
+)) {
+    BlakeMode::Compression
+} else if cfg!(all(target_arch = "riscv32", feature = "blake2_g_function")) {
+    BlakeMode::GFunction
+} else if cfg!(all(
+    target_arch = "riscv32",
+    feature = "special_opcodes_extension"
+)) {
+    BlakeMode::BlakeSpecialOpcodes
+} else {
+    BlakeMode::Software
 };
 
 /// Wrappers for common field operations used by the verifier.
