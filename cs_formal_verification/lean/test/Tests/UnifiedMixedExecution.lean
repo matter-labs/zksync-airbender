@@ -1,6 +1,7 @@
 import Slop.Sail.ResetState
 import Tests.TraceExecution
 import Slop.UnifiedReduced.Claims
+import Slop.UnifiedReduced.Completeness.Arith
 import Slop.Sail.WordMemoryState
 
 namespace Tests.UnifiedMixedExecution
@@ -21,22 +22,12 @@ private noncomputable def program : List UnifiedReduced.ProgramEntry := [
     ⟨.machine, 1, 1, 1, ⟨0, 0⟩, 512, 0⟩⟩,
   ⟨8, 0x2083, .LOAD (0, .Regidx 0, .Regidx 1, false, 4),
     ⟨.machine, 0, 0, 1, ⟨0, 0⟩, 131072, 0⟩⟩]
-private def arithmetic : Nat → ZMod babyBearModulus
-  | 4 | 5 | 7 | 8 | 11 | 44 | 50 | 129 | 130 | 131 | 132 | 133 => 1
-  | 2 | 30 | 46 => 4
-  | 32 => 8
-  | _ => 0
-private def triadd (value : Nat) : Nat → ZMod babyBearModulus
-  | 4 | 5 | 6 | 7 | 20 | 38 | 44 | 129 | 130 | 131 | 132 | 133 => 1
-  | 0 => 4
-  | 2 | 30 | 40 => 8
-  | 32 => 12
-  | 34 => 6
-  | 46 => 9
-  | 36 | 42 | 48 => value
-  | 50 => 3 * value
-  | 80 => value * value * 943718400
-  | _ => 0
+private def arithmeticWitness : Completeness.Arith :=
+  ⟨⟨0, 0, 4, 0, 0, 0, 0, 0, 4, 0⟩, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0⟩
+private def arithmetic : Nat → ZMod babyBearModulus := arithmeticWitness.honest
+private def triaddWitness (value : Nat) : Completeness.Arith :=
+  ⟨⟨4, 0, 8, 0, 6, 0, 8, 0, 9, 0⟩, 3, 1, 1, 1, value, 0, value, 0, 0, 0, value, 0⟩
+private def triadd (value : Nat) : Nat → ZMod babyBearModulus := (triaddWitness value).honest
 private def load : Nat → ZMod babyBearModulus
   | 4 | 7 | 28 | 44 | 54 | 87 | 129 | 130 | 131 | 132 | 133 => 1
   | 0 => 8
@@ -144,30 +135,40 @@ private theorem public_word : ROM.words before 0 = 0x00108093 := by
   change (match (Cell.ram 0).read before with | .ok value _ => value | .error _ _ => 0) = _
   rw [public_bytes.1]
 
+private theorem loadConstraints : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment load) (clockConstraints (trace 1).rom) := by
+  apply Verification.holds_append
+  · simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
+      Verification.environment, Expression.eval, load, Lookup.Contains, Table.toRaw, fromElements]
+    repeat' apply And.intro
+    all_goals solve
+      | decide
+      | (apply Verification.range16_contains; decide)
+      | (exact ⟨⟨0, by decide⟩, by with_unfolding_all decide⟩)
+      | (refine ⟨⟨1048961, by decide⟩, ?_⟩
+         change _ = (#v[0, (Word.ofBitVec (ROM.words before 0)).lo,
+           (Word.ofBitVec (ROM.words before 0)).hi, 0, 0, 0, 0, 0, 0, 34] : Vector Nat 10).map
+             (fun (n : Nat) => (n : ZMod babyBearModulus))
+         rw [public_word]
+         with_unfolding_all decide)
+  · simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
+    repeat' apply And.intro
+    all_goals apply Trace.Proofs.range_contains
+    all_goals simp [Expression.eval, Verification.environment, load]
+    all_goals decide
+
 private theorem constraints (kind : Fin 4) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (if kind = 0 then arithmetic else if kind = 1 then load
       else triadd (if kind = 2 then 1 else 2))) (clockConstraints (trace 1).rom) := by
   fin_cases kind
-  all_goals apply Verification.holds_append
-  all_goals first
-    | (simp [importedConstraints, trace, FlatOperation.ConstraintsHoldFlat,
-        Verification.environment, Expression.eval, arithmetic, triadd, load, Lookup.Contains, Table.toRaw, fromElements]
-       repeat' apply And.intro
-       all_goals solve
-         | decide
-         | (apply Verification.range16_contains; decide)
-         | (exact ⟨⟨0, by decide⟩, by with_unfolding_all decide⟩)
-         | (refine ⟨⟨1048961, by decide⟩, ?_⟩
-            change _ = (#v[0, (Word.ofBitVec (ROM.words before 0)).lo,
-              (Word.ofBitVec (ROM.words before 0)).hi, 0, 0, 0, 0, 0, 0, 34] : Vector Nat 10).map
-                (fun (n : Nat) => (n : ZMod babyBearModulus))
-            rw [public_word]
-            with_unfolding_all decide))
-    | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-       repeat' apply And.intro
-       all_goals apply Trace.Proofs.range_contains
-       all_goals simp [Expression.eval, Verification.environment, arithmetic, triadd, load]
-       all_goals decide)
+  · exact Completeness.Arith.complete _
+      (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide)
+      (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _ (Completeness.setup_zero _)
+  · exact loadConstraints
+  all_goals
+    exact Completeness.Arith.complete _
+      (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide)
+      (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _ (Completeness.setup_zero _)
 
 private theorem accepted : Accepted (trace 1) := by
   constructor
