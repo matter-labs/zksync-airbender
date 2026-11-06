@@ -423,7 +423,7 @@ fn cpu_resolved_merged_request_binds_config_and_artifact_geometry() {
             config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
             let resolved = ResolvedProverConfig::new(kind, Arc::clone(&circuit), config.clone());
             resolved.validate_request(kind, SecurityLevel::Sec100, &circuit);
-            gpu_circuit_prover::proof::merged_commitment::validate_merged_commitment_geometry(
+            gpu_gkr::stage1::merged_commitment::validate_merged_commitment_geometry(
                 resolved.config(),
                 &resolved.geometry(),
                 &circuit,
@@ -441,7 +441,7 @@ fn cpu_resolved_merged_request_binds_config_and_artifact_geometry() {
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
     let resolved = ResolvedProverConfig::new(kind, Arc::clone(&circuit), config);
     assert!(std::panic::catch_unwind(|| {
-        gpu_circuit_prover::proof::merged_commitment::validate_merged_commitment_geometry(
+        gpu_gkr::stage1::merged_commitment::validate_merged_commitment_geometry(
             resolved.config(),
             &resolved.geometry(),
             &circuit,

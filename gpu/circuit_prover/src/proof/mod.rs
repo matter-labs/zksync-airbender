@@ -1,10 +1,9 @@
 use gpu_trace::trace::memory::uses_base_commitment_geometry;
 pub mod inputs;
 pub mod memory_policy;
-pub mod merged_commitment;
 
 use memory_policy::ProofMemoryPolicy;
-mod orchestration;
+pub(crate) mod orchestration;
 
 #[cfg(test)]
 mod tests;
@@ -98,7 +97,7 @@ pub(crate) fn validate_base_proof_geometry_policy(
     );
     memory_policy.gkr.validate_for_main_layers(main_layers);
     if geometry.commitment_mode() == crate::upstream::CommitmentMode::MergedMemoryAndWitness {
-        merged_commitment::validate_merged_packed_geometry(geometry);
+        gpu_gkr::stage1::merged_commitment::validate_merged_packed_geometry(geometry);
     } else {
         gpu_trace::trace::memory::validate_separate_base_commitment_geometry(geometry);
     }
@@ -559,6 +558,3 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         },
     })
 }
-
-#[cfg(test)]
-pub(crate) use orchestration::schedule_base_commitment_handoff;

@@ -4,11 +4,11 @@ use prover::gkr::prover_config::example_configs::packed_config_for_security_leve
 #[test]
 #[ignore = "fresh CPU merged cap parity through the combined stage1 producer"]
 fn packed_merged_commit_unpacked_cpu_parity() {
-    use crate::proof::merged_commitment::{
+    use gpu_gkr::setup::GpuGKRSetupTransfer;
+    use gpu_gkr::stage1::merged_commitment::{
         commit_merged_from_transfers_for_geometry, validate_merged_commitment_geometry,
         GpuGKRMergedCommitTransfer,
     };
-    use gpu_gkr::setup::GpuGKRSetupTransfer;
     // CPU-expressible test construction; canonical BF configs stay unchanged.
     let mut config = packed_config(20, 0, SecurityLevel::Sec100);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
@@ -87,7 +87,7 @@ pub(super) fn gpu_memory_caps(
     )
     .unwrap();
     let job = if geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness {
-        use crate::proof::merged_commitment::{
+        use gpu_gkr::stage1::merged_commitment::{
             commit_merged_from_transfers_for_geometry, GpuGKRMergedCommitTransfer,
         };
         let setup = gpu_gkr::setup::GpuGKRSetupTransfer::new(

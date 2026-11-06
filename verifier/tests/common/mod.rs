@@ -265,6 +265,22 @@ pub fn verify_nds(
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     nds: Vec<u32>,
 ) -> Result<(), VerifyRejection> {
+    verify_nds_in_mode(
+        name,
+        level,
+        SoundnessMode::DEFAULT,
+        external_challenges,
+        nds,
+    )
+}
+
+pub fn verify_nds_in_mode(
+    name: &str,
+    level: SecurityLevel,
+    mode: SoundnessMode,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    nds: Vec<u32>,
+) -> Result<(), VerifyRejection> {
     let prev_hook = std::panic::take_hook();
     let panic_msg = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
     let panic_msg_clone = panic_msg.clone();
@@ -279,7 +295,7 @@ pub fn verify_nds(
             .spawn_scoped(s, move || {
                 let mut it = nds.into_iter();
                 // set_iterator(nds.into_iter());
-                with_circuit!(name, level, |m| {
+                with_circuit!(name, level, mode, |m| {
                     m::verify::<_, DebugErrorCreator>(external_challenges, &mut it).map(|_| ())
                 })
             })

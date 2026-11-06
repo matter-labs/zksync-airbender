@@ -49,8 +49,7 @@ pub fn validate_baby_bear_base_geometry(
     let message_log2 =
         u32::try_from(geometry.message_size_log2()).expect("message log2 exceeds u32");
     let lde_log2 = geometry.lde_factor().trailing_zeros();
-    ProverContext::validate_base_commitment_transform_shape(message_log2, lde_log2)
-        .expect("unsupported BabyBear base commitment transform");
+    gpu_ntt::ntt::assert_base_commitment_transform_shape(message_log2, lde_log2);
     assert!(
         message_log2 + lde_log2 <= twiddle_domain_log2,
         "base commitment exceeds context twiddle capacity"

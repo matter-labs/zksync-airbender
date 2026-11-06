@@ -3,16 +3,16 @@ use std::sync::Arc;
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
+use super::GpuGKRStage1Output;
+use crate::proof_layout::GpuGKRTraceGeometry;
+use crate::setup::GpuGKRSetupTransfer;
 use crate::upstream::{
     BaseColumns, BaseCommitmentGeometry, CommitmentMode, GKRCircuitArtifact, PrimeField,
     ProverConfig,
 };
+use crate::GkrPrograms;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::device_tracing::Range;
-use gpu_gkr::proof_layout::GpuGKRTraceGeometry;
-use gpu_gkr::setup::GpuGKRSetupTransfer;
-use gpu_gkr::stage1::GpuGKRStage1Output;
-use gpu_gkr::GkrPrograms;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;

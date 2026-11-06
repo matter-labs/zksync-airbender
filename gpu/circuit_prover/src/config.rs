@@ -69,6 +69,3 @@ pub(crate) fn batched_proximity_check_pow_bits_for_geometry(
         geometry.total_physical_columns(),
     )
 }
-
-#[cfg(test)]
-mod tests;

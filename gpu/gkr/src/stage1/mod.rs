@@ -50,6 +50,7 @@ use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, CommitmentMode, GK
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 
+pub mod merged_commitment;
 mod multiplicities;
 
 #[doc(hidden)]

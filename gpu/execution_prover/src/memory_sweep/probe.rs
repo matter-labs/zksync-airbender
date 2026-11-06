@@ -4,14 +4,14 @@ use crate::A;
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer;
 use gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy;
-use gpu_circuit_prover::proof::merged_commitment::{
-    commit_merged_from_transfers_for_geometry, GpuGKRMergedCommitTransfer,
-};
 use gpu_circuit_prover::proof::ProofPreflight;
 use gpu_circuit_prover::proof::{admit_dr_tail_before_transfers, prove, DrTailPreflightRequest};
 use gpu_core::allocator::tracker::AllocationDirection;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
+use gpu_gkr::stage1::merged_commitment::{
+    commit_merged_from_transfers_for_geometry, GpuGKRMergedCommitTransfer,
+};
 use gpu_prover_context::{AllocationMode, ProverContext};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::commit_memory_from_transfers_for_geometry;

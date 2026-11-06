@@ -101,9 +101,7 @@ impl<F: PrimeField> ResolvedProverConfig<F> {
             "request artifact differs from resolved config"
         );
         if self.config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
-            gpu_circuit_prover::proof::merged_commitment::validate_merged_packed_geometry(
-                &self.geometry,
-            );
+            gpu_gkr::stage1::merged_commitment::validate_merged_packed_geometry(&self.geometry);
         }
     }
 }
@@ -171,7 +169,7 @@ impl LazyGpuGKRSetupHost {
                 }
                 let host = if uses_base_commitment_geometry(&self.geometry) {
                     if self.geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness {
-                        gpu_circuit_prover::proof::merged_commitment::validate_merged_packed_geometry(
+                        gpu_gkr::stage1::merged_commitment::validate_merged_packed_geometry(
                             &self.geometry,
                         );
                     } else {
@@ -240,7 +238,7 @@ impl CircuitPrecomputations {
         self.setup_host
             .validate_config(config, BaseColumns::of(circuit));
         if config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
-            use gpu_circuit_prover::proof::merged_commitment::{
+            use gpu_gkr::stage1::merged_commitment::{
                 validate_merged_commitment_geometry, validate_merged_packed_geometry,
             };
             validate_merged_packed_geometry(&geometry);

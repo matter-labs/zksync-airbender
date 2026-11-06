@@ -124,46 +124,10 @@ cargo run --release -p cli -- verify \
 ## Soundness Mode
 
 `prove`, `prove-batch`, `continue-proof` and `verify` take
-`--soundness-mode pessimistic-conjecture|ethproofs-soundcalc`; the default is
-`pessimistic-conjecture`, so existing invocations keep their meaning.
-
-- `prove`, `prove-batch`: the soundness accounting of every proof layer and of
-  its verifier. Each artifact records it (`soundness_mode`), and so does the
-  batch summary. A mode the backend cannot prove is rejected before any input
-  is read.
-- `continue-proof`: the expected mode of the input artifact, also used for the
-  new layers. An artifact in another mode is rejected before proving; there is
-  no conversion. Continue an `ethproofs-soundcalc` artifact with
-  `--soundness-mode ethproofs-soundcalc`.
-- `verify`: the expected mode. The artifact's recorded mode must equal it, and
-  the proof is checked with this mode's native verifier and this mode's pinned
-  verifier guests. The artifact's `blake_*` tags only select among those
-  guests, and the recursion chain binds that choice; no tag can select a guest
-  of another mode. Artifacts from before the mode was recorded verify only as
-  `pessimistic-conjecture`.
-- `run`: no proof, no mode.
-
-Status: CPU proving in `ethproofs-soundcalc` is enabled; its end-to-end
-validation is still pending. The GPU backend rejects `ethproofs-soundcalc`
-before reading inputs, because it does not yet implement that mode's folding
-and OOD proof of work. The standalone L1 compression program
-(`cargo run --release -p program_prover --features l1 --bin l1_compression`)
-takes the same flag and rejects `ethproofs-soundcalc` before reading its input:
-the L1 feeder/wrap/EVM profile is deferred and exists only in
-`pessimistic-conjecture`.
-
-Recursion chooses between unrolled and unified layers from the census estimate
-of the selected verifier guest's cycles
-(`full_statement_verifier::host_utils::cost_model`). Each soundness mode is
-priced from tables calibrated on its own guests; proving does not execute a
-guest to measure it.
-
-```bash
-cargo run --release -p cli -- verify \
-  --proof output/proof.json \
-  --bin examples/basic_fibonacci/app.bin \
-  --soundness-mode pessimistic-conjecture
-```
+`--soundness-mode pessimistic-conjecture|ethproofs-soundcalc` (default
+`pessimistic-conjecture`). Artifacts record their mode; `continue-proof` and `verify`
+refuse an artifact recorded in another mode and use that mode's own verifier guests.
+The L1 feeder/wrap/EVM profile exists only in `pessimistic-conjecture`.
 
 ## Prove Batch
 

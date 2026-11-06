@@ -24,7 +24,7 @@ use gpu_whir::fold::GpuWhirFoldScheduledExecution;
 mod backward;
 pub(super) mod stage1_forward;
 mod terminal;
-mod whir;
+pub(crate) mod whir;
 
 pub(super) use backward::{
     prepare_backward_handoff, schedule_backward_phase, BackwardPhaseResult,
@@ -188,6 +188,3 @@ pub(crate) fn grand_product_accumulator_from_explicit_evaluations(
 
     grand_product_accumulator_computed
 }
-
-#[cfg(test)]
-pub(crate) use whir::schedule_base_commitment_handoff;

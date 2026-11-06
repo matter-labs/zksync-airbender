@@ -1,43 +1,6 @@
 use super::*;
 use era_cudart_sys::CudaError;
 
-#[test]
-fn cpu_base_commitment_transform_validation_needs_no_context() {
-    assert_eq!(
-        ProverContext::validate_base_commitment_transform_shape(24, 1),
-        Ok(())
-    );
-    let error = ProverContext::validate_base_commitment_transform_shape(24, 4).unwrap_err();
-    assert!(error.to_string().contains("root-order limit 27"));
-    let error = ProverContext::validate_base_commitment_transform_shape(25, 1).unwrap_err();
-    assert!(error.to_string().contains("transform range 13..=24"));
-}
-
-#[test]
-fn cpu_exact_arena_rejects_invalid_block_counts_before_cuda() {
-    let config = ProverContextConfig::default();
-    let wrapping_blocks = (usize::MAX >> config.allocator_block_log_size) + 1;
-    for (blocks, message) in [
-        (0, "device arena must contain at least one block"),
-        (31, "small allocator pools require 32"),
-        (wrapping_blocks, "device arena size overflows usize"),
-    ] {
-        let panic = std::panic::catch_unwind(|| {
-            let _ = ProverContext::new(&ProverContextConfig {
-                device_allocation_blocks_count: Some(blocks),
-                ..config
-            });
-        })
-        .expect_err("invalid arena must panic before calling CUDA");
-        let message_actual = panic
-            .downcast_ref::<String>()
-            .map(String::as_str)
-            .or_else(|| panic.downcast_ref::<&str>().copied())
-            .unwrap();
-        assert!(message_actual.contains(message), "{message_actual}");
-    }
-}
-
 fn small_context_config() -> ProverContextConfig {
     ProverContextConfig {
         host_allocator_blocks_count: 128,
@@ -109,35 +72,6 @@ fn reserved_context(reserve: usize) -> ProverContext {
         ..small_context_config()
     })
     .unwrap()
-}
-
-#[test]
-fn allocation_modes_place_within_their_side() {
-    use AllocationDirection::{Ascending, Descending};
-    use AllocationMode::{Inputs, Proof};
-    use AllocationPlacement::{BestFit, Bottom, Top};
-    let block = 1usize << small_context_config().allocator_block_log_size;
-    let reserve = 8 * block;
-    let mut context = reserved_context(reserve);
-    let Range { start, end } = context.arena.clone();
-    let mut live = Vec::new();
-    let mut alloc = |mode, bytes, placement| {
-        context.set_allocation_mode(mode);
-        let allocation = context.alloc::<u8>(bytes, placement).unwrap();
-        let addr = allocation.as_ptr() as usize;
-        live.push(allocation);
-        addr
-    };
-    assert_eq!(alloc(Inputs(Ascending), block, Top), start);
-    assert_eq!(alloc(Inputs(Descending), block, Top), end - block);
-    assert_eq!(alloc(Proof(Ascending), block, Top), end - reserve - block);
-    assert_eq!(alloc(Proof(Descending), block, Top), start + reserve);
-    assert_eq!(alloc(Proof(Ascending), block, BestFit), start + block);
-    assert_eq!(alloc(Proof(Descending), block, BestFit), end - 2 * block);
-    assert!(alloc(Proof(Ascending), 64, Bottom) < start);
-    assert!(alloc(Proof(Descending), 64, Bottom) >= end);
-    drop(live);
-    assert_eq!(context.get_used_mem_current(), 0);
 }
 
 #[test]

@@ -3,8 +3,6 @@
 pub use ::prover;
 pub use ::setups;
 
-pub mod bundle;
-
 #[cfg(feature = "l1")]
 pub mod compression;
 #[cfg(feature = "l1")]

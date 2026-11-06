@@ -13,7 +13,7 @@ use verifier_common::errors::VerificationError;
 use common::assert_rejects_with_variant;
 use common::{
     assert_rejects_any, assert_rejects_corrupted_nds, assert_rejects_via_panic, SecurityLevel,
-    VerifyRejection,
+    SoundnessMode, VerifyRejection,
 };
 
 fn test_rejects_garbage_proof(name: &str) {
@@ -376,6 +376,35 @@ fn test_rejects_corrupted_batched_proximity_pow_nonce(name: &str, level: Securit
     assert_rejects_any(name, level, "corrupted batched-proximity PoW nonce", &proof);
 }
 
+/// The ethproofs-soundcalc schedule gates internal folding challenges and OOD draws behind PoW.
+fn test_rejects_corrupted_folding_and_ood_pow_nonces(name: &str) {
+    let (level, mode) = (SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc);
+    let verify = |proof: &_| {
+        let (nds, external_challenges) = common::proof_to_nds(name, level, proof);
+        common::verify_nds_in_mode(name, level, mode, &external_challenges, nds)
+    };
+    let proof = common::circuit_by_name(name).proof_for_mode(level, mode);
+    assert!(
+        verify(&proof).is_ok(),
+        "{name}: the ethproofs fixture must verify"
+    );
+    let mut folding = proof.clone();
+    folding.whir_proof.intermediate_whir_oracles[0].folding_pow_nonces[0] ^= 1;
+    assert!(
+        verify(&folding).is_err(),
+        "{name}: accepted a corrupted folding PoW nonce"
+    );
+    let mut ood = proof;
+    *ood.whir_proof.intermediate_whir_oracles[0]
+        .ood_pow_nonce
+        .as_mut()
+        .expect("the first oracle carries an OOD PoW nonce") ^= 1;
+    assert!(
+        verify(&ood).is_err(),
+        "{name}: accepted a corrupted OOD PoW nonce"
+    );
+}
+
 #[cfg(not(feature = "no_caches"))]
 fn test_rejects_corrupted_cache_relations(name: &str) {
     let circuit_data = common::circuit_by_name(name);
@@ -555,6 +584,10 @@ macro_rules! generate_pow_nonce_corruption_tests {
                 #[test]
                 fn [<rejects_corrupted_batched_proximity_pow_nonce_sec100_ $name>]() {
                     test_rejects_corrupted_batched_proximity_pow_nonce(stringify!($name), SecurityLevel::Sec100);
+                }
+                #[test]
+                fn [<rejects_corrupted_folding_and_ood_pow_nonces_ethproofs_ $name>]() {
+                    test_rejects_corrupted_folding_and_ood_pow_nonces(stringify!($name));
                 }
             }
         )*

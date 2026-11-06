@@ -347,7 +347,7 @@ fn standalone_for_config(config: &ProverConfig, first_leaf_values: usize) {
     }
     let device_point = upload_slice_to_device_for_test(&point, &context);
     let mut device_seed = upload_slice_to_device_for_test(&seed.0, &context);
-    crate::proof::schedule_base_commitment_handoff(
+    crate::proof::orchestration::whir::schedule_base_commitment_handoff(
         geometry,
         &device_point,
         &mut device_seed,
