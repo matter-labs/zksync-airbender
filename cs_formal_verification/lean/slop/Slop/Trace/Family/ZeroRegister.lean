@@ -3,6 +3,7 @@ import Slop.Trace.ZeroRegister
 import Slop.AddSub
 import Slop.Trace.Family.History
 import Slop.Trace.Family.Program
+import Human.Helpers.Decoder.Decoded
 
 namespace Airbender.Trace.Proofs
 open Arithmetic

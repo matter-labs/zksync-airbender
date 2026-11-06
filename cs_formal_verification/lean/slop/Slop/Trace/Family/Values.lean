@@ -3,6 +3,7 @@ import Slop.Trace.Values
 import Slop.AddSub
 import Slop.Trace.Family.History
 import Slop.WordMemory
+import Human.Helpers.Memory.ValueBoundary
 
 namespace Airbender.Trace.Proofs
 open Arithmetic

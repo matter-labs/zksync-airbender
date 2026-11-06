@@ -2,6 +2,7 @@ import Slop.Trace.Family.Timestamps
 import Slop.Trace.RowHistory
 import Slop.Trace.Family.History
 import Slop.Trace.Family.ZeroRegister
+import Human.Helpers.Decoder.Decoded
 
 namespace Airbender.Trace.Proofs
 

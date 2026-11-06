@@ -1,6 +1,5 @@
 import Human.Helpers.Context.Model
 import Slop.Trace.ClockHistory
-import Human.Helpers.Context.FamilyLayout
 namespace Airbender.Trace.Proofs
 
 variable {Kind : Type} [CircuitLayout Kind]

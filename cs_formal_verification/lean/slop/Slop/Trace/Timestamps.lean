@@ -1,6 +1,5 @@
 import Human.Helpers.Context.Model
 import Slop.Arithmetic.Lemmas
-import Human.Helpers.Context.FamilyLayout
 
 namespace Airbender.Trace.Proofs
 

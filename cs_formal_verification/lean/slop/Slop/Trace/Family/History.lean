@@ -3,6 +3,7 @@ import Slop.Trace.History
 import Slop.AddSub.ArtifactChecks
 import Slop.Trace.Rows
 import Slop.WordMemory.ArtifactChecks
+import Human.Helpers.Context.FamilyLayout
 
 namespace Airbender.Trace.Proofs
 

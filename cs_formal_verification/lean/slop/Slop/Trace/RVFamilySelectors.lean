@@ -1,4 +1,5 @@
 import Slop.Trace.RVProgram
+import Slop.Trace.Family.Timestamps
 import Slop.AddSub.Selectors
 import Slop.WordMemory
 

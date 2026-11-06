@@ -3,8 +3,6 @@ import Slop.Trace.InitialImage
 import Slop.Trace.DecoderBits
 import Slop.Sail.DecoderFrame
 import Slop.Sail.ResetState
-import Human.Helpers.Context.FamilyLayout
-import Human.Helpers.Decoder.Decoded
 namespace Airbender.Trace.Proofs
 open Arithmetic
 

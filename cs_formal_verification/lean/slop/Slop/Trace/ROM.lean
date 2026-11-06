@@ -1,7 +1,5 @@
 import Human.Helpers.Memory.ROM
 import Slop.Trace.InitialImage
-import Human.Helpers.Context.FamilyLayout
-import Human.Helpers.Memory.ValueBoundary
 
 namespace Airbender.Trace.ROM.Proofs
 open Arithmetic

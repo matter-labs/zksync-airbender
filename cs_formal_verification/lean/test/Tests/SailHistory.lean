@@ -1,4 +1,5 @@
 import Slop.Trace.SailHistory
+import Human.Helpers.Core.Field
 
 namespace Tests.SailHistory
 open Airbender Arithmetic Trace Reference Reference.RiscV.Sail

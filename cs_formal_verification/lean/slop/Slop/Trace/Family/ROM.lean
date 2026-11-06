@@ -1,5 +1,7 @@
 import Slop.Trace.Family.Timestamps
 import Slop.Trace.ROM
+import Human.Helpers.Context.FamilyLayout
+import Human.Helpers.Memory.ValueBoundary
 
 namespace Airbender.Trace.ROM.Proofs
 open Arithmetic
