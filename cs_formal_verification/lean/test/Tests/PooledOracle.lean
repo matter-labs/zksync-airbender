@@ -5,6 +5,7 @@ import Slop.Trace.PooledOracleExecution
 import Slop.BabyBear
 import Tests.ShiftBinopTimestamp
 import Tests.TraceExecution
+import Slop.AddSub.Completeness.Row
 
 namespace Tests.PooledOracle
 open Airbender Arithmetic Trace
@@ -14,18 +15,17 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-private def readAssignment (second : Bool) : Nat → ZMod babyBearModulus
-  | 0 => if second then 8 else 0
-  | 2 => if second then 12 else 4
-  | 19 => if second then 12 else 4
-  | 21 => if second then 16 else 8
-  | 4 | 7 | 18 | 42 | 43 | 44 => 1
-  | 23 => if second then 9 else 0
-  | 27 => if second then 12 else 4
-  | 35 => if second then 10 else 0
-  | 33 => if second then 0xbeef else 0x5678
-  | 34 => if second then 0 else 0x1234
-  | _ => 0
+-- CSRRW x1 oracle reads at clocks 4 and 12, with PC 0 and 8.
+private def readInput (second : Bool) : AddSub.Completeness.Row where
+  frame := ⟨if second then 8 else 0, 0, if second then 12 else 4, 0, if second then 9 else 0, 0,
+    if second then 12 else 4, 0, if second then 10 else 0, 0⟩
+  op := .oracle
+  active := 1
+  rd := 1
+  respLo := if second then 0xbeef else 0x5678
+  respHi := if second then 0 else 0x1234
+
+private def readAssignment (second : Bool) : Nat → ZMod babyBearModulus := (readInput second).honest
 
 private def shiftAssignment : Nat → ZMod babyBearModulus
   | 0 => 4
@@ -69,19 +69,8 @@ private noncomputable def trace : PooledTrace babyBearModulus where
 
 private theorem read_constraints (second : Bool) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (readAssignment second)) AddSub.clockConstraints := by
-  cases second <;>
-    simp [AddSub.clockConstraints, AddSub.importedConstraints,
-      AddSub.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat,
-      Expression.eval, Verification.environment, readAssignment]
-  all_goals repeat' apply And.intro
-  all_goals first
-    | decide
-    | (apply Verification.range16_contains
-       norm_num [Expression.eval, Verification.environment, readAssignment,
-         limbBase, ZMod.val_ofNat, babyBearModulus])
-    | (apply Trace.Proofs.range_contains
-       norm_num [Expression.eval, Verification.environment, readAssignment,
-         timestampBase, ZMod.val_ofNat, babyBearModulus])
+  apply AddSub.Completeness.Row.complete <;> cases second
+  all_goals first | addsub_row_valid | addsub_frame_valid
 
 private theorem shift_constraints : FlatOperation.ConstraintsHoldFlat
     (Verification.environment shiftAssignment) ShiftBinop.clockConstraints := by
