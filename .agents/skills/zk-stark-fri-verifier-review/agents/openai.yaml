@@ -1,0 +1,4 @@
+interface:
+  display_name: "STARK and FRI Verifier Review"
+  short_description: "Audit one AIR, DEEP-ALI, or FRI verifier slice"
+  default_prompt: "Use $zk-stark-fri-verifier-review to audit this legacy STARK verifier phase and its claim handoffs."

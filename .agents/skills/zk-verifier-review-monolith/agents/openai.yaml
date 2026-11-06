@@ -1,0 +1,4 @@
+interface:
+  display_name: "ZK Verifier Review Monolith"
+  short_description: "Audit a full verifier in one integrated pass"
+  default_prompt: "Use $zk-verifier-review-monolith to audit this verifier system end to end in one integrated run."
