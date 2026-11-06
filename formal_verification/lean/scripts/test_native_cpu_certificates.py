@@ -27,6 +27,24 @@ def covers_native(intervals, count):
     return cursor == count
 
 
+def missing_artifact_imports(source):
+    """Find runtime artifact references absent from its project import closure."""
+    imports = lambda text: re.findall(r"^import\s+([\w.]+)", text, re.M)
+    pending = imports(source)
+    reachable = set()
+    while pending:
+        module = pending.pop()
+        if module in reachable:
+            continue
+        reachable.add(module)
+        path = ROOT / (module.replace(".", "/") + ".lean")
+        if path.is_file():
+            pending.extend(imports(path.read_text()))
+    referenced = set(re.findall(r"\b(\w+)\.importedConstraints\w*", source))
+    return {name for name in referenced
+            if f"Airbender.Review.Circuits.{name}.Artifact" not in reachable}
+
+
 class NativeCPUCertificates(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -141,6 +159,13 @@ class NativeCPUCertificates(unittest.TestCase):
                     with self.subTest(circuit=name, query=query):
                         self.assertEqual(int(expected), len(circuits[name][field]))
         self.assertGreaterEqual(checked, 23)
+
+    def test_runtime_importer_can_reach_every_referenced_artifact(self):
+        source = (ROOT / "Tests/ArtifactImport.lean").read_text()
+        self.assertEqual(missing_artifact_imports(source), set())
+        missing_mul_div = source.replace(
+            "import Airbender.Review.Circuits.MulDiv.Artifact\n", "")
+        self.assertEqual(missing_artifact_imports(missing_mul_div), {"MulDiv"})
 
     def test_all_four_program_rows_cover_exactly_the_native_equations(self):
         source = (ROOT / "Tests/AirbenderUnifiedNative.lean").read_text()

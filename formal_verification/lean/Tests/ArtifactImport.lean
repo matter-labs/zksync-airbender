@@ -9,6 +9,7 @@ import Airbender.Proofs.Bigint.ArtifactChecks
 import Tests.KeccakFixture
 import Airbender.Proofs.AddSub.ArtifactChecks
 import Airbender.Review.Circuits.JumpBranchSlt.Artifact
+import Airbender.Review.Circuits.MulDiv.Artifact
 import Airbender.Import.Parse
 import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.BabyBear

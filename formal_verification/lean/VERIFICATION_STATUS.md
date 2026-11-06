@@ -56,6 +56,20 @@ The full pass retains its 54,000-second stage deadline, per-child time/memory
 guards, final freshness/hash checks and all runtime/audit/replay obligations.
 This scheduling repair requires CI validation; final full assurance is pending.
 
+Run [42037931876](https://github.com/matter-labs/zksync-airbender/actions/runs/42037931876)
+on `18f8c733f9bce1ebb3d81d5da452b5cc64d82aa0` passed all four prioritized
+fixture modules and fresh native qualification. The complete source pass then
+failed after 45,033.32 seconds in `Tests.ArtifactImport`: the runtime import
+cleanup had removed the indirect provider of `MulDiv.importedConstraints` and
+its source bytes. The failed leaf exited normally with code 1 after 4.74 seconds,
+at 350.62 MiB charged footprint, with no owned processes left. This was a missing
+import, not a resource deadline. A direct import of the existing MulDiv artifact
+restores those declarations without changing any assertion or proof statement.
+A regression control checks all eleven referenced artifact providers through the
+runtime import closure and rejects the original missing MulDiv import. All 37
+focused controls pass locally. Actual repaired Lean source/runtime validation,
+the environment/axiom audit and final full assurance remain pending.
+
 The 4 November specification review makes the existing one-instance
 initialization and submitted-pool premises explicit. Native corollaries certify
 CPU rows only; standard worker equations remain no-cache flat constraints and
