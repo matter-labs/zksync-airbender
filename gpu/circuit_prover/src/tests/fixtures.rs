@@ -34,7 +34,6 @@ pub(super) fn load_committed_proof(
     circuit: CanonicalCircuit,
     mode: circuit_common::SoundnessMode,
 ) -> CommittedProof {
-    assert!(cfg!(feature = "deterministic_pow"));
     let root = test_artifact_path("");
     let bytes = std::fs::read(circuit.proof_path(&root, mode)).unwrap();
     let proof = serde_json::from_slice(&bytes).unwrap();

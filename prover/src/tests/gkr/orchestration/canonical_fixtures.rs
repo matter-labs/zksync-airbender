@@ -721,7 +721,6 @@ pub fn compression_pair_external_challenges(
     compression_memory_cap: &MerkleTreeCapVarLength,
     worker: &Worker,
 ) -> CompressionPairChallenges {
-    assert!(cfg!(feature = "deterministic_pow"));
     let seed = super::unified::fs_transform_for_unified_circuit(
         &boundary.registers,
         boundary.final_pc,

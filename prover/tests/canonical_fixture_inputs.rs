@@ -174,8 +174,8 @@ fn canonical_fixture_inputs_reproduce_compression_memory_transcript() {
         assert_eq!(challenges.pow_bits, 19);
         for proof in [&unified, &compression] {
             assert_eq!(
-                serde_json::to_value(&challenges.external_challenges).unwrap(),
-                serde_json::to_value(&proof.external_challenges).unwrap(),
+                serde_json::to_value(challenges.external_challenges).unwrap(),
+                serde_json::to_value(proof.external_challenges).unwrap(),
             );
         }
         let mut product = prover::definitions::produce_initial_permutation_product_contribution::<
@@ -208,8 +208,8 @@ fn canonical_fixture_inputs_reproduce_compression_memory_transcript() {
             &worker,
         );
         assert_ne!(
-            serde_json::to_value(&wrong.external_challenges).unwrap(),
-            serde_json::to_value(&challenges.external_challenges).unwrap(),
+            serde_json::to_value(wrong.external_challenges).unwrap(),
+            serde_json::to_value(challenges.external_challenges).unwrap(),
         );
     }
 }

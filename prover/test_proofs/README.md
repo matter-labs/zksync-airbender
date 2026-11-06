@@ -53,22 +53,16 @@ producers. The canonical producer does not refresh those files.
 
 ## Currency and GPU agreement
 
-`AB_CANONICAL_PROOF_OUTPUT_DIR` redirects the same producer output to an empty
-scratch directory. It changes the destination only. With this variable unset,
-the refresh command above writes the committed directory.
+The `Rust CI / tests` job runs the producer command above in the checkout and
+fails if `git status` then reports any change under `prover/test_proofs`: a
+changed byte, including JSON formatting, or a new file. The producer itself
+rejects a committed proof file that it does not write.
 
-The `Rust CI / tests` job first runs `canonical_proof_inventory` to emit a
-manifest from the shared circuit/mode registry. It checks the committed ordinary
-proof inventory, regenerates all 28 files into scratch, then uses
-[the currency checker](../../.github/scripts/check_canonical_proofs.py) to reject
-missing/extra files or any changed byte, including JSON formatting. CI leaves
-the committed directory untouched. A producer error immediately fails the shell
-step; a zero exit with missing or partial output still fails the inventory check.
-
-The manifest also names all 28 GPU tests. The GPU workflow checks the compiled
-exact-name set against the same shared registry. Each case rebuilds the raw
-recipe, checks the current circuit's memory caps independently, and compares
-two queued GPU proofs with the original committed bytes. Both modes retain the
+The GPU workflow runs `cpu_canonical_matrix_inventory`, which checks the GPU
+test registry against the same circuit/mode registry, then runs the 28 listed
+`canonical_*` tests. Each case rebuilds the raw recipe, checks the current
+circuit's memory caps independently, and compares two queued GPU proofs with
+the original committed bytes. Both modes retain the
 allocator-baseline, nonce-shape, standalone i/t and unified closure checks.
 Native FSV tests assemble the canonical compression/unified pair with freshly
 replayed boundary metadata. Whole-program `*_cpu_gpu_proof_diff` diagnostics
@@ -100,8 +94,3 @@ provides supporting capacity evidence at `3af2e8def`:
 
 The step logs `MemTotal` and `MemAvailable`; the workflow specifies a runner
 label rather than a guaranteed memory capacity.
-
-CI will be the first full proving run through the scratch-output routing. Local
-validation exercised that writer on all 28 loaded proofs, reused the two prior
-full-regeneration results for byte/cost evidence, and checked stale-proof,
-inventory, missing/partial-output and producer-error rejection.

@@ -111,13 +111,6 @@ fn cpu_canonical_matrix_inventory() {
         registered, expected,
         "GPU matrix differs from canonical input registry"
     );
-    if let Some(path) = std::env::var_os("AB_GPU_CANONICAL_TEST_NAMES") {
-        std::fs::write(
-            path,
-            expected.into_iter().collect::<Vec<_>>().join("\n") + "\n",
-        )
-        .unwrap();
-    }
 }
 
 #[test]

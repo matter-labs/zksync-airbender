@@ -41,16 +41,13 @@ jobs:
         run: |
           set -euo pipefail
           awk '/MemTotal:|MemAvailable:/ { print }' /proc/meminfo
-          scratch=$(mktemp -d "$RUNNER_TEMP/canonical-proofs.XXXXXX")
-          trap 'rm -rf "$scratch"' EXIT
-          manifest="$scratch/inventory.json"
-          regenerated="$scratch/proofs"
-          AB_CANONICAL_PROOF_MANIFEST="$manifest" cargo test -p prover --lib --features test --profile cli -- \
-            --exact tests::gkr::canonical_proofs::canonical_proof_inventory --nocapture --test-threads=1
-          python3 .github/scripts/check_canonical_proofs.py "$manifest" prover/test_proofs
-          AB_CANONICAL_PROOF_OUTPUT_DIR="$regenerated" cargo test -p prover --lib --features test --profile cli -- \
+          cargo test -p prover --lib --features test --profile cli -- \
             --exact tests::gkr::canonical_proofs::regenerate_canonical_circuit_proofs --nocapture --test-threads=1
-          python3 .github/scripts/check_canonical_proofs.py "$manifest" prover/test_proofs "$regenerated"
+          if [ -n "$(git status --porcelain -- prover/test_proofs)" ]; then
+            echo "Regeneration changed the committed canonical proofs; commit them:" >&2
+            git status --porcelain -- prover/test_proofs >&2
+            exit 1
+          fi
       - name: GKR compiler feature tests
         env:
           RUST_MIN_STACK: 16777216
