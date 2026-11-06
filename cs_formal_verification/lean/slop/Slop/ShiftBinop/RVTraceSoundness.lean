@@ -3,6 +3,7 @@ import Slop.ShiftBinop.RVQuery
 import Slop.ShiftBinop.RVResult
 import Slop.Trace.RVPooledRow
 import Slop.Trace.RVZero
+import Slop.Trace.RVRowGlue
 
 /-! RV32 shift/binop soundness (`RVSoundnessClaim`), on the RV route: no Sail state, interpreter or `Configured`
     fact.
@@ -20,7 +21,7 @@ namespace Airbender.ShiftBinop.Proofs
 open Arithmetic Trace Trace.Proofs
 
 /-- The pre-state registers `i`, `j` are the values the row's first two ports read. -/
-theorem rv_shift_row_operands {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem rv_shift_row_operands (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : PooledTrace p} (accepted : Accepted trace)
     {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry}
     (assumptions : RVInterfaceAssumptions trace initial cells program)
@@ -31,8 +32,6 @@ theorem rv_shift_row_operands {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase +
     ∀ i j : BitVec 5, w 5 = (i.toNat : ZMod p) → w 6 = (j.toNat : ZMod p) →
       before.getReg i = memoryWord (importedConstraintsMemoryPorts[0].readCode w) ∧
       before.getReg j = memoryWord (importedConstraintsMemoryPorts[1].readCode w) := by
-  obtain ⟨middle, events, rawAfter, _, _, current, atState, _⟩ :=
-    rv_pooled_row_history hp inverse accepted assumptions decoded position
   intro i j hi hj
   have shape : (⟨.shiftBinop, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
@@ -40,39 +39,25 @@ theorem rv_shift_row_operands {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase +
     have portsEq : (⟨.shiftBinop, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := rfl
     rw [portsEq]
     rfl
-  have boundP : 32 ≤ p := by
-    dsimp [timestampBase] at hp
-    omega
-  have valueLeft : (w 5).val = i.toNat := by
-    rw [hi, ZMod.val_natCast, Nat.mod_eq_of_lt (by have := i.isLt; omega)]
-  have valueRight : (w 6).val = j.toNat := by
-    rw [hj, ZMod.val_natCast, Nat.mod_eq_of_lt (by have := j.isLt; omega)]
-  dsimp only [rowEvents] at current
-  rw [shape] at current
-  have leftAddress : (importedConstraintsMemoryPorts[0]).address.code w =
-      (Cell.register i).addressCode := by
-    simp [importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode, valueLeft]
-  have rightAddress : (importedConstraintsMemoryPorts[1]).address.code w =
-      (Cell.register j).addressCode := by
-    simp [importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode, valueRight]
-  have firstReadonly : (importedConstraintsMemoryPorts[0]).writeValue = none := by
-    simp [importedConstraintsMemoryPorts]
-  have operands := rv_row_operand_reads trace.memoryEpoch firstReadonly leftAddress rightAddress current
-  subst atState
+  have operands := rv_row_register_reads laws hp inverse accepted assumptions decoded position shape
+    (by simp [importedConstraintsMemoryPorts]) (a := 5) (b := 6)
+    (by first | rfl | simp [importedConstraintsMemoryPorts])
+    (by first | rfl | simp [importedConstraintsMemoryPorts]) hi hj
   exact operands
 
 /-- For immediate forms and REV8 the second port reads x0 (`w 6 = 0`): its read is zero. -/
-theorem rv_shift_zero_read {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem rv_shift_zero_read (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : PooledTrace p} (accepted : Accepted trace)
     {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry}
     (assumptions : RVInterfaceAssumptions trace initial cells program)
     (decoded : RVPooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.shiftBinop, w⟩ : Row p PooledFamily) ∈ trace.rows)
     (zero : w 6 = 0) : importedConstraintsMemoryPorts[1].readCode w = 0 := by
+  haveI : ClockLaws PooledFamily p := laws.clockLaws
   obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage
   have reads := Airbender.Trace.RVZero.rv_zero_reads_of_preserving hp inverse accepted
     assumptions.initialization.clocks assumptions.initialization.image
-    (Airbender.Trace.RVZero.rv_pooled_zero_preserving (by dsimp [timestampBase] at hp; omega)
+    (laws.zeroPreserving (by dsimp [timestampBase] at hp; omega)
       accepted programImage decoded)
   have present : importedConstraintsMemoryPorts[1] ∈ (⟨.shiftBinop, w⟩ : Row p PooledFamily).ports := by
     change importedConstraintsMemoryPorts[1] ∈ importedConstraintsMemoryPorts
@@ -96,17 +81,7 @@ theorem rv_exec_row (s : RV.State) (input : RVInput) :
   cases operation <;> cases immediate <;>
     simp [rvInstruction, RV.exec, rvValue, rvOperand, Operation.rvOp, Operation.isShift]
 
-/-- Register/PC agreement of one step that writes `x` to `rd` with the claimed post-state. -/
-private theorem same_of_result (s : RV.State) (rd : RV.Reg) (x out pc : BitVec 32)
-    (value : x = out) (hpc : s.pc + 4 = pc) :
-    RV.Same (s.setReg rd x).nextInstr ((s.setReg rd out).setPC pc) := by
-  subst value
-  refine ⟨?_, ?_, rfl, rfl⟩
-  · simpa [RV.State.nextInstr, RV.State.setPC, RV.State.setReg] using hpc
-  · intro i
-    simp [RV.State.getReg, RV.State.nextInstr, RV.State.setPC, RV.State.setReg]
-
-theorem rv_trace_soundness : RVSoundnessClaim := by
+theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
@@ -146,9 +121,9 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
   have zeroRead : (input.immediate || input.operation = .rev8) = true →
       importedConstraintsMemoryPorts[1].readCode w = 0 := by
     intro ignored
-    exact rv_shift_zero_read clockSize inverse accepted assumptions decoded member
+    exact rv_shift_zero_read laws clockSize inverse accepted assumptions decoded member
       (by simpa [ignored] using rs2Query)
-  have regs := rv_shift_row_operands clockSize inverse accepted assumptions decoded mapping.state
+  have regs := rv_shift_row_operands laws clockSize inverse accepted assumptions decoded mapping.state
     _ _ rs1Query rs2Query
   have result := rv_row_value (by omega) core input.operation input.immediate input.encodedImmediate
     selected funct3 immediateLo immediateHi zeroRead
@@ -162,11 +137,11 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
     · split
       · contradiction
       · rfl
-  refine ⟨_, step.trans (rv_exec_row _ _), same_of_result _ _ _ _ _ value hpc⟩
+  refine ⟨_, step.trans (rv_exec_row _ _), rv_same_of_write _ _ _ _ _ (fun _ => value) hpc⟩
 
-theorem babyBear_rv_trace_soundness : BabyBearRVSoundnessClaim := by
+theorem babyBear_rv_trace_soundness (laws : RVPooledLaws) : BabyBearRVSoundnessClaim := by
   intro trace initial cells program assumptions input output w relation
-  exact rv_trace_soundness (p := babyBearModulus) (by decide) (by decide) trace initial cells program
+  exact rv_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
     assumptions input output w relation
 
 end Airbender.ShiftBinop.Proofs

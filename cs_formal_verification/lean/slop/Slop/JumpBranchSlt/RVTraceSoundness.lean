@@ -4,6 +4,7 @@ import Slop.Trace.RVPooledRow
 import Slop.Trace.RVValues
 import Slop.Trace.PC
 import Slop.BabyBear
+import Slop.Trace.RVRowGlue
 
 /-! RV32 comparison, branch and jump soundness (`Comparison/Branch/Jump.RVSoundnessClaim`), on the RV route: no Sail
     state, interpreter or `Configured` fact.
@@ -34,7 +35,7 @@ theorem rv_pooled_finish_bounds {p : Nat} [Fact p.Prime] (hp : limbBase < p)
   exact outgoing_pc_bounds accepted incoming terminal
 
 /-- The two operand registers of a JumpBranchSlt row hold the values the row read (as `rv_addsub_row_position`). -/
-theorem rv_jbs_row_reads {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem rv_jbs_row_reads (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : PooledTrace p} (accepted : Accepted trace)
     {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry}
     (inputs : RVPooledHistoryInputs trace initial cells program)
@@ -44,8 +45,6 @@ theorem rv_jbs_row_reads {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < 
     ∀ i j : BitVec 5, w 5 = (i.toNat : ZMod p) → w 6 = (j.toNat : ZMod p) →
       before.getReg i = (Word.mk (w 22).val (w 23).val).toBitVec ∧
       before.getReg j = (Word.mk (w 26).val (w 27).val).toBitVec := by
-  obtain ⟨middle, events, rawAfter, _, _, current, atState, _⟩ :=
-    rv_pooled_row_history hp inverse accepted inputs decoded position
   intro i j hi hj
   have shape : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
@@ -55,37 +54,21 @@ theorem rv_jbs_row_reads {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < 
     first
       | rfl
       | simp [importedConstraintsMemoryPorts]
-  have boundP : 32 ≤ p := by
-    dsimp [timestampBase] at hp
-    omega
-  have valueLeft : (w 5).val = i.toNat := by
-    rw [hi, ZMod.val_natCast, Nat.mod_eq_of_lt (by have := i.isLt; omega)]
-  have valueRight : (w 6).val = j.toNat := by
-    rw [hj, ZMod.val_natCast, Nat.mod_eq_of_lt (by have := j.isLt; omega)]
-  dsimp only [rowEvents] at current
-  rw [shape] at current
-  have leftAddress : (importedConstraintsMemoryPorts[0]).address.code w =
-      (Cell.register i).addressCode := by
-    simp [importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode, valueLeft]
-  have rightAddress : (importedConstraintsMemoryPorts[1]).address.code w =
-      (Cell.register j).addressCode := by
-    simp [importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode, valueRight]
-  have firstReadonly : (importedConstraintsMemoryPorts[0]).writeValue = none := by
-    simp [importedConstraintsMemoryPorts]
-  have operands := rv_row_operand_reads trace.memoryEpoch firstReadonly leftAddress rightAddress current
+  have operands := rv_row_register_reads laws hp inverse accepted inputs decoded position shape
+    (by simp [importedConstraintsMemoryPorts]) (a := 5) (b := 6)
+    (by first | rfl | simp [importedConstraintsMemoryPorts])
+    (by first | rfl | simp [importedConstraintsMemoryPorts]) hi hj
   have leftWord : memoryWord ((importedConstraintsMemoryPorts[0]).readCode w) =
       (Word.mk (w 22).val (w 23).val).toBitVec := by
     simp [importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode, memoryWord]
   have rightWord : memoryWord ((importedConstraintsMemoryPorts[1]).readCode w) =
       (Word.mk (w 26).val (w 27).val).toBitVec := by
     simp [importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode, memoryWord]
-  rw [leftWord, rightWord] at operands
-  subst atState
-  exact operands
+  exact ⟨operands.1.trans leftWord, operands.2.trans rightWord⟩
 
 /-- Everything the row calculation needs, from the trace: the row's facts at its RV pre-state, and `RV.step` of that
     pre-state is `RV.exec` of the instruction its program entry decodes to. -/
-theorem rv_row_facts {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem rv_row_facts (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry}
     (assumptions : RVTraceInputs trace initial cells program) (accepted : Accepted trace)
     (decoded : RVPooledDecoded trace program) {w : Nat → ZMod p}
@@ -124,9 +107,9 @@ theorem rv_row_facts {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : 
   change w 5 = (data.rs1.toNat : ZMod p) at rs1Query
   have rs2Query := congrArg (fun q : Vector (ZMod p) 9 => q[3]) query0
   change w 6 = (data.rs2.toNat : ZMod p) at rs2Query
-  have regs := rv_jbs_row_reads clockSize inverse accepted assumptions.toRVPooledHistoryInputs decoded
+  have regs := rv_jbs_row_reads laws clockSize inverse accepted assumptions.toRVPooledHistoryInputs decoded
     position data.rs1 data.rs2 rs1Query rs2Query
-  have readBounds := (Trace.RVValues.rv_pooled_value_bounds (by omega) inverse accepted
+  have readBounds := (laws.valueBounds (by omega) inverse accepted
     assumptions.initialization.clocks assumptions.initialization.image
     assumptions.wordTable assumptions.subwordTable programImage decoded).1 _ member
   have left := readBounds importedConstraintsMemoryPorts[0]
@@ -152,32 +135,32 @@ theorem rv_row_facts {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : 
   have flag := flags k
   fin_cases k <;> simpa [importedConstraintsDecoderColumns] using flag
 
-theorem rv_comparison_trace_soundness : Comparison.RVSoundnessClaim := by
+theorem rv_comparison_trace_soundness (laws : RVPooledLaws) : Comparison.RVSoundnessClaim := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   obtain ⟨entry, present, _, query, decodes⟩ := mapping.instruction
-  obtain ⟨facts, step⟩ := rv_row_facts hp inverse assumptions accepted decoded member mapping.state present
+  obtain ⟨facts, step⟩ := rv_row_facts laws hp inverse assumptions accepted decoded member mapping.state present
     query decodes (fun _ fields => comparison_pooled_fields fields)
     (by unfold comparisonData; split <;> simp)
   obtain ⟨s', exec, same⟩ := rv_comparison_exec (by omega) facts mapping.words.outputLo mapping.words.outputHi
     mapping.words.finalPCLo mapping.words.finalPCHi
   exact ⟨s', step.trans exec, same⟩
 
-theorem rv_branch_trace_soundness : Branch.RVSoundnessClaim := by
+theorem rv_branch_trace_soundness (laws : RVPooledLaws) : Branch.RVSoundnessClaim := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   obtain ⟨entry, present, _, query, decodes⟩ := mapping.instruction
-  obtain ⟨facts, step⟩ := rv_row_facts hp inverse assumptions accepted decoded member mapping.state present
+  obtain ⟨facts, step⟩ := rv_row_facts laws hp inverse assumptions accepted decoded member mapping.state present
     query decodes (fun _ fields => branch_pooled_fields fields) (by simp [branchData])
   obtain ⟨s', exec, same⟩ := rv_branch_exec (by omega) facts (decode_branch_even decodes)
     mapping.words.finalPCLo mapping.words.finalPCHi
   exact ⟨s', step.trans exec, same⟩
 
-theorem rv_jump_trace_soundness : Jump.RVSoundnessClaim := by
+theorem rv_jump_trace_soundness (laws : RVPooledLaws) : Jump.RVSoundnessClaim := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   obtain ⟨entry, present, _, query, decodes⟩ := mapping.instruction
-  obtain ⟨facts, step⟩ := rv_row_facts hp inverse assumptions accepted decoded member mapping.state present
+  obtain ⟨facts, step⟩ := rv_row_facts laws hp inverse assumptions accepted decoded member mapping.state present
     query decodes (fun _ fields => jump_pooled_fields fields)
     (by unfold jumpData; split <;> split <;> simp)
   have even : ∀ offset, input.instruction = .jal offset → (offset.signExtend 32).toNat % 2 = 0 := by
@@ -189,19 +172,19 @@ theorem rv_jump_trace_soundness : Jump.RVSoundnessClaim := by
     mapping.words.finalPCLo mapping.words.finalPCHi
   exact ⟨s', step.trans exec, same⟩
 
-theorem babyBear_rv_comparison_trace_soundness : Comparison.BabyBearRVSoundnessClaim := by
+theorem babyBear_rv_comparison_trace_soundness (laws : RVPooledLaws) : Comparison.BabyBearRVSoundnessClaim := by
   intro trace initial cells program assumptions input output w relation
-  exact rv_comparison_trace_soundness (p := babyBearModulus) (by decide) (by decide) trace initial cells program
+  exact rv_comparison_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
     assumptions input output w relation
 
-theorem babyBear_rv_branch_trace_soundness : Branch.BabyBearRVSoundnessClaim := by
+theorem babyBear_rv_branch_trace_soundness (laws : RVPooledLaws) : Branch.BabyBearRVSoundnessClaim := by
   intro trace initial cells program assumptions input output w relation
-  exact rv_branch_trace_soundness (p := babyBearModulus) (by decide) (by decide) trace initial cells program
+  exact rv_branch_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
     assumptions input output w relation
 
-theorem babyBear_rv_jump_trace_soundness : Jump.BabyBearRVSoundnessClaim := by
+theorem babyBear_rv_jump_trace_soundness (laws : RVPooledLaws) : Jump.BabyBearRVSoundnessClaim := by
   intro trace initial cells program assumptions input output w relation
-  exact rv_jump_trace_soundness (p := babyBearModulus) (by decide) (by decide) trace initial cells program
+  exact rv_jump_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
     assumptions input output w relation
 
 end Airbender.JumpBranchSlt.Proofs

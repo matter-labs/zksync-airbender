@@ -4,6 +4,8 @@ import Slop.WordMemory.RVQuery
 import Slop.Trace.RVValues
 import Slop.Trace.RVRomRead
 import Slop.Trace.RVPooledRow
+import Slop.Trace.RVRowGlue
+import Slop.WordMemory.RVWritable
 
 /-! RV32 LW/SW soundness (`RVSoundnessClaim`), on the RV route: no Sail state, interpreter, `Configured` or
     `OrdinaryWordAddress` fact.
@@ -54,32 +56,15 @@ theorem rv_row_port_reads {p : Nat} {cells : List Cell} {columns : TraceColumns}
           subst hm
           exact ⟨⟨leftCell, lm, la, lr'⟩, ⟨rightCell, rm, ra, rr⟩⟩
 
-/-- Register/PC agreement of an LW step that writes `x` to `rd` with the claimed post-state. -/
-private theorem same_of_load (s : RV.State) (rd : RV.Reg) (x out pc : BitVec 32)
-    (value : x = out) (hpc : s.pc + 4 = pc) :
-    RV.Same (s.setReg rd x).nextInstr ((s.setReg rd out).setPC pc) := by
-  subst value
-  refine ⟨?_, ?_, rfl, rfl⟩
-  · simpa [RV.State.nextInstr, RV.State.setPC, RV.State.setReg] using hpc
-  · intro i
-    simp [RV.State.getReg, RV.State.nextInstr, RV.State.setPC, RV.State.setReg]
-
-/-- Agreement of an SW step that stores `x` at `a` with the claimed post-state. -/
-private theorem same_of_store (s : RV.State) (a x out pc : BitVec 32)
-    (value : x = out) (hpc : s.pc + 4 = pc) :
-    RV.Same (s.store a x 4).nextInstr ((s.store a out 4).setPC pc) := by
-  subst value
-  subst hpc
-  exact ⟨rfl, fun _ => rfl, rfl, rfl⟩
-
 /-- A word below `ROM_END` at an aligned address: limb form. -/
 private theorem rom_address (a : BitVec 32) (high : (Word.ofBitVec a).hi < 64) : a.toNat < RV.ROM_END := by
   unfold RV.ROM_END
   dsimp [Word.ofBitVec, limbBase] at high
   omega
 
-theorem rv_trace_soundness : RVSoundnessClaim := by
+theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
+  haveI : ClockLaws PooledFamily p := laws.clockLaws
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints trace.rom.wordMemory) importedConstraintsTimestampLookups)
@@ -128,7 +113,7 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
   have immediateBound : (Word.mk (w 8).val (w 9).val).Bounded := by
     rw [immediateWord]
     exact Word.ofBitVec_bound _
-  have readBounds := (Trace.RVValues.rv_pooled_value_bounds (by omega) inverse accepted
+  have readBounds := (laws.valueBounds (by omega) inverse accepted
     assumptions.initialization.clocks image
     assumptions.wordTable assumptions.subwordTable programImage decoded).1 _ member
   have sourceBound : (Word.mk (w 17).val (w 18).val).Bounded := by
@@ -138,7 +123,7 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
     simpa [read_word, importedConstraintsMemoryPorts] using source
   -- The row's port reads in the pre-state.
   obtain ⟨_, _, _, _, _, _, _, current, _, _⟩ :=
-    rv_pooled_row_history clockSize inverse accepted assumptions decoded mapping.state
+    rv_pooled_row_history laws clockSize inverse accepted assumptions decoded mapping.state
   have shape : (⟨.wordMemory, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
         importedConstraintsMemoryPorts[2]] := by
@@ -228,7 +213,7 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
       rw [if_pos ⟨aligned, readable⟩]
       simp
     · rw [dataWord]
-      exact same_of_load _ _ _ _ _ value hpc
+      exact rv_same_of_write _ _ _ _ _ (fun _ => value) hpc
   · -- SW: the second port reads rs2; the third writes the RAM cell at the effective address.
     simp only [hs, ite_true] at selected addressWord ⊢
     have registers := register_address true core (by simpa using selected)
@@ -287,11 +272,11 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
       simp only [rvInstruction, hs, ite_true, RV.exec, target]
       rw [if_pos ⟨aligned, writable⟩]
     · rw [dataWord, addressWord, cellWord, Word.ofBitVec_roundtrip]
-      exact same_of_store _ _ _ _ _ value hpc
+      exact rv_same_of_store _ _ _ _ _ value hpc
 
-theorem babyBear_rv_trace_soundness : BabyBearRVSoundnessClaim := by
+theorem babyBear_rv_trace_soundness (laws : RVPooledLaws) : BabyBearRVSoundnessClaim := by
   intro trace initial cells program assumptions input output w relation
-  exact rv_trace_soundness (p := babyBearModulus) (by decide) (by decide) trace initial cells program
+  exact rv_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
     assumptions input output w relation
 
 end Airbender.WordMemory.Proofs

@@ -3,6 +3,7 @@ import Slop.MulDiv.RVQuery
 import Slop.MulDiv.RVResult
 import Slop.Trace.RVValues
 import Slop.Trace.RVPooledRow
+import Slop.Trace.RVRowGlue
 
 /-! RV32 MulDiv soundness (`RVSoundnessClaim`), on the RV route: no Sail state, interpreter or `Configured` fact.
 
@@ -18,7 +19,7 @@ namespace Airbender.MulDiv.Proofs
 open Arithmetic Trace Trace.Proofs
 
 /-- The pre-state registers `i`, `j` are the values the row's first two ports read. -/
-theorem rv_muldiv_row_operands {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem rv_muldiv_row_operands (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : PooledTrace p} (accepted : Accepted trace)
     {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry}
     (assumptions : RVInterfaceAssumptions trace initial cells program)
@@ -28,8 +29,6 @@ theorem rv_muldiv_row_operands {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase 
     ∀ i j : BitVec 5, w 5 = (i.toNat : ZMod p) → w 6 = (j.toNat : ZMod p) →
       before.getReg i = (Word.mk (w 20).val (w 21).val).toBitVec ∧
       before.getReg j = (Word.mk (w 24).val (w 25).val).toBitVec := by
-  obtain ⟨middle, events, rawAfter, _, _, current, atState, _⟩ :=
-    rv_pooled_row_history hp inverse accepted assumptions decoded position
   intro i j hi hj
   have shape : (⟨.mulDiv, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
@@ -39,25 +38,10 @@ theorem rv_muldiv_row_operands {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase 
     first
       | rfl
       | simp [importedConstraintsMemoryPorts]
-  have boundP : 32 ≤ p := by
-    dsimp [timestampBase] at hp
-    omega
-  have valueLeft : (w 5).val = i.toNat := by
-    rw [hi, ZMod.val_natCast, Nat.mod_eq_of_lt (by have := i.isLt; omega)]
-  have valueRight : (w 6).val = j.toNat := by
-    rw [hj, ZMod.val_natCast, Nat.mod_eq_of_lt (by have := j.isLt; omega)]
-  dsimp only [rowEvents] at current
-  rw [shape] at current
-  have leftAddress : (importedConstraintsMemoryPorts[0]).address.code w =
-      (Cell.register i).addressCode := by
-    simp [importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode, valueLeft]
-  have rightAddress : (importedConstraintsMemoryPorts[1]).address.code w =
-      (Cell.register j).addressCode := by
-    simp [importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode, valueRight]
-  have firstReadonly : (importedConstraintsMemoryPorts[0]).writeValue = none := by
-    simp [importedConstraintsMemoryPorts]
-  have operands := rv_row_operand_reads trace.memoryEpoch firstReadonly leftAddress rightAddress current
-  subst atState
+  have operands := rv_row_register_reads laws hp inverse accepted assumptions decoded position shape
+    (by simp [importedConstraintsMemoryPorts]) (a := 5) (b := 6)
+    (by first | rfl | simp [importedConstraintsMemoryPorts])
+    (by first | rfl | simp [importedConstraintsMemoryPorts]) hi hj
   have leftWord : memoryWord ((importedConstraintsMemoryPorts[0]).readCode w) =
       (Word.mk (w 20).val (w 21).val).toBitVec := by
     simp [importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode, memoryWord]
@@ -66,17 +50,7 @@ theorem rv_muldiv_row_operands {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase 
     simp [importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode, memoryWord]
   exact ⟨operands.1.trans leftWord, operands.2.trans rightWord⟩
 
-/-- Register/PC agreement of one step that writes `x` to `rd` with the claimed post-state. -/
-private theorem same_of_result (s : RV.State) (rd : RV.Reg) (x out pc : BitVec 32)
-    (value : x = out) (hpc : s.pc + 4 = pc) :
-    RV.Same (s.setReg rd x).nextInstr ((s.setReg rd out).setPC pc) := by
-  subst value
-  refine ⟨?_, ?_, rfl, rfl⟩
-  · simpa [RV.State.nextInstr, RV.State.setPC, RV.State.setReg] using hpc
-  · intro i
-    simp [RV.State.getReg, RV.State.nextInstr, RV.State.setPC, RV.State.setReg]
-
-theorem rv_trace_soundness : RVSoundnessClaim := by
+theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
@@ -111,7 +85,7 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
   have hpc : input.before.pc + 4 = output.pc.toBitVec := by
     rw [pcNext.2.2, rowPC, pcWord, Word.ofBitVec_roundtrip, beforePC]
   -- Left operand bound.
-  have readBounds := (Trace.RVValues.rv_pooled_value_bounds (by omega) inverse accepted
+  have readBounds := (laws.valueBounds (by omega) inverse accepted
     assumptions.initialization.clocks assumptions.initialization.image
     assumptions.wordTable assumptions.subwordTable programImage decoded).1 _ member
   have left := readBounds importedConstraintsMemoryPorts[0]
@@ -120,7 +94,7 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
   have leftBound : (Word.mk (w 20).val (w 21).val).Bounded := by
     simpa [read_word, importedConstraintsMemoryPorts] using left
   -- Operand registers and the row calculation.
-  have regs := rv_muldiv_row_operands clockSize inverse accepted assumptions decoded mapping.state
+  have regs := rv_muldiv_row_operands laws clockSize inverse accepted assumptions decoded mapping.state
     input.rs1 input.rs2 rs1Query rs2Query
   have result := rv_row_result hp arithmeticInverse core input.operation selected leftBound
   have destination : output.destination = Word.mk (w 28).val (w 29).val :=
@@ -130,13 +104,13 @@ theorem rv_trace_soundness : RVSoundnessClaim := by
     rw [regs.1, regs.2, destination, result]
   refine ⟨(input.before.setReg input.rd
       (RV.alu input.operation.rvOp (input.before.getReg input.rs1) (input.before.getReg input.rs2))).nextInstr,
-    ?_, same_of_result _ _ _ _ _ value hpc⟩
+    ?_, rv_same_of_write _ _ _ _ _ (fun _ => value) hpc⟩
   rw [step]
   cases hop : input.operation <;> simp [rvInstruction, hop, Operation.rvOp, RV.exec]
 
-theorem babyBear_rv_trace_soundness : BabyBearRVSoundnessClaim := by
+theorem babyBear_rv_trace_soundness (laws : RVPooledLaws) : BabyBearRVSoundnessClaim := by
   intro trace initial cells program assumptions input output w relation
-  exact rv_trace_soundness (p := babyBearModulus) (by decide) (by decide) trace initial cells program
+  exact rv_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
     assumptions input output w relation
 
 end Airbender.MulDiv.Proofs
