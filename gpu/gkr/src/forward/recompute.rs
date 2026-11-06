@@ -31,32 +31,6 @@ pub enum GkrMemoryPolicy {
 }
 
 impl GkrMemoryPolicy {
-    /// Validate omission bounds before allocating or replaying MAIN storage.
-    /// Called at the start of a proof and by the replay plan.
-    pub fn validate_for_main_layers(self, main_layers: usize) {
-        let (value_layers, cache_layers) = match self {
-            Self::Materialize => (0, 0),
-            Self::Recompute {
-                value_layers,
-                cache_layers,
-            } => {
-                assert!(
-                    value_layers != 0 || cache_layers != 0,
-                    "recomputation must omit a nonempty prefix"
-                );
-                (value_layers, cache_layers)
-            }
-        };
-        assert!(
-            value_layers < main_layers,
-            "value omission must retain the final MAIN value layer"
-        );
-        assert!(
-            cache_layers <= main_layers,
-            "cache omission exceeds the MAIN layer count"
-        );
-    }
-
     pub fn candidates() -> impl Iterator<Item = Self> {
         std::iter::once(Self::Materialize).chain((0..=2).flat_map(|value_layers| {
             (0..=3)

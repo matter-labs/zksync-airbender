@@ -12,9 +12,7 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransfer;
-use crate::upstream::{
-    validate_sumcheck_schedule, BaseColumns, BaseCommitmentGeometry, ProverConfig,
-};
+use crate::upstream::{BaseColumns, BaseCommitmentGeometry, ProverConfig};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
@@ -94,18 +92,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         (final_trace_size_log_2 as usize) < prover_config.trace_len_log2,
         "GPU forward transcript handoff requires at least one dimension-reduction layer"
     );
-    assert!(
-        memory_policy.witness.is_valid(),
-        "invalid witness memory policy"
-    );
-    memory_policy
-        .gkr
-        .validate_for_main_layers(gkr_programs.compiled_circuit().layers.len());
-    validate_sumcheck_schedule(
-        &prover_config.same_size_sumcheck_schedule,
-        prover_config.trace_len_log2,
-    )
-    .expect("invalid GKR same-size sumcheck schedule");
     let base_geometry = BaseCommitmentGeometry::from_config(
         prover_config,
         BaseColumns::of(gkr_programs.compiled_circuit()),

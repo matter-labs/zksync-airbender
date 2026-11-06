@@ -44,7 +44,7 @@ pub(crate) use prover::gkr::prover_config::pow_bits;
 pub(crate) use prover::gkr::prover_config::BaseColumns;
 #[cfg(test)]
 pub(crate) use prover::gkr::prover_config::CommitmentMode;
-pub(crate) use prover::gkr::prover_config::{validate_sumcheck_schedule, ProverConfig};
+pub(crate) use prover::gkr::prover_config::ProverConfig;
 pub(crate) use prover::merkle_trees::DefaultTreeConstructor;
 
 // -----------------------------------------------------------------------
