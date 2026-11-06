@@ -1,12 +1,12 @@
 import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 import Slop.Sail.WordMemoryState
+import Slop.UnifiedReduced.Completeness.Arith
 
 namespace Tests.UnifiedMixedHistory
 open Airbender Arithmetic UnifiedReduced Trace Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 private def setup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic {
   name := "UnifiedDisabledQueries"
@@ -16,24 +16,18 @@ private def setup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic {
   Spec x := ∃ i : Fin 1, x = (fun (_ : Fin 1) => #v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) i
   contains_iff _ := Iff.rfl
 }
-private def arithmetic : Nat → ZMod babyBearModulus
-  | 4 | 5 | 7 | 8 | 11 | 44 | 123 | 124 | 125 => 1
-  | 2 | 30 | 46 => 4
-  | 32 => 8
-  | 36 | 48 => 123
-  | 50 => 124
-  | _ => 0
-private def triadd (value : Nat) : Nat → ZMod babyBearModulus
-  | 4 | 5 | 6 | 7 | 20 | 38 | 44 | 123 | 124 | 125 => 1
-  | 0 => 4
-  | 2 | 30 | 40 => 8
-  | 32 => 12
-  | 34 => 6
-  | 46 => 9
-  | 36 | 42 | 48 => value
-  | 50 => 3 * value
-  | 78 => value * value * 943718400
-  | _ => 0
+private theorem setup_zero : Completeness.ZeroRow setup := by
+  intro env entry h
+  change ∃ i : Fin 1, entry.map (Expression.eval env) = #v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  exact ⟨0, h.trans (by decide)⟩
+/-- ADDI x1, x1, 1 at PC 0. -/
+private def arithmeticWitness : Completeness.Arith :=
+  ⟨⟨0, 0, 4, 0, 0, 0, 0, 0, 4, 0⟩, 0, 1, 0, 1, 123, 0, 0, 0, 1, 0, 123, 0⟩
+/-- TRIADD x1 (= x1 + x1 + old x1) at PC 4. -/
+private def triaddWitness (value : Nat) : Completeness.Arith :=
+  ⟨⟨4, 0, 8, 0, 6, 0, 8, 0, 9, 0⟩, 3, 1, 1, 1, value, 0, value, 0, 0, 0, value, 0⟩
+private def arithmetic : Nat → ZMod babyBearModulus := arithmeticWitness.honest
+private def triadd (value : Nat) : Nat → ZMod babyBearModulus := (triaddWitness value).honest
 private def standardRow : Row babyBearModulus UnifiedFamily := ⟨.machine, arithmetic⟩
 private def customRow (value : Nat) : Row babyBearModulus UnifiedFamily := ⟨.machine, triadd value⟩
 private def cells : List Cell := [.register 1, .register 0]
@@ -60,21 +54,10 @@ private def trace (value : Nat) : UnifiedTrace babyBearModulus where
 
 private theorem constraints (value : Fin 3) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (if value = 0 then arithmetic else triadd (if value = 1 then 124 else 125))) (clockConstraints setup) := by
-  fin_cases value
-  all_goals apply Verification.holds_append
-  all_goals first
-    | (simp [importedConstraints, FlatOperation.ConstraintsHoldFlat,
-        Verification.environment, Expression.eval, arithmetic, triadd, Lookup.Contains, Table.toRaw, fromElements]
-       repeat' apply And.intro
-       all_goals solve
-         | decide
-         | (apply Verification.range16_contains; decide)
-         | (exact ⟨⟨0, by decide⟩, rfl⟩))
-    | (simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-       repeat' apply And.intro
-       all_goals apply Trace.Proofs.range_contains
-       all_goals simp [Expression.eval, Verification.environment, arithmetic, triadd]
-       all_goals decide)
+  fin_cases value <;>
+    exact Completeness.Arith.complete _
+      (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide)
+      (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _ setup_zero
 
 private theorem accepted : Accepted (trace 124) := by
   constructor
