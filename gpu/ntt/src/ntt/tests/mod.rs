@@ -575,7 +575,7 @@ fn test_monomials_to_evals_2_pass_transposed_monomials_in_place() {
 // the compact kernels called directly), and log_n > 13 by the `host_oracle`
 // module (pure-CPU forward-NTT ground truth).
 
-// Parity tests for `bitreversed_monomials_to_natural_evals_multi_coset`: the
+// Parity tests for `lde_with_coset_range`: the
 // multi-coset entry's per-coset slice of the output must match the
 // single-coset path called in a loop. For log_n in [4, 12] the compact 1-pass
 // kernel runs all cosets in one launch (`cosets_per_launch = num_cosets`); for
@@ -600,7 +600,7 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
     use super::forward::{
         monomials_to_evals_2_pass_compact_initial, monomials_to_evals_compact_1_pass,
     };
-    use super::{bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range};
+    use super::lde_with_coset_range;
     use crate::ntt_twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
 
@@ -639,36 +639,20 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
         } else {
             None
         };
-        if coset_index_base == 0 && num_cosets == (1usize << log_lde_factor) {
-            bitreversed_monomials_to_natural_evals_multi_coset(
-                &inputs_matrix,
-                &mut candidate_device[..],
-                log_n,
-                log_lde_factor,
-                NUM_COLS,
-                false,
-                context.device_context(),
-                scratch_opt,
-                stream,
-                device_props,
-            )
-            .unwrap();
-        } else {
-            lde_with_coset_range(
-                &inputs_matrix,
-                &mut candidate_device[..],
-                log_n,
-                log_lde_factor,
-                num_cosets,
-                coset_index_base,
-                NUM_COLS,
-                context.device_context(),
-                scratch_opt,
-                stream,
-                device_props,
-            )
-            .unwrap();
-        }
+        lde_with_coset_range(
+            &inputs_matrix,
+            &mut candidate_device[..],
+            log_n,
+            log_lde_factor,
+            num_cosets,
+            coset_index_base,
+            NUM_COLS,
+            context.device_context(),
+            scratch_opt,
+            stream,
+            device_props,
+        )
+        .unwrap();
     }
 
     {
@@ -896,7 +880,7 @@ multi_coset_range_parity_test!(
 #[cfg(not(no_cuda))]
 mod host_oracle {
     use super::super::forward::monomials_to_evals_2_pass_compact_initial;
-    use super::super::{bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range};
+    use super::super::lde_with_coset_range;
     use super::helpers::host_forward_ntt_single_coset;
     use super::make_context;
     use crate::ntt_twiddles::OMEGA_LOG_ORDER;
@@ -918,13 +902,9 @@ mod host_oracle {
         /// otherwise route to the DIT engine (so a strategy-routed call would
         /// exercise the wrong family).
         Direct2pc,
-        /// The production multi-coset entry
-        /// `bitreversed_monomials_to_natural_evals_multi_coset` (full coset set,
-        /// base 0). For log_n >= 14 the strategy deterministically selects the
-        /// 2-pass-compact family (DIT tops out at 13); no d-table scratch needed.
-        MultiCosetEntry,
         /// `lde_with_coset_range`, which for log_n in (13, 18] takes the
-        /// lde-intermediate fast path unconditionally.
+        /// lde-intermediate fast path unconditionally and above that the
+        /// 2-pass-compact family (DIT tops out at 13, so no d-table scratch).
         LdeWithCosetRange,
     }
 
@@ -991,24 +971,6 @@ mod host_oracle {
                     )
                     .unwrap();
                 }
-                Route::MultiCosetEntry => {
-                    // The entry hardcodes base 0 and the full coset set.
-                    assert_eq!(coset_index_base, 0);
-                    assert_eq!(num_cosets, 1usize << log_lde_factor);
-                    bitreversed_monomials_to_natural_evals_multi_coset(
-                        &inputs_matrix,
-                        &mut outputs_device[..],
-                        log_n,
-                        log_lde_factor,
-                        num_cols, // num_cols_per_coset_stride (contiguous)
-                        false,
-                        context.device_context(),
-                        None, // log_n >= 14: no DIT, so no d-table scratch
-                        stream,
-                        device_props,
-                    )
-                    .unwrap();
-                }
                 Route::LdeWithCosetRange => {
                     lde_with_coset_range(
                         &inputs_matrix,
@@ -1019,7 +981,7 @@ mod host_oracle {
                         coset_index_base,
                         num_cols, // num_cols_per_coset_stride (contiguous)
                         context.device_context(),
-                        None, // log_n in (13, 18]: fast path needs no scratch
+                        None, // log_n >= 14: no DIT, so no d-table scratch
                         stream,
                         device_props,
                     )
@@ -1075,12 +1037,12 @@ mod host_oracle {
     // 2pc family for log_n >= 14).
     #[test]
     fn host_oracle_2pc_log_n_14_multi_coset_matches() {
-        run_host_oracle_forward_parity(14, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_14u64);
+        run_host_oracle_forward_parity(14, 1, 2, 0, 2, Route::LdeWithCosetRange, 0x2c_14u64);
     }
 
     #[test]
     fn host_oracle_2pc_log_n_20_multi_coset_matches() {
-        run_host_oracle_forward_parity(20, 1, 2, 0, 1, Route::MultiCosetEntry, 0x2c_20u64);
+        run_host_oracle_forward_parity(20, 1, 2, 0, 1, Route::LdeWithCosetRange, 0x2c_20u64);
     }
 
     // log_n 19: an INDEPENDENT CPU oracle at the top of the 2pc range (the other
@@ -1089,7 +1051,7 @@ mod host_oracle {
     // pure-CPU forward-NTT ground truth via the production multi-coset entry.
     #[test]
     fn host_oracle_2pc_log_n_19_multi_coset_matches() {
-        run_host_oracle_forward_parity(19, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_19u64);
+        run_host_oracle_forward_parity(19, 1, 2, 0, 2, Route::LdeWithCosetRange, 0x2c_19u64);
     }
 
     // log_n 15: the ONLY oracle for the 2pc-compact-initial first_7 kernel
@@ -1099,7 +1061,7 @@ mod host_oracle {
     // 13, so no DIT and no lde fast path is taken here).
     #[test]
     fn host_oracle_2pc_log_n_15_multi_coset_matches() {
-        run_host_oracle_forward_parity(15, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_15u64);
+        run_host_oracle_forward_parity(15, 1, 2, 0, 2, Route::LdeWithCosetRange, 0x2c_15u64);
     }
 
     // log_n 16/17/18: the ONLY independent (pure-CPU) oracles for the
@@ -1114,17 +1076,17 @@ mod host_oracle {
     // oracle here.
     #[test]
     fn host_oracle_2pc_log_n_16_multi_coset_matches() {
-        run_host_oracle_forward_parity(16, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_16u64);
+        run_host_oracle_forward_parity(16, 1, 2, 0, 2, Route::LdeWithCosetRange, 0x2c_16u64);
     }
 
     #[test]
     fn host_oracle_2pc_log_n_17_multi_coset_matches() {
-        run_host_oracle_forward_parity(17, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_17u64);
+        run_host_oracle_forward_parity(17, 1, 2, 0, 2, Route::LdeWithCosetRange, 0x2c_17u64);
     }
 
     #[test]
     fn host_oracle_2pc_log_n_18_multi_coset_matches() {
-        run_host_oracle_forward_parity(18, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_18u64);
+        run_host_oracle_forward_parity(18, 1, 2, 0, 2, Route::LdeWithCosetRange, 0x2c_18u64);
     }
 
     // LDE-intermediate fast path (`ab_lde_first_{6..10}_stages_kernel` +
@@ -1292,9 +1254,8 @@ smem_packed_parity_test!(smem_packed_log_n_8_ipb_2_cosets_4_cols_4, 8, 1, 4, 4);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_6_cosets_8, 6, 8);
 
 // Parity test for the production forward-NTT path on the DIT range (log_n in
-// [2, 13]). CANDIDATE = the public multi-coset entry
-// `bitreversed_monomials_to_natural_evals_multi_coset`, which routes the DIT
-// range through `select_forward_strategy` (DIT where applicable; otherwise the
+// [2, 13]). CANDIDATE = `lde_with_coset_range` over the full coset set, which
+// routes the DIT range through `select_forward_strategy` (DIT where applicable; otherwise the
 // non-DIT 1-pass kernel the strategy selects). ORACLE = the compact kernels
 // called DIRECTLY (independent baseline: they read `__constant__` twiddle
 // tables, NOT DitTriangles): log_n <= 12 -> 1-pass compact; log_n == 13 ->
@@ -1312,7 +1273,7 @@ fn run_streaming_vs_compact_parity(
     use super::forward::{
         monomials_to_evals_2_pass_compact_initial, monomials_to_evals_compact_1_pass,
     };
-    use super::{bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range};
+    use super::lde_with_coset_range;
     use crate::ntt_twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
     let _ = log_vpt;
@@ -1349,8 +1310,9 @@ fn run_streaming_vs_compact_parity(
 
     let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
 
-    // CANDIDATE: the public multi-coset entry, which routes the DIT range
-    // (log_n in [2, 13]) through `select_forward_strategy` to the DIT engine.
+    // CANDIDATE: `lde_with_coset_range` over the full coset set, which routes
+    // the DIT range (log_n in [2, 13]) through `select_forward_strategy` to the
+    // DIT engine.
     let mut d_scratch = context.alloc(n).unwrap();
     {
         let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], stride, 0, n);
@@ -1359,13 +1321,14 @@ fn run_streaming_vs_compact_parity(
         } else {
             None
         };
-        bitreversed_monomials_to_natural_evals_multi_coset(
+        lde_with_coset_range(
             &inputs_matrix,
             &mut candidate_device[..],
             log_n,
             log_lde_factor,
+            1usize << log_lde_factor,
+            0,
             num_cols,
-            false,
             context.device_context(),
             scratch_opt,
             stream,

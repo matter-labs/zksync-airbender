@@ -2,9 +2,8 @@
 //!
 //! `select_ntt_strategy` returns an `NttStrategy` describing how a given
 //! `(log_n, num_columns, num_cosets)` NTT should be executed on the active
-//! device. It routes the multi-coset entry
-//! `bitreversed_monomials_to_natural_evals_multi_coset` through this
-//! selector, and compact kernels extend the supported `log_n` range.
+//! device. The multi-coset LDE entries route through this selector, and
+//! compact kernels extend the supported `log_n` range.
 
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::field::BF;

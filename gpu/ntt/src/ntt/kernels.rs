@@ -221,13 +221,6 @@ macro_rules! lde_fused_writeback {
     };
 }
 
-// Fused hypercube-iNTT-final + monomial writeback + coset-scale +
-// forward-initial (transposed path, first coset of a column)
-lde_fused_writeback!(ab_lde_fused_boundary_writeback_5_stages_kernel);
-lde_fused_writeback!(ab_lde_fused_boundary_writeback_6_stages_kernel);
-lde_fused_writeback!(ab_lde_fused_boundary_writeback_7_stages_kernel);
-lde_fused_writeback!(ab_lde_fused_boundary_writeback_8_stages_kernel);
-
 // Natural-order path: hypercube coarse tail + coset scale + DIT initial.
 // Writeback variants also preserve monomials; only `_out_cs` streams the output.
 lde_fused_writeback!(ab_natural_lde_fused_boundary_writeback_out_cs_kernel);

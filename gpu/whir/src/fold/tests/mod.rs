@@ -509,14 +509,9 @@ fn run_whir_initial_state_matches_cpu(log_count: usize, is_large: bool) {
     }
     bitreverse_enumeration_inplace(&mut expected_monomials);
 
-    let natural_to_bitrev = log_count >= MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
-
-    // The eval-form chain consumes the MSB-labeled coefficient array, which only
-    // the sub-floor arm's codeword already carries.
+    // The eval-form chain consumes the MSB-labeled coefficient array.
     let mut expected_eval_form = expected_monomials.clone();
-    if natural_to_bitrev {
-        bitreverse_enumeration_inplace(&mut expected_eval_form);
-    }
+    bitreverse_enumeration_inplace(&mut expected_eval_form);
     let expected_eval_log_n = expected_eval_form.len().trailing_zeros();
     multivariate_coeffs_into_hypercube_evals(&mut expected_eval_form, expected_eval_log_n);
     bitreverse_enumeration_inplace(&mut expected_eval_form);
@@ -536,18 +531,11 @@ fn run_whir_initial_state_matches_cpu(log_count: usize, is_large: bool) {
 
     assert_eq!(claim, expected_claim);
     let monomial_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), &context);
-    let mut monomial_from_gpu = vectorized_to_e4_coeffs(
+    let monomial_from_gpu = vectorized_to_e4_coeffs(
         &monomial_vectorized,
         state.original_trace_len,
         state.current_len,
     );
-    // Arm split: only the sub-floor compat arm labels the shared Mobius
-    // coefficient array bitreversed, so only there does the reconstructed
-    // expectation need the GPU array relabeled — see the compat-arm note in
-    // `gpu/trace/src/trace/holder/mod.rs::materialize_cosets_from_owned_hypercube`.
-    if !natural_to_bitrev {
-        bitreverse_enumeration_inplace(&mut monomial_from_gpu);
-    }
     assert_eq!(monomial_from_gpu, expected_monomials);
     assert_eq!(
         copy_back(&state.sumchecked_poly_evaluation_form[..count], &context),
@@ -629,20 +617,8 @@ fn run_whir_fold_keeps_monomial_labeling(log_count: usize, rounds: usize, is_lar
 
 #[test]
 #[cfg(not(no_cuda))]
-fn whir_fold_keeps_monomial_labeling_small() {
-    run_whir_fold_keeps_monomial_labeling(6, 4, false);
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn whir_fold_keeps_monomial_labeling_above_lde_floor() {
-    run_whir_fold_keeps_monomial_labeling(MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE + 1, 1, false);
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_small() {
-    run_whir_initial_state_matches_cpu(3, false);
+fn whir_fold_keeps_monomial_labeling() {
+    run_whir_fold_keeps_monomial_labeling(MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE + 1, 4, false);
 }
 
 #[test]

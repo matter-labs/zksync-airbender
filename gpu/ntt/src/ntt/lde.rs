@@ -8,10 +8,10 @@ use era_cudart::stream::CudaStream;
 use super::dispatch::dispatch_strategy;
 use super::dit::monomials_to_evals_dit;
 use super::forward::{
-    fused_writeback_single_coset_3_pass, monomials_to_evals_2_pass_compact_initial,
-    monomials_to_evals_3_pass, monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed,
-    monomials_to_evals_subwarp, natural_fused_multi_coset_3_pass,
-    natural_monomials_to_bitrev_evals_2_pass, natural_monomials_to_bitrev_evals_2_pass_compact,
+    monomials_to_evals_2_pass_compact_initial, monomials_to_evals_3_pass,
+    monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed, monomials_to_evals_subwarp,
+    natural_fused_multi_coset_3_pass, natural_monomials_to_bitrev_evals_2_pass,
+    natural_monomials_to_bitrev_evals_2_pass_compact,
     natural_monomials_to_bitrev_evals_2_pass_compact_from_hypercube_final4,
     natural_monomials_to_bitrev_evals_3_pass,
 };
@@ -188,54 +188,6 @@ pub(crate) fn lde_intermediate_range(
         .launch(&config_pass2, &args_pass2)
 }
 
-/// Forward NTT from bitreversed monomials to natural-order evaluations across
-/// the full multi-coset LDE.
-///
-/// Runs the forward NTT across the full power-of-two LDE: all
-/// `num_cosets = 1 << log_lde_factor` cosets, starting at coset 0. Use
-/// [`lde_with_coset_range`] to process a caller-selected power-of-two
-/// coset subrange.
-///
-/// For the compact 1-pass range (`log_n <= 12`) all cosets are batched into one
-/// launch via `gridDim.x`. For larger `log_n` (2-pass-compact-initial, 3-pass
-/// forward) cosets are batched up to the L2-pressure cap from the strategy.
-///
-/// Output layout: coset-major outer, column-major inner. Coset k's columns
-/// occupy `outputs[(k * num_cols_per_coset_stride + col) * trace_len ..]` for
-/// col in `[0, inputs_matrix.cols())`. When `num_cols_per_coset_stride ==
-/// inputs_matrix.cols()` (the typical case) cosets sit back-to-back; setting
-/// it larger leaves gaps between cosets (used by the base-trace LDE caller
-/// to write directly into a `[coset][col][trace_len]` trace-holder backing
-/// where col here is a per-column NTT inside an outer column loop).
-pub fn bitreversed_monomials_to_natural_evals_multi_coset(
-    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
-    outputs: &mut DeviceSlice<BF>,
-    log_n: usize,
-    log_lde_factor: usize,
-    num_cols_per_coset_stride: usize,
-    transposed_monomials: bool,
-    ntt_ctx: &crate::ntt_twiddles::DeviceContext,
-    d_table_scratch: Option<&mut DeviceSlice<BF>>,
-    stream: &CudaStream,
-    device_properties: &DeviceProperties,
-) -> CudaResult<()> {
-    let num_cosets = 1usize << log_lde_factor;
-    dispatch_forward_multi_coset(
-        inputs_matrix,
-        outputs,
-        log_n,
-        log_lde_factor,
-        num_cosets,
-        0,
-        num_cols_per_coset_stride,
-        transposed_monomials,
-        ntt_ctx,
-        d_table_scratch,
-        stream,
-        device_properties,
-    )
-}
-
 pub const MAX_LOG_N_FOR_SINGLE_KERNEL_LDE: usize = 13;
 
 /// Commitment-only log_n=20 boundary fusion for the LSB codeword.
@@ -301,107 +253,6 @@ pub fn hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20(
         stream,
     )?;
     Ok(())
-}
-
-/// Fused-boundary LDE for the trace-holder hypercube path: the standalone
-/// hypercube final pass disappears into the first coset's fused launch, which
-/// also materializes the monomials in place for the remaining cosets. Returns
-/// `Ok(false)` without scheduling anything when ineligible (non-transposed
-/// log_n or a 2-pass regime); callers fall back to the unfused sequence.
-pub fn hypercube_to_multi_coset_evals_fused(
-    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
-    coeff_scratch: &mut DeviceSlice<BF>,
-    outputs: &mut DeviceSlice<BF>,
-    log_n: usize,
-    log_lde_factor: usize,
-    num_cols_per_coset_stride: usize,
-    stream: &CudaStream,
-    device_properties: &DeviceProperties,
-) -> CudaResult<bool> {
-    if !super::log_size_supports_transposed_monomials(log_n) {
-        return Ok(false);
-    }
-    if !matches!(
-        super::ntt_pass_selection(log_n, device_properties),
-        super::NttPassCount::Three
-    ) {
-        return Ok(false);
-    }
-    let trace_len = 1usize << log_n;
-    let num_cosets = 1usize << log_lde_factor;
-    let num_cols = inputs_matrix.cols();
-    let strategy = super::select_ntt_strategy(
-        super::NttDirection::Forward,
-        log_n,
-        num_cols,
-        num_cosets,
-        device_properties,
-    )
-    .unwrap_or_else(|e| unreachable!("forward strategy unavailable: {e:?}"));
-    if strategy.passes.len() != 3 {
-        return Ok(false);
-    }
-    assert!(
-        log_n + log_lde_factor <= OMEGA_LOG_ORDER as usize,
-        "log_n ({log_n}) + log_lde_factor ({log_lde_factor}) > OMEGA_LOG_ORDER ({OMEGA_LOG_ORDER})",
-    );
-    assert!(num_cols_per_coset_stride >= num_cols);
-    let scratch_len = num_cols * trace_len;
-    assert!(coeff_scratch.len() >= scratch_len);
-    let max_col_offset_exclusive = (num_cosets - 1) * num_cols_per_coset_stride + num_cols;
-    assert!(outputs.len() >= max_col_offset_exclusive * trace_len);
-
-    let mut scratch_matrix = DeviceMatrixMut::new(&mut coeff_scratch[0..scratch_len], trace_len);
-    hypercube_evals_to_pre_tail_monomials_3_pass(
-        inputs_matrix,
-        &mut scratch_matrix,
-        log_n,
-        stream,
-    )?;
-
-    let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
-    {
-        let coset0_chunk = &mut outputs[0..num_cols * trace_len];
-        let mut coset0_matrix = DeviceMatrixMut::new(coset0_chunk, trace_len);
-        fused_writeback_single_coset_3_pass(
-            &mut scratch_matrix,
-            &mut coset0_matrix,
-            log_n,
-            0,
-            coset_factor_shift,
-            stream,
-        )?;
-    }
-    // Cosets 1..K over the materialized monomials.
-    let monomials_const =
-        unsafe { DeviceSlice::from_raw_parts(coeff_scratch.as_ptr(), scratch_len) };
-    let monomials_matrix =
-        gpu_core::primitives::device_structures::DeviceMatrix::new(monomials_const, trace_len);
-    let mut coset = 1usize;
-    while coset < num_cosets {
-        let remaining = num_cosets - coset;
-        let tile = strategy.cosets_per_launch.min(1usize << remaining.ilog2());
-        let chunk_start = coset * num_cols_per_coset_stride * trace_len;
-        let chunk_end =
-            (coset + tile - 1) * num_cols_per_coset_stride * trace_len + num_cols * trace_len;
-        let chunk = &mut outputs[chunk_start..chunk_end];
-        let mut coset_matrix = DeviceMatrixMut::new(chunk, trace_len);
-        monomials_to_evals_3_pass(
-            &monomials_matrix,
-            &mut coset_matrix,
-            log_n,
-            coset,
-            coset_factor_shift,
-            tile,
-            num_cols_per_coset_stride,
-            tile,
-            strategy.columns_per_launch,
-            true,
-            stream,
-        )?;
-        coset += tile;
-    }
-    Ok(true)
 }
 
 /// Fused-boundary LDE for the natural->bitrev commit path: the standalone
@@ -573,8 +424,7 @@ pub fn lde_with_coset_range(
     )
 }
 
-/// Shared core behind both [`bitreversed_monomials_to_natural_evals_multi_coset`]
-/// and [`lde_with_coset_range`]'s fallback arm: selects the forward NTT
+/// Core behind [`lde_with_coset_range`]'s fallback arm: selects the forward NTT
 /// strategy for `log_n` and dispatches to the matching pass-shape kernel(s).
 fn dispatch_forward_multi_coset(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -793,11 +643,11 @@ fn dispatch_forward_multi_coset(
 /// `out_k[p] = f(g_k * omega^rev_n(p))` where `f` is the polynomial whose
 /// NATURAL-labeled coefficients are `inputs_matrix` (physical row `i` holds
 /// `c_i`), `g_k` is coset `k`'s shift on the size-`2^(log_n + log_lde_factor)`
-/// LDE domain, and `p` runs over the output rows — the same values
-/// [`bitreversed_monomials_to_natural_evals_multi_coset`] produces, in
-/// bitreversed row order.
+/// LDE domain, and `p` runs over the output rows: the values
+/// [`lde_with_coset_range`] produces over the full coset set, in bitreversed
+/// row order.
 ///
-/// Output layout matches the sibling entry: coset-major outer, column-major
+/// Output layout matches [`lde_with_coset_range`]: coset-major outer, column-major
 /// inner; coset `k`'s columns occupy
 /// `outputs[(k * num_cols_per_coset_stride + col) * trace_len ..]`.
 ///

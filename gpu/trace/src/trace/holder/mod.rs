@@ -24,11 +24,9 @@ use gpu_hash::blake2s::{
     gather_leaf_rows_physical, gather_merkle_paths_device, gather_merkle_paths_from_rows_physical,
 };
 use gpu_ntt::ntt::{
-    bitreversed_monomials_to_natural_evals_multi_coset, hypercube_evals_to_monomials,
-    hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20,
+    hypercube_evals_to_monomials, hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20,
     hypercube_to_multi_coset_bitrev_evals_fused, log_size_supports_natural_to_bitrev_lde,
-    log_size_supports_transposed_monomials, natural_monomials_to_bitreversed_evals_multi_coset,
-    MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE,
+    natural_monomials_to_bitreversed_evals_multi_coset,
 };
 use gpu_ops::bit_reverse::bit_reverse_in_place;
 use gpu_prover_context::ProverContext;
@@ -652,39 +650,14 @@ impl TraceHolder<BF> {
         // The committed backing is the BITREVERSED-order codeword the Merkle
         // builders and query gathers consume; the natural->bitrev LDE produces
         // it directly.
-        //
-        // Below that family's dispatch floor, the natural LDE plus a row
-        // permutation gives the same ROW ORDER but a DIFFERENT CODEWORD: both
-        // arms read the same Mobius coefficients, but the natural family labels
-        // them bitreversed, so the sub-floor arm commits the OLD MSB-convention
-        // polynomial. It exists only for sub-floor test holders. Whoever raises
-        // `MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE` must RETIRE this arm, never
-        // widen it.
-        //
-        // `hypercube_to_multi_coset_evals_fused` is not usable on either arm: it
-        // emits natural-order evaluations.
-        let natural_to_bitrev = log_size_supports_natural_to_bitrev_lde(log_n);
         assert!(
-            natural_to_bitrev || log_n < MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE,
-            "log_n {log_n} is above the natural->bitrev LDE range: the sub-floor arm \
-             commits the OLD MSB-convention codeword and must not serve it",
+            log_size_supports_natural_to_bitrev_lde(log_n),
+            "log_n {log_n} is outside the natural->bitrev LDE range",
         );
 
         let mut coeff_scratch = context.alloc(domain_size, AllocationPlacement::BestFit)?;
         let stream = context.get_exec_stream();
         let ntt_ctx = context.ntt_device_context();
-        // Pooled d-table scratch (len >= N) for the natural LDE's in-range DIT
-        // path, keeping it enqueue-only per the GPU scheduling contract. The
-        // natural->bitrev families have no DIT arm and ignore the scratch.
-        let mut d_scratch;
-        let mut scratch_opt = if !natural_to_bitrev {
-            d_scratch = context.alloc::<BF>(domain_size, AllocationPlacement::BestFit)?;
-            Some(&mut d_scratch[..])
-        } else {
-            None
-        };
-        let use_transposed_monomials =
-            !natural_to_bitrev && log_size_supports_transposed_monomials(log_n);
         let mut current_finest_already_computed = false;
         for column in 0..columns_count {
             let offset = column * domain_size;
@@ -699,7 +672,7 @@ impl TraceHolder<BF> {
                     // columns_count to write each coset's slab in one launch,
                     // replacing the per-coset NTT loop.
                     let backing_from_col = &mut backing[offset..];
-                    if natural_to_bitrev && log_n == 20 {
+                    if log_n == 20 {
                         hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20(
                             source_column,
                             &mut coeff_scratch[0..domain_size],
@@ -712,29 +685,24 @@ impl TraceHolder<BF> {
                         current_finest_already_computed = false;
                         continue;
                     }
-                    // Natural arm: fused boundary first — the hypercube coarse
-                    // tail, monomial writeback, coset scale, and the first
-                    // coset's DIT initial stages run as one launch.
-                    let fused = if natural_to_bitrev {
-                        // The last tail launch also performs the NEXT
-                        // column's hypercube finest pass. The next iteration
-                        // therefore starts at the in-place middle pass.
-                        let next_column_hypercube = (column + 1 < columns_count)
-                            .then(|| source[offset + domain_size..].as_ptr());
-                        hypercube_to_multi_coset_bitrev_evals_fused(
-                            source_column,
-                            backing_from_col,
-                            log_n,
-                            self.log_lde_factor as usize,
-                            columns_count,
-                            current_finest_already_computed,
-                            next_column_hypercube,
-                            stream,
-                            context.get_device_properties(),
-                        )?
-                    } else {
-                        false
-                    };
+                    // Fused boundary first: the hypercube coarse tail, monomial
+                    // writeback, coset scale, and the first coset's initial
+                    // stages run as one launch. The last tail launch also
+                    // performs the NEXT column's hypercube finest pass, so the
+                    // next iteration starts at the in-place middle pass.
+                    let next_column_hypercube = (column + 1 < columns_count)
+                        .then(|| source[offset + domain_size..].as_ptr());
+                    let fused = hypercube_to_multi_coset_bitrev_evals_fused(
+                        source_column,
+                        backing_from_col,
+                        log_n,
+                        self.log_lde_factor as usize,
+                        columns_count,
+                        current_finest_already_computed,
+                        next_column_hypercube,
+                        stream,
+                        context.get_device_properties(),
+                    )?;
                     if fused {
                         current_finest_already_computed = column + 1 < columns_count;
                         continue;
@@ -744,7 +712,7 @@ impl TraceHolder<BF> {
                         source_column,
                         &mut coeff_scratch[0..domain_size],
                         log_n,
-                        use_transposed_monomials,
+                        false,
                         stream,
                         context.get_device_properties(),
                     )?;
@@ -754,46 +722,22 @@ impl TraceHolder<BF> {
                         0,
                         domain_size,
                     );
-                    if natural_to_bitrev {
-                        natural_monomials_to_bitreversed_evals_multi_coset(
-                            &monomials,
-                            backing_from_col,
-                            log_n,
-                            self.log_lde_factor as usize,
-                            columns_count,
-                            false,
-                            ntt_ctx,
-                            None,
-                            stream,
-                            context.get_device_properties(),
-                        )?;
-                    } else {
-                        bitreversed_monomials_to_natural_evals_multi_coset(
-                            &monomials,
-                            backing_from_col,
-                            log_n,
-                            self.log_lde_factor as usize,
-                            columns_count,
-                            use_transposed_monomials,
-                            ntt_ctx,
-                            scratch_opt.as_deref_mut(),
-                            stream,
-                            context.get_device_properties(),
-                        )?;
-                    }
+                    natural_monomials_to_bitreversed_evals_multi_coset(
+                        &monomials,
+                        backing_from_col,
+                        log_n,
+                        self.log_lde_factor as usize,
+                        columns_count,
+                        false,
+                        ntt_ctx,
+                        None,
+                        stream,
+                        context.get_device_properties(),
+                    )?;
                 }
                 CosetsHolder::None(_) => {
                     panic!("cosets not allocated — call ensure_cosets_materialized first")
                 }
-            }
-        }
-        if !natural_to_bitrev && columns_count != 0 {
-            match &mut self.cosets {
-                CosetsHolder::Full(backing) => {
-                    let mut rows = DeviceMatrixMut::new(&mut backing[..], domain_size);
-                    bit_reverse_in_place(&mut rows, stream)?;
-                }
-                CosetsHolder::None(_) => unreachable!("the column loop above panics on None"),
             }
         }
         self.cosets_materialized = true;
