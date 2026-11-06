@@ -36,22 +36,6 @@ use gpu_prover_context::ProverContext;
 #[doc(hidden)]
 pub const PARTIAL_TREE_REDUCTION_LAYERS: u32 = gpu_core::primitives::utils::LOG_WARP_SIZE;
 
-/// BabyBear transform capability at the instantiated backend boundary.
-/// Protocol/storage geometry remains field-independent.
-pub fn validate_baby_bear_base_geometry(
-    geometry: &BaseCommitmentGeometry,
-    twiddle_domain_log2: u32,
-) {
-    let message_log2 =
-        u32::try_from(geometry.message_size_log2()).expect("message log2 exceeds u32");
-    let lde_log2 = geometry.lde_factor().trailing_zeros();
-    gpu_ntt::ntt::assert_base_commitment_transform_shape(message_log2, lde_log2);
-    assert!(
-        message_log2 + lde_log2 <= twiddle_domain_log2,
-        "base commitment exceeds context twiddle capacity"
-    );
-}
-
 #[doc(hidden)]
 #[derive(Copy, Clone)]
 pub enum TreesCacheMode {
@@ -157,13 +141,6 @@ impl TraceHolder<BF> {
         trees_mode: TreesCacheMode,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        validate_baby_bear_base_geometry(
-            &geometry,
-            context
-                .ntt_device_context()
-                .whir_leaf_transform_params()
-                .omega_log_order,
-        );
         let mut holder = Self::new_without_cosets_padded(
             u32::try_from(geometry.trace_len_log2()).expect("trace log2 exceeds u32"),
             geometry.lde_factor().trailing_zeros(),

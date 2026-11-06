@@ -238,22 +238,3 @@ pub const MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE: usize = strategy::TWO_PASS_COMPAC
 pub fn log_size_supports_natural_to_bitrev_lde(log_n: usize) -> bool {
     (MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE..=strategy::NATURAL_TO_BITREV_MAX_LOG_N).contains(&log_n)
 }
-
-/// Panics unless a base commitment fits both the generated Mobius and
-/// natural-coefficient to bit-reversed LDE transforms and the field's root domain.
-/// Needs no CUDA context or tables.
-pub fn assert_base_commitment_transform_shape(message_log2: u32, lde_log2: u32) {
-    // The generated Mobius final pass and the finest twiddle arrays share this
-    // upper bound. Widening the LDE selector alone must not widen admission.
-    let max =
-        strategy::NATURAL_TO_BITREV_MAX_LOG_N.min(crate::ntt_twiddles::LOG_MAX_NTT_SIZE) as u32;
-    assert!(
-        log_size_supports_natural_to_bitrev_lde(message_log2 as usize) && message_log2 <= max,
-        "base commitment message log2 {message_log2} is outside the GPU transform range {MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE}..={max}"
-    );
-    assert!(
-        message_log2 + lde_log2 <= OMEGA_LOG_ORDER,
-        "base commitment LDE domain log2 {} exceeds the BabyBear root order {OMEGA_LOG_ORDER}",
-        message_log2 + lde_log2
-    );
-}

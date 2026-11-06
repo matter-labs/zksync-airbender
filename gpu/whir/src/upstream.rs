@@ -35,5 +35,5 @@ pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLe
 #[cfg(test)]
 pub(crate) use prover::utils::extension_field_from_base_coeffs;
 
-// Complete production schedule for backend capability preflight.
+// The WHIR schedule the fold executes.
 pub(crate) use prover::gkr::prover::WhirSchedule;

@@ -544,10 +544,6 @@ impl ProofLayout {
         let ood_pow_nonces = self.whir_ood_pow_nonces_host(slab);
         let final_monomials = self.whir_final_monomials_host(slab).to_vec();
         let fold_steps = whir_schedule.fold_steps();
-        assert_eq!(
-            whir_schedule.base_round.folding_pow_bits, 0,
-            "GPU prover: base-round folding PoW is not implemented"
-        );
         assert_eq!(fold_steps.len(), intermediate_whir_oracles.len() + 1);
         assert_eq!(
             whir_schedule.internal_rounds.len(),

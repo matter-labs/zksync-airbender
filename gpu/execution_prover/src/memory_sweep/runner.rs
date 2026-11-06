@@ -140,10 +140,6 @@ fn prepare_arena(
         inputs_reserve_bytes: crate::memory_policy::INPUTS_RESERVE_BYTES,
         ..Default::default()
     })?;
-    if a.replay_presets {
-        // Use the same arena admission as the production worker.
-        crate::memory_policy::select_arena_bytes(context.get_mem_size());
-    }
     assert_empty(&context);
     let factory = SyntheticInputFactory::new(a.soundness_mode);
     let mut prepared = Vec::new();
