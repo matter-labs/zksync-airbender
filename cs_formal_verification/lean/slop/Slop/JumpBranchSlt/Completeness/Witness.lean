@@ -21,7 +21,6 @@ import Mathlib.Tactic.LinearCombination
 namespace Airbender.JumpBranchSlt.Completeness
 open Verification
 set_option warningAsError true
-set_option maxRecDepth 16384
 
 /-- Inputs of one honest row. `sel` is 0 (JAL), 1 (JALR), 2 (comparison) or 3 (branch);
     `rdZero` marks a discarded destination; `imm*` are the decoder's immediate limbs, `a*`/`b*`
