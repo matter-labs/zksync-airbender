@@ -263,6 +263,17 @@ universal public ROM/preprocessing/physical setup or original pre-row GPR/Sail
 clause/fetched execution. Mixed-profile execution and broader boundaries remain
 open; no issue-handling assumption or circuit fix is introduced.
 
+[Original native arithmetic register histories](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticRegisters.lean)
+now derive all actual source/old-destination GPR reads, masked writes, native
+row order and segment states, terminal matching, code/misa frames and decoder
+replay. [Actual arithmetic port bindings](Airbender/Proofs/ReducedMachine/NativeArithmeticPorts.lean)
+discharge the mixed-address/register-space/readonly prerequisites before shared
+history reuse. No state/read/replay answer or table identity is supplied. Public
+tracked-cell alignment/domain and explicit modeled setup remain visible. This
+does not execute retained clauses or prepare/retire the PC; AUIPC specifically
+needs its actual incoming architectural PC in the constructed row state. Mixed
+execution and physical/protocol/padding/terminal/init remain open.
+
 ## Import and generation fidelity
 
 Mersenne31 coefficients are non-Montgomery residues in 0..=2147483647; the upper

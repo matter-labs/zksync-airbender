@@ -377,3 +377,18 @@ and mixed shift/arithmetic traces remain next. No native defect/fix/assumption o
 parity is claimed; production/data/dependency inputs remain unchanged.
 All 2,694 standard-only axiom roots and 166 public Review roots pass, with exact
 189/882 origin identities, unchanged limits and no owned surviving processes.
+
+## Original native arithmetic GPR histories
+
+[The short original history claim](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticRegisters.lean)
+now derives chronological original GPR/cell states, all three actual reads in one
+pre-state, masked writes, terminal matching, code/misa frames and decoder replay
+from public initialization/decoding, native acceptance and aligned tracked cells.
+New native arithmetic address/x0 proofs justify unchanged shared history reuse;
+shift masks/constraints are not transferred. [Eight regressions](Tests/NativeReducedArithmeticRegisters.lean)
+retain mixed-port rejection, aliases, x0 stutters and initialized zero events.
+No complete accepted arithmetic execution fixture or retained clause/PC retirement
+is inferred; AUIPC's incoming architectural PC still needs explicit derived row
+state preparation. No native defect/fix/assumption or parity is claimed.
+All 2,717 standard-only axiom roots and 167 public Review roots pass, with exact
+189/892 origin identities and unchanged resource limits; every worker terminated.

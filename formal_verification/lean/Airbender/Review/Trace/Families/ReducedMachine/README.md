@@ -161,3 +161,16 @@ PC retirement and fetched execution mixed with shifts remain next. [Source check
 and [initialized consequences](../../../../../Tests/NativeReducedArithmeticValues.lean)
 are not complete positive117-equation arithmetic execution fixtures. Native public
 preprocessing/ROM/physical setup and broader protocol boundaries remain separate.
+
+## Original arithmetic register states
+
+[Arithmetic register history](ArithmeticRegisters.lean) now derives native-clock
+row order, original Sail states, all three reads in one pre-state, actual masked
+writes, terminal matching, code/misa frames and decoder replay. [Internal assembly](../../../../Proofs/Trace/Families/ReducedMachine/ArithmeticRegisterHistory.lean)
+uses new actual arithmetic port/x0 proofs before unchanged shared realization.
+[Eight regressions](../../../../../Tests/NativeReducedArithmeticRegisters.lean)
+retain immediate/x0 aliases and reject malformed mixed fields; the exact generic
+x0 group fixture remains scoped below complete arithmetic acceptance. Original
+selected operands/clauses and PC prepare/retire/fetched execution remain next,
+including AUIPC's actual incoming PC. Mixed shift/arithmetic and broader physical/
+protocol/padding/terminal/init boundaries remain open.

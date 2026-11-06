@@ -8125,6 +8125,76 @@
       "backport_reuse_revision": "b7a029c6c42b9cf1c815b6c28d5706fe996711c3",
       "backport_reuse_path": "Tests/NativeReducedRanges.lean",
       "backport_reuse_sha256": "1a80da71a4e0562128359d6816470930af7c4072751f6afb9366de38de94243e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPorts.lean",
+      "change": "Reuse exact unchanged actual readonly/source-address metadata and generic native event definition. Adapt original register-address/read/write transport after independently proved arithmetic decoder and native port constraints; no shift opcode/mask/constraint equivalence.",
+      "backport_reuse_revision": "01b6ff775bad5714ab30f3fc8fa624d09441e29b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftPorts.lean",
+      "backport_reuse_sha256": "ea9c1908ff633fed595c1cf3ff12dec95eaf9f6589a58813a91bcd1987e7a494"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPorts.lean",
+      "change": "Instantiate checked actual arithmetic source-port60/61/113 and destination102/103/106/107/114 bindings under masks derived from original public decoding. Keep immediate readonly rs2/x0 participation.",
+      "backport_reuse_revision": "01b6ff775bad5714ab30f3fc8fa624d09441e29b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticFields.lean",
+      "backport_reuse_sha256": "0b1aea49ce917d89da3b93abf1443917e9c8d4934ccae474d60b5c7dafb2fd95"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPorts.lean",
+      "change": "Use original recovered rs1/rs2/rd bounds and fields to identify every actual native port with its original Sail register cell.",
+      "backport_reuse_revision": "01b6ff775bad5714ab30f3fc8fa624d09441e29b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecoder.lean",
+      "backport_reuse_sha256": "0526a342d564270f5ef9e2e896854fe1ab45cd25b4fd2ce582e95214834a144a"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ReducedMachineArithmetic.lean",
+      "change": "Retain small actual GPR-transfer/history observables with ArithmeticMode entries. States,reads,writes,order,code/misa frames and replay are conclusions,not per-row answers.",
+      "backport_reuse_revision": "01b6ff775bad5714ab30f3fc8fa624d09441e29b",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/ReducedMachine.lean",
+      "backport_reuse_sha256": "b3fe769a89a668f340cc518a439ce3476d13ee3cff7afd50c77eefecff462d67"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticZeroRegister.lean",
+      "change": "Adapt actual masked x0 and readonly preservation to new arithmetic port/rd/zero evidence,then use unchanged shared public seed induction and native Sail row realization.",
+      "backport_reuse_revision": "01b6ff775bad5714ab30f3fc8fa624d09441e29b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ZeroRegister.lean",
+      "backport_reuse_sha256": "61be549aefef5b77380693fd48712aaa6c577deaa4cdf64be783ff893ba39fc3"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticZeroRegister.lean",
+      "change": "Reuse unchanged zero_writes_of_preserving after all local arithmetic prerequisites are derived from accepted native constraints and original public decoding.",
+      "backport_reuse_revision": "01b6ff775bad5714ab30f3fc8fa624d09441e29b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/ZeroValues.lean",
+      "backport_reuse_sha256": "6d0b38ff7b96061da9c448990966a36e733086632a2756b5585f16af555ef5f2"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticCodeHistory.lean",
+      "change": "Reuse code/misa frame and original stateful decoder replay assembly only after deriving register space for every actual arithmetic event from new port bindings.",
+      "backport_reuse_revision": "01b6ff775bad5714ab30f3fc8fa624d09441e29b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/CodeHistory.lean",
+      "backport_reuse_sha256": "af2103817e113525ef826226ac12dd85fcff1e9c4f0e0503bf45926b0c36d1d1"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticRegisterHistory.lean",
+      "change": "Reuse exact native-clock permutation/group/segment assembly after arithmetic zero/frame/address prerequisites. Construct all original Sail GPR states and same-pre-state reads without local state/read/replay premises.",
+      "backport_reuse_revision": "01b6ff775bad5714ab30f3fc8fa624d09441e29b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/RegisterHistory.lean",
+      "backport_reuse_sha256": "47c39523545b7be14d6b5d3af1f73be65680d5cd5c296956071ee85cad91b28f"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticRegisters.lean",
+      "change": "Keep one short public original GPR-history root. Generic native modeled setup remains explicit; no dynamic-table numerical semantics or table-equivalence premise is needed.",
+      "backport_reuse_revision": "01b6ff775bad5714ab30f3fc8fa624d09441e29b",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/Registers.lean",
+      "backport_reuse_sha256": "a00f941540aa8bc04b82791ad2e038032657b3f649c22f7f7614f3f168956c94"
+    },
+    {
+      "path": "Tests/NativeReducedArithmeticRegisters.lean",
+      "change": "Adapt five-profile port corruption,source/old-destination alias,x0 whole-data-state stutter and initialized zero-event rejection checks. Reuse unchanged exact imported-port x0 group fixture without claiming all117equations or arithmetic instruction acceptance.",
+      "backport_reuse_revision": "01b6ff775bad5714ab30f3fc8fa624d09441e29b",
+      "backport_reuse_path": "Tests/NativeReducedRegisters.lean",
+      "backport_reuse_sha256": "fa608af9b02fe9e3a6d0c4c7ec69f8e1ae6089d83eeb63efcf685863cd14a1ac"
     }
   ],
   "setup_artifacts": [

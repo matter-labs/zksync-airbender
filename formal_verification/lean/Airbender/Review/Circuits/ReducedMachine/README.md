@@ -279,3 +279,15 @@ matching. Scalar checks and decoded immediates prove actual write preservation.
 their conditional scope below complete arithmetic execution fixtures. Original
 pre-row GPR/cell history, retained Sail clauses/retirement and mixed-profile
 fetched execution remain separate, as does native/physical setup fidelity.
+
+## Original arithmetic register histories
+
+[Actual native port proofs](../../../Proofs/ReducedMachine/NativeArithmeticPorts.lean)
+now bind rs1/readonly rs2/rd to original register cells under recovered arithmetic
+masks. [The public history claim](../../Trace/Families/ReducedMachine/ArithmeticRegisters.lean)
+derives all original GPR states, same-pre-state source/old-destination reads,
+masked writes, code/misa preservation and original decoder replay. [Eight checks](../../../../Tests/NativeReducedArithmeticRegisters.lean)
+retain aliases, x0 and malformed mixed-port rejection. Selected original operand/
+clause execution and PC preparation/retirement remain next; AUIPC needs its actual
+incoming architectural PC in the constructed row state. No full arithmetic
+execution/physical setup/parity follows from register history alone.

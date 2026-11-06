@@ -30,6 +30,49 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Original native arithmetic Sail register history (6 November 2026)
+
+[One short public claim](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticRegisters.lean)
+now constructs actual chronological original Sail GPR/cell histories for the
+five arithmetic profiles. Original public byte/stateful decoding, public seed/PC
+construction, accepted native matching and aligned tracked cells derive row
+order, all segment states, all three reads in one pre-state, actual masked
+writes, terminal cell matching, preserved code/misa and original decoder replay.
+No per-row read/value/result/state/order/replay answer is supplied.
+
+[Actual port bindings](Airbender/Proofs/ReducedMachine/NativeArithmeticPorts.lean)
+reuse only exact unchanged native readonly metadata. New arithmetic equations
+and original decoded rs1/rs2/rd fields identify every actual source and destination
+register cell, including immediate/x0 aliases. The readonly rs2 input participates
+even when the selected arithmetic operand is immediate. [Zero preservation](Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticZeroRegister.lean)
+derives the actual x0 mask and uses unchanged shared initialized induction.
+[Code history](Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticCodeHistory.lean)
+derives register address space per event before proving code/misa frames and
+original stateful replay. [Segment assembly](Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticRegisterHistory.lean)
+then reuses unchanged shared native-clock/Sail realization. [Review observables](Airbender/Review/Helpers/Memory/ReducedMachineArithmetic.lean)
+contain only the small GPR-transfer/history contract.
+
+[Eight regression roots](Tests/NativeReducedArithmeticRegisters.lean) cover all
+five masks' mixed-port rejection, source/old-destination aliases, discarded x0
+whole-data-state stutters and initialized nonzero-x0-event rejection. The positive
+exact imported-port x0 group fixture is reused unchanged; it does not certify a
+complete accepted 117-equation arithmetic instruction. Generic native setup is
+explicit and no arbitrary/native table identity is assumed. Original selected
+operand/clause execution and numerical PC preparation/retirement remain separate:
+AUIPC observes the incoming architectural PC, which must be placed into the
+constructed row state before its clause is executed. Mixed shift/arithmetic
+execution and broader worker/protocol/padding/terminal/init boundaries remain
+open. No native defect, issue-handling assumption, production fix or parity claim
+is added; native/importer/exporter/literal/dependency inputs are unchanged.
+All affected bounded modules and final gates pass: 2,717 standard-only axiom
+roots, 167 public Review roots, four guide names, 2,671 links/anchors and
+context/trace separation. Full Review used 541.24 MiB footprint / 3101.00 MiB
+resident in 14.09 seconds. Independent provenance passes 189 v3-origin and
+892 backport-origin identities, 80 reused modules, eight circuit artifacts,
+63 native sources, 23 setup artifacts and four exporter files. It used
+19.41 / 34.77 MiB in 6.70 seconds. All owned workers terminated under unchanged
+3072/4096 MiB ceilings and default proof limits.
+
 ## Initialized native reduced arithmetic values (6 November 2026)
 
 [Original arithmetic decoding](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticDecoder.lean)

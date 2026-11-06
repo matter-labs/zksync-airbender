@@ -172,3 +172,13 @@ readonly refreshes and discarded nonzero candidate participation,before deriving
 original initialized execution/terminal reads. Original public initialization and
 decoder construction are proved;no per-row state/read/result is supplied. Native
 public/preprocessing/physical fidelity and other combined profiles remain separate.
+
+## Actual native reduced arithmetic registers
+
+[Small arithmetic history observables](ReducedMachineArithmetic.lean) retain all
+original GPR observations and actual masked writes, segment states, final matching
+and decoder replay as conclusions. [The public claim](../../Trace/Families/ReducedMachine/ArithmeticRegisters.lean)
+uses actual native arithmetic mixed-address/zero proofs before unchanged shared
+Sail realization. [Port proofs](../../../Proofs/ReducedMachine/NativeArithmeticPorts.lean)
+keep readonly aliases and immediate rs2/x0 participation. Numerical PC and retained
+clause execution remain separate, particularly AUIPC's incoming PC observation.
