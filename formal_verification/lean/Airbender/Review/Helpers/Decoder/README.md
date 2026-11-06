@@ -263,3 +263,11 @@ derives rs/rd/x0/immediate/mask/tag; native Boolean packing excludes padding.
 [Common support](ReducedMachineSupported.lean) now includes shifts/arithmetic/bitwise.
 This is a logical original decoder contract, separate from native Rust export,
 preprocessing/ROM and physical setup enforcement.
+
+## Original reduced comparisons
+
+[ComparisonDecodedTrace](ReducedMachineComparison.lean) is complete original
+byte/stateful sparse/padded membership for SLT/SLTU/SLTI/SLTIU. [Source recovery](../../Trace/Families/ReducedMachine/ComparisonDecoder.lean)
+derives actual65/67mask,2/3funct3,rs/rd/x0 and sign-extended immediate; native
+Boolean packing excludes holes/tail. This remains separate from native Rust
+decoder export, ROM/preprocessing/physical enforcement and mixed-profile execution.

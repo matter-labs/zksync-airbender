@@ -591,6 +591,10 @@
     {
       "path": "../../cs/src/machine/ops/binops.rs",
       "sha256": "7396ab27011f4ec50bf910d9fc523b1e5cd933b73aedcbbc434a3f0dc73d6359"
+    },
+    {
+      "path": "../../cs/src/machine/ops/conditional.rs",
+      "sha256": "c860bb963332b9776141947a3565a5484ba4323622947b2d2be2f6f1e2a2cc19"
     }
   ],
   "adaptations": [
@@ -8724,6 +8728,181 @@
       "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
       "backport_reuse_path": "Tests/NativeReducedSupportedDecoder.lean",
       "backport_reuse_sha256": "7ecb87b10ed89fb540529f0e051cae5c7f9616942ad6d3a5e0e43f36f3f65bbc"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Comparison.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Bitwise.lean",
+      "backport_reuse_sha256": "d03ea8671fde37782cafa38b9684fd3f4aa8ed1a8ffe9e1e8f6f64f409d0c9dd"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonSelectors.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBitwiseSelectors.lean",
+      "backport_reuse_sha256": "68165817f59df45080a475d391c504b13a4e187999a7596fed34bed7ac9fa730"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonFields.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBitwiseFields.lean",
+      "backport_reuse_sha256": "e769c84c6dd31070308cd300dcbf935cb56f202c221ebc51a51b110df0fc4f01"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeConditionalTable.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBitwiseTable.lean",
+      "backport_reuse_sha256": "f963984d9e7cdc078489e82b35e5372d96ab0ada04de521920c295f19afab77a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonResult.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticResult.lean",
+      "backport_reuse_sha256": "56a3bbdd812911b1f5036bb63ae7a2ccb1dc0a644301a52c1bc13950ff5fe81a"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/ComparisonTheorems.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/BitwiseTheorems.lean",
+      "backport_reuse_sha256": "16bf01d67a62b7f61854721605c85751b010935a2fb52bc09650eb48efff60d2"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Tables/NativeConditionalTheorems.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Tables/NativeBitwiseTheorems.lean",
+      "backport_reuse_sha256": "fcf5965925d76794bb06471ef66995bec56a6232145b747db4dd3ff1bddb6f08"
+    },
+    {
+      "path": "Tests/NativeReducedComparison.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Tests/NativeReducedBitwise.lean",
+      "backport_reuse_sha256": "3778cf977abaa08acb56bdbde00c05e837e6311c0e3f6e2d9bbfb74113b77b4f"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonDecoder.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBitwiseDecoder.lean",
+      "backport_reuse_sha256": "52036c8fefb1895dff98f3fbd75a8f7b7df11a01950dccce972f80c412b027f6"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonOperand.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBitwiseOperand.lean",
+      "backport_reuse_sha256": "9a907eb5e0e3c3b77e0ebb55f1bb315393129c398117b1fa87ddd992bc27e3ec"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonPreservation.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBitwisePreservation.lean",
+      "backport_reuse_sha256": "101ff7fe85405315f65a2d2f45e9495bd06b01a1200a5e7fbb894df671f57ebf"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonDecodedResult.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBitwiseDecodedResult.lean",
+      "backport_reuse_sha256": "523bae99d89ce371f37db0d5de162aab688d24e8ef2c14df8215725268189a17"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/ComparisonDecoder.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/BitwiseDecoder.lean",
+      "backport_reuse_sha256": "37e35029bc72117888f4c9c0acc4256dcfe57012e362238574e4951010c1fab7"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachineComparison.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ReducedMachineBitwise.lean",
+      "backport_reuse_sha256": "61956529f36693664a330db00d8ca93ae7f892b57218edfb1260677ae8751d73"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ComparisonDecoder.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/BitwiseDecoder.lean",
+      "backport_reuse_sha256": "9f0d7e7475e6497492bd65ee373888596fb47dbcc091ba3c943d078c605584a3"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ComparisonDecoder.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/BitwiseDecoder.lean",
+      "backport_reuse_sha256": "8bc55514a2981d8e3c7330dc37db6316cfe4245911398d444ba3e10baaceea50"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ComparisonValues.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticValues.lean",
+      "backport_reuse_sha256": "74e1c3fffa98f17ad3c4dcd40ce94f4fe34db0f5c246e97ec1245a720e42404b"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ComparisonValues.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticValues.lean",
+      "backport_reuse_sha256": "b00b38dfd7c659837ed64bca430f8c1fe9d148e077ab373f0bbaf919c740fe12"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ComparisonResults.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticResults.lean",
+      "backport_reuse_sha256": "852ddff7760febe3f73195e05fba362bd06160b2f5a76fb16de3a760c76ce421"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ComparisonResults.lean",
+      "change": "Adapt exact checked actual-native templates to comparison masks65/67, packed tag22 resolver, original SLT/SLTU/SLTI/SLTIU fields, derived write preservation and initialized canonical numerical results. No split-native equivalence or public source/result/range/state answer premise.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticResults.lean",
+      "backport_reuse_sha256": "57a08baec7b2baf23483b0f4f5837082339a0b3fd65193354fad26fd5d8b56e3"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonResult.lean",
+      "change": "Reuse unchanged pure word borrow/signed-order or exact original byte/source evidence only after new actual monolithic native connections. Resolver rows are independently certified; inconsistent-flag behavior is not transferred from split tag43.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Comparison.lean",
+      "backport_reuse_sha256": "c4898a1235533ecbb56071d92f97c47ec186191d3318bba435811fad85b57faa"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonResult.lean",
+      "change": "Reuse unchanged pure word borrow/signed-order or exact original byte/source evidence only after new actual monolithic native connections. Resolver rows are independently certified; inconsistent-flag behavior is not transferred from split tag43.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/Arithmetic/Comparison.lean",
+      "backport_reuse_sha256": "368249c542ab085551e195871d2768d611dcd9ee1052dbfc08ece01a8ad18c01"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeConditionalTable.lean",
+      "change": "Reuse unchanged pure word borrow/signed-order or exact original byte/source evidence only after new actual monolithic native connections. Resolver rows are independently certified; inconsistent-flag behavior is not transferred from split tag43.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/ControlTables.lean",
+      "backport_reuse_sha256": "b183f814449652bfd5d646a1f7033a698b0b2209ccc777508d60ab8861a86682"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonFields.lean",
+      "change": "Reuse unchanged pure word borrow/signed-order or exact original byte/source evidence only after new actual monolithic native connections. Resolver rows are independently certified; inconsistent-flag behavior is not transferred from split tag43.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticFields.lean",
+      "backport_reuse_sha256": "0b1aea49ce917d89da3b93abf1443917e9c8d4934ccae474d60b5c7dafb2fd95"
+    },
+    {
+      "path": "Tests/NativeReducedComparison.lean",
+      "change": "Reuse unchanged pure word borrow/signed-order or exact original byte/source evidence only after new actual monolithic native connections. Resolver rows are independently certified; inconsistent-flag behavior is not transferred from split tag43.",
+      "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/NativeSetup.lean",
+      "backport_reuse_sha256": "8e76871b5d658e6bdd0ae880dabd04d6ad8db8618faf136b1e64db4d81402e86"
     }
   ],
   "setup_artifacts": [

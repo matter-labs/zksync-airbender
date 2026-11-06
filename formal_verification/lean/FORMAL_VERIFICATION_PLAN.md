@@ -94,9 +94,14 @@ Full combined row effects and execution remain pending. See the
    actual GPR/operand/clause/PC execution and common supported preservation/history/
    fetched execution are now checked. Common initialization derives all ranges,
    states and replay across shifts, arithmetic and bitwise rows at exact fixedData.
-   Next connect other ordinary combined profiles to this common execution. Other ordinary combined profiles,
-   workers/protocol/padding/terminal/init and positive nonempty arithmetic/mixed/
-   bitwise fixtures remain distinct open coverage.
+   Actual comparison masks65/67, all18flags, native tag22 packed resolver rows,
+   subtraction/borrow/sign meaning, original SLT/SLTU/SLTI/SLTIU public decoding,
+   write preservation and initialized all-word ranges/canonical numerical results
+   are now checked separately. Internal source bounds are discharged by public
+   history. Next derive original comparison GPR/operand/clause/PC/fetched effects
+   and integrate comparisons into common supported execution. Other combined
+   profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
+   mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,
    without increasing limits or adding result/equivalence premises.
 3. Compose initialized combined histories, public decoding and original execution.

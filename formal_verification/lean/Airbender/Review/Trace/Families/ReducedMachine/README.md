@@ -230,3 +230,17 @@ prove every one of25slots supported; [Sail regressions](../../../../../Tests/Nat
 retain ordinary/x0/negative-immediate/wrap behavior. Full nonempty native bitwise/
 arithmetic/mixed positive witnesses and other combined/protocol/setup boundaries
 remain open. The preceding local-only bitwise snapshot is superseded here.
+
+## Initialized comparison numerical profile
+
+[Original comparison decoding](ComparisonDecoder.lean) derives actual native
+masks/tags/rs/rd/x0/sign extension from public bytes/stateful sparse membership.
+[All read/write/terminal ranges](ComparisonValues.lean) and [complete RV32 results](ComparisonResults.lean)
+now follow from initialized accepted native history and proved write preservation
+at exact fixedData, with no local source/range/result/state answer. [Actual resolver](../../../Circuits/ReducedMachine/Tables/NativeConditionalTheorems.lean)
+certifies all128native tag22rows, including inconsistent flags. Original GPR/cell/
+operand/Sail clause/PC/fetched execution and common supported comparison integration
+remain next. [Tests](../../../../../Tests/NativeReducedComparison.lean) are original
+source/table/conditional native consequences, not full positive nonempty execution
+witnesses. Native public/export/preprocessing/ROM/physical/protocol/completeness
+boundaries remain separate.

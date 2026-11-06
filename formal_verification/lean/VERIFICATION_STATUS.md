@@ -31,6 +31,72 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Native comparisons: original decoding and initialized numerical results (7 November 2026)
+
+[The actual comparison model](Airbender/Review/Circuits/ReducedMachine/Comparison.lean)
+retains native masks65/67 and the tag22 packed-key resolver. [New selectors](Airbender/Proofs/ReducedMachine/NativeComparisonSelectors.lean)
+derive all18native bits. [Actual field equations](Airbender/Proofs/ReducedMachine/NativeComparisonFields.lean)
+derive register/immediate selection, readonly rs2/register-space, subtraction/
+borrow equations, candidate(low=w67,high=0), actual masked rd/address and conditional
+PC routing. These connections use the actual117equation artifact, not old split masks.
+
+[Every one of128actual tag22rows](Airbender/Proofs/ReducedMachine/NativeConditionalTable.lean)
+is kernel-checked, including inconsistent flag combinations. [Full-pool semantics](Airbender/Review/Circuits/ReducedMachine/Tables/NativeConditionalTheorems.lean)
+selects that actual region from the complete5771521rowpool. Native signed resolution
+flips unsigned borrow when operand signs differ. The historical split resolver
+selects the first sign on differing-sign inputs; those functions differ on
+inconsistent flag tuples. No whole-table identity is inherited. [New native arithmetic](Airbender/Proofs/ReducedMachine/NativeComparisonResult.lean)
+proves canonical packed keys, no-jump/Boolean output/candidate bounds and exact
+signed/unsigned comparison. The latter uses internal bounded operands and unchanged
+pure Word.borrow_iff/signed_lt_iff only after actual native subtraction/sign queries.
+Both internal source ranges are discharged by initialized history below. This
+interface difference is not a native defect or issue-handling assumption.
+
+[Original SLT/SLTU/SLTI/SLTIU projection](Airbender/Review/Circuits/ReducedMachine/ComparisonDecoder.lean)
+preserves original x0 constructors/raw operands, 12-bit sign extension and raw
+funct3=2/3. [Public source recovery](Airbender/Review/Trace/Families/ReducedMachine/ComparisonDecoder.lean)
+derives every actual ten-field query binding from original byte/stateful full
+sparse/padded membership; native18bit packing excludes holes/tail. [Write preservation](Airbender/Proofs/ReducedMachine/NativeComparisonPreservation.lean)
+uses derived resolver bounds and decoded rd/x0, retaining both readonly refreshes.
+[Initialized ranges](Airbender/Review/Trace/Families/ReducedMachine/ComparisonValues.lean)
+feed these proved rules into unchanged shared time induction and derive every
+read/write/terminal Word bound, including source-loww35. [Canonical initialized results](Airbender/Review/Trace/Families/ReducedMachine/ComparisonResults.lean)
+derive complete RV32 candidates and actual original-rd/x0 masked writes. No source,
+read, operand, result, local range, preservation-rule or intermediate-state answer
+is supplied publicly. Exact fixedData acceptance keeps native lookup semantics;
+no arbitrary-table equality/equivalence premise is added.
+
+[Nine regressions](Tests/NativeReducedComparison.lean) cover all8ordinary/x0
+projections, every actual resolver row at offset393345, independent signed/unsigned
+and negative-immediate boundaries, inconsistent-flag table behavior, wrong-jump/
+oversized-key/corrupted-funct3 rejection, original public SLTIU byte/stateful slot
+and initialized oversized-source rejection. These table/source/conditional native
+checks are not full positive nonempty117equation comparison execution fixtures.
+Native conditional.rs is newly hash-pinned to the unchanged v2 base; branch table
+source was already pinned. No production/native/imported/exported/literal/Sail/
+public fixed configuration/dependency input changed.
+
+Next bind all actual comparison ports to original GPR/cell history, selected
+operands and retained original Sail clauses, derive numerical PC preparation/
+retirement/fetched execution and extend the common supported profile. Current
+public_supported_execution still admits shifts, arithmetic and bitwise only;
+comparison numerical traces here are separate. Other combined operations,
+workers/callers/accounting, protocol spans, padding/terminal/init/teardown, native
+public/export/preprocessing/ROM/physical setup, compiler/Rust/JSON, cryptography/
+completeness and original interrupt/exception boundaries remain open. No native
+finding, issue assumption, production fix, new axiom or parity claim.
+
+Final gates pass 2,877 explicit standard-only axiom roots, 181 public Review
+roots, four guide declaration names, 2,848 links/anchors and context/trace layers.
+Full Review used 545.60 MiB footprint / 3110.11 MiB resident in 24.66 seconds.
+Independent exact provenance passes 189 v3-origin and 992 backport-origin
+identities, 80 byte-identical reused modules, eight circuit artifacts, 65 native
+sources, 23 setup artifacts and four exporter files, with unchanged dependency
+pins. It used 19.05 MiB footprint / 35.14 MiB resident in 7.32 seconds. Every owned
+worker terminated under unchanged caps with no survivors. No memory, wall-time,
+heartbeat or recursion ceiling was raised or hit. Prior importer/CLI/native
+compilation/export controls retain unchanged inputs and prior applicability.
+
 ## Original native bitwise and mixed fetched execution (7 November 2026)
 
 [Original bitwise projection](Airbender/Review/Circuits/ReducedMachine/BitwiseDecoder.lean)

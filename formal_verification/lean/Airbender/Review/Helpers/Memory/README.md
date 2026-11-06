@@ -213,3 +213,12 @@ derive register addresses and readonly aliases before shared history reuse.
 [Common initialized execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
 constructs the states and order from native matching and public seeds; these
 observations are not supplied as public answers.
+
+## Initialized native comparison ranges
+
+[Comparison value bounds](../../Trace/Families/ReducedMachine/ComparisonValues.lean)
+use proved native resolver/masked-write preservation in unchanged shared time
+induction. Both readonly refreshes and discarded writes remain in native matching.
+[Canonical comparison results](../../Trace/Families/ReducedMachine/ComparisonResults.lean)
+discharge every internal read bound from those initialized facts. These numerical
+read words are not yet original pre-row Sail GPR/clause/fetched execution.

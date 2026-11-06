@@ -1,3 +1,5 @@
+import Tests.NativeReducedComparison
+import Airbender.Review.Trace.Families.ReducedMachine.ComparisonDecoder
 import Tests.NativeReducedBitwiseExecution
 import Airbender.Review.Trace.Families.ReducedMachine.BitwiseDecoder
 import Tests.NativeReducedBitwise
@@ -3058,3 +3060,51 @@ import Tests.SubwordStoreData
 #print axioms Airbender.ReducedMachine.NativeBitwisePreservationProofs.row_write_rule
 #print axioms Airbender.ReducedMachine.NativeBitwiseResultProofs.decoded_result
 #print axioms Tests.NativeReducedSupportedDecoder.complete_original_image
+
+#print axioms Airbender.ReducedMachine.NativeComparisonSelectorProofs.flags
+#print axioms Airbender.ReducedMachine.NativeComparisonFieldProofs.source
+#print axioms Airbender.ReducedMachine.NativeComparisonFieldProofs.source_port
+#print axioms Airbender.ReducedMachine.NativeComparisonFieldProofs.write
+#print axioms Airbender.ReducedMachine.NativeComparisonFieldProofs.query_fields
+#print axioms Airbender.ReducedMachine.NativeComparisonFieldProofs.limb_equations
+#print axioms Airbender.ReducedMachine.NativeComparisonFieldProofs.candidate
+#print axioms Airbender.ReducedMachine.NativeComparisonFieldProofs.pc_selection
+#print axioms Airbender.ReducedMachine.NativeComparisonFieldProofs.query
+#print axioms Airbender.ReducedMachine.NativeConditionalTableProofs.rows
+#print axioms Airbender.ReducedMachine.NativeConditionalTableProofs.result
+#print axioms Airbender.ReducedMachine.NativeConditionalTableProofs.comparison
+#print axioms Airbender.ReducedMachine.NativeComparisonResultProofs.equality_bound
+#print axioms Airbender.ReducedMachine.NativeComparisonResultProofs.unsigned_borrow
+#print axioms Airbender.ReducedMachine.NativeComparisonResultProofs.key_value
+#print axioms Airbender.ReducedMachine.NativeComparisonResultProofs.control
+#print axioms Airbender.ReducedMachine.NativeComparisonResultProofs.resolution
+#print axioms Airbender.ReducedMachine.NativeComparisonResultProofs.candidate_bounds
+#print axioms Airbender.ReducedMachine.NativeComparisonResultProofs.default_pc
+#print axioms Airbender.ReducedMachine.NativeComparisonResultProofs.effects
+#print axioms Airbender.ReducedMachine.Native.comparison_effects
+#print axioms Airbender.ReducedMachine.NativeFixed.conditional_implementation
+#print axioms Tests.NativeReducedComparison.original_fields
+#print axioms Tests.NativeReducedComparison.actual_rows
+#print axioms Tests.NativeReducedComparison.resolver_boundaries
+#print axioms Tests.NativeReducedComparison.reference_results
+#print axioms Tests.NativeReducedComparison.wrong_jump_rejected
+#print axioms Tests.NativeReducedComparison.oversized_key_rejected
+#print axioms Tests.NativeReducedComparison.original_public_slot
+#print axioms Tests.NativeReducedComparison.corrupted_funct3_rejected
+#print axioms Tests.NativeReducedComparison.oversized_source_rejected
+#print axioms Airbender.ReducedMachine.NativeComparisonDecoderProofs.field_bounds
+#print axioms Airbender.ReducedMachine.NativeComparisonDecoderProofs.fetched_sources
+#print axioms Airbender.ReducedMachine.NativeComparisonDecoderProofs.decoded_fields
+#print axioms Airbender.ReducedMachine.NativeComparisonDecoderProofs.immediate_word
+#print axioms Airbender.ReducedMachine.NativeComparisonOperandProofs.entry_selected_operand
+#print axioms Airbender.ReducedMachine.NativeComparisonPreservationProofs.written_bounds
+#print axioms Airbender.ReducedMachine.NativeComparisonPreservationProofs.row_write_rule
+#print axioms Airbender.ReducedMachine.NativeComparisonResultProofs.operand_bound
+#print axioms Airbender.ReducedMachine.NativeComparisonResultProofs.decoded_result
+#print axioms Airbender.ReducedMachine.NativeComparisonDecoderProofs.trace_decoding
+#print axioms Airbender.ReducedMachine.Native.public_comparison_decoding
+#print axioms Airbender.ReducedMachine.NativeComparisonRangeProofs.decoded_write_rules
+#print axioms Airbender.ReducedMachine.NativeComparisonRangeProofs.image_value_bounds
+#print axioms Airbender.ReducedMachine.Native.public_comparison_value_bounds
+#print axioms Airbender.ReducedMachine.NativeComparisonRangeProofs.image_comparison_results
+#print axioms Airbender.ReducedMachine.Native.public_comparison_results

@@ -344,3 +344,14 @@ connect accepted native byte results to original Sail states and actual PC+4/wra
 includes bitwise rows through proved common preservation/history, without public
 source/read/result/state/PC answers. New local Sail tests do not certify complete
 positive nonempty bitwise native witnesses or native physical/public setup fidelity.
+
+## Actual native comparison numerics
+
+[Comparison model](Comparison.lean) and [effects](ComparisonTheorems.lean) retain
+native65/67masks, actual readonly routing, subtraction/borrow, Boolean candidate,
+masked port/address and no-jump PC selection. [Full-pool resolver](Tables/NativeConditionalTheorems.lean)
+checks all128tag22rows; packed-key/separate-output and inconsistent-flag behavior
+differ from split tag43. [Original public projection](ComparisonDecoder.lean)
+binds SLT/SLTU/SLTI/SLTIU/x0/sign extension. [Initialized numerical results](../../Trace/Families/ReducedMachine/ComparisonResults.lean)
+discharge both operand bounds from native history. Original Sail GPR/clause/PC/
+fetched execution and common supported comparison integration remain next.

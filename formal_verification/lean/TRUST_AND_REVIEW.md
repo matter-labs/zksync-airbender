@@ -327,6 +327,30 @@ fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
 terminal/init boundaries remain open. No native defect or issue-handling assumption
 is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
 
+## Native comparison numerical and decoder boundary
+
+[Actual tag22resolver semantics](Airbender/Review/Circuits/ReducedMachine/Tables/NativeConditionalTheorems.lean)
+checks all128native rows and isolates them from the complete pool. Signed resolution
+uses borrow flipped on differing signs; the old split table's inconsistent-flag
+behavior differs, so no table identity/equivalence is transferred. [Actual native effects](Airbender/Review/Circuits/ReducedMachine/ComparisonTheorems.lean)
+derive readonly routing, Boolean candidates, masked writes and no-jump/default-PC
+selection under explicit native65/67mask and funct3. [Original public decoding](Airbender/Review/Trace/Families/ReducedMachine/ComparisonDecoder.lean)
+derives those masks/tags and rs/rd/x0/sign-extended immediate fields from original
+byte/stateful sparse/padded membership; physical decoder/ROM enforcement is separate.
+
+[Initialized ranges](Airbender/Review/Trace/Families/ReducedMachine/ComparisonValues.lean)
+and [RV32 numerical results](Airbender/Review/Trace/Families/ReducedMachine/ComparisonResults.lean)
+derive all word bounds/canonical candidates/actual decoded masked writes from
+public initialization, native matching, complete original comparison decoding
+and exact fixedData acceptance. No desired local range/source/read/result/state,
+supplied preservation rule or arbitrary-table equivalence is public. Original
+Sail GPR observations/clauses/PC prepare-retire/fetched execution and common mixed
+comparison support are still next. [Regressions](Tests/NativeReducedComparison.lean)
+are source/table/conditional native checks, not full positive nonempty comparison
+witnesses. General compiler/native public/export/preprocessing/ROM/physical/
+protocol/terminal/init/cryptographic/completeness/interrupt scopes remain separate.
+No native defect, issue-handling assumption or production fix is established.
+
 ## Actual native bitwise local boundary
 
 [Full-pool byte semantics](Airbender/Review/Circuits/ReducedMachine/Tables/NativeBitwiseTheorems.lean)

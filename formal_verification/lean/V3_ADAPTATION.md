@@ -470,3 +470,24 @@ from full nonempty native witnesses. Exact parent-revision template hashes are i
 assumed equivalent. Other combined profiles and public/export/preprocessing/ROM/
 physical/protocol/terminal/init/cryptographic/completeness/interrupt scopes remain
 open. No production/native/Sail/data/dependency change, finding or parity claim.
+
+## Native comparison decoding and initialized numerics (7 November 2026)
+
+[New actual reduced comparisons](Airbender/Review/Circuits/ReducedMachine/ComparisonTheorems.lean)
+derive masks65/67/all18flags, actual routing/subtraction/candidate/write/PC fields,
+and complete tag22packed-key lookup semantics. Every128row is checked independently;
+old split tag43and inconsistent-flag behavior are not inherited. Native signed
+resolution flips unsigned borrow when signs differ; valid bounded operands prove
+its exact RV32 meaning through unchanged pure borrow/signed-order lemmas.
+[Original decoding](Airbender/Review/Trace/Families/ReducedMachine/ComparisonDecoder.lean)
+retains SLT/SLTU/SLTI/SLTIU/x0/raw operands/sign extension. [Initialized word ranges](Airbender/Review/Trace/Families/ReducedMachine/ComparisonValues.lean)
+and [complete numerical candidates/writes](Airbender/Review/Trace/Families/ReducedMachine/ComparisonResults.lean)
+derive every internal source bound from public seeds/matching and proved local
+preservation at exact fixedData. No desired local range/read/result/state or table
+identity premise. Original GPR/Sail/PC/fetched/common mixed comparison execution
+remains next; other combined/protocol/setup/completeness boundaries remain open.
+[Regressions](Tests/NativeReducedComparison.lean) include every actual resolver row,
+inconsistent-flag distinctions, original SLTIU bytes/stateful slot and initialized
+oversized-source rejection; no complete positive nonempty comparison witness is
+claimed. Native conditional.rs is newly pinned unchanged; no native/Sail/data/
+dependency change, finding/fix/issue assumption or parity claim is added.
