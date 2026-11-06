@@ -289,6 +289,24 @@ def run : IO Unit := do
       | throw (IO.userError s!"retained circuit artifact failed import: {circuitPath}")
     check (setup.circuit.toNativeJson == retained)
       s!"{setupPath}: embedded circuit equals retained no-cache artifact"
+    let layout := setup.circuit.aux_layout_data
+    for groups in [none, some #[]] do
+      let emptyGroups := {setup.circuit with aux_layout_data :=
+        {layout with relative_timestamp_groups := groups}}
+      let .ok aux := emptyGroups.toNativeJson.getObjVal? "aux_layout_data"
+        | throw (IO.userError "native circuit serialization lost auxiliary layout")
+      check (rejected (aux.getObjVal? "relative_timestamp_groups"))
+        "native circuit serialization omits absent and empty timestamp groups"
+      check ((aux.getObjVal? "shuffle_ram_timestamp_comparison_aux_vars").toOption ==
+        some (toJson layout.shuffle_ram_timestamp_comparison_aux_vars))
+        "native circuit serialization retains every other auxiliary value"
+    let groups : Array RelativeTimestampGroup := #[⟨⟨#[1, 2], by decide⟩, #[3, 4]⟩]
+    let presentGroups := {setup.circuit with aux_layout_data :=
+      {layout with relative_timestamp_groups := some groups}}
+    let .ok aux := presentGroups.toNativeJson.getObjVal? "aux_layout_data"
+      | throw (IO.userError "native circuit serialization lost auxiliary layout")
+    check ((aux.getObjVal? "relative_timestamp_groups").toOption == some (toJson groups))
+      "native circuit serialization retains nonempty timestamp groups"
     for value in [0, 2013265920] do
       let .ok padding := fromJson? (α := Coefficient) (toJson value)
         | throw (IO.userError "padding coefficient failed import")

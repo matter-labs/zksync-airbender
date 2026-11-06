@@ -88,6 +88,25 @@ replay and 42 focused controls pass, including missing/extra/duplicate/forbidden
 smoke-report controls and rejection of a missing protected Review audit root.
 Actual complete runtime/audit validation and final full assurance remain pending.
 
+Run [42164820299](https://github.com/matter-labs/zksync-airbender/actions/runs/42164820299)
+on `3251f7357cd40f7f256118045121397d1e257a95` passed fresh native qualification,
+recorded an inspected exact receipt, and passed the repaired six-root axiom smoke
+check. The complete frontend then failed after 149.52 seconds in importer runtime.
+The runtime child exited 1 after 12.67 seconds at 485.96 MiB charged footprint,
+with no owned processes left. The AddSub embedded-circuit round trip emitted
+`aux_layout_data.relative_timestamp_groups: null`, while Rust omits this vector
+when empty. A bounded Lean core replay of the original serializer against the
+actual AddSub artifact isolates exactly that one extra JSON field. The repair
+omits absent and empty groups, retains nonempty groups and every other value,
+and preserves the full circuit-equality assertions. Twenty checks using the exact
+schema/serializer bodies and runtime assertions pass against the actual AddSub
+and Bigint artifacts in an isolated core fixture (2.57 seconds, 364.29 MiB charged),
+along with all 42 focused Python controls. No project build was run locally.
+The new runtime branch controls cover absent, present-empty and nonempty groups,
+other auxiliary values, absent/present padding, and other explicit null fields.
+Complete project runtime, generated/decoder, environment/axiom audit and final
+full assurance still require CI success on the repaired revision.
+
 The 4 November specification review makes the existing one-instance
 initialization and submitted-pool premises explicit. Native corollaries certify
 CPU rows only; standard worker equations remain no-cache flat constraints and
