@@ -22,7 +22,7 @@ importer, finding and trust references have independent source hashes.
 
 | Current v3 component | V2 connection and remaining work |
 | --- | --- |
-| Unified CPU local import with an explicit fixed tagged table | The v2 combined reduced circuit follows this pattern, retaining its own four-field queries, 119 equations, eight scalar/eight timestamp queries, original x0 decoder and log-23 placement. The actual ID-16 sign/high-byte region now has a literal-row certificate; the complete pooled setup remains unconnected. Supplying an arbitrary table proves no native setup fact. |
+| Unified CPU local import with an explicit fixed tagged table | The v2 combined reduced circuit follows this pattern, retaining its own four-field queries, eight scalar/eight timestamp queries, original x0 decoder and log-23 placement. The regenerated native target has 117 equations and a complete fourteen-region literal pool. Both actual sign/high-byte queries follow from original Clean acceptance; universal public/physical setup and other row semantics remain open. The historical 119-equation snapshot stays separate. |
 | Reduced unrolled target | This is a different multi-family assembly. The name does not make it the target for the monolithic v2 reduced JSON. Existing standalone v2 families remain reusable components. |
 | Unified row semantics and initialized execution | Port the calculations against actual v2 combined selectors/operands/writes and initialized memory/state history. Standalone proofs do not discharge these native connections. |
 | Compiler certificates and native CPU acceptance | Not present in this backport. The local row importer does not establish GKR cached/uncached compiler preservation, exact decoder membership or the physical verifier's argument checks. Retained stage-two JSON is opaque. |
@@ -74,3 +74,15 @@ not whole-setup or execution coverage. The next step is the complete native pool
 fixed relation, including actual public ROM/CSR configuration and tag isolation,
 then combined row semantics. The production circuit remains unchanged. See the
 [issue-handling policy](FINDINGS.md#backport-issue-handling-policy).
+
+## Regenerated source target
+
+The unchanged native v2 compiler produces a different target from the historical
+shipped reduced JSON: 117 equations/142 variables/fourteen fixed regions rather
+than 119/141/thirteen. The [active native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
+and [full pool](Airbender/Review/Circuits/ReducedMachine/Tables/Native.lean) retain
+that distinction and reproducible public inputs. No circuit code was fixed and
+no coverage transfers through an equivalence premise. The full pool now yields
+tag isolation and both actual sign/high-byte query results from Clean acceptance.
+The next work is the other native operation tables, general public setup and
+combined row/initialized execution, followed by workers and protocol boundaries.

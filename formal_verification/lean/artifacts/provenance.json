@@ -559,6 +559,22 @@
     {
       "path": "../../cs/src/definitions/delegation.rs",
       "sha256": "89a39978d83423551a5890d7af510249971f9edf746cc60dda9484c891f9696c"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/mod.rs",
+      "sha256": "404f6db63d2184110fa28bcfe91c67e00f122477d839a029863159512285484a"
+    },
+    {
+      "path": "../../cs/src/one_row_compiler/bytecode_preprocessed_executor.rs",
+      "sha256": "65749f59bc449dbda6402f3aee77c25281e606573cd121764e5945f7b93bda72"
+    },
+    {
+      "path": "../../cs/src/machine/ops/shift.rs",
+      "sha256": "bfe8497bfa172be039eae59bc3323b7d5b5c4bd427f62eec4476dff5db366db7"
+    },
+    {
+      "path": "../../prover/src/tests/unrolled/reduced_machine.rs",
+      "sha256": "a07b8cb10cac21b7e2f0c23016d79b022dedfbf003ca42e516092f50b24dd755"
     }
   ],
   "adaptations": [
@@ -6703,6 +6719,62 @@
     {
       "path": "Tests/ReducedSignHighImport.lean",
       "change": "Native reduced ID-16 literal-region certificate and fail-closed/semantic regressions; no pooled-table, compiler-enforcement or execution theorem is claimed."
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativePool.lean",
+      "change": "Adapt original region decomposition and exact tag proofs to all14actual native reduced regions; derive sign membership with no table-equivalence premise.",
+      "backport_reuse_revision": "0cecce53098a474d300bf5c2398f1d456f8c8634",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeRegions.lean",
+      "backport_reuse_sha256": "9df97344b68bf0f1227df2fe70bd0fd58d270c7d3e6d37e47839dac3970b1513"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Tables/Native.lean",
+      "change": "Adapt full native offset-ordered literal pool model to independently regenerated reduced data and retained public fixture.",
+      "backport_reuse_revision": "0cecce53098a474d300bf5c2398f1d456f8c8634",
+      "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/Tables/Native.lean",
+      "backport_reuse_sha256": "3790a2688b8dc999aa790c2801bcad9cec4a000fd71ec3674837365ec03a8a94"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeQueries.lean",
+      "change": "Reuse original Clean acceptance extraction for actual constant queries16/17 and derive both native sign/high-byte results.",
+      "backport_reuse_revision": "0cecce53098a474d300bf5c2398f1d456f8c8634",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeQueries.lean",
+      "backport_reuse_sha256": "cc7a40ca680195a60c7927841a7416997cf569b5f3793fa2a3b88ce0a489972d"
+    },
+    {
+      "path": "Airbender/Import/ReducedFixedSetup.lean",
+      "change": "Extend strict literal envelope to current native14-region pool and explicit public image/CSR inputs; validate geometry and canonicality without asserting semantics.",
+      "backport_reuse_revision": "0cecce53098a474d300bf5c2398f1d456f8c8634",
+      "backport_reuse_path": "Airbender/Import/ReducedSetup.lean",
+      "backport_reuse_sha256": "1cc78d1a4a0aab371fe49108033e40c36bc9d9e11a1addc205389c6ae92b71a9"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean",
+      "change": "Independently regenerated native reduced target, complete literal public fixed fixture, original Clean query connection and strict separation from the historical shipped artifact; no circuit fix or execution theorem."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Tables/NativeData.lean",
+      "change": "Independently regenerated native reduced target, complete literal public fixed fixture, original Clean query connection and strict separation from the historical shipped artifact; no circuit fix or execution theorem."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Tables/NativeTheorems.lean",
+      "change": "Independently regenerated native reduced target, complete literal public fixed fixture, original Clean query connection and strict separation from the historical shipped artifact; no circuit fix or execution theorem."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Theorems.lean",
+      "change": "Independently regenerated native reduced target, complete literal public fixed fixture, original Clean query connection and strict separation from the historical shipped artifact; no circuit fix or execution theorem."
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArtifactChecks.lean",
+      "change": "Independently regenerated native reduced target, complete literal public fixed fixture, original Clean query connection and strict separation from the historical shipped artifact; no circuit fix or execution theorem."
+    },
+    {
+      "path": "Tests/NativeReducedPool.lean",
+      "change": "Independently regenerated native reduced target, complete literal public fixed fixture, original Clean query connection and strict separation from the historical shipped artifact; no circuit fix or execution theorem."
+    },
+    {
+      "path": "Tests/NativeReducedImport.lean",
+      "change": "Independently regenerated native reduced target, complete literal public fixed fixture, original Clean query connection and strict separation from the historical shipped artifact; no circuit fix or execution theorem."
     }
   ],
   "setup_artifacts": [
@@ -6891,6 +6963,13 @@
       "profile": "actual registered native reduced-machine ID-16 sign/high-byte region; all 65536 literal rows and compiled offset 196609; the full pooled table and public ROM/CSR configuration remain separate",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/reduced-fixed-native.json",
+      "sha256": "5ea0c4898ef79cafcf1bd6e76bc567ffe9e6ec4b560dbcddd5e7eb3849076d8e",
+      "profile": "actual complete regenerated native v2 reduced fixed pool:14regions,5771521rows; explicit eight-word public image, delegation CSRs1988/1989,nondeterminismtrue; universal public binding and physical setup remain separate",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -6904,7 +6983,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "35059084adc72a344dcd29648e2991be6b518c74010a603ee4204f6d386bdc03"
+      "sha256": "ea662e56450c8f1bca1d55994672ea4e53168477e94361043a97ef3b5bd80250"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",
@@ -6990,6 +7069,15 @@
     {
       "path": "VERIFICATION_STATUS.md",
       "sha256": "7b8d4231048a8c228ef2e6e195c3b38304fca474ac16de75a5e9a12b3b2c50d9"
+    }
+  ],
+  "regenerated_circuit_artifacts": [
+    {
+      "path": "artifacts/circuits/reduced-native-layout.json",
+      "sha256": "ac7c239d09717258e99ffd58aae190c2562622e4d8d456d39646d364e36a097f",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py; native --reduced-layout uses ROM second-word bits6, decoder capacity1048576, trace log23, native init/teardown compiler, public dummy UNIMP and CSRs1988/1989",
+      "scope": "Pointwise reproducible native compiled artifact, distinct from the historical cs/reduced_machine_preprocessed_layout.json; general compiler refinement remains unproved."
     }
   ]
 }

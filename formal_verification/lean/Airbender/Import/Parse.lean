@@ -89,7 +89,8 @@ def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns
   let subword := c.hasSubwordLookups
   unless ids.isEmpty || memory || control || small || shift || subword || reduced do throw "unsupported native fixed lookup profile"
   let generic := if ids.isEmpty then 0 else 1
-  let rows := if memory then 1114113 else if control then 65664 else if small then 65536 else if shift then 10817537 else if subword then 9502721 else if reduced then 5705985 else 0
+  let regeneratedReduced := reduced && c.total_tables_size == 5771521
+  let rows := if memory then 1114113 else if control then 65664 else if small then 65536 else if shift then 10817537 else if subword then 9502721 else if reduced then (if regeneratedReduced then 5771521 else 5705985) else 0
   unless layout.generic_lookup_setup_columns.start == 2 &&
       layout.generic_lookup_setup_columns.num_elements == generic do
     throw "unsupported native tagged setup groups"
@@ -108,7 +109,8 @@ def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns
       else if id == 17 then 262145 else if id == 18 then 327681
       else if id ≤ 20 then 393217 else if id ≤ 22 then 393345
       else if id == 23 then 393473 else if id == 24 then 459009
-      else if id == 25 then 1507585 else if id ≤ 37 then 1511681 else 5705985
+      else if id == 25 then 1507585 else if id ≤ 37 then 1511681
+      else if regeneratedReduced && id > 47 then 5771521 else 5705985
     else if subword then
       if id == 0 then 0 else if id ≤ 23 then 1 else if id ≤ 44 then 65537
       else if id == 45 then 2162689 else if id == 46 then 4259841

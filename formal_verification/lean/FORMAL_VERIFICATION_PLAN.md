@@ -18,18 +18,20 @@ false. Subword retirement is therefore not a prerequisite for this machine.
 This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
-**The reduced machine has no execution soundness theorem yet.** The resumed
-combined importer retains every native local equation/query and the original
-state, decoder, initialization and request coordinates. Its explicit tagged
-setup-table interface follows the current v3 unified importer, with the actual
-v2 four-field layout and Mersenne31 coefficients. Validation passed; see the
-[current adaptation snapshot](V3_ADAPTATION.md). Retained stage-two JSON has no
-claimed enforcement interpretation.
+**The reduced machine has no execution soundness theorem yet.** The active
+[regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
+is independently reproducible from unchanged pinned Rust: 117 equations,
+142 variables and 14 fixed regions. The original [historical artifact](Airbender/Review/Circuits/ReducedMachine/Artifact.lean)
+retains 119 equations, 141 variables and 13 regions; no equivalence is assumed.
+The complete current native fixed pool and explicit public fixture are imported,
+and original Clean acceptance now derives both actual sign/high-byte queries.
+All other combined row effects and execution remain pending. See the
+[current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
-1. Finish actual reduced fixed regions and public ROM/CSR setup. The native
-   sign/high-byte region now has a checked literal-row certificate; the complete
-   pooled table and public configuration remain open. Do not inherit standalone
-   fixture tables, supplied row answers or v3 table encodings.
+1. Generalize the actual native pool beyond its explicit public image/CSR fixture,
+   prove the remaining regions' operation semantics and connect physical setup.
+   All 14 literal regions, exact tags and sign/high-byte recovery are checked.
+   Do not inherit standalone fixture configuration, supplied row answers or v3 encodings.
 2. Derive combined native selectors, operand routing, actual masked writes,
    PC/clock effects and original Sail clauses from these exact constraints.
 3. Compose initialized combined histories, public decoding and original execution.

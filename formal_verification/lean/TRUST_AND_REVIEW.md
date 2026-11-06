@@ -2,6 +2,13 @@
 
 ## Review entry points
 
+For the active combined reduced machine, start with the
+[regenerated native artifact](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean),
+[complete fixed fixture](Airbender/Review/Circuits/ReducedMachine/Tables/Native.lean)
+and [short native row theorem](Airbender/Review/Circuits/ReducedMachine/Theorems.lean).
+The checked claim currently covers two sign/high-byte queries, not instructions
+or whole execution. Earlier standalone libraries retain their separate scope.
+
 Start with [Properties](Airbender/Review/Helpers/Properties.lean), then the short
 [ADD/SUB theorems](Airbender/Review/Circuits/AddSub/Theorems.lean) and their
 [Model](Airbender/Review/Circuits/AddSub/Model.lean). The local theorem takes
@@ -26,22 +33,31 @@ The [Sail generation record](generated/sail-rv32/provenance.json) is copied unch
 
 ## Combined reduced-machine boundary
 
-The [combined native artifact](Airbender/Review/Circuits/ReducedMachine/Artifact.lean)
-now emits all local row operations against an explicit fixed four-field setup
-table. Both constant sign/high-byte tags and all dynamic tags are retained.
-The source bytes and validated initialization/request coordinates are exposed;
-they do not imply physical setup, global matching, argument enforcement or Sail
-execution. The current v3 unified importer supplies the ownership pattern, not
-its BabyBear equations, ten-field tables or compiler certificates. The v2 target
-and native coefficients remain Mersenne31. No native reduced machine theorem
-is claimed by this import layer.
+The [active regenerated target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
+comes from the unchanged pinned native compiler and has 117 equations and
+142 variables. Independent byte reproduction is checked for this explicit
+ROM-bits-6, decoder-capacity-1048576, log-23 configuration. Its complete native
+pool has fourteen regions, including truncation ID 47. The original
+[historical compiled target](Airbender/Review/Circuits/ReducedMachine/Artifact.lean)
+has 119 equations, 141 variables and thirteen regions. They remain distinct;
+no theorem transfers constraints or execution between them.
 
-The [actual reduced sign/high-byte region](Airbender/Review/Circuits/ReducedMachine/Tables/SignHigh.lean)
-has its own literal export and kernel certificate for all 65,536 rows, including
-the native ID-16 tag and compiled offset 196609. Its membership theorem concerns
-that exported region only. It does not yet recover those rows from arbitrary
-membership in the complete pooled table; public ROM/CSR setup, other regions
-and tag isolation remain pending.
+The [complete literal pool](Airbender/Review/Circuits/ReducedMachine/Tables/Native.lean)
+retains all native fields and an explicit eight-word image, delegation list
+1988/1989 and enabled nondeterminism. Actual native generators also reproduce
+changed/empty public configurations in the scoped exporter controls. This is
+specific reproducibility and literal-row evidence, not general compiler
+refinement or universal production setup binding.
+
+[Kernel tag isolation](Airbender/Proofs/ReducedMachine/NativePool.lean) now recovers
+the [certified sign/high-byte region](Airbender/Review/Circuits/ReducedMachine/Tables/SignHigh.lean)
+from complete pooled membership. The short [native row theorem](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+derives both actual queries' bounds, signs and high bytes from original Clean
+acceptance. Decoder/state/direct memory and init/request coordinates are retained;
+physical setup, global matching, worker accounting and original Sail execution
+are not implied. Stage-two descriptors remain source data without enforcement
+semantics. The current v3 unified importer supplies the ownership pattern, not
+its field, equations, tables or compiler certificates.
 
 Production circuit and machine code must stay unchanged. Confirmed native issues
 are documented with their exact evidence and, where necessary, narrow explicit

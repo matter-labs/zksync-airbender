@@ -71,6 +71,26 @@ All remaining numerical table certificates, routing/results, initialized histori
 and fetched-execution milestones are coverage evidence in the status document.
 They are not independent findings merely because malformed test inputs reject.
 
+## Checked reduced source/artifact divergence
+
+Independent compilation of unchanged native v2 Rust produces 112 quadratic
+rows, 142 variables and fourteen fixed regions, while the historical shipped
+reduced JSON contains 114 quadratic rows, 141 variables and thirteen regions.
+The source registry additionally materializes truncation ID 47. The
+[regenerated artifact](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean),
+[public fixed fixture](Airbender/Review/Circuits/ReducedMachine/Tables/Native.lean)
+and [reproduction controls](scripts/check_native_setup.py) retain exact evidence.
+The tested configuration uses ROM second-word bits 6, decoder capacity 1048576
+and trace log 23. The [native proving test](../../prover/src/tests/unrolled/reduced_machine.rs)
+freshly compiles its configured circuit; this comparison does not exhibit an
+accepted bad witness or establish that a verifier consumes the historical JSON.
+
+This is a checked provenance divergence and a restriction on coverage transfer,
+not a confirmed circuit defect. The historical artifact is preserved; current
+machine work targets the separately regenerated constraints and complete pool.
+No circuit fix or equivalence assumption is introduced. General compiler and
+runtime configuration correspondence remain B01/B03 boundaries below.
+
 ## Open bindings
 
 These are unresolved proof/implementation bindings, explicitly separated

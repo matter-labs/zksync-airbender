@@ -1,5 +1,6 @@
 import Airbender.Import.SetupEmbed
 import Airbender.Import.ReducedSetup
+import Airbender.Import.ReducedFixedSetup
 
 namespace Airbender.Setup.Reduced
 open Lean Elab Command
@@ -61,6 +62,45 @@ elab "import_native_reduced_sign_high " name:ident " from " path:str : command =
     | .error error => throwError "native reduced sign/high-byte import failed: {error}"
   let some region := artifact.tables[0]? | throwError "missing native reduced sign/high-byte region"
   emitData name region.data region.offset
+  let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")
+  elabCommand (← `(def $sourceName : String := $(quote source)))
+
+/-- Split large literal columns into independently elaborated constants.
+    This changes no values and requires no larger recursion/heartbeat setting. -/
+private def emitChunkedData (name : TSyntax `ident) (matrix : Matrix) (offset : Nat) :
+    CommandElabM Unit := do
+  let mut columns : Array (TSyntax `term) := #[]
+  for (column,lane) in matrix.columns.zipIdx do
+    let mut blocks : Array (TSyntax `term) := #[]
+    for (stored,index) in column.blocks.zipIdx do
+      let target := mkIdent (name.getId.appendAfter ("Column" ++ toString lane ++ "Block" ++ toString index))
+      let block ← blockSyntax stored
+      elabCommand (← `(def $target : Airbender.Setup.Block := $block))
+      blocks := blocks.push (← `($target))
+    let encoded ← arraySyntax blocks
+    let target := mkIdent (name.getId.appendAfter ("Column" ++ toString lane))
+    elabCommand (← `(def $target : Airbender.Setup.Column := ⟨$encoded⟩))
+    columns := columns.push (← `($target))
+  elabCommand (← `(def $name : Airbender.Setup.TableData $(quote columns.size) :=
+    ⟨$(quote matrix.length), $(quote offset), #v[$[$columns],*]⟩))
+
+/-- Complete actual native pool, with literal public inputs and same-read source bytes. -/
+elab "import_native_reduced_fixed " name:ident " from " path:str : command => do
+  let source ← IO.FS.readFile path.getString
+  let artifact ← match ReducedFixed.parse source with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native reduced fixed import failed: {error}"
+  for region in artifact.tables do
+    emitChunkedData (mkIdent (name.getId.appendAfter ("T" ++ toString region.id))) region.data region.offset
+  let image ← columnSyntax artifact.«public».image
+  let imageName := mkIdent (name.getId.appendAfter "Image")
+  elabCommand (← `(def $imageName : Airbender.Setup.Column := $image))
+  let countName := mkIdent (name.getId.appendAfter "ImageWords")
+  elabCommand (← `(def $countName : Nat := $(quote artifact.«public».image_words)))
+  let csrName := mkIdent (name.getId.appendAfter "DelegationCSRs")
+  elabCommand (← `(def $csrName : Array Nat := $(quote artifact.«public».delegation_csrs)))
+  let nonDetName := mkIdent (name.getId.appendAfter "AllowNonDeterminism")
+  elabCommand (← `(def $nonDetName : Bool := $(quote artifact.«public».allow_non_determinism)))
   let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")
   elabCommand (← `(def $sourceName : String := $(quote source)))
 

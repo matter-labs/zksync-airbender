@@ -103,6 +103,7 @@ def main():
     bounded([*LEAN, "--run", "Tests/ArtifactImport.lean"], "importer-tests")
     bounded([*LEAN, "--run", "Tests/ReducedMachineImport.lean"], "reduced-importer-tests")
     bounded([*LEAN, "--run", "Tests/ReducedSignHighImport.lean"], "reduced-sign-high-importer-tests")
+    bounded([*LEAN, "--run", "Tests/NativeReducedImport.lean"], "native-reduced-importer-tests")
     bounded([*LEAN, "--run", "Airbender/Import/Main.lean",
         "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json",
         "../../cs/word_only_load_store_preprocessed_layout.json",
@@ -110,7 +111,8 @@ def main():
         "../../cs/mul_div_unsigned_preprocessed_layout.json",
         "../../cs/shift_binop_csrrw_preprocessed_layout.json",
         "../../cs/subword_only_load_store_preprocessed_layout.json",
-        "../../cs/reduced_machine_preprocessed_layout.json"], "importer-cli")
+        "../../cs/reduced_machine_preprocessed_layout.json",
+        "artifacts/circuits/reduced-native-layout.json"], "importer-cli")
     bounded([sys.executable, "scripts/check_review.py", "--no-build"], "review-and-axioms")
     print("PASS all serial bounded verification gates", flush=True)
 

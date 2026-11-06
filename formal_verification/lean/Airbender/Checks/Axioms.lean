@@ -1,3 +1,4 @@
+import Tests.NativeReducedPool
 import Tests.ReducedSignHigh
 import Airbender.Proofs.ReducedMachine.ArtifactChecks
 import Tests.ShiftPC
@@ -2516,3 +2517,36 @@ import Tests.SubwordStoreData
 #print axioms Tests.ReducedSignHigh.bad_high_rejected
 #print axioms Tests.ReducedSignHigh.bad_tag_rejected
 #print axioms Tests.ReducedSignHigh.oversized_key_rejected
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.equations
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.lookups
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.setup_rows
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.argument_metadata
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.query0_fields
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.query0_table
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.query1_fields
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.query1_table
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.query2_fields
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.query2_table
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.query3_fields
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.query3_table
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.query4_fields
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.query4_table
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.query5_fields
+#print axioms Airbender.ReducedMachine.NativeArtifactProofs.query5_table
+#print axioms Airbender.ReducedMachine.NativePoolProofs.member_region
+#print axioms Airbender.ReducedMachine.NativePoolProofs.region_row_tag
+#print axioms Airbender.ReducedMachine.NativePoolProofs.tag_bound
+#print axioms Airbender.ReducedMachine.NativePoolProofs.shared_sign_data
+#print axioms Airbender.ReducedMachine.NativePoolProofs.sign_member
+#print axioms Airbender.ReducedMachine.NativeFixed.sign_high
+#print axioms Airbender.ReducedMachine.NativeQueryProofs.queries
+#print axioms Airbender.ReducedMachine.NativeQueryProofs.results
+#print axioms Airbender.ReducedMachine.Native.sign_high_queries
+#print axioms Tests.NativeReducedPool.native_geometry
+#print axioms Tests.NativeReducedPool.retained_public_inputs
+#print axioms Tests.NativeReducedPool.zero_member
+#print axioms Tests.NativeReducedPool.truncation_last
+#print axioms Tests.NativeReducedPool.negative_sign_member
+#print axioms Tests.NativeReducedPool.last_sign_member
+#print axioms Tests.NativeReducedPool.bad_sign_rejected
+#print axioms Tests.NativeReducedPool.bad_high_rejected

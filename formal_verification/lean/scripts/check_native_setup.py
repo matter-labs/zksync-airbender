@@ -31,6 +31,80 @@ def main():
         assert output.read_bytes() == (ROOT / "artifacts/setup/word-memory-native.json").read_bytes()
         print("PASS reproducible native setup export", flush=True)
         binary = TARGET / "debug/airbender-v2-native-setup-exporter"
+        native_layout = temp / "reduced-native-layout.json"
+        subprocess.run([str(binary), "--reduced-layout", str(native_layout)], check=True)
+        assert native_layout.read_bytes() == (ROOT / "artifacts/circuits/reduced-native-layout.json").read_bytes()
+        regenerated = json.loads(native_layout.read_bytes())
+        historical = json.loads((ROOT / "../../cs/reduced_machine_preprocessed_layout.json").read_bytes())
+        assert len(regenerated["degree_2_constraints"]) == 112 and len(historical["degree_2_constraints"]) == 114
+        assert len(regenerated["variable_mapping"]) == 142 and len(historical["variable_mapping"]) == 141
+        assert regenerated["total_tables_size"] == 5771521 and historical["total_tables_size"] == 5705985
+        print("PASS reproducible unchanged-source native reduced compilation and distinct historical snapshot", flush=True)
+        subprocess.run([str(binary), "--reduced-fixed-fixture", str(native_layout), str(output)], check=True)
+        assert output.read_bytes() == (ROOT / "artifacts/setup/reduced-fixed-native.json").read_bytes()
+        fixed = json.loads(output.read_bytes())
+        assert fixed["generic_rows"] == 5771521 and len(fixed["tables"]) == 14
+        assert [(r["id"],r["offset"],r["data"]["length"]) for r in fixed["tables"]] == [
+            (0,0,1),(4,1,65536),(6,65537,65536),(7,131073,65536),(16,196609,65536),
+            (17,262145,65536),(18,327681,65536),(20,393217,128),(22,393345,128),
+            (23,393473,65536),(24,459009,1048576),(25,1507585,4096),
+            (37,1511681,4194304),(47,5705985,65536)]
+        print("PASS reproducible complete fourteen-region native reduced fixed pool", flush=True)
+        reduced_image, reduced_csrs = temp / "reduced-image.bin", temp / "reduced-csrs.json"
+        reduced_words = [0x001080b3,0xfff08113,0x40208033,0x000071b7,
+                         0x00005217,0x0000a183,0x0020a023,0xc0001073]
+        reduced_image.write_bytes(b"".join(w.to_bytes(4,"little") for w in reduced_words))
+        reduced_csrs.write_text("[1988,1989]")
+        reduced_command = [str(binary), "--reduced-fixed", str(native_layout),
+                           str(reduced_image), str(reduced_csrs), str(output)]
+        subprocess.run(reduced_command,check=True)
+        assert output.read_bytes() == (ROOT / "artifacts/setup/reduced-fixed-native.json").read_bytes()
+        print("PASS explicit reduced public image/CSR CLI reproduces fixture", flush=True)
+        def native_value(column,index):
+            for block in column["blocks"]:
+                kind = block["kind"]
+                size = block["length"] if kind == "affine" else len(block["values"]) * (
+                    block["repetitions"] if kind == "periodic" else 1)
+                if index < size:
+                    if kind == "affine": return block["first"] + block["step"] * index
+                    if kind == "dense": return block["values"][index]
+                    return block["values"][index % len(block["values"])] + block["stride"] * (index // len(block["values"]))
+                index -= size
+            raise AssertionError("native column index outside extent")
+        reduced_image.write_bytes((0x12345678).to_bytes(4,"little"))
+        reduced_csrs.write_text("[]")
+        subprocess.run(reduced_command,check=True)
+        alternate = json.loads(output.read_bytes())
+        rom = next(r for r in alternate["tables"] if r["id"] == 24)["data"]["columns"]
+        csr = next(r for r in alternate["tables"] if r["id"] == 25)["data"]["columns"]
+        fixture_csr = next(r for r in fixed["tables"] if r["id"] == 25)["data"]["columns"]
+        assert alternate["public"]["image_words"] == 1 and alternate["public"]["delegation_csrs"] == []
+        assert [native_value(c,0) for c in rom] == [0,0x5678,0x1234,24]
+        assert [native_value(c,1) for c in rom] == [4,0x1073,0xc000,24]
+        assert native_value(csr[2],1988) == 0 and native_value(fixture_csr[2],1988) == 1
+        assert [native_value(c,1984) for c in csr] == [1984,1,0,25]
+        print("PASS actual reduced public ROM prefix/padding and changed CSR configuration", flush=True)
+        reduced_image.write_bytes(b"")
+        subprocess.run(reduced_command,check=True)
+        empty = json.loads(output.read_bytes())
+        assert empty["public"]["image_words"] == 0 and empty["public"]["image"]["blocks"] == []
+        rom = next(r for r in empty["tables"] if r["id"] == 24)["data"]["columns"]
+        assert [native_value(c,0) for c in rom] == [0,0x1073,0xc000,24]
+        print("PASS native empty reduced ROM retains native UNIMP padding", flush=True)
+        reduced_csrs.write_text("[4096]")
+        bad = subprocess.run(reduced_command,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+        assert bad.returncode != 0
+        print("PASS reject oversized reduced public CSR index", flush=True)
+        reduced_csrs.write_text("[]")
+        reduced_image.write_bytes(b"x")
+        bad = subprocess.run(reduced_command,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+        assert bad.returncode != 0
+        print("PASS reject partial reduced public ROM word", flush=True)
+        bad = subprocess.run([str(binary), "--reduced-fixed-fixture",
+            str(ROOT / "../../cs/reduced_machine_preprocessed_layout.json"),str(output)],
+            stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+        assert bad.returncode != 0
+        print("PASS reject historical layout crossed with current native fixed registry", flush=True)
         subword_layout = ROOT / "../../cs/subword_only_load_store_preprocessed_layout.json"
         subprocess.run([str(binary), "--subword-offset", str(subword_layout), str(output)], check=True)
         assert output.read_bytes() == (ROOT / "artifacts/setup/subword-offset-native.json").read_bytes()

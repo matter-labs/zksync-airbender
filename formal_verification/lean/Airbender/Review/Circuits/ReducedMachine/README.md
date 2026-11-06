@@ -1,6 +1,12 @@
-# Native v2 reduced-machine intake
+# Native v2 reduced machine
 
-[Artifact](Artifact.lean) imports the actual combined v2 CPU, with 119 equations,
+The active target is [NativeArtifact](NativeArtifact.lean), regenerated from the
+unchanged pinned Rust. Start with its [full fixed pool](Tables/Native.lean) and
+[short local theorem](Theorems.lean). Both actual sign/high-byte queries follow
+from original Clean acceptance. Instruction and execution soundness remain open.
+The historical intake below stays separate.
+
+[The historical artifact](Artifact.lean) imports the pinned combined v2 JSON, with 119 equations,
 eight scalar and eight timestamp lookups and six tagged lookup queries. Two tags
 are native sign/high-byte ID 16; four are original witness expressions. All four
 fields use the same explicit fixed setup table, following the current v3 unified
@@ -28,10 +34,33 @@ no semantic assertion. [Importer controls](../../../../Tests/ReducedSignHighImpo
 retain that distinction. The FV-only exporter calls the unchanged registered
 native table generator. No production circuit code is changed.
 
-This module supplies no execution theorem. The complete pooled fixed table,
-tag isolation and public ROM/CSR binding, decoder membership, initialized combined history,
+This historical intake supplies no execution theorem. Universal public ROM/CSR
+binding, decoder membership, initialized combined history,
 worker/caller accounting, physical arguments and terminal/padding boundaries
 remain open. Stage-two source descriptors are opaque. Table input alone supplies
 no setup correctness and cannot close a native-machine claim.
 See the [current adaptation map](../../../../V3_ADAPTATION.md) and
 [active plan](../../../../FORMAL_VERIFICATION_PLAN.md).
+
+[NativeArtifact](NativeArtifact.lean) is separately regenerated from unchanged
+pinned Rust and has 117 equations, 142 variables and fourteen native fixed
+regions. The historical artifact has 119 equations, 141 variables and thirteen
+regions. Their constraints and coverage are not assumed interchangeable.
+
+[The full native pool](Tables/Native.lean) imports every actual tagged row and
+explicit public image/CSR input of the retained fixture.
+[Region/tag calculations](../../../Proofs/ReducedMachine/NativePool.lean) recover
+exact sign/high-byte membership. [The short row theorem](Theorems.lean) derives
+both actual constant queries from original Clean acceptance.
+[Mechanical native checks](../../../Proofs/ReducedMachine/NativeArtifactChecks.lean)
+retain every query and changed init/request coordinate.
+[Pool regressions](../../../../Tests/NativeReducedPool.lean) and
+[native/historical intake controls](../../../../Tests/NativeReducedImport.lean)
+keep scope and configuration separation explicit. The
+[scoped native gate](../../../../scripts/check_native_setup.py) reproduces the
+compiler artifact and all fourteen regions, including changed/empty public
+inputs and UNIMP padding. No production circuit code is changed.
+
+The active claim is specific to its retained public fixed fixture. Other operation
+semantics, universal public/physical setup, full decoding/history and execution
+remain open. Current v3 source material does not close those v2 obligations.

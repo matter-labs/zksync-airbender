@@ -100,6 +100,80 @@ struct ControlTables {
     tables: Vec<Region>,
 }
 
+/// Public inputs to the reduced fixed-table constructor. Native ROM padding
+/// is supplied by the native generator, and is not inserted into this prefix.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReducedPublic {
+    image_words: usize,
+    image: EncodedColumn,
+    delegation_csrs: Vec<u32>,
+    allow_non_determinism: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReducedFixed {
+    version: u32,
+    field_modulus: u64,
+    profile: String,
+    generic_rows: usize,
+    public: ReducedPublic,
+    tables: Vec<Region>,
+}
+
+/// Materialize each native region once, in ID order. Avoid the driver cache and
+/// a simultaneous flattened copy of the four-million-row shift table.
+fn export_reduced_fixed(layout_path: &Path, image: Vec<u32>, delegation_csrs: Vec<u32>) -> ReducedFixed {
+    use cs::machine::ops::unrolled::reduced_machine_ops::{
+        create_reduced_machine_special_tables, reduced_machine_tables,
+    };
+    let layout: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
+    let mut kinds = reduced_machine_tables();
+    kinds.sort();
+    kinds.dedup();
+    let mut special = std::collections::BTreeMap::from(
+        create_reduced_machine_special_tables::<Mersenne31Field, 6>(&image, &delegation_csrs),
+    );
+    assert!(special.keys().all(|kind| !kinds.contains(kind)));
+    kinds.extend(special.keys().copied());
+    kinds.sort();
+    let mut tables = Vec::new();
+    let mut offset = 0;
+    let mut offsets = vec![0; layout["table_offsets"].as_array().unwrap().len()];
+    for (id, start) in offsets.iter_mut().enumerate() {
+        *start = offset;
+        if let Some(kind) = kinds.iter().copied().find(|kind| *kind as usize == id) {
+            let table = special.remove(&kind).unwrap_or_else(|| kind.generate_table::<Mersenne31Field>());
+            assert_eq!(table.get_table_id(), id as u32);
+            let length = table.get_size();
+            let mut rows = Vec::with_capacity(length);
+            table.dump_into::<4>(&mut rows, Some(id as u32));
+            assert_eq!(rows.len(), length);
+            tables.push(Region { id: id as u32, offset, data: matrix(&rows) });
+            offset += length;
+        }
+    }
+    assert!(special.is_empty());
+    assert_eq!(tables.len(), kinds.len());
+    assert_eq!(serde_json::to_value(offsets).unwrap(), layout["table_offsets"]);
+    assert_eq!(offset, 5771521);
+    ReducedFixed {
+        version: 1,
+        field_modulus: MODULUS,
+        profile: "reduced_machine_fixed".into(),
+        generic_rows: offset,
+        public: ReducedPublic {
+            image_words: image.len(),
+            image: column(image.len(), 1u64 << 32, |i| image[i]),
+            delegation_csrs,
+            allow_non_determinism: true,
+        },
+        tables,
+    }
+}
+
 fn export_control_tables() -> ControlTables {
     let mut driver = TableDriver::<Mersenne31Field>::new();
     cs::machine::ops::unrolled::jump_branch_slt::jump_branch_slt_table_driver_fn(&mut driver);
@@ -649,6 +723,47 @@ fn export(mut image: Vec<u32>, text: Vec<u32>) -> Artifact {
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().collect();
+    if args.len() == 3 && args[1] == "--reduced-layout" {
+        use cs::cs::circuit::Circuit;
+        use cs::machine::ops::unrolled::compile_unified_circuit_state_transition;
+        use cs::machine::ops::unrolled::reduced_machine_ops::*;
+        let compiled = compile_unified_circuit_state_transition::<Mersenne31Field>(
+            &|cs| {
+                reduced_machine_table_addition_fn(cs);
+                for (kind, table) in create_reduced_machine_special_tables::<_, 6>(
+                    &[0xc0001073], &[1988, 1989],
+                ) {
+                    cs.add_table_with_content(kind, table);
+                }
+            },
+            &|cs| reduced_machine_circuit_with_preprocessed_bytecode::<_, _, 6>(cs),
+            1 << 20,
+            23,
+        );
+        std::fs::write(&args[2], serde_json::to_vec_pretty(&compiled)?)?;
+        return Ok(());
+    }
+    if (args.len() == 4 && args[1] == "--reduced-fixed-fixture")
+        || (args.len() == 6 && args[1] == "--reduced-fixed")
+    {
+        let (image, delegation_csrs) = if args.len() == 4 {
+            (vec![0x001080b3, 0xfff08113, 0x40208033, 0x000071b7,
+                  0x00005217, 0x0000a183, 0x0020a023, 0xc0001073], vec![1988, 1989])
+        } else {
+            let image = read_words(Path::new(&args[3]))?;
+            let delegation_csrs: Vec<u32> = serde_json::from_slice(&std::fs::read(&args[4])?)?;
+            if delegation_csrs.iter().any(|csr| *csr >= 4096) {
+                return Err(Error::new(ErrorKind::InvalidData, "expected 12-bit delegation CSR indices").into());
+            }
+            (image, delegation_csrs)
+        };
+        let artifact = export_reduced_fixed(Path::new(&args[2]), image, delegation_csrs);
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: ReducedFixed = serde_json::from_slice(&bytes)?;
+        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
     if (args.len() == 3 && args[1] == "--subword-decoder-fixture")
         || (args.len() == 4 && args[1] == "--subword-decoder")
     {

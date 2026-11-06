@@ -17,16 +17,15 @@ false. Subword retirement is therefore not a prerequisite for this machine.
 This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
-**The reduced machine has no execution soundness theorem yet.** The original
-21 October probe rejected the sign/high-byte selector. The resumed native intake
-and Clean emitter now retain its 114 quadratic/five linear equations, eight
-scalar/eight timestamp queries and two constant/four dynamic tagged slots, with
-141 logical variables and log-23 setup. Original decoder/state/direct memory
-coordinates and initialization/teardown/delegation-request coordinates remain
-explicit. Stage-two descriptors are retained as source data, without an argument
-enforcement interpretation. The fixed tagged setup table is an explicit input;
-its actual native contents, decoder membership and global acceptance are open.
-This is import/coverage work, not a source-defect finding.
+**The reduced machine has no execution soundness theorem yet.** The active
+[regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
+imports 117 native equations, 142 variables and a complete fourteen-region fixed
+pool. Original Clean acceptance derives its two actual sign/high-byte queries.
+The public fixture is explicit; general public configuration and other operation
+semantics, initialized execution and global/physical enforcement remain open.
+The historical 119-equation/141-variable/13-region artifact is preserved separately.
+It is not assumed to be the current source-generated machine. Stage-two source
+descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
 ## Current v3 adaptation (2026-11-06)
 
@@ -84,6 +83,53 @@ The earlier complete intake pass above is retained as its own checkpoint;
 unchanged ordinary-family builds were not repeated for this isolated addition.
 No production circuit code changed, no native defect was established and no
 new interface assumption was introduced.
+
+## Regenerated native reduced target and complete pool (6 November 2026)
+
+Fresh compilation of the unchanged pinned native Rust differs from the shipped
+historical JSON. It produces 112 quadratic/five linear equations, 142 logical
+variables, witness width 107 and 5,771,521 generic rows, including native
+truncation ID 47 at offset 5,705,985. The historical JSON has 114 quadratic/five
+linear equations, 141 variables, width 106 and 5,705,985 generic rows. Source,
+configuration and both artifacts are retained explicitly; the old file is not
+rewritten and their accepted relations are not assumed equivalent.
+
+[The full native table](Airbender/Review/Circuits/ReducedMachine/Tables/Native.lean)
+reads all fourteen actual exported regions, with all four fields and no added
+row. Its public fixture retains eight image words, delegation CSRs 1988/1989
+and the native enabled nondeterminism setting. Independent native CLI cases
+also check changed and empty public images/allow-lists and actual UNIMP padding.
+Literal blocks are split into small declarations at default recursion and
+heartbeat limits. No production circuit or machine code changed.
+
+[Tag isolation](Airbender/Proofs/ReducedMachine/NativePool.lean) proves each
+region's actual fourth column and recovers the certified sign/high-byte region
+from complete pool membership. The short [native row claim](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+then derives bounded keys, signs and high bytes for both constant queries from
+original Clean acceptance of the regenerated constraints. The six full query
+fields, common table, setup extent and changed initialization/request coordinates
+have independent [mechanical checks](Airbender/Proofs/ReducedMachine/NativeArtifactChecks.lean).
+No table-equivalence, desired-output or per-row numerical premise is supplied.
+
+Validation passes for targeted native modules, the expanded axiom module and
+historical import/emission regressions. All 592 importer controls pass
+(492 existing, 44 historical reduced, 17 sign/high-byte and 39 current native),
+as do all eight CLI inputs and 47 native compilation/export/input controls.
+The complete audit passes 2,353 axiom roots using only Lean's standard three,
+all 140 public Review theorem roots, guide links and layer separation. Provenance
+checks 80 byte-identical reused modules, seven historical plus one regenerated
+circuit artifact, 60 native sources, 23 setup artifacts and four exporter files;
+189 v3 source identities and 700 earlier backport identities remain exact.
+The original checkout and dependency versions are unchanged. Successful bounded
+checks stayed at or below 1497.71 MiB footprint and 3576.36 MiB resident; limits
+were unchanged and no live owned process remained. Unchanged ordinary execution
+modules retain their prior complete checkpoint, rather than a repeated broad build.
+
+The fixture does not establish arbitrary public ROM/CSR construction, semantics
+of all other tagged operations, physical setup, compiler refinement, decoder
+membership, initialized histories, delegation accounting or execution soundness.
+Those remain the next native-machine obligations. The historical checkpoint
+continues to have exactly its previous conditional meaning.
 
 ## Checked coverage
 
