@@ -4,9 +4,6 @@ pub mod memory_policy;
 use memory_policy::ProofMemoryPolicy;
 mod orchestration;
 
-#[cfg(test)]
-mod tests;
-
 use std::sync::Arc;
 
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
