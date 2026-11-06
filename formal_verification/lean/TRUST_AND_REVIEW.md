@@ -107,6 +107,18 @@ remain separate obligations. Generic tuple projections resolve the former
 allocation failure at unchanged proof/resource limits; no native defect or
 issue-handling assumption is established.
 
+[Actual native reduced logical history](Airbender/Review/Trace/Families/ReducedMachine/History.lean)
+now derives complete Clean consistency/newest reads and all clock ordering from
+public seed construction and accepted imported state/memory matching. The new
+registry uses regenerated native metadata, not an equivalence with the historical
+artifact. The public boundary supplies original Sail seed reads, starting PC and
+zero seed clocks; no per-row clock/order/intermediate state is an input. The
+modeled setup remains explicit and its meaning/physical enforcement is separate.
+This history theorem does not prove word ranges: decoded write preservation and
+shared range induction must still derive the missing low source bound. Neither
+four-tick terminal row accounting nor memory consistency is original instruction,
+protocol or terminal-state soundness.
+
 Production circuit and machine code must stay unchanged. Confirmed native issues
 are documented with their exact evidence and, where necessary, narrow explicit
 Review interface assumptions. Those premises neither fix an issue nor establish

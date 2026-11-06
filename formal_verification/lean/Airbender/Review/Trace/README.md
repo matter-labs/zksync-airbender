@@ -435,3 +435,15 @@ these standalone execution claims. Native reduced fixed setup and selector/opera
 connections precede initialized combined histories and original Sail execution.
 The [current v3 adaptation](../../../V3_ADAPTATION.md) keeps compiler, logical
 acceptance, initialization and worker boundaries explicit.
+
+## Actual regenerated reduced history
+
+[The native reduced history interface](Families/ReducedMachine/History.lean)
+now derives complete logical memory consistency/newest reads and local/prior
+clock ordering from actual public seed construction and accepted native matching.
+Its [registry](../Helpers/Context/ReducedMachine.lean) binds the independently
+regenerated117-equation target, all actual ports and explicit modeled setup,
+separately from historical JSON. Terminal clocks count four ticks per native
+row; terminal machine/protocol soundness is still separate. Source word bounds,
+public decoding and original instruction execution remain open. Review the
+[native trace guide](Families/ReducedMachine/README.md) for precise scope.

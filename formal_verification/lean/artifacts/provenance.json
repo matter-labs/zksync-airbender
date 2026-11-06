@@ -7230,6 +7230,52 @@
     {
       "path": "Tests/NativeReducedNumerics.lean",
       "change": "Eleven native full-pool boundary/rejection and selected-row regressions, including reversed right columns, last left carry and discarded-write numerical bounds. Positive pool rows use independently certified actual data at the native offset; these are not complete accepted execution fixtures."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Context/ReducedMachine.lean",
+      "change": "Adapt checked native family registration to the independently regenerated reduced117equation artifact, all actual ports/decoder/state columns and explicit four-field setup-table type. No historical artifact equivalence or execution meaning.",
+      "backport_reuse_revision": "f975c6dfe3ea20f2619b63b89a161dbd4448d374",
+      "backport_reuse_path": "Airbender/Review/Helpers/Context/ShiftBinop.lean",
+      "backport_reuse_sha256": "3882672b038b88d3d8bcb60e6765833d8b2b35d99cc14ddee0394d41d8f26d06"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeClockMetadata.lean",
+      "change": "Adapt exact metadata checks to native reduced previous clocks132/133,135/136,138/139, borrow bits134/137/140 and offsets0/1/2.",
+      "backport_reuse_revision": "f975c6dfe3ea20f2619b63b89a161dbd4448d374",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/ClockMetadata.lean",
+      "backport_reuse_sha256": "9d2da44a6929bde71c8aaa3bbab5ad3c0e023ec6c8641de5536718ccca569f50"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeTimestamp.lean",
+      "change": "Reuse original two-carry-equation and timestamp proof structure; extract actual native Boolean rows27..30, advance equations115/116 and all eight timestamp lookups8..15. No per-row clock bound/alignment/prior-value or schedule premise.",
+      "backport_reuse_revision": "f975c6dfe3ea20f2619b63b89a161dbd4448d374",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/Timestamp.lean",
+      "backport_reuse_sha256": "762ab790c36e4d7a8965da1b8a45e9708eae36690b7c0d62c67f74c99d9b36ba"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/History.lean",
+      "change": "Instantiate unchanged shared ClockLaws from actual regenerated native equations and metadata. Derive all local/prior clock inputs, strict access order and terminal4tick row count from public seed construction and accepted matching.",
+      "backport_reuse_revision": "f975c6dfe3ea20f2619b63b89a161dbd4448d374",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ShiftBinop/History.lean",
+      "backport_reuse_sha256": "a617ce0c3841b21e18ec6787ed015b47528d23d462f27ed9ebe9b3683d682e11"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/History.lean",
+      "change": "Reuse short public logical memory-history and latest-read assembly for actual reduced rows; add short public derived-clock/terminal-count claim. Word ranges, canonical source keys, instruction execution and physical enforcement remain separate.",
+      "backport_reuse_revision": "f975c6dfe3ea20f2619b63b89a161dbd4448d374",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ShiftBinop/History.lean",
+      "backport_reuse_sha256": "7a74fd7711f5e17457cfa578ba808cc44b000e006f6b7811e389878428005504"
+    },
+    {
+      "path": "Tests/NativeReducedHistory.lean",
+      "change": "Four conditional native clock/history regressions: low-limb carry, finite timestamp epoch overflow rejection, initialized nonpreceding read rejection and wrong terminal row count rejection. Not complete accepted117equation execution fixtures."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/History.lean",
+      "change": "Reuse exact prior public seed/matching memory-history and latest-read assembly, moved under Proofs; public reduced Review claims remain short aliases.",
+      "backport_reuse_revision": "f975c6dfe3ea20f2619b63b89a161dbd4448d374",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ShiftBinop/History.lean",
+      "backport_reuse_sha256": "7a74fd7711f5e17457cfa578ba808cc44b000e006f6b7811e389878428005504"
     }
   ],
   "setup_artifacts": [

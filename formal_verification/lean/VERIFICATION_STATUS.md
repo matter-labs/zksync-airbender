@@ -330,6 +330,50 @@ provenance and guide/layer gates. The prior 592 importer controls, eight CLI inp
 and 47 native generation/export controls retain unchanged inputs. No native
 issue or new interface restriction is established; parity remains open.
 
+## Native reduced initialized clocks and logical history (6 November 2026)
+
+The [new registry](Airbender/Review/Helpers/Context/ReducedMachine.lean) binds the
+actual regenerated 117-equation artifact, imported state/decoder columns, all
+three actual mixed/register ports and an explicit four-field modeled setup-table
+type. It remains separate from the historical shipped artifact. Clock/history
+correctness does not certify the setup table's arithmetic, arbitrary public
+configuration or physical argument enforcement.
+
+[Native timestamp extraction](Airbender/Proofs/ReducedMachine/NativeTimestamp.lean)
+checks actual Boolean equations 27..30, both final-clock equations 115/116 and
+all eight timestamp queries 8..15. [Exact clock metadata](Airbender/Proofs/ReducedMachine/NativeClockMetadata.lean)
+retains previous-clock pairs 132/133, 135/136 and 138/139, actual borrow bits
+134/137/140 and port offsets 0/1/2. These obligations now instantiate the unchanged
+shared clock contract. No local clock, alignment, prior-value, ordering or
+intermediate-state answer is supplied.
+
+Two [short public history claims](Airbender/Review/Trace/Families/ReducedMachine/History.lean)
+now derive a complete Clean-consistent memory history and newest preceding read
+for every actual native port from original Sail public seed/PC construction and
+accepted native state/memory matching. They also derive every local/prior clock
+input, strict access ordering and exactly four terminal ticks per participating
+row. Readonly refreshes, mixed addresses and actual masked writes stay in matching.
+The claims allow unordered row lists; the existing shared proofs derive chronology.
+
+[Four conditional regressions](Tests/NativeReducedHistory.lean) retain low-clock
+carry, reject finite timestamp-epoch overflow, reject a nonpreceding read using
+derived initialization clocks, and reject incorrect terminal row accounting.
+These are consequences of actual native acceptance, not complete positive
+117-equation execution fixtures. All affected bounded modules, 2,497 explicit
+standard-only axiom roots, 152 public Review roots and exact provenance/guide/layer
+gates pass at unchanged resource settings, with no owned survivors.
+
+Native Rust explicitly relies on initialized RAM consistency rather than a local
+source-one low-limb range check. This new logical history connection is necessary
+but does not by itself derive word ranges. The next range step must establish
+native write preservation for supported decoded combined operations and feed
+that proved rule into shared initialized range induction. No desired read/range,
+write-preservation or result premise is added to the public claims. Canonical
+source-key binding, complete shift words, public decoding/rd/x0, numerical PC,
+original instruction execution and worker/protocol/padding/terminal/init boundaries
+remain open. The four-tick clock conclusion is not terminal machine/protocol
+soundness. No native defect or issue-handling assumption is established.
+
 ## Checked coverage
 
 | Circuit | Coverage |

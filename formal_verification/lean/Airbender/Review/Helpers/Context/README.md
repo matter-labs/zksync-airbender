@@ -108,3 +108,16 @@ successors; actual GPR history supplies code/misa frames and decoder replay.
 [All twenty-four cases and empty execution](../../../../Tests/ShiftFetched.lean)
 retain exact terminal values and twelve x0 retirements. Remaining ordinary/subword,
 CSR/delegation and unified protocol coverage is still separate.
+
+## Actual native reduced context
+
+[The regenerated reduced registry](ReducedMachine.lean) retains actual native
+state/decoder columns, all three mixed/register ports and an explicit four-field
+modeled setup type. [Native clock extraction](../../../Proofs/ReducedMachine/NativeTimestamp.lean)
+and [exact metadata](../../../Proofs/ReducedMachine/NativeClockMetadata.lean)
+discharge the shared clock contract. [Public initialized history](../../Trace/Families/ReducedMachine/History.lean)
+then derives all local/prior clocks, chronology, logical Clean memory consistency
+and latest reads from original public seeds and native matching. These context
+definitions introduce no whole-execution dependency. Word ranges still need
+proved decoded write preservation and shared range induction; original execution
+and physical/protocol/terminal/init enforcement are separate.

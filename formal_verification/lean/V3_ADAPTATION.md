@@ -164,3 +164,21 @@ their resource gap. No circuit/importer/data/dependency change or new assumption
 is used. Canonical architectural source-key binding, original public decoding,
 initialized reads, complete shifted words, numerical PC and execution remain
 open, followed by worker/protocol/terminal/init boundaries. This is not parity.
+
+## Actual combined initialized clock and memory-history connection
+
+The [regenerated reduced registry](Airbender/Review/Helpers/Context/ReducedMachine.lean)
+now connects actual native metadata and explicit modeled setup to the shared
+trace representation. Native equations 27..30/115/116 and timestamp lookups 8..15
+prove the clock contract, independently of operation arithmetic. The
+[short public history interface](Airbender/Review/Trace/Families/ReducedMachine/History.lean)
+derives complete Clean logical consistency/newest reads, all local/prior clocks,
+strict access order and terminal four-tick row accounting from original public
+seed reads and accepted native matching. Four conditional regressions, all 2,497
+standard-only axiom roots,152 public Review roots and exact provenance/guide gates
+pass with unchanged limits. No production circuit/data/importer/dependency changed.
+This is a checked native v2 connection using exact prior-backport proof origins,
+not coverage transfer from the similarly named v3 reduced target. Derived word
+ranges still require decoded native write preservation and initialized induction;
+canonical source keys, original decoding/execution and machine/protocol/terminal
+boundaries remain open. No defect, new restriction or parity claim is introduced.

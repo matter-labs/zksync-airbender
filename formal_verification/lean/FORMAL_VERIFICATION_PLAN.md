@@ -52,6 +52,14 @@ Full combined row effects and execution remain pending. See the
    allocation gap is closed by generic projections and separate proof units,
    without increasing limits or adding result/equivalence premises.
 3. Compose initialized combined histories, public decoding and original execution.
+   Actual regenerated reduced timestamp equations and all eight timestamp queries
+   now discharge the unchanged shared clock contract. Public seed construction
+   plus accepted native state/memory matching derive full logical memory history,
+   newest preceding reads, all local/prior clock bounds and terminal four-tick
+   row accounting. This does not derive word ranges: prove decoded native write
+   preservation across supported combined operations before using shared range
+   induction to recover the missing source-one low-limb bound. Public decoding,
+   actual rd/x0 and original execution remain unfinished.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.
 

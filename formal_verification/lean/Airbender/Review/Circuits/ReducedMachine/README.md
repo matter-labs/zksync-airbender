@@ -140,3 +140,11 @@ bounds. They are not full accepted execution fixtures. Canonical architectural
 source-key binding, original decoding/mask and rd/x0, initialized reads, complete
 word results, numerical PC+4/wraparound and execution/protocol boundaries remain
 open. No source-range, result or equivalence premise is added.
+
+[Actual initialized clocks and logical memory history](../../Trace/Families/ReducedMachine/History.lean)
+now connect this regenerated artifact's ports and clock equations to public
+seed construction and accepted native matching. Newest reads and four-tick
+terminal row accounting follow without supplied local clocks/order or expected
+reads. Word-range preservation, source-key binding, decoding and original
+execution remain separate obligations; memory consistency alone is not a
+source-bound theorem. See the [native trace guide](../../Trace/Families/ReducedMachine/README.md).

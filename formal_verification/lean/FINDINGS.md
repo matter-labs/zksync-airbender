@@ -101,6 +101,13 @@ proof completion are neither circuit defects nor fixes. Public decoding/mask,
 canonical architectural source-key binding, initialized reads, complete word,
 rd/x0, numerical PC and execution remain unfinished connections. No new
 restriction or issue-handling assumption is introduced.
+The [regenerated native initialized history](Airbender/Review/Trace/Families/ReducedMachine/History.lean)
+now supplies logical memory consistency, newest reads and native clock/row
+accounting from public initialization and accepted matching. Missing local source
+ranges are an explicit native history design; establishing write preservation
+and initialized range induction is still proof work. No accepted bad history or
+source defect is exhibited by that unfinished connection. Word/execution and
+physical/protocol boundaries remain separate.
 Confirmed native-v2 defects remain zero.
 
 ## Open bindings

@@ -1,3 +1,4 @@
+import Tests.NativeReducedHistory
 import Tests.NativeReducedNumerics
 import Airbender.Proofs.ReducedMachine.NativeShiftColumns
 import Tests.NativeReducedWrite
@@ -2684,3 +2685,18 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedNumerics.corrupted_left_carry_rejected
 #print axioms Tests.NativeReducedNumerics.outside_key_rejected
 #print axioms Tests.NativeReducedNumerics.discarded_contributions_bounded
+#print axioms Airbender.ReducedMachine.NativeClockProofs.clock_columns
+#print axioms Airbender.ReducedMachine.NativeClockProofs.memory_clocks
+#print axioms Airbender.ReducedMachine.NativeClockProofs.memory_offsets
+#print axioms Airbender.ReducedMachine.NativeClockProofs.timestamp_equations
+#print axioms Airbender.ReducedMachine.NativeClockProofs.final_clock_bound
+#print axioms Airbender.ReducedMachine.NativeClockProofs.clock_advance
+#print axioms Airbender.ReducedMachine.NativeClockProofs.clock_effects
+#print axioms Airbender.Trace.Proofs.native_reduced_image_clocks
+#print axioms Airbender.ReducedMachine.Native.public_memory_soundness
+#print axioms Airbender.ReducedMachine.Native.public_clock_soundness
+#print axioms Tests.NativeReducedHistory.low_clock_carry
+#print axioms Tests.NativeReducedHistory.clock_epoch_overflow_rejected
+#print axioms Tests.NativeReducedHistory.nonpreceding_read_rejected
+#print axioms Tests.NativeReducedHistory.wrong_terminal_steps_rejected
+#print axioms Airbender.Trace.Proofs.native_reduced_image_memory
