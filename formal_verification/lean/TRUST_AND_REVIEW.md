@@ -144,6 +144,19 @@ profile, not all combined operations, original Sail GPR/cell/result execution,
 numerical PC or machine/protocol terminal closure. Existing native preprocessing,
 fixed-ROM configuration and physical enforcement boundaries stay separate.
 
+[Complete native RV32 shift words](Airbender/Review/Trace/Families/ReducedMachine/Results.lean)
+now follow for the initialized selected profile. The public theorem derives both
+canonical candidates and original-rd/x0-masked actual writes from the existing
+public seed/decoder/matching inputs, with no source range or desired result added.
+Only unchanged pure contribution/whole-word arithmetic lemmas are reused; actual
+reduced tables and equations provide the native connection. [References](Airbender/Review/Circuits/ReducedMachine/ShiftResult.lean)
+remain numerical RV32 word operations. They are not original pre-row Sail GPR
+observations or executed clauses. Native source-two address/readonly binding,
+Sail cell/GPR transport, numerical PC and instruction execution remain open,
+along with other combined operations and protocol/terminal/init. The fixed
+public fixture and general compiler/preprocessing/ROM/physical boundaries stay
+separate. Numerical/rejection tests do not assert a complete accepted execution.
+
 Production circuit and machine code must stay unchanged. Confirmed native issues
 are documented with their exact evidence and, where necessary, narrow explicit
 Review interface assumptions. Those premises neither fix an issue nor establish

@@ -7448,6 +7448,104 @@
     {
       "path": "Airbender/Review/Trace/Families/ReducedMachine/FixedData.lean",
       "change": "Construct a trace with the exact checked native fixed pool while retaining all rows and explicit state/memory boundaries. This selects acceptance at a concrete reference and assumes no equivalence with arbitrary tables; native public fixture/fidelity scope unchanged."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/ShiftResult.lean",
+      "change": "Retain identical RV32 left/logical/arithmetic numerical references for actual native reduced read/candidate/write observables. This is not Sail state execution or an equivalence with split native constraints.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/ResultsModel.lean",
+      "backport_reuse_sha256": "8a6fd7633fd2a5b25aa681e911f6ad35ac9eb05ea17ea8b8823d24cdd719817b"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftWords.lean",
+      "change": "Instantiate the unchanged pure checked contribution-bit identity at the derived natural limb/amount key. No split table membership or native equation is transferred.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLowMath.lean",
+      "backport_reuse_sha256": "dc579f90818191c9944d9bf3bd80e60016bacb6291a5c8bbf25f96ffb9c629b5"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftWords.lean",
+      "change": "Instantiate the unchanged pure checked contribution-bit identity at the derived natural limb/amount key. No split table membership or native equation is transferred.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighMath.lean",
+      "backport_reuse_sha256": "448cb4ae49ba3fb6f76c5eedfbcaaf550beeea07c48ac237e791ae5ac35b825c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftWords.lean",
+      "change": "Instantiate the unchanged pure checked contribution-bit identity at the derived natural limb/amount key. No split table membership or native equation is transferred.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowMath.lean",
+      "backport_reuse_sha256": "471c7ffdae1ef7260838a438e3cd7ac1849d6be1dbd05c22a2ce8a861adcb818"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftWords.lean",
+      "change": "Instantiate the unchanged pure checked contribution-bit identity at the derived natural limb/amount key. No split table membership or native equation is transferred.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighMath.lean",
+      "backport_reuse_sha256": "3b9ad8145ac9c4bf2eda6a9be703d094524d73aeeb2b0b41fdbe9fdfa6a15dbf"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftWords.lean",
+      "change": "Copy word_shift_amount unchanged; retain all high operand values and original low-five-bit semantics. Filler connection is new, closed over all 32 amounts with the actual zero-shift exception.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/Results.lean",
+      "backport_reuse_sha256": "19f278c7fb7c8a590ef2af86909105eb17d7e9c1a3548b566f178f6deb0b538e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftAssembly.lean",
+      "change": "Reuse unchanged pure whole-RV32 limb assembly after proving the actual reduced natural candidate equals those contributions. No table, output or intermediate-state premise; new symbolic word sum/complement calculation.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/SllLimbResult.lean",
+      "backport_reuse_sha256": "08e6c81da8cf8e0df17c8d738f796a0328dfaa17a407692c2c4ef33a85e4e74b"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftAssembly.lean",
+      "change": "Reuse unchanged pure whole-RV32 limb assembly after proving the actual reduced natural candidate equals those contributions. No table, output or intermediate-state premise; new symbolic word sum/complement calculation.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/SrlLimbResult.lean",
+      "backport_reuse_sha256": "a0e1520ea20674f0d576d7ead84fc44c707d6a2cab1bf91e3e4fdca922f983cb"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftAssembly.lean",
+      "change": "Reuse unchanged pure whole-RV32 limb assembly after proving the actual reduced natural candidate equals those contributions. No table, output or intermediate-state premise; new symbolic word sum/complement calculation.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/SraLimbResult.lean",
+      "backport_reuse_sha256": "ffb939e98b1082b6ac3e28bea803d0c99186378d4f937f5c9135b16442c4f544"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftResult.lean",
+      "change": "Compose actual native candidate values/bounds and derived amounts with complete RV32 word assembly. Local source bound remains internal and is discharged by initialized public history.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftBounded.lean",
+      "backport_reuse_sha256": "d677f7bffc12aa26ec734897096685b4d2ee790fbc64163fac08c55dcc4ed6d2"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftResult.lean",
+      "change": "Adapt canonical Word.eq_of_value lifting and actual decoded x0 masking to independently checked native reduced candidate/write equations; no split-family constraint transfer.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/Results.lean",
+      "backport_reuse_sha256": "19f278c7fb7c8a590ef2af86909105eb17d7e9c1a3548b566f178f6deb0b538e"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/Results.lean",
+      "change": "Reuse exact native initialized read-bound/public-decoder assembly, now deriving canonical complete RV32 candidate/write words. No public source bound, result answer or table-equivalence premise.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/Sources.lean",
+      "backport_reuse_sha256": "ae9a2657b2e912f81d416f03cc06bdbab595b6795188a9a80042023f232e7de8"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/Results.lean",
+      "change": "Retain small public initialized native interface and exact concrete fixedData selection. State/cell/GPR transport, numerical PC, execution and physical/setup fidelity remain separate.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/Sources.lean",
+      "backport_reuse_sha256": "55045554e736e38dfebabd153129f521732948ab5f927bd4299f5e7facd52122"
+    },
+    {
+      "path": "Tests/NativeReducedResults.lean",
+      "change": "Eight RV32 numerical/rejection/x0/initialized consequence roots. Exact cross-limb and last-amount word values, negative zero shift, positive arithmetic, encoded/high operand counts, rejected logical-vs-arithmetic confusion and retained x0 candidates. Not full positive 117-equation fixtures.",
+      "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
+      "backport_reuse_path": "Tests/NativeReducedRanges.lean",
+      "backport_reuse_sha256": "1a80da71a4e0562128359d6816470930af7c4072751f6afb9366de38de94243e"
     }
   ],
   "setup_artifacts": [

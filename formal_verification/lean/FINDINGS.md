@@ -121,6 +121,11 @@ attempts hit the allocation cap; symbolic proofs replace them at unchanged limit
 These resource failures and proof completion are neither native defects nor fixes.
 Other combined profiles, original Sail execution and physical/protocol boundaries
 remain open.
+[Complete initialized native RV32 shift words](Airbender/Review/Trace/Families/ReducedMachine/Results.lean)
+now close the selected profile's numerical candidate and actual masked-write
+connection. This is proof progress, not a native defect or fix. Original Sail
+cell/GPR transport, numerical PC and executed instruction/protocol behavior
+remain unproved. No issue-handling assumption is introduced.
 Confirmed native-v2 defects remain zero.
 
 ## Open bindings

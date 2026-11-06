@@ -215,3 +215,24 @@ provenance/guide gates pass. Production/native data and dependencies are unchang
 This is a checked native connection for the selected shift profile, not all combined
 operations, original Sail GPR/cell/word execution, numerical PC, physical/preprocessing
 fidelity, protocol/terminal closure or parity.
+
+## Complete initialized native RV32 shift words
+
+[The selected original-shift result](Airbender/Review/Trace/Families/ReducedMachine/Results.lean)
+now derives exact canonical RV32 candidates and actual decoded x0-masked writes
+from initialized native ranges and original public decoding. New symbolic native
+word assembly reuses unchanged pure contribution/whole-RV32 lemmas after the
+actual v2 table/query/candidate connection. No v3 or old split-family native
+constraint/table/result is transferred by assumption. The public contract adds
+no source range, expected read/write, table equivalence or intermediate state.
+All 32amounts, native right-output order, arithmetic zero shift and discarded
+candidate participation remain intact. Eight new numerical/rejection/initialized
+consequence regressions pass; they are not full positive 117-equation fixtures.
+
+The bounded audit passes 2,569 standard-only axiom roots and 156 public Review
+roots at unchanged limits. Native data/configuration and all importer/exporter
+inputs are unchanged. Original Sail cell/GPR transport, native source-two address
+and readonly binding, numerical PC/wraparound, instruction execution, other
+combined profiles, workers/accounting and protocol/padding/terminal/init remain
+required for parity. General preprocessing/ROM/physical/compiler fidelity stays
+separate. No native defect or new issue-handling assumption is established.

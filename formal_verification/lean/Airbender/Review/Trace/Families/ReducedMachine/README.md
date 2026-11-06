@@ -64,3 +64,16 @@ retain shift/sign boundaries, reject oversized actual reads/writes and preserve
 bounded x0 source participation. No complete positive117-equation execution
 fixture is asserted. Other combined profiles, original Sail GPR/cell/word effects,
 numerical PC and preprocessing/physical/protocol/terminal/init remain separate.
+
+## Complete initialized RV32 shift results
+
+[The short public result](Results.lean) now derives canonical complete candidate
+words and actual decoded x0-masked writes from public initialization, full
+original shift decoding and concrete fixed-pool acceptance. No source range,
+result answer or per-row preservation rule is supplied. [Proof assembly](../../../../Proofs/Trace/Families/ReducedMachine/Results.lean)
+uses the already derived native read bounds and original entry fields.
+[Eight regressions](../../../../../Tests/NativeReducedResults.lean) retain
+numerical boundaries, corrupted arithmetic rejection and discarded candidates.
+Original Sail cell/GPR transport, native source-two port binding, numerical PC
+and instruction execution remain open, as do other combined profiles and
+worker/protocol/padding/terminal/init and physical/setup correspondence.

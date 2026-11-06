@@ -54,10 +54,11 @@ Full combined row effects and execution remain pending. See the
    every read/write/terminal word bound and both canonical source keys from public
    seeds, original public decoding and actual fixed-pool native acceptance. Internal
    natural candidate values/bounds and masked-write preservation are proved for
-   all 32 amounts, including x0 and arithmetic zero shift. Complete RV32 word/Sail
-   result correspondence, other profiles, architectural cell/GPR execution and
-   numerical PC successor remain open. The former projection
-   allocation gap is closed by generic projections and separate proof units,
+   all 32 amounts, including x0 and arithmetic zero shift. Complete canonical RV32
+   candidate/write results now follow from those initialized ranges, actual native
+   equations and original decoded rd/x0. Original Sail cell/GPR transport and
+   instruction execution, other profiles and numerical PC successor remain open.
+   The former projection allocation gap is closed by generic projections and separate proof units,
    without increasing limits or adding result/equivalence premises.
 3. Compose initialized combined histories, public decoding and original execution.
    Actual regenerated reduced timestamp equations and all eight timestamp queries
@@ -68,8 +69,9 @@ Full combined row effects and execution remain pending. See the
    range induction and derives the formerly unchecked low source limb, all other
    native word ranges and both canonical source keys. Concrete fixedData selects
    the actual certified native pool without an equivalence premise. Extend proved
-   local preservation/public decoding to other combined operations; original cell,
-   GPR and full instruction execution remain unfinished.
+   local preservation/public decoding to other combined operations. Selected-shift
+   canonical RV32 words now follow, while original cell/GPR and full instruction
+   execution remain unfinished.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.
 

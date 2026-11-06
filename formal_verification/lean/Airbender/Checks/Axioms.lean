@@ -1,3 +1,4 @@
+import Tests.NativeReducedResults
 import Tests.NativeReducedRanges
 import Tests.NativeReducedDecoder
 import Tests.NativeReducedHistory
@@ -2753,3 +2754,24 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedRanges.fixed_setup_exact
 #print axioms Tests.NativeReducedRanges.both_native_key_boundaries
 #print axioms Tests.NativeReducedRanges.discarded_write_ranges
+#print axioms Airbender.ReducedMachine.NativeShiftWordProofs.left_low
+#print axioms Airbender.ReducedMachine.NativeShiftWordProofs.left_high
+#print axioms Airbender.ReducedMachine.NativeShiftWordProofs.right_low
+#print axioms Airbender.ReducedMachine.NativeShiftWordProofs.right_high
+#print axioms Airbender.ReducedMachine.NativeShiftWordProofs.filler_bits
+#print axioms Airbender.ReducedMachine.NativeShiftWordProofs.word_shift_amount
+#print axioms Airbender.ReducedMachine.NativeShiftWordProofs.left_assembly
+#print axioms Airbender.ReducedMachine.NativeShiftWordProofs.right_assembly
+#print axioms Airbender.ReducedMachine.NativeShiftWordProofs.assembled_result
+#print axioms Airbender.ReducedMachine.NativeShiftResultProofs.candidate_result
+#print axioms Airbender.ReducedMachine.NativeShiftResultProofs.decoded_result
+#print axioms Airbender.ReducedMachine.NativeShiftRangeProofs.image_shift_results
+#print axioms Airbender.ReducedMachine.Native.public_shift_results
+#print axioms Tests.NativeReducedResults.cross_limb_results
+#print axioms Tests.NativeReducedResults.last_amount_results
+#print axioms Tests.NativeReducedResults.negative_zero_shift
+#print axioms Tests.NativeReducedResults.positive_arithmetic
+#print axioms Tests.NativeReducedResults.operand_low_five_bits
+#print axioms Tests.NativeReducedResults.corrupted_arithmetic_rejected
+#print axioms Tests.NativeReducedResults.discarded_result_retained
+#print axioms Tests.NativeReducedResults.initialized_zero_write

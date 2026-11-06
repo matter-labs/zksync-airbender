@@ -131,3 +131,13 @@ reuse shared time induction and original public seeds; [canonical source keys](.
 derive the native natural packing without a low-read or key premise. These are
 selected-shift trace conclusions; original Sail GPR/cell execution, other combined
 profiles and preprocessing/physical/protocol/terminal boundaries remain open.
+
+## Native reduced complete numerical shift results
+
+[The initialized result claim](../../Trace/Families/ReducedMachine/Results.lean)
+now derives full canonical RV32 candidates and original-rd/x0 actual writes
+from proved native source bounds, public decoding and concrete fixed-pool
+acceptance. The context registry and explicit public fixture are unchanged.
+No range/result/table-equivalence answer is added to the public interface.
+Original Sail cell/GPR transport, numerical PC/instruction execution and
+physical/setup/protocol/terminal boundaries remain separate.

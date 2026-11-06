@@ -7,7 +7,7 @@ not completed v2 coverage.
 
 ## User priority: native reduced machine (2026-10-21)
 
-Work directly on the [actual combined reduced circuit](../../cs/reduced_machine_preprocessed_layout.json)
+Work directly on the [actual regenerated combined reduced circuit](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 and its original Sail execution connection now. The six standalone-family
 checkpoints are reusable components; they do not establish reduced-machine
 coverage. Do not complete remaining standalone/subword work first. The
@@ -467,10 +467,50 @@ unchanged ceilings. All affected bounded modules, 2,548 explicit standard-only
 axiom roots, 155 public Review roots and exact provenance/guide/layer gates pass.
 No native defect, circuit fix or new issue-handling assumption is introduced.
 
+## Native reduced complete RV32 shift words (6 November 2026)
+
+[The short initialized result claim](Airbender/Review/Trace/Families/ReducedMachine/Results.lean)
+now derives canonical complete RV32 candidate words and actual masked destination
+writes for selected original shifts. Public initialization, complete original
+public shift decoding and acceptance against concrete fixedData supply all source
+ranges; no source, expected result, write-preservation rule or intermediate state
+is added to the public interface. Original rd/x0 determines whether the actual
+write is zero, while the actual candidate/read participation is retained.
+
+[Observables and references](Airbender/Review/Circuits/ReducedMachine/ShiftResult.lean)
+remain under Review. [Pure contribution words](Airbender/Proofs/ReducedMachine/NativeShiftWords.lean)
+instantiate unchanged checked arithmetic identities; [complete assembly](Airbender/Proofs/ReducedMachine/NativeShiftAssembly.lean)
+reuses the prior pure RV32 limb-result lemmas only after a new symbolic natural
+word/filler connection. The arithmetic-zero exception, reversed native right
+output order and all 32 amounts are retained. [Actual native result lifting](Airbender/Proofs/ReducedMachine/NativeShiftResult.lean)
+uses the already checked candidate bounds/equations and decoded x0 mask.
+[Trace assembly](Airbender/Proofs/Trace/Families/ReducedMachine/Results.lean)
+discharges the internal source-bound premise from initialized history. No split
+native table, mask or constraint is assumed equivalent.
+
+[Eight regressions](Tests/NativeReducedResults.lean) check exact cross-limb and
+last-amount words for all three shifts, negative arithmetic zero shift, all 32
+positive arithmetic amounts, encoded SRAI/high-operand low-five-bit selection,
+rejection of a logical result for a negative arithmetic shift, discarded writes
+with the real candidate retained, and initialized all-zero-write consequences.
+They are numerical and conditional native consequences, not full positive
+117-equation accepted execution fixtures.
+
+All affected bounded modules, 2,569 standard-only axiom roots and 156 public
+Review roots pass with exact provenance, guides and layer gates. Full Review used
+538.91 MiB footprint and 3095.23 MiB resident at unchanged ceilings, with no
+owned survivors. Original Sail
+cell/GPR transport, native source-two address/readonly binding, numerical PC+4
+and wraparound, original instruction execution, other combined profiles and
+worker/protocol/padding/terminal/init remain open. The native fixed public fixture,
+compiler/preprocessing/ROM and physical enforcement boundaries are unchanged.
+No native defect or issue-handling assumption is established.
+
 ## Checked coverage
 
 | Circuit | Coverage |
 | --- | --- |
+| [Native combined reduced](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean) | Actual 117-equation artifact and complete native fixed pool. Selected original public shifts derive initialized ranges, canonical keys and [complete RV32 candidates/actual x0-masked writes](Airbender/Review/Trace/Families/ReducedMachine/Results.lean). Original Sail cell/GPR transport, numerical PC, instruction execution, other combined profiles and protocol/terminal/init remain open. The historical shipped JSON is distinct. |
 | [ADD/SUB](Airbender/Review/Circuits/AddSub/Theorems.lean) | Conditional ADD/ADDI/SUB/LUI/AUIPC destination and original Sail PC/register effects. Packed native masks derive the eight selector bits. The actual masked destination write is observed. Aligned PC wraparound and discarded x0 writes are included. |
 
 | Integration | Coverage |

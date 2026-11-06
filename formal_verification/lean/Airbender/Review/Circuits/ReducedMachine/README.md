@@ -168,3 +168,17 @@ write preservation; unchanged time induction derives the formerly unchecked low
 source limb from public seeds and matching. [Concrete setup selection](../../Trace/Families/ReducedMachine/FixedData.lean)
 uses the actual pool without table equivalence. Full RV32 word/Sail cell/GPR
 execution, numerical PC, other profiles and protocol/physical boundaries remain open.
+
+## Complete RV32 shift words
+
+[References and actual word observables](ShiftResult.lean) retain native source,
+selected operand, candidate and write mappings. The [initialized public claim](../../Trace/Families/ReducedMachine/Results.lean)
+derives canonical RV32 candidates and original-rd/x0 actual writes without a
+public range/result premise. [Pure assembly](../../../Proofs/ReducedMachine/NativeShiftAssembly.lean)
+reuses only unchanged arithmetic lemmas after the native numerical connection;
+[actual lifting](../../../Proofs/ReducedMachine/NativeShiftResult.lean) uses the
+regenerated candidate/write equations. [Eight regressions](../../../../Tests/NativeReducedResults.lean)
+retain all shift/sign/count boundaries and discarded candidates. This is not
+original Sail cell/GPR transport, PC/instruction execution or a full positive
+117-equation fixture. Other combined profiles and setup/physical/protocol
+boundaries remain separate.
