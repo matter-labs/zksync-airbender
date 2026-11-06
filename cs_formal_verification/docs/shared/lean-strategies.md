@@ -46,13 +46,23 @@ runs the images and the delegations on sample inputs: a test, not needed for the
   through the import graph). Wall time is bounded by the critical path, not the sum.
 - Measure on a quiet machine. Timings under parallel load are off by 2–4×; compare CPU (user) time when you can't.
 
-### 1.3 Lake has no early cutoff
+### 1.3 Lake rebuilds importers when a module's `.olean` changes
 
-Lake rebuilds every module downstream of a changed file, even for a comment edit (`touch` alone does not trigger
-it; it hashes content). So:
+Lake rebuilds a module when its source (or an input file it reads, such as a circuit JSON) changes; it hashes
+content, so `touch` alone does nothing. If the rebuilt `.olean` is byte-identical (an edit to a comment or to
+whitespace outside any declaration), importers are only replayed, not rebuilt. But the `.olean` holds every
+statement and every definition and proof body, so any other edit (one line of one proof included) rebuilds every
+module downstream, transitively. So:
 - An edit to a widely imported file costs a large rebuild. Keep such files small and stable, and keep imports narrow.
 - A proof should import the smallest module that states what it needs (an interface or contract), not the module
   that proves or defines everything (2.1, 2.2).
+- Data read at elaboration is part of the module that reads it. A definition that depends on one circuit's artifact
+  (an instance or table built from it) goes in its own small module, imported only by what uses that circuit, so a
+  JSON edit rebuilds that circuit's chain and not every module built on the shared definitions. Text embedded
+  verbatim (source bytes) makes even a whitespace edit to the data rebuild that chain.
+- `getUsedConstants` over statements and bodies (`ConstantInfo.value? (allowOpaque := true)`; plain `value?`
+  omits theorem bodies) gives the real dependency of each declaration; compare it with the import graph to find
+  imports that only pass a dependency through.
 - The machine includes its delegation (precompile) semantics, so an edit to a delegation definition rebuilds
   everything that depends on the machine. Batch such edits.
 
@@ -139,6 +149,10 @@ into parts built in parallel and glues them back with unchanged statements; use 
   (`obtain ⟨x, hx⟩ : ∃ x, x = … := ⟨_, rfl⟩`).
 - `split`/`split_ifs` also split `if`s hidden inside definitions and proof terms; use `by_cases` with a named
   hypothesis where that matters.
+- Witness and regression tests: never make the kernel evaluate hundreds of concrete constraints (`decide`,
+  `with_unfolding_all decide`, a large `simp` followed by `decide`). Prove once per circuit family that the honest
+  assignment built from valid inputs satisfies every constraint and lookup, and let each test check only its input
+  facts.
 - Heartbeat limits are regression guards: set a small explicit limit a little above the measured cost, never `0`.
   A proof that hits it got slower and should be fixed, not given more budget.
 
