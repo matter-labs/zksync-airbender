@@ -33,18 +33,10 @@ private def assignmentWith (address : ZMod babyBearModulus) : Nat → ZMod babyB
 private def assignment (family : Delegation.Family) := assignmentWith (Delegation.Requests.csr family)
 
 private theorem public_image (family : Delegation.Family) :
-    UnifiedReduced.Caller.programImage (before family) [0] = some [Tests.DelegationCaller.entry family] := by
-  have bytes : (Cell.ram 0).read (before family) =
-      .ok (Tests.DelegationCaller.entry family).bits (before family) :=
-    written_word_read Tests.BigintMemory.before 0 (Tests.DelegationCaller.entry family).bits
-  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry family).bits = some (Tests.DelegationCaller.entry family).instruction :=
-    Tests.DelegationCaller.original_decoder family
-  have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry family).instruction =
-      some (Tests.DelegationCaller.entry family).data := Tests.DelegationCaller.metadata family
-  simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage,
-    programImageWith, List.mapM_cons, List.mapM_nil, programEntryWith,
-    bytes, decoded, fields, bind, Option.bind, pure]
-  rfl
+    UnifiedReduced.Caller.programImage (before family) [0] = some [Tests.DelegationCaller.entry family] :=
+  Tests.DelegationCaller.single_entry (by decide)
+    (written_word_read Tests.BigintMemory.before 0 (Tests.DelegationCaller.entry family).bits)
+    (Tests.DelegationCaller.original_decoder family) (Tests.DelegationCaller.metadata family)
 
 private theorem generic_core (state : State) (address : ZMod babyBearModulus) (addressBound : address.val < limbBase) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignmentWith address))
@@ -359,9 +351,7 @@ private theorem mixedInputs : UnifiedReduced.Caller.MixedMemoryInputs (mixedData
         Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
-        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
-      rfl
+      exact Tests.DelegationCaller.single_entry (by decide) bytes decoded fields
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · decide +kernel
@@ -370,9 +360,7 @@ private theorem mixedInputs : UnifiedReduced.Caller.MixedMemoryInputs (mixedData
       by decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) =
         some mixedProgram[0].data := by with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
-      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
-    rfl
+    exact Tests.DelegationCaller.single_entry (by decide) bytes decoded fields
 
 theorem shared_machine_worker_effects : UnifiedReduced.Caller.MixedMemoryEffects (mixedData 0) mixedBefore cells :=
   UnifiedReduced.Caller.mixed_memory_soundness mixedAccepted mixedInputs
@@ -912,9 +900,7 @@ private theorem customInputs (kind : Fin 5) : UnifiedReduced.Caller.MixedMemoryI
         Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
-        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
-      rfl
+      exact Tests.DelegationCaller.single_entry (by decide) bytes decoded fields
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · change (4 : Nat) % 4 = 0
@@ -925,9 +911,7 @@ private theorem customInputs (kind : Fin 5) : UnifiedReduced.Caller.MixedMemoryI
       fin_cases kind <;> decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields (customEntry kind).instruction = some (customEntry kind).data := by
       fin_cases kind <;> with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
-      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
-    rfl
+    exact Tests.DelegationCaller.single_entry (by decide) bytes decoded fields
 
 theorem copy_then_custom_retirement (kind : Fin 5) : ∃ events finalState clause,
     UnifiedReduced.Custom.clauseFor (customEntry kind).instruction = some clause ∧
@@ -1027,9 +1011,7 @@ private theorem binaryInputs : UnifiedReduced.Caller.MixedMemoryInputs binaryDat
         Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
-        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
-      rfl
+      exact Tests.DelegationCaller.single_entry (by decide) bytes decoded fields
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · decide +kernel
@@ -1037,9 +1019,7 @@ private theorem binaryInputs : UnifiedReduced.Caller.MixedMemoryInputs binaryDat
     have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00164613 = some binaryEntry.instruction :=
       by decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields binaryEntry.instruction = some binaryEntry.data := by with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
-      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
-    rfl
+    exact Tests.DelegationCaller.single_entry (by decide) bytes decoded fields
 
 private noncomputable def binaryView : UnifiedReduced.Binary.Input :=
   ⟨.xor, true, 0, 1, ⟨4, 0⟩, .Regidx 12, .Regidx 0, .Regidx 12, 1, binaryBefore⟩
@@ -1142,9 +1122,7 @@ private theorem comparisonInputs : UnifiedReduced.Caller.MixedMemoryInputs compa
         Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
-        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
-      rfl
+      exact Tests.DelegationCaller.single_entry (by decide) bytes decoded fields
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · decide +kernel
@@ -1152,9 +1130,7 @@ private theorem comparisonInputs : UnifiedReduced.Caller.MixedMemoryInputs compa
     have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0xfff63613 = some comparisonEntry.instruction :=
       by decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields comparisonEntry.instruction = some comparisonEntry.data := by with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
-      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
-    rfl
+    exact Tests.DelegationCaller.single_entry (by decide) bytes decoded fields
 
 private noncomputable def comparisonView : UnifiedReduced.Control.Comparison.Input :=
   ⟨.sltiu, ⟨0, 0⟩, ⟨65535, 65535⟩, ⟨4, 0⟩, .Regidx 12, .Regidx 0, .Regidx 12, 4095, comparisonBefore⟩
@@ -1303,9 +1279,7 @@ private theorem controlInputs (kind : Fin 4) : UnifiedReduced.Caller.MixedMemory
         Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
-        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
-      rfl
+      exact Tests.DelegationCaller.single_entry (by decide) bytes decoded fields
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · change (4 : Nat) % 4 = 0; decide
@@ -1314,9 +1288,7 @@ private theorem controlInputs (kind : Fin 4) : UnifiedReduced.Caller.MixedMemory
     have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (controlBits kind) = some (controlEntry kind).instruction := by
       fin_cases kind <;> decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields (controlEntry kind).instruction = some (controlEntry kind).data := by fin_cases kind <;> with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
-      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
-    rfl
+    exact Tests.DelegationCaller.single_entry (by decide) bytes decoded fields
 
 private def branchView (taken : Bool) : UnifiedReduced.Control.Branch.Input :=
   ⟨if taken then .BEQ else .BNE, ⟨0, 0⟩, ⟨0, 0⟩, ⟨8, 0⟩, ⟨4, 0⟩,
@@ -1482,9 +1454,7 @@ private theorem memoryInputs (store : Bool) : UnifiedReduced.Caller.MixedMemoryI
         Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
-        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
-      rfl
+      exact Tests.DelegationCaller.single_entry (by decide) bytes decoded fields
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · change (4 : Nat) % 4 = 0; decide
@@ -1493,9 +1463,7 @@ private theorem memoryInputs (store : Bool) : UnifiedReduced.Caller.MixedMemoryI
     have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (memoryBits store) = some (memoryEntry store).instruction := by
       cases store <;> decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields (memoryEntry store).instruction = some (memoryEntry store).data := by cases store <;> with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
-      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
-    rfl
+    exact Tests.DelegationCaller.single_entry (by decide) bytes decoded fields
 
 private theorem memoryConfiguration (store : Bool) : Configured (memoryBefore store) :=
   airbender_memoryBefore store
@@ -1673,15 +1641,8 @@ private theorem abiInputs (highControl : Bool) : UnifiedReduced.Caller.MixedMemo
   refine ⟨?_, rfl, abiInitialized highControl, Tests.DelegationOperationEffects.sharedInputs.distinct,
     Tests.DelegationOperationEffects.sharedInputs.aligned, rfl, rfl, ?_⟩
   · refine ⟨?_, ?_, ?_, airbender_abiBefore highControl⟩
-    · have bytes : (Cell.ram 0).read (abiBefore highControl) =
-          .ok (Tests.DelegationCaller.entry .bigint).bits (abiBefore highControl) := written_word_read _ 0 _
-      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
-        Tests.DelegationCaller.original_decoder .bigint
-      have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
-          some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
-        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
-      rfl
+    · exact Tests.DelegationCaller.single_entry (by decide) (written_word_read _ 0 _)
+        (Tests.DelegationCaller.original_decoder .bigint) (Tests.DelegationCaller.metadata .bigint)
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · change (4 : Nat) % 4 = 0

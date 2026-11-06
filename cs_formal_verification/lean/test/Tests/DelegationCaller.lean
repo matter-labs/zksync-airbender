@@ -79,15 +79,15 @@ noncomputable def before (family : Delegation.Family) : State :=
 theorem airbender_before (family : Delegation.Family) : Configured (before family) := by
   configured_fixture [before, wordWriteState]
 
--- One fetched entry, stated over arbitrary words: the kernel checks the image construction once,
--- not on the concrete Sail state.
-private theorem single_entry {state : State} {pc bits : BitVec 32} {instruction : SailRV32.instruction}
-    {data : DecoderData Delegation.Family}
+-- One fetched entry, stated over arbitrary words and decoder projections: the kernel checks the
+-- image construction once, not on the concrete Sail state. Also used by UnifiedDelegation.
+theorem single_entry {Kind : Type} {projection : SailRV32.instruction → Option (DecoderData Kind)}
+    {state : State} {pc bits : BitVec 32} {instruction : SailRV32.instruction} {data : DecoderData Kind}
     (aligned : pc.toNat < ROM.limit ∧ pc.toNat % 4 = 0)
     (read : (Cell.ram pc).read state = .ok bits state)
     (decoded : decodeOnReset bits = some instruction)
-    (fields : Caller.decoderFields instruction = some data) :
-    Caller.programImage state [pc] = some [⟨pc, bits, instruction, data⟩] := by
+    (fields : projection instruction = some data) :
+    programImageWith projection state [pc] = some [⟨pc, bits, instruction, data⟩] := by
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, aligned, read, decoded, fields,
     bind, Option.bind, pure]
   rfl
