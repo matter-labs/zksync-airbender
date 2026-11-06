@@ -1,11 +1,11 @@
 import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
+import Slop.UnifiedReduced.Completeness.Memory
 
 namespace Tests.UnifiedMemory
 open Airbender Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 3000000
 
 private def zeroSetup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic {
   name := "UnifiedRamDisabledQueries"
@@ -16,43 +16,24 @@ private def zeroSetup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic 
   contains_iff _ := Iff.rfl
 }
 
-private def assignment (store : Bool) : Nat → ZMod babyBearModulus
-  | 4 | 5 | 123 | 124 | 125 => 1
-  | 6 => if store then 2 else 0
-  | 7 => if store then 0 else 2
-  | 28 => if store then 0 else 1
-  | 29 => if store then 1 else 0
-  | 2 | 30 => 4
-  | 32 => 8
-  | 37 | 58 => 64
-  | 38 => if store then 2 else 0
-  | 39 => if store then 0 else 64
-  | 44 => if store then 0 else 2
-  | 45 => if store then 64 else 0
-  | 42 | 50 => 0x1234
-  | 43 | 51 => 0xbeef
-  | 78 => 4194304 * (0x1234 + 65536 * 0xbeef) * 943718400
-  | _ => 0
+private theorem zeroSetup_zero : UnifiedReduced.Completeness.ZeroRow zeroSetup := by
+  intro env entry h
+  change ∃ i : Fin 1, entry.map (Expression.eval env) = Vector.replicate 10 0
+  exact ⟨0, h⟩
+
+/-- LW x2, 0(x1) / SW x2, 0(x1) with x1 = 0x400000 and the word 0xbeef1234. -/
+private def witness (store : Bool) : UnifiedReduced.Completeness.Memory :=
+  ⟨⟨0, 0, 4, 0, 0, 0, 0, 0, 0, 0⟩, store, 1, 2, 0, 64, 0, 0, 0x1234, 0xbeef, 0, 0⟩
+private def assignment (store : Bool) : Nat → ZMod babyBearModulus := (witness store).honest
 
 private def row (store : Bool) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment store⟩
 
 private theorem constraints (store : Bool) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment store)) (UnifiedReduced.clockConstraints zeroSetup) := by
-  apply Verification.holds_append
-  · cases store <;>
-      simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-        Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
-    all_goals repeat' apply And.intro
-    all_goals solve
-      | decide
-      | (apply Verification.range16_contains; decide)
-      | (exact ⟨⟨0, by decide⟩, rfl⟩)
-  · cases store <;>
-      simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    all_goals repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment]
-    all_goals decide
+  cases store <;>
+    exact UnifiedReduced.Completeness.Memory.complete _
+      (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide)
+      (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _ zeroSetup_zero
 
 private def trace (store : Bool) : UnifiedTrace babyBearModulus where
   rows := [row store]
