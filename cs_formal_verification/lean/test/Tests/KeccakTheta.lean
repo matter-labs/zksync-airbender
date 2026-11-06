@@ -7,7 +7,6 @@ namespace Tests.KeccakTheta
 open Airbender
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2400000
 
 -- A supplied controller row makes the local arithmetic test independent of
 -- the still-open controller schedule and global memory argument.

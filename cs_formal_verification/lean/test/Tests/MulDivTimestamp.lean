@@ -7,7 +7,6 @@ namespace Tests.MulDivTimestamp
 open Airbender Arithmetic Trace
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 
 -- DIVU/REMU by zero; rd aliases rs1. Native clocks include the source refresh
 -- before the destination write, and the 19-bit low-clock rollover.

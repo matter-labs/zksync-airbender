@@ -38,7 +38,6 @@ def row (tag : Fin 6) (wrap : Bool) : Nat → ZMod babyBearModulus
   | 44 | 45 => if taken tag then 1 else 0
   | _ => 0
 
-set_option maxHeartbeats 800000 in
 theorem satisfies (tag : Fin 6) (wrap : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row tag wrap))
       JumpBranchSlt.importedConstraints := by

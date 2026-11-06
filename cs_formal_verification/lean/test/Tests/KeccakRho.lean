@@ -7,7 +7,6 @@ namespace Tests.KeccakRho
 open Airbender
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 6400000
 
 private def scratch : Nat := 0x0100000000000001
 private def initial : Nat := 0xffffffffffffffff

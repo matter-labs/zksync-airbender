@@ -36,7 +36,6 @@ private def row (operation : Fin 3) (immediate : Bool) : Nat → ZMod babyBearMo
   | 57 | 66 | 75 | 84 => 255
   | _ => 0
 
-set_option maxHeartbeats 3000000 in
 private theorem satisfies (operation : Fin 3) (immediate : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row operation immediate))
       importedConstraints := by
