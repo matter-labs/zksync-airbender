@@ -148,7 +148,7 @@ pub(crate) fn schedule_base_commitment_handoff(
     assert_eq!(
         point_len,
         base_geometry.message_size_log2(),
-        "WHIR point slab differs from preflight geometry"
+        "WHIR point slab differs from commitment geometry"
     );
     let point = unsafe { DeviceSlice::from_raw_parts_mut(point_ptr, point_len) };
     {

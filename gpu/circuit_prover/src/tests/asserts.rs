@@ -321,31 +321,6 @@ pub(super) fn assert_gkr_proof_structure_for_test(
     );
 }
 
-/// Splits a combined memory cap into per-coset caps the way the execution
-/// provers do: the combined cap is in bit-reversed tree order, and entry `c` of
-/// the result is natural coset `c` (cpu_execution_prover `split_memory_cap`).
-pub(super) fn natural_coset_caps_from_cap(
-    cap: &MerkleTreeCapVarLength,
-    lde_factor: usize,
-) -> Vec<MerkleTreeCapVarLength> {
-    assert!(lde_factor.is_power_of_two());
-    assert_eq!(cap.cap.len() % lde_factor, 0);
-    let subcap_size = cap.cap.len() / lde_factor;
-    let log_lde_factor = lde_factor.trailing_zeros();
-    (0..lde_factor)
-        .map(|coset| {
-            let segment = if log_lde_factor == 0 {
-                0
-            } else {
-                coset.reverse_bits() >> (usize::BITS - log_lde_factor)
-            };
-            MerkleTreeCapVarLength {
-                cap: cap.cap[segment * subcap_size..(segment + 1) * subcap_size].to_vec(),
-            }
-        })
-        .collect_vec()
-}
-
 fn canonical_serialized_bytes_for_test<T: serde::Serialize>(value: &T) -> Vec<u8> {
     let mut bytes = Vec::new();
     serde_json::to_writer_pretty(&mut bytes, value).unwrap();

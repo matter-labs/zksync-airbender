@@ -40,6 +40,32 @@ impl MerkleTreeCapVarLength {
     }
 }
 
+/// Splits a memory commitment cap, stored in bit-reversed tree order, into per-coset caps in
+/// natural coset order.
+pub fn split_memory_cap(
+    flat: &MerkleTreeCapVarLength,
+    lde_factor: usize,
+    cap_size: usize,
+) -> Vec<MerkleTreeCapVarLength> {
+    assert!(lde_factor.is_power_of_two());
+    assert!(cap_size.is_power_of_two() && cap_size >= lde_factor);
+    let size = cap_size / lde_factor;
+    assert_eq!(flat.cap.len(), cap_size);
+    let log_lde_factor = lde_factor.trailing_zeros();
+    (0..lde_factor)
+        .map(|coset| {
+            let segment = if log_lde_factor == 0 {
+                0
+            } else {
+                coset.reverse_bits() >> (usize::BITS - log_lde_factor)
+            };
+            MerkleTreeCapVarLength {
+                cap: flat.cap[segment * size..(segment + 1) * size].to_vec(),
+            }
+        })
+        .collect()
+}
+
 /// The RS-codeword values of a SINGLE LDE coset: serves the packed leaf values
 /// for a folded-domain index within that coset (offset-major `[offset][column]`,
 /// exactly as WHIR builds a Merkle leaf).

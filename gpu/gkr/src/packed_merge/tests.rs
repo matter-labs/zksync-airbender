@@ -1,7 +1,6 @@
 use super::*;
 use crate::upstream::Field;
 use era_cudart::memory::memory_copy_async;
-use field::FieldExtension;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::BF;

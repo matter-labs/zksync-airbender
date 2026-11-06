@@ -32,7 +32,7 @@ pub enum GkrMemoryPolicy {
 
 impl GkrMemoryPolicy {
     /// Validate omission bounds before allocating or replaying MAIN storage.
-    /// The same check is used by proof admission and the replay plan.
+    /// Called at the start of a proof and by the replay plan.
     pub fn validate_for_main_layers(self, main_layers: usize) {
         let (value_layers, cache_layers) = match self {
             Self::Materialize => (0, 0),

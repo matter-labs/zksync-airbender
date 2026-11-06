@@ -751,9 +751,11 @@ where
     let memory_tree_caps = expected_cpu_proof
         .as_ref()
         .map(|proof| {
-            natural_coset_caps_from_cap(
-                &proof.whir_proof.memory_commitment.commitment.cap,
+            let cap = &proof.whir_proof.memory_commitment.commitment.cap;
+            prover::merkle_trees::split_memory_cap(
+                cap,
                 whir_schedule.base_lde_factor(),
+                cap.cap.len(),
             )
         })
         .unwrap_or_default();
@@ -1050,12 +1052,10 @@ pub(super) fn prepare_unified_fixture(
 
     let tracing_data_host = make_unified_tracing_host_for_test(buffer);
 
-    // Per-coset memory tree caps from the CPU proof (needed for the prove signature).
+    // Per-coset memory tree caps from the CPU proof.
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
-        natural_coset_caps_from_cap(
-            &cpu_proof.whir_proof.memory_commitment.commitment.cap,
-            whir_schedule.base_lde_factor(),
-        )
+        let cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
+        prover::merkle_trees::split_memory_cap(cap, whir_schedule.base_lde_factor(), cap.cap.len())
     } else {
         // Without a CPU reference, compute caps through the GPU memory producer.
         let decoder = if compiled_circuit.has_decoder_lookup {

@@ -283,10 +283,8 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
     // --- memory tree caps fed to GPU prove(): from the CPU proof if present,
     //     else a lightweight CPU stage1 pass over the same memory trace ---
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
-        natural_coset_caps_from_cap(
-            &cpu_proof.whir_proof.memory_commitment.commitment.cap,
-            whir_schedule.base_lde_factor(),
-        )
+        let cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
+        prover::merkle_trees::split_memory_cap(cap, whir_schedule.base_lde_factor(), cap.cap.len())
     } else {
         let (mem_oracle, _wit_oracle) =
             commit_separate_memory_and_witness_subtrees::<BF, BF, DefaultTreeConstructor, _>(
@@ -297,7 +295,8 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
                 &prover::allocation_pool::GenericAllocationPool::proxy(),
                 &worker,
             );
-        natural_coset_caps_from_cap(&mem_oracle.get_cap(), whir_schedule.base_lde_factor())
+        let cap = mem_oracle.get_cap();
+        prover::merkle_trees::split_memory_cap(&cap, whir_schedule.base_lde_factor(), cap.cap.len())
     };
 
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();

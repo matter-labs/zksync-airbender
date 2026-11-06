@@ -320,12 +320,10 @@ pub(super) fn finish_proof_fixture(
         tree_caps
     };
 
-    // Extract per-coset memory tree caps from the CPU proof (needed for the new prove signature).
+    // Per-coset memory tree caps from the CPU proof.
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
-        natural_coset_caps_from_cap(
-            &cpu_proof.whir_proof.memory_commitment.commitment.cap,
-            whir_schedule.base_lde_factor(),
-        )
+        let cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
+        prover::merkle_trees::split_memory_cap(cap, whir_schedule.base_lde_factor(), cap.cap.len())
     } else {
         compute_memory_tree_caps_for_fixture()
     };
@@ -701,10 +699,8 @@ pub(super) fn finish_proof_fixture_memory(
     };
 
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
-        natural_coset_caps_from_cap(
-            &cpu_proof.whir_proof.memory_commitment.commitment.cap,
-            whir_schedule.base_lde_factor(),
-        )
+        let cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
+        prover::merkle_trees::split_memory_cap(cap, whir_schedule.base_lde_factor(), cap.cap.len())
     } else {
         compute_memory_tree_caps_for_fixture()
     };

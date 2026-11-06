@@ -589,7 +589,6 @@ fn run_whir_fold_keeps_monomial_labeling(log_count: usize, rounds: usize, is_lar
         &[sample_ext(40)],
         &original_evaluation_point,
         sample_ext(500),
-        true,
         &mut state,
         &context,
     )

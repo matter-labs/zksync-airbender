@@ -108,8 +108,8 @@ fn assert_capacity_matches_descriptor(
     assert!((1usize << remaining_rounds) <= DR_TAIL_BLOCK_THREADS as usize);
 }
 
-/// Caller contract: admission has ensured that the kernel-wide dynamic shared
-/// memory ceiling covers this launch.
+/// Caller contract: `DrTailResources::capacity` has raised the kernel-wide
+/// dynamic shared memory ceiling to cover this launch.
 pub(crate) fn launch_dr_tail_megakernel_e4(
     desc: DrTailMegakernelDesc,
     capacity: &DrTailCapacityDecision,
@@ -142,8 +142,8 @@ pub(crate) fn launch_dr_tail_megakernel_e4(
     Ok(())
 }
 
-/// Admission queries against the linked DR-tail kernel. Every call happens on
-/// the scheduling thread, before any transfer is constructed.
+/// Attribute queries against the linked DR-tail kernel, made while scheduling
+/// the DR tail.
 pub(crate) fn dr_tail_attributes() -> CudaResult<DrTailRawAttributes> {
     let function = DrTailMegakernelE4Function::default();
     let mut raw = std::mem::MaybeUninit::<era_cudart_sys::CudaFuncAttributes>::zeroed();
