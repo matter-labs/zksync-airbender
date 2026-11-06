@@ -1,9 +1,10 @@
 use proc_macro2::TokenStream;
-use prover::field::PrimeField;
+use prover::field::{FieldExtension, PrimeField};
 use quote::quote;
 
 pub trait FieldWrapper {
     type BaseField: PrimeField;
+    type ChallengeField: FieldExtension<Self::BaseField>;
 
     fn coeff_to_internal_repr(coeff: u32) -> u32 {
         Self::BaseField::from_u32_with_reduction(coeff).as_u32_raw_repr_reduced()
@@ -62,6 +63,7 @@ pub struct DefaultBabyBearField;
 
 impl FieldWrapper for DefaultBabyBearField {
     type BaseField = prover::field::baby_bear::base::BabyBearField;
+    type ChallengeField = prover::field::baby_bear::ext4::BabyBearExt4;
 
     fn field_struct() -> TokenStream {
         quote! { BabyBearField }
@@ -179,6 +181,7 @@ pub struct DefaultMersenne31Field;
 
 impl FieldWrapper for DefaultMersenne31Field {
     type BaseField = prover::field::Mersenne31Field;
+    type ChallengeField = prover::field::Mersenne31Quartic;
 
     fn field_struct() -> TokenStream {
         quote! { Mersenne31Field }
@@ -224,7 +227,7 @@ impl FieldWrapper for DefaultMersenne31Field {
         quote! { field_ops::mul_assign(&mut #a, & #b) }
     }
 
-    fn add_assign_product(acc: TokenStream, a: TokenStream, b: TokenStream) -> TokenStream {
+    fn add_assign_product(_acc: TokenStream, _a: TokenStream, _b: TokenStream) -> TokenStream {
         todo!();
     }
 
@@ -240,7 +243,11 @@ impl FieldWrapper for DefaultMersenne31Field {
         quote! { field_ops::mul_assign_by_base(&mut #a, & #b) }
     }
 
-    fn add_assign_product_with_base(a: TokenStream, b: TokenStream, c: TokenStream) -> TokenStream {
+    fn add_assign_product_with_base(
+        _a: TokenStream,
+        _b: TokenStream,
+        _c: TokenStream,
+    ) -> TokenStream {
         todo!();
     }
 

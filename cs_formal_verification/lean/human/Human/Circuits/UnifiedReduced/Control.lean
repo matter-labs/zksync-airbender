@@ -94,7 +94,8 @@ structure TraceMapping [Fact p.Prime] (trace : UnifiedTrace p) (initial : State)
 structure InterfaceAssumptions [Fact p.Prime] (trace : UnifiedTrace p) (initial : State)
     (cells : List Cell) (program : List ProgramEntry)
     (_input : Input) (_output : Output) (_w : Nat → ZMod p) : Prop extends Inputs trace initial cells program where
-  isa : ∃ value, initial.regs.get? .misa = some value
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Configured initial
 
 /-- Original imported constraints, decoder membership and shared logical matching,
     interpreted by the branch's named word mapping. -/

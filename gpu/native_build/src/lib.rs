@@ -12,7 +12,7 @@
 //! `ab_cuda_configure_target` function that owns the common target
 //! configuration), whose directory is passed to CMake as `AB_CUDA_CMAKE_DIR`.
 
-use era_cudart_sys::{get_cuda_include_path, get_cuda_lib_path, get_cuda_version, no_cuda_message};
+use era_cudart_sys::{get_cuda_include_path, get_cuda_lib_path, get_cuda_version};
 
 /// Re-exported so a kernel `build.rs` can skip Toolkit-dependent steps — including a
 /// host `cc` compile, like `gpu_core`'s NVTX wrapper — without its own
@@ -114,7 +114,6 @@ impl CudaArchive {
         }
 
         if is_no_cuda() {
-            println!("cargo::warning={}", no_cuda_message!());
             return;
         }
 
@@ -132,6 +131,8 @@ impl CudaArchive {
         let cudaarchs = env::var("CUDAARCHS").unwrap_or_else(|_| "native".to_string());
         let mut config = cmake::Config::new("native");
         config.profile("Release");
+        // cmake-rs always passes CMAKE_{C,CXX,ASM}_FLAGS; the CUDA-only projects never read them.
+        config.configure_arg("--no-warn-unused-cli");
         config.define("CMAKE_CUDA_ARCHITECTURES", cudaarchs);
         // Forward every `DEP_<crate>_INCLUDE` (set by a dependency that emits
         // `cargo:include=`) as a CMake `-D<crate>_INCLUDE`. gpu_core →

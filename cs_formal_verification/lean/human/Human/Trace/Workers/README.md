@@ -19,6 +19,7 @@ native terminal tokens, with schedules and intermediate values derived from matc
 | Complete G work-vector fold | [`Native.workvector_soundness`](../../../../slop/Slop/Final/Trace/Workers/Blake2G/Theorems.lean) |
 | Complete extended-BLAKE compression | [`compression_soundness`](../../../../slop/Slop/Final/Trace/Workers/Blake2Round/Theorems.lean) |
 | Complete Keccak permutation | [`Native.permutation_soundness`](../../../../slop/Slop/Final/Trace/Workers/Keccak/Theorems.lean) |
+| Complete split Keccak permutation | [`Split.Native.permutation_soundness`](../../../../slop/Slop/Final/Trace/Workers/KeccakSplit/Theorems.lean) |
 
 Native-boundary/window variants retain timestamps rather than restarting history.
 Public protocol modes/counts, modeled tables, domain/alignment and the existing
@@ -35,6 +36,7 @@ and, for the hash families, complete protocol spans.
 | BLAKE2 G | [Guide](Blake2G/README.md) | The pinned 56/80-call work-vector fold. |
 | Extended BLAKE | [Guide](Blake2Round/README.md) | Seven-/ten-round compression. |
 | Keccak | [Guide](Keccak/README.md) | The complete 649-call permutation span. |
+| Split Keccak | [Guide](KeccakSplit/README.md) | The complete 361-call parity / theta+rho / chi permutation. |
 
 Start with the public theorem and its input record. Check actual initial/final
 reads, native seed timestamps, tracked domain, modeled tables and logical matching.

@@ -8,7 +8,7 @@ set_option maxHeartbeats 4000000
 
 /-- The `extended` output words 0..4 (indices 0 to 4). Per-word proof, split out of
 `extended` so each range builds in its own module. -/
-theorem extended_eqs_0 {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 4)}
+theorem extended_eqs_0 {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 6)}
     {w : Nat → ZMod p} (first compression : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (firstFlag : w 142 = if first then 1 else 0)

@@ -13,7 +13,7 @@ use crate::definitions::{
 use crate::gkr::prover::prove_configured_with_gkr_with_backends;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
-use crate::gkr::prover::CommitmentMode;
+use crate::gkr::prover::OperationMode;
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::family_circuits::{
@@ -23,9 +23,7 @@ use crate::gkr::witness_gen::family_circuits::{
 use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
 use crate::merkle_trees::DefaultTreeConstructor;
-use crate::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueryable,
-};
+use crate::merkle_trees::MerkleTreeCapVarLength;
 use crate::tests::gkr::GKRFullWitnessTrace;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
@@ -445,10 +443,7 @@ fn flatten_merkle_cap(cap: &MerkleTreeCapVarLength) -> Vec<u32> {
 /// `trace_and_split::fs_transform_for_permutation_argument` specialised to the unified shape:
 /// a single reduced-machine family (one instance), NO separate inits/teardowns section (folded
 /// into the unified circuit), and delegations absorbed in the FSV's
-/// `DELEGATION_CIRCUITS_SETUP_PARAMS` order (blake, bigint, keccak, blake_g_function) — NOT
-/// type-sorted. `trace_and_split`'s version asserts type-sorted order; we mirror the FSV's actual
-/// order instead so the seed is guaranteed to match.
-#[allow(clippy::too_many_arguments)]
+/// `DELEGATION_CIRCUITS_SETUP_PARAMS` order (ascending CSR).
 fn derive_unified_fiat_shamir_challenges<C>(
     vm: &VmRunOutput<C>,
     unified_memory_cap: &MerkleTreeCapVarLength,
@@ -707,6 +702,39 @@ where
     groups.pop().unwrap()
 }
 
+/// Replay the captured VM run into the per-cycle unified oracle data.
+pub fn replay_unified_cycles<C>(
+    vm: &VmRunOutput<C>,
+    num_calls: usize,
+) -> Vec<UnifiedOpcodeTracingDataWithTimestamp>
+where
+    C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
+{
+    let mut state = vm.snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = vm
+        .snapshotter
+        .reads_buffer
+        .make_range(0..vm.snapshotter.reads_buffer.len());
+    let mut replay_ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
+    let mut buffers = [&mut buffer[..]];
+    let mut tracer = UnifiedDestinationHolder {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<C>::replay_basic_unrolled::<_, _, BabyBearField>(
+        &mut state,
+        &mut replay_ram,
+        &vm.tape,
+        &mut (),
+        vm.cycles_bound,
+        &mut tracer,
+    );
+    assert_eq!(vm.expected_final_state(), state);
+    buffer
+}
+
 pub fn build_unified_full_trace<C>(
     vm: &VmRunOutput<C>,
     unified_circuit: &GKRCircuitArtifact<BabyBearField>,
@@ -729,29 +757,7 @@ pub fn build_unified_full_trace<C>(
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
-    // Replay the captured trace into the unified destination holder.
-    let mut state = vm.snapshotter.initial_snapshot.state;
-    let mut ram_log_buffers = vm
-        .snapshotter
-        .reads_buffer
-        .make_range(0..vm.snapshotter.reads_buffer.len());
-    let mut replay_ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
-        ram_log: &mut ram_log_buffers,
-    };
-    let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
-    let mut tracer = UnifiedDestinationHolder {
-        buffers: &mut buffers[..],
-    };
-    ReplayerVM::<C>::replay_basic_unrolled::<_, _, BabyBearField>(
-        &mut state,
-        &mut replay_ram,
-        &vm.tape,
-        &mut (),
-        vm.cycles_bound,
-        &mut tracer,
-    );
-    assert_eq!(vm.expected_final_state(), state);
+    let buffer = replay_unified_cycles(vm, num_calls);
 
     use common_constants::*;
     use cs::gkr_circuits::*;
@@ -760,9 +766,12 @@ where
     const SUPPORTED_CSRS: &[u16] = &[
         NON_DETERMINISM_CSR as u16,
         BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+        BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
         BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
         KECCAK_SPECIAL5_CSR_REGISTER as u16,
-        BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
+        KECCAK_THETA_RHO_CSR_REGISTER as u16,
+        KECCAK_COLUMN_PARITY_CSR_REGISTER as u16,
+        KECCAK_CHI5_CSR_REGISTER as u16,
     ];
     let mut preprocessing_data = process_binary_into_separate_tables_ext::<
         BabyBearField,
@@ -838,7 +847,6 @@ where
 /// proof together with the setup-tree cap (the full statement verifier's prepended
 /// verification key). Used by both [`prove_unified`] and the unified malicious-proof
 /// generator (caller owns serialization).
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_unified_trace(
     unified_circuit: &GKRCircuitArtifact<BabyBearField>,
     unified_full_trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,
@@ -865,14 +873,8 @@ pub fn prove_built_unified_trace(
         trace_len,
         unified_circuit,
     );
-    let unified_setup_commitment = unified_setup.commit(
-        &unified_twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    );
+    let unified_setup_commitment =
+        unified_setup.commit_for_config(&unified_twiddles, &prover_config, worker);
 
     println!("Trying to prove (unified)");
     let now = std::time::Instant::now();
@@ -891,7 +893,7 @@ pub fn prove_built_unified_trace(
         &unified_setup_commitment,
         &unified_twiddles,
         &prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
         inits_and_teardowns_top_bits,
         trace_len,
         &crate::gkr::prover::WorkStealingBackend,

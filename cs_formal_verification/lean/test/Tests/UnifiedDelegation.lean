@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Final.Trace.UnifiedReduced.Theorems
 import Tests.DelegationCaller
 import Tests.BigintMemory
@@ -11,14 +12,16 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-private def before (family : Delegation.Family) : State :=
+private noncomputable def before (family : Delegation.Family) : State :=
   wordWriteState Tests.BigintMemory.before 0 (Tests.DelegationCaller.entry family).bits
+private theorem airbender_before (family : Delegation.Family) : Configured (before family) := by
+  configured_fixture [before, wordWriteState, Tests.BigintMemory.before]
 
 private def assignmentWith (address : ZMod babyBearModulus) (column : Nat) : ZMod babyBearModulus :=
   if column = 2 ∨ column = 30 then 4
   else if column = 32 then 8
-  else if column = 4 ∨ column = 18 ∨ column = 129 ∨ column = 130 ∨
-      column = 131 ∨ column = 132 ∨ column = 133 then 1
+  else if column = 4 ∨ column = 18 ∨
+      column = 123 ∨ column = 124 ∨ column = 125 then 1
   else if column = 6 ∨ column = 38 then address else 0
 
 private def assignment (family : Delegation.Family) := assignmentWith (Delegation.Requests.csr family)
@@ -28,13 +31,12 @@ private theorem public_image (family : Delegation.Family) :
   have bytes : (Cell.ram 0).read (before family) =
       .ok (Tests.DelegationCaller.entry family).bits (before family) :=
     written_word_read Tests.BigintMemory.before 0 (Tests.DelegationCaller.entry family).bits
-  have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry family).bits)
-      (before family) = .ok (Tests.DelegationCaller.entry family).instruction (before family) :=
-    Tests.DelegationCaller.original_decoder family _
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry family).bits = some (Tests.DelegationCaller.entry family).instruction :=
+    Tests.DelegationCaller.original_decoder family
   have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry family).instruction =
       some (Tests.DelegationCaller.entry family).data := Tests.DelegationCaller.metadata family
   simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage,
-    programImageRunWith, List.mapM_cons, List.mapM_nil, programEntryRunWith,
+    programImageWith, List.mapM_cons, List.mapM_nil, programEntryWith,
     bytes, decoded, fields, bind, Option.bind, pure]
   rfl
 
@@ -81,6 +83,7 @@ theorem all_caller_forms_satisfy (family : Delegation.Family) : FlatOperation.Co
 theorem original_public_caller_soundness (family : Delegation.Family) :
     UnifiedReduced.Caller.Binding (assignment family) (before family) [Tests.DelegationCaller.entry family] := by
   apply UnifiedReduced.Caller.soundness (by decide +kernel) (core family) (public_image family)
+    (airbenderConfiguration := airbender_before family)
   change ∃ i : Fin 1, UnifiedReduced.decoderQuery (assignment family) =
     Delegation.Caller.query ([Tests.DelegationCaller.entry family].get i)
   refine ⟨0, ?_⟩
@@ -112,16 +115,16 @@ theorem truncated_csr_rejected_by_public_decoder (family : Delegation.Family) :
   exact impossible field
 
 private def machineRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, assignment .bigint⟩
-private def machine : UnifiedTrace babyBearModulus where
+private noncomputable def machine : UnifiedTrace babyBearModulus where
   rows := [machineRow]
   rom := UnifiedReduced.Setup.table (before .bigint)
   initial := machineRow.start
   terminal := machineRow.finish
   initialMemory := []
   terminalMemory := []
-private def requests : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+private noncomputable def requests : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
   ⟨machine, Tests.DelegationOperationEffects.sharedData.workers, [Tests.DelegationCaller.entry .bigint]⟩
-private def worker : Delegation.Row babyBearModulus :=
+private noncomputable def worker : Delegation.Row babyBearModulus :=
   requests.workers.rows.get ⟨0, by decide +kernel⟩
 
 private theorem requestChecks : UnifiedReduced.Caller.RequestChecks requests := by
@@ -148,7 +151,7 @@ private theorem requestChecks : UnifiedReduced.Caller.RequestChecks requests := 
     exact List.perm_append_comm
 
 private theorem requestInputs : UnifiedReduced.Caller.RequestInputs requests (before .bigint) [0] := by
-  refine ⟨public_image .bigint, ?_, ?_⟩
+  refine ⟨public_image .bigint, ?_, ?_, airbender_before .bigint⟩
   · change 4 < timestampBase ∧ 0 < timestampBase
     norm_num [timestampBase]
   · decide +kernel
@@ -211,16 +214,18 @@ private theorem reject_matching (workers : List (Delegation.Requests.Request bab
 theorem missing_copy_worker_rejected : ¬ Delegation.Requests.Matching requests.calls [] :=
   reject_matching [] (by decide +kernel) (by decide +kernel)
 
-private def wrongClockWorker : Delegation.Row babyBearModulus :=
+private noncomputable def wrongClockWorker : Delegation.Row babyBearModulus :=
   ⟨worker.family, fun column => if column = 1 then 9 else worker.assignment column⟩
 
 theorem wrong_copy_clock_rejected :
     ¬ Delegation.Requests.Matching requests.calls [Delegation.Requests.fulfillment wrongClockWorker] :=
   reject_matching _ (by decide +kernel) (by decide +kernel)
 
-private abbrev base := Tests.DelegationOperationEffects.sharedData
+private noncomputable abbrev base := Tests.DelegationOperationEffects.sharedData
 private abbrev cells := Tests.DelegationOperationEffects.sharedCells
-private def mixedBefore : State := wordWriteState Tests.DelegationOperationEffects.before 4 0x00160613
+private noncomputable def mixedBefore : State := wordWriteState Tests.DelegationOperationEffects.before 4 0x00160613
+private theorem airbender_mixedBefore : Configured mixedBefore := by
+  configured_fixture [mixedBefore, wordWriteState, Tests.DelegationOperationEffects.before, Tests.BigintMemory.before]
 private def mixedProgram : List UnifiedReduced.ProgramEntry := [
   ⟨4, 0x00160613, .ITYPE (1, .Regidx 12, .Regidx 12, .ADDI),
     ⟨.machine, 12, 0, 12, ⟨1, 0⟩, 1, 0⟩⟩]
@@ -231,7 +236,7 @@ private def arithmetic (value : Nat) : Nat → ZMod babyBearModulus
   | 0 => 4
   | 2 | 30 => 8
   | 32 | 5 | 7 | 44 => 12
-  | 4 | 8 | 11 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 8 | 11 | 123 | 124 | 125 => 1
   | 34 => 7
   | 40 => 6
   | 46 => 8
@@ -239,12 +244,12 @@ private def arithmetic (value : Nat) : Nat → ZMod babyBearModulus
   | 50 => value + 1
   | _ => 0
 private def ordinary (value : Nat) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, arithmetic value⟩
-private def mixedTerminal (value : Nat) : List (MemoryToken babyBearModulus) :=
+private noncomputable def mixedTerminal (value : Nat) : List (MemoryToken babyBearModulus) :=
   base.machine.terminalMemory.map fun token =>
     if token.address = (Cell.register 0).addressCode then ⟨token.address, (9, 0), 0⟩
     else if token.address = (Cell.register 12).addressCode then ⟨token.address, (10, 0), Nat.pair (value + 1) 0⟩
     else token
-private def mixedData (value : Nat) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private noncomputable def mixedData (value : Nat) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
     rows := [ordinary value, sharedCaller]
     rom := UnifiedReduced.Setup.table mixedBefore
@@ -364,27 +369,26 @@ private theorem mixedInputs : UnifiedReduced.Caller.MixedMemoryInputs (mixedData
   refine ⟨?_, ?_, mixedInitialization, Tests.DelegationOperationEffects.sharedInputs.distinct,
     Tests.DelegationOperationEffects.sharedInputs.aligned, rfl,
     Tests.DelegationOperationEffects.sharedInputs.tables, Tests.DelegationOperationEffects.sharedInputs.rounds⟩
-  · constructor
+  · refine ⟨?_, ?_, ?_, airbender_mixedBefore⟩
     · have bytes : (Cell.ram 0).read mixedBefore = .ok (Tests.DelegationCaller.entry .bigint).bits mixedBefore :=
         written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _)
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) mixedBefore =
-          .ok (Tests.DelegationCaller.entry .bigint).instruction mixedBefore :=
-        Tests.DelegationCaller.original_decoder .bigint mixedBefore
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · decide +kernel
   · have bytes : (Cell.ram 4).read mixedBefore = .ok 0x00160613 mixedBefore := written_word_read _ _ _
-    have decoded : run (SailRV32.Functions.encdec_backwards 0x00160613) mixedBefore =
-        .ok (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) mixedBefore := by with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00160613 = some (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) :=
+      by decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) =
         some mixedProgram[0].data := by with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
 theorem shared_machine_worker_effects : UnifiedReduced.Caller.MixedMemoryEffects (mixedData 0) mixedBefore cells :=
@@ -518,7 +522,7 @@ theorem joint_preparation_controls : ∃ earlier current start finish,
     boundary_control seedImage initialMember, boundary_control finalImage finalMember,
     seeds, seedImage, initialMember⟩
 
-private def callerOnlyData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private noncomputable def callerOnlyData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
     rows := [sharedCaller]
     rom := UnifiedReduced.Setup.table mixedBefore
@@ -553,7 +557,8 @@ private theorem callerOnlyAccepted : UnifiedReduced.Caller.MixedMemoryAccepted c
 
 private theorem callerOnlyInputs :
     UnifiedReduced.Caller.MixedMemoryInputs callerOnlyData [] mixedBefore [0] [] cells :=
-  ⟨⟨mixedInputs.publicProgram.image, mixedInputs.publicProgram.initialClock, mixedInputs.publicProgram.initialAligned⟩,
+  ⟨⟨mixedInputs.publicProgram.image, mixedInputs.publicProgram.initialClock, mixedInputs.publicProgram.initialAligned,
+      mixedInputs.publicProgram.configuration⟩,
     rfl, mixedInitialization, mixedInputs.distinct, mixedInputs.aligned,
     rfl, mixedInputs.tables, mixedInputs.rounds⟩
 
@@ -643,7 +648,7 @@ theorem actual_copy_call_boundaries : ∃ start finish after : State, ∃ newer 
   exact ⟨start, finish, after, newer, by simpa only [old] using read,
     by simpa only [result] using written, future, by simpa only [value] using last⟩
 
-private def arithmeticView : Input :=
+private noncomputable def arithmeticView : Input :=
   ⟨⟨.addi, ⟨0, 0⟩, ⟨0, 0⟩, ⟨1, 0⟩, ⟨4, 0⟩⟩,
     .Regidx 12, .Regidx 0, .Regidx 12, 1, 0, mixedBefore⟩
 
@@ -778,21 +783,23 @@ theorem fabricated_read_breaks_joint_matching : ¬ UnifiedReduced.Caller.MixedMe
 
 private def customBits (kind : Fin 5) : BitVec 32 :=
   #[0xc2004673, 0xc1c04673, 0x8dc04673, 0x89c04673, 0x85f04673][kind.val]!
-private def customBefore (kind : Fin 5) : State :=
+private noncomputable def customBefore (kind : Fin 5) : State :=
   wordWriteState Tests.DelegationOperationEffects.before 4 (customBits kind)
-private def customEntry (kind : Fin 5) : UnifiedReduced.ProgramEntry :=
+private theorem airbender_customBefore (kind : Fin 5) : Configured (customBefore kind) := by
+  configured_fixture [customBefore, wordWriteState, Tests.DelegationOperationEffects.before, Tests.BigintMemory.before]
+private noncomputable def customEntry (kind : Fin 5) : UnifiedReduced.ProgramEntry :=
   ⟨4, customBits kind,
     if kind.val = 0 then .ZIMOP_MOP_RR (4, .Regidx 0, .Regidx 0, .Regidx 12)
     else .ZIMOP_MOP_R (#[16, 12, 8, 7][kind.val - 1]!, .Regidx 0, .Regidx 12),
     ⟨.machine, 0, if kind.val = 0 then 0 else 12, 12, ⟨0, 0⟩,
       if kind.val = 0 then 512 else 65536, if kind.val = 0 then 0 else 46 + kind.val⟩⟩
 private def customAssignment (kind : Fin 5) (column : Nat) : ZMod babyBearModulus :=
-  if 92 ≤ column ∧ column < 128 ∧ (column - 92) % 9 = 0 ∧ kind.val ≠ 0 then (46 + kind.val : Nat)
+  if 86 ≤ column ∧ column < 122 ∧ (column - 86) % 9 = 0 ∧ kind.val ≠ 0 then (46 + kind.val : Nat)
   else match column with
     | 0 => 4
     | 2 | 30 => 8
     | 32 | 7 | 44 => 12
-    | 4 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 123 | 124 | 125 => 1
     | 6 | 38 => if kind.val = 0 then 0 else 12
     | 10 => if kind.val = 0 then 0 else (46 + kind.val : Nat)
     | 20 => if kind.val = 0 then 1 else 0
@@ -800,17 +807,17 @@ private def customAssignment (kind : Fin 5) (column : Nat) : ZMod babyBearModulu
     | 34 => 6
     | 40 => if kind.val = 0 then 8 else 7
     | 46 => if kind.val = 0 then 7 else 9
-    | 88 => if kind.val = 0 then 0 else 3
+    | 82 => if kind.val = 0 then 0 else 3
     | _ => 0
 private def customRow (kind : Fin 5) : Trace.Row babyBearModulus UnifiedFamily :=
   ⟨.machine, customAssignment kind⟩
-private def customTerminal (kind : Fin 5) : List (MemoryToken babyBearModulus) :=
+private noncomputable def customTerminal (kind : Fin 5) : List (MemoryToken babyBearModulus) :=
   base.machine.terminalMemory.map fun token =>
     if token.address = (Cell.register 0).addressCode then
       ⟨token.address, (if kind.val = 0 then 9 else 8, 0), 0⟩
     else if token.address = (Cell.register 12).addressCode then ⟨token.address, (10, 0), 0⟩
     else token
-private def customData (kind : Fin 5) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private noncomputable def customData (kind : Fin 5) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
     rows := [customRow kind, sharedCaller]
     rom := UnifiedReduced.Setup.table (customBefore kind)
@@ -930,17 +937,16 @@ private theorem customInputs (kind : Fin 5) : UnifiedReduced.Caller.MixedMemoryI
   refine ⟨?_, ?_, customInitialization kind, Tests.DelegationOperationEffects.sharedInputs.distinct,
     Tests.DelegationOperationEffects.sharedInputs.aligned, rfl,
     Tests.DelegationOperationEffects.sharedInputs.tables, Tests.DelegationOperationEffects.sharedInputs.rounds⟩
-  · constructor
+  · refine ⟨?_, ?_, ?_, airbender_customBefore kind⟩
     · have bytes : (Cell.ram 0).read (customBefore kind) =
           .ok (Tests.DelegationCaller.entry .bigint).bits (customBefore kind) :=
         written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _)
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits)
-          (customBefore kind) = .ok (Tests.DelegationCaller.entry .bigint).instruction (customBefore kind) :=
-        Tests.DelegationCaller.original_decoder .bigint (customBefore kind)
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
@@ -948,13 +954,12 @@ private theorem customInputs (kind : Fin 5) : UnifiedReduced.Caller.MixedMemoryI
       decide +kernel
   · have bytes : (Cell.ram 4).read (customBefore kind) = .ok (customBits kind) (customBefore kind) :=
       written_word_read _ _ _
-    have decoded : run (SailRV32.Functions.encdec_backwards (customBits kind)) (customBefore kind) =
-        .ok (customEntry kind).instruction (customBefore kind) := by
-      fin_cases kind <;> with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (customBits kind) = some (customEntry kind).instruction := by
+      fin_cases kind <;> decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields (customEntry kind).instruction = some (customEntry kind).data := by
       fin_cases kind <;> with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
 theorem copy_then_custom_retirement (kind : Fin 5) : ∃ events finalState clause,
@@ -966,16 +971,18 @@ theorem copy_then_custom_retirement (kind : Fin 5) : ∃ events finalState claus
     (by change (0 : Nat) < 4; decide +kernel) List.mem_cons_self List.mem_cons_self (by fin_cases kind <;> decide +kernel)
     (by fin_cases kind <;> decide +kernel)
 
-private def binaryBefore : State := wordWriteState Tests.DelegationOperationEffects.before 4 0x00164613
+private noncomputable def binaryBefore : State := wordWriteState Tests.DelegationOperationEffects.before 4 0x00164613
+private theorem airbender_binaryBefore : Configured binaryBefore := by
+  configured_fixture [binaryBefore, wordWriteState, Tests.DelegationOperationEffects.before, Tests.BigintMemory.before]
 private def binaryEntry : UnifiedReduced.ProgramEntry :=
   ⟨4, 0x00164613, .ITYPE (1, .Regidx 12, .Regidx 12, .XORI), ⟨.machine, 12, 0, 12, ⟨1, 0⟩, 65536, 52⟩⟩
 private def binaryAssignment (column : Nat) : ZMod babyBearModulus :=
-  if column = 10 ∨ column = 92 ∨ column = 101 ∨ column = 110 ∨ column = 119 then 52
-  else if column = 27 ∨ column = 58 ∨ column = 94 ∨ column = 95 then 1
-  else if column = 88 then 3
+  if column = 10 ∨ column = 86 ∨ column = 95 ∨ column = 104 ∨ column = 113 then 52
+  else if column = 27 ∨ column = 58 ∨ column = 88 ∨ column = 89 then 1
+  else if column = 82 then 3
   else if column = 11 then 0 else arithmetic 0 column
 private def binaryRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, binaryAssignment⟩
-private def binaryData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private noncomputable def binaryData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
     rows := [binaryRow, sharedCaller]
     rom := UnifiedReduced.Setup.table binaryBefore
@@ -1055,29 +1062,28 @@ private theorem binaryInputs : UnifiedReduced.Caller.MixedMemoryInputs binaryDat
   refine ⟨?_, ?_, initializedAfterCode 0x00164613, Tests.DelegationOperationEffects.sharedInputs.distinct,
     Tests.DelegationOperationEffects.sharedInputs.aligned, rfl,
     Tests.DelegationOperationEffects.sharedInputs.tables, Tests.DelegationOperationEffects.sharedInputs.rounds⟩
-  · constructor
+  · refine ⟨?_, ?_, ?_, airbender_binaryBefore⟩
     · have bytes : (Cell.ram 0).read binaryBefore = .ok (Tests.DelegationCaller.entry .bigint).bits binaryBefore :=
         written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _)
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) binaryBefore =
-          .ok (Tests.DelegationCaller.entry .bigint).instruction binaryBefore :=
-        Tests.DelegationCaller.original_decoder .bigint binaryBefore
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · decide +kernel
   · have bytes : (Cell.ram 4).read binaryBefore = .ok 0x00164613 binaryBefore := written_word_read _ _ _
-    have decoded : run (SailRV32.Functions.encdec_backwards 0x00164613) binaryBefore = .ok binaryEntry.instruction binaryBefore := by
-      with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00164613 = some binaryEntry.instruction :=
+      by decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields binaryEntry.instruction = some binaryEntry.data := by with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
-private def binaryView : UnifiedReduced.Binary.Input :=
+private noncomputable def binaryView : UnifiedReduced.Binary.Input :=
   ⟨.xor, true, 0, 1, ⟨4, 0⟩, .Regidx 12, .Regidx 0, .Regidx 12, 1, binaryBefore⟩
 
 theorem copy_then_xori_retirement : ∃ events finalState,
@@ -1090,23 +1096,25 @@ theorem copy_then_xori_retirement : ∃ events finalState,
   · constructor <;> decide +kernel
   · exact ⟨binaryEntry, List.mem_cons_self, by decide +kernel, rfl⟩
 
-private def comparisonBefore : State := wordWriteState Tests.DelegationOperationEffects.before 4 0xfff63613
+private noncomputable def comparisonBefore : State := wordWriteState Tests.DelegationOperationEffects.before 4 0xfff63613
+private theorem airbender_comparisonBefore : Configured comparisonBefore := by
+  configured_fixture [comparisonBefore, wordWriteState, Tests.DelegationOperationEffects.before, Tests.BigintMemory.before]
 private def comparisonEntry : UnifiedReduced.ProgramEntry :=
   ⟨4, 0xfff63613, .ITYPE (4095, .Regidx 12, .Regidx 12, .SLTIU), ⟨.machine, 12, 0, 12, ⟨65535, 65535⟩, 4096, 3⟩⟩
 private def comparisonAssignment (column : Nat) : ZMod babyBearModulus :=
-  if column = 8 ∨ column = 9 ∨ column = 60 ∨ column = 102 then 65535
+  if column = 8 ∨ column = 9 ∨ column = 60 ∨ column = 96 then 65535
   else if column = 10 then 3
-  else if column = 11 ∨ column = 57 ∨ column = 90 ∨ column = 129 then 0
-  else if column = 23 ∨ column = 52 ∨ column = 53 ∨ column = 59 ∨ column = 61 ∨ column = 78 ∨
-      column = 84 ∨ column = 88 ∨ column = 89 ∨ column = 103 ∨ column = 112 then 1
-  else if column = 81 ∨ column = 120 ∨ column = 122 then 8
-  else if column = 92 ∨ column = 101 then 5
-  else if column = 110 then 51
-  else if column = 111 then 53
-  else if column = 119 then 2
+  else if column = 11 ∨ column = 57 ∨ column = 84 then 0
+  else if column = 23 ∨ column = 52 ∨ column = 53 ∨ column = 59 ∨ column = 61 ∨ column = 74 ∨
+      column = 82 ∨ column = 83 ∨ column = 97 ∨ column = 106 then 1
+  else if column = 64 ∨ column = 114 ∨ column = 116 then 8
+  else if column = 86 ∨ column = 95 then 5
+  else if column = 104 then 51
+  else if column = 105 then 53
+  else if column = 113 then 2
   else arithmetic 0 column
 private def comparisonRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, comparisonAssignment⟩
-private def comparisonData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private noncomputable def comparisonData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
     rows := [comparisonRow, sharedCaller]
     rom := UnifiedReduced.Setup.table comparisonBefore
@@ -1191,29 +1199,28 @@ private theorem comparisonInputs : UnifiedReduced.Caller.MixedMemoryInputs compa
   refine ⟨?_, ?_, initializedAfterCode 0xfff63613, Tests.DelegationOperationEffects.sharedInputs.distinct,
     Tests.DelegationOperationEffects.sharedInputs.aligned, rfl,
     Tests.DelegationOperationEffects.sharedInputs.tables, Tests.DelegationOperationEffects.sharedInputs.rounds⟩
-  · constructor
+  · refine ⟨?_, ?_, ?_, airbender_comparisonBefore⟩
     · have bytes : (Cell.ram 0).read comparisonBefore = .ok (Tests.DelegationCaller.entry .bigint).bits comparisonBefore :=
         written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _)
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) comparisonBefore =
-          .ok (Tests.DelegationCaller.entry .bigint).instruction comparisonBefore :=
-        Tests.DelegationCaller.original_decoder .bigint comparisonBefore
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · decide +kernel
   · have bytes : (Cell.ram 4).read comparisonBefore = .ok 0xfff63613 comparisonBefore := written_word_read _ _ _
-    have decoded : run (SailRV32.Functions.encdec_backwards 0xfff63613) comparisonBefore = .ok comparisonEntry.instruction comparisonBefore := by
-      with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0xfff63613 = some comparisonEntry.instruction :=
+      by decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields comparisonEntry.instruction = some comparisonEntry.data := by with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
-private def comparisonView : UnifiedReduced.Control.Comparison.Input :=
+private noncomputable def comparisonView : UnifiedReduced.Control.Comparison.Input :=
   ⟨.sltiu, ⟨0, 0⟩, ⟨65535, 65535⟩, ⟨4, 0⟩, .Regidx 12, .Regidx 0, .Regidx 12, 4095, comparisonBefore⟩
 
 theorem copy_then_sltiu_retirement : ∃ events finalState,
@@ -1228,10 +1235,10 @@ theorem copy_then_sltiu_retirement : ∃ events finalState,
 
 private def controlBits (kind : Fin 4) : BitVec 32 :=
   (#v[0x00060463, 0x00061463, 0x0080066f, 0x00c60667])[kind]
-private def controlBefore (kind : Fin 4) : State :=
-  let state := wordWriteState Tests.DelegationOperationEffects.before 4 (controlBits kind)
-  {state with regs := ((state.regs.insert .misa (0x40000100 : BitVec 32)).insert
-    .cur_privilege .Machine).insert .mseccfg 0}
+private noncomputable def controlBefore (kind : Fin 4) : State :=
+  wordWriteState Tests.DelegationOperationEffects.before 4 (controlBits kind)
+private theorem airbender_controlBefore (kind : Fin 4) : Configured (controlBefore kind) := by
+  configured_fixture [controlBefore, wordWriteState, Tests.DelegationOperationEffects.before, Tests.BigintMemory.before]
 private def controlEntry (kind : Fin 4) : UnifiedReduced.ProgramEntry :=
   ⟨4, controlBits kind, (#v[.BTYPE (8, .Regidx 0, .Regidx 12, .BEQ),
     .BTYPE (8, .Regidx 0, .Regidx 12, .BNE), .JAL (8, .Regidx 12), .JALR (12, .Regidx 12, .Regidx 12)])[kind],
@@ -1244,31 +1251,30 @@ private def controlAssignment (kind : Fin 4) (column : Nat) : ZMod babyBearModul
   else if column = 7 ∨ column = 44 then (if kind.val < 2 then 0 else 12)
   else if column = 8 then (if kind.val = 3 then 12 else 8)
   else if column = 10 then (if kind.val = 1 then 1 else 0)
-  else if column = 11 ∨ column = 129 then 0
+  else if column = 11 then 0
   else if column = 21 then (if kind.val = 2 then 1 else 0)
   else if column = 22 then (if kind.val = 3 then 1 else 0)
-  else if column = 24 ∨ column = 25 ∨ column = 57 ∨ column = 85 ∨ column = 90 then (if kind.val < 2 then 1 else 0)
-  else if column = 30 ∨ column = 81 ∨ column = 120 ∨ column = 122 then (if kind.val = 1 then 8 else 12)
+  else if column = 24 ∨ column = 25 ∨ column = 57 ∨ column = 84 then (if kind.val < 2 then 1 else 0)
+  else if column = 30 ∨ column = 64 ∨ column = 114 ∨ column = 116 then (if kind.val = 1 then 8 else 12)
   else if column = 34 then (if kind.val = 2 then 6 else 7)
   else if column = 40 then (if kind.val = 2 then 8 else 6)
   else if column = 46 then (if kind.val < 2 then 9 else if kind.val = 2 then 7 else 8)
-  else if column = 50 ∨ column = 78 ∨ column = 89 then (if kind.val < 2 then 0 else 8)
-  else if column = 59 ∨ column = 82 ∨ column = 112 then (if kind.val = 0 then 1 else 0)
-  else if column = 83 then (if kind.val < 2 then 0 else 1)
-  else if column = 88 then 1
-  else if column = 92 ∨ column = 101 then 5
-  else if column = 110 then 51
-  else if column = 111 then (if kind.val < 2 then if kind.val = 0 then 8 else 24 else 0)
-  else if column = 119 then 2
+  else if column = 50 ∨ column = 74 ∨ column = 83 then (if kind.val < 2 then 0 else 8)
+  else if column = 59 ∨ column = 79 ∨ column = 106 then (if kind.val = 0 then 1 else 0)
+  else if column = 82 then 1
+  else if column = 86 ∨ column = 95 then 5
+  else if column = 104 then 51
+  else if column = 105 then (if kind.val < 2 then if kind.val = 0 then 8 else 24 else 0)
+  else if column = 113 then 2
   else arithmetic 0 column
 private def controlRow (kind : Fin 4) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, controlAssignment kind⟩
-private def controlTerminal (kind : Fin 4) : List (MemoryToken babyBearModulus) :=
+private noncomputable def controlTerminal (kind : Fin 4) : List (MemoryToken babyBearModulus) :=
   base.machine.terminalMemory.map fun token =>
     if token.address = (Cell.register 0).addressCode then ⟨token.address, (if kind.val < 2 then 10 else 9, 0), 0⟩
     else if token.address = (Cell.register 12).addressCode then
       ⟨token.address, (if kind.val < 2 then 8 else 10, 0), Nat.pair (if kind.val < 2 then 0 else 8) 0⟩
     else token
-private def controlData (kind : Fin 4) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private noncomputable def controlData (kind : Fin 4) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
     rows := [controlRow kind, sharedCaller]
     rom := UnifiedReduced.Setup.table (controlBefore kind)
@@ -1382,28 +1388,27 @@ private theorem controlInputs (kind : Fin 4) : UnifiedReduced.Caller.MixedMemory
   refine ⟨?_, ?_, controlInitialization kind, Tests.DelegationOperationEffects.sharedInputs.distinct,
     Tests.DelegationOperationEffects.sharedInputs.aligned, rfl,
     Tests.DelegationOperationEffects.sharedInputs.tables, Tests.DelegationOperationEffects.sharedInputs.rounds⟩
-  · constructor
+  · refine ⟨?_, ?_, ?_, airbender_controlBefore kind⟩
     · have bytes : (Cell.ram 0).read (controlBefore kind) = .ok (Tests.DelegationCaller.entry .bigint).bits (controlBefore kind) :=
         read_word_frame (before := wordWriteState Tests.DelegationOperationEffects.before 4 (controlBits kind))
           (after := controlBefore kind) rfl (written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _))
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) (controlBefore kind) =
-          .ok (Tests.DelegationCaller.entry .bigint).instruction (controlBefore kind) :=
-        Tests.DelegationCaller.original_decoder .bigint (controlBefore kind)
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · change (4 : Nat) % 4 = 0; decide
   · have bytes : (Cell.ram 4).read (controlBefore kind) = .ok (controlBits kind) (controlBefore kind) := read_word_frame (before := wordWriteState Tests.DelegationOperationEffects.before 4 (controlBits kind))
           (after := controlBefore kind) rfl (written_word_read _ _ _)
-    have decoded : run (SailRV32.Functions.encdec_backwards (controlBits kind)) (controlBefore kind) = .ok (controlEntry kind).instruction (controlBefore kind) := by
-      fin_cases kind <;> with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (controlBits kind) = some (controlEntry kind).instruction := by
+      fin_cases kind <;> decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields (controlEntry kind).instruction = some (controlEntry kind).data := by fin_cases kind <;> with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
 private def branchView (taken : Bool) : UnifiedReduced.Control.Branch.Input :=
@@ -1421,7 +1426,7 @@ theorem copy_then_branch_retirement (taken : Bool) : ∃ events finalState,
     UnifiedReduced.Caller.RetiresCycle cells events (controlBefore (branchKind taken)) finalState (controlRow (branchKind taken))
       (SailRV32.Functions.execute_BTYPE 8 (.Regidx 0) (.Regidx 12) (if taken then .BEQ else .BNE)) := by
   refine UnifiedReduced.Caller.branch_cycle_soundness (controlAccepted _) (controlInputs _)
-    (by change (0 : Nat) < 4; decide) ⟨0x40000100, by simp [controlBefore, Std.ExtDHashMap.get?_insert]⟩
+    (by change (0 : Nat) < 4; decide) (airbender_controlBefore _).isa
     (input := branchView taken) List.mem_cons_self ?_ ?_
   · cases taken <;> constructor <;> decide +kernel
   · exact ⟨controlEntry _, List.mem_cons_self, by cases taken <;> decide +kernel,
@@ -1433,30 +1438,19 @@ theorem copy_then_jump_retirement (indirect : Bool) : ∃ events finalState,
     UnifiedReduced.Caller.RetiresCycle cells events (controlBefore (jumpKind indirect)) finalState (controlRow (jumpKind indirect))
       (JumpBranchSlt.Jump.execution (jumpView indirect)) := by
   refine UnifiedReduced.Caller.jump_cycle_soundness (controlAccepted _) (controlInputs _)
-    (by change (0 : Nat) < 4; decide) ⟨0x40000100, by simp [controlBefore, Std.ExtDHashMap.get?_insert]⟩
+    (by change (0 : Nat) < 4; decide) (airbender_controlBefore _).isa
     (input := jumpView indirect) ?_ List.mem_cons_self ?_ ?_
-  · intro direct
-    refine ⟨?_, 0, ?_, rfl⟩ <;> simp [controlBefore, Std.ExtDHashMap.get?_insert]
+  · intro _
+    exact ⟨(airbender_controlBefore _).privilege, (airbender_controlBefore _).landingPad⟩
   · cases indirect <;> constructor <;> decide +kernel
   · exact ⟨controlEntry _, List.mem_cons_self, by cases indirect <;> decide +kernel,
       by cases indirect <;> rfl, by change (4 : Nat) % 4 = 0; decide⟩
 
 private def memoryBits (store : Bool) : BitVec 32 := if store then 0x00c52023 else 0x00052603
-private def memoryAttributes : SailRV32.PMA :=
-  { (default : SailRV32.PMA) with readable := true, writable := true, executable := true }
-private def memoryBefore (store : Bool) : State :=
-  let state := wordWriteState Tests.DelegationOperationEffects.before 4 (memoryBits store)
-  let regs := state.regs.insert .mstatus 0
-  let regs := regs.insert .cur_privilege .Machine
-  let regs := regs.insert .misa (0x40000100 : BitVec 32)
-  let regs := regs.insert .senvcfg 0
-  let regs := regs.insert .menvcfg 0x10
-  let regs := regs.insert .pmpcfg_n (Vector.replicate 64 0)
-  let regs := regs.insert .pmpaddr_n (Vector.replicate 64 0)
-  let regs := regs.insert .pma_regions [rv32Region memoryAttributes]
-  let regs := regs.insert .mhartid 7
-  let regs := regs.insert .htif_tohost_base none
-  {state with regs := regs}
+private noncomputable def memoryBefore (store : Bool) : State :=
+  wordWriteState Tests.DelegationOperationEffects.before 4 (memoryBits store)
+private theorem airbender_memoryBefore (store : Bool) : Configured (memoryBefore store) := by
+  configured_fixture [memoryBefore, wordWriteState, Tests.DelegationOperationEffects.before, Tests.BigintMemory.before]
 private def memoryEntry (store : Bool) : UnifiedReduced.ProgramEntry :=
   ⟨4, memoryBits store, if store then .STORE (0, .Regidx 12, .Regidx 10, 4)
     else .LOAD (0, .Regidx 10, .Regidx 12, false, 4),
@@ -1475,13 +1469,13 @@ private def memoryAssignment (store : Bool) (column : Nat) : ZMod babyBearModulu
   else if column = 34 ∨ column = 40 ∨ column = 46 then 7
   else arithmetic 0 column
 private def memoryRow (store : Bool) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, memoryAssignment store⟩
-private def memoryTerminal (store : Bool) : List (MemoryToken babyBearModulus) :=
+private noncomputable def memoryTerminal (store : Bool) : List (MemoryToken babyBearModulus) :=
   base.machine.terminalMemory.map fun token =>
     if token.address = (Cell.register 10).addressCode then ⟨token.address, (8, 0), token.value⟩
     else if token.address = (Cell.register 12).addressCode then ⟨token.address, (if store then 9 else 10, 0), 0⟩
     else if token.address = (Cell.ram 4194304).addressCode then ⟨token.address, (if store then 10 else 9, 0), 0⟩
     else token
-private def memoryData (store : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private noncomputable def memoryData (store : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
     rows := [memoryRow store, sharedCaller]
     rom := UnifiedReduced.Setup.table (memoryBefore store)
@@ -1588,49 +1582,37 @@ private theorem memoryInputs (store : Bool) : UnifiedReduced.Caller.MixedMemoryI
   refine ⟨?_, ?_, memoryInitialization store, Tests.DelegationOperationEffects.sharedInputs.distinct,
     Tests.DelegationOperationEffects.sharedInputs.aligned, rfl,
     Tests.DelegationOperationEffects.sharedInputs.tables, Tests.DelegationOperationEffects.sharedInputs.rounds⟩
-  · constructor
+  · refine ⟨?_, ?_, ?_, airbender_memoryBefore store⟩
     · have bytes : (Cell.ram 0).read (memoryBefore store) = .ok (Tests.DelegationCaller.entry .bigint).bits (memoryBefore store) :=
         read_word_frame (before := wordWriteState Tests.DelegationOperationEffects.before 4 (memoryBits store))
           (after := memoryBefore store) rfl (written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _))
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) (memoryBefore store) =
-          .ok (Tests.DelegationCaller.entry .bigint).instruction (memoryBefore store) :=
-        Tests.DelegationCaller.original_decoder .bigint (memoryBefore store)
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · change (4 : Nat) % 4 = 0; decide
   · have bytes : (Cell.ram 4).read (memoryBefore store) = .ok (memoryBits store) (memoryBefore store) := read_word_frame (before := wordWriteState Tests.DelegationOperationEffects.before 4 (memoryBits store))
           (after := memoryBefore store) rfl (written_word_read _ _ _)
-    have decoded : run (SailRV32.Functions.encdec_backwards (memoryBits store)) (memoryBefore store) = .ok (memoryEntry store).instruction (memoryBefore store) := by
-      cases store <;> with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (memoryBits store) = some (memoryEntry store).instruction := by
+      cases store <;> decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields (memoryEntry store).instruction = some (memoryEntry store).data := by cases store <;> with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
-set_option backward.isDefEq.respectTransparency false in
-private theorem memoryConfiguration (store : Bool) : FlatMemoryConfiguration (memoryBefore store) := by
-  constructor
-  · simp [memoryBefore, Std.ExtDHashMap.get?_insert]
-  · simp [memoryBefore, Std.ExtDHashMap.get?_insert]
-  · exact ⟨0x40000100, by simp [memoryBefore, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨0, by simp [memoryBefore, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨0x10, by simp [memoryBefore, Std.ExtDHashMap.get?_insert]⟩
-  · simp [memoryBefore, Std.ExtDHashMap.get?_insert]
-  · exact ⟨Vector.replicate 64 0, by simp [memoryBefore, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨memoryAttributes, by simp [memoryBefore, Std.ExtDHashMap.get?_insert], rfl, rfl, rfl⟩
-  · exact ⟨7, by simp [memoryBefore, Std.ExtDHashMap.get?_insert]⟩
-  · simp [memoryBefore]
+private theorem memoryConfiguration (store : Bool) : Configured (memoryBefore store) :=
+  airbender_memoryBefore store
 
 private def memoryView (store : Bool) : Airbender.WordMemory.Input :=
   ⟨store, ⟨0, 64⟩, ⟨0, 0⟩, ⟨0, 0⟩, ⟨4, 0⟩, .Regidx 10, .Regidx 12, .Regidx 12, 0, default⟩
 private def memoryOutput : Airbender.WordMemory.Output := ⟨⟨0, 64⟩, ⟨0, 0⟩, ⟨8, 0⟩⟩
 
-theorem copy_then_ram_retirement [Sail.ArchSem.MemoryPlatform SailRV32.exception] (store : Bool) : ∃ events finalState,
+theorem copy_then_ram_retirement (store : Bool) : ∃ events finalState,
     events.Perm ((memoryData store).mixedSteps.map transferEvent) ∧
     Trace.SailHistory cells events (memoryBefore store) finalState ∧
     UnifiedReduced.Caller.RetiresCycle cells events (memoryBefore store) finalState (memoryRow store)
@@ -1685,10 +1667,12 @@ private def abiAssignment (highControl : Bool) (column : Nat) : ZMod babyBearMod
   else if column = 66 then 0
   else if column = 1 then 5 else Tests.BigintMemory.row column
 private def abiWorker (highControl : Bool) : Delegation.Row babyBearModulus := ⟨.bigint, (abiAssignment highControl)⟩
-private def abiBefore (highControl : Bool) : State := wordWriteState
+private noncomputable def abiBefore (highControl : Bool) : State := wordWriteState
   { Tests.BigintMemory.before with regs := Tests.BigintMemory.before.regs.insert .x12 (if highControl then 65537 else 0) }
   0 (Tests.DelegationCaller.entry .bigint).bits
-private def abiData (highControl : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private theorem airbender_abiBefore (highControl : Bool) : Configured (abiBefore highControl) := by
+  configured_fixture [abiBefore, wordWriteState, Tests.BigintMemory.before]
+private noncomputable def abiData (highControl : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
     rows := [sharedCaller]
     rom := UnifiedReduced.Setup.table (abiBefore highControl)
@@ -1713,6 +1697,7 @@ private theorem abiCore (highControl : Bool) : FlatOperation.ConstraintsHoldFlat
   all_goals solve
     | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
+    | (apply Trace.Proofs.range_contains; decide +kernel)
     | (refine ⟨⟨0, by decide +kernel⟩, ?_⟩; decide +kernel)
     | (refine ⟨⟨262144, by decide +kernel⟩, ?_⟩; decide +kernel)
     | (refine ⟨⟨1310720, by decide +kernel⟩, ?_⟩; decide +kernel)
@@ -1795,16 +1780,15 @@ private theorem abiInitialized (highControl : Bool) : initialImage (abiBefore hi
 private theorem abiInputs (highControl : Bool) : UnifiedReduced.Caller.MixedMemoryInputs (abiData highControl) [] (abiBefore highControl) [0] [] cells := by
   refine ⟨?_, rfl, abiInitialized highControl, Tests.DelegationOperationEffects.sharedInputs.distinct,
     Tests.DelegationOperationEffects.sharedInputs.aligned, rfl, rfl, ?_⟩
-  · constructor
+  · refine ⟨?_, ?_, ?_, airbender_abiBefore highControl⟩
     · have bytes : (Cell.ram 0).read (abiBefore highControl) =
           .ok (Tests.DelegationCaller.entry .bigint).bits (abiBefore highControl) := written_word_read _ 0 _
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) (abiBefore highControl) =
-          .ok (Tests.DelegationCaller.entry .bigint).instruction (abiBefore highControl) :=
-        Tests.DelegationCaller.original_decoder .bigint (abiBefore highControl)
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
@@ -1895,7 +1879,7 @@ theorem issued_bigint_pointer_abi (highControl : Bool) :
   rcases member with ⟨i, bound, rfl⟩ | ⟨i, bound, rfl⟩
   all_goals interval_cases i <;> decide +kernel
 
-private def abiNoWorkerBoundaries (highControl : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+private noncomputable def abiNoWorkerBoundaries (highControl : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
   { abiData highControl with workers := { (abiData highControl).workers with initial := [], terminal := [] } }
 
 theorem unified_projected_worker_boundaries (highControl : Bool) :
@@ -1912,7 +1896,8 @@ theorem unified_projected_worker_boundaries (highControl : Bool) :
   have inputs := abiInputs highControl
   have publicProgram : UnifiedReduced.Caller.RequestInputs (abiNoWorkerBoundaries highControl)
       (abiBefore highControl) [0] :=
-    ⟨inputs.publicProgram.image, inputs.publicProgram.initialClock, inputs.publicProgram.initialAligned⟩
+    ⟨inputs.publicProgram.image, inputs.publicProgram.initialClock, inputs.publicProgram.initialAligned,
+      inputs.publicProgram.configuration⟩
   have requests := UnifiedReduced.Caller.request_soundness (p := babyBearModulus)
     (by norm_num [timestampBase, babyBearModulus]) (by decide +kernel)
     accepted.toRequestChecks publicProgram

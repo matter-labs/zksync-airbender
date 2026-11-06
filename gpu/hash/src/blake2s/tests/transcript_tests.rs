@@ -9,7 +9,8 @@ use super::super::*;
 
 use super::{bitreverse_index, BLOCK_SIZE};
 use crate::upstream::{
-    draw_random_field_els, Blake2sState, Blake2sTranscript, Field, Seed, USE_REDUCED_BLAKE2_ROUNDS,
+    draw_fresh_random_field_els, draw_random_field_els, Blake2sState, Blake2sTranscript, Field,
+    Seed, USE_REDUCED_BLAKE2_ROUNDS,
 };
 
 #[test]
@@ -101,8 +102,8 @@ fn host_commit(seed: &[u32; STATE_SIZE], input: &[u32]) -> [u32; STATE_SIZE] {
 }
 
 #[test]
-fn transcript_commit_parity_two_blocks() {
-    // 8 + 12 = 20 words — two blocks (16 + 4). The load-bearing backward
+fn transcript_commit_parity_three_e4() {
+    // 12 words chained from the seed — one block. The load-bearing backward
     // sumcheck case: commit_field_els with 3 E4 elements. Kept as an explicit
     // named case; the randomized sweep below covers the other block counts.
     let seed = [0x42; STATE_SIZE];
@@ -481,5 +482,56 @@ fn transcript_squeeze_e4_parity_randomized() {
         let (h_out, h_seed) = host_draw_e4(&seed, count);
         assert_eq!(d_out, h_out, "output mismatch for count={count}");
         assert_eq!(d_seed, h_seed, "seed mismatch for count={count}");
+    }
+}
+
+#[test]
+fn transcript_squeeze_fresh_e4_parity() {
+    let mut rng = rand::rng();
+    for count in [1, 2, 3, 8, 9] {
+        let seed: [u32; STATE_SIZE] = std::array::from_fn(|_| rng.random());
+        let stream = CudaStream::default();
+        let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+        let mut d_output: DeviceAllocation<E4> = DeviceAllocation::alloc(count).unwrap();
+        memory_copy_async(&mut d_seed, &seed[..], &stream).unwrap();
+        super::transcript_squeeze_fresh_e4(&mut d_seed, &mut d_output, &stream).unwrap();
+        let mut d_out = vec![E4::ZERO; count];
+        let mut d_final_seed = [0u32; STATE_SIZE];
+        memory_copy_async(&mut d_out, &d_output, &stream).unwrap();
+        memory_copy_async(&mut d_final_seed[..], &d_seed, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        let mut h_seed = Seed(seed);
+        let h_out = draw_fresh_random_field_els::<BF, E4, Blake2sTranscript>(&mut h_seed, count);
+        assert_eq!(d_out, h_out, "output mismatch for count={count}");
+        assert_eq!(d_final_seed, h_seed.0, "seed mismatch for count={count}");
+        assert_ne!(d_out[0], host_draw_e4(&seed, 1).0[0]);
+    }
+}
+
+#[test]
+fn transcript_pow_update_parity() {
+    let mut rng = rand::rng();
+    let stream = CudaStream::default();
+    for _ in 0..8 {
+        let seed: [u32; STATE_SIZE] = std::array::from_fn(|_| rng.random());
+        let nonce: u64 = rng.random();
+        let mut h_seed = Seed(seed);
+        Blake2sTranscript::verify_pow(&mut h_seed, nonce, 0);
+
+        let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+        let mut d_nonce = DeviceAllocation::alloc(2).unwrap();
+        memory_copy_async(&mut d_seed, &seed[..], &stream).unwrap();
+        memory_copy_async(
+            &mut d_nonce,
+            &[nonce as u32, (nonce >> 32) as u32][..],
+            &stream,
+        )
+        .unwrap();
+        super::transcript_pow_update(&mut d_seed, &d_nonce, &stream).unwrap();
+        let mut actual = [0u32; STATE_SIZE];
+        memory_copy_async(&mut actual[..], &d_seed, &stream).unwrap();
+        stream.synchronize().unwrap();
+        assert_eq!(actual, h_seed.0, "nonce={nonce}");
     }
 }

@@ -6,7 +6,6 @@ import Slop.Trace.Terminal
 namespace Airbender.MulDiv.Proofs
 open Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxHeartbeats 2000000 in
@@ -83,10 +82,8 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
   have pc : run (SailRV32.Functions.get_arch_pc ()) (Trace.retiredState before row.start.word.toBitVec) =
       .ok entry.pc (Trace.retiredState before row.start.word.toBitVec) := by
     simpa only [position] using Trace.Proofs.retired_state_pc before row.start.word.toBitVec
-  have configuration : (Trace.retiredState before row.start.word.toBitVec).regs.get? .misa =
-      initial.regs.get? .misa := by
-    simpa [Trace.retiredState, Std.ExtDHashMap.get?_insert] using
-      (Trace.Proofs.sail_history_control_flow_csrs past).1
+  have configuration : ConfigSame initial (Trace.retiredState before row.start.word.toBitVec) :=
+    ((Trace.Proofs.sail_history_config_same past).insert (key := .nextPC) rfl _).insert (key := .PC) rfl _
   refine ⟨entry, present, ⟨bytes, (decoded_misa_frame _ source.decoded).2 _ configuration,
     source.fields⟩, pc, ?_⟩
   cases row with

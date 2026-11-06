@@ -17,7 +17,8 @@ theorem request_operation_effects
   have execution := request_memory_execution (by decide) (by decide) (by decide)
     accepted inputs.publicState
   have initialized : MemoryInputs data.workers before cells :=
-    ⟨inputs.publicState.initialization, inputs.publicState.distinct, execution.requests.clockRoom⟩
+    ⟨inputs.publicState.initialization, inputs.publicState.distinct, execution.requests.clockRoom,
+      fun row member => (execution.requests.clocks row member).2⟩
   have operation : OperationInputs data.workers before cells Keccak.Controller.rows := {
     publicState := initialized
     tables := inputs.tables

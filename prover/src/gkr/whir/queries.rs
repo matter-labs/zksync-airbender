@@ -40,7 +40,7 @@ pub struct ExtensionFieldQuery<
     pub index: usize,
     pub leaf_values_concatenated: Vec<E>,
     pub path: Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
-    pub _marker: core::marker::PhantomData<T>,
+    pub _marker: core::marker::PhantomData<(F, T)>,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>> Default

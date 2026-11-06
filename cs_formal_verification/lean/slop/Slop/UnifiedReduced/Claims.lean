@@ -123,7 +123,6 @@ theorem native_rom_memory_execution [Fact p.Prime]
 
 
 theorem WordMemory.NativeROM.soundness [Fact p.Prime]
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List ProgramEntry) :
@@ -132,7 +131,7 @@ theorem WordMemory.NativeROM.soundness [Fact p.Prime]
   WordMemory.NativeROM.Proofs.soundness hp inverse trace initial cells program
 
 
-theorem WordMemory.soundness [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem WordMemory.soundness [Fact p.Prime]
     (hp : 2 * Trace.timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List ProgramEntry) :
@@ -216,9 +215,10 @@ theorem fetched {p : Nat} [Fact p.Prime] (hp : 524288 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     {before : Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program)
+    (configuration : Reference.RiscV.Sail.Configured before)
     (accepted : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (membership : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
-  Proofs.fetched hp image accepted membership
+  Proofs.fetched hp image (by find_configured) accepted membership
 
 
 theorem soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
@@ -257,7 +257,9 @@ theorem Caller.soundness [Fact p.Prime] (hp : 524288 < p)
     {program : List Caller.ProgramEntry}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (image : Caller.programImage before addresses = some program)
-    (member : (Caller.decoderTable program).Contains #[] (decoderQuery w)) : Caller.Binding w before program :=
+    (member : (Caller.decoderTable program).Contains #[] (decoderQuery w))
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) :
+    Caller.Binding w before program :=
   Caller.Proofs.caller_binding hp constraints image member
 
 
@@ -399,13 +401,13 @@ theorem Caller.jump_cycle_soundness
   Caller.Proofs.mixed_jump_cycle accepted inputs started isa landingPad member words instruction
 
 
-theorem Caller.ram_cycle_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem Caller.ram_cycle_soundness
     {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     (accepted : Caller.MixedMemoryAccepted data program)
     (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
     (started : 0 < (Trace.timeOfPair data.machine.initial.timestamp).value)
-    (configuration : Reference.RiscV.Sail.FlatMemoryConfiguration initial)
+    (configuration : Reference.RiscV.Sail.Configured initial)
     (ordinary : ∀ address, Trace.Cell.ram address ∈ cells → Reference.RiscV.Sail.OrdinaryWordAddress address)
     (ram : ∀ address, Trace.Cell.ram address ∈ cells → 4194304 ≤ address.toNat)
     {w : Nat → ZMod babyBearModulus} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output}

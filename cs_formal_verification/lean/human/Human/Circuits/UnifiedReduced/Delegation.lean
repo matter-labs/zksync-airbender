@@ -8,7 +8,7 @@ open Trace Arithmetic
     CSR decoder. The unified circuit uses the same nine-field caller query;
     its selectors and native ports have different imported placements. -/
 abbrev ProgramEntry := Delegation.Caller.ProgramEntry
-abbrev programImage := Delegation.Caller.programImage
+noncomputable abbrev programImage := Delegation.Caller.programImage
 abbrev decoderTable {p : Nat} [Fact p.Prime] := Delegation.Caller.decoderTable (p := p)
 
 /-- The virtual request uses the unified starting clock and in-cycle tick one.
@@ -55,7 +55,7 @@ structure Binding (w : Nat → ZMod p) (before : Reference.RiscV.Sail.State)
     (Cell.register 0).read state = .ok 0 state ∧
     Reference.Sail.run ((Cell.register 0).write (destinationToken w).word.toBitVec) state = .ok () state ∧
     (Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) state = .ok (initialPC w).toBitVec state →
-      Reference.Sail.run (do SailRV32.Functions.normal_base_next_pc (); SailRV32.Functions.tick_pc ()) state =
+      Reference.Sail.run (do Airbender.Reference.RiscV.Sail.normalBaseNextPC; SailRV32.Functions.tick_pc ()) state =
         .ok () { state with regs :=
           (state.regs.insert .nextPC (finalPC w).toBitVec).insert .PC (finalPC w).toBitVec })
 

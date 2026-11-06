@@ -22,7 +22,6 @@ namespace Airbender.UnifiedReduced
     results or expected outputs are assumptions. Delegation callers are outside
     this registry. -/
 theorem Mixed.execution_soundness [Fact p.Prime]
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 4194304 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
     {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
@@ -39,7 +38,6 @@ theorem Mixed.execution_soundness [Fact p.Prime]
     selectors and word bounds are proved internally from the imported artifact,
     modeled tables and logical matching. No terminal-PC normalization is needed. -/
 theorem execution_soundness [Fact p.Prime]
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 4194304 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
     {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}

@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.CustomComposition
 import Slop.UnifiedReduced.CustomHistory
 import Slop.BabyBear
@@ -18,9 +19,9 @@ private def contribution (kind : Fin 4) (i byte : Nat) : Nat :=
     (old.extractLsb' (8 * i) 8).toNat)).rotateRight (rotation kind)).extractLsb' (8 * byte) 8).toNat
 private def assignment (kind : Fin 4) (column : Nat) : ZMod babyBearModulus :=
   if 58 ≤ column ∧ column < 74 then contribution kind ((column - 58) / 4) ((column - 58) % 4)
-  else if 92 ≤ column ∧ column < 128 then
-    let i := (column - 92) / 9
-    match (column - 92) % 9 with
+  else if 86 ≤ column ∧ column < 122 then
+    let i := (column - 86) / 9
+    match (column - 86) % 9 with
     | 0 => (47 + kind.val : Nat)
     | 1 => (left.extractLsb' (8 * i) 8).toNat
     | 2 => (old.extractLsb' (8 * i) 8).toNat
@@ -30,7 +31,7 @@ private def assignment (kind : Fin 4) (column : Nat) : ZMod babyBearModulus :=
     | 6 => contribution kind i 3
     | _ => 0
   else match column with
-    | 4 | 5 | 27 | 129 | 130 | 131 | 132 | 133 => 1
+    | 4 | 5 | 27 | 123 | 124 | 125 => 1
     | 6 | 7 | 38 | 44 => 2
     | 2 | 30 => 4
     | 32 => 8
@@ -40,23 +41,26 @@ private def assignment (kind : Fin 4) (column : Nat) : ZMod babyBearModulus :=
     | 50 => (((result kind).toNat % 65536 : Nat) : ZMod babyBearModulus)
     | 51 => (((result kind).toNat / 65536 : Nat) : ZMod babyBearModulus)
     | 74 => 0x34 | 75 => 0xcd | 76 => 0x78 | 77 => 1
-    | 88 => 3
-    | 80 => 0xabcd1234 * 0xef015678 * 943718400
+    | 82 => 3
+    | 78 => 0xabcd1234 * 0xef015678 * 943718400
     | _ => 0
 private def bits (kind : Fin 4) : BitVec 32 :=
   #[0xc1c0c173, 0x8dc0c173, 0x89c0c173, 0x85f0c173][kind.val]!
-private def before (kind : Fin 4) : State :=
-  wordWriteState { (default : State) with
-    regs := (default : State).regs.insert .x1 left |>.insert .x2 old |>.insert .PC (0 : BitVec 32) }
+private noncomputable def before (kind : Fin 4) : State :=
+  wordWriteState { resetMachine with
+    regs := resetMachine.regs.insert .x1 left |>.insert .x2 old |>.insert .PC (0 : BitVec 32) }
     0 (bits kind)
+
+theorem airbender_before (kind : Fin 4) : Configured (before kind) := by
+  configured_fixture [before, wordWriteState]
 private def native (kind : Fin 4) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment kind⟩
-private def entry (kind : Fin 4) : UnifiedReduced.ProgramEntry :=
+private noncomputable def entry (kind : Fin 4) : UnifiedReduced.ProgramEntry :=
   ⟨0, bits kind, .ZIMOP_MOP_R (BitVec.ofNat 5 (rotation kind), .Regidx 1, .Regidx 2),
     ⟨.machine, 1, 2, 2, ⟨0, 0⟩, 65536, 47 + kind.val⟩⟩
 
-theorem original_decoder (kind : Fin 4) (state : State) :
-    run (SailRV32.Functions.encdec_backwards (bits kind)) state = .ok (entry kind).instruction state := by
-  fin_cases kind <;> with_unfolding_all rfl
+theorem original_decoder (kind : Fin 4) :
+    Airbender.Reference.RiscV.Sail.decodeOnReset (bits kind) = some (entry kind).instruction := by
+  fin_cases kind <;> decode_on_reset
 
 theorem native_constraints (kind : Fin 4) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment kind)) (clockConstraints (Setup.table (before kind))) := by
@@ -107,7 +111,7 @@ theorem actual_query_contributions (kind : Fin 4) (i : Fin 4) :
     kind (by simp [assignment]) i
 
 private def cells : List Cell := [.register 1, .register 2]
-private def trace (kind : Fin 4) : UnifiedTrace babyBearModulus where
+private noncomputable def trace (kind : Fin 4) : UnifiedTrace babyBearModulus where
   rows := [native kind]
   rom := Setup.table (before kind)
   initial := PCState.boundary 0 (4, 0)
@@ -139,7 +143,7 @@ private theorem decoded (kind : Fin 4) : Decoded (trace kind) [entry kind] := by
 
 private theorem inputs (kind : Fin 4) : NativeInputs customDecoderFields
     (trace kind) (before kind) cells [entry kind] := by
-  refine ⟨by decide, ?_, ?_, ?_, ⟨[0], ?_⟩, ?_⟩
+  refine ⟨by decide, ?_, ?_, ?_, ⟨[0], ?_⟩, ?_, airbender_before kind⟩
   · intro cell member
     simp [cells] at member
     rcases member with rfl | rfl <;> trivial
@@ -158,8 +162,9 @@ private theorem inputs (kind : Fin 4) : NativeInputs customDecoderFields
     simp [initialState, pc, trace, PCState.boundary]
   · have bytes : (Cell.ram 0).read (before kind) = .ok (bits kind) (before kind) :=
       written_word_read _ _ _
-    simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes]
-    fin_cases kind <;> with_unfolding_all rfl
+    simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, original_decoder kind,
+      bind, Option.bind, pure]
+    fin_cases kind <;> rfl
   · constructor
     · change (timeOfPair (4, 0)).Bounded
       constructor <;> decide

@@ -90,11 +90,12 @@ theorem write_sources {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     {trace : NativeTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry} (image : programImage before addresses = some program)
-    (decoded : Decoded trace program) : Trace.Proofs.WriteSources trace := by
+    (decoded : Decoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) : Trace.Proofs.WriteSources trace := by
   intro row member
   have h := Verification.holds_of_sublist (accepted.constraints row member)
     (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
-  exact row_write_sources hp row h (fetched (by dsimp [limbBase]; omega) image h (decoded row member))
+  exact row_write_sources hp row h (fetched (by dsimp [limbBase]; omega) image (by find_configured) h (decoded row member))
     (incoming_pc_bounds (by dsimp [limbBase]; omega) decoded row member).1
 
 /-- Native history derives all operand, write and terminal-register ranges from
@@ -106,7 +107,8 @@ theorem native_value_bounds {p : Nat} [Fact p.Prime]
     (image : initialImage before cells = some trace.initialMemory)
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (programImage : JumpBranchSlt.programImage before addresses = some program)
-    (decoded : Decoded trace program) :
+    (decoded : Decoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) :
     (∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧
       (∀ row ∈ trace.rows, ∀ port ∈ row.ports,
         (writeToken row.columns row.assignment port).word.Bounded) ∧

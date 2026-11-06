@@ -23,11 +23,16 @@ const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 const TRACE_LEN_LOG2: usize = 24;
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 const MUL_DIV_NUM_CYCLES_PER_CHUNK: usize = 1 << 23;
+#[allow(dead_code)]
 const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
+#[allow(dead_code)]
 const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+#[allow(dead_code)]
 const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+#[allow(dead_code)]
 const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const RAM_BOUND_BYTES: usize = 1 << 29;
+#[allow(dead_code)]
 const RAM_BOUND_WORDS: usize = RAM_BOUND_BYTES / core::mem::size_of::<u32>();
 
 const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
@@ -37,32 +42,112 @@ pub use crate::definitions::SecurityLevel;
 
 #[test]
 fn gkr_run_basic_unrolled_test_sec_100() {
-    gkr_run_basic_unrolled_test_impl(SecurityLevel::Sec100, None, None);
-}
-
-pub fn gkr_run_basic_unrolled_test_impl(
-    level: SecurityLevel,
-    maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn()>>,
-    maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn()>>,
-) {
-    let proof_suffix = level.dir_suffix();
-    type CountersT = riscv_transpiler::vm::DelegationsAndFamiliesCounters;
-
-    let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let worker = Worker::new_with_num_threads(8);
-
-    let circuits_filter = super::orchestration::common::parse_circuits_filter();
-
     let program = std::env::var("GKR_PROGRAM").ok();
-    let mut config = match program.as_deref() {
+    let config = match program.as_deref() {
         Some("hashed_fibonacci_g_function") => {
             super::orchestration::common::ProgramConfig::hashed_fibonacci_blake_g_function()
         }
         Some("hashed_fibonacci_compression") => {
             super::orchestration::common::ProgramConfig::hashed_fibonacci_blake_compression()
         }
+        Some("bigint_with_control") => super::orchestration::common::ProgramConfig {
+            binary_path: "../examples/bigint_with_control/app.bin".into(),
+            text_section_path: "../examples/bigint_with_control/app.text".into(),
+            non_determinism_reads: vec![],
+            cycles_bound: 1 << 20,
+            ram_bound_bytes: RAM_BOUND_BYTES,
+        },
         _ => super::orchestration::common::ProgramConfig::keccak_f1600(),
     };
+    gkr_run_basic_unrolled_test_impl(
+        SecurityLevel::Sec100,
+        config,
+        super::orchestration::common::parse_circuits_filter(),
+        None,
+        None,
+    );
+
+    // the programs above make no Keccak-f1600 calls, so their proofs of those circuits are padding
+    // only; prove the circuits again on real rows, overwriting those proofs
+    gkr_run_basic_unrolled_test_impl(
+        SecurityLevel::Sec100,
+        super::orchestration::common::ProgramConfig::keccak(),
+        Some(
+            ["keccak_column_parity", "keccak_theta_rho", "keccak_chi5"]
+                .map(String::from)
+                .into(),
+        ),
+        None,
+        None,
+    );
+}
+
+/// The Blake delegation circuit (2^20 rows) proved with a PACKED base
+/// commitment: `pack_log2 = 4` packs every committed column set into
+/// `2^24`-variate polynomials, so the WHIR run uses the 2^24 schedule. Runs
+/// the Blake-compression hashed-fibonacci program (real Blake calls) and
+/// proves only that delegation circuit; the proof lands in
+/// `test_proofs/blake2_with_extended_control_sec_100_pack4_gkr_proof.json`
+/// (the fixture of the packed CPU-verifier test).
+#[test]
+fn gkr_blake_delegation_packed_test_sec_100() {
+    gkr_blake_delegation_packed_impl(SecurityLevel::Sec100, 4);
+}
+
+pub fn gkr_blake_delegation_packed_impl(level: SecurityLevel, pack_log2: usize) {
+    type CountersT = riscv_transpiler::vm::DelegationsAndFamiliesCounters;
+    let proof_suffix = level.dir_suffix();
+    let worker = Worker::new_with_num_threads(8);
+
+    let mut config =
+        super::orchestration::common::ProgramConfig::hashed_fibonacci_blake_compression();
+    config.ram_bound_bytes = RAM_BOUND_BYTES;
+    let vm = super::orchestration::common::run_vm_and_capture::<
+        CountersT,
+        FullUnsignedMachineDecoderConfig,
+    >(&config, &worker);
+    let expected_final_state = vm.expected_final_state();
+    let counters = vm.counters;
+    assert!(
+        counters.blake_calls > 0,
+        "the program must make Blake calls"
+    );
+
+    let external_challenges = super::orchestration::common::hardcoded_external_challenges();
+    let out = super::orchestration::delegations::prove_delegation_blake_with_packing::<CountersT>(
+        &vm.snapshotter,
+        &vm.tape,
+        &expected_final_state,
+        vm.cycles_bound,
+        counters.blake_calls,
+        &external_challenges,
+        level,
+        pack_log2,
+        PROVE_EMPTY,
+        false,
+        &None,
+        proof_suffix,
+        &worker,
+        super::blake2_with_extended_control::witness_eval_fn,
+    );
+    assert!(
+        out.proof.is_some(),
+        "the packed Blake proof must be produced"
+    );
+}
+
+pub fn gkr_run_basic_unrolled_test_impl(
+    level: SecurityLevel,
+    mut config: super::orchestration::common::ProgramConfig,
+    circuits_filter: Option<std::collections::HashSet<String>>,
+    _maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn()>>,
+    _maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn()>>,
+) {
+    let proof_suffix = level.dir_suffix();
+    type CountersT = riscv_transpiler::vm::DelegationsAndFamiliesCounters;
+
+    let trace_len: usize = 1 << TRACE_LEN_LOG2;
+    let worker = Worker::new_with_num_threads(8);
 
     config.ram_bound_bytes = RAM_BOUND_BYTES;
 
@@ -134,6 +219,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
             BLAKE2S_DELEGATION_CSR_REGISTER as u16,
             BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
             KECCAK_SPECIAL5_CSR_REGISTER as u16,
+            common_constants::KECCAK_COLUMN_PARITY_CSR_REGISTER as u16,
+            common_constants::KECCAK_THETA_RHO_CSR_REGISTER as u16,
+            common_constants::KECCAK_CHI5_CSR_REGISTER as u16,
             BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
         ],
     );
@@ -216,7 +304,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
             "add_sub_lui_auipc_mop",
-            &proof_suffix,
+            proof_suffix,
             &worker,
             add_sub_lui_auipc_mop::witness_eval_fn,
         );
@@ -258,7 +346,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
             "jump_branch_slt",
-            &proof_suffix,
+            proof_suffix,
             &worker,
             jump_branch_slt::witness_eval_fn,
         );
@@ -298,7 +386,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
             "shift_binop",
-            &proof_suffix,
+            proof_suffix,
             &worker,
             shift_binary_ops::witness_eval_fn,
         );
@@ -338,7 +426,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
             "unsigned_mul_div",
-            &proof_suffix,
+            proof_suffix,
             &worker,
             unsigned_mul_div::witness_eval_fn,
         );
@@ -388,7 +476,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
             "mem_word_only",
-            &proof_suffix,
+            proof_suffix,
             &worker,
             mem_word_only::witness_eval_fn,
         );
@@ -438,7 +526,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
             "mem_subword_only",
-            &proof_suffix,
+            proof_suffix,
             &worker,
             mem_subword_only::witness_eval_fn,
         );
@@ -463,13 +551,13 @@ pub fn gkr_run_basic_unrolled_test_impl(
     // Machine state permutation ended
     {
         for (pc, ts) in write_set.iter().copied() {
-            if read_set.contains(&(pc, ts)) == false {
+            if !read_set.contains(&(pc, ts)) {
                 panic!("read set doesn't contain a pair {:?}", (pc, ts));
             }
         }
 
         for (pc, ts) in read_set.iter().copied() {
-            if write_set.contains(&(pc, ts)) == false {
+            if !write_set.contains(&(pc, ts)) {
                 panic!("write set doesn't contain a pair {:?}", (pc, ts));
             }
         }
@@ -484,7 +572,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             level,
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
-            &proof_suffix,
+            proof_suffix,
             &worker,
         );
         if let Some(proof) = &out.proof {
@@ -505,7 +593,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
-            &proof_suffix,
+            proof_suffix,
             &worker,
             super::blake2_with_extended_control::witness_eval_fn,
         );
@@ -534,7 +622,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
-            &proof_suffix,
+            proof_suffix,
             &worker,
             super::bigint_with_extended_control::witness_eval_fn,
         );
@@ -563,9 +651,135 @@ pub fn gkr_run_basic_unrolled_test_impl(
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
-            &proof_suffix,
+            proof_suffix,
             &worker,
             super::keccak_special5::witness_eval_fn,
+        );
+        parse_delegation_ram_accesses_from_full_trace(
+            &out.compiled_circuit,
+            &out.memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_read_set,
+            out.delegation_type,
+        );
+        if let Some(proof) = &out.proof {
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
+        }
+    }
+
+    {
+        use common_constants::keccak_f1600::*;
+        use riscv_transpiler::witness::delegation::keccak_f1600::*;
+        let permutations = keccak_f1600_permutations(counters.keccak_f1600_calls);
+        let out = super::orchestration::delegations::prove_delegation_keccak_f1600::<
+            CountersT,
+            KeccakColumnParityAbiDescription,
+            { KECCAK_COLUMN_PARITY_CSR_REGISTER as u16 },
+            NUM_KECCAK_F1600_REGISTER_ACCESSES,
+            NUM_KECCAK_F1600_INDIRECT_READS,
+            KECCAK_COLUMN_PARITY_X11_NUM_WRITES,
+            KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
+        >(
+            "keccak_column_parity",
+            cs::gkr_circuits::delegation::keccak_column_parity::keccak_column_parity_delegation_circuit_table_driver_fn,
+            &snapshotter,
+            &tape,
+            &expected_final_state,
+            cycles_bound,
+            permutations * NUM_KECCAK_F1600_COLUMN_PARITY_CALLS,
+            &external_challenges,
+            level,
+            PROVE_EMPTY,
+            CHECK_MEMORY_PERMUTATION_ONLY,
+            &circuits_filter,
+            proof_suffix,
+            &worker,
+            super::keccak_column_parity::witness_eval_fn,
+        );
+        parse_delegation_ram_accesses_from_full_trace(
+            &out.compiled_circuit,
+            &out.memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_read_set,
+            out.delegation_type,
+        );
+        if let Some(proof) = &out.proof {
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
+        }
+    }
+
+    {
+        use common_constants::keccak_f1600::*;
+        use riscv_transpiler::witness::delegation::keccak_f1600::*;
+        let permutations = keccak_f1600_permutations(counters.keccak_f1600_calls);
+        let out = super::orchestration::delegations::prove_delegation_keccak_f1600::<
+            CountersT,
+            KeccakThetaRhoAbiDescription,
+            { KECCAK_THETA_RHO_CSR_REGISTER as u16 },
+            NUM_KECCAK_F1600_REGISTER_ACCESSES,
+            NUM_KECCAK_F1600_INDIRECT_READS,
+            KECCAK_THETA_RHO_X11_NUM_WRITES,
+            KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
+        >(
+            "keccak_theta_rho",
+            cs::gkr_circuits::delegation::keccak_theta_rho::keccak_theta_rho_delegation_circuit_table_driver_fn,
+            &snapshotter,
+            &tape,
+            &expected_final_state,
+            cycles_bound,
+            permutations * NUM_KECCAK_F1600_THETA_RHO_CALLS,
+            &external_challenges,
+            level,
+            PROVE_EMPTY,
+            CHECK_MEMORY_PERMUTATION_ONLY,
+            &circuits_filter,
+            proof_suffix,
+            &worker,
+            super::keccak_theta_rho::witness_eval_fn,
+        );
+        parse_delegation_ram_accesses_from_full_trace(
+            &out.compiled_circuit,
+            &out.memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_read_set,
+            out.delegation_type,
+        );
+        if let Some(proof) = &out.proof {
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
+        }
+    }
+
+    {
+        use common_constants::keccak_f1600::*;
+        use riscv_transpiler::witness::delegation::keccak_f1600::*;
+        let permutations = keccak_f1600_permutations(counters.keccak_f1600_calls);
+        let out = super::orchestration::delegations::prove_delegation_keccak_f1600::<
+            CountersT,
+            KeccakChi5AbiDescription,
+            { KECCAK_CHI5_CSR_REGISTER as u16 },
+            NUM_KECCAK_F1600_REGISTER_ACCESSES,
+            NUM_KECCAK_F1600_INDIRECT_READS,
+            KECCAK_CHI5_X11_NUM_WRITES,
+            KECCAK_CHI5_NUM_VARIABLE_OFFSETS,
+        >(
+            "keccak_chi5",
+            cs::gkr_circuits::delegation::keccak_chi5::keccak_chi5_delegation_circuit_table_driver_fn,
+            &snapshotter,
+            &tape,
+            &expected_final_state,
+            cycles_bound,
+            permutations * NUM_KECCAK_F1600_CHI5_CALLS,
+            &external_challenges,
+            level,
+            PROVE_EMPTY,
+            CHECK_MEMORY_PERMUTATION_ONLY,
+            &circuits_filter,
+            proof_suffix,
+            &worker,
+            super::keccak_chi5::witness_eval_fn,
         );
         parse_delegation_ram_accesses_from_full_trace(
             &out.compiled_circuit,
@@ -592,7 +806,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
             &circuits_filter,
-            &proof_suffix,
+            proof_suffix,
             &worker,
             super::blake2_g_function::witness_eval_fn,
         );
@@ -636,23 +850,19 @@ pub fn gkr_run_basic_unrolled_test_impl(
         // assert_eq!(expected_init_set.len(), flattened_inits_and_teardowns.len());
 
         if flattened_inits_and_teardowns.len() != expected_init_set.len() {
-            for (idx, (address, (teardown_ts, teardown_value))) in
-                flattened_inits_and_teardowns.iter().enumerate()
-            {
+            for (address, (teardown_ts, teardown_value)) in flattened_inits_and_teardowns.iter() {
                 let mut init_set_el = None;
-                for (i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
+                for (is_reg, addr, ts, init_value) in expected_init_set.iter() {
                     if *addr == *address {
                         init_set_el = Some((*is_reg, *addr, *ts, *init_value));
                     }
                 }
-                let Some(init_set_el) = init_set_el else {
+                let Some(_init_set_el) = init_set_el else {
                     panic!("No expected init set element for address {} of flattened inits or teardowns", *address);
                 };
 
                 let mut teardown_set_el = None;
-                for (i, (is_reg, addr, ts, teardown_value)) in
-                    expected_teardown_set.iter().enumerate()
-                {
+                for (is_reg, addr, ts, teardown_value) in expected_teardown_set.iter() {
                     if *addr == *address {
                         teardown_set_el = Some((*is_reg, *addr, *ts, *teardown_value));
                     }
@@ -676,11 +886,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         for (idx, (is_register, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
             assert!(
-                *is_register == false,
+                !*is_register,
                 "found an unexpected init for register {} with value {} at timestamp {}",
-                *addr,
-                *init_value,
-                *ts
+                *addr, *init_value, *ts
             );
             assert_eq!(
                 *ts, 0,
@@ -700,11 +908,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
         for (idx, (is_register, addr, ts, value)) in expected_teardown_set.iter().enumerate() {
             assert!(
-                *is_register == false,
+                !*is_register,
                 "found an unexpected teardown for register {} with value {} at timestamp {}",
-                *addr,
-                *value,
-                *ts
+                *addr, *value, *ts
             );
             assert!(
                 *ts > INITIAL_TIMESTAMP,
@@ -732,7 +938,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         assert_eq!(total_unique_teardowns, expected_teardown_set.len());
     }
 
-    if CHECK_MEMORY_PERMUTATION_ONLY == false && circuits_filter.is_none() {
+    if !CHECK_MEMORY_PERMUTATION_ONLY && circuits_filter.is_none() {
         dbg!(permutation_argument_accumulator);
         assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
     }
@@ -1008,7 +1214,7 @@ fn add_sub_family_bench_in_memory() {
 /// the add/sub/lui/auipc/mop family circuit, but prove it twice under different
 /// RS-codeword storage policies ([`RsCodewordSource::InMemory`] vs
 /// [`RsCodewordSource::Recompute`]) and assert the two proofs are byte-identical.
-/// The storage policy is orthogonal to the (fixed) `CommitmentMode`, so it must not
+/// The storage policy is orthogonal to the (fixed) prover config, so it must not
 /// change the proof.
 #[test]
 #[ignore = "production-scale 2^24 RS storage parity; run explicitly"]

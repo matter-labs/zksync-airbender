@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.AddSub.RowClaims
 import Tests.TraceMemory
 import Slop.Final.Circuits.AddSub.Theorems
@@ -10,20 +11,10 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
 -- The same two dependent, reversed ADD rows, with a complete public GPR image
--- and actual Machine/PMA/PMP configuration for the shared trace boundary.
-private def attributes : SailRV32.PMA :=
-  { (default : SailRV32.PMA) with readable := true, writable := true, executable := true }
-
-def before : State :=
-  { (default : State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity :
-      Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .mstatus 0 |>.insert .cur_privilege .Machine |>.insert .misa 0x40000100
-      |>.insert .senvcfg 0 |>.insert .menvcfg 0x10
-      |>.insert .pmpcfg_n (Vector.replicate 64 0)
-      |>.insert .pmpaddr_n (Vector.replicate 64 0)
-      |>.insert .pma_regions [rv32Region attributes]
-      |>.insert .mhartid 7 |>.insert .htif_tohost_base none |>.insert .PC (0 : BitVec 32)
+-- on the Airbender reset configuration for the shared trace boundary.
+noncomputable def before : State :=
+  { Airbender.Reference.RiscV.Sail.resetMachine with
+    regs := Airbender.Reference.RiscV.Sail.resetMachine.regs |>.insert .PC (0 : BitVec 32)
       |>.insert .x1 5
       |>.insert .x2 0
       |>.insert .x3 0
@@ -103,6 +94,7 @@ private theorem decoded : Decoded trace Tests.TraceMemory.sequentialProgram :=
 private theorem program_image : programImage before [0, 4] =
     some Tests.TraceMemory.sequentialProgram := by
   have old := Proofs.program_sources Tests.TraceMemory.sequential_program_image
+    (configured := Tests.TraceMemory.airbender_sequentialBefore)
   have first := read_word_frame (before := Tests.TraceMemory.sequentialBefore) (after := before) rfl (old
     Tests.TraceMemory.sequentialProgram[0] (by simp [Tests.TraceMemory.sequentialProgram,
       Tests.TraceMemory.publicProgram])).bytes
@@ -111,27 +103,14 @@ private theorem program_image : programImage before [0, 4] =
       Tests.TraceMemory.publicProgram])).bytes
   change (Cell.ram 0).read before = .ok 0x00008133 before at first
   change (Cell.ram 4).read before = .ok 0x002100b3 before at second
-  have decodeFirst : SailRV32.Functions.encdec_backwards 0x00008133 =
-      (FreeM.pure (.RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD)) : SailRV32.SailM _) := rfl
-  have decodeSecond : SailRV32.Functions.encdec_backwards 0x002100b3 =
-      (FreeM.pure (.RTYPE (.Regidx 2, .Regidx 2, .Regidx 1, .ADD)) : SailRV32.SailM _) := rfl
+  have decodeFirst : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00008133 = some (.RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD)) := by decode_on_reset
+  have decodeSecond : Airbender.Reference.RiscV.Sail.decodeOnReset 0x002100b3 = some (.RTYPE (.Regidx 2, .Regidx 2, .Regidx 1, .ADD)) := by decode_on_reset
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith,
     first, second, decodeFirst, decodeSecond, bind, Option.bind]
   rfl
 
-set_option backward.isDefEq.respectTransparency false in
-theorem configuration : FlatMemoryConfiguration before := by
-  constructor
-  · simp [before, Std.ExtDHashMap.get?_insert]
-  · simp [before, Std.ExtDHashMap.get?_insert]
-  · exact ⟨0x40000100, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨0, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨0x10, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · simp [before, Std.ExtDHashMap.get?_insert]
-  · exact ⟨Vector.replicate 64 0, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨attributes, by simp [before, Std.ExtDHashMap.get?_insert], rfl, rfl, rfl⟩
-  · exact ⟨7, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · simp [before, Std.ExtDHashMap.get?_insert]
+theorem configuration : Configured before := by
+  configured_fixture [before]
 
 theorem inputs : ExecutionBoundary trace before cells Tests.TraceMemory.sequentialProgram := by
   refine {
@@ -182,7 +161,7 @@ private theorem noDiscardedLoads : NoDiscardedLoads Tests.TraceMemory.sequential
 
 /-- The whole-trace theorem executes both actual public-decoded instructions
     and fixes every terminal GPR value, including untouched initialized cells. -/
-theorem complete_dependent_trace [MemoryPlatform SailRV32.exception] :
+theorem complete_dependent_trace  :
     ∃ after, SailTrace Tests.TraceMemory.sequentialProgram before after ∧
       Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after = .ok 8 after ∧
       ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
@@ -192,7 +171,7 @@ theorem complete_dependent_trace [MemoryPlatform SailRV32.exception] :
 private def pooledProgram : List PooledProgramEntry :=
   Tests.TraceMemory.sequentialProgram.map (ProgramEntry.mapFamily pooledArithmeticFamily)
 
-private def pooled : PooledTrace babyBearModulus where
+private noncomputable def pooled : PooledTrace babyBearModulus where
   rows := [⟨.addSub, Tests.TraceMemory.secondRow.assignment⟩,
     ⟨.addSub, Tests.TraceMemory.row.assignment⟩]
   rom := ⟨trace.rom, Verification.subwordTable (ROM.words before)⟩
@@ -231,13 +210,16 @@ private theorem pooledImage : pooledProgramImage before [0, 4] = some pooledProg
     (by simp [Tests.TraceMemory.sequentialProgram, Tests.TraceMemory.publicProgram])).bytes
   change (Cell.ram 0).read before = .ok 0x00008133 before at first
   change (Cell.ram 4).read before = .ok 0x002100b3 before at second
-  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, first, second, bind, Option.bind]
+  have decodeFirst : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00008133 = some (.RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD)) := by decode_on_reset
+  have decodeSecond : Airbender.Reference.RiscV.Sail.decodeOnReset 0x002100b3 = some (.RTYPE (.Regidx 2, .Regidx 2, .Regidx 1, .ADD)) := by decode_on_reset
+  simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, first, second, decodeFirst, decodeSecond, bind, Option.bind]
   rfl
 
 private theorem pooledInputs : NativeInputs pooledDecoderFields pooled before cells pooledProgram :=
   ⟨inputs.distinct, inputs.aligned, inputs.image, inputs.initialPC,
-    ⟨[0, 4], pooledImage⟩, ⟨inputs.clocks.initial, inputs.clocks.aligned, inputs.clocks.memory⟩⟩
+    ⟨[0, 4], pooledImage⟩, ⟨inputs.clocks.initial, inputs.clocks.aligned, inputs.clocks.memory⟩,
+    configuration⟩
 
 /-- The second ADD reads the first ADD's write through the per-circuit model.
     All public premises are inhabited; no read or input-range hypothesis is used. -/

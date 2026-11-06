@@ -132,10 +132,10 @@ theorem nextPC_overwrite (state : State) (initial final : BitVec 32) :
     F_Base path. Successful PC reading is an input-state interface condition. -/
 theorem initialize_next_pc {state : State} {pc : BitVec 32}
     (h : run (SailRV32.Functions.get_arch_pc ()) state = .ok pc state) :
-    run (SailRV32.Functions.normal_base_next_pc ()) state =
+    run normalBaseNextPC state =
       .ok () { state with regs := state.regs.insert .nextPC (pc + 4) } := by
   change run (SailRV32.readReg .PC) state = .ok pc state at h
-  simp only [SailRV32.Functions.normal_base_next_pc]
+  simp only [normalBaseNextPC]
   rw [run_bind_of_ok _ _ _ _ _ h]
   exact write_register .nextPC (pc + 4) state
 

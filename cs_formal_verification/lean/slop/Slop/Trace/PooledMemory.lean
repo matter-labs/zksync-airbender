@@ -19,13 +19,14 @@ theorem pooled_word_address {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection initial addresses = some program)
+    (programImage : programImageWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : PooledProgramEntry} (present : entry ∈ program)
     (family : entry.data.family = .wordMemory)
     (query : (⟨.wordMemory, w⟩ : Row p PooledFamily).decoderQuery = entry.query)
-    (store : Bool) (selected : w 10 = if store then 1 else 0) :
+    (store : Bool) (selected : w 10 = if store then 1 else 0)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     let address := Word.mk (w (if store then 25 else 19)).val (w (if store then 26 else 20)).val
     address.Bounded ∧ address.toBitVec = (Word.mk (w 17).val (w 18).val).toBitVec +
       (Word.mk (w 8).val (w 9).val).toBitVec ∧ Cell.ram address.toBitVec ∈ cells := by
@@ -134,7 +135,6 @@ set_option backward.isDefEq.respectTransparency false in
 theorem pooled_word_execution {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     [registry : PooledRegistry projection]
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -143,9 +143,9 @@ theorem pooled_word_execution {p : Nat} [Fact p.Prime]
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial)
+    (configuration : Configured initial)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection initial addresses = some program)
+    (programImage : programImageWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : PooledProgramEntry} (present : entry ∈ program)

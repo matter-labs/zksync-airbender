@@ -1,4 +1,6 @@
-use super::{DataTraceRanges, SplitDataTraceRanges, TracingDataProducer, UnifiedDataTraceRanges};
+use super::{
+    DataTraceRanges, PtrRange, SplitDataTraceRanges, TracingDataProducer, UnifiedDataTraceRanges,
+};
 use crate::messages::WorkerResult;
 use crossbeam_channel::{Receiver, Sender};
 use execution_prover_model::allocator::HostTraceAllocator;
@@ -11,11 +13,16 @@ use riscv_transpiler::jit::{CounterType, MAX_NUM_COUNTERS};
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
+use riscv_transpiler::witness::delegation::keccak_f1600::{
+    KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
+    KeccakThetaRhoDelegationWitness,
+};
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 use riscv_transpiler::witness::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
 };
+use std::collections::VecDeque;
 use std::mem::transmute;
 
 pub(crate) trait TracingDataProducers<A: HostTraceAllocator> {
@@ -37,8 +44,7 @@ pub(crate) trait TracingDataProducers<A: HostTraceAllocator> {
     fn finalize(self);
 }
 
-/// The four delegation producers (blake / bigint / keccak /
-/// blake_g_function), constructed and torn down identically by
+/// Delegation producers, constructed and torn down identically by
 /// `SplitTracingDataProducers` and `UnifiedTracingDataProducers` — the two
 /// differ only in which additional (per-family or unified-cycle) producers
 /// accompany this shared set.
@@ -46,6 +52,9 @@ struct DelegationProducers<A: HostTraceAllocator> {
     blake_producer: TracingDataProducer<Blake2sRoundFunctionDelegationWitness, A>,
     bigint_producer: TracingDataProducer<BigintDelegationWitness, A>,
     keccak_producer: TracingDataProducer<KeccakSpecial5DelegationWitness, A>,
+    keccak_column_parity_producer: TracingDataProducer<KeccakColumnParityDelegationWitness, A>,
+    keccak_theta_rho_producer: TracingDataProducer<KeccakThetaRhoDelegationWitness, A>,
+    keccak_chi5_producer: TracingDataProducer<KeccakChi5DelegationWitness, A>,
     blake_g_function_producer: TracingDataProducer<Blake2sGFunctionDelegationWitness, A>,
 }
 
@@ -66,6 +75,23 @@ impl<A: HostTraceAllocator> DelegationProducers<A> {
             free_allocators.clone(),
             results.clone(),
         );
+        let keccak_column_parity_producer =
+            TracingDataProducer::<KeccakColumnParityDelegationWitness, _>::new(
+                CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity),
+                free_allocators.clone(),
+                results.clone(),
+            );
+        let keccak_theta_rho_producer =
+            TracingDataProducer::<KeccakThetaRhoDelegationWitness, _>::new(
+                CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho),
+                free_allocators.clone(),
+                results.clone(),
+            );
+        let keccak_chi5_producer = TracingDataProducer::<KeccakChi5DelegationWitness, _>::new(
+            CircuitType::Delegation(DelegationCircuitType::KeccakChi5),
+            free_allocators.clone(),
+            results.clone(),
+        );
         let blake_g_function_producer =
             TracingDataProducer::<Blake2sGFunctionDelegationWitness, _>::new(
                 CircuitType::Delegation(DelegationCircuitType::Blake2GFunction),
@@ -76,14 +102,46 @@ impl<A: HostTraceAllocator> DelegationProducers<A> {
             blake_producer,
             bigint_producer,
             keccak_producer,
+            keccak_column_parity_producer,
+            keccak_theta_rho_producer,
+            keccak_chi5_producer,
             blake_g_function_producer,
         }
+    }
+
+    fn process_keccak_f1600_snapshot(
+        &mut self,
+        snapshot_index: usize,
+        calls: std::ops::Range<usize>,
+        column_parity_ranges: &mut VecDeque<PtrRange<KeccakColumnParityDelegationWitness, A>>,
+        theta_rho_ranges: &mut VecDeque<PtrRange<KeccakThetaRhoDelegationWitness, A>>,
+        chi5_ranges: &mut VecDeque<PtrRange<KeccakChi5DelegationWitness, A>>,
+    ) {
+        let (cp_start, tr_start, chi_start) = keccak_f1600_rows_per_circuit(calls.start);
+        let (cp_end, tr_end, chi_end) = keccak_f1600_rows_per_circuit(calls.end);
+        self.keccak_column_parity_producer.process_snapshot(
+            snapshot_index,
+            cp_start,
+            cp_end,
+            column_parity_ranges,
+        );
+        self.keccak_theta_rho_producer.process_snapshot(
+            snapshot_index,
+            tr_start,
+            tr_end,
+            theta_rho_ranges,
+        );
+        self.keccak_chi5_producer
+            .process_snapshot(snapshot_index, chi_start, chi_end, chi5_ranges);
     }
 
     fn finalize(self) {
         self.blake_producer.finalize();
         self.bigint_producer.finalize();
         self.keccak_producer.finalize();
+        self.keccak_column_parity_producer.finalize();
+        self.keccak_theta_rho_producer.finalize();
+        self.keccak_chi5_producer.finalize();
         self.blake_g_function_producer.finalize();
     }
 }
@@ -236,6 +294,15 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for SplitTracingDataProducer
                     final_count,
                     &mut trace_ranges.keccak_calls,
                 ),
+                CounterType::KeccakF1600Delegation => {
+                    self.delegation.process_keccak_f1600_snapshot(
+                        snapshot_index,
+                        initial_count..final_count,
+                        &mut trace_ranges.keccak_column_parity_calls,
+                        &mut trace_ranges.keccak_theta_rho_calls,
+                        &mut trace_ranges.keccak_chi5_calls,
+                    )
+                }
                 CounterType::BlakeGFunctionDelegation => {
                     self.delegation.blake_g_function_producer.process_snapshot(
                         snapshot_index,
@@ -331,6 +398,15 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for UnifiedTracingDataProduc
                     final_count,
                     &mut trace_ranges.keccak_calls,
                 ),
+                CounterType::KeccakF1600Delegation => {
+                    self.delegation.process_keccak_f1600_snapshot(
+                        snapshot_index,
+                        initial_count..final_count,
+                        &mut trace_ranges.keccak_column_parity_calls,
+                        &mut trace_ranges.keccak_theta_rho_calls,
+                        &mut trace_ranges.keccak_chi5_calls,
+                    )
+                }
                 CounterType::BlakeGFunctionDelegation => {
                     self.delegation.blake_g_function_producer.process_snapshot(
                         snapshot_index,
@@ -355,4 +431,14 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for UnifiedTracingDataProduc
         self.delegation.finalize();
         self.cycles_producer.finalize();
     }
+}
+
+fn keccak_f1600_rows_per_circuit(calls: usize) -> (usize, usize, usize) {
+    use common_constants::delegation_types::keccak_f1600::*;
+    let permutations = keccak_f1600_permutations(calls);
+    (
+        permutations * NUM_KECCAK_F1600_COLUMN_PARITY_CALLS,
+        permutations * NUM_KECCAK_F1600_THETA_RHO_CALLS,
+        permutations * NUM_KECCAK_F1600_CHI5_CALLS,
+    )
 }

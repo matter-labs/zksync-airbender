@@ -57,7 +57,8 @@ summary — the contract document is the source of truth.
   is enough — completion is not required.
 - **MUST NOT** call any CUDA API from within a host callback, and callbacks
   must not create or destroy pool-backed allocations. Callbacks exist to
-  compute challenge-dependent host data only.
+  compute challenge-dependent host data, fill H2D staging, and consume D2H
+  readbacks (including proof assembly).
 - **MUST** keep `prove()` enqueue-only. No `stream.synchronize()`, no host
   blocking for `exec_stream` progress — not even for profiling or logging.
   Host blocking belongs in `GpuGKRProofJob::finish()`.
@@ -73,7 +74,12 @@ summary — the contract document is the source of truth.
   `#[cfg(test)]` `test_utils`/`tests`).
 - `src/config.rs`: prover configuration policy — maps a `CircuitType` +
   `SecurityLevel` to the canonical upstream `ProverConfig`, and owns
-  `GPU_SUPPORTED_SECURITY_LEVELS` / `UnsupportedGpuSecurityLevel`.
+  `GPU_SUPPORTED_SECURITY_LEVELS` / `UnsupportedGpuSecurityLevel`. The GPU
+  prover implements only the unpacked base commitment: `prove()`, its DR
+  preflight and `gpu_trace`'s memory commitments reject
+  `ProverConfig::pack_log2 != 0` via
+  `gpu_trace::trace::memory::assert_unpacked_prover_config` before enqueuing
+  any commitment or proof kernel (the preflight before constructing transfers).
 - `src/proof/`:
   - `inputs.rs`: the consolidated H2D transfer bundle
     (`GpuGKRProofTransfer`) — one shared `Transfer` (from `gpu_prover_context`)

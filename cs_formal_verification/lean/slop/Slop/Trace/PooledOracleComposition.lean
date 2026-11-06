@@ -47,7 +47,6 @@ theorem view_ports {p : Nat} [Fact p.Prime] (initial : State) {trace : PooledTra
   rw [view_index, view_response initial row selected]
   exact ports row present selected
 
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 theorem trace_execution {p : Nat} [Fact p.Prime]
@@ -79,7 +78,7 @@ theorem trace_execution {p : Nat} [Fact p.Prime]
       row_step hp inverse accepted inputs.clocks inputs.image inputs.wordSetup inputs.subwordSetup
         inputs.registers inputs.aligned inputs.ordinary inputs.configuration programImage decoded inputs.code
         inputs.loads inputs.terminalPC inputs.configuration.isa
-        ⟨inputs.configuration.privilege, inputs.landingPadDisabled⟩ ports member native past current)
+        ⟨inputs.configuration.privilege, inputs.configuration.landingPad⟩ ports member native past current)
     rows ordered indices trace.terminal (fun row present => permutation.mem_iff.mp present)
     (fun event present => eventPermutation.mem_iff.mp present) chain nativeHistory
   have count : (rows.filter Pooled.isRead).length = Pooled.readCount trace :=

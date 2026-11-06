@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Trace.ImageFrame
 import Tests.DelegationCaller
 import Tests.DelegationMemory
@@ -19,11 +20,14 @@ private def machine : PooledTrace babyBearModulus where
   initialMemory := []
   terminalMemory := []
 
-private def data : Caller.RequestTrace babyBearModulus :=
+private noncomputable def data : Caller.RequestTrace babyBearModulus :=
   ⟨machine, Tests.DelegationMemory.data, [Tests.DelegationCaller.entry .keccak]⟩
 
-private def before : State :=
+private noncomputable def before : State :=
   wordWriteState Tests.DelegationMemory.before 0 (Tests.DelegationCaller.entry .keccak).bits
+
+private theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState, Tests.DelegationMemory.before]
 
 private theorem caller_list : data.callers = [caller] := by rfl
 
@@ -62,17 +66,17 @@ private theorem image : Caller.programImage before [0] = some data.program := by
   have bytes : (Cell.ram 0).read before =
       .ok (Tests.DelegationCaller.entry .keccak).bits before :=
     written_word_read Tests.DelegationMemory.before 0 _
-  have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .keccak).bits) before =
-      .ok (Tests.DelegationCaller.entry .keccak).instruction before :=
-    Tests.DelegationCaller.original_decoder .keccak before
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .keccak).bits = some (Tests.DelegationCaller.entry .keccak).instruction :=
+    Tests.DelegationCaller.original_decoder .keccak
   have fields : Caller.decoderFields (Tests.DelegationCaller.entry .keccak).instruction =
       some (Tests.DelegationCaller.entry .keccak).data := Tests.DelegationCaller.metadata .keccak
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
     bind, Option.bind, pure]
   rfl
 
 private theorem publicProgram : Caller.RequestInputs data before [0] :=
-  ⟨image, by change 4 < timestampBase ∧ 0 < timestampBase; norm_num [timestampBase], by decide +kernel⟩
+  ⟨image, by change 4 < timestampBase ∧ 0 < timestampBase; norm_num [timestampBase], by decide +kernel,
+    airbender_before⟩
 
 theorem bound_requests : Caller.RequestBinding data before :=
   Caller.requests_soundness (by decide) (by decide) (by decide) accepted publicProgram

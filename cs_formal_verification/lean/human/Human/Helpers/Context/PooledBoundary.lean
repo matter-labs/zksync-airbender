@@ -6,7 +6,6 @@ import Human.Helpers.Memory.Native
 
 namespace Airbender.Trace
 open Reference.RiscV.Sail
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 /-- Public configuration and program domain shared by both six-family claims.
     `initial` is the starting Sail state, `cells` the tracked register/RAM domain,
@@ -18,11 +17,8 @@ structure PooledPublicInputs (initial : State) (cells : List Cell)
   registers : ∀ index, Cell.register index ∈ cells
   /-- Tracked RAM avoids platform-specific MMIO windows. -/
   ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
-  /-- Public CSR/PMA/PMP values select the supported Machine memory path. -/
-  configuration : FlatMemoryConfiguration initial
-  /-- Disable JALR landing-pad updates, which the native circuit does not model. -/
-  landingPadDisabled : ∃ security, initial.regs.get? .mseccfg = some security ∧
-    SailRV32.Functions._get_Seccfg_MLPE security = 0
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Configured initial
   /-- Public instructions lie below the ROM limit at four-byte-aligned addresses. -/
   code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0
   /-- Exclude LW-to-x0, whose Airbender NOP behavior differs from unchanged Sail. -/
@@ -66,7 +62,7 @@ structure PooledBootInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   /-- Tracked RAM cells are aligned words. -/
   aligned : ∀ cell ∈ cells, cell.Aligned
   /-- Read public code bytes and run pinned Sail decoding for all program entries. -/
-  programImage : ∃ addresses, programImageRunWith projection initial addresses = some program
+  programImage : ∃ addresses, programImageWith projection initial addresses = some program
   /-- Sail starts at PC zero with zero GPRs and zero tracked non-ROM RAM. -/
   profile : InitialProfile initial cells
   /-- All native seed values and prior timestamps are zero, including ROM shadow slots. -/

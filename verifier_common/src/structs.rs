@@ -7,6 +7,7 @@ pub struct FoldBuffers<E: Copy, const N: usize> {
 }
 
 impl<E: Copy, const N: usize> FoldBuffers<E, N> {
+    #[allow(clippy::new_without_default)]
     #[inline(always)]
     pub fn new() -> Self {
         Self {
@@ -15,6 +16,11 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
         }
     }
 
+    /// # Safety
+    ///
+    /// `src_len <= N`, `dst_len <= N`, and the first `src_len` elements of the source buffer
+    /// (`buf_b` for an even `round`, `buf_a` for an odd one) and the first `dst_len` elements
+    /// of the destination buffer must be initialized: both slices are `&[E]` / `&mut [E]`.
     #[inline(always)]
     pub unsafe fn src_dst(
         &mut self,
@@ -22,7 +28,7 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
         src_len: usize,
         dst_len: usize,
     ) -> (&[E], &mut [E]) {
-        if round % 2 == 0 {
+        if round.is_multiple_of(2) {
             let src = core::slice::from_raw_parts(self.buf_b.as_ptr().cast::<E>(), src_len);
             let dst = core::slice::from_raw_parts_mut(self.buf_a.as_mut_ptr().cast::<E>(), dst_len);
             (src, dst)
@@ -33,11 +39,18 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
         }
     }
 
+    /// # Safety
+    ///
+    /// `len <= N`, and the first `len` elements of `buf_a` must be initialized (`&mut [E]`).
     #[inline(always)]
     pub unsafe fn dst_a(&mut self, len: usize) -> &mut [E] {
         core::slice::from_raw_parts_mut(self.buf_a.as_mut_ptr().cast::<E>(), len)
     }
 
+    /// # Safety
+    ///
+    /// Element 0 of the buffer written by the last round (`buf_a` if `num_rounds` is odd,
+    /// `buf_b` otherwise) must have been written.
     #[inline(always)]
     pub unsafe fn result(&self, num_rounds: usize) -> E {
         if num_rounds % 2 == 1 {

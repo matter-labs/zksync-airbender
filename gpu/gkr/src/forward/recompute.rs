@@ -47,7 +47,7 @@ pub(crate) struct ForwardReplay {
     plan: Arc<RecomputePlan>,
     mappings: GpuGKRLookupMappings,
     table: Option<DeviceAllocation<E4>>,
-    decoder_fill: Arc<DeviceAllocation<E4>>,
+    lookup_fill_values: Arc<DeviceAllocation<E4>>,
     external: GKRExternalChallenges<BF, E4>,
     top_bits: Vec<u32>,
     blocks: u32,
@@ -301,7 +301,7 @@ impl ForwardReplay {
             plan,
             mappings: std::mem::take(&mut stage1.lookup_mappings),
             table: setup.take_generic_lookup(),
-            decoder_fill: setup.decoder_fill_owner(),
+            lookup_fill_values: setup.lookup_fill_values_owner(),
             external: *external,
             top_bits: top_bits.to_vec(),
             blocks,
@@ -377,7 +377,7 @@ impl ForwardReplay {
         super::vm::production_bind::stage_derived_e4_slots(
             &lowered,
             &lookup[1..2],
-            &self.decoder_fill,
+            &self.lookup_fill_values,
             context,
         )?;
         super::vm::launch_fwd_vm_streaming(&lowered.desc, self.blocks, context)?;

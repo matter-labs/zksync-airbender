@@ -12,9 +12,9 @@ set_option maxHeartbeats 4000000
 
 -- LBU x1,1(x0) reads 0x40 from its own instruction (0x00104083).
 -- The native ROM read and seed stay zero; the setup uses actual public bytes.
-private def before : State :=
+private noncomputable def before : State :=
   { Tests.TraceExecution.before with
-    regs := Tests.TraceExecution.before.regs.insert .x1 0 |>.insert .mseccfg 0
+    regs := Tests.TraceExecution.before.regs.insert .x1 0
     mem := Tests.TraceExecution.before.mem.insert 0 0x83
       |>.insert 1 0x40 |>.insert 2 0x10 |>.insert 3 0 }
 private def cells : List Cell := Tests.TraceExecution.cells ++ [.ram 0]
@@ -38,7 +38,7 @@ private def terminal : List (MemoryToken babyBearModulus) :=
    ⟨(Cell.register 1).addressCode, (6, 0), Nat.pair 0x40 0⟩] ++
   (ROMView.nativeBootImage (p := babyBearModulus) Tests.TraceExecution.cells).drop 2 ++
   [⟨(Cell.ram 0).addressCode, (5, 0), Nat.pair 0 0⟩]
-private def trace : PooledTrace babyBearModulus where
+private noncomputable def trace : PooledTrace babyBearModulus where
   rows := [nativeRow]
   rom := ⟨ROM.table cells physical, Verification.subwordTable (ROM.words before)⟩
   initial := PCState.boundary 0 (4, 0)
@@ -161,20 +161,10 @@ private theorem profile : InitialProfile before cells := by
     change 4194304 ≤ 0 at bound
     omega
 
-private theorem configuration : FlatMemoryConfiguration before := by
-  constructor
-  · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.privilege
-  · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.status
-  · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.isa
-  · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.supervisorEnvironment
-  · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.machineEnvironment
-  · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.pmpOff
-  · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.pmpAddresses
-  · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.pma
-  · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.hart
-  · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.htifDisabled
+private theorem configuration : Configured before :=
+  (Tests.TraceExecution.configuration.insert (key := .x1) rfl 0).with_mem _
 
-private theorem inputs [MemoryPlatform SailRV32.exception] : PooledBootInputs trace before cells [entry] := by
+private theorem inputs  : PooledBootInputs trace before cells [entry] := by
   refine {
     registers := fun index => List.mem_append_left _ (Tests.TraceExecution.inputs.registers index)
     distinct := by decide
@@ -192,10 +182,11 @@ private theorem inputs [MemoryPlatform SailRV32.exception] : PooledBootInputs tr
       unfold OrdinaryWordAddress
       decide
     configuration := configuration
-    landingPadDisabled := ⟨0, by simp [before], rfl⟩
     programImage := ⟨[0], by
-      simp only [programImageRunWith, List.mapM_cons, List.mapM_nil,
-        programEntryRunWith, bytes, bind, Option.bind]
+      have decoded : decodeOnReset 0x00104083 = some (.LOAD (1, .Regidx 0, .Regidx 1, true, 1)) := by
+        decode_on_reset
+      simp only [programImageWith, List.mapM_cons, List.mapM_nil,
+        programEntryWith, bytes, decoded, bind, Option.bind]
       rfl⟩
     code := by
       intro actual member
@@ -212,7 +203,7 @@ private theorem inputs [MemoryPlatform SailRV32.exception] : PooledBootInputs tr
 
 /-- The primary native claim is inhabited by a nonzero public ROM-byte load.
     Initialization, actual decoding and setup binding are all proved here. -/
-theorem complete_rom_load [MemoryPlatform SailRV32.exception] :
+theorem complete_rom_load  :
     ∃ after, Relation.ReflTransGen (PooledStep [entry]) before after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 4 after ∧
       (Cell.register 1).read after = .ok 0x40 after := by
@@ -229,7 +220,7 @@ theorem complete_rom_load [MemoryPlatform SailRV32.exception] :
 /-- The subword per-circuit claim also covers the public ROM-byte fixture.
     The proved physical view binds reads to public bytes while native shadow
     tokens stay zero; no input bound or desired-read interface is supplied. -/
-theorem per_circuit_rom_load [MemoryPlatform SailRV32.exception] :
+theorem per_circuit_rom_load  :
     ∃ input : SubwordMemory.Input,
       (SubwordMemory.circuitModel (PooledROMView.data before trace) before cells [entry]).relation
         input ⟨⟨0, 0⟩, ⟨64, 0⟩, ⟨4, 0⟩⟩ (PooledROMView.row before nativeRow).assignment ∧

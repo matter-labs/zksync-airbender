@@ -72,6 +72,7 @@ pub fn admit_dr_tail_before_transfers<T>(
     let Some(request) = request else {
         return Ok(construct_transfers(None));
     };
+    gpu_trace::trace::memory::assert_unpacked_prover_config(request.prover_config);
     validate_windowed_schedule(request.gkr_programs, request.prover_config);
     let plan = gpu_gkr::preflight_dr_tail_resources(
         request.gkr_programs,
@@ -143,6 +144,9 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         memory_policy.witness.is_valid(),
         "invalid witness memory policy"
     );
+    // the GPU prover implements only the unpacked base commitment; fail closed
+    // before enqueuing any proof kernel on a packed `ProverConfig`
+    gpu_trace::trace::memory::assert_unpacked_prover_config(prover_config);
     dr_tail_plan.validate_before_enqueue(gkr_programs, final_trace_size_log_2, context);
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     validate_windowed_schedule(gkr_programs, prover_config);
@@ -210,7 +214,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
             decoder: decoder.as_ref(),
             inits_and_teardowns: inits_and_teardowns.as_ref(),
             memory: &memory,
-            top_bits_device: top_bits.as_ref().map(|t| &t.device),
+            top_bits_device: top_bits.as_ref(),
             external_challenges_device: &external_challenges.device,
         },
         tracing_data.as_ref(),
@@ -356,8 +360,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
 
     let inputs_keepalive = inputs::GpuGKRProofTransferKeepalive {
         _setup_host: setup.as_ref().map(|setup| Arc::clone(&setup.host)),
-        _memory_host: Arc::clone(&memory.host),
-        _callbacks: transfer.into_callbacks(),
+        _transfer: transfer.into_keepalive(),
     };
 
     Ok(GpuGKRProofJob {

@@ -508,7 +508,6 @@ pub(crate) fn launch_natural_to_bitrev_tail(
 /// coset launch tiling and output-slab layout as
 /// [`monomials_to_evals_3_pass`]; the initial pass reads ONE shared input
 /// column per launch and writes coset-specific output slabs.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn natural_monomials_to_bitrev_evals_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -620,7 +619,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_3_pass(
 /// [`natural_monomials_to_bitrev_evals_3_pass`]; pass 1 reads ONE shared input
 /// column per launch and writes coset-specific output slabs, pass 2 runs in
 /// place on those slabs.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn natural_monomials_to_bitrev_evals_2_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -743,7 +741,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass(
 /// pre-scale, coset-specific output slabs); pass 2 runs the remaining
 /// `K = log_n - 8` stages in place on those slabs, one chunk of `2^K`
 /// consecutive rows per block.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn natural_monomials_to_bitrev_evals_2_pass_compact(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -779,7 +776,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass_compact(
 /// Commitment-only log_n=20 path whose initial launch consumes the hypercube
 /// pre-final4 intermediate. The CUDA body applies final4 from warp lanes, then
 /// executes the same natural-to-bitrev initial8 exchange as the ordinary path.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn natural_monomials_to_bitrev_evals_2_pass_compact_from_hypercube_final4(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -815,7 +811,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass_compact_from_hypercube_fi
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn natural_monomials_to_bitrev_evals_2_pass_compact_with_initial(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -963,7 +958,6 @@ fn natural_monomials_to_bitrev_evals_2_pass_compact_with_initial(
 /// First-coset arm of the fused-boundary LDE: the fused kernel (iNTT final +
 /// in-place monomial writeback + coset scale + forward initial) followed by
 /// the two noninitial passes. Transposed-monomial layout only.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn fused_writeback_single_coset_3_pass(
     scratch_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -1029,7 +1023,6 @@ pub(crate) fn fused_writeback_single_coset_3_pass(
 
 /// Multi-coset LDE using the coset-0 slab as transient monomial storage.
 /// Coset 0 is overwritten only after all other initials have consumed it.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn natural_fused_multi_coset_3_pass(
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,

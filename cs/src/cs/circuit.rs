@@ -51,12 +51,14 @@ pub struct IndirectAccessOffset {
     pub offset_constant: u32,
     pub assume_no_alignment_overflow: bool,
     pub is_write_access: bool,
+    pub read_timestamp_group: Option<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RegisterAccessRequest {
     pub register_index: u32,
     pub register_write: bool,
+    pub read_timestamp_group: Option<u8>,
     pub indirects_alignment_log2: u32,
     pub indirect_accesses: Vec<IndirectAccessOffset>,
 }
@@ -79,6 +81,7 @@ pub enum IndirectAccessType {
         variable_dependent: Option<(u32, Variable, usize)>,
         offset_constant: u32,
         assume_no_alignment_overflow: bool,
+        read_timestamp_group: Option<u8>,
     },
     Write {
         read_value: [Variable; REGISTER_SIZE],
@@ -86,6 +89,7 @@ pub enum IndirectAccessType {
         variable_dependent: Option<(u32, Variable, usize)>,
         offset_constant: u32,
         assume_no_alignment_overflow: bool,
+        read_timestamp_group: Option<u8>,
     },
 }
 
@@ -138,12 +142,26 @@ impl IndirectAccessType {
             Self::Write { write_value, .. } => Some(*write_value),
         }
     }
+
+    pub const fn read_timestamp_group(&self) -> Option<u8> {
+        match self {
+            Self::Read {
+                read_timestamp_group,
+                ..
+            } => *read_timestamp_group,
+            Self::Write {
+                read_timestamp_group,
+                ..
+            } => *read_timestamp_group,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RegisterAndIndirectAccesses {
     pub register_index: u32,
     pub register_access: RegisterAccessType,
+    pub read_timestamp_group: Option<u8>,
     pub indirects_alignment_log2: u32,
     pub indirect_accesses: Vec<IndirectAccessType>,
 }

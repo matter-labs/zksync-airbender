@@ -19,10 +19,12 @@ does not import the proofs, runs the regressions and the axiom audits, checks th
   artifact guards (`Slop/`), and the proofs of the final statements (`Slop/Final/`, laid out like `Human/`;
   `test/Checks/Claims.lean` checks each theorem against its `…Claim` by name and type, and its axioms).
 - `lean/test/` — regressions and fixtures (`Tests/`), the axiom audits (`Checks/`).
-- `lean/sail-rv32/` — the generated Sail RV32 slice (Lean) with its provenance; `sail/` — its generator
-  (`sail/generate_sail.py`, `sail/sail_slice.ml`, `sail/SailPlatform.lean`) and the reviewed upstream Sail sources (`sail/sail-riscv/`).
-- `sail/fetch-lean-sail.sh` — fetches the pinned lean-sail with our Lean 4.34 patch (`sail/patches/`; no upstream
-  licence, so never committed); `lean/check_review.py` — review-guide and audit-coverage check.
+- `sail/` — the Sail tooling: `regen.sh` generates the official Sail RISC-V RV32 model (sail-riscv, Sail and lean-sail
+  pins in [PINS.md](sail/PINS.md); machine config `config/airbender-base.json`) into the gitignored
+  `lean/sail-rv32/`; `fetch-lean-sail.sh` fetches the pinned lean-sail with our Lean 4.34 patch (no upstream licence,
+  so never committed).
+- `lean/sail-rv32/` — the Lake package `sail_rv32` (the generated model, not committed; its `lakefile.toml`,
+  `PROVENANCE.txt` and config copy are). `lean/check_review.py` — review-guide and audit-coverage check.
 - `docs/` — [status](docs/VERIFICATION_STATUS.md), [trust and review boundaries](docs/TRUST_AND_REVIEW.md),
   [plan](docs/FORMAL_VERIFICATION_PLAN.md), and the pinned Airbender reference (`docs/airbender/00-master.md`).
 - `docs/shared/` — 1:1 copy of `verifier_formal_verification/docs/`, kept in sync, not edited here; in particular
@@ -65,15 +67,13 @@ The original Keccak permutation reference compiles unchanged; the [Theta column]
 The witness-generation DSL and full `FormalCircuit` bundle are not used.
 Airbender's two-16-bit-limb representation is preserved.
 
-The reference uses [unmodified upstream Sail clauses](sail/sail-riscv/source/model/extensions/I/base_insts.sail)
-and [their generated Lean definitions](lean/sail-rv32/SailRV32.lean).
+The reference uses the unmodified upstream Sail RISC-V model (pins in [PINS.md](sail/PINS.md)), generated to Lean
+by [regen.sh](sail/regen.sh) into `lean/sail-rv32/SailRV32/`.
 The original ADD/SUB clause is `execute(RTYPE(...))`; ADDI is `execute(ITYPE(...))`;
 LUI/AUIPC use `execute(UTYPE(...))`. The Lean interface calls the generated
 `execute_RTYPE`, `execute_ITYPE` and `execute_UTYPE` directly.
-Unsigned division uses the original `execute_DIV`/`execute_REM` clauses from
-[the M-extension source](sail/sail-riscv/source/model/extensions/M/mext_insts.sail).
-[Provenance and regeneration](lean/sail-rv32/README.md) record model/compiler/runtime
-pins. The normal four-byte nextPC assignment is extracted verbatim from upstream
+Unsigned division uses the original `execute_DIV`/`execute_REM` clauses of the same model.
+[Provenance and regeneration](sail/README.md) record model/compiler/runtime pins. The normal four-byte nextPC assignment is extracted verbatim from upstream
 `run_hart_active` and compiled by Sail, then composed with execution and `tick_pc`.
 Extraction and path selection remain unchecked connections; full fetch/exception
 handling and memory arguments are outside the claim. Standard instructions have no local replacement spec;

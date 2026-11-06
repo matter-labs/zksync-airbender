@@ -127,7 +127,6 @@ where
 }
 
 /// Backtracks quad colorings when the greedy coloring strands a single.
-#[allow(clippy::too_many_arguments)]
 fn search_quad_coloring<V>(
     i: usize,
     quad_values: &[V],

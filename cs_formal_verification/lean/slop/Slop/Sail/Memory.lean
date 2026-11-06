@@ -5,9 +5,7 @@ namespace Airbender.Reference.RiscV.Sail
 open Airbender.Reference.Sail
 open _root_.Sail.ArchSem
 
-variable [MemoryPlatform SailRV32.exception]
 
-omit [MemoryPlatform SailRV32.exception] in
 theorem extend_word (unsigned : Bool) (value : BitVec 32) :
     SailRV32.Functions.extend_value unsigned value = value := by
   cases unsigned <;> simp [SailRV32.Functions.extend_value,
@@ -63,7 +61,6 @@ theorem store_word {before after : State} {imm : BitVec 12} {rs1 rs2 : SailRV32.
   rw [run_bind_of_ok _ _ _ _ _ write]
   rfl
 
-omit [MemoryPlatform SailRV32.exception] in
 /-- Native writes of up to four bytes preserve registers. -/
 theorem write_memory_frame {size : Nat} (small : size ≤ 4)
     (address : BitVec 32) (value : BitVec (8 * size)) (before : State) :
@@ -71,19 +68,16 @@ theorem write_memory_frame {size : Nat} (small : size ≤ 4)
       after.regs = before.regs := by
   interval_cases size <;> exact ⟨_, rfl, rfl⟩
 
-omit [MemoryPlatform SailRV32.exception] in
 theorem write_word_frame (address : BitVec 32) (value : BitVec 32) (before : State) :
     ∃ after, run (writeMemory (size := 4) address value) before = .ok () after ∧
       after.regs = before.regs :=
   write_memory_frame (size := 4) (by decide) address value before
 
-omit [MemoryPlatform SailRV32.exception] in
 theorem toNat_byte_append {n : Nat} (hi : BitVec n) (lo : BitVec 8) :
     (hi ++ lo).toNat = hi.toNat * 256 + lo.toNat := by
   rw [BitVec.toNat_append, ← Nat.shiftLeft_add_eq_or_of_lt lo.isLt, Nat.shiftLeft_eq]
 
 set_option maxRecDepth 2048 in
-omit [MemoryPlatform SailRV32.exception] in
 /-- A successful native word read supplies every byte and aligned halfword read.
     Extraction uses the pinned sequential interpreter, not a memory assumption. -/
 theorem read_subword {before : State} {addr : Nat} {word : BitVec 32} (byte : Bool) {offset : Nat}
@@ -155,7 +149,6 @@ theorem store_subword {before after : State} {imm : BitVec 12} {rs1 rs2 : SailRV
     rw [extracted, run_bind_of_ok _ _ _ _ _ write]
     rfl
 
-omit [MemoryPlatform SailRV32.exception] in
 private theorem read_byte_memory {before : State} {address : Nat} {value : BitVec 8}
     (read : (readBytes (ue := SailRV32.exception) 1 address).run before = .ok value before) :
     before.mem[address]? = some value := by
@@ -167,7 +160,6 @@ private theorem read_byte_memory {before : State} {address : Nat} {value : BitVe
     have equal : byte = value := by simpa [fetched, EStateM.pure] using read
     rw [equal]
 
-omit [MemoryPlatform SailRV32.exception] in
 /-- Bind every native word byte to its pre-state memory entry. -/
 theorem read_word_memory {before : State} {address : Nat} {word : BitVec 32}
     (read : readBytes (ue := SailRV32.exception) 4 address before = .ok word before) :
@@ -180,7 +172,6 @@ theorem read_word_memory {before : State} {address : Nat} {word : BitVec 32}
   exact read_byte_memory bytes
 
 set_option maxRecDepth 4096 in
-omit [MemoryPlatform SailRV32.exception] in
 /-- Native narrow and full-cell writes agree when the new bytes encode exactly
     the selected window. The encoding is proved from circuit equations separately. -/
 theorem write_subword_cell (before : State) (address : Nat) (old new : BitVec 32) (byte : Bool)
@@ -224,7 +215,6 @@ theorem write_subword_cell (before : State) (address : Nat) (old new : BitVec 32
              · simp [Std.ExtHashMap.getElem?_insert, Ne.symm k0, Ne.symm k1, Ne.symm k2, Ne.symm k3])
 
 set_option maxRecDepth 4096 in
-omit [MemoryPlatform SailRV32.exception] in
 /-- A merged cell write and the native narrow write produce exactly the same state. -/
 theorem write_subword_memory {before : State} (address : BitVec 32) (old new : BitVec 32) (byte : Bool)
     (offset : Nat) (bound : offset < 4) (aligned : byte = false → offset % 2 = 0)

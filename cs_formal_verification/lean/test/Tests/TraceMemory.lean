@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Trace.Claims
 import Slop.Trace.RowHistory
 import Slop.Trace.PortReads
@@ -202,9 +203,9 @@ theorem bounded_native_values :
   ⟨Trace.read_bounds (accepted zeroTable) (boundary zeroTable) value_boundary,
     Trace.terminal_bounds (accepted zeroTable) (boundary zeroTable) value_boundary⟩
 
-private def before : Reference.RiscV.Sail.State :=
-  { (default : Reference.RiscV.Sail.State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity).insert .PC (0 : BitVec 32) }
+private noncomputable def before : Reference.RiscV.Sail.State :=
+  { Airbender.Reference.RiscV.Sail.resetMachine with
+    regs := Airbender.Reference.RiscV.Sail.resetMachine.regs.insert .PC (0 : BitVec 32) }
 
 theorem native_pc_bounds :
     (∀ actual ∈ (trace zeroTable).rows, actual.start.word.Bounded ∧ actual.finish.word.Bounded) ∧
@@ -216,11 +217,14 @@ theorem native_pc_bounds :
   rw [Trace.initialState, pcRead]
   rfl
 
-def publicBefore : Reference.RiscV.Sail.State :=
+noncomputable def publicBefore : Reference.RiscV.Sail.State :=
   { before with
     regs := before.regs.insert .x1 (5 : BitVec 32) |>.insert .x2 0
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0x33 : BitVec 8)
       |>.insert 1 0x81 |>.insert 2 0 |>.insert 3 0 }
+
+theorem airbender_publicBefore  : Airbender.Reference.RiscV.Sail.Configured publicBefore := by
+  configured_fixture [before, publicBefore, Airbender.Reference.RiscV.Sail.wordWriteState]
 
 def publicProgram : List Trace.ProgramEntry :=
   [⟨0, 0x00008133, .RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD),
@@ -231,8 +235,7 @@ theorem public_program_image : Trace.programImage publicBefore [0] = some public
     simp [Trace.Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       publicBefore, Std.ExtHashMap.getElem_insert]
-  have instruction : SailRV32.Functions.encdec_backwards 0x00008133 =
-      (_root_.Sail.ArchSem.FreeM.pure (.RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD)) : SailRV32.SailM _) := by rfl
+  have instruction : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00008133 = some (.RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD)) := by decode_on_reset
   simp only [List.mapM_cons, List.mapM_nil, Trace.programEntryWith,
     bytes, bind, Option.bind, instruction]
   rfl
@@ -340,8 +343,12 @@ theorem noncanonical_ram_rejected :
 
 -- Two dependent ADDs stored in reverse witness order. The second instruction
 -- reads the first result twice and writes x1; native PC matching fixes 0,4,8.
-def sequentialBefore : Reference.RiscV.Sail.State :=
+noncomputable def sequentialBefore : Reference.RiscV.Sail.State :=
   { publicBefore with mem := publicBefore.mem.insert 4 (0xb3 : BitVec 8) |>.insert 5 0x00 |>.insert 6 0x21 |>.insert 7 0x00 }
+
+theorem airbender_sequentialBefore  : Airbender.Reference.RiscV.Sail.Configured sequentialBefore := by
+  configured_fixture [before, publicBefore, sequentialBefore, Airbender.Reference.RiscV.Sail.wordWriteState]
+
 
 def sequentialProgram : List Trace.ProgramEntry :=
   publicProgram ++ [⟨4, 0x002100b3, .RTYPE (.Regidx 2, .Regidx 2, .Regidx 1, .ADD),
@@ -369,10 +376,8 @@ theorem sequential_program_image : Trace.programImage sequentialBefore [0, 4] =
     simp [Trace.Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       sequentialBefore, publicBefore, Std.ExtHashMap.getElem_insert]
-  have decodeFirst : SailRV32.Functions.encdec_backwards 0x00008133 =
-      (_root_.Sail.ArchSem.FreeM.pure (.RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD)) : SailRV32.SailM _) := rfl
-  have decodeSecond : SailRV32.Functions.encdec_backwards 0x002100b3 =
-      (_root_.Sail.ArchSem.FreeM.pure (.RTYPE (.Regidx 2, .Regidx 2, .Regidx 1, .ADD)) : SailRV32.SailM _) := rfl
+  have decodeFirst : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00008133 = some (.RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD)) := by decode_on_reset
+  have decodeSecond : Airbender.Reference.RiscV.Sail.decodeOnReset 0x002100b3 = some (.RTYPE (.Regidx 2, .Regidx 2, .Regidx 1, .ADD)) := by decode_on_reset
   simp only [List.mapM_cons, List.mapM_nil, Trace.programEntryWith,
     first, second, decodeFirst, decodeSecond, bind, Option.bind]
   rfl

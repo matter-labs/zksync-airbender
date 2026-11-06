@@ -11,19 +11,33 @@ pub struct WhirPowEntry<E: Copy> {
     pub coefficient: E,
 }
 
-pub struct WhirAccumulator<E: Copy, const MAX_POW: usize> {
-    pub z_initial_idx: usize,
-    pub z_initial_prefactor: E,
-    pub pow_entries: LazyVec<WhirPowEntry<E>, MAX_POW>,
+/// A [`WhirPowEntry`] whose point is in the base field.
+#[derive(Clone, Copy)]
+pub struct WhirBasePowEntry<F: Copy, E: Copy> {
+    pub current_scalar: F,
+    pub prefactor: E,
+    pub coefficient: E,
 }
 
-impl<E: Copy, const MAX_POW: usize> WhirAccumulator<E, MAX_POW> {
+pub struct WhirAccumulator<F: Copy, E: Copy, const MAX_POW: usize, const MAX_OOD: usize> {
+    pub z_initial_idx: usize,
+    pub z_initial_prefactor: E,
+    /// Out-of-domain points require extension-field arithmetic.
+    pub pow_entries: LazyVec<WhirPowEntry<E>, MAX_OOD>,
+    /// In-domain points stay in the base field under every subsequent square.
+    pub base_pow_entries: LazyVec<WhirBasePowEntry<F, E>, MAX_POW>,
+}
+
+impl<F: Copy, E: Copy, const MAX_POW: usize, const MAX_OOD: usize>
+    WhirAccumulator<F, E, MAX_POW, MAX_OOD>
+{
     #[inline(always)]
     pub const fn new(z_initial_prefactor: E) -> Self {
         Self {
             z_initial_idx: 0,
             z_initial_prefactor,
             pow_entries: LazyVec::new(),
+            base_pow_entries: LazyVec::new(),
         }
     }
 }

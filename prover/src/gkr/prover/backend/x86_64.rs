@@ -513,6 +513,33 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
     }
 
+    fn lde_packed_polys_from_hypercubes(
+        &self,
+        evals: &[&[BabyBearField]],
+        pack_log2: usize,
+        twiddles: &Self::TwiddleSet,
+        lde_factor: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
+        worker: &Worker,
+    ) -> Vec<ColumnMajorBaseOracleForCoset<BabyBearField>> {
+        let ext = &twiddles.forward_ext;
+        ws_lde_packed_polys_from_hypercubes(
+            evals,
+            pack_log2,
+            &twiddles.plain,
+            lde_factor,
+            &|block| {
+                crate::gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs_avx2_bb(
+                    block,
+                    block.len().trailing_zeros(),
+                )
+            },
+            &|m, o, t| fft::baby_bear_avx2::lde_coset_avx2(m, o, t, ext),
+            &|m, o, t, w| lde_coset_canonical_parallel(m, o, t, w),
+            worker,
+        )
+    }
+
     fn monomial_form_from_hypercube_evals(
         &self,
         evals: &[BabyBearExt4],
@@ -559,7 +586,7 @@ mod gathered_conversion_tests {
     /// column-gathering ones for every leaf size the AVX2 kernels serve.
     #[test]
     fn avx2_gathered_conversion_matches_column() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let coset_len = 1usize << 12;
         let column: Vec<BabyBearExt4> = (0..coset_len)
             .map(|_| BabyBearExt4::random_element(&mut rng))

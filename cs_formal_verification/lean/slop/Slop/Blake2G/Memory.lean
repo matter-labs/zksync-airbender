@@ -13,7 +13,7 @@ private theorem native_write_word (w : Nat → ZMod p) (port : MemoryPort) :
         ((port.writeValue.getD port.readValue).evaluate w)[1].val⟩ := by
   simp [Delegation.Row.writeToken, MemoryToken.word, MemoryPort.writeCode, WordColumns.code]
 
-theorem memory_write_rule [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem memory_write_rule [Fact p.Prime] (hp : 33554432 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (clockConstraints (setupTable Control.controllerRows)))
@@ -57,7 +57,7 @@ theorem memory_write_rule [Fact p.Prime] (hp : 4194304 ≤ p)
          Variables.controlWriteHi, high] using
          (And.intro cb cbHigh))
 
-theorem memory_rules [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem memory_rules [Fact p.Prime] (hp : 33554432 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p}
     (accepted : Delegation.MemoryAccepted data)
     (families : ∀ row ∈ data.rows, row.family = .blakeG)

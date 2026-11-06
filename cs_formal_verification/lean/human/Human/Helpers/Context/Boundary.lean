@@ -6,7 +6,6 @@ import Human.Helpers.Memory.Values
 namespace Airbender.Trace
 open Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 /-- Bind `trace`'s initial data to the public Sail state `initial` and tracked
     `cells`. `program` is constructed by reading public bytes and running Sail
@@ -28,9 +27,11 @@ structure NativeInputs {Kind ISA : Type} [CircuitLayout Kind]
   /-- Sail's initial PC and a public timestamp form the native starting state. -/
   initialPC : ∃ timestamp, initialState initial timestamp = some trace.initial
   /-- Public byte reads and actual Sail decoding construct every program entry. -/
-  programImage : ∃ addresses, programImageRunWith projection initial addresses = some program
+  programImage : ∃ addresses, programImageWith projection initial addresses = some program
   /-- Only initial clock ranges/alignment are supplied; later clocks are proved. -/
   clocks : ClockBoundary trace
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Reference.RiscV.Sail.Configured initial
 
 /-- Public machine configuration and address/program domain for the restricted
     arithmetic + word-memory trace. `initial` supplies Sail state and bytes;
@@ -48,7 +49,7 @@ structure PublicBoundary (initial : State) (cells : List Cell)
   /-- Tracked RAM excludes the platform's special MMIO windows. -/
   ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
   /-- Public CSR/PMA/PMP settings select the supported Machine memory path. -/
-  configuration : FlatMemoryConfiguration initial
+  configuration : Configured initial
   /-- The restricted program is fetched from public bytes and decoded by Sail. -/
   programImage : ∃ addresses, Trace.programImageWith projection initial addresses = some program
   /-- Instruction addresses lie in public ROM and are aligned to four bytes. -/

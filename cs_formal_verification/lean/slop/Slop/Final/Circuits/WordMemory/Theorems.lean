@@ -4,7 +4,6 @@ import Slop.WordMemory.RowClaims
 
 namespace Airbender.WordMemory
 open Reference.RiscV.Sail Trace _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 /-- Every LW/SW row in the initialized shared history agrees with original Sail:
     effective address, transferred data, GPR/memory effects and PC retirement.

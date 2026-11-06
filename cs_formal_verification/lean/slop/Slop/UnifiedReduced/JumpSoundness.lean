@@ -1,3 +1,4 @@
+import Slop.Sail.Configured
 import Human.Circuits.UnifiedReduced.Jump
 import Slop.UnifiedReduced.JumpArithmetic
 import Slop.UnifiedReduced.RegisterReads
@@ -72,8 +73,8 @@ theorem soundness_from_history [Fact p.Prime] (hp : 4194304 ≤ p)
   have other : w 23 = 0 ∧ w 24 = 0 := ⟨excluded 12 (by decide), excluded 13 (by decide)⟩
   have binary : w 26 = 0 ∧ w 27 = 0 := ⟨excluded 15 (by decide), excluded 16 (by decide)⟩
   have noLoad : w 28 = 0 := excluded 17 (by decide)
-  have gate := Verification.assertion_of_holds core ⟨42, by rw [constraint_count]; decide⟩
-  have noROM : w 87 = 0 := by
+  have gate := Verification.assertion_of_holds core ⟨39, by rw [constraint_count]; decide⟩
+  have noROM : w 81 = 0 := by
     simpa [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, noLoad] using gate
   have mask : w 25 = if input.rd = zeroRegister then 1 else 0 := by
     have bit := flag 14
@@ -205,6 +206,7 @@ theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
   exact soundness_from_memory hp inverse assumptions.initialization accepted
     (UnifiedReduced.Proofs.memory_execution (by dsimp [timestampBase]; omega) inverse accepted assumptions.initialization decoded)
     assumptions.setup member mapping.words mapping.state (run_program_sources image entry present)
-    query encoding (assumptions.codeAligned entry present) assumptions.isa assumptions.landingPad
+    query encoding (assumptions.codeAligned entry present) assumptions.configuration.isa
+    (fun _ => ⟨assumptions.configuration.privilege, assumptions.configuration.landingPad⟩)
 
 end Airbender.UnifiedReduced.Jump.Proofs

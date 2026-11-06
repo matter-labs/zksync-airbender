@@ -8,7 +8,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-theorem arithmetic_clause [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] (input : Input) :
+theorem arithmetic_clause  (input : Input) :
     instructionClause (arithmeticInstruction input) = some (Sail.execution input) := by
   cases op : input.row.opcode <;> simp [arithmeticInstruction, instructionClause, Reference.RiscV.Sail.registerClause, Sail.execution, Sail.instruction, Option.get_some, op]
 
@@ -35,7 +35,7 @@ theorem arithmetic_register_retirement [Fact p.Prime]
     all_goals simp [zero]
   exact register_retirement hp core fields query metadata.1 metadata.2 epoch history spec
 
-theorem arithmetic_retirement [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem arithmetic_retirement [Fact p.Prime]
     (hp : 524288 < p) {setup : Table (ZMod p) (fields 10)}
     {cells : List Cell} {w : Nat → ZMod p} {entry : ProgramEntry} {input : Input}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -52,7 +52,7 @@ theorem arithmetic_retirement [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform
   rw [encoding]
   exact arithmetic_clause input
 
-theorem arithmetic_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem arithmetic_execution_from_memory [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
@@ -84,7 +84,7 @@ theorem arithmetic_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.Mem
     exact result
   exact arithmetic_retirement (by omega) core fields query encoding trace.memoryEpoch history spec
 
-theorem arithmetic_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem arithmetic_execution [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)

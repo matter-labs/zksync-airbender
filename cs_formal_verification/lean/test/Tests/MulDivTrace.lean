@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.MulDivDecoder
 import Slop.MulDiv.Execution
 import Slop.Sail.DecoderFrame
@@ -15,12 +16,15 @@ private def entry (remainder : Bool) : Airbender.MulDiv.ProgramEntry :=
     else .DIV (.Regidx 2, .Regidx 1, .Regidx 1, true),
     ⟨(), 1, 2, 1, ⟨0, 0⟩, if remainder then 8 else 4, 0⟩⟩
 
-private def initial : State :=
-  { (default : State) with regs :=
-    (((Std.ExtDHashMap.emptyWithCapacity.insert .x1 (0x20007 : BitVec 32)).insert
-      .x2 (0 : BitVec 32)).insert .PC (0x3fffc : BitVec 32)).insert .misa (0x40001000 : BitVec 32) }
+private noncomputable def initial : State :=
+  { resetMachine with regs :=
+    ((resetMachine.regs.insert .x1 (0x20007 : BitVec 32)).insert
+      .x2 (0 : BitVec 32)).insert .PC (0x3fffc : BitVec 32) }
 
-private def before (remainder : Bool) : State := wordWriteState initial 0x3fffc (entry remainder).bits
+private noncomputable def before (remainder : Bool) : State := wordWriteState initial 0x3fffc (entry remainder).bits
+
+theorem airbender_before (remainder : Bool) : Configured (before remainder) := by
+  configured_fixture [before, initial, wordWriteState]
 private def cells : List Cell := [.register 0, .register 1, .register 2]
 private def seed : List (MemoryToken babyBearModulus) :=
   [Cell.initialToken (.register 0) 0, Cell.initialToken (.register 1) 0x20007,
@@ -80,38 +84,30 @@ private theorem image (remainder : Bool) : initialImage (before remainder) cells
   simp only [initialImage, cells, seed, List.mapM_cons, List.mapM_nil, zero, one, two]
   rfl
 
+private theorem instruction_decoded (remainder : Bool) :
+    decodeOnReset (entry remainder).bits = some (entry remainder).instruction := by
+  cases remainder <;> decode_on_reset
+
 private theorem program_image (remainder : Bool) :
     Airbender.MulDiv.programImage (before remainder) [0x3fffc] = some [entry remainder] := by
   have bytes : (Cell.ram 0x3fffc).read (before remainder) =
       .ok (entry remainder).bits (before remainder) := written_word_read _ 0x3fffc _
-  have isa : run (SailRV32.readReg .misa) (before remainder) =
-      .ok (0x40001000 : BitVec 32) (before remainder) := by
-    apply read_register
-    simp [before, initial, wordWriteState]
-  have decoded : run (SailRV32.Functions.encdec_backwards (entry remainder).bits) (before remainder) =
-      .ok (entry remainder).instruction (before remainder) := by
-    cases remainder
-    all_goals
-      repeat' first
-        | (with_unfolding_all rfl)
-        | (with_unfolding_all conv_lhs => arg 1; whnf
-           erw [@run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
-             _ _ SailRV32.Register.misa _ _ _ isa])
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, bind, Option.bind]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, instruction_decoded, bind, Option.bind]
   cases remainder <;> rfl
 
 /-- The real public DIVU/REMU encoding decodes identically after GPR, PC,
-    nextPC and memory changes; only the public ISA configuration is retained. -/
+    nextPC and memory changes; only the Airbender configuration is retained. -/
 theorem decoder_configuration_frame (remainder : Bool) (pc : BitVec 32) :
     let changed : State := { before remainder with
       regs := (((before remainder).regs.insert .x1 (42 : BitVec 32)).insert .PC pc).insert .nextPC 9
       mem := (default : State).mem }
     run (SailRV32.Functions.encdec_backwards (entry remainder).bits) changed =
       .ok (entry remainder).instruction changed := by
-  have source := Proofs.run_program_sources (program_image remainder)
-    (entry remainder) (by simp)
-  apply (decoded_misa_frame _ source.decoded).2
-  simp [Std.ExtDHashMap.get?_insert]
+  intro changed
+  have configured : Configured changed :=
+    ((((airbender_before remainder).insert (key := .x1) rfl (42 : BitVec 32)).insert (key := .PC) rfl pc).insert
+      (key := .nextPC) rfl 9).with_mem _
+  exact decode_on_reset_run configured (instruction_decoded remainder)
 
 private theorem query (remainder : Bool) :
     Airbender.MulDiv.decoderQuery (Tests.MulDivTimestamp.assignment remainder false) =
@@ -180,7 +176,7 @@ theorem actual_division_retirement (remainder : Bool)
 
 /-- The complete trace starts at the unchanged public state, uses the real
     configuration-dependent decoder and reaches the native terminal PC. -/
-theorem actual_division_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem actual_division_trace
     (remainder : Bool) (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ after, Airbender.MulDiv.SailTrace [entry remainder] (before remainder) after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 0x40000 after := by
@@ -188,7 +184,7 @@ theorem actual_division_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.excep
     have read : run (SailRV32.Functions.get_arch_pc ()) (before remainder) =
         .ok 0x3fffc (before remainder) := by
       apply read_register
-      simp [before, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
+      simp [before, initial, wordWriteState]
     rw [initialState, read]
     rfl
   have inputs : Airbender.MulDiv.ExecutionBoundary (trace remainder rom)
@@ -199,6 +195,7 @@ theorem actual_division_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.excep
     initialPC := ⟨(4, 0), initialPC⟩
     programImage := ⟨[0x3fffc], program_image remainder⟩
     clocks := boundary remainder rom
+    configuration := airbender_before remainder
   }
   obtain ⟨after, execution, pc, _⟩ := Airbender.MulDiv.trace_soundness
     (by decide) (by decide) (by decide) inputs (accepted remainder rom) (decoded remainder rom)
@@ -207,7 +204,7 @@ theorem actual_division_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.excep
 private def pooledProgram (remainder : Bool) : List PooledProgramEntry :=
   [(entry remainder).mapFamily (fun _ => .mulDiv)]
 
-private def pooled (remainder : Bool) : PooledTrace babyBearModulus where
+private noncomputable def pooled (remainder : Bool) : PooledTrace babyBearModulus where
   rows := [⟨.mulDiv, (row remainder).assignment⟩]
   rom := ⟨ROM.table cells seed, Verification.subwordTable (ROM.words (before remainder))⟩
   initial := (trace remainder (ROM.table cells seed)).initial
@@ -233,8 +230,8 @@ private theorem pooledImage (remainder : Bool) :
   have source := Proofs.run_program_sources (program_image remainder) (entry remainder) (by simp)
   have bytes := source.bytes
   change (Cell.ram 0x3fffc).read (before remainder) = .ok (entry remainder).bits (before remainder) at bytes
-  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, source.decoded, bind, Option.bind]
+  simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, bytes, instruction_decoded, bind, Option.bind]
   cases remainder <;> rfl
 
 private theorem pooledDecoded (remainder : Bool) : PooledDecoded (pooled remainder) (pooledProgram remainder) := by
@@ -246,7 +243,7 @@ private theorem pooledDecoded (remainder : Bool) : PooledDecoded (pooled remaind
 
 private theorem pooledInputs (remainder : Bool) :
     NativeInputs pooledDecoderFields (pooled remainder) (before remainder) cells (pooledProgram remainder) := by
-  refine ⟨by decide, ?_, image remainder, ?_, ⟨[0x3fffc], pooledImage remainder⟩, ?_⟩
+  refine ⟨by decide, ?_, image remainder, ?_, ⟨[0x3fffc], pooledImage remainder⟩, ?_, ?_⟩
   · intro cell member
     simp [cells] at member
     rcases member with rfl | rfl | rfl <;> trivial
@@ -254,16 +251,17 @@ private theorem pooledInputs (remainder : Bool) :
     have read : run (SailRV32.Functions.get_arch_pc ()) (before remainder) =
         .ok 0x3fffc (before remainder) := by
       apply read_register
-      simp [before, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
+      simp [before, initial, wordWriteState]
     rw [initialState, read]
     rfl
   · exact ⟨(boundary remainder (ROM.table cells seed)).initial,
       (boundary remainder (ROM.table cells seed)).aligned,
       (boundary remainder (ROM.table cells seed)).memory⟩
+  · exact airbender_before remainder
 
 /-- Inhabited per-circuit DIVU/REMU claims for a zero divisor and aliased rs1/rd.
     All bounds, reads and selectors are supplied by initialized shared history. -/
-theorem per_circuit_division_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem per_circuit_division_soundness
     (remainder : Bool) :
     ∃ input : Airbender.MulDiv.Input,
       (Airbender.MulDiv.circuitModel (pooled remainder) (before remainder) cells (pooledProgram remainder)).relation

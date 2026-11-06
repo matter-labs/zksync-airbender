@@ -282,7 +282,7 @@ fn apply_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
                     &mut intermedaite_of_value,
                     &is_jump,
                     &pc_low,
-                    &&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                    &<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
                         core::mem::size_of::<u32>() as u16,
                     ),
                     None,
@@ -557,7 +557,7 @@ fn apply_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
                     &mut intermedaite_of_value,
                     &is_slt,
                     &pc_low,
-                    &&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                    &<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
                         core::mem::size_of::<u32>() as u16,
                     ),
                     None,
@@ -723,7 +723,7 @@ pub fn jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr<F: PrimeField,
 ) {
     let (input, bitmask) = cs.allocate_machine_state(true, false, JUMP_SLT_BRANCH_FAMILY_NUM_BITS);
     let bitmask: [_; JUMP_SLT_BRANCH_FAMILY_NUM_BITS] = bitmask.try_into().unwrap();
-    let bitmask = bitmask.map(|el| Boolean::Is(el));
+    let bitmask = bitmask.map(Boolean::Is);
     let decoder = JumpSltBranchFamilyCircuitMask::from_mask(bitmask);
     apply_jump_branch_slt_inner(cs, input, decoder);
 }

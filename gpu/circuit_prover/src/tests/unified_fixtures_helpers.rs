@@ -253,14 +253,7 @@ where
     );
     let twiddles: Twiddles<_, Global> = Twiddles::new(num_delegation_cycles, worker);
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, circuit);
-    let setup_commitment = setup.commit(
-        &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        num_delegation_cycles.trailing_zeros() as usize,
-        worker,
-    );
+    let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, worker);
     prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
         circuit,
         external_challenges,
@@ -269,7 +262,7 @@ where
         &setup_commitment,
         &twiddles,
         &prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
         Vec::new(),
         num_delegation_cycles,
         worker,
@@ -559,14 +552,17 @@ fn prove_unified_delegation_factors(
 /// via `DelegationTracingDataHostSource::get`, so it serves bigint / blake2 /
 /// keccak alike. The buffer rides as a single
 /// chunk, mirroring the unified/per-family `*_tracing_host_for_test` helpers.
-pub(super) fn make_delegation_tracing_host_for_test<W>(buffer: Vec<W>) -> TracingDataHost<Global>
+pub(super) fn make_delegation_tracing_host_for_test<W>(
+    circuit_type: DelegationCircuitType,
+    buffer: Vec<W>,
+) -> TracingDataHost<Global>
 where
     W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
 {
     let trace = gpu_trace::witness::trace_delegation::DelegationTraceHost::<W, Global> {
         chunks: vec![Arc::new(buffer)],
     };
-    TracingDataHost::Delegation(W::get(trace))
+    TracingDataHost::Delegation(W::get(circuit_type, trace))
 }
 
 /// Build a `BasicUnrolledProofFixture` that drives a single delegation circuit
@@ -680,7 +676,7 @@ where
         })
         .collect_vec();
 
-    let tracing_data_host = make_delegation_tracing_host_for_test(buffer);
+    let tracing_data_host = make_delegation_tracing_host_for_test(circuit_type, buffer);
     eprintln!("delegation fixture ({circuit_type:?}): tracing host ready");
 
     let base = BasicUnrolledFixture {
@@ -759,7 +755,7 @@ where
         .unwrap(),
     );
     let decoder_table_host = make_decoder_table_host_for_test(&[]);
-    let tracing_data_host = make_delegation_tracing_host_for_test(buffer);
+    let tracing_data_host = make_delegation_tracing_host_for_test(circuit_type, buffer);
 
     // No CPU reference -> derive memory tree caps from a one-shot GPU
     // commit_memory (delegations need no decoder / inits-and-teardowns bundle).
@@ -983,14 +979,7 @@ fn prepare_unified_fixture(
 
     let (expected_cpu_proof, delegation_grand_product_factors) = if compute_cpu_reference {
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let setup_commitment = setup.commit(
-            &twiddles,
-            whir_schedule.base_lde_factor,
-            whir_schedule.whir_steps_schedule[0],
-            whir_schedule.cap_size,
-            trace_len.trailing_zeros() as usize,
-            &worker,
-        );
+        let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, &worker);
         let expected_cpu_proof =
             prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
                 &compiled_circuit,
@@ -1000,7 +989,7 @@ fn prepare_unified_fixture(
                 &setup_commitment,
                 &twiddles,
                 &prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 selected_set_top_bits.clone(),
                 trace_len,
                 &worker,

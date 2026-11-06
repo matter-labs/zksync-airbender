@@ -17,7 +17,6 @@
 
 use crate::allocation_pool::AllocationPool;
 use std::collections::BTreeMap;
-use std::sync::Mutex;
 
 use super::super::dimension_reduction::forward::DimensionReducingInputOutput;
 use super::super::dimension_reduction::lsb_backward::FoldBufferTracker;
@@ -152,7 +151,7 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
         use crate::gkr::prover::sumcheck_loop::windowed_mode::lsb_chain::quasi;
         let base_srcs = quasi::<BabyBearField, false>(base_polys);
         let ext_srcs = quasi::<BabyBearExt4, false>(ext_polys);
-        let acc = if out_size % 2 == 0 {
+        let acc = if out_size.is_multiple_of(2) {
             lsb_avx512::lsb_soa_full_parallel_w3(
                 &base_srcs,
                 &ext_srcs,
@@ -749,7 +748,7 @@ fn accumulate_base_columns_into_avx512(
 ) {
     use worker::rayon::prelude::*;
     let n = terms.first().map(|t| t.column.len()).unwrap_or(dst.len());
-    assert!(n > 0 && dst.len() % n == 0);
+    assert!(n > 0 && dst.len().is_multiple_of(n));
     for t in terms.iter() {
         assert_eq!(t.column.len(), n);
         assert!(t.dst_offset % n == 0 && t.dst_offset + n <= dst.len());
@@ -835,7 +834,7 @@ mod accumulate_tests {
             return;
         }
         let worker = Worker::new_with_num_threads(4);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for (n, slices, num_cols) in [
             (1usize << 10, 1usize, 5usize),
             ((1 << 12) + 48, 2, 7),
@@ -900,7 +899,7 @@ mod fold_eq_tests {
             return;
         }
         let worker = Worker::new_with_num_threads(4);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for log_n in [6usize, 12, 16] {
             let n = 1usize << log_n;
             let src: Vec<BabyBearExt4> = (0..n)

@@ -17,12 +17,12 @@ theorem word_fields {input : Airbender.WordMemory.Input} {entry : UnifiedReduced
   · rw [encoding] at custom
     cases mode : input.store <;> simp [mode, customDecoderFields] at custom
 
-theorem mixed_ram_cycle [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem mixed_ram_cycle
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
     (started : 0 < (timeOfPair data.machine.initial.timestamp).value)
-    (configuration : FlatMemoryConfiguration initial)
+    (configuration : Configured initial)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
     (ram : ∀ address, Cell.ram address ∈ cells → 4194304 ≤ address.toNat)
     {w : Nat → ZMod babyBearModulus} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output}

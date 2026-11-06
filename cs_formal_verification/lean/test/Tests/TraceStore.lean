@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Trace.Claims
 import Slop.Trace.Code
 import Slop.Trace.CodeHistory
@@ -44,38 +45,19 @@ private def trace : Data babyBearModulus where
   initialMemory := initial
   terminalMemory := [regToken 1 4 65532 64, regToken 2 5 1234 5678, ramToken 0 65 6 1234 5678]
 
-private def attributes : SailRV32.PMA :=
-  { (default : SailRV32.PMA) with readable := true, writable := true, executable := true }
-
-private def before : Reference.RiscV.Sail.State :=
-  { (default : Reference.RiscV.Sail.State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity :
-      Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .mstatus 0 |>.insert .cur_privilege .Machine |>.insert .misa 0x40000100
-      |>.insert .senvcfg 0 |>.insert .menvcfg 0x10
-      |>.insert .pmpcfg_n (Vector.replicate 64 0)
-      |>.insert .pmpaddr_n (Vector.replicate 64 0)
-      |>.insert .pma_regions [Reference.RiscV.Sail.rv32Region attributes]
-      |>.insert .mhartid 7 |>.insert .htif_tohost_base none |>.insert .PC (65532 : BitVec 32)
+private noncomputable def before : Reference.RiscV.Sail.State :=
+  { Airbender.Reference.RiscV.Sail.resetMachine with
+    regs := Airbender.Reference.RiscV.Sail.resetMachine.regs |>.insert .PC (65532 : BitVec 32)
       |>.insert .x1 ((Word.mk 65532 64).toBitVec)
       |>.insert .x2 ((Word.mk 1234 5678).toBitVec)
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 4259840 (0 : BitVec 8)
       |>.insert 4259841 0 |>.insert 4259842 0 |>.insert 4259843 0
       |>.insert 65532 0x23 |>.insert 65533 0xa2 |>.insert 65534 0x20 |>.insert 65535 0 }
 
-set_option backward.isDefEq.respectTransparency false in
-private theorem configuration : Reference.RiscV.Sail.FlatMemoryConfiguration before := by
-  constructor
-  · simp [before, Std.ExtDHashMap.get?_insert]
-  · simp [before, Std.ExtDHashMap.get?_insert]
-  · exact ⟨0x40000100, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨0, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨0x10, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · simp [before, Std.ExtDHashMap.get?_insert]
-  · exact ⟨Vector.replicate 64 0, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨attributes, by simp [before, Std.ExtDHashMap.get?_insert], rfl, rfl, rfl⟩
-  · exact ⟨7, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · simp [before, Std.ExtDHashMap.get?_insert]
+theorem airbender_before  : Airbender.Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before]
+
+private theorem configuration : Reference.RiscV.Sail.Configured before := airbender_before
 
 theorem public_initial_image : initialImage before [.register 1, .register 2, .ram 4259840] =
     some trace.initialMemory := by
@@ -158,7 +140,9 @@ theorem program_image : programImage before [65532] = some [entry] := by
     simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       before, Std.ExtHashMap.getElem_insert]
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes,
+  have decoded : Reference.RiscV.Sail.decodeOnReset 0x0020a223 = some entry.instruction := by
+    decode_on_reset
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded,
     bind, Option.bind]
   rfl
 
@@ -222,7 +206,7 @@ theorem actual_store_accesses : ∃ after,
     exact ramWrite
 
 set_option maxHeartbeats 2000000 in
-theorem actual_virtual_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+theorem actual_virtual_store : ∃ after,
     SailHistory [.register 1, .register 2, .ram 4259840]
       (Trace.rowEvents trace.memoryEpoch row).reverse before after ∧
     Reference.Sail.run (SailRV32.Functions.vmem_write (.Regidx 1) 4 4
@@ -236,7 +220,7 @@ theorem actual_virtual_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : 
   norm_num [entry, assignment, ZMod.val_ofNat, babyBearModulus] at transport
   exact ⟨after, history, transport.2⟩
 
-theorem actual_sail_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+theorem actual_sail_store : ∃ after,
     SailHistory [.register 1, .register 2, .ram 4259840]
       (Trace.rowEvents trace.memoryEpoch row).reverse before after ∧
     Reference.Sail.run (SailRV32.Functions.execute_STORE 4 (.Regidx 2) (.Regidx 1) 4)
@@ -248,7 +232,7 @@ theorem actual_sail_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃
     (entry := entry) rfl (by decide) rfl configuration history⟩
 
 set_option maxHeartbeats 2000000 in
-theorem actual_store_step [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+theorem actual_store_step : ∃ after,
     SailHistory [.register 1, .register 2, .ram 4259840]
       (Trace.rowEvents trace.memoryEpoch row).reverse before after ∧
     Reference.Sail.run (Reference.RiscV.Sail.normalStep
@@ -370,7 +354,7 @@ theorem native_sail_retirement : ∃ (events : List MemoryAccess)
 private def pooledProgram : List PooledProgramEntry :=
   [entry.mapFamily pooledArithmeticFamily]
 
-private def pooled : PooledTrace babyBearModulus where
+private noncomputable def pooled : PooledTrace babyBearModulus where
   rows := [⟨.wordMemory, assignment⟩]
   rom := ⟨rom, Verification.subwordTable (ROM.words before)⟩
   initial := trace.initial
@@ -394,8 +378,10 @@ private theorem pooledAccepted : Accepted pooled := by
 private theorem pooledImage : pooledProgramImage before [65532] = some pooledProgram := by
   have bytes := (Proofs.program_sources program_image entry (by simp)).bytes
   change (Cell.ram 65532).read before = .ok 0x0020a223 before at bytes
-  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, bind, Option.bind]
+  have decoded : Reference.RiscV.Sail.decodeOnReset 0x0020a223 = some entry.instruction := by
+    decode_on_reset
+  simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, bytes, decoded, bind, Option.bind]
   rfl
 
 private theorem pooledDecoded : PooledDecoded pooled pooledProgram := by
@@ -407,7 +393,7 @@ private theorem pooledDecoded : PooledDecoded pooled pooledProgram := by
 
 private theorem pooledInputs : NativeInputs pooledDecoderFields pooled before
     [.register 1, .register 2, .ram 4259840] pooledProgram := by
-  refine ⟨by decide, aligned_domain, public_initial_image, ?_, ⟨[65532], pooledImage⟩, ?_⟩
+  refine ⟨by decide, aligned_domain, public_initial_image, ?_, ⟨[65532], pooledImage⟩, ?_, ?_⟩
   · refine ⟨(4, 0), ?_⟩
     have pc : Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) before =
         .ok 65532 before := by
@@ -416,10 +402,11 @@ private theorem pooledInputs : NativeInputs pooledDecoderFields pooled before
     simp only [initialState, pc]
     rfl
   · exact ⟨boundary.initial, boundary.aligned, boundary.memory⟩
+  · exact configuration
 
 /-- Real SW effects follow from the review model with no per-row range, read
     value or successful-access assumption. -/
-theorem per_circuit_store_soundness [Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+theorem per_circuit_store_soundness :
     ∃ input : WordMemory.Input,
       (WordMemory.circuitModel pooled before [.register 1, .register 2, .ram 4259840] pooledProgram).relation
         input ⟨⟨0, 65⟩, ⟨1234, 5678⟩, ⟨0, 1⟩⟩ assignment ∧
@@ -487,8 +474,12 @@ private def loadTrace : Data babyBearModulus where
   initialMemory := loadInitial
   terminalMemory := [regToken 1 6 0 0, ramToken 0 65 5 0 0]
 
-private def loadState : Reference.RiscV.Sail.State :=
+private noncomputable def loadState : Reference.RiscV.Sail.State :=
   Reference.RiscV.Sail.wordWriteState before 65532 0x0040a083
+
+theorem airbender_loadState  : Airbender.Reference.RiscV.Sail.Configured loadState :=
+  Reference.RiscV.Sail.configuration_word_write configuration 65532 0x0040a083
+
 
 private def loadEntry : ProgramEntry :=
   ⟨65532, 0x0040a083, .LOAD (4, .Regidx 1, .Regidx 1, false, 4),
@@ -512,7 +503,9 @@ set_option maxRecDepth 32768 in
 theorem program_image : programImage loadState [65532] = some [loadEntry] := by
   have bytes : (Cell.ram 65532).read loadState = .ok 0x0040a083 loadState :=
     Reference.RiscV.Sail.written_word_read before 65532 0x0040a083
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind]
+  have decoded : Reference.RiscV.Sail.decodeOnReset 0x0040a083 = some loadEntry.instruction := by
+    decode_on_reset
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind]
   rfl
 
 theorem decoder_bound : Decoded loadTrace [loadEntry] := by
@@ -586,7 +579,7 @@ theorem grouped : ∃ after, SailHistory loadCells
   exact ⟨after, by simpa only [List.flatMap_singleton] using execution⟩
 
 set_option maxHeartbeats 2000000 in
-theorem actual_sail_load [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+theorem actual_sail_load : ∃ after,
     SailHistory loadCells
       (Trace.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after ∧
     Reference.Sail.run (SailRV32.Functions.execute_LOAD 4 (.Regidx 1) (.Regidx 1) false 4)
@@ -612,7 +605,7 @@ theorem native_pc_increment : loadRow.finish.word.toBitVec = loadRow.start.word.
     (Proofs.initial_pc_bound (by decide) public_pc) (List.mem_singleton_self loadRow)
 
 set_option maxHeartbeats 2000000 in
-theorem actual_load_step [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+theorem actual_load_step : ∃ after,
     SailHistory loadCells
       (Trace.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after ∧
     Reference.Sail.run (Reference.RiscV.Sail.normalStep

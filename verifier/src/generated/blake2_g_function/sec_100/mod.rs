@@ -1,3 +1,17 @@
+#![allow(
+    dead_code,
+    unused_imports,
+    unused_unsafe,
+    unused_assignments,
+    clippy::needless_range_loop,
+    clippy::too_many_arguments,
+    clippy::manual_div_ceil,
+    clippy::borrow_deref_ref,
+    clippy::identity_op,
+    clippy::missing_safety_doc,
+    clippy::duplicate_mod,
+    clippy::large_const_arrays
+)]
 #[path = "../../common/mod.rs"]
 pub mod common;
 pub mod constants;
@@ -24,7 +38,7 @@ pub fn verify<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
         { constants::NUM_WITNESS_COMMITS },
         { constants::NUM_SETUP_COMMITS },
         { constants::PADDING_WORDS },
-        { constants::GKR_ROUNDS },
+        { constants::CLAIM_POINT_CAPACITY },
         { constants::GKR_ADDRS },
         gkr::VerifierImplementation,
     >(external_challenges, nd_source)

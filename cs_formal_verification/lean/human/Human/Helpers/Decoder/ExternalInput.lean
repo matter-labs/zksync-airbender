@@ -64,7 +64,6 @@ def StreamPorts (trace : Data p) (stream : List (BitVec 32)) : Prop :=
 def consumed (rows : List (Row p)) : List (BitVec 32) :=
   ExternalStream.consumed isRead response rows
 
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 /-- The pinned project's custom CSR operations, using native Sail effects.
     A read writes the next external word; a write is an architectural no-op

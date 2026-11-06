@@ -22,7 +22,7 @@ theorem custom_row_zero_preserving [Fact p.Prime] (hp : 524288 < p)
   · have address : (w 29).val = 0 ∧ (w 44).val = 0 ∧ (w 45).val = 0 := by
       simpa [MemoryAddress.code, pairCode, Cell.addressCode, Nat.pair_eq_pair] using zero
     have noRAM : w 29 = 0 := by simpa using address.1
-    have location := Verification.assertion_of_holds h ⟨31, by rw [constraint_count]; decide⟩
+    have location := Verification.assertion_of_holds h ⟨28, by rw [constraint_count]; decide⟩
     simp [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, noRAM] at location
     have targetZero : w 7 = 0 := by
@@ -40,7 +40,8 @@ theorem custom_row_zero_preserving [Fact p.Prime] (hp : 524288 < p)
 theorem custom_zero_preserving [Fact p.Prime] (hp : 524288 < p) {trace : UnifiedTrace p}
     (accepted : Accepted trace) {before : State}
     {addresses : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry}
-    (image : customProgramImage before addresses = some program) (decoded : Decoded trace program) :
+    (image : customProgramImage before addresses = some program) (decoded : Decoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) :
     ZeroPreserving trace := by
   intro row member
   cases row with
@@ -48,7 +49,7 @@ theorem custom_zero_preserving [Fact p.Prime] (hp : 524288 < p) {trace : Unified
     cases family
     have core := Verification.holds_of_sublist (accepted.constraints ⟨.machine, w⟩ member)
       (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
-    obtain ⟨entry, source, query, _⟩ := custom_fetched hp image core (decoded _ member)
+    obtain ⟨entry, source, query, _⟩ := custom_fetched hp image (by find_configured) core (decoded _ member)
     exact custom_row_zero_preserving hp core source.fields query
 
 theorem custom_memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)

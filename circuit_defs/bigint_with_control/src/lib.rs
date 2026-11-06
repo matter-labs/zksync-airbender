@@ -1,6 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
-
 use crate::cs::gkr_circuits::delegation::bigint_with_control::*;
 use crate::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 use prover::cs;
@@ -16,7 +13,9 @@ pub struct BigIntDelegationCircuit;
 
 impl<F: PrimeField> circuit_common::DelegationCircuit<F> for BigIntDelegationCircuit {
     const DELEGATION_TYPE_ID: u16 = common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16;
-    const DOMAIN_SIZE_LOG2: u32 = 22;
+    fn prover_config(level: circuit_common::SecurityLevel) -> circuit_common::ProverConfig {
+        circuit_common::default_prover_config(22, level)
+    }
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS) {
         define_bigint_with_extended_control_delegation_circuit(cs);
@@ -33,22 +32,12 @@ impl<F: PrimeField> circuit_common::DelegationCircuit<F> for BigIntDelegationCir
 
 mod sealed {
     use super::*;
-    use crate::cs::oracle::Placeholder;
+
     use prover::cs::witness_placer::*;
     use prover::gkr::witness_gen::witness_proxy::*;
 
     include!("../generated/witness_generation_fn.rs");
 }
-
-// pub fn witness_eval_fn<'a, 'b>(
-//     proxy: &'_ mut ColumnMajorWitnessProxy<'a, BigintDelegationOracle<'b>, BabyBearField>,
-// ) {
-//     let fn_ptr = sealed::evaluate_witness_fn::<
-//         ScalarWitnessTypeSet<BabyBearField, true>,
-//         ColumnMajorWitnessProxy<'a, BigintDelegationOracle<'b>, BabyBearField>,
-//     >;
-//     (fn_ptr)(proxy);
-// }
 
 pub fn witness_eval_fn(
     proxy: &'_ mut ColumnMajorWitnessProxy<'_, BigintDelegationOracle<'_>, BabyBearField>,

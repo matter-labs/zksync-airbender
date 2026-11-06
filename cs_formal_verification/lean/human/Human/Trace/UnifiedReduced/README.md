@@ -72,7 +72,8 @@ span's actual finish after executing the gap. [Prepared hash chains](PreparedHas
 bind both complete references to those same states; neither gap effects nor clocks
 are reset. Empty and nonempty gaps, fabricated gap states, and an unissued prefix
 effect are checked in [native chain regressions](../../../../test/Tests/ControlPreparation.lean)
-and [the zero-clock regression](../../../../test/Tests/DelegationZeroInvocation.lean).
+(the zero-clock worker those regressions used is now rejected by the circuit:
+[zero-clock regression](../../../../test/Tests/DelegationZeroInvocation.lean)).
 These are memory/reference claims; instruction retirement remains separate.
 The [arithmetic-prefix regression](../../../../test/Tests/ControlPreparation.lean)
 derives actual ADD→ADDI-reset states 65537→131074→0 in that same continuous history,

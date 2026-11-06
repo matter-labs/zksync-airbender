@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Trace.Program
 import Slop.BabyBear
 import Tests.SailDecoder
@@ -8,11 +9,15 @@ open Airbender Trace Arithmetic
 open Sail.ArchSem
 set_option warningAsError true
 
-private def before : Reference.RiscV.Sail.State :=
-  { (default : Reference.RiscV.Sail.State) with
+private noncomputable def before : Reference.RiscV.Sail.State :=
+  { Airbender.Reference.RiscV.Sail.resetMachine with
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0xb3 : BitVec 8)
       |>.insert 1 0x81 |>.insert 2 0x20 |>.insert 3 0
       |>.insert 4 0x03 |>.insert 5 0xa1 |>.insert 6 0x40 |>.insert 7 0 }
+
+theorem airbender_before  : Airbender.Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
+
 
 private def addEntry : ProgramEntry :=
   ⟨0, 0x002081b3, .RTYPE (.Regidx 2, .Regidx 1, .Regidx 3, .ADD),
@@ -33,8 +38,12 @@ theorem extracted : programImage before [0, 4] = some program := by
   have loadBytes : (Cell.ram 4).read before = .ok 0x0040a103 before := by
     simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
       bind, pure, EStateM.bind, EStateM.get, EStateM.pure, before, Std.ExtHashMap.getElem_insert]
+  have addDecoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x002081b3 = some addEntry.instruction := by
+    decode_on_reset
+  have loadDecoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x0040a103 = some loadEntry.instruction := by
+    decode_on_reset
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, addBytes, loadBytes,
-    bind, Option.bind]
+    addDecoded, loadDecoded, bind, Option.bind]
   rfl
 
 theorem missing_bytes : programImage before [8] = none := by
@@ -75,18 +84,26 @@ theorem negative_immediate :
     decoderFields (.ITYPE (0xfff, .Regidx 1, .Regidx 2, .ADDI)) =
       some ⟨.addSub, 1, 0, 2, ⟨65535, 65535⟩, 1, 0⟩ := by rfl
 
-/-- The original generated decoder remains valid after unrelated CSR changes. -/
+/-- Decoding is on the Airbender configuration, independent of the state's CSRs. -/
+theorem decoder_on_reset : Airbender.Reference.RiscV.Sail.decodeOnReset addEntry.bits = some addEntry.instruction := by
+  decode_on_reset
+
+/-- The decoder reads `misa`: after `misa` is written (every extension enabled) it still returns the same ADD.
+    Stated on the Sail reset state with `misa` set and checked by the kernel, since the hash-map fixture
+    exceeds elaborator reduction on the full model. -/
 theorem decoder_after_configuration_change :
-    Reference.Sail.run (SailRV32.Functions.encdec_backwards addEntry.bits)
-      { before with regs := before.regs.insert .misa 0xffffffff } =
-    .ok addEntry.instruction { before with regs := before.regs.insert .misa 0xffffffff } := by
-  with_unfolding_all rfl
+    Reference.RiscV.Sail.resultValue (Reference.RiscV.Sail.Configuration.runSail
+      (SailRV32.Functions.encdec_backwards addEntry.bits)
+      (Reference.RiscV.Sail.Configuration.resetState.set .misa (0xffffffff : BitVec 32))) =
+      some addEntry.instruction := by
+  kernel_rfl
 
 /-- A native RAM store preserves the fetched/decoded public ROM instruction. -/
 theorem fetched_after_ram_store :
     addEntry.Source (Reference.RiscV.Sail.wordWriteState before 4194304 0xabcdef12) := by
   have source := Proofs.program_sources extracted addEntry (by simp [program])
-  refine ⟨?_, (Reference.Sail.decoded_misa_frame _ source.decoded).2 _ rfl, source.fields⟩
+  refine ⟨?_, Reference.RiscV.Sail.decode_on_reset_run (airbender_before.with_mem _) decoder_on_reset,
+    source.fields⟩
   exact Reference.RiscV.Sail.written_word_disjoint 4194304 0xabcdef12 (by decide) source.bytes
 
 end Tests.TraceProgram

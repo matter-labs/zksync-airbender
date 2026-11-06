@@ -23,5 +23,13 @@ structure BoundaryMemoryInputs (data : MemoryData p) (before : State) (cells : L
   /-- Invocation timestamps leave room for each imported offset-two write. -/
   clockRoom : ∀ row ∈ data.rows,
     (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase
+  /-- Approved assumption, mirroring PR #585's `BoundaryInputs.invocationHigh`.
+      The new delegation circuits range-check only `(invocation-low - execute) / 4`
+      and never `invocation-high` on its own (the upper limb is related to the
+      workers' memory comparisons, not bounded). Cross-circuit binding should
+      discharge this later: the invocation timestamp equals the main CPU circuit's
+      range-checked delegation request timestamp. It is not derived per circuit. -/
+  invocationHigh : ∀ row ∈ data.rows,
+    (decodeTimestamp row.assignment row.columns.invocation).hi < timestampBase
 
 end Airbender.Delegation

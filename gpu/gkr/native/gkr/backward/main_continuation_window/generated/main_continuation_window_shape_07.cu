@@ -7,6 +7,6 @@ namespace airbender::gkr::backward {
 AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_KERNEL(ab_gkr_bwd_main_cont_window3_shape_07_b4_kernel, 0x07, 4);
 AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_X01_KERNEL(ab_gkr_bwd_main_cont_window3_shape_07_b4_x01_kernel, 0x07, 4);
 
-static_assert(BWD_MAIN_CONTINUATION_WINDOW_KERNEL_COUNT == 7, "shape_07 continuation-window manifest drift");
+static_assert(BWD_MAIN_CONTINUATION_WINDOW_KERNEL_COUNT == 8, "shape_07 continuation-window manifest drift");
 
 } // namespace airbender::gkr::backward

@@ -9,7 +9,7 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
 set_option backward.isDefEq.respectTransparency false in
-theorem row_step [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem row_step [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
@@ -43,7 +43,7 @@ theorem row_step [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exc
       exact row_clause hp inverse byteInverse accepted decoded inputs member position present query history
 
 set_option backward.isDefEq.respectTransparency false in
-theorem trace_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem trace_execution [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}

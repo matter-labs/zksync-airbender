@@ -99,8 +99,9 @@ theorem pooled_write_rules {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection before addresses = some program)
-    (decoded : PooledDecoded trace program) : WriteBoundsFromReads trace := by
+    (programImage : programImageWith projection before addresses = some program)
+    (decoded : PooledDecoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) : WriteBoundsFromReads trace := by
   intro row member
   obtain ⟨entry, present, family, query⟩ := decoder_member (decoded row member)
   have source := run_program_sources programImage entry present
@@ -119,8 +120,9 @@ theorem pooled_value_bounds {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection before addresses = some program)
-    (decoded : PooledDecoded trace program) :
+    (programImage : programImageWith projection before addresses = some program)
+    (decoded : PooledDecoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) :
     (∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧
     (∀ row ∈ trace.rows, ∀ port ∈ row.ports,
       (writeToken row.columns row.assignment port).word.Bounded) ∧

@@ -6,6 +6,7 @@ use std::ops::Range;
 pub mod bigint;
 pub mod blake2_g_function;
 pub mod blake2_round_function;
+pub mod keccak_f1600;
 pub mod keccak_special5;
 
 #[repr(C)]
@@ -73,7 +74,7 @@ pub trait DelegationAbiDescription: 'static + Clone + Copy + Debug + Send + Sync
 
     fn use_read_indirects(reg_idx: usize) -> bool {
         if Self::INDIRECT_READS_DESCRIPTION[reg_idx].is_empty() {
-            debug_assert!(Self::INDIRECT_WRITES_DESCRIPTION[reg_idx].is_empty() == false);
+            debug_assert!(!Self::INDIRECT_WRITES_DESCRIPTION[reg_idx].is_empty());
             false
         } else {
             debug_assert!(Self::INDIRECT_WRITES_DESCRIPTION[reg_idx].is_empty());

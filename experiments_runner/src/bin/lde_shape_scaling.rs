@@ -20,7 +20,7 @@
 #![feature(allocator_api)]
 
 use prover::fft::Twiddles;
-use prover::field::{PrimeField, Proth120};
+use prover::field::Proth120;
 use prover::gkr::prover::{Backend, Proth120WorkStealingLazyBackend};
 use prover::worker::Worker;
 

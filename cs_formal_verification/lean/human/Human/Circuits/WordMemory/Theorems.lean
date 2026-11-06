@@ -11,12 +11,12 @@ open Reference.RiscV.Sail Trace _root_.Sail.ArchSem
     Public initialization, modeled tables and platform conditions are listed in
     `Model.lean`; bounds and successful reads/accesses are derived internally. -/
 def SoundnessClaim : Prop :=
-  ∀ [MemoryPlatform SailRV32.exception] {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1) (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry),
+  ∀ {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1) (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry),
     InterfaceAssumptions trace initial cells program →
     Properties.Soundness (circuitModel trace initial cells program).relation spec
 
 def BabyBearSoundnessClaim : Prop :=
-  ∀ [MemoryPlatform SailRV32.exception] (trace : PooledTrace babyBearModulus) (initial : State) (cells : List Cell) (program : List PooledProgramEntry),
+  ∀ (trace : PooledTrace babyBearModulus) (initial : State) (cells : List Cell) (program : List PooledProgramEntry),
     InterfaceAssumptions trace initial cells program →
     Properties.Soundness (circuitModel trace initial cells program).relation spec
 

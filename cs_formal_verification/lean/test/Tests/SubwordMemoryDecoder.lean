@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.SubwordMemoryTimestamp
 import Slop.SubwordMemory.Decoder
 import Human.Trace.Execution
@@ -9,7 +10,10 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 1000000
 
-private def before (pc bits : BitVec 32) : State := wordWriteState default pc.toNat bits
+private noncomputable def before (pc bits : BitVec 32) : State := wordWriteState Airbender.Reference.RiscV.Sail.resetMachine pc.toNat bits
+
+theorem airbender_before (pc bits : BitVec 32) : Airbender.Reference.RiscV.Sail.Configured (before pc bits) := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
 
 private def samples : List (BitVec 32 × SailRV32.instruction × DecoderData Unit) := [
   (0xfff08183, .LOAD (4095, .Regidx 1, .Regidx 3, false, 1), ⟨(), 1, 0, 3, ⟨65535, 65535⟩, 6, 0⟩),
@@ -21,13 +25,12 @@ private def samples : List (BitVec 32 × SailRV32.instruction × DecoderData Uni
 
 private theorem extraction (pc bits : BitVec 32) (instruction : SailRV32.instruction)
     (data : DecoderData Unit)
-    (decoded : run (SailRV32.Functions.encdec_backwards bits) (before pc bits) =
-      .ok instruction (before pc bits))
+    (decoded : Airbender.Reference.RiscV.Sail.decodeOnReset bits = some instruction)
     (fields : Airbender.SubwordMemory.decoderFields instruction = some data) :
     Airbender.SubwordMemory.programImage (before pc bits) [pc] = some [⟨pc, bits, instruction, data⟩] := by
   have bytes : (Cell.ram pc).read (before pc bits) = .ok bits (before pc bits) :=
-    by simpa only [Cell.read, before] using written_word_read default pc.toNat bits
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields,
+    by simpa only [Cell.read, before] using written_word_read Airbender.Reference.RiscV.Sail.resetMachine pc.toNat bits
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
     bind, Option.bind, pure]
 
 /-- All six byte/halfword forms come from original Sail decoding of actual
@@ -38,9 +41,9 @@ theorem all_instruction_forms : ∀ sample ∈ samples,
   intro sample member
   simp only [samples, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl | rfl | rfl | rfl
-  all_goals apply extraction _ _ _ _ <;> with_unfolding_all rfl
+  all_goals apply extraction _ _ _ _ <;> first | decode_on_reset | with_unfolding_all rfl
 
-theorem all_instruction_clauses [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+theorem all_instruction_clauses  :
     ∀ sample ∈ samples, (Trace.instructionClause sample.2.1).isSome = true := by
   intro sample member
   simp only [samples, List.mem_cons, List.not_mem_nil, or_false] at member
@@ -57,7 +60,8 @@ theorem accepted_row_fetched (rollover : Bool) :
     Airbender.SubwordMemory.Fetched (Tests.SubwordMemoryTimestamp.assignment rollover)
       (before entry.pc entry.bits) := by
   apply Airbender.SubwordMemory.Proofs.fetched (by decide)
-    (extraction entry.pc entry.bits entry.instruction entry.data (by rfl) (by rfl))
+    (extraction entry.pc entry.bits entry.instruction entry.data (by decode_on_reset) (by rfl))
+    (airbender_before _ _)
     (Verification.holds_of_sublist (Tests.SubwordMemoryTimestamp.constraints rollover)
       (List.sublist_append_left _ _))
   cases rollover <;> change ∃ i, _

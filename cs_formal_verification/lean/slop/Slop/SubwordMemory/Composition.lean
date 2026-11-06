@@ -5,7 +5,6 @@ import Slop.Trace.CompositionCore
 namespace Airbender.SubwordMemory.Proofs
 open Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxHeartbeats 2000000 in
@@ -34,10 +33,8 @@ theorem row_ram_step {p : Nat} [Fact p.Prime]
       (Trace.retiredState before row.start.word.toBitVec) =
       .ok entry.pc (Trace.retiredState before row.start.word.toBitVec) := by
     simpa only [position] using Trace.Proofs.retired_state_pc before row.start.word.toBitVec
-  have configuration : (Trace.retiredState before row.start.word.toBitVec).regs.get? .misa =
-      initial.regs.get? .misa := by
-    simpa [Trace.retiredState, Std.ExtDHashMap.get?_insert] using
-      (Trace.Proofs.sail_history_control_flow_csrs past).1
+  have configuration : ConfigSame initial (Trace.retiredState before row.start.word.toBitVec) :=
+    ((Trace.Proofs.sail_history_config_same past).insert (key := .nextPC) rfl _).insert (key := .PC) rfl _
   refine ⟨entry, present, ⟨Trace.Proofs.cell_read_PC (.ram entry.pc)
     (Trace.Proofs.cell_read_nextPC (.ram entry.pc) bytes row.start.word.toBitVec) row.start.word.toBitVec,
     (decoded_misa_frame _ source.decoded).2 _ configuration, source.fields⟩, pc, ?_⟩

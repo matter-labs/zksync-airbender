@@ -1,11 +1,4 @@
 import Slop.Blake2Round.DiagonalG
-import Slop.Blake2Round.Lookups
-import Slop.Blake2Round.ArtifactChecks
-import Slop.Blake2Round.OpIndex
-import Slop.Eval
-import Slop.Blake2G.OpIndex
-import Slop.Blake2G.Soundness
-import Mathlib.Tactic.ReduceModChar
 
 set_option warningAsError true
 -- one call's goals may not use every lemma of the shared simp set
@@ -14,35 +7,106 @@ set_option linter.unusedSimpArgs false
 namespace Airbender.Blake2Round.Proofs
 
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 
-set_option maxHeartbeats 20000000 in
-/-- The eighteen XOR lookups of diagonal G call 3. -/
-theorem diagonal_g_queries_3 {p : Nat} [Fact p.Prime]
+set_option maxHeartbeats 16000000 in
+/-- The sixteen table rows and the carry flags of diagonal G call 3. -/
+theorem diagonal_rows_3 {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints setupTable)) (i : Fin 18) :
-    ((FlatOperation.lookups (Blake2G.Proofs.mixingConstraints
-      (Blake2G.setupTable (fun _ => Vector.replicate 7 0)))).get
-        ⟨i.val, by rw [Blake2G.Proofs.mixing_lookup_count]; exact i.isLt⟩).Contains
-      (Verification.environment (Blake2G.Proofs.assemble (diagonalGBase (3 : Fin 4) w))) := by
+      (importedConstraints setupTable)) :
+    (diagonalTrace 3 w).Rows := by
+  have hp512 : 512 ≤ p := by omega
   have field := Blake2G.Proofs.serialized_field compatible
-  subst p
+  subst field
   unfold babyBearModulus at *
-  have member := Verification.lookup_of_holds h
-    ⟨74 + 18 * 3 + i.val, by rw [lookup_count]; have size := i.isLt; simp; omega⟩
-  fin_cases i
-  all_goals op_index at member ⊢
-  all_goals apply padded_membership member
-  all_goals ext j hj
-  all_goals interval_cases j <;>
-    eval_entry [diagonalGBase, columnGAssignment, columnGBase, Blake2G.Proofs.assemble,
-      Blake2G.Proofs.secondAlo, Blake2G.Proofs.secondAhi, Blake2G.Proofs.secondClo,
-      Blake2G.Proofs.secondChi, Blake2G.Proofs.firstAlo, Blake2G.Proofs.firstAhi,
-      Blake2G.Proofs.firstClo, Blake2G.Proofs.firstChi, padXor, Fin.ofNat, Fin.val_mk,
-      Nat.reduceMod, Nat.reduceLT, ↓reduceIte]
-  all_goals try reduce_mod_char
-  all_goals try ring_nf
-  all_goals try reduce_mod_char
+  have r0 := Verification.lookup_of_holds h ⟨114, by rw [lookup_count]; omega⟩
+  op_index at r0
+  replace r0 := lookup_facts hp512 r0 (t := 55) (by simp [tags]) (by eval_entry)
+  eval_entry at r0
+  obtain ⟨q0, ka0⟩ := rows_of_55 r0 (a' := (diagonalTrace 3 w).d0) (b' := (diagonalTrace 3 w).a1b0) (c' := (diagonalTrace 3 w).ka0) (d' := (diagonalTrace 3 w).r0) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r1 := Verification.lookup_of_holds h ⟨115, by rw [lookup_count]; omega⟩
+  op_index at r1
+  replace r1 := lookup_facts hp512 r1 (t := 4) (by simp [tags]) (by eval_entry)
+  eval_entry at r1
+  have q1 := rows_of_4 r1 (a' := (diagonalTrace 3 w).d1) (b' := (diagonalTrace 3 w).a1b1) (c' := (diagonalTrace 3 w).r1) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r2 := Verification.lookup_of_holds h ⟨116, by rw [lookup_count]; omega⟩
+  op_index at r2
+  replace r2 := lookup_facts hp512 r2 (t := 55) (by simp [tags]) (by eval_entry)
+  eval_entry at r2
+  obtain ⟨q2, ka1⟩ := rows_of_55 r2 (a' := (diagonalTrace 3 w).d2) (b' := (diagonalTrace 3 w).a1b2) (c' := (diagonalTrace 3 w).ka1) (d' := (diagonalTrace 3 w).r2) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r3 := Verification.lookup_of_holds h ⟨117, by rw [lookup_count]; omega⟩
+  op_index at r3
+  replace r3 := lookup_facts hp512 r3 (t := 4) (by simp [tags]) (by eval_entry)
+  eval_entry at r3
+  have q3 := rows_of_4 r3 (a' := (diagonalTrace 3 w).d3) (b' := (diagonalTrace 3 w).a1b3) (c' := (diagonalTrace 3 w).r3) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r4 := Verification.lookup_of_holds h ⟨118, by rw [lookup_count]; omega⟩
+  op_index at r4
+  replace r4 := lookup_facts hp512 r4 (t := 20) (by simp [tags]) (by eval_entry)
+  eval_entry at r4
+  have q4 := rows_of_20 r4 (a' := (diagonalTrace 3 w).b9lo) (b' := (diagonalTrace 3 w).c9lo) (c' := (diagonalTrace 3 w).x9lo) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r5 := Verification.lookup_of_holds h ⟨119, by rw [lookup_count]; omega⟩
+  op_index at r5
+  replace r5 := lookup_facts hp512 r5 (t := 20) (by simp [tags]) (by eval_entry)
+  eval_entry at r5
+  have q5 := rows_of_20 r5 (a' := (diagonalTrace 3 w).b9hi) (b' := (diagonalTrace 3 w).c9hi) (c' := (diagonalTrace 3 w).x9hi) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r6 := Verification.lookup_of_holds h ⟨120, by rw [lookup_count]; omega⟩
+  op_index at r6
+  replace r6 := lookup_facts hp512 r6 (t := 57) (by simp [tags]) (by eval_entry)
+  eval_entry at r6
+  have q6 := rows_of_57 r6 (a' := (diagonalTrace 3 w).b4lo) (b' := (diagonalTrace 3 w).b3hi) (c' := (diagonalTrace 3 w).c4lo) (d' := (diagonalTrace 3 w).c3hi) (e' := (diagonalTrace 3 w).x7lo) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r7 := Verification.lookup_of_holds h ⟨121, by rw [lookup_count]; omega⟩
+  op_index at r7
+  replace r7 := lookup_facts hp512 r7 (t := 57) (by simp [tags]) (by eval_entry)
+  eval_entry at r7
+  have q7 := rows_of_57 r7 (a' := (diagonalTrace 3 w).b4hi) (b' := (diagonalTrace 3 w).b3lo) (c' := (diagonalTrace 3 w).c4hi) (d' := (diagonalTrace 3 w).c3lo) (e' := (diagonalTrace 3 w).x7hi) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r8 := Verification.lookup_of_holds h ⟨122, by rw [lookup_count]; omega⟩
+  op_index at r8
+  replace r8 := lookup_facts hp512 r8 (t := 4) (by simp [tags]) (by eval_entry)
+  eval_entry at r8
+  have q8 := rows_of_4 r8 (a' := (diagonalTrace 3 w).r3) (b' := (diagonalTrace 3 w).a2b1) (c' := (diagonalTrace 3 w).s0) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r9 := Verification.lookup_of_holds h ⟨123, by rw [lookup_count]; omega⟩
+  op_index at r9
+  replace r9 := lookup_facts hp512 r9 (t := 4) (by simp [tags]) (by eval_entry)
+  eval_entry at r9
+  have q9 := rows_of_4 r9 (a' := (diagonalTrace 3 w).r1) (b' := (diagonalTrace 3 w).a2b3) (c' := (diagonalTrace 3 w).s1) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r10 := Verification.lookup_of_holds h ⟨124, by rw [lookup_count]; omega⟩
+  op_index at r10
+  replace r10 := lookup_facts hp512 r10 (t := 55) (by simp [tags]) (by eval_entry)
+  eval_entry at r10
+  obtain ⟨q10, kb0⟩ := rows_of_55 r10 (a' := (diagonalTrace 3 w).r2) (b' := (diagonalTrace 3 w).a2b0) (c' := (diagonalTrace 3 w).kb0) (d' := (diagonalTrace 3 w).s2) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r11 := Verification.lookup_of_holds h ⟨125, by rw [lookup_count]; omega⟩
+  op_index at r11
+  replace r11 := lookup_facts hp512 r11 (t := 55) (by simp [tags]) (by eval_entry)
+  eval_entry at r11
+  obtain ⟨q11, kb1⟩ := rows_of_55 r11 (a' := (diagonalTrace 3 w).r0) (b' := (diagonalTrace 3 w).a2b2) (c' := (diagonalTrace 3 w).kb1) (d' := (diagonalTrace 3 w).s3) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r12 := Verification.lookup_of_holds h ⟨126, by rw [lookup_count]; omega⟩
+  op_index at r12
+  replace r12 := lookup_facts hp512 r12 (t := 20) (by simp [tags]) (by eval_entry)
+  eval_entry at r12
+  have q12 := rows_of_20 r12 (a' := (diagonalTrace 3 w).x9hi) (b' := (diagonalTrace 3 w).c2h0) (c' := (diagonalTrace 3 w).t0) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r13 := Verification.lookup_of_holds h ⟨127, by rw [lookup_count]; omega⟩
+  op_index at r13
+  replace r13 := lookup_facts hp512 r13 (t := 20) (by simp [tags]) (by eval_entry)
+  eval_entry at r13
+  have q13 := rows_of_20 r13 (a' := (diagonalTrace 3 w).x9lo) (b' := (diagonalTrace 3 w).c2h1) (c' := (diagonalTrace 3 w).t1) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r14 := Verification.lookup_of_holds h ⟨128, by rw [lookup_count]; omega⟩
+  op_index at r14
+  replace r14 := lookup_facts hp512 r14 (t := 56) (by simp [tags]) (by eval_entry)
+  eval_entry at r14
+  obtain ⟨q14, kd0⟩ := rows_of_56 r14 (a' := (diagonalTrace 3 w).x7lo) (b' := (diagonalTrace 3 w).c2l0) (c' := (diagonalTrace 3 w).kd0) (d' := (diagonalTrace 3 w).t2) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have r15 := Verification.lookup_of_holds h ⟨129, by rw [lookup_count]; omega⟩
+  op_index at r15
+  replace r15 := lookup_facts hp512 r15 (t := 56) (by simp [tags]) (by eval_entry)
+  eval_entry at r15
+  obtain ⟨q15, kd1⟩ := rows_of_56 r15 (a' := (diagonalTrace 3 w).x7hi) (b' := (diagonalTrace 3 w).c2l1) (c' := (diagonalTrace 3 w).kd1) (d' := (diagonalTrace 3 w).t3) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
+  have fkc0 := Verification.assertion_of_holds h ⟨159, by rw [constraint_count]; omega⟩
+  op_index at fkc0
+  eval_entry at fkc0
+  have kc0 := carry_of_flag fkc0 (x' := (diagonalTrace 3 w).kc0) (by diagonal_eq)
+  have fkc1 := Verification.assertion_of_holds h ⟨160, by rw [constraint_count]; omega⟩
+  op_index at fkc1
+  eval_entry at fkc1
+  have kc1 := carry_of_flag fkc1 (x' := (diagonalTrace 3 w).kc1) (by diagonal_eq)
+  exact { q0 := q0, q1 := q1, q2 := q2, q3 := q3, ka0 := ka0, ka1 := ka1, q4 := q4, q5 := q5, q6 := q6, q7 := q7, kc0 := kc0, kc1 := kc1, q8 := q8, q9 := q9, q10 := q10, q11 := q11, kb0 := kb0, kb1 := kb1, q12 := q12, q13 := q13, q14 := q14, q15 := q15, kd0 := kd0, kd1 := kd1 }
 
 end Airbender.Blake2Round.Proofs

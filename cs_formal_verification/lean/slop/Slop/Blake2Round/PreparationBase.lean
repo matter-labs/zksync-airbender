@@ -91,7 +91,7 @@ abbrev extendedExpected {p : Nat} (first compression : Bool) (w : Nat → ZMod p
 abbrev loIdx : Vector Nat 16 := #v[5, 9, 13, 17, 21, 25, 29, 33, 36, 38, 40, 42, 48, 44, 50, 46]
 abbrev hiIdx : Vector Nat 16 := #v[7, 11, 15, 19, 23, 27, 31, 35, 37, 39, 41, 43, 49, 45, 51, 47]
 
-theorem loIdx_lt : ∀ j : Fin 16, loIdx[j] < 352 := by decide
-theorem hiIdx_lt : ∀ j : Fin 16, hiIdx[j] < 352 := by decide
+theorem loIdx_lt : ∀ j : Fin 16, loIdx[j] < 220 := by decide
+theorem hiIdx_lt : ∀ j : Fin 16, hiIdx[j] < 220 := by decide
 
 end Airbender.Blake2Round.Preparation.Proofs

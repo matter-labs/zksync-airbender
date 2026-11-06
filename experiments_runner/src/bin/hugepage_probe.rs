@@ -115,7 +115,7 @@ fn main() {
                 }
                 let free_ms = t0.elapsed().as_secs_f64() * 1e3;
                 println!(
-                    "[thp] {mb:>4} MB {kind:<26} touch by {threads:>2} thr: {touch_ms:7.2} ms | ptr%2M={:>8} vma {size:>7} kB rss {rss:>7} kB AnonHugePages {huge:>7} kB ({:.0}% of rss) vma-start%2M={} | free {free_ms:6.2} ms",
+                    "[thp] {mb:>4} MB {kind:<26} touch by {threads:>2} threads: {touch_ms:7.2} ms | ptr%2M={:>8} vma {size:>7} kB rss {rss:>7} kB AnonHugePages {huge:>7} kB ({:.0}% of rss) vma-start%2M={} | free {free_ms:6.2} ms",
                     (ptr as usize) % (2 << 20),
                     if rss > 0 { 100.0 * huge as f64 / rss as f64 } else { 0.0 },
                     start % (2 << 20),
@@ -153,7 +153,7 @@ fn main() {
         let mean =
             |f: fn(&(f64, f64, f64)) -> f64| res.iter().map(f).sum::<f64>() / res.len() as f64;
         println!(
-            "[thp] contention: {workers:>2} concurrent workers, 64 MB alloc+touch(16 thr)+free per iteration: alloc {:.2} ms, touch {:.2} ms, free {:.2} ms (per worker, mean over {iters} iters)",
+            "[thp] contention: {workers:>2} concurrent workers, 64 MB alloc+touch(16 threads)+free per iteration: alloc {:.2} ms, touch {:.2} ms, free {:.2} ms (per worker, mean over {iters} iters)",
             mean(|r| r.0),
             mean(|r| r.1),
             mean(|r| r.2)

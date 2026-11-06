@@ -53,6 +53,36 @@ struct KeccakSpecial5AbiDescription {
   DEVICE_FORCEINLINE static constexpr bool use_read_indirects(const u16) { return false; }
 };
 
+struct KeccakColumnParityAbiDescription {
+  static constexpr unsigned REG_ACCESSES = 2;
+  static constexpr unsigned INDIRECT_READS = 0;
+  static constexpr unsigned INDIRECT_WRITES = 12;
+  static constexpr unsigned VARIABLE_OFFSETS = 6;
+  static constexpr u16 DELEGATION_TYPE = NON_DETERMINISM_CSR + 13;
+  static constexpr unsigned BASE_REGISTER = 10;
+  DEVICE_FORCEINLINE static constexpr bool use_read_indirects(const u16) { return false; }
+};
+
+struct KeccakThetaRhoAbiDescription {
+  static constexpr unsigned REG_ACCESSES = 2;
+  static constexpr unsigned INDIRECT_READS = 0;
+  static constexpr unsigned INDIRECT_WRITES = 14;
+  static constexpr unsigned VARIABLE_OFFSETS = 7;
+  static constexpr u16 DELEGATION_TYPE = NON_DETERMINISM_CSR + 12;
+  static constexpr unsigned BASE_REGISTER = 10;
+  DEVICE_FORCEINLINE static constexpr bool use_read_indirects(const u16) { return false; }
+};
+
+struct KeccakChi5AbiDescription {
+  static constexpr unsigned REG_ACCESSES = 2;
+  static constexpr unsigned INDIRECT_READS = 0;
+  static constexpr unsigned INDIRECT_WRITES = 10;
+  static constexpr unsigned VARIABLE_OFFSETS = 5;
+  static constexpr u16 DELEGATION_TYPE = NON_DETERMINISM_CSR + 14;
+  static constexpr unsigned BASE_REGISTER = 10;
+  DEVICE_FORCEINLINE static constexpr bool use_read_indirects(const u16) { return false; }
+};
+
 struct Blake2sGFunctionAbiDescription {
   static constexpr unsigned REG_ACCESSES = 3;     // 3 x 16B = 48B
   static constexpr unsigned INDIRECT_READS = 2;   // 2 x 12B = 24B
@@ -182,5 +212,9 @@ typedef DelegationTrace<BigintWithControlAbiDescription> BigintWithControlOracle
 typedef DelegationTrace<Blake2sRoundFunctionAbiDescription> Blake2WithCompressionOracle;
 typedef DelegationTrace<Blake2sGFunctionAbiDescription> Blake2GFunctionOracle;
 typedef DelegationTrace<KeccakSpecial5AbiDescription> KeccakSpecial5Oracle;
+
+typedef DelegationTrace<KeccakColumnParityAbiDescription> KeccakColumnParityOracle;
+typedef DelegationTrace<KeccakThetaRhoAbiDescription> KeccakThetaRhoOracle;
+typedef DelegationTrace<KeccakChi5AbiDescription> KeccakChi5Oracle;
 
 } // namespace airbender::trace::witness::trace::delegation

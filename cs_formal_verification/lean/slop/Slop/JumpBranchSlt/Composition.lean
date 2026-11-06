@@ -1,3 +1,4 @@
+import Slop.Sail.Configured
 import Human.Trace.Families.JumpBranchSlt.Execution
 import Slop.JumpBranchSlt.Execution
 import Slop.JumpBranchSlt.BranchExecution
@@ -8,7 +9,6 @@ import Slop.Trace.Terminal
 namespace Airbender.JumpBranchSlt.Proofs
 open Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxHeartbeats 2000000 in
@@ -106,8 +106,8 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
       .ok entry.pc (Trace.retiredState before row.start.word.toBitVec) := by
     simpa only [position] using Trace.Proofs.retired_state_pc before row.start.word.toBitVec
   refine ⟨entry, present, ⟨bytes, (decoded_misa_frame _ source.decoded).2 _
-    (by simpa [Trace.retiredState, Std.ExtDHashMap.get?_insert] using
-      (Trace.Proofs.sail_history_control_flow_csrs past).1), source.fields⟩, pc, ?_⟩
+    (((Trace.Proofs.sail_history_config_same past).insert (key := .nextPC) rfl _).insert (key := .PC) rfl _),
+    source.fields⟩, pc, ?_⟩
   cases row with
   | mk family w =>
     cases family
@@ -125,7 +125,8 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
     have finalHi := (trace_pc_bounds limbSize accepted decoded inputs.terminalCanonical _ member).2.2
     have aligned := ((trace_pc_alignment hp accepted inputs.initialAligned).1 _ member).1
     exact local_instruction_execution hp h (accepted.active _ member) trace.memoryEpoch source query
-      leftBound rightBound aligned finalHi history past inputs.misa inputs.indirect
+      leftBound rightBound aligned finalHi history past inputs.configuration.isa
+      ⟨inputs.configuration.privilege, inputs.configuration.landingPad⟩
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Complete instruction traces reuse the shared composition theorem and the

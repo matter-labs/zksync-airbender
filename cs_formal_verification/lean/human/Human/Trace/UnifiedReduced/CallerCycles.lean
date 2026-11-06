@@ -24,7 +24,7 @@ def CallerCycle [Fact p.Prime] (data : RequestTrace p) (initial finalState : Sta
           .ok (readToken worker.assignment port).word.toBitVec (retiredState before row.start.word.toBitVec) ∧
         cell.read (retiredState after row.finish.word.toBitVec) =
           .ok (worker.writeToken port).word.toBitVec (retiredState after row.finish.word.toBitVec)) ∧
-    Reference.Sail.run (do SailRV32.Functions.normal_base_next_pc (); SailRV32.Functions.tick_pc ())
+    Reference.Sail.run (do Airbender.Reference.RiscV.Sail.normalBaseNextPC; SailRV32.Functions.tick_pc ())
       (retiredState after row.start.word.toBitVec) = .ok () (retiredState after row.finish.word.toBitVec)
 
 /-- One shared initialized history supplies every caller cycle and terminal read.

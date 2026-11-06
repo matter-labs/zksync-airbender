@@ -41,30 +41,58 @@ theorem xor_limb_chunks {p width remaining : Nat} [Fact p.Prime]
     zv ▸ small low.2.2.1 high.2.2.1, ?_⟩
   rw [xv, yv, zv, xor_of_chunks low.1 low.2.1, low.2.2.2, high.2.2.2]
 
--- These are projections of the actual imported queries, not a second model.
-def finalQuery {p : Nat} [Fact p.Prime] (limb : Fin 16) (stage : Fin 4) : Lookup (ZMod p) :=
+/-- The final XOR is the last 64 fixed-table queries (imported lookups 130..193),
+    four per sixteen-bit limb of the eight chaining writes. These are projections
+    of the actual imported queries, not a second model. -/
+noncomputable def finalQuery {p : Nat} [Fact p.Prime] (limb : Fin 16) (stage : Fin 4) :
+    Lookup (ZMod p) :=
   (FlatOperation.lookups (importedConstraints setupTable)).get
-    ⟨146 + 4 * limb.val + stage.val, by
+    ⟨128 + 4 * limb.val + stage.val + 2, by
       rw [lookup_count]; have := limb.isLt; have := stage.isLt; omega⟩
 
-def finalColumn {p : Nat} [Fact p.Prime] (w : Nat → ZMod p)
-    (limb : Fin 16) (stage column : Fin 4) : ZMod p :=
+noncomputable def finalColumn {p : Nat} [Fact p.Prime] (w : Nat → ZMod p)
+    (limb : Fin 16) (stage : Fin 4) (column : Fin 6) : ZMod p :=
   ((finalQuery limb stage).entry.toArray[column.val]!).eval (Verification.environment w)
 
+private theorem get_mem_drop {α : Type} (l : List α) (k : Nat) (hk : k + 2 < l.length) :
+    l.get ⟨k + 2, hk⟩ ∈ l.drop 2 :=
+  List.mem_iff_getElem.mpr ⟨k, by rw [List.length_drop]; omega, by
+    simp only [List.getElem_drop, List.get_eq_getElem]; congr 1; omega⟩
+
+/-- A plain-XOR fixed-table query (tags 4, 19, 20: widths 8, 7, 9) is a chunk XOR
+    of its first three columns. -/
 theorem final_query {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
-    {w : Nat → ZMod p} (limb : Fin 16) (stage : Fin 4) (kind : Fin 5)
+    {w : Nat → ZMod p} (limb : Fin 16) (stage : Fin 4) (kind : Fin 3)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable))
-    (tag : finalColumn w limb stage 3 = ((#v[4, 17, 18, 19, 20][kind] : Nat) : ZMod p)) :
-    chunkXor (#v[8, 3, 4, 7, 9][kind])
+    (tag : finalColumn w limb stage 5 = ((#v[4, 19, 20][kind] : Nat) : ZMod p)) :
+    chunkXor (#v[8, 7, 9][kind])
       (finalColumn w limb stage 0) (finalColumn w limb stage 1)
       (finalColumn w limb stage 2) := by
-  have member := Verification.lookup_of_holds h
-    ⟨146 + 4 * limb.val + stage.val, by
-      rw [lookup_count]; have := limb.isLt; have := stage.isLt; omega⟩
-  have table : (finalQuery (p := p) limb stage).table = setupTable.toRaw := by
-    fin_cases limb <;> fin_cases stage <;> rfl
-  exact xor_lookup_raw hp kind member table tag
+  have present : finalQuery (p := p) limb stage ∈
+      (FlatOperation.lookups (importedConstraints setupTable)).drop 2 :=
+    get_mem_drop _ _ _
+  have member : #v[4, 19, 20][kind] ∈ tags := by
+    fin_cases kind <;> simp [tags]
+  have facts := data_lookups hp h _ present _ member tag
+  change RowFacts _ (finalColumn w limb stage 0).val (finalColumn w limb stage 1).val
+    (finalColumn w limb stage 2).val (finalColumn w limb stage 3).val
+    (finalColumn w limb stage 4).val at facts
+  fin_cases kind
+  all_goals simp only [RowFacts, Fin.zero_eta, Fin.isValue, Fin.mk_one, Fin.reduceFinMk,
+    Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
+    at facts ⊢
+  all_goals obtain ⟨x, y, z, -, -⟩ := facts
+  all_goals refine ⟨by norm_num; omega, by norm_num; omega, ?_, z⟩
+  all_goals rw [z]
+  all_goals exact Nat.xor_lt_two_pow (by norm_num; omega) (by norm_num; omega)
+
+/-- Normalize a BabyBear field identity whose coefficients are serialized inverses. -/
+macro "babybear_ring" : tactic => `(tactic| (
+  ring_nf
+  try reduce_mod_char
+  try ring_nf
+  try reduce_mod_char))
 
 def acInitial {p : Nat} (w : Nat → ZMod p) (limb : Fin 8) : ZMod p :=
   w (154 + 4 * (limb.val / 2) + 2 * (limb.val % 2))
@@ -75,83 +103,67 @@ def acA {p : Nat} (w : Nat → ZMod p) (limb : Fin 8) : ZMod p :=
 def acC {p : Nat} (w : Nat → ZMod p) (limb : Fin 8) : ZMod p :=
   w (71 + 4 * (limb.val / 2) + limb.val % 2)
 
-def acLowC : Vector Nat 8 := #v[578, 579, 622, 623, 490, 491, 534, 535]
-
-set_option maxHeartbeats 16000000 in
-/-- The first four chaining words use seven/nine-bit XOR queries. The write
-    equations identify their inputs with the allocated final a/c state limbs. -/
-theorem ac_queries {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (limb : Fin 8)
-    {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints setupTable)) :
-    chunkXor 7 (w (628 + 7 * limb.val)) (w acLowC[limb]) (w (629 + 7 * limb.val)) ∧
-    chunkXor 9 ((-15728640 : ZMod p) * (acInitial w limb - w (628 + 7 * limb.val)))
-      ((-15728640 : ZMod p) * (acC w limb - w acLowC[limb])) (w (630 + 7 * limb.val)) ∧
-    chunkXor 7 (w (629 + 7 * limb.val)) (w (631 + 7 * limb.val)) (w (633 + 7 * limb.val)) ∧
-    chunkXor 9 (w (630 + 7 * limb.val))
-      ((-15728640 : ZMod p) * (acA w limb - w (631 + 7 * limb.val)))
-      (w (634 + 7 * limb.val)) := by
-  have field := serialized_field compatible
-  subst p
-  unfold babyBearModulus at *
-  have tag (stage : Fin 4) : finalColumn w (limb.castLE (by omega)) stage 3 =
-      (if stage.val % 2 = 0 then 19 else 20 : ZMod 2013265921) := by
-    fin_cases limb
-    all_goals fin_cases stage
-    all_goals simp only [finalColumn, finalQuery, Fin.val_castLE, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
-      Fin.coe_ofNat_eq_mod, Nat.reduceMod]
-    all_goals op_index
-    all_goals simp [Expression.eval, Verification.environment]
-  have q0 := final_query (by decide) (limb.castLE (by omega)) 0 3 h (tag 0)
-  have q1 := final_query (by decide) (limb.castLE (by omega)) 1 4 h (tag 1)
-  have q2 := final_query (by decide) (limb.castLE (by omega)) 2 3 h (tag 2)
-  have q3 := final_query (by decide) (limb.castLE (by omega)) 3 4 h (tag 3)
-  have cWrite := Verification.assertion_of_holds h
-    ⟨136 + 2 * (limb.val / 2) + limb.val % 2, by rw [constraint_count]; have := limb.isLt; omega⟩
-  have aWrite := Verification.assertion_of_holds h
-    ⟨120 + 2 * (limb.val / 2) + limb.val % 2, by rw [constraint_count]; have := limb.isLt; omega⟩
-  have split := Verification.assertion_of_holds h
-    ⟨152 + 2 * limb.val, by rw [constraint_count]; have := limb.isLt; omega⟩
-  have cHigh : finalColumn w (limb.castLE (by omega)) 1 1 =
-      (-15728640 : ZMod 2013265921) * (acC w limb - w acLowC[limb]) := by
-    fin_cases limb
-    all_goals simp only [finalColumn, finalQuery, Fin.val_castLE, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
-      Fin.coe_ofNat_eq_mod, Nat.reduceMod] at ⊢
-    all_goals try simp only [Nat.reduceDiv, Nat.reduceMod, Nat.reduceMul, Nat.reduceAdd, Fin.val_mk, Fin.isValue,
-      Fin.coe_ofNat_eq_mod] at cWrite
-    all_goals op_index at cWrite ⊢
-    all_goals simp [Expression.eval, Verification.environment, acC, acLowC] at cWrite ⊢
-    all_goals linear_combination (norm := ring_nf) (-15728640 : ZMod 2013265921) * cWrite
-    all_goals reduce_mod_char
-  have aHigh : finalColumn w (limb.castLE (by omega)) 3 1 =
-      (-15728640 : ZMod 2013265921) * (acA w limb - w (631 + 7 * limb.val)) := by
-    fin_cases limb
-    all_goals simp only [finalColumn, finalQuery, Fin.val_castLE, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
-      Fin.coe_ofNat_eq_mod, Nat.reduceMod] at ⊢
-    all_goals try simp only [Nat.reduceDiv, Nat.reduceMod, Nat.reduceMul, Nat.reduceAdd, Fin.val_mk, Fin.isValue,
-      Fin.coe_ofNat_eq_mod] at aWrite split
-    all_goals op_index at aWrite split ⊢
-    all_goals simp [Expression.eval, Verification.environment, acA] at aWrite split ⊢
-    all_goals linear_combination (norm := ring_nf) (-15728640 : ZMod 2013265921) * (aWrite - split)
-    all_goals reduce_mod_char
-  have initialHigh : finalColumn w (limb.castLE (by omega)) 1 0 =
-      (-15728640 : ZMod 2013265921) * (acInitial w limb - w (628 + 7 * limb.val)) := by
-    fin_cases limb
-    all_goals simp only [finalColumn, finalQuery, Fin.val_castLE, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
-      Fin.coe_ofNat_eq_mod, Nat.reduceMod] at ⊢
-    all_goals op_index at ⊢
-    all_goals simp [Expression.eval, Verification.environment, acInitial]
-    all_goals ring
-  rw [initialHigh, cHigh] at q1
-  rw [aHigh] at q3
+/-- Shape of the four a/c queries of one limb (words 0..3): a 7/9-bit XOR of the
+    chaining limb with c, then of that result with a. The serialized inverse of
+    128 recombines each split, whatever low chunk the witness chooses. -/
+theorem ac_shape {p : Nat} [Fact p.Prime] (field : p = 2013265921) (limb : Fin 8)
+    (w : Nat → ZMod p) :
+    finalColumn w (limb.castLE (by omega)) 0 5 = 19 ∧
+    finalColumn w (limb.castLE (by omega)) 1 5 = 20 ∧
+    finalColumn w (limb.castLE (by omega)) 2 5 = 19 ∧
+    finalColumn w (limb.castLE (by omega)) 3 5 = 20 ∧
+    acInitial w limb = finalColumn w (limb.castLE (by omega)) 0 0 +
+      128 * finalColumn w (limb.castLE (by omega)) 1 0 ∧
+    acC w limb = finalColumn w (limb.castLE (by omega)) 0 1 +
+      128 * finalColumn w (limb.castLE (by omega)) 1 1 ∧
+    finalColumn w (limb.castLE (by omega)) 2 0 = finalColumn w (limb.castLE (by omega)) 0 2 ∧
+    finalColumn w (limb.castLE (by omega)) 3 0 = finalColumn w (limb.castLE (by omega)) 1 2 ∧
+    acA w limb = finalColumn w (limb.castLE (by omega)) 2 1 +
+      128 * finalColumn w (limb.castLE (by omega)) 3 1 := by
+  subst field
   fin_cases limb
-  all_goals simp only [finalColumn, finalQuery, Fin.val_castLE, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
-      Fin.coe_ofNat_eq_mod, Nat.reduceMod] at q0 q1 q2 q3 ⊢
-  all_goals try simp only [Nat.reduceDiv, Nat.reduceMod, Nat.reduceMul, Nat.reduceAdd, Fin.val_mk, Fin.isValue,
-      Fin.coe_ofNat_eq_mod] at q0 q1 q2 q3 ⊢
-  all_goals op_index at q0 q1 q2 q3 ⊢
-  all_goals simp [Expression.eval, Verification.environment, acInitial, acC, acA, acLowC] at q0 q1 q2 q3 ⊢
-  all_goals exact ⟨q0, q1, q2, q3⟩
+  all_goals simp only [finalColumn, finalQuery, Fin.val_castLE, Fin.coe_ofNat_eq_mod,
+    Nat.reduceMod, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
+    Nat.reduceMul, Nat.reduceAdd]
+  all_goals op_index
+  all_goals simp [Expression.eval, Verification.environment, acInitial, acA, acC]
+  all_goals refine ⟨?_, ?_, ?_⟩
+  all_goals babybear_ring
+
+def bdInitial {p : Nat} (w : Nat → ZMod p) (limb : Fin 8) : ZMod p :=
+  w (170 + 4 * (limb.val / 2) + 2 * (limb.val % 2))
+def bdB {p : Nat} (w : Nat → ZMod p) (limb : Fin 8) : ZMod p :=
+  w (55 + 4 * (limb.val / 2) + limb.val % 2)
+def bdD {p : Nat} (w : Nat → ZMod p) (limb : Fin 8) : ZMod p :=
+  w (87 + 4 * (limb.val / 2) + limb.val % 2)
+
+/-- Shape of the four b/d queries of one limb (words 4..7): a 9/7-bit XOR of b with
+    the chaining limb, re-split into 8/8 bits by the imported query expressions,
+    then an 8/8-bit XOR with d. -/
+theorem bd_shape {p : Nat} [Fact p.Prime] (field : p = 2013265921) (limb : Fin 8)
+    (w : Nat → ZMod p) :
+    finalColumn w ⟨8 + limb.val, by omega⟩ 0 5 = 20 ∧
+    finalColumn w ⟨8 + limb.val, by omega⟩ 1 5 = 19 ∧
+    finalColumn w ⟨8 + limb.val, by omega⟩ 2 5 = 4 ∧
+    finalColumn w ⟨8 + limb.val, by omega⟩ 3 5 = 4 ∧
+    bdB w limb = finalColumn w ⟨8 + limb.val, by omega⟩ 0 0 +
+      512 * finalColumn w ⟨8 + limb.val, by omega⟩ 1 0 ∧
+    bdInitial w limb = finalColumn w ⟨8 + limb.val, by omega⟩ 0 1 +
+      512 * finalColumn w ⟨8 + limb.val, by omega⟩ 1 1 ∧
+    finalColumn w ⟨8 + limb.val, by omega⟩ 0 2 +
+      512 * finalColumn w ⟨8 + limb.val, by omega⟩ 1 2 =
+      finalColumn w ⟨8 + limb.val, by omega⟩ 2 1 +
+      256 * finalColumn w ⟨8 + limb.val, by omega⟩ 3 1 ∧
+    bdD w limb = finalColumn w ⟨8 + limb.val, by omega⟩ 2 0 +
+      256 * finalColumn w ⟨8 + limb.val, by omega⟩ 3 0 := by
+  subst field
+  fin_cases limb
+  all_goals simp only [finalColumn, finalQuery, Fin.coe_ofNat_eq_mod,
+    Nat.reduceMod, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
+    Nat.reduceMul, Nat.reduceAdd]
+  all_goals op_index
+  all_goals simp [Expression.eval, Verification.environment, bdInitial, bdB, bdD]
+  all_goals refine ⟨?_, ?_, ?_, ?_⟩
+  all_goals babybear_ring
 
 end Airbender.Blake2Round.Proofs

@@ -18,6 +18,9 @@ theorem window_binding [Fact p.Prime] (hp : 8388608 ≤ p)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     (Delegation.Caller.HashSpan.blakeG reduced).WindowResult data before cells lower upper := by
   have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  -- the serialized inverse fixes p = BabyBear, above Blake2G's 2^25 bound
+  have field : 33554432 ≤ p := by
+    rw [serialized_field inverse]; unfold babyBearModulus; norm_num
   have table : data.setup.blakeG = setupTable Control.controllerRows := by
     rw [inputs.tables]
     rfl
@@ -34,7 +37,8 @@ theorem window_binding [Fact p.Prime] (hp : 8388608 ≤ p)
     · simpa only [priorData, Delegation.MemoryData.steps, native_prefix_steps] using prefixFacts.matching
   have prefixMemory : Delegation.MemoryInputs priorData before cells :=
     ⟨inputs.memory.initialization, inputs.memory.distinct,
-      fun row member => inputs.memory.clockRoom row (List.mem_of_mem_filter member)⟩
+      fun row member => inputs.memory.clockRoom row (List.mem_of_mem_filter member),
+      fun row member => inputs.memory.invocationHigh row (List.mem_of_mem_filter member)⟩
   have nonempty : data.windowRows lower upper ≠ [] := by
     intro empty
     have count := inputs.calls

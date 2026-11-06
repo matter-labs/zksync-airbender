@@ -1,4 +1,5 @@
 import Slop.Sail.PC
+import Human.Helpers.Core.Configuration
 
 /-!
 # Proof search for `MisaOnly` facts about the generated decoder
@@ -18,11 +19,44 @@ matched syntactically, `if`/`match` are split by their structure, and every join
 namespace Airbender.Reference.Sail
 open Reference.RiscV.Sail _root_.Sail.ArchSem
 
-/-- A property of the existing Sail interpreter: successful execution preserves
-    state and can be replayed in any state with the same `misa` image. -/
+/-- States agree on every register a program never writes (`Configuration.writtenByProgram`): the
+    configuration a decoder reads (`misa`, `vtype`, `mstatus`, the privilege level, the envcfg registers …).
+    Two `Configured` states agree in this sense (`configured_same`). -/
+def ConfigSame (before state : State) : Prop :=
+  ∀ register, Configuration.writtenByProgram register = false →
+    state.regs.get? register = before.regs.get? register
+
+/-- Two states of the Airbender machine agree on every register a program never writes. -/
+theorem configured_same {before state : State} (hb : Configured before) (hs : Configured state) :
+    ConfigSame before state :=
+  fun register unwritten => (hs register unwritten).trans (hb register unwritten).symm
+
+theorem ConfigSame.refl (state : State) : ConfigSame state state := fun _ _ => rfl
+
+theorem ConfigSame.symm {before state : State} (same : ConfigSame before state) : ConfigSame state before :=
+  fun register unwritten => (same register unwritten).symm
+
+theorem ConfigSame.trans {first second third : State} (one : ConfigSame first second)
+    (two : ConfigSame second third) : ConfigSame first third :=
+  fun register unwritten => (two register unwritten).trans (one register unwritten)
+
+/-- Writing a register a program writes keeps the configuration. -/
+theorem ConfigSame.insert {before state : State} (same : ConfigSame before state) {key : SailRV32.Register}
+    (written : Configuration.writtenByProgram key = true) (value : SailRV32.RegisterType key) :
+    ConfigSame before { state with regs := state.regs.insert key value } := by
+  intro register unwritten
+  have distinct : key ≠ register := by
+    rintro rfl
+    rw [written] at unwritten
+    cases unwritten
+  simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, distinct, ↓reduceDIte]
+  exact same register unwritten
+
+/-- A property of the existing Sail interpreter: successful execution preserves state and can be
+    replayed in any state with the same configuration registers (`ConfigSame`). -/
 def MisaOnly {α : Type} (action : SailRV32.SailM α) : Prop :=
   ∀ before value after, run action before = .ok value after →
-    after = before ∧ ∀ state, state.regs.get? .misa = before.regs.get? .misa →
+    after = before ∧ ∀ state, ConfigSame before state →
       run action state = .ok value state
 
 theorem misa_pure {α : Type} (value : α) : MisaOnly (pure value) := by
@@ -48,9 +82,12 @@ theorem misa_bind {α β : Type} (action : SailRV32.SailM α)
     rw [run_bind_of_ok _ _ _ _ _ (replay state same)]
     exact finish state same
 
-theorem misa_read : MisaOnly (SailRV32.readReg .misa) := by
+/-- Reading a register outside the step registers is replayable: its value is fixed by `ConfigSame`. -/
+theorem read_outside (register : SailRV32.Register)
+    (outside : Configuration.writtenByProgram register = false) :
+    MisaOnly (SailRV32.readReg register) := by
   intro before value after executed
-  cases found : before.regs.get? .misa with
+  cases found : before.regs.get? register with
   | none =>
     dsimp [run, SailRV32.readReg, PreSail.readReg, interpretSailEffects,
       FreeM.liftM, interpretInstructionEffect] at executed
@@ -62,7 +99,7 @@ theorem misa_read : MisaOnly (SailRV32.readReg .misa) := by
     have read := read_register found
     obtain ⟨rfl, rfl⟩ := EStateM.Result.ok.inj (read.symm.trans executed)
     refine ⟨rfl, fun state equal => ?_⟩
-    exact read_register equal
+    exact read_register ((equal register outside).trans found)
 
 theorem misa_ite {α : Type} (condition : Prop) [Decidable condition]
     (yes no : SailRV32.SailM α) (hy : MisaOnly yes) (hn : MisaOnly no) :
@@ -83,6 +120,23 @@ theorem misa_throw {α : Type} (error : _root_.Sail.Error SailRV32.exception) :
 
 attribute [irreducible] MisaOnly
 
+/-- The vector element width, read through `vtype` (the decoder's `get_sew`, even for scalar encodings). -/
+theorem misa_get_sew_pow (unit : Unit) : MisaOnly (SailRV32.Functions.get_sew_pow unit) := by
+  unfold SailRV32.Functions.get_sew_pow
+  repeat' first
+    | (apply read_outside; decide)
+    | apply misa_pure
+    | apply misa_assert
+    | apply misa_throw
+    | (apply misa_bind <;> try intro)
+
+theorem misa_get_sew (unit : Unit) : MisaOnly (SailRV32.Functions.get_sew unit) := by
+  unfold SailRV32.Functions.get_sew
+  repeat' first
+    | exact misa_get_sew_pow _
+    | apply misa_pure
+    | (apply misa_bind <;> try intro)
+
 set_option backward.isDefEq.respectTransparency false in
 theorem misa_enabled (extension : SailRV32.extension)
     (supported : extension ∈ [SailRV32.extension.Ext_M, .Ext_Zmmul, .Ext_Zba, .Ext_Zbb, .Ext_B,
@@ -93,7 +147,7 @@ theorem misa_enabled (extension : SailRV32.extension)
     simp only [SailRV32.Functions.currentlyEnabled]
   all_goals
     repeat' first
-      | exact misa_read
+      | (apply read_outside; decide)
       | apply misa_pure
       | apply misa_assert
       | apply misa_throw
@@ -132,6 +186,16 @@ theorem misa_opcodes :
       | (apply misa_bind <;> try intro)
       | apply misa_ite
       | split
+
+theorem misa_rounding_mode (bits : BitVec 3) :
+    MisaOnly (SailRV32.Functions.encdec_rounding_mode_backwards bits) := by
+  unfold SailRV32.Functions.encdec_rounding_mode_backwards
+  repeat' first
+    | apply misa_pure
+    | apply misa_assert
+    | apply misa_throw
+    | (apply misa_bind <;> try intro)
+    | split
 
 theorem misa_bop (bits : BitVec 3) : MisaOnly (SailRV32.Functions.encdec_bop_backwards bits) :=
   misa_opcodes.1 bits
@@ -256,15 +320,16 @@ private def predOf (ctx : Ctx) (γ Q e : Expr) : Expr :=
 private def isTrivialProperty (Q : Expr) : Bool :=
   Q.isLambda && Q.bindingBody!.isConstOf ``True
 
-/-- `ext ∈ l` for a literal list `l` (a `cons` spine), found by position; no decidability needed. -/
-private partial def listMemProof (ext l : Expr) : MetaM Expr := do
-  unless l.isAppOfArity ``List.cons 3 do
-    throwError "misaWalk: membership in a non-literal list {l}"
+/-- `ext ∈ l` for a literal list `l` (a `cons` spine), found by position; no decidability needed.
+    `none` when `ext` is not in the list. -/
+private partial def listMemProofOpt (ext l : Expr) : MetaM (Option Expr) := do
+  unless l.isAppOfArity ``List.cons 3 do return none
   let α := l.getArg! 0
   let a := l.getArg! 1
   let rest := l.getArg! 2
-  if a == ext then return mkAppN (mkConst ``List.Mem.head [Level.zero]) #[α, a, rest]
-  return mkAppN (mkConst ``List.Mem.tail [Level.zero]) #[α, ext, a, rest, ← listMemProof ext rest]
+  if a == ext then return some (mkAppN (mkConst ``List.Mem.head [Level.zero]) #[α, a, rest])
+  let some tail ← listMemProofOpt ext rest | return none
+  return some (mkAppN (mkConst ``List.Mem.tail [Level.zero]) #[α, ext, a, rest, tail])
 
 /-- The `misa`-only leaves of the generated decoder and of `assert`/`throw`. -/
 def decoderLeaves : Leaves := fun name args => do
@@ -281,13 +346,41 @@ def decoderLeaves : Leaves := fun name args => do
     return some (mkAppN (c `misa_uop) #[args[0]!])
   if name == `SailRV32.Functions.encdec_csrop_backwards && args.size == 1 then
     return some (mkAppN (c `misa_csr) #[args[0]!])
+  if name == `SailRV32.readReg && args.size == 1 then
+    -- a read of a register the step does not write: `read_outside r` (the proof of `r ∉ StepRegisters` by decide)
+    let outside ← inferType (mkApp (c `read_outside) args[0]!)
+    return some (mkAppN (c `read_outside) #[args[0]!, ← mkDecideProof outside.bindingDomain!])
+  if name == `SailRV32.Functions.encdec_rounding_mode_backwards && args.size == 1 then
+    return some (mkAppN (c `misa_rounding_mode) #[args[0]!])
+  -- the decoder's helpers: `encdec_<s>_backwards` has its lemma `misa_<s>` (generated, Slop/Sail/MisaHelpers.lean)
+  if let some short := (name.toString.dropPrefix? "SailRV32.Functions.encdec_").bind (·.dropSuffix? "_backwards") then
+    let lemmaN := lemmaName (Name.mkSimple s!"misa_{short}")
+    if args.size == 1 && (← getEnv).contains lemmaN then
+      return some (mkAppN (mkConst lemmaN) args)
+  -- decoder helper functions: `misa_fn_<f>` (generated, Slop/Sail/MisaFunctions.lean)
+  if let some short := name.toString.dropPrefix? "SailRV32.Functions." then
+    let lemmaN := lemmaName (Name.mkSimple s!"misa_fn_{short}")
+    if (← getEnv).contains lemmaN then
+      return some (mkAppN (mkConst lemmaN) args)
+  if name == `SailRV32.Functions.get_sew && args.size == 1 then
+    return some (mkAppN (c `misa_get_sew) #[args[0]!])
   if name == `SailRV32.Functions.virtual_memory_supported && args.size == 1 then
     return some (c `misa_virtual)
+  -- the extension checks: `misa_ce_<Ext>` (generated, Slop/Sail/MisaDecoder.lean)
   if name == `SailRV32.Functions.currentlyEnabled && args.size == 1 then
+    if let some x := args[0]!.constName? then
+      if let some e := x.toString.dropPrefix? "SailRV32.extension." then
+        let lemmaN := lemmaName (Name.mkSimple s!"misa_ce_{e.toString.drop 4}")
+        if (← getEnv).contains lemmaN then return some (mkConst lemmaN)
     let lemmaTy ← inferType (mkApp (c `misa_enabled) args[0]!)
     let dom := lemmaTy.bindingDomain!
-    let h ← listMemProof dom.appArg! dom.appFn!.appArg!
-    return some (mkAppN (c `misa_enabled) #[args[0]!, h])
+    match ← listMemProofOpt dom.appArg! dom.appFn!.appArg! with
+    | some h => return some (mkAppN (c `misa_enabled) #[args[0]!, h])
+    | none =>
+      -- not in the list: its clause is `pure (hartSupports ext)` (no misa read), e.g. Zihintpause;
+      -- the kernel re-checks that `currentlyEnabled ext` unfolds to this `pure`
+      return some (mkAppN (c `misa_pure) #[mkConst ``Bool,
+        mkApp (mkConst ``SailRV32.Functions.hartSupports) args[0]!])
   if name == `SailRV32.assert && args.size == 2 then
     return some (mkAppN (c `misa_assert) #[args[0]!, args[1]!])
   if name == ``MonadExcept.throw && args.size == 5 then
@@ -355,7 +448,7 @@ partial def prove (ctx : Ctx) (γ Q : Expr) (e : Expr) : MetaM Expr := do
         return mkAppN (mkConst (lemmaName `ret_throw)) #[args[3]!, Q, args[4]!]
     match ← ctx.leaves name args with
     | some pf => return pf
-    | none => throwError "misaWalk: no rule for head {name} ({args.size} arguments)"
+    | none => throwError "misaWalk: no rule for head {name} ({args.size} arguments: {args})"
   | _ => throwError "misaWalk: unsupported head {fn}"
 
 /-- The proof of `Q v` at `pure v`: a fact in scope, the trivial property, or the mode's leaf rule. -/

@@ -3,7 +3,6 @@ import Human.Circuits.SubwordMemory.Model
 namespace Airbender.SubwordMemory
 open Airbender.Arithmetic Airbender.Reference.RiscV Airbender.Reference.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 /-- Uniform valid-path transport through Sail's platform machinery. These
     obligations concern arbitrary native values, never the circuit's result. -/
@@ -32,7 +31,6 @@ structure MemoryAccess (input : Input) : Prop where
       pure (.Ok true))
       { input.before with regs := input.before.regs.insert .nextPC nextPC }
 
-omit [MemoryPlatform SailRV32.exception] in
 structure RowWordMapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
   sourceLo : w 19 = (input.source.lo : ZMod p)
   sourceHi : w 20 = (input.source.hi : ZMod p)
@@ -54,7 +52,6 @@ structure RowWordMapping {p : Nat} (input : Input) (output : Output) (w : Nat �
   finalPCLo : output.pc.lo = (w 13).val
   finalPCHi : output.pc.hi = (w 14).val
 
-omit [MemoryPlatform SailRV32.exception] in
 def rowCircuitModel {p : Nat} [Fact p.Prime] (program : Nat → BitVec 32) :
     Verification.CircuitModel Input Output (Nat → ZMod p) where
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w)

@@ -112,7 +112,10 @@ fn witness_policies_unified_parity_and_reuse() {
     check_witness_policies(&prepare_unified_proof_fixture());
 }
 
-fn check_gkr_recompute(fixture: &BasicUnrolledProofFixture) {
+fn check_gkr_recompute(
+    fixture: &BasicUnrolledProofFixture,
+    candidates: impl Iterator<Item = GkrMemoryPolicy>,
+) {
     let policy = ProofMemoryPolicy {
         witness: WitnessMemoryPolicy {
             post_commitment: WitnessPostCommitStorage::RawEvaluations,
@@ -127,7 +130,7 @@ fn check_gkr_recompute(fixture: &BasicUnrolledProofFixture) {
     });
     check_policies(
         fixture,
-        GkrMemoryPolicy::candidates()
+        candidates
             .map(|gkr| ProofMemoryPolicy { gkr, ..policy })
             .chain(std::iter::once(in_place)),
     );
@@ -135,10 +138,13 @@ fn check_gkr_recompute(fixture: &BasicUnrolledProofFixture) {
 
 macro_rules! gkr_recompute_test {
     ($name:ident, $fixture:path) => {
+        gkr_recompute_test!($name, $fixture, GkrMemoryPolicy::candidates());
+    };
+    ($name:ident, $fixture:path, $candidates:expr) => {
         #[test]
         #[ignore]
         fn $name() {
-            check_gkr_recompute(&$fixture());
+            check_gkr_recompute(&$fixture(), $candidates);
         }
     };
 }
@@ -171,9 +177,11 @@ gkr_recompute_test!(
     gkr_recompute_load_store_subword_parity_and_reuse,
     super::proof_matrix::prepare_load_store_subword_only_proof_fixture
 );
+// Materialize peaks at 35 GiB for bigint, above the 30 GiB preset arena.
 gkr_recompute_test!(
     gkr_recompute_bigint_parity_and_reuse,
-    super::proof_matrix::prepare_bigint_proof_fixture
+    super::proof_matrix::prepare_bigint_proof_fixture,
+    GkrMemoryPolicy::candidates().filter(|&gkr| gkr != GkrMemoryPolicy::Materialize)
 );
 gkr_recompute_test!(
     gkr_recompute_keccak_parity_and_reuse,

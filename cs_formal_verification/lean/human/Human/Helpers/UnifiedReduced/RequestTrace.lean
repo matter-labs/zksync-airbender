@@ -58,6 +58,8 @@ structure RequestInputs [Fact p.Prime] (data : RequestTrace p)
   initialClock : (timeOfPair data.machine.initial.timestamp).Bounded
   /-- The machine starts on its four-tick instruction stride. -/
   initialAligned : (timeOfPair data.machine.initial.timestamp).value % 4 = 0
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Reference.RiscV.Sail.Configured before
 
 /-- Unified caller/worker identity and timing proved from that same native pool.
     This binds requests, not architectural reads or whole-call ISA retirement.

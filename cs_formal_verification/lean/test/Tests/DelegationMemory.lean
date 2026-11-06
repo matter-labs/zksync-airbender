@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.KeccakTheta
 import Slop.Final.Trace.Delegation.Theorems
 import Slop.Keccak.CallHistory
@@ -7,6 +8,7 @@ import Slop.Delegation.CallBoundaries
 import Slop.Delegation.NativeSegments
 
 namespace Tests.DelegationMemory
+noncomputable section
 open Airbender Trace
 set_option warningAsError true
 set_option maxRecDepth 16384
@@ -77,6 +79,7 @@ private theorem clocks : FlatOperation.ConstraintsHoldFlat (Verification.environ
     all_goals norm_num [Keccak.importedConstraintsTimestampLookups, FlatOperation.lookups,
       Expression.eval, Verification.environment, row, Tests.KeccakTheta.row,
       Trace.timestampBase, ZMod.val_ofNat, ZMod.val_natCast, babyBearModulus]
+    all_goals decide
 
 private def setup : Delegation.Setup babyBearModulus :=
   ⟨{ name := "unused", Contains _ _ := False },
@@ -87,8 +90,8 @@ def cells : List Cell :=
   [.register 10, .register 11, .ram 4194304, .ram 4194308, .ram 4194344, .ram 4194348, .ram 4194384, .ram 4194388,
     .ram 4194424, .ram 4194428, .ram 4194464, .ram 4194468, .ram 4194504, .ram 4194508]
 
-def before : Reference.RiscV.Sail.State where
-  regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x10 (3 : BitVec 32)
+noncomputable def before : Reference.RiscV.Sail.State where
+  regs := Reference.RiscV.Sail.resetMachine.regs.insert .x10 (3 : BitVec 32)
     |>.insert .x11 (4194304 : BitVec 32)
   mem := (Std.ExtHashMap.emptyWithCapacity)
     |>.insert 4194304 (255 : BitVec 8)
@@ -143,6 +146,9 @@ def before : Reference.RiscV.Sail.State where
   cycleCount := 0
   sailOutput := #[]
 
+theorem airbender_before : Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before]
+
 def data : Delegation.MemoryData babyBearModulus where
   setup := setup
   rows := [native]
@@ -179,6 +185,10 @@ theorem inputs : Delegation.MemoryInputs data before cells := by
   constructor
   · exact initialized
   · decide
+  · intro actual member
+    simp only [data, List.mem_singleton] at member
+    subst actual
+    decide
   · intro actual member
     simp only [data, List.mem_singleton] at member
     subst actual
@@ -336,7 +346,7 @@ theorem shared_operation_memory : Delegation.MemorySoundness sharedData ∧
       exact Verification.holds_append core clocks
     · exact List.perm_append_comm
   · constructor
-    · exact ⟨inputs.initialization, inputs.distinct, inputs.clockRoom⟩
+    · exact ⟨inputs.initialization, inputs.distinct, inputs.clockRoom, inputs.invocationHigh⟩
     · rfl
     · intro actual member family
       simp only [sharedData, data, List.mem_singleton] at member
@@ -416,7 +426,7 @@ theorem native_boundary_image_retains_clocks : ∃ (start finish : List (MemoryT
       (Delegation.Proofs.transferData ⟨data.setup, [], start, finish⟩) atCut cells :=
     ⟨⟨addresses, inputs.distinct, reads⟩, fun token member => (clocks token member).2, bounded⟩
   refine ⟨start, finish, atCut, boundary,
-    ⟨Delegation.Proofs.boundary_image cutInputs, inputs.distinct, bounded, by simp⟩, ?_⟩
+    ⟨Delegation.Proofs.boundary_image cutInputs, inputs.distinct, bounded, by simp, by simp⟩, ?_⟩
   intro fresh
   have member : native.writeToken Keccak.importedConstraintsMemoryPorts[0] ∈ data.terminal := by
     apply List.mem_map.mpr
@@ -431,5 +441,7 @@ theorem native_boundary_image_retains_clocks : ∃ (start finish : List (MemoryT
   rw [same] at actualClock
   have impossible : ¬ ((0, 0) : ZMod babyBearModulus × ZMod babyBearModulus) = (7, 0) := by decide +kernel
   exact impossible actualClock
+
+end
 
 end Tests.DelegationMemory

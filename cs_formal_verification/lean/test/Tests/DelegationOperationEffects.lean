@@ -1,15 +1,17 @@
+import Slop.Sail.ResetState
 import Tests.DelegationCaller
 import Tests.BigintMemory
 import Slop.Trace.ImageFrame
 
 namespace Tests.DelegationOperationEffects
+noncomputable section
 open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-private def assignment (i : Nat) : ZMod babyBearModulus :=
-  if i = 1 then 5 else Tests.BigintMemory.row i
+-- `Tests.BigintMemory.row` already carries the active invocation clock 5.
+private def assignment (i : Nat) : ZMod babyBearModulus := Tests.BigintMemory.row i
 private def worker : Delegation.Row babyBearModulus := ⟨.bigint, assignment⟩
 private def workers : MemoryData babyBearModulus where
   setup := modeledSetup Keccak.Controller.rows
@@ -25,17 +27,18 @@ private def machine : PooledTrace babyBearModulus where
   terminal := caller.finish
   initialMemory := []
   terminalMemory := []
-private def data : Caller.RequestTrace babyBearModulus :=
+private noncomputable def data : Caller.RequestTrace babyBearModulus :=
   ⟨machine, workers, [Tests.DelegationCaller.entry .bigint]⟩
-def before : State :=
+noncomputable def before : State :=
   wordWriteState Tests.BigintMemory.before 0 (Tests.DelegationCaller.entry .bigint).bits
+
+theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState, Tests.BigintMemory.before]
 
 private theorem worker_constraints : FlatOperation.ConstraintsHoldFlat
     (Verification.environment assignment) (worker.constraints workers.setup) := by
   apply Verification.holds_append
-  · simpa [workers, modeledSetup, Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Verification.environment, Expression.eval, Lookup.Contains, Table.toRaw, fromElements,
-      Verification.range16, assignment, Tests.BigintMemory.row] using Tests.BigintMemory.core
+  · exact Tests.BigintMemory.core
   · simp [Bigint.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
     repeat' apply And.intro
     all_goals apply Trace.Proofs.range_contains
@@ -87,17 +90,17 @@ private theorem inputs : Caller.RequestOperationInputs data before [0] Tests.Big
     · constructor
       · have bytes : (Cell.ram 0).read before = .ok (Tests.DelegationCaller.entry .bigint).bits before :=
           written_word_read Tests.BigintMemory.before 0 _
-        have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) before =
-            .ok (Tests.DelegationCaller.entry .bigint).instruction before :=
-          Tests.DelegationCaller.original_decoder .bigint before
+        have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+          Tests.DelegationCaller.original_decoder .bigint
         have fields : Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
             some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-        simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields,
+        simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
           bind, Option.bind, pure]
         rfl
       · change 4 < timestampBase ∧ 0 < timestampBase
         norm_num [timestampBase]
       · decide +kernel
+      · exact airbender_before
     · exact initialized
     · exact Tests.BigintMemory.inputs.publicState.distinct
     · intro cell member
@@ -128,14 +131,14 @@ private def sharedAssignment (i : Nat) : ZMod babyBearModulus :=
   if i = 35 then 4 else Tests.DelegationCaller.assignment .bigint i
 private def sharedCaller : Trace.Row babyBearModulus PooledFamily := ⟨.addSub, sharedAssignment⟩
 def sharedCells : List Cell := .register 0 :: Tests.BigintMemory.cells
-private def sharedMachine : PooledTrace babyBearModulus where
+private noncomputable def sharedMachine : PooledTrace babyBearModulus where
   rows := [sharedCaller]
   rom := machine.rom
   initial := sharedCaller.start
   terminal := sharedCaller.finish
   initialMemory := (Cell.register 0).initialToken 0 :: workers.initial
   terminalMemory := Caller.destinationToken sharedAssignment :: workers.terminal
-def sharedData : Caller.RequestTrace babyBearModulus :=
+noncomputable def sharedData : Caller.RequestTrace babyBearModulus :=
   ⟨sharedMachine, workers, data.program⟩
 
 private theorem sharedCallerConstraints : FlatOperation.ConstraintsHoldFlat
@@ -186,7 +189,7 @@ theorem sharedInputs : Caller.SharedOperationInputs sharedData before [0] shared
   refine ⟨?_, inputs.tables, inputs.rounds⟩
   constructor
   · exact ⟨inputs.publicState.publicProgram.image, inputs.publicState.publicProgram.initialClock,
-      inputs.publicState.publicProgram.initialAligned⟩
+      inputs.publicState.publicProgram.initialAligned, inputs.publicState.publicProgram.configuration⟩
   · change List.mapM _ (.register 0 :: Tests.BigintMemory.cells) = _
     rw [List.mapM_cons]
     change Option.bind (some ((Cell.register 0).initialToken (p := babyBearModulus) 0))
@@ -211,7 +214,7 @@ theorem projected_shared_copy_memory :
 
 private def wrongWorkerBoundaries : MemoryData babyBearModulus :=
   { workers with initial := [], terminal := [] }
-private def wrongBoundaryData : Caller.RequestTrace babyBearModulus :=
+private noncomputable def wrongBoundaryData : Caller.RequestTrace babyBearModulus :=
   { sharedData with workers := wrongWorkerBoundaries }
 
 theorem separate_empty_boundaries_rejected : ¬MemoryAccepted wrongWorkerBoundaries := by
@@ -226,5 +229,7 @@ theorem shared_projection_ignores_private_boundaries :
 theorem shared_projection_accepts_actual_boundaries : MemoryAccepted wrongBoundaryData.workerProjection := by
   rw [shared_projection_ignores_private_boundaries]
   exact projected_shared_copy_memory.1
+
+end
 
 end Tests.DelegationOperationEffects

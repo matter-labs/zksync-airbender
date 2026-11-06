@@ -31,7 +31,7 @@ theorem caller_worker_family [Fact p.Prime] (hp : 2048 ≤ p)
 
 theorem caller_pc_retirement [Fact p.Prime] {data : RequestTrace p} {initial after : State}
     (requests : RequestBinding data initial) {row : Trace.Row p UnifiedFamily} (member : row ∈ data.callers) :
-    run (do SailRV32.Functions.normal_base_next_pc (); SailRV32.Functions.tick_pc ())
+    run (do Reference.RiscV.Sail.normalBaseNextPC; SailRV32.Functions.tick_pc ())
       (retiredState after row.start.word.toBitVec) = .ok () (retiredState after row.finish.word.toBitVec) := by
   cases row with
   | mk kind w =>
@@ -54,7 +54,7 @@ theorem caller_pc_retirement [Fact p.Prime] {data : RequestTrace p} {initial aft
           · subst register; simp [Std.ExtDHashMap.get?_insert]
           · simp [Std.ExtDHashMap.get?_insert, Ne.symm pc, Ne.symm next]
       exact congrArg (fun regs => { after with regs := regs }) registers
-    change run (do SailRV32.Functions.normal_base_next_pc (); SailRV32.Functions.tick_pc ())
+    change run (do Reference.RiscV.Sail.normalBaseNextPC; SailRV32.Functions.tick_pc ())
       (retiredState after (initialPC w).toBitVec) = .ok ()
         { (retiredState after (initialPC w).toBitVec) with regs :=
           ((retiredState after (initialPC w).toBitVec).regs.insert .nextPC (finalPC w).toBitVec).insert .PC (finalPC w).toBitVec } at native

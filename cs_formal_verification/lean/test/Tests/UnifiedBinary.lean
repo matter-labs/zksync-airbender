@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 import Slop.BabyBear
 
@@ -15,32 +16,31 @@ private def byte (kind : Fin 3) (i : Nat) : Nat := ((outputWord kind).extractLsb
 private def tag (kind : Fin 3) : Nat := UnifiedReduced.Setup.binaryTag (operation kind).tag
 
 private def assignment (kind : Fin 3) : Nat → ZMod babyBearModulus
-  | 4 | 5 | 27 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 5 | 27 | 123 | 124 | 125 => 1
   | 6 | 38 => 2
   | 7 | 44 => 3
   | 2 | 30 => 4
   | 32 => 8
-  | 10 | 92 | 101 | 110 | 119 => (tag kind : ZMod babyBearModulus)
+  | 10 | 86 | 95 | 104 | 113 => (tag kind : ZMod babyBearModulus)
   | 36 => 0x1234 | 37 => 0xabcd | 42 => 0x5678 | 43 => 0xef01
   | 50 => (((outputWord kind).toNat % 65536 : Nat) : ZMod babyBearModulus)
   | 51 => (((outputWord kind).toNat / 65536 : Nat) : ZMod babyBearModulus)
-  | 58 | 95 => (byte kind 0 : ZMod babyBearModulus)
-  | 62 | 104 => (byte kind 1 : ZMod babyBearModulus)
-  | 66 | 113 => (byte kind 2 : ZMod babyBearModulus)
-  | 70 | 122 => (byte kind 3 : ZMod babyBearModulus)
-  | 74 | 93 => 0x34 | 75 | 111 => 0xcd
-  | 76 | 94 => 0x78 | 77 | 112 => 1
-  | 102 => 0x12 | 103 => 0x56 | 120 => 0xab | 121 => 0xef
-  | 88 => 3
-  | 80 => 0xabcd1234 * 0xef015678 * 943718400
+  | 58 | 89 => (byte kind 0 : ZMod babyBearModulus)
+  | 62 | 98 => (byte kind 1 : ZMod babyBearModulus)
+  | 66 | 107 => (byte kind 2 : ZMod babyBearModulus)
+  | 70 | 116 => (byte kind 3 : ZMod babyBearModulus)
+  | 74 | 87 => 0x34 | 75 | 105 => 0xcd
+  | 76 | 88 => 0x78 | 77 | 106 => 1
+  | 96 => 0x12 | 97 => 0x56 | 114 => 0xab | 115 => 0xef
+  | 82 => 3
+  | 78 => 0xabcd1234 * 0xef015678 * 943718400
   | _ => 0
 
 private def instructionBits (kind : Fin 3) : BitVec 32 :=
   if kind.val = 0 then 0x0020c1b3 else if kind.val = 1 then 0x0020e1b3 else 0x0020f1b3
-private def before (kind : Fin 3) : State :=
-  { (default : State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .PC 0 |>.insert .x1 0xabcd1234 |>.insert .x2 0xef015678 |>.insert .x3 0
+private noncomputable def before (kind : Fin 3) : State :=
+  { resetMachine with
+    regs := resetMachine.regs |>.insert .PC 0 |>.insert .x1 0xabcd1234 |>.insert .x2 0xef015678 |>.insert .x3 0
     mem := (Std.ExtHashMap.emptyWithCapacity : Std.ExtHashMap Nat (BitVec 8))
       |>.insert 0 ((instructionBits kind).extractLsb' 0 8)
       |>.insert 1 ((instructionBits kind).extractLsb' 8 8)
@@ -80,7 +80,9 @@ private theorem constraints (kind : Fin 3) : FlatOperation.ConstraintsHoldFlat
     all_goals simp [Expression.eval, Verification.environment, assignment]
     all_goals decide
 
-private def trace (kind : Fin 3) : UnifiedTrace babyBearModulus where
+theorem airbender_before (kind : Fin 3) : Configured (before kind) := by
+  configured_fixture [before]
+private noncomputable def trace (kind : Fin 3) : UnifiedTrace babyBearModulus where
   rows := [row kind]
   rom := UnifiedReduced.Setup.table (before kind)
   initial := (row kind).start
@@ -124,8 +126,10 @@ private theorem program_image (kind : Fin 3) : UnifiedReduced.programImage (befo
     fin_cases kind <;> simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       before, instructionBits, Std.ExtHashMap.getElem_insert]
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, bind, Option.bind, pure]
-  fin_cases kind <;> with_unfolding_all rfl
+  have decoded : decodeOnReset (instructionBits kind) = some (entry kind).instruction := by
+    fin_cases kind <;> decode_on_reset
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]
+  fin_cases kind <;> rfl
 
 private theorem boundary (kind : Fin 3) : ClockBoundary (trace kind) := by
   constructor
@@ -151,11 +155,12 @@ private theorem public_inputs (kind : Fin 3) :
     fin_cases kind <;> rfl
   · exact ⟨[0], program_image kind⟩
   · exact boundary kind
+  · exact airbender_before kind
 
-private def input (kind : Fin 3) : ShiftBinop.Input :=
+private noncomputable def input (kind : Fin 3) : ShiftBinop.Input :=
   ⟨operation kind, false, 0xabcd1234, 0xef015678, ⟨0, 0⟩, .Regidx 1, .Regidx 2, .Regidx 3, 0,
     Trace.retiredState (before kind) 0⟩
-private def output (kind : Fin 3) : Output := ⟨Word.ofBitVec (outputWord kind), ⟨4, 0⟩⟩
+private noncomputable def output (kind : Fin 3) : Output := ⟨Word.ofBitVec (outputWord kind), ⟨4, 0⟩⟩
 
 private theorem decoded (kind : Fin 3) : UnifiedReduced.Decoded (trace kind) [entry kind] := by
   intro current member

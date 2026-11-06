@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 import Slop.BabyBear
 import Slop.Sail.WordMemoryState
@@ -18,7 +19,7 @@ private def zeroSetup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic 
 private def row : Nat → ZMod babyBearModulus
   | 0 => 65534
   | 1 | 30 => 2
-  | 4 | 11 | 128 | 129 | 130 => 1
+  | 4 | 11 | 122 => 1
   | 31 => 3
   | 32 => 4
   | _ => 0
@@ -54,7 +55,7 @@ private def aliasedRow : Nat → ZMod babyBearModulus
   | 5 | 6 | 7 | 38 | 44 => 1
   | 36 | 42 => 123
   | 50 => 246
-  | 80 => 123 * 123 * 943718400
+  | 78 => 123 * 123 * 943718400
   | i => row i
 
 set_option maxRecDepth 8192 in
@@ -160,7 +161,7 @@ private def triRow : Nat → ZMod babyBearModulus
   | 20 | 52 | 53 | 54 | 55 => 1
   | 36 | 37 | 42 | 43 | 48 | 49 | 51 => 65535
   | 50 => 65533
-  | 80 => 4294967295 * 4294967295 * 943718400
+  | 78 => 4294967295 * 4294967295 * 943718400
   | i => aliasedRow i
 
 set_option maxRecDepth 8192 in
@@ -266,7 +267,7 @@ private def nativeAssignment (rollover : Bool) (i : Nat) : ZMod babyBearModulus 
   else if i = 33 then (if rollover then 8 else 0)
   else if i = 46 then (if rollover then 524285 else 5)
   else if i = 48 then 123
-  else if i = 131 || i = 132 || i = 133 then 1
+  else if i = 123 || i = 124 || i = 125 then 1
   else aliasedRow i
 
 private theorem native_constraints (rollover : Bool) : FlatOperation.ConstraintsHoldFlat
@@ -351,7 +352,7 @@ theorem initialized_word_bounds (rollover : Bool) :
 private def fabricatedAssignment (i : Nat) : ZMod babyBearModulus :=
   if i = 42 then 124
   else if i = 50 then 247
-  else if i = 80 then 123 * 124 * 943718400
+  else if i = 78 then 123 * 124 * 943718400
   else nativeAssignment false i
 
 private def fabricatedTrace : UnifiedTrace babyBearModulus :=
@@ -394,18 +395,27 @@ theorem initialized_read_history (rollover : Bool) :
 private def fetchEntry : Airbender.UnifiedReduced.ProgramEntry :=
   ⟨196606, 0x001080b3, .RTYPE (.Regidx 1, .Regidx 1, .Regidx 1, .ADD),
     ⟨.machine, 1, 1, 1, ⟨0, 0⟩, 1, 0⟩⟩
-private def fetchState : State := wordWriteState before fetchEntry.pc.toNat fetchEntry.bits
+/-- `before`'s registers on the Airbender reset state. -/
+private noncomputable def fetchBefore : State :=
+  { Reference.RiscV.Sail.resetMachine with
+    regs := Reference.RiscV.Sail.resetMachine.regs.insert .x1 (123 : BitVec 32) |>.insert .PC (196606 : BitVec 32) }
+private noncomputable def fetchState : State := wordWriteState fetchBefore fetchEntry.pc.toNat fetchEntry.bits
+
+theorem airbender_fetchState : Reference.RiscV.Sail.Configured fetchState := by
+  configured_fixture [fetchState, fetchBefore, wordWriteState]
 
 private theorem fetchImage :
     Airbender.UnifiedReduced.programImage fetchState [fetchEntry.pc] = some [fetchEntry] := by
   have bytes : (Cell.ram fetchEntry.pc).read fetchState = .ok fetchEntry.bits fetchState :=
-    written_word_read before fetchEntry.pc.toNat fetchEntry.bits
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, bind, Option.bind, pure]
+    written_word_read fetchBefore fetchEntry.pc.toNat fetchEntry.bits
+  have decoded : Reference.RiscV.Sail.decodeOnReset fetchEntry.bits = some fetchEntry.instruction := by
+    decode_on_reset
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]
   rfl
 
 theorem accepted_row_fetched (rollover : Bool) :
     Airbender.UnifiedReduced.Fetched (nativeAssignment rollover) fetchState := by
-  apply Airbender.UnifiedReduced.fetched (by decide) fetchImage
+  apply Airbender.UnifiedReduced.fetched (by decide) fetchImage airbender_fetchState
     (Verification.holds_of_sublist (native_constraints rollover) (List.sublist_append_left _ _))
   cases rollover <;> change ∃ i, _
   all_goals exact ⟨⟨0, by decide⟩, by decide⟩
@@ -421,17 +431,18 @@ private theorem native_public_inputs (rollover : Bool) :
     trivial
   · have read : (Cell.register 1).read fetchState = .ok (123 : BitVec 32) fetchState := by
       apply read_register
-      simp [fetchState, wordWriteState, before, Std.ExtDHashMap.get?_insert]
+      simp [fetchState, wordWriteState, fetchBefore, Std.ExtDHashMap.get?_insert]
     simp only [initialImage, List.mapM_cons, List.mapM_nil, read]
     rfl
   · refine ⟨⟨if rollover then 524284 else 4, if rollover then 7 else 0⟩, ?_⟩
     have pc : run (SailRV32.Functions.get_arch_pc ()) fetchState = .ok 196606 fetchState := by
       apply read_register
-      simp [fetchState, wordWriteState, before]
+      simp [fetchState, wordWriteState, fetchBefore]
     simp only [initialState, pc]
     cases rollover <;> rfl
   · exact ⟨[fetchEntry.pc], fetchImage⟩
   · exact native_boundary rollover
+  · exact airbender_fetchState
 
 theorem native_sail_memory_execution (rollover : Bool) :
     Airbender.UnifiedReduced.MemoryExecution (nativeTrace rollover) fetchState [Cell.register 1] := by
@@ -443,7 +454,7 @@ theorem native_sail_memory_execution (rollover : Bool) :
   cases rollover <;> change ∃ i, _
   all_goals exact ⟨⟨0, by decide⟩, by decide⟩
 
-private def traceInput : Input :=
+private noncomputable def traceInput : Input :=
   { input with before := Trace.retiredState fetchState (Word.mk 65534 2).toBitVec }
 
 theorem initialized_arithmetic_soundness (rollover : Bool) :

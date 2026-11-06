@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.MulDivTimestamp
 import Slop.Sail.WordMemoryState
 
@@ -7,29 +8,23 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 1000000
 
-private def configured : Reference.RiscV.Sail.State :=
-  { (default : Reference.RiscV.Sail.State) with
-    regs := (default : Reference.RiscV.Sail.State).regs.insert .misa (0x40001000 : BitVec 32) }
+private noncomputable def configured : Reference.RiscV.Sail.State := Reference.RiscV.Sail.resetMachine
 
-private def before (pc bits : BitVec 32) : Reference.RiscV.Sail.State :=
+private noncomputable def before (pc bits : BitVec 32) : Reference.RiscV.Sail.State :=
   Reference.RiscV.Sail.wordWriteState configured pc.toNat bits
 
-private theorem misa_read (pc bits : BitVec 32) :
-    Reference.Sail.run (SailRV32.readReg .misa) (before pc bits) =
-      .ok (0x40001000 : BitVec 32) (before pc bits) := by
-  apply Reference.RiscV.Sail.read_register
-  simp [before, configured, Reference.RiscV.Sail.wordWriteState]
+theorem airbender_before (pc bits : BitVec 32) : Reference.RiscV.Sail.Configured (before pc bits) := by
+  configured_fixture [before, configured, Reference.RiscV.Sail.wordWriteState]
 
 private theorem extraction (pc bits : BitVec 32) (instruction : SailRV32.instruction)
     (data : DecoderData Unit)
-    (decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards bits) (before pc bits) =
-      .ok instruction (before pc bits))
+    (decoded : Airbender.Reference.RiscV.Sail.decodeOnReset bits = some instruction)
     (fields : Airbender.MulDiv.decoderFields instruction = some data) :
     Airbender.MulDiv.programImage (before pc bits) [pc] = some [⟨pc, bits, instruction, data⟩] := by
   have bytes : (Cell.ram pc).read (before pc bits) = .ok bits (before pc bits) :=
     by simpa only [Cell.read, before] using
       Reference.RiscV.Sail.written_word_read configured pc.toNat bits
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
     bind, Option.bind, pure]
 
 private def samples : List (BitVec 32 × SailRV32.instruction × DecoderData Unit) := [
@@ -51,12 +46,7 @@ theorem all_instruction_forms : ∀ sample ∈ samples,
   simp only [samples, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl | rfl
   all_goals apply extraction _ _ _ _ (fields := by rfl)
-  all_goals
-    repeat' first
-      | (with_unfolding_all rfl)
-      | (with_unfolding_all conv_lhs => arg 1; whnf
-         erw [@Reference.Sail.run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
-           _ _ SailRV32.Register.misa _ _ _ (misa_read _ _)])
+  all_goals decode_on_reset
 
 private def excluded : List (BitVec 32 × SailRV32.instruction) := [
   (0x022090b3, .MUL (.Regidx 2, .Regidx 1, .Regidx 1, ⟨.High, .Signed, .Signed⟩)),
@@ -69,13 +59,12 @@ private def excluded : List (BitVec 32 × SailRV32.instruction) := [
   (0x0220f033, .REM (.Regidx 2, .Regidx 1, .Regidx 0, true))]
 
 private theorem extraction_rejected (bits : BitVec 32) (instruction : SailRV32.instruction)
-    (decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards bits) (before 0 bits) =
-      .ok instruction (before 0 bits))
+    (decoded : Airbender.Reference.RiscV.Sail.decodeOnReset bits = some instruction)
     (fields : Airbender.MulDiv.decoderFields instruction = none) :
     Airbender.MulDiv.programImage (before 0 bits) [0] = none := by
   have bytes : (Cell.ram 0).read (before 0 bits) = .ok bits (before 0 bits) :=
     Reference.RiscV.Sail.written_word_read configured 0 bits
-  simp only [List.mapM_cons, programEntryRunWith, bytes, decoded, fields, bind, Option.bind]
+  simp only [List.mapM_cons, programEntryWith, bytes, decoded, fields, bind, Option.bind]
 
 /-- Actual decoding rejects signed-family and discarded-destination forms. -/
 theorem unsupported_forms_rejected : ∀ sample ∈ excluded,
@@ -86,12 +75,7 @@ theorem unsupported_forms_rejected : ∀ sample ∈ excluded,
     rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
   apply extraction_rejected sample.1 sample.2 ?_ fields
   rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-  all_goals
-    repeat' first
-      | (with_unfolding_all rfl)
-      | (with_unfolding_all conv_lhs => arg 1; whnf
-         erw [@Reference.Sail.run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
-           _ _ SailRV32.Register.misa _ _ _ (misa_read _ _)])
+  all_goals decode_on_reset
 
 private def entry (remainder : Bool) : Airbender.MulDiv.ProgramEntry :=
   ⟨0x3fffc, if remainder then 0x0220f0b3 else 0x0220d0b3,
@@ -106,14 +90,8 @@ theorem accepted_row_fetched (remainder rollover : Bool) :
       (before (entry remainder).pc (entry remainder).bits) := by
   apply Airbender.MulDiv.fetched (by decide)
     (extraction (entry remainder).pc (entry remainder).bits (entry remainder).instruction
-      (entry remainder).data (by
-        cases remainder
-        all_goals
-          repeat' first
-            | (with_unfolding_all rfl)
-            | (with_unfolding_all conv_lhs => arg 1; whnf
-               erw [@Reference.Sail.run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
-           _ _ SailRV32.Register.misa _ _ _ (misa_read _ _)])) (by cases remainder <;> rfl))
+      (entry remainder).data (by cases remainder <;> decode_on_reset) (by cases remainder <;> rfl))
+    (airbender_before _ _)
     (Verification.holds_of_sublist (Tests.MulDivTimestamp.constraints remainder rollover)
       (List.sublist_append_left _ _))
   change ∃ i, _
@@ -135,29 +113,32 @@ theorem wrong_selector_rejected :
       (fun i => if i = 10 then 1 else Tests.MulDivTimestamp.assignment false false i))[8] ≠
       ((entry false).query : Vector (ZMod babyBearModulus) 9)[8]) mask
 
-/-- Public configuration is used by the original decoder: disabling M does
-    not produce a multiplication row merely because the opcode bits match. -/
-theorem disabled_extension_rejected :
+/-- The original `disabled_extension_rejected` (with M disabled in `misa`, the Sail decoder rejects the
+    multiplication encoding) is retired, not restated: it is false, not merely unprovable. Clearing only `misa.M`
+    (bit 12) leaves the Sail decoder returning a value (`isSome`), and that value differs from the M-enabled
+    decode. The image-level form (`programImage = none`) is false by design since the image decodes on the
+    Airbender configuration (`state_misa_ignored`). Kernel-checked. -/
+theorem disabled_extension_not_rejected_by_decoder :
+    (Reference.RiscV.Sail.resultValue (Reference.RiscV.Sail.Configuration.runSail
+      (SailRV32.Functions.encdec_backwards (0x022081b3 : BitVec 32))
+      (Reference.RiscV.Sail.Configuration.resetState.set .misa (0x40000100 : BitVec 32)))).isSome = true := by
+  kernel_rfl
+
+/-- The program image decodes on the Airbender configuration (`decodeOnReset`), so a state whose `misa`
+    disables M still yields the multiplication row: the configuration is not read from the state. -/
+theorem state_misa_ignored :
     let state := Reference.RiscV.Sail.wordWriteState
       { configured with regs := configured.regs.insert .misa (0x40000000 : BitVec 32) }
       0 (0x022081b3 : BitVec 32)
-    Airbender.MulDiv.programImage state [0] = none := by
-  let state := Reference.RiscV.Sail.wordWriteState
-    { configured with regs := configured.regs.insert .misa (0x40000000 : BitVec 32) }
-    0 (0x022081b3 : BitVec 32)
-  change Airbender.MulDiv.programImage state [0] = none
-  have isa : Reference.Sail.run (SailRV32.readReg .misa) state = .ok (0x40000000 : BitVec 32) state := by
-    apply Reference.RiscV.Sail.read_register
-    simp [state, Reference.RiscV.Sail.wordWriteState]
-  have decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards 0x022081b3) state =
-      .error (_root_.Sail.Error.Assertion "Pattern match failure at unknown location") state := by
-    repeat' first
-      | (with_unfolding_all rfl)
-      | (with_unfolding_all conv_lhs => arg 1; whnf
-         erw [@Reference.Sail.run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
-           _ _ SailRV32.Register.misa _ _ _ isa])
+    Airbender.MulDiv.programImage state [0] =
+      some [⟨0, 0x022081b3, .MUL (.Regidx 2, .Regidx 1, .Regidx 3, ⟨.Low, .Signed, .Signed⟩),
+        ⟨(), 1, 2, 3, ⟨0, 0⟩, 1, 0⟩⟩] := by
+  intro state
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x022081b3 =
+      some (.MUL (.Regidx 2, .Regidx 1, .Regidx 3, ⟨.Low, .Signed, .Signed⟩)) := by decode_on_reset
   have bytes : (Cell.ram 0).read state = .ok 0x022081b3 state :=
     Reference.RiscV.Sail.written_word_read _ 0 _
-  simp only [List.mapM_cons, programEntryRunWith, bytes, decoded, bind, Option.bind]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]
+  rfl
 
 end Tests.MulDivDecoder

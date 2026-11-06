@@ -11,6 +11,10 @@ pub struct Blake2sState {
 impl Blake2sState {
     pub const SUPPORT_SPEC_SINGLE_ROUND: bool = false;
 
+    /// # Safety
+    ///
+    /// `dst` must be valid for writes of `BLAKE2S_DIGEST_SIZE_U32_WORDS` words and must not alias
+    /// `self`.
     #[unroll::unroll_for_loops]
     #[inline(always)]
     pub unsafe fn spec_run_single_round_into_destination<const REDUCED_ROUNDS: bool>(
@@ -81,6 +85,11 @@ impl Blake2sState {
 
     /// caller must fill the buffer (do not forget to zero-pad),
     /// and then specify the parameters of the input block
+    ///
+    /// # Safety
+    ///
+    /// `self.input_buffer` must hold the block, zero-padded past `input_size_words`, and
+    /// `input_size_words` must not exceed `BLAKE2S_BLOCK_SIZE_U32_WORDS`.
     #[inline(always)]
     pub unsafe fn run_round_function<const REDUCED_ROUNDS: bool>(
         &mut self,
@@ -93,6 +102,10 @@ impl Blake2sState {
         );
     }
 
+    /// # Safety
+    ///
+    /// `self.input_buffer` must hold the block, zero-padded past `input_size_bytes`, and
+    /// `input_size_bytes` must not exceed `BLAKE2S_BLOCK_SIZE_BYTES`.
     #[inline]
     #[unroll::unroll_for_loops]
     pub unsafe fn run_round_function_with_byte_len<const REDUCED_ROUNDS: bool>(
@@ -252,5 +265,11 @@ impl Blake2sState {
             dst[i] ^= extended_state[i];
             dst[i] ^= extended_state[i + 8];
         }
+    }
+}
+
+impl Default for Blake2sState {
+    fn default() -> Self {
+        Self::new()
     }
 }

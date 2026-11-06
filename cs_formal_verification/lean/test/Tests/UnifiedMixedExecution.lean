@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.TraceExecution
 import Slop.UnifiedReduced.Claims
 import Slop.Sail.WordMemoryState
@@ -9,24 +10,24 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 5000000
 
-private def before : State :=
+private noncomputable def before : State :=
   wordWriteState (wordWriteState (wordWriteState
     { Tests.TraceExecution.before with regs := Tests.TraceExecution.before.regs.insert .x1 (0 : BitVec 32) }
     0 0x00108093) 4 0xc210c0f3) 8 0x2083
 private def cells : List Cell := Tests.TraceExecution.cells ++ [.ram 0]
-private def program : List UnifiedReduced.ProgramEntry := [
+private noncomputable def program : List UnifiedReduced.ProgramEntry := [
   ⟨0, 0x00108093, .ITYPE (1, .Regidx 1, .Regidx 1, .ADDI), ⟨.machine, 1, 0, 1, ⟨1, 0⟩, 1, 0⟩⟩,
   ⟨4, 0xc210c0f3, .ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1),
     ⟨.machine, 1, 1, 1, ⟨0, 0⟩, 512, 0⟩⟩,
   ⟨8, 0x2083, .LOAD (0, .Regidx 0, .Regidx 1, false, 4),
     ⟨.machine, 0, 0, 1, ⟨0, 0⟩, 131072, 0⟩⟩]
 private def arithmetic : Nat → ZMod babyBearModulus
-  | 4 | 5 | 7 | 8 | 11 | 44 | 50 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 5 | 7 | 8 | 11 | 44 | 50 | 123 | 124 | 125 => 1
   | 2 | 30 | 46 => 4
   | 32 => 8
   | _ => 0
 private def triadd (value : Nat) : Nat → ZMod babyBearModulus
-  | 4 | 5 | 6 | 7 | 20 | 38 | 44 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 5 | 6 | 7 | 20 | 38 | 44 | 123 | 124 | 125 => 1
   | 0 => 4
   | 2 | 30 | 40 => 8
   | 32 => 12
@@ -34,21 +35,21 @@ private def triadd (value : Nat) : Nat → ZMod babyBearModulus
   | 46 => 9
   | 36 | 42 | 48 => value
   | 50 => 3 * value
-  | 80 => value * value * 943718400
+  | 78 => value * value * 943718400
   | _ => 0
 private def load : Nat → ZMod babyBearModulus
-  | 4 | 7 | 28 | 44 | 54 | 87 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 7 | 28 | 44 | 54 | 81 | 123 | 124 | 125 => 1
   | 0 => 8
   | 2 | 30 => 12
-  | 32 | 51 | 91 => 16
+  | 32 | 51 | 85 => 16
   | 34 => 5
   | 46 => 10
   | 48 => 3
-  | 50 | 90 => 0x8093
-  | 86 => 65472
-  | 88 => 34
+  | 50 | 84 => 0x8093
+  | 80 => 65472
+  | 82 => 34
   | _ => 0
-private def trace (value : Nat) : UnifiedTrace babyBearModulus where
+private noncomputable def trace (value : Nat) : UnifiedTrace babyBearModulus where
   rows := [⟨.machine, load⟩, ⟨.machine, triadd value⟩, ⟨.machine, arithmetic⟩]
   rom := UnifiedReduced.Setup.table before
   initial := PCState.boundary 0 (4, 0)
@@ -69,13 +70,13 @@ private theorem public_bytes :
   · exact written_word_disjoint 8 0x2083 (Or.inl (by decide)) (written_word_read _ _ _)
 
 theorem original_mixed_public_image : Mixed.programImage before [0, 4, 8] = some program := by
-  have standard : run (SailRV32.Functions.encdec_backwards 0x00108093) before =
-      .ok (.ITYPE (1, .Regidx 1, .Regidx 1, .ADDI)) before := by with_unfolding_all rfl
-  have custom : run (SailRV32.Functions.encdec_backwards 0xc210c0f3) before =
-      .ok (.ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1)) before := by with_unfolding_all rfl
-  have memory : run (SailRV32.Functions.encdec_backwards 0x2083) before =
-      .ok (.LOAD (0, .Regidx 0, .Regidx 1, false, 4)) before := by with_unfolding_all rfl
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, public_bytes.1, public_bytes.2.1,
+  have standard : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00108093 = some (.ITYPE (1, .Regidx 1, .Regidx 1, .ADDI)) :=
+    by decode_on_reset
+  have custom : Airbender.Reference.RiscV.Sail.decodeOnReset 0xc210c0f3 = some (.ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1)) :=
+    by decode_on_reset
+  have memory : Airbender.Reference.RiscV.Sail.decodeOnReset 0x2083 = some (.LOAD (0, .Regidx 0, .Regidx 1, false, 4)) :=
+    by decode_on_reset
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, public_bytes.1, public_bytes.2.1,
     public_bytes.2.2, standard, custom, memory, bind, Option.bind, pure]
   rfl
 
@@ -91,7 +92,7 @@ private theorem zero_registers : ∀ index, (Cell.register index).read before = 
   intro index
   simpa using numeric index.toNat index.isLt
 
-private theorem configuration : FlatMemoryConfiguration before := by
+private theorem configuration : Configured before := by
   have written : run (SailRV32.Functions.wX_bits (.Regidx 1) 0) Tests.TraceExecution.before =
       .ok () { Tests.TraceExecution.before with regs := Tests.TraceExecution.before.regs.insert .x1 0 } := by
     simp only [SailRV32.Functions.wX_bits, SailRV32.Functions.wX,
@@ -103,7 +104,7 @@ private theorem configuration : FlatMemoryConfiguration before := by
 
 private theorem inputs : Mixed.Inputs (trace 1) before cells program := by
   constructor
-  · refine ⟨by decide, ?_, ?_, ?_, rfl, rfl, ⟨[0, 4, 8], original_mixed_public_image⟩, rfl⟩
+  · refine ⟨by decide, ?_, ?_, ?_, rfl, rfl, ⟨[0, 4, 8], original_mixed_public_image⟩, rfl, configuration⟩
     · intro cell member
       simp [cells, Tests.TraceExecution.cells] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
@@ -135,9 +136,6 @@ private theorem inputs : Mixed.Inputs (trace 1) before cells program := by
     subst address
     unfold OrdinaryWordAddress
     decide
-  · rintro ⟨entry, member, imm, rs1, rd, encoding⟩
-    simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
-    rcases member with rfl | rfl | rfl <;> cases encoding
   · intro entry member imm rs1
     simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
     rcases member with rfl | rfl | rfl <;> simp
@@ -197,7 +195,7 @@ private theorem decoded : UnifiedReduced.Decoded (trace 1) program := by
   · change ∃ i : Fin 3, _
     exact ⟨0, by decide +kernel⟩
 
-theorem sail_complete_mixed_trace [MemoryPlatform SailRV32.exception] :
+theorem sail_complete_mixed_trace  :
     Realizes (Mixed.Step program) (trace 1) before cells (Trace.ROMView.token before) :=
   Mixed.execution_soundness (by decide) (by decide) (by decide) inputs accepted decoded
 

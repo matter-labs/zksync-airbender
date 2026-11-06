@@ -41,7 +41,7 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
         let values = graph.layout_memory_subtree_multiple_variables(
             values,
             &mut all_variables_to_place,
-            &mut layers_mapping,
+            &layers_mapping,
         );
         let timestamps: [Variable; 2] = std::array::from_fn(|i| {
             let var = add_compiler_defined_base_layer_variable(
@@ -61,7 +61,7 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
         let timestamps = graph.layout_memory_subtree_multiple_variables(
             timestamps,
             &mut all_variables_to_place,
-            &mut layers_mapping,
+            &layers_mapping,
         );
         teardown_sets.push((timestamps, values));
     }
@@ -157,17 +157,19 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
         generic_lookup_tables_width: 0,
         decode_table_columns_mask: Vec::new(),
         tables_ids_in_generic_lookups: false,
+        generic_lookup_padding: None,
         degree_2_constraints: Vec::new(),
         degree_1_constraints: Vec::new(),
         structured_statements: Vec::new(),
         generic_lookups: Vec::new(),
         range_check_16_lookup_expressions: Vec::new(),
         timestamp_range_check_lookup_expressions: Vec::new(),
-        variable_names: BTreeMap::from_iter(variable_names.into_iter()),
+        variable_names: BTreeMap::from_iter(variable_names),
         scratch_space_mapping: BTreeMap::new(),
         scratch_space_mapping_rev: BTreeMap::new(),
         aux_layout_data: GKRAuxLayoutData {
             shuffle_ram_timestamp_comparison_aux_vars: Vec::new(),
+            relative_timestamp_groups: Vec::new(),
         },
         _marker: core::marker::PhantomData,
     }

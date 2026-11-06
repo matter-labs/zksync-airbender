@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.ShiftBinop.Execution
 import Slop.ShiftBinop.Claims
 import Slop.Sail.WordMemoryState
@@ -75,10 +76,14 @@ private def entry : Airbender.ShiftBinop.ProgramEntry :=
   ⟨65532, 0xfff04093, .ITYPE (4095#12, .Regidx 0, .Regidx 1, .XORI),
     ⟨(), 0, 0, 1, ⟨255, 255⟩, 2, 4⟩⟩
 
-private def before : State := wordWriteState
-  { (default : State) with regs :=
-    ((default : State).regs.insert .x1 (0 : BitVec 32)).insert .PC (65532 : BitVec 32) }
+private noncomputable def before : State := wordWriteState
+  { Airbender.Reference.RiscV.Sail.resetMachine with regs :=
+    (Airbender.Reference.RiscV.Sail.resetMachine.regs.insert .x1 (0 : BitVec 32)).insert .PC (65532 : BitVec 32) }
   65532 entry.bits
+
+theorem airbender_before  : Airbender.Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
+
 
 private def cells : List Cell := [.register 0, .register 1]
 private def seed : List (MemoryToken babyBearModulus) :=
@@ -134,10 +139,10 @@ private theorem image : initialImage before cells = some seed := by
 
 private theorem program_image : Airbender.ShiftBinop.programImage before [65532] = some [entry] := by
   have bytes : (Cell.ram 65532).read before = .ok entry.bits before := written_word_read _ 65532 _
-  have decoded : run (SailRV32.Functions.encdec_backwards entry.bits) before =
-      .ok entry.instruction before := by with_unfolding_all rfl
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset entry.bits = some entry.instruction :=
+    by decode_on_reset
   simp only [Airbender.ShiftBinop.programImage, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, decoded, bind, Option.bind]
+    programEntryWith, bytes, decoded, bind, Option.bind]
   rfl
 
 private theorem decoded (rom : Table (ZMod babyBearModulus) (fields 9)) :
@@ -190,7 +195,7 @@ theorem actual_immediate_retirement (rom : Table (ZMod babyBearModulus) (fields 
 
 /-- Public fetch/decoding and native histories compose from the unchanged
     public state through original Sail execution to the terminal PC. -/
-theorem actual_immediate_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem actual_immediate_trace
     (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ after, Airbender.ShiftBinop.SailTrace [entry] before after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 65536 after := by
@@ -207,6 +212,7 @@ theorem actual_immediate_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exce
     initialPC := ⟨(4, 0), initialPC⟩
     programImage := ⟨[65532], program_image⟩
     clocks := boundary rom
+    configuration := airbender_before
   }
   obtain ⟨after, execution, pc, _⟩ := Airbender.ShiftBinop.trace_soundness
     (by decide) (by decide) (by decide) inputs (accepted rom) (decoded rom)

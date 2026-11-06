@@ -7,7 +7,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-private def before : State :=
+private noncomputable def before : State :=
   { Tests.TraceExecution.before with
     regs := Tests.TraceExecution.before.regs.insert .x1 (0 : BitVec 32)
     mem := Tests.TraceExecution.before.mem.insert 4194304 (0 : BitVec 8)

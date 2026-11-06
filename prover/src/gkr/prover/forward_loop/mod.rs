@@ -1,8 +1,8 @@
 use super::*;
-use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
-use crate::gkr::prover::forward_loop::utils::{
-    evaluate_linear_relation_at_row, evaluate_memory_query,
-};
+use crate::allocation_pool::{AllocationPool, ColumnLayout};
+#[cfg(feature = "gkr_self_checks")]
+use crate::gkr::prover::forward_loop::utils::evaluate_linear_relation_at_row;
+use crate::gkr::prover::forward_loop::utils::evaluate_memory_query;
 use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
 use crate::{cs::definitions::*, gkr::sumcheck::access_and_fold::ExtensionFieldPoly};
 use cs::definitions::gkr::RamWordRepresentation;
@@ -21,11 +21,30 @@ pub(crate) mod lookup_from_base_inputs;
 pub(crate) mod lookup_from_vector_inputs;
 pub(crate) mod lookup_pair;
 pub(crate) mod mask_product;
+#[cfg(feature = "gkr_self_checks")]
 pub(crate) mod max_quadratic;
 pub(crate) mod pairwise_product;
 pub(crate) mod single_column_lookup;
 pub(crate) mod utils;
 pub(crate) mod vector_lookup;
+
+fn setup_padding_fill<F: PrimeField, E: FieldExtension<F> + Field>(
+    circuit: &GKRCircuitArtifact<F>,
+    lookup_alpha: E,
+) -> E {
+    if let Some(padding) = circuit.generic_lookup_padding {
+        let mut sum = E::ZERO;
+        let mut power = E::ONE;
+        for _ in 0..circuit.generic_lookup_tables_width {
+            sum.add_assign(&power);
+            power.mul_assign(&lookup_alpha);
+        }
+        sum.mul_assign_by_base(&padding);
+        sum
+    } else {
+        E::ZERO
+    }
+}
 
 fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_idx: usize,
@@ -104,6 +123,8 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
             }
             GKRCacheRelation::VectorizedLookupSetup(_rel) => {
                 let mut destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
+                let padding_fill =
+                    setup_padding_fill(compiled_circuit, lookup_challenges_multiplicative_part);
                 #[allow(unused_mut)]
                 let mut filled = false;
                 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
@@ -111,6 +132,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                     avx512::fill_setup_column(
                         destination.as_mut(),
                         preprocessed_generic_lookup,
+                        padding_fill,
                         worker,
                     );
                     filled = true;
@@ -119,6 +141,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                     utils::fill_setup_column(
                         destination.as_mut(),
                         preprocessed_generic_lookup,
+                        padding_fill,
                         worker,
                     );
                 }
@@ -168,7 +191,6 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         for (i, poly) in witness_trace
             .column_major_memory_trace
             .drain(..)
-            .into_iter()
             .enumerate()
         {
             gkr_storage.insert_base_field_at_layer(
@@ -180,7 +202,6 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         for (i, poly) in witness_trace
             .column_major_witness_trace
             .drain(..)
-            .into_iter()
             .enumerate()
         {
             gkr_storage.insert_base_field_at_layer(
@@ -201,13 +222,13 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 if let GKRAddress::InnerLayer { layer, .. } = *place {
                     if layer == layer_idx {
                         assert!(
-                            poly.is_empty() == false,
+                            !poly.is_empty(),
                             "trying to fill {:?} from scratch space, but it's source is empty",
                             place
                         );
                         if gkr_storage.try_get_base_poly(*place).is_none() {
                             // some Copy relations could already fill it
-                            let poly = core::mem::replace(poly, vec![]);
+                            let poly = std::mem::take(poly);
                             gkr_storage.insert_base_field_at_layer(
                                 layer_idx,
                                 *place,
@@ -383,7 +404,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     expected_output_layer,
                     *output,
                     input,
-                    *range_check_width as u32,
+                    *range_check_width,
                     gkr_storage,
                     witness_trace,
                     trace_len,
@@ -510,6 +531,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     lookup_challenges_multiplicative_part,
                     lookup_challenges_additive_part,
                     decoder_lookup_fill_value,
+                    setup_padding_fill(compiled_circuit, lookup_challenges_multiplicative_part),
                     compiled_circuit.offset_for_decoder_table as u32,
                     pool,
                     worker,
@@ -742,7 +764,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     ExtensionFieldPoly::from_allocation(destination),
                 );
             }
-            rel @ _ => {
+            rel => {
                 panic!("Should evaluate {:?}", rel);
             }
         }
@@ -756,7 +778,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     }
     {
         let mut v: Vec<_> = __fwd_times.iter().collect();
-        v.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+        v.sort_by_key(|a| std::cmp::Reverse(a.1 .0));
         let parts: Vec<String> = v
             .iter()
             .map(|(k, (d, n))| format!("{k} {:.1} ms ({n})", d.as_secs_f64() * 1e3))

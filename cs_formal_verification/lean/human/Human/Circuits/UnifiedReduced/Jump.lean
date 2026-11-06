@@ -47,11 +47,8 @@ structure InterfaceAssumptions [Fact p.Prime] (trace : UnifiedTrace p) (initial 
   initialization : NativeInputs decoderFields trace initial cells program
   setup : trace.rom = Setup.table initial
   codeAligned : ∀ entry ∈ program, entry.pc.toNat % 4 = 0
-  isa : ∃ value, initial.regs.get? .misa = some value
-  landingPad : input.instruction.indirect = true →
-    initial.regs.get? .cur_privilege = some .Machine ∧
-      ∃ security, initial.regs.get? .mseccfg = some security ∧
-        SailRV32.Functions._get_Seccfg_MLPE security = 0
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Configured initial
 
 /-- Imported native equations, logical matching and public decoder membership,
     interpreted by the named mapping above. JAL/JALR use the same initialized

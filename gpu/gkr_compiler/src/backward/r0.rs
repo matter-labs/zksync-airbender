@@ -139,11 +139,13 @@ pub fn compile_r0(dag: &DagCircuit) -> Result<Vec<R0WindowProgram>, R0CompileErr
             let (mut window, mut scalar_seed) = lower(false)?;
             // Grouping changes the BF/E4 record counts, so select the launch bound first.
             let sections = window.sections;
-            let bf_heavy = u64::from(sections[0]) > 4 * u64::from(sections[3] - sections[0]);
-            let kernel = if !bf_heavy {
-                R0Kernel::General3
-            } else if window.shape.bits() & !R0Kernel::Unit4.shape_mask() == 0 {
+            let bf = u64::from(sections[0]);
+            let e4 = u64::from(sections[3] - sections[0]);
+            let unit4 = window.shape.bits() & !R0Kernel::Unit4.shape_mask() == 0;
+            let kernel = if unit4 && 2 * bf > 3 * e4 {
                 R0Kernel::Unit4
+            } else if bf <= 4 * e4 {
+                R0Kernel::General3
             } else {
                 (window, scalar_seed) = lower(true)?;
                 if !window.shape.contains(WindowShape::BF_LINEAR_TAIL) {

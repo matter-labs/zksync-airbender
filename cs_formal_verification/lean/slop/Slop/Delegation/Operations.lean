@@ -25,7 +25,11 @@ theorem operation_rules_of_queries [Fact p.Prime] (hp : 8388608 ≤ p)
     cases family
     all_goals simp only [Row.constraints, tables, modeledSetup] at h
     · exact Bigint.Proofs.memory_write_rule (by omega) h reads
-    · exact Blake2G.Proofs.memory_write_rule (by omega) inverse h reads
+    · -- the serialized inverse fixes p = BabyBear, above Blake2G's 2^25 bound
+      have field : p = babyBearModulus :=
+        Blake2Round.Proofs.scale128_field (by linear_combination inverse)
+      exact Blake2G.Proofs.memory_write_rule (by rw [field]; unfold babyBearModulus; norm_num)
+        inverse h reads
     · obtain ⟨round, mask⟩ := rounds ⟨.blakeRound, w⟩ member rfl
       exact Blake2Round.Proofs.memory_write_rule hp inverse h round mask reads
     · exact Keccak.Proofs.memory_write_rule (by omega) h

@@ -69,7 +69,6 @@ where
     E: FieldExtension<Proth120> + field::Field,
     L: CosetLeafAccessor<E>,
     B: GoodAllocator,
-    [(); E::DEGREE]: Sized,
 {
     let num_cosets = cosets.len();
     let num_columns = cosets[0].len();
@@ -114,7 +113,7 @@ where
                             accessor.leaf_into(row, &mut leaf[..]);
                             for el in leaf.iter() {
                                 let coeffs = extension_field_into_base_coeffs::<Proth120, E>(*el);
-                                for c in coeffs.iter() {
+                                for c in coeffs.as_ref().iter() {
                                     encode_proth120_be_into(c, &mut preimage);
                                 }
                             }
@@ -147,7 +146,6 @@ where
     E: FieldExtension<Proth120>,
     A: CosetIndexedAccessor<E>,
     B: GoodAllocator,
-    [(); E::DEGREE]: Sized,
 {
     let num_cosets = trace.len();
     let num_columns = trace[0].len();
@@ -167,7 +165,7 @@ where
     let tree_size = num_cosets * coset_tree_size;
     assert!(tree_size.is_power_of_two());
 
-    if bitreverse_evaluations == false {
+    if !bitreverse_evaluations {
         // The Blake2s variant only implements the bit-reversed evaluation
         // layout; mirror that here.
         todo!("non-bit-reversed evaluation layout is not implemented");
@@ -212,7 +210,7 @@ where
                             for offset in offsets_ref.iter() {
                                 let el = column.get(row + *offset);
                                 let coeffs = extension_field_into_base_coeffs::<Proth120, E>(el);
-                                for c in coeffs.iter() {
+                                for c in coeffs.as_ref().iter() {
                                     encode_proth120_be_into(c, &mut preimage);
                                 }
                             }

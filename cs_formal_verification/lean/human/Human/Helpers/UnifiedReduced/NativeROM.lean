@@ -25,9 +25,11 @@ structure BootInputsWith (projection : SailRV32.instruction → Option (DecoderD
   /-- Public starting PC zero and native timestamp four. Later clocks are proved. -/
   initialPC : trace.initial = PCState.boundary 0 (4, 0)
   /-- Actual public bytes and original Sail decoding construct the program table. -/
-  programImage : ∃ addresses, programImageRunWith projection initial addresses = some program
+  programImage : ∃ addresses, programImageWith projection initial addresses = some program
   /-- The modeled pooled table is fixed by the public physical ROM image. -/
   setup : trace.rom = Setup.table initial
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Reference.RiscV.Sail.Configured initial
 
 /-- Standard public boot inputs use the standard native metadata projection. -/
 abbrev BootInputs {p : Nat} [Fact p.Prime] := BootInputsWith (p := p) decoderFields
@@ -39,7 +41,7 @@ open Trace Arithmetic Reference.RiscV.Sail
 
 /-- Replace the native ROM read limbs and their unused product column. -/
 def readData (w : Nat → ZMod p) (lo hi : ZMod p) : Nat → ZMod p :=
-  fun i => if i = 42 then lo else if i = 43 then hi else if i = 80 then
+  fun i => if i = 42 then lo else if i = 43 then hi else if i = 78 then
     (w 36 + 65536 * w 37) * (lo + 65536 * hi) * 943718400 + (w 48 + 65536 * w 49) * w 17
     else w i
 

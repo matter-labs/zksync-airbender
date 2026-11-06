@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.DelegationOperationEffects
 import Slop.Final.Circuits.AddSub.CallerTheorems
 import Slop.Final.Trace.Delegation.CallerTheorems
@@ -8,9 +9,12 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 5000000
 
-private abbrev base := Tests.DelegationOperationEffects.sharedData
+private noncomputable abbrev base := Tests.DelegationOperationEffects.sharedData
 private abbrev cells := Tests.DelegationOperationEffects.sharedCells
-private def before : State := wordWriteState Tests.DelegationOperationEffects.before 4 0x00160613
+private noncomputable def before : State := wordWriteState Tests.DelegationOperationEffects.before 4 0x00160613
+
+private theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState, Tests.DelegationOperationEffects.before, Tests.BigintMemory.before]
 private def program : List PooledProgramEntry := [
   ⟨4, 0x00160613, .ITYPE (1, .Regidx 12, .Regidx 12, .ADDI),
     ⟨.addSub, 12, 0, 12, ⟨1, 0⟩, 1, 0⟩⟩]
@@ -26,14 +30,14 @@ private def arithmetic (value : Nat) : Nat → ZMod babyBearModulus
   | _ => 0
 private def ordinary (value : Nat) : Trace.Row babyBearModulus PooledFamily :=
   ⟨.addSub, arithmetic value⟩
-private def terminal (value : Nat) : List (MemoryToken babyBearModulus) :=
+private noncomputable def terminal (value : Nat) : List (MemoryToken babyBearModulus) :=
   base.machine.terminalMemory.map fun token =>
     if token.address = (Cell.register 0).addressCode then
       ⟨token.address, (9, 0), 0⟩
     else if token.address = (Cell.register 12).addressCode then
       ⟨token.address, (10, 0), Nat.pair (value + 1) 0⟩
     else token
-private def data (value : Nat) : Caller.RequestTrace babyBearModulus :=
+private noncomputable def data (value : Nat) : Caller.RequestTrace babyBearModulus :=
   { base with machine := { base.machine with
     rows := ordinary value :: base.machine.rows
     terminal := (ordinary value).finish
@@ -121,26 +125,26 @@ private theorem inputs : Caller.MixedMemoryInputs (data 0) program before [0] [4
       · have bytes : (Cell.ram 0).read before = .ok (Tests.DelegationCaller.entry .bigint).bits before :=
           written_word_disjoint 4 _ (Or.inl (by decide))
             (written_word_read Tests.BigintMemory.before 0 _)
-        have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) before =
-            .ok (Tests.DelegationCaller.entry .bigint).instruction before :=
-          Tests.DelegationCaller.original_decoder .bigint before
+        have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+          Tests.DelegationCaller.original_decoder .bigint
         have fields : Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
             some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-        simp only [Caller.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-          programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+        simp only [Caller.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+          programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
         rfl
       · exact Tests.DelegationOperationEffects.sharedInputs.publicProgram.initialClock
       · exact Tests.DelegationOperationEffects.sharedInputs.publicProgram.initialAligned
+      · exact airbender_before
     · exact initialization
     · exact Tests.DelegationOperationEffects.sharedInputs.distinct
     · exact Tests.DelegationOperationEffects.sharedInputs.aligned
   · have bytes : (Cell.ram 4).read before = .ok 0x00160613 before := written_word_read _ _ _
-    have decoded : run (SailRV32.Functions.encdec_backwards 0x00160613) before =
-        .ok (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) before := by with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00160613 = some (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) :=
+      by decode_on_reset
     have fields : pooledDecoderFields (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) =
         some program[0].data := by with_unfolding_all rfl
-    simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
 theorem shared_machine_worker_effects : Caller.MixedMemoryEffects (data 0) before cells :=

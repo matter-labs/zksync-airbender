@@ -9,7 +9,7 @@ open _root_.Sail.ArchSem
     and reach its terminal PC and cell values. Global history supplies all input
     bounds and reads; the public boundary contains no per-row assumptions. -/
 def RamTraceSoundnessClaim : Prop :=
-  ∀ [MemoryPlatform SailRV32.exception] {p : Nat} [Fact p.Prime] (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : NativeTrace p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell} {program : List ProgramEntry} (inputs : RAMInputs trace initial cells program) (accepted : Trace.Accepted trace) (decoded : Decoded trace program),
+  ∀ {p : Nat} [Fact p.Prime] (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : NativeTrace p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell} {program : List ProgramEntry} (inputs : RAMInputs trace initial cells program) (accepted : Trace.Accepted trace) (decoded : Decoded trace program),
     Trace.Realizes (SailStep program) trace initial cells
 
 end Airbender.SubwordMemory

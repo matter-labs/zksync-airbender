@@ -109,13 +109,12 @@ theorem native_control {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   have f6 := flags 6
   norm_num [Variables.operations] at f0 f1 f2 f3 f5 f6
   have response := Verification.assertion_of_holds h ⟨88, by rw [constraint_count]; decide⟩
-  have masked := Verification.assertion_of_holds h ⟨89, by rw [constraint_count]; decide⟩
-  have low := Verification.assertion_of_holds h ⟨90, by rw [constraint_count]; decide⟩
-  have high := Verification.assertion_of_holds h ⟨91, by rw [constraint_count]; decide⟩
-  op_index at response masked low high
-  simp only [Expression.eval, Verification.environment, f0, f1, f2, f3, f5, f6] at response masked low high
-  push_cast at response masked low high
+  have low := Verification.assertion_of_holds h ⟨89, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds h ⟨90, by rw [constraint_count]; decide⟩
+  op_index at response low high
+  simp only [Expression.eval, Verification.environment, f0, f1, f2, f3, f5, f6] at response low high
+  push_cast at response low high
   refine ⟨?_, high⟩
-  linear_combination -response - masked - low
+  linear_combination -response - low
 
 end Airbender.Bigint.Equality.Proofs

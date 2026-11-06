@@ -1,5 +1,5 @@
 use super::*;
-use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
+use crate::allocation_pool::{AllocationPool, AllocationType, ColumnLayout};
 use crate::gkr::prover::forward_loop::utils::mem_access_fn;
 use cs::definitions::gkr::AddressSpaceType;
 use cs::gkr_compiler::InitsOrTeardownsTimestampAndValue;

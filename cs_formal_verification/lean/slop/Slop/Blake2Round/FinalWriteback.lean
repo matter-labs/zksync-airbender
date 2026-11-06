@@ -1,6 +1,5 @@
 import Slop.Blake2Round.FinalXor
 import Slop.Blake2Round.OpIndex
-import Slop.Blake2G.OpIndex
 
 set_option warningAsError true
 -- one call's goals may not use every lemma of the shared simp set
@@ -13,19 +12,29 @@ open Arithmetic Blake2G.Proofs
 set_option maxRecDepth 16384
 set_option maxHeartbeats 4000000
 
-/-- The selected final-output mux exposes the actual seven/nine- or eight/eight-
-    bit assembly. All sixteen state-write equations are checked. -/
+/-- The selected final-output mux (constraints 108..123) exposes the actual
+    seven/nine- or eight/eight-bit assembly of the last two queries of each limb.
+    All sixteen state-write equations are checked. -/
 theorem final_write {p : Nat} [Fact p.Prime] (limb : Fin 16) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (enabled : w 152 = 1) :
     w (7 + 4 * (limb.val / 2) + limb.val % 2) =
-      w (633 + 7 * limb.val) + (if limb.val < 8 then 128 else 256) * w (634 + 7 * limb.val) := by
+      finalColumn w limb 2 2 + (if limb.val < 8 then 128 else 256) * finalColumn w limb 3 2 := by
   have equation := Verification.assertion_of_holds h
-    ⟨153 + 2 * limb.val, by rw [constraint_count]; have := limb.isLt; omega⟩
+    ⟨108 + limb.val, by rw [constraint_count]; have := limb.isLt; omega⟩
+  clear h
   fin_cases limb
-  all_goals op_index at equation
+  all_goals simp only [finalColumn, finalQuery, Fin.isValue, Fin.val_zero, Fin.val_one,
+    Fin.val_two, Fin.val_mk, Fin.coe_ofNat_eq_mod, Nat.reduceMod, Nat.reduceMul, Nat.reduceAdd,
+    Nat.reduceDiv] at equation ⊢
+  all_goals op_index at equation ⊢
   all_goals simp [Expression.eval, Verification.environment, enabled] at equation ⊢
   all_goals linear_combination -equation
+
+private theorem tag_cast {p : Nat} [Fact p.Prime] {x : ZMod p} {t : Nat} (kind : Fin 3)
+    (value : x = (t : ZMod p)) (index : #v[4, 19, 20][kind] = t) :
+    x = ((#v[4, 19, 20][kind] : Nat) : ZMod p) := by
+  rw [index]; exact value
 
 /-- The a/c half of finalization needs no external limb bounds: the four
     imported queries bound and identify each of its three XOR inputs. -/
@@ -39,95 +48,36 @@ theorem ac_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (w (7 + 4 * (limb.val / 2) + limb.val % 2)).val < 65536 ∧
     (w (7 + 4 * (limb.val / 2) + limb.val % 2)).val =
       (acInitial w limb).val ^^^ (acA w limb).val ^^^ (acC w limb).val := by
-  obtain ⟨q0, q1, q2, q3⟩ := ac_queries compatible limb h
-  have inverse : 128 * (-15728640 : ZMod p) = 1 := by linear_combination compatible
-  have recover (x low : ZMod p) : x = low + 128 * ((-15728640 : ZMod p) * (x - low)) := by
-    linear_combination -(x - low) * inverse
+  have field : p = 2013265921 := serialized_field compatible
+  obtain ⟨t0, t1, t2, t3, initial, c, link0, link1, a⟩ := ac_shape field limb w
+  have q0 := final_query (by omega) (limb.castLE (by omega)) 0 1 h
+    (tag_cast 1 (by exact_mod_cast t0) rfl)
+  have q1 := final_query (by omega) (limb.castLE (by omega)) 1 2 h
+    (tag_cast 2 (by exact_mod_cast t1) rfl)
+  have q2 := final_query (by omega) (limb.castLE (by omega)) 2 1 h
+    (tag_cast 1 (by exact_mod_cast t2) rfl)
+  have q3 := final_query (by omega) (limb.castLE (by omega)) 3 2 h
+    (tag_cast 2 (by exact_mod_cast t3) rfl)
+  have r : ((2 ^ 7 : Nat) : ZMod p) = 128 := by norm_num
   have first := xor_limb_chunks hp (width := 7) (remaining := 9) (by decide) q0 q1
-    (recover _ _) (recover _ _) (zChunks := rfl)
+    (x := acInitial w limb) (y := acC w limb)
+    (z := finalColumn w (limb.castLE (by omega)) 0 2 +
+      ((2 ^ 7 : Nat) : ZMod p) * finalColumn w (limb.castLE (by omega)) 1 2)
+    (by rw [r]; exact initial) (by rw [r]; exact c) rfl
   have write := final_write (limb.castLE (by omega)) h enabled
   have activeWrite : w (7 + 4 * (limb.val / 2) + limb.val % 2) =
-      w (633 + 7 * limb.val) + 128 * w (634 + 7 * limb.val) := by
+      finalColumn w (limb.castLE (by omega)) 2 2 +
+        ((2 ^ 7 : Nat) : ZMod p) * finalColumn w (limb.castLE (by omega)) 3 2 := by
+    rw [r]
     simpa only [Fin.val_castLE, ite_eq_left limb.isLt] using write
   have second := xor_limb_chunks hp (width := 7) (remaining := 9) (by decide) q2 q3
-    (xChunks := rfl) (recover _ _) activeWrite
+    (y := acA w limb) (by rw [link0, link1]) (by rw [r]; exact a) activeWrite
   refine ⟨first.1, second.2.1, first.2.1, second.2.2.1, ?_⟩
   rw [second.2.2.2, first.2.2.2]
   ac_rfl
 
--- Actual b/d chunk columns, after the diagonal-lane permutation.
-def bdLowB : Vector Nat 8 := #v[625, 627, 493, 495, 537, 539, 581, 583]
-def bdHighB : Vector Nat 8 := #v[626, 624, 494, 492, 538, 536, 582, 580]
-def bdLowD : Vector Nat 8 := #v[529, 531, 573, 575, 617, 619, 485, 487]
-def bdHighD : Vector Nat 8 := #v[530, 528, 574, 572, 618, 616, 486, 484]
-
-def bdInitial {p : Nat} (w : Nat → ZMod p) (limb : Fin 8) : ZMod p :=
-  w (170 + 4 * (limb.val / 2) + 2 * (limb.val % 2))
-def bdB {p : Nat} (w : Nat → ZMod p) (limb : Fin 8) : ZMod p :=
-  w (55 + 4 * (limb.val / 2) + limb.val % 2)
-def bdD {p : Nat} (w : Nat → ZMod p) (limb : Fin 8) : ZMod p :=
-  w (87 + 4 * (limb.val / 2) + limb.val % 2)
-
-set_option maxHeartbeats 12000000 in
-/-- The b/d half changes chunk width between its two XORs. The imported split
-    equation, not the witness generator, supplies that change of decomposition. -/
-theorem bd_queries {p : Nat} [Fact p.Prime] (hp : 512 ≤ p) (limb : Fin 8)
-    {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints setupTable)) :
-    chunkXor 9 (w bdLowB[limb]) (w (684 + 7 * limb.val)) (w (685 + 7 * limb.val)) ∧
-    chunkXor 7 (w bdHighB[limb])
-      ((-3932160 : ZMod p) * (bdInitial w limb - w (684 + 7 * limb.val)))
-      (w (686 + 7 * limb.val)) ∧
-    chunkXor 8 (w bdLowD[limb]) (w (687 + 7 * limb.val)) (w (689 + 7 * limb.val)) ∧
-    chunkXor 8 (w bdHighD[limb]) (2 * w (686 + 7 * limb.val) + w (688 + 7 * limb.val))
-      (w (690 + 7 * limb.val)) ∧
-    bdB w limb = w bdLowB[limb] + 512 * w bdHighB[limb] ∧
-    bdD w limb = w bdLowD[limb] + 256 * w bdHighD[limb] ∧
-    w (685 + 7 * limb.val) = w (687 + 7 * limb.val) + 256 * w (688 + 7 * limb.val) := by
-  let index : Fin 16 := ⟨8 + limb.val, by have := limb.isLt; omega⟩
-  have tag (stage : Fin 4) : finalColumn w index stage 3 =
-      ((if stage.val = 0 then 20 else if stage.val = 1 then 19 else 4 : Nat) : ZMod p) := by
-    fin_cases limb
-    all_goals fin_cases stage
-    all_goals simp only [index, finalColumn, finalQuery, Fin.isValue, Fin.val_zero, Fin.val_one,
-      Fin.val_two, Fin.val_mk, Fin.coe_ofNat_eq_mod, Nat.reduceMod]
-    all_goals op_index
-    all_goals simp [Expression.eval, Verification.environment]
-  have q0 := final_query hp index 0 4 h (tag 0)
-  have q1 := final_query hp index 1 3 h (tag 1)
-  have q2 := final_query hp index 2 0 h (tag 2)
-  have q3 := final_query hp index 3 0 h (tag 3)
-  have initialHigh : finalColumn w index 1 1 =
-      (-3932160 : ZMod p) * (bdInitial w limb - w (684 + 7 * limb.val)) := by
-    fin_cases limb
-    all_goals simp only [index, finalColumn, finalQuery, Fin.isValue, Fin.val_zero, Fin.val_one,
-      Fin.val_two, Fin.val_mk, Fin.coe_ofNat_eq_mod, Nat.reduceMod]
-    all_goals op_index
-    all_goals simp [Expression.eval, Verification.environment, bdInitial]
-    all_goals ring
-  rw [initialHigh] at q1
-  have bWrite := Verification.assertion_of_holds h
-    ⟨128 + 2 * (limb.val / 2) + limb.val % 2, by rw [constraint_count]; have := limb.isLt; omega⟩
-  have dWrite := Verification.assertion_of_holds h
-    ⟨144 + 2 * (limb.val / 2) + limb.val % 2, by rw [constraint_count]; have := limb.isLt; omega⟩
-  have split := Verification.assertion_of_holds h
-    ⟨168 + 2 * limb.val, by rw [constraint_count]; have := limb.isLt; omega⟩
-  fin_cases limb
-  all_goals simp only [index, finalColumn, finalQuery, Fin.isValue, Fin.val_zero, Fin.val_one,
-    Fin.val_two, Fin.val_mk, Fin.coe_ofNat_eq_mod, Nat.reduceMod] at q0 q1 q2 q3 ⊢
-  all_goals try simp only [Nat.reduceDiv, Nat.reduceMod, Nat.reduceMul, Nat.reduceAdd, Fin.val_mk,
-    Fin.isValue] at bWrite dWrite split
-  all_goals op_index at q0 q1 q2 q3 bWrite dWrite split ⊢
-  all_goals simp [Expression.eval, Verification.environment, bdInitial, bdB, bdD, bdLowB, bdHighB,
-    bdLowD, bdHighD] at q0 q1 q2 q3 bWrite dWrite split ⊢
-  all_goals refine ⟨q0, q1, q2, ?_, ?_, ?_, ?_⟩
-  all_goals first
-    | simpa [add_comm] using q3
-    | linear_combination -bWrite
-    | linear_combination -dWrite
-    | linear_combination split
-
+/-- The b/d half changes chunk width between its two XORs. The imported query
+    expressions, not the witness generator, supply that change of decomposition. -/
 theorem bd_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1) (limb : Fin 8)
     {w : Nat → ZMod p}
@@ -138,27 +88,31 @@ theorem bd_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (w (23 + 4 * (limb.val / 2) + limb.val % 2)).val < 65536 ∧
     (w (23 + 4 * (limb.val / 2) + limb.val % 2)).val =
       (bdInitial w limb).val ^^^ (bdB w limb).val ^^^ (bdD w limb).val := by
-  obtain ⟨q0, q1, q2, q3, bChunks, dChunks, split⟩ := bd_queries (by omega) limb h
-  have inverse : 512 * (-3932160 : ZMod p) = 1 := by linear_combination compatible
-  have recover (x low : ZMod p) : x = low + 512 * ((-3932160 : ZMod p) * (x - low)) := by
-    linear_combination -(x - low) * inverse
+  have field : p = 2013265921 := serialized_field compatible
+  obtain ⟨t0, t1, t2, t3, b, initial, regroup, d⟩ := bd_shape field limb w
+  let index : Fin 16 := ⟨8 + limb.val, by omega⟩
+  have q0 := final_query (by omega) index 0 2 h (tag_cast 2 (by exact_mod_cast t0) rfl)
+  have q1 := final_query (by omega) index 1 1 h (tag_cast 1 (by exact_mod_cast t1) rfl)
+  have q2 := final_query (by omega) index 2 0 h (tag_cast 0 (by exact_mod_cast t2) rfl)
+  have q3 := final_query (by omega) index 3 0 h (tag_cast 0 (by exact_mod_cast t3) rfl)
+  have r9 : ((2 ^ 9 : Nat) : ZMod p) = 512 := by norm_num
+  have r8 : ((2 ^ 8 : Nat) : ZMod p) = 256 := by norm_num
   have first := xor_limb_chunks hp (width := 9) (remaining := 7) (by decide) q0 q1
-    bChunks (recover _ _) (zChunks := rfl)
-  norm_num only [Nat.reducePow, Nat.cast_ofNat] at first
-  have regroup : w (685 + 7 * limb.val) + 512 * w (686 + 7 * limb.val) =
-      w (687 + 7 * limb.val) + 256 * (2 * w (686 + 7 * limb.val) + w (688 + 7 * limb.val)) := by
-    linear_combination split
-  have write := final_write ⟨8 + limb.val, by have := limb.isLt; omega⟩ h enabled
+    (x := bdB w limb) (y := bdInitial w limb)
+    (z := finalColumn w index 0 2 + ((2 ^ 9 : Nat) : ZMod p) * finalColumn w index 1 2)
+    (by rw [r9]; exact b) (by rw [r9]; exact initial) rfl
+  have write := final_write index h enabled
   have activeWrite : w (23 + 4 * (limb.val / 2) + limb.val % 2) =
-      w (689 + 7 * limb.val) + 256 * w (690 + 7 * limb.val) := by
+      finalColumn w index 2 2 + ((2 ^ 8 : Nat) : ZMod p) * finalColumn w index 3 2 := by
     have large : ¬ 8 + limb.val < 8 := by omega
-    have index : 7 + 4 * ((8 + limb.val) / 2) + (8 + limb.val) % 2 =
+    have position : 7 + 4 * ((8 + limb.val) / 2) + (8 + limb.val) % 2 =
         23 + 4 * (limb.val / 2) + limb.val % 2 := by omega
-    have lowIndex : 633 + 7 * (8 + limb.val) = 689 + 7 * limb.val := by omega
-    have highIndex : 634 + 7 * (8 + limb.val) = 690 + 7 * limb.val := by omega
-    simpa only [Fin.val_mk, ite_eq_right large, index, lowIndex, highIndex] using write
+    rw [r8]
+    simpa only [index, Fin.val_mk, ite_eq_right large, position] using write
   have second := xor_limb_chunks hp (width := 8) (remaining := 8) (by decide) q2 q3
-    dChunks regroup activeWrite
+    (x := bdD w limb)
+    (y := finalColumn w index 0 2 + ((2 ^ 9 : Nat) : ZMod p) * finalColumn w index 1 2)
+    (by rw [r8]; exact d) (by rw [r8, r9]; exact regroup) activeWrite
   refine ⟨first.2.1, first.1, second.1, second.2.2.1, ?_⟩
   rw [second.2.2.2, first.2.2.2]
   ac_rfl

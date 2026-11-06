@@ -9,12 +9,12 @@ namespace Airbender.MulDiv
     with original Sail execution and native register/PC effects. Public conditions
     are listed in `Model.lean`; no operand-bound, read or selector premise remains. -/
 def SoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1) (trace : Trace.PooledTrace p) (initial : Reference.RiscV.Sail.State) (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry),
+  ∀ {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1) (trace : Trace.PooledTrace p) (initial : Reference.RiscV.Sail.State) (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry),
     InterfaceAssumptions trace initial cells program →
     Properties.Soundness (circuitModel trace initial cells program).relation spec
 
 def BabyBearSoundnessClaim : Prop :=
-  ∀ [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] (trace : Trace.PooledTrace babyBearModulus) (initial : Reference.RiscV.Sail.State) (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry),
+  ∀ (trace : Trace.PooledTrace babyBearModulus) (initial : Reference.RiscV.Sail.State) (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry),
     InterfaceAssumptions trace initial cells program →
     Properties.Soundness (circuitModel trace initial cells program).relation spec
 

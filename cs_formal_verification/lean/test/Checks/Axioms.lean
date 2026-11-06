@@ -8,6 +8,7 @@ import Slop.Final.Trace.Families.ShiftBinop.Theorems
 import Slop.Final.Circuits.SubwordMemory.Theorems
 import Slop.Final.Trace.Families.SubwordMemory.Theorems
 import Slop.Final.Trace.Soundness
+import Slop.Final.Trace.Workers.KeccakSplit.Theorems
 import Slop.AddSub.RowClaims
 import Slop.AddSub.ArtifactChecks
 import Slop.MulDiv.ArtifactChecks
@@ -369,11 +370,13 @@ import Human.Import.Coefficients
 #print axioms Airbender.Blake2Round.Proofs.input_after_update
 #print axioms Airbender.Blake2Round.Proofs.phase_reference
 #print axioms Airbender.Blake2Round.Proofs.round_phases
-#print axioms Airbender.Blake2Round.Proofs.diagonal_g_holds
+#print axioms Airbender.Blake2Round.Proofs.diagonal_facts
 #print axioms Airbender.Blake2Round.Proofs.diagonal_g_input_bounds
 #print axioms Airbender.Blake2Round.Proofs.diagonal_g_soundness
 #print axioms Airbender.Blake2Round.Proofs.diagonal_g_output_bounds
 #print axioms Airbender.Blake2Round.Proofs.extended_writes
+#print axioms Airbender.Blake2Round.Proofs.extended_words_bounded
+#print axioms Airbender.Blake2Round.Proofs.GTrace.sound
 #print axioms Airbender.Blake2Round.Proofs.mixing_soundness
 #print axioms Airbender.Blake2Round.Mixing.soundness
 #print axioms Airbender.Blake2Round.Mixing.babyBear_soundness
@@ -392,10 +395,8 @@ import Human.Import.Coefficients
 #print axioms Airbender.Arithmetic.value_of_chunks
 #print axioms Airbender.Blake2Round.Proofs.xor_limb_chunks
 #print axioms Airbender.Blake2Round.Proofs.final_query
-#print axioms Airbender.Blake2Round.Proofs.ac_queries
 #print axioms Airbender.Blake2Round.Proofs.final_write
 #print axioms Airbender.Blake2Round.Proofs.ac_limb_xor
-#print axioms Airbender.Blake2Round.Proofs.bd_queries
 #print axioms Airbender.Blake2Round.Proofs.bd_limb_xor
 #print axioms Airbender.Blake2Round.Proofs.final_limb_xor
 #print axioms Airbender.Blake2Round.Proofs.xor_three_words
@@ -415,8 +416,7 @@ import Human.Import.Coefficients
 #print axioms Tests.Blake2Round.lastStateAddress
 #print axioms Tests.Blake2Round.lastMessageAddress
 #print axioms Tests.Blake2Round.wrongPortAddressRejected
-#print axioms Airbender.Blake2Round.Proofs.padded_membership
-#print axioms Airbender.Blake2Round.Proofs.column_g_holds
+#print axioms Airbender.Blake2Round.Proofs.column_facts
 #print axioms Airbender.Blake2Round.Proofs.column_g_soundness
 #print axioms Airbender.Blake2Round.Proofs.column_g_output_bounds
 #print axioms Tests.Blake2Round.wrongColumnCarryRejected
@@ -430,9 +430,8 @@ import Human.Import.Coefficients
 #print axioms Airbender.Blake2Round.Control.babyBear_soundness
 #print axioms Tests.Blake2Round.wrongControlRejected
 #print axioms Airbender.Blake2Round.pointer_roles
-#print axioms Airbender.Blake2Round.Proofs.xor_lookup
-#print axioms Airbender.Blake2Round.Proofs.xor_lookup_raw
-#print axioms Airbender.Blake2Round.Proofs.xor_lookup_any
+#print axioms Airbender.Blake2Round.Proofs.lookup_facts_raw
+#print axioms Airbender.Blake2Round.SetupProofs.setupRow_eq
 #print axioms Airbender.Blake2Round.Proofs.data_lookups
 #print axioms Airbender.Arithmetic.value_of_scaled_range
 #print axioms Airbender.Blake2Round.Proofs.pointer_alignment
@@ -572,11 +571,10 @@ import Human.Import.Coefficients
 #print axioms Airbender.Reference.RiscV.Sail.writeMemory
 #print axioms SailRV32.Functions.execute_LOAD
 #print axioms SailRV32.Functions.execute_STORE
-#print axioms Sail.ArchSem.plat_term_write
-#print axioms Sail.ArchSem.load_reservation
-#print axioms Sail.ArchSem.match_reservation
+#print axioms _root_.plat_term_write
+#print axioms _root_.load_reservation
+#print axioms _root_.match_reservation
 
-#print axioms Sail.ArchSem.runtimeErrors
 #print axioms Airbender.Reference.Sail.early_return_error
 #print axioms Airbender.Reference.Sail.early_return_catch
 
@@ -648,7 +646,7 @@ import Human.Import.Coefficients
 #print axioms SailRV32.Functions.execute_BTYPE
 #print axioms SailRV32.Functions.execute_JAL
 #print axioms SailRV32.Functions.execute_JALR
-#print axioms Sail.ArchSem.sys_enable_experimental_extensions
+#print axioms _root_.sys_enable_experimental_extensions
 #print axioms Airbender.JumpBranchSlt.Proofs.masked_destination
 #print axioms Airbender.JumpBranchSlt.Proofs.subtraction_equations
 #print axioms Airbender.JumpBranchSlt.Proofs.pc_carries
@@ -1187,7 +1185,6 @@ import Human.Import.Coefficients
 #print axioms Tests.UnifiedROMBoot.sail_complete_trace
 
 #print axioms Airbender.Delegation.Proofs.rows_from_path
-#print axioms Airbender.Delegation.Proofs.clock_room_of_invocation_slots
 #print axioms Airbender.Keccak.Proofs.call_schedule
 #print axioms Airbender.Keccak.Proofs.call_execution
 #print axioms Airbender.Keccak.Native.call_execution
@@ -1255,10 +1252,8 @@ import Human.Import.Coefficients
 #print axioms Airbender.Delegation.Requests.Proofs.caller_tokens
 #print axioms Airbender.Delegation.Requests.Proofs.nonzero_matching
 #print axioms Airbender.Delegation.Requests.Proofs.zero_time_fulfillment_invisible
-#print axioms Tests.DelegationZeroInvocation.active_zero_invocation
-#print axioms Tests.DelegationZeroInvocation.no_caller_virtual_matching
-#print axioms Tests.DelegationZeroInvocation.native_soundness
-#print axioms Tests.DelegationZeroInvocation.native_operation_execution
+#print axioms Tests.DelegationZeroInvocation.active_zero_invocation_rejected
+#print axioms Tests.DelegationZeroInvocation.inactive_zero_invocation_query
 #print axioms Airbender.Blake2G.Proofs.word_port_address
 #print axioms Airbender.Blake2G.Proofs.native_addresses
 #print axioms Airbender.Blake2G.Proofs.native_word_observations
@@ -1281,6 +1276,21 @@ import Human.Import.Coefficients
 #print axioms Airbender.Keccak.Proofs.call_permutation
 #print axioms Airbender.Keccak.Proofs.permutation_binding
 #print axioms Airbender.Keccak.Native.permutation_soundness
+
+#print axioms Airbender.Keccak.Split.ColumnParity.SetupProofs.setupRow_eq
+#print axioms Airbender.Keccak.Split.ThetaRho.SetupProofs.setupRow_eq
+#print axioms Airbender.Keccak.Split.Chi5.SetupProofs.setupRow_eq
+#print axioms Airbender.Keccak.Split.Proofs.control_facts
+#print axioms Airbender.Keccak.Split.Native.Proofs.row_contract
+#print axioms Airbender.Keccak.Split.Native.Proofs.memory_order
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_memory_execution
+#print axioms Airbender.Keccak.Split.Native.Proofs.operation_execution
+#print axioms Airbender.Keccak.Split.Native.Proofs.call_chain
+#print axioms Airbender.Keccak.Split.Call.Proofs.permutation_of_executions
+#print axioms Airbender.Keccak.Split.Native.operation_execution
+#print axioms Airbender.Keccak.Split.Native.permutation_soundness
+#print axioms Airbender.Keccak.Split.schedule_length
+#print axioms Airbender.Keccak.Split.schedule_kinds
 
 #print axioms Airbender.Delegation.Caller.Proofs.query_csr
 #print axioms Airbender.Delegation.Caller.Proofs.query_selected
@@ -1315,7 +1325,7 @@ import Human.Import.Coefficients
 #print axioms Airbender.Blake2G.Native.workvector_soundness
 #print axioms Airbender.Blake2Round.Proofs.block_at
 
-#print axioms Tests.UnifiedCustomDecoder.original_decoder_pure
+#print axioms Tests.UnifiedCustomDecoder.original_decoder_run
 #print axioms Tests.UnifiedCustomDecoder.original_decoder
 #print axioms Tests.UnifiedCustomDecoder.native_metadata
 #print axioms Tests.UnifiedCustomDecoder.old_destination
@@ -1480,8 +1490,6 @@ import Human.Import.Coefficients
 #print axioms Airbender.Delegation.Caller.Proofs.shared_word_bounds
 #print axioms Airbender.Delegation.Caller.Proofs.shared_operation_effects
 
-#print axioms Tests.DelegationZeroInvocation.shared_unissued_worker_accepted
-#print axioms Tests.DelegationZeroInvocation.shared_unissued_control_update
 
 #print axioms Airbender.Trace.Proofs.image_restriction
 #print axioms Airbender.Delegation.Caller.Proofs.worker_projection_accepted
@@ -1578,8 +1586,6 @@ import Human.Import.Coefficients
 #print axioms Tests.DelegationMixedMemory.actual_terminal_control
 #print axioms Tests.DelegationMixedMemory.fabricated_read_locally_satisfies
 #print axioms Tests.DelegationMixedMemory.fabricated_read_breaks_joint_matching
-#print axioms Tests.DelegationZeroInvocation.mixed_unissued_worker_accepted
-#print axioms Tests.DelegationZeroInvocation.mixed_unissued_control_update
 
 #print axioms Airbender.Trace.Proofs.state_path_checks
 #print axioms Airbender.Trace.Proofs.state_clocks_unique
@@ -1596,7 +1602,6 @@ import Human.Import.Coefficients
 #print axioms Airbender.Delegation.Caller.worker_schedule_soundness
 #print axioms Tests.DelegationMixedMemory.issued_worker_schedule
 #print axioms Tests.DelegationMixedMemory.copy_call_native_slot
-#print axioms Tests.DelegationZeroInvocation.zero_worker_has_no_scheduled_caller
 
 #print axioms Airbender.UnifiedReduced.Caller.programImage
 #print axioms Airbender.UnifiedReduced.Caller.decoderTable
@@ -1943,7 +1948,6 @@ import Human.Import.Coefficients
 #print axioms Tests.DelegationRequestTrace.native_request_window_family
 #print axioms Tests.DelegationRequestTrace.native_request_outside_cuts
 #print axioms Tests.DelegationRequestTrace.unaligned_request_cut_rejected
-#print axioms Tests.DelegationZeroInvocation.zero_worker_retained_before_request_window
 #print axioms Tests.UnifiedDelegation.issued_copy_window
 #print axioms Tests.UnifiedDelegation.issued_copy_window_count
 #print axioms Airbender.Delegation.Proofs.transfer_boundary_image
@@ -2065,7 +2069,6 @@ import Human.Import.Coefficients
 #print axioms Tests.ControlPreparation.native_chain_reaches_both_controls
 #print axioms Tests.ControlPreparation.empty_chain_gap_keeps_same_state
 #print axioms Tests.ControlPreparation.fabricated_chain_gap_state_rejected
-#print axioms Tests.DelegationZeroInvocation.chain_retains_unissued_prefix_effect
 #print axioms Tests.ControlPreparation.keccak_control_is_reset
 #print axioms Tests.ControlPreparation.keccak_initial_control_is_different
 #print axioms Tests.ControlPreparation.incomplete_prepared_g_span_rejected
@@ -2106,11 +2109,6 @@ import Human.Import.Coefficients
 #print axioms Airbender.UnifiedReduced.Caller.prepared_round_cycles_soundness
 #print axioms Tests.UnifiedDelegation.copy_then_ram_caller_cycles
 #print axioms Tests.UnifiedDelegation.issued_bigint_abi_gap_caller_cycles
-#print axioms Tests.DelegationZeroInvocation.unified_unissued_worker_caller_cycles
-#print axioms Tests.DelegationZeroInvocation.unified_unissued_control_update
-#print axioms Tests.DelegationZeroInvocation.control_preparation_after_unissued_worker
-#print axioms Tests.DelegationZeroInvocation.preparation_reads_unissued_control_update
-#print axioms Tests.DelegationZeroInvocation.fabricated_preparation_read_rejected
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_worker_family
 
 #print axioms Airbender.JumpBranchSlt.trace_soundness
@@ -2145,7 +2143,6 @@ import Human.Import.Coefficients
 #print axioms Tests.ControlPreparation.native_sequence_reaches_successive_controls
 #print axioms Tests.ControlPreparation.empty_native_sequence_retains_initialized_prefix
 #print axioms Tests.ControlPreparation.overlapping_or_unaligned_sequences_rejected
-#print axioms Tests.DelegationZeroInvocation.sequence_retains_unissued_prefix_effect
 
 #print axioms Airbender.UnifiedReduced.Caller.RoundRegion
 #print axioms Airbender.UnifiedReduced.Caller.RoundRegionInputs
@@ -2161,7 +2158,6 @@ import Human.Import.Coefficients
 #print axioms Tests.ControlPreparation.round_region_seed_retains_preparation_timestamp
 #print axioms Tests.ControlPreparation.round_region_wrong_flags_rejected
 #print axioms Tests.ControlPreparation.prepared_round_region_two_bits_rejected
-#print axioms Tests.DelegationZeroInvocation.prepared_regions_retain_unissued_prefix_effect
 
 #print axioms Airbender.UnifiedReduced.Caller.ArithmeticInstruction
 #print axioms Airbender.UnifiedReduced.Caller.ArithmeticProgram

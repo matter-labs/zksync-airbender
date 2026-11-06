@@ -73,6 +73,8 @@ structure RequestInputs [Fact p.Prime] (data : RequestTrace p)
   initialClock : (timeOfPair data.machine.initial.timestamp).Bounded
   /-- The public initial machine clock follows the four-tick instruction stride. -/
   initialAligned : (timeOfPair data.machine.initial.timestamp).value % 4 = 0
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Reference.RiscV.Sail.Configured before
 
 /-- Every public caller is fulfilled by a worker of the decoded family at the
     exact issued invocation. Native clock room is proved for the worker pool.

@@ -39,7 +39,7 @@ private theorem read_limbs {p : Nat} {w : Nat → ZMod p}
   all_goals fin_cases limb
   all_goals first | simpa [readLaneLimbs] using low.1 | simpa [readLaneLimbs] using low.2 | simpa [readLaneLimbs] using high.1 | simpa [readLaneLimbs] using high.2
 
-theorem native_effects [Fact p.Prime] (hp : 16777216 ≤ p)
+theorem native_effects [Fact p.Prime] (_hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1) {w : Nat → ZMod p}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable Controller.rows)))
@@ -50,9 +50,15 @@ theorem native_effects [Fact p.Prime] (hp : 16777216 ≤ p)
     simpa [statePointer, importedConstraintsMemoryPorts,
       readToken, MemoryToken.word, MemoryPort.readCode, WordColumns.code] using
       reads importedConstraintsMemoryPorts[1] (by simp [importedConstraintsMemoryPorts])
+  -- the serialized inverse fixes p = BabyBear, above the 2^27 address bound
+  have field : 134217728 ≤ p := by
+    have babyBear : p = babyBearModulus :=
+      Blake2Round.Proofs.scale128_field (by linear_combination inverse)
+    rw [babyBear]; unfold babyBearModulus; norm_num
   refine ⟨?_, Keccak.Proofs.control_update_checks (by omega) core,
     Keccak.Proofs.controller_indices (by omega) Controller.Proofs.rows_bound core,
-    Keccak.Proofs.addresses hp inverse Controller.Proofs.rows_bound pointer core, ?_, ?_, ?_, ?_, ?_⟩
+    Keccak.Proofs.addresses field inverse Controller.Proofs.rows_bound pointer core,
+    ?_, ?_, ?_, ?_, ?_⟩
   · intro state column round control mapped
     apply Keccak.Proofs.iota_column (by omega) core
     refine ⟨active, control, ?_⟩

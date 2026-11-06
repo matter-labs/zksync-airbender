@@ -53,7 +53,7 @@ theorem Memory.native_value_bounds [Fact p.Prime] (hp : 2 * Trace.timestampBase 
   Memory.Proofs.value_bounds hp accepted inputs
 
 
-theorem local_checks {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p)
+theorem local_checks {p : Nat} [Fact p.Prime] (hp : 134217728 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
@@ -118,7 +118,7 @@ theorem theta_rho_column_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   Proofs.theta_rho_column hp thetaHolds rhoHolds mapping
 
 
-theorem address_checks {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p)
+theorem address_checks {p : Nat} [Fact p.Prime] (hp : 134217728 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (rowsBounded : ∀ key : Fin 4096, ∀ i : Fin 6, (control key)[i] < 31)

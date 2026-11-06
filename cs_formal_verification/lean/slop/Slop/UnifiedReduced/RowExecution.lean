@@ -11,7 +11,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-theorem row_clause_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem row_clause_from_memory [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
@@ -54,12 +54,8 @@ theorem row_clause_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatfor
   | jump input =>
     obtain ⟨encoding, state, words⟩ := observe_jump observed
     exact jump_execution_from_memory hp inverse physical member
-      nativeInputs inputs.boot.setup inputs.configuration.isa (by
-          intro indirect
-          refine ⟨inputs.configuration.privilege, inputs.landingPadDisabled ?_⟩
-          cases kind : input.instruction with
-          | jal imm => simp [JumpBranchSlt.Jump.Instruction.indirect, kind] at indirect
-          | jalr imm => exact ⟨entry, present, imm, input.rs1, input.rd, by simpa [Jump.instruction, JumpBranchSlt.Jump.instruction, kind] using encoding⟩)
+      nativeInputs inputs.boot.setup inputs.configuration.isa
+        (fun _ => ⟨inputs.configuration.privilege, inputs.configuration.landingPad⟩)
       words state (state.symm ▸ position) source (inputs.code entry present).2 memory query encoding physicalHistory
   | binary shift input =>
     obtain ⟨encoding, state, words⟩ := observe_binary observed
@@ -77,7 +73,7 @@ theorem row_clause_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatfor
       inputs.boot inputs.configuration inputs.ordinary destination words state (state.symm ▸ position)
       source memory query encoding history
 
-theorem row_clause [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem row_clause [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}

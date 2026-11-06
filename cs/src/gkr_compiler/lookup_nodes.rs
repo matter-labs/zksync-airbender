@@ -212,9 +212,8 @@ impl<F: PrimeField> GKRGate<F> for LookupSingleColumnWitnessMinusSetupInputNode<
                 };
                 assert!(output_layer > 0);
                 let layer_for_caches = output_layer - 1;
-                let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
 
-                cached_input
+                graph.add_cached_relation(cached_input, layer_for_caches)
             };
 
             let relation = GKRRelation::LookupFromMaterializedBaseInputWithSetup {
@@ -273,9 +272,8 @@ impl<F: PrimeField> GKRGate<F> for LookupSingleColumnWitnessPairAggregationNode<
                     };
                     assert!(output_layer > 0);
                     let layer_for_caches = output_layer - 1;
-                    let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
 
-                    cached_input
+                    graph.add_cached_relation(cached_input, layer_for_caches)
                 }
             });
 
@@ -363,9 +361,8 @@ impl<F: PrimeField> GKRGate<F> for LookupExplicitPairWithSingleColumnInputAggreg
             };
             assert!(output_layer > 0);
             let layer_for_caches = output_layer - 1;
-            let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
 
-            cached_input
+            graph.add_cached_relation(cached_input, layer_for_caches)
         };
 
         let node = LookupExplicitPairWithSingleColumnMaterializedInputAggregationNode {
@@ -440,9 +437,8 @@ impl<F: PrimeField> GKRGate<F> for VectorLookupWitnessPairAggregationFromCachesN
                 let cached_input = GKRCacheRelation::VectorizedLookup(input.clone());
                 assert!(output_layer > 0);
                 let layer_for_caches = output_layer - 1;
-                let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
 
-                cached_input
+                graph.add_cached_relation(cached_input, layer_for_caches)
             });
 
             let relation = GKRRelation::LookupPairFromMaterializedVectorInputs { input, output };

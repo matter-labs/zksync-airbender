@@ -1,4 +1,5 @@
 import Slop.Bigint.Claims
+import Slop.Sail.ResetState
 
 namespace Tests.BigintMemory
 open Airbender Trace Arithmetic
@@ -7,12 +8,12 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 4000000
 
 def row (column : Nat) : ZMod babyBearModulus :=
-  if column = 1 then 4
+  if column = 1 then 5
   else if column = 4 || column = 38 then 64
   else if column = 37 then 32
   else if column = 55 then 128
   else if column = 0 || column = 66 || column = 212 || column = 214 || column = 215 then 1
-  else if 217 ≤ column ∧ column < 274 ∧ (column - 217) % 3 = 2 then 1
+  else if 216 ≤ column ∧ column < 273 ∧ (column - 216) % 3 = 2 then 1
   else 0
 
 private def native : Delegation.Row babyBearModulus := ⟨.bigint, row⟩
@@ -25,6 +26,7 @@ theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
   all_goals solve
     | decide
     | (apply Verification.range16_contains; decide)
+    | (apply Trace.Proofs.range_contains; decide)
     | (refine ⟨⟨0, by decide⟩, ?_⟩; decide)
     | (refine ⟨⟨262144, by decide⟩, ?_⟩; decide)
     | (refine ⟨⟨1310720, by decide⟩, ?_⟩; decide)
@@ -49,14 +51,17 @@ def cells : List Cell :=
     [.register 11] ++ (List.range 8).map (fun i => .ram (BitVec.ofNat 32 (4194336 + 4 * i))) ++
     [.register 12]
 
-def before : Reference.RiscV.Sail.State where
-  regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x10 (4194304 : BitVec 32)
+noncomputable def before : Reference.RiscV.Sail.State where
+  regs := Reference.RiscV.Sail.resetMachine.regs.insert .x10 (4194304 : BitVec 32)
     |>.insert .x11 (4194336 : BitVec 32) |>.insert .x12 (128 : BitVec 32)
   mem := (List.range 64).foldl (fun memory i => memory.insert (4194304 + i) (0 : BitVec 8))
     (Std.ExtHashMap.emptyWithCapacity)
   tags := ()
   cycleCount := 0
   sailOutput := #[]
+
+theorem airbender_before : Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before]
 
 def data : Delegation.MemoryData babyBearModulus where
   setup := setup
@@ -97,6 +102,10 @@ theorem inputs : Bigint.Memory.Inputs data before cells := by
   · constructor
     · exact initialized
     · decide +kernel
+    · intro current member
+      simp only [data, List.mem_singleton] at member
+      subst current
+      decide
     · intro current member
       simp only [data, List.mem_singleton] at member
       subst current

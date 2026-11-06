@@ -74,7 +74,7 @@ fn read_field_le<F: PrimeField>(bytes: &[u8]) -> F {
 }
 
 fn mmap_io_err(e: impl core::fmt::Debug) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::Other, format!("mmap-io: {e:?}"))
+    std::io::Error::other(format!("mmap-io: {e:?}"))
 }
 
 /// Serialize a coset's RS codewords straight from its column slices (header +
@@ -311,7 +311,6 @@ mod test {
     use crate::gkr::prover::stages::commitment_utils::ColumnMajorCosetBoundTracePart;
     use field::baby_bear::base::BabyBearField;
     use field::{Field, PrimeField};
-    use std::sync::Arc;
 
     fn bb(v: u32) -> BabyBearField {
         BabyBearField::from_raw_repr_with_reduction(v)

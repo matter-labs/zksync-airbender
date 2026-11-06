@@ -6,7 +6,6 @@ use crate::gkr::sumcheck::{
     output_univariate_monomial_form_max_quadratic,
 };
 use cs::definitions::GKRAddress;
-use field::FixedArrayConvertible;
 use field::{Field, FieldExtension, PrimeField};
 use rand::RngCore;
 use std::collections::BTreeMap;
@@ -16,16 +15,15 @@ pub(super) fn random_poly_in_ext<F, E>(size: usize) -> Vec<E>
 where
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    [(); E::DEGREE]: Sized,
 {
     let mut rng = rand::rng();
 
     (0..size)
         .map(|_| {
-            let coeffs = [rng.next_u32(); E::DEGREE].map(|value| F::from_u32_with_reduction(value));
-            <E as FieldExtension<F>>::from_coeffs(<E as FieldExtension<F>>::Coeffs::from_array(
-                coeffs,
-            ))
+            let value = F::from_u32_with_reduction(rng.next_u32());
+            let mut coeffs = <E as FieldExtension<F>>::into_coeffs(E::ZERO);
+            coeffs.as_mut().fill(value);
+            <E as FieldExtension<F>>::from_coeffs(coeffs)
         })
         .collect()
 }
@@ -36,8 +34,10 @@ pub(super) fn setup_storage<F: PrimeField, E: FieldExtension<F> + Field>(
 ) -> GKRStorage<F, E> {
     let mut storage = GKRStorage::<F, E>::default();
 
-    let mut layer_0 = GKRLayerSource::default();
-    layer_0.layer_idx = 0;
+    let mut layer_0 = GKRLayerSource {
+        layer_idx: 0,
+        ..Default::default()
+    };
     for (addr, poly) in inputs {
         layer_0
             .extension_field_inputs
@@ -45,8 +45,10 @@ pub(super) fn setup_storage<F: PrimeField, E: FieldExtension<F> + Field>(
     }
     storage.layers.push(layer_0);
 
-    let mut layer_1 = GKRLayerSource::default();
-    layer_1.layer_idx = 1;
+    let mut layer_1 = GKRLayerSource {
+        layer_idx: 1,
+        ..Default::default()
+    };
     for (addr, poly) in outputs {
         layer_1
             .extension_field_inputs
@@ -64,8 +66,10 @@ pub(super) fn setup_mixed_storage<F: PrimeField, E: FieldExtension<F> + Field>(
 ) -> GKRStorage<F, E> {
     let mut storage = GKRStorage::<F, E>::default();
 
-    let mut layer_0 = GKRLayerSource::default();
-    layer_0.layer_idx = 0;
+    let mut layer_0 = GKRLayerSource {
+        layer_idx: 0,
+        ..Default::default()
+    };
     for (addr, poly) in base_inputs {
         layer_0
             .base_field_inputs
@@ -78,8 +82,10 @@ pub(super) fn setup_mixed_storage<F: PrimeField, E: FieldExtension<F> + Field>(
     }
     storage.layers.push(layer_0);
 
-    let mut layer_1 = GKRLayerSource::default();
-    layer_1.layer_idx = 1;
+    let mut layer_1 = GKRLayerSource {
+        layer_idx: 1,
+        ..Default::default()
+    };
     for (addr, poly) in outputs {
         layer_1
             .extension_field_inputs
@@ -99,7 +105,6 @@ pub(super) fn setup_sumcheck_params<F, E>(
 where
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    [(); E::DEGREE]: Sized,
 {
     let previous_round_challenges = random_poly_in_ext(folding_steps);
 
@@ -151,6 +156,7 @@ pub(super) fn compute_product<F: PrimeField, E: FieldExtension<F> + Field>(
         .collect()
 }
 
+#[allow(dead_code)]
 pub(super) fn compute_mask_identity<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     m: &[E],
@@ -168,6 +174,7 @@ pub(super) fn compute_mask_identity<F: PrimeField, E: FieldExtension<F> + Field>
         .collect()
 }
 
+#[allow(dead_code)]
 pub(super) fn compute_lookup_sub<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     b: &[E],
@@ -356,7 +363,7 @@ pub(super) fn run_sumcheck_test<
                 &worker,
             );
 
-            assert!(last_evaluations.len() > 0);
+            assert!(!last_evaluations.is_empty());
 
             let previous_round_last_challenge =
                 previous_round_challenges.last().expect("must be present");

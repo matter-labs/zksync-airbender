@@ -5,7 +5,6 @@ import Mathlib.Logic.Relation
 namespace Airbender.Trace
 open Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 /-- One successful instruction from Sail state `before` to `after`. `program`
     holds entries built from public bytes; `projection` selects native decoder

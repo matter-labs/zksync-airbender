@@ -51,6 +51,7 @@ elab "offset_walk" : tactic => do
   g.assign pf
   replaceMainGoal []
 
+set_option maxRecDepth 65536 in
 /-- The original decoder supplies the implicit zero bit of JAL/branch offsets.
     This holds for successful decoding, including any effects in other clauses. -/
 theorem decoded_offset_even (bits : BitVec 32) :

@@ -1,11 +1,10 @@
 //! H2D transfer of a memory Merkle cap. Per-coset host caps are packed into a
-//! contiguous pinned buffer in bit-reversed coset order and copied into a
+//! contiguous host buffer in bit-reversed coset order and staged into a
 //! matching device allocation on `h2d_stream`.
 
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
@@ -15,7 +14,6 @@ use crate::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer}
 use crate::upstream::MerkleTreeCapVarLength;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
-use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use gpu_hash::blake2s::Digest;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
@@ -25,7 +23,7 @@ pub struct GpuGKRMemoryTransferHost {
     pub log_tree_cap_size: u32,
     /// Single contiguous Merkle cap of length `1 << log_tree_cap_size`, stored
     /// in canonical bit-reversed coset order, matching the device-side cap.
-    pub(crate) unified_tree_cap: StaticPinnedBox<Digest>,
+    pub(crate) unified_tree_cap: Vec<Digest>,
 }
 
 impl GpuGKRMemoryTransferHost {
@@ -36,7 +34,7 @@ impl GpuGKRMemoryTransferHost {
         memory_tree_caps: &[MerkleTreeCapVarLength],
         log_lde_factor: u32,
         log_tree_cap_size: u32,
-    ) -> CudaResult<Self> {
+    ) -> Self {
         let lde_factor = 1usize << log_lde_factor;
         assert_eq!(
             memory_tree_caps.len(),
@@ -45,7 +43,7 @@ impl GpuGKRMemoryTransferHost {
         );
         let cap_size = 1usize << log_tree_cap_size;
         let per_coset = cap_size >> log_lde_factor;
-        let mut unified_tree_cap = alloc_static_pinned_box_uninit::<Digest>(cap_size)?;
+        let mut unified_tree_cap = Vec::with_capacity(cap_size);
         for stage1_pos in 0..lde_factor {
             let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
             let src = &memory_tree_caps[natural_coset_index].cap;
@@ -54,14 +52,13 @@ impl GpuGKRMemoryTransferHost {
                 per_coset,
                 "memory tree cap[{natural_coset_index}] length mismatch",
             );
-            unified_tree_cap[stage1_pos * per_coset..(stage1_pos + 1) * per_coset]
-                .copy_from_slice(src);
+            unified_tree_cap.extend_from_slice(src);
         }
-        Ok(Self {
+        Self {
             log_lde_factor,
             log_tree_cap_size,
             unified_tree_cap,
-        })
+        }
     }
 }
 
@@ -82,18 +79,8 @@ impl<'a> GpuGKRMemoryTransfer<'a> {
         })
     }
 
-    pub fn schedule_transfer(
-        &mut self,
-        transfer: &mut Transfer<'a>,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
-        transfer.ensure_allocated(context)?;
-        let stream = context.get_h2d_stream();
-        memory_copy_async(
-            &mut self.unified_device_cap,
-            &self.host.unified_tree_cap[..],
-            stream,
-        )
+    pub fn stage_transfer(&mut self, transfer: &mut Transfer<'a>) {
+        transfer.stage(&self.host.unified_tree_cap, &mut self.unified_device_cap);
     }
 
     pub fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {

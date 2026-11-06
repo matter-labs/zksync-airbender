@@ -45,7 +45,7 @@ set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
 /-- Shared subword retirement over the imported constraints and actual port
     history. Bounds/address/ROM facts are supplied by the global history proof. -/
-theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem local_execution {p : Nat} [Fact p.Prime]
     (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {program : Nat → BitVec 32} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Verification.subwordTable program)))
@@ -68,7 +68,7 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
     (addressCode :
       let port := if store then importedConstraintsMemoryPorts[2] else importedConstraintsMemoryPorts[1]
       port.address.code w = (Cell.ram (port.address.word w).toBitVec).addressCode)
-    {before after : State} (configuration : FlatMemoryConfiguration before)
+    {before after : State} (configuration : Configured before)
     (romReads : ∀ cell : Word, cell.Bounded → cell.hi < 64 → Cell.ram cell.toBitVec ∈ cells →
       (readBytes (ue := SailRV32.exception) 4 cell.toBitVec.toNat).run
         (Trace.retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
@@ -149,6 +149,25 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
     rw [← address.2.2.2.1]
     exact ordinary_cell_offset (by rw [Word.toBitVec_toNat cellBound]; exact address.2.1)
       (ordinary _ cellPresent) address.2.2.1
+  -- The circuit rejects stores into ROM (`rom_selection`): a store address is in RAM.
+  have ramStore (mode : store = true) :
+      Reference.RiscV.Sail.Configuration.ROM_END ≤ (input.source.toBitVec + input.immediate.toBitVec).toNat := by
+    subst mode
+    have classified := rom_selection (by omega) true h selected
+      (address := ⟨(w 27).val, (w 28).val⟩) (ZMod.natCast_zmod_val _).symm address.1
+    have high := classified.2 rfl
+    change 64 ≤ (w 28).val at high
+    change Reference.RiscV.Sail.Configuration.ROM_END ≤ ((Word.mk (w 19).val (w 20).val).toBitVec +
+      (Word.mk (w 8).val (w 9).val).toBitVec).toNat
+    have sum := address.2.2.2.1
+    have bounded : (Word.mk (w 27).val (w 28).val).Bounded := by simpa using address.1
+    have cellAligned : (Word.mk (w 27).val (w 28).val).value % 4 = 0 := by simpa using address.2.1
+    have offsetBound : (w 35).val + 2 * (w 36).val < 4 := address.2.2.1
+    simp only [ite_true] at sum
+    rw [← sum, BitVec.toNat_add, Word.toBitVec_toNat bounded, BitVec.toNat_ofNat]
+    simp only [Word.Bounded, Word.value, limbBase] at bounded cellAligned ⊢
+    simp only [Reference.RiscV.Sail.Configuration.ROM_END]
+    omega
   have immediate := Trace.Proofs.native_query_immediate_word limbField (decoder_field_bounds fields).1 query
   change input.immediate = entry.data.immediate at immediate
   have pcWord := Trace.Proofs.native_query_pc_word limbField query
@@ -208,7 +227,7 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
     · exact Trace.Proofs.retired_state_pc before currentPC
     · exact memory_access
         (Trace.Proofs.retired_state_configuration configuration currentPC)
-        aligned domain
+        aligned domain ramStore
   have addressInverse : (-30720 : ZMod p) * 65536 = 1 := by
     calc
       (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring
@@ -257,7 +276,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- RAM loads/stores reach the actual native after-state. All operand ranges,
     reads, decoding and virtual transport are derived from the accepted history.
     The address-domain restriction is on public initialized cells. -/
-theorem row_ram_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem row_ram_execution {p : Nat} [Fact p.Prime]
     (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : NativeTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -265,7 +284,7 @@ theorem row_ram_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exce
     {program : Nat → BitVec 32} (setup : trace.rom = Verification.subwordTable program)
     (ramDomain : ∀ address, Cell.ram address ∈ cells → ROM.limit ≤ address.toNat)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial)
+    (configuration : Configured initial)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p TraceKind) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (query : decoderQuery w = entry.query)

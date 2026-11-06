@@ -91,12 +91,7 @@ structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
     (input : Input) (_output : Sail.Output) (_w : Nat → ZMod p)
     : Prop extends TraceInputs trace initial cells program where
-  /-- Sail's target-alignment check can read the public ISA configuration register. -/
-  isa : ∃ value, initial.regs.get? .misa = some value
-  /-- Only JALR needs the Machine/MLPE-clear landing-pad configuration. -/
-  landingPad : input.instruction.indirect = true →
-    initial.regs.get? .cur_privilege = some .Machine ∧
-      ∃ security, initial.regs.get? .mseccfg = some security ∧
-        SailRV32.Functions._get_Seccfg_MLPE security = 0
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Sail.Configured initial
 
 end Airbender.JumpBranchSlt.Jump

@@ -1,4 +1,4 @@
-use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
+use crate::allocation_pool::AllocationPool;
 use crate::gkr::sumcheck::evaluation_kernels::{mask_into_identity, BatchedGKRKernel};
 
 use super::*;

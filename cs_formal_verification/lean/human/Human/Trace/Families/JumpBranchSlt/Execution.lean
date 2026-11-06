@@ -4,7 +4,6 @@ import Human.Trace.Execution
 namespace Airbender.JumpBranchSlt
 open Trace Reference.RiscV.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 /-- Fetch, original Sail decoding, and the original generated execution clauses.
     This reuses the same step relation as the restricted arithmetic/memory trace. -/

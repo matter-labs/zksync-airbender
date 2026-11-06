@@ -45,10 +45,11 @@ theorem pooled_subword_address {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial))
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection initial addresses = some program) (decoded : PooledDecoded trace program)
+    (programImage : programImageWith projection initial addresses = some program) (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : SubwordMemory.ProgramEntry} (fields : SubwordMemory.decoderFields entry.instruction = some entry.data)
-    (query : SubwordMemory.decoderQuery w = entry.query) (store : Bool) (selected : w 10 = if store then 1 else 0) :
+    (query : SubwordMemory.decoderQuery w = entry.query) (store : Bool) (selected : w 10 = if store then 1 else 0)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     let cell : Word := ⟨(if store then w 27 else w 21).val, (if store then w 28 else w 22).val⟩
     let offset := (w 35).val + 2 * (w 36).val
     cell.Bounded ∧ cell.value % 4 = 0 ∧ offset < 4 ∧
@@ -79,7 +80,7 @@ set_option backward.isDefEq.respectTransparency false in
     state. Global history discharges ranges/reads; ROM rows use public byte words. -/
 theorem pooled_subword_execution {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
-    [registry : PooledRegistry projection] [MemoryPlatform SailRV32.exception]
+    [registry : PooledRegistry projection]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -88,9 +89,9 @@ theorem pooled_subword_execution {p : Nat} [Fact p.Prime]
     (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial))
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial)
+    (configuration : Configured initial)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection initial addresses = some program)
+    (programImage : programImageWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : PooledProgramEntry} (present : entry ∈ program)

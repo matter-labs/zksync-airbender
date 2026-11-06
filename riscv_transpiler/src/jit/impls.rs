@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ptr::NonNull;
 
 use super::*;
@@ -536,6 +537,7 @@ fn load_abelian_into(ops: &mut x64::Assembler, x: u32, y: u32, destination: u8, 
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! print_registers {
     ($ops:ident, $pc:expr, $instr:expr) => {
         dynasm!($ops
@@ -622,6 +624,7 @@ macro_rules! check_to_save_trace {
 // us off the AVX/SSE transition penalty, matching the existing pextrd/pinsrd/movdqu code.)
 fn record_circuit_type(ops: &mut x64::Assembler, circuit_type: CounterType, by: u16) {
     assert!(by > 0);
+    assert!((circuit_type as u8) < (CounterType::KeccakF1600Delegation as u8));
     let x = circuit_type as u8;
     let grp = 8 + x / 2; // xmm8..=xmm12
     let lane = x % 2; // qword lane within the register
@@ -1443,7 +1446,7 @@ impl<I: ContextImpl> JittedCode<I> {
                 ;; before_call!(ops)
                 ; push rdx
                 ; push r9
-                ; mov rax, QWORD (Context::<I>::nondeterminism_as_raw_ptr as *const ()).addr() as usize as isize as i64
+                ; mov rax, QWORD (Context::<I>::nondeterminism_as_raw_ptr as *const ()).addr() as isize as i64
                 ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)] // first argument is pointer to the context
                 ; call rax
                 ; pop r9
@@ -2481,7 +2484,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                         ;; before_call!(ops)
                                         ; push rdx
                                         ; push r9
-                                        ; mov rax, QWORD (Context::<I>::read_nondeterminism as *const ()).addr() as usize as isize as i64
+                                        ; mov rax, QWORD (Context::<I>::read_nondeterminism as *const ()).addr() as isize as i64
                                         ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
                                         ;; spill_counters!(ops)
                                         ; call rax
@@ -2518,7 +2521,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                         ;; before_call!(ops)
                                         ; push rdx
                                         ; push r9
-                                        ; mov rax, QWORD (Context::<I>::write_nondeterminism as *const ()).addr() as usize as isize as i64
+                                        ; mov rax, QWORD (Context::<I>::write_nondeterminism as *const ()).addr() as isize as i64
                                         ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
                                         ;; spill_counters!(ops)
                                         ; mov rdx, rsi
@@ -2537,7 +2540,7 @@ impl<I: ContextImpl> JittedCode<I> {
                 // the corresponding CSR register number. Consecutive identical
                 // delegation instructions belong to a single delegated call.
                 Op::ZicsrDelegation => {
-                    let mut cycles_taken = 0;
+                    let cycles_taken;
                     // NOTE: all the increment below happen before moving RSP
                     let function: *const () = match instr.imm {
                         BLAKE2S_DELEGATION_CSR_REGISTER => {
@@ -2570,7 +2573,7 @@ impl<I: ContextImpl> JittedCode<I> {
                         KECCAK_SPECIAL5_CSR_REGISTER => {
                             // we expect exactly 649 calls for single keccak_f1600
                             let mut num_calls = 0;
-                            for j in 1..=NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
+                            for j in 1..=KECCAK_SPECIAL5_NUM_DELEGATION_CALLS {
                                 if program[i + j] == program[i] {
                                     continue;
                                 } else {
@@ -2578,7 +2581,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                     break;
                                 }
                             }
-                            assert_eq!(num_calls, NUM_DELEGATION_CALLS_FOR_KECCAK_F1600);
+                            assert_eq!(num_calls, KECCAK_SPECIAL5_NUM_DELEGATION_CALLS);
                             i += num_calls;
                             cycles_taken = num_calls;
                             record_circuit_type(
@@ -2588,7 +2591,17 @@ impl<I: ContextImpl> JittedCode<I> {
                             );
                             process_csr::<KECCAK_SPECIAL5_CSR_REGISTER> as *const ()
                         }
-                        other_csrs @ _ => {
+                        KECCAK_COLUMN_PARITY_CSR_REGISTER => {
+                            let num_calls = NUM_KECCAK_F1600_CALLS;
+                            for j in 0..num_calls {
+                                assert_eq!(program[i + j].name, InstructionName::ZicsrDelegation);
+                                assert_eq!(program[i + j].imm, keccak_f1600_call_csr(j));
+                            }
+                            i += num_calls;
+                            cycles_taken = num_calls;
+                            process_csr::<KECCAK_COLUMN_PARITY_CSR_REGISTER> as *const ()
+                        }
+                        other_csrs => {
                             panic!("Unknown CSR {}", other_csrs);
                         }
                     };
@@ -2646,7 +2659,7 @@ impl<I: ContextImpl> JittedCode<I> {
                         for _ in 0..call_dup {
                             dynasm!(ops
                                 ; .arch x64
-                                ; mov rax, QWORD (ablation_empty_handler as *const ()).addr() as usize as isize as i64
+                                ; mov rax, QWORD (ablation_empty_handler as *const ()).addr() as isize as i64
                                 ; call rax
                                 // the arguments of the real call, from where they were pushed
                                 ; mov rdx, [rsp + 8]
@@ -2719,7 +2732,7 @@ impl<I: ContextImpl> JittedCode<I> {
             ; mov rdx, rsp
             ; mov [rdx + (MachineState::PC_OFFSET as i32)], r9d
             ;; save_machine_state!(ops)
-            ; mov rax, QWORD (print_runtime_panic as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_runtime_panic as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; mov rsi, rdx
             ; call rax
@@ -2728,7 +2741,7 @@ impl<I: ContextImpl> JittedCode<I> {
         dynasm!(ops
             ; .arch x64
             ; ->exit_on_misaligned:
-            ; mov rax, QWORD (print_misaligned as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_misaligned as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; call rax
         );
@@ -2737,14 +2750,14 @@ impl<I: ContextImpl> JittedCode<I> {
         dynasm!(ops
             ; .arch x64
             ; ->exit_with_error:
-            ; mov rax, QWORD (print_complaint as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_complaint as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; call rax
         );
 
         // map jump offsets that were no initialized to point into error
         for (i, offset) in jump_offsets.iter_mut().enumerate() {
-            if initialized_jump_offsets.contains(&i) == false {
+            if !initialized_jump_offsets.contains(&i) {
                 assert_eq!(*offset, 0);
                 *offset = exit_with_error_offset;
             }
@@ -3113,8 +3126,6 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         //     (&*trace as *const TraceChunk).addr()
         // );
 
-        let context_ref_mut = &mut context;
-
         let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
@@ -3153,7 +3164,7 @@ extern "sysv64" fn ablation_empty_handler(
     _memory_holder: NonNull<u64>,
     _machine_state: &mut MachineState,
 ) -> u64 {
-    core::hint::black_box(trace_piece.len as u64)
+    core::hint::black_box(trace_piece.len)
 }
 
 extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
@@ -3172,13 +3183,15 @@ extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
     // we must reconstruct it
     let memory_holder = unsafe {
         let num_u64_word = machine_state.ram_config.memory_holder_buffer_size();
-        core::mem::transmute(core::slice::from_raw_parts_mut(
+        core::mem::transmute::<&mut [u64], &mut MemoryHolder>(core::slice::from_raw_parts_mut(
             memory_holder.as_ptr(),
             num_u64_word,
         ))
     };
     if CSR_NUMBER == KECCAK_SPECIAL5_CSR_REGISTER {
         keccak_unrolled_implementation(trace_piece, memory_holder, machine_state)
+    } else if CSR_NUMBER == KECCAK_COLUMN_PARITY_CSR_REGISTER {
+        keccak_f1600_unrolled_implementation(trace_piece, memory_holder, machine_state)
     } else if CSR_NUMBER == BIGINT_OPS_WITH_CONTROL_CSR_REGISTER {
         bigint_implementation(trace_piece, memory_holder, machine_state)
     } else if CSR_NUMBER == BLAKE2S_DELEGATION_CSR_REGISTER {
@@ -3264,6 +3277,7 @@ impl<I: ContextImpl> Context<I> {
     }
 }
 
+#[allow(dead_code)]
 extern "sysv64" fn print_registers(
     registers: &[u32; 32],
     timestamp: u64,
@@ -3307,11 +3321,13 @@ extern "sysv64" fn print_complaint(timestamp: u64) {
     )
 }
 
+#[allow(dead_code)]
 fn sign_extend<const SOURCE_BITS: u8>(x: u32) -> i32 {
     let shift = 32 - SOURCE_BITS;
     i32::from_ne_bytes((x << shift).to_ne_bytes()) >> shift
 }
 
+#[allow(dead_code)]
 fn view_assembly(assembly: &[u8], start: usize) {
     /// Print register names
     fn reg_names(cs: &Capstone, regs: &[RegId]) -> String {
@@ -3344,7 +3360,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
         println!();
         println!("{}", i);
 
-        let detail: InsnDetail = cs.insn_detail(&i).expect("Failed to get insn detail");
+        let detail: InsnDetail = cs.insn_detail(i).expect("Failed to get insn detail");
         let arch_detail: ArchDetail = detail.arch_detail();
         let ops = arch_detail.operands();
 
@@ -3356,7 +3372,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
             ("insn groups:", group_names(&cs, detail.groups())),
         ];
 
-        for &(ref name, ref message) in output.iter() {
+        for (name, message) in output.iter() {
             println!("{:4}{:12} {}", "", name, message);
         }
 
@@ -3367,6 +3383,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
     }
 }
 
+#[allow(dead_code)]
 fn view_rv32_assembly(assembly: &[u32], start: usize) {
     let assembly =
         unsafe { core::slice::from_raw_parts(assembly.as_ptr().cast(), assembly.len() * 4) };
@@ -3400,7 +3417,7 @@ fn view_rv32_assembly(assembly: &[u32], start: usize) {
         println!();
         println!("{}", i);
 
-        let detail: InsnDetail = cs.insn_detail(&i).expect("Failed to get insn detail");
+        let detail: InsnDetail = cs.insn_detail(i).expect("Failed to get insn detail");
         let arch_detail: ArchDetail = detail.arch_detail();
         let ops = arch_detail.operands();
 
@@ -3412,7 +3429,7 @@ fn view_rv32_assembly(assembly: &[u32], start: usize) {
             ("insn groups:", group_names(&cs, detail.groups())),
         ];
 
-        for &(ref name, ref message) in output.iter() {
+        for (name, message) in output.iter() {
             println!("{:4}{:12} {}", "", name, message);
         }
 

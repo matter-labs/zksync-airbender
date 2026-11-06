@@ -5,7 +5,7 @@ namespace Airbender.UnifiedReduced
 open Trace Reference.RiscV.Sail
 
 /-- Actual fetch, original Sail decoding and retirement for one unified row. -/
-abbrev Step [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :=
+abbrev Step :=
   StepWith decoderFields instructionClause
 
 end Airbender.UnifiedReduced

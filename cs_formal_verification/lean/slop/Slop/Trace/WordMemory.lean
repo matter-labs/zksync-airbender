@@ -101,7 +101,7 @@ theorem word_row_address [Fact p.Prime] (hp : ROM.limit < p)
 set_option backward.isDefEq.respectTransparency false in
 /-- Shared word transport interprets the actual native transfer using the
     imported equations, canonical address and public memory configuration. -/
-theorem local_word_transport {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem local_word_transport {p : Nat} [Fact p.Prime]
     (hp : ROM.limit < p) {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (WordMemory.importedConstraints setup))
     (disabled : ∀ query, setup.Contains #[] query → query[8] = 0 → query[1] = 0 ∧ query[2] = 0)
@@ -114,7 +114,7 @@ theorem local_word_transport {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.e
       (Word.mk (w (if store then 25 else 19)).val (w (if store then 26 else 20)).val).toBitVec =
         (Word.mk (w 17).val (w 18).val).toBitVec + (Word.mk (w 8).val (w 9).val).toBitVec ∧
       Cell.ram (Word.mk (w (if store then 25 else 19)).val (w (if store then 26 else 20)).val).toBitVec ∈ cells)
-    {before after : State} (configuration : FlatMemoryConfiguration before)
+    {before after : State} (configuration : Configured before)
     (history : SailHistory cells (rowEvents epoch (⟨.wordMemory, w⟩ : Row p)).reverse before after)
     (native : if store then
       run (writeMemory (size := 4) (Word.mk (w 25).val (w 26).val).toBitVec
@@ -163,13 +163,19 @@ theorem local_word_transport {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.e
       ((Word.mk (w 17).val (w 18).val).toBitVec + (Word.mk (w 8).val (w 9).val).toBitVec)
       (Word.mk (w 23).val (w 24).val).toBitVec
     have same := (EStateM.Result.ok.inj (written.symm.trans native)).2
-    exact ⟨register, by rw [virtual_word_write configuration _ _ source alignment domain, same]⟩
+    -- The circuit rejects stores into ROM (`rom_selection`): the address is in RAM.
+    have ramAddress : Configuration.ROM_END ≤ (Word.mk (w 25).val (w 26).val).toBitVec.toNat := by
+      rw [Word.toBitVec_toNat address.1]
+      simp only [Configuration.ROM_END, Word.value, limbBase]
+      omega
+    rw [address.2.1] at ramAddress
+    exact ⟨register, by rw [virtual_word_write configuration _ _ source alignment domain ramAddress, same]⟩
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Discharge Sail's virtual memory calls for a grouped native row. Alignment
     and ordinary-memory conditions belong to the public cell domain; the read
     values and final native state are derived from its accepted history. -/
-theorem word_row_transport [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem word_row_transport [Fact p.Prime]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -181,7 +187,7 @@ theorem word_row_transport [Fact p.Prime] [MemoryPlatform SailRV32.exception]
     (store : Bool) (selected : w 10 = if store then 1 else 0)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
-    {before after : State} (configuration : FlatMemoryConfiguration before)
+    {before after : State} (configuration : Configured before)
     (history : SailHistory cells
       (rowEvents trace.memoryEpoch (⟨.wordMemory, w⟩ : Row p)).reverse before after) :
     let immediate := (Word.mk (w 8).val (w 9).val).toBitVec
@@ -220,7 +226,7 @@ theorem word_row_transport [Fact p.Prime] [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Invoke the original SW clause after the shared native transport proof. -/
-theorem local_word_store_execution {p : Nat} [MemoryPlatform SailRV32.exception]
+theorem local_word_store_execution {p : Nat}
     (hp : limbBase < p) {w : Nat → ZMod p} {entry : ProgramEntry}
     (fields : decoderFields entry.instruction = some entry.data)
     (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
@@ -250,7 +256,7 @@ theorem local_word_store_execution {p : Nat} [MemoryPlatform SailRV32.exception]
 set_option backward.isDefEq.respectTransparency false in
 /-- The original decoded SW clause reaches the native row's actual after-state.
     Its source reads, immediate and store selector are derived, not assumed. -/
-theorem word_row_store_execution [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem word_row_store_execution [Fact p.Prime]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -263,7 +269,7 @@ theorem word_row_store_execution [Fact p.Prime] [MemoryPlatform SailRV32.excepti
     (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
     {imm : BitVec 12} {rs1 rs2 : BitVec 5}
     (instruction : entry.instruction = .STORE (imm, .Regidx rs2, .Regidx rs1, 4))
-    {before after : State} (configuration : FlatMemoryConfiguration before)
+    {before after : State} (configuration : Configured before)
     (history : SailHistory cells
       (rowEvents trace.memoryEpoch (⟨.wordMemory, w⟩ : Row p)).reverse before after) :
     run (SailRV32.Functions.execute_STORE imm (.Regidx rs2) (.Regidx rs1) 4) before =
@@ -285,7 +291,7 @@ theorem word_row_store_execution [Fact p.Prime] [MemoryPlatform SailRV32.excepti
 set_option backward.isDefEq.respectTransparency false in
 /-- Original LW execution uses the same imported equations and port history
     in every family registry. ROM values are tied to actual public bytes. -/
-theorem local_word_load_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem local_word_load_execution {p : Nat} [Fact p.Prime]
     (hp : ROM.limit < p) {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (WordMemory.importedConstraints setup))
     (disabled : ∀ query, setup.Contains #[] query → query[8] = 0 → query[1] = 0 ∧ query[2] = 0)
@@ -301,7 +307,7 @@ theorem local_word_load_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailR
     (address : (Word.mk (w 19).val (w 20).val).Bounded ∧
       (Word.mk (w 19).val (w 20).val).toBitVec = (Word.mk (w 17).val (w 18).val).toBitVec +
         (Word.mk (w 8).val (w 9).val).toBitVec ∧ Cell.ram (Word.mk (w 19).val (w 20).val).toBitVec ∈ cells)
-    {before after : State} (configuration : FlatMemoryConfiguration before)
+    {before after : State} (configuration : Configured before)
     (romReads : ROM.Reads before setup)
     (history : SailHistory cells (rowEvents epoch (⟨.wordMemory, w⟩ : Row p)).reverse before after)
     (native : (readBytes (ue := SailRV32.exception) 4
@@ -367,7 +373,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Original LW execution agrees with the native destination update, including
     aliases and ROM loads. The public image and earlier native history supply
     both the current configuration and ROM byte binding. -/
-theorem word_row_load_execution [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem word_row_load_execution [Fact p.Prime]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -375,7 +381,7 @@ theorem word_row_load_execution [Fact p.Prime] [MemoryPlatform SailRV32.exceptio
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial)
+    (configuration : Configured initial)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (family : entry.data.family = .wordMemory)
@@ -423,7 +429,7 @@ theorem word_row_load_execution [Fact p.Prime] [MemoryPlatform SailRV32.exceptio
 set_option backward.isDefEq.respectTransparency false in
 /-- Compose the derived SW clause with original PC preparation/retirement.
     The current configuration follows from the initialized native history. -/
-theorem word_row_store_step [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem word_row_store_step [Fact p.Prime]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -431,7 +437,7 @@ theorem word_row_store_step [Fact p.Prime] [MemoryPlatform SailRV32.exception]
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    (configuration : Configured initial) (initialPC : trace.initial.word.Bounded)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
@@ -463,7 +469,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- The same complete native step for LW, including aliased source/destination
     registers and preserved public ROM bytes. Preparation preserves the initial
     image and both histories, so memory transport needs no new read premise. -/
-theorem word_row_load_step [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem word_row_load_step [Fact p.Prime]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -471,7 +477,7 @@ theorem word_row_load_step [Fact p.Prime] [MemoryPlatform SailRV32.exception]
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    (configuration : Configured initial) (initialPC : trace.initial.word.Bounded)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (family : entry.data.family = .wordMemory)
@@ -506,7 +512,7 @@ theorem word_row_load_step [Fact p.Prime] [MemoryPlatform SailRV32.exception]
 set_option backward.isDefEq.respectTransparency false in
 /-- Native history transport supplies this row's Sail PC read. The complete
     native path then composes these actual instruction-boundary states. -/
-theorem word_rebased_store_step [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem word_rebased_store_step [Fact p.Prime]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -514,7 +520,7 @@ theorem word_rebased_store_step [Fact p.Prime] [MemoryPlatform SailRV32.exceptio
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    (configuration : Configured initial) (initialPC : trace.initial.word.Bounded)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
@@ -544,7 +550,7 @@ theorem word_rebased_store_step [Fact p.Prime] [MemoryPlatform SailRV32.exceptio
 set_option backward.isDefEq.respectTransparency false in
 /-- Native history transport supplies this row's Sail PC read. The complete
     native path then composes these actual instruction-boundary states. -/
-theorem word_rebased_load_step [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem word_rebased_load_step [Fact p.Prime]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -552,7 +558,7 @@ theorem word_rebased_load_step [Fact p.Prime] [MemoryPlatform SailRV32.exception
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    (configuration : Configured initial) (initialPC : trace.initial.word.Bounded)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (family : entry.data.family = .wordMemory)

@@ -1,9 +1,8 @@
-use field::Field;
 use field::FieldExtension;
 use field::{Mersenne31Field, Mersenne31Quartic};
 
 #[cfg(feature = "prover")]
-use field::{FixedArrayConvertible, PrimeField};
+use field::{Field, PrimeField};
 
 #[inline(always)]
 pub fn mersenne_quartic_into_base_coeffs(el: Mersenne31Quartic) -> [Mersenne31Field; 4] {
@@ -19,25 +18,20 @@ pub fn mersenne_quartic_from_base_coeffs(coeffs: [Mersenne31Field; 4]) -> Mersen
 #[inline(always)]
 pub fn extension_field_into_base_coeffs<F: PrimeField, E: FieldExtension<F>>(
     el: E,
-) -> [F; E::DEGREE]
-where
-    [(); E::DEGREE]: Sized,
-{
-    <E as FieldExtension<F>>::into_coeffs(el).into_array::<{ E::DEGREE }>()
+) -> <E as FieldExtension<F>>::Coeffs {
+    <E as FieldExtension<F>>::into_coeffs(el)
 }
 
 #[cfg(feature = "prover")]
 #[inline(always)]
 pub fn extension_field_from_base_coeffs<F: PrimeField, E: FieldExtension<F>>(
-    coeffs: [F; E::DEGREE],
-) -> E
-where
-    [(); E::DEGREE]: Sized,
-{
-    <E as FieldExtension<F>>::from_coeffs(<E as FieldExtension<F>>::Coeffs::from_array(coeffs))
+    coeffs: <E as FieldExtension<F>>::Coeffs,
+) -> E {
+    <E as FieldExtension<F>>::from_coeffs(coeffs)
 }
 
 #[inline(always)]
+#[allow(dead_code)]
 pub(crate) fn lookup_index_into_encoding_tuple(
     lookup_row: usize,
     lookup_encoding_capacity: usize,
@@ -49,6 +43,7 @@ pub(crate) fn lookup_index_into_encoding_tuple(
 }
 
 #[inline(always)]
+#[cfg(feature = "prover")]
 pub(crate) fn encoding_tuple_into_lookup_index(
     column: u32,
     row: u32,
@@ -69,10 +64,7 @@ pub(crate) fn compute_aggregated_key_value_dyn<F: PrimeField, E: FieldExtension<
     assert_eq!(key_values_to_aggregate.len(), aggregation_challenges.len());
     let mut result = *additive_part;
     result.add_assign_base(&base_value);
-    for (a, b) in key_values_to_aggregate
-        .into_iter()
-        .zip(aggregation_challenges.into_iter())
-    {
+    for (a, b) in key_values_to_aggregate.iter().zip(aggregation_challenges) {
         let mut t = *b;
         t.mul_assign_by_base(a);
         result.add_assign(&t);

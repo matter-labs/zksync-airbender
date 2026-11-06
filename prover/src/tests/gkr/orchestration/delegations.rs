@@ -2,9 +2,9 @@ use super::common::*;
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::cs::tables::TableDriver;
 use crate::definitions::SecurityLevel;
-use crate::gkr::prover::prove_configured_with_gkr_with_backends;
 use crate::gkr::prover::setup::GKRSetup;
-use crate::gkr::prover::CommitmentMode;
+use crate::gkr::prover::OperationMode;
+use crate::gkr::prover::{prove_configured_with_gkr_with_storage_and_backend, WhirOracleStorage};
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -15,7 +15,7 @@ use crate::gkr::witness_gen::family_circuits::GKRMemoryOnlyWitnessTrace;
 use crate::merkle_trees::DefaultTreeConstructor;
 use crate::tracers::oracles::transpiler_oracles::delegation::{
     BigintDelegationOracle, Blake2sDelegationOracle, Blake2sGFunctionDelegationOracle,
-    KeccakDelegationOracle,
+    DelegationOracle, KeccakDelegationOracle,
 };
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use common_constants::{
@@ -27,9 +27,10 @@ use fft::Twiddles;
 use field::Field;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{Counters, ReplayBuffer, SimpleSnapshotter, SimpleTape, State};
+use riscv_transpiler::witness::delegation::DelegationAbiDescription;
 use riscv_transpiler::witness::{
     BigintDelegationDestinationHolder, BlakeDelegationDestinationHolder,
-    BlakeGFunctionDelegationDestinationHolder, DelegationWitness,
+    BlakeGFunctionDelegationDestinationHolder, DelegationDestinationHolder, DelegationWitness,
     KeccakDelegationDestinationHolder,
 };
 use std::alloc::Global;
@@ -66,6 +67,10 @@ impl DelegationProveOutput {
 }
 
 /// Common prove-side logic shared by all four delegations.
+/// Prove one delegation circuit. `pack_log2 > 0` commits the memory, witness
+/// and setup columns PACKED (`ProverConfig::pack_log2`, see
+/// `packed_config_for_security_level_under_pessimistic_conjecture`): the WHIR
+/// message is `2^(log2(num_delegation_cycles) + pack_log2)`.
 fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -74,6 +79,7 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     num_delegation_cycles: usize,
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     level: SecurityLevel,
+    pack_log2: usize,
     should_prove: bool,
     proof_path: &str,
     worker: &Worker,
@@ -116,24 +122,30 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
         );
     }
 
-    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
-        num_delegation_cycles.trailing_zeros() as usize,
-        level,
-    );
-    let twiddles: Twiddles<_, Global> = Twiddles::new(num_delegation_cycles, worker);
+    let prover_config =
+        example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
+            num_delegation_cycles.trailing_zeros() as usize,
+            pack_log2,
+            level,
+        );
+    // the packed commitment interpolates over the enlarged 2^(N + pack_log2) domain
+    let twiddles: Twiddles<_, Global> =
+        Twiddles::new(1usize << prover_config.whir_message_size_log2(), worker);
     let setup = GKRSetup::construct(table_driver, &[], num_delegation_cycles, circuit);
-    let setup_commitment = setup.commit(
-        &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        num_delegation_cycles.trailing_zeros() as usize,
-        worker,
-    );
+    let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, worker);
 
-    println!("Trying to prove");
+    println!(
+        "Trying to prove (pack_log2 = {pack_log2}, WHIR message 2^{})",
+        prover_config.whir_message_size_log2()
+    );
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr_with_backends::<
+    // The default storage policy of the packed mode (`fully_recompute`): the
+    // in-proof memory/witness commitment is coset-by-coset with the cap (16)
+    // INSIDE the cosets (LDE factor 2), and round-0 queries recompute their
+    // coset. The proof must stay byte-identical to the fully materialized one
+    // (the committed fixture), which exercises the backend's fused
+    // `lde_packed_polys_from_hypercubes` commitment for the setup.
+    let proof = prove_configured_with_gkr_with_storage_and_backend::<
         BabyBearField,
         BabyBearExt4,
         DefaultTreeConstructor,
@@ -148,7 +160,8 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
         &setup_commitment,
         &twiddles,
         &prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
+        WhirOracleStorage::fully_recompute(),
         Vec::new(),
         num_delegation_cycles,
         &crate::gkr::prover::WorkStealingBackend,
@@ -166,27 +179,18 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     (memory_trace, Some(proof))
 }
 
-/// Trait for the four delegation oracles, only used so the inner helper can
-/// query `is_empty()` consistently.
 trait DelegationOracleExt {
     fn is_empty(&self) -> bool;
 }
-impl<'a> DelegationOracleExt for Blake2sDelegationOracle<'a> {
-    fn is_empty(&self) -> bool {
-        self.cycle_data.is_empty()
-    }
-}
-impl<'a> DelegationOracleExt for BigintDelegationOracle<'a> {
-    fn is_empty(&self) -> bool {
-        self.cycle_data.is_empty()
-    }
-}
-impl<'a> DelegationOracleExt for KeccakDelegationOracle<'a> {
-    fn is_empty(&self) -> bool {
-        self.cycle_data.is_empty()
-    }
-}
-impl<'a> DelegationOracleExt for Blake2sGFunctionDelegationOracle<'a> {
+impl<
+        'a,
+        D: DelegationAbiDescription,
+        const R: usize,
+        const IR: usize,
+        const IW: usize,
+        const VO: usize,
+    > DelegationOracleExt for DelegationOracle<'a, D, R, IR, IW, VO>
+{
     fn is_empty(&self) -> bool {
         self.cycle_data.is_empty()
     }
@@ -219,6 +223,48 @@ pub fn prove_delegation_blake<C>(
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
+    prove_delegation_blake_with_packing::<C>(
+        snapshotter,
+        tape,
+        expected_final_state,
+        cycles_bound,
+        num_calls,
+        external_challenges,
+        level,
+        0,
+        prove_empty,
+        compute_only,
+        circuits_filter,
+        proof_suffix,
+        worker,
+        eval_fn,
+    )
+}
+
+/// [`prove_delegation_blake`] with a PACKED base commitment when
+/// `pack_log2 > 0` (`ProverConfig::pack_log2`): the 2^20 Blake trace columns
+/// are committed as `2^(20 + pack_log2)`-variate packed polynomials. The proof
+/// is written to `test_proofs/blake2_with_extended_control_{suffix}_pack{pack_log2}_gkr_proof.json`
+/// (the unpacked name when `pack_log2 == 0`).
+pub fn prove_delegation_blake_with_packing<C>(
+    snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
+    tape: &SimpleTape,
+    expected_final_state: &State<C>,
+    cycles_bound: usize,
+    num_calls: usize,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    level: SecurityLevel,
+    pack_log2: usize,
+    prove_empty: bool,
+    compute_only: bool,
+    circuits_filter: &Option<std::collections::HashSet<String>>,
+    proof_suffix: &str,
+    worker: &Worker,
+    eval_fn: fn(&mut ColumnMajorWitnessProxy<'_, Blake2sDelegationOracle<'_>, BabyBearField>),
+) -> DelegationProveOutput
+where
+    C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
+{
     let circuit: GKRCircuitArtifact<BabyBearField> =
         deserialize_from_file(&circuit_path("blake2_with_extended_control"));
     let mut table_driver = TableDriver::<BabyBearField>::new();
@@ -233,7 +279,7 @@ where
     };
 
     let mut buffer = vec![DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = BlakeDelegationDestinationHolder {
         buffers: &mut buffers[..],
     };
@@ -265,11 +311,19 @@ where
         BLAKE_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
+        pack_log2,
         should_prove,
-        &format!(
-            "test_proofs/blake2_with_extended_control_{}_gkr_proof.json",
-            proof_suffix
-        ),
+        &if pack_log2 == 0 {
+            format!(
+                "test_proofs/blake2_with_extended_control_{}_gkr_proof.json",
+                proof_suffix
+            )
+        } else {
+            format!(
+                "test_proofs/blake2_with_extended_control_{}_pack{}_gkr_proof.json",
+                proof_suffix, pack_log2
+            )
+        },
         worker,
     );
 
@@ -313,7 +367,7 @@ where
     };
 
     let mut buffer = vec![DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = BigintDelegationDestinationHolder {
         buffers: &mut buffers[..],
     };
@@ -345,6 +399,7 @@ where
         BIGINT_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
+        0,
         should_prove,
         &format!(
             "test_proofs/bigint_with_extended_control_{}_gkr_proof.json",
@@ -393,7 +448,7 @@ where
     };
 
     let mut buffer = vec![DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = KeccakDelegationDestinationHolder {
         buffers: &mut buffers[..],
     };
@@ -425,6 +480,7 @@ where
         KECCAK_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
+        0,
         should_prove,
         &format!(
             "test_proofs/keccak_special5_{}_gkr_proof.json",
@@ -477,7 +533,7 @@ where
     };
 
     let mut buffer = vec![DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = BlakeGFunctionDelegationDestinationHolder {
         buffers: &mut buffers[..],
     };
@@ -509,6 +565,7 @@ where
         BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
+        0,
         should_prove,
         &format!(
             "test_proofs/blake2_g_function_{}_gkr_proof.json",
@@ -533,4 +590,92 @@ pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> 
 pub fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
+}
+
+pub fn prove_delegation_keccak_f1600<
+    C,
+    D: DelegationAbiDescription,
+    const CSR: u16,
+    const R: usize,
+    const IR: usize,
+    const IW: usize,
+    const VO: usize,
+>(
+    stem: &str,
+    table_driver_fn: fn(&mut TableDriver<BabyBearField>),
+    snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
+    tape: &SimpleTape,
+    expected_final_state: &State<C>,
+    cycles_bound: usize,
+    num_calls: usize,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    level: SecurityLevel,
+    prove_empty: bool,
+    compute_only: bool,
+    circuits_filter: &Option<std::collections::HashSet<String>>,
+    proof_suffix: &str,
+    worker: &Worker,
+    eval_fn: fn(
+        &mut ColumnMajorWitnessProxy<'_, DelegationOracle<'_, D, R, IR, IW, VO>, BabyBearField>,
+    ),
+) -> DelegationProveOutput
+where
+    C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
+{
+    assert_eq!(D::DELEGATION_TYPE, CSR);
+    let circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(&circuit_path(stem));
+    let mut table_driver = TableDriver::<BabyBearField>::new();
+    table_driver_fn(&mut table_driver);
+
+    let mut state = snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = snapshotter
+        .reads_buffer
+        .make_range(0..snapshotter.reads_buffer.len());
+    let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let mut buffer = vec![DelegationWitness::empty(); num_calls];
+    let mut buffers = [&mut buffer[..]];
+    let mut tracer = DelegationDestinationHolder::<'_, CSR, R, IR, IW, VO> {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<C>::replay_basic_unrolled::<_, _, BabyBearField>(
+        &mut state,
+        &mut ram,
+        tape,
+        &mut (),
+        cycles_bound,
+        &mut tracer,
+    );
+    assert_eq!(*expected_final_state, state);
+
+    let oracle = DelegationOracle::<'_, D, R, IR, IW, VO> {
+        cycle_data: &buffer,
+        marker: core::marker::PhantomData,
+    };
+    let should_prove = !compute_only
+        && circuit_in_filter(circuits_filter, stem)
+        && (prove_empty || !oracle.is_empty());
+    log_prove_decision(stem, should_prove, compute_only);
+
+    let (memory_trace, proof) = prove_delegation_inner(
+        &circuit,
+        &table_driver,
+        &oracle,
+        eval_fn,
+        circuit.trace_len,
+        external_challenges,
+        level,
+        0,
+        should_prove,
+        &format!("test_proofs/{stem}_{proof_suffix}_gkr_proof.json"),
+        worker,
+    );
+
+    DelegationProveOutput {
+        memory_trace,
+        compiled_circuit: circuit,
+        proof,
+        delegation_type: CSR,
+    }
 }

@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.Comparison
 import Slop.JumpBranchSlt.Claims
 import Tests.JumpHistory
@@ -25,12 +26,15 @@ private def entry (signed immediate : Bool) : JumpBranchSlt.ProgramEntry :=
     ⟨(), 1, if immediate then 0 else 2, if immediate then 1 else 2,
       if immediate then ⟨65535, 65535⟩ else ⟨0, 0⟩, 4, if signed then 2 else 3⟩⟩
 
-private def before (signed immediate : Bool) : State :=
-  wordWriteState { (default : State) with regs :=
-    ((Std.ExtDHashMap.emptyWithCapacity :
-      Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
+private noncomputable def before (signed immediate : Bool) : State :=
+  wordWriteState { Airbender.Reference.RiscV.Sail.resetMachine with regs :=
+    (Airbender.Reference.RiscV.Sail.resetMachine.regs
       |>.insert .x1 (0 : BitVec 32) |>.insert .x2 (0xffffffff : BitVec 32) |>.insert .PC 0) }
     0 (entry signed immediate).bits
+
+theorem airbender_before (signed immediate : Bool) : Airbender.Reference.RiscV.Sail.Configured (before signed immediate) := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
+
 
 private def cells : List Cell := [.register 0, .register 1, .register 2]
 private def seed : List (MemoryToken babyBearModulus) :=
@@ -109,11 +113,15 @@ private theorem image (signed immediate : Bool) : initialImage (before signed im
   simp only [initialImage, cells, seed, List.mapM_cons, List.mapM_nil, zero, one, two]
   rfl
 
+private theorem instruction_decoded (signed immediate : Bool) :
+    decodeOnReset (entry signed immediate).bits = some (entry signed immediate).instruction := by
+  cases signed <;> cases immediate <;> decode_on_reset
+
 private theorem program_image (signed immediate : Bool) :
     JumpBranchSlt.programImage (before signed immediate) [0] = some [entry signed immediate] := by
   have bytes : (Cell.ram 0).read (before signed immediate) =
       .ok (entry signed immediate).bits (before signed immediate) := written_word_read _ 0 _
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, instruction_decoded, bind, Option.bind]
   cases signed <;> cases immediate <;> rfl
 
 private theorem query (signed immediate : Bool) :
@@ -195,7 +203,7 @@ theorem actual_comparison_retirement (signed immediate : Bool)
 private def pooledProgram (signed immediate : Bool) : List PooledProgramEntry :=
   [(entry signed immediate).mapFamily (fun _ => .jumpBranchSlt)]
 
-private def pooled (signed immediate : Bool) : PooledTrace babyBearModulus where
+private noncomputable def pooled (signed immediate : Bool) : PooledTrace babyBearModulus where
   rows := [⟨.jumpBranchSlt, (row signed immediate).assignment⟩]
   rom := ⟨ROM.table cells seed, Verification.subwordTable (ROM.words (before signed immediate))⟩
   initial := (trace signed immediate (ROM.table cells seed)).initial
@@ -221,8 +229,8 @@ private theorem pooledImage (signed immediate : Bool) :
   have source := Proofs.program_sources (program_image signed immediate) (entry signed immediate) (by simp)
   have bytes := source.bytes
   change (Cell.ram 0).read (before signed immediate) = .ok (entry signed immediate).bits (before signed immediate) at bytes
-  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, source.decoded, bind, Option.bind]
+  simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, bytes, instruction_decoded, bind, Option.bind]
   cases signed <;> cases immediate <;> rfl
 
 private theorem pooledDecoded (signed immediate : Bool) : PooledDecoded (pooled signed immediate) (pooledProgram signed immediate) := by
@@ -234,7 +242,7 @@ private theorem pooledDecoded (signed immediate : Bool) : PooledDecoded (pooled 
 
 private theorem pooledInputs (signed immediate : Bool) :
     NativeInputs pooledDecoderFields (pooled signed immediate) (before signed immediate) cells (pooledProgram signed immediate) := by
-  refine ⟨by decide, ?_, image signed immediate, ?_, ⟨[0], pooledImage signed immediate⟩, ?_⟩
+  refine ⟨by decide, ?_, image signed immediate, ?_, ⟨[0], pooledImage signed immediate⟩, ?_, airbender_before signed immediate⟩
   · intro cell member
     simp [cells] at member
     rcases member with rfl | rfl | rfl <;> trivial

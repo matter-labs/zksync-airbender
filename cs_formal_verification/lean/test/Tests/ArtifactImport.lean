@@ -49,6 +49,9 @@ import Tests.WordMemory
 import Slop.AddSub.ArtifactChecks
 import Human.Circuits.JumpBranchSlt.Artifact
 import Human.Import.Parse
+import Human.Circuits.KeccakSplit.ColumnParity.Artifact
+import Human.Circuits.KeccakSplit.ThetaRho.Artifact
+import Human.Circuits.KeccakSplit.Chi5.Artifact
 import Human.Helpers.Properties
 import Slop.BabyBear
 import Slop.Constraints
@@ -146,10 +149,10 @@ def main : IO UInt32 := do
     let unifiedSource ← IO.FS.readFile "../../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json"
     let .ok unified := parseCircuit unifiedSource | throw (IO.userError "unified reduced artifact failed import")
     let .ok unifiedQueries := unified.unifiedReducedQueries | throw (IO.userError "unified reduced queries failed import")
-    check (unified.structured_statements.size == 129 && unifiedQueries.size == 5 &&
+    check (unified.structured_statements.size == 120 && unifiedQueries.size == 5 &&
       unifiedQueries.all (·.size == 10) && unified.range_check_16_lookup_expressions.size == 13 &&
       unifiedSource == UnifiedReduced.importedConstraintsSourceBytes)
-      "unified reduced: 129 equations, 13 ranges, five complete pooled queries and source binding"
+      "unified reduced: 120 equations, 13 ranges, five complete pooled queries and source binding"
     check (rejected (Circuit.unifiedReducedQueries {unified with generic_lookups := #[]}))
       "unified reduced: missing pooled queries rejected"
     check (rejected (Circuit.unifiedReducedQueries {unified with generic_lookup_tables_width := 9}))
@@ -170,9 +173,10 @@ def main : IO UInt32 := do
     let .ok blake := parseCircuit blakeSource | throw (IO.userError "BLAKE2 G artifact failed import")
     let .ok blakeQueries := blake.blakeGQueries | throw (IO.userError "BLAKE2 G queries failed import")
     check (blake.structured_statements.size == 32 && blakeQueries.size == 19 &&
-      blakeQueries.all (·.size == 9) && blake.range_check_16_lookup_expressions.size == 2 &&
+      blakeQueries.all (·.size == 9) && blake.range_check_16_lookup_expressions.size == 0 &&
+      blake.timestamp_range_check_lookup_expressions.size == 21 &&
       blakeSource == Blake2G.importedConstraintsSourceBytes)
-      "BLAKE2 G: 32 equations, two scaled ranges, 19 complete queries and source binding"
+      "BLAKE2 G: 32 equations, no range queries (alignment in the 21 timestamp queries), 19 complete queries and source binding"
     let .ok ports := blake.indirectPorts | throw (IO.userError "BLAKE2 G ports failed import")
     check (ports == Blake2G.importedConstraintsIndirectPorts.toArray)
       "BLAKE2 G: all six indirect address/read/write descriptors match embedded metadata"
@@ -252,16 +256,16 @@ def main : IO UInt32 := do
     check (rejected (Circuit.indirectPorts {round with memory_layout :=
       {round.memory_layout with ram_access_sets := round.memory_layout.ram_access_sets.set! 1 variablePort}}))
       "constant port spuriously claiming an unlisted variable offset rejected"
-    check (round.structured_statements.size == 352 && roundQueries.size == 208 &&
-      roundQueries.all (·.size == 4) && round.range_check_16_lookup_expressions.size == 2 &&
+    check (round.structured_statements.size == 220 && roundQueries.size == 192 &&
+      roundQueries.all (·.size == 6) && round.range_check_16_lookup_expressions.size == 0 &&
       roundSource == Blake2Round.importedConstraintsSourceBytes)
-      "BLAKE2 round: 352 equations, two scaled ranges, 208 complete queries and source binding"
-    let roundInspection : Table (ZMod babyBearModulus) (fields 4) :=
+      "BLAKE2 round: 220 equations, no range queries, 192 six-column queries and source binding"
+    let roundInspection : Table (ZMod babyBearModulus) (fields 6) :=
       { name := "TagInspection", Contains _ _ := True }
     let roundLookups := (FlatOperation.lookups (Blake2Round.importedConstraints roundInspection)).drop 2
     check (roundLookups.map (fun q => some (q.entry.toArray.back!.eval emptyEnv).val) ==
-      round.generic_lookups.toList.map (fun q => q.columns[3]?.map (·.constant.canonical.val)))
-      "BLAKE2 round: all 208 XOR tags preserved in native Clean queries"
+      round.generic_lookups.toList.map (fun q => q.columns[5]?.map (·.constant.canonical.val)))
+      "BLAKE2 round: all 192 table tags preserved in native Clean queries"
     check (rejected (Circuit.blakeRoundQueries {round with generic_lookups := #[]}))
       "BLAKE2 round: missing queries rejected"
     check (rejected (Circuit.blakeRoundQueries {round with generic_lookup_tables_width := 9}))
@@ -276,15 +280,15 @@ def main : IO UInt32 := do
     check (rejected (Circuit.blakeRoundQueries (changeRound {roundXor with lookup_set_index := 1})))
       "BLAKE2 round: incorrect query-set identity rejected"
     check (rejected (Circuit.blakeRoundQueries (changeRound
-      {roundXor with columns := roundXor.columns.set! 3 ⟨#[], subwordOne⟩})))
+      {roundXor with columns := roundXor.columns.set! 5 ⟨#[], subwordOne⟩})))
       "BLAKE2 round: incorrect XOR tag rejected"
     let bigintSource ← IO.FS.readFile "../../cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json"
     let .ok bigint := parseCircuit bigintSource | throw (IO.userError "bigint artifact failed import")
     let .ok bigintQueries := bigint.bigintQueries | throw (IO.userError "bigint queries failed import")
-    check (bigint.structured_statements.size == 136 && bigintQueries.size == 61 &&
-      bigint.range_check_16_lookup_expressions.size == 34 &&
+    check (bigint.structured_statements.size == 135 && bigintQueries.size == 61 &&
+      bigint.range_check_16_lookup_expressions.size == 32 &&
       bigintSource == Bigint.importedConstraintsSourceBytes)
-      "bigint: 136 equations, 34 ranges, 61 fixed queries and source binding"
+      "bigint: 135 equations, 32 ranges, 61 fixed queries and source binding"
     let bigintInspection : Table (ZMod babyBearModulus) (fields 3) :=
       { name := "TagInspection", Contains _ _ := True }
     let bigintLookups := (FlatOperation.lookups (Bigint.importedConstraints bigintInspection)).drop 34
@@ -315,10 +319,11 @@ def main : IO UInt32 := do
     let .ok keccakQueries := keccak.keccakQueries | throw (IO.userError "Keccak queries failed import")
     let .ok keccakPorts := keccak.indirectPorts | throw (IO.userError "Keccak ports failed import")
     check (keccak.structured_statements.size == 187 && keccakQueries.size == 41 &&
-      keccak.range_check_16_lookup_expressions.size == 1 &&
+      keccak.range_check_16_lookup_expressions.size == 0 &&
+      keccak.timestamp_range_check_lookup_expressions.size == 30 &&
       (FlatOperation.constraints (Keccak.importedConstraints Tests.Keccak.permissiveSetup)).length == 187 &&
       keccakSource == Keccak.importedConstraintsSourceBytes)
-      "Keccak: 187 equations, range query, all fixed queries and source binding"
+      "Keccak: 187 equations, no range query (alignment in the 30 timestamp queries), all fixed queries and source binding"
     check (keccakPorts.size == 12 && keccakPorts == Keccak.importedConstraintsIndirectPorts.toArray)
       "Keccak: twelve native ports preserve six shared lane offsets"
     let keccakLookups := (FlatOperation.lookups
@@ -474,6 +479,54 @@ def main : IO UInt32 := do
         s!"{label}: missing comparison borrows rejected"
       check (rejected (Circuit.delegationColumns {circuit with timestamp_range_check_lookup_expressions := #[]}))
         s!"{label}: missing native clock queries rejected"
+    -- split Keccak workers: source bytes, query profiles, grouped clocks and malformed metadata
+    let splitLoad := fun (name : String) => do
+      let source ← IO.FS.readFile s!"../../cs/compiled_circuits/keccak_{name}_layout_no_caches_gkr.json"
+      let .ok circuit := parseCircuit source | throw (IO.userError s!"split {name} failed import")
+      pure (circuit, source)
+    let (parity, paritySource) ← splitLoad "column_parity"
+    let (theta, thetaSource) ← splitLoad "theta_rho"
+    let (chi, chiSource) ← splitLoad "chi5"
+    check (paritySource == Keccak.Split.ColumnParity.importedConstraintsSourceBytes &&
+      thetaSource == Keccak.Split.ThetaRho.importedConstraintsSourceBytes &&
+      chiSource == Keccak.Split.Chi5.importedConstraintsSourceBytes) "split Keccak: embedded sources equal artifact bytes"
+    let .ok parityQueries := parity.keccakColumnParityQueries | throw (IO.userError "column parity queries rejected")
+    let .ok thetaQueries := theta.keccakThetaRhoQueries | throw (IO.userError "theta/rho queries rejected")
+    let .ok chiQueries := chi.keccakChi5Queries | throw (IO.userError "chi5 queries rejected")
+    check (parityQueries.size == 22 && thetaQueries.size == 50 && chiQueries.size == 17)
+      "split Keccak: 22 / 50 / 17 fixed-table queries"
+    let .ok thetaGroups := theta.splitTimestampGroups | throw (IO.userError "theta/rho groups rejected")
+    let .ok chiGroups := chi.splitTimestampGroups | throw (IO.userError "chi5 groups rejected")
+    check (thetaGroups.size == 4 && chiGroups.size == 6 &&
+      thetaGroups == Keccak.Split.ThetaRho.importedConstraintsTimestampGroups &&
+      chiGroups == Keccak.Split.Chi5.importedConstraintsTimestampGroups) "split Keccak: 4 / 6 timestamp groups match"
+    let .ok parityPorts := parity.delegationPorts | throw (IO.userError "column parity ports rejected")
+    let .ok thetaPorts := theta.splitMemoryPorts | throw (IO.userError "theta/rho ports rejected")
+    let .ok chiPorts := chi.splitMemoryPorts | throw (IO.userError "chi5 ports rejected")
+    check (parityPorts == Keccak.Split.ColumnParity.importedConstraintsMemoryPorts &&
+      thetaPorts == Keccak.Split.ThetaRho.importedConstraintsMemoryPorts &&
+      chiPorts == Keccak.Split.Chi5.importedConstraintsMemoryPorts &&
+      parityPorts.size == 14 && thetaPorts.size == 16 && chiPorts.size == 12)
+      "split Keccak: 14 / 16 / 12 memory ports match"
+    let .ok thetaColumns := theta.splitDelegationColumns | throw (IO.userError "theta/rho clocks rejected")
+    let .ok chiColumns := chi.splitDelegationColumns | throw (IO.userError "chi5 clocks rejected")
+    check (thetaColumns == Keccak.Split.ThetaRho.importedConstraintsDelegationColumns &&
+      chiColumns == Keccak.Split.Chi5.importedConstraintsDelegationColumns) "split Keccak: grouped clocks match"
+    check (rejected (Circuit.keccakThetaRhoQueries {theta with generic_lookup_tables_width := 8}))
+      "split Keccak: wrong theta/rho lookup width rejected"
+    let noGroups : Circuit := {chi with aux_layout_data :=
+      {chi.aux_layout_data with relative_timestamp_groups := some #[]}}
+    check (rejected noGroups.splitTimestampGroups && rejected noGroups.splitMemoryPorts &&
+      rejected noGroups.splitDelegationColumns) "split Keccak: missing timestamp groups rejected"
+    let extraGroups := theta.aux_layout_data.relative_timestamp_groups.map fun groups =>
+      match groups[0]? with
+      | some group => groups.push {group with members := #[]}
+      | none => groups
+    let emptyGroup : Circuit := {theta with aux_layout_data :=
+      {theta.aux_layout_data with relative_timestamp_groups := extraGroups}}
+    check (rejected emptyGroup.splitTimestampGroups && rejected emptyGroup.splitMemoryPorts)
+      "split Keccak: empty timestamp group rejected"
+    check (rejected (Circuit.delegationColumns theta)) "split Keccak: grouped layout rejected by the ordinary importer"
     let cached ← loadCircuit "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json"
     check (!rejected cached) "cached sibling decoded with the standard JSON parser"
     return (0 : UInt32)

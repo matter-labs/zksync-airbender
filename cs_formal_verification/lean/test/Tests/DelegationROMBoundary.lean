@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.BigintMemory
 import Tests.DelegationCaller
 import Tests.DelegationOperationEffects
@@ -6,6 +7,7 @@ import Human.Helpers.Memory.Native
 import Slop.Trace.ROMView
 
 namespace Tests.DelegationROMBoundary
+noncomputable section
 open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
@@ -22,7 +24,7 @@ private def workers : MemoryData babyBearModulus where
 private def callerAssignment (column : Nat) : ZMod babyBearModulus :=
   if column = 35 then 4 else Tests.DelegationCaller.assignment .bigint column
 private def caller : Trace.Row babyBearModulus PooledFamily := ⟨.addSub, callerAssignment⟩
-private def data : Caller.RequestTrace babyBearModulus where
+private noncomputable def data : Caller.RequestTrace babyBearModulus where
   machine := {
     rows := [caller]
     rom := ⟨{ name := "unused", Contains _ _ := False }, { name := "unused", Contains _ _ := False }⟩
@@ -36,15 +38,18 @@ private def data : Caller.RequestTrace babyBearModulus where
 private def cells : List Cell := [.register 0, .register 10] ++
   (List.range 8).map (fun i => .ram (BitVec.ofNat 32 (4 * i))) ++ [.register 11] ++
   (List.range 8).map (fun i => .ram (BitVec.ofNat 32 (32 + 4 * i))) ++ [.register 12]
-private def shadow : State where
-  regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x10 (0 : BitVec 32)
+private noncomputable def shadow : State where
+  regs := resetMachine.regs.insert .x10 (0 : BitVec 32)
     |>.insert .x11 (32 : BitVec 32) |>.insert .x12 (128 : BitVec 32)
   mem := (List.range 64).foldl (fun memory i => memory.insert i (0 : BitVec 8))
     (Std.ExtHashMap.emptyWithCapacity)
   tags := ()
   cycleCount := 0
   sailOutput := #[]
-private def before : State := wordWriteState shadow 0 (Tests.DelegationCaller.entry .bigint).bits
+private noncomputable def before : State := wordWriteState shadow 0 (Tests.DelegationCaller.entry .bigint).bits
+
+private theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState, shadow]
 
 private theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environment assignment)
     (Bigint.importedConstraints Bigint.setupTable) := by
@@ -54,6 +59,7 @@ private theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environme
   all_goals solve
     | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
+    | (apply Trace.Proofs.range_contains; decide +kernel)
     | (refine ⟨⟨0, by decide⟩, ?_⟩; decide +kernel)
     | (refine ⟨⟨262144, by decide⟩, ?_⟩; decide +kernel)
     | (refine ⟨⟨1310720, by decide⟩, ?_⟩; decide +kernel)
@@ -68,7 +74,7 @@ private theorem clocks : FlatOperation.ConstraintsHoldFlat (Verification.environ
   · simp [Bigint.importedConstraintsTimestampLookups, FlatOperation.constraints]
   · rw [List.forall_mem_iff_forall_getElem]
     intro i bound
-    have short : i < 40 := by simpa only [Bigint.timestamp_count] using bound
+    have short : i < 41 := by simpa only [Bigint.timestamp_count] using bound
     interval_cases i
     all_goals apply Trace.Proofs.range_contains
     all_goals decide +kernel
@@ -114,16 +120,17 @@ private theorem inputs : Caller.RequestInputs data before [0] := by
   constructor
   · have bytes : (Cell.ram 0).read before = .ok (Tests.DelegationCaller.entry .bigint).bits before :=
       written_word_read shadow 0 _
-    have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) before =
-        .ok (Tests.DelegationCaller.entry .bigint).instruction before := Tests.DelegationCaller.original_decoder .bigint before
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+      Tests.DelegationCaller.original_decoder .bigint
     have fields : Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
         some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-    simp only [Caller.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [Caller.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
   · change 4 < timestampBase ∧ 0 < timestampBase
     norm_num [timestampBase]
   · decide +kernel
+  · exact airbender_before
 
 theorem native_shadow_initialization : initialImage shadow cells = some data.machine.initialMemory := by
   have x10 : (Cell.register 10).read shadow = .ok 0 shadow := by
@@ -198,5 +205,7 @@ theorem machine_only_rom_lift_breaks_matching :
     have time := congrArg MemoryToken.time same
     have noZero : ∀ edge ∈ data.sharedSteps, edge.2.time ≠ (0, 0) := by decide +kernel
     exact noZero edge present time
+
+end
 
 end Tests.DelegationROMBoundary

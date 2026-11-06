@@ -7,7 +7,6 @@ open Arithmetic Reference.RiscV.Sail Reference.Sail Trace.Proofs
 
 set_option backward.isDefEq.respectTransparency false in
 theorem row_step {p : Nat} [Fact p.Prime]
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -16,7 +15,7 @@ theorem row_step {p : Nat} [Fact p.Prime]
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    (configuration : Configured initial) (initialPC : trace.initial.word.Bounded)
     {program : List ProgramEntry}
     (sources : ∀ entry ∈ program, entry.Source initial NonDeterminism.decoderFields)
     (code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0)
@@ -49,7 +48,6 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Compose the same grouped native histories while the reference counter
     advances only on actual decoder-selected external reads. -/
 theorem rows_trace {p : Nat} [Fact p.Prime]
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -58,7 +56,7 @@ theorem rows_trace {p : Nat} [Fact p.Prime]
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    (configuration : Configured initial) (initialPC : trace.initial.word.Bounded)
     {program : List ProgramEntry} (sources : ∀ entry ∈ program, entry.Source initial NonDeterminism.decoderFields)
     (code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0)
     (decoded : Decoded trace program) {stream : List (BitVec 32)} (ports : StreamPorts trace stream)
@@ -105,7 +103,6 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Full native execution with an independent stream: all standard/read/hint
     rows execute in clock order, reaching the terminal cells and read count. -/
 theorem trace_execution {p : Nat} [Fact p.Prime]
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : Data p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionBoundary trace initial cells program NonDeterminism.decoderFields)

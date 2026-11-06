@@ -80,7 +80,6 @@ structure WordMapping {p : Nat} (input : Input) (output : Sail.Output)
     is decoded from its public bytes by `InterfaceAssumptions.initialization`.
     This mapping interprets variables and the pre-state; it assumes no ISA result. -/
 structure TraceMapping {p : Nat} [Fact p.Prime]
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (trace : PooledTrace p) (initial : Sail.State) (cells : List Cell)
     (program : List PooledProgramEntry) (input : Input) (output : Sail.Output)
     (w : Nat → ZMod p) : Prop where
@@ -97,7 +96,6 @@ structure TraceMapping {p : Nat} [Fact p.Prime]
     instructionClause entry.instruction = some (execution input)
 
 def circuitModel {p : Nat} [Fact p.Prime]
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (trace : PooledTrace p) (initial : Sail.State) (cells : List Cell)
     (program : List PooledProgramEntry) :
     Verification.CircuitModel Input Sail.Output (Nat → ZMod p) where

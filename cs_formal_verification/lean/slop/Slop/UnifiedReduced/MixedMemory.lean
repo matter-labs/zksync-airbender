@@ -50,7 +50,8 @@ theorem ordinary_zero_preserving_of_program [Fact p.Prime] (hp : 524288 < p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {oa : List (BitVec 32)}
     (accepted : MixedMemoryAccepted data program) (ordinaryProgram : Mixed.programImage before oa = some program)
-    {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows) (ordinary : row ∉ data.callers) :
+    {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows) (ordinary : row ∉ data.callers)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) :
     RowZeroPreserving row := by
   cases row with
   | mk kind w =>

@@ -22,6 +22,7 @@ import Slop.Final.Trace.Workers.Bigint.Theorems
 import Slop.Final.Trace.Workers.Blake2G.Theorems
 import Slop.Final.Trace.Workers.Blake2Round.Theorems
 import Slop.Final.Trace.Workers.Keccak.Theorems
+import Slop.Final.Trace.Workers.KeccakSplit.Theorems
 import Human.Circuits.AddSub.CallerTheorems
 import Human.Circuits.AddSub.Theorems
 import Human.Circuits.Bigint.Theorems
@@ -45,6 +46,7 @@ import Human.Trace.Workers.Bigint.Theorems
 import Human.Trace.Workers.Blake2G.Theorems
 import Human.Trace.Workers.Blake2Round.Theorems
 import Human.Trace.Workers.Keccak.Theorems
+import Human.Trace.Workers.KeccakSplit.Theorems
 
 example : Airbender.Delegation.Caller.SoundnessClaim := @Airbender.Delegation.Caller.soundness
 example : Airbender.Delegation.Caller.PcSoundnessClaim := @Airbender.Delegation.Caller.pc_soundness
@@ -129,6 +131,8 @@ example : Airbender.Keccak.Native.PermutationBoundarySoundnessClaim := @Airbende
 example : Airbender.Keccak.Native.PermutationSoundnessClaim := @Airbender.Keccak.Native.permutation_soundness
 example : Airbender.Keccak.Native.OperationExecutionClaim := @Airbender.Keccak.Native.operation_execution
 example : Airbender.Keccak.Native.WindowSoundnessClaim := @Airbender.Keccak.Native.window_soundness
+example : Airbender.Keccak.Split.Native.OperationExecutionClaim := @Airbender.Keccak.Split.Native.operation_execution
+example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.Keccak.Split.Native.permutation_soundness
 
 #print axioms Airbender.Delegation.Caller.soundness
 #print axioms Airbender.Delegation.Caller.pc_soundness

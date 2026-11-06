@@ -2,7 +2,6 @@ import Human.Trace.Execution
 
 namespace Airbender.Trace
 open Reference.RiscV.Sail
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 /-- The original ADD/SUB trace also admits word-memory rows. These aliases
     select that two-family decoder and retain the explicit ISA profile. -/

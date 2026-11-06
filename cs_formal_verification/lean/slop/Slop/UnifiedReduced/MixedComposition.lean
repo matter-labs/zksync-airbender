@@ -9,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-theorem custom_no_standard_clause [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem custom_no_standard_clause
     {entry : ProgramEntry} (fields : customDecoderFields entry.instruction = some entry.data) :
     instructionClause entry.instruction = none := by
   obtain arithmetic | rotation := UnifiedReduced.Proofs.custom_instruction_cases fields
@@ -19,7 +19,7 @@ theorem custom_no_standard_clause [_root_.Sail.ArchSem.MemoryPlatform SailRV32.e
     rw [encoding]; fin_cases kind <;> rfl
 
 set_option backward.isDefEq.respectTransparency false in
-theorem row_clause [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem row_clause [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
@@ -51,7 +51,7 @@ theorem row_clause [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.e
     exact ⟨clause, by simp [Mixed.clauseFor, custom_no_standard_clause custom, selected], execution⟩
 
 set_option backward.isDefEq.respectTransparency false in
-theorem row_step [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem row_step [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
@@ -82,7 +82,7 @@ theorem row_step [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exc
       exact row_clause hp inverse byteInverse accepted inputs memory member position present original query history
 
 set_option backward.isDefEq.respectTransparency false in
-theorem trace_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem trace_execution [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}

@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.DelegationCaller
 import Tests.DelegationMemory
 import Slop.Delegation.SharedMemory
@@ -20,10 +21,13 @@ private def machine (source : Nat) : PooledTrace babyBearModulus where
   terminal := (caller source).finish
   initialMemory := (Cell.register 0).initialToken 0 :: Tests.DelegationMemory.data.initial
   terminalMemory := Caller.destinationToken (assignment source) :: Tests.DelegationMemory.data.terminal
-private def data (source : Nat) : Caller.RequestTrace babyBearModulus :=
+private noncomputable def data (source : Nat) : Caller.RequestTrace babyBearModulus :=
   ⟨machine source, Tests.DelegationMemory.data, [Tests.DelegationCaller.entry .keccak]⟩
-private def before : State :=
+private noncomputable def before : State :=
   wordWriteState Tests.DelegationMemory.before 0 (Tests.DelegationCaller.entry .keccak).bits
+
+private theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState, Tests.DelegationMemory.before]
 
 private theorem caller_constraints (source : Fin 2) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment source.val)) AddSub.clockConstraints := by
@@ -103,17 +107,17 @@ private theorem inputs (source : Nat) : Caller.SharedMemoryInputs (data source) 
   · constructor
     · have bytes : (Cell.ram 0).read before = .ok (Tests.DelegationCaller.entry .keccak).bits before :=
         written_word_read Tests.DelegationMemory.before 0 _
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .keccak).bits) before =
-          .ok (Tests.DelegationCaller.entry .keccak).instruction before :=
-        Tests.DelegationCaller.original_decoder .keccak before
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .keccak).bits = some (Tests.DelegationCaller.entry .keccak).instruction :=
+        Tests.DelegationCaller.original_decoder .keccak
       have fields : Caller.decoderFields (Tests.DelegationCaller.entry .keccak).instruction =
           some (Tests.DelegationCaller.entry .keccak).data := Tests.DelegationCaller.metadata .keccak
-      simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · change 4 % 4 = 0
       rfl
+    · exact airbender_before
   · exact initialized
   · decide +kernel
   · intro cell member

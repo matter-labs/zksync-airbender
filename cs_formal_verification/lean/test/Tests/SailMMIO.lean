@@ -28,17 +28,17 @@ theorem ram_write :
 theorem windows_excluded : ¬ OrdinaryWordAddress 33554432 ∧ ¬ OrdinaryWordAddress 201326592 :=
   by unfold OrdinaryWordAddress; decide
 
--- The original classifier recognizes the signature window as MMIO, so the
--- public domain exclusion is not just an unrelated range predicate.
-theorem signature_is_mmio :
+-- The Airbender configuration does not enable the signature device (`plat_have_sig = false`): the
+-- window at 0xC000000 is ordinary memory here, not MMIO (the stock configuration had it).
+theorem signature_is_not_mmio :
     Sail.run (SailRV32.Functions.within_mmio_readable (.Physaddr 201326592) 4) configured =
-      .ok true configured := by
+      .ok false configured := by
   have hart : configured.regs.get? .mhartid = some (0 : BitVec 32) := by
     simp [configured, Std.ExtDHashMap.get?_insert]
   have host : configured.regs.get? .htif_tohost_base = some none := by simp [configured]
   have clint : Sail.run (SailRV32.Functions.within_clint (.Physaddr 201326592) 4) configured =
       .ok false configured := clint_excluded (address := 201326592) hart (Or.inr (by decide))
-  have signature : SailRV32.Functions.within_sig (.Physaddr 201326592) 4 = pure true := rfl
+  have signature : SailRV32.Functions.within_sig (.Physaddr 201326592) 4 = pure false := rfl
   simp only [SailRV32.Functions.within_mmio_readable, SailRV32.Functions.get_config_rvfi,
     Bool.false_eq_true, ite_false]
   rw [Sail.run_bind_of_ok _ _ _ _ _ clint]

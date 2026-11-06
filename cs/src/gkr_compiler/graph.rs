@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::{collections::BTreeMap, hash::Hash};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::enum_variant_names)]
 pub enum CopyNode {
     FromBaseLayerInBase(GKRAddress),
     FromBaseLayerInExtension(GKRAddress),
@@ -66,7 +67,9 @@ impl<F: PrimeField> GKRGate<F> for CopyNode {
 
 pub struct GKRGraph<F: PrimeField> {
     pub(crate) caching_is_allowed: bool,
+    #[allow(dead_code)]
     pub(crate) mapping: BTreeMap<GKRAddress, usize>,
+    #[allow(dead_code)]
     pub(crate) rev_mapping: BTreeMap<usize, GKRAddress>,
     pub(crate) base_layer_memory: BTreeMap<Variable, GKRAddress>,
     pub(crate) base_layer_memory_rev: BTreeMap<GKRAddress, Variable>,
@@ -75,7 +78,9 @@ pub struct GKRGraph<F: PrimeField> {
     pub(crate) setups: Vec<GKRAddress>,
     pub(crate) cached_relations: BTreeMap<usize, Vec<GKRCacheRelation<F>>>,
     pub(crate) enforced_relations: BTreeMap<usize, Vec<GKRRelation<F>>>,
+    #[allow(dead_code)]
     pub(crate) generic_lookup_setup_width: usize,
+    #[allow(dead_code)]
     pub(crate) copies: Vec<BTreeMap<GKRAddress, GKRAddress>>,
     pub(crate) intermediate_layers_offsets: BTreeMap<usize, usize>,
     pub(crate) intermediate_layers: BTreeMap<Variable, GKRAddress>,
@@ -358,7 +363,7 @@ impl<F: PrimeField> GraphHolder<F> for GKRGraph<F> {
     #[track_caller]
     fn get_address_for_variable(&self, variable: Variable) -> GKRAddress {
         assert!(
-            variable.is_placeholder() == false,
+            !variable.is_placeholder(),
             "trying to place a placeholder variable"
         );
         let Some(pos) = self.get_fixed_layout_pos(&variable) else {
@@ -418,7 +423,7 @@ impl<F: PrimeField> GraphHolder<F> for GKRGraph<F> {
         relation: GKRCacheRelation<F>,
         output_layer: usize,
     ) -> GKRAddress {
-        if self.caching_is_allowed == false {
+        if !self.caching_is_allowed {
             panic!("Current graph doesn't allow cache relations");
         }
 
@@ -479,6 +484,7 @@ impl<F: PrimeField> GraphHolder<F> for GKRGraph<F> {
 #[derive(
     Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, serde::Serialize, serde::Deserialize,
 )]
+#[allow(dead_code)]
 pub struct NodeIndex(usize);
 
 pub trait GraphHolder<F: PrimeField> {
@@ -584,6 +590,7 @@ pub trait GraphHolder<F: PrimeField> {
 // }
 
 #[track_caller]
+#[allow(dead_code)]
 fn find_variable(
     gkr_address: GKRAddress,
     base_layer_mapping: &BTreeMap<Variable, GKRAddress>,

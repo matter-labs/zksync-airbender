@@ -12,6 +12,8 @@ establish full mixed instruction retirement.
 original public caller decoding to the request permutation and derive unique
 issued-worker placement inside the caller's four-tick cycle. Zero-clock workers
 remain classified as unissued; the claims do not exclude their prefix effects.
+The upstream circuits reject an active zero-clock row (timestamp query 0,
+[regression](../../../../test/Tests/DelegationZeroInvocation.lean)); the claims do not use this.
 
 [`shared_memory_soundness`](../../../../slop/Slop/Final/Trace/Delegation/CallerTheorems.lean) proves callers and workers execute
 in one initialized GPR/RAM history. [`shared_operation_soundness`](../../../../slop/Slop/Final/Trace/Delegation/CallerTheorems.lean)
@@ -40,7 +42,7 @@ selected caller/worker regions. Native cuts retain boundary timestamps.
 Exact multiplicity, slots and controls must follow from the same accepted history.
 
 Keep each theorem's public protocol ABI, span counts and prefix scope visible.
-An active zero-clock worker may affect the prefix without an issued caller.
+The claims still admit unissued prefix effects; the circuit's query 0 rejects active zero-clock rows.
 Bigint invalid controls and worker ROM shadows remain genuine gaps.
 These claims do not establish full CSR semantics, whole mixed instruction
 retirement or cryptographic request/memory enforcement.

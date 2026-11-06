@@ -22,7 +22,7 @@ def addressInput (w : Nat → ZMod p) (controlBound : (w Variables.controlReadLo
   ⟨⟨⟨(w Variables.controlReadLo).val, controlBound⟩, true⟩,
     Native.statePointer w, Native.messagePointer w⟩
 
-theorem native_addresses [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem native_addresses [Fact p.Prime] (hp : 33554432 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable Control.controllerRows)))

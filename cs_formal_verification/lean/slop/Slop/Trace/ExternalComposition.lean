@@ -38,7 +38,6 @@ def finalState {Kind : Type} [CircuitLayout Kind] {p : Nat}
     (rows : List (Row p Kind)) (after : State) (pc : BitVec 32) : State :=
   match rows with | [] => after | _ :: _ => retiredState after pc
 
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 theorem step_of_rebased {Kind : Type}
     {projection : SailRV32.instruction → Option (DecoderData Kind)} {profile : ISAProfile}
@@ -53,7 +52,7 @@ theorem step_of_rebased {Kind : Type}
     (EStateM.Result.ok.inj ((retired_state_pc before pc).symm.trans fetched)).1
   refine ⟨entry, present, ⟨read_word_frame (before := retiredState before pc) (after := before)
     rfl source.bytes, (decoded_misa_frame _ source.decoded).2 _
-      (by simp [retiredState, Std.ExtDHashMap.get?_insert]), source.fields⟩,
+      (((ConfigSame.refl before).insert (key := .nextPC) rfl pc).insert (key := .PC) rfl pc).symm, source.fields⟩,
     same ▸ read, original, chosen, ?_⟩
   rw [← normal_step_rebased read original]
   exact normal

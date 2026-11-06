@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Trace.Claims
 import Slop.Trace.OracleExecution
 
@@ -8,43 +9,42 @@ set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
 -- Independent public bytes: CSRRW x1,0x7C0,x0; CSRRW x0,0x7C0,x1.
-private def before : State :=
-  { (default : State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x1 (0 : BitVec 32) |>.insert .PC 0
+private noncomputable def before : State :=
+  { Airbender.Reference.RiscV.Sail.resetMachine with
+    regs := Airbender.Reference.RiscV.Sail.resetMachine.regs.insert .x1 (0 : BitVec 32) |>.insert .PC 0
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0xF3 : BitVec 8)
       |>.insert 1 0x10 |>.insert 2 0 |>.insert 3 0x7C
       |>.insert 4 0x73 |>.insert 5 0x90 |>.insert 6 0 |>.insert 7 0x7C }
 
-private def readEntry : ProgramEntry :=
+theorem airbender_before  : Airbender.Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
+
+
+private noncomputable def readEntry : ProgramEntry :=
   ⟨0, 0x7C0010F3, .CSRReg (0x7C0, .Regidx 0, .Regidx 1, .CSRRW),
     ⟨.addSub, 0, 0, 1, ⟨0, 0⟩, 256, 0⟩⟩
-private def writeEntry : ProgramEntry :=
+private noncomputable def writeEntry : ProgramEntry :=
   ⟨4, 0x7C009073, .CSRReg (0x7C0, .Regidx 1, .Regidx 0, .CSRRW),
     ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩⟩
 
-private theorem read_decoding : SailRV32.Functions.encdec_backwards readEntry.bits =
-    (.pure readEntry.instruction : SailRV32.SailM SailRV32.instruction) := by
+private theorem read_decoding : Airbender.Reference.RiscV.Sail.decodeOnReset readEntry.bits = some readEntry.instruction := by
   dsimp only [readEntry, writeEntry]
-  with_unfolding_all rfl
+  decode_on_reset
 
-private theorem write_decoding : SailRV32.Functions.encdec_backwards writeEntry.bits =
-    (.pure writeEntry.instruction : SailRV32.SailM SailRV32.instruction) := by
+private theorem write_decoding : Airbender.Reference.RiscV.Sail.decodeOnReset writeEntry.bits = some writeEntry.instruction := by
   dsimp only [readEntry, writeEntry]
-  with_unfolding_all rfl
+  decode_on_reset
 
-theorem original_read_decoder (state : State) :
+/-- On every `Configured` state the original decoder returns these instructions. -/
+theorem original_read_decoder {state : State} (configured : Configured state) :
     run (SailRV32.Functions.encdec_backwards 0x7C0010F3) state =
-      .ok readEntry.instruction state := by
-  change run (SailRV32.Functions.encdec_backwards readEntry.bits) state = _
-  rw [read_decoding]
-  rfl
+      .ok readEntry.instruction state :=
+  decode_on_reset_run configured read_decoding
 
-theorem original_write_decoder (state : State) :
+theorem original_write_decoder {state : State} (configured : Configured state) :
     run (SailRV32.Functions.encdec_backwards 0x7C009073) state =
-      .ok writeEntry.instruction state := by
-  change run (SailRV32.Functions.encdec_backwards writeEntry.bits) state = _
-  rw [write_decoding]
-  rfl
+      .ok writeEntry.instruction state :=
+  decode_on_reset_run configured write_decoding
 
 private theorem bytes (write : Bool) :
     (Cell.ram (if write then 4 else 0)).read before =
@@ -120,7 +120,7 @@ private theorem membership : Decoded trace [readEntry, writeEntry] := by
 /-- Source bytes, original CSR instruction, PC, indices and selector 8 are
     recovered from public decoding and native query membership. -/
 theorem fetched_read : row.Fetched before NonDeterminism.decoderFields :=
-  NonDeterminism.decoder_soundness accepted public_image membership row (by simp [trace])
+  NonDeterminism.decoder_soundness accepted public_image membership airbender_before row (by simp [trace])
 
 theorem read_selector : ∀ i : Fin 9,
     assignment (#[10, 11, 12, 13, 14, 15, 16, 17, 18][i]) = if i.val = 8 then 1 else 0 := by
@@ -190,7 +190,7 @@ theorem native_register_history :
 
 /-- Native CSR register effects and PC retirement are one actual reference
     step, consuming exactly the first independently supplied external word. -/
-theorem native_read_step [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+theorem native_read_step  :
     ∃ after, NonDeterminism.Step [0x12345678] [readEntry, writeEntry]
       (before, 0) (after, 1) ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 4 after := by

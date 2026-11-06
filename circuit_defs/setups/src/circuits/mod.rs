@@ -3,12 +3,18 @@ use super::*;
 mod bigint_ops_with_control_circuit;
 mod blake2_g_function_circuit;
 mod blake2_with_compression_circuit;
+mod keccak_chi5_circuit;
+mod keccak_column_parity_circuit;
 mod keccak_special5_circuit;
+mod keccak_theta_rho_circuit;
 
 pub use self::bigint_ops_with_control_circuit::get_bigint_with_control_circuit_setup;
 pub use self::blake2_g_function_circuit::get_blake2_g_function_circuit_setup;
 pub use self::blake2_with_compression_circuit::get_blake2_with_compression_circuit_setup;
+pub use self::keccak_chi5_circuit::get_keccak_chi5_circuit_setup;
+pub use self::keccak_column_parity_circuit::get_keccak_column_parity_circuit_setup;
 pub use self::keccak_special5_circuit::get_keccak_special5_circuit_setup;
+pub use self::keccak_theta_rho_circuit::get_keccak_theta_rho_circuit_setup;
 
 #[cfg(feature = "witness_eval_fn")]
 pub use ::bigint_with_control::witness_eval_fn as bigint_witness_eval_fn;
@@ -17,12 +23,22 @@ pub use ::blake2_g_function::witness_eval_fn as blake2_g_function_witness_eval_f
 #[cfg(feature = "witness_eval_fn")]
 pub use ::blake2_with_compression::witness_eval_fn as blake2_with_compression_witness_eval_fn;
 #[cfg(feature = "witness_eval_fn")]
+pub use ::keccak_chi5::witness_eval_fn as keccak_chi5_witness_eval_fn;
+#[cfg(feature = "witness_eval_fn")]
+pub use ::keccak_column_parity::witness_eval_fn as keccak_column_parity_witness_eval_fn;
+#[cfg(feature = "witness_eval_fn")]
 pub use ::keccak_special5::witness_eval_fn as keccak_special5_witness_eval_fn;
+#[cfg(feature = "witness_eval_fn")]
+pub use ::keccak_theta_rho::witness_eval_fn as keccak_theta_rho_witness_eval_fn;
 use prover::definitions::SecurityLevel;
 
 pub struct DelegationCircuitSetup {
     pub delegation_type: u16,
     pub trace_len: usize,
+    /// The circuit's prover config per security level
+    /// ([`circuit_common::prover_configs_for_all_levels`]): the geometry every
+    /// commitment and proof made from this setup must use.
+    pub prover_configs: Vec<prover::gkr::prover_config::ProverConfig>,
     pub compiled_circuit: GKRCircuitArtifact<BabyBearField>,
     pub table_driver: TableDriver<BabyBearField>,
     pub setup: GKRSetup<BabyBearField>,
@@ -31,16 +47,27 @@ pub struct DelegationCircuitSetup {
     // >,
 }
 
+impl DelegationCircuitSetup {
+    /// The circuit's prover config at `level` — the single source of its
+    /// proving geometry (trace length, schedules, packing).
+    pub fn prover_config(&self, level: SecurityLevel) -> &prover::gkr::prover_config::ProverConfig {
+        let config = circuit_common::prover_config_at(&self.prover_configs, level);
+        assert_eq!(1usize << config.trace_len_log2, self.trace_len);
+        config
+    }
+}
+
 pub fn make_setup_for_delegation_circuit<C: circuit_common::DelegationCircuit<BabyBearField>>(
     use_caches: bool,
 ) -> DelegationCircuitSetup {
     let circuit = C::get_circuit(use_caches);
     let table_driver = C::get_table_driver();
-    let setup = GKRSetup::construct(&table_driver, &[], 1 << C::DOMAIN_SIZE_LOG2, &circuit);
+    let setup = GKRSetup::construct(&table_driver, &[], 1 << C::trace_len_log2(), &circuit);
 
     DelegationCircuitSetup {
         delegation_type: C::DELEGATION_TYPE_ID,
-        trace_len: 1 << C::DOMAIN_SIZE_LOG2,
+        trace_len: 1 << C::trace_len_log2(),
+        prover_configs: circuit_common::prover_configs_for_all_levels(C::prover_config),
         compiled_circuit: circuit,
         table_driver,
         setup,
@@ -72,12 +99,26 @@ pub fn produce_verifier_setup_for_all_delegations(
         result.push(setup_data);
     }
     {
-        let setup =
-            make_setup_for_delegation_circuit::<Blake2sGFunctionDelegationCircuit>(use_caches);
+        let setup = make_setup_for_delegation_circuit::<
+            ::keccak_theta_rho::KeccakThetaRhoDelegationCircuit,
+        >(use_caches);
         let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, &worker);
         result.push(setup_data);
     }
-
+    {
+        let setup = make_setup_for_delegation_circuit::<
+            ::keccak_column_parity::KeccakColumnParityDelegationCircuit,
+        >(use_caches);
+        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, &worker);
+        result.push(setup_data);
+    }
+    {
+        let setup = make_setup_for_delegation_circuit::<::keccak_chi5::KeccakChi5DelegationCircuit>(
+            use_caches,
+        );
+        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, &worker);
+        result.push(setup_data);
+    }
     result
 }
 
@@ -86,16 +127,13 @@ fn produce_verifier_setup_for_circuit(
     security_level: SecurityLevel,
     worker: &Worker,
 ) -> verifier_common::DelegationCircuitSetupData<{ prover::definitions::DEFAULT_CAP_SIZE }> {
-    use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
-
-    let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(circuit.trace_len.trailing_zeros() as usize, security_level);
-    let twiddles: Twiddles<BabyBearField, Global> = Twiddles::new(circuit.trace_len, worker);
-    let setup_commitment = circuit.setup.commit::<DefaultTreeConstructor>(
+    // the circuit's own config: the geometry the prover commits the setup with
+    let prover_config = circuit.prover_config(security_level);
+    let twiddles: Twiddles<BabyBearField, Global> =
+        Twiddles::new(circuit.trace_len << prover_config.pack_log2, worker);
+    let setup_commitment = circuit.setup.commit_for_config::<DefaultTreeConstructor>(
         &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        circuit.trace_len.trailing_zeros() as usize,
+        &prover_config,
         worker,
     );
 

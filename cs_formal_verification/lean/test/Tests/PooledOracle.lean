@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Trace.PooledOracleConsumption
 import Slop.Trace.PooledOracleDecoder
 import Slop.Trace.PooledOracleExecution
@@ -45,17 +46,20 @@ private def cells := Tests.TraceExecution.cells
 private def seed : List (MemoryToken babyBearModulus) :=
   (List.range 32).map fun index => token index 0 0 0
 
-private def before : State :=
+private noncomputable def before : State :=
   { Tests.TraceExecution.before with
-    regs := Tests.TraceExecution.before.regs.insert .mseccfg 0 |>.insert .x1 0
+    regs := Tests.TraceExecution.before.regs.insert .x1 0
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0xF3 : BitVec 8)
       |>.insert 1 0x10 |>.insert 2 0 |>.insert 3 0x7C
       |>.insert 4 0xB3 |>.insert 5 0x40 |>.insert 6 0 |>.insert 7 0
       |>.insert 8 0xF3 |>.insert 9 0x10 |>.insert 10 0 |>.insert 11 0x7C }
 
+private theorem configuration : Configured before :=
+  (Tests.TraceExecution.configuration.insert (key := .x1) rfl 0).with_mem _
+
 
 -- Read x1, XOR x1,x0,x0, then read x1 again. Physical row order is scrambled.
-private def trace : PooledTrace babyBearModulus where
+private noncomputable def trace : PooledTrace babyBearModulus where
   rows := [shiftRow, readRow true, readRow false]
   rom := ⟨ROM.table cells seed, Verification.subwordTable (ROM.words before)⟩
   initial := PCState.boundary 0 (4, 0)
@@ -170,13 +174,13 @@ theorem foreign_selector_ignored (family : PooledFamily) (other : family ≠ .ad
   cases family <;> simp_all [NonDeterminism.Pooled.isRead]
 
 
-private def readEntry (second : Bool) : PooledProgramEntry :=
+private noncomputable def readEntry (second : Bool) : PooledProgramEntry :=
   ⟨if second then 8 else 0, 0x7C0010F3, .CSRReg (0x7C0, .Regidx 0, .Regidx 1, .CSRRW),
     ⟨.addSub, 0, 0, 1, ⟨0, 0⟩, 256, 0⟩⟩
 private def shiftEntry : PooledProgramEntry :=
   ⟨4, 0x000040B3, .RTYPE (.Regidx 0, .Regidx 0, .Regidx 1, .XOR),
     ⟨.shiftBinop, 0, 0, 1, ⟨0, 0⟩, 2, 4⟩⟩
-private def program := [readEntry false, shiftEntry, readEntry true]
+private noncomputable def program := [readEntry false, shiftEntry, readEntry true]
 
 private theorem loads : NoDiscardedLoads program := by
   intro entry member
@@ -192,12 +196,12 @@ private theorem bytes (entry : PooledProgramEntry) (member : entry ∈ program) 
     before, readEntry, shiftEntry, Std.ExtHashMap.getElem_insert]
 
 private theorem decoding (entry : PooledProgramEntry) (member : entry ∈ program) :
-    run (SailRV32.Functions.encdec_backwards entry.bits) before = .ok entry.instruction before := by
+    Airbender.Reference.RiscV.Sail.decodeOnReset entry.bits = some entry.instruction := by
   simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl
   all_goals
     dsimp only [readEntry, shiftEntry]
-    with_unfolding_all rfl
+    decode_on_reset
 
 private theorem fields (entry : PooledProgramEntry) (member : entry ∈ program) :
     NonDeterminism.Pooled.decoderFields entry.instruction = some entry.data := by
@@ -214,8 +218,8 @@ theorem actual_public_image : NonDeterminism.Pooled.programImage before [0, 4, 8
   have firstFields := fields (readEntry false) (by simp [program])
   have shiftFields := fields shiftEntry (by simp [program])
   simp only [readEntry, shiftEntry, Bool.false_eq_true, ↓reduceIte] at first shift second firstDecode shiftDecode firstFields shiftFields
-  simp only [NonDeterminism.Pooled.programImage, programImageRunWith,
-    List.mapM_cons, List.mapM_nil, programEntryRunWith, first, shift, second,
+  simp only [NonDeterminism.Pooled.programImage, programImageWith,
+    List.mapM_cons, List.mapM_nil, programEntryWith, first, shift, second,
     firstDecode, shiftDecode, firstFields, shiftFields,
     bind, Option.bind, pure]
   rfl
@@ -305,7 +309,7 @@ theorem fabricated_read_rejected :
     decide
   exact mismatch admitted.memory
 
-theorem external_read_retirement [MemoryPlatform SailRV32.exception] (second : Bool) :
+theorem external_read_retirement  (second : Bool) :
     ∃ rowBefore rowAfter original,
       NonDeterminism.clause [0x12345678, 0xbeef, 0xcafe]
         (NonDeterminism.Pooled.readIndex trace (readRow second))
@@ -342,26 +346,11 @@ theorem external_read_retirement [MemoryPlatform SailRV32.exception] (second : B
     (ports (readRow second) member) past current
   cases second <;> exact ⟨rowBefore, rowAfter, original, selected, executed⟩
 
-private theorem configuration : FlatMemoryConfiguration before := by
-  have base := Tests.TraceExecution.configuration
-  exact {
-    privilege := by simpa [before, Std.ExtDHashMap.get?_insert] using base.privilege
-    status := by simpa [before, Std.ExtDHashMap.get?_insert] using base.status
-    isa := by simpa [before, Std.ExtDHashMap.get?_insert] using base.isa
-    supervisorEnvironment := by simpa [before, Std.ExtDHashMap.get?_insert] using base.supervisorEnvironment
-    machineEnvironment := by simpa [before, Std.ExtDHashMap.get?_insert] using base.machineEnvironment
-    pmpOff := by simpa [before, Std.ExtDHashMap.get?_insert] using base.pmpOff
-    pmpAddresses := by simpa [before, Std.ExtDHashMap.get?_insert] using base.pmpAddresses
-    pma := by simpa [before, Std.ExtDHashMap.get?_insert] using base.pma
-    hart := by simpa [before, Std.ExtDHashMap.get?_insert] using base.hart
-    htifDisabled := by simpa [before, Std.ExtDHashMap.get?_insert] using base.htifDisabled }
-
 private theorem inputs : PooledBootInputs trace before cells program NonDeterminism.Pooled.decoderFields := by
   refine {
     registers := Tests.TraceExecution.inputs.registers
     ordinary := Tests.TraceExecution.inputs.ordinary
     configuration := configuration
-    landingPadDisabled := ?_
     code := ?_
     loads := loads
     distinct := by decide
@@ -373,8 +362,6 @@ private theorem inputs : PooledBootInputs trace before cells program NonDetermin
     physicalImage := ⟨seed, image, rfl⟩
     subwordSetup := rfl
     terminalPC := by constructor <;> decide }
-  · refine ⟨0, ?_, rfl⟩
-    simp [before, Std.ExtDHashMap.get?_insert]
   · intro entry member
     simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
     rcases member with rfl | rfl | rfl <;> constructor <;> decide
@@ -383,7 +370,7 @@ private theorem inputs : PooledBootInputs trace before cells program NonDetermin
   · intro address member _
     simp [cells, Tests.TraceExecution.cells] at member
 
-theorem complete_mixed_trace [MemoryPlatform SailRV32.exception] :
+theorem complete_mixed_trace  :
     ∃ after, NonDeterminism.Pooled.ExecutionTrace [0x12345678, 0xbeef, 0xcafe] program
       (before, 0) (after, 2) ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 12 after ∧

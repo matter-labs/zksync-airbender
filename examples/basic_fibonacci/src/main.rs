@@ -1,7 +1,4 @@
 #![no_std]
-#![allow(incomplete_features)]
-#![feature(allocator_api)]
-#![feature(generic_const_exprs)]
 #![no_main]
 #![no_builtins]
 
@@ -28,6 +25,9 @@ unsafe extern "C" fn start_rust() -> ! {
     main()
 }
 
+/// # Safety
+/// Boot hook reached through the `_setup_interrupts` symbol before `main`; not meant to be
+/// called from Rust.
 #[export_name = "_setup_interrupts"]
 pub unsafe fn custom_setup_interrupts() {
     extern "C" {

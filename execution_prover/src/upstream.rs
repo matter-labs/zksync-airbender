@@ -19,7 +19,6 @@ pub(crate) use field::baby_bear::ext4::BabyBearExt4 as E4;
 pub(crate) use prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 pub(crate) use prover::definitions::{FinalRegisterValue, GKRExternalChallenges, SecurityLevel};
 pub(crate) use prover::gkr::prover::GKRProof;
-pub(crate) use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
 pub(crate) use prover::gkr::prover_config::ProverConfig;
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 pub(crate) use prover::transcript::Seed;
@@ -32,8 +31,9 @@ pub(crate) use trace_and_split::fs_transform_unrolled_for_permutation_argument a
 // `setups` — canonical per-circuit setup construction.
 pub(crate) use setups::circuits::{
     get_bigint_with_control_circuit_setup, get_blake2_g_function_circuit_setup,
-    get_blake2_with_compression_circuit_setup, get_keccak_special5_circuit_setup,
-    DelegationCircuitSetup,
+    get_blake2_with_compression_circuit_setup, get_keccak_chi5_circuit_setup,
+    get_keccak_column_parity_circuit_setup, get_keccak_special5_circuit_setup,
+    get_keccak_theta_rho_circuit_setup, DelegationCircuitSetup,
 };
 pub(crate) use setups::unrolled_circuits::{
     add_sub_lui_auipc_mop_circuit_setup, inits_and_teardowns_circuit_setup,

@@ -294,6 +294,33 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
     }
 
+    fn lde_packed_polys_from_hypercubes(
+        &self,
+        evals: &[&[BabyBearField]],
+        pack_log2: usize,
+        twiddles: &Self::TwiddleSet,
+        lde_factor: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
+        worker: &Worker,
+    ) -> Vec<ColumnMajorBaseOracleForCoset<BabyBearField>> {
+        let ext = &twiddles.forward_ext;
+        ws_lde_packed_polys_from_hypercubes(
+            evals,
+            pack_log2,
+            &twiddles.plain,
+            lde_factor,
+            &|block| {
+                crate::gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs_neon_bb(
+                    block,
+                    block.len().trailing_zeros(),
+                )
+            },
+            &|m, o, t| fft::baby_bear_neon::lde_coset_neon(m, o, t, ext),
+            &|m, o, t, w| lde_coset_canonical_parallel(m, o, t, w),
+            worker,
+        )
+    }
+
     fn update_eq_poly(
         &self,
         eq_poly: &mut [BabyBearExt4],

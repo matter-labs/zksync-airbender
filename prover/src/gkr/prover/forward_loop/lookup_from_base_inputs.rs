@@ -1,4 +1,4 @@
-use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
+use crate::allocation_pool::{AllocationPool, ColumnLayout};
 use crate::gkr::sumcheck::evaluation_kernels::{
     lookup_base_minus_multiplicity_base, lookup_base_pair, lookup_rational_with_unbalanced_base,
     BatchedGKRKernel,
@@ -176,14 +176,10 @@ pub fn forward_evaluate_lookup_base_inputs_pair_range_check_16<
     let mut den_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
 
     let [lhs, rhs] = inputs;
-    let lhs_source = std::mem::replace(
-        &mut witness_trace.range_check_16_lookup_mapping[lhs.lookup_set_index],
-        vec![],
-    );
-    let rhs_source = std::mem::replace(
-        &mut witness_trace.range_check_16_lookup_mapping[rhs.lookup_set_index],
-        vec![],
-    );
+    let lhs_source =
+        std::mem::take(&mut witness_trace.range_check_16_lookup_mapping[lhs.lookup_set_index]);
+    let rhs_source =
+        std::mem::take(&mut witness_trace.range_check_16_lookup_mapping[rhs.lookup_set_index]);
     let lhs_source_ref = &lhs_source;
     let rhs_source_ref = &rhs_source;
     assert_eq!(lhs_source_ref.len(), trace_len);
@@ -237,10 +233,7 @@ pub fn forward_evaluate_lookup_base_inputs_pair_range_check_16<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination].into_iter())
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(expected_output_layer, output, unsafe {
             ExtensionFieldPoly::from_pooled(destination)
@@ -282,13 +275,11 @@ pub fn forward_evaluate_lookup_base_inputs_pair_timestamp_range_check<
     let mut den_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
 
     let [lhs, rhs] = inputs;
-    let lhs_source = std::mem::replace(
+    let lhs_source = std::mem::take(
         &mut witness_trace.timestamp_range_check_lookup_mapping[lhs.lookup_set_index],
-        vec![],
     );
-    let rhs_source = std::mem::replace(
+    let rhs_source = std::mem::take(
         &mut witness_trace.timestamp_range_check_lookup_mapping[rhs.lookup_set_index],
-        vec![],
     );
     let lhs_source_ref = &lhs_source;
     let rhs_source_ref = &rhs_source;
@@ -343,10 +334,7 @@ pub fn forward_evaluate_lookup_base_inputs_pair_timestamp_range_check<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination].into_iter())
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(expected_output_layer, output, unsafe {
             ExtensionFieldPoly::from_pooled(destination)

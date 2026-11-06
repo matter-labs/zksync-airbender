@@ -7,7 +7,6 @@ import Human.Trace.PooledExecution
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 /-- The shared composition rule consumes actual earlier pooled transfers,
@@ -23,7 +22,7 @@ theorem pooled_row_step {p : Nat} [Fact p.Prime]
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (memoryConfiguration : FlatMemoryConfiguration initial)
+    (memoryConfiguration : Configured initial)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
     (programImage : pooledProgramImage initial addresses = some program)
     (decoded : PooledDecoded trace program)
@@ -102,7 +101,7 @@ theorem pooled_trace_execution {p : Nat} [Fact p.Prime]
       pooled_row_step hp inverse accepted inputs.clocks inputs.image inputs.wordSetup inputs.subwordSetup
         inputs.registers inputs.aligned inputs.ordinary inputs.configuration programImage decoded inputs.code
         inputs.loads inputs.terminalPC inputs.configuration.isa
-        ⟨inputs.configuration.privilege, inputs.landingPadDisabled⟩ member native past current)
+        ⟨inputs.configuration.privilege, inputs.configuration.landingPad⟩ member native past current)
     rows trace.terminal (fun row present => permutation.mem_iff.mp present)
     (fun event present => eventPermutation.mem_iff.mp present) chain nativeHistory
   exact native_trace_postconditions clockSize inverse accepted inputs.clocks

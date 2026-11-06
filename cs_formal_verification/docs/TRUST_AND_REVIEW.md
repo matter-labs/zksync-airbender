@@ -66,7 +66,7 @@ when reviewing or strengthening a theorem.
 | Inactive padding | [Inactive ADD/SUB row](../lean/test/Tests/InactiveRow.lean): execute zero admits PC 0→4 and result 123 under the retained local constraints. Padding neutrality needs global state/write obligations; the selected trace model includes active rows. |
 | Jump termination | [Noncanonical JAL endpoint](../lean/test/Tests/JumpSailHistory.lean): imported constraints, decoding and native matching admit a field-aliased terminal PC that disagrees with Sail. The public terminal-PC bound remains required; teardown binding is open. |
 | Discarded LW | [Sparse-memory load](../lean/test/Tests/DiscardedLoad.lean): an accepted native NOP can fail original Sail's LW-to-x0 access. The unchanged-Sail claim retains `NoDiscardedLoads`; the named Airbender profile uses the pinned PC-only NOP rule. |
-| Unissued workers | [Zero-clock G worker](../lean/test/Tests/DelegationZeroInvocation.lean): an active worker matches no caller and changes actual x12 from 0 to 1. Issued-worker uniqueness does not exclude this prefix effect. |
+| Unissued workers | [Zero-clock rejection](../lean/test/Tests/DelegationZeroInvocation.lean): the circuit's timestamp query 0 rejects an active zero-clock worker in every family, so the former x12 prefix-effect fixture is no longer constructible. The claims themselves still do not exclude unissued prefix effects. |
 | Bigint controls | [Issued unified calls](../lean/test/Tests/UnifiedDelegation.lean): x12 = 0 admits no opcode; x12 = 65537 admits ADD with a nonzero high limb. Current caller-cycle observations hold, while the pinned reference rejects these control words. Full custom-CSR ABI remains open. |
 | Worker ROM | [COPY with ROM pointers](../lean/test/Tests/DelegationROMBoundary.lean): zero native shadows and exactly matched worker values can differ from public ROM bytes. Replacing shadow tokens with public bytes breaks matching; RAM-profile claims retain their stated domain. |
 
@@ -77,9 +77,10 @@ when reviewing or strengthening a theorem.
 | Lean kernel and standard axioms | Accepted proof-checking foundation. The [axiom audit](../lean/test/Checks/Axioms.lean) records actual dependencies. |
 | Lean / Mathlib | `v4.34.1`, pinned in `lean-toolchain` and [lakefile.toml](../lean/lakefile.toml). |
 | Clean | tag `v4.33.1`, `93c9d1ef45be9f687214625d7857889cf2485504` (builds unchanged on Lean `v4.34.1`); upstream definitions in `lean/.lake/packages/Clean`. Review their applicability; Lean checks proof terms. |
-| Sail model/compiler | Pinned source in `sail/sail-riscv`; exact pins, source hashes and generation details in [provenance](../lean/sail-rv32/provenance.json) and [regeneration notes](../lean/sail-rv32/README.md). |
+| Sail model/compiler | The official sail-riscv model `6136f84` (tag `2026-10-12-6136f84`) compiled by Sail `2ba3212` (0.20.3) with the [airbender-base config](../sail/config/airbender-base.json); pins and their rationale in [PINS.md](../sail/PINS.md), generation in [regen.sh](../sail/regen.sh). The generated model is not committed. |
 | Sail runtime | `lean-sail` revision `c816ea7ad03cce98d51acee252540fd4215fede8`, fetched by [fetch-lean-sail.sh](../sail/fetch-lean-sail.sh) with the Lean 4.34 [patch](../sail/patches/lean-sail-lean4.34.1.patch). |
-| Platform support | [SailPlatform.lean](../sail/SailPlatform.lean), copied by the original backend. Experimental extensions are disabled to match the pinned emulator configuration. Runtime compatibility is proved in [Runtime.lean](../lean/slop/Slop/Sail/Runtime.lean); terminal/reservation calls remain abstract parameters. |
+| Platform support | The full model implements the platform hooks concretely; three upstream hooks without a Lean body get trivial bodies in [sail-riscv-lean-missing-externs.patch](../sail/patches/sail-riscv-lean-missing-externs.patch). Experimental extensions and CLINT/interrupt devices are off in [airbender-base.json](../sail/config/airbender-base.json). |
+| Panicking platform hooks | lean-sail's executable externs `plat_term_write`, `load_reservation`, `match_reservation` and `get_16_random_bits` ([RiscvExtrasExecutable.lean](../lean/sail-rv32/SailRV32/RiscvExtrasExecutable.lean), generated) are `panic` stubs. They are unreachable from the claims: `plat_term_write` is called only by the HTIF store path, which requires `htif_tohost_base = some _` (`Configured` fixes `none`, [reset_htif](../lean/slop/Slop/Sail/Configured.lean)); `load_reservation`/`match_reservation` only with `res = true` (LR/SC), which decode only when `currentlyEnabled Ext_Zalrsc` holds — `Zalrsc` is unsupported and misa `0x40001100` clears A; `get_16_random_bits` only by Sail's `seed` CSR read, and the claims never run Sail's CSR execute (CSRRW is the project's [delegation/non-determinism semantics](../lean/human/Human/Helpers/Decoder/ExternalInput.lean)). Each relies on the program not changing `misa`/HTIF state, i.e. on the per-step frame (a claimed step writes only PC, nextPC, x1–x31). |
 | Project profile/custom reference | Unmodified [00-master.md](airbender/00-master.md) at `2331d1c511f26c17be85879fbab02ab109aefd05`, with [hash/provenance](airbender/provenance.json). Applicability to the circuit revision remains a review obligation. |
 | Base ADD/SUB artifact | `av_gkr_compiler` revision `28ffe3ff0353edd9051485c2974b28b52b495dc4`; [retained no-cache JSON](../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json), SHA-256 `084a58f08dd122160b548689383f74d4a790c782046f8a5bf43f9f287c22a620`. Other family JSON paths remain in their reviewed artifact declarations. |
 
@@ -101,15 +102,11 @@ witness extension and cached-layout equivalence are unproved. Generic prime-fiel
 claims retain their stated minimum moduli and inverse compatibility; they do not
 establish import of the native Proth120 artifact with its own coefficients.
 
-Sail standard instructions call original generated clauses, with no replacement
-arithmetic specification. Review [generate_sail.py](../sail/generate_sail.py),
-[sail_slice.ml](../sail/sail_slice.ml) and the recorded provenance. The generator
-extracts the unique normal `F_Base` nextPC assignment verbatim from pinned
-`run_hart_active` into `extracted_base_pc.sail`, then compiles it with Sail.
-Hashes identify inputs and outputs; extraction, compilation and pruning fidelity
-are not proved. The selected successful four-byte path does not include the full
-fetch driver, interrupts or exceptional branches. `MemoryPlatform` externals are
-abstract conditions, without supplied implementations or project axioms.
+Sail standard instructions call the original generated clauses of the full model,
+with no replacement arithmetic specification. Review [regen.sh](../sail/regen.sh),
+[PINS.md](../sail/PINS.md) and the configuration copy. Generation fidelity (Sail
+compiler to Lean) is trusted, not proved; the model is the official sail-riscv source
+compiled without pruning.
 
 Public decoder constructors use actual Sail byte reads and original decoding.
 The restricted pure and M-extension interpreter constructors preserve their

@@ -6,7 +6,7 @@ open Trace Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem soundness [Fact p.Prime] (hp : 33554432 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1) (data : Delegation.MemoryData p)
     (before : Reference.RiscV.Sail.State) (cells : List Cell) :
     (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Blake2G.spec := by

@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 import Slop.BabyBear
 
@@ -9,29 +10,30 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2800000
 
 private def assignment (immediate : Bool) : Nat → ZMod babyBearModulus
-  | 4 | 7 | 23 | 44 | 84 | 88 | 130 | 131 | 132 | 133 => 1
-  | 2 | 30 | 40 | 81 | 120 | 122 => 4
-  | 8 | 9 | 60 | 102 => if immediate then 65535 else 0
+  | 4 | 7 | 23 | 44 | 82 | 123 | 124 | 125 => 1
+  | 2 | 30 | 40 | 64 | 114 | 116 => 4
+  | 8 | 9 | 60 | 96 => if immediate then 65535 else 0
   | 10 => 3
   | 32 => 8
-  | 50 | 52 | 53 | 59 | 61 | 78 | 89 | 103 | 112 => if immediate then 1 else 0
-  | 57 | 90 => if immediate then 0 else 1
-  | 92 | 101 => 5
-  | 110 => 51
-  | 111 => if immediate then 53 else 56
-  | 119 => 2
+  | 50 | 52 | 53 | 59 | 61 | 74 | 83 | 97 | 106 => if immediate then 1 else 0
+  | 57 | 84 => if immediate then 0 else 1
+  | 86 | 95 => 5
+  | 104 => 51
+  | 105 => if immediate then 53 else 56
+  | 113 => 2
   | _ => 0
 
 private def row (immediate : Bool) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment immediate⟩
 private def cells : List Cell := [.register 0, .register 1]
-private def before (immediate : Bool) : State :=
-  { (default : State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .PC 0 |>.insert .misa 0x40000100 |>.insert .x1 0
+private noncomputable def before (immediate : Bool) : State :=
+  { resetMachine with
+    regs := resetMachine.regs |>.insert .PC 0 |>.insert .x1 0
     mem := (Std.ExtHashMap.emptyWithCapacity : Std.ExtHashMap Nat (BitVec 8))
       |>.insert 0 (if immediate then 0x93 else 0xb3) |>.insert 1 0x30
       |>.insert 2 (if immediate then 0xf0 else 0) |>.insert 3 (if immediate then 0xff else 0) }
-private def trace (immediate : Bool) : UnifiedTrace babyBearModulus where
+theorem airbender_before (immediate : Bool) : Configured (before immediate) := by
+  configured_fixture [before]
+private noncomputable def trace (immediate : Bool) : UnifiedTrace babyBearModulus where
   rows := [row immediate]
   rom := UnifiedReduced.Setup.table (before immediate)
   initial := (row immediate).start
@@ -97,12 +99,14 @@ private theorem program_image (immediate : Bool) :
   have bytes : (Cell.ram 0).read (before immediate) = .ok (entry immediate).bits (before immediate) := by
     cases immediate <;> simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
       bind, pure, EStateM.bind, EStateM.get, EStateM.pure, before, entry, Std.ExtHashMap.getElem_insert]
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, bind, Option.bind, pure]
-  cases immediate <;> with_unfolding_all rfl
+  have decoded : decodeOnReset (entry immediate).bits = some (entry immediate).instruction := by
+    cases immediate <;> decode_on_reset
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]
+  cases immediate <;> rfl
 
 private theorem inputs (immediate : Bool) :
     NativeInputs UnifiedReduced.decoderFields (trace immediate) (before immediate) cells [entry immediate] := by
-  refine ⟨by decide, ?_, public_image immediate, ⟨⟨4, 0⟩, ?_⟩, ⟨[0], program_image immediate⟩, ?_⟩
+  refine ⟨by decide, ?_, public_image immediate, ⟨⟨4, 0⟩, ?_⟩, ⟨[0], program_image immediate⟩, ?_, airbender_before immediate⟩
   · intro cell member
     simp [cells] at member
     rcases member with rfl | rfl <;> trivial
@@ -126,12 +130,12 @@ private theorem decoded (immediate : Bool) : UnifiedReduced.Decoded (trace immed
   change ∃ i : Fin 1, _
   exact ⟨0, by cases immediate <;> decide⟩
 
-private def input (immediate : Bool) : UnifiedReduced.Control.Comparison.Input :=
+private noncomputable def input (immediate : Bool) : UnifiedReduced.Control.Comparison.Input :=
   ⟨if immediate then .sltiu else .sltu, ⟨0, 0⟩,
     ⟨if immediate then 65535 else 0, if immediate then 65535 else 0⟩, ⟨0, 0⟩,
     .Regidx 0, .Regidx 0, .Regidx 1, if immediate then 4095 else 0,
     Trace.retiredState (before immediate) 0⟩
-private def output (immediate : Bool) : Output := ⟨⟨if immediate then 1 else 0, 0⟩, ⟨4, 0⟩⟩
+private noncomputable def output (immediate : Bool) : Output := ⟨⟨if immediate then 1 else 0, 0⟩, ⟨4, 0⟩⟩
 
 theorem sail_comparisons (immediate : Bool) : JumpBranchSlt.Comparison.spec (input immediate) (output immediate) := by
   apply UnifiedReduced.Control.Comparison.soundness (by decide) (by decide) (trace immediate)

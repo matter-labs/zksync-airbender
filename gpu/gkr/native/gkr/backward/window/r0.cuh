@@ -95,10 +95,10 @@ DEVICE_FORCEINLINE bwd_window_triplet<bf> bwd_window_bf_term(const bwd_window_de
                                              bwd_window_pair_values(bwd_window_direct_bf(desc, source_b), row, selector));
 }
 
-// Each (cell, limb) accumulates at most four products per record. With at most
-// 2048 records, its carry count stays below 8192 and fits in a u16. Packing two
-// counts into one register cannot carry into the neighboring half. Reduction
-// precedes the E4 sections and scalar seed.
+// Each (cell, limb) accumulates at most four products per record. The program
+// capacity bounds the carry count to fit in a u16, as asserted below. Packing
+// two counts into one register cannot carry into the neighboring half.
+// Reduction precedes the E4 sections and scalar seed.
 static_assert(BWD_WINDOW_PROGRAM_WORD_CAP % BWD_WINDOW_INSTRUCTION_WORDS == 0);
 static_assert(4 * (BWD_WINDOW_PROGRAM_WORD_CAP / BWD_WINDOW_INSTRUCTION_WORDS) < (1u << 16),
               "packed outer carry halves must hold every BF and wide-linear-E4 contribution");

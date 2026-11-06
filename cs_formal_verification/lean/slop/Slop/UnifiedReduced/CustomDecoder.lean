@@ -95,6 +95,7 @@ theorem custom_fetched {p : Nat} [Fact p.Prime] (hp : 524288 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     {before : State} {addresses : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry}
     (image : customProgramImage before addresses = some program)
+    (configuration : Reference.RiscV.Sail.Configured before)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (member : (decoderTable program).Contains #[] (decoderQuery w)) :
     ∃ entry : UnifiedReduced.ProgramEntry, entry.SourceWith before customDecoderFields ∧

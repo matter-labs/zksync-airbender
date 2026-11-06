@@ -10,15 +10,12 @@ set_option maxHeartbeats 4000000
 theorem diagonal_mapping {p : Nat} {w : Nat → ZMod p}
     {input : Mixing.Input} {output : Mixing.Output}
     (mapping : Mixing.WordMapping input output w) (call : Fin 4) :
-    Blake2G.WordMapping
-      (callInput 1 call (phaseUpdate 0 input.state (columnOutputs w)) input.message)
-      (diagonalOutputs w call) (diagonalGAssignment call w) := by
-  rw [mapping.message]
-  fin_cases call <;> constructor
+    callInput 1 call (phaseUpdate 0 input.state (columnOutputs w)) input.message =
+      (diagonalTrace call.val w).input := by
+  rw [mapping.message, diagonalTrace_input]
+  fin_cases call
   all_goals simp [callInput, callConstants, Specs.BLAKE3.roundConstants,
     phaseUpdate, callUpdate, Blake2G.State.Proofs.project, Blake2G.State.Proofs.update,
-    Preparation.words, Variables.scheduledMessage, columnOutputs, diagonalOutputs,
-    gOutput, columnGAssignment, columnGBase, diagonalGAssignment, diagonalGBase,
-    Blake2G.Proofs.assemble, Fin.getElem_fin]
+    Preparation.words, Variables.scheduledMessage, columnOutputs, Fin.getElem_fin]
 
 end Airbender.Blake2Round.Proofs

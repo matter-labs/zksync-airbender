@@ -4,7 +4,6 @@ import Slop.Trace.OracleExecution
 
 namespace Airbender.Trace.NonDeterminism.Pooled.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace.Proofs
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
@@ -29,7 +28,8 @@ theorem addsub_execution {p : Nat} [Fact p.Prime]
     {before after : State} {events : List MemoryAccess}
     (past : SailHistory cells events initial before)
     (history : SailHistory cells
-      (rowEvents trace.memoryEpoch (⟨.addSub, w⟩ : Row p PooledFamily)).reverse before after) :
+      (rowEvents trace.memoryEpoch (⟨.addSub, w⟩ : Row p PooledFamily)).reverse before after)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     ∃ original, NonDeterminism.clause stream position entry.instruction .sail =
       some (original, position + if Pooled.isRead (⟨.addSub, w⟩ : Row p PooledFamily) then 1 else 0) ∧
       run (normalStep original) (retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
@@ -140,7 +140,7 @@ theorem row_step {p : Nat} [Fact p.Prime]
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (memoryConfiguration : FlatMemoryConfiguration initial)
+    (memoryConfiguration : Configured initial)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
     (programImage : Pooled.programImage initial addresses = some program)
     (decoded : PooledDecoded trace program)

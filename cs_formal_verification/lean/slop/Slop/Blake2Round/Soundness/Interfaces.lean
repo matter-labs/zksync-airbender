@@ -11,7 +11,7 @@ theorem column_interface {p : Nat} {w : Nat → ZMod p}
     {input : Mixing.Input} {output : Mixing.Output}
     (interface : Mixing.InterfaceAssumptions input output w) (call : Fin 4) :
     Blake2G.InterfaceAssumptions (callInput 0 call input.state input.message)
-      (columnOutputs w call) (columnGAssignment call w) := by
+      (columnTrace call.val w).output w := by
   fin_cases call <;> constructor
   all_goals simp only [callInput, callConstants, Specs.BLAKE3.roundConstants,
     Blake2G.State.Proofs.project]

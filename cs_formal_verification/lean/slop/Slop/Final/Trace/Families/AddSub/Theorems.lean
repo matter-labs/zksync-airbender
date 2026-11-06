@@ -7,7 +7,7 @@ namespace Airbender.Trace
 
 /-- ADD/SUB and word-memory execution with unchanged Sail semantics.
     The loads condition excludes discarded LW instructions. -/
-theorem sail_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem sail_soundness
     {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
     {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionBoundary trace before cells program)
@@ -18,7 +18,7 @@ theorem sail_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 
 /-- The same restricted trace with the named Airbender LW-to-x0 profile. -/
-theorem airbender_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem airbender_soundness
     {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
     {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionBoundary trace before cells program)
@@ -30,7 +30,7 @@ theorem airbender_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.excepti
 
 /-- Restricted execution from native boot, interpreting zero ROM shadows
     through the independent public bytes. -/
-theorem native_boot_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem native_boot_soundness
     {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
     {cells : List Cell} {program : List ProgramEntry}
     (inputs : NativeBootBoundary trace before cells program)

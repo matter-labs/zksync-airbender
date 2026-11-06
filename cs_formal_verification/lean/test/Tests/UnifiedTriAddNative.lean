@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 import Slop.Sail.WordMemoryState
 
@@ -17,19 +18,22 @@ private def setup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic {
 }
 
 private def assignment : Nat → ZMod babyBearModulus
-  | 4 | 5 | 6 | 7 | 20 | 38 | 44 | 129 | 130 | 131 | 132 | 133 => 1
+  | 4 | 5 | 6 | 7 | 20 | 38 | 44 | 123 | 124 | 125 => 1
   | 2 | 30 | 40 => 4
   | 32 => 8
   | 46 => 5
   | 36 | 42 | 48 => 123
   | 50 => 369
-  | 80 => 123 * 123 * 943718400
+  | 78 => 123 * 123 * 943718400
   | _ => 0
 
-private def before : State :=
-  wordWriteState { (default : State) with
-    regs := (default : State).regs.insert .x1 (123 : BitVec 32) |>.insert .PC (0 : BitVec 32) }
+private noncomputable def before : State :=
+  wordWriteState { resetMachine with
+    regs := resetMachine.regs.insert .x1 (123 : BitVec 32) |>.insert .PC (0 : BitVec 32) }
     0 0xc210c0f3
+
+theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState]
 
 private def cells : List Cell := [.register 1]
 private def row : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment⟩
@@ -40,7 +44,7 @@ private def trace : UnifiedTrace babyBearModulus where
   terminal := PCState.boundary 4 (8, 0)
   initialMemory := [Cell.initialToken (.register 1) 123]
   terminalMemory := [⟨(Cell.register 1).addressCode, (6, 0), Nat.pair 369 0⟩]
-private def entry : UnifiedReduced.ProgramEntry :=
+private noncomputable def entry : UnifiedReduced.ProgramEntry :=
   ⟨0, 0xc210c0f3, .ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1),
     ⟨.machine, 1, 1, 1, ⟨0, 0⟩, 512, 0⟩⟩
 
@@ -81,7 +85,7 @@ private theorem decoded : Decoded trace [entry] := by
   exact ⟨0, by decide⟩
 
 private theorem inputs : NativeInputs customDecoderFields trace before cells [entry] := by
-  refine ⟨by decide, ?_, ?_, ?_, ⟨[0], ?_⟩, ?_⟩
+  refine ⟨by decide, ?_, ?_, ?_, ⟨[0], ?_⟩, ?_, airbender_before⟩
   · intro cell member
     simp [cells] at member
     subst cell
@@ -98,10 +102,9 @@ private theorem inputs : NativeInputs customDecoderFields trace before cells [en
     simp [initialState, pc, trace, PCState.boundary]
   · have bytes : (Cell.ram 0).read before = .ok 0xc210c0f3 before :=
       written_word_read _ _ _
-    have original : run (SailRV32.Functions.encdec_backwards 0xc210c0f3) before =
-        .ok (.ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1)) before := by
-      with_unfolding_all rfl
-    simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, original,
+    have original : Airbender.Reference.RiscV.Sail.decodeOnReset 0xc210c0f3 = some (.ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1)) :=
+      by decode_on_reset
+    simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, original,
       customDecoderFields, bind, Option.bind, pure]
     rfl
   · constructor

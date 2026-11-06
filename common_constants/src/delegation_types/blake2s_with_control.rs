@@ -15,16 +15,21 @@ pub const BLAKE2S_DELEGATION_CSR_REGISTER: u32 = super::super::NON_DETERMINISM_C
 // ) -> u32 {
 //     unsafe {
 //         core::arch::asm!(
-//             "csrrw x0, 0x7C7, x0",
+//             "csrrw x0, {csr}, x0",
 //             in("x10") states_ptr.addr(),
 //             in("x11") input_ptr.addr(),
 //             inout("x12") control_mask,
+//             csr = const BLAKE2S_DELEGATION_CSR_REGISTER,
 //             options(nostack, preserves_flags)
 //         );
 //     }
 //     control_mask
 // }
 
+/// # Safety
+///
+/// `states_ptr` must be 128-byte aligned and point to the writable state and extended state,
+/// and `input_ptr` must be 64-byte aligned and point to a 16-word input block.
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub unsafe fn blake_csr_trigger_delegation_reduced_rounds(
@@ -37,16 +42,17 @@ pub unsafe fn blake_csr_trigger_delegation_reduced_rounds(
 
     unsafe {
         core::arch::asm!(
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
             in("x10") states_ptr.addr(),
             in("x11") input_ptr.addr(),
             inlateout("x12") mask,
+            csr = const BLAKE2S_DELEGATION_CSR_REGISTER,
             options(nostack, preserves_flags)
         );
     }
@@ -54,6 +60,10 @@ pub unsafe fn blake_csr_trigger_delegation_reduced_rounds(
     let _ = mask;
 }
 
+/// # Safety
+///
+/// `states_ptr` must be 128-byte aligned and point to the writable state and extended state,
+/// and `input_ptr` must be 64-byte aligned and point to a 16-word input block.
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub unsafe fn blake_csr_trigger_delegation_full_rounds(
@@ -66,19 +76,20 @@ pub unsafe fn blake_csr_trigger_delegation_full_rounds(
 
     unsafe {
         core::arch::asm!(
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
             in("x10") states_ptr.addr(),
             in("x11") input_ptr.addr(),
             inlateout("x12") mask,
+            csr = const BLAKE2S_DELEGATION_CSR_REGISTER,
             options(nostack, preserves_flags)
         );
     }
@@ -89,7 +100,7 @@ pub unsafe fn blake_csr_trigger_delegation_full_rounds(
 pub const NUM_BLAKE2S_REGISTER_ACCESSES: usize = 3;
 pub const NUM_BLAKE2S_VARIABLE_OFFSETS: usize = 0;
 
-pub const BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER: u32 = (0b1000 | 0b000) << 16;
+pub const BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER: u32 = 0b1000 << 16;
 pub const BLAKE2S_NORMAL_MODE_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER: u32 = (0b1000 | 0b001) << 16;
 pub const BLAKE2S_COMPRESSION_MODE_IS_RIGHT_EXTRA_BITS: u32 = 0b010 << 16;
 pub const BLAKE2S_COMPRESSION_MODE_EXTRA_BITS: u32 = 0b100 << 16;

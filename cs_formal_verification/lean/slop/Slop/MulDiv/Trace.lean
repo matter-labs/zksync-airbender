@@ -96,7 +96,8 @@ theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
     {trace : NativeTrace p}
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry} (image : programImage before addresses = some program)
-    (decoded : Decoded trace program) : Trace.Proofs.ZeroPreserving trace := by
+    (decoded : Decoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) : Trace.Proofs.ZeroPreserving trace := by
   intro row member
   obtain ⟨entry, present, _, query⟩ := Trace.Proofs.decoder_member (decoded row member)
   exact row_zero_preserving hp row (Trace.Proofs.run_program_sources image entry present) query
@@ -111,7 +112,8 @@ theorem decoded_native_history {p : Nat} [Fact p.Prime]
     (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (programImage : MulDiv.programImage before addresses = some program)
-    (decoded : Decoded trace program) :
+    (decoded : Decoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) :
     ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row p TraceKind))
       (after : Reference.RiscV.Sail.State),
       MemoryHistory trace history ∧ rows.Perm trace.rows ∧

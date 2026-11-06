@@ -82,22 +82,25 @@ def Circuit.timestampExpressions (c : Circuit) : Except String (Array Expr) :=
     unless query.lookup_set_index == index do throw "timestamp lookup set order mismatch"
     c.lookupExpression query.input
 
-private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat) :
+private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat)
+    (nonComparisonCount : Nat := 2) :
     Except String (Array Trace.TimestampPort) := do
   let column := fun n => do
     unless n < c.memory_layout.total_width do throw "trace column outside memory layout"
     c.logicalVariable (.BaseLayerMemory n)
   let pair := fun (columns : Fixed 2 Nat) => do
     pure (#v[← column columns.values[0]!, ← column columns.values[1]!] : Vector Nat 2)
+  unless c.aux_layout_data.relative_timestamp_groups.isNone do
+    throw "grouped timestamps are only imported for the split workers"
   let queries := c.memory_layout.ram_access_sets
   let borrows := c.aux_layout_data.shuffle_ram_timestamp_comparison_aux_vars
   unless queries.size == borrows.size do throw "timestamp comparison count differs from memory ports"
-  unless c.timestamp_range_check_lookup_expressions.size == 2 + 2 * queries.size do
+  unless c.timestamp_range_check_lookup_expressions.size == nonComparisonCount + 2 * queries.size do
     throw "timestamp query count differs from state and memory ports"
   let mut ports := #[]
   for i in [:queries.size] do
     let some query := queries[i]? | throw "memory timestamp port is missing"
-    let some auxiliary := borrows[i]? | throw "memory timestamp borrow is missing"
+    let some (some auxiliary) := borrows[i]? | throw "memory timestamp borrow is missing"
     let (offset, previous) := match query with
       | .Readonly q => (q.in_cycle_write_index.val, q.read_timestamp)
       | .Write q => (q.in_cycle_write_index.val, q.read_timestamp)
@@ -127,9 +130,16 @@ def Circuit.delegationColumns (c : Circuit) : Except String Delegation.ClockColu
   let column := fun n => do
     unless n < c.memory_layout.total_width do throw "delegation clock outside memory layout"
     c.logicalVariable (.BaseLayerMemory n)
+  -- The selected native workers range (invocation-low - execute) / 4,
+  -- then the memory comparisons and each indirect base's alignment. They
+  -- no longer range the two invocation limbs independently.
+  let mut alignedRegisters : Array Nat := #[]
+  for port in ← c.indirectPorts do
+    if !alignedRegisters.contains port.register then
+      alignedRegisters := alignedRegisters.push port.register
   pure ⟨← column state.execute,
     #v[← column state.invocation_timestamp.values[0]!, ← column state.invocation_timestamp.values[1]!],
-    ← c.timestampPorts (fun _ => 2)⟩
+    ← c.timestampPorts (fun _ => 2) (1 + alignedRegisters.size)⟩
 
 /-- Native decoder fields use memory columns for rs1 and either memory or
     witness columns for the immediate/funct3 group, as recorded by Rust. -/
@@ -200,6 +210,81 @@ def Circuit.memoryPorts (c : Circuit) : Except String (Array Trace.MemoryPort) :
     accesses, paired with its own native previous timestamp and write slot. -/
 def Circuit.delegationPorts (c : Circuit) : Except String (Array Trace.MemoryPort) := do
   c.resolveMemoryPorts (← c.delegationColumns).ports true
+
+/-- The split theta/rho and chi5 workers share one read timestamp per native
+    group of ports. Check that the groups partition the memory ports, that each
+    group names the same read-time columns as its ports, and that no per-port
+    borrow exists. -/
+def Circuit.splitTimestampGroups (c : Circuit) :
+    Except String (Array Delegation.GroupedTimestamp) := do
+  let some groups := c.aux_layout_data.relative_timestamp_groups |
+    throw "split delegation is missing grouped timestamp metadata"
+  if groups.isEmpty then throw "split delegation has no grouped timestamp metadata"
+  let ports := c.memory_layout.ram_access_sets
+  let borrows := c.aux_layout_data.shuffle_ram_timestamp_comparison_aux_vars
+  unless borrows.size == ports.size && borrows.all Option.isNone do
+    throw "split delegation ports cannot carry comparison borrows"
+  for group in groups do
+    if group.members.isEmpty then throw "split timestamp group has no memory ports"
+    for member in group.members do
+      unless member < ports.size do throw "split timestamp group names an absent memory port"
+  for index in [:ports.size] do
+    let owners := groups.filter (fun group => group.members.contains index)
+    unless owners.size == 1 do
+      throw "split memory port must belong to exactly one timestamp group"
+    let some owner := owners[0]? | throw "split memory port has no timestamp group"
+    let some query := ports[index]? | throw "split memory port is missing"
+    let readTimestamp := match query with
+      | .Readonly q => q.read_timestamp
+      | .Write q => q.read_timestamp
+    unless owner.read_timestamp.values == readTimestamp.values do
+      throw "split timestamp group disagrees with native memory port"
+  let some state := c.memory_layout.delegation_state |
+    throw "split timestamp groups need an invocation clock"
+  let column := fun n => do
+    unless n < c.memory_layout.total_width do throw "split delegation clock outside memory layout"
+    c.logicalVariable (.BaseLayerMemory n)
+  let invocationHigh ← column state.invocation_timestamp.values[1]!
+  groups.mapM fun group => do
+    let raw := group.read_timestamp.values
+    pure ⟨#v[← column raw[0]!, ← column raw[1]!], invocationHigh, group.members⟩
+
+/-- Split-worker clocks. Every port writes at slot two and reads at its group's
+    previous timestamp. A grouped port has no borrow column: its `borrow` field
+    names the invocation-high column, and the circuit's borrow is
+    `GroupedTimestamp.borrowValue` (invocation-high minus previous-high). The
+    timestamp queries are the invocation query and one alignment query per
+    indirect base register; the grouped comparisons are native equations. -/
+def Circuit.splitDelegationColumns (c : Circuit) : Except String Delegation.ClockColumns := do
+  let some state := c.memory_layout.delegation_state | throw "split delegation metadata is missing"
+  unless c.memory_layout.machine_state.isNone && c.memory_layout.decoder_input.isNone do
+    throw "split delegation cannot contain machine/decoder state"
+  let column := fun n => do
+    unless n < c.memory_layout.total_width do throw "split delegation clock outside memory layout"
+    c.logicalVariable (.BaseLayerMemory n)
+  let groups ← c.splitTimestampGroups
+  let mut alignedRegisters : Array Nat := #[]
+  for port in ← c.indirectPorts do
+    if !alignedRegisters.contains port.register then
+      alignedRegisters := alignedRegisters.push port.register
+  unless c.timestamp_range_check_lookup_expressions.size == 1 + alignedRegisters.size do
+    throw "split timestamp queries are not the invocation and alignment queries"
+  let mut clocks : Array Trace.TimestampPort := #[]
+  for index in [:c.memory_layout.ram_access_sets.size] do
+    let some group := groups.find? (fun group => group.members.contains index) |
+      throw "split memory port has no timestamp group"
+    let some query := c.memory_layout.ram_access_sets[index]? | throw "split memory port is missing"
+    let offset := match query with
+      | .Readonly q => q.in_cycle_write_index.val
+      | .Write q => q.in_cycle_write_index.val
+    unless offset == 2 do throw "split memory port write offset is not two"
+    clocks := clocks.push ⟨offset, group.previous, group.invocationHigh⟩
+  return ⟨← column state.execute,
+    #v[← column state.invocation_timestamp.values[0]!, ← column state.invocation_timestamp.values[1]!],
+    clocks⟩
+
+def Circuit.splitMemoryPorts (c : Circuit) : Except String (Array Trace.MemoryPort) := do
+  c.resolveMemoryPorts (← c.splitDelegationColumns).ports true
 
 /-- Validate a fixed-table query shape, including tags, padding and placement. -/
 private def Circuit.fixedQueries (c : Circuit) (width : Nat) (tables : List (Nat × Nat)) :
@@ -325,7 +410,7 @@ def Circuit.unifiedReducedQueries (c : Circuit) : Except String (Array (Array Ex
     590081, 590081, 590081, 590081, 590081, 590081, 590081, 590081, 590081, 590081,
     590081, 590081, 590081, 590081, 590081, 1638657, 1638657, 1638657, 1638657, 1638657,
     1638657, 1638657, 1638657, 1638657, 1638657, 1638657, 1638657, 1638657, 1704193, 1769729,
-    1835265, 1900801, 1900929, 1966465, 2032001]
+    1835265, 1900801, 1900929, 1966465, 2032001] ++ Array.replicate 12 2097537
   unless c.table_offsets.size == offsets.size do throw "unified reduced table offsets are incomplete"
   for id in [:offsets.size] do
     unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
@@ -340,6 +425,17 @@ def Circuit.unifiedReducedQueries (c : Circuit) : Except String (Array (Array Ex
       throw "unified reduced query padding must be zero"
     query.columns.mapM c.lookupExpression
 
+/-- Check a prefix of the table offsets; the remaining tables all start at the
+    decoder boundary, as in the upstream circuit JSON. -/
+private def Circuit.checkTableOffsets (c : Circuit) (expected : Array Nat)
+    (family : String) : Except String Unit := do
+  unless expected.size ≤ c.table_offsets.size do
+    throw s!"{family} table offsets are incomplete"
+  for id in [:c.table_offsets.size] do
+    let offset := (expected[id]?).getD c.offset_for_decoder_table
+    unless (c.table_offsets[id]?.map (·.val)) == some offset do
+      throw s!"unexpected {family} table offset"
+
 /-- BLAKE2s G has one eight-data-column control query and eighteen three-data-column
     XOR queries. Keep the control columns, chunk widths/tags and query order intact. -/
 def Circuit.blakeGQueries (c : Circuit) : Except String (Array (Array Expr)) := do
@@ -353,7 +449,7 @@ def Circuit.blakeGQueries (c : Circuit) : Except String (Array (Array Expr)) := 
     82240, 344384, 344384, 344384, 344384, 344384, 344384, 344384, 344384, 344896,
     344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896,
     344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896,
-    344896, 344896, 344896, 344896, 344896]
+    344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896]
   unless c.table_offsets.size == offsets.size do throw "BLAKE2 G table offsets are incomplete"
   for id in [:offsets.size] do
     unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
@@ -374,31 +470,35 @@ def Circuit.blakeGQueries (c : Circuit) : Except String (Array (Array Expr)) := 
           throw "BLAKE2 G XOR lookup padding must be zero"
     query.columns.mapM c.lookupExpression
 
-/-- The extended-control round has eight G invocations and final XOR queries.
-    Its setup is exactly the five XOR regions, with three data columns and a tag. -/
+/-- The current extended-control round uses carry-aware and split-XOR tables.
+    Keep all six physical columns and the exact eight-call/finalization schedule. -/
 def Circuit.blakeRoundQueries (c : Circuit) : Except String (Array (Array Expr)) := do
-  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 4 do
-    throw "BLAKE2 round lookups require four columns and explicit table IDs"
-  unless !c.has_decoder_lookup && c.offset_for_decoder_table == 344384 &&
-      c.total_tables_size == 344384 do throw "unexpected BLAKE2 round setup boundary"
-  let offsets := #[0, 0, 0, 0, 0, 65536, 65536, 65536, 65536, 65536,
-    65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65600, 65856, 82240] ++
-    Array.replicate 34 344384
-  unless c.table_offsets.size == offsets.size do throw "BLAKE2 round table offsets are incomplete"
-  for id in [:offsets.size] do
-    unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
-      throw "unexpected BLAKE2 round table offset"
-  let gTags := [4, 4, 4, 4, 17, 20, 18, 17, 20, 18, 4, 4, 4, 4, 19, 20, 19, 20]
-  let tags := ((List.replicate 8 gTags).flatten ++
-    (List.replicate 16 [19, 20]).flatten ++ (List.replicate 8 [20, 19, 4, 4]).flatten).toArray
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 6 do
+    throw "BLAKE2 round lookups require six columns and explicit table IDs"
+  unless !c.has_decoder_lookup && c.offset_for_decoder_table == 606208 &&
+      c.total_tables_size == 606208 do throw "unexpected BLAKE2 round setup boundary"
+  let offsets := Array.replicate 5 0 ++ Array.replicate 15 65536 ++ #[81920] ++
+    Array.replicate 35 344064 ++ #[540672, 589824]
+  c.checkTableOffsets offsets "BLAKE2 round"
+  let columnTags := [55, 4, 55, 4, 20, 20, 57, 57, 4, 4, 55, 55, 20, 20, 19, 19]
+  let diagonalTags := [55, 4, 55, 4, 20, 20, 57, 57, 4, 4, 55, 55, 20, 20, 56, 56]
+  let tags := ((List.replicate 4 columnTags).flatten ++
+    (List.replicate 4 diagonalTags).flatten ++ (List.replicate 16 [19, 20]).flatten ++
+    (List.replicate 8 [20, 19, 4, 4]).flatten).toArray
   unless c.num_generic_lookups == tags.size && c.generic_lookups.size == tags.size do
-    throw "BLAKE2 round requires 208 XOR queries"
+    throw "BLAKE2 round requires 192 native queries"
   c.generic_lookups.mapIdxM fun index query => do
-    unless query.columns.size == 4 && query.lookup_set_index == index do
+    unless query.columns.size == 6 && query.lookup_set_index == index do
       throw "unsupported BLAKE2 round query width or set"
-    let some tag := query.columns[3]? | throw "BLAKE2 round query is missing its table ID"
+    let some tag := query.columns[5]? | throw "BLAKE2 round query is missing its table ID"
     unless tag.linear_terms.isEmpty && some tag.constant.canonical.val == tags[index]? do
       throw "unexpected BLAKE2 round table ID"
+    let tagId := tag.constant.canonical.val
+    let dataWidth := if tagId == 57 then 5 else if tagId == 55 || tagId == 56 then 4 else 3
+    for column in [dataWidth:5] do
+      let some padding := query.columns[column]? | throw "BLAKE2 round query is missing padding"
+      unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
+        throw "BLAKE2 round unused query columns must be zero"
     query.columns.mapM c.lookupExpression
 
 /-- Six-index control query followed by forty variable-tag byte operations.
@@ -409,7 +509,7 @@ def Circuit.keccakQueries (c : Circuit) : Except String (Array (Array Expr)) := 
   unless !c.has_decoder_lookup && c.offset_for_decoder_table == 1249281 &&
       c.total_tables_size == 1249281 do throw "unexpected Keccak setup boundary"
   let offsets := #[0] ++ Array.replicate 4 1 ++ Array.replicate 33 65537 ++
-    #[69633, 135169, 200705] ++ Array.replicate 14 1249281
+    #[69633, 135169, 200705] ++ Array.replicate 26 1249281
   unless c.table_offsets.size == offsets.size do throw "Keccak table offsets are incomplete"
   for id in [:offsets.size] do
     unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
@@ -429,6 +529,37 @@ def Circuit.keccakQueries (c : Circuit) : Except String (Array (Array Expr)) := 
         unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
           throw "Keccak byte lookup padding must be zero"
     query.columns.mapM c.lookupExpression
+
+/-- The three split Keccak workers have different fixed-table widths. Keep every
+    native query column, including its table ID, and check the setup profile. -/
+private def Circuit.splitKeccakQueries (c : Circuit) (width count boundary : Nat)
+    (ids : List Nat) : Except String (Array (Array Expr)) := do
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == width do
+    throw "split Keccak lookup width or table-ID profile mismatch"
+  unless !c.has_decoder_lookup && c.offset_for_decoder_table == boundary &&
+      c.total_tables_size == boundary do
+    throw "unexpected split Keccak setup boundary"
+  unless c.num_generic_lookups == count && c.generic_lookups.size == count do
+    throw "unexpected split Keccak lookup count"
+  c.generic_lookups.mapIdxM fun index query => do
+    unless query.columns.size == width && query.lookup_set_index == index do
+      throw "split Keccak query width or set mismatch"
+    let some tag := query.columns[width - 1]? | throw "split Keccak query is missing its table ID"
+    unless tag.linear_terms.isEmpty && ids.contains tag.constant.canonical.val do
+      throw "split Keccak query uses an unexpected table ID"
+    query.columns.mapM c.lookupExpression
+
+/-- Column parity: iota (38), slots (62), control (63) and five-input XOR (64). -/
+def Circuit.keccakColumnParityQueries (c : Circuit) : Except String (Array (Array Expr)) :=
+  c.splitKeccakQueries 8 22 1114356 [38, 62, 63, 64]
+
+/-- Theta/rho: byte XOR (4), XOR-and-split (58), control (59) and slots (60). -/
+def Circuit.keccakThetaRhoQueries (c : Circuit) : Except String (Array (Array Expr)) :=
+  c.splitKeccakQueries 9 50 590066 [4, 58, 59, 60]
+
+/-- Chi5: the chi table (65) and control (66). -/
+def Circuit.keccakChi5Queries (c : Circuit) : Except String (Array (Array Expr)) :=
+  c.splitKeccakQueries 11 17 1048697 [65, 66]
 
 /-- Decode the Rust artifact using Lean's JSON parser and the typed serde mirror. -/
 def parseCircuit (text : String) : Except String Circuit := do

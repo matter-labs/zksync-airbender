@@ -6,7 +6,7 @@ use super::*;
 pub fn add_sub_lui_auipc_mop_circuit_setup<A: GoodAllocator>(
     decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
     use_caches: bool,
-    worker: &Worker,
+    _worker: &Worker,
 ) -> CircuitSetup<A> {
     type C = ::add_sub_lui_auipc_mop::AddSubLuiAuipcMopCircuit;
 

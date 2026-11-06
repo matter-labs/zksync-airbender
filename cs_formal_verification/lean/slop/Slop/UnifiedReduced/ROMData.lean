@@ -77,6 +77,7 @@ theorem boot_inputs [Fact p.Prime] (hp : 4 < p)
     change lifted ∈ trace.initialMemory.map (Trace.ROMView.token initial) at member
     obtain ⟨native, present, rfl⟩ := List.mem_map.mp member
     simpa only [Trace.ROMView.token_time] using clocks.memory native present
+  · exact inputs.configuration
 
 theorem memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)

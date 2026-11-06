@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.TraceExecution
 import Tests.TraceZeroRegister
 
@@ -10,7 +11,7 @@ set_option maxHeartbeats 2000000
 
 -- A real LW x0,0(x1), with x1 pointing to aligned ordinary RAM absent from the
 -- public sparse byte image. Its native preprocessing records only x0 accesses.
-private def before : State :=
+private noncomputable def before : State :=
   { Tests.TraceExecution.before with
     regs := Tests.TraceExecution.before.regs.insert .x1 (4194304 : BitVec 32)
     mem := Tests.TraceExecution.before.mem.insert 0 (0x03 : BitVec 8) |>.insert 1 0xa0 |>.insert 2 0 |>.insert 3 0 }
@@ -51,8 +52,7 @@ private theorem program_image : programImage before [0] = some [entry] := by
   have bytes : (Cell.ram 0).read before = .ok 0x0000a003 before := by
     simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
       bind, pure, EStateM.bind, EStateM.get, EStateM.pure, before, Std.ExtHashMap.getElem_insert]
-  have decoded : SailRV32.Functions.encdec_backwards 0x0000a003 =
-      (FreeM.pure (.LOAD (0, .Regidx 1, .Regidx 0, false, 4)) : SailRV32.SailM _) := rfl
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x0000a003 = some (.LOAD (0, .Regidx 1, .Regidx 0, false, 4)) := by decode_on_reset
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith,
     bytes, decoded, bind, Option.bind]
   rfl
@@ -77,7 +77,7 @@ private theorem decoded : Decoded trace [entry] := by
   change ∃ i : Fin 1, Tests.TraceZeroRegister.row.decoderQuery = _
   exact ⟨0, by decide⟩
 
-private theorem configuration : FlatMemoryConfiguration before := by
+private theorem configuration : Configured before := by
   have written : run (SailRV32.Functions.wX_bits (.Regidx 1) 4194304)
       Tests.TraceExecution.before = .ok ()
         { Tests.TraceExecution.before with regs := Tests.TraceExecution.before.regs.insert .x1 4194304 } := by
@@ -126,12 +126,12 @@ theorem native_accepts_discarded_load : ExecutionBoundary trace before cells [en
   intro scope
   exact scope entry List.mem_cons_self 0 1 rfl
 
-private def prepared : State := { before with regs := before.regs.insert .nextPC (4 : BitVec 32) }
+private noncomputable def prepared : State := { before with regs := before.regs.insert .nextPC (4 : BitVec 32) }
 
 set_option backward.isDefEq.respectTransparency false in
 /-- The actual upstream clause still performs the ignored load. Native NOP
     acceptance therefore does not establish its successful Sail execution. -/
-theorem original_discarded_load_error [MemoryPlatform SailRV32.exception] :
+theorem original_discarded_load_error  :
     run (normalStep (SailRV32.Functions.execute_LOAD 0 (.Regidx 1) (.Regidx 0) false 4)) before =
       .error (.OutOfMemoryRange 4194304) prepared := by
   have config := configuration_next_pc_write configuration 4
@@ -165,7 +165,7 @@ theorem original_discarded_load_error [MemoryPlatform SailRV32.exception] :
 
 /-- This actual public instruction has no successful normal Sail step under
     the otherwise accepted native/public boundary conditions. -/
-theorem no_sail_step [MemoryPlatform SailRV32.exception] (after : State) :
+theorem no_sail_step  (after : State) :
     ¬SailStep [entry] before after := by
   rintro ⟨actual, present, _, _, clause, selected, success⟩
   have same := List.mem_singleton.mp present
@@ -179,7 +179,7 @@ theorem no_sail_step [MemoryPlatform SailRV32.exception] (after : State) :
 /-- In particular, no successful Sail trace can reach the native terminal PC.
     This is a counterexample to dropping the current LW-to-x0 restriction,
     not a claim about the full Airbender system or its admissible public memory. -/
-theorem no_native_terminal_execution [MemoryPlatform SailRV32.exception] :
+theorem no_native_terminal_execution  :
     ¬∃ after, SailTrace [entry] before after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok trace.terminal.word.toBitVec after := by
   rintro ⟨after, execution, pc⟩
@@ -196,7 +196,7 @@ theorem no_native_terminal_execution [MemoryPlatform SailRV32.exception] :
 
 /-- The documented Airbender deviation covers that exact same accepted trace,
     without supplying an ignored read value or inventing a successful LOAD. -/
-theorem profile_terminal_execution [MemoryPlatform SailRV32.exception] :
+theorem profile_terminal_execution  :
     ∃ after, AirbenderTrace [entry] before after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok trace.terminal.word.toBitVec after ∧
       ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧

@@ -23,7 +23,9 @@
 //! Costs per round: one leaf read + `O(2^k)` per term, instead of an
 //! `n`-sized equality table per query.
 
-use super::{evals_to_multilinear_coeffs, offsets_vec_for_leaf_construction};
+#[cfg(test)]
+use super::evals_to_multilinear_coeffs;
+use super::offsets_vec_for_leaf_construction;
 use fft::{
     bitreverse_enumeration_inplace, bitreverse_index, domain_generator_for_size,
     materialize_powers_serial_starting_with_one,
@@ -36,9 +38,15 @@ struct Term<F, E> {
     factor: E,
     /// the current point `rho^{2^s}`
     point: F,
-    /// exponent of `point` w.r.t. the generator of the field's maximal
-    /// two-adic subgroup (`2^F::TWO_ADICITY`), kept exactly under squaring
+    /// `point = g^exp` for `g` the generator of the two-adic subgroup of size
+    /// `2^domain_log2`: the query domain when added, the oracle's RS domain
+    /// once loaded (`start_round` rebases it, since a later oracle's domain
+    /// may be larger OR smaller than an earlier one), and one bit less per
+    /// squaring (`g^(2 exp)` is `g_{half}^(exp mod half)`). `exp` is always
+    /// below `2^domain_log2`, so the field's two-adicity (120 for Proth120)
+    /// plays no part in its width
     exp: u64,
+    domain_log2: usize,
     /// the round's leaf, folded `s` times: evaluations of the current folded
     /// polynomial on `base^{2^s} * mu_{2^{k-s}}`, coset order bit-reversed
     values: Vec<E>,
@@ -76,13 +84,17 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> InDomainTerms<F
     /// A query at `query_domain_generator^query_index` in a query domain of
     /// size `2^query_domain_log2`, with weight `ch`.
     pub(crate) fn add(&mut self, point: F, query_index: usize, query_domain_log2: usize, ch: E) {
-        assert!(query_domain_log2 <= F::TWO_ADICITY);
-        let exp = (query_index as u64) << (F::TWO_ADICITY - query_domain_log2);
+        // the query domain is the round's RS domain folded by `k >= 1` steps,
+        // so it is strictly smaller than the field's maximal two-adic subgroup
+        assert!(query_domain_log2 < F::TWO_ADICITY);
+        assert!(query_domain_log2 < u64::BITS as usize);
+        assert!(query_index < 1usize << query_domain_log2);
         self.terms.push(Term {
             ch,
             factor: E::ONE,
             point,
-            exp,
+            exp: query_index as u64,
+            domain_log2: query_domain_log2,
             values: Vec::new(),
             pos: 0,
             base_root: F::ONE,
@@ -122,19 +134,23 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> InDomainTerms<F
             return;
         }
         assert!(domain_log2 <= F::TWO_ADICITY && k <= domain_log2);
+        assert!(domain_log2 < u64::BITS as usize);
         let domain = 1u64 << domain_log2;
         let num_leaves_log2 = domain_log2 - k;
         let generator = domain_generator_for_size::<F>(domain);
         let mut scratch_a = vec![E::ZERO; n];
         let mut scratch_b = vec![E::ZERO; n];
         for term in self.terms.iter_mut() {
-            let shift = F::TWO_ADICITY - domain_log2;
-            assert_eq!(
-                term.exp & ((1u64 << shift) - 1),
-                0,
+            // rebase the exponent onto this oracle's domain: a point of the
+            // `2^term.domain_log2` subgroup lies in the `2^domain_log2` one
+            // iff the former is not larger, and then `g_sub = g^(2^diff)`
+            assert!(
+                term.domain_log2 <= domain_log2,
                 "an in-domain point must lie in the current oracle's domain"
             );
-            let e = term.exp >> shift;
+            term.exp <<= domain_log2 - term.domain_log2;
+            term.domain_log2 = domain_log2;
+            let e = term.exp;
             let leaf_index = (e & ((1u64 << num_leaves_log2) - 1)) as usize;
             let natural_pos = (e >> num_leaves_log2) as usize;
             term.pos = bitreverse_index(natural_pos, k as u32);
@@ -279,7 +295,10 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> InDomainTerms<F
             term.values.truncate(half);
             term.pos >>= 1;
             term.point.square();
-            term.exp = (term.exp << 1) & ((1u64 << F::TWO_ADICITY) - 1);
+            // `point^2` lies in the half-size subgroup
+            assert!(term.domain_log2 > 0);
+            term.domain_log2 -= 1;
+            term.exp &= (1u64 << term.domain_log2) - 1;
             term.base_root.square();
             term.base_root_inv.square();
         }
@@ -350,7 +369,7 @@ pub(crate) fn multilinear_coeffs_to_evals<
     }
     // the forward pass's stage `s` writes buf_a for even `s`, buf_b for odd
     // `s`; the backward pass starts from its last stage's output buffer
-    if (num_folding_rounds - 1) % 2 == 0 {
+    if (num_folding_rounds - 1).is_multiple_of(2) {
         buf_a[..n].copy_from_slice(data);
     } else {
         buf_b[..n].copy_from_slice(data);
@@ -415,8 +434,67 @@ mod tests {
     use field::Rand;
 
     #[test]
+    fn proth120_in_domain_folds_match_polynomial() {
+        use field::Proth120 as P;
+
+        let generator = domain_generator_for_size::<P>(256);
+        let point = generator.pow(197);
+        let three = P::from_u32_unchecked(3);
+        let seven = P::from_u32_unchecked(7);
+        let alpha = P::from_u32_unchecked(11);
+        let beta = P::from_u32_unchecked(13);
+        let mut terms = InDomainTerms::<P, P>::new();
+        // This query would need more than 64 bits in the maximal subgroup.
+        // Oracle-local exponents stay bounded by the current RS domain and
+        // wrap into the half-size domain on the first fold.
+        terms.add(point, 197, 8, P::ONE);
+        terms.start_round(2, 8, |leaf| {
+            assert_eq!(leaf, 5);
+            let base = generator.pow(leaf as u32);
+            let set_generator = domain_generator_for_size::<P>(4);
+            let values = (0..4)
+                .map(|i| {
+                    let mut x = base;
+                    x.mul_assign(&set_generator.pow(bitreverse_index(i, 2) as u32));
+                    let mut value = x;
+                    value.square();
+                    x.mul_assign(&three);
+                    value.add_assign(&x);
+                    value.add_assign(&seven);
+                    value
+                })
+                .collect();
+            (values, false)
+        });
+        terms.fold(&alpha);
+        let mut constant = three;
+        constant.mul_assign(&alpha);
+        constant.add_assign(&seven);
+        let mut squared_point = point;
+        squared_point.square();
+        assert_eq!(terms.terms[0].point, squared_point);
+        assert_eq!(
+            terms.terms[0].values[terms.terms[0].pos],
+            squared_point + constant,
+        );
+        terms.start_round(1, 7, |leaf| {
+            assert_eq!(leaf, 5);
+            let base = domain_generator_for_size::<P>(128).pow(leaf as u32);
+            let mut negative_base = base;
+            negative_base.negate();
+            (vec![base + constant, negative_base + constant], false)
+        });
+        terms.fold(&beta);
+        assert_eq!(terms.terms[0].values, vec![beta + constant]);
+        terms.start_round(1, 6, |leaf| {
+            assert_eq!(leaf, 5);
+            (vec![beta + constant; 2], false)
+        });
+    }
+
+    #[test]
     fn coeffs_to_evals_inverts_the_conversion() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for k in 1..=6usize {
             let n = 1usize << k;
             let set_generator = domain_generator_for_size::<F>(n as u64);
@@ -450,6 +528,62 @@ mod tests {
             let mut b = vec![E::ZERO; n];
             multilinear_coeffs_to_evals(&mut data, &base_root, &hp_inv, k, &mut a, &mut b);
             assert_eq!(data, evals, "k = {k}");
+        }
+    }
+
+    /// Proth120's two-adicity is 120, so an exponent anchored to the field's
+    /// maximal two-adic subgroup would need `query_index << 91` at the EVM
+    /// production geometry. Anchored to each oracle's own RS domain it stays
+    /// within that domain's bits, including when a later oracle's domain is
+    /// LARGER than an earlier one's (a bigger intermediate LDE factor).
+    /// `start_round` asserts that the leaf bookkeeping derived from the
+    /// exponent reproduces each tracked point.
+    #[test]
+    fn proth120_exponents_follow_each_oracle_domain() {
+        use field::Proth120 as P;
+
+        let mut terms = InDomainTerms::<P, P>::new();
+        let add_queries = |terms: &mut InDomainTerms<P, P>, query_domain_log2: usize| {
+            let g = domain_generator_for_size::<P>(1u64 << query_domain_log2);
+            for query_index in [
+                0usize,
+                1,
+                0x1234_5678 % (1 << query_domain_log2),
+                (1 << query_domain_log2) - 1,
+            ] {
+                terms.add(
+                    g.pow(query_index as u32),
+                    query_index,
+                    query_domain_log2,
+                    P::ONE,
+                );
+            }
+        };
+        // round 0: 2^31 RS domain (2^(22 + 4) packed message, LDE 32), 1 folding
+        // step, queries in the 2^30 folded domain
+        add_queries(&mut terms, 31 - 1);
+        // round 1: 2^25 message with LDE 128 -> a 2^32 oracle, larger than round 0's
+        let (k, domain_log2) = (5usize, 32usize);
+        terms.start_round(k, domain_log2, |_| (vec![P::ZERO; 1 << k], false));
+        for _ in 0..k {
+            terms.fold(&P::ONE);
+        }
+        add_queries(&mut terms, domain_log2 - k);
+        // round 2: 2^20 message with LDE 256 -> a 2^28 oracle, smaller again
+        // (it must still contain round 1's 2^27 query domain)
+        let (k, domain_log2) = (4usize, 28usize);
+        terms.start_round(k, domain_log2, |_| (vec![P::ZERO; 1 << k], false));
+        for _ in 0..k {
+            terms.fold(&P::ONE);
+        }
+        assert_eq!(terms.len(), 8);
+        for term in &terms.terms {
+            assert_eq!(term.domain_log2, domain_log2 - k);
+            assert!(term.exp < 1u64 << term.domain_log2);
+            assert_eq!(
+                domain_generator_for_size::<P>(1u64 << term.domain_log2).pow(term.exp as u32),
+                term.point
+            );
         }
     }
 }

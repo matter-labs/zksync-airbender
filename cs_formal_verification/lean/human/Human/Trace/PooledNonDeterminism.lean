@@ -3,7 +3,6 @@ import Human.Helpers.Decoder.PooledExternalInput
 
 namespace Airbender.Trace.NonDeterminism.Pooled
 variable {p : Nat} [Fact p.Prime]
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 /-- One mixed step, using public Sail fetch/decoding and the shared custom CSR
     clause. Standard instructions execute unchanged Sail; only external reads

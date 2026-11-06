@@ -1,20 +1,18 @@
 #![feature(allocator_api)]
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
 
 use crate::cs::gkr_circuits::ExecutorFamilyDecoderData;
 use cs::tables::TableDriver;
 use definitions::MerkleTreeCap;
 use merkle_trees::DefaultTreeConstructor;
 use prover::cs::gkr_compiler::GKRCircuitArtifact;
+use prover::definitions::SecurityLevel;
 use prover::fft::*;
 use prover::field::baby_bear::base::BabyBearField;
-use prover::field::*;
 use prover::gkr::prover::setup::GKRSetup;
+use prover::gkr::prover_config::ProverConfig;
 use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use prover::gkr::witness_gen::oracles::*;
 use prover::merkle_trees::MerkleTreeCapVarLength;
-use prover::tracers::*;
 use prover::*;
 use riscv_transpiler::cycle::*;
 use std::alloc::Global;
@@ -32,14 +30,20 @@ pub use ::unified_reduced_machine::UnifiedReducedMachineCircuit;
 pub use ::bigint_with_control::BigIntDelegationCircuit;
 pub use ::blake2_g_function::Blake2sGFunctionDelegationCircuit;
 pub use ::blake2_with_compression::Blake2sWithCompressionDelegationCircuit;
+pub use ::keccak_chi5::KeccakChi5DelegationCircuit;
+pub use ::keccak_column_parity::KeccakColumnParityDelegationCircuit;
 pub use ::keccak_special5::KeccakSpecial5DelegationCircuit;
+pub use ::keccak_theta_rho::KeccakThetaRhoDelegationCircuit;
 
 pub use ::inits_and_teardowns;
 
 pub use bigint_with_control;
 pub use blake2_g_function;
 pub use blake2_with_compression;
+pub use keccak_chi5;
+pub use keccak_column_parity;
 pub use keccak_special5;
+pub use keccak_theta_rho;
 pub use prover;
 
 pub mod circuits;
@@ -99,6 +103,20 @@ pub struct CircuitSetup<A: GoodAllocator = Global> {
     pub table_driver: TableDriver<BabyBearField>,
     pub setup: GKRSetup<BabyBearField>,
     pub witness_eval_fn: Option<UnrolledCircuitWitnessEvalFn<A>>,
+    /// The circuit's prover config per security level
+    /// ([`circuit_common::prover_configs_for_all_levels`]): the geometry every
+    /// commitment and proof made from this setup must use.
+    pub prover_configs: Vec<ProverConfig>,
+}
+
+impl<A: GoodAllocator> CircuitSetup<A> {
+    /// The circuit's prover config at `level` — the single source of its
+    /// proving geometry (trace length, schedules, packing).
+    pub fn prover_config(&self, level: SecurityLevel) -> &ProverConfig {
+        let config = circuit_common::prover_config_at(&self.prover_configs, level);
+        assert_eq!(1usize << config.trace_len_log2, self.trace_len);
+        config
+    }
 }
 
 pub fn make_setup_for_non_mem_circuit<
@@ -116,8 +134,8 @@ pub fn make_setup_for_non_mem_circuit<
     let table_driver = circuit_common::risc_v_non_mem_get_table_driver::<BabyBearField, C>();
     let setup = GKRSetup::construct(
         &table_driver,
-        &decoder_table_data,
-        1 << C::DOMAIN_SIZE_LOG2,
+        decoder_table_data,
+        1 << C::trace_len_log2(),
         &circuit,
     );
 
@@ -135,11 +153,12 @@ pub fn make_setup_for_non_mem_circuit<
 
     CircuitSetup {
         family_idx: C::CIRCUIT_FAMILY,
-        trace_len: 1 << C::DOMAIN_SIZE_LOG2,
+        trace_len: 1 << C::trace_len_log2(),
         compiled_circuit: circuit,
         table_driver,
         setup,
         witness_eval_fn,
+        prover_configs: circuit_common::prover_configs_for_all_levels(C::prover_config),
     }
 }
 
@@ -160,8 +179,8 @@ pub fn make_setup_for_with_mem_circuit<
         circuit_common::risc_v_with_mem_get_table_driver::<BabyBearField, C>(bytecode);
     let setup = GKRSetup::construct(
         &table_driver,
-        &decoder_table_data,
-        1 << C::DOMAIN_SIZE_LOG2,
+        decoder_table_data,
+        1 << C::trace_len_log2(),
         &circuit,
     );
 
@@ -178,11 +197,12 @@ pub fn make_setup_for_with_mem_circuit<
 
     CircuitSetup {
         family_idx: C::CIRCUIT_FAMILY,
-        trace_len: 1 << C::DOMAIN_SIZE_LOG2,
+        trace_len: 1 << C::trace_len_log2(),
         compiled_circuit: circuit,
         table_driver,
         setup,
         witness_eval_fn,
+        prover_configs: circuit_common::prover_configs_for_all_levels(C::prover_config),
     }
 }
 
@@ -239,10 +259,10 @@ pub struct DelegationCircuitSetupParams {
 }
 
 pub fn compute_setup_commitment(
-    setup: GKRSetup<BabyBearField>,
-    cap_size: usize,
+    _setup: GKRSetup<BabyBearField>,
+    _cap_size: usize,
     lde_factor: usize,
-    worker: &Worker,
+    _worker: &Worker,
 ) -> MerkleTreeCapVarLength {
     assert!(lde_factor.is_power_of_two());
 
