@@ -8,6 +8,7 @@ import Slop.Final.Trace.Families.ShiftBinop.Theorems
 import Slop.Final.Circuits.SubwordMemory.Theorems
 import Slop.Final.Trace.Families.SubwordMemory.Theorems
 import Slop.Final.Trace.Soundness
+import Slop.Final.Trace.Workers.KeccakSplit.Theorems
 import Slop.AddSub.RowClaims
 import Slop.AddSub.ArtifactChecks
 import Slop.MulDiv.ArtifactChecks
@@ -1275,6 +1276,19 @@ import Human.Import.Coefficients
 #print axioms Airbender.Keccak.Proofs.call_permutation
 #print axioms Airbender.Keccak.Proofs.permutation_binding
 #print axioms Airbender.Keccak.Native.permutation_soundness
+
+#print axioms Airbender.Keccak.Split.ColumnParity.SetupProofs.setupRow_eq
+#print axioms Airbender.Keccak.Split.ThetaRho.SetupProofs.setupRow_eq
+#print axioms Airbender.Keccak.Split.Chi5.SetupProofs.setupRow_eq
+#print axioms Airbender.Keccak.Split.Proofs.control_facts
+#print axioms Airbender.Keccak.Split.Native.Proofs.row_contract
+#print axioms Airbender.Keccak.Split.Native.Proofs.memory_order
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_memory_execution
+#print axioms Airbender.Keccak.Split.Native.Proofs.operation_execution
+#print axioms Airbender.Keccak.Split.Native.Proofs.call_chain
+#print axioms Airbender.Keccak.Split.Call.Proofs.permutation_of_executions
+#print axioms Airbender.Keccak.Split.Native.operation_execution
+#print axioms Airbender.Keccak.Split.Native.permutation_soundness
 
 #print axioms Airbender.Delegation.Caller.Proofs.query_csr
 #print axioms Airbender.Delegation.Caller.Proofs.query_selected
