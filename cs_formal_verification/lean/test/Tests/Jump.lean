@@ -1,5 +1,6 @@
 import Slop.JumpBranchSlt.Claims
 import Slop.Sail.ControlFlow
+import Slop.JumpBranchSlt.Completeness.Witness
 
 namespace Tests.Jump
 open Airbender
@@ -40,61 +41,47 @@ def row (indirect wrap zero : Bool) : Nat → ZMod babyBearModulus
   | 42 => if indirect && wrap then 1 else 0
   | _ => 0
 
-set_option maxHeartbeats 800000 in
+/-- The honest inputs `row` is built from: the operands, PC and offset; zero clocks. -/
+private def witness (indirect wrap zero : Bool) : JumpBranchSlt.Completeness.Inputs where
+  sel := if indirect then 1 else 0
+  rdZero := zero
+  funct3 := 0
+  rs1 := if indirect then 1 else 0
+  rs2 := 0
+  rd := if zero then 0 else 1
+  pcLo := (initial wrap).lo
+  pcHi := (initial wrap).hi
+  aLo := if indirect then (base indirect wrap).lo else 0
+  aHi := if indirect then (base indirect wrap).hi else 0
+  bLo := 0
+  bHi := 0
+  immLo := (offset indirect wrap).lo
+  immHi := (offset indirect wrap).hi
+  oldLo := 0
+  oldHi := 0
+  tsLo := 0
+  tsHi := 0
+  prev0Lo := 0
+  prev0Hi := 0
+  prev1Lo := 0
+  prev1Hi := 0
+  prev2Lo := 0
+  prev2Hi := 0
+  borrow0 := 0
+  borrow1 := 0
+  borrow2 := 0
+
+private theorem valid (indirect wrap zero : Bool) : (witness indirect wrap zero).Valid := by
+  cases indirect <;> cases wrap <;> cases zero <;> constructor <;> decide
+
+private theorem agree (indirect wrap zero : Bool) : ∀ i ∈ JumpBranchSlt.Completeness.columns,
+    row indirect wrap zero i = (witness indirect wrap zero).honest i := by
+  cases indirect <;> cases wrap <;> cases zero <;> decide
+
 theorem satisfies (indirect wrap zero : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row indirect wrap zero))
-      JumpBranchSlt.importedConstraints := by
-  cases indirect <;> cases wrap <;> cases zero <;>
-    simp [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Expression.eval, Verification.environment, row, initial, offset, base, final]
-  repeat' apply And.intro
-  all_goals solve
-    | (apply Verification.range16_contains; decide)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((0, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 32768 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨0, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((65535, 1) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 32768 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨65535, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 131072,
-         ((0, 1) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((if i.val = 0 then 1 else 0 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨0, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 131072,
-         ((4, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((if i.val = 0 then 1 else 0 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨4, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 4194304,
-         ((0, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-       exact ⟨⟨0, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 4194304,
-         ((393216, 1) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-       exact ⟨⟨393216, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 4194304,
-         ((458752, 1) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-       exact ⟨⟨458752, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((65532, 0, 65532) : fieldTriple (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 2 % 2 : Nat) : ZMod babyBearModulus), ((i.val - i.val % 4 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨65532, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((4, 0, 4) : fieldTriple (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 2 % 2 : Nat) : ZMod babyBearModulus), ((i.val - i.val % 4 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨4, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((1, 0, 0) : fieldTriple (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 2 % 2 : Nat) : ZMod babyBearModulus), ((i.val - i.val % 4 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨1, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((5, 0, 4) : fieldTriple (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 2 % 2 : Nat) : ZMod babyBearModulus), ((i.val - i.val % 4 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨5, by decide⟩, rfl⟩)
-    | decide
+      JumpBranchSlt.importedConstraints :=
+  JumpBranchSlt.Completeness.complete_of_agree _ (valid indirect wrap zero) (agree indirect wrap zero)
 
 /-- Eight imported rows: JAL/JALR, PC+4 and target wrapping, x0/nonzero rd.
     JALR's sums are odd; their bit-0 cleanup is exercised explicitly. -/
