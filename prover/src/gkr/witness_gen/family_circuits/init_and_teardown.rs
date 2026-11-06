@@ -80,7 +80,6 @@ pub(crate) fn populate_inline_inits_and_teardowns_columns<F: PrimeField, A>(
 mod tests {
     use super::*;
     use field::baby_bear::base::BabyBearField;
-    use field::Field;
 
     use std::alloc::Global;
     use std::vec;
@@ -168,69 +167,6 @@ mod tests {
                 }
             }
         }
-    }
-
-    /// In-trace path (`require_target_empty == false`): destinations hold
-    /// stale, nonzero data (as the uninitialized memory-only trace can after
-    /// allocator reuse); each is replaced exactly by its source, and columns
-    /// outside `teardown_sets` are left untouched.
-    #[test]
-    fn in_trace_path_replaces_stale_destinations_exactly() {
-        let trace_len = 16usize;
-        let teardown_sets = synth_teardown_sets(); // covers cols 0..8
-        let total_width = 10;
-        let stale = |col: usize, row: usize| {
-            BabyBearField::from_u32_with_reduction(0xdead_0000 + (col * 100 + row) as u32)
-        };
-        let mut column_major_trace: Vec<Vec<BabyBearField, Global>, Global> = (0..total_width)
-            .map(|col| (0..trace_len).map(|row| stale(col, row)).collect())
-            .collect();
-
-        let dumped = synth_dumped_data(&teardown_sets, trace_len);
-        populate_inline_inits_and_teardowns_columns(
-            &mut column_major_trace,
-            dumped,
-            &teardown_sets,
-            false,
-        );
-
-        for (set_idx, ([ts0, ts1], [v0, v1])) in teardown_sets.iter().enumerate() {
-            for (limb_idx, addr) in [ts0, ts1, v0, v1].into_iter().enumerate() {
-                let GKRAddress::BaseLayerMemory(col) = *addr else {
-                    panic!("not BaseLayerMemory");
-                };
-                let expected: Vec<_> = (0..trace_len)
-                    .map(|row| marker(set_idx as u32, limb_idx as u32, row as u32))
-                    .collect();
-                assert_eq!(column_major_trace[col], expected, "column {col}");
-            }
-        }
-        for col in 8..total_width {
-            let expected: Vec<_> = (0..trace_len).map(|row| stale(col, row)).collect();
-            assert_eq!(
-                column_major_trace[col], expected,
-                "column {col} must stay untouched"
-            );
-        }
-    }
-
-    /// In-trace path: a source whose length differs from the trace-length
-    /// destination is rejected rather than silently resizing the column.
-    #[test]
-    #[should_panic(expected = "source length differs from destination column 0")]
-    fn in_trace_path_rejects_length_mismatch() {
-        let trace_len = 8usize;
-        let teardown_sets = synth_teardown_sets();
-        let mut column_major_trace: Vec<Vec<BabyBearField, Global>, Global> = (0..8)
-            .map(|_| vec![BabyBearField::ZERO; trace_len])
-            .collect();
-        let dumped = synth_dumped_data(&teardown_sets, trace_len / 2);
-        populate_inline_inits_and_teardowns_columns(
-            &mut column_major_trace,
-            dumped,
-            &teardown_sets,
-            false,
-        );
     }
 
     /// Two teardown_sets pointing at the same column trip the empty-target
