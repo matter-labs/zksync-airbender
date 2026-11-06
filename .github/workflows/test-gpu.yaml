@@ -200,7 +200,9 @@ jobs:
 
       - name: Prove, continue and verify on GPU in every soundness mode
         env:
-          # Large enough that every mode proves an unrolled recursion layer.
+          # The lowest allowed switch threshold (MIN_UNIFIED_SWITCH_CYCLES): unrolled recursion runs while
+          # the estimated verifier cost stays at or above it. EXPECT_UNROLLED checks that this workload
+          # proves an unrolled layer in every mode.
           RECURSION_UNIFIED_SWITCH_CYCLES: "16777216"
           INPUT_FILE: output/hashed_fibonacci_input.txt
           DIRECT: "1"
