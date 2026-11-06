@@ -15,8 +15,7 @@ use worker::Worker;
 pub struct CpuCircuitPrecomputations(Arc<Precomputed>);
 
 pub struct Precomputed {
-    circuit_type: CircuitType,
-    config: ProverConfig,
+    pub(crate) config: ProverConfig,
     pub(crate) compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
     pub(crate) setup: CpuGKRSetup<BF>,
     pub(crate) table_driver: TableDriver<BF>,
@@ -55,7 +54,6 @@ impl CpuCircuitPrecomputations {
                 setup,
                 witness_eval_fn,
             }) => Precomputed {
-                circuit_type,
                 config,
                 compiled_circuit: Arc::new(compiled_circuit),
                 setup,
@@ -65,7 +63,6 @@ impl CpuCircuitPrecomputations {
                 setup_commitment: OnceLock::new(),
             },
             CanonicalCircuitSetup::Delegation(setup) => Precomputed {
-                circuit_type,
                 config,
                 compiled_circuit: Arc::new(setup.compiled_circuit),
                 setup: setup.setup,
@@ -81,17 +78,6 @@ impl CpuCircuitPrecomputations {
             "setup trace length disagrees with CircuitType geometry for {circuit_type:?}"
         );
         Self(Arc::new(precomputed))
-    }
-
-    /// The prepared config for this circuit.
-    pub(crate) fn config_for_request(&self, circuit_type: CircuitType) -> &ProverConfig {
-        assert!(
-            self.circuit_type == circuit_type,
-            "PreparedCircuitMismatch: prepared circuit {:?} differs from requested circuit \
-             {circuit_type:?}",
-            self.circuit_type
-        );
-        &self.config
     }
 
     pub(crate) fn initialize_setup<T: TwiddleSetOps<BF>>(
@@ -129,36 +115,5 @@ impl CircuitPrecomputation for CpuCircuitPrecomputations {
             .get()
             .expect("setup initialization must run before a setup cap is read");
         Some(commitment.get_cap())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use execution_prover::config::SoundnessMode;
-    use execution_prover::setup::build_delegation_setup;
-    use execution_prover_model::circuit_type::DelegationCircuitType;
-
-    const DELEGATION: DelegationCircuitType = DelegationCircuitType::Blake2GFunction;
-    const CIRCUIT: CircuitType = CircuitType::Delegation(DELEGATION);
-
-    fn prepared(soundness_mode: SoundnessMode) -> CpuCircuitPrecomputations {
-        let worker = Worker::new_with_num_threads(1);
-        CpuCircuitPrecomputations::from_canonical(
-            CIRCUIT,
-            build_delegation_setup(DELEGATION, &worker),
-            soundness_mode,
-        )
-    }
-
-    #[test]
-    #[should_panic(
-        expected = "PreparedCircuitMismatch: prepared circuit Delegation(Blake2GFunction) differs from requested circuit Delegation(BigIntWithControl)"
-    )]
-    fn prepared_circuit_mismatch_panics() {
-        let prepared = prepared(SoundnessMode::PessimisticConjecture);
-        prepared.config_for_request(CircuitType::Delegation(
-            DelegationCircuitType::BigIntWithControl,
-        ));
     }
 }

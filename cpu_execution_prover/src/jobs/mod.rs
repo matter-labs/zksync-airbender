@@ -54,7 +54,7 @@ impl CpuJobs {
             sequence_id,
             precomputations,
         } = request;
-        let config = precomputations.config_for_request(circuit_type);
+        let config = &precomputations.config;
         let twiddles = self.twiddles(1usize << config.whir_message_size_log2(), worker);
         precomputations.initialize_setup(&*twiddles, worker);
         SetupInitializationResult {
