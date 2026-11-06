@@ -91,7 +91,6 @@ impl ProofArtifact {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     fn artifact(mode: SoundnessMode) -> ProofArtifact {
         ProofArtifact {
@@ -134,7 +133,7 @@ mod tests {
     }
 
     #[test]
-    fn v4_requires_a_known_explicit_mode() {
+    fn incompatible_artifact_metadata_is_refused() {
         for &mode in SoundnessMode::ALL {
             let original = artifact(mode);
             let bytes = serde_json::to_vec(&original).unwrap();
@@ -159,40 +158,20 @@ mod tests {
                 .to_string();
             assert!(error.contains(expected_error), "{error}");
         }
-    }
 
-    #[test]
-    fn in_memory_artifacts_of_another_schema_are_refused() {
-        let mut other = artifact(SoundnessMode::DEFAULT);
-        other.schema_version = 3;
-        assert_eq!(
-            other.validate_expected_mode(SoundnessMode::DEFAULT),
-            Err("UnsupportedArtifactVersion: 3; the supported version is 4".to_owned())
-        );
-    }
-
-    #[test]
-    fn unknown_schema_and_duplicate_metadata_are_rejected() {
-        for version in [0, 2, 3, 5, 6, u32::MAX] {
-            // A version error is explicit even without a proof payload.
-            let value = serde_json::json!({"schema_version": version});
-            assert!(serde_json::from_value::<ProofArtifact>(value)
+        assert!(
+            serde_json::from_str::<ProofArtifact>(r#"{"schema_version":3}"#)
                 .unwrap_err()
                 .to_string()
-                .contains(&format!(
-                    "UnsupportedArtifactVersion: {version}; the supported version is 4"
-                )));
-        }
-        let error =
-            serde_json::from_str::<ProofArtifact>(r#"{"schema_version":4,"schema_version":3}"#)
-                .unwrap_err();
-        assert!(error.to_string().contains("duplicate field"));
-    }
-
-    #[test]
-    fn expected_mode_rejection_precedes_source_loading() {
-        let source =
-            crate::ProgramSource::legacy_binaries_from_bin(Path::new("/missing/program.bin"));
+                .contains("UnsupportedArtifactVersion: 3")
+        );
+        let mut old = artifact(SoundnessMode::DEFAULT);
+        old.schema_version = 3;
+        assert!(old
+            .validate_expected_mode(SoundnessMode::DEFAULT)
+            .unwrap_err()
+            .starts_with("UnsupportedArtifactVersion:"));
+        let source = crate::ProgramSource::legacy_binaries_from_bin("/missing/program.bin");
         for &mode in SoundnessMode::ALL {
             let expected = SoundnessMode::ALL
                 .iter()

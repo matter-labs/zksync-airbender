@@ -288,33 +288,3 @@ fn try_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> 
     let src = std::fs::File::open(filename).map_err(|_| ())?;
     Ok(serde_json::from_reader(src).unwrap())
 }
-
-#[cfg(test)]
-mod fixture_maintenance {
-    use super::*;
-
-    /// Rewrite every circuit's serialized prover configs
-    /// (`<circuit>/generated/prover_config_<level>_<mode>.json`) in the
-    /// CURRENT `ProverConfig` layout: read each back (the decoder accepts the
-    /// legacy layout too) and serialize it exactly as
-    /// `circuit_common::save_prover_configs` does. Run after a `ProverConfig`
-    /// / `WhirSchedule` layout change:
-    /// `cargo test -p verifier_common --lib -- --ignored rewrite_prover_config_fixtures_in_current_layout`.
-    /// (The configs' CONTENT is regenerated from the circuit geometries by the
-    /// `setups` crate's `regenerate_prover_config_fixtures` test.)
-    #[test]
-    #[ignore]
-    fn rewrite_prover_config_fixtures_in_current_layout() {
-        for circuit in CIRCUITS.iter() {
-            for level in SecurityLevel::ALL.iter() {
-                for mode in SoundnessMode::ALL.iter() {
-                    let path = circuit.prover_config_path_for_mode(*level, *mode);
-                    let config: ProverConfig = deserialize_from_file(&path);
-                    config.validate_for_whir_message_size(config.whir_message_size_log2());
-                    let mut dst = std::fs::File::create(&path).unwrap();
-                    serde_json::to_writer_pretty(&mut dst, &config).unwrap();
-                }
-            }
-        }
-    }
-}

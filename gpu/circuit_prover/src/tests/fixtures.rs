@@ -135,7 +135,7 @@ pub(super) fn delegation_prover_config(circuit_type: DelegationCircuitType) -> P
 
 /// `circuit_type`'s prover config under `mode` at `level`. The default mode is
 /// the circuit's own config; another mode is the production
-/// [`crate::config::prover_config_for_selection`] for `compiled_circuit`.
+/// `CircuitType::prover_config_in_mode` for `compiled_circuit`.
 pub(super) fn prover_config_in_mode(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -145,11 +145,9 @@ pub(super) fn prover_config_in_mode(
     if mode == circuit_common::SoundnessMode::DEFAULT {
         return circuit_type.prover_config(level);
     }
-    let selection = ProvingSelection {
-        security_level: level,
-        soundness_mode: mode,
-    };
-    crate::config::prover_config_for_selection(circuit_type, compiled_circuit, selection)
+    circuit_type
+        .geometry()
+        .prover_config(compiled_circuit, level, mode)
 }
 
 pub(super) fn test_external_challenges() -> GKRExternalChallenges<BF, E4> {

@@ -85,8 +85,7 @@ pub fn validate_merged_commitment_geometry<F: PrimeField>(
         config.commitment_mode,
         CommitmentMode::MergedMemoryAndWitness
     );
-    let expected = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit))
-        .expect("invalid merged commitment config");
+    let expected = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit));
     assert_eq!(
         *geometry, expected,
         "merged commitment config/geometry mismatch"
@@ -105,14 +104,7 @@ pub fn commit_merged_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     validate_merged_commitment_geometry(config, &geometry, gkr_programs.compiled_circuit());
-    inputs.setup.host.validate_for_geometry(&geometry);
-    gpu_trace::trace::holder::validate_baby_bear_base_geometry(
-        &geometry,
-        context
-            .ntt_device_context()
-            .whir_leaf_transform_params()
-            .omega_log_order,
-    );
+
     inputs.transfer.ensure_transferred(context)?;
     let GpuGKRMergedCommitTransfer {
         transfer,
@@ -156,10 +148,6 @@ pub fn commit_merged_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
     stage1.memory_trace_holder.commit_all(context)?;
     let job = schedule_memory_cap_readback(
         stage1.memory_trace_holder.unified_device_cap(),
-        stage1
-            .memory_trace_holder
-            .base_commitment_geometry()
-            .map(|(geometry, _)| geometry),
         stage1.memory_trace_holder.log_lde_factor,
         callbacks,
         Some(transfer.into_keepalive()),

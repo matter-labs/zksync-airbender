@@ -189,16 +189,11 @@ fn pessimistic_base_proof_verifies() {
 }
 
 fn selected_base_proof_verifies(soundness_mode: prover::definitions::SoundnessMode) {
-    use prover::definitions::ProvingSelection;
-    let selection = ProvingSelection {
-        soundness_mode,
-        ..ProvingSelection::default()
-    };
     let (proof, setups) = {
         let mut prover = CpuExecutionProver::with_configuration(
-            CpuExecutionProverConfiguration::for_selection(selection),
+            CpuExecutionProverConfiguration::for_mode(soundness_mode),
         );
-        assert_eq!(prover.selection(), selection);
+        assert_eq!(prover.soundness_mode(), soundness_mode);
         let (binary, text) = workload("basic_fibonacci", "app");
         let handle = prover.add_binary(
             ExecutionKind::Unrolled,
@@ -227,9 +222,9 @@ fn selected_base_proof_verifies(soundness_mode: prover::definitions::SoundnessMo
     let output = full_statement_verifier::host_utils::native_verify_unrolled_in_mode(
         stream,
         true,
-        selection.soundness_mode,
+        soundness_mode,
     )
     .expect("unrolled proof must verify");
     assert_ne!(output, [0u32; 16], "selected base proof must verify");
-    println!("{selection:?}: {proof_count} RISC-V proof chunks verified natively");
+    println!("{soundness_mode:?}: {proof_count} RISC-V proof chunks verified natively");
 }

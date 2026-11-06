@@ -215,10 +215,30 @@ fn build_proof_layout_inputs_inner(
     let message_log = base_geometry.map_or(initial_trace_size_log_2 as usize, |geometry| {
         geometry.message_size_log2()
     });
-    let mut folded_trace_len_log2 = u32::try_from(message_log).expect("message log2 exceeds u32");
+    assert!(
+        whir_schedule.base_round.fold_log2 <= 1,
+        "unsupported GPU base fold"
+    );
+    let mut previous_lde = whir_schedule.base_lde_factor_log2();
+    assert!(
+        message_log - whir_schedule.base_round.fold_log2 + previous_lde
+            < <super::BF as crate::upstream::TwoAdicField>::TWO_ADICITY,
+        "BabyBear WHIR query domain must be strictly below field two-adicity for symbolic terms"
+    );
+    for round in &whir_schedule.internal_rounds {
+        assert!(
+            previous_lde <= round.lde_factor_log2,
+            "symbolic term outside current oracle domain"
+        );
+        previous_lde = round.lde_factor_log2;
+    }
     let mut intermediate = Vec::with_capacity(whir_lde_factors.len());
-    for (oracle_idx, &lde_factor) in whir_lde_factors.iter().enumerate() {
-        folded_trace_len_log2 -= whir_fold_steps[oracle_idx] as u32;
+    for (oracle_idx, (folded_log, &lde_factor)) in whir_schedule
+        .oracle_domains(message_log)
+        .zip(&whir_lde_factors)
+        .enumerate()
+    {
+        let folded_trace_len_log2 = u32::try_from(folded_log).expect("message log2 exceeds u32");
         let values_per_leaf_log2 = whir_fold_steps[oracle_idx + 1];
         let path_len = (folded_trace_len_log2 + lde_factor.trailing_zeros()
             - values_per_leaf_log2 as u32

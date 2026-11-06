@@ -168,18 +168,8 @@ enum GkrModule<'a> {
     },
 }
 
-fn remove_stale(path: &str) {
-    match std::fs::remove_file(path) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => panic!("{path}: {error}"),
-    }
-}
-
-/// The verifiers of `circuit` for the config of every soundness mode at `level`, generated into
-/// `verifier/src/generated/<circuit>/<mode>/`. Their GKR verifier must be identical in every mode
-/// and is written once, to `verifier/src/generated/<circuit>/gkr.rs`; each mode's module binds it
-/// to its own `constants` and `whir`.
+/// The verifiers of `circuit` for every soundness mode at `level`, generated into
+/// `verifier/src/generated/<circuit>/<mode>/` around one [`GkrModule::Shared`] GKR verifier.
 fn generate_standard_verifiers_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     level: SecurityLevel,
@@ -200,10 +190,7 @@ fn generate_standard_verifiers_for_circuit<MW: FieldWrapper<BaseField = BabyBear
 }
 
 /// The verifier of `circuit` for an EXPLICIT prover config, generated into
-/// `verifier/src/generated/<circuit>/<dir_suffix>/`. Special-purpose
-/// variants whose LDE factor / WHIR schedule / base-commitment shape differ from the standard
-/// per-level configs (e.g. the high-LDE, merged-tree "L1 feeder" unified verifier) keep their
-/// [`GkrModule::Own`] GKR verifier.
+/// `verifier/src/generated/<circuit>/<dir_suffix>/`.
 fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     prover_config: &prover::gkr::prover_config::ProverConfig,
@@ -222,10 +209,9 @@ fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBe
     let gkr_files = generate_gkr_verifier::<MW>(circuit, prover_config, &dir);
     generate_whir_verifier::<MW>(prover_config, &dir, &gkr_files);
 
-    let own_gkr = format!("{}/gkr.rs", dir);
     let gkr_mod = match gkr_module {
         GkrModule::Own => {
-            write_and_fmt(&own_gkr, &gkr_files.gkr);
+            write_and_fmt(&format!("{}/gkr.rs", dir), &gkr_files.gkr);
             quote::quote! { pub mod gkr; }
         }
         GkrModule::Shared { mode, first } => {
@@ -244,7 +230,6 @@ fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBe
                     circuit.name
                 ),
             }
-            remove_stale(&own_gkr);
             quote::quote! {
                 #[path = "../gkr.rs"]
                 pub mod gkr;

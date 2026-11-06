@@ -8,7 +8,7 @@ use era_cudart::device::get_device_count;
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use execution_prover::backend::{CircuitPrecomputation, ExecutionBackend};
 use execution_prover::config::ExecutionProverConfiguration;
-use execution_prover::config::ProvingSelection;
+use execution_prover::config::SoundnessMode;
 use execution_prover::messages::WorkBatch;
 use execution_prover::setup::CanonicalCircuitSetup;
 use execution_prover_model::circuit_type::CircuitType;
@@ -81,9 +81,9 @@ impl ExecutionBackend for GpuBackend {
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
-        selection: ProvingSelection,
+        soundness_mode: SoundnessMode,
     ) -> Self::Precomputations {
-        CircuitPrecomputations::from_canonical(circuit, setup, selection)
+        CircuitPrecomputations::from_canonical(circuit, setup, soundness_mode)
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {

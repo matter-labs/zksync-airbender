@@ -1,7 +1,7 @@
 pub mod census;
 
 use crate::program_proof::ProgramProof;
-use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram};
+use verifier_common::fsv_binaries::{FsvDescriptor, FsvProgram};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum CircuitId {
@@ -12,40 +12,13 @@ pub enum CircuitId {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EstimateError {
-    /// No table for this program or blake mode of an otherwise calibrated guest family.
-    UnknownBinary {
-        program: FsvProgram,
-        mode: BlakeMode,
-    },
-    /// No table for the descriptor's security level, soundness mode and profile
-    /// ([`census::CENSUS_TABLES`]).
-    UnknownDescriptor {
-        descriptor: FsvDescriptor,
-    },
-    UnpricedCircuit {
-        circuit: CircuitId,
-    },
-    UnexpectedInitsAndTeardowns {
-        found: usize,
-    },
+    UnpricedCircuit { circuit: CircuitId },
+    UnexpectedInitsAndTeardowns { found: usize },
 }
 
 impl core::fmt::Display for EstimateError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::UnknownBinary { program, mode } => write!(
-                f,
-                "no census table for {program:?}/{}; recalibrate with \
-                 `cargo test -p full_statement_verifier --features host_utils,verifiers \
-                 --test cost_model_trace -- --ignored`",
-                mode.tag()
-            ),
-            Self::UnknownDescriptor { descriptor } => write!(
-                f,
-                "no census table for {descriptor}; calibrate one with \
-                 `cargo test -p full_statement_verifier --features host_utils,verifiers \
-                 --test cost_model_trace -- --ignored`"
-            ),
             Self::UnpricedCircuit { circuit } => write!(
                 f,
                 "no per-proof cost for {circuit:?}; it was absent from every calibration \
@@ -66,7 +39,7 @@ impl core::fmt::Display for EstimateError {
 /// Estimated cycles for verifying `proof` with the guest of `descriptor`, from that
 /// guest's own table. Valid canonical proofs only (the verifier returns early on
 /// content checks). Held to the calibrated acceptance budget on every calibration
-/// fixture. A descriptor without a table is an error.
+/// fixture. A descriptor without a table panics.
 pub fn estimate_verifier_cycles_for(
     proof: &ProgramProof,
     descriptor: &FsvDescriptor,

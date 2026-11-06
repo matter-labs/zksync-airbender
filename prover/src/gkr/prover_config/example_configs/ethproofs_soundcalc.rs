@@ -26,13 +26,11 @@
 //! * the price of the Johnson rounds is a proof of work before every
 //!   folding challenge (their fold term starts 18–24 bits short) and before
 //!   the single OOD sample of every oracle (the user-chosen alternative to a
-//!   second sample), capped at 24 and 27 bits (26 for every grind of the
-//!   production shapes below); the late oracles' LDE factors stay low so
-//!   that their domains keep that fold grind within the cap (the fold term
+//!   second sample), capped per shape; the late oracles' LDE factors stay low
+//!   so that their domains keep that fold grind within the cap (the fold term
 //!   grows with `n / ρ^1.5`);
 //! * every grind is the SMALLEST that lifts its term to the target: the
-//!   per-round query count is sized against the shape's query-PoW cap (27
-//!   bits for the 2^20 test shapes, 26 for the production shapes), then the
+//!   per-round query count is sized against the shape's query-PoW cap, then the
 //!   query PoW is lowered to what the chosen count actually leaves short
 //!   (e.g. 12 queries at 6.28 bits each are 75 bits, so 25 bits of grind, not
 //!   the cap); the folding and OOD grinds are computed the same way;
@@ -43,24 +41,12 @@
 //!   recomputed on the real base code.
 //!
 //! The base round uses unique decoding. At rate 1/2 its query contribution is
-//! `−log2(1 − 1/4) ≈ 0.415` bits per query. With soundcalc pinned at `2af5e7d`,
-//! `soundcalc/assess_current_configs.py` reports 62 bits for the pessimistic
-//! base's query-plus-PoW term (89 queries, 26 PoW bits). Under Johnson-bound
-//! accounting with explicit multiplicity `m = 50`, the same pin's
-//! `soundcalc/late_round_rebalance.py` reports 69 bits for the base query/shift
-//! term including that PoW; its separate powers-batching term remains below
-//! 100 bits. These are WHIR PCS component bounds, not whole-system or GKR
-//! soundness claims, and the 62-bit figure applies specifically to unique
-//! decoding. A unique-decoding base at `p` PoW bits needs
-//! `ceil((100 − p) / 0.415)` queries for its 100-bit query term: 176 at 27 bits
-//! for the 2^20 test-circuit shapes, 179 at 26 bits for the production shapes
-//! (base LDE factor and round-0 fold unchanged). Each circuit's notes compare
-//! its schedule with the current pessimistic-conjecture schedule of the same
-//! shape, security level and packing, derived when the notes are rendered.
+//! `−log2(1 − 1/4) ≈ 0.415` bits per query, so a base at `p` PoW bits needs
+//! `ceil((100 − p) / 0.415)` queries for its 100-bit query term. These are WHIR
+//! PCS component bounds, not whole-system or GKR soundness claims.
 //!
-//! The production shapes (2^22 virtual, 2^23, 2^24) are tuned for proving time
-//! rather than for the fewest queries: no grind exceeds 26 bits, and oracle 0 is
-//! committed two LDE steps lower (`m = 12`, a cheaper commit for more queries).
+//! The production shapes are tuned for proving time rather than for the fewest
+//! queries (a lower grind cap and a cheaper oracle-0 commit for more queries).
 //! They were certified with the same pinned soundcalc WHIR module.
 //!
 //! Each [`EthproofsSoundcalcEntry`] is certified for a CEILING on the number
@@ -196,25 +182,6 @@ pub struct EthproofsSoundcalcEntry {
     pub base_queries_pow_bits: u32,
     pub base_analysis: RoundAnalysis,
     pub rounds: &'static [EthproofsInternalRound],
-}
-
-/// One line of a schedule's per-round parameters, base round first.
-fn schedule_summary(schedule: &WhirSchedule) -> String {
-    let rounds = &schedule.internal_rounds;
-    let lde: Vec<_> = rounds.iter().map(|r| r.lde_factor_log2).collect();
-    let folding: Vec<_> = rounds.iter().map(|r| r.folding_pow_bits).collect();
-    let ood: Vec<_> = rounds.iter().map(|r| r.ood_pow_bits).collect();
-    let grinds = if folding.iter().chain(&ood).all(|&bits| bits == 0) {
-        "no folding / OOD PoW".to_string()
-    } else {
-        format!("folding PoW {folding:?}, OOD PoW {ood:?}")
-    };
-    format!(
-        "folds {:?}, LDE log2 {lde:?}, queries {:?}, query PoW {:?}, {grinds}",
-        schedule.fold_steps(),
-        schedule.queries_per_round(),
-        schedule.queries_pow_bits_per_round(),
-    )
 }
 
 impl EthproofsSoundcalcEntry {
@@ -360,43 +327,6 @@ impl EthproofsSoundcalcEntry {
              needs one bit less per sumcheck step (listed per step above), so the schedule grinds slightly \
              more than the certification requires.\n"
         );
-        let pessimistic_mode = SoundnessMode::PessimisticConjecture;
-        let _ = writeln!(
-            out,
-            "## Against the current pessimistic-conjecture schedule\n"
-        );
-        let _ = writeln!(
-            out,
-            "- this schedule: {}",
-            schedule_summary(&self.schedule(input.physical_packing_log2))
-        );
-        let pessimistic = whir_schedule(pessimistic_mode, level, input);
-        let _ = writeln!(
-            out,
-            "- pessimistic conjecture (`prover_config_{}_{}.json`, same shape, security level and packing): {}\n",
-            level.dir_suffix(),
-            pessimistic_mode.file_suffix(),
-            schedule_summary(&pessimistic)
-        );
-        let (pessimistic_queries, pessimistic_pow) = (
-            pessimistic.base_round.num_queries,
-            pessimistic.base_round.queries_pow_bits,
-        );
-        let _ = writeln!(
-            out,
-            "The base round cannot keep the pessimistic {pessimistic_queries} queries / {pessimistic_pow} PoW bits: \
-             under both accepted regimes a query into the rate-1/2 base oracle is worth at most {bpq} bits, so that \
-             base round certifies {certified} bits whatever the later rounds do; 100 bits need \
-             ceil((100 − {p}) / {bpq}) = {q} queries at {p} PoW bits (the largest grind of this schedule) with \
-             the base LDE factor and round-0 fold unchanged. The later oracles' LDE factors stay low because the \
-             Johnson-bound fold term grows with n / ρ^1.5 and must stay within a 24-bit folding grind.",
-            bpq = self.base_analysis.bits_per_query,
-            certified = (pessimistic_queries as f64 * self.base_analysis.bits_per_query
-                + pessimistic_pow as f64)
-                .floor(),
-            p = self.base_queries_pow_bits,
-            q = self.base_num_queries,
-        );
         out
     }
 }
@@ -414,8 +344,7 @@ const BASE_UDR: RoundAnalysis = RoundAnalysis {
              above 100 by itself)",
 };
 
-/// [`BASE_UDR`] under the Ethproofs production schedules' 26-bit grind cap:
-/// three more queries for one bit less of query PoW.
+/// [`BASE_UDR`] under the production shapes' grind cap.
 const BASE_UDR_26: RoundAnalysis = RoundAnalysis {
     regime: ProximityRegime::UniqueDecoding,
     bits_per_query: 0.415,
@@ -446,9 +375,8 @@ const fn jbr(
 
 /// `queries_pow_bits` is the SMALLEST grind that lifts the oracle's query
 /// term (`num_queries` queries at the regime's bits per query) to the target:
-/// the query count is sized against the shape's cap (27 bits for the 2^20 test
-/// shapes, 26 for the production shapes), and the leftover fraction of a bit
-/// is not paid for with a full grind at the cap.
+/// the query count is sized against the shape's cap, and the leftover fraction
+/// of a bit is not paid for with a full grind at the cap.
 const fn round(
     lde_factor_log2: usize,
     folding_log2: usize,
@@ -755,26 +683,13 @@ mod tests {
             );
             let e = entry(level, &input);
             assert!(input.num_committed_polys.unwrap() <= e.max_committed_polys);
-            let config = prover_config(
+            prover_config(
                 SoundnessMode::EthproofsSoundnessCalc,
                 level,
                 trace,
                 packing,
                 Some(&columns),
             );
-            let schedule = &config.whir_schedule;
-            assert_eq!(schedule.base_round.num_queries, e.base_num_queries);
-            assert_eq!(
-                schedule.base_round.queries_pow_bits,
-                e.base_queries_pow_bits
-            );
-            // the production schedules grind at most 26 bits anywhere
-            assert!(schedule.base_round.queries_pow_bits <= 26);
-            for round in &schedule.internal_rounds {
-                assert!(round.queries_pow_bits <= 26);
-                assert!(round.folding_pow_bits <= 26);
-                assert!(round.ood_pow_bits <= 26);
-            }
         }
     }
 

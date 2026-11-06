@@ -45,6 +45,7 @@ use setups::UnrolledCircuitWitnessEvalFn;
 use std::alloc::Global;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::sync::Arc;
 use trace_and_split::commit_memory_tree_for_delegation_circuit;
 use trace_and_split::commit_memory_tree_for_unified_circuits;
 use trace_and_split::fs_transform_unified_for_permutation_argument;
@@ -188,13 +189,9 @@ pub fn prove_unified_execution_with_replayer_in_profile<
     full_statement_verifier::program_proof::ProgramProof,
     BTreeMap<u32, UnrolledCircuitSetupParams>,
 ) {
-    use prover::definitions::{ProverConfigProfile, ProvingSelection};
+    use prover::definitions::ProverConfigProfile;
     use prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23;
-    let selection = ProvingSelection {
-        security_level,
-        soundness_mode,
-    };
-    profile.assert_supports(selection);
+    profile.assert_supports(soundness_mode);
     match profile {
         ProverConfigProfile::Standard => prove_unified_execution_with_replayer_impl::<B, GB>(
             cycles_bound,
@@ -214,7 +211,7 @@ pub fn prove_unified_execution_with_replayer_in_profile<
         ProverConfigProfile::L1Feeder => {
             let config = l1_feeder_config_for_2_23();
             assert_eq!(
-                config.security_level, selection.security_level,
+                config.security_level, security_level,
                 "the certified L1 feeder config must match the requested security level"
             );
             // The feeder commits memory+witness together and has no delegations.
@@ -510,16 +507,20 @@ fn prove_unified_execution_with_replayer_impl<
         None => unified_setup.prover_config_in_mode(security_level, soundness_mode),
     };
 
-    let mut twiddles: HashMap<usize, B::TwiddleSet> = HashMap::new();
-    let message_len = 1usize << prover_config.whir_message_size_log2();
-    twiddles
-        .entry(message_len)
-        .or_insert_with(|| backend.make_twiddles(message_len, worker));
+    let mut twiddles = HashMap::new();
+    let mut twiddles_for = |config: &prover::gkr::prover_config::ProverConfig| {
+        let message_len = 1usize << config.whir_message_size_log2();
+        Arc::clone(
+            twiddles
+                .entry(message_len)
+                .or_insert_with(|| Arc::new(backend.make_twiddles(message_len, worker))),
+        )
+    };
 
     // Commit the unified memory tree (which embeds inits/teardowns).
     let mut memory_trees: Vec<(Vec<u32>, prover::merkle_trees::MerkleTreeCapVarLength)> = vec![];
     {
-        let twiddles_for_size = &twiddles[&message_len];
+        let twiddles_for_size = twiddles_for(&prover_config);
         let UnrolledCircuitWitnessEvalFn::Unified {
             witness_fn: _,
             decoder_table,
@@ -558,7 +559,7 @@ fn prove_unified_execution_with_replayer_impl<
                 unified_buffer,
                 inits_and_teardowns,
                 text_section,
-                twiddles_for_size,
+                &*twiddles_for_size,
                 &prover_config,
                 decoder_table,
                 worker,
@@ -576,10 +577,7 @@ fn prove_unified_execution_with_replayer_impl<
         let setup = &blake_round_function_setup;
         if !delegation_circuits.is_empty() {
             let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-            let message_len = 1usize << prover_config.whir_message_size_log2();
-            let twiddles_for_size = twiddles
-                .entry(message_len)
-                .or_insert_with(|| backend.make_twiddles(message_len, worker));
+            let twiddles_for_size = twiddles_for(&prover_config);
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
@@ -616,10 +614,7 @@ fn prove_unified_execution_with_replayer_impl<
         let setup = &bigint_setup;
         if !delegation_circuits.is_empty() {
             let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-            let message_len = 1usize << prover_config.whir_message_size_log2();
-            let twiddles_for_size = twiddles
-                .entry(message_len)
-                .or_insert_with(|| backend.make_twiddles(message_len, worker));
+            let twiddles_for_size = twiddles_for(&prover_config);
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
@@ -657,10 +652,7 @@ fn prove_unified_execution_with_replayer_impl<
         let setup = &keccak_special5_setup;
         if !delegation_circuits.is_empty() {
             let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-            let message_len = 1usize << prover_config.whir_message_size_log2();
-            let twiddles_for_size = twiddles
-                .entry(message_len)
-                .or_insert_with(|| backend.make_twiddles(message_len, worker));
+            let twiddles_for_size = twiddles_for(&prover_config);
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
@@ -698,10 +690,7 @@ fn prove_unified_execution_with_replayer_impl<
         let setup = &blake_g_function_setup;
         if !delegation_circuits.is_empty() {
             let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-            let message_len = 1usize << prover_config.whir_message_size_log2();
-            let twiddles_for_size = twiddles
-                .entry(message_len)
-                .or_insert_with(|| backend.make_twiddles(message_len, worker));
+            let twiddles_for_size = twiddles_for(&prover_config);
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
@@ -784,7 +773,7 @@ fn prove_unified_execution_with_replayer_impl<
     // Prove the unified circuit.
     let mut unified_proofs = vec![];
     {
-        let twiddles_for_size = &twiddles[&message_len];
+        let twiddles_for_size = twiddles_for(&prover_config);
         // The setup is committed with the prover config's geometry on the naive
         // backend (`GKRSetup::commit_for_config`, not performance-sensitive).
         let setup_commitment = unified_setup
@@ -874,7 +863,7 @@ fn prove_unified_execution_with_replayer_impl<
                 witness_trace,
                 &unified_setup.setup,
                 &setup_commitment,
-                twiddles_for_size,
+                &*twiddles_for_size,
                 &prover_config,
                 OperationMode::MultipleChunks,
                 storage,
@@ -931,7 +920,7 @@ fn prove_unified_execution_with_replayer_impl<
                 &mut permutation_argument_accumulator,
                 &mut delegation_proofs_count,
                 should_dump_witness,
-                &mut twiddles,
+                &*twiddles_for(&prover_config),
                 &prover_config,
                 backend,
                 gkr_backend,
@@ -960,7 +949,7 @@ fn prove_unified_execution_with_replayer_impl<
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
                     should_dump_witness,
-                    &mut twiddles,
+                    &*twiddles_for(&prover_config),
                     &prover_config,
                     backend,
                     gkr_backend,
@@ -992,7 +981,7 @@ fn prove_unified_execution_with_replayer_impl<
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
                     should_dump_witness,
-                    &mut twiddles,
+                    &*twiddles_for(&prover_config),
                     &prover_config,
                     backend,
                     gkr_backend,
@@ -1032,7 +1021,7 @@ fn prove_unified_execution_with_replayer_impl<
                 &mut permutation_argument_accumulator,
                 &mut delegation_proofs_count,
                 should_dump_witness,
-                &mut twiddles,
+                &*twiddles_for(&prover_config),
                 &prover_config,
                 backend,
                 gkr_backend,

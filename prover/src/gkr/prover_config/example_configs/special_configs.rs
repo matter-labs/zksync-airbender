@@ -30,9 +30,9 @@ impl ProverConfigProfile {
     }
 
     /// Panics with the [`Self::mode_refusal`] text when this profile does not support the
-    /// selection's mode. Callers run it before any artifact, setup or device work.
-    pub fn assert_supports(self, selection: ProvingSelection) {
-        if let Some(refusal) = self.mode_refusal(selection.soundness_mode) {
+    /// `soundness_mode`. Callers run it before any artifact, setup or device work.
+    pub fn assert_supports(self, soundness_mode: SoundnessMode) {
+        if let Some(refusal) = self.mode_refusal(soundness_mode) {
             panic!("{refusal}");
         }
     }
@@ -177,9 +177,6 @@ mod selection_tests {
         expected = "UnsupportedSpecialConfigMode: ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope); requested L1Feeder"
     )]
     fn ethproofs_l1_feeder_selection_panics() {
-        ProverConfigProfile::L1Feeder.assert_supports(ProvingSelection {
-            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
-            ..ProvingSelection::default()
-        });
+        ProverConfigProfile::L1Feeder.assert_supports(SoundnessMode::EthproofsSoundnessCalc);
     }
 }

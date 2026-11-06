@@ -59,13 +59,12 @@ mod tests {
     use test_utils::skip_if_ci;
     use verifier_common::fsv_binaries::{FsvDescriptor, FsvProfile, FsvProgram};
 
-    /// The pinned MERGED-mode L1-feeder guest: the unified recursion layer with special
+    /// The MERGED-mode L1-feeder guest: the unified recursion layer with special
     /// opcodes under the `L1Feeder` profile.
     fn l1_feeder_guest() -> FsvDescriptor {
         FsvDescriptor {
             profile: FsvProfile::L1Feeder,
             ..FsvDescriptor::new(
-                SecurityLevel::Sec100,
                 SoundnessMode::PessimisticConjecture,
                 FsvProgram::UnifiedRecursionLayer,
                 verifier_common::fsv_binaries::BlakeMode::BlakeSpecialOpcodes,
@@ -232,7 +231,6 @@ mod tests {
         let (unrolled_base_bin, unrolled_base_text) = load_fsv_exact(
             FSV_DIR,
             &FsvDescriptor::new(
-                SecurityLevel::Sec100,
                 SoundnessMode::PessimisticConjecture,
                 FsvProgram::UnrolledBaseLayer,
                 unrolled_blake,
@@ -242,7 +240,6 @@ mod tests {
         let (unrolled_rec_bin, unrolled_rec_text) = load_fsv_exact(
             FSV_DIR,
             &FsvDescriptor::new(
-                SecurityLevel::Sec100,
                 SoundnessMode::PessimisticConjecture,
                 FsvProgram::UnrolledRecursionLayer,
                 unrolled_blake,
@@ -300,7 +297,6 @@ mod tests {
                 full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles_for(
                     &proof,
                     &FsvDescriptor::new(
-                        SecurityLevel::Sec100,
                         SoundnessMode::PessimisticConjecture,
                         program,
                         unrolled_blake,
@@ -385,7 +381,6 @@ mod tests {
         let (bridge_bin, bridge_text) = load_fsv_exact(
             FSV_DIR,
             &FsvDescriptor::new(
-                SecurityLevel::Sec100,
                 SoundnessMode::PessimisticConjecture,
                 bridge_program,
                 bridge_blake,
@@ -467,7 +462,6 @@ mod tests {
         let (unified_rec_bin, unified_rec_text) = load_fsv_exact(
             FSV_DIR,
             &FsvDescriptor::new(
-                SecurityLevel::Sec100,
                 SoundnessMode::PessimisticConjecture,
                 FsvProgram::UnifiedRecursionLayer,
                 final_blake,
@@ -635,7 +629,6 @@ mod tests {
             let (bin, text) = load_fsv_exact(
                 FSV_DIR,
                 &FsvDescriptor::new(
-                    SecurityLevel::Sec100,
                     SoundnessMode::PessimisticConjecture,
                     FsvProgram::UnifiedRecursionLayer,
                     mode,
@@ -728,7 +721,6 @@ mod tests {
         let (spec_bin, spec_text) = load_fsv_exact(
             FSV_DIR,
             &FsvDescriptor::new(
-                SecurityLevel::Sec100,
                 SoundnessMode::PessimisticConjecture,
                 FsvProgram::UnifiedRecursionLayer,
                 BlakeMode::BlakeSpecialOpcodes,
@@ -905,7 +897,6 @@ mod tests {
         let (std_bin, std_text) = load_fsv_exact(
             FSV_DIR,
             &FsvDescriptor::new(
-                SecurityLevel::Sec100,
                 SoundnessMode::PessimisticConjecture,
                 FsvProgram::UnifiedRecursionLayer,
                 BlakeMode::BlakeSpecialOpcodes,
@@ -1025,7 +1016,6 @@ mod tests {
     #[ignore = "manual heavy proving run (Proth120 packed 2^26 commitment)"]
     #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_l1_wrap_proth120() {
-        use full_statement_verifier::host_utils::fsv_manifest_entry;
         skip_if_ci!();
 
         let worker = Worker::new_with_num_threads(12);
@@ -1047,16 +1037,17 @@ mod tests {
             verifier_common::fsv_binaries::BlakeMode::BlakeSpecialOpcodes,
         );
 
-        // The VM runs the unpadded image and text: the pinned words up to the pinned sizes.
         let feeder = l1_feeder_guest();
-        let (bin, text) = load_fsv_exact(FSV_DIR, &feeder).into_words();
-        let pinned = fsv_manifest_entry(&feeder);
+        let program = prover::tests::gkr::orchestration::common::ProgramConfig {
+            program: riscv_transpiler::elf::ProgramSource::elf(
+                Path::new(FSV_DIR).join(feeder.relative_path()),
+            ),
+            non_determinism_reads: stream,
+            cycles_bound: 1 << 22,
+            ram_bound_bytes: 1 << 30,
+        };
         let _l1_proof = crate::l1::prove_l1_wrap_in_recompute_mode(
-            bin[..pinned.rom_bytes / 4].to_vec(),
-            text[..pinned.text_bytes / 4].to_vec(),
-            &stream,
-            1 << 22,
-            1 << 30,
+            &program,
             Path::new(
                 "../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
             ),

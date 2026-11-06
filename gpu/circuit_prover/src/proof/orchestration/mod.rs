@@ -24,7 +24,7 @@ use gpu_whir::fold::GpuWhirFoldScheduledExecution;
 mod backward;
 pub(super) mod stage1_forward;
 mod terminal;
-pub(crate) mod whir;
+mod whir;
 
 pub(super) use backward::{
     prepare_backward_handoff, schedule_backward_phase, BackwardPhaseResult,

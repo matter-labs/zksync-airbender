@@ -672,14 +672,6 @@ impl ProofLayout {
         result
     }
 
-    pub fn whir_original_evaluation_point_host<'a>(&self, slab: &'a [u8]) -> &'a [E4] {
-        Self::host_typed::<E4>(slab, &self.whir.original_evaluation_point)
-    }
-
-    pub fn whir_batching_challenge_host<'a>(&self, slab: &'a [u8]) -> &'a [E4] {
-        Self::host_typed::<E4>(slab, &self.whir.batching_challenge)
-    }
-
     pub fn whir_base_cap_host<'a>(&self, slab: &'a [u8], which: WhirBaseLayerKind) -> &'a [u32] {
         Self::host_typed::<u32>(slab, &self.whir_base(which).cap)
     }

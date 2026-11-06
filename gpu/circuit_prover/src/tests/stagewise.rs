@@ -61,8 +61,10 @@ fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<Expecte
     let mut seed = <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&transcript_input);
     let worker = Worker::new();
     let compiled_circuit = fixture.base.gkr_programs.compiled_circuit();
-    let lookup_pow_bits =
-        crate::config::lookup_challenges_pow_bits(&fixture.base.prover_config, compiled_circuit);
+    let lookup_pow_bits = crate::upstream::pow_bits::lookup_challenges_pow_bits::<BF, E4>(
+        fixture.base.prover_config.security_level.security_bits(),
+        crate::upstream::pow_bits::lookup_identity_degree(compiled_circuit),
+    );
     let (lookup_nonce, _) = draw_random_field_els_with_pow::<BF, E4, Blake2sTranscript>(
         &mut seed,
         2,

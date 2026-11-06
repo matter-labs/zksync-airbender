@@ -15,21 +15,16 @@ pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
 /// uninitialized-witness regression guard). schedule -> schedule -> finish -> finish.
 pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
     let baseline = fixture.base.context.get_used_mem_current();
-    let policy = fixture.base.memory_policy();
-    eprintln!(
-        "production proof policy: circuit={:?} arena_bytes={} policy={policy:?}",
-        fixture.base.circuit_type,
-        fixture.base.context.get_mem_size()
-    );
+
     fixture.base.context.reset_used_mem_peak();
     let job0 = fixture.schedule_prove().unwrap();
     let job1 = fixture.schedule_prove().unwrap();
-    let (p0, ms0) = job0.finish().unwrap();
-    eprintln!("proof_job_0 proof time: {ms0} ms");
+    let (p0, _ms0) = job0.finish().unwrap();
+
     assert_gkr_proof_eq_for_test(&p0, &fixture.expected_cpu_proof);
     drop(p0);
-    let (p1, ms1) = job1.finish().unwrap();
-    eprintln!("proof_job_1 proof time: {ms1} ms");
+    let (p1, _ms1) = job1.finish().unwrap();
+
     assert_gkr_proof_eq_for_test(&p1, &fixture.expected_cpu_proof);
     drop(p1);
     assert_eq!(
@@ -37,7 +32,6 @@ pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
         baseline,
         "device memory must return to baseline after both proofs complete"
     );
-    eprintln!("production multi-schedule peak: circuit={:?} arena_bytes={} peak_bytes={} baseline={baseline}", fixture.base.circuit_type, fixture.base.context.get_mem_size(), fixture.base.context.get_used_mem_peak());
 }
 
 #[test]
@@ -53,7 +47,6 @@ fn run_mixed_circuit_multi_schedule_test() {
     let mut jobs = Vec::with_capacity(fixtures.len());
     for fixture in fixtures {
         let base = &fixture.base;
-        let plan = base.dr_tail_plan().unwrap();
         let mut transfers = base.create_transfers_for_context(context).unwrap();
         transfers.schedule(context).unwrap();
         jobs.push(
@@ -62,7 +55,6 @@ fn run_mixed_circuit_multi_schedule_test() {
                 &base.prover_config,
                 base.final_trace_size_log_2,
                 transfers,
-                &plan,
                 ProofMemoryPolicy::default(),
                 context,
             )
@@ -83,28 +75,25 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
     let warm = fixture.schedule_transfers().unwrap();
     fixture.context.get_h2d_stream().synchronize().unwrap();
     let warm_job = fixture.prove(warm).unwrap();
-    let (warm_proof, warm_ms) = warm_job.finish().unwrap();
-    eprintln!("warmup proof time: {warm_ms} ms");
+    let (warm_proof, _warm_ms) = warm_job.finish().unwrap();
+
     assert_gkr_proof_structure_for_test(&warm_proof, &fixture.prover_config.whir_schedule);
     drop(warm_proof);
     let prof = fixture.schedule_transfers().unwrap();
     fixture.context.get_h2d_stream().synchronize().unwrap();
     fixture.context.reset_used_mem_peak();
-    let (prof_proof, prof_ms) = {
+    let (prof_proof, _prof_ms) = {
         let _range = scoped_range(
             Some("gpu_circuit_prover.tests"),
             "test.gpu.prove.profiled_call",
         );
         fixture.prove(prof).unwrap().finish().unwrap()
     };
-    eprintln!("profiled proof time: {prof_ms} ms");
+
     assert_gkr_proof_structure_for_test(&prof_proof, &fixture.prover_config.whir_schedule);
     drop(prof_proof);
     let peak = fixture.context.get_used_mem_peak();
-    eprintln!(
-        "peak device memory: {:.3} GiB",
-        peak as f64 / (1u64 << 30) as f64
-    );
+
     assert!(peak > baseline);
     assert_eq!(fixture.context.get_used_mem_current(), baseline);
 }
@@ -274,7 +263,7 @@ fn run_blake2_compression_delegation_stage1_buffer_parity_test() {
 #[test]
 #[ignore]
 fn run_add_sub_proof_parity_test_sec100() {
-    run_proof_parity(&prepare_basic_unrolled_proof_fixture_sec100());
+    run_proof_parity(&prepare_basic_unrolled_proof_fixture());
 }
 
 #[test]
@@ -645,7 +634,6 @@ pub(super) fn replay_bigint_delegation_buffer() -> (Vec<BigintDelegationWitness>
         "examples/bigint_with_control must exercise the bigint delegation \
          (bigint_calls == 0) — the workload assumption is wrong",
     );
-    eprintln!("bigint delegation: bigint_calls = {}", buffer.len());
 
     let mut table_driver = TableDriver::<BF>::new();
     cs::gkr_circuits::delegation::bigint_with_control::bigint_with_extended_control_delegation_circuit_table_driver_fn(
@@ -663,6 +651,20 @@ pub(super) fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
 pub(super) fn prepare_bigint_proof_fixture_for_config(
     config: ProverConfig,
 ) -> BasicUnrolledProofFixture {
+    let (base, expected) = prepare_bigint_fixture_for_config(config, true);
+    BasicUnrolledProofFixture {
+        base,
+        expected_cpu_proof: expected.unwrap(),
+    }
+}
+
+pub(super) fn prepare_bigint_fixture_for_config(
+    config: ProverConfig,
+    compute_cpu_reference: bool,
+) -> (
+    BasicUnrolledFixture,
+    Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+) {
     let (buffer, table_driver) = replay_bigint_delegation_buffer();
     let oracle = BigintDelegationOracle {
         cycle_data: &buffer,
@@ -672,7 +674,7 @@ pub(super) fn prepare_bigint_proof_fixture_for_config(
     // the buffer only after building the CPU reference (which is what uses the
     // oracle), so clone the buffer for the tracing host.
     let buffer_for_host = buffer.clone();
-    let fixture = prepare_delegation_proof_fixture_for_config(
+    let fixture = prepare_delegation_fixture_for_config(
         DelegationCircuitType::BigIntWithControl,
         BIGINT_DELEGATION_LAYOUT_PATH,
         &table_driver,
@@ -681,6 +683,7 @@ pub(super) fn prepare_bigint_proof_fixture_for_config(
         bigint_with_extended_control_mod::witness_eval_fn,
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl).get_domain_size(),
         config,
+        compute_cpu_reference,
     );
     drop(buffer);
     fixture
@@ -757,7 +760,6 @@ fn replay_keccak_special5_delegation_buffer(
         "keccak_f1600 workload must exercise the keccak delegation (keccak_calls > 0); \
          got an empty buffer — the workload assumption is wrong",
     );
-    eprintln!("keccak delegation: keccak_calls = {}", buffer.len());
 
     let mut table_driver = TableDriver::<BF>::new();
     cs::gkr_circuits::delegation::keccak_special5::keccak_special5_delegation_circuit_table_driver_fn(
@@ -767,13 +769,30 @@ fn replay_keccak_special5_delegation_buffer(
 }
 
 pub(super) fn prepare_keccak_special5_proof_fixture() -> BasicUnrolledProofFixture {
+    let (base, expected) = prepare_keccak_special5_fixture_for_config(
+        delegation_prover_config(DelegationCircuitType::KeccakSpecial5),
+        true,
+    );
+    BasicUnrolledProofFixture {
+        base,
+        expected_cpu_proof: expected.unwrap(),
+    }
+}
+
+pub(super) fn prepare_keccak_special5_fixture_for_config(
+    config: ProverConfig,
+    compute_cpu_reference: bool,
+) -> (
+    BasicUnrolledFixture,
+    Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+) {
     let (buffer, table_driver) = replay_keccak_special5_delegation_buffer();
     let oracle = KeccakDelegationOracle {
         cycle_data: &buffer,
         marker: core::marker::PhantomData,
     };
     let buffer_for_host = buffer.clone();
-    let fixture = prepare_delegation_proof_fixture(
+    let fixture = prepare_delegation_fixture_for_config(
         DelegationCircuitType::KeccakSpecial5,
         KECCAK_SPECIAL5_DELEGATION_LAYOUT_PATH,
         &table_driver,
@@ -781,6 +800,8 @@ pub(super) fn prepare_keccak_special5_proof_fixture() -> BasicUnrolledProofFixtu
         &oracle,
         fixtures::keccak_special5_mod::witness_eval_fn,
         1 << 22,
+        config,
+        compute_cpu_reference,
     );
     drop(buffer);
     fixture
@@ -872,10 +893,6 @@ fn replay_blake2_with_compression_delegation_buffer(
          (compression) delegation (blake_calls == 0); got an empty buffer — the workload \
          assumption is wrong",
     );
-    eprintln!(
-        "blake2_with_compression delegation: blake_calls = {}",
-        buffer.len()
-    );
 
     let mut table_driver = TableDriver::<BF>::new();
     cs::gkr_circuits::delegation::blake2_round_with_extended_control::blake2_with_extended_control_table_driver_fn(
@@ -885,31 +902,35 @@ fn replay_blake2_with_compression_delegation_buffer(
 }
 
 pub(super) fn prepare_blake2_with_compression_proof_fixture() -> BasicUnrolledProofFixture {
-    prepare_blake2_with_compression_proof_fixture_with_packing(0)
-}
-
-pub(super) fn prepare_blake2_with_compression_proof_fixture_with_packing(
-    pack_log2: usize,
-) -> BasicUnrolledProofFixture {
-    let config = if pack_log2 == 0 {
-        delegation_prover_config(DelegationCircuitType::Blake2WithCompression)
-    } else {
-        prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
-            BLAKE2_NUM_DELEGATION_CYCLES.trailing_zeros() as usize, pack_log2, SecurityLevel::Sec100)
-    };
-    prepare_blake2_with_compression_proof_fixture_for_config(config)
+    prepare_blake2_with_compression_proof_fixture_for_config(delegation_prover_config(
+        DelegationCircuitType::Blake2WithCompression,
+    ))
 }
 
 pub(super) fn prepare_blake2_with_compression_proof_fixture_for_config(
     config: ProverConfig,
 ) -> BasicUnrolledProofFixture {
+    let (base, expected) = prepare_blake2_with_compression_fixture_for_config(config, true);
+    BasicUnrolledProofFixture {
+        base,
+        expected_cpu_proof: expected.unwrap(),
+    }
+}
+
+pub(super) fn prepare_blake2_with_compression_fixture_for_config(
+    config: ProverConfig,
+    compute_cpu_reference: bool,
+) -> (
+    BasicUnrolledFixture,
+    Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+) {
     let (buffer, table_driver) = replay_blake2_with_compression_delegation_buffer();
     let oracle = Blake2sDelegationOracle {
         cycle_data: &buffer,
         marker: core::marker::PhantomData,
     };
     let buffer_for_host = buffer.clone();
-    let fixture = prepare_delegation_proof_fixture_for_config(
+    let fixture = prepare_delegation_fixture_for_config(
         DelegationCircuitType::Blake2WithCompression,
         BLAKE2_WITH_COMPRESSION_LAYOUT_PATH,
         &table_driver,
@@ -918,6 +939,7 @@ pub(super) fn prepare_blake2_with_compression_proof_fixture_for_config(
         fixtures::blake2_with_extended_control_mod::witness_eval_fn,
         BLAKE2_NUM_DELEGATION_CYCLES,
         config,
+        compute_cpu_reference,
     );
     drop(buffer);
     fixture
@@ -998,10 +1020,6 @@ fn replay_blake2_g_function_delegation_buffer(
         !buffer.is_empty(),
         "app_blake2_g_function workload must exercise the blake2 G-function delegation \
          (blake_g_function_calls == 0); got an empty buffer — the workload assumption is wrong",
-    );
-    eprintln!(
-        "blake2_g_function delegation: blake_g_function_calls = {}",
-        buffer.len()
     );
 
     let mut table_driver = TableDriver::<BF>::new();
@@ -1108,8 +1126,8 @@ fn run_unified_multi_schedule_test() {
     let proof_job_0 = fixture.schedule_prove().unwrap();
     let proof_job_1 = fixture.schedule_prove().unwrap();
 
-    let (gpu_proof_0, proof_time_ms_0) = proof_job_0.finish().unwrap();
-    eprintln!("unified proof_job_0 proof time: {proof_time_ms_0} ms");
+    let (gpu_proof_0, _proof_time_ms_0) = proof_job_0.finish().unwrap();
+
     assert_gkr_proof_eq_for_test(&gpu_proof_0, &fixture.expected_cpu_proof);
 
     // No-filter grand-product accumulator closure, driven by the GPU proof's
@@ -1136,8 +1154,8 @@ fn run_unified_multi_schedule_test() {
 
     // The concurrently-scheduled second proof must be bit-exact too (this is the
     // one that ran on recycled blocks) and device memory must return to baseline.
-    let (gpu_proof_1, proof_time_ms_1) = proof_job_1.finish().unwrap();
-    eprintln!("unified proof_job_1 proof time: {proof_time_ms_1} ms");
+    let (gpu_proof_1, _proof_time_ms_1) = proof_job_1.finish().unwrap();
+
     assert_gkr_proof_eq_for_test(&gpu_proof_1, &fixture.expected_cpu_proof);
     drop(gpu_proof_1);
 

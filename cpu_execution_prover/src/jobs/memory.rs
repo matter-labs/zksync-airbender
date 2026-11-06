@@ -38,9 +38,8 @@ pub(super) fn run<A: HostTraceAllocator>(
         precomputations,
         inits_and_teardowns,
         tracing_data,
-        selection,
     } = request;
-    let config = precomputations.config_for_request(circuit_type, selection);
+    let config = precomputations.config_for_request(circuit_type);
     let twiddles = jobs.twiddles(1usize << config.whir_message_size_log2(), worker);
     let flat_cap = match circuit_type {
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_)) => {

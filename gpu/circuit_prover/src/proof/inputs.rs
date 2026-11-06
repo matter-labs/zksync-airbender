@@ -1,4 +1,4 @@
-// Consolidated H2D bundle for prove() and commit_memory_from_transfers():
+// Consolidated H2D bundle for prove():
 // one shared Transfer for every pre-prove H2D piece (setup, decoder,
 // inits_and_teardowns, tracing_data, memory caps, top_bits,
 // external_challenges), so prove() does a single ensure_transferred.

@@ -32,7 +32,7 @@ pub(crate) use cs::tables::TableType;
 // -----------------------------------------------------------------------
 
 pub(crate) use field::baby_bear::base::BabyBearField;
-pub(crate) use field::{Field, FieldExtension, PrimeField};
+pub(crate) use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 
 // -----------------------------------------------------------------------
 // `prover` — CPU prover types the GPU prover mirrors / interoperates with

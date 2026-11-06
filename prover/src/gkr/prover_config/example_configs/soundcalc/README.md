@@ -49,12 +49,10 @@ PYTHONPATH=/tmp/soundcalc python3.11 late_round_rebalance.py      # JBR-rebalanc
 * The committed-polynomial ceiling of a shape only sets the batching PoW
   (`pow_bits_for_batched_proximity` at the ceiling, batching term 102 bits).
 
-The production shapes (2^22 virtual, 2^23, 2^24) in `ethproofs_soundcalc.rs` are
-not the search's fewest-query output: they are tuned for proving time, with no grind
-above 26 bits (base 179 queries at 26 bits; on the 2^22 and 2^23 shapes oracle 2 one query
-more at a 21-bit query PoW) and oracle 0 committed two LDE steps lower at `m = 12` (a cheaper commit for more
-queries). They were certified at 100 bits with the same pinned WHIR module. The 2^20
-test-circuit shapes keep the search's schedules.
+The production shapes in `ethproofs_soundcalc.rs` are not the search's fewest-query
+output: they are tuned for proving time (a lower grind cap, a cheaper oracle-0 commit for
+more queries) and were certified with the same pinned WHIR module. The test-circuit shapes
+keep the search's schedules.
 
 `whir_schedule_search.py` prints each shape as `WhirSchedule` fields with the
 per-step folding PoW list (our `folding_pow_bits` is one value per oracle: the
@@ -69,25 +67,9 @@ Proth120 with 2^31 domains caps the Johnson-bound fold term near 48–57 bits, s
 a 100-bit schedule there needs smaller domains and ~75 unique-decoding queries
 per round).
 
-Ethproofs support for the L1 feeder/wrap/EVM profile is **deferred product scope**.
-Runtime selection rejects that combination early with
-`ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope)`.
-The existing pessimistic profiles remain available; no fallback or mixed-mode
-chain is used for the deferred combination. The component analysis above does
-not assert mathematical impossibility or a whole-chain security conclusion.
-
 ## Rebalancing the pessimistic ladders' late rounds (`late_round_rebalance.py`)
 
-With soundcalc pinned at [`2af5e7d`](https://github.com/ethereum/soundcalc/tree/2af5e7dfc01e4aef1bc0e544a3b75c1940b1dded),
-`late_round_rebalance.py` selects Johnson-bound multiplicity `m = 50` for the
-pessimistic base round (rate 1/2, 89 queries, 26 bits of query PoW). Its printed
-`queries 69` is the base query/shift contribution including that PoW; folding
-and powers batching are separate terms, and the batching term is below the
-100-bit target. Under unique decoding, `assess_current_configs.py` at the same
-pin reports 62 bits for the base query-plus-PoW term: each query contributes
-`-log2(1 - 1/4) ≈ 0.415` bits. Both figures describe WHIR PCS components, not
-whole-system or GKR soundness. The different regime and multiplicity explain
-the different query bounds.
+The figures below are WHIR PCS component bounds, not whole-system or GKR soundness.
 
 Under the driver's per-oracle Johnson-bound choices, the last oracles
 (rate 2^-19 on 2^24..2^27 domains) fall to 60-68 bits: the fold term grows with the
@@ -104,7 +86,5 @@ shows restores the plain ladder's level (oracle 2's 27-bit PoW is tight: 8 queri
 2^-11 are 42 bits, and its 2^27 domain leaves no room for a larger LDE). The SHAPES table
 holds the PRE-rebalance ladders so the run reproduces the analysis.
 
-The production ladders keep these LDE factors and query counts but not the 69-bit
-level: each round, the virtual twin's included, grinds the smallest query PoW that
-keeps its count under the pessimistic rule (`6 * pow + 5 * queries * r >= 600`), and
-oracle 2 of the 2^22 ladder takes 9 queries at 18 bits instead of 8 at 27.
+The production ladders keep these LDE factors and query counts but not that level:
+each round grinds the smallest query PoW that keeps its count under the pessimistic rule.

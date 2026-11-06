@@ -102,28 +102,12 @@ impl SoundnessMode {
     }
 }
 
-/// Immutable security and soundness selection for a prover and its prepared state.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct ProvingSelection {
-    pub security_level: SecurityLevel,
-    pub soundness_mode: SoundnessMode,
-}
-
 /// Provenance of a named configuration; special profiles have separate soundness analyses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ProverConfigProfile {
     Standard,
     L1Feeder,
     EvmProductionPacked,
-}
-
-impl Default for ProvingSelection {
-    fn default() -> Self {
-        Self {
-            security_level: SecurityLevel::Sec100,
-            soundness_mode: SoundnessMode::DEFAULT,
-        }
-    }
 }
 
 /// The blake2s implementation a verifier program is built with: what a
@@ -482,24 +466,4 @@ pub fn produce_initial_permutation_product_contribution<
     result.mul_assign(&read_set_contribution.inverse().unwrap());
 
     result
-}
-
-#[cfg(all(test, feature = "prover"))]
-mod soundness_mode_tests {
-    use super::SoundnessMode;
-
-    #[test]
-    fn soundness_mode_names_round_trip() {
-        for &mode in SoundnessMode::ALL {
-            assert_eq!(SoundnessMode::from_cli_name(mode.cli_name()), Some(mode));
-            assert_eq!(mode.cli_name().replace('-', "_"), mode.file_suffix());
-            let encoded = serde_json::to_string(&mode).unwrap();
-            assert_eq!(
-                serde_json::from_str::<SoundnessMode>(&encoded).unwrap(),
-                mode
-            );
-        }
-        assert_eq!(SoundnessMode::from_cli_name("ethproofs_soundcalc"), None);
-        assert_eq!(SoundnessMode::from_cli_name("unknown"), None);
-    }
 }

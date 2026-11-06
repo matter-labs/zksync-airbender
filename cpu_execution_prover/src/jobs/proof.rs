@@ -41,9 +41,8 @@ pub(super) fn run<A: HostTraceAllocator>(
         tracing_data,
         external_challenges,
         memory_caps,
-        selection,
     } = request;
-    let config = precomputations.config_for_request(circuit_type, selection);
+    let config = precomputations.config_for_request(circuit_type);
     let twiddles = jobs.twiddles(1usize << config.whir_message_size_log2(), worker);
     let setup_commitment = precomputations
         .setup_commitment

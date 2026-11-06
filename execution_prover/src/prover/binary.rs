@@ -66,14 +66,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 let precomp = self.backend.prepare(
                     CircuitType::Unrolled(circuit_type),
                     setup,
-                    self.configuration.selection(),
+                    self.configuration.soundness_mode,
                 );
                 (circuit_type, precomp)
             })
             .collect();
         let pending_setup_initialization = request_setup_initialization(
             &self.backend,
-            self.configuration.selection(),
             precomputations
                 .iter()
                 .map(|(circuit_type, precomp)| {

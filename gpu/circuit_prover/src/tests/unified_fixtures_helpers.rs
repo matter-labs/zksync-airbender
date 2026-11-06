@@ -598,19 +598,7 @@ where
 /// through the GPU `prove()` path, with the CPU `prove_delegation_proof` as the
 /// bit-exact reference.
 ///
-/// A delegation fixture differs from the per-family/unified fixtures in three
-/// ways, all of which `create_transfers` already tolerates:
-///   * `inits_and_teardowns_host: None` — delegations prove no inits/teardowns
-///     layer (the unified arm is the only producer of that bundle);
-///   * the tracing host is the delegation variant (`make_delegation_tracing_host_for_test`);
-///   * the decoder is gated on `compiled_circuit.has_decoder_lookup` (delegation
-///     layouts have no executor-family decoder lookup, so it resolves to `None`).
-///
-/// The CPU reference and the GPU prove share one `ProverConfig`
-/// (`prover_config(CircuitType::Delegation(_), Sec100)` ≡ the pessimistic config
-/// `prove_delegation_proof` selects internally), so the proof must be field-wise
-/// identical. The memory tree caps are split from the CPU proof's
-/// `memory_commitment.commitment.cap`, the same idiom the other fixtures use.
+/// Delegation fixture with an independent CPU reference proof.
 pub(super) fn prepare_delegation_proof_fixture<O, W>(
     circuit_type: DelegationCircuitType,
     layout_path: &str,
@@ -626,7 +614,7 @@ where
     O: cs::oracle::Oracle<BF>,
     W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
 {
-    prepare_delegation_proof_fixture_with_packing(
+    let (base, expected) = prepare_delegation_fixture_for_config(
         circuit_type,
         layout_path,
         table_driver,
@@ -634,45 +622,16 @@ where
         oracle,
         witness_eval_fn,
         num_delegation_cycles,
-        0,
-    )
+        delegation_prover_config(circuit_type),
+        true,
+    );
+    BasicUnrolledProofFixture {
+        base,
+        expected_cpu_proof: expected.unwrap(),
+    }
 }
 
-pub(super) fn prepare_delegation_proof_fixture_with_packing<O, W>(
-    circuit_type: DelegationCircuitType,
-    layout_path: &str,
-    table_driver: &TableDriver<BF>,
-    buffer: Vec<W>,
-    oracle: &O,
-    witness_eval_fn: fn(
-        &mut prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy<'_, O, BF>,
-    ),
-    num_delegation_cycles: usize,
-    pack_log2: usize,
-) -> BasicUnrolledProofFixture
-where
-    O: cs::oracle::Oracle<BF>,
-    W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
-{
-    let config = if pack_log2 == 0 {
-        delegation_prover_config(circuit_type)
-    } else {
-        prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
-            num_delegation_cycles.trailing_zeros() as usize, pack_log2, SecurityLevel::Sec100)
-    };
-    prepare_delegation_proof_fixture_for_config(
-        circuit_type,
-        layout_path,
-        table_driver,
-        buffer,
-        oracle,
-        witness_eval_fn,
-        num_delegation_cycles,
-        config,
-    )
-}
-
-pub(super) fn prepare_delegation_proof_fixture_for_config<O, W>(
+pub(super) fn prepare_delegation_fixture_for_config<O, W>(
     circuit_type: DelegationCircuitType,
     layout_path: &str,
     table_driver: &TableDriver<BF>,
@@ -683,9 +642,57 @@ pub(super) fn prepare_delegation_proof_fixture_for_config<O, W>(
     ),
     num_delegation_cycles: usize,
     prover_config: ProverConfig,
-) -> BasicUnrolledProofFixture
+    compute_cpu_reference: bool,
+) -> (
+    BasicUnrolledFixture,
+    Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+)
 where
     O: cs::oracle::Oracle<BF>,
+    W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
+{
+    prepare_delegation_fixture(
+        circuit_type,
+        layout_path,
+        table_driver,
+        buffer,
+        num_delegation_cycles,
+        prover_config,
+        |compiled_circuit, external_challenges, config, worker| {
+            compute_cpu_reference.then(|| {
+                prove_delegation_proof_for_config(
+                    compiled_circuit,
+                    table_driver,
+                    oracle,
+                    witness_eval_fn,
+                    num_delegation_cycles,
+                    external_challenges,
+                    config,
+                    worker,
+                )
+            })
+        },
+    )
+}
+
+fn prepare_delegation_fixture<W>(
+    circuit_type: DelegationCircuitType,
+    layout_path: &str,
+    table_driver: &TableDriver<BF>,
+    buffer: Vec<W>,
+    num_delegation_cycles: usize,
+    prover_config: ProverConfig,
+    cpu_reference: impl FnOnce(
+        &GKRCircuitArtifact<BF>,
+        &GKRExternalChallenges<BF, E4>,
+        &ProverConfig,
+        &Worker,
+    ) -> Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+) -> (
+    BasicUnrolledFixture,
+    Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+)
+where
     W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
 {
     let final_trace_size_log_2 = u32::try_from(prover_config.sumcheck_explicit_output_size_log_2)
@@ -711,19 +718,12 @@ where
     let fixture_circuit_type = CircuitType::Delegation(circuit_type);
     let whir_schedule = prover_config.whir_schedule.clone();
 
-    // CPU reference proof (the full `GKRProof`, not just the grand-product
-    // factor): the GPU `prove()` below must reproduce it bit-for-bit.
-    let expected_cpu_proof = prove_delegation_proof_for_config(
+    let expected_cpu_proof = cpu_reference(
         &compiled_circuit,
-        table_driver,
-        oracle,
-        witness_eval_fn,
-        num_delegation_cycles,
         &external_challenges,
         &prover_config,
         &worker,
     );
-    eprintln!("delegation fixture ({circuit_type:?}): cpu proof ready");
 
     // GPU setup host — delegations commit with no decoder table (`&[]`) and use
     // `whir_steps_schedule[0]` rows-per-leaf, matching `delegation_asserts.rs`'s
@@ -736,13 +736,10 @@ where
         device_allocator_block_log_size,
     );
     let gpu_setup_host = Arc::new(
-        if !uses_base_commitment_geometry(
-            &BaseCommitmentGeometry::from_config(
-                &prover_config,
-                BaseColumns::of(&compiled_circuit),
-            )
-            .unwrap(),
-        ) {
+        if !uses_base_commitment_geometry(&BaseCommitmentGeometry::from_config(
+            &prover_config,
+            BaseColumns::of(&compiled_circuit),
+        )) {
             GpuGKRSetupHost::precompute_from_cpu_setup(
                 &setup,
                 whir_schedule.base_lde_factor_log2() as u32,
@@ -752,7 +749,15 @@ where
             )
             .unwrap()
         } else {
-            packed_setup_host_for_test(&setup, &compiled_circuit, &prover_config, &worker, &context)
+            GpuGKRSetupHost::precompute_for_geometry(
+                &setup,
+                BaseCommitmentGeometry::from_config(
+                    &prover_config,
+                    BaseColumns::of(&compiled_circuit),
+                ),
+                &context,
+            )
+            .unwrap()
         },
     );
 
@@ -761,19 +766,20 @@ where
     // empty one to satisfy the `BasicUnrolledFixture` field.
     let decoder_table_host = make_decoder_table_host_for_test(&[]);
 
-    // Per-coset memory tree caps from the CPU proof.
-    let combined_cap = &expected_cpu_proof
-        .whir_proof
-        .memory_commitment
-        .commitment
-        .cap;
-    let memory_tree_caps =
-        natural_coset_caps_from_cap(combined_cap, whir_schedule.base_lde_factor());
+    let memory_tree_caps = expected_cpu_proof
+        .as_ref()
+        .map(|proof| {
+            natural_coset_caps_from_cap(
+                &proof.whir_proof.memory_commitment.commitment.cap,
+                whir_schedule.base_lde_factor(),
+            )
+        })
+        .unwrap_or_default();
 
     let tracing_data_host = make_delegation_tracing_host_for_test(circuit_type, buffer);
     eprintln!("delegation fixture ({circuit_type:?}): tracing host ready");
 
-    let base = BasicUnrolledFixture {
+    let mut base = BasicUnrolledFixture {
         context,
         circuit_type: fixture_circuit_type,
         gkr_programs: Arc::new(
@@ -797,14 +803,16 @@ where
         unified_final_timestamp: 0,
         delegation_grand_product_factors: Vec::new(),
     };
-    BasicUnrolledProofFixture {
-        base,
-        expected_cpu_proof,
+    if expected_cpu_proof.is_none() {
+        let geometry = BaseCommitmentGeometry::from_config(
+            &base.prover_config,
+            BaseColumns::of(&base.compiled_circuit),
+        );
+        base.memory_tree_caps = super::packed_proof::gpu_memory_caps(&base, geometry);
     }
+    (base, expected_cpu_proof)
 }
 
-/// Profiling variant: same delegation fixture, no CPU reference proof. Returns
-/// just the `BasicUnrolledFixture` for `run_profile`.
 pub(super) fn prepare_delegation_profiling_fixture<W>(
     circuit_type: DelegationCircuitType,
     layout_path: &str,
@@ -815,100 +823,16 @@ pub(super) fn prepare_delegation_profiling_fixture<W>(
 where
     W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
 {
-    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
-    const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
-
-    assert!(
-        !buffer.is_empty(),
-        "delegation profiling fixture requires a non-empty delegation buffer",
-    );
-
-    let compiled_circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(layout_path);
-    assert_eq!(compiled_circuit.trace_len, num_delegation_cycles);
-
-    let external_challenges = test_external_challenges();
-    let fixture_circuit_type = CircuitType::Delegation(circuit_type);
-    let prover_config = delegation_prover_config(circuit_type);
-    let whir_schedule = prover_config.whir_schedule.clone();
-
-    let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
-    let context = make_test_context_with_device_allocator_block_log_size(
-        None,
-        HOST_POOL_SIZE_MB,
-        device_allocator_block_log_size,
-    );
-    let worker = Worker::new_with_num_threads(4);
-    let setup_geometry =
-        BaseCommitmentGeometry::from_config(&prover_config, BaseColumns::of(&compiled_circuit))
-            .unwrap();
-    let gpu_setup_host = Arc::new(if uses_base_commitment_geometry(&setup_geometry) {
-        packed_setup_host_for_test(&setup, &compiled_circuit, &prover_config, &worker, &context)
-    } else {
-        GpuGKRSetupHost::precompute_from_cpu_setup(
-            &setup,
-            whir_schedule.base_lde_factor_log2() as u32,
-            whir_schedule.base_folding_log2() as u32,
-            whir_schedule.cap_size.trailing_zeros(),
-            &context,
-        )
-        .unwrap()
-    });
-    let decoder_table_host = make_decoder_table_host_for_test(&[]);
-    let tracing_data_host = make_delegation_tracing_host_for_test(circuit_type, buffer);
-
-    // No CPU reference -> derive memory tree caps from a one-shot GPU
-    // commit_memory (delegations need no decoder / inits-and-teardowns bundle).
-    let memory_tree_caps = {
-        let mut tracing_data_transfer = TracingDataTransfer::new(
-            tracing_data_host.clone(),
-            compiled_circuit.trace_len,
-            &context,
-        )
-        .unwrap();
-        let transfer = gpu_prover_context::transfer::single_shot_h2d(
-            |t| tracing_data_transfer.schedule_transfer(t, &context),
-            &context,
-        )
-        .unwrap();
-        transfer.ensure_transferred(&context).unwrap();
-        let job = commit_memory(
-            fixture_circuit_type,
-            &compiled_circuit,
-            None,
-            &tracing_data_transfer.data_device,
-            &prover_config,
-            &context,
-        )
-        .unwrap();
-        let (tree_caps, _) = job.finish().unwrap();
-        drop(transfer);
-        drop(tracing_data_transfer);
-        tree_caps
-    };
-
-    BasicUnrolledFixture {
-        context,
-        circuit_type: fixture_circuit_type,
-        gkr_programs: Arc::new(
-            GkrPrograms::compile(fixture_circuit_type, Arc::new(compiled_circuit.clone()))
-                .expect("fixture must compile its committed GKR programs"),
-        ),
-        compiled_circuit,
-        external_challenges,
-        prover_config,
-        final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
-        gpu_setup_host: Some(gpu_setup_host),
-        decoder_table_host,
-        tracing_data_host,
-        memory_tree_caps,
-        inits_and_teardowns_host: None,
-        inits_and_teardowns_top_bits: None,
-        unified_register_final_state: [(0u32, (0u32, 0u32)); 32],
-        unified_final_pc: 0,
-        unified_final_timestamp: 0,
-        delegation_grand_product_factors: Vec::new(),
-    }
+    prepare_delegation_fixture(
+        circuit_type,
+        layout_path,
+        table_driver,
+        buffer,
+        num_delegation_cycles,
+        delegation_prover_config(circuit_type),
+        |_, _, _, _| None,
+    )
+    .0
 }
 
 pub(crate) fn prepare_unified_proof_fixture() -> BasicUnrolledProofFixture {
@@ -954,22 +878,7 @@ fn prepare_unified_proof_fixture_for(
     }
 }
 
-pub(super) fn prepare_unified_proof_fixture_with_packing(
-    pack_log2: usize,
-) -> BasicUnrolledProofFixture {
-    let (base, expected_cpu_proof) = prepare_unified_fixture(
-        UNIFIED_LAYOUT_PATH,
-        true,
-        pack_log2,
-        circuit_common::SoundnessMode::DEFAULT,
-    );
-    BasicUnrolledProofFixture {
-        base,
-        expected_cpu_proof: expected_cpu_proof.unwrap(),
-    }
-}
-
-fn prepare_unified_fixture(
+pub(super) fn prepare_unified_fixture(
     layout_path: &str,
     compute_cpu_reference: bool,
     pack_log2: usize,
@@ -1099,13 +1008,10 @@ fn prepare_unified_fixture(
         device_allocator_block_log_size,
     );
     let gpu_setup_host = Arc::new(
-        if !uses_base_commitment_geometry(
-            &BaseCommitmentGeometry::from_config(
-                &prover_config,
-                BaseColumns::of(&compiled_circuit),
-            )
-            .unwrap(),
-        ) {
+        if !uses_base_commitment_geometry(&BaseCommitmentGeometry::from_config(
+            &prover_config,
+            BaseColumns::of(&compiled_circuit),
+        )) {
             GpuGKRSetupHost::precompute_from_cpu_setup(
                 &setup,
                 whir_schedule.base_lde_factor_log2() as u32,
@@ -1115,7 +1021,15 @@ fn prepare_unified_fixture(
             )
             .unwrap()
         } else {
-            packed_setup_host_for_test(&setup, &compiled_circuit, &prover_config, &worker, &context)
+            GpuGKRSetupHost::precompute_for_geometry(
+                &setup,
+                BaseCommitmentGeometry::from_config(
+                    &prover_config,
+                    BaseColumns::of(&compiled_circuit),
+                ),
+                &context,
+            )
+            .unwrap()
         },
     );
     let decoder_table_host = make_decoder_table_host_for_test(&witness_gen_data);
@@ -1178,13 +1092,7 @@ fn prepare_unified_fixture(
             whir_schedule.base_lde_factor(),
         )
     } else {
-        // No CPU reference -> derive caps from a one-shot GPU commit_memory.
-        // The unified arm requires the inits/teardowns bundle, so use
-        // `commit_memory_from_transfers` (the 6-arg `commit_memory` hard-codes
-        // `None` for i/t and panics on a unified circuit with "requires
-        // init/teardown data"). No setup transfer is needed — the commit-memory
-        // bundle only carries decoder/i-t/tracing. Validated bit-exact vs CPU by
-        // `run_unified_commit_memory_matches_cpu_test`.
+        // Without a CPU reference, compute caps through the GPU memory producer.
         let decoder = if compiled_circuit.has_decoder_lookup {
             Some(DecoderTableTransfer::new(Arc::clone(&decoder_table_host), &context).unwrap())
         } else {
@@ -1217,11 +1125,12 @@ fn prepare_unified_fixture(
         .unwrap();
         bundle.schedule(&context).unwrap();
 
-        let job = gpu_trace::trace::memory::commit_memory_from_transfers(
+        let job = gpu_trace::trace::memory::commit_memory_from_transfers_for_geometry(
             fixture_circuit_type,
             &compiled_circuit,
             bundle,
             &prover_config,
+            BaseCommitmentGeometry::from_config(&prover_config, BaseColumns::of(&compiled_circuit)),
             &context,
         )
         .unwrap();
@@ -1254,30 +1163,4 @@ fn prepare_unified_fixture(
         },
         expected_cpu_proof,
     )
-}
-
-/// Setup caps are independently CPU-committed at the exact producing config.
-fn packed_setup_host_for_test(
-    setup: &CpuGKRSetup<BF>,
-    circuit: &GKRCircuitArtifact<BF>,
-    config: &ProverConfig,
-    worker: &Worker,
-    context: &ProverContext,
-) -> GpuGKRSetupHost {
-    let geometry =
-        prover::gkr::prover_config::commitment_geometry::BaseCommitmentGeometry::from_config(
-            config,
-            crate::upstream::BaseColumns::of(circuit),
-        )
-        .unwrap();
-    let host = GpuGKRSetupHost::precompute_for_geometry(setup, geometry, context).unwrap();
-    let twiddles: Twiddles<_, Global> =
-        Twiddles::new(1usize << config.whir_message_size_log2(), worker);
-    let cpu = setup.commit_for_config::<DefaultTreeConstructor>(&twiddles, config, worker);
-    assert_eq!(
-        host.unified_tree_cap(),
-        cpu.get_cap().cap,
-        "packed setup cap must match setup.commit_for_config"
-    );
-    host
 }

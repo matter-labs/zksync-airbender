@@ -1,16 +1,8 @@
-use crate::upstream::{ProverConfig, SecurityLevel};
-use execution_prover_model::circuit_type::CircuitType;
-pub use prover::definitions::{ProvingSelection, SoundnessMode};
+pub use prover::definitions::SoundnessMode;
 use riscv_transpiler::jit::JitRunnerRam;
 
-/// Commitments and proofs must use the same geometry on both backends: the
-/// circuit definition's own config (`CircuitType::prover_config`).
-pub fn prover_config(circuit_type: CircuitType, security_level: SecurityLevel) -> ProverConfig {
-    circuit_type.prover_config(security_level)
-}
-
 pub trait BackendConfiguration: Copy + Send + Sync + 'static + Sized {
-    fn execution_defaults(selection: ProvingSelection) -> ExecutionProverConfiguration<Self>;
+    fn execution_defaults(soundness_mode: SoundnessMode) -> ExecutionProverConfiguration<Self>;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -24,7 +16,6 @@ pub struct ExecutionProverConfiguration<C> {
     pub host_allocators_per_job_count: usize,
     /// Free blocks the cache is trimmed back towards; pressure relief, not a bound.
     pub min_free_host_allocators_per_job: usize,
-    pub security_level: SecurityLevel,
     pub soundness_mode: SoundnessMode,
     pub ram_config: JitRunnerRam,
     /// Simulate the field operations (MOPs) without the reduction of their inputs
@@ -37,19 +28,12 @@ pub struct ExecutionProverConfiguration<C> {
 
 impl<C: BackendConfiguration> Default for ExecutionProverConfiguration<C> {
     fn default() -> Self {
-        Self::for_selection(ProvingSelection::default())
+        Self::for_mode(SoundnessMode::DEFAULT)
     }
 }
 
 impl<C: BackendConfiguration> ExecutionProverConfiguration<C> {
-    pub fn for_selection(selection: ProvingSelection) -> Self {
-        C::execution_defaults(selection)
-    }
-
-    pub fn selection(&self) -> ProvingSelection {
-        ProvingSelection {
-            security_level: self.security_level,
-            soundness_mode: self.soundness_mode,
-        }
+    pub fn for_mode(soundness_mode: SoundnessMode) -> Self {
+        C::execution_defaults(soundness_mode)
     }
 }

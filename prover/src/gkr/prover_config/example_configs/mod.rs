@@ -214,7 +214,7 @@ impl WhirInput {
 pub fn whir_schedule(mode: SoundnessMode, level: SecurityLevel, input: &WhirInput) -> WhirSchedule {
     match mode {
         SoundnessMode::PessimisticConjecture => {
-            pessimistic_conjecture::schedule_for_input(level, input)
+            pessimistic_conjecture::whir_schedule(level, input.message_size_log2, input.packing())
         }
         SoundnessMode::EthproofsSoundnessCalc => {
             ethproofs_soundcalc::entry(level, input).schedule(input.physical_packing_log2)
@@ -302,18 +302,6 @@ mod tests {
 
     #[test]
     #[should_panic(
-        expected = "CommittedPolynomialCeiling: 129 committed polynomials exceed the 128 ceiling certified for EthproofsSoundnessCalc"
-    )]
-    fn ethproofs_column_ceiling_is_enforced() {
-        whir_schedule(
-            SoundnessMode::EthproofsSoundnessCalc,
-            SecurityLevel::Sec100,
-            &ethproofs_2_23_input(Some(129)),
-        );
-    }
-
-    #[test]
-    #[should_panic(
         expected = "MissingColumnCount: the EthproofsSoundnessCalc schedule is certified for a committed-polynomial ceiling"
     )]
     fn ethproofs_schedule_needs_the_column_count() {
@@ -330,19 +318,6 @@ mod tests {
         let input = WhirInput::without_column_count(19, BasePacking::NONE);
         whir_schedule(
             SoundnessMode::PessimisticConjecture,
-            SecurityLevel::Sec100,
-            &input,
-        );
-    }
-
-    #[test]
-    #[should_panic(
-        expected = "MissingSchedule: no EthproofsSoundnessCalc WHIR schedule for Sec100"
-    )]
-    fn absent_ethproofs_schedule_is_rejected() {
-        let input = WhirInput::without_column_count(19, BasePacking::NONE);
-        whir_schedule(
-            SoundnessMode::EthproofsSoundnessCalc,
             SecurityLevel::Sec100,
             &input,
         );

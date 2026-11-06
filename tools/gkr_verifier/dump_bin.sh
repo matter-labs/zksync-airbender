@@ -19,8 +19,6 @@ usage() {
     echo "  --sec LEVEL     only 100 bits is accepted"
     echo "  --mode MODE     per-circuit verifiers of one soundness mode only"
     echo "                  (pessimistic_conjecture | ethproofs_soundcalc); default: both."
-    echo "                  pessimistic_conjecture also drops the ethproofs_soundcalc full"
-    echo "                  statement verifiers"
     echo "  --warnings      show compiler warnings (suppressed by default)"
     echo "  -h, --help      show this message"
     echo ""
@@ -90,9 +88,7 @@ if [ $# -gt 0 ]; then
     CIRCUITS="$@"
 else
     FSV=$(ls src/bin/full_statement_verifiers/*.rs | sed 's|.*/||;s|\.rs||' | grep "_sec_${SEC}")
-    if [ "$MODE_FILTER" != "pessimistic_conjecture" ]; then
-        FSV="$FSV $(ls src/bin/full_statement_verifiers/ethproofs_soundcalc/*.rs | sed 's|.*/||;s|\.rs||;s|$|_ethproofs_soundcalc|' | grep "_sec_${SEC}_")"
-    fi
+    FSV="$FSV $(ls src/bin/full_statement_verifiers/ethproofs_soundcalc/*.rs | sed 's|.*/||;s|\.rs||;s|$|_ethproofs_soundcalc|' | grep "_sec_${SEC}_")"
     PER_CIRCUIT=""
     for m in src/bin/circuit_verifiers/*/; do
         m=$(basename "$m")

@@ -301,6 +301,10 @@ impl ProofLayout {
 
         let alloc = |cur: &mut usize, count: usize, elem_size: usize| -> Range<usize> {
             let start = align_up(*cur, FIELD_ALIGN);
+            assert!(
+                start.is_multiple_of(32),
+                "proof slab ranges must be 32-byte aligned"
+            );
             let end = start + count * elem_size;
             *cur = end;
             start..end
@@ -400,6 +404,10 @@ impl ProofLayout {
     fn lay_whir(cur: &mut usize, dims: &WhirDims) -> WhirLayout {
         let alloc = |cur: &mut usize, count: usize, elem_size: usize| -> Range<usize> {
             let start = align_up(*cur, FIELD_ALIGN);
+            assert!(
+                start.is_multiple_of(32),
+                "proof slab ranges must be 32-byte aligned"
+            );
             let end = start + count * elem_size;
             *cur = end;
             start..end
@@ -503,6 +511,3 @@ impl ProofLayout {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests;

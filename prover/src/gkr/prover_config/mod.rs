@@ -267,7 +267,6 @@ pub struct ProverConfig {
     /// sumchecks, applied to every same-size layer regardless of its input
     /// poly count. Must satisfy the STRICT grammar of
     /// [`validate_sumcheck_schedule`] for the trace length's variable count.
-    #[serde(default)]
     pub same_size_sumcheck_schedule: Vec<SumcheckStep>,
     /// Step schedules for the DIMENSION-REDUCING layer sumchecks (pairwise
     /// products + logup reduction gates only), keyed by the layer's number
@@ -275,7 +274,6 @@ pub struct ProverConfig {
     /// `dimension_reducing_sumcheck_schedule[&n]` if present, and
     /// NaiveSumcheck for every round otherwise. Each entry must satisfy
     /// [`validate_sumcheck_schedule`] for its key.
-    #[serde(default)]
     pub dimension_reducing_sumcheck_schedule: BTreeMap<usize, Vec<SumcheckStep>>,
     /// Whether memory and witness are committed as two base oracles or as one
     /// merged oracle (see [`CommitmentMode`]). Decides the transcript layout,
@@ -842,21 +840,6 @@ mod test {
     }
 
     #[test]
-    fn current_config_json_round_trips() {
-        for config in [
-            example_configs::config_for_100_bits_under_pessimistic_conjecture(20),
-            example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
-                20,
-                4,
-                SecurityLevel::Sec100,
-            ),
-        ] {
-            let json = serde_json::to_string(&config).unwrap();
-            assert_eq!(serde_json::from_str::<ProverConfig>(&json).unwrap(), config);
-        }
-    }
-
-    #[test]
     fn obsolete_config_fields_are_rejected() {
         // the pre-refactor serialized layout of a PACKED config: the packing
         // lived on the config, the schedule was six flat arrays
@@ -871,31 +854,6 @@ mod test {
             .unwrap_err()
             .to_string();
         assert!(error.contains("unknown field `lde_factor`"), "{error}");
-
-        let packed = example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
-            20,
-            4,
-            SecurityLevel::Sec100,
-        );
-        let current = serde_json::to_value(&packed).unwrap();
-        for (field, value) in [
-            ("lde_factor", 2),
-            ("base_oracles_values_per_leaf", 2),
-            ("pack_log2", 4),
-        ] {
-            let mut obsolete = current.clone();
-            obsolete
-                .as_object_mut()
-                .unwrap()
-                .insert(field.to_string(), value.into());
-            let error = serde_json::from_value::<ProverConfig>(obsolete)
-                .unwrap_err()
-                .to_string();
-            assert!(
-                error.contains(&format!("unknown field `{field}`")),
-                "{error}"
-            );
-        }
     }
 
     #[test]

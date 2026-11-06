@@ -287,8 +287,10 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
 
     let mut d_lookup_challenges: DeviceAllocation<E4> =
         context.alloc(2, AllocationPlacement::BestFit)?;
-    let lookup_pow_bits =
-        crate::config::lookup_challenges_pow_bits(prover_config, compiled_circuit);
+    let lookup_pow_bits = crate::upstream::pow_bits::lookup_challenges_pow_bits::<BF, E4>(
+        prover_config.security_level.security_bits(),
+        crate::upstream::pow_bits::lookup_identity_degree(compiled_circuit),
+    );
     // SAFETY: the layout owns this live, disjoint u64 slot in the slab.
     let (lookup_nonce_ptr, _lookup_nonce_len) =
         unsafe { proof_layout.lookup_pow_nonce_device_mut(slab_base) };

@@ -70,10 +70,7 @@ pub fn validate_baby_bear_base_opening(
     geometry: &BaseCommitmentGeometry,
     policy: OpeningStrategy,
     trees_mode: TreesCacheMode,
-    twiddle_domain_log2: u32,
 ) {
-    validate_baby_bear_base_geometry(geometry, twiddle_domain_log2);
-    TraceHolder::<BF>::validate_base_layout(geometry, trees_mode);
     if policy == OpeningStrategy::InPlace {
         assert!(
             gpu_ntt::ntt::log_size_supports_in_place(geometry.message_size_log2()),
@@ -181,16 +178,11 @@ impl<T> TraceHolder<T> {
             })
     }
 
-    pub fn base_commitment_geometry(&self) -> Option<(BaseCommitmentGeometry, BaseOracleRole)> {
-        self.base_geometry
-    }
-
     fn is_empty_base_oracle(&self) -> bool {
         self.base_geometry.is_some() && self.committed_columns_count() == 0
     }
 
-    /// Storage checks are field-independent; backend capability checks belong
-    /// at the instantiated commitment entry before constructing this holder.
+    /// Storage checks shared by base commitment holders.
     pub fn validate_base_layout(geometry: &BaseCommitmentGeometry, trees_mode: TreesCacheMode) {
         assert!(
             geometry.cap_size() >= geometry.lde_factor(),
@@ -211,7 +203,9 @@ impl<T> TraceHolder<T> {
             TreesCacheMode::CacheFull | TreesCacheMode::CacheNone => {}
         }
     }
+}
 
+impl TraceHolder<BF> {
     pub fn new_base_without_cosets(
         geometry: BaseCommitmentGeometry,
         role: BaseOracleRole,
@@ -219,6 +213,13 @@ impl<T> TraceHolder<T> {
         context: &ProverContext,
     ) -> CudaResult<Self> {
         Self::validate_base_layout(&geometry, trees_mode);
+        validate_baby_bear_base_geometry(
+            &geometry,
+            context
+                .ntt_device_context()
+                .whir_leaf_transform_params()
+                .omega_log_order,
+        );
         let mut holder = Self::new_without_cosets_padded(
             u32::try_from(geometry.trace_len_log2()).expect("trace log2 exceeds u32"),
             geometry.lde_factor().trailing_zeros(),
@@ -265,7 +266,9 @@ impl<T> TraceHolder<T> {
         )?);
         Ok(holder)
     }
+}
 
+impl<T> TraceHolder<T> {
     pub fn new(
         log_domain_size: u32,
         log_lde_factor: u32,
@@ -528,10 +531,6 @@ impl<T> TraceHolder<T> {
         self.raw_hypercube_evals
             .as_ref()
             .expect("raw hypercube values are unavailable for this holder")
-    }
-
-    pub fn allocated_columns(&self) -> usize {
-        self.padded_hypercube_evals().len() >> self.log_domain_size
     }
 
     pub fn get_uninit_hypercube_evals_mut(&mut self) -> &mut DeviceSlice<T> {

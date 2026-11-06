@@ -4,8 +4,7 @@ use crate::A;
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer;
 use gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy;
-use gpu_circuit_prover::proof::ProofPreflight;
-use gpu_circuit_prover::proof::{admit_dr_tail_before_transfers, prove, DrTailPreflightRequest};
+use gpu_circuit_prover::proof::prove;
 use gpu_core::allocator::tracker::AllocationDirection;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
@@ -15,7 +14,9 @@ use gpu_gkr::stage1::merged_commitment::{
 use gpu_prover_context::{AllocationMode, ProverContext};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::commit_memory_from_transfers_for_geometry;
-use gpu_trace::trace::memory_transfer::{GpuGKRCommitMemoryTransfer, GpuGKRMemoryTransfer};
+use gpu_trace::trace::memory_transfer::{
+    GpuGKRCommitMemoryTransfer, GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost,
+};
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -77,22 +78,13 @@ pub(super) fn commit_memory(
     circuit: &PreparedCircuit,
 ) -> CudaResult<Vec<MerkleTreeCapVarLength>> {
     let result = (|| {
-        let resolved = &circuit.precomputations.resolved_config;
-        let config = resolved.config();
-        let geometry = resolved.geometry();
-        let (setup_host, _) = circuit.precomputations.admit_inputs_before_transfers(
-            circuit.circuit,
-            circuit.security_level,
-            None,
-            context
-                .ntt_device_context()
-                .whir_leaf_transform_params()
-                .omega_log_order,
-        );
+        let config = &circuit.precomputations.config;
+        let geometry = circuit.precomputations.geometry;
+        let setup_host = circuit.precomputations.setup_host.get_initialized();
         let (decoder, inits, trace) = input_transfers(context, circuit)?;
         let job = if config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
             let setup = GpuGKRSetupTransfer::new(
-                setup_host.expect("merged setup metadata admitted"),
+                setup_host.expect("merged commitment requires setup"),
                 context,
             )?;
             let mut inputs =
@@ -130,49 +122,33 @@ pub(super) fn commit_memory(
 }
 
 fn schedule_proof_inputs<'a>(
-    device_id: i32,
     context: &ProverContext,
     circuit: &PreparedCircuit,
-    policy: Option<ProofMemoryPolicy>,
-) -> CudaResult<(GpuGKRProofTransfer<'a, A>, ProofPreflight<BF>)> {
-    let resolved = &circuit.precomputations.resolved_config;
+) -> CudaResult<GpuGKRProofTransfer<'a, A>> {
     let programs = &circuit.precomputations.gkr_programs;
-    let config = resolved.config();
-    let (setup_host, memory_host) = circuit.precomputations.admit_inputs_before_transfers(
-        circuit.circuit,
-        circuit.security_level,
-        Some(
-            circuit
-                .memory_caps
-                .as_deref()
-                .expect("warm memory commitment"),
-        ),
-        context
-            .ntt_device_context()
-            .whir_leaf_transform_params()
-            .omega_log_order,
+    let config = &circuit.precomputations.config;
+    let setup_host = circuit.precomputations.setup_host.get_initialized();
+    let caps = circuit
+        .memory_caps
+        .as_deref()
+        .expect("warm memory commitment");
+    let geometry = circuit.precomputations.geometry;
+    let memory_host = Arc::new(
+        if gpu_trace::trace::memory::uses_base_commitment_geometry(&geometry) {
+            GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(caps, geometry)
+        } else {
+            GpuGKRMemoryTransferHost::from_per_coset_caps(
+                caps,
+                config.lde_factor().trailing_zeros(),
+                config.cap_size.trailing_zeros(),
+            )
+        },
     );
-    let plan = admit_dr_tail_before_transfers(
-        Some(DrTailPreflightRequest {
-            gkr_programs: programs,
-            prover_config: config,
-            final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
-            device_id,
-            memory_policy: policy.unwrap_or_else(|| {
-                crate::memory_policy::policy(circuit.circuit, context.get_mem_size())
-            }),
-            twiddle_domain_log2: context
-                .ntt_device_context()
-                .whir_leaf_transform_params()
-                .omega_log_order,
-        }),
-        |plan| plan.unwrap(),
-    )?;
     let (decoder, inits, trace) = input_transfers(context, circuit)?;
     let setup = setup_host
         .map(|host| GpuGKRSetupTransfer::new(host, context))
         .transpose()?;
-    let memory = GpuGKRMemoryTransfer::new(memory_host.expect("admitted proof caps"), context)?;
+    let memory = GpuGKRMemoryTransfer::new(memory_host, context)?;
     let num_teardown_sets = programs
         .compiled_circuit()
         .memory_layout
@@ -200,17 +176,17 @@ fn schedule_proof_inputs<'a>(
         drain(context)?;
         return Err(error);
     }
-    Ok((inputs, plan))
+    Ok(inputs)
 }
 
 /// Measure production input allocations outside timed proof ranges.
 pub(super) fn input_footprint(
-    device_id: i32,
+    _device_id: i32,
     context: &ProverContext,
     circuit: &PreparedCircuit,
 ) -> CudaResult<usize> {
     let before = context.get_used_mem_current();
-    let inputs = schedule_proof_inputs(device_id, context, circuit, None);
+    let inputs = schedule_proof_inputs(context, circuit);
     drain(context)?;
     let inputs = inputs?;
     let bytes = context.get_used_mem_current() - before;
@@ -224,7 +200,7 @@ pub(super) struct Sample {
 }
 
 pub(super) fn run_case(
-    device_id: i32,
+    _device_id: i32,
     context: &mut ProverContext,
     target: &PreparedCircuit,
     target_override: Option<ProofMemoryPolicy>,
@@ -240,7 +216,7 @@ pub(super) fn run_case(
     // On pool OOM, queued operations must finish before freed arena ranges can
     // be reused. The runner retains PreparedCircuit host inputs throughout.
     context.set_allocation_mode(AllocationMode::Inputs(direction));
-    let (inputs, plan) = match schedule_proof_inputs(device_id, context, target, Some(policy)) {
+    let inputs = match schedule_proof_inputs(context, target) {
         Ok(inputs) => inputs,
         Err(error) => {
             drain(context)?;
@@ -251,17 +227,16 @@ pub(super) fn run_case(
     // sources. Follower H2D still overlaps the proof.
     context.get_h2d_stream().synchronize()?;
     context.set_allocation_mode(AllocationMode::Inputs(follower_direction));
-    let follower = schedule_proof_inputs(device_id, context, follower, None);
+    let follower = schedule_proof_inputs(context, follower);
     context.set_allocation_mode(AllocationMode::Proof(direction));
     let result = match &follower {
         Ok(_) => {
-            let config = target.precomputations.resolved_config.config();
+            let config = &target.precomputations.config;
             prove::<A>(
                 &target.precomputations.gkr_programs,
                 config,
                 FINAL_TRACE_SIZE_LOG_2,
                 inputs,
-                &plan,
                 policy,
                 context,
             )

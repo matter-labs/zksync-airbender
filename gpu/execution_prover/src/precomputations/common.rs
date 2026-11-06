@@ -1,7 +1,7 @@
 use super::CircuitPrecomputations;
 use gpu_trace::witness::circuit_type::CircuitType;
 
-use execution_prover::config::ProvingSelection;
+use execution_prover::config::SoundnessMode;
 use execution_prover::setup::build_common_setups;
 use std::collections::BTreeMap;
 use worker::Worker;
@@ -10,13 +10,13 @@ use worker::Worker;
 /// and inits-and-teardowns.
 pub(crate) fn get_common_precomputations_for_all(
     worker: &Worker,
-    selection: ProvingSelection,
+    soundness_mode: SoundnessMode,
 ) -> BTreeMap<CircuitType, CircuitPrecomputations> {
     build_common_setups(worker)
         .into_iter()
         .map(|(circuit_type, setup)| {
             let precomputations =
-                CircuitPrecomputations::from_canonical(circuit_type, setup, selection);
+                CircuitPrecomputations::from_canonical(circuit_type, setup, soundness_mode);
             (circuit_type, precomputations)
         })
         .collect()

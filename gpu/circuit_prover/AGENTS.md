@@ -72,10 +72,8 @@ summary — the contract document is the source of truth.
   `gpu_trace`/`gpu_gkr`/`gpu_whir`.
 - `src/lib.rs`: crate root; declares `config`, `proof`, `upstream` (+
   `#[cfg(test)]` `test_utils`/`tests`).
-- `src/config.rs`: maps a `CircuitType` and selection to the canonical upstream
-  `ProverConfig` and owns `GPU_SUPPORTED_SECURITY_LEVELS`. Admission of
-  commitment geometries and memory policies happens in the proof preflight,
-  before any transfer.
+- `src/config.rs`: owns `GPU_SUPPORTED_SECURITY_LEVELS`. Circuit types resolve
+  their canonical upstream `ProverConfig` directly.
 - `src/proof/`:
   - `inputs.rs`: the consolidated H2D transfer bundle
     (`GpuGKRProofTransfer`) — one shared `Transfer` (from `gpu_prover_context`)

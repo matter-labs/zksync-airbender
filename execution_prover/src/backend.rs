@@ -1,4 +1,4 @@
-use crate::config::{BackendConfiguration, ExecutionProverConfiguration, ProvingSelection};
+use crate::config::{BackendConfiguration, ExecutionProverConfiguration, SoundnessMode};
 use crate::messages::WorkBatch;
 use crate::setup::CanonicalCircuitSetup;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, BF};
@@ -41,13 +41,13 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
         0
     }
 
-    /// The circuit's prepared state under `selection`. Must assert that compiled circuit
+    /// The circuit's prepared state under `soundness_mode`. Must assert that compiled circuit
     /// geometry agrees with `circuit`.
     fn prepare(
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
-        selection: ProvingSelection,
+        soundness_mode: SoundnessMode,
     ) -> Self::Precomputations;
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>);

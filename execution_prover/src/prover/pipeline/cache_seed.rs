@@ -66,7 +66,6 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                 external_challenges: *external_challenges
                     .expect("proof cache seeding requires external challenges"),
                 memory_caps,
-                selection: prover.configuration.selection(),
             };
             let request = WorkRequest::Proof(request);
             work_requests_sender

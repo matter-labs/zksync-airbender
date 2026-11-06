@@ -64,6 +64,7 @@ use setups::UnrolledCircuitWitnessEvalFn;
 use std::alloc::Global;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::sync::Arc;
 use trace_and_split::commit_memory_tree_for_delegation_circuit;
 use trace_and_split::commit_memory_tree_for_inits_and_teardowns;
 use trace_and_split::commit_memory_tree_for_unrolled_mem_circuits;
@@ -716,6 +717,14 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
     program_proof.final_timestamp = final_timestamp;
 
     let mut twiddles = HashMap::new();
+    let mut twiddles_for = |config: &prover::gkr::prover_config::ProverConfig| {
+        let message_len = 1usize << config.whir_message_size_log2();
+        Arc::clone(
+            twiddles
+                .entry(message_len)
+                .or_insert_with(|| Arc::new(backend.make_twiddles(message_len, worker))),
+        )
+    };
 
     // commit memory trees
     for (family_idx, witness_chunks) in non_mem_circuits.iter() {
@@ -734,10 +743,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
             unreachable!()
         };
         let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-        let message_len = 1usize << prover_config.whir_message_size_log2();
-        let twiddles_for_size = twiddles
-            .entry(message_len)
-            .or_insert_with(|| backend.make_twiddles(message_len, worker));
+        let twiddles_for_size = twiddles_for(&prover_config);
 
         for chunk in witness_chunks.iter() {
             let cap = commit_memory_tree_for_unrolled_nonmem_circuits::<
@@ -776,10 +782,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
             unreachable!()
         };
         let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-        let message_len = 1usize << prover_config.whir_message_size_log2();
-        let twiddles_for_size = twiddles
-            .entry(message_len)
-            .or_insert_with(|| backend.make_twiddles(message_len, worker));
+        let twiddles_for_size = twiddles_for(&prover_config);
 
         for chunk in witness_chunks.iter() {
             let cap = commit_memory_tree_for_unrolled_mem_circuits::<
@@ -809,10 +812,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
     {
         let prover_config =
             inits_and_teardowns_setup.prover_config_in_mode(security_level, soundness_mode);
-        let message_len = 1usize << prover_config.whir_message_size_log2();
-        let twiddles_for_size = twiddles
-            .entry(message_len)
-            .or_insert_with(|| backend.make_twiddles(message_len, worker));
+        let twiddles_for_size = twiddles_for(&prover_config);
         for (upper_bits, values_and_timestamps) in inits_and_teardowns.iter() {
             let cap = commit_memory_tree_for_inits_and_teardowns::<
                 BabyBearField,
@@ -845,10 +845,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
         let setup = &blake_round_function_setup;
         if !delegation_circuits.is_empty() {
             let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-            let message_len = 1usize << prover_config.whir_message_size_log2();
-            let twiddles_for_size = twiddles
-                .entry(message_len)
-                .or_insert_with(|| backend.make_twiddles(message_len, worker));
+            let twiddles_for_size = twiddles_for(&prover_config);
 
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
@@ -887,10 +884,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
         let setup = &bigint_setup;
         if !delegation_circuits.is_empty() {
             let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-            let message_len = 1usize << prover_config.whir_message_size_log2();
-            let twiddles_for_size = twiddles
-                .entry(message_len)
-                .or_insert_with(|| backend.make_twiddles(message_len, worker));
+            let twiddles_for_size = twiddles_for(&prover_config);
 
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
@@ -929,10 +923,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
         let setup = &keccak_special5_setup;
         if !delegation_circuits.is_empty() {
             let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-            let message_len = 1usize << prover_config.whir_message_size_log2();
-            let twiddles_for_size = twiddles
-                .entry(message_len)
-                .or_insert_with(|| backend.make_twiddles(message_len, worker));
+            let twiddles_for_size = twiddles_for(&prover_config);
 
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
@@ -972,10 +963,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
             let setup = &$setup;
             if !delegation_circuits.is_empty() {
                 let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-                let message_len = 1usize << prover_config.whir_message_size_log2();
-                let twiddles_for_size = twiddles
-                    .entry(message_len)
-                    .or_insert_with(|| backend.make_twiddles(message_len, worker));
+                let twiddles_for_size = twiddles_for(&prover_config);
 
                 let mut per_tree_set = vec![];
                 for el in delegation_circuits.iter() {
@@ -1159,10 +1147,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                 // dump setup if it's present for existing machine
                 let trace_len = setup.trace_len;
                 let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-                let message_len = 1usize << prover_config.whir_message_size_log2();
-                let twiddles_for_size = twiddles
-                    .entry(message_len)
-                    .or_insert_with(|| backend.make_twiddles(message_len, worker));
+                let twiddles_for_size = twiddles_for(&prover_config);
                 let setup_commitment = setup.setup.commit_for_config::<DefaultTreeConstructor>(
                     twiddles_for_size.plain(),
                     &prover_config,
@@ -1188,10 +1173,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
         let setup = &setups[&family_idx];
         let trace_len = setup.trace_len;
         let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-        let message_len = 1usize << prover_config.whir_message_size_log2();
-        let twiddles_for_size = twiddles
-            .entry(message_len)
-            .or_insert_with(|| backend.make_twiddles(message_len, worker));
+        let twiddles_for_size = twiddles_for(&prover_config);
         let setup_commitment = setup.setup.commit_for_config::<DefaultTreeConstructor>(
             twiddles_for_size.plain(),
             &prover_config,
@@ -1328,10 +1310,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
 
                 let trace_len = setup.trace_len;
                 let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-                let message_len = 1usize << prover_config.whir_message_size_log2();
-                let twiddles_for_size = twiddles
-                    .entry(message_len)
-                    .or_insert_with(|| backend.make_twiddles(message_len, worker));
+                let twiddles_for_size = twiddles_for(&prover_config);
                 let setup_commitment = setup.setup.commit_for_config::<DefaultTreeConstructor>(
                     twiddles_for_size.plain(),
                     &prover_config,
@@ -1356,10 +1335,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
         let setup = &setups[&family_idx];
         let trace_len = setup.trace_len;
         let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-        let message_len = 1usize << prover_config.whir_message_size_log2();
-        let twiddles_for_size = twiddles
-            .entry(message_len)
-            .or_insert_with(|| backend.make_twiddles(message_len, worker));
+        let twiddles_for_size = twiddles_for(&prover_config);
         let setup_commitment = setup.setup.commit_for_config::<DefaultTreeConstructor>(
             twiddles_for_size.plain(),
             &prover_config,
@@ -1493,10 +1469,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
         let setup = &inits_and_teardowns_setup;
         let trace_len = setup.trace_len;
         let prover_config = setup.prover_config_in_mode(security_level, soundness_mode);
-        let message_len = 1usize << prover_config.whir_message_size_log2();
-        let twiddles_for_size = twiddles
-            .entry(message_len)
-            .or_insert_with(|| backend.make_twiddles(message_len, worker));
+        let twiddles_for_size = twiddles_for(&prover_config);
         let setup_commitment =
             setup
                 .setup
@@ -1589,7 +1562,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
                     should_dump_witness,
-                    &mut twiddles,
+                    &*twiddles_for(&prover_config),
                     &prover_config,
                     backend,
                     gkr_backend,
@@ -1624,7 +1597,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
                     should_dump_witness,
-                    &mut twiddles,
+                    &*twiddles_for(&prover_config),
                     &prover_config,
                     backend,
                     gkr_backend,
@@ -1659,7 +1632,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
                     should_dump_witness,
-                    &mut twiddles,
+                    &*twiddles_for(&prover_config),
                     &prover_config,
                     backend,
                     gkr_backend,
@@ -1694,7 +1667,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                         &mut permutation_argument_accumulator,
                         &mut delegation_proofs_count,
                         should_dump_witness,
-                        &mut twiddles,
+                        &*twiddles_for(&prover_config),
                         &prover_config,
                         backend,
                         gkr_backend,
@@ -1807,7 +1780,7 @@ pub(crate) fn prove_delegation_circuit<
     permutation_argument_grand_product: &mut BabyBearExt4,
     delegation_proofs_count: &mut usize,
     should_dump_witness: bool,
-    twiddles: &mut HashMap<usize, B::TwiddleSet>,
+    twiddles_for_size: &B::TwiddleSet,
     prover_config: &ProverConfig,
     backend: &B,
     gkr_backend: &GB,
@@ -1821,10 +1794,6 @@ pub(crate) fn prove_delegation_circuit<
     }
 
     let trace_len = setup.trace_len;
-    let message_len = 1usize << prover_config.whir_message_size_log2();
-    let twiddles_for_size = twiddles
-        .entry(message_len)
-        .or_insert_with(|| backend.make_twiddles(message_len, worker));
     let setup_commitment =
         setup
             .setup
@@ -1909,7 +1878,7 @@ pub(crate) fn prove_delegation_circuit<
             witness_trace,
             &setup.setup,
             &setup_commitment,
-            &*twiddles_for_size,
+            twiddles_for_size,
             prover_config,
             OperationMode::MultipleChunks,
             vec![],

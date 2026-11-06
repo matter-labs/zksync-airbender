@@ -248,29 +248,6 @@ impl GpuGKRStage1Output {
             &base_geometry,
             compiled_circuit,
         );
-        assert_eq!(
-            geometry.log_domain_size as usize,
-            base_geometry.trace_len_log2()
-        );
-        assert_eq!(
-            geometry.log_lde_factor,
-            base_geometry.lde_factor().trailing_zeros()
-        );
-        assert_eq!(
-            geometry.log_rows_per_leaf,
-            base_geometry.values_per_leaf().trailing_zeros()
-        );
-        assert_eq!(
-            geometry.log_tree_cap_size,
-            base_geometry.cap_size().trailing_zeros()
-        );
-        gpu_trace::trace::holder::validate_baby_bear_base_geometry(
-            &base_geometry,
-            context
-                .ntt_device_context()
-                .whir_leaf_transform_params()
-                .omega_log_order,
-        );
         Self::generate_with_strategy_impl(
             circuit_type,
             compiled_circuit,

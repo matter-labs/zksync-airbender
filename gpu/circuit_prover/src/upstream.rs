@@ -29,10 +29,12 @@ pub(crate) use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGE
 pub(crate) use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 
 // `field` — base field.
-pub(crate) use field::{Field, PrimeField};
+pub(crate) use field::Field;
+#[cfg(test)]
+pub(crate) use field::PrimeField;
 
 // `prover` — CPU prover types the GPU prover mirrors / interoperates with.
-pub(crate) use prover::definitions::{GKRExternalChallenges, ProvingSelection, SecurityLevel};
+pub(crate) use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 pub(crate) use prover::gkr::prover::{GKRProof, WhirSchedule};
 pub(crate) use prover::gkr::prover_config::commitment_geometry::{
@@ -40,9 +42,9 @@ pub(crate) use prover::gkr::prover_config::commitment_geometry::{
 };
 pub(crate) use prover::gkr::prover_config::pow_bits;
 pub(crate) use prover::gkr::prover_config::BaseColumns;
-pub(crate) use prover::gkr::prover_config::{
-    validate_sumcheck_schedule, CommitmentMode, ProverConfig, SumcheckScheduleClass,
-};
+#[cfg(test)]
+pub(crate) use prover::gkr::prover_config::CommitmentMode;
+pub(crate) use prover::gkr::prover_config::{validate_sumcheck_schedule, ProverConfig};
 pub(crate) use prover::merkle_trees::DefaultTreeConstructor;
 
 // -----------------------------------------------------------------------

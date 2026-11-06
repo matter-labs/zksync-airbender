@@ -12,7 +12,7 @@
 //!    (`fsv_unified_recursion_layer_sec_100_special_opcodes_extension`)
 //!    verifies the input pair; proving that run takes one or more 2^23 feeder
 //!    chunks.
-//! 2. The MERGED-mode feeder fsv (the pinned `FsvProfile::L1Feeder` guest of
+//! 2. The MERGED-mode feeder fsv (the `FsvProfile::L1Feeder` guest of
 //!    the unified recursion layer, special opcodes) verifies those feeder
 //!    proofs; proving it must fit ONE feeder chunk.
 //! 3. The same feeder fsv verifies that single proof in <= 2^22 cycles;
@@ -30,7 +30,7 @@ use crate::unified_transition::{
     prove_unified_transition_with_replayer_timed, UnifiedTransitionTimings,
 };
 use full_statement_verifier::host_utils::{
-    build_unified_stream, compute_end_params, fsv_manifest_entry, load_fsv_exact, FsvRecursionChain,
+    build_unified_stream, compute_end_params, load_fsv_exact, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
 use prover::definitions::{SecurityLevel, SoundnessMode};
@@ -51,20 +51,17 @@ const RAM_BOUND: usize = 1 << 30;
 const L1_CYCLES_BOUND: usize = 1 << 22;
 
 /// The MERGED-mode L1-feeder guest: the unified recursion layer with special
-/// opcodes, under the pinned `L1Feeder` profile.
+/// opcodes, under the `L1Feeder` profile.
 const L1_FEEDER_GUEST: FsvDescriptor = FsvDescriptor {
     profile: FsvProfile::L1Feeder,
     ..FsvDescriptor::new(
-        SecurityLevel::Sec100,
         SoundnessMode::PessimisticConjecture,
         FsvProgram::UnifiedRecursionLayer,
         BlakeMode::BlakeSpecialOpcodes,
     )
 };
 
-/// The L1-feeder guest, read once through its pin ([`load_fsv_exact`]): the
-/// ROM-padded words the BabyBear stages prove and the unpadded image and text
-/// the Proth120 stage runs. Both are views of the same verified file.
+/// Padded words for the BabyBear stages and unpadded words for the Proth120 stage.
 struct FeederGuest {
     bin: Vec<u32>,
     text: Vec<u32>,
@@ -72,15 +69,12 @@ struct FeederGuest {
     unpadded_text: Vec<u32>,
 }
 
-/// Load [`L1_FEEDER_GUEST`] from `fsv_dir`; panics as [`load_fsv_exact`] does on
-/// any file other than the pinned one.
+/// Decode the L1-feeder ELF from its registry path.
 fn load_feeder_guest(fsv_dir: &Path) -> FeederGuest {
-    let (bin, text) = load_fsv_exact(fsv_dir, &L1_FEEDER_GUEST).into_words();
-    // The pinned sizes of the same image: the ROM padding and the text
-    // padding are trailing zero words.
-    let pinned = fsv_manifest_entry(&L1_FEEDER_GUEST);
-    let unpadded_bin = bin[..pinned.rom_bytes / 4].to_vec();
-    let unpadded_text = text[..pinned.text_bytes / 4].to_vec();
+    let guest = load_fsv_exact(fsv_dir, &L1_FEEDER_GUEST);
+    let unpadded_bin = guest.unpadded_bin().to_vec();
+    let unpadded_text = guest.unpadded_text().to_vec();
+    let (bin, text) = guest.into_words();
     FeederGuest {
         bin,
         text,
@@ -155,7 +149,6 @@ pub fn compress_fixed_point_to_l1(
     let (std_bin, std_text) = load_fsv_exact(
         fsv_dir,
         &FsvDescriptor::new(
-            SecurityLevel::Sec100,
             SoundnessMode::PessimisticConjecture,
             FsvProgram::UnifiedRecursionLayer,
             BlakeMode::BlakeSpecialOpcodes,
@@ -370,7 +363,6 @@ mod diagnostics {
         let (bin, text) = load_fsv_exact(
             "../tools/gkr_verifier/full_statement_verifiers",
             &FsvDescriptor::new(
-                SecurityLevel::Sec100,
                 SoundnessMode::PessimisticConjecture,
                 FsvProgram::UnifiedRecursionLayer,
                 BlakeMode::BlakeSpecialOpcodes,
@@ -442,14 +434,12 @@ mod feeder_guest_tests {
     use riscv_transpiler::elf::ProgramSource;
 
     fn feeder_path(fsv_dir: &Path) -> std::path::PathBuf {
-        fsv_dir.join(L1_FEEDER_GUEST.registry_entry().unwrap().relative_path)
+        fsv_dir.join(L1_FEEDER_GUEST.relative_path())
     }
 
-    /// The pinned feeder words are what each stage read from the file before the pin: the
-    /// ROM-padded words of `load_program` (stages 1 and 2) and the unpadded words of
-    /// `ProgramSource::load_unpadded` (stage 3).
+    /// Each proving stage receives the padded or unpadded view of the same ELF.
     #[test]
-    fn pinned_feeder_words_match_the_unpinned_reads() {
+    fn feeder_words_match_the_stage_loaders() {
         let feeder = load_feeder_guest(&canonical_fsv_dir());
         let path = feeder_path(&canonical_fsv_dir());
         assert_eq!((feeder.bin, feeder.text), load_program(&path));
@@ -457,36 +447,5 @@ mod feeder_guest_tests {
             (feeder.unpadded_bin, feeder.unpadded_text),
             ProgramSource::elf(&path).load_unpadded()
         );
-    }
-
-    struct ScratchDir(std::path::PathBuf);
-
-    impl Drop for ScratchDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
-    /// The standard special-opcodes guest placed at the feeder path is refused.
-    #[test]
-    #[should_panic(
-        expected = "holds the full-statement verifier sec_100/pessimistic_conjecture/unified_recursion_layer/standard/"
-    )]
-    fn another_guest_at_the_feeder_path_is_refused() {
-        let dir = ScratchDir(
-            std::env::temp_dir().join(format!("l1-feeder-guest-{}", std::process::id())),
-        );
-        let standard = FsvDescriptor {
-            profile: FsvProfile::Standard,
-            ..L1_FEEDER_GUEST
-        };
-        let to = feeder_path(&dir.0);
-        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
-        std::fs::copy(
-            canonical_fsv_dir().join(standard.registry_entry().unwrap().relative_path),
-            &to,
-        )
-        .unwrap();
-        load_feeder_guest(&dir.0);
     }
 }

@@ -252,6 +252,19 @@ impl WhirSchedule {
         result
     }
 
+    /// Polynomial domain log for each committed intermediate oracle.
+    pub fn oracle_domains(&self, message_log: usize) -> impl Iterator<Item = usize> + '_ {
+        std::iter::once(self.base_round.fold_log2)
+            .chain(self.internal_rounds.iter().map(|round| round.folding_log2))
+            .take(self.internal_rounds.len())
+            .scan(message_log, |log_n, fold| {
+                *log_n = log_n
+                    .checked_sub(fold)
+                    .expect("WHIR schedule exceeds message domain");
+                Some(*log_n)
+            })
+    }
+
     /// Base round + internal rounds.
     pub fn num_rounds(&self) -> usize {
         1 + self.internal_rounds.len()

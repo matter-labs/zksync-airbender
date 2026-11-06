@@ -71,6 +71,18 @@ fn soundness_mode_parser() -> impl clap::builder::TypedValueParser<Value = Sound
         .map(|name: String| SoundnessMode::from_cli_name(&name).expect("a possible value"))
 }
 
+#[derive(Clone, Debug, Parser)]
+struct SoundnessArgs {
+    /// Soundness mode of every proof layer and of its verifier; an input artifact in another mode
+    /// is rejected.
+    #[arg(
+        long,
+        value_parser = soundness_mode_parser(),
+        default_value = SoundnessMode::DEFAULT.cli_name()
+    )]
+    soundness_mode: SoundnessMode,
+}
+
 #[derive(Clone, Debug, ValueEnum)]
 enum RunMachine {
     FullUnsigned,
@@ -102,14 +114,8 @@ enum Commands {
         backend: Option<ProverBackend>,
         #[arg(long, default_value_t = 0)]
         batch_id: u64,
-        /// Soundness accounting of every proof layer and of its verifier. A mode the backend
-        /// cannot prove is rejected before the input is read.
-        #[arg(
-            long,
-            value_parser = soundness_mode_parser(),
-            default_value = SoundnessMode::DEFAULT.cli_name()
-        )]
-        soundness_mode: SoundnessMode,
+        #[clap(flatten)]
+        soundness: SoundnessArgs,
 
         #[clap(flatten)]
         settings: BackendSettings,
@@ -137,15 +143,8 @@ enum Commands {
         backend: Option<ProverBackend>,
         #[arg(long, default_value_t = 0)]
         batch_id_base: u64,
-        /// Soundness accounting of every proof layer and of its verifier, recorded in every
-        /// artifact and in the batch summary. A mode the backend cannot prove is rejected before
-        /// any input is read.
-        #[arg(
-            long,
-            value_parser = soundness_mode_parser(),
-            default_value = SoundnessMode::DEFAULT.cli_name()
-        )]
-        soundness_mode: SoundnessMode,
+        #[clap(flatten)]
+        soundness: SoundnessArgs,
 
         #[clap(flatten)]
         settings: BackendSettings,
@@ -171,14 +170,8 @@ enum Commands {
         target: ProofTarget,
         #[arg(long, value_enum)]
         backend: Option<ProverBackend>,
-        /// Expected soundness mode of the input artifact, also used for the new layers. An artifact
-        /// in another mode is rejected before any proving; there is no conversion between modes.
-        #[arg(
-            long,
-            value_parser = soundness_mode_parser(),
-            default_value = SoundnessMode::DEFAULT.cli_name()
-        )]
-        soundness_mode: SoundnessMode,
+        #[clap(flatten)]
+        soundness: SoundnessArgs,
         #[clap(flatten)]
         settings: BackendSettings,
     },
@@ -195,14 +188,8 @@ enum Commands {
         /// The linked ELF file, replacing `--bin`/`--text`.
         #[arg(long)]
         elf: Option<String>,
-        /// Expected soundness mode of the artifact: the proof is checked with this mode's verifiers,
-        /// and an artifact claiming another mode is rejected.
-        #[arg(
-            long,
-            value_parser = soundness_mode_parser(),
-            default_value = SoundnessMode::DEFAULT.cli_name()
-        )]
-        soundness_mode: SoundnessMode,
+        #[clap(flatten)]
+        soundness: SoundnessArgs,
     },
     /// Run binary via the transpiler VM.
     Run {
@@ -355,7 +342,7 @@ fn run_cli() {
             target,
             backend,
             batch_id,
-            soundness_mode,
+            soundness: SoundnessArgs { soundness_mode },
             settings,
         } => {
             let source = program_source(bin, text, elf);
@@ -382,7 +369,7 @@ fn run_cli() {
             target,
             backend,
             batch_id_base,
-            soundness_mode,
+            soundness: SoundnessArgs { soundness_mode },
             settings,
         } => {
             let source = program_source(bin, text, elf);
@@ -437,13 +424,10 @@ fn run_cli() {
             output_file,
             target,
             backend,
-            soundness_mode,
+            soundness: SoundnessArgs { soundness_mode },
             settings,
         } => {
             let input_artifact: ProofArtifact = deserialize_from_file(&proof);
-            input_artifact
-                .validate_expected_mode(soundness_mode)
-                .unwrap_or_else(|e| panic!("Continuation rejected: {}", e));
             let source = program_source(bin, text, elf);
             let prover_config = make_prover_config(soundness_mode, target, backend, settings);
 
@@ -460,7 +444,7 @@ fn run_cli() {
             bin,
             text,
             elf,
-            soundness_mode,
+            soundness: SoundnessArgs { soundness_mode },
         } => {
             let artifact: ProofArtifact = deserialize_from_file(&proof);
             let source = program_source(bin, text, elf);

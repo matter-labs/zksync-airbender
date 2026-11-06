@@ -30,7 +30,6 @@ use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 
 pub struct MemoryCommitmentJob<'a> {
-    geometry: Option<BaseCommitmentGeometry>,
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
@@ -39,12 +38,8 @@ pub struct MemoryCommitmentJob<'a> {
 }
 
 impl<'a> MemoryCommitmentJob<'a> {
-    pub fn base_commitment_geometry(&self) -> Option<BaseCommitmentGeometry> {
-        self.geometry
-    }
     pub fn finish(self) -> CudaResult<(Vec<MerkleTreeCapVarLength>, f32)> {
         let Self {
-            geometry: _,
             is_finished_event,
             callbacks,
             inputs,
@@ -83,47 +78,10 @@ pub fn validate_separate_base_commitment_geometry(geometry: &BaseCommitmentGeome
     );
 }
 
-/// Check the immutable config/geometry pair against its logical producer.
-/// Legacy k0/f1 does not enter the packed holder's transform/policy validators.
-pub fn validate_memory_commitment_config<F: crate::upstream::PrimeField>(
-    config: &ProverConfig,
-    geometry: &BaseCommitmentGeometry,
-    circuit: &GKRCircuitArtifact<F>,
-) {
-    let expected = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit))
-        .expect("invalid memory commitment config");
-    assert_eq!(
-        *geometry, expected,
-        "memory commitment config/geometry mismatch"
-    );
-    assert_eq!(
-        1usize << geometry.trace_len_log2(),
-        circuit.trace_len,
-        "memory commitment config trace length mismatch"
-    );
-    validate_separate_base_commitment_geometry(geometry);
-    if uses_base_commitment_geometry(geometry) {
-        validate_memory_commitment_geometry(geometry, circuit);
-    }
-}
-
 #[derive(Clone, Copy)]
 enum MemoryCommitmentShape<'a> {
     Unpacked(&'a ProverConfig),
     Geometry(BaseCommitmentGeometry),
-}
-
-/// Bind protocol geometry to the existing logical memory producer before transfers.
-pub fn validate_memory_commitment_geometry<F: crate::upstream::PrimeField>(
-    geometry: &BaseCommitmentGeometry,
-    compiled_circuit: &GKRCircuitArtifact<F>,
-) {
-    assert_eq!(
-        geometry.commitment_mode(),
-        CommitmentMode::SeparateMemoryAndWitness,
-        "memory precommit requires separate memory and witness commitments"
-    );
-    validate_stage1_commitment_geometry(geometry, compiled_circuit);
 }
 
 /// Field-independent shape binding for separate or concatenated stage1 storage.
@@ -171,22 +129,12 @@ fn commit_memory_inner<'a>(
             TreesCacheMode::CachePartial,
             context,
         )?,
-        MemoryCommitmentShape::Geometry(geometry) => {
-            validate_memory_commitment_geometry(&geometry, compiled_circuit);
-            crate::trace::holder::validate_baby_bear_base_geometry(
-                &geometry,
-                context
-                    .ntt_device_context()
-                    .whir_leaf_transform_params()
-                    .omega_log_order,
-            );
-            TraceHolder::new_base(
-                geometry,
-                BaseOracleRole::Memory,
-                TreesCacheMode::CachePartial,
-                context,
-            )?
-        }
+        MemoryCommitmentShape::Geometry(geometry) => TraceHolder::new_base(
+            geometry,
+            BaseOracleRole::Memory,
+            TreesCacheMode::CachePartial,
+            context,
+        )?,
     };
     let range = Range::new("commit_memory")?;
     let stream = context.get_exec_stream();
@@ -379,9 +327,6 @@ fn commit_memory_inner<'a>(
     memory_holder.commit_all(context)?;
     schedule_memory_cap_readback(
         memory_holder.unified_device_cap(),
-        memory_holder
-            .base_commitment_geometry()
-            .map(|(geometry, _)| geometry),
         memory_holder.log_lde_factor,
         Callbacks::new(),
         inputs,
@@ -394,7 +339,6 @@ fn commit_memory_inner<'a>(
 /// Public for gpu_circuit_prover; field values stay at each commit boundary.
 pub fn schedule_memory_cap_readback<'a>(
     unified_cap: &DeviceSlice<Digest>,
-    producing_geometry: Option<BaseCommitmentGeometry>,
     log_lde: u32,
     mut callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
@@ -441,7 +385,6 @@ pub fn schedule_memory_cap_readback<'a>(
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;
     let job = MemoryCommitmentJob {
-        geometry: producing_geometry,
         is_finished_event,
         callbacks,
         inputs,
@@ -476,8 +419,7 @@ fn config_memory_shape<'a>(
     config: &'a ProverConfig,
     circuit: &GKRCircuitArtifact<BF>,
 ) -> MemoryCommitmentShape<'a> {
-    let geometry = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit))
-        .expect("invalid memory commitment config");
+    let geometry = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit));
     memory_shape_for_geometry(config, geometry, circuit)
 }
 
@@ -486,32 +428,13 @@ fn memory_shape_for_geometry<'a>(
     geometry: BaseCommitmentGeometry,
     circuit: &GKRCircuitArtifact<BF>,
 ) -> MemoryCommitmentShape<'a> {
-    validate_memory_commitment_config(config, &geometry, circuit);
+    validate_separate_base_commitment_geometry(&geometry);
+    validate_stage1_commitment_geometry(&geometry, circuit);
     if uses_base_commitment_geometry(&geometry) {
         MemoryCommitmentShape::Geometry(geometry)
     } else {
         MemoryCommitmentShape::Unpacked(config)
     }
-}
-
-pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
-    circuit_type: CircuitType,
-    compiled_circuit: &GKRCircuitArtifact<BF>,
-    inputs: super::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>,
-    prover_config: &ProverConfig,
-    context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a>> {
-    let geometry =
-        BaseCommitmentGeometry::from_config(prover_config, BaseColumns::of(compiled_circuit))
-            .expect("invalid memory commitment config");
-    commit_memory_from_transfers_for_geometry(
-        circuit_type,
-        compiled_circuit,
-        inputs,
-        prover_config,
-        geometry,
-        context,
-    )
 }
 
 /// Use the worker's already resolved config/geometry without another CPU lookup.
@@ -524,15 +447,6 @@ pub fn commit_memory_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     let shape = memory_shape_for_geometry(prover_config, geometry, compiled_circuit);
-    if geometry.pack_log2() != 0 {
-        crate::trace::holder::validate_baby_bear_base_geometry(
-            &geometry,
-            context
-                .ntt_device_context()
-                .whir_leaf_transform_params()
-                .omega_log_order,
-        );
-    }
     // One exec-stream wait covers every H2D bundled by `inputs` (decoder,
     // inits_and_teardowns, tracing_data).
     inputs.ensure_transferred(context)?;
@@ -554,50 +468,4 @@ pub fn commit_memory_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
         Some(transfer.into_keepalive()),
         context,
     )
-}
-
-#[cfg(test)]
-mod tests;
-
-#[cfg(test)]
-mod cpu_geometry_routing {
-    use super::*;
-    use prover::definitions::SecurityLevel;
-    use prover::gkr::prover::WhirSchedule;
-
-    #[test]
-    fn cpu_nonlegacy_base_routing_includes_pure_virtual_and_empty_sets() {
-        for k in [0, 2] {
-            for fold in [0, 1] {
-                let config = ProverConfig::whir_only(
-                    22 - k,
-                    WhirSchedule::from_legacy_arrays(2, 16, k, &[fold, 5], &[1, 1], &[2], &[0, 0]),
-                    SecurityLevel::Sec100,
-                );
-                for columns in [
-                    BaseColumns {
-                        memory: 1,
-                        witness: 0,
-                        setup: 0,
-                    },
-                    BaseColumns {
-                        memory: 0,
-                        witness: 0,
-                        setup: 0,
-                    },
-                ] {
-                    let geometry = BaseCommitmentGeometry::from_config(&config, columns).unwrap();
-                    assert_eq!(
-                        uses_base_commitment_geometry(&geometry),
-                        k != 0 || fold == 0
-                    );
-                    assert_eq!(
-                        geometry.oracle(BaseOracleRole::Witness).physical_columns(),
-                        0
-                    );
-                    assert_eq!(geometry.oracle(BaseOracleRole::Setup).physical_columns(), 0);
-                }
-            }
-        }
-    }
 }

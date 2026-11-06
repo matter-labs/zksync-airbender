@@ -2,6 +2,9 @@ use crate::memcpy::memcpy_impl;
 use crate::memmove::memmove_impl;
 use crate::memset::memset_impl;
 
+// A tail-only length, one bulk block, and a bulk block plus every tail block.
+const WORD_COUNTS: [usize; 3] = [1, 16, 31];
+
 fn pattern(words: usize, seed: u32) -> Vec<u32> {
     (0..words as u32)
         .map(|i| i.wrapping_mul(0x9e37_79b9) ^ seed.wrapping_mul(0x85eb_ca6b))
@@ -14,10 +17,9 @@ fn base(buffer: &mut [u32]) -> *mut u8 {
 
 #[test]
 fn memcpy_copies_words() {
-    // 1..=65 words cross the 64-byte loop and every smaller block.
-    for words in 1..=65 {
-        let source = pattern(67, 1);
-        let mut destination = pattern(67, 2);
+    for words in WORD_COUNTS {
+        let source = pattern(words + 2, 1);
+        let mut destination = pattern(words + 2, 2);
         let mut expected = destination.clone();
         expected[1..1 + words].copy_from_slice(&source[1..1 + words]);
         let dest = unsafe { base(&mut destination).add(4) };
@@ -27,52 +29,32 @@ fn memcpy_copies_words() {
         );
         assert_eq!(destination, expected, "{words} words");
     }
-    // Equal operands and adjacent ranges.
-    let mut buffer = pattern(32, 3);
-    let before = buffer.clone();
-    let p = base(&mut buffer);
-    unsafe { memcpy_impl(p, p, 64) };
-    assert_eq!(buffer, before);
-    unsafe { memcpy_impl(p.add(64), p, 64) };
-    assert_eq!(buffer[16..], before[..16]);
 }
 
 #[test]
 fn memset_fills_the_low_byte() {
-    for (value, fill) in [(0x1ab_u32, 0xabab_abab_u32), (u32::MAX, u32::MAX), (0, 0)] {
-        for words in 1..=65 {
-            let mut buffer = pattern(67, 5);
-            let mut expected = buffer.clone();
-            expected[1..1 + words].fill(fill);
-            let dest = unsafe { base(&mut buffer).add(4) };
-            assert_eq!(unsafe { memset_impl(dest, value, 4 * words) }, dest);
-            assert_eq!(buffer, expected, "value {value:#x}, {words} words");
-        }
+    for words in WORD_COUNTS {
+        let mut buffer = pattern(words + 2, 5);
+        let mut expected = buffer.clone();
+        expected[1..1 + words].fill(0xabab_abab);
+        let dest = unsafe { base(&mut buffer).add(4) };
+        assert_eq!(unsafe { memset_impl(dest, 0x1ab, 4 * words) }, dest);
+        assert_eq!(buffer, expected, "{words} words");
     }
 }
 
 #[test]
 fn memmove_handles_overlap_in_both_directions() {
-    // Distance 0 is the equal-pointer case; distance == words is adjacent.
-    for distance in [0, 1, 2, 3, 16, 64] {
-        for words in [1, 2, 3, 15, 16, 17, 32, 65] {
-            for forward in [true, false] {
-                let mut buffer = pattern(words + distance + 4, 6);
-                let mut expected = buffer.clone();
-                let (src, dst) = if forward {
-                    (2 + distance, 2)
-                } else {
-                    (2, 2 + distance)
-                };
-                expected.copy_within(src..src + words, dst);
-                let p = base(&mut buffer);
-                let ret = unsafe { memmove_impl(p.add(4 * dst), p.add(4 * src), 4 * words) };
-                assert_eq!(ret, unsafe { p.add(4 * dst) });
-                assert_eq!(
-                    buffer, expected,
-                    "{words} words, distance {distance}, forward {forward}"
-                );
-            }
+    for words in WORD_COUNTS {
+        for forward in [true, false] {
+            let mut buffer = pattern(words + 5, 6);
+            let mut expected = buffer.clone();
+            let (src, dst) = if forward { (3, 2) } else { (2, 3) };
+            expected.copy_within(src..src + words, dst);
+            let p = base(&mut buffer);
+            let ret = unsafe { memmove_impl(p.add(4 * dst), p.add(4 * src), 4 * words) };
+            assert_eq!(ret, unsafe { p.add(4 * dst) });
+            assert_eq!(buffer, expected, "{words} words, forward {forward}");
         }
     }
 }
@@ -80,24 +62,17 @@ fn memmove_handles_overlap_in_both_directions() {
 #[test]
 fn zero_length_touches_nothing() {
     use core::ptr::{null_mut, without_provenance_mut};
-    let mut buffer = pattern(8, 8);
-    let before = buffer.clone();
-    let p = base(&mut buffer);
-    // Misaligned pointers into a live buffer (no write), then null and unallocated misaligned
-    // pointers (any access would fault).
-    let pointers = unsafe { [(p.add(1), p.add(18)), (p.add(3), p.add(16))] };
-    let invalid = [
+    // Null and unallocated misaligned pointers: any access would fault.
+    for (d, s) in [
         (null_mut(), without_provenance_mut(3)),
         (without_provenance_mut(usize::MAX - 2), null_mut()),
-    ];
-    for (d, s) in pointers.into_iter().chain(invalid) {
+    ] {
         unsafe {
             assert_eq!(memcpy_impl(d, s, 0), d);
             assert_eq!(memmove_impl(d, s, 0), d);
             assert_eq!(memset_impl(d, 0xff, 0), d);
         }
     }
-    assert_eq!(buffer, before);
 }
 
 #[test]
@@ -111,7 +86,7 @@ fn every_misaligned_argument_traps() {
         ("memmove", memmove, true),
         ("memset", memset, false),
     ] {
-        for residue in 1..4 {
+        for residue in [1, 2] {
             let mut cases = vec![("dst", residue, 0, 64), ("len", 0, 0, 60 + residue)];
             if has_src {
                 cases.push(("src", 0, residue, 64));

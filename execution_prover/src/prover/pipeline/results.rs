@@ -80,7 +80,6 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                     .external_challenges
                     .expect("proof request construction requires external challenges"),
                 memory_caps,
-                selection: prover.configuration.selection(),
             };
             WorkRequest::Proof(request)
         } else {
@@ -91,7 +90,6 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 precomputations,
                 inits_and_teardowns,
                 tracing_data,
-                selection: prover.configuration.selection(),
             };
             WorkRequest::MemoryCommitment(request)
         }

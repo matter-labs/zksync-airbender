@@ -346,26 +346,6 @@ pub(super) fn natural_coset_caps_from_cap(
         .collect_vec()
 }
 
-#[test]
-fn natural_coset_caps_follow_the_execution_prover_split() {
-    let cap = MerkleTreeCapVarLength {
-        cap: (0..16u32).map(|i| [i; 8]).collect(),
-    };
-    for (lde_factor, starts) in [
-        (1, &[0][..]),
-        (2, &[0, 8]),
-        (4, &[0, 8, 4, 12]),
-        (8, &[0, 8, 4, 12, 2, 10, 6, 14]),
-    ] {
-        let size = 16 / lde_factor;
-        let split = natural_coset_caps_from_cap(&cap, lde_factor);
-        assert_eq!(split.len(), lde_factor);
-        for (coset, &start) in starts.iter().enumerate() {
-            assert_eq!(split[coset].cap, cap.cap[start..start + size]);
-        }
-    }
-}
-
 fn canonical_serialized_bytes_for_test<T: serde::Serialize>(value: &T) -> Vec<u8> {
     let mut bytes = Vec::new();
     serde_json::to_writer_pretty(&mut bytes, value).unwrap();

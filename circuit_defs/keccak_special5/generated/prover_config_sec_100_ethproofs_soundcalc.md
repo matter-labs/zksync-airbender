@@ -29,9 +29,3 @@ Plain-text tail: the 2^1 polynomial.
 
 `folding_pow_bits` is one value for every folding-challenge draw of an oracle; the analysis needs one bit less per sumcheck step (listed per step above), so the schedule grinds slightly more than the certification requires.
 
-## Against the current pessimistic-conjecture schedule
-
-- this schedule: folds [0, 6, 5, 5, 5], LDE log2 [3, 9, 11, 13], queries [179, 52, 18, 15, 12], query PoW [26, 26, 24, 21, 25], folding PoW [23, 23, 23, 23], OOD PoW [8, 4, 1, 0]
-- pessimistic conjecture (`prover_config_sec_100_pessimistic_conjecture.json`, same shape, security level and packing): folds [0, 6, 5, 5, 5], LDE log2 [5, 11, 13, 14], queries [89, 18, 9, 7, 7], query PoW [26, 25, 18, 25, 19], no folding / OOD PoW
-
-The base round cannot keep the pessimistic 89 queries / 26 PoW bits: under both accepted regimes a query into the rate-1/2 base oracle is worth at most 0.415 bits, so that base round certifies 62 bits whatever the later rounds do; 100 bits need ceil((100 − 26) / 0.415) = 179 queries at 26 PoW bits (the largest grind of this schedule) with the base LDE factor and round-0 fold unchanged. The later oracles' LDE factors stay low because the Johnson-bound fold term grows with n / ρ^1.5 and must stay within a 24-bit folding grind.

@@ -20,7 +20,6 @@ pub(crate) mod storage_types;
 pub(crate) mod support;
 pub(crate) mod upstream;
 
-pub use backward::{preflight_dr_tail_resources, DrTailProofPlan};
 pub(crate) use forward::kernels::ForwardKernels;
 pub(crate) use gpu_gkr_model::address_audit as gkr_address_audit;
 pub(crate) use gpu_gkr_model::storage_layout;

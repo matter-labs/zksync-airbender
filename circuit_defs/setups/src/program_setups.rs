@@ -60,14 +60,11 @@ pub fn compute_unrolled_program_setups_in_mode<C: MachineConfig, A: GoodAllocato
         use_caches,
         worker,
     );
-    let configs_and_setups = per_family
-        .into_iter()
-        .map(|(family_idx, setup)| {
-            let config = setup.prover_config_in_mode(security_level, soundness_mode);
-            (family_idx as u32, config, setup.setup)
-        })
-        .collect::<Vec<_>>();
-    commit_setup_params(configs_and_setups.into_iter(), security_level, worker)
+    let configs_and_setups = per_family.into_iter().map(|(family_idx, setup)| {
+        let config = setup.prover_config_in_mode(security_level, soundness_mode);
+        (family_idx as u32, config, setup.setup)
+    });
+    commit_setup_params(configs_and_setups, security_level, worker)
 }
 
 /// Mode-explicit unified setup reconstruction from actual compiled columns.

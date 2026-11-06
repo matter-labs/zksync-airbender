@@ -27,15 +27,7 @@ impl TraceHolder<BF> {
                 TreesHolder::Partial(_) => TreesCacheMode::CachePartial,
                 TreesHolder::None => TreesCacheMode::CacheNone,
             };
-            validate_baby_bear_base_opening(
-                &geometry,
-                self.opening_policy,
-                mode,
-                context
-                    .ntt_device_context()
-                    .whir_leaf_transform_params()
-                    .omega_log_order,
-            );
+            validate_baby_bear_base_opening(&geometry, self.opening_policy, mode);
         }
         assert!(!self.cosets_materialized);
         assert!(matches!(self.cosets, CosetsHolder::None(_)));

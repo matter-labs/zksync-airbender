@@ -200,8 +200,7 @@ jobs:
 
       - name: Prove, continue and verify on GPU in every soundness mode
         env:
-          # n = 15, h = 1,200,000 Blake iterations: every mode's base verifier is estimated
-          # above the 16Mi floor, so this threshold proves an unrolled recursion layer.
+          # Large enough that every mode proves an unrolled recursion layer.
           RECURSION_UNIFIED_SWITCH_CYCLES: "16777216"
           INPUT_FILE: output/hashed_fibonacci_input.txt
           DIRECT: "1"

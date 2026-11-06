@@ -823,54 +823,10 @@ pub(super) fn prepare_basic_unrolled_fixture(
 }
 
 pub(crate) fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixture {
-    let (base, expected_cpu_proof) =
-        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
-            binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
-            text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
-            layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
-            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-            )),
-            non_determinism_reads: &[15, 1],
-            compute_cpu_reference: true,
-            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
-            security_level: crate::upstream::SecurityLevel::Sec100,
-            mode: circuit_common::SoundnessMode::DEFAULT,
-        });
-    BasicUnrolledProofFixture {
-        base,
-        expected_cpu_proof: expected_cpu_proof
-            .expect("proof fixture must include the CPU reference proof"),
-    }
+    prepare_basic_unrolled_proof_fixture_in_mode(circuit_common::SoundnessMode::DEFAULT)
 }
 
-/// Sec100 variant of [`prepare_basic_unrolled_proof_fixture`]. At Sec100 the
-/// per-circuit lookup-challenge and WHIR-batching PoWs are non-zero, so this
-/// exercises the on-device grinding + nonce path end-to-end against the CPU
-/// reference (which grinds the same PoW).
-pub(crate) fn prepare_basic_unrolled_proof_fixture_sec100() -> BasicUnrolledProofFixture {
-    let (base, expected_cpu_proof) =
-        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
-            binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
-            text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
-            layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
-            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-            )),
-            non_determinism_reads: &[15, 1],
-            compute_cpu_reference: true,
-            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
-            security_level: crate::upstream::SecurityLevel::Sec100,
-            mode: circuit_common::SoundnessMode::DEFAULT,
-        });
-    BasicUnrolledProofFixture {
-        base,
-        expected_cpu_proof: expected_cpu_proof
-            .expect("proof fixture must include the CPU reference proof"),
-    }
-}
-
-/// [`prepare_basic_unrolled_proof_fixture_sec100`] with the CPU reference
+/// [`prepare_basic_unrolled_proof_fixture`] with the CPU reference
 /// and the GPU proof both made under `mode`'s config.
 pub(crate) fn prepare_basic_unrolled_proof_fixture_in_mode(
     mode: circuit_common::SoundnessMode,

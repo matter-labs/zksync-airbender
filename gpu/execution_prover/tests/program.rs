@@ -310,6 +310,86 @@ fn test_program_prover_unified_base_layer_verify() {
     log::info!("unified base layer verified natively; output registers: {output:?}");
 }
 
+#[cfg(feature = "verifiers")]
+#[cfg_attr(no_cuda, allow(dead_code))]
+fn assert_program_commitments(
+    cpu: &crate::upstream::ProgramProof,
+    gpu: &crate::upstream::ProgramProof,
+    expected_families: &[u8],
+) {
+    for proof in [cpu, gpu] {
+        for family in expected_families {
+            assert!(
+                proof
+                    .riscv_proofs
+                    .get(&u32::from(*family))
+                    .is_some_and(|proofs| !proofs.is_empty()),
+                "workload must exercise circuit family {family}"
+            );
+        }
+        let blake = common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
+        assert!(
+            proof
+                .delegation_proofs
+                .get(&blake)
+                .is_some_and(|proofs| !proofs.is_empty()),
+            "workload must exercise Blake compression"
+        );
+    }
+    // Preserve family, instance and cap-node order: all feed memory challenges.
+    fn ordered_caps(
+        proof: &crate::upstream::ProgramProof,
+    ) -> Vec<(
+        u8,
+        u32,
+        usize,
+        &prover::merkle_trees::MerkleTreeCapVarLength,
+    )> {
+        let mut caps = Vec::new();
+        for (family, proofs) in &proof.riscv_proofs {
+            for (sequence, proof) in proofs.iter().enumerate() {
+                assert!(!proof
+                    .whir_proof
+                    .memory_commitment
+                    .commitment
+                    .cap
+                    .cap
+                    .is_empty());
+                caps.push((
+                    0,
+                    *family,
+                    sequence,
+                    &proof.whir_proof.memory_commitment.commitment.cap,
+                ));
+            }
+        }
+        for (sequence, proof) in proof.inits_and_teardown_proofs.iter().enumerate() {
+            caps.push((
+                1,
+                0,
+                sequence,
+                &proof.whir_proof.memory_commitment.commitment.cap,
+            ));
+        }
+        for (family, proofs) in &proof.delegation_proofs {
+            for (sequence, proof) in proofs.iter().enumerate() {
+                caps.push((
+                    2,
+                    *family,
+                    sequence,
+                    &proof.whir_proof.memory_commitment.commitment.cap,
+                ));
+            }
+        }
+        caps
+    }
+    assert_eq!(
+        ordered_caps(cpu),
+        ordered_caps(gpu),
+        "ordered memory commitments differ"
+    );
+}
+
 /// Unified counterpart of `test_program_prover_cpu_gpu_proof_diff`: prove
 /// multi_family_smoke on the CPU reference
 /// (`program_prover::unified::prove_unified_execution_with_replayer_in_profile` with the
@@ -334,8 +414,6 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
         assume_canonical_mop_inputs: false,
         ..Default::default()
     };
-    let security_level = configuration.security_level;
-
     let (cpu_proof, cpu_setups) =
         program_prover::unified::prove_unified_execution_with_replayer_in_profile::<_, _>(
             1 << 31,
@@ -345,7 +423,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
             QuasiUARTSource::new_with_reads(vec![50, 0xDEAD_BEEF]),
             1 << 30,
             &worker,
-            security_level,
+            crate::upstream::SecurityLevel::Sec100,
             prover::definitions::SoundnessMode::PessimisticConjecture,
             prover::definitions::ProverConfigProfile::Standard,
             verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
@@ -370,6 +448,12 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
         binary_image,
         text_section,
         vec![50, 0xDEAD_BEEF],
+    );
+
+    assert_program_commitments(
+        &cpu_proof,
+        &gpu_proof,
+        &[common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX],
     );
 
     assert_eq!(
@@ -498,6 +582,25 @@ fn test_program_prover_cpu_gpu_proof_diff() {
         text_section,
         vec![100, 5],
     );
+
+    use common_constants::circuit_families::{
+        ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
+        LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX, MUL_DIV_CIRCUIT_FAMILY_IDX,
+        SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
+    };
+    assert_program_commitments(
+        &cpu_proof,
+        &gpu_proof,
+        &[
+            ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX,
+            JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
+            SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
+            MUL_DIV_CIRCUIT_FAMILY_IDX,
+            LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX,
+        ],
+    );
+    assert!(!cpu_proof.inits_and_teardown_proofs.is_empty());
+    assert!(!gpu_proof.inits_and_teardown_proofs.is_empty());
 
     // Diff setups.
     assert_eq!(
@@ -794,7 +897,7 @@ fn test_generate_sec100_cost_model_fixtures() {
     use full_statement_verifier::host_utils::{
         canonical_fsv_dir, load_fsv_exact, native_verify_unrolled_in_mode,
     };
-    use prover::definitions::{ProvingSelection, SoundnessMode};
+    use prover::definitions::SoundnessMode;
     use verifier_common::fsv_binaries::FsvDescriptor;
 
     init_test_logger();
@@ -852,10 +955,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         (binary, text, vec![("default".to_owned(), witness)])
     };
 
-    let configuration = ExecutionProverConfiguration::for_selection(ProvingSelection {
-        security_level: SecurityLevel::Sec100,
-        soundness_mode,
-    });
+    let configuration = ExecutionProverConfiguration::for_mode(soundness_mode);
     let mut prover = ExecutionProver::with_configuration(configuration);
     // Register each common binary once: add_binary retains precomputations,
     // so registering them anew for every block would grow resident RAM.
@@ -869,12 +969,7 @@ fn test_generate_sec100_cost_model_fixtures() {
     let mut add_verifier = |program| {
         let guest = load_fsv_exact(
             canonical_fsv_dir(),
-            &FsvDescriptor::new(
-                SecurityLevel::Sec100,
-                soundness_mode,
-                program,
-                BlakeMode::Compression,
-            ),
+            &FsvDescriptor::new(soundness_mode, program, BlakeMode::Compression),
         );
         prover.add_binary(
             ExecutionKind::Unrolled,
@@ -1151,7 +1246,6 @@ fn run_gpu_recursive_pipeline(
     let (unrolled_base_bin, unrolled_base_text) = load_fsv_exact(
         &fsv_dir,
         &FsvDescriptor::new(
-            SecurityLevel::Sec100,
             SoundnessMode::PessimisticConjecture,
             FsvProgram::UnrolledBaseLayer,
             unrolled_blake,
@@ -1161,7 +1255,6 @@ fn run_gpu_recursive_pipeline(
     let (unrolled_rec_bin, unrolled_rec_text) = load_fsv_exact(
         &fsv_dir,
         &FsvDescriptor::new(
-            SecurityLevel::Sec100,
             SoundnessMode::PessimisticConjecture,
             FsvProgram::UnrolledRecursionLayer,
             unrolled_blake,
@@ -1191,7 +1284,6 @@ fn run_gpu_recursive_pipeline(
         let estimated = estimate_verifier_cycles_for(
             &proof,
             &FsvDescriptor::new(
-                SecurityLevel::Sec100,
                 SoundnessMode::PessimisticConjecture,
                 program,
                 unrolled_blake,
@@ -1245,7 +1337,6 @@ fn run_gpu_recursive_pipeline(
     let (bridge_bin, bridge_text) = load_fsv_exact(
         &fsv_dir,
         &FsvDescriptor::new(
-            SecurityLevel::Sec100,
             SoundnessMode::PessimisticConjecture,
             bridge_program,
             bridge_blake,
@@ -1280,7 +1371,6 @@ fn run_gpu_recursive_pipeline(
     let (final_bin, final_text) = load_fsv_exact(
         &fsv_dir,
         &FsvDescriptor::new(
-            SecurityLevel::Sec100,
             SoundnessMode::PessimisticConjecture,
             FsvProgram::UnifiedRecursionLayer,
             final_blake,

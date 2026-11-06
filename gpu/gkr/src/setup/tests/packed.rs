@@ -21,8 +21,7 @@ fn cpu_packed_setup_geometry_rejects_mismatched_sources() {
             witness: 0,
             setup: 3,
         },
-    )
-    .unwrap();
+    );
     let setup = make_test_cpu_setup(1 << 13, 3, 8);
     GpuGKRSetupHost::validate_base_geometry(&setup, &geometry);
     for setup in [
@@ -56,8 +55,7 @@ fn legacy_setup_host_rejects_virtual_before_device_holder() {
                 witness: 9,
                 setup: 3,
             },
-        )
-        .unwrap();
+        );
         let constructed = std::cell::Cell::new(false);
         let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             host.validate_for_geometry(&geometry);
@@ -94,8 +92,7 @@ fn legacy_setup_host_rejects_merged_identity_before_device_holder() {
             witness: 9,
             setup: 3,
         },
-    )
-    .unwrap();
+    );
     let constructed = std::cell::Cell::new(false);
     let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         host.validate_for_geometry(&geometry);
@@ -143,8 +140,7 @@ fn setup_host_transfer_and_logical_binding(fold: usize, pack_logs: &[usize]) {
                     witness: 0,
                     setup: columns,
                 },
-            )
-            .unwrap();
+            );
             let twiddles = fft::Twiddles::<BF, Global>::new(1usize << 13, &worker);
             let inputs: Vec<&[BF]> = setup
                 .hypercube_evals

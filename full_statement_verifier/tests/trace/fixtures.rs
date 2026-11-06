@@ -1,9 +1,7 @@
-use verifier_common::fsv_binaries::{
-    BlakeMode, FsvDescriptor, FsvProgram, SecurityLevel, SoundnessMode,
-};
+use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram, SoundnessMode};
 
 /// The file in a fixture directory naming the soundness mode its proofs were made in
-/// (`SoundnessMode::cli_name`). Directories without it hold pessimistic-conjecture proofs.
+/// (`SoundnessMode::cli_name`).
 pub const SOUNDNESS_MODE_FILE: &str = "soundness_mode";
 
 pub struct Fixture {
@@ -21,14 +19,10 @@ fn fixture_dir() -> std::path::PathBuf {
 
 pub fn fixture_soundness_mode() -> SoundnessMode {
     let path = fixture_dir().join(SOUNDNESS_MODE_FILE);
-    match std::fs::read_to_string(&path) {
-        Ok(name) => SoundnessMode::from_cli_name(name.trim())
-            .unwrap_or_else(|| panic!("{}: unknown soundness mode {name:?}", path.display())),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            SoundnessMode::PessimisticConjecture
-        }
-        Err(error) => panic!("read {}: {error}", path.display()),
-    }
+    let name = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+    SoundnessMode::from_cli_name(name.trim())
+        .unwrap_or_else(|| panic!("{}: unknown soundness mode {name:?}", path.display()))
 }
 
 pub fn all_fixtures() -> Vec<Fixture> {
@@ -43,8 +37,7 @@ pub fn all_fixtures() -> Vec<Fixture> {
             } else {
                 FsvProgram::UnrolledBaseLayer
             };
-            let descriptor =
-                FsvDescriptor::new(SecurityLevel::Sec100, mode, program, BlakeMode::Compression);
+            let descriptor = FsvDescriptor::new(mode, program, BlakeMode::Compression);
             Some(Fixture {
                 name,
                 program,

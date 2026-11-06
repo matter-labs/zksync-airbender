@@ -262,21 +262,6 @@ pub enum VerifyRejection {
 pub fn verify_nds(
     name: &str,
     level: SecurityLevel,
-    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
-    nds: Vec<u32>,
-) -> Result<(), VerifyRejection> {
-    verify_nds_in_mode(
-        name,
-        level,
-        SoundnessMode::DEFAULT,
-        external_challenges,
-        nds,
-    )
-}
-
-pub fn verify_nds_in_mode(
-    name: &str,
-    level: SecurityLevel,
     mode: SoundnessMode,
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     nds: Vec<u32>,
@@ -329,7 +314,13 @@ pub fn assert_rejects_corrupted_nds(
 ) {
     let (mut nds, external_challenges) = load_nds(name, level, verifier_common::BLAKE_MODE);
     corrupt(&mut nds);
-    match verify_nds(name, level, &external_challenges, nds) {
+    match verify_nds(
+        name,
+        level,
+        SoundnessMode::DEFAULT,
+        &external_challenges,
+        nds,
+    ) {
         Ok(()) => panic!("{}: should reject {}", name, label),
         Err(r) => assert!(
             expected(&r),
@@ -369,7 +360,13 @@ pub fn assert_rejects_with_variant(
     expected: impl FnOnce(&VerificationError) -> bool,
 ) {
     let (nds, external_challenges) = proof_to_nds(name, level, proof);
-    match verify_nds(name, level, &external_challenges, nds) {
+    match verify_nds(
+        name,
+        level,
+        SoundnessMode::DEFAULT,
+        &external_challenges,
+        nds,
+    ) {
         Ok(()) => panic!("{}: should reject {}", name, label),
         Err(VerifyRejection::Error(e)) => {
             assert!(
@@ -396,7 +393,13 @@ pub fn assert_rejects_via_panic(
     proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
 ) {
     let (nds, external_challenges) = proof_to_nds(name, level, proof);
-    match verify_nds(name, level, &external_challenges, nds) {
+    match verify_nds(
+        name,
+        level,
+        SoundnessMode::DEFAULT,
+        &external_challenges,
+        nds,
+    ) {
         Ok(()) => panic!("{}: should reject {}", name, label),
         Err(VerifyRejection::Panic(_)) => {}
         Err(VerifyRejection::Error(e)) => {
@@ -419,7 +422,15 @@ pub fn assert_rejects_any(
     proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
 ) {
     let (nds, external_challenges) = proof_to_nds(name, level, proof);
-    if verify_nds(name, level, &external_challenges, nds).is_ok() {
+    if verify_nds(
+        name,
+        level,
+        SoundnessMode::DEFAULT,
+        &external_challenges,
+        nds,
+    )
+    .is_ok()
+    {
         panic!("{}: should reject {}", name, label);
     }
 }

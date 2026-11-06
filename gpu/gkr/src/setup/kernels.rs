@@ -136,13 +136,6 @@ impl GpuGKRSetupHost {
         context: &ProverContext,
     ) -> CudaResult<Self> {
         Self::validate_base_geometry(setup, &geometry);
-        gpu_trace::trace::holder::validate_baby_bear_base_geometry(
-            &geometry,
-            context
-                .ntt_device_context()
-                .whir_leaf_transform_params()
-                .omega_log_order,
-        );
         let columns_count = setup.hypercube_evals.len();
         let trace_len = 1usize << geometry.trace_len_log2();
         let raw_hypercube_evals =

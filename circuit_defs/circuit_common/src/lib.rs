@@ -6,7 +6,7 @@ use cs::witness_placer::graph_description::RawExpression;
 use field::baby_bear::base::BabyBearField;
 use field::PrimeField;
 
-pub use prover::definitions::{ProvingSelection, SecurityLevel};
+pub use prover::definitions::SecurityLevel;
 pub use prover::gkr::prover_config::{
     BaseColumns, BasePacking, ProverConfig, SoundnessMode, WhirInput,
 };
@@ -95,8 +95,7 @@ impl CircuitGeometry {
         let declared = 1usize << self.trace_len_log2;
         assert!(
             declared == compiled_circuit.trace_len,
-            "TraceLengthMismatch: declared trace length {declared} differs from compiled trace \
-             length {}",
+            "declared trace length {declared} differs from compiled trace length {}",
             compiled_circuit.trace_len
         );
     }

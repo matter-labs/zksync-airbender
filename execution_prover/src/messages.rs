@@ -7,7 +7,7 @@ use fft::GoodAllocator;
 
 use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRExternalChallenges, GKRProof,
-    MerkleTreeCapVarLength, ProvingSelection,
+    MerkleTreeCapVarLength,
 };
 use std::collections::BTreeSet;
 
@@ -52,7 +52,6 @@ pub struct MemoryCommitmentRequest<A: GoodAllocator, P> {
     pub precomputations: P,
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
     pub tracing_data: Option<TracingDataHost<A>>,
-    pub selection: ProvingSelection,
 }
 
 pub struct MemoryCommitmentResult<A: GoodAllocator> {
@@ -69,7 +68,6 @@ pub struct SetupInitializationRequest<P> {
     pub circuit_type: CircuitType,
     pub sequence_id: usize,
     pub precomputations: P,
-    pub selection: ProvingSelection,
 }
 
 pub struct SetupInitializationResult {
@@ -90,7 +88,6 @@ pub struct ProofRequest<A: GoodAllocator, P> {
     /// per coset, in natural order). The GPU backend builds a
     /// `GpuGKRMemoryTransfer` from these caps.
     pub memory_caps: Vec<MerkleTreeCapVarLength>,
-    pub selection: ProvingSelection,
 }
 
 pub struct ProofResult<A: GoodAllocator> {

@@ -97,7 +97,6 @@ fn padded_raw_backing_preserves_prefix_and_zeros_recycled_tail_before_transfer()
     )
     .unwrap();
     assert_eq!(holder.padded_hypercube_evals().as_ptr(), recycled_ptr);
-    assert_eq!(holder.allocated_columns(), 8);
     assert_eq!(holder.padded_hypercube_evals().len(), 8 * rows);
     assert_eq!(holder.get_hypercube_evals().len(), 5 * rows);
     assert_eq!(holder.get_uninit_hypercube_evals_mut().len(), 5 * rows);

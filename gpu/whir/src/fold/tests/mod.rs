@@ -1,7 +1,4 @@
 use super::*;
-// Exact CPU nonce parity requires both deterministic PoW search legs.
-#[cfg(feature = "deterministic_pow")]
-mod packed_handoff;
 
 use std::alloc::Global;
 
@@ -402,11 +399,7 @@ fn scheduled_whir_evaluate_monomial_matches_cpu_large() {
 }
 
 #[cfg(not(no_cuda))]
-fn run_whir_initial_state_matches_cpu(
-    log_count: usize,
-    use_hypercube_evals_for_batching: bool,
-    is_large: bool,
-) {
+fn run_whir_initial_state_matches_cpu(log_count: usize, is_large: bool) {
     let context = if is_large {
         make_test_context(64 * 1024, 1024)
     } else {
@@ -464,7 +457,6 @@ fn run_whir_initial_state_matches_cpu(
         &setup_polys_claims,
         &original_evaluation_point,
         batching_challenge,
-        use_hypercube_evals_for_batching,
         &mut state,
         &context,
     )
@@ -651,13 +643,13 @@ fn whir_fold_keeps_monomial_labeling_above_lde_floor() {
 #[test]
 #[cfg(not(no_cuda))]
 fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_small() {
-    run_whir_initial_state_matches_cpu(3, true, false);
+    run_whir_initial_state_matches_cpu(3, false);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
 fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_large() {
-    run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true, true);
+    run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true);
 }
 
 #[cfg(not(no_cuda))]

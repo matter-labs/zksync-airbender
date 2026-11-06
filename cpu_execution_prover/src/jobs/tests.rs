@@ -11,10 +11,9 @@ use execution_prover_model::circuit_type::{CircuitType, DelegationCircuitType};
 use execution_prover_model::trace::{
     ChunkedTraceHolder, DelegationTracingDataHost, TracingDataHost,
 };
-use prover::definitions::{GKRExternalChallenges, ProvingSelection, SecurityLevel, SoundnessMode};
+use prover::definitions::{GKRExternalChallenges, SoundnessMode};
 use worker::Worker;
 
-const SECURITY_LEVEL: SecurityLevel = SecurityLevel::Sec100;
 /// The smallest delegation circuit.
 const DELEGATION: DelegationCircuitType = DelegationCircuitType::Blake2GFunction;
 
@@ -50,10 +49,7 @@ fn prove(
     let precomputations = CpuCircuitPrecomputations::from_canonical(
         circuit_type,
         build_delegation_setup(DELEGATION, &worker),
-        ProvingSelection {
-            security_level: SECURITY_LEVEL,
-            soundness_mode: SoundnessMode::DEFAULT,
-        },
+        SoundnessMode::DEFAULT,
     );
     jobs.execute::<CpuTraceAllocator>(
         WorkRequest::SetupInitialization(SetupInitializationRequest {
@@ -61,10 +57,6 @@ fn prove(
             circuit_type,
             sequence_id: 0,
             precomputations: precomputations.clone(),
-            selection: ProvingSelection {
-                security_level: SECURITY_LEVEL,
-                soundness_mode: SoundnessMode::DEFAULT,
-            },
         }),
         &worker,
     );
@@ -76,10 +68,6 @@ fn prove(
             precomputations: precomputations.clone(),
             inits_and_teardowns: None,
             tracing_data: Some(empty_trace()),
-            selection: ProvingSelection {
-                security_level: SECURITY_LEVEL,
-                soundness_mode: SoundnessMode::DEFAULT,
-            },
         }),
         &worker,
     ) else {
@@ -95,10 +83,6 @@ fn prove(
             tracing_data: Some(empty_trace()),
             external_challenges: challenges(),
             memory_caps: memory_caps(committed.merkle_tree_caps),
-            selection: ProvingSelection {
-                security_level: SECURITY_LEVEL,
-                soundness_mode: SoundnessMode::DEFAULT,
-            },
         }),
         &worker,
     ) else {

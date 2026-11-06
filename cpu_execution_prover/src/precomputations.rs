@@ -3,7 +3,7 @@ use crate::upstream::{
     ProverConfig, SetupCommitment, TableDriver, TwiddleSetOps, UnrolledCircuitWitnessEvalFn, BF,
 };
 use execution_prover::backend::CircuitPrecomputation;
-use execution_prover::config::ProvingSelection;
+use execution_prover::config::SoundnessMode;
 use execution_prover::setup::CanonicalCircuitSetup;
 use execution_prover_model::circuit_type::CircuitType;
 use std::alloc::Global;
@@ -16,7 +16,6 @@ pub struct CpuCircuitPrecomputations(Arc<Precomputed>);
 
 pub struct Precomputed {
     circuit_type: CircuitType,
-    selection: ProvingSelection,
     config: ProverConfig,
     pub(crate) compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
     pub(crate) setup: CpuGKRSetup<BF>,
@@ -39,13 +38,13 @@ impl CpuCircuitPrecomputations {
     pub(crate) fn from_canonical(
         circuit_type: CircuitType,
         setup: CanonicalCircuitSetup,
-        selection: ProvingSelection,
+        soundness_mode: SoundnessMode,
     ) -> Self {
         let compiled = match &setup {
             CanonicalCircuitSetup::Riscv(setup) => &setup.compiled_circuit,
             CanonicalCircuitSetup::Delegation(setup) => &setup.compiled_circuit,
         };
-        let config = circuit_type.prover_config_in_mode(compiled, selection);
+        let config = circuit_type.prover_config_in_mode(compiled, soundness_mode);
         let precomputed = match setup {
             CanonicalCircuitSetup::Riscv(CircuitSetup {
                 family_idx: _,
@@ -57,7 +56,6 @@ impl CpuCircuitPrecomputations {
                 witness_eval_fn,
             }) => Precomputed {
                 circuit_type,
-                selection,
                 config,
                 compiled_circuit: Arc::new(compiled_circuit),
                 setup,
@@ -68,7 +66,6 @@ impl CpuCircuitPrecomputations {
             },
             CanonicalCircuitSetup::Delegation(setup) => Precomputed {
                 circuit_type,
-                selection,
                 config,
                 compiled_circuit: Arc::new(setup.compiled_circuit),
                 setup: setup.setup,
@@ -86,24 +83,13 @@ impl CpuCircuitPrecomputations {
         Self(Arc::new(precomputed))
     }
 
-    /// The prepared config. A request always carries the circuit and selection the prover was
-    /// prepared with; anything else is a programming error.
-    pub(crate) fn config_for_request(
-        &self,
-        circuit_type: CircuitType,
-        selection: ProvingSelection,
-    ) -> &ProverConfig {
+    /// The prepared config for this circuit.
+    pub(crate) fn config_for_request(&self, circuit_type: CircuitType) -> &ProverConfig {
         assert!(
             self.circuit_type == circuit_type,
             "PreparedCircuitMismatch: prepared circuit {:?} differs from requested circuit \
              {circuit_type:?}",
             self.circuit_type
-        );
-        assert!(
-            self.selection == selection,
-            "PreparedSelectionMismatch: prepared selection {:?} differs from requested \
-             selection {selection:?}",
-            self.selection
         );
         &self.config
     }
@@ -156,51 +142,13 @@ mod tests {
     const DELEGATION: DelegationCircuitType = DelegationCircuitType::Blake2GFunction;
     const CIRCUIT: CircuitType = CircuitType::Delegation(DELEGATION);
 
-    fn prepared(mode: SoundnessMode) -> (CpuCircuitPrecomputations, ProvingSelection) {
+    fn prepared(soundness_mode: SoundnessMode) -> CpuCircuitPrecomputations {
         let worker = Worker::new_with_num_threads(1);
-        let selection = ProvingSelection {
-            soundness_mode: mode,
-            ..ProvingSelection::default()
-        };
-        let prepared = CpuCircuitPrecomputations::from_canonical(
+        CpuCircuitPrecomputations::from_canonical(
             CIRCUIT,
             build_delegation_setup(DELEGATION, &worker),
-            selection,
-        );
-        (prepared, selection)
-    }
-
-    #[test]
-    fn prepared_config_is_resolved_once_per_selection() {
-        for &mode in SoundnessMode::ALL {
-            let (prepared, selection) = prepared(mode);
-            let config = prepared.config_for_request(CIRCUIT, selection);
-            assert_eq!(
-                config,
-                &CIRCUIT.prover_config_in_mode(prepared.compiled_circuit(), selection)
-            );
-            let clone = prepared.clone();
-            assert!(core::ptr::eq(
-                config,
-                clone.config_for_request(CIRCUIT, selection)
-            ));
-            assert!(prepared.setup_commitment.get().is_none());
-        }
-    }
-
-    #[test]
-    #[should_panic(
-        expected = "PreparedSelectionMismatch: prepared selection ProvingSelection { security_level: Sec100, soundness_mode: PessimisticConjecture } differs from requested selection ProvingSelection { security_level: Sec100, soundness_mode: EthproofsSoundnessCalc }"
-    )]
-    fn prepared_selection_mismatch_panics() {
-        let (prepared, selection) = prepared(SoundnessMode::PessimisticConjecture);
-        prepared.config_for_request(
-            CIRCUIT,
-            ProvingSelection {
-                soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
-                ..selection
-            },
-        );
+            soundness_mode,
+        )
     }
 
     #[test]
@@ -208,10 +156,9 @@ mod tests {
         expected = "PreparedCircuitMismatch: prepared circuit Delegation(Blake2GFunction) differs from requested circuit Delegation(BigIntWithControl)"
     )]
     fn prepared_circuit_mismatch_panics() {
-        let (prepared, selection) = prepared(SoundnessMode::PessimisticConjecture);
-        prepared.config_for_request(
-            CircuitType::Delegation(DelegationCircuitType::BigIntWithControl),
-            selection,
-        );
+        let prepared = prepared(SoundnessMode::PessimisticConjecture);
+        prepared.config_for_request(CircuitType::Delegation(
+            DelegationCircuitType::BigIntWithControl,
+        ));
     }
 }

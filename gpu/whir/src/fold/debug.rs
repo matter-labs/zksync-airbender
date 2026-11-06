@@ -164,11 +164,9 @@ pub(super) fn initialize_batched_forms(
     wit_polys_claims_len: usize,
     setup_polys_claims_len: usize,
     batching_challenge: E4,
-    use_hypercube_evals_for_batching: bool,
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<[Vec<E4>; 3]> {
-    assert_batching_source_supported(use_hypercube_evals_for_batching);
     let trace_len = state.current_len;
     assert_eq!(
         memory_trace_holder.commitment_log_domain_size(),
@@ -204,21 +202,9 @@ pub(super) fn initialize_batched_forms(
     copy_small_to_device(&mut device_witness_weights, witness_weights, context)?;
     copy_small_to_device(&mut device_setup_weights, setup_weights, context)?;
 
-    let memory_values = get_base_columns(
-        memory_trace_holder,
-        trace_len,
-        use_hypercube_evals_for_batching,
-    );
-    let witness_values = get_base_columns(
-        witness_trace_holder,
-        trace_len,
-        use_hypercube_evals_for_batching,
-    );
-    let setup_values = get_base_columns(
-        setup_trace_holder,
-        trace_len,
-        use_hypercube_evals_for_batching,
-    );
+    let memory_values = get_base_columns(memory_trace_holder, trace_len);
+    let witness_values = get_base_columns(witness_trace_holder, trace_len);
+    let setup_values = get_base_columns(setup_trace_holder, trace_len);
     let mut vectorized_scratch =
         context.alloc::<BF>(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
     accumulate_whir_base_columns_with_serialized_bf(
@@ -234,7 +220,6 @@ pub(super) fn initialize_batched_forms(
     )?;
     initialize_batched_monomial_form(
         memory_trace_holder.commitment_log_domain_size() as usize,
-        use_hypercube_evals_for_batching,
         &mut vectorized_scratch[..],
         state,
         context,
@@ -256,7 +241,6 @@ pub(super) fn build_initial_state(
     setup_polys_claims: &[E4],
     original_evaluation_point: &[E4],
     batching_challenge: E4,
-    use_hypercube_evals_for_batching: bool,
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<([Vec<E4>; 3], E4)> {
@@ -274,7 +258,6 @@ pub(super) fn build_initial_state(
         wit_polys_claims.len(),
         setup_polys_claims.len(),
         batching_challenge,
-        use_hypercube_evals_for_batching,
         state,
         context,
     )?;

@@ -1,77 +1,41 @@
-//! The selected, digest-verified guests and the inputs whose executions recursion proves.
+//! Selected guests and the inputs whose executions recursion proves.
 
 use super::{fsv_dir, ProofTarget, SetupMachine};
-use full_statement_verifier::host_utils::cost_model::census::census_table;
 use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles_for;
 use full_statement_verifier::host_utils::{
     bridge_blake_mode, final_blake_mode, fsv_stream, load_fsv_exact, unrolled_blake_mode,
     VerifiedFsvProgram,
 };
 use full_statement_verifier::program_proof::ProgramProof;
-use prover::definitions::ProvingSelection;
+use prover::definitions::SoundnessMode;
 use setups::Setups;
-use std::path::Path;
-use std::sync::Arc;
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram};
 
 /// Loaded once, before backend initialization. Unused guests remain absent.
 pub(super) struct FsvPrograms {
-    pub(super) selection: ProvingSelection,
     pub(super) unrolled_blake: BlakeMode,
     pub(super) bridge_blake: BlakeMode,
     pub(super) final_blake: BlakeMode,
-    unrolled_base: Option<Arc<VerifiedFsvProgram>>,
-    unrolled_recursion: Option<Arc<VerifiedFsvProgram>>,
-    bridge_base: Option<Arc<VerifiedFsvProgram>>,
-    bridge_recursion: Option<Arc<VerifiedFsvProgram>>,
-    unified: Option<Arc<VerifiedFsvProgram>>,
+    unrolled_base: Option<VerifiedFsvProgram>,
+    unrolled_recursion: Option<VerifiedFsvProgram>,
+    bridge_base: Option<VerifiedFsvProgram>,
+    bridge_recursion: Option<VerifiedFsvProgram>,
+    unified: Option<VerifiedFsvProgram>,
 }
 
 impl FsvPrograms {
-    pub(super) fn load(target: ProofTarget, selection: ProvingSelection) -> Result<Self, String> {
-        Self::load_from_dir(
-            &fsv_dir(),
-            target,
-            selection,
-            unrolled_blake_mode(),
-            bridge_blake_mode(),
-            final_blake_mode(),
-        )
-    }
-
-    fn load_from_dir(
-        dir: &Path,
-        target: ProofTarget,
-        selection: ProvingSelection,
-        unrolled_blake: BlakeMode,
-        bridge_blake: BlakeMode,
-        final_blake: BlakeMode,
-    ) -> Result<Self, String> {
+    pub(super) fn load(target: ProofTarget, soundness_mode: SoundnessMode) -> Self {
+        let dir = fsv_dir();
+        let unrolled_blake = unrolled_blake_mode();
+        let bridge_blake = bridge_blake_mode();
+        let final_blake = final_blake_mode();
         let recursion = target != ProofTarget::Base;
         let unified = target == ProofTarget::RecursionUnified;
-        let mut loaded: Vec<Arc<VerifiedFsvProgram>> = Vec::new();
-        let mut load = |needed: bool, program, blake| -> Option<Arc<VerifiedFsvProgram>> {
-            if !needed {
-                return None;
-            }
-            let descriptor = FsvDescriptor::new(
-                selection.security_level,
-                selection.soundness_mode,
-                program,
-                blake,
-            );
-            if let Some(guest) = loaded
-                .iter()
-                .find(|guest| *guest.descriptor() == descriptor)
-            {
-                return Some(Arc::clone(guest));
-            }
-            let guest = Arc::new(load_fsv_exact(dir, &descriptor));
-            loaded.push(Arc::clone(&guest));
-            Some(guest)
+        let load = |needed: bool, program, blake| {
+            needed
+                .then(|| load_fsv_exact(&dir, &FsvDescriptor::new(soundness_mode, program, blake)))
         };
-        let programs = Self {
-            selection,
+        Self {
             unrolled_base: load(recursion, FsvProgram::UnrolledBaseLayer, unrolled_blake),
             unrolled_recursion: load(
                 recursion,
@@ -84,22 +48,10 @@ impl FsvPrograms {
             unrolled_blake,
             bridge_blake,
             final_blake,
-        };
-        // The switch prices these guests; a missing table fails before any proving.
-        for guest in [&programs.unrolled_base, &programs.unrolled_recursion]
-            .into_iter()
-            .flatten()
-        {
-            census_table(guest.descriptor()).map_err(|error| error.to_string())?;
         }
-        Ok(programs)
     }
 
-    pub(super) fn get(
-        &self,
-        program: FsvProgram,
-        machine: SetupMachine,
-    ) -> Result<&VerifiedFsvProgram, String> {
+    pub(super) fn get(&self, program: FsvProgram, machine: SetupMachine) -> &VerifiedFsvProgram {
         let guest = match (program, machine) {
             (FsvProgram::UnrolledBaseLayer, SetupMachine::UnrolledReduced) => &self.unrolled_base,
             (FsvProgram::UnrolledRecursionLayer, SetupMachine::UnrolledReduced) => {
@@ -108,148 +60,25 @@ impl FsvPrograms {
             (FsvProgram::UnrolledBaseLayer, SetupMachine::Unified) => &self.bridge_base,
             (FsvProgram::UnrolledRecursionLayer, SetupMachine::Unified) => &self.bridge_recursion,
             (FsvProgram::UnifiedRecursionLayer, SetupMachine::Unified) => &self.unified,
-            other => return Err(format!("unsupported pipeline guest {other:?}")),
+            other => unreachable!("unsupported pipeline guest {other:?}"),
         };
-        guest.as_deref().ok_or_else(|| {
-            format!("pipeline guest {program:?}/{machine:?} was not loaded for this target")
-        })
+        guest
+            .as_ref()
+            .expect("pipeline guest was not loaded for this target")
     }
 }
 
-/// Census estimate of the selected guest's cycles on `proof`, from the table of its descriptor.
-pub(super) fn unrolled_verifier_cost(
-    guest: &VerifiedFsvProgram,
-    proof: &ProgramProof,
-) -> Result<u64, String> {
+/// Census estimate of the selected guest's cycles on `proof`.
+pub(super) fn unrolled_verifier_cost(guest: &VerifiedFsvProgram, proof: &ProgramProof) -> u64 {
     estimate_verifier_cycles_for(proof, guest.descriptor())
-        .map_err(|error| format!("cannot estimate selected verifier cycles: {error}"))
+        .unwrap_or_else(|error| panic!("cannot estimate selected verifier cycles: {error}"))
 }
 
-/// The ND words the selected guest reads for `proof`: the input of the next recursion layer.
+/// The ND words the selected guest reads for `proof`.
 pub(super) fn fsv_input(
     guest: &VerifiedFsvProgram,
     setups: &Setups,
     proof: &ProgramProof,
-) -> Result<Vec<u32>, String> {
-    fsv_stream(setups, proof, guest.descriptor()).map_err(|error| error.to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use full_statement_verifier::host_utils::{canonical_fsv_dir, fsv_manifest_entry};
-    use prover::definitions::SoundnessMode;
-
-    #[test]
-    fn pipeline_guests_are_exactly_bound_to_selection_and_blake() {
-        for &mode in SoundnessMode::ALL {
-            let selection = ProvingSelection {
-                soundness_mode: mode,
-                ..ProvingSelection::default()
-            };
-            for blake in [BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes] {
-                let guests = FsvPrograms::load_from_dir(
-                    &canonical_fsv_dir(),
-                    ProofTarget::RecursionUnified,
-                    selection,
-                    BlakeMode::Compression,
-                    BlakeMode::Compression,
-                    blake,
-                )
-                .unwrap();
-                assert_eq!(guests.selection, selection);
-                for (program, machine, expected_blake) in [
-                    (
-                        FsvProgram::UnrolledBaseLayer,
-                        SetupMachine::UnrolledReduced,
-                        BlakeMode::Compression,
-                    ),
-                    (
-                        FsvProgram::UnrolledRecursionLayer,
-                        SetupMachine::UnrolledReduced,
-                        BlakeMode::Compression,
-                    ),
-                    (
-                        FsvProgram::UnrolledBaseLayer,
-                        SetupMachine::Unified,
-                        BlakeMode::Compression,
-                    ),
-                    (
-                        FsvProgram::UnrolledRecursionLayer,
-                        SetupMachine::Unified,
-                        BlakeMode::Compression,
-                    ),
-                    (
-                        FsvProgram::UnifiedRecursionLayer,
-                        SetupMachine::Unified,
-                        blake,
-                    ),
-                ] {
-                    let guest = guests.get(program, machine).unwrap();
-                    let expected =
-                        FsvDescriptor::new(selection.security_level, mode, program, expected_blake);
-                    assert_eq!(*guest.descriptor(), expected);
-                    assert_eq!(guest.digest(), fsv_manifest_entry(&expected).digest);
-                }
-                for program in [
-                    FsvProgram::UnrolledBaseLayer,
-                    FsvProgram::UnrolledRecursionLayer,
-                ] {
-                    assert!(std::ptr::eq(
-                        guests.get(program, SetupMachine::UnrolledReduced).unwrap(),
-                        guests.get(program, SetupMachine::Unified).unwrap(),
-                    ));
-                }
-            }
-        }
-    }
-
-    #[test]
-    #[should_panic(
-        expected = "MissingArtifact: missing full-statement verifier sec_100/ethproofs_soundcalc/unrolled_base_layer/standard/blake2_with_compression at /missing/fsv/"
-    )]
-    fn missing_selected_guest_cannot_load_a_different_mode() {
-        let selection = ProvingSelection {
-            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
-            ..ProvingSelection::default()
-        };
-        let _ = FsvPrograms::load_from_dir(
-            Path::new("/missing/fsv"),
-            ProofTarget::RecursionUnified,
-            selection,
-            BlakeMode::Compression,
-            BlakeMode::Compression,
-            BlakeMode::Compression,
-        );
-    }
-
-    #[test]
-    fn every_mode_prices_its_switch_guests_from_its_own_census() {
-        for &mode in SoundnessMode::ALL {
-            let selection = ProvingSelection {
-                soundness_mode: mode,
-                ..ProvingSelection::default()
-            };
-            let guests = FsvPrograms::load_from_dir(
-                &canonical_fsv_dir(),
-                ProofTarget::RecursionUnified,
-                selection,
-                unrolled_blake_mode(),
-                bridge_blake_mode(),
-                final_blake_mode(),
-            )
-            .unwrap();
-            for program in [
-                FsvProgram::UnrolledBaseLayer,
-                FsvProgram::UnrolledRecursionLayer,
-            ] {
-                let descriptor = *guests
-                    .get(program, SetupMachine::UnrolledReduced)
-                    .unwrap()
-                    .descriptor();
-                assert_eq!(descriptor.soundness_mode, mode);
-                census_table(&descriptor).unwrap_or_else(|error| panic!("{error}"));
-            }
-        }
-    }
+) -> Vec<u32> {
+    fsv_stream(setups, proof, guest.descriptor())
 }

@@ -52,11 +52,6 @@ pub fn prover_config_in_mode(
     geometry().prover_config(compiled_circuit, level, mode)
 }
 
-/// The config in the default soundness mode, from the geometry alone.
-pub fn prover_config(level: prover::definitions::SecurityLevel) -> ProverConfig {
-    geometry().default_mode_prover_config(level)
-}
-
 /// This function will generate layout and quotient files for verifier, plus
 /// the per-level, per-mode prover configs
 /// (`generated/prover_config_<level>_<mode>.json`).

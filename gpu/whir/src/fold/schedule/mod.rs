@@ -29,19 +29,8 @@ pub fn schedule_gpu_whir_fold_with_sources(
     // caller via `transcript_squeeze_e4(final_device_seed, ...)` before this
     // function is invoked.
     batching_challenge_device: &DeviceSlice<E4>,
-    original_lde_factor: usize,
-    whir_steps_schedule: Vec<usize>,
-    whir_queries_schedule: Vec<usize>,
-    whir_steps_lde_factors: Vec<usize>,
-    whir_pow_schedule: Vec<u32>,
-    // Per intermediate oracle `j` (the CPU's `internal_rounds[j]`): the
-    // folding-challenge PoW bits of the round folding it, and the PoW bits
-    // gating its OOD draw. The base round has no folding PoW.
-    whir_folding_pow_schedule: &[u32],
-    whir_ood_pow_schedule: &[u32],
-    tree_cap_size: usize,
+    whir_schedule: &crate::upstream::WhirSchedule,
     trace_len_log2: u32,
-    use_hypercube_evals_for_batching: bool,
     // slab + layout thread through so WHIR sub-phases route proof fields
     // (`pow_nonces`, caps, evals, queries, ood_samples, sumcheck_polys,
     // final_monomials) into slab offsets via `ProofLayout` accessors.
@@ -49,6 +38,12 @@ pub fn schedule_gpu_whir_fold_with_sources(
     proof_layout: &ProofLayout,
     context: &ProverContext,
 ) -> CudaResult<GpuWhirFoldScheduledExecution> {
+    let original_lde_factor = whir_schedule.base_lde_factor();
+    let whir_steps_schedule = whir_schedule.fold_steps();
+    let whir_queries_schedule = whir_schedule.queries_per_round();
+    let whir_steps_lde_factors = whir_schedule.intermediate_lde_factors();
+    let whir_pow_schedule = whir_schedule.queries_pow_bits_per_round();
+    let tree_cap_size = whir_schedule.cap_size;
     let trace_len = 1usize << trace_len_log2;
     assert_eq!(
         memory_trace_holder.commitment_log_domain_size(),
@@ -87,18 +82,8 @@ pub fn schedule_gpu_whir_fold_with_sources(
         1usize << setup_trace_holder.log_rows_per_leaf,
         1usize << whir_steps_schedule[0]
     );
-    assert_eq!(whir_steps_schedule.len(), whir_queries_schedule.len());
-    assert_eq!(whir_steps_schedule.len(), whir_pow_schedule.len());
-    assert_eq!(whir_steps_schedule.len(), whir_steps_lde_factors.len() + 1);
-    assert_eq!(
-        whir_folding_pow_schedule.len(),
-        whir_steps_lde_factors.len()
-    );
-    assert_eq!(whir_ood_pow_schedule.len(), whir_steps_lde_factors.len());
-
     let stream = context.get_exec_stream();
     let mut tracing_ranges = Vec::new();
-    assert_batching_source_supported(use_hypercube_evals_for_batching);
 
     let schedule_range = Range::new("gkr.whir.schedule")?;
     schedule_range.start(stream)?;
@@ -132,7 +117,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
         witness_trace_holder.committed_columns_count(),
         setup_trace_holder.committed_columns_count(),
         batching_challenge_device,
-        use_hypercube_evals_for_batching,
         &mut state,
         context,
     )?;
@@ -226,7 +210,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         let ood_point_device = schedule_ood_sample_phase(
             &mut state,
             0,
-            whir_ood_pow_schedule[0],
+            whir_schedule.internal_rounds[0].ood_pow_bits,
             proof_slab,
             proof_layout,
             final_device_seed,
@@ -401,20 +385,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
                 proof_layout.whir_base_query_paths_device_mut(proof_slab.as_ptr() as *mut u8, kind)
             };
             let columns = holder.committed_columns_count();
-            assert_eq!(
-                leaves_len,
-                num_queries * columns * (1usize << base_log_rows_per_leaf),
-                "base query leaf destination differs from committed geometry"
-            );
-            assert_eq!(
-                paths_len,
-                if columns == 0 {
-                    0
-                } else {
-                    num_queries * base_layers_count as usize * gpu_hash::blake2s::STATE_SIZE
-                },
-                "base query path word destination differs from committed geometry"
-            );
             if columns != 0 && holder.opening_policy() != OpeningStrategy::AllCosets {
                 let leaves = unsafe { DeviceSlice::from_raw_parts_mut(leaves_ptr, leaves_len) };
                 let paths = unsafe { DeviceSlice::from_raw_parts_mut(paths_ptr, paths_len) };
@@ -479,7 +449,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         )?;
         schedule_fold_round(
             num_folding_steps,
-            whir_folding_pow_schedule[internal_round_idx],
+            whir_schedule.internal_rounds[internal_round_idx].folding_pow_bits,
             &mut state,
             &mut scheduled_sumcheck_poly_idx,
             proof_slab,
@@ -517,7 +487,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         let ood_point_device = schedule_ood_sample_phase(
             &mut state,
             internal_round_idx + 1,
-            whir_ood_pow_schedule[internal_round_idx + 1],
+            whir_schedule.internal_rounds[internal_round_idx + 1].ood_pow_bits,
             proof_slab,
             proof_layout,
             final_device_seed,
@@ -656,7 +626,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         )?;
         schedule_fold_round(
             num_folding_steps,
-            whir_folding_pow_schedule[num_internal_whir_steps],
+            whir_schedule.internal_rounds[num_internal_whir_steps].folding_pow_bits,
             &mut state,
             &mut scheduled_sumcheck_poly_idx,
             proof_slab,

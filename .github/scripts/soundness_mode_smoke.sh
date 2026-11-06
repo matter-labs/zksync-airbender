@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Prove, verify and reject under the wrong mode, with the same steps in every soundness mode:
-# prove base -> continue to recursion-unified (and, with DIRECT=1, prove recursion-unified in
-# one call), verifying each proof in its own mode and each recursion-unified proof as every
-# other mode, which must fail with SoundnessModeMismatch.
+# Prove, verify and reject under the wrong mode in every soundness mode.
 #
 # usage: soundness_mode_smoke.sh CLI BIN BACKEND [BACKEND SETTINGS...]
 #   INPUT_FILE        the program's input, passed to `prove` (optional)
@@ -21,17 +18,29 @@ if [[ -n "${INPUT_FILE:-}" ]]; then
 fi
 modes=(pessimistic-conjecture ethproofs-soundcalc)
 out=output/soundness-mode-smoke
-unified=()
 
 check_unified() {
-  local proof=$1 mode=$2
+  local proof=$1 mode=$2 other log
   "$cli" verify --proof "$proof" --bin "$bin" --soundness-mode "$mode"
   if [[ "${EXPECT_UNROLLED:-0}" == 1 ]] &&
     ! tr -d ' \n' <"$proof" | grep -q '"unrolled_recursion_ms":\[[0-9]'; then
     echo "$proof has no unrolled recursion layer" >&2
     exit 1
   fi
-  unified+=("$mode:$proof")
+  for other in "${modes[@]}"; do
+    [[ "$other" == "$mode" ]] && continue
+    echo "== $proof verified as $other must fail"
+    log="$proof.as-$other.log"
+    if "$cli" verify --proof "$proof" --bin "$bin" --soundness-mode "$other" >"$log" 2>&1; then
+      echo "$proof verified as $other" >&2
+      exit 1
+    fi
+    if ! grep -q SoundnessModeMismatch "$log"; then
+      cat "$log" >&2
+      echo "$proof failed as $other without SoundnessModeMismatch" >&2
+      exit 1
+    fi
+  done
 }
 
 for mode in "${modes[@]}"; do
@@ -51,23 +60,4 @@ for mode in "${modes[@]}"; do
       "${settings[@]}"
     check_unified "$out/$mode-direct.json" "$mode"
   fi
-done
-
-for entry in "${unified[@]}"; do
-  mode=${entry%%:*}
-  proof=${entry#*:}
-  for other in "${modes[@]}"; do
-    [[ "$other" == "$mode" ]] && continue
-    echo "== $proof verified as $other must fail"
-    log="$proof.as-$other.log"
-    if "$cli" verify --proof "$proof" --bin "$bin" --soundness-mode "$other" >"$log" 2>&1; then
-      echo "$proof verified as $other" >&2
-      exit 1
-    fi
-    if ! grep -q SoundnessModeMismatch "$log"; then
-      cat "$log" >&2
-      echo "$proof failed as $other without SoundnessModeMismatch" >&2
-      exit 1
-    fi
-  done
 done

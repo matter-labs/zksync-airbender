@@ -20,9 +20,6 @@ use gpu_hash::blake2s::Digest;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 
-#[cfg(test)]
-mod tests;
-
 pub struct GpuGKRMemoryTransferHost {
     base_geometry: Option<BaseCommitmentGeometry>,
     pub log_lde_factor: u32,
@@ -108,11 +105,7 @@ impl GpuGKRMemoryTransferHost {
         host
     }
 
-    pub fn base_commitment_geometry(&self) -> Option<BaseCommitmentGeometry> {
-        self.base_geometry
-    }
-
-    pub fn validate_for_geometry(&self, geometry: &BaseCommitmentGeometry) {
+    fn validate_for_geometry(&self, geometry: &BaseCommitmentGeometry) {
         assert_eq!(
             self.log_lde_factor,
             geometry.lde_factor().trailing_zeros(),
@@ -157,8 +150,7 @@ pub struct GpuGKRMemoryTransfer<'a> {
 
 impl<'a> GpuGKRMemoryTransfer<'a> {
     pub fn new(host: Arc<GpuGKRMemoryTransferHost>, context: &ProverContext) -> CudaResult<Self> {
-        let cap_size = if let Some(geometry) = host.base_geometry {
-            host.validate_for_geometry(&geometry);
+        let cap_size = if host.base_geometry.is_some() {
             host.unified_tree_cap.len()
         } else {
             let cap_size = 1usize
@@ -192,7 +184,7 @@ impl<'a> GpuGKRMemoryTransfer<'a> {
 // GpuGKRCommitMemoryTransfer
 // ---------------------------------------------------------------------------
 
-/// Input transfers for `commit_memory_from_transfers`: decoder,
+/// Input transfers for `commit_memory_from_transfers_for_geometry`: decoder,
 /// inits-and-teardowns, and tracing data share one transfer fence.
 pub struct GpuGKRCommitMemoryTransfer<'a, A: GoodAllocator> {
     pub(crate) transfer: Transfer<'a>,

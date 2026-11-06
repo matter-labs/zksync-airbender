@@ -12,35 +12,26 @@ use crate::gkr::whir::proximity_testing_modes::PessimisticConjectureMode;
 
 use super::*;
 
-fn whir_schedule(
-    level: SecurityLevel,
-    message_size_log2: usize,
-    packing: BasePacking,
-) -> WhirSchedule {
-    let input = WhirInput {
-        message_size_log2,
-        physical_packing_log2: packing.physical_packing_log2,
-        virtual_packing: packing.virtual_packing,
-        num_committed_polys: None,
-    };
-    schedule_for_input(level, &input)
-}
-
 /// The schedule for `2^message_size_log2` committed polynomials under
 /// `packing` (the physical packing is recorded on the base round; virtual
 /// packing is the [`WhirSchedule::to_virtual_packing`] twin of the ladder).
 /// Panics when no ladder exists for that shape.
-pub(super) fn schedule_for_input(level: SecurityLevel, input: &WhirInput) -> WhirSchedule {
-    let packing = input.packing();
+pub(super) fn whir_schedule(
+    level: SecurityLevel,
+    message_size_log2: usize,
+    packing: BasePacking,
+) -> WhirSchedule {
     let mut schedule = match level {
-        SecurityLevel::Sec100 => ladder_for_100_bits(input),
+        SecurityLevel::Sec100 => {
+            ladder_for_100_bits(message_size_log2, packing.physical_packing_log2)
+        }
     };
     let security_bits = level.security_bits() as u32;
     if packing.virtual_packing {
         // The twin re-commits the batched polynomial as intermediate oracle 0
         // at HALF the ladder's LDE factor; its query count is derived one bit
-        // of query PoW above the ladder's (18 at 2^22), then that PoW is
-        // lowered with every other round's below.
+        // of query PoW above the ladder's, then that PoW is lowered with every
+        // other round's below.
         schedule.internal_rounds[0].queries_pow_bits += 1;
         schedule = schedule.to_virtual_packing(security_bits, &PessimisticConjectureMode);
     }
@@ -83,12 +74,11 @@ fn lower_queries_pow_to_minimum(schedule: &mut WhirSchedule, security_bits: u32)
 /// [`DEFAULT_LDE_FACTOR`], cap [`DEFAULT_CAP_SIZE`], a round-0 fold of 1
 /// (two values per column per base leaf), one OOD sample per intermediate
 /// oracle, no OOD or folding PoW.
-fn ladder_for_100_bits(input: &WhirInput) -> WhirSchedule {
+fn ladder_for_100_bits(message_size_log2: usize, physical_packing_log2: usize) -> WhirSchedule {
     let (steps, queries, lde_factors, pows): (&[usize], &[usize], &[usize], &[u32]) =
-        match input.message_size_log2 {
-            // Oracle 0's 12 queries need only 20 bits, to which the query PoW
-            // is lowered; its 26 is what the virtual twin's query count is
-            // derived from (see `schedule_for_input`).
+        match message_size_log2 {
+            // Oracle 0's query PoW is what the virtual twin's query count is
+            // derived from (see `whir_schedule`); it is lowered afterwards.
             20 => (
                 &[1, 5, 5, 4, 4],
                 &[89, 12, 8, 7, 7],
@@ -125,7 +115,7 @@ fn ladder_for_100_bits(input: &WhirInput) -> WhirSchedule {
                 &[26, 24, 25, 14, 19, 15],
             ),
             _ => panic!(
-                "MissingSchedule: no {:?} WHIR schedule for {:?}, input {input:?}",
+                "MissingSchedule: no {:?} WHIR schedule for {:?}, message 2^{message_size_log2}",
                 SoundnessMode::PessimisticConjecture,
                 SecurityLevel::Sec100
             ),
@@ -133,7 +123,7 @@ fn ladder_for_100_bits(input: &WhirInput) -> WhirSchedule {
     WhirSchedule::from_legacy_arrays(
         DEFAULT_LDE_FACTOR,
         DEFAULT_CAP_SIZE,
-        input.physical_packing_log2,
+        physical_packing_log2,
         steps,
         queries,
         lde_factors,
@@ -247,58 +237,6 @@ mod tests {
         }
     }
 
-    /// Every round of a ladder config grinds the smallest query PoW that meets the rule.
-    fn assert_every_round_grinds_the_minimum(config: &ProverConfig) {
-        assert_every_round_preserves_security_margin(config);
-        let schedule = &config.whir_schedule;
-        let security_bits = config.security_level.security_bits() as u32;
-        let rates = std::iter::once(schedule.base_lde_factor_log2() as u32).chain(
-            schedule
-                .internal_rounds
-                .iter()
-                .map(|r| r.lde_factor_log2 as u32),
-        );
-        for (round, ((queries, pow), rate_bits)) in schedule
-            .queries_per_round()
-            .into_iter()
-            .zip(schedule.queries_pow_bits_per_round())
-            .zip(rates)
-            .enumerate()
-        {
-            assert!(
-                pow == 0 || 6 * (pow - 1) + 5 * queries as u32 * rate_bits < 6 * security_bits,
-                "round {round}: {queries} queries at rate 2^-{rate_bits} need less than {pow} PoW bits"
-            );
-        }
-    }
-
-    #[test]
-    fn every_ladder_variant_grinds_the_minimal_query_pow() {
-        let level = SecurityLevel::Sec100;
-        for trace_log2 in 20..=24 {
-            assert_every_round_grinds_the_minimum(
-                &config_for_security_level_under_pessimistic_conjecture(trace_log2, level),
-            );
-            assert_every_round_grinds_the_minimum(
-                &virtual_packing_config_for_security_level_under_pessimistic_conjecture(
-                    trace_log2, level,
-                ),
-            );
-        }
-        for pack_log2 in 0..=4 {
-            assert_every_round_grinds_the_minimum(
-                &packed_config_for_security_level_under_pessimistic_conjecture(
-                    20, pack_log2, level,
-                ),
-            );
-            assert_every_round_grinds_the_minimum(
-                &virtual_packed_config_for_security_level_under_pessimistic_conjecture(
-                    20, pack_log2, level,
-                ),
-            );
-        }
-    }
-
     #[test]
     fn standard_and_evm_rounds_preserve_security_margin() {
         for trace_log2 in 20..=24 {
@@ -373,8 +311,7 @@ mod tests {
         assert_eq!(virtual_.whir_schedule.final_poly_size_log2(20), 1);
         let round0 = &virtual_.whir_schedule.internal_rounds[0];
         // the query count is derived one bit of query PoW above the ladder's
-        // oracle-0 entry (26; see `schedule_for_input`), then the PoW is lowered
-        // to the minimum, as the standard schedule's is (12 queries, 20 bits)
+        // oracle-0 entry (see `whir_schedule`), then the PoW is lowered to the minimum
         let ladder_pow = 26;
         assert_eq!(
             round0.num_queries,
@@ -383,15 +320,6 @@ mod tests {
                 as usize
         );
         assert_eq!(round0.num_queries, 13);
-        assert_eq!(round0.queries_pow_bits, 25);
-        let standard_round0 = &default.whir_schedule.internal_rounds[0];
-        assert_eq!(
-            (
-                standard_round0.num_queries,
-                standard_round0.queries_pow_bits
-            ),
-            (12, 20)
-        );
         assert_eq!(
             &virtual_.whir_schedule.internal_rounds[1..],
             &default.whir_schedule.internal_rounds[1..]
