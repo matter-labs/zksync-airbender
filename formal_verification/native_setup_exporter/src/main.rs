@@ -370,6 +370,34 @@ fn export_subword_store_place(layout_path: &Path) -> ControlTables {
     }
 }
 
+/// Actual registered reduced-machine sign/high-byte region. No circuit or
+/// configuration is changed; compiled placement remains separate metadata.
+fn export_reduced_sign_high(layout_path: &Path) -> ControlTables {
+    let layout: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
+    let kind = TableType::U16GetSignAndHighByte;
+    assert!(cs::machine::ops::unrolled::reduced_machine_ops::reduced_machine_tables().contains(&kind));
+    let table = kind.generate_table::<Mersenne31Field>();
+    let id = table.get_table_id();
+    assert_eq!(id, kind as u32);
+    let length = table.get_size();
+    let mut rows = Vec::with_capacity(length);
+    table.dump_into::<4>(&mut rows, Some(id));
+    assert_eq!(rows.len(), length);
+    let offset = layout["table_offsets"][id as usize].as_u64().unwrap() as usize;
+    ControlTables {
+        version: 1,
+        field_modulus: MODULUS,
+        profile: "reduced_machine_sign_high".into(),
+        generic_rows: length,
+        tables: vec![Region {
+            id,
+            offset,
+            data: matrix(&rows),
+        }],
+    }
+}
+
 fn export_shift_scalars(layout_path: &Path) -> ControlTables {
     export_shift_regions(
         layout_path,
@@ -759,6 +787,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if args.len() == 4 && args[1] == "--sll-low" {
         let artifact = export_sll_low(Path::new(&args[2]));
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: ControlTables = serde_json::from_slice(&bytes)?;
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
+    if args.len() == 4 && args[1] == "--reduced-sign-high" {
+        let artifact = export_reduced_sign_high(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
         assert_eq!(

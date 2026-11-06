@@ -1,3 +1,4 @@
+import Tests.ReducedSignHigh
 import Airbender.Proofs.ReducedMachine.ArtifactChecks
 import Tests.ShiftPC
 import Tests.ShiftFetched
@@ -2501,3 +2502,17 @@ import Tests.SubwordStoreData
 #print axioms Airbender.ReducedMachine.Proofs.query4_table
 #print axioms Airbender.ReducedMachine.Proofs.query5_fields
 #print axioms Airbender.ReducedMachine.Proofs.query5_table
+#print axioms Airbender.ReducedMachine.SignHighProofs.rows
+#print axioms Airbender.ReducedMachine.SignHighProofs.result
+#print axioms Airbender.ReducedMachine.SignHigh.native_sign_high
+#print axioms Tests.ReducedSignHigh.actual_geometry
+#print axioms Tests.ReducedSignHigh.first
+#print axioms Tests.ReducedSignHigh.byte_end
+#print axioms Tests.ReducedSignHigh.next_byte
+#print axioms Tests.ReducedSignHigh.positive_end
+#print axioms Tests.ReducedSignHigh.negative_start
+#print axioms Tests.ReducedSignHigh.last
+#print axioms Tests.ReducedSignHigh.bad_sign_rejected
+#print axioms Tests.ReducedSignHigh.bad_high_rejected
+#print axioms Tests.ReducedSignHigh.bad_tag_rejected
+#print axioms Tests.ReducedSignHigh.oversized_key_rejected

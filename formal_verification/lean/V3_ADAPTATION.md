@@ -22,7 +22,7 @@ importer, finding and trust references have independent source hashes.
 
 | Current v3 component | V2 connection and remaining work |
 | --- | --- |
-| Unified CPU local import with an explicit fixed tagged table | The v2 combined reduced circuit follows this pattern, retaining its own four-field queries, 119 equations, eight scalar/eight timestamp queries, original x0 decoder and log-23 placement. The native setup table itself is still unconnected; supplying an arbitrary table proves no native setup fact. |
+| Unified CPU local import with an explicit fixed tagged table | The v2 combined reduced circuit follows this pattern, retaining its own four-field queries, 119 equations, eight scalar/eight timestamp queries, original x0 decoder and log-23 placement. The actual ID-16 sign/high-byte region now has a literal-row certificate; the complete pooled setup remains unconnected. Supplying an arbitrary table proves no native setup fact. |
 | Reduced unrolled target | This is a different multi-family assembly. The name does not make it the target for the monolithic v2 reduced JSON. Existing standalone v2 families remain reusable components. |
 | Unified row semantics and initialized execution | Port the calculations against actual v2 combined selectors/operands/writes and initialized memory/state history. Standalone proofs do not discharge these native connections. |
 | Compiler certificates and native CPU acceptance | Not present in this backport. The local row importer does not establish GKR cached/uncached compiler preservation, exact decoder membership or the physical verifier's argument checks. Retained stage-two JSON is opaque. |
@@ -61,4 +61,16 @@ checkout and dependency versions are unchanged. The combined machine has no exec
 soundness theorem yet. Next: bind actual v2 reduced fixed regions and public
 ROM/CSR setup, then derive combined selectors, operands, writes and original
 Sail row effects before assembling initialized history and caller boundaries.
-The current work is foreground only; the scheduled task stays paused.
+A new hourly continuation task is active at the user's request; the old task
+remains paused. The unchanged-circuit policy requires documented native evidence
+and explicit narrow interface assumptions for any confirmed issue.
+
+## Renewed continuation and first fixed-region certificate
+
+The new hourly task continues this native reduced-machine dependency chain.
+[The sign/high-byte region](Airbender/Review/Circuits/ReducedMachine/Tables/SignHigh.lean)
+checks all actual native rows and their tag/placement; it is a regional certificate,
+not whole-setup or execution coverage. The next step is the complete native pooled
+fixed relation, including actual public ROM/CSR configuration and tag isolation,
+then combined row semantics. The production circuit remains unchanged. See the
+[issue-handling policy](FINDINGS.md#backport-issue-handling-policy).

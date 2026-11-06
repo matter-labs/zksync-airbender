@@ -6666,6 +6666,43 @@
     {
       "path": "Airbender/Import/Parse.lean",
       "change": "Native v2 combined reduced-machine intake and structural regression; metadata and all tagged query fields remain explicit. This does not import v3 field/layout semantics or establish whole-machine execution."
+    },
+    {
+      "path": "Airbender/Import/ReducedSetup.lean",
+      "change": "Separate strict reduced-region envelope with original canonical block validation; literal parsing does not assert row semantics.",
+      "backport_reuse_revision": "bb7b17db92668940ed1c4350477373a461841381",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "1f115db426d6e9ea0c93a8464b75173376df94b62bc104cb362739fd5aa2fb7f"
+    },
+    {
+      "path": "Airbender/Import/ReducedSetupEmbed.lean",
+      "change": "Literal emission helpers copied unchanged, with a separate reduced command that parses and quotes the same source bytes.",
+      "backport_reuse_revision": "bb7b17db92668940ed1c4350477373a461841381",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "a96c05a2ccdafdcefb87bc1d7276ce4baf4be608ca6aeed730a71145416431a4"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/SignHigh.lean",
+      "change": "Reuse affine/single-block proof pattern; adapt the actual two-block sign and periodic high-byte rows at default recursion and heartbeat limits.",
+      "backport_reuse_revision": "bb7b17db92668940ed1c4350477373a461841381",
+      "backport_reuse_path": "Airbender/Proofs/Tables/ShiftScalarColumns.lean",
+      "backport_reuse_sha256": "85f6fcf66e2f5f401813fbddf4622565ed5934e2db76c53e5945eb78830ff0b9"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Tables/SignHighData.lean",
+      "change": "Native reduced ID-16 literal-region certificate and fail-closed/semantic regressions; no pooled-table, compiler-enforcement or execution theorem is claimed."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Tables/SignHigh.lean",
+      "change": "Native reduced ID-16 literal-region certificate and fail-closed/semantic regressions; no pooled-table, compiler-enforcement or execution theorem is claimed."
+    },
+    {
+      "path": "Tests/ReducedSignHigh.lean",
+      "change": "Native reduced ID-16 literal-region certificate and fail-closed/semantic regressions; no pooled-table, compiler-enforcement or execution theorem is claimed."
+    },
+    {
+      "path": "Tests/ReducedSignHighImport.lean",
+      "change": "Native reduced ID-16 literal-region certificate and fail-closed/semantic regressions; no pooled-table, compiler-enforcement or execution theorem is claimed."
     }
   ],
   "setup_artifacts": [
@@ -6847,6 +6884,13 @@
       "profile": "actual native v2 subword decoder for thirteen original words, all six forms, negative I/S immediates, x0 loads, unused register clearing and unsupported LW; all 1048576 rows connected to original public Sail setup; general compiler refinement remains separate",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/reduced-sign-high-native.json",
+      "sha256": "60a44e3380a1f239501240f82330100f6787bdb03d32ab3e509b5f9846664e20",
+      "profile": "actual registered native reduced-machine ID-16 sign/high-byte region; all 65536 literal rows and compiled offset 196609; the full pooled table and public ROM/CSR configuration remain separate",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -6860,7 +6904,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "8a5b2409799fd728ceddc9796bc5336fc47507571c61372e06c665211c4204d2"
+      "sha256": "35059084adc72a344dcd29648e2991be6b518c74010a603ee4204f6d386bdc03"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

@@ -26,8 +26,10 @@ v2 four-field layout and Mersenne31 coefficients. Validation passed; see the
 [current adaptation snapshot](V3_ADAPTATION.md). Retained stage-two JSON has no
 claimed enforcement interpretation.
 
-1. Bind actual reduced fixed regions and public ROM/CSR setup. Do not inherit
-   standalone fixture tables, supplied row answers or v3 table encodings.
+1. Finish actual reduced fixed regions and public ROM/CSR setup. The native
+   sign/high-byte region now has a checked literal-row certificate; the complete
+   pooled table and public configuration remain open. Do not inherit standalone
+   fixture tables, supplied row answers or v3 table encodings.
 2. Derive combined native selectors, operand routing, actual masked writes,
    PC/clock effects and original Sail clauses from these exact constraints.
 3. Compose initialized combined histories, public decoding and original execution.
@@ -40,6 +42,17 @@ artifact maps to the unified migration path. Its newer compiler certificates and
 initialization contracts are dependencies to adapt, not established v2 coverage.
 Preserve original Clean/Sail semantics and existing resource caps. Do not replace
 missing obligations with desired outputs, table equivalence or intermediate states.
+
+## Unchanged-circuit policy (6 November 2026)
+
+Continue to checked parity with the current v3 formalization without fixing
+production circuit or machine code. A confirmed native v2 issue must retain its
+pinned evidence and exact acceptance scope in the findings register, and any
+required restriction must appear as a narrow, explicit Review interface
+assumption. Such an assumption is a conditional theorem boundary, not a fix or
+an enforcement proof; it must not be implemented as a project axiom or a
+premise that supplies the desired result. Coverage gaps and importer limitations
+remain open obligations, not findings. No native v2 defect is currently established.
 
 ## Integrated review contract
 
@@ -61,8 +74,10 @@ an interface. Keep public assumptions visible and v2 findings independent.
 
 The user authorized continuation and regular commits on 17 October, stopped the
 scheduled task on 21 October, and resumed foreground work on 6 November against
-the latest PR #585. The scheduled task stays paused. Keep working in the isolated
-dev-based worktree and commit small verified milestones with Conventional Commits.
+the latest PR #585. A new hourly continuation task, Continue v2 FV to v3 parity,
+is now active at the user's request; the old task remains paused. Keep working
+in the isolated dev-based worktree and make small verified unsigned Conventional
+Commits, with Git signing disabled per invocation rather than configuration.
 Do not push without authorization. Use the
 [serial bounded verification runner](scripts/check_all.py) and its
 [validated watchdog](scripts/bounded_fv.py): one Lean worker, Lean memory cap

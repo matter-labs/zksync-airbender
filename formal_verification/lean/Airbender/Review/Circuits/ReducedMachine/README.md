@@ -13,10 +13,23 @@ unsupported profiles and invented ABI columns reject.
 [Structural checks](../../../Proofs/ReducedMachine/ArtifactChecks.lean) live under
 Proofs; [intake controls](../../../../Tests/ReducedMachineImport.lean) and
 [emission controls](../../../../Tests/ReducedMachineEmission.lean) retain the
-supported and rejected profiles. The complete bounded module, importer, axiom and Review gates pass.
+supported and rejected profiles. The complete intake checkpoint passed its bounded gates; the separate fixed-region
+addition passed targeted modules/importer/exporter checks and the complete axiom
+and public Review audits.
 
-This module supplies no execution theorem. Actual fixed-table contents and
-public ROM/CSR binding, decoder membership, initialized combined history,
+[The native sign/high-byte certificate](Tables/SignHigh.lean) checks all 65,536
+literal rows of the registered ID-16 region at the actual reduced offset 196609.
+[Its calculations](../../../Proofs/ReducedMachine/SignHigh.lean) stay under Proofs;
+[semantic regressions](../../../../Tests/ReducedSignHigh.lean) cover byte/sign
+boundaries and altered key/sign/high-byte/tag rejection. The
+[strict literal importer](../../../Import/ReducedSetup.lean) validates geometry
+and canonical encoding, while the kernel proves contents; parsing alone makes
+no semantic assertion. [Importer controls](../../../../Tests/ReducedSignHighImport.lean)
+retain that distinction. The FV-only exporter calls the unchanged registered
+native table generator. No production circuit code is changed.
+
+This module supplies no execution theorem. The complete pooled fixed table,
+tag isolation and public ROM/CSR binding, decoder membership, initialized combined history,
 worker/caller accounting, physical arguments and terminal/padding boundaries
 remain open. Stage-two source descriptors are opaque. Table input alone supplies
 no setup correctness and cannot close a native-machine claim.

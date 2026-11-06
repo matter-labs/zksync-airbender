@@ -36,6 +36,19 @@ its BabyBear equations, ten-field tables or compiler certificates. The v2 target
 and native coefficients remain Mersenne31. No native reduced machine theorem
 is claimed by this import layer.
 
+The [actual reduced sign/high-byte region](Airbender/Review/Circuits/ReducedMachine/Tables/SignHigh.lean)
+has its own literal export and kernel certificate for all 65,536 rows, including
+the native ID-16 tag and compiled offset 196609. Its membership theorem concerns
+that exported region only. It does not yet recover those rows from arbitrary
+membership in the complete pooled table; public ROM/CSR setup, other regions
+and tag isolation remain pending.
+
+Production circuit and machine code must stay unchanged. Confirmed native issues
+are documented with their exact evidence and, where necessary, narrow explicit
+Review interface assumptions. Those premises neither fix an issue nor establish
+enforcement, and cannot supply desired outputs, intermediate states or table
+equivalence. Coverage gaps alone do not justify defect claims or new assumptions.
+
 The existing shift/CSR family also carries request metadata. Its multiplicity
 and type columns are retained separately from the reduced request, and its
 zero-width ABI group stays absent rather than resolving to memory column zero.

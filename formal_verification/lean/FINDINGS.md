@@ -34,6 +34,16 @@ exact tested scope, broader-path disposition and remaining enforcement/fix work.
 A fix is closed only after the affected source/path is changed and validated, or
 existing enforcement is demonstrated. Proof completion and open PRs are not fixes.
 
+## Backport issue-handling policy
+
+The user explicitly requires unchanged production circuits. Do not fix circuit
+or machine Rust code in this backport. For any newly confirmed v2 issue, record
+its exact native evidence and broader-path disposition here, and expose any
+necessary restriction as a narrow Review interface assumption. The assumption
+must remain visible in the conditional theorem contract; it is not a fix, an
+enforcement proof or a project axiom. The assessment standard above continues
+to apply. No new assumption is needed merely because a connection is unfinished.
+
 ## Confirmed native-v2 defects
 
 **None established by this backport so far.** This is an evidence status, not a

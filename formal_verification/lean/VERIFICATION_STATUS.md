@@ -56,7 +56,34 @@ checkout and dependency versions are unchanged. The immediate next connection is
 fixed/setup regions and public ROM/CSR configuration, then combined native row
 semantics, initialized execution, worker/caller accounting and terminal/padding
 boundaries. Existing five-family standalone execution remains separate.
-The scheduled task stays paused; this resumption is foreground only.
+A new hourly continuation task is active at the user's request; the previous
+task remains paused. Production circuit code stays unchanged; confirmed issues
+require documented evidence and explicit narrow interface assumptions.
+
+## Reduced sign/high-byte fixed region (6 November 2026)
+
+[The native reduced region](Airbender/Review/Circuits/ReducedMachine/Tables/SignHigh.lean)
+now has a kernel certificate for all 65,536 literal rows: bounded key, exact
+sign and high byte, and the actual ID-16 tag. The FV-only exporter calls the
+unchanged registered native generator and retains compiled offset 196609.
+The certificate reads the imported affine/periodic blocks symbolically at the
+default Lean recursion and heartbeat settings. It assumes no table recipe or
+expected outputs. Membership here is in the exported region; recovering it from
+the full pooled setup, public ROM/CSR configuration and tag isolation remain open.
+
+All seven new modules and the expanded axiom module passed targeted bounded
+compilation. Eleven semantic regressions cover geometry, byte/sign boundaries
+and wrong key/sign/high-byte/tag rejection. Seventeen runtime importer controls
+pass, including a check that geometry validation alone does not assert contents.
+All 39 native-export reproducibility/input checks pass, including the new region.
+The complete axiom audit passes 2,320 roots using only Lean's standard three,
+and all 138 public Review theorems have explicit audit roots. The successful
+regional proof used at most 1496.76 MiB footprint and 3574.66 MiB resident;
+resource ceilings were unchanged and no live owned process remained.
+The earlier complete intake pass above is retained as its own checkpoint;
+unchanged ordinary-family builds were not repeated for this isolated addition.
+No production circuit code changed, no native defect was established and no
+new interface assumption was introduced.
 
 ## Checked coverage
 

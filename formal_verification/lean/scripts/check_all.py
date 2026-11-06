@@ -102,6 +102,7 @@ def main():
     bounded([sys.executable, "scripts/check_native_setup.py"], "native-setup-export")
     bounded([*LEAN, "--run", "Tests/ArtifactImport.lean"], "importer-tests")
     bounded([*LEAN, "--run", "Tests/ReducedMachineImport.lean"], "reduced-importer-tests")
+    bounded([*LEAN, "--run", "Tests/ReducedSignHighImport.lean"], "reduced-sign-high-importer-tests")
     bounded([*LEAN, "--run", "Airbender/Import/Main.lean",
         "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json",
         "../../cs/word_only_load_store_preprocessed_layout.json",

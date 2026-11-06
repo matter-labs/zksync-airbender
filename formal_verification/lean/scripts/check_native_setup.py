@@ -71,6 +71,15 @@ def main():
         assert all(layout["table_offsets"][r["id"]] == r["offset"] for r in prefix["tables"])
         print("PASS reproducible actual native zero/XOR/OR/AND prefix and compiled offsets", flush=True)
         compiled = ROOT / "../../cs/shift_binop_csrrw_preprocessed_layout.json"
+        reduced_layout = ROOT / "../../cs/reduced_machine_preprocessed_layout.json"
+        subprocess.run([str(binary), "--reduced-sign-high", str(reduced_layout), str(output)], check=True)
+        assert output.read_bytes() == (ROOT / "artifacts/setup/reduced-sign-high-native.json").read_bytes()
+        sign_high = json.loads(output.read_bytes())
+        region, = sign_high["tables"]
+        assert sign_high["generic_rows"] == 65536
+        assert (region["id"], region["offset"], region["data"]["length"]) == (16,196609,65536)
+        assert json.loads(reduced_layout.read_bytes())["table_offsets"][16] == region["offset"]
+        print("PASS reproducible native reduced sign/high-byte region and compiled placement", flush=True)
         subprocess.run([str(binary), "--shift-scalars", str(compiled), str(output)], check=True)
         assert output.read_bytes() == (ROOT / "artifacts/setup/shift-scalars-native.json").read_bytes()
         regions = json.loads(output.read_bytes())
