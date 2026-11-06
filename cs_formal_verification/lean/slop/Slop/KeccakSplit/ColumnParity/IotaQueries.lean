@@ -28,11 +28,6 @@ noncomputable def outputByte (w : Nat → ZMod babyBearModulus) (limb : Fin 4) (
   nibble w 0 ⟨4 * limb.val + if high then 2 else 0, by split <;> omega⟩ +
     16 * nibble w 0 ⟨4 * limb.val + (if high then 2 else 0) + 1, by split <;> omega⟩
 
-theorem byte_pack {L a n : ZMod babyBearModulus} (hn : n = -7864320 * L + 7864320 * a) :
-    L = a + 256 * n := by
-  subst hn
-  linear_combination (L - a) * char
-
 theorem read_packing (w : Nat → ZMod babyBearModulus) (j : Fin 3) :
     limbOf w false 0 (iotaLimb j) = inputLow w j + 256 * inputHigh w j := by
   apply byte_pack

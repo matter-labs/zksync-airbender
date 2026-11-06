@@ -20,6 +20,12 @@ theorem pack_eq {L a b c n : ZMod babyBearModulus}
   subst hn
   linear_combination (L - a - 16 * b - 256 * c) * char
 
+/-- The high byte of a limb is the limb minus its low byte over 256. -/
+theorem byte_pack {L a n : ZMod babyBearModulus} (hn : n = -7864320 * L + 7864320 * a) :
+    L = a + 256 * n := by
+  subst hn
+  linear_combination (L - a) * char
+
 /-- Four bounded field nibbles recover the canonical sixteen-bit value. -/
 theorem value_of_nibbles {x a b c d : ZMod babyBearModulus}
     (ha : a.val < 16) (hb : b.val < 16) (hc : c.val < 16) (hd : d.val < 16)
