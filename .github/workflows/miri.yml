@@ -1,0 +1,73 @@
+name: Miri verifier
+on:
+  pull_request:
+  push:
+    branches: [main, stable, dev, av_gkr_compiler]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUSTC_WRAPPER: ""
+  CARGO_BUILD_RUSTC_WRAPPER: ""
+  CARGO_BUILD_JOBS: "4"
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  RUSTFLAGS: ""
+  RUST_MIN_STACK: "134217728"
+  RAYON_NUM_THREADS: "8"
+
+jobs:
+  fixture_currency:
+    name: Hashed Fibonacci fixture currency
+    # Generation peaks near 58 GiB; keep it off the small Miri runner budget.
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 45
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target/miri-fixture-currency
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache: false
+      - name: Regenerate and compare the committed fixture
+        run: |
+          renice -n 10 "$$" > /dev/null
+          ulimit -c 0
+          ulimit -v 100663296 # 96 GiB address space
+          generated="$RUNNER_TEMP/hashed-fibonacci-fixture"
+          cargo run -p program_prover --profile cli --features fixture_generation --example hashed_fibonacci_fixture -- "$generated"
+          for fixture_file in proof.compact.json.zlib setups.compact.json.zlib manifest.json; do
+            cmp "full_statement_verifier/tests/fixtures/hashed_fibonacci/$fixture_file" "$generated/$fixture_file"
+          done
+
+  verifier:
+    name: Miri unrolled base-layer FSV
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 30
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target/miri-fsv/hashed-fibonacci
+      AIRBENDER_MIRI_FSV_INPUT: ${{ github.workspace }}/target/miri-fsv/hashed-fibonacci/input.bin
+      MIRIFLAGS: "-Zmiri-recursive-validation -Zmiri-symbolic-alignment-check"
+    steps:
+      - uses: actions/checkout@v3
+      # No override: use the pinned root rust-toolchain.toml.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: miri, rust-src
+          rustflags: ""
+          cache: false
+      - name: Set up Miri sysroot
+        run: cargo miri setup
+      - name: Prepare and verify static full-statement input natively
+        run: |
+          mkdir -p "$CARGO_TARGET_DIR"
+          cargo run -p full_statement_verifier --no-default-features --features host_utils,miri_fsv --example miri_input -- "$AIRBENDER_MIRI_FSV_INPUT"
+      - name: Check verifier_common helpers
+        run: cargo miri test -p verifier_common --no-default-features --lib
+      - name: Check generated helpers
+        run: cargo miri test -p verifier --no-default-features --test generated_common
+      - name: Check full unrolled base-layer verification
+        run: cargo miri test -p full_statement_verifier --no-default-features --features miri_fsv --test miri_native
