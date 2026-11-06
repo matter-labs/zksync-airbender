@@ -1,6 +1,7 @@
 import Slop.Keccak.Claims
 import Mathlib.Tactic.IntervalCases
 import Slop.BabyBear
+import Slop.Keccak.Completeness.Bytes
 
 namespace Tests.KeccakTheta
 open Airbender
@@ -33,39 +34,22 @@ def row (v : Nat) : ZMod babyBearModulus :=
     ((if col = 0 then 255 else if col = 1 then shared else 255 ^^^ shared : Nat) : ZMod babyBearModulus)
   else 0
 
+private theorem modes (j : Fin 7) : row Keccak.Variables.modeColumns[j] = if j = 3 then 1 else 0 := by
+  fin_cases j <;> decide
+
+-- Every Theta byte query XORs the all-ones lane with the shared word `0x0100000000000001`.
 private theorem bytesHold (i : Fin 40) :
     (Keccak.Proofs.byteQuery setup i).Contains (Verification.environment row) := by
-  rw [Keccak.Proofs.byte_query_shape]
-  change ∃ index : Fin 1249281,
-    (Keccak.Proofs.byteEntry setup i).map (Expression.eval (Verification.environment row)) =
-      (Keccak.setupRow control index).map (fun (n : Nat) => (n : ZMod babyBearModulus))
-  refine ⟨⟨65281 + if i.val % 8 = 0 ∨ i.val % 8 = 7 then 1 else 0,
-    by split_ifs <;> omega⟩, ?_⟩
-  fin_cases i <;>
-    dsimp [Keccak.Proofs.byteEntry, Keccak.Proofs.byteQuery, Keccak.importedConstraints,
-      FlatOperation.lookups]
-  all_goals norm_num [Expression.eval, Verification.environment, row, Keccak.setupRow, Keccak.byteRow]
-  all_goals decide +kernel
+  have tag := Keccak.Proofs.byte_tag_of_mode setup _ modes i
+  have xor : ∀ op : Fin 5, Keccak.Proofs.operationTag 3 op = 4 := by decide
+  rw [xor] at tag
+  refine Keccak.Proofs.xor_query i 0xffffffffffffffff 0x0100000000000001 ?_ ?_ ?_ tag
+  all_goals fin_cases i <;> decide
 
 private theorem controllerHolds :
     ((FlatOperation.lookups (Keccak.importedConstraints setup)).get
-      ⟨1, by rw [Keccak.lookup_count]; decide⟩).Contains (Verification.environment row) := by
-  change ∃ index : Fin 1249281,
-    ((FlatOperation.lookups (Keccak.importedConstraints setup))[1]).entry.map
-      (Expression.eval (Verification.environment row)) =
-    (Keccak.setupRow control index).map (fun (n : Nat) => (n : ZMod babyBearModulus))
-  refine ⟨⟨67588, by decide⟩, ?_⟩
-  have physicalRow : Keccak.setupRow control ⟨67588, by decide⟩ =
-      #v[2051, 0, 5, 10, 15, 20, 25, 37] := by decide
-  rw [physicalRow]
-  change (Vector.map (n := 8) (Expression.eval (Verification.environment row))
-    ((FlatOperation.lookups (Keccak.importedConstraints setup))[1]).entry) =
-      (#v[2051, 0, 5, 10, 15, 20, 25, 37] : Vector Nat 8).map
-        (fun (n : Nat) => (n : ZMod babyBearModulus))
-  dsimp [Keccak.importedConstraints, FlatOperation.lookups]
-  apply Vector.ext
-  intro j hj
-  interval_cases j <;> decide +kernel +revert
+      ⟨1, by rw [Keccak.lookup_count]; decide⟩).Contains (Verification.environment row) :=
+  Keccak.Proofs.controller_query (key := 2051) (by decide) (by decide) (by decide)
 
 theorem satisfies : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
     (Keccak.importedConstraints setup) := by
