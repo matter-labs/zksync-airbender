@@ -56,7 +56,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > **Protocol**
 >
-> 1. Prover sends `ProgramSetupCaps`, one program-dependent setup cap per instruction family selected by $\mathrm{profile}$ and $\mathrm{mode}$ (Algorithm 12), followed by the final RISC-V register values $x_0..x_{31}$ and timestamp limbs, then PC and timestamp limbs. The claimed final state contains 99 raw 32-bit words:
+> 1. Prover sends `ProgramSetupCaps`, one program-dependent setup cap per instruction family selected by $\mathrm{profile}$ and $\mathrm{mode}$ (Algorithm 12). Each cap jointly commits to that family's committed setup columns, including any program-independent columns grouped with the program-dependent ones. Prover then sends the final RISC-V register values $x_0..x_{31}$ and timestamp limbs, then PC and timestamp limbs. The claimed final state contains 99 raw 32-bit words:
 >
 >    $$
 >    \mathrm{fin}=\bigl((x_j,\mathrm{ts}_{j,\mathrm{lo}},\mathrm{ts}_{j,\mathrm{hi}})_{j=0}^{31},(\mathrm{pc},\mathrm{ts}_{\mathrm{pc},\mathrm{lo}},\mathrm{ts}_{\mathrm{pc},\mathrm{hi}})\bigr).
@@ -88,38 +88,62 @@ Recursive step: prove the execution of FullStatement; repeat.
 
 > **Algorithm 2 — VerifyChunks**
 >
-> **Configuration:** $\mathrm{profile}$, $\mathrm{mode}$ and $\mathrm{commitment\text{-}config}$ from Algorithm 1 fix the circuit families, their order, delegation setups and proof parameters.
+> **Configuration:** Inherit $\mathrm{profile}$, $\mathrm{mode}$ and $\mathrm{commitment\text{-}config}$ from Algorithm 1.
 >
-> **Input:** `ProgramSetupCaps`, supplied $\mathbf{r}_{\mathrm{mem}}$ and the running memory transcript $T_{\mathrm{mem}}$ initialized with $\mathrm{fin}$. **Output:** accumulated read/write products $\mathrm{RS},\mathrm{WS}\in E$ and $T_{\mathrm{mem}}$ extended with the participating memory commitments and identifiers.
+> **Input:** `ProgramSetupCaps` Merkle tree caps, $\mathbf{r}_{\mathrm{mem}}$ challenges, and the running memory transcript $T_{\mathrm{mem}}$ initialized with $\mathrm{fin}$. **Output:** accumulated read/write products $\mathrm{RS},\mathrm{WS}\in E$ and $T_{\mathrm{mem}}$ extended with the participating memory commitments and identifiers.
 >
 > **Verification**
 >
-> 1. Select the instruction families from Algorithm 12. Process unrolled instruction families followed by standalone IT, or unified instruction chunks, then the delegation families in the fixed order listed with the circuit parameters. For merged-feeder, require unified continuation $\mathrm{mode}$. Initialize $\mathrm{RS}\leftarrow1$, $\mathrm{WS}\leftarrow1$.
-> 2. For each family in the configured order, Prover sends a chunk count followed by that many proofs. For unified, Prover sends the total chunk count and the number of trailing IT-carrying chunks before the proofs. For each chunk:
->    1. Run Chunk (Algorithm 3) for the selected circuit and supplied $\mathbf{r}_{\mathrm{mem}}$, obtaining its products, memory caps, setup caps and window identifiers $b$.
->    2. Require each instruction setup cap to match its family in `ProgramSetupCaps`; every unified chunk must match `ProgramSetupCaps[0]`. Delegation setup caps must match the Verifier's fixed cap for that type; standalone IT has no setup cap.
->    3. Both parties extend $T_{\mathrm{mem}}$ with the chunk's memory caps and window identifiers, using the fixed 32-bit family labels from Algorithm 12. Each identifier group is zero-padded to fill the current input block; memory-cap sequences begin at a block boundary:
->       - **Unrolled instruction or delegation:** the family-identifier block before the first chunk of each nonempty family, followed by the memory caps in proof order.
->       - **Standalone IT:** the IT family-identifier block before the first chunk, then each chunk's memory cap followed by a block of its eight window identifiers.
->       - **Unified instruction:** for each chunk, one block containing the unified-family identifier and its two window identifiers, then its memory cap.
->    4. Multiply the verified ordinary read/write products into $\mathrm{RS},\mathrm{WS}$.
->    5. For a trailing IT-carrying unified chunk, require its additional IT pair and multiply it into $\mathrm{RS},\mathrm{WS}$. Exclude this pair for leading unified chunks.
-> 3. Enforce the IT partition and disjointness rules:
->    - **Unrolled:** $1\le n_{\mathrm{IT}}\le8$. Each IT proof contributes eight window identifiers; their concatenation is strictly increasing in $[0,64)$.
->    - **Unified:** $n>0$ and $1\le n_{\mathrm{IT}}\le n$. The first $n-n_{\mathrm{IT}}$ chunks have both identifiers zero. The last $n_{\mathrm{IT}}$ chunks carry IT products; their two identifiers per chunk are strictly increasing in $[0,64)$.
-> 4. Enforce the integer capacity bounds:
+> 1. Verifier initializes $\mathrm{RS}\leftarrow1$, $\mathrm{WS}\leftarrow1$ and forms the ordered circuit list according to $\mathrm{profile}$:
 >
->    $$
->    \begin{aligned}
->    \mathrm{cycles}&<2^{36} \\
->    4\,\mathrm{cycles}+\sum_d n_dA_d&<2^{40}
->    \end{aligned}
->    $$
+>    - **$\mathrm{profile}=\mathrm{unrolled}$:** the instruction circuits selected by Algorithm 12 for $(\mathrm{profile},\mathrm{mode})$, in their listed order; then the standalone IT circuit; then the delegation circuits in Algorithm 12's fixed order.
+>    - **$\mathrm{profile}=\mathrm{unified}$:** the unified instruction circuit; then the delegation circuits in Algorithm 12's fixed order.
 >
->    Here $n_f,n_d$ count instruction/delegation chunks, $\ell_f$ is the instruction trace logarithm, and $A_d$ is the delegation event-capacity charge. Set $\mathrm{cycles}=\sum_f n_f2^{\ell_f}$ for unrolled instructions, or $n2^{24}$ for unified chunks.
-> 5. Return $\mathrm{RS},\mathrm{WS},T_{\mathrm{mem}}$.
+> 2. For each circuit $C$ in this list:
 >
-> **Soundness — participant/window binding (new, conditional).** Required participant-binding lemma: under commitment binding, for each fixed memory-transcript prefix immediately before the nonce, all completions satisfying the local chunk relations and participant checks induce the same selected read/write event multisets, including multiplicities and Algorithm 9's boundary events, independently of the subsequently sampled memory challenges. Its proof must establish that the encoding fixes the participating caps and their interpretation sufficiently to determine these multisets. In particular, proof counts, `ProgramSetupCaps` and separate witness caps are omitted from this prefix: varying them while preserving the prefix must not change event selection, tuple values or multiplicities. Later absorption of setup/witness caps into chunk transcripts does not establish this earlier binding. This lemma remains a proof obligation.
+>    1. Prover sends the chunk count $n$: the number of proofs for the selected circuit. Each proof covers one chunk, a trace with the fixed number of rows specified for that circuit in Algorithm 12. If the selected circuit is the unified instruction circuit, Prover sends two counts: the total $n$ and the number $n_{IT}$ of final chunks whose initialization/teardown products also contribute to the memory argument (see step 2.3.4).
+>    2. Verifier checks the chunk counts:
+>
+>       - **Standalone IT circuit:** Verifier requires $1\le n \le 8$.
+>       - **Unified instruction circuit:** Verifier requires $1\le n_{\mathrm{IT}}\le n$.
+>
+>    3. For each chunk, in proof order:
+>
+>       1. Verifier runs $\operatorname{Chunk}(C,\mathrm{profile},\mathrm{mode},\mathrm{commitment\text{-}config},\mathbf{r}_{\mathrm{mem}})$† (Algorithm 3), obtaining the chunk's main read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional initialization/teardown products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ for unified instruction chunks, memory caps `MemoryCaps`, setup caps `SetupCaps` and window identifiers $b$.
+>
+>          † _Chunk calls may run in parallel, each consuming the separate, non-overlapping portion of proof data corresponding to that chunk._
+>
+>       2. Verifier checks the returned outputs according to $C$:
+>
+>          - **Unrolled instruction circuit:** require $b$ to be empty and `SetupCaps` to match the cap for $C$ in `ProgramSetupCaps`.
+>          - **Unified instruction circuit:** require two window identifiers in $b$ and `SetupCaps` to match the cap for $C$ in `ProgramSetupCaps`. For the first $n-n_{\mathrm{IT}}$ chunks, require $b=(0,0)$. Across the final $n_{\mathrm{IT}}$ chunks, require the window identifiers, in proof order, to form a strictly increasing sequence in $[0,64)$.
+>          - **Standalone IT circuit:** require eight window identifiers in $b$ and require the identifiers, in proof order across chunks, to form a strictly increasing sequence in $[0,64)$. This circuit has no committed setup tables, so `SetupCaps` is empty and requires no comparison.
+>          - **Delegation circuit:** require $b$ to be empty and `SetupCaps` to match the Verifier's hardcoded cap for $C$.
+>
+>       3. Both parties absorb the following into $T_{\mathrm{mem}}$, using $C$'s 32-bit family label from Algorithm 12:
+>
+>          - **Unrolled instruction or delegation circuit:** if this is the first chunk for $C$, absorb its family label padded with fifteen zero words. Then absorb this chunk's `MemoryCaps`.
+>          - **Standalone IT circuit:** if this is the first chunk for $C$, absorb its family label padded with fifteen zero words. Then absorb this chunk's `MemoryCaps`, followed by its eight window identifiers $b$ padded with eight zero words.
+>          - **Unified instruction circuit:** absorb $C$'s family label and this chunk's two window identifiers $b$, padded with thirteen zero words. Then absorb this chunk's `MemoryCaps`.
+>       4. Update $\mathrm{RS}\leftarrow\mathrm{RS}\cdot\mathrm{RS}_{\mathrm{chunk}}$ and $\mathrm{WS}\leftarrow\mathrm{WS}\cdot\mathrm{WS}_{\mathrm{chunk}}$. For the final $n_{\mathrm{IT}}$ unified instruction chunks, Verifier also updates $\mathrm{RS}\leftarrow\mathrm{RS}\cdot\mathrm{RS}_{\mathrm{IT}}$ and $\mathrm{WS}\leftarrow\mathrm{WS}\cdot\mathrm{WS}_{\mathrm{IT}}$.
+> 3. Verifier requires the following memory-term capacity bounds, using the fixed circuit parameters listed before Algorithm 12. The bounds count only one side of the memory argument ($\mathrm{RS}$ or $\mathrm{WS}$), for soundness analysis purposes:
+>
+>    - **Instruction cycles $<2^{36}$:** count each unrolled instruction chunk by its trace rows, or each unified instruction chunk as $2^{24}$ cycles.
+>    - **Non-IT memory-argument terms $<2^{40}$:** For each instruction chunk, count four terms per cycle (the fixed bound used for all instruction circuits), using the cycle count specified above. For each delegation chunk, count its rows multiplied by its terms per row, using the fixed circuit parameters listed before Algorithm 12. Sum these contributions across all instruction and delegation chunks and require the total to be below $2^{40}$.
+>
+>    The remaining contributions are accounted for separately:
+>
+>    - **Standalone-IT memory-argument terms $\le 2^{30}$:** this follows from the earlier limit of eight chunks and the fixed eight windows of $2^{24}$ terms per chunk (listed before Algorithm 12).
+>    - **Unified-IT memory-argument terms $\le 2^{29}$:** the identifier checks permit at most 64 distinct windows, each contributing $2^{23}$ terms (listed before Algorithm 12).
+>    - **33 machine-state boundary terms:** Algorithm 9, step 1 adds 33 initialization writes to $\mathrm{WS}$ and 33 final-state reads to $\mathrm{RS}$, one for each register and the PC.
+>
+> 4. Return $\mathrm{RS},\mathrm{WS},T_{\mathrm{mem}}$.
+>
+> **Soundness — participant/window binding (new, conditional).** Assuming commitment binding and the local correctness guarantee of Algorithm 3, each accepted chunk returns the memory products prescribed by its circuit. To apply Algorithm 9's fingerprint bound, the underlying event multisets must already be fixed before the shared memory challenges are sampled. Algorithm 2 absorbs the memory commitments together with circuit identifiers and window identifiers; these bind the committed columns and their interpretation as follows:
+>
+> Required participant-binding lemma: under commitment binding, for each fixed memory-transcript prefix immediately before the nonce, all completions satisfying the local chunk relations and participant checks induce the same selected read/write event multisets, including multiplicities and Algorithm 9's boundary events, independently of the subsequently sampled memory challenges. Its proof must establish that the encoding fixes the participating caps and their interpretation sufficiently to determine these multisets. In particular, proof counts, `ProgramSetupCaps` and separate witness caps are omitted from this prefix: varying them while preserving the prefix must not change event selection, tuple values or multiplicities. Later absorption of setup/witness caps into chunk transcripts does not establish this earlier binding. This lemma remains a proof obligation.
+>
+> For unified chunks, the authenticated window identifiers determine which IT products contribute: excluded chunks have $b=(0,0)$, whereas selected chunks have strictly increasing identifiers. Once the ordered chunk list and its identifiers are bound, these conditions uniquely determine the selected suffix and $n_{\mathrm{IT}}$. Establishing that the selected IT windows supply every RAM boundary required by the execution remains part of Algorithm 9's reconstruction lemma.
 >
 > Outside local verification failures, setup-cap equality ties instruction chunks to the supplied program setups and delegation chunks to the fixed delegation setups. Circuit-bound, strictly increasing IT windows exclude repeated initialization/teardown windows; complete coverage remains a premise of Algorithm 9's reconstruction lemma. The capacity argument must additionally show that the charged counts bound all selected events, including IT and boundary events in the final $N$ bound. Subject to these obligations, the accumulated products are fingerprints of the fixed multisets, so Algorithm 9's collision bound applies after Algorithm 1 authenticates the shared challenges.
 
@@ -127,11 +151,11 @@ Recursive step: prove the execution of FullStatement; repeat.
 
 > **Algorithm 3 — Chunk**
 >
-> **Input:** selected circuit $C$, chunk role, $\mathrm{commitment\text{-}config}$ and shared $\mathbf{r}_{\mathrm{mem}}$. **Prover data:** column tables $M,W,S$ and intermediate gate values; lookup multiplicities belong to $W$. **Relation:** $C$'s gates/zero constraints and selected lookup memberships hold; exported products equal the selected memory-event products. **Output:** verified products, `MemoryCaps`, `SetupCaps` and window identifiers $b$.
+> **Input:** selected circuit $C$, $\mathrm{profile}$, $\mathrm{mode}$, $\mathrm{commitment\text{-}config}$ and shared $\mathbf{r}_{\mathrm{mem}}$. **Prover data:** column tables $M,W,S$ and intermediate gate values; lookup multiplicities belong to $W$. **Relation:** $C$'s gates/zero constraints and selected lookup memberships hold; exported products equal the selected memory-event products. **Output:** verified read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional initialization/teardown products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ for unified instruction chunks, memory caps `MemoryCaps`, setup caps `SetupCaps` and window identifiers $b$ (eight for standalone IT, two for unified instructions, empty otherwise).
 >
 > **Notation:** $C$ is the compiled arithmetic circuit selected by the Verifier, on $2^n$ rows. Its wiring, zero constraints, column order, lookup tables and auxiliary relations are fixed public parameters; Algorithm 12 selects the proof parameters and maps the memory, remaining-witness and setup columns $M,W,S$ to their cap groups. Virtual setup tables are evaluated directly by the Verifier; $\operatorname{MLE}(A)$ is table $A$'s multilinear extension.
 >
-> 1. Run SelectParameters (Algorithm 12) for $C$, its role and $\mathrm{commitment\text{-}config}$. Prover sends $b$, followed by the cap groups in setup/memory/witness order, omitting groups absent from the selected layout. The layout fixes their counts, sizes and column grouping. The window identifiers $b$ are 32-bit indices of RAM initialization/teardown ranges: eight for standalone IT, two for unified instructions, and none for other chunks; range sizes are listed with the circuit parameters.
+> 1. Run $\operatorname{SelectParameters}(C,\mathrm{profile},\mathrm{mode},\mathrm{commitment\text{-}config})$ (Algorithm 12). The selected circuit determines the number of window identifiers: eight for standalone IT, two for unified instructions, and zero otherwise. Prover sends those identifiers as $b$, followed by the cap groups in setup/memory/witness order, omitting groups absent from the selected layout. For circuits without IT, $b$ is empty and no identifier words are sent. The layout fixes the cap groups' counts, sizes and column grouping. The identifiers are 32-bit indices of RAM initialization/teardown ranges; range sizes are listed with the circuit parameters. The verified IT relations use $b$ to determine the RAM address windows represented by the returned IT products.
 >
 >    The witness $W$, including multiplicities, is fixed at this point; in merged-feeder instruction chunks it was already committed before $\mathbf r_{\mathrm{mem}}$. Both parties start a fresh transcript $T$ by absorbing the ordered prefix below, omitting cap groups absent from the configured layout:
 >
@@ -142,10 +166,10 @@ Recursive step: prove the execution of FullStatement; repeat.
 >    Each chunk initializes independently from this prefix; no memory-transcript seed is inherited.
 > 2. Prover sends the lookup-PoW nonce. Verifier checks the lookup-PoW threshold from Algorithm 12; both parties draw $(\alpha,\beta)\in E^2$.
 > 3. Prover evaluates $C$ forward, accumulates outputs to sixteen entries and sends tables $A_0,\ldots,A_{s-1}$. Both parties absorb the tables, draw $(u_0,\ldots,u_3,\lambda)$ and set $a_j\leftarrow\operatorname{MLE}(A_j)(u)$.
-> 4. For $k=4,\ldots,n-1$, run GKRLayer (Algorithm 5) for the compression layer on the current claims and batching challenge. Then run it for each main layer, from outputs towards inputs. Each call continues $T$ and returns the claims and batching challenge for the next layer; the last call yields the base-column claims $f_j(\zeta)=a_j$.
+> 4. For $k=4,\ldots,n-1$, let $C_{\mathrm{layer}}$ be $C$'s compression layer for dimension $k$ and update $(u,a,\lambda)\leftarrow\operatorname{GKRLayer}(C_{\mathrm{layer}},(u,a),\lambda,\mathbf{r}_{\mathrm{mem}},\alpha,\beta,b,T)$ (Algorithm 5). Repeat this call for each main layer $C_{\mathrm{layer}}$ of $C$, from outputs towards inputs. Each call updates $T$ and returns the point, claims and batching challenge for the next layer. After the last call, set $\zeta\leftarrow u$; the resulting base-column claims are $f_j(\zeta)=a_j$.
 > 5. Prover sends the batching/proximity-PoW nonce. Verifier checks the batching-PoW threshold from Algorithm 12; both parties draw $\gamma\in E$.
-> 6. Run $\operatorname{OutputChecks}(A_0,\ldots,A_{s-1})$ (Algorithm 6), obtaining the memory-product pairs.
-> 7. Run $\operatorname{WHIR}(\mathrm{base\ caps},\zeta,a,\gamma,T)$ (Algorithm 7). Return the products, `MemoryCaps`, `SetupCaps` and $b$.
+> 6. Run $\operatorname{OutputChecks}(A_0,\ldots,A_{s-1})$ (Algorithm 6), obtaining the read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$ and, for unified instruction chunks, the additional initialization/teardown products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$.
+> 7. Run $\operatorname{WHIR}(\mathrm{base\ caps},\zeta,a,\gamma,T)$ (Algorithm 7). Return $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional pair $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ when present, `MemoryCaps`, `SetupCaps` and $b$.
 >
 > WHIR continues the GKR transcript. These BabyBear instances are unpacked. For packed instances, both parties draw fresh pack coordinates after the main layers, merge claims within each commitment set by multilinear weights, and append the coordinates to $\zeta$ before the batching PoW.
 >
@@ -191,14 +215,14 @@ Recursive step: prove the execution of FullStatement; repeat.
 
 > **Algorithm 5 — GKRLayer**
 >
-> **Input:** output claims $(u,a)$, batching challenge $\lambda$, fixed circuit layer $C$ and the running chunk transcript $T$. **Output:** preceding-layer claims and the next batching challenge; the call updates $T$.
+> **Input:** fixed circuit layer $C_{\mathrm{layer}}$, output claims $(u,a)$, batching challenge $\lambda$, shared memory challenges $\mathbf{r}_{\mathrm{mem}}$, lookup challenges $\alpha,\beta$, window identifiers $b$ and the running chunk transcript $T$. **Output:** preceding-layer point $u'$, claims $a'$ and next batching challenge $\lambda'$; the call updates $T$.
 >
-> **Notation:** `Batch` uses $C$'s power order in $\lambda$ and includes claim $0$ for every zero constraint. `Gate` is the same batched gate expression, evaluated by the Verifier.
+> **Notation:** `Batch` uses $C_{\mathrm{layer}}$'s power order in $\lambda$ and includes claim $0$ for every zero constraint. $\operatorname{Gate}_{C_{\mathrm{layer}}}$ is the same batched gate expression, evaluated by the Verifier with public parameters $(\mathbf{r}_{\mathrm{mem}},\alpha,\beta,b)$.
 >
 > 1. Set $v\leftarrow\operatorname{Batch}(a\text{ and zero claims};\lambda)$; obtain $(r,v,e)\leftarrow\operatorname{EQSumcheck}(u,v,T)$ (Algorithm 4) for the batched gate polynomial.
 > 2. **Compression layer:**
 >    1. Prover sends $h_j(0,r),h_j(1,r)$ for every required input.
->    2. Verifier requires $v=e\,\operatorname{Gate}(\text{endpoint values};\lambda)$; both parties absorb all endpoints and draw $(t,\lambda')$.
+>    2. Verifier requires $v=e\,\operatorname{Gate}_{C_{\mathrm{layer}}}(\text{endpoint values};\lambda,\mathbf{r}_{\mathrm{mem}},\alpha,\beta,b)$; both parties absorb all endpoints and draw $(t,\lambda')$.
 >    3. For each $j$, set:
 >
 >       $$
@@ -208,9 +232,9 @@ Recursive step: prove the execution of FullStatement; repeat.
 >    4. Return $((t,r),a',\lambda')$.
 > 3. **Otherwise, main layer:**
 >    1. Prover sends the required input evaluations at $r$.
->    2. Verifier requires $v=e\,\operatorname{Gate}(\text{input values};\lambda)$.
->    3. Prover sends the additional evaluations required by $C$'s auxiliary polynomial relations. Both parties absorb these together with the input evaluations and draw $\lambda'$.
->    4. Check $C$'s auxiliary relations and publicly evaluable setup polynomials. Return the preceding-layer claims at $r$ in $C$'s fixed input-polynomial order, and $\lambda'$.
+>    2. Verifier requires $v=e\,\operatorname{Gate}_{C_{\mathrm{layer}}}(\text{input values};\lambda,\mathbf{r}_{\mathrm{mem}},\alpha,\beta,b)$.
+>    3. Prover sends the additional evaluations required by $C_{\mathrm{layer}}$'s auxiliary polynomial relations. Both parties absorb these together with the input evaluations and draw $\lambda'$.
+>    4. Check $C_{\mathrm{layer}}$'s auxiliary relations and publicly evaluable setup polynomials with the supplied public parameters. Return $r$, the preceding-layer claims in $C_{\mathrm{layer}}$'s fixed input-polynomial order, and $\lambda'$.
 >
 > Compression gates: product $h_0h_1$; rational sum $(n_0d_1+n_1d_0,d_0d_1)$. The Verifier evaluates public setup polynomials directly; committed setup polynomials become WHIR opening claims.
 >
@@ -471,13 +495,13 @@ Recursive step: prove the execution of FullStatement; repeat.
 **Circuit and memory parameters.** Merkle caps contain sixteen 256-bit hashes. $\mathrm{profile}$ and $\mathrm{mode}$ fix the instruction-family selection in Algorithm 12; the families have the following row counts and capacity charges.
 
 - **Unrolled instructions:** add/sub/LUI/AUIPC/MOP (family 1); jump/branch/compare (2); shift/binary (3); unsigned multiply/divide (4); word memory (16); subword memory (17). Trace logarithms are 24 except multiply/divide, which uses 23.
-- **Delegations:** BLAKE2s, bigint, Keccak special5, theta/rho, column parity and chi5, with trace logarithms $(20,22,22,22,22,22)$ and charges $A_d=(44\cdot2^{20},20\cdot2^{22},15\cdot2^{22},17\cdot2^{22},15\cdot2^{22},13\cdot2^{22})$ in that order.
+- **Delegations:** BLAKE2s, bigint, Keccak special5, theta/rho, column parity and chi5, with trace logarithms $(20,22,22,22,22,22)$ and memory/permutation-argument terms per chunk $A_d=(44\cdot2^{20},20\cdot2^{22},15\cdot2^{22},17\cdot2^{22},15\cdot2^{22},13\cdot2^{22})$ in that order.
 - **IT windows:** standalone IT has $2^{24}$ rows and eight windows of $2^{24}$ 32-bit words per proof. Unified has two windows of $2^{25}$ bytes per chunk. With identifiers below 64, unified covers windows below $2^{31}$ bytes; unrolled covers the $2^{32}$-byte range.
 - **Unified capacity:** each circuit has $2^{23}$ rows but is charged $2^{24}$ cycles by the participant bound.
 
 > **Algorithm 12 — SelectParameters**
 >
-> **Input:** fixed circuit description $C$, chunk role (instruction, standalone IT or delegation), $\mathrm{profile}$, $\mathrm{mode}$ and $\mathrm{commitment\text{-}config}$. **Output:** ordered instruction-family list, commitment layout and GKR/WHIR parameters. All layout choices and proof parameters below are fixed before proof messages are read.
+> **Input:** fixed circuit description $C$, $\mathrm{profile}$, $\mathrm{mode}$ and $\mathrm{commitment\text{-}config}$. **Output:** ordered instruction-family list, commitment layout and GKR/WHIR parameters. All layout choices and proof parameters below are fixed before proof messages are read.
 >
 > **Program setup caps (Algorithm 1):**
 >
@@ -492,7 +516,12 @@ Recursive step: prove the execution of FullStatement; repeat.
 > `ProgramSetupCaps` contains one cap per selected instruction family, including families with zero chunks. Neither its count nor its family list is sent in the proof. $\mathrm{commitment\text{-}config}$ does not change this selection.
 >
 > 1. Select the ordered instruction-family list from the table above and the other families from their fixed identifiers. From $C$, set $n=\log_2(\mathrm{trace\ rows})$, memory/witness/committed-setup widths $(c_M,c_W,c_S)$ and the GKR layer relations.
-> 2. Select the parameter row below. For merged-feeder instruction chunks, require unified continuation $\mathrm{mode}$ and $n=23$; select feeder. Otherwise select ordinary by $n\in\{20,21,22,23,24\}$. Standalone IT and delegation chunks always select ordinary. Unsupported combinations have no Verifier instance.
+> 2. Select the parameter row below:
+>
+>    - **$\mathrm{commitment\text{-}config}=\mathrm{ordinary}$:** select ordinary parameters by $n\in\{20,21,22,23,24\}$.
+>    - **$\mathrm{commitment\text{-}config}=\mathrm{merged\text{-}feeder}$:** for the unified instruction circuit, require continuation $\mathrm{mode}$ and $n=23$, then select feeder. Standalone IT and delegation chunks select ordinary parameters by $n\in\{20,21,22,23,24\}$.
+>
+>    Unsupported combinations have no Verifier instance.
 > 3. Set cap size to 16 hashes. For ordinary, `MemoryCaps`, `WitnessCaps` and `SetupCaps` commit the nonempty groups $M,W,S$, respectively. For feeder, `MemoryCaps` commits $M\mathbin{\|}W$ and `SetupCaps` commits $S$. These groups fix the cap counts and the column order within each leaf. Batch claims in memory/witness/setup order.
 > 4. For each round $r$, set $m_r=n-\sum_{i<r}k_i$, $|D_r|=2^{m_r}L_r$, leaf values per column to $2^{k_r}$ and path depth to $\log_2|D_r|-k_r-4$. Base leaves contain that many BabyBear values per column; later leaves contain $2^{k_r}$ extension-field coefficients. Use the fixed domain generator and tree ordering. Admit only configurations with power-of-two domains, $L_r\ge2$, $1\le k_r\le m_r$, $2^{k_r+4}\le|D_r|\le2^{27}$, $m_r-k_r\ge4$ before intermediate commitments, and $1\le n-\sum_r k_r$. Set the final coefficient count to $2^{n-\sum_r k_r}$.
 > 5. Set $\ell=c_M+c_W+c_S$ and $D_{\mathrm{lookup}}=(a2^n+T)\max(1,c_S)$, where $a$ counts lookup accesses per row and $T$ counts committed-table entries plus the $2^{16}$ range table and $2^{19}$ timestamp table when used. With $B(x)=\lceil\log_2\max(1,x)\rceil$, select:
@@ -519,7 +548,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 
 **Soundness — parameter instantiation (conditional).** Algorithm 12 fixes the circuit and commitment layout, field domains and challenge/query schedule to which the preceding bounds apply. For each selected circuit, instantiate Algorithm 5's batching/round/test counts, Algorithm 6's occurrence and numerator-degree bounds, and Algorithm 7's proximity/list and agreement bounds. The lookup charge $D_{\mathrm{lookup}}$ must dominate the degree sum actually proved in Algorithm 6. The PoW thresholds enter the computational accounting of the protected tests; their instantiation must use the challenge-distribution bound $\mu$ and the corresponding algebraic degrees. In particular, the constant $123$ in step 5 must be reconciled with $-\log_2\mu\approx121.66$ for the stated sampling rule. These per-configuration checks remain proof obligations.
 
-For unrolled memory, if Algorithm 2's charges bound all selected instruction/delegation events and each IT proof contributes at most $8\cdot2^{24}$ events on each side, then
+For unrolled memory, let $n_f$ count chunks of instruction family $f$, let $2^{\ell_f}$ be its trace rows per chunk, and let $n_d$ count chunks of delegation type $d$. Let $A_d$ be that delegation type's per-chunk term count listed above, and let $n_{\mathrm{IT}}$ count standalone IT chunks. If Algorithm 2's charges bound all selected instruction/delegation events and each IT proof contributes at most $8\cdot2^{24}$ events on each side, then
 
 $$
 \begin{aligned}

@@ -184,7 +184,7 @@
 
 - **Chunk Proof Outputs** include the Read Set and Write Set pair of extension field accumulators produced by the memory permutation argument's grand product relations. The pairs are accumulated across every chunk via multiplication, so that ultimately the Verifier ends up with a single pair. After injection of the initialisation and finalisation values described above, the Verifier can conclude the proof by checking that the accumulator pair values are equal.
 
-- **Public Inputs:** The system circuits have no dedicated public-input columns. The Prover dynamically provides, via proof data, values on the final machine's state and the program's setup Merkle tree caps to the Verifier. The Verifier then uses the relevant input values to complete the global memory argument's verification step, propagate the program output, or update a "recursion hash chain" (along with metadata related to the proof) for later verification by either the same verifier or a future recursive one.
+- **Public Inputs:** The system circuits have no dedicated public-input columns. The Prover provides to the Verifier, via proof data, the claimed final machine state, parameters identifying the memory initialisation and finalisation address ranges, and the program's setup Merkle tree caps. The Verifier then uses the relevant input values and transcript-derived challenges to verify memory initialisation and finalisation relations, complete the global memory argument's verification step, propagate the program output, and update a "recursion hash chain" (along with the program's setup caps and ending program counter) for later verification by either the same verifier or a future recursive one.
 
 ## 3. The Local Chunks
 
