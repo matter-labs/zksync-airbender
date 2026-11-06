@@ -1,7 +1,5 @@
 use super::*;
 
-mod split;
-
 /// Query terms stay small while the original/OOD equality polynomial stays
 /// dense. All buffers are read and written only by exec-stream operations.
 pub(super) struct InDomainState {
@@ -133,7 +131,7 @@ impl InDomainState {
     /// polynomial without drawing. The caller then draws the challenge and
     /// calls [`Self::fold_terms`]. Gated draws fold only intermediate oracles,
     /// which always carry the base queries' terms (base-round folding PoW is
-    /// rejected at schedule admission).
+    /// rejected when the proof layout is built).
     pub(super) fn correct_and_commit(
         &mut self,
         reductions: &mut DeviceSlice<E4>,
@@ -146,7 +144,7 @@ impl InDomainState {
             "PoW-gated folding step without symbolic in-domain terms"
         );
         assert!(self.leaf_width >= 2);
-        split::correct_and_commit(
+        crate::in_domain::correct_and_commit(
             &self.leaves[..self.count * self.leaf_stride],
             self.leaf_stride as u32,
             self.leaf_width as u32,
@@ -167,7 +165,7 @@ impl InDomainState {
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert!(self.count != 0 && self.leaf_width >= 2);
-        split::fold_terms(
+        crate::in_domain::fold_terms(
             &mut self.leaves[..self.count * self.leaf_stride],
             self.leaf_stride as u32,
             self.leaf_width as u32,
