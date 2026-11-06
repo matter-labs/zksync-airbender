@@ -26,9 +26,7 @@ use crate::upstream::FieldExtension;
 use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixImpl};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::holder::{
-    TraceHolder, TreesCacheMode, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
-};
+use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode, TreesHolder};
 
 #[cfg(test)]
 use crate::upstream::{extension_field_from_base_coeffs, Field, MerkleTreeCapVarLength};
@@ -47,14 +45,6 @@ const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 const LOG_SRC_COLS_PER_COSET: u32 = EXT4_DEGREE.trailing_zeros();
 const _: () = assert!(EXT4_DEGREE.is_power_of_two());
 
-// The retained route calls gpu_ntt's compact/intermediate forward LDE, then
-// its generated 21..=24 three-pass or 23..=24 two-pass dispatch (strategy.rs /
-// forward.rs); the compact two-pass range ends at 20.
-const MAX_RETAINED_RESIDUE_NTT_LOG: u32 = 24;
-// oracle_commit.rs fixes staging at 32 MiB = 2^20 digests and stages complete
-// cosets. Its max_cosets_per_stage division must fit at least one coset.
-const MAX_RETAINED_STAGED_RESIDUE_LOG: u32 = 20;
-
 /// Where the WHIR oracle's unified Merkle cap should land after its per-coset
 /// trees are committed.
 ///
@@ -71,69 +61,6 @@ enum CapTarget<'a> {
 enum OracleValues {
     Coefficients,
     Recomputed(gpu_core::primitives::context::DeviceAllocation<BF>),
-}
-
-// BabyBear coefficient-oracle capability check at allocation.
-fn admit_baby_bear_recursive_oracle_shape(
-    log_n: u32,
-    log_v: u32,
-    log_lde: u32,
-    log_cap: u32,
-    twiddle_domain_log2: u32,
-) -> bool {
-    assert!(log_lde > 0, "recursive WHIR oracles require LDE factor > 1");
-    let log_residue = log_n
-        .checked_sub(log_v)
-        .expect("recursive WHIR leaf exceeds polynomial");
-    let log_leaves = log_residue
-        .checked_add(log_lde)
-        .expect("recursive WHIR domain overflow");
-    let log_domain = log_n
-        .checked_add(log_lde)
-        .expect("recursive WHIR evaluation domain overflow");
-    // Equality makes the five-level reduction roots the cap; the upper-tree
-    // builder accepts zero remaining levels.
-    assert!(
-        log_leaves >= PARTIAL_TREE_REDUCTION_LAYERS + log_cap,
-        "recursive WHIR commitments require a partial tree"
-    );
-    assert!(
-        log_domain <= gpu_ntt::ntt_twiddles::OMEGA_LOG_ORDER,
-        "recursive BabyBear WHIR evaluation domain exceeds field capacity"
-    );
-    assert!(
-        log_domain <= twiddle_domain_log2,
-        "recursive BabyBear WHIR domain exceeds context twiddle capacity"
-    );
-    let fused = fused_commit::supported(log_n, log_v);
-    if fused {
-        return true;
-    }
-    assert!(
-        log_residue <= MAX_RETAINED_RESIDUE_NTT_LOG,
-        "recursive WHIR residue log {log_residue} exceeds generated forward NTT dispatch \
-         (maximum {MAX_RETAINED_RESIDUE_NTT_LOG})"
-    );
-    assert!(
-        log_residue >= PARTIAL_TREE_REDUCTION_LAYERS,
-        "no existing recursive WHIR route for log_n={log_n}, log_v={log_v}, residue_log={log_residue}: \
-         Subwarp requires max(coefficient bytes {}, hash scratch) <=49152 bytes; \
-         Block requires 32..=256 residue threads and V>=4; fused in-domain leaves require log_v<=8; \
-         retained hashing requires at least 32 leaves per coset",
-        (EXT4_DEGREE * size_of::<BF>()) << log_n,
-    );
-    let columns_per_leaf = EXT4_DEGREE << log_v;
-    assert!(
-        columns_per_leaf <= u16::MAX as usize,
-        "recursive WHIR retained leaf requires {columns_per_leaf} BF columns, exceeding CUDA grid-Y \
-         limit 65535 (log_v={log_v})"
-    );
-    assert!(
-        log_residue <= MAX_RETAINED_STAGED_RESIDUE_LOG,
-        "recursive WHIR residue log {log_residue} exceeds the fixed 32 MiB staging buffer \
-         (2^{MAX_RETAINED_STAGED_RESIDUE_LOG} digests): a complete coset must fit before hashing"
-    );
-    false
 }
 
 pub(crate) struct GpuWhirExtensionOracle {
@@ -203,16 +130,7 @@ impl GpuWhirExtensionOracle {
         let packed_leaf_count = trace_len / values_per_leaf;
         let packed_leaf_count_log2 = packed_leaf_count.trailing_zeros();
         let total_leaf_count_log2 = packed_leaf_count_log2 + log_lde_factor;
-        let fused_coefficients = admit_baby_bear_recursive_oracle_shape(
-            trace_len_log2,
-            log_values_per_leaf,
-            log_lde_factor,
-            log_tree_cap_size,
-            context
-                .ntt_device_context()
-                .whir_leaf_transform_params()
-                .omega_log_order,
-        );
+        let fused_coefficients = fused_commit::supported(trace_len_log2, log_values_per_leaf);
 
         // Reinterpret bitreverse-N coefficients as V bitreverse-(N/V)
         // residue polynomials per BF limb. The leaf reader's bit-reversed
