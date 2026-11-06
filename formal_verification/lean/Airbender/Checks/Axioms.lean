@@ -1,3 +1,4 @@
+import Tests.NativeReducedPositive
 import Tests.NativeReducedExecution
 import Tests.NativeReducedFetched
 import Tests.NativeReducedPC
@@ -2845,3 +2846,12 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedExecution.initialized_retirement
 #print axioms Tests.NativeReducedFetched.empty_execution
 #print axioms Tests.NativeReducedFetched.empty_top_endpoint
+#print axioms Tests.NativeReducedWitness.native_constraints
+#print axioms Tests.NativeReducedFixture.accepted
+#print axioms Tests.NativeReducedFixture.public_inputs
+#print axioms Tests.NativeReducedFixture.program_image
+#print axioms Tests.NativeReducedFixture.decoded
+#print axioms Tests.NativeReducedPositive.initialized_execution
+#print axioms Tests.NativeReducedPositive.initialized_values
+#print axioms Tests.NativeReducedPositive.candidate_participation
+#print axioms Tests.NativeReducedPositive.corrupted_actual_write_rejected

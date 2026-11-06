@@ -7840,6 +7840,69 @@
       "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
       "backport_reuse_path": "Tests/ShiftFetched.lean",
       "backport_reuse_sha256": "d26490979e30679f38513defefa987929a7d40245a5d47dc4876953a2c53c522"
+    },
+    {
+      "path": "Tests/NativeReducedWitness.lean",
+      "change": "Copy the exact actual-native at_shift membership proof unchanged, using certified native rows and native offset1511681. Concrete new key65537/65536 rows compose with exact sign/truncation/filler membership; no table identity is supplied as a premise.",
+      "backport_reuse_revision": "d8b237e4fd61794b3b5e422afb06d04c90316038",
+      "backport_reuse_path": "Tests/NativeReducedNumerics.lean",
+      "backport_reuse_sha256": "e2514c8a63f16d049d77015dba5a78ed7dbc8955ef37dd123cd4945d397c6115"
+    },
+    {
+      "path": "Tests/NativeReducedWitness.lean",
+      "change": "Reuse only the small Array Nat-to-field assignment representation. All142values for two actual monolithic reduced SLL/x0 rows are newly constructed and kernel-checked; no old split witness values,table or native constraint acceptance is transferred.",
+      "backport_reuse_revision": "d8b237e4fd61794b3b5e422afb06d04c90316038",
+      "backport_reuse_path": "Tests/ShiftRoutingWitness.lean",
+      "backport_reuse_sha256": "d3a36ccd4d1a3c72c0985191286e649769a095dbf9f861c6af08debd13c94c7d"
+    },
+    {
+      "path": "Tests/NativeReducedWitness.lean",
+      "change": "Extend the actual imported-equation finite-certificate pattern to all117equations and22lookups. Small transparent polynomial evaluator and four complete32/32/32/21blocks keep index rewriting out of expanded native data without changing kernel semantics or limits.",
+      "backport_reuse_revision": "d8b237e4fd61794b3b5e422afb06d04c90316038",
+      "backport_reuse_path": "Tests/NativeReducedPC.lean",
+      "backport_reuse_sha256": "27b1afb2d4c45671695f7f9a5ad37b30ca5de37fced4cf0f9a8ab2c3d962a1e3"
+    },
+    {
+      "path": "Tests/NativeReducedFixture.lean",
+      "change": "Adapt only logical token encoding and accepted state/memory/public-read construction to actual NativeReducedFamily rows and checked complete native constraints. New source values1,PCs0/48,rd3/x0,written2/0 and exact actual three-port matching are checked independently.",
+      "backport_reuse_revision": "d8b237e4fd61794b3b5e422afb06d04c90316038",
+      "backport_reuse_path": "Tests/ShiftHistoryFixture.lean",
+      "backport_reuse_sha256": "589d3f257c7fb119d153ed3ee942a3d12cc06a2e91e48e4e7d7a7a62daff4197"
+    },
+    {
+      "path": "Tests/NativeReducedFixture.lean",
+      "change": "Adapt original public seed reads and sparse/padded image assembly for the13-word prefix with3padding rows. Original source/misa bytes stay intact but native reduced shift fields/masks are newly projected; no split native table/metadata equivalence.",
+      "backport_reuse_revision": "d8b237e4fd61794b3b5e422afb06d04c90316038",
+      "backport_reuse_path": "Tests/ShiftValuesFixture.lean",
+      "backport_reuse_sha256": "eea706453995298ca72ee9adb33aa1a494526b8ee83695615de37722a43982d3"
+    },
+    {
+      "path": "Tests/NativeReducedFixture.lean",
+      "change": "Reuse only unchanged original Sail byte-read and original stateful decoder lemmas through explicit code/misa frames. Actual GPR seed values and native query membership are newly checked.",
+      "backport_reuse_revision": "d8b237e4fd61794b3b5e422afb06d04c90316038",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeSetup.lean",
+      "backport_reuse_sha256": "71d05a92b73a1b7893ac6e9455aef94d2ef2b6b600b500b38f618f2ff75a3a53"
+    },
+    {
+      "path": "Tests/NativeReducedFixture.lean",
+      "change": "Retain original public words,instruction constructors and initial code/misa state for13explicit slots only. Old split-family masks/tables/compiled metadata are not reused as native reduced facts or equated with the actual eight-word fixed fixture.",
+      "backport_reuse_revision": "d8b237e4fd61794b3b5e422afb06d04c90316038",
+      "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/NativeData.lean",
+      "backport_reuse_sha256": "871c1261bf58c6b610e73fcd41a8336dcb4b97f4faea02ca177ca19f19371c0a"
+    },
+    {
+      "path": "Tests/NativeReducedPositive.lean",
+      "change": "Adapt finite original fetched execution and terminal PC/GPR read extraction to the complete new native SLL/x0 fixtures. No final state/result/range is supplied; actual terminal tokens determine observed values and x0 remains zero.",
+      "backport_reuse_revision": "d8b237e4fd61794b3b5e422afb06d04c90316038",
+      "backport_reuse_path": "Tests/ShiftFetched.lean",
+      "backport_reuse_sha256": "d26490979e30679f38513defefa987929a7d40245a5d47dc4876953a2c53c522"
+    },
+    {
+      "path": "Tests/NativeReducedPositive.lean",
+      "change": "Use the same actual native equation106 extraction with abstract setup to reject a changed actual port write in both complete fixtures. Abstract extraction avoids foreign-data elaboration; it is instantiated at the exact native pool,not assumed equivalent.",
+      "backport_reuse_revision": "d8b237e4fd61794b3b5e422afb06d04c90316038",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftWrite.lean",
+      "backport_reuse_sha256": "4f5aeae6fec3445150e22ca1b20a0de3068061b0138d5166fd78e6cc9f97bce8"
     }
   ],
   "setup_artifacts": [

@@ -85,8 +85,9 @@ Full combined row effects and execution remain pending. See the
    incoming bounds/alignment are now derived without per-row PC answers. Original
    preparation/retirement and finite fetched execution now compose for selected
    shifts, including actual terminal PC bounds/reads and empty traces. A complete
-   positive nonempty117-equation execution fixture, other combined profiles and
-   physical setup/protocol/terminal/init correspondence remain unfinished.
+   nonempty ordinary/x0 SLL fixtures now check all117equations,22lookups and full
+   modeled public execution boundaries. Other shift fixture variants and combined
+   profiles,physical setup/protocol/terminal/init correspondence remain unfinished.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.
 

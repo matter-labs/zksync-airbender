@@ -231,8 +231,14 @@ certificate or physical preprocessing/ROM enforcement. Other operation profiles,
 worker/caller/accounting/protocol spans, padding/terminal and physical init/teardown
 remain open. Original interrupt/exception paths, general compiler/Rust/JSON,
 cryptographic enforcement and completeness remain separately scoped. Positive
-local Sail and zero-row native fixtures do not establish a complete positive
-nonempty117-equation native execution witness. No new issue or assumption is added.
+local Sail and zero-row native fixtures retain their separate scopes. [Two new
+complete nonempty native SLL/x0 fixtures](Tests/NativeReducedPositive.lean) now
+check all117equations/22lookups,activity,state/memory matching,original public
+seed/PC construction and full original sparse/stateful decoder membership before
+instantiating fetched execution. The13-word public image and actual eight-word
+fixed configuration are NOT equated; native preprocessing/physical setup fidelity
+remains separate. Other mode/alias/multi-row fixtures and combined operations stay
+open. No new issue,fix or interface assumption is added.
 
 ## Import and generation fidelity
 

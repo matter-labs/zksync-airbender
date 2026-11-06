@@ -165,3 +165,10 @@ transports proved original GPR histories through control-register updates; no
 expected reads, source ranges, successors or intermediate states are supplied.
 Aligned tracked cells remain meaningful input. Other combined operations and
 physical/setup/protocol/padding/terminal/init/completeness remain separate.
+
+[Complete nonempty native SLL/x0 fixtures](../../../../Tests/NativeReducedPositive.lean)
+now check all native equations/lookups and actual state/memory matching,including
+readonly refreshes and discarded nonzero candidate participation,before deriving
+original initialized execution/terminal reads. Original public initialization and
+decoder construction are proved;no per-row state/read/result is supplied. Native
+public/preprocessing/physical fidelity and other combined profiles remain separate.

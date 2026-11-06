@@ -697,11 +697,63 @@ interrupt/exception paths and general compiler/Rust/JSON/cryptographic/completen
 boundaries remain separate. No native defect, production fix or issue-handling
 assumption is introduced. This is not v3 parity or full reduced-machine coverage.
 
+## Complete positive native SLL/x0 execution fixtures (6 November 2026)
+
+[Two complete native witnesses](Tests/NativeReducedWitness.lean) now satisfy all
+117 actual regenerated equations and all22lookups against the actual 5,771,521-row
+fixed pool. They execute original SLL x3,x1,x2 at PC0 and SLL x0,x1,x2 at PC48 with
+x1=x2=1. Both retain candidate2; the actual write is2 for rd3 and0 for rd0. Every
+scalar/timestamp lookup and both sign/high-byte queries are included, as are the
+actual truncation,shift contribution and filler rows. No split-family native
+constraint,witness value or table identity is transferred.
+
+[The nonempty public trace fixtures](Tests/NativeReducedFixture.lean) prove actual
+native activity,state matching and complete three-port memory matching,including
+readonly refreshes and discarded x0 participation. Original Sail reads construct
+all public seeds and initial PCs. Original public byte/stateful decoding builds
+the complete13-slot prefix with unsupported holes and3padding rows; actual native
+masks/fields are newly projected and complete native ten-field query membership
+is checked at each actual row. The imported native fixed fixture remains its
+separate unchanged eight-word/CSR configuration. This modeled public setup is not
+assumed equal to a native Rust preprocessing export or physical fixed-ROM setup.
+
+[Positive initialized execution](Tests/NativeReducedPositive.lean) instantiates
+the already checked public native theorem with every premise proved. It derives
+finite original fetched execution and actual original Sail terminal PC/GPR reads:
+PC4/x3=2 for the ordinary row; PC52/x3=0 and x0=0 for the discarded row. The same
+nonzero native candidate2 participates in both,while only the actual write masks
+to zero. Changing that port write rejects full native acceptance. No expected
+state,source bound,read,result or successor is a theorem premise. These are two
+nonempty accepted native row/trace fixtures,not merely local Sail examples or PC
+slices. Other modes,immediates,aliases,wrapping and multi-row fixture variants
+remain separate coverage work; no universal completeness claim follows.
+
+Whole-row simp reached the default recursion limit; small complete32/32/32/21
+polynomial blocks plus individual lookups replace it. A transparent named evaluator
+keeps index rewrites out of the expanded native matrix. Small state-component
+certificates and abstract-setup equation extraction likewise avoid deep reductions.
+All exact data remain kernel-checked; no opacity,resource/proof limit increase,
+native_decide or project axiom is used. All owned workers terminated,with no
+memory/wall-time limit hit. The arithmetic draft construction is independently
+checked by Lean; Python candidate evaluation is not a trusted certificate.
+
+All affected bounded modules, 2,643 explicit standard-only axiom roots and 161 public
+Review roots pass with exact provenance, four guide names, 2,602 links/anchors
+and layer gates. Full Review used 539.27 MiB footprint/3096.86 MiB resident in25.20s;
+independent provenance used15.89/34.64MiB in6.54s. All owned processes terminated
+at unchanged limits. Exact pinned origins pass189v3/852backport identities,with
+unchanged native inputs and dependencies. This establishes positive accepted execution examples for the selected actual native target under
+its stated public interfaces. Other combined operations,workers/callers/accounting,
+unified protocol spans,padding/terminal machine and initialization/teardown,
+general native public/setup/preprocessing/ROM/physical correspondence and compiler/
+cryptographic/completeness remain open. No native defect,production fix or new
+issue-handling assumption is introduced; this is not full reduced-machine/v3 parity.
+
 ## Checked coverage
 
 | Circuit | Coverage |
 | --- | --- |
-| [Native combined reduced](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean) | Actual 117-equation artifact and complete native fixed pool. Selected original public shifts derive initialized ranges, canonical keys and [complete RV32 candidates/actual x0-masked writes](Airbender/Review/Trace/Families/ReducedMachine/Results.lean). [Original Sail register histories](Airbender/Review/Trace/Families/ReducedMachine/Registers.lean) now derive states/GPR transfers/code frames and decoder replay. [Original shift clause history](Airbender/Review/Trace/Families/ReducedMachine/Clauses.lean) now derives operand selection and original clause execution at the actual GPR after-state. [Numerical native PC+4/wrap](Airbender/Review/Trace/Families/ReducedMachine/PC.lean) now follows from original public decoding and actual native carry equations. [Original initialized normal/fetched shift execution](Airbender/Review/Trace/Families/ReducedMachine/FetchedExecution.lean) now composes to the actual terminal PC/cells. Other combined profiles and protocol/terminal/init remain open; no full reduced-machine/parity claim. The historical shipped JSON is distinct. |
+| [Native combined reduced](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean) | Actual 117-equation artifact and complete native fixed pool. Selected original public shifts derive initialized ranges, canonical keys and [complete RV32 candidates/actual x0-masked writes](Airbender/Review/Trace/Families/ReducedMachine/Results.lean). [Original Sail register histories](Airbender/Review/Trace/Families/ReducedMachine/Registers.lean) now derive states/GPR transfers/code frames and decoder replay. [Original shift clause history](Airbender/Review/Trace/Families/ReducedMachine/Clauses.lean) now derives operand selection and original clause execution at the actual GPR after-state. [Numerical native PC+4/wrap](Airbender/Review/Trace/Families/ReducedMachine/PC.lean) now follows from original public decoding and actual native carry equations. [Original initialized normal/fetched shift execution](Airbender/Review/Trace/Families/ReducedMachine/FetchedExecution.lean) now composes to the actual terminal PC/cells. [Two complete nonempty SLL/x0 fixtures](Tests/NativeReducedPositive.lean) now check all117equations/22lookups and instantiate original public initialization/decoding/execution. Other combined profiles and protocol/terminal/init remain open; no full reduced-machine/parity claim. The historical shipped JSON is distinct. |
 | [ADD/SUB](Airbender/Review/Circuits/AddSub/Theorems.lean) | Conditional ADD/ADDI/SUB/LUI/AUIPC destination and original Sail PC/register effects. Packed native masks derive the eight selector bits. The actual masked destination write is observed. Aligned PC wraparound and discarded x0 writes are included. |
 
 | Integration | Coverage |

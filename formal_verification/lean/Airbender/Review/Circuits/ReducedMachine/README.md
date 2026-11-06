@@ -236,3 +236,14 @@ and [empty actual-native boundaries](../../../../Tests/NativeReducedFetched.lean
 keep positive local Sail/zero-row scope below complete nonempty117-equation native
 acceptance. Other combined profiles and native setup/physical/protocol/terminal/init
 remain open; this is selected-profile coverage, not full machine/parity.
+
+## Complete positive native rows
+
+[Ordinary/x0 SLL witnesses](../../../../Tests/NativeReducedWitness.lean) now check
+all117actual equations and22lookups at the complete native fixed pool. [Public
+nonempty trace construction](../../../../Tests/NativeReducedFixture.lean) proves
+activity,state/memory matching,original seed/PC reads and full original sparse/
+stateful decoder membership. [Initialized positive execution](../../../../Tests/NativeReducedPositive.lean)
+derives actual terminal PC/GPR reads,retains nonzero discarded candidate2 and
+rejects an altered actual write. These2SLL examples do not generalize fixtures to
+other combined operations or certify native public/setup/physical/protocol spans.

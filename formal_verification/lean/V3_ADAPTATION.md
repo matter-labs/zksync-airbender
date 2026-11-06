@@ -324,3 +324,20 @@ pass. Other combined operations, workers/accounting/protocol/padding/terminal/in
 native public/fixed-ROM/physical setup, general compiler/crypto/completeness and
 original interrupt/exception paths remain separate. Selected-profile execution
 is not full reduced-machine coverage or v3 parity. No native fix/issue/assumption.
+
+## Complete nonempty native reduced execution examples
+
+[The actual SLL/x0 witnesses](Tests/NativeReducedWitness.lean) check all117native
+equations and22lookups at the complete unchanged native pool. [Public fixtures](Tests/NativeReducedFixture.lean)
+then prove activity,state/memory matching,original Sail seed/PC reads,complete
+13-word sparse/stateful decoding with holes/padding and actual query membership.
+[The positive execution checks](Tests/NativeReducedPositive.lean) derive actual
+PC4/x3=2 or PC52/x3=0,x0=0 from original fetched execution while candidate2 remains
+present on both rows. No desired read/result/state or old split native table
+identity is supplied. These are complete modeled nonempty accepted traces;
+other profiles and native public/preprocessing/ROM/physical correspondence remain
+separate,including the distinction between13public words and8native fixed words.
+All 2,643 standard-only axiom and 161 public Review roots pass. Native inputs are
+unchanged;small transparent certificates replace deep reduction without raising
+limits. This fixture checkpoint is not new general coverage,full machine/parity,
+a native defect/fix or a new issue-handling assumption.

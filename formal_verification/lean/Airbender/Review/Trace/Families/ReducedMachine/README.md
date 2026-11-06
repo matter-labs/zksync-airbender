@@ -134,3 +134,15 @@ retain x0/PC wrap, constructed initialized segments, terminal rejection and actu
 zero-row acceptance. A complete positive nonempty117-equation native fixture,
 other combined profiles and setup/physical/protocol/padding/terminal/init remain
 open. Successful ordinary four-byte Sail paths do not include interrupts/exceptions.
+
+## Complete nonempty positive examples
+
+[Two actual native SLL/x0 fixtures](../../../../../Tests/NativeReducedPositive.lean)
+now instantiate fetched execution with every modeled interface proved. [Native
+witnesses](../../../../../Tests/NativeReducedWitness.lean) check117equations and
+22lookups,while [trace/public construction](../../../../../Tests/NativeReducedFixture.lean)
+checks activity,state/memory matching,original Sail seed reads and complete
+13-slot original sparse/stateful decoding. Actual terminal PC/GPR reads and
+candidate/write participation follow. These are nonempty accepted examples,not
+local-only execution slices. Other mode/alias/multi-row fixtures,combined
+operations and native public/setup/physical/protocol boundaries remain separate.

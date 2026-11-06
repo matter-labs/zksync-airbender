@@ -169,3 +169,9 @@ full stateful shift decoding and aligned tracked domain are the inputs; local
 states/ranges/reads/results/PC are conclusions. This selected successful four-byte
 profile does not certify other combined operations or general native setup/ROM/
 physical/protocol/padding/terminal/init/completeness boundaries.
+
+[Two complete positive nonempty native traces](../../../../Tests/NativeReducedPositive.lean)
+now exercise actual117-equation/22-lookup acceptance,activity,state/memory matching
+and original public seed/PC/decoder construction before fetched execution. Native
+clock/order/state/read/results remain derived. This concrete SLL/x0 evidence does
+not certify other combined profiles or universal physical/public/setup bindings.
