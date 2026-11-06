@@ -31,8 +31,12 @@ mop_extension = ["verifier_common/mop_extension"]
 modular_fma = ["verifier_common/modular_fma", "field/modular_fma"]
 special_opcodes_extension = ["verifier_common/special_opcodes_extension"]
 no_caches = ["verifier_common/no_caches"]
-verifier_stats = ["verifier_common/verifier_stats"]
 default = ["blake2_with_compression"]
+
+[lints.rust]
+# The generated verifier code the bins include tests `feature = "verifier_stats"`; the
+# instrumentation needs std, so it exists only in host builds of `verifier`.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("verifier_stats"))'] }
 
 # --- Full-statement verifiers (production; `full_statement_verifiers/<name>_<blake>.elf`),
 # wired to the pessimistic-conjecture (production) circuit verifiers. The exact set of built
