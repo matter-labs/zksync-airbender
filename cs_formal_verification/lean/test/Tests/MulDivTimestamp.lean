@@ -1,5 +1,7 @@
 import Tests.MulDiv
 import Slop.MulDiv.Trace
+import Slop.Verification.StaticLookup
+import Mathlib.Tactic.IntervalCases
 
 namespace Tests.MulDivTimestamp
 open Airbender Arithmetic Trace
@@ -23,21 +25,26 @@ theorem constraints (remainder rollover : Bool) : FlatOperation.ConstraintsHoldF
     (Verification.environment (assignment remainder rollover)) Airbender.MulDiv.clockConstraints := by
   apply Verification.holds_append (left := Airbender.MulDiv.importedConstraints)
     (right := Airbender.MulDiv.importedConstraintsTimestampLookups)
-  · have core := MulDiv.satisfies remainder
-    cases remainder <;> cases rollover <;>
-      simpa [Airbender.MulDiv.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-        Lookup.Contains, Vector.map, Expression.eval, Verification.environment, assignment, MulDiv.row,
-        Verification.range16, Verification.range13, Verification.pairLookup,
-        show (4 : ZMod babyBearModulus) + 4 + -8 = 0 by decide,
-        show (14745600 : ZMod babyBearModulus) * (524284 + 4) * (524284 + 4) +
-          3840 * (524284 + 4) = 0 by decide,
-        show (8 : ZMod babyBearModulus) + -7 + 3840 * (524284 + 4) = 0 by decide] using core
-  · cases remainder <;> cases rollover <;>
-      simp [Airbender.MulDiv.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    all_goals repeat' apply And.intro
-    all_goals apply Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment, MulDiv.row]
-    all_goals decide
+  · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+    constructor
+    · cases remainder <;> cases rollover <;> decide
+    · rw [List.forall_mem_iff_forall_getElem]
+      intro i bound
+      have short : i < 16 := by simpa only [Airbender.MulDiv.lookup_count] using bound
+      interval_cases i
+      all_goals first
+        | exact Verification.range16_contains (by cases remainder <;> cases rollover <;> decide)
+        | exact Verification.range13_contains (by cases remainder <;> cases rollover <;> decide)
+        | exact Verification.static_lookup_contains _ _ _ (by cases remainder <;> cases rollover <;> decide +kernel)
+            (by cases remainder <;> cases rollover <;> decide +kernel)
+  · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+    constructor
+    · simp [Airbender.MulDiv.importedConstraintsTimestampLookups, FlatOperation.constraints]
+    · rw [List.forall_mem_iff_forall_getElem]
+      intro i bound
+      have short : i < 8 := by simpa only [Airbender.MulDiv.timestamp_count] using bound
+      interval_cases i
+      all_goals exact Proofs.range_contains (by cases remainder <;> cases rollover <;> decide)
 
 theorem native_clocks (remainder rollover : Bool) :
     ClockEffects Airbender.MulDiv.importedConstraintsTraceColumns (assignment remainder rollover) := by
