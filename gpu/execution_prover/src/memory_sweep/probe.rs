@@ -9,7 +9,7 @@ use gpu_core::allocator::tracker::AllocationDirection;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
 use gpu_gkr::stage1::merged_commitment::{
-    commit_merged_from_transfers_for_geometry, GpuGKRMergedCommitTransfer,
+    commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
 };
 use gpu_prover_context::{AllocationMode, ProverContext};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
@@ -93,10 +93,9 @@ pub(super) fn commit_memory(
                 drain(context)?;
                 return Err(error);
             }
-            commit_merged_from_transfers_for_geometry::<A>(
+            commit_merged_from_transfers::<A>(
                 &circuit.precomputations.gkr_programs,
                 config,
-                geometry,
                 inputs,
                 context,
             )?

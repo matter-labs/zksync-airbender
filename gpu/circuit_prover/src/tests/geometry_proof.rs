@@ -27,7 +27,7 @@ pub(super) fn gpu_memory_caps(
     .unwrap();
     let job = if geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness {
         use gpu_gkr::stage1::merged_commitment::{
-            commit_merged_from_transfers_for_geometry, GpuGKRMergedCommitTransfer,
+            commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
         };
         let setup = gpu_gkr::setup::GpuGKRSetupTransfer::new(
             Arc::clone(base.gpu_setup_host.as_ref().unwrap()),
@@ -37,14 +37,8 @@ pub(super) fn gpu_memory_caps(
         let mut inputs =
             GpuGKRMergedCommitTransfer::new(setup, decoder, inits, Some(trace), context).unwrap();
         inputs.schedule(context).unwrap();
-        commit_merged_from_transfers_for_geometry(
-            &base.gkr_programs,
-            &base.prover_config,
-            geometry,
-            inputs,
-            context,
-        )
-        .unwrap()
+        commit_merged_from_transfers(&base.gkr_programs, &base.prover_config, inputs, context)
+            .unwrap()
     } else {
         let mut inputs = gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::new(
             decoder,

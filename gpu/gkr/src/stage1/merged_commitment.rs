@@ -6,10 +6,7 @@ use fft::GoodAllocator;
 use super::GpuGKRStage1Output;
 use crate::proof_layout::GpuGKRTraceGeometry;
 use crate::setup::GpuGKRSetupTransfer;
-use crate::upstream::{
-    BaseColumns, BaseCommitmentGeometry, CommitmentMode, GKRCircuitArtifact, PrimeField,
-    ProverConfig,
-};
+use crate::upstream::{BaseColumns, BaseCommitmentGeometry, CommitmentMode, ProverConfig};
 use crate::GkrPrograms;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::device_tracing::Range;
@@ -19,17 +16,6 @@ use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::holder::{WitnessCommitmentStrategy, WitnessPostCommitStorage};
 use gpu_trace::trace::memory::{schedule_memory_cap_readback, MemoryCommitmentJob};
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
-/// Field-free merged routing and the generated base reader's f0/f1 limit.
-pub fn validate_merged_packed_geometry(geometry: &BaseCommitmentGeometry) {
-    assert_eq!(
-        geometry.commitment_mode(),
-        CommitmentMode::MergedMemoryAndWitness
-    );
-    assert!(
-        geometry.values_per_leaf() <= 2,
-        "GPU base opening verifier supports only fold_log2<=1 (one or two accumulators)"
-    );
-}
 
 /// Shared H2D ownership for the existing BF memory-and-witness generator.
 pub struct GpuGKRMergedCommitTransfer<'a, A: GoodAllocator> {
@@ -75,35 +61,22 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRMergedCommitTransfer<'a, A> {
     }
 }
 
-/// Bind the merged producer to its immutable config and logical artifact.
-pub fn validate_merged_commitment_geometry<F: PrimeField>(
-    config: &ProverConfig,
-    geometry: &BaseCommitmentGeometry,
-    circuit: &GKRCircuitArtifact<F>,
-) {
-    assert_eq!(
-        config.commitment_mode,
-        CommitmentMode::MergedMemoryAndWitness
-    );
-    let expected = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit));
-    assert_eq!(
-        *geometry, expected,
-        "merged commitment config/geometry mismatch"
-    );
-    validate_merged_packed_geometry(geometry);
-    gpu_trace::trace::memory::validate_stage1_commitment_geometry(geometry, circuit);
-}
-
-/// Commit one concatenated memory/witness set using an explicitly bound shape.
-/// Config-driven merged memory and worker entries use this same producer.
-pub fn commit_merged_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
+/// Commit one concatenated memory/witness set in the base geometry of a merged `config`.
+pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
     gkr_programs: &GkrPrograms,
     config: &ProverConfig,
-    geometry: BaseCommitmentGeometry,
     inputs: GpuGKRMergedCommitTransfer<'a, A>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
-    validate_merged_commitment_geometry(config, &geometry, gkr_programs.compiled_circuit());
+    assert_eq!(
+        config.commitment_mode,
+        CommitmentMode::MergedMemoryAndWitness,
+        "the merged producer requires a merged config"
+    );
+    let geometry = BaseCommitmentGeometry::from_config(
+        config,
+        BaseColumns::of(gkr_programs.compiled_circuit()),
+    );
 
     inputs.transfer.ensure_transferred(context)?;
     let GpuGKRMergedCommitTransfer {

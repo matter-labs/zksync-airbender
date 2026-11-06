@@ -13,7 +13,7 @@ use gpu_core::allocator::tracker::AllocationDirection::{Ascending, Descending};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
 use gpu_gkr::stage1::merged_commitment::{
-    commit_merged_from_transfers_for_geometry, GpuGKRMergedCommitTransfer,
+    commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
 };
 use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
@@ -445,10 +445,9 @@ fn enqueue_phase_two<'a>(
             JobType::MemoryCommitment(job)
         }
         PhaseOneInputs::MergedMemoryCommitment(bundle) => {
-            let job = commit_merged_from_transfers_for_geometry::<A>(
+            let job = commit_merged_from_transfers::<A>(
                 &state.precomputations.gkr_programs,
                 prover_config,
-                state.precomputations.geometry,
                 bundle,
                 context,
             )?;

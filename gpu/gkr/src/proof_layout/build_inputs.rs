@@ -161,7 +161,7 @@ pub fn build_proof_layout_inputs_for_geometry(
     let message_log = geometry.message_size_log2();
     assert!(
         whir_schedule.base_round.fold_log2 <= 1,
-        "unsupported GPU base fold"
+        "the GPU base opening reader supports only fold_log2 <= 1 (one or two accumulators)"
     );
     let mut previous_lde = whir_schedule.base_lde_factor_log2();
     assert!(

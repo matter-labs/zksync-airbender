@@ -55,20 +55,6 @@ impl<'a> MemoryCommitmentJob<'a> {
     }
 }
 
-/// Field-free admission shared by config-driven memory and proof entries.
-/// The generated base opening verifier has one or two accumulators (f0/f1).
-pub fn validate_separate_base_commitment_geometry(geometry: &BaseCommitmentGeometry) {
-    assert!(
-        geometry.values_per_leaf() <= 2,
-        "GPU base opening verifier supports only fold_log2<=1 (one or two accumulators)"
-    );
-    assert_eq!(
-        geometry.commitment_mode(),
-        CommitmentMode::SeparateMemoryAndWitness,
-        "memory-only producer requires separate memory and witness commitments"
-    );
-}
-
 /// Field-independent shape binding for separate or concatenated stage1 storage.
 pub fn validate_stage1_commitment_geometry<F: crate::upstream::PrimeField>(
     geometry: &BaseCommitmentGeometry,
@@ -100,7 +86,11 @@ fn commit_memory_inner<'a>(
     let trace_len = compiled_circuit.trace_len;
     assert!(trace_len.is_power_of_two());
     let log_domain_size = trace_len.trailing_zeros();
-    validate_separate_base_commitment_geometry(&geometry);
+    assert_eq!(
+        geometry.commitment_mode(),
+        CommitmentMode::SeparateMemoryAndWitness,
+        "memory-only producer requires separate memory and witness commitments"
+    );
     validate_stage1_commitment_geometry(&geometry, compiled_circuit);
     let mut memory_holder = TraceHolder::new_base(
         geometry,

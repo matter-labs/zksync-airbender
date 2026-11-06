@@ -9,8 +9,7 @@ use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use era_cudart::result::CudaResult;
 
 use crate::upstream::{
-    BaseColumns, BaseCommitmentGeometry, CommitmentMode, CpuGKRSetup, ProverConfig,
-    UnrolledCircuitWitnessEvalFn,
+    BaseColumns, BaseCommitmentGeometry, CpuGKRSetup, ProverConfig, UnrolledCircuitWitnessEvalFn,
 };
 use execution_prover::config::SoundnessMode;
 use execution_prover::setup::CanonicalCircuitSetup;
@@ -60,15 +59,6 @@ impl LazyGpuGKRSetupHost {
                     .expect("the CPU setup is consumed exactly once");
                 if cpu_setup.hypercube_evals.is_empty() {
                     return Ok(None);
-                }
-                if self.geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness {
-                    gpu_gkr::stage1::merged_commitment::validate_merged_packed_geometry(
-                        &self.geometry,
-                    );
-                } else {
-                    gpu_trace::trace::memory::validate_separate_base_commitment_geometry(
-                        &self.geometry,
-                    );
                 }
                 let host =
                     GpuGKRSetupHost::precompute_for_geometry(&cpu_setup, self.geometry, context)?;
