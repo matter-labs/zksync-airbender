@@ -1,5 +1,6 @@
 import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
+import Slop.UnifiedReduced.Completeness.Binary
 import Slop.BabyBear
 
 namespace Tests.UnifiedBinaryImmediate
@@ -15,33 +16,15 @@ private def operand (kind : Fin 6) : BitVec 32 := SailRV32.Functions.sign_extend
 private def rightByte (kind : Fin 6) (i : Nat) : Nat := ((operand kind).extractLsb' (8 * i) 8).toNat
 private def outputWord (kind : Fin 6) : BitVec 32 :=
   Verification.byteOperation (operation kind).tag 0xabcd1234 (operand kind)
-private def byte (kind : Fin 6) (i : Nat) : Nat := ((outputWord kind).extractLsb' (8 * i) 8).toNat
 private def tag (kind : Fin 6) : Nat := UnifiedReduced.Setup.binaryTag (operation kind).tag
 
-private def assignment (kind : Fin 6) : Nat → ZMod babyBearModulus
-  | 4 | 5 | 27 | 129 | 130 | 131 | 132 | 133 => 1
-  | 7 | 44 => 3
-  | 2 | 30 => 4
-  | 32 => 8
-  | 10 | 92 | 101 | 110 | 119 => (tag kind : ZMod babyBearModulus)
-  | 36 => 0x1234 | 37 => 0xabcd
-  | 8 | 94 => (rightByte kind 0 : ZMod babyBearModulus)
-  | 9 | 89 | 103 => (rightByte kind 1 : ZMod babyBearModulus)
-  | 57 | 90 | 112 | 121 => (rightByte kind 2 : ZMod babyBearModulus)
-  | 50 => (((outputWord kind).toNat % 65536 : Nat) : ZMod babyBearModulus)
-  | 51 => (((outputWord kind).toNat / 65536 : Nat) : ZMod babyBearModulus)
-  | 58 | 95 => (byte kind 0 : ZMod babyBearModulus)
-  | 62 | 104 => (byte kind 1 : ZMod babyBearModulus)
-  | 66 | 113 => (byte kind 2 : ZMod babyBearModulus)
-  | 70 | 122 => (byte kind 3 : ZMod babyBearModulus)
-  | 74 | 93 => 0x34 | 75 | 111 => 0xcd
-  | 102 => 0x12 | 120 => 0xab
-  | 88 => 3
-  | _ => 0
+private def inputs (kind : Fin 6) : UnifiedReduced.Completeness.Binary :=
+  ⟨⟨0, 0, 4, 0, 0, 0, 0, 0, 0, 0⟩, (operation kind).tag, true, 1, 0, 3, 0x34, 0x12, 0xcd, 0xab,
+    rightByte kind 0, rightByte kind 1, rightByte kind 2, rightByte kind 3, 0, 0⟩
+private def assignment (kind : Fin 6) : Nat → ZMod babyBearModulus := (inputs kind).honest
 
 private def instructionBits (kind : Fin 6) : BitVec 32 :=
-  BitVec.ofNat 32 ((immediate kind).toNat * 1048576 +
-    if kind.val % 3 = 0 then 0x0c193 else if kind.val % 3 = 1 then 0x0e193 else 0x0f193)
+  #[0x6780c193, 0x6780e193, 0x6780f193, 0xdef0c193, 0xdef0e193, 0xdef0f193][kind.val]!
 private noncomputable def before (kind : Fin 6) : State :=
   { resetMachine with
     regs := resetMachine.regs |>.insert .PC 0 |>.insert .x1 0xabcd1234 |>.insert .x3 0
@@ -53,49 +36,14 @@ private noncomputable def before (kind : Fin 6) : State :=
 
 private def row (kind : Fin 6) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment kind⟩
 
+private theorem valid (kind : Fin 6) : (inputs kind).Valid := by
+  fin_cases kind <;>
+    refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
+    decide
+
 private theorem constraints (kind : Fin 6) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment kind)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table (before kind))) := by
-  apply Verification.holds_append
-  · fin_cases kind
-    all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Verification.environment, Expression.eval, assignment, outputWord, byte, tag, operation,
-      Verification.byteOperation, operand, immediate, rightByte, Lookup.Contains, Table.toRaw, fromElements]
-    all_goals repeat' apply And.intro
-    all_goals solve
-      | decide
-      | (apply Verification.range16_contains; decide)
-      | exact ⟨⟨7, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨254, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨13689, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨4871, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨52737, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨44033, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨13808, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨5118, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨52992, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨44288, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨79225, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨70407, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨118273, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨109569, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨79344, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨70654, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨118528, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨109824, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨144761, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨135943, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨183809, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨175105, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨144880, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨136190, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨184064, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨175360, by decide⟩, by with_unfolding_all decide⟩
-  · fin_cases kind
-    all_goals simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    all_goals repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment]
-    all_goals decide
+    (Verification.environment (assignment kind)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table (before kind))) :=
+  UnifiedReduced.Completeness.Binary.complete _ (valid kind) _
 
 theorem airbender_before (kind : Fin 6) : Configured (before kind) := by
   configured_fixture [before]
@@ -142,7 +90,7 @@ private theorem program_image (kind : Fin 6) : UnifiedReduced.programImage (befo
   have bytes : (Cell.ram 0).read (before kind) = .ok (instructionBits kind) (before kind) := by
     fin_cases kind <;> simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
-      before, instructionBits, immediate, Std.ExtHashMap.getElem_insert]
+      before, instructionBits, Std.ExtHashMap.getElem_insert]
   have decoded : decodeOnReset (instructionBits kind) = some (entry kind).instruction := by
     fin_cases kind <;> decode_on_reset
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]

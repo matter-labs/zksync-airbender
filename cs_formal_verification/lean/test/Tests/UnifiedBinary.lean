@@ -1,5 +1,6 @@
 import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
+import Slop.UnifiedReduced.Completeness.Binary
 import Slop.BabyBear
 
 namespace Tests.UnifiedBinary
@@ -12,29 +13,12 @@ private def operation (kind : Fin 3) : ShiftBinop.Operation :=
   if kind.val = 0 then .xor else if kind.val = 1 then .or else .and
 private def outputWord (kind : Fin 3) : BitVec 32 :=
   Verification.byteOperation (operation kind).tag 0xabcd1234 0xef015678
-private def byte (kind : Fin 3) (i : Nat) : Nat := ((outputWord kind).extractLsb' (8 * i) 8).toNat
 private def tag (kind : Fin 3) : Nat := UnifiedReduced.Setup.binaryTag (operation kind).tag
 
-private def assignment (kind : Fin 3) : Nat → ZMod babyBearModulus
-  | 4 | 5 | 27 | 129 | 130 | 131 | 132 | 133 => 1
-  | 6 | 38 => 2
-  | 7 | 44 => 3
-  | 2 | 30 => 4
-  | 32 => 8
-  | 10 | 92 | 101 | 110 | 119 => (tag kind : ZMod babyBearModulus)
-  | 36 => 0x1234 | 37 => 0xabcd | 42 => 0x5678 | 43 => 0xef01
-  | 50 => (((outputWord kind).toNat % 65536 : Nat) : ZMod babyBearModulus)
-  | 51 => (((outputWord kind).toNat / 65536 : Nat) : ZMod babyBearModulus)
-  | 58 | 95 => (byte kind 0 : ZMod babyBearModulus)
-  | 62 | 104 => (byte kind 1 : ZMod babyBearModulus)
-  | 66 | 113 => (byte kind 2 : ZMod babyBearModulus)
-  | 70 | 122 => (byte kind 3 : ZMod babyBearModulus)
-  | 74 | 93 => 0x34 | 75 | 111 => 0xcd
-  | 76 | 94 => 0x78 | 77 | 112 => 1
-  | 102 => 0x12 | 103 => 0x56 | 120 => 0xab | 121 => 0xef
-  | 88 => 3
-  | 80 => 0xabcd1234 * 0xef015678 * 943718400
-  | _ => 0
+private def inputs (kind : Fin 3) : UnifiedReduced.Completeness.Binary :=
+  ⟨⟨0, 0, 4, 0, 0, 0, 0, 0, 0, 0⟩, (operation kind).tag, false, 1, 2, 3, 0x34, 0x12, 0xcd, 0xab,
+    0x78, 0x56, 0x01, 0xef, 0, 0⟩
+private def assignment (kind : Fin 3) : Nat → ZMod babyBearModulus := (inputs kind).honest
 
 private def instructionBits (kind : Fin 3) : BitVec 32 :=
   if kind.val = 0 then 0x0020c1b3 else if kind.val = 1 then 0x0020e1b3 else 0x0020f1b3
@@ -49,36 +33,14 @@ private noncomputable def before (kind : Fin 3) : State :=
 
 private def row (kind : Fin 3) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment kind⟩
 
+private theorem valid (kind : Fin 3) : (inputs kind).Valid := by
+  fin_cases kind <;>
+    refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
+    decide
+
 private theorem constraints (kind : Fin 3) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment kind)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table (before kind))) := by
-  apply Verification.holds_append
-  · fin_cases kind
-    all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Verification.environment, Expression.eval, assignment, outputWord, byte, tag, operation,
-      Verification.byteOperation, Lookup.Contains, Table.toRaw, fromElements]
-    all_goals repeat' apply And.intro
-    all_goals solve
-      | decide
-      | (apply Verification.range16_contains; decide)
-      | exact ⟨⟨1, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨257 + 0x34 * 256 + 0x78, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨257 + 0x12 * 256 + 0x56, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨257 + 0xcd * 256 + 1, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨257 + 0xab * 256 + 0xef, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨65793 + 0x34 * 256 + 0x78, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨65793 + 0x12 * 256 + 0x56, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨65793 + 0xcd * 256 + 1, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨65793 + 0xab * 256 + 0xef, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨131329 + 0x34 * 256 + 0x78, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨131329 + 0x12 * 256 + 0x56, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨131329 + 0xcd * 256 + 1, by decide⟩, by with_unfolding_all decide⟩
-      | exact ⟨⟨131329 + 0xab * 256 + 0xef, by decide⟩, by with_unfolding_all decide⟩
-  · fin_cases kind
-    all_goals simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    all_goals repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment]
-    all_goals decide
+    (Verification.environment (assignment kind)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table (before kind))) :=
+  UnifiedReduced.Completeness.Binary.complete _ (valid kind) _
 
 theorem airbender_before (kind : Fin 3) : Configured (before kind) := by
   configured_fixture [before]

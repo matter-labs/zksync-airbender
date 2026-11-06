@@ -1,0 +1,153 @@
+import Human.Circuits.UnifiedReduced.Tables.Setup
+import Mathlib.Tactic.IntervalCases
+
+/-! Completeness direction of the unified setup table: explicit row indices for
+    the regions an honest witness queries. Each row is computed once, symbolically. -/
+
+namespace Airbender.UnifiedReduced.Completeness
+open Verification
+set_option warningAsError true
+
+/-- Membership in the unified setup table from an explicit row index. -/
+theorem table_contains {p : Nat} [Fact p.Prime] {before : Reference.RiscV.Sail.State}
+    {entry : Vector (Expression (ZMod p)) 10} {env : Environment (ZMod p)} (i : Fin 2097537)
+    (h : entry.map (Expression.eval env) = (Setup.row before i).map (fun n : Nat => (n : ZMod p))) :
+    (Lookup.mk (Setup.table before).toRaw entry).Contains env := by
+  change ∃ i : Fin 2097537, entry.map (Expression.eval env) =
+    (Setup.row before i).map (fun n : Nat => (n : ZMod p))
+  exact ⟨i, h⟩
+
+/-- The byte operation of the wide binary rows, in the table's own form. -/
+def byteOp (tag a b : Nat) : Nat :=
+  if tag = 4 then (a ^^^ b) % 256 else if tag = 6 then a ||| b else a &&& b
+
+private theorem fixed_row (before : Reference.RiscV.Sail.State) (n : Nat) (h : n < 524545) :
+    Setup.row before ⟨n, by omega⟩ = Setup.binaryRow ⟨n, h⟩ := by
+  simp only [Setup.row, show n < 1048961 by omega, dite_true, Setup.fixedRow, h]
+
+private theorem split_bytes (a b : Nat) (ha : a < 256) (hb : b < 256) :
+    ByteUtils.splitTwoBytes ⟨(a * 256 + b) % 65536, Nat.mod_lt _ (by decide)⟩ =
+      (⟨a, ha⟩, ⟨b, hb⟩) := by
+  simp only [ByteUtils.splitTwoBytes, Prod.mk.injEq, Fin.mk.injEq]
+  omega
+
+/-- Sign rows (tag 3): a byte and its sign-extension byte. -/
+theorem sign_row (before : Reference.RiscV.Sail.State) (b : Nat) (hb : b < 256) :
+    Setup.row before ⟨1 + b, by omega⟩ =
+      #v[b, if b < 128 then 0 else 255, 0, 0, 0, 0, 0, 0, 0, 3] := by
+  rw [fixed_row before (1 + b) (by omega)]
+  simp only [Setup.binaryRow, shiftBinopRow, show ¬ 1 + b = 0 by omega, show 1 + b < 257 by omega,
+    ↓reduceIte, show 1 + b - 1 = b by omega]
+  rfl
+
+private theorem binary_byte_row (tag a b : Nat) (ha : a < 256) (hb : b < 256) :
+    binaryByteRow tag (a * 256 + b) = #v[a, b, byteOp tag a b, 0, 0, 0, 0, 0, 0, tag] := by
+  simp only [binaryByteRow, split_bytes a b ha hb, byteOp]
+  rfl
+
+/-- Wide binary rows (XOR/OR/AND tags 4/6/7, stored under IDs 52/53/54). -/
+theorem binary_row (before : Reference.RiscV.Sail.State) (tag a b : Nat)
+    (valid : tag = 4 ∨ tag = 6 ∨ tag = 7) (ha : a < 256) (hb : b < 256)
+    (i : Fin 2097537)
+    (hi : i.val = (if tag = 4 then 257 else if tag = 6 then 65793 else 131329) + a * 256 + b) :
+    Setup.row before i = #v[a, b, byteOp tag a b, 0, 0, 0, 0, 0, 0, Setup.binaryTag tag] := by
+  have k := Nat.lt_of_lt_of_le (show a * 256 + b < a * 256 + 256 by omega)
+    (show a * 256 + 256 ≤ 65536 by omega)
+  obtain ⟨n, hn⟩ := i
+  rcases valid with rfl | rfl | rfl
+  all_goals
+    simp only [Nat.reduceEqDiff, ↓reduceIte] at hi
+    subst hi
+  · rw [fixed_row before _ (by omega)]
+    simp only [↓reduceIte, Setup.binaryRow, shiftBinopRow, show ¬ 257 + a * 256 + b = 0 by omega,
+      show ¬ 257 + a * 256 + b < 257 by omega, show 257 + a * 256 + b < 65793 by omega,
+      show 257 + a * 256 + b - 257 = a * 256 + b by omega, binary_byte_row _ a b ha hb]
+    rfl
+  · rw [fixed_row before _ (by omega)]
+    simp only [↓reduceIte, Setup.binaryRow, shiftBinopRow, show ¬ 65793 + a * 256 + b = 0 by omega,
+      show ¬ 65793 + a * 256 + b < 257 by omega, show ¬ 65793 + a * 256 + b < 65793 by omega,
+      show 65793 + a * 256 + b < 131329 by omega,
+      show 65793 + a * 256 + b - 65793 = a * 256 + b by omega, binary_byte_row _ a b ha hb]
+    rfl
+  · rw [fixed_row before _ (by omega)]
+    simp only [↓reduceIte, Setup.binaryRow, shiftBinopRow, show ¬ 131329 + a * 256 + b = 0 by omega,
+      show ¬ 131329 + a * 256 + b < 257 by omega, show ¬ 131329 + a * 256 + b < 65793 by omega,
+      show ¬ 131329 + a * 256 + b < 131329 by omega, show 131329 + a * 256 + b < 196865 by omega,
+      show 131329 + a * 256 + b - 131329 = a * 256 + b by omega, binary_byte_row _ a b ha hb]
+    rfl
+
+/-- Shift-amount rows (tag 8): two bytes of the second operand and the 5-bit amount. -/
+theorem amount_row (before : Reference.RiscV.Sail.State) (a b : Nat) (ha : a < 256) (hb : b < 256)
+    (i : Fin 2097537) (hi : i.val = 196865 + a * 256 + b) :
+    Setup.row before i = #v[a, b, a % 32, 0, 0, 0, 0, 0, 0, 8] := by
+  obtain ⟨n, hn⟩ := i
+  simp only at hi
+  subst hi
+  rw [fixed_row before _ (by omega)]
+  simp only [↓reduceIte, Setup.binaryRow, shiftBinopRow, show ¬ 196865 + a * 256 + b = 0 by omega,
+    show ¬ 196865 + a * 256 + b < 257 by omega, show ¬ 196865 + a * 256 + b < 65793 by omega,
+    show ¬ 196865 + a * 256 + b < 131329 by omega, show ¬ 196865 + a * 256 + b < 196865 by omega,
+    show 196865 + a * 256 + b < 262401 by omega,
+    show (196865 + a * 256 + b - 196865) % 65536 = (a * 256 + b) % 65536 by omega,
+    split_bytes a b ha hb]
+  rfl
+
+/-- One byte's shifted contribution, in the table's own form. -/
+def contribution (position byte amount operation : Nat) : Nat :=
+  (shiftByteContribution position byte amount operation).toNat
+
+/-- Shift contribution rows (tag 9). -/
+theorem shift_row (before : Reference.RiscV.Sail.State) (position byte amount operation : Nat)
+    (hp : position < 4) (hb : byte < 256) (ha : amount < 32) (ho : operation < 8)
+    (i : Fin 2097537)
+    (hi : i.val = 262401 + position * 65536 + byte * 256 + amount * 8 + operation) :
+    Setup.row before i = #v[position, byte, amount, operation,
+      contribution position byte amount operation % 256,
+      contribution position byte amount operation / 256 % 256,
+      contribution position byte amount operation / 65536 % 256,
+      contribution position byte amount operation / 16777216 % 256, 0, 9] := by
+  obtain ⟨n, hn⟩ := i
+  simp only at hi
+  subst hi
+  rw [fixed_row before _ (by omega)]
+  have key : 262401 + position * 65536 + byte * 256 + amount * 8 + operation - 262401 =
+      position * 65536 + byte * 256 + amount * 8 + operation := by omega
+  simp only [↓reduceIte, Setup.binaryRow, shiftBinopRow,
+    show ¬ 262401 + position * 65536 + byte * 256 + amount * 8 + operation = 0 by omega,
+    show ¬ 262401 + position * 65536 + byte * 256 + amount * 8 + operation < 257 by omega,
+    show ¬ 262401 + position * 65536 + byte * 256 + amount * 8 + operation < 65793 by omega,
+    show ¬ 262401 + position * 65536 + byte * 256 + amount * 8 + operation < 131329 by omega,
+    show ¬ 262401 + position * 65536 + byte * 256 + amount * 8 + operation < 196865 by omega,
+    show ¬ 262401 + position * 65536 + byte * 256 + amount * 8 + operation < 262401 by omega, key,
+    show (position * 65536 + byte * 256 + amount * 8 + operation) / 65536 = position by omega,
+    show (position * 65536 + byte * 256 + amount * 8 + operation) / 256 % 256 = byte by omega,
+    show (position * 65536 + byte * 256 + amount * 8 + operation) / 8 % 32 = amount by omega,
+    show (position * 65536 + byte * 256 + amount * 8 + operation) % 8 = operation by omega]
+  rfl
+
+theorem byteOp_lt (tag a b : Nat) (ha : a < 256) (hb : b < 256) : byteOp tag a b < 256 := by
+  unfold byteOp
+  split
+  · exact Nat.mod_lt _ (by decide)
+  · split
+    · exact Nat.or_lt_two_pow (n := 8) ha hb
+    · exact lt_of_le_of_lt Nat.and_le_left ha
+
+/-- Membership from an explicit row, checked column by column. -/
+theorem table_contains_row {p : Nat} [Fact p.Prime] {before : Reference.RiscV.Sail.State}
+    {entry : Vector (Expression (ZMod p)) 10} {env : Environment (ZMod p)} (i : Fin 2097537)
+    (v : Vector Nat 10) (hrow : Setup.row before i = v)
+    (h0 : entry[0].eval env = (v[0] : ZMod p)) (h1 : entry[1].eval env = (v[1] : ZMod p))
+    (h2 : entry[2].eval env = (v[2] : ZMod p)) (h3 : entry[3].eval env = (v[3] : ZMod p))
+    (h4 : entry[4].eval env = (v[4] : ZMod p)) (h5 : entry[5].eval env = (v[5] : ZMod p))
+    (h6 : entry[6].eval env = (v[6] : ZMod p)) (h7 : entry[7].eval env = (v[7] : ZMod p))
+    (h8 : entry[8].eval env = (v[8] : ZMod p)) (h9 : entry[9].eval env = (v[9] : ZMod p)) :
+    (Lookup.mk (Setup.table before).toRaw entry).Contains env := by
+  refine table_contains i ?_
+  rw [hrow]
+  apply Vector.ext
+  intro j hj
+  simp only [Vector.getElem_map]
+  interval_cases j <;> assumption
+
+end Airbender.UnifiedReduced.Completeness
