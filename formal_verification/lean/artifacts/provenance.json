@@ -7546,6 +7546,69 @@
       "backport_reuse_revision": "0dec0fe0fad195628850ae2d5aff0c818558cd93",
       "backport_reuse_path": "Tests/NativeReducedRanges.lean",
       "backport_reuse_sha256": "1a80da71a4e0562128359d6816470930af7c4072751f6afb9366de38de94243e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftPorts.lean",
+      "change": "Reuse unchanged shared native_history_read/write after independently proving actual reduced mixed-port register cells from native equations60/61/113 and original decoded indices. Preserve actual readonly aliases; no split metadata/constraint transfer.",
+      "backport_reuse_revision": "c66cfacb25bc8ab777f86e5934742874025a8f08",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/PortReads.lean",
+      "backport_reuse_sha256": "d863cd4730e1d3beac9aa894721700eb404bbbeda4c82ecdb97066cf0b398ae0"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftPorts.lean",
+      "change": "Reuse actual reduced selector recovery; derive the second port low/high address and register-space flag from original native equations, not a supplied address/space result.",
+      "backport_reuse_revision": "c66cfacb25bc8ab777f86e5934742874025a8f08",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftRouting.lean",
+      "backport_reuse_sha256": "6fcc5cc1b5ff7f5baac9793d41009d9d2b0e554026d6fe6af06ec9b913df5f1c"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ReducedMachine.lean",
+      "change": "Adapt the small GPR-transfer/initialized-history observables to actual native reduced ports, original shift decoder projection and NativeReducedFamily. Constructed states/order/reads/writes/replay and final matching are conclusions. No split-family identity premise.",
+      "backport_reuse_revision": "c66cfacb25bc8ab777f86e5934742874025a8f08",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/ShiftBinop.lean",
+      "backport_reuse_sha256": "2b3388cb81342853662bdf9c0119479cf9e4a740368c1a00cf3b9fd9847c1c9f"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ZeroRegister.lean",
+      "change": "Reuse unchanged shared zero propagation and Clean-to-Sail realization only after proving actual reduced mixed destination and x0 mask rule. Full original public decoder derives all local rules; no expected zero read/write or intermediate state is supplied.",
+      "backport_reuse_revision": "c66cfacb25bc8ab777f86e5934742874025a8f08",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ShiftBinop/ZeroRegister.lean",
+      "backport_reuse_sha256": "3ef427d363657ed673ce8814721fd589c5dcd4772ff2c102d63b061bfc2c681a"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/CodeHistory.lean",
+      "change": "Adapt memory/code/misa frames and original stateful decoder replay to actual reduced mixed ports. Native accepted selected-shift equations derive register space per event; metadata alone no longer suffices. Reuse shared exact original Sail frame lemmas.",
+      "backport_reuse_revision": "c66cfacb25bc8ab777f86e5934742874025a8f08",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ShiftBinop/CodeHistory.lean",
+      "backport_reuse_sha256": "44b8b4084e84c9d8c3ba3c0f323b6f05f9d5ef45a2094fc667df0cf16fb1a70e"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/RegisterHistory.lean",
+      "change": "Reuse chronological row grouping/segment construction and original GPR history assembly after the actual native reduced zero/address/read/write/code-frame proofs. No per-row state/read/result or replay premise is introduced.",
+      "backport_reuse_revision": "c66cfacb25bc8ab777f86e5934742874025a8f08",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ShiftBinop/RegisterHistory.lean",
+      "backport_reuse_sha256": "8de1f432b4d5dd76fd48c4acb4312156c6d2f95a9b406a9603c14ed533f5c677"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/Registers.lean",
+      "change": "Retain a short public original Sail register-history theorem over concrete fixedData acceptance, original public decoding and aligned public seed domain. Numerical PC, operand/clause execution and physical/preprocessing setup remain separate.",
+      "backport_reuse_revision": "c66cfacb25bc8ab777f86e5934742874025a8f08",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ShiftBinop/Registers.lean",
+      "backport_reuse_sha256": "b024f9c02299411c4c0620e4c2a751b47979abd407625b911b44d7e548a65395"
+    },
+    {
+      "path": "Tests/NativeReducedRegisters.lean",
+      "change": "Adapt readonly alias and whole-data-state discarded-write consequences to actual native reduced port history, using original Sail observations. Reject malformed native mixed addresses and initialized nonzero x0 events. No complete positive117-equation acceptance fixture is claimed.",
+      "backport_reuse_revision": "c66cfacb25bc8ab777f86e5934742874025a8f08",
+      "backport_reuse_path": "Tests/ShiftRegisters.lean",
+      "backport_reuse_sha256": "a6fc8c5a31a3dc94cb4aa69622e8cf0a2dd8a820b8a6e713afa9cc8397fe5d4b"
+    },
+    {
+      "path": "Tests/NativeReducedRegisters.lean",
+      "change": "Retain conditional-native versus positive-fixture scope. Eight roots include a positive exact imported three-port/x0 Sail group mechanics fixture; its assignment is explicitly not claimed to satisfy full native constraints/decoder.",
+      "backport_reuse_revision": "c66cfacb25bc8ab777f86e5934742874025a8f08",
+      "backport_reuse_path": "Tests/NativeReducedResults.lean",
+      "backport_reuse_sha256": "5a1607fc636976fa7e4a38585d4785fe89c5ee84a693261110f17cd8018493d1"
     }
   ],
   "setup_artifacts": [

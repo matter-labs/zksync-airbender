@@ -506,11 +506,51 @@ worker/protocol/padding/terminal/init remain open. The native fixed public fixtu
 compiler/preprocessing/ROM and physical enforcement boundaries are unchanged.
 No native defect or issue-handling assumption is established.
 
+## Native reduced original Sail register history (6 November 2026)
+
+[The short public register-history claim](Airbender/Review/Trace/Families/ReducedMachine/Registers.lean)
+now constructs native-clock-ordered original Sail cell states, all source and
+old-destination GPR observations in one pre-state, actual masked GPR writes,
+final cell matching and preserved code/misa. Original public shift decoding is
+replayed in every constructed pre-state. Public seed/domain construction,
+acceptance against concrete fixedData, complete original public shift membership
+and aligned tracked cells are the inputs. No local state/read/write/result,
+selected address-space flag, x0 event value or decoder replay answer is supplied.
+
+[Native port recovery](Airbender/Proofs/ReducedMachine/NativeShiftPorts.lean)
+checks both readonly sources and derives the actual mixed second-port register
+flag, rs2 low address and zero high address from native equations 60/61/113.
+The actual mixed destination is already tied to original rd. All three original
+indices are therefore bound to actual native accesses; immediate/x0 aliases stay
+in history. [Zero preservation](Airbender/Proofs/Trace/Families/ReducedMachine/ZeroRegister.lean)
+uses actual decoded x0 masking, readonly refreshes and unchanged shared induction
+from public seed reads. [Code/replay proofs](Airbender/Proofs/Trace/Families/ReducedMachine/CodeHistory.lean)
+derive register address space for each event from accepted native constraints,
+then preserve all memory bytes and misa. [History assembly](Airbender/Proofs/Trace/Families/ReducedMachine/RegisterHistory.lean)
+reuses unchanged shared chronological grouping and original Sail realization;
+[observable contracts](Airbender/Review/Helpers/Memory/ReducedMachine.lean)
+keep states/order/reads/writes/replay as conclusions.
+
+[Eight regressions](Tests/NativeReducedRegisters.lean) reject wrong rs2 addresses,
+nonzero high addresses and RAM selection for all six shift masks, retain source
+and old-destination aliases in one pre-state, prove discarded x0 state stutters,
+and reject initialized nonzero-x0 events. A positive exact imported three-port
+Sail-group fixture retains all x0 refreshes/writes; its assignment is explicitly
+not a complete 117-equation accepted instruction/execution fixture.
+
+All affected bounded modules, 2,592 explicit standard-only axiom roots and 157
+public Review roots pass with exact provenance, guide and layer gates at unchanged
+limits. Full Review used 539.29 MiB footprint/3093.80 MiB resident in 16.74 seconds;
+all owned processes terminated. Original selected-operand/clause execution, numerical PC+4/wrap and fetched
+execution remain open. Other combined profiles, worker/accounting/protocol spans,
+padding/terminal/init and compiler/preprocessing/ROM/physical enforcement remain
+separate. No native defect, circuit fix or issue-handling assumption is added.
+
 ## Checked coverage
 
 | Circuit | Coverage |
 | --- | --- |
-| [Native combined reduced](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean) | Actual 117-equation artifact and complete native fixed pool. Selected original public shifts derive initialized ranges, canonical keys and [complete RV32 candidates/actual x0-masked writes](Airbender/Review/Trace/Families/ReducedMachine/Results.lean). Original Sail cell/GPR transport, numerical PC, instruction execution, other combined profiles and protocol/terminal/init remain open. The historical shipped JSON is distinct. |
+| [Native combined reduced](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean) | Actual 117-equation artifact and complete native fixed pool. Selected original public shifts derive initialized ranges, canonical keys and [complete RV32 candidates/actual x0-masked writes](Airbender/Review/Trace/Families/ReducedMachine/Results.lean). [Original Sail register histories](Airbender/Review/Trace/Families/ReducedMachine/Registers.lean) now derive states/GPR transfers/code frames and decoder replay. Selected-operand/clause and numerical PC execution, other profiles and protocol/terminal/init remain open. The historical shipped JSON is distinct. |
 | [ADD/SUB](Airbender/Review/Circuits/AddSub/Theorems.lean) | Conditional ADD/ADDI/SUB/LUI/AUIPC destination and original Sail PC/register effects. Packed native masks derive the eight selector bits. The actual masked destination write is observed. Aligned PC wraparound and discarded x0 writes are included. |
 
 | Integration | Coverage |

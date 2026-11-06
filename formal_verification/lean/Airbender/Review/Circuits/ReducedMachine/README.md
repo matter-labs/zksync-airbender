@@ -182,3 +182,17 @@ retain all shift/sign/count boundaries and discarded candidates. This is not
 original Sail cell/GPR transport, PC/instruction execution or a full positive
 117-equation fixture. Other combined profiles and setup/physical/protocol
 boundaries remain separate.
+
+## Original Sail register states
+
+[Actual native port bindings](../../../Proofs/ReducedMachine/NativeShiftPorts.lean)
+now derive mixed source-two register space and low/high rs2 address fields from
+native equations, and bind all three decoded indices. Both sources are readonly
+refreshes. [The initialized register-history claim](../../Trace/Families/ReducedMachine/Registers.lean)
+constructs original Sail GPR/cell states, pre-state reads/actual masked writes,
+code/misa frames, decoder replay and final matching. No per-row state/read/result
+answer is supplied. [Eight regressions](../../../../Tests/NativeReducedRegisters.lean)
+retain aliases/x0 and reject malformed mixed-port fields. The positive port-group
+fixture is scoped below complete native 117-equation acceptance. Original operand/
+clause execution, numerical PC, other profiles and physical/protocol boundaries
+remain separate.

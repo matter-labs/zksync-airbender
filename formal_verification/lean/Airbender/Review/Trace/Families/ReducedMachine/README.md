@@ -77,3 +77,18 @@ numerical boundaries, corrupted arithmetic rejection and discarded candidates.
 Original Sail cell/GPR transport, native source-two port binding, numerical PC
 and instruction execution remain open, as do other combined profiles and
 worker/protocol/padding/terminal/init and physical/setup correspondence.
+
+## Original Sail cell/GPR realization
+
+[The public register-history claim](Registers.lean) derives every native-clock-
+ordered cell/GPR segment, original source and old-destination reads in one
+pre-state, actual masked writes, final matching, preserved code/misa and original
+stateful decoder replay. [Observables](../../../Helpers/Memory/ReducedMachine.lean)
+keep all states/reads/order/replay as conclusions. [Actual zero rules](../../../../Proofs/Trace/Families/ReducedMachine/ZeroRegister.lean)
+and [mixed-port/register-space recovery](../../../../Proofs/ReducedMachine/NativeShiftPorts.lean)
+justify reuse of the unchanged shared Clean/Sail history machinery. Explicit
+public cell-domain alignment remains an input; local states/read values or
+address-space/replay answers do not. [Eight regressions](../../../../../Tests/NativeReducedRegisters.lean)
+cover aliases/x0 and malformed mixed fields; the positive group fixture does not
+claim full 117-equation acceptance. Selected-operand/clause, PC/fetched execution,
+other combined profiles and setup/physical/protocol/terminal/init stay open.

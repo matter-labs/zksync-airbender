@@ -157,6 +157,20 @@ along with other combined operations and protocol/terminal/init. The fixed
 public fixture and general compiler/preprocessing/ROM/physical boundaries stay
 separate. Numerical/rejection tests do not assert a complete accepted execution.
 
+[Original selected-shift Sail register history](Airbender/Review/Trace/Families/ReducedMachine/Registers.lean)
+now derives all native-clock-ordered cell/GPR states and actual original source,
+old-destination and masked-write observations from initialized matching and public
+decoding. Both actual mixed ports are proved register accesses for this profile;
+metadata alone would not establish that restriction. Actual x0 masking and shared
+seed induction derive zero events; readonly aliases retain their original reads.
+All code bytes/misa and original stateful decoder replay are preserved in derived
+pre-states. The explicit tracked public seed domain/alignment remains meaningful;
+no state, read, result, register-space or replay answer is supplied per row.
+This is GPR/cell transport, not original selected-operand/clause execution,
+numerical PC or fetched retirement. Other profiles and native setup/compiler/
+preprocessing/ROM/physical/protocol/terminal/init boundaries stay separate.
+The positive port-group regression does not claim complete native acceptance.
+
 Production circuit and machine code must stay unchanged. Confirmed native issues
 are documented with their exact evidence and, where necessary, narrow explicit
 Review interface assumptions. Those premises neither fix an issue nor establish

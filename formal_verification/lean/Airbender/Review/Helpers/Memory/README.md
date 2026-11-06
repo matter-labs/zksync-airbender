@@ -127,3 +127,18 @@ composes actual original decoding and normal steps through native PC matching.
 [All twenty-four cases and empty traces](../../../../Tests/ShiftFetched.lean)
 derive terminal PC/cell reads, including twelve x0 PC advances. [Complete native carry fixtures](../../../../Tests/ShiftPC.lean) preserve low carry and RV32 wrap.
 Remaining subword, CSR/delegation and unified protocol claims remain separate.
+
+## Actual native reduced original register histories
+
+[Reduced observables](ReducedMachine.lean) retain actual native source, old-
+destination and masked-write ports and original selected-shift decoding.
+[The short public claim](../../Trace/Families/ReducedMachine/Registers.lean)
+derives all original Sail states/GPR transfers, preserved code/misa, original
+decoder replay and final cell matching from public seeds and native matching.
+[Native mixed-port constraints](../../../Proofs/ReducedMachine/NativeShiftPorts.lean)
+prove register space/indices, and [actual x0 preservation](../../../Proofs/Trace/Families/ReducedMachine/ZeroRegister.lean)
+feeds unchanged shared induction/realization. Aligned public cell-domain input
+remains explicit; no expected read, write, intermediate state or replay result
+is supplied. This is not original selected-operand/clause/PC execution or broad
+physical/setup/protocol/terminal closure. [Eight regressions](../../../../Tests/NativeReducedRegisters.lean)
+distinguish positive imported-port mechanics from complete native acceptance.

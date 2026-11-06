@@ -56,8 +56,10 @@ Full combined row effects and execution remain pending. See the
    natural candidate values/bounds and masked-write preservation are proved for
    all 32 amounts, including x0 and arithmetic zero shift. Complete canonical RV32
    candidate/write results now follow from those initialized ranges, actual native
-   equations and original decoded rd/x0. Original Sail cell/GPR transport and
-   instruction execution, other profiles and numerical PC successor remain open.
+   equations and original decoded rd/x0. Actual mixed-port register bindings,
+   original Sail cell/GPR histories and decoder replay now follow for selected
+   shifts. Operand/clause execution, other profiles and numerical PC successor
+   remain open.
    The former projection allocation gap is closed by generic projections and separate proof units,
    without increasing limits or adding result/equivalence premises.
 3. Compose initialized combined histories, public decoding and original execution.
@@ -70,8 +72,10 @@ Full combined row effects and execution remain pending. See the
    native word ranges and both canonical source keys. Concrete fixedData selects
    the actual certified native pool without an equivalence premise. Extend proved
    local preservation/public decoding to other combined operations. Selected-shift
-   canonical RV32 words now follow, while original cell/GPR and full instruction
-   execution remain unfinished.
+   canonical RV32 words and original Sail cell/GPR histories now follow, including
+   actual readonly aliases, masked writes, code/misa frames and decoder replay in
+   constructed pre-states. Operand transport and full instruction/PC execution
+   remain unfinished.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.
 

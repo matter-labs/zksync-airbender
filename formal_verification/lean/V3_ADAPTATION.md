@@ -225,7 +225,7 @@ word assembly reuses unchanged pure contribution/whole-RV32 lemmas after the
 actual v2 table/query/candidate connection. No v3 or old split-family native
 constraint/table/result is transferred by assumption. The public contract adds
 no source range, expected read/write, table equivalence or intermediate state.
-All 32amounts, native right-output order, arithmetic zero shift and discarded
+All 32 amounts, native right-output order, arithmetic zero shift and discarded
 candidate participation remain intact. Eight new numerical/rejection/initialized
 consequence regressions pass; they are not full positive 117-equation fixtures.
 
@@ -236,3 +236,34 @@ and readonly binding, numerical PC/wraparound, instruction execution, other
 combined profiles, workers/accounting and protocol/padding/terminal/init remain
 required for parity. General preprocessing/ROM/physical/compiler fidelity stays
 separate. No native defect or new issue-handling assumption is established.
+
+## Original native reduced Sail register histories
+
+[The selected original-shift register claim](Airbender/Review/Trace/Families/ReducedMachine/Registers.lean)
+now derives actual original Sail GPR/cell states, all three pre-state reads,
+masked writes, final matching, code/misa frames and decoder replay in constructed
+row pre-states. Original public seed/decoder construction and native matching
+supply all states/reads; no expected intermediate, address-space flag, x0 event
+value or replay result is a public premise. Unlike the old split-family metadata,
+actual v2 reduced source-two/destination ports are mixed: new native equations
+prove register-space/indices before reusing unchanged shared history machinery.
+Eight regressions retain aliases/x0, reject malformed native mixed-port fields
+and include a positive three-port mechanics fixture, scoped below full native
+117-equation acceptance. The bounded audit passes 2,592 standard-only axiom roots
+and 157 public Review roots. Original selected-operand/clause and numerical PC/
+fetched execution, other combined profiles and worker/protocol/terminal/init
+remain open; general compiler/preprocessing/ROM/physical boundaries stay explicit.
+No v3 native semantics, finding or circuit fix is inherited by assumption.
+
+## Read-only source checkout observation
+
+During the register-history checkpoint the original checkout advanced externally
+to 964db88d323d7f04a258f38bce28eca1c6d31652. A scoped Git comparison with the
+b29277dd895499574e317a994fd89243a72f06cb proof pin changes only verification
+status and three replay/audit helper-control files. No Lean statement/proof,
+production circuit, native input or dependency changes. The named ChiCharacters
+replay time allowance is unrelated to these native reduced proofs, whose existing
+resource ceilings stay unchanged. The v3 proof reference remains pinned; this
+backport neither resets nor adopts the live checkout's changes. Independent
+provenance checks every exact pinned Git object separately from the observed
+live HEAD and verifies the original tracked checkout/unrelated files are retained.

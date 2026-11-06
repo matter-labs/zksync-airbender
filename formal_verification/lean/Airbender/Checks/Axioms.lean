@@ -1,3 +1,4 @@
+import Tests.NativeReducedRegisters
 import Tests.NativeReducedResults
 import Tests.NativeReducedRanges
 import Tests.NativeReducedDecoder
@@ -2775,3 +2776,26 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedResults.corrupted_arithmetic_rejected
 #print axioms Tests.NativeReducedResults.discarded_result_retained
 #print axioms Tests.NativeReducedResults.initialized_zero_write
+#print axioms Airbender.ReducedMachine.NativeShiftPortProofs.readonly_sources
+#print axioms Airbender.ReducedMachine.NativeShiftPortProofs.source_addresses
+#print axioms Airbender.ReducedMachine.NativeShiftPortProofs.source_two_fields
+#print axioms Airbender.ReducedMachine.NativeShiftPortProofs.register_addresses
+#print axioms Airbender.ReducedMachine.NativeShiftPortProofs.register_reads
+#print axioms Airbender.ReducedMachine.NativeShiftPortProofs.register_write
+#print axioms Airbender.ReducedMachine.NativeShiftRegisterProofs.row_zero_preserving
+#print axioms Airbender.ReducedMachine.NativeShiftRegisterProofs.decoded_zero_preserving
+#print axioms Airbender.ReducedMachine.NativeShiftRegisterProofs.native_zero_writes
+#print axioms Airbender.ReducedMachine.NativeShiftRegisterProofs.image_row_history
+#print axioms Airbender.ReducedMachine.NativeShiftRegisterProofs.native_event_register_space
+#print axioms Airbender.ReducedMachine.NativeShiftRegisterProofs.native_history_memory
+#print axioms Airbender.ReducedMachine.NativeShiftRegisterProofs.entry_source_after_native_history
+#print axioms Airbender.ReducedMachine.NativeShiftRegisterProofs.image_register_history
+#print axioms Airbender.ReducedMachine.Native.public_shift_register_history
+#print axioms Tests.NativeReducedRegisters.wrong_source_index_rejected
+#print axioms Tests.NativeReducedRegisters.high_source_address_rejected
+#print axioms Tests.NativeReducedRegisters.ram_source_rejected
+#print axioms Tests.NativeReducedRegisters.aliased_source_reads
+#print axioms Tests.NativeReducedRegisters.aliased_destination_read
+#print axioms Tests.NativeReducedRegisters.discarded_state
+#print axioms Tests.NativeReducedRegisters.initialized_nonzero_x0_rejected
+#print axioms Tests.NativeReducedRegisters.positive_x0_group

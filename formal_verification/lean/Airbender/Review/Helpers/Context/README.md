@@ -141,3 +141,13 @@ acceptance. The context registry and explicit public fixture are unchanged.
 No range/result/table-equivalence answer is added to the public interface.
 Original Sail cell/GPR transport, numerical PC/instruction execution and
 physical/setup/protocol/terminal boundaries remain separate.
+
+## Native reduced original GPR states
+
+[The original Sail register-history claim](../../Trace/Families/ReducedMachine/Registers.lean)
+now derives every state and GPR transfer, code/misa frame, original decoder replay
+and final cell matching for selected native shifts. New actual mixed-port address
+proofs and x0 preservation justify shared history reuse; readonly aliases stay
+in one pre-state. No per-row state/read/write or register-space answer is input.
+Public cell-domain alignment stays explicit. Original operand/clause/PC execution,
+other combined profiles and physical/setup/protocol boundaries remain separate.
