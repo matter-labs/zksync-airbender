@@ -1,6 +1,24 @@
 # Findings: assumptions and circuit bindings
 
-<!-- source-names: keccak_special5 keccak_f1600.rs keccak_special5_layout_no_caches_gkr.json KECCAK_COLUMN_PARITY_CSR_REGISTER KECCAK_THETA_RHO_CSR_REGISTER KECCAK_CHI5_CSR_REGISTER KECCAK_SPECIAL5_CSR_REGISTER SUPPORTED_CSRS requalify_setups setup_artifact -->
+<!-- Source-only labels below are modules/namespaces, hash pins, tool tokens,
+local binders, or removed/private historical identifiers. Current public
+declarations remain required by the compiled reference audit. -->
+<!-- source-names:
+Airbender Airbender.Proofs.GKRProtocol.ROMNative.WordMemoryRows AirbenderUnifiedNative
+BigintMemory DelegationTimestamps DynamicCopyLoopNative ExecutionPublicInputsWith
+ImportedBootInputsWith KECCAK_CHI5_CSR_REGISTER KECCAK_COLUMN_PARITY_CSR_REGISTER
+KECCAK_SPECIAL5_CSR_REGISTER KECCAK_THETA_RHO_CSR_REGISTER PathGLoopNativeBase
+Proofs.GKRProtocol.ColumnSlices SUPPORTED_CSRS SubwordBoundary SubwordRows Tests.ArtifactImport
+Tests.BigintMemory Tests.DelegationTimestamps Tests.DynamicCopyLoopNative
+Tests.NativeSetupSemantics Tests.PathGLoopCPU.Equations Tests.PathGLoopNativeQueries
+Tests.UnifiedModularExecution Tests.UnifiedShift.queryValues Tests.UpstreamPlatformCompatibility
+Trace.NativeDecoder __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_ _soundness a23f1aa01 a99f6c4ce
+ba55c93d53f3a689abccf6b628331f9df07ea8c779e3595f0efce04db914df71 de9c7c77b diagnose_modules
+e0e5d1815 e89dfdb32 e94380e9f ec752d357458d70d21b5f68b8575bba70d303d8d0d2771032bb4017f18e85565
+fd7c0fee5 feacc685b generic_lookup_padding keccak_f1600.rs keccak_special5
+keccak_special5_layout_no_caches_gkr.json notStore parts prepared_round_masks_soundness
+requalify_setups setup_artifact split_ifs start stop transcript_init workerFamilies
+-->
 
 Current native target: upstream `av_gkr_compiler` at
 `c1a662222cafcd96db4383dce737edb79fa62b09`. Current totals and completed validation
@@ -226,7 +244,7 @@ sources, while preserving the five actual macro-keyword uses in three tests.
 All identifier-only edits are identical after quote normalization.
 
 Static inspection also found Path-G CPU certificates still indexing 129
-polynomials, while the retained native JSON and existing `constraint_count`
+polynomials, while the retained native JSON and existing `Airbender.UnifiedReduced.constraint_count`
 theorem give 120. The private certificate bounds and final chunks now cover
 exactly 0–119: seven sixteen-equation chunks and an eight-equation final chunk.
 The obsolete 128-only chunks are removed. A static coverage check confirms all
@@ -320,7 +338,7 @@ Diagnosis [41905482598](https://github.com/matter-labs/zksync-airbender/actions/
 on `a23f1aa01` then found a stale public theorem alias at
 `ControlPreparationBase.lean:291:26`: `prepared_round_masks_soundness` is no
 longer declared. The existing implementation theorem
-`Caller.Proofs.prepared_round_masks` has the same field-capacity, inverse,
+`Airbender.UnifiedReduced.Caller.Proofs.prepared_round_masks` has the same field-capacity, inverse,
 acceptance, prepared-input and alignment premises and the same mask conclusion.
 The test now calls it directly. The failed leaf exited 1 in 37.01 seconds at
 917.14 MiB charged footprint, with no owned children left. This repair changes
@@ -328,9 +346,9 @@ one proof reference and no premise, Review statement or production code.
 
 Checking the connected tests' `_soundness` references against current
 declarations found three more removed alias names. Eight hash-preparation
-applications now pass their already-proved `HashControlPreparation` source
+applications now pass their already-proved `Airbender.UnifiedReduced.Caller.HashControlPreparation` source
 certificates to public `hash_control_preparation_soundness`. Two caller-cycle
-applications use the existing implementation theorem `Caller.Proofs.caller_cycles`
+applications use the existing implementation theorem `Airbender.UnifiedReduced.Caller.Proofs.caller_cycles`
 with unchanged arguments. This composes the current theorems without adding
 aliases to Review or changing any test statement or premise. Lean CI must
 validate the new applications.
@@ -381,7 +399,7 @@ Standard warm [41919500084](https://github.com/matter-labs/zksync-airbender/acti
 on `2092e29db` passed native/setup reconstruction, compiler captures/provenance
 and the early Lean fixtures. The complete source scan then found
 `Tests/GKRNativeROM.lean:3:5` opening `Airbender` without any import; the expected
-`ROMNative.WordMemory.nativeSetup` was consequently unknown. An explicit import
+`Airbender.Compiler.ROMNative.WordMemory.nativeSetup` was consequently unknown. An explicit import
 of the existing `Airbender.Proofs.GKRProtocol.ROMNative.WordMemoryRows` module
 restores the test's intended dependency. Every test statement and proof body is
 unchanged. The leaf exited 1 in 1.10 seconds at 131.93 MiB charged footprint,
@@ -400,7 +418,7 @@ does not weaken coverage. No Review or production code changes. A lightweight
 test-import boundary control catches the missing-import pattern before builds.
 
 Focused diagnosis [41926270665](https://github.com/matter-labs/zksync-airbender/actions/runs/41926270665)
-on `6c6ab2f79` passed native ROM, then rejected subword's `generic_cell_value`
+on `6c6ab2f79` passed native ROM, then rejected subword's `Airbender.Compiler.MaterializedLookupSetup.generic_cell_value`
 field notation: the theorem is declared in `Proofs.GKRProtocol.ColumnSlices`,
 which the old helper namespace had imported transitively. That explicit import
 is restored beside the materialized model import. Every assertion and proof
@@ -502,8 +520,8 @@ Complete warm [41957810422](https://github.com/matter-labs/zksync-airbender/acti
 on [the shift proof revision](https://github.com/matter-labs/zksync-airbender/commit/2484ebebfdd8481aa46484be195aebb33f2aa982)
 then rejected `Tests.UpstreamPlatformCompatibility`'s undefined
 `ImportedBootInputsWith`, `ExecutionPublicInputsWith` and imported-execution
-wrappers. The actual public interface has `BootInputsWith` and one flat
-`ExecutionInputsWith` record. The test adapters now assemble that record from
+wrappers. The actual public interface has `Airbender.UnifiedReduced.BootInputsWith` and one flat
+`Airbender.UnifiedReduced.ExecutionInputsWith` record. The test adapters now assemble that record from
 the same boot data and six public profile fields, translating only the ordinary
 address condition under arbitrary original handlers. The profile-only adapter
 accepts boot data, already supplied by its full-input callers. No Review
@@ -1418,7 +1436,7 @@ and chi5 preserve their grouped timestamp and native port semantics.
 
 The [Review split permutation statement](Airbender/Review/Trace/Workers/Keccak/SplitPermutation.lean)
 exposes the existing [native chain proof](Airbender/Proofs/Keccak/SplitNativePermutation.lean):
-all 361 actual calls compute Clean's original `keccakPermutation`, including the
+all 361 actual calls compute Clean's original `Specs.Keccak256.keccakPermutation`, including the
 final delayed iota. Initialized histories, exact event matching, public call
 arguments, active constraints and physical snapshots remain explicit.
 
@@ -1435,7 +1453,7 @@ full unsigned target's current split coverage.
 
 ## F13 — Target initialization and submitted instance scope
 
-**Model scope limitation.** `InitializationBoundary` takes one native witness
+**Model scope limitation.** `Airbender.Compiler.MachineTargets.InitializationBoundary` takes one native witness
 and one window assignment. The three target proofs support several windows
 inside that instance, but not a list of initialization/teardown instances.
 The [unrolled verifier](../../full_statement_verifier/src/unrolled_proof_statement.rs)

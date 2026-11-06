@@ -1,6 +1,10 @@
 # Native setup artifacts
 
-<!-- source-names: AIRBENDER_SETUP_JSON_FIXTURE Cargo.lock airbender_tests bigint cs execution_prover keccak manifest.json prover unified export_subword_circuit requalify_setups -->
+<!-- source-names:
+AIRBENDER_SETUP_JSON_FIXTURE Cargo.lock airbender_tests bigint cs execution_prover export
+export_setup_json export_subword_circuit keccak manifest.json prover regenerate requalify_setups
+unified
+-->
 
 The Rust setup command exports the actual materialized columns, native table
 regions, decoder rows, unused setup rows and virtual 16-/19-bit range tables.

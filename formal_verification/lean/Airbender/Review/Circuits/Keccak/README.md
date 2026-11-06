@@ -13,7 +13,7 @@ protocol: [parity](SplitColumnParity.lean), [theta/rho](SplitThetaRho.lean) and
 [chi5](SplitChi5.lean), with cached variants in this directory. Their direct
 native constraints and fixed-source certificates are composed by the proved
 full unsigned machine target. The [Review permutation statement](../../Trace/Workers/Keccak/SplitPermutation.lean)
-connects all 361 actual calls to Clean's `keccakPermutation`; see
+connects all 361 actual calls to Clean's `Specs.Keccak256.keccakPermutation`; see
 [F12](../../../../FINDINGS.md#f12--blessed-split-keccak-coverage-and-validation-boundary).
 There is no split compiler capture. These results keep initialized history,
 exact matching, public wrapper use and setup binding explicit.

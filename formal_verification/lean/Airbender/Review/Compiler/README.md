@@ -1,5 +1,9 @@
 # Compiler preservation
 
+<!-- source-names:
+workerFamilies
+-->
+
 <!-- lean-context: Airbender.Proofs.GKRProtocol.NativeMachineAcceptance -->
 
 Start with the three [machine targets](MachineTargets.lean). Each target lists

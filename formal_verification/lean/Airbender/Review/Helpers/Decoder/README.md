@@ -11,7 +11,7 @@ text; parsing and preprocessing implementation remain separate boundaries.
 
 Successful public-program construction implies actual byte-read, original Sail
 decoder and metadata-projection evidence; see
-[`program_sources` and `run_program_sources`](../../../Proofs/Trace/Program.lean).
+[`Airbender.Trace.Proofs.program_sources` and `run_program_sources`](../../../Proofs/Trace/Program.lean).
 [`decoded_misa_frame`](../../../Proofs/Sail/DecoderFrame.lean) proves successful
 decoding changes no state and replays in states with the same public ISA configuration.
 

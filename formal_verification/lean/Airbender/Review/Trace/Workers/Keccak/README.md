@@ -10,8 +10,8 @@ claim and is excluded by the three machine targets' public caller profiles.
 
 | Path | Review statement | Conditions |
 | --- | --- | --- |
-| Split: parity, theta/rho and chi5 | [`Native.permutation_soundness`](SplitPermutation.lean) | All 361 actual native calls, direct imported constraints, initialized histories, exact event matching, public call arguments and physical snapshots. |
-| Special5 | [`Native.permutation_soundness`](Theorems.lean) | The complete 649-call span, modeled controller tables and the explicit worker ABI/domain profile. |
+| Split: parity, theta/rho and chi5 | [`Airbender.Keccak.Split.Native.permutation_soundness`](SplitPermutation.lean) | All 361 actual native calls, direct imported constraints, initialized histories, exact event matching, public call arguments and physical snapshots. |
+| Special5 | [`Airbender.Keccak.Native.permutation_soundness`](Theorems.lean) | The complete 649-call span, modeled controller tables and the explicit worker ABI/domain profile. |
 
 [Split schedule](SplitSchedule.lean) and [public wrapper use](SplitUse.lean)
 state 24 rounds of five parity, five theta/rho and five chi5 calls, followed by
@@ -20,7 +20,7 @@ preserves the physical ports, grouped timestamps and cached/no-cache constraints
 [Split requests](SplitRequests.lean) binds the full-width CSR, caller clock and
 canonical retirement to worker fulfillments. The
 [native permutation proof](../../../../Proofs/Keccak/SplitNativePermutation.lean)
-connects the actual 361-call chain to Clean's original `keccakPermutation`.
+connects the actual 361-call chain to Clean's original `Specs.Keccak256.keccakPermutation`.
 
 The [full unsigned target proof](../../../../Proofs/FullUnsigned/Target.lean)
 composes split worker effects, request/RAM matching, public supported use and

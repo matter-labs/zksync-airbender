@@ -9,7 +9,7 @@ custom CSR effects use the pinned project references.
 ordinary/modular steps, external `0x7C0` reads and complete caller retirement.
 The [unified target proof](../../../Proofs/UnifiedReduced/MachineTarget.lean)
 establishes that relation under the public setup, exact matching and
-`ValidDelegationUse` premises. The contract ranges over every external stream;
+`Airbender.UnifiedReduced.Caller.Stream.ValidDelegationUse` premises. The contract ranges over every external stream;
 it remains a public program-safety premise. The target excludes special5 calls
 and assumes the submitted worker roster contains no split pools. It currently
 covers one inline initialization/teardown instance, not Rust's list of trailing

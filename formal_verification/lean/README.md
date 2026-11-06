@@ -1,7 +1,10 @@
 # Circuit verification
 
 <!-- lean-context: Clean.Circuit.Expression Clean.Circuit.Operations Clean.Circuit.Lookup Clean.Specs.Keccak256 -->
-<!-- source-names: CI FV_ROOT -->
+<!-- source-names:
+CI FV_ROOT Tests.NativeCPUFixtures Tests.PathGLoopNative ci.yml diagnose_modules families
+workerFamilies
+-->
 
 ## What is checked
 

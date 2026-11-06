@@ -1,5 +1,21 @@
 # Verification status
 
+<!-- Source-only labels below are modules/namespaces, hash pins, tool tokens,
+local binders, or removed/private historical identifiers. Current public
+declarations remain required by the compiled reference audit. -->
+<!-- source-names:
+Airbender.Compiler.ROMNative.WordMemory Airbender.lean AirbenderUnifiedNative BigintMemory
+Blake2Round.NativeColumnRows3Part1 ColumnSlices DelegationTimestamps DynamicCopyLoopNative
+GKRNativeROM PathGConsumedMessage.Core PathGLoopNativeBase ShiftAssembly ShiftAssembly.lean
+Source.ChiCharacters Tests.ArtifactImport Tests.Keccak Tests.KeccakFixture
+Tests.NativeCPUFixtures Tests.NativeSetupSemantics Tests.PathGLoopCPU.Equations Tests.Timestamps
+Tests.TraceHistory Tests.TraceImport Tests.UnifiedModularExecution
+Tests.UnifiedShift.queryValues Tests.UpstreamPlatformCompatibility WordMemoryRows a23f1aa01
+a99f6c4ce ba55c93d53f3a689abccf6b628331f9df07ea8c779e3595f0efce04db914df71 c4eb40e66
+diagnose_modules e0e5d1815 e89dfdb32 e94380e9f fd7c0fee5 feacc685b notStore parts pidfd_open
+prepared_round_masks_soundness start stop workerFamilies
+-->
+
 Native corollaries are native for CPU rows only. Cached CPU certificates supply
 CPU equations and decoder lookup; bigint, extended-round, G and special5 worker
 equations remain no-cache flat-constraint premises. Split Keccak uses direct
@@ -63,7 +79,7 @@ Run [42037931876](https://github.com/matter-labs/zksync-airbender/actions/runs/4
 on `18f8c733f9bce1ebb3d81d5da452b5cc64d82aa0` passed all four prioritized
 fixture modules and fresh native qualification. The complete source pass then
 failed after 45,033.32 seconds in `Tests.ArtifactImport`: the runtime import
-cleanup had removed the indirect provider of `MulDiv.importedConstraints` and
+cleanup had removed the indirect provider of `Airbender.MulDiv.importedConstraints` and
 its source bytes. The failed leaf exited normally with code 1 after 4.74 seconds,
 at 350.62 MiB charged footprint, with no owned processes left. This was a missing
 import, not a resource deadline. A direct import of the existing MulDiv artifact
@@ -140,6 +156,27 @@ anchors pass (1,301 links), and all 453 compiled Review inventory imports occur
 in the checked CI module inventories. All 46 focused controls pass locally.
 No Lean source, statement, premise, checker or resource gate changes. Complete
 Review/environment audit and final full assurance remain pending.
+
+Run [42173778146](https://github.com/matter-labs/zksync-airbender/actions/runs/42173778146)
+on `171fc137fd2516aaafebb68abdd8b5620864e97e` reused the inspected exact native
+qualification receipt from the preceding run. Source/native freshness, importer
+runtime (43.55 seconds, 486.43 MiB charged, no owned children left), snapshot
+identity and all nine snapshot mutation controls passed. The compiled Review
+inventory loaded successfully, confirming the removed-module link repair. The
+frontend failed after 351.74 seconds because guide reference validation reported
+125 missing/ambiguous references. The Review child exited 1 after 93.16 seconds
+at 507.09 MiB charged footprint, with no owned processes left. The diagnostics
+include module/namespace labels, hash pins, tool tokens, local binders and removed
+or private historical names. The existing per-guide source-name metadata now
+explicitly classifies those 101 source-only reference occurrences. Current public
+declarations use fully qualified names, including the three ambiguous short-name
+diagnostics; all 16 resulting declaration names remain required by the checker.
+The historical local start binder is separately classified as source-only.
+Retained-diagnostic classification, all 1,301 guide/history links, 453 current
+inventory imports and all 46 focused controls pass locally. Only documentation
+changes; the compiled reference checker, theorem coverage, proof interfaces and
+all resource/trust gates remain unchanged. Actual compiled reference validation,
+complete Review/environment audit and final full assurance remain pending.
 
 The 4 November specification review makes the existing one-instance
 initialization and submitted-pool premises explicit. Native corollaries certify
@@ -310,16 +347,16 @@ do not replace Lean CI or final assurance.
 Diagnosis [41905482598](https://github.com/matter-labs/zksync-airbender/actions/runs/41905482598)
 on `a23f1aa01` failed at `ControlPreparationBase.lean:291:26`: a test still called
 the removed public alias `prepared_round_masks_soundness`. It now calls the
-existing `Caller.Proofs.prepared_round_masks` directly, with the same arguments,
+existing `Airbender.UnifiedReduced.Caller.Proofs.prepared_round_masks` directly, with the same arguments,
 premises and conclusion. The leaf exited 1 in 37.01 seconds at 917.14 MiB, with
 no owned processes left. No resource or trust gate was involved. The repair
 requires another Lean diagnosis; full verification and assurance are pending.
 
 A declaration audit also found three obsolete public alias names used by
 connected tests. Eight preparation proofs now compose their existing
-`HashControlPreparation` source certificates with the current public
-`hash_control_preparation_soundness` theorem. Two caller-cycle tests call the
-existing `Caller.Proofs.caller_cycles` theorem with their original arguments.
+`Airbender.UnifiedReduced.Caller.HashControlPreparation` source certificates with the current public
+`Airbender.UnifiedReduced.Caller.hash_control_preparation_soundness` theorem. Two caller-cycle tests call the
+existing `Airbender.UnifiedReduced.Caller.Proofs.caller_cycles` theorem with their original arguments.
 The test statements, acceptance/initialization/alignment premises and Review
 API remain unchanged. These proof applications await Lean CI validation.
 `Tests.NativeCPUFixtures` now imports the complete affected CPU test set and
@@ -381,7 +418,7 @@ entry points that open the project namespace for missing imports.
 
 Focused diagnosis [41926270665](https://github.com/matter-labs/zksync-airbender/actions/runs/41926270665)
 on `6c6ab2f79` passed `GKRNativeROM`, then found that the subword test also needs
-the existing `ColumnSlices` projection theorem import for `generic_cell_value`.
+the existing `ColumnSlices` projection theorem import for `Airbender.Compiler.MaterializedLookupSetup.generic_cell_value`.
 That dependency is now explicit; the assertions and proofs are unchanged.
 The leaf exited 1 in 3.90 seconds at 314.51 MiB with no owned children; the
 focused phase took 75.77 seconds. The five-test diagnosis and standard FV
@@ -476,7 +513,7 @@ commit links; that gate passed on the documentation repair.
 Complete warm [41957810422](https://github.com/matter-labs/zksync-airbender/actions/runs/41957810422)
 on [the shift proof revision](https://github.com/matter-labs/zksync-airbender/commit/2484ebebfdd8481aa46484be195aebb33f2aa982)
 then found undefined input-wrapper names in `Tests.UpstreamPlatformCompatibility`.
-Its test adapters now target actual `BootInputsWith` and `ExecutionInputsWith`.
+Its test adapters now target actual `Airbender.UnifiedReduced.BootInputsWith` and `Airbender.UnifiedReduced.ExecutionInputsWith`.
 The six-field profile adapter accepts boot data to build the complete current
 input record; its callers retain their existing boot data and every ordinary
 address, configuration, register, code and instruction-profile condition.

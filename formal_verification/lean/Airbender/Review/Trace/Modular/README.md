@@ -1,5 +1,9 @@
 # Modular pooled execution
 
+<!-- source-names:
+workerFamilies
+-->
+
 [Theorems](Theorems.lean) proves complete six-family execution including
 ADDMOD/SUBMOD/MULMOD/FMAMOD, with terminal PC and tracked-cell agreement.
 Native boot/ROM and the existing external padding boundary are supported.

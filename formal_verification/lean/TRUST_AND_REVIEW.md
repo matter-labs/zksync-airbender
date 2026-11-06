@@ -1,5 +1,9 @@
 # Trust and review boundaries
 
+<!-- source-names:
+workerFamilies
+-->
+
 The native machine corollaries certify CPU rows only. They use cached CPU
 certificates; bigint, extended-round, G and special5 worker equations remain
 no-cache flat-constraint premises. Split Keccak uses direct imported worker
@@ -160,7 +164,7 @@ Standard boot-ROM-data copying remains outside these claims.
 | Bigint commands | F02 controls 0/65537 are outside supported use. The supported-use execution entrypoint derives the worker binding from public reference-prefix validity; lower-level APIs keep the explicit command contract. General native rejection is not claimed. |
 | Worker ROM | F04 ROM-pointer invocations are outside supported use. The physical execution profile retains its public tracked-RAM domain, while the lower-level native-ROM transport API keeps its address binding. The original COPY ROM-shadow witness is preserved. |
 | Hash witness contracts | [F11](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced) records the four lower-level witness premises and the native prefix bridge from public supported use. G separation remains explicit; no circuit repair is pending for the excluded UB cases. |
-| Blessed Keccak coverage | [F12](FINDINGS.md#f12--blessed-split-keccak-coverage-and-validation-boundary): the proved full unsigned target composes all three split workers and the 361-call wrapper. [The native split permutation statement](Airbender/Review/Trace/Workers/Keccak/SplitPermutation.lean) reaches Clean's `keccakPermutation`. Special5 is excluded from the three machine targets and retains its separate 649-call results. |
+| Blessed Keccak coverage | [F12](FINDINGS.md#f12--blessed-split-keccak-coverage-and-validation-boundary): the proved full unsigned target composes all three split workers and the 361-call wrapper. [The native split permutation statement](Airbender/Review/Trace/Workers/Keccak/SplitPermutation.lean) reaches Clean's `Specs.Keccak256.keccakPermutation`. Special5 is excluded from the three machine targets and retains its separate 649-call results. |
 | Worker participation | Current native BabyBear timestamp queries and initialized caller accounting derive participation. The historical zero-clock witness is rejected by current native acceptance; weaker intermediate interfaces retain their own stated scope. |
 | Discarded loads | The original Sail claim retains the [discarded-LW restriction](Tests/DiscardedLoad.lean). The named Airbender PC-only-NOP profile is a distinct reference choice. |
 
