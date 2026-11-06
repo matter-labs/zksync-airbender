@@ -263,30 +263,14 @@ impl BasicUnrolledFixture {
             self.compiled_circuit.trace_len,
             context,
         )?);
-        // Memory-cap geometry comes from the setup host when present; the
-        // standalone i/t circuit has no setup host, so fall back to the
-        // equivalent values carried by the WHIR schedule.
-        let (mem_log_lde_factor, mem_log_tree_cap_size) = match self.gpu_setup_host.as_ref() {
-            Some(host) => (host.log_lde_factor, host.log_tree_cap_size),
-            None => (
-                self.prover_config.whir_schedule.base_lde_factor_log2() as u32,
-                self.prover_config.whir_schedule.cap_size.trailing_zeros(),
-            ),
-        };
+        let geometry = BaseCommitmentGeometry::from_config(
+            &self.prover_config,
+            BaseColumns::of(&self.compiled_circuit),
+        );
         let memory_transfer_host = Arc::new(
-            if self.prover_config.pack_log2() != 0 || self.prover_config.is_virtual_packing() {
-                let geometry = BaseCommitmentGeometry::from_config(
-                    &self.prover_config,
-                    BaseColumns::of(&self.compiled_circuit),
-                );
-                gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(&self.memory_tree_caps, geometry)
-            } else {
-                gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
-                    &self.memory_tree_caps,
-                    mem_log_lde_factor,
-                    mem_log_tree_cap_size,
-                )
-            },
+            gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(
+                &self.memory_tree_caps, geometry,
+            ),
         );
         let memory_transfer = gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer::new(
             memory_transfer_host,

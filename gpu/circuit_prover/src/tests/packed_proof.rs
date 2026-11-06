@@ -59,7 +59,6 @@ pub(super) fn gpu_memory_caps(
             base.circuit_type,
             &base.compiled_circuit,
             inputs,
-            &base.prover_config,
             geometry,
             context,
         )

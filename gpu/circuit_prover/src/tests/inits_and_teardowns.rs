@@ -135,6 +135,7 @@ pub(super) fn build_inits_and_teardowns_trace_host_for_test(
 /// circuits).
 pub(super) fn prepare_inits_and_teardowns_proof_fixture(
     compute_cpu_reference: bool,
+    mode: circuit_common::SoundnessMode,
 ) -> (
     BasicUnrolledFixture,
     Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
@@ -230,8 +231,12 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
     };
     let top_bits: Vec<u32> = (0..num_sets as u32).collect();
 
-    let prover_config = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
-        .prover_config(SecurityLevel::Sec100);
+    let prover_config = prover_config_in_mode(
+        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
+        &compiled_circuit,
+        SecurityLevel::Sec100,
+        mode,
+    );
     let whir_schedule = prover_config.whir_schedule.clone();
 
     // --- CPU memory witness (memory-only trace) ---

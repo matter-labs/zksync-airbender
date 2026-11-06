@@ -3,7 +3,6 @@ use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPi
 use gpu_gkr::setup::GpuGKRSetupHost;
 use gpu_gkr::GkrPrograms;
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::memory::uses_base_commitment_geometry;
 use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
 
@@ -22,9 +21,6 @@ pub struct LazyGpuGKRSetupHost {
     /// Consumed by the first `get_or_init`: once the pinned copy exists the
     /// heap copy has no reader.
     cpu_setup: Mutex<Option<CpuGKRSetup<BF>>>,
-    log_lde_factor: u32,
-    log_rows_per_leaf: u32,
-    log_tree_cap_size: u32,
     geometry: BaseCommitmentGeometry,
 }
 
@@ -45,9 +41,6 @@ impl LazyGpuGKRSetupHost {
         Self {
             inner: OnceLock::new(),
             cpu_setup: Mutex::new(Some(cpu_setup)),
-            log_lde_factor: geometry.lde_factor().trailing_zeros(),
-            log_rows_per_leaf: geometry.values_per_leaf().trailing_zeros(),
-            log_tree_cap_size: geometry.cap_size().trailing_zeros(),
             geometry,
         }
     }
@@ -68,27 +61,17 @@ impl LazyGpuGKRSetupHost {
                 if cpu_setup.hypercube_evals.is_empty() {
                     return Ok(None);
                 }
-                let host = if uses_base_commitment_geometry(&self.geometry) {
-                    if self.geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness {
-                        gpu_gkr::stage1::merged_commitment::validate_merged_packed_geometry(
-                            &self.geometry,
-                        );
-                    } else {
-                        gpu_trace::trace::memory::validate_separate_base_commitment_geometry(
-                            &self.geometry,
-                        );
-                    }
-                    GpuGKRSetupHost::precompute_for_geometry(&cpu_setup, self.geometry, context)?
+                if self.geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness {
+                    gpu_gkr::stage1::merged_commitment::validate_merged_packed_geometry(
+                        &self.geometry,
+                    );
                 } else {
-                    // Unpacked nonvirtual setup retains its legacy producer.
-                    GpuGKRSetupHost::precompute_from_cpu_setup(
-                        &cpu_setup,
-                        self.log_lde_factor,
-                        self.log_rows_per_leaf,
-                        self.log_tree_cap_size,
-                        context,
-                    )?
-                };
+                    gpu_trace::trace::memory::validate_separate_base_commitment_geometry(
+                        &self.geometry,
+                    );
+                }
+                let host =
+                    GpuGKRSetupHost::precompute_for_geometry(&cpu_setup, self.geometry, context)?;
                 Ok(Some(Arc::new(host)))
             })
             .map(|_| ())

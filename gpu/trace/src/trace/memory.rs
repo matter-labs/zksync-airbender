@@ -55,15 +55,6 @@ impl<'a> MemoryCommitmentJob<'a> {
     }
 }
 
-/// Whether base storage must carry the resolved commitment geometry.
-/// Cross-crate producers preserve the legacy k0/f1 separate allocation path,
-/// while virtual or merged commitments also carry geometry at pad zero.
-pub fn uses_base_commitment_geometry(geometry: &BaseCommitmentGeometry) -> bool {
-    geometry.pack_log2() != 0
-        || geometry.is_virtual_packing()
-        || geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness
-}
-
 /// Field-free admission shared by config-driven memory and proof entries.
 /// The generated base opening verifier has one or two accumulators (f0/f1).
 pub fn validate_separate_base_commitment_geometry(geometry: &BaseCommitmentGeometry) {
@@ -76,12 +67,6 @@ pub fn validate_separate_base_commitment_geometry(geometry: &BaseCommitmentGeome
         CommitmentMode::SeparateMemoryAndWitness,
         "memory-only producer requires separate memory and witness commitments"
     );
-}
-
-#[derive(Clone, Copy)]
-enum MemoryCommitmentShape<'a> {
-    Unpacked(&'a ProverConfig),
-    Geometry(BaseCommitmentGeometry),
 }
 
 /// Field-independent shape binding for separate or concatenated stage1 storage.
@@ -108,38 +93,25 @@ fn commit_memory_inner<'a>(
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
     inits_and_teardowns: Option<&crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice>,
     tracing_data: Option<&TracingDataDevice>,
-    shape: MemoryCommitmentShape<'_>,
+    geometry: BaseCommitmentGeometry,
     inputs: Option<TransferKeepalive<'a>>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     let trace_len = compiled_circuit.trace_len;
     assert!(trace_len.is_power_of_two());
     let log_domain_size = trace_len.trailing_zeros();
-    let producing_geometry = match shape {
-        MemoryCommitmentShape::Unpacked(_) => None,
-        MemoryCommitmentShape::Geometry(geometry) => Some(geometry),
-    };
-    let mut memory_holder = match shape {
-        MemoryCommitmentShape::Unpacked(config) => TraceHolder::new(
-            log_domain_size,
-            config.lde_factor().trailing_zeros(),
-            config.base_oracles_values_per_leaf().trailing_zeros(),
-            config.cap_size.trailing_zeros(),
-            compiled_circuit.memory_layout.total_width,
-            TreesCacheMode::CachePartial,
-            context,
-        )?,
-        MemoryCommitmentShape::Geometry(geometry) => TraceHolder::new_base(
-            geometry,
-            BaseOracleRole::Memory,
-            TreesCacheMode::CachePartial,
-            context,
-        )?,
-    };
+    validate_separate_base_commitment_geometry(&geometry);
+    validate_stage1_commitment_geometry(&geometry, compiled_circuit);
+    let mut memory_holder = TraceHolder::new_base(
+        geometry,
+        BaseOracleRole::Memory,
+        TreesCacheMode::CachePartial,
+        context,
+    )?;
     let range = Range::new("commit_memory")?;
     let stream = context.get_exec_stream();
     range.start(stream)?;
-    if producing_geometry.is_none() || memory_holder.columns_count != 0 {
+    if memory_holder.columns_count != 0 {
         let evaluations = memory_holder.get_uninit_hypercube_evals_mut();
         let memory = &mut DeviceMatrixMut::new(evaluations, trace_len);
         match (circuit_type, tracing_data.as_ref()) {
@@ -409,32 +381,10 @@ pub fn commit_memory<'a>(
         decoder_table,
         None,
         Some(tracing_data),
-        config_memory_shape(prover_config, compiled_circuit),
+        BaseCommitmentGeometry::from_config(prover_config, BaseColumns::of(compiled_circuit)),
         None,
         context,
     )
-}
-
-fn config_memory_shape<'a>(
-    config: &'a ProverConfig,
-    circuit: &GKRCircuitArtifact<BF>,
-) -> MemoryCommitmentShape<'a> {
-    let geometry = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit));
-    memory_shape_for_geometry(config, geometry, circuit)
-}
-
-fn memory_shape_for_geometry<'a>(
-    config: &'a ProverConfig,
-    geometry: BaseCommitmentGeometry,
-    circuit: &GKRCircuitArtifact<BF>,
-) -> MemoryCommitmentShape<'a> {
-    validate_separate_base_commitment_geometry(&geometry);
-    validate_stage1_commitment_geometry(&geometry, circuit);
-    if uses_base_commitment_geometry(&geometry) {
-        MemoryCommitmentShape::Geometry(geometry)
-    } else {
-        MemoryCommitmentShape::Unpacked(config)
-    }
 }
 
 /// Use the worker's already resolved config/geometry without another CPU lookup.
@@ -442,11 +392,9 @@ pub fn commit_memory_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     inputs: super::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>,
-    prover_config: &ProverConfig,
     geometry: BaseCommitmentGeometry,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
-    let shape = memory_shape_for_geometry(prover_config, geometry, compiled_circuit);
     // One exec-stream wait covers every H2D bundled by `inputs` (decoder,
     // inits_and_teardowns, tracing_data).
     inputs.ensure_transferred(context)?;
@@ -464,7 +412,7 @@ pub fn commit_memory_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
         decoder.as_ref().map(|t| &t.data_device[..]),
         inits_and_teardowns.as_ref().map(|t| &t.data_device),
         tracing_data.as_ref().map(|t| &t.data_device),
-        shape,
+        geometry,
         Some(transfer.into_keepalive()),
         context,
     )

@@ -203,11 +203,9 @@ pub(super) fn finish_proof_fixture(
         device_allocator_block_log_size,
     );
     let gpu_setup_host = Arc::new(
-        GpuGKRSetupHost::precompute_from_cpu_setup(
+        GpuGKRSetupHost::precompute_for_geometry(
             &setup,
-            whir_schedule.base_lde_factor_log2() as u32,
-            1,
-            whir_schedule.cap_size.trailing_zeros(),
+            BaseCommitmentGeometry::from_config(&prover_config, BaseColumns::of(&compiled_circuit)),
             &context,
         )
         .unwrap(),
@@ -589,11 +587,9 @@ pub(super) fn finish_proof_fixture_memory(
         device_allocator_block_log_size,
     );
     let gpu_setup_host = Arc::new(
-        GpuGKRSetupHost::precompute_from_cpu_setup(
+        GpuGKRSetupHost::precompute_for_geometry(
             &setup,
-            whir_schedule.base_lde_factor_log2() as u32,
-            1,
-            whir_schedule.cap_size.trailing_zeros(),
+            BaseCommitmentGeometry::from_config(&prover_config, BaseColumns::of(&compiled_circuit)),
             &context,
         )
         .unwrap(),

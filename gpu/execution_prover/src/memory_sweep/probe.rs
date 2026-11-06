@@ -110,7 +110,6 @@ pub(super) fn commit_memory(
                 circuit.circuit,
                 circuit.precomputations.gkr_programs.compiled_circuit(),
                 inputs,
-                config,
                 geometry,
                 context,
             )?
@@ -126,24 +125,15 @@ fn schedule_proof_inputs<'a>(
     circuit: &PreparedCircuit,
 ) -> CudaResult<GpuGKRProofTransfer<'a, A>> {
     let programs = &circuit.precomputations.gkr_programs;
-    let config = &circuit.precomputations.config;
     let setup_host = circuit.precomputations.setup_host.get_initialized();
     let caps = circuit
         .memory_caps
         .as_deref()
         .expect("warm memory commitment");
     let geometry = circuit.precomputations.geometry;
-    let memory_host = Arc::new(
-        if gpu_trace::trace::memory::uses_base_commitment_geometry(&geometry) {
-            GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(caps, geometry)
-        } else {
-            GpuGKRMemoryTransferHost::from_per_coset_caps(
-                caps,
-                config.lde_factor().trailing_zeros(),
-                config.cap_size.trailing_zeros(),
-            )
-        },
-    );
+    let memory_host = Arc::new(GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(
+        caps, geometry,
+    ));
     let (decoder, inits, trace) = input_transfers(context, circuit)?;
     let setup = setup_host
         .map(|host| GpuGKRSetupTransfer::new(host, context))

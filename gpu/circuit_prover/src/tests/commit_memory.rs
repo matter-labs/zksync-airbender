@@ -219,7 +219,6 @@ fn run_unified_commit_memory_matches_cpu_test() {
             base.circuit_type,
             &base.compiled_circuit,
             bundle,
-            &base.prover_config,
             BaseCommitmentGeometry::from_config(
                 &base.prover_config,
                 BaseColumns::of(&base.compiled_circuit),

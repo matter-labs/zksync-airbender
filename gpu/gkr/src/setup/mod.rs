@@ -42,26 +42,14 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 
 impl<'a> GpuGKRSetupTransfer<'a> {
     pub fn new(host: Arc<GpuGKRSetupHost>, context: &ProverContext) -> CudaResult<Self> {
-        let mut trace_holder = if let Some(geometry) = host.base_commitment_geometry() {
-            host.validate_for_geometry(&geometry);
-
-            TraceHolder::<BF>::new_base_without_cosets(
-                geometry,
-                crate::upstream::BaseOracleRole::Setup,
-                TreesCacheMode::CachePartial,
-                context,
-            )?
-        } else {
-            TraceHolder::<BF>::new_without_cosets(
-                host.log_domain_size,
-                host.log_lde_factor,
-                host.log_rows_per_leaf,
-                host.log_tree_cap_size,
-                host.columns_count,
-                TreesCacheMode::CachePartial,
-                context,
-            )?
-        };
+        let geometry = host.base_commitment_geometry();
+        host.validate_for_geometry(&geometry);
+        let mut trace_holder = TraceHolder::<BF>::new_base_without_cosets(
+            geometry,
+            crate::upstream::BaseOracleRole::Setup,
+            TreesCacheMode::CachePartial,
+            context,
+        )?;
         // Allocate the cap up front so `schedule_transfer` has a stable destination.
         let cap_size = 1usize << host.log_tree_cap_size;
         let unified_cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
@@ -505,27 +493,6 @@ pub(super) fn flatten_setup_columns_into_pinned_buffer(
         raw_hypercube_evals[dst_range].copy_from_slice(src_column.as_ref());
     }
     Ok(raw_hypercube_evals)
-}
-
-pub(super) fn precompute_partial_tree_cache(
-    raw_hypercube_evals: &StaticPinnedBox<BF>,
-    log_domain_size: u32,
-    log_lde_factor: u32,
-    log_rows_per_leaf: u32,
-    log_tree_cap_size: u32,
-    columns_count: usize,
-    context: &ProverContext,
-) -> CudaResult<(Vec<StaticPinnedBox<Digest>>, StaticPinnedBox<Digest>)> {
-    let trace_holder = TraceHolder::<BF>::new(
-        log_domain_size,
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
-        columns_count,
-        TreesCacheMode::CachePartial,
-        context,
-    )?;
-    precompute_partial_tree_cache_in_holder(raw_hypercube_evals, trace_holder, context)
 }
 
 pub(super) fn precompute_partial_tree_cache_in_holder(

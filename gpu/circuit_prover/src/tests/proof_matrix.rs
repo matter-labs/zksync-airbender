@@ -168,6 +168,10 @@ fn run_stage1_buffer_parity(fixture: &BasicUnrolledFixture) {
             fixture.circuit_type,
             &fixture.compiled_circuit,
             geometry,
+            BaseCommitmentGeometry::from_config(
+                &fixture.prover_config,
+                BaseColumns::of(&fixture.compiled_circuit),
+            ),
             Some(setup.trace_holder.get_hypercube_evals()),
             transfers
                 .decoder
@@ -1184,7 +1188,10 @@ fn run_unified_profile_test() {
 // ---------------------------------------------------------------------------
 
 pub(super) fn prepare_inits_and_teardowns_matrix_proof_fixture() -> BasicUnrolledProofFixture {
-    let (base, p) = super::inits_and_teardowns::prepare_inits_and_teardowns_proof_fixture(true);
+    let (base, p) = super::inits_and_teardowns::prepare_inits_and_teardowns_proof_fixture(
+        true,
+        circuit_common::SoundnessMode::DEFAULT,
+    );
     BasicUnrolledProofFixture {
         base,
         expected_cpu_proof: p.unwrap(),
@@ -1192,7 +1199,11 @@ pub(super) fn prepare_inits_and_teardowns_matrix_proof_fixture() -> BasicUnrolle
 }
 
 fn prepare_inits_and_teardowns_matrix_profiling_fixture() -> BasicUnrolledFixture {
-    super::inits_and_teardowns::prepare_inits_and_teardowns_proof_fixture(false).0
+    super::inits_and_teardowns::prepare_inits_and_teardowns_proof_fixture(
+        false,
+        circuit_common::SoundnessMode::DEFAULT,
+    )
+    .0
 }
 
 // Regression guards for zero-width base-layer handling (width-0 witness):
@@ -1205,6 +1216,19 @@ fn run_inits_and_teardowns_proof_parity_test() {
     assert_eq!(fixture.base.compiled_circuit.generic_lookup_tables_width, 0);
     assert!(fixture.base.gpu_setup_host.is_none());
     run_proof_parity(&fixture);
+}
+
+#[test]
+#[ignore]
+fn run_inits_and_teardowns_ethproofs_proof_parity_test() {
+    let (base, proof) = super::inits_and_teardowns::prepare_inits_and_teardowns_proof_fixture(
+        true,
+        circuit_common::SoundnessMode::EthproofsSoundnessCalc,
+    );
+    run_whir_pow_proof_parity(&BasicUnrolledProofFixture {
+        base,
+        expected_cpu_proof: proof.unwrap(),
+    });
 }
 
 #[test]

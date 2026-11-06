@@ -41,7 +41,13 @@ fn policies_separate_with_setup() {
 #[test]
 #[ignore = "GPU policy candidates and presets against the default-policy proof"]
 fn policies_separate_without_setup() {
-    check_policies(&inits_and_teardowns::prepare_inits_and_teardowns_proof_fixture(false).0);
+    check_policies(
+        &inits_and_teardowns::prepare_inits_and_teardowns_proof_fixture(
+            false,
+            circuit_common::SoundnessMode::DEFAULT,
+        )
+        .0,
+    );
 }
 
 #[test]

@@ -1,5 +1,4 @@
 use super::*;
-use gpu_trace::trace::memory::uses_base_commitment_geometry;
 
 use super::inits_and_teardowns::{
     build_inits_and_teardowns_pages_for_selected_sets_for_test,
@@ -736,29 +735,12 @@ where
         device_allocator_block_log_size,
     );
     let gpu_setup_host = Arc::new(
-        if !uses_base_commitment_geometry(&BaseCommitmentGeometry::from_config(
-            &prover_config,
-            BaseColumns::of(&compiled_circuit),
-        )) {
-            GpuGKRSetupHost::precompute_from_cpu_setup(
-                &setup,
-                whir_schedule.base_lde_factor_log2() as u32,
-                whir_schedule.base_folding_log2() as u32,
-                whir_schedule.cap_size.trailing_zeros(),
-                &context,
-            )
-            .unwrap()
-        } else {
-            GpuGKRSetupHost::precompute_for_geometry(
-                &setup,
-                BaseCommitmentGeometry::from_config(
-                    &prover_config,
-                    BaseColumns::of(&compiled_circuit),
-                ),
-                &context,
-            )
-            .unwrap()
-        },
+        GpuGKRSetupHost::precompute_for_geometry(
+            &setup,
+            BaseCommitmentGeometry::from_config(&prover_config, BaseColumns::of(&compiled_circuit)),
+            &context,
+        )
+        .unwrap(),
     );
 
     // Delegation layouts carry no executor-family decoder lookup, so this host
@@ -1008,29 +990,12 @@ pub(super) fn prepare_unified_fixture(
         device_allocator_block_log_size,
     );
     let gpu_setup_host = Arc::new(
-        if !uses_base_commitment_geometry(&BaseCommitmentGeometry::from_config(
-            &prover_config,
-            BaseColumns::of(&compiled_circuit),
-        )) {
-            GpuGKRSetupHost::precompute_from_cpu_setup(
-                &setup,
-                whir_schedule.base_lde_factor_log2() as u32,
-                whir_schedule.base_folding_log2() as u32,
-                whir_schedule.cap_size.trailing_zeros(),
-                &context,
-            )
-            .unwrap()
-        } else {
-            GpuGKRSetupHost::precompute_for_geometry(
-                &setup,
-                BaseCommitmentGeometry::from_config(
-                    &prover_config,
-                    BaseColumns::of(&compiled_circuit),
-                ),
-                &context,
-            )
-            .unwrap()
-        },
+        GpuGKRSetupHost::precompute_for_geometry(
+            &setup,
+            BaseCommitmentGeometry::from_config(&prover_config, BaseColumns::of(&compiled_circuit)),
+            &context,
+        )
+        .unwrap(),
     );
     let decoder_table_host = make_decoder_table_host_for_test(&witness_gen_data);
 
@@ -1129,7 +1094,6 @@ pub(super) fn prepare_unified_fixture(
             fixture_circuit_type,
             &compiled_circuit,
             bundle,
-            &prover_config,
             BaseCommitmentGeometry::from_config(&prover_config, BaseColumns::of(&compiled_circuit)),
             &context,
         )

@@ -287,15 +287,7 @@ fn schedule_phase_one<'a>(
     let setup_host = state.precomputations.setup_host.get_initialized();
     let geometry = state.precomputations.geometry;
     let memory_host = state.memory_caps.as_deref().map(|caps| {
-        let host = if gpu_trace::trace::memory::uses_base_commitment_geometry(&geometry) {
-            GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(caps, geometry)
-        } else {
-            GpuGKRMemoryTransferHost::from_per_coset_caps(
-                caps,
-                config.lde_factor().trailing_zeros(),
-                config.cap_size.trailing_zeros(),
-            )
-        };
+        let host = GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(caps, geometry);
         Arc::new(host)
     });
     let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
@@ -447,7 +439,6 @@ fn enqueue_phase_two<'a>(
                 circuit_type,
                 &compiled_circuit_arc,
                 bundle,
-                prover_config,
                 state.precomputations.geometry,
                 context,
             )?;

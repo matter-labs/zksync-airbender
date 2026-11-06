@@ -48,9 +48,7 @@ fn align_up(offset: usize, align: usize) -> usize {
     (offset + align - 1) & !(align - 1)
 }
 
-/// Trace-holder geometry subset needed to size WHIR base-layer fields in the
-/// slab. POD captured by the forward pass / stage-1 trace holders; the
-/// gkr-side builder converts these into [`ProofLayoutBaseLayerGeometry`].
+/// Logical trace geometry captured by the forward pass and stage1 producers.
 #[derive(Clone, Copy, Debug)]
 pub struct GpuGKRTraceGeometry {
     pub log_domain_size: u32,
@@ -271,29 +269,7 @@ pub struct ProofLayout {
 mod accessors;
 mod build_inputs;
 pub use accessors::WhirBaseLayerKind; // pinned public API (apex whir/proof)
-pub use build_inputs::{build_proof_layout_inputs, build_proof_layout_inputs_for_geometry};
-
-/// Trace-holder geometry subset needed to size WHIR base-layer fields in the slab.
-#[derive(Clone, Copy, Debug)]
-pub struct ProofLayoutBaseLayerGeometry {
-    pub columns_count: usize,
-    pub log_domain_size: u32,
-    pub log_lde_factor: u32,
-    pub log_rows_per_leaf: u32,
-    pub log_tree_cap_size: u32,
-}
-
-impl ProofLayoutBaseLayerGeometry {
-    pub fn from_geometry(geometry: GpuGKRTraceGeometry, columns_count: usize) -> Self {
-        Self {
-            columns_count,
-            log_domain_size: geometry.log_domain_size,
-            log_lde_factor: geometry.log_lde_factor,
-            log_rows_per_leaf: geometry.log_rows_per_leaf,
-            log_tree_cap_size: geometry.log_tree_cap_size,
-        }
-    }
-}
+pub use build_inputs::build_proof_layout_inputs_for_geometry;
 
 impl ProofLayout {
     pub fn new(inputs: &ProofLayoutInputs) -> Self {

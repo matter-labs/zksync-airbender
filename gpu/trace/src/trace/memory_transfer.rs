@@ -11,9 +11,7 @@ use fft::GoodAllocator;
 use crate::trace::decoder::DecoderTableTransfer;
 use crate::trace::holder::bitreverse_index;
 use crate::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
-use crate::upstream::{
-    BaseCommitmentGeometry, BaseOracleRole, CommitmentMode, MerkleTreeCapVarLength,
-};
+use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, MerkleTreeCapVarLength};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_hash::blake2s::Digest;
@@ -21,7 +19,7 @@ use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 
 pub struct GpuGKRMemoryTransferHost {
-    base_geometry: Option<BaseCommitmentGeometry>,
+    base_geometry: BaseCommitmentGeometry,
     pub log_lde_factor: u32,
     pub log_tree_cap_size: u32,
     /// Single contiguous Merkle cap of length `1 << log_tree_cap_size`, stored
@@ -30,82 +28,50 @@ pub struct GpuGKRMemoryTransferHost {
 }
 
 impl GpuGKRMemoryTransferHost {
-    /// Packs naturally ordered per-coset caps into one bit-reversed cap.
-    /// `log_lde_factor` specifies the number of cosets; `log_tree_cap_size`
-    /// specifies the total cap size across all cosets.
-    pub fn from_per_coset_caps(
-        memory_tree_caps: &[MerkleTreeCapVarLength],
-        log_lde_factor: u32,
-        log_tree_cap_size: u32,
+    /// Packs naturally ordered per-coset caps into one bit-reversed cap bound
+    /// to the producing commitment geometry.
+    pub fn from_per_coset_caps_for_geometry(
+        caps: &[MerkleTreeCapVarLength],
+        geometry: BaseCommitmentGeometry,
     ) -> Self {
-        let lde_factor = 1usize
-            .checked_shl(log_lde_factor)
-            .expect("memory cap LDE shift overflow");
-        let cap_size = 1usize
-            .checked_shl(log_tree_cap_size)
-            .expect("memory cap size shift overflow");
+        let log_lde_factor = geometry.lde_factor().trailing_zeros();
+        let log_tree_cap_size = geometry.cap_size().trailing_zeros();
+        let lde_factor = geometry.lde_factor();
+        let cap_size = geometry.cap_size();
         assert!(
             cap_size >= lde_factor,
             "memory cap needs at least one node per coset"
         );
         assert_eq!(
-            memory_tree_caps.len(),
+            caps.len(),
             lde_factor,
-            "memory tree caps must contain one entry per coset",
+            "memory tree caps must contain one entry per coset"
         );
-        let per_coset = cap_size >> log_lde_factor;
-        let mut unified_tree_cap = Vec::with_capacity(cap_size);
+        let empty = geometry.oracle(BaseOracleRole::Memory).physical_columns() == 0;
+        let per_coset = if empty { 0 } else { cap_size / lde_factor };
+        for (index, cap) in caps.iter().enumerate() {
+            assert_eq!(
+                cap.cap.len(),
+                per_coset,
+                "memory tree cap[{index}] length mismatch"
+            );
+        }
+        let mut unified_tree_cap = Vec::with_capacity(if empty { 0 } else { cap_size });
         for stage1_pos in 0..lde_factor {
             let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
-            let src = &memory_tree_caps[natural_coset_index].cap;
-            assert_eq!(
-                src.len(),
-                per_coset,
-                "memory tree cap[{natural_coset_index}] length mismatch",
-            );
-            unified_tree_cap.extend_from_slice(src);
+            unified_tree_cap.extend_from_slice(&caps[natural_coset_index].cap);
         }
-        Self {
-            base_geometry: None,
+        let host = Self {
+            base_geometry: geometry,
             log_lde_factor,
             log_tree_cap_size,
             unified_tree_cap,
-        }
-    }
-
-    /// Bind GPU-internal cap metadata to the producing commitment geometry.
-    /// This retains the CPU pipeline's trust in the supplied cap contents.
-    pub fn from_per_coset_caps_for_geometry(
-        caps: &[MerkleTreeCapVarLength],
-        geometry: BaseCommitmentGeometry,
-    ) -> Self {
-        let log_lde = geometry.lde_factor().trailing_zeros();
-        let log_cap = geometry.cap_size().trailing_zeros();
-        let mut host = if geometry.oracle(BaseOracleRole::Memory).physical_columns() == 0 {
-            assert_eq!(
-                caps.len(),
-                geometry.lde_factor(),
-                "empty memory cap coset count mismatch"
-            );
-            assert!(
-                caps.iter().all(|cap| cap.cap.is_empty()),
-                "empty memory oracle has empty caps"
-            );
-            Self {
-                base_geometry: None,
-                log_lde_factor: log_lde,
-                log_tree_cap_size: log_cap,
-                unified_tree_cap: Vec::new(),
-            }
-        } else {
-            Self::from_per_coset_caps(caps, log_lde, log_cap)
         };
-        host.base_geometry = Some(geometry);
         host.validate_for_geometry(&geometry);
         host
     }
 
-    fn validate_for_geometry(&self, geometry: &BaseCommitmentGeometry) {
+    pub fn validate_for_geometry(&self, geometry: &BaseCommitmentGeometry) {
         assert_eq!(
             self.log_lde_factor,
             geometry.lde_factor().trailing_zeros(),
@@ -116,19 +82,10 @@ impl GpuGKRMemoryTransferHost {
             geometry.cap_size().trailing_zeros(),
             "memory cap size geometry mismatch"
         );
-        if let Some(producing) = self.base_geometry {
-            assert_eq!(
-                producing, *geometry,
-                "memory cap producing geometry mismatch"
-            );
-        } else {
-            assert!(
-                geometry.pack_log2() == 0
-                    && !geometry.is_virtual_packing()
-                    && geometry.commitment_mode() == CommitmentMode::SeparateMemoryAndWitness,
-                "legacy memory cap lacks packed, virtual or merged geometry"
-            );
-        }
+        assert_eq!(
+            self.base_geometry, *geometry,
+            "memory cap producing geometry mismatch"
+        );
         let expected = if geometry.oracle(BaseOracleRole::Memory).physical_columns() == 0 {
             0
         } else {
@@ -150,19 +107,8 @@ pub struct GpuGKRMemoryTransfer<'a> {
 
 impl<'a> GpuGKRMemoryTransfer<'a> {
     pub fn new(host: Arc<GpuGKRMemoryTransferHost>, context: &ProverContext) -> CudaResult<Self> {
-        let cap_size = if host.base_geometry.is_some() {
-            host.unified_tree_cap.len()
-        } else {
-            let cap_size = 1usize
-                .checked_shl(host.log_tree_cap_size)
-                .expect("memory cap size shift overflow");
-            assert_eq!(
-                host.unified_tree_cap.len(),
-                cap_size,
-                "memory cap payload length mismatch"
-            );
-            cap_size
-        };
+        host.validate_for_geometry(&host.base_geometry);
+        let cap_size = host.unified_tree_cap.len();
         let unified_device_cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
         Ok(Self {
             host,

@@ -16,94 +16,6 @@ use crate::upstream::{
     DefaultTreeConstructor, FieldExtension, MerkleTreeCapVarLength, PrimeField, VirtualSetupPoly,
 };
 
-mod packed;
-
-#[test]
-#[cfg(not(no_cuda))]
-fn merged_class_backings_preserve_logical_pointer_offsets() {
-    use gpu_trace::trace::holder::TreesCacheMode;
-    let context = make_test_context(64, 16);
-    let rows = 16usize;
-    let holder = |columns| {
-        TraceHolder::<BF>::new_without_cosets(
-            4,
-            1,
-            1,
-            1,
-            columns,
-            TreesCacheMode::CacheNone,
-            &context,
-        )
-        .unwrap()
-    };
-    let memory = holder(2);
-    let witness = holder(3);
-    let separate =
-        bootstrap_storage_from_trace_holders::<E4>(None, 0, 4, 1, 1, 1, &memory, &witness, None)
-            .unwrap();
-    for (address, expected) in [
-        (
-            GKRAddress::BaseLayerMemory(0),
-            memory.get_hypercube_evals().as_ptr(),
-        ),
-        (
-            GKRAddress::BaseLayerWitness(0),
-            witness.get_hypercube_evals().as_ptr(),
-        ),
-    ] {
-        let class = crate::gkr_address_audit::classify(&address, 0);
-        let backing = &separate.layers[0].base_class_backings[&class];
-        assert_eq!(backing.offset, 0);
-        assert_eq!(backing.backing.as_ptr(), expected);
-        assert_eq!(
-            separate.try_get_base_poly(address).unwrap().as_ptr(),
-            expected
-        );
-    }
-    let merged = holder(5);
-    let empty_witness = holder(0);
-    let storage = bootstrap_storage_from_trace_holders::<E4>(
-        None,
-        0,
-        4,
-        1,
-        1,
-        1,
-        &merged,
-        &empty_witness,
-        Some(2),
-    )
-    .unwrap();
-    let start = merged.get_hypercube_evals().as_ptr();
-    let witness_class = crate::gkr_address_audit::classify(&GKRAddress::BaseLayerWitness(0), 0);
-    let backing = &storage.layers[0].base_class_backings[&witness_class];
-    assert_eq!(backing.offset, 2 * rows);
-    assert_eq!(
-        backing.backing.as_ptr().wrapping_add(backing.offset),
-        start.wrapping_add(2 * rows)
-    );
-    assert_eq!(
-        storage
-            .try_get_base_poly(GKRAddress::BaseLayerMemory(0))
-            .unwrap()
-            .as_ptr(),
-        start
-    );
-    assert_eq!(
-        storage
-            .try_get_base_poly(GKRAddress::BaseLayerWitness(0))
-            .unwrap()
-            .as_ptr(),
-        start.wrapping_add(2 * rows)
-    );
-    assert_eq!(
-        storage
-            .try_get_base_poly(GKRAddress::BaseLayerWitness(2))
-            .unwrap()
-            .as_ptr(),
-        start.wrapping_add(4 * rows)
-    );
-}
 // test-only direct upstream imports (the `#[cfg(test)]` exemption of the upstream rule)
 use gpu_core::primitives::field::E4;
 use gpu_ops::simple::set_by_ref;
@@ -111,6 +23,38 @@ use prover::allocation_pool::GenericAllocationPool;
 use prover::gkr::prover::backend::NaiveBackend;
 use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
 use prover::gkr::prover::SetupCommitment;
+
+fn setup_geometry(
+    setup: &CpuGKRSetup<BF>,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_tree_cap_size: u32,
+) -> crate::upstream::BaseCommitmentGeometry {
+    use prover::definitions::SecurityLevel;
+    use prover::gkr::prover::WhirSchedule;
+    use prover::gkr::prover_config::{BaseColumns, ProverConfig};
+    let config = ProverConfig::whir_only(
+        setup.hypercube_evals[0].len().trailing_zeros() as usize,
+        WhirSchedule::from_legacy_arrays(
+            1usize << log_lde_factor,
+            1usize << log_tree_cap_size,
+            0,
+            &[log_rows_per_leaf as usize, 5],
+            &[log_lde_factor as usize, log_lde_factor as usize],
+            &[2],
+            &[0, 0],
+        ),
+        SecurityLevel::Sec100,
+    );
+    crate::upstream::BaseCommitmentGeometry::from_config(
+        &config,
+        BaseColumns {
+            setup: setup.hypercube_evals.len(),
+            memory: 0,
+            witness: 0,
+        },
+    )
+}
 
 fn make_test_cpu_setup(
     trace_len: usize,
@@ -277,27 +221,12 @@ fn launch_generic_lookup_preprocessing(
     fill_values: Option<&mut DeviceAllocation<E4>>,
     context: &ProverContext,
 ) -> Vec<E4> {
-    let log_lde_factor = 1u32;
-    let log_rows_per_leaf = 1u32;
-    let log_tree_cap_size = 1u32;
-    let host = Arc::new(
-        GpuGKRSetupHost::precompute_from_cpu_setup(
-            setup,
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
-            context,
-        )
-        .unwrap(),
-    );
-    let mut transfer = GpuGKRSetupTransfer::new(Arc::clone(&host), context).unwrap();
-    let _h2d = gpu_prover_context::transfer::single_shot_h2d(
-        |t| transfer.schedule_transfer(t, context),
-        context,
-    )
-    .unwrap();
-    context.get_h2d_stream().synchronize().unwrap();
-
+    let raw = flatten_setup(setup);
+    let trace_len = setup.hypercube_evals[0].len();
+    let mut device_setup = context
+        .alloc(raw.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut device_setup, &raw, context.get_exec_stream()).unwrap();
     let mut device_lookup_alpha = context.alloc(1, AllocationPlacement::BestFit).unwrap();
     memory_copy_async(
         &mut device_lookup_alpha,
@@ -314,11 +243,16 @@ fn launch_generic_lookup_preprocessing(
     let mut generic_lookup = context
         .alloc(generic_lookup_len, AllocationPlacement::BestFit)
         .unwrap();
-    let mut batch = lower_forward_setup_generic_lookup_batch(
-        host.as_ref(),
-        transfer.trace_holder.get_hypercube_evals(),
-        generic_lookup_width,
-        &mut generic_lookup,
+    let setup_columns = (0..generic_lookup_width)
+        .map(|column| device_setup.as_ptr().wrapping_add(column * trace_len))
+        .collect_vec();
+    let mut batch = pack_forward_setup_generic_lookup_batch(
+        &setup_columns,
+        generic_lookup.as_mut_ptr(),
+        null_mut(),
+        null_mut(),
+        0,
+        BF::ZERO,
     );
     if let Some(fill_values) = fill_values {
         let fill_values = fill_values.as_mut_ptr();
@@ -342,11 +276,9 @@ fn setup_host_matches_flattened_cpu_setup_and_caps() {
     let setup = make_test_cpu_setup(trace_len, 3, 64);
     let context = make_test_context(256, 64);
 
-    let host = GpuGKRSetupHost::precompute_from_cpu_setup(
+    let host = GpuGKRSetupHost::precompute_for_geometry(
         &setup,
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
+        setup_geometry(&setup, log_lde_factor, log_rows_per_leaf, log_tree_cap_size),
         &context,
     )
     .unwrap();
@@ -398,11 +330,9 @@ fn setup_host_matches_cpu_setup_caps_at_production_cap_geometry() {
     let setup = make_test_cpu_setup(trace_len, 3, 64);
     let context = make_test_context(256, 64);
 
-    let host = GpuGKRSetupHost::precompute_from_cpu_setup(
+    let host = GpuGKRSetupHost::precompute_for_geometry(
         &setup,
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
+        setup_geometry(&setup, log_lde_factor, log_rows_per_leaf, log_tree_cap_size),
         &context,
     )
     .unwrap();
@@ -444,7 +374,7 @@ fn setup_host_matches_cpu_setup_caps_at_production_cap_geometry() {
 #[test]
 #[cfg(not(no_cuda))]
 fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit() {
-    let trace_len = 1usize << 10;
+    let trace_len = 1usize << 13;
     let lde_factor = 2usize;
     let tree_cap_size = 4usize;
     let log_lde_factor = lde_factor.trailing_zeros();
@@ -454,11 +384,9 @@ fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit(
     let context = make_test_context(256, 64);
 
     let host = Arc::new(
-        GpuGKRSetupHost::precompute_from_cpu_setup(
+        GpuGKRSetupHost::precompute_for_geometry(
             &setup,
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
+            setup_geometry(&setup, log_lde_factor, log_rows_per_leaf, log_tree_cap_size),
             &context,
         )
         .unwrap(),
@@ -496,12 +424,9 @@ fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit(
         .alloc(raw.len(), AllocationPlacement::BestFit)
         .unwrap();
     memory_copy_async(&mut fresh_source, &raw, context.get_exec_stream()).unwrap();
-    let mut fresh_holder = TraceHolder::<BF>::new(
-        trace_len.trailing_zeros(),
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
-        setup.hypercube_evals.len(),
+    let mut fresh_holder = TraceHolder::<BF>::new_base(
+        setup_geometry(&setup, log_lde_factor, log_rows_per_leaf, log_tree_cap_size),
+        crate::upstream::BaseOracleRole::Setup,
         TreesCacheMode::CachePartial,
         &context,
     )
@@ -555,7 +480,7 @@ fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit(
 #[test]
 #[cfg(not(no_cuda))]
 fn bootstrap_storage_binds_setup_memory_and_witness_trace_holders() {
-    let trace_len = 1usize << 10;
+    let trace_len = 1usize << 13;
     let lde_factor = 2usize;
     let tree_cap_size = 4usize;
     let log_lde_factor = lde_factor.trailing_zeros();
@@ -565,11 +490,9 @@ fn bootstrap_storage_binds_setup_memory_and_witness_trace_holders() {
     let context = make_test_context(256, 64);
 
     let host = Arc::new(
-        GpuGKRSetupHost::precompute_from_cpu_setup(
+        GpuGKRSetupHost::precompute_for_geometry(
             &setup,
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
+            setup_geometry(&setup, log_lde_factor, log_rows_per_leaf, log_tree_cap_size),
             &context,
         )
         .unwrap(),
@@ -773,7 +696,7 @@ fn forward_setup_generic_lookup_fused_kernel_handles_single_column() {
 #[test]
 #[cfg(not(no_cuda))]
 fn forward_setup_schedule_generic_lookup_matches_cpu() {
-    let trace_len = 1usize << 10;
+    let trace_len = 1usize << 13;
     let generic_lookup_width = 4;
     let generic_lookup_len = 32;
     let context = make_test_context(256, 64);
@@ -794,11 +717,9 @@ fn forward_setup_schedule_generic_lookup_matches_cpu() {
             padding.unwrap_or(BF::ZERO),
         );
         let host = Arc::new(
-            GpuGKRSetupHost::precompute_from_cpu_setup(
+            GpuGKRSetupHost::precompute_for_geometry(
                 &setup,
-                log_lde_factor,
-                log_rows_per_leaf,
-                log_tree_cap_size,
+                setup_geometry(&setup, log_lde_factor, log_rows_per_leaf, log_tree_cap_size),
                 &context,
             )
             .unwrap(),
