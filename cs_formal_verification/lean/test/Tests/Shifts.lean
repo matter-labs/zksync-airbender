@@ -1,5 +1,6 @@
 import Slop.ShiftBinop.Claims
 import Slop.ShiftBinop.Shifts
+import Slop.ShiftBinop.Completeness.Lookups
 import Mathlib.Tactic.IntervalCases
 
 namespace Tests.Shifts
@@ -45,17 +46,6 @@ private def row (tag : Fin 4) (immediate zero : Bool) : Nat → ZMod babyBearMod
       | 8 => 9 | j => part tag zero i (j - 4)
     else 0
 
-private def rowIndex (xs : Vector (ZMod babyBearModulus) 10) : Nat :=
-  if xs[9].val = 8 then 196865 + xs[0].val * 256 + xs[1].val else
-    262401 + xs[0].val * 65536 + xs[1].val * 256 + xs[2].val * 8 + xs[3].val
-
-private theorem checkedRow (xs : Vector (ZMod babyBearModulus) 10)
-    (bound : rowIndex xs < 524545)
-    (correct : xs = (Verification.shiftBinopRow ⟨rowIndex xs, bound⟩).map
-      (fun (n : Nat) => (n : ZMod babyBearModulus))) :
-    ∃ i : Fin 524545, xs = (Verification.shiftBinopRow i).map
-      (fun (n : Nat) => (n : ZMod babyBearModulus)) := ⟨⟨_, bound⟩, correct⟩
-
 set_option maxRecDepth 4096 in
 set_option maxHeartbeats 6000000 in
 private theorem satisfies (tag : Fin 4) (immediate zero : Bool) :
@@ -73,18 +63,14 @@ private theorem satisfies (tag : Fin 4) (immediate zero : Bool) :
       ((FlatOperation.lookups importedConstraints).get i).Contains
         (Verification.environment (row tag immediate zero)) := by
     intro i
-    fin_cases i <;> fin_cases tag <;> cases immediate <;> cases zero <;>
-      simp [importedConstraints, FlatOperation.lookups, Lookup.Contains,
-        Verification.shiftBinopLookup, Verification.shiftBinopTable, Table.fromStatic,
-        Table.toRaw, Expression.eval, Verification.environment, row, amount,
-        sourceByte, source, part, code, zeroRight, Verification.shiftByteContribution]
-    all_goals solve
-      | (apply Verification.range16_contains; decide)
-      | (with_unfolding_all refine checkedRow _ (by decide) ?_
-         apply Vector.ext
-         intro j bound
-         rw [Vector.getElem_map]
-         interval_cases j <;> decide +revert)
+    fin_cases i
+    · exact Verification.range16_contains (by fin_cases tag <;> cases immediate <;> cases zero <;> decide)
+    · exact Verification.range16_contains (by fin_cases tag <;> cases immediate <;> cases zero <;> decide)
+    · exact Proofs.sign_query_of_columns (by fin_cases tag <;> cases immediate <;> cases zero <;> decide +kernel)
+    · exact Proofs.query_of_columns 0 (by fin_cases tag <;> cases immediate <;> cases zero <;> decide +kernel)
+    · exact Proofs.query_of_columns 1 (by fin_cases tag <;> cases immediate <;> cases zero <;> decide +kernel)
+    · exact Proofs.query_of_columns 2 (by fin_cases tag <;> cases immediate <;> cases zero <;> decide +kernel)
+    · exact Proofs.query_of_columns 3 (by fin_cases tag <;> cases immediate <;> cases zero <;> decide +kernel)
   constructor
   · intro c hc
     obtain ⟨i, rfl⟩ := List.mem_iff_get.mp hc
