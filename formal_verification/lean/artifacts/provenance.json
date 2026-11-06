@@ -8570,6 +8570,160 @@
       "backport_reuse_revision": "76c830f55a236c4572c3df8899bd186423269312",
       "backport_reuse_path": "Tests/NativeReducedArithmetic.lean",
       "backport_reuse_sha256": "6b3bbd3b9fccf75e3b9fac64df816bc4808735ea5e8f6750e731940525d0b10a"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/BitwiseDecoder.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/ArithmeticDecoder.lean",
+      "backport_reuse_sha256": "1de9bbe630576d846f1dedc548416c1539f94597a4f50e250e56bbc834b93885"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachineBitwise.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ReducedMachineArithmetic.lean",
+      "backport_reuse_sha256": "74a98066ecc68471f5f7c9cfc8210e77cecd06b73f6e0464b2a58346f04fc26e"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ReducedMachineBitwise.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/ReducedMachineArithmetic.lean",
+      "backport_reuse_sha256": "32c9d33a316230675c5fa8b16912c2a32a87337a4a9cbcb9e73d1979b9bb548f"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/BitwiseDecoder.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticDecoder.lean",
+      "backport_reuse_sha256": "e3a238f2181917f6ad0a2495491e3ebdade5bf62d3f52a5f3ebe20e7ee2306ae"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/BitwiseZeroRegister.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticZeroRegister.lean",
+      "backport_reuse_sha256": "cf02af51888dadeef9387ee005c3c66b8fc2ecc70c294439d8441aa38cc2f983"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/BitwiseDecoder.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticDecoder.lean",
+      "backport_reuse_sha256": "97ef709635806bcb4ddb8a4b25354254d7b6b411f6c3b648c16f0dac05c15737"
+    },
+    {
+      "path": "Tests/NativeReducedBitwiseExecution.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Tests/NativeReducedArithmeticExecution.lean",
+      "backport_reuse_sha256": "903e687b57241173b55283e52bb7ce470c000e950b4c743c473d50c1ea853b1f"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseDecoder.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecoder.lean",
+      "backport_reuse_sha256": "0526a342d564270f5ef9e2e896854fe1ab45cd25b4fd2ce582e95214834a144a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwisePorts.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPorts.lean",
+      "backport_reuse_sha256": "acc43411c595d3fca570e81ec3ebd28ba2f8dfb478d52201ede8d128bf2dad4a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseOperand.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticOperand.lean",
+      "backport_reuse_sha256": "21e2dc3def6a924384bea8b0f15f9e9ad8548e9cf35f65bebcedc8386171868a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseClauseReference.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticClauseReference.lean",
+      "backport_reuse_sha256": "488df011cb5099b566decf70bc69514b88d645514153e536f12a7b32e9ab2136"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseClause.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticClause.lean",
+      "backport_reuse_sha256": "8d0c1c7af6abd761eed585504d94e42c0d8c63c5f624cddbfb2d2bb2d7e3a6d8"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwisePC.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPC.lean",
+      "backport_reuse_sha256": "2fabd82677a4e360925279dd0b4a5dcfdd4c77656f1b81d2a781a79f8365e40f"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseExecution.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticExecution.lean",
+      "backport_reuse_sha256": "b1d80c0da529b13dd6d17601c6d362eff51be001034f63653f68ec485d34bfdb"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwisePreservation.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPreservation.lean",
+      "backport_reuse_sha256": "ff923b62c5ca5801d0909eda0ab4b74ca66b4984a1abd4e0720fce7b4545f05f"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBitwiseDecodedResult.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecodedResult.lean",
+      "backport_reuse_sha256": "75cb9d368a217aec524798e0dc9f39c71fccd276c0e4c855b106a749d0a50893"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean",
+      "backport_reuse_sha256": "dd17620374f4b22d8783c75fc9784337fa51ef391f377ea6f81519a12174be47"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "backport_reuse_sha256": "601377a533a2f58209365d4fc778916c01ed65fa0b6fbf90e4344df7116354d4"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean",
+      "backport_reuse_sha256": "db0fc494b1d42d71f17b7bb2d52cb3fad8b7cd1203587c193a2ab6584e0dea46"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean",
+      "backport_reuse_sha256": "50db0fa220fcbfe0050c4046cecac4de4f71b41dd625280484887ff9964777f4"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "backport_reuse_sha256": "70d433ab0d66b292f8cff9d3e87534f77ebe91bc3cceffeebdbc022445b136fc"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedDecoder.lean",
+      "change": "Adapt the exact checked native arithmetic/common template to original bitwise decoding, actual native ports/operands/rd-x0/PC/Sail effects and common initialized execution. Preserve readonly participation and derive all numerical ranges and states; no split mask/table equivalence or public answer premise.",
+      "backport_reuse_revision": "873154846af1f787b809079144589a11592625aa",
+      "backport_reuse_path": "Tests/NativeReducedSupportedDecoder.lean",
+      "backport_reuse_sha256": "7ecb87b10ed89fb540529f0e051cae5c7f9616942ad6d3a5e0e43f36f3f65bbc"
     }
   ],
   "setup_artifacts": [

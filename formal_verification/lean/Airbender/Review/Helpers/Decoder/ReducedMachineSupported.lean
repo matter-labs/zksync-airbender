@@ -6,7 +6,7 @@ open Trace
 set_option autoImplicit false
 
 /-- Complete original public sparse/padded membership for mixed selected shift
-    and arithmetic rows. Native fixed-ROM/physical setup fidelity stays separate. -/
+    arithmetic and bitwise rows. Native fixed-ROM/physical setup fidelity stays separate. -/
 def SupportedDecodedTrace {p : Nat} [Fact p.Prime] (trace : Data p NativeReducedFamily)
     (setup : SparseDecoderSetup SupportedMode) : Prop :=
   ∀ row ∈ trace.rows, setup.table.Contains #[] row.decoderQuery

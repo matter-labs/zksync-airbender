@@ -204,3 +204,12 @@ are derived from original decoded profiles; they are not supplied publicly.
 and [finite original execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
 construct all states, decoder replay and terminal observations with exact fixedData
 acceptance. Other profiles and native public/physical/protocol boundaries remain open.
+
+## Actual reduced bitwise GPR transport
+
+[BitwiseRegisterTransfer](ReducedMachineBitwise.lean) observes all three original
+GPR reads in one pre-state and the actual masked write. [Native port proofs](../../../Proofs/ReducedMachine/NativeBitwisePorts.lean)
+derive register addresses and readonly aliases before shared history reuse.
+[Common initialized execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+constructs the states and order from native matching and public seeds; these
+observations are not supplied as public answers.

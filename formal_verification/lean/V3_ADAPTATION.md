@@ -449,3 +449,24 @@ corruption/domain rejection, immediate readonly/x0 participation and sign-bit RV
 values above M31, without claiming complete positive native bitwise execution.
 No native/imported/generated data or production/Sail/dependency input changed;
 no native finding, issue assumption, fix or parity claim is added.
+
+## Original native bitwise execution checkpoint (7 November 2026)
+
+[Original bitwise projection](Airbender/Review/Circuits/ReducedMachine/BitwiseDecoder.lean)
+adapts the exact pinned native arithmetic public-decoder pattern while preserving
+all six original constructors/x0/raw operands/sign extension and actual33/35mask,
+4/6/7rawfunct3. [New native effects](Airbender/Proofs/ReducedMachine/NativeBitwiseExecution.lean)
+prove all actual ports, selected operands, decoded masked writes, original clauses
+and PC preparation/retirement with RV32 wrap. Previously checked byte numerics
+supply all ranges; no source-bound or desired result/state/PC premise is introduced.
+[The common supported execution](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+now derives initialized interleaved shift/arithmetic/bitwise fetched execution via
+common native range/x0/history/code/misa/replay proofs and exact fixedData acceptance.
+All 25 original public image slots now have SourceWith evidence. [New regressions](Tests/NativeReducedBitwiseExecution.lean)
+check all twelve ordinary/x0 forms and original retirement, sign bits/negative
+immediates, wrong tags and masked writes. Original local Sail positives are separate
+from full nonempty native witnesses. Exact parent-revision template hashes are in
+[provenance](artifacts/provenance.json); old split masks/constraints/tables are not
+assumed equivalent. Other combined profiles and public/export/preprocessing/ROM/
+physical/protocol/terminal/init/cryptographic/completeness/interrupt scopes remain
+open. No production/native/Sail/data/dependency change, finding or parity claim.

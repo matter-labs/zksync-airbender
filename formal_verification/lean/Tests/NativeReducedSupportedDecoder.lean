@@ -33,7 +33,7 @@ private theorem map_slots (indices : List (Fin 25)) :
     simp only [List.map_cons,List.mapM_cons,original_public_slots,ih,bind,Option.bind,pure]
 
 /-- Complete public prefix/tail construction now accepts the original ADD at
-    PC96 in the same image as shifts; holes stay at their original PCs. -/
+    PC96 and original bitwise forms at their original PCs in the same image. -/
 theorem mixed_public_image : supportedDecoderSetupImage ShiftBinop.NativeSetup.before 25 5 = some setup := by
   have image := map_slots (List.finRange 25)
   change ((List.range 25).map fun i => BitVec.ofNat 32 (4 * i)).mapM
@@ -47,7 +47,7 @@ theorem mixed_public_image : supportedDecoderSetupImage ShiftBinop.NativeSetup.b
 private def first : SupportedProgramEntry :=
   ⟨0,0x002091b3,.RTYPE (.Regidx 2,.Regidx 1,.Regidx 3,.SLL),⟨.inl .left,1,2,3,⟨0,0⟩,4099,1⟩⟩
 private def last : SupportedProgramEntry :=
-  ⟨96,0x001080b3,.RTYPE (.Regidx 1,.Regidx 1,.Regidx 1,.ADD),⟨.inr .add,1,1,1,⟨0,0⟩,11,0⟩⟩
+  ⟨96,0x001080b3,.RTYPE (.Regidx 1,.Regidx 1,.Regidx 1,.ADD),⟨.inr (.inl .add),1,1,1,⟨0,0⟩,11,0⟩⟩
 
 /-- Both profiles have original bytes and stateful Sail source evidence in one
     complete public image, rather than an assumed per-row classification. -/
@@ -69,20 +69,20 @@ theorem selected_fields :
     supportedDecoderFields (.SHIFTIOP (31,.Regidx 1,.Regidx 0,.SRAI)) =
       some ⟨.inl .arithmetic,1,0,0,⟨1055,0⟩,102401,5⟩ ∧
     supportedDecoderFields (.ITYPE (4095,.Regidx 1,.Regidx 0,.ADDI)) =
-      some ⟨.inr .addi,1,0,0,⟨65535,65535⟩,9,0⟩ ∧
+      some ⟨.inr (.inl .addi),1,0,0,⟨65535,65535⟩,9,0⟩ ∧
     supportedDecoderFields (.UTYPE (7,.Regidx 0,.LUI)) =
-      some ⟨.inr .lui,0,0,0,⟨28672,0⟩,513,7⟩ ∧
+      some ⟨.inr (.inl .lui),0,0,0,⟨28672,0⟩,513,7⟩ ∧
     supportedDecoderFields (.UTYPE (5,.Regidx 4,.AUIPC)) =
-      some ⟨.inr .auipc,0,0,4,⟨20480,0⟩,17,5⟩ := by
+      some ⟨.inr (.inl .auipc),0,0,4,⟨20480,0⟩,17,5⟩ := by
   exact ⟨rfl,rfl,rfl,rfl,rfl,rfl⟩
 
-/-- Unsupported bitwise forms/oversized shift immediates remain holes. This
-    milestone does not silently widen the accepted original instruction profile. -/
+/-- Original bitwise support fills the old hole; oversized shifts remain
+    unsupported. This checks the exact intended profile extension. -/
 theorem unsupported_holes :
-    setup.slots[3]? = some none ∧
+    (setup.slots[3]?).bind id ≠ none ∧
     supportedDecoderFields (.SHIFTIOP (32,.Regidx 1,.Regidx 3,.SLLI)) = none ∧
     supportedDecoderFields (.SHIFTIOP (63,.Regidx 1,.Regidx 0,.SRAI)) = none := by
-  exact ⟨rfl,rfl,rfl⟩
+  exact ⟨by decide,rfl,rfl⟩
 
 /-- Complete setup contains both actual queries and its padding. Native Boolean
     packing, not an added exclusion premise, prevents selecting that sentinel. -/
@@ -96,10 +96,22 @@ theorem queries_and_padding {w : Nat → ZMod mersenne31Modulus}
 /-- The original U-type raw funct3 remains observable in the common query. -/
 theorem corrupted_upper_funct3_rejected {w : Nat → ZMod mersenne31Modulus}
     (query : decoderQuery w = (⟨8,0x00005217,.UTYPE (5,.Regidx 4,.AUIPC),
-      ⟨.inr .auipc,0,0,4,⟨20480,0⟩,17,5⟩⟩ : SupportedProgramEntry).query) : w 11 ≠ 0 := by
+      ⟨.inr (.inl .auipc),0,0,4,⟨20480,0⟩,17,5⟩⟩ : SupportedProgramEntry).query) : w 11 ≠ 0 := by
   have selected := congrArg (fun q : Vector (ZMod mersenne31Modulus) 10 => q[8]) query
   change w 11 = 5 at selected
   rw [selected]
   decide +kernel
+
+
+/-- All original bitwise slots, including x0 and both immediate signs, coexist
+    with shift/ADD in the complete public image. Every slot is now supported. -/
+theorem complete_original_image (i : Fin 25) : ∃ entry, setup.slots[i.val]? = some (some entry) ∧
+    entry.SourceWith ShiftBinop.NativeSetup.before supportedDecoderFields := by
+  have supported : ∃ entry, setup.slots[i.val]? = some (some entry) := by
+    fin_cases i <;> exact ⟨_,rfl⟩
+  obtain ⟨entry,found⟩ := supported
+  have member : some entry ∈ setup.slots := List.mem_of_getElem? found
+  have present : entry ∈ setup.program := List.mem_filterMap.mpr ⟨some entry,member,rfl⟩
+  exact ⟨entry,found,(Trace.Proofs.run_sparse_setup_sources mixed_public_image present).1⟩
 
 end Tests.NativeReducedSupportedDecoder

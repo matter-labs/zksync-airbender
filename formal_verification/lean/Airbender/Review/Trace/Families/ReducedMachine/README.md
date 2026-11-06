@@ -215,3 +215,18 @@ rd/x0/operand/GPR/clause/PC transport and common preservation/history remain nex
 SupportedMode and its initialized execution currently still cover only selected
 shifts and ADD/ADDI/SUB/LUI/AUIPC. Positive byte-pool rows do not certify full
 117-equation bitwise accepted execution or physical setup.
+
+## Bitwise in common initialized execution (7 November 2026)
+
+[Original bitwise source recovery](BitwiseDecoder.lean) derives actual mask/tag,
+rs1/rs2/rd/x0 and sign extension. [New local native execution](../../../../Proofs/ReducedMachine/NativeBitwiseExecution.lean)
+binds all actual ports, selected operands, numerical masked writes, original
+clauses and bounded PC+4/full RV32 wrap. [Common ranges](SupportedValues.lean) and
+[fetched execution](SupportedExecution.lean) now cover interleaved shifts, arithmetic
+and bitwise through one derived range/x0/native-clock history and code/misa replay.
+No read/range/result/PC/state/profile answer or table equivalence is public. Exact
+fixedData acceptance stays explicit. [Original-image regressions](../../../../../Tests/NativeReducedSupportedDecoder.lean)
+prove every one of25slots supported; [Sail regressions](../../../../../Tests/NativeReducedBitwiseExecution.lean)
+retain ordinary/x0/negative-immediate/wrap behavior. Full nonempty native bitwise/
+arithmetic/mixed positive witnesses and other combined/protocol/setup boundaries
+remain open. The preceding local-only bitwise snapshot is superseded here.

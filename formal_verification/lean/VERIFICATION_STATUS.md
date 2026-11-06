@@ -18,7 +18,7 @@ This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
 **The reduced machine now has conditional fetched-execution soundness for mixed
-selected original shifts and ADD/ADDI/SUB/LUI/AUIPC rows. Full combined-operation
+selected original shifts, ADD/ADDI/SUB/LUI/AUIPC and XOR/OR/AND register/immediate rows. Full combined-operation
 coverage remains open.** The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 imports 117 native equations, 142 variables and a complete fourteen-region fixed
@@ -31,7 +31,78 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Original native bitwise and mixed fetched execution (7 November 2026)
+
+[Original bitwise projection](Airbender/Review/Circuits/ReducedMachine/BitwiseDecoder.lean)
+preserves XOR/OR/AND and their immediate constructors, raw operands, x0 and original
+12-bit sign extension. [Actual field recovery](Airbender/Proofs/ReducedMachine/NativeBitwiseDecoder.lean)
+derives native masks 33/35, raw funct3 tags 4/6/7, rs1/rs2/rd/x0 and immediate limbs
+from the actual ten-field query. [One short public root](Airbender/Review/Trace/Families/ReducedMachine/BitwiseDecoder.lean)
+uses original public byte/stateful decoder construction and complete sparse/padded
+membership. Native eighteen-bit packing excludes holes/tail without an exclusion input.
+
+[Native port bindings](Airbender/Proofs/ReducedMachine/NativeBitwisePorts.lean)
+prove all three original register addresses before applying unchanged shared
+memory-history read/write lemmas. Both sources and old destination observe one
+pre-state, including aliases. [Selected operands](Airbender/Proofs/ReducedMachine/NativeBitwiseOperand.lean)
+keep actual readonly rs2/x0 separate from selected sign-extended immediates.
+[Decoded numerical results](Airbender/Proofs/ReducedMachine/NativeBitwiseDecodedResult.lean)
+reuse the checked byte arithmetic and derive canonical full RV32 candidate and
+original rd/x0-masked writes, with no numerical range premise.
+[Original clauses](Airbender/Proofs/ReducedMachine/NativeBitwiseClause.lean),
+[actual PC+4/RV32 wrap](Airbender/Proofs/ReducedMachine/NativeBitwisePC.lean) and
+[local normal execution](Airbender/Proofs/ReducedMachine/NativeBitwiseExecution.lean)
+compose after those new native bindings; no old split mask/constraint/table is transferred.
+
+[The common original projection](Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean)
+now admits shifts, five arithmetic profiles and all six bitwise forms. Derived
+profile/query transport supplies proved native write/x0/register-space/PC/execution
+rules. The existing [common initialized range induction](Airbender/Review/Trace/Families/ReducedMachine/SupportedValues.lean)
+and native-clock memory/GPR/code/misa history now cover interleaved bitwise rows.
+[Finite fetched execution](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+derives original normal preparation/clause/retirement, terminal PC bounds and all
+terminal cell reads from original public construction, ImageBoundary, accepted
+fixedData, full SupportedDecodedTrace and aligned tracked cells. Reads, ranges,
+selectors, operands, results, PCs, intermediate states, order and decoder replay
+remain conclusions. AUIPC's prepared architectural PC is still derived internally.
+Exact NativeFixed.table acceptance remains mandatory; no table-equivalence premise
+or desired local bound/read/result/state/PC answer is added.
+
+[Six new bitwise regression roots](Tests/NativeReducedBitwiseExecution.lean)
+check all twelve ordinary/x0 forms, independent cross-limb/sign-bit/negative-immediate
+results, original retirement at ordinary/wrapped PCs, all discarded data stutters,
+wrong-tag rejection and actual decoded x0-masked writes. [The common public-image tests](Tests/NativeReducedSupportedDecoder.lean)
+now prove original SourceWith evidence for every one of the 25 slots, including
+all twelve bitwise slots, with seven padding rows. Existing common initialized
+source/x0/terminal rejection and empty-execution checks pass after the extension.
+These positive original Sail/image checks do not certify a new complete positive
+nonempty 117-equation bitwise/arithmetic/mixed native witness; only the earlier
+SLL/x0 full native witnesses close that separate concrete scope.
+
+The native eight-word/CSR/nondeterminism fixture and all native/imported/exported/
+literal/Sail/dependency inputs are unchanged. The modeled original 25-word public
+image is not equated with the native fixed fixture. Other combined profiles,
+workers/callers/accounting, protocol spans, padding/terminal/init/teardown, original
+interrupt/exception paths and general compiler/Rust/JSON/public decoder-export/
+preprocessing/ROM/physical/cryptographic/completeness boundaries remain separate.
+No native defect, issue assumption, production fix or parity claim is added.
+
+Final gates pass 2,830 explicit standard-only axiom roots, 176 public Review
+roots, four guide names, 2,811 links/anchors and context/trace separation. Full
+Review used 544.23 MiB footprint / 3107.56 MiB resident in 14.06 seconds.
+Independent exact provenance passes 189 v3-origin and 967 backport-origin
+identities, 80 byte-identical reused modules, eight circuit artifacts, 64 native
+sources, 23 setup artifacts and four exporter files, with unchanged dependencies.
+It used 20.08 MiB footprint / 36.14 MiB resident in 7.26 seconds. Every owned worker
+terminated with no survivors at unchanged caps; no memory, wall-time, heartbeat
+or recursion ceiling was hit or raised. Prior 592 importer controls, eight CLI
+inputs and 47 native generation/export controls retain exact unchanged inputs
+and applicability; no native/literal regeneration or heavy certificate replay.
+
 ## Native reduced bitwise byte/word results (6 November 2026)
+
+This earlier local numerical snapshot is retained; its original execution gaps are
+closed by the 7 November checkpoint above.
 
 [Actual reduced bitwise observables](Airbender/Review/Circuits/ReducedMachine/Bitwise.lean)
 retain native masks 33/35 and four byte triples. [Selector proofs](Airbender/Proofs/ReducedMachine/NativeBitwiseSelectors.lean)

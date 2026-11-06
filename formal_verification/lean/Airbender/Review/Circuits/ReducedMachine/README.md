@@ -331,3 +331,16 @@ range/result answers. [Tests](../../../../Tests/NativeReducedBitwise.lean) retai
 actual byte-row offsets, corruption/domain rejection, x0 participation and sign-bit
 values. Explicit mask/tag remain local; original public bitwise decoding, rd/x0/GPR/
 operand and Sail execution are next. Common initialized execution is not yet extended.
+
+## Original native bitwise execution connection
+
+[Original decoder fields](BitwiseDecoder.lean) retain XOR/OR/AND and immediate forms,
+x0/raw operands/sign extension and actual33/35mask/4/6/7tags. [Actual ports](../../../Proofs/ReducedMachine/NativeBitwisePorts.lean),
+[selected operands](../../../Proofs/ReducedMachine/NativeBitwiseOperand.lean),
+[original clauses](../../../Proofs/ReducedMachine/NativeBitwiseClause.lean) and
+[normal execution](../../../Proofs/ReducedMachine/NativeBitwiseExecution.lean) now
+connect accepted native byte results to original Sail states and actual PC+4/wrap.
+[Common initialized fetched execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+includes bitwise rows through proved common preservation/history, without public
+source/read/result/state/PC answers. New local Sail tests do not certify complete
+positive nonempty bitwise native witnesses or native physical/public setup fidelity.

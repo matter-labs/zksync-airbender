@@ -1,3 +1,5 @@
+import Tests.NativeReducedBitwiseExecution
+import Airbender.Review.Trace.Families.ReducedMachine.BitwiseDecoder
 import Tests.NativeReducedBitwise
 import Tests.NativeReducedSupportedDecoder
 import Tests.NativeReducedSupportedExecution
@@ -3026,3 +3028,33 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedBitwise.discarded_participation
 #print axioms Tests.NativeReducedBitwise.oversized_source_rejected
 #print axioms Tests.NativeReducedBitwise.cross_limb_results
+
+#print axioms Airbender.ReducedMachine.NativeBitwiseDecoderProofs.trace_decoding
+#print axioms Airbender.ReducedMachine.NativeBitwiseRegisterProofs.row_zero_preserving
+#print axioms Airbender.ReducedMachine.Native.public_bitwise_decoding
+#print axioms Tests.NativeReducedBitwiseExecution.selected_forms
+#print axioms Tests.NativeReducedBitwiseExecution.reference_outputs
+#print axioms Tests.NativeReducedBitwiseExecution.original_retirement
+#print axioms Tests.NativeReducedBitwiseExecution.discarded_retirement
+#print axioms Tests.NativeReducedBitwiseExecution.corrupted_tag_rejected
+#print axioms Tests.NativeReducedBitwiseExecution.discarded_native_write
+#print axioms Airbender.ReducedMachine.NativeBitwiseDecoderProofs.field_bounds
+#print axioms Airbender.ReducedMachine.NativeBitwiseDecoderProofs.fetched_sources
+#print axioms Airbender.ReducedMachine.NativeBitwiseDecoderProofs.decoded_fields
+#print axioms Airbender.ReducedMachine.NativeBitwiseDecoderProofs.immediate_word
+#print axioms Airbender.ReducedMachine.NativeBitwisePortProofs.readonly_sources
+#print axioms Airbender.ReducedMachine.NativeBitwisePortProofs.source_addresses
+#print axioms Airbender.ReducedMachine.NativeBitwisePortProofs.source_two_fields
+#print axioms Airbender.ReducedMachine.NativeBitwisePortProofs.register_addresses
+#print axioms Airbender.ReducedMachine.NativeBitwisePortProofs.register_reads
+#print axioms Airbender.ReducedMachine.NativeBitwisePortProofs.register_write
+#print axioms Airbender.ReducedMachine.NativeBitwiseOperandProofs.entry_selected_operand
+#print axioms Airbender.ReducedMachine.NativeBitwiseClauseProofs.decoded_clause_of_reads
+#print axioms Airbender.ReducedMachine.NativeBitwiseClauseProofs.native_clause
+#print axioms Airbender.ReducedMachine.NativeBitwisePCProofs.selected_pc_successor
+#print axioms Airbender.ReducedMachine.NativeBitwisePCProofs.decoded_pc_successor
+#print axioms Airbender.ReducedMachine.NativeBitwiseExecutionProofs.local_row_execution
+#print axioms Airbender.ReducedMachine.NativeBitwisePreservationProofs.written_bounds
+#print axioms Airbender.ReducedMachine.NativeBitwisePreservationProofs.row_write_rule
+#print axioms Airbender.ReducedMachine.NativeBitwiseResultProofs.decoded_result
+#print axioms Tests.NativeReducedSupportedDecoder.complete_original_image

@@ -90,9 +90,11 @@ Full combined row effects and execution remain pending. See the
    queries/decompositions, actual literal/full-pool table arithmetic and canonical
    full RV32 candidates/source/operand bounds are now checked without source-range
    premises. Actual masked port/address/default-PC selection are checked locally.
-   Next derive original public bitwise register/immediate masks/tags/rd/x0/operands,
-   original GPR/clause/PC execution and extend the common supported projection,
-   preservation/history and fetched execution. Other ordinary combined profiles,
+   Original public bitwise register/immediate masks/tags/rs/rd/x0/sign extension,
+   actual GPR/operand/clause/PC execution and common supported preservation/history/
+   fetched execution are now checked. Common initialization derives all ranges,
+   states and replay across shifts, arithmetic and bitwise rows at exact fixedData.
+   Next connect other ordinary combined profiles to this common execution. Other ordinary combined profiles,
    workers/protocol/padding/terminal/init and positive nonempty arithmetic/mixed/
    bitwise fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

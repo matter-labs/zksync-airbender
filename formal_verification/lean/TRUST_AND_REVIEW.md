@@ -338,11 +338,17 @@ and actual field-masked port writes from accepted native constraints under
 explicit native33/35mask and raw funct3=4/6/7. No source/byte/result range or
 expected result is supplied. All readonly/discarded queries still participate.
 
-Original public bitwise decoding, architectural rs1/rs2/rd/x0 and selected
-immediate binding, original GPR/clause/PC/fetched execution are still to be
-composed. The current mixed SupportedMode projection remains shift/arithmetic
-only. Actual port mask/default-PC selection is not those original execution
-connections. [Positive byte rows and conditional regressions](Tests/NativeReducedBitwise.lean)
+[Original public bitwise decoding](Airbender/Review/Trace/Families/ReducedMachine/BitwiseDecoder.lean)
+now derives architectural rs1/rs2/rd/x0, masks/tags and sign-extended immediate
+binding from original byte/stateful sparse/padded membership. [Actual local execution](Airbender/Proofs/ReducedMachine/NativeBitwiseExecution.lean)
+connects original GPR observations, selected operands, retained clauses and native
+PC+4/wrap. The [common initialized fetched execution](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+now covers interleaved shifts/arithmetic/bitwise. Common range/x0 induction and
+native-clock memory history construct every state and code/misa decoder frame;
+no source/read/result/state/PC answer or write-preservation rule is supplied publicly.
+Accepted fixedData selects the exact native pool without a table-equivalence premise.
+The modeled 25-word original decoder image remains separate from native fixed
+configuration/export/ROM enforcement. [Positive byte rows and conditional regressions](Tests/NativeReducedBitwise.lean)
 are not complete accepted bitwise instruction fixtures. Native Rust decoder-export,
 public/compiler/preprocessing/ROM/physical setup, worker/protocol/padding/terminal/
 init, cryptography and completeness remain separate. The newly pinned binops.rs

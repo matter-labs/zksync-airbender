@@ -4,7 +4,7 @@ namespace Airbender.ReducedMachine.Native
 set_option autoImplicit false
 open Trace Reference.RiscV.Sail
 
-/-- Original fetched mixed selected native reduced shift/arithmetic instructions form a finite Sail execution
+/-- Original fetched mixed selected native reduced shift/arithmetic/bitwise instructions form a finite Sail execution
     from actual public initialization to native terminal PC and register values.
     Other combined profiles, native physical setup/protocol/terminal enforcement
     and compiler/cryptographic/completeness boundaries remain separate. -/

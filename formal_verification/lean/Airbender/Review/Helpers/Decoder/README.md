@@ -253,3 +253,13 @@ field and native packing excludes holes/tail. [Mixed execution](../../Trace/Fami
 now derives common ranges, native Sail row states and original stateful decoder
 replay. No per-row profile or read/result/state answer is supplied. General native
 public preprocessing/ROM/physical fidelity remains separate from modeled membership.
+
+## Actual reduced original bitwise projection
+
+[Complete bitwise sparse/padded membership](ReducedMachineBitwise.lean) uses
+[original constructors and native fields](../../Circuits/ReducedMachine/BitwiseDecoder.lean).
+[Public source recovery](../../Trace/Families/ReducedMachine/BitwiseDecoder.lean)
+derives rs/rd/x0/immediate/mask/tag; native Boolean packing excludes padding.
+[Common support](ReducedMachineSupported.lean) now includes shifts/arithmetic/bitwise.
+This is a logical original decoder contract, separate from native Rust export,
+preprocessing/ROM and physical setup enforcement.

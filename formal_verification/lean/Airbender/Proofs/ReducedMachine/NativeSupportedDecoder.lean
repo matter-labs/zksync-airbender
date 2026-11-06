@@ -1,5 +1,6 @@
 import Airbender.Review.Circuits.ReducedMachine.SupportedDecoder
 import Airbender.Proofs.ReducedMachine.NativeArithmeticDecoder
+import Airbender.Proofs.ReducedMachine.NativeBitwiseDecoder
 
 namespace Airbender.ReducedMachine.NativeSupportedDecoderProofs
 open Native Trace Arithmetic
@@ -17,6 +18,9 @@ theorem entry_profile {entry : SupportedProgramEntry}
       selected.query (p := mersenne31Modulus) = entry.query) ∨
     (∃ selected : ArithmeticProgramEntry, selected.instruction = entry.instruction ∧
       arithmeticDecoderFields selected.instruction = some selected.data ∧
+      selected.query (p := mersenne31Modulus) = entry.query) ∨
+    (∃ selected : BitwiseProgramEntry, selected.instruction = entry.instruction ∧
+      bitwiseDecoderFields selected.instruction = some selected.data ∧
       selected.query (p := mersenne31Modulus) = entry.query) := by
   unfold supportedDecoderFields at fields
   cases shift : shiftDecoderFields entry.instruction with
@@ -30,11 +34,21 @@ theorem entry_profile {entry : SupportedProgramEntry}
   | none =>
     simp only [shift] at fields
     cases arithmetic : arithmeticDecoderFields entry.instruction with
-    | none => simp [arithmetic] at fields
+    | none =>
+      simp only [arithmetic] at fields
+      cases bitwise : bitwiseDecoderFields entry.instruction with
+      | none => simp [bitwise] at fields
+      | some data =>
+        simp only [bitwise,Option.map_some] at fields
+        have same := Option.some.inj fields
+        refine Or.inr (Or.inr ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,bitwise,?_⟩)
+        unfold ProgramEntry.query
+        rw [← same]
+        rfl
     | some data =>
-      simp only [arithmetic,Option.map_some] at fields
+      simp only [arithmetic] at fields
       have same := Option.some.inj fields
-      refine Or.inr ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,arithmetic,?_⟩
+      refine Or.inr (Or.inl ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,arithmetic,?_⟩)
       unfold ProgramEntry.query
       rw [← same]
       rfl
