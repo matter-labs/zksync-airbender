@@ -160,6 +160,65 @@ theorem rotate_row (before : Reference.RiscV.Sail.State) (k a b : Nat) (hk : k <
   exact congrArg Setup.rotateRow
     (Fin.ext (show 786817 + k * 65536 + a * 256 + b - 786817 = k * 65536 + a * 256 + b by omega))
 
+private theorem row_fixed (before : Reference.RiscV.Sail.State) (n : Nat) (hn : n < 2097537)
+    (h1 : n < 1048961) : Setup.row before ⟨n, hn⟩ = Setup.fixedRow ⟨n, h1⟩ := dite_eq_left h1
+
+/-- Zero-test rows (tag 1). -/
+theorem zero_row (before : Reference.RiscV.Sail.State) (key : Nat) (hk : key < 131072)
+    (i : Fin 2097537) (hi : i.val = 524545 + key) :
+    Setup.row before i = #v[key, if key = 0 then 1 else 0, 0, 0, 0, 0, 0, 0, 0, 1] := by
+  obtain ⟨n, hn⟩ := i
+  simp only at hi
+  rw [row_fixed before n hn (by omega)]
+  have e : Setup.fixedRow ⟨n, by omega⟩ =
+      #v[n - 524545, if n - 524545 = 0 then 1 else 0, 0, 0, 0, 0, 0, 0, 0, 1] := by
+    unfold Setup.fixedRow
+    rw [dite_eq_right (show ¬ n < 524545 by omega), ite_eq_left (show n < 655617 by omega)]
+  rw [e, show n - 524545 = key by omega]
+
+/-- Limb-sign rows (tag 5). -/
+theorem sign16_row (before : Reference.RiscV.Sail.State) (key : Nat) (hk : key < 65536)
+    (i : Fin 2097537) (hi : i.val = 655617 + key) :
+    Setup.row before i = #v[key, key / 32768, 0, 0, 0, 0, 0, 0, 0, 5] := by
+  obtain ⟨n, hn⟩ := i
+  simp only at hi
+  rw [row_fixed before n hn (by omega)]
+  have e : Setup.fixedRow ⟨n, by omega⟩ = #v[n - 655617, (n - 655617) / 32768, 0, 0, 0, 0, 0, 0, 0, 5] := by
+    unfold Setup.fixedRow
+    rw [dite_eq_right (show ¬ n < 524545 by omega), ite_eq_right (show ¬ n < 655617 by omega),
+      ite_eq_left (show n < 721153 by omega)]
+  rw [e, show n - 655617 = key by omega]
+
+/-- Jump-target cleanup rows (tag 2). -/
+theorem cleanup_row (before : Reference.RiscV.Sail.State) (key : Nat) (hk : key < 65536)
+    (i : Fin 2097537) (hi : i.val = 721153 + key) :
+    Setup.row before i = #v[key, key / 2 % 2, key - key % 4, 0, 0, 0, 0, 0, 0, 2] := by
+  obtain ⟨n, hn⟩ := i
+  simp only at hi
+  rw [row_fixed before n hn (by omega)]
+  have e : Setup.fixedRow ⟨n, by omega⟩ =
+      #v[n - 721153, (n - 721153) / 2 % 2, n - 721153 - (n - 721153) % 4, 0, 0, 0, 0, 0, 0, 2] := by
+    unfold Setup.fixedRow
+    rw [dite_eq_right (show ¬ n < 524545 by omega), ite_eq_right (show ¬ n < 655617 by omega),
+      ite_eq_right (show ¬ n < 721153 by omega), ite_eq_left (show n < 786689 by omega)]
+  rw [e, show n - 721153 = key by omega]
+
+/-- Conditional-resolution rows (tag 51). -/
+theorem condition_row (before : Reference.RiscV.Sail.State) (key : Nat) (hk : key < 128)
+    (i : Fin 2097537) (hi : i.val = 786689 + key) :
+    Setup.row before i =
+      #v[key, conditionalValue (Setup.conditionalKey key), 0, 0, 0, 0, 0, 0, 0, 51] := by
+  obtain ⟨n, hn⟩ := i
+  simp only at hi
+  rw [row_fixed before n hn (by omega)]
+  have e : Setup.fixedRow ⟨n, by omega⟩ = #v[n - 786689,
+      conditionalValue (Setup.conditionalKey (n - 786689)), 0, 0, 0, 0, 0, 0, 0, 51] := by
+    unfold Setup.fixedRow
+    rw [dite_eq_right (show ¬ n < 524545 by omega), ite_eq_right (show ¬ n < 655617 by omega),
+      ite_eq_right (show ¬ n < 721153 by omega), ite_eq_right (show ¬ n < 786689 by omega),
+      ite_eq_left (show n < 786817 by omega)]
+  rw [e, show n - 786689 = key by omega]
+
 theorem byteOp_lt (tag a b : Nat) (ha : a < 256) (hb : b < 256) : byteOp tag a b < 256 := by
   unfold byteOp
   split
