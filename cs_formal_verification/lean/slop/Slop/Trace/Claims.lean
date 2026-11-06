@@ -1,3 +1,4 @@
+import Slop.Trace.Family.PC
 import Slop.Final.Trace.Families.AddSub.Theorems
 import Slop.Final.Trace.Soundness
 import Slop.Trace.OfflineMemory
@@ -17,6 +18,9 @@ import Slop.Trace.PooledOracleConsumption
 import Slop.Trace.PooledOracleDecoder
 import Slop.BabyBear
 import Slop.Trace.PooledComposition
+import Human.Helpers.Memory.ValueBoundary
+import Slop.Trace.Family.History
+import Slop.Trace.Family.ROM
 
 namespace Airbender.Trace
 

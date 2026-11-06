@@ -1,6 +1,8 @@
 import Human.Circuits.WordMemory.Model
 import Slop.Trace.RowContext
 import Slop.Trace.PooledMemory
+import Slop.Trace.Family.PortReads
+import Slop.Trace.PooledRowContext
 
 namespace Airbender.WordMemory.Proofs
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs

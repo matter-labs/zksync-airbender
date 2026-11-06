@@ -1,5 +1,6 @@
 import Human.Helpers.Memory.Initialization
 import Slop.Trace.InitialImage
+import Human.Helpers.Context.FamilyLayout
 
 namespace Airbender.Trace.Proofs
 open Reference.RiscV.Sail Reference.Sail

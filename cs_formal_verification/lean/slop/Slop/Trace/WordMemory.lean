@@ -1,3 +1,4 @@
+import Slop.Trace.Family.PC
 import Slop.Trace.PortReads
 import Slop.Trace.ROM
 import Slop.WordMemory.MemoryAccess
@@ -5,6 +6,11 @@ import Slop.Sail.Memory
 import Slop.Trace.CodeHistory
 import Slop.Trace.PC
 import Slop.Trace.Retirement
+import Slop.Trace.Family.CodeHistory
+import Slop.Trace.Family.PortReads
+import Slop.Trace.Family.Program
+import Slop.Trace.Family.ROM
+import Slop.Trace.Family.Values
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail

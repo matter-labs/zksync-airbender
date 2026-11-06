@@ -1,6 +1,7 @@
 import Slop.UnifiedReduced.ROMRow
 import Slop.UnifiedReduced.ROMLookups
 import Slop.BabyBear
+import Slop.Trace.Timestamps
 
 namespace Tests.UnifiedROM
 open Airbender UnifiedReduced Arithmetic Trace

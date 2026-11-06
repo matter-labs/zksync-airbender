@@ -2,6 +2,9 @@ import Slop.WordMemory
 import Slop.Trace.Initialization
 import Slop.Trace.Addresses
 import Human.Helpers.Memory.Native
+import Human.Helpers.Context.ExecutionBoundary
+import Human.Helpers.Decoder.Decoded
+import Slop.Trace.Family.History
 
 namespace Airbender.Trace.ROMView
 open Arithmetic

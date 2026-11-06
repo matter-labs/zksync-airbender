@@ -1,6 +1,7 @@
 import Human.Trace.Delegation.SharedMemory
 import Slop.Delegation.RequestTrace
 import Slop.Trace.TransferHistory
+import Slop.Trace.Rows
 
 namespace Airbender.Delegation.Caller.Proofs
 open Trace Arithmetic Trace.Proofs

@@ -4,6 +4,7 @@ import Slop.Trace.Arithmetic
 import Slop.Trace.PooledHistory
 import Slop.MulDiv.Composition
 import Slop.ShiftBinop.Composition
+import Slop.Trace.Family.Program
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail

@@ -2,6 +2,8 @@ import Human.Trace.Families.AddSub.Execution
 import Slop.Trace.Composition
 import Slop.Trace.ROMView
 import Slop.BabyBear
+import Human.Helpers.Context.ExecutionBoundary
+import Human.Helpers.Decoder.Decoded
 
 namespace Airbender.Trace
 

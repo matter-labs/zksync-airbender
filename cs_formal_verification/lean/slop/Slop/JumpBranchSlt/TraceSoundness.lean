@@ -3,6 +3,7 @@ import Human.Circuits.JumpBranchSlt.Branch
 import Human.Circuits.JumpBranchSlt.Jump
 import Slop.Trace.RowContext
 import Slop.Trace.PooledExecution
+import Slop.Trace.PooledRowContext
 
 namespace Airbender.JumpBranchSlt.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs

@@ -7,6 +7,7 @@ import Slop.Trace.Terminal
 import Slop.Trace.Retirement
 import Slop.Trace.WordMemory
 import Slop.Final.Circuits.WordMemory.Theorems
+import Slop.Trace.PooledRowContext
 
 namespace Tests.TraceStore
 open Airbender Arithmetic Trace

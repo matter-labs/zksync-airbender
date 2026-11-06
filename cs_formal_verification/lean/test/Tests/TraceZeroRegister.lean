@@ -5,6 +5,9 @@ import Slop.Trace.PortReads
 import Slop.Trace.Arithmetic
 import Slop.BabyBear
 import Human.Helpers.Memory.ROM
+import Slop.Trace.Family.RowHistory
+import Slop.Trace.Family.ZeroRegister
+import Slop.Trace.Timestamps
 
 namespace Tests.TraceZeroRegister
 open Airbender Arithmetic Trace

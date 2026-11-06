@@ -1,6 +1,7 @@
 import Human.Circuits.ShiftBinop.Model
 import Slop.Trace.RowContext
 import Slop.Trace.PooledExecution
+import Slop.Trace.PooledRowContext
 
 namespace Airbender.ShiftBinop.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs

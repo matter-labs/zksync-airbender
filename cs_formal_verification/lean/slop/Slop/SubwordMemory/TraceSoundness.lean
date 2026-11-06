@@ -1,6 +1,7 @@
 import Human.Circuits.SubwordMemory.Model
 import Slop.Trace.RowContext
 import Slop.Trace.PooledSubword
+import Slop.Trace.PooledRowContext
 
 namespace Airbender.SubwordMemory.Proofs
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs

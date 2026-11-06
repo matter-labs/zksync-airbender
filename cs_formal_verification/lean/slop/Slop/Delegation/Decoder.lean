@@ -3,6 +3,7 @@ import Slop.Trace.Program
 import Slop.Sail.RiscV
 import Slop.AddSub.Selectors
 import Slop.Delegation.Requests
+import Slop.Delegation.CallerRequests
 
 namespace Airbender.Delegation.Caller.Proofs
 open Trace Arithmetic

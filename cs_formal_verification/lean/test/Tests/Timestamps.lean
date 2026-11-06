@@ -1,4 +1,5 @@
 import Slop.Trace.Claims
+import Slop.Trace.Rows
 
 namespace Tests.Timestamps
 open Airbender

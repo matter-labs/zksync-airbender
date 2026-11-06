@@ -1,6 +1,7 @@
 import Slop.Sail.ResetState
 import Slop.Trace.Claims
 import Slop.Trace.OracleExecution
+import Slop.Trace.Family.ZeroRegister
 
 namespace Tests.NonDeterminismDecoder
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail

@@ -1,5 +1,7 @@
 import Slop.Trace.PooledValues
 import Slop.Trace.RowHistory
+import Slop.Trace.Family.Program
+import Slop.Trace.Family.ZeroRegister
 
 namespace Airbender.Trace.Proofs
 open Arithmetic
