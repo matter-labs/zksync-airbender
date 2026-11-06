@@ -1,3 +1,4 @@
+import Tests.NativeReducedArithmetic
 import Tests.NativeReducedPositive
 import Tests.NativeReducedExecution
 import Tests.NativeReducedFetched
@@ -2855,3 +2856,26 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedPositive.initialized_values
 #print axioms Tests.NativeReducedPositive.candidate_participation
 #print axioms Tests.NativeReducedPositive.corrupted_actual_write_rejected
+#print axioms Airbender.ReducedMachine.NativeArithmeticSelectorProofs.flags
+#print axioms Airbender.ReducedMachine.NativeArithmeticFieldProofs.source
+#print axioms Airbender.ReducedMachine.NativeArithmeticFieldProofs.source_port
+#print axioms Airbender.ReducedMachine.NativeArithmeticFieldProofs.tags
+#print axioms Airbender.ReducedMachine.NativeArithmeticFieldProofs.limb_equations
+#print axioms Airbender.ReducedMachine.NativeArithmeticFieldProofs.candidate
+#print axioms Airbender.ReducedMachine.NativeArithmeticFieldProofs.write
+#print axioms Airbender.ReducedMachine.NativeArithmeticFieldProofs.pc
+#print axioms Airbender.ReducedMachine.NativeArithmeticResultProofs.scalar_bounds
+#print axioms Airbender.ReducedMachine.NativeArithmeticResultProofs.carries
+#print axioms Airbender.ReducedMachine.NativeArithmeticResultProofs.candidate_bounds
+#print axioms Airbender.ReducedMachine.NativeArithmeticResultProofs.candidate_result
+#print axioms Airbender.ReducedMachine.Native.arithmetic_routing
+#print axioms Airbender.ReducedMachine.Native.arithmetic_masked_write
+#print axioms Tests.NativeReducedArithmetic.masks
+#print axioms Tests.NativeReducedArithmetic.immediate_port
+#print axioms Tests.NativeReducedArithmetic.ram_source_rejected
+#print axioms Tests.NativeReducedArithmetic.oversized_add_candidate_rejected
+#print axioms Tests.NativeReducedArithmetic.discarded_write
+#print axioms Tests.NativeReducedArithmetic.add_wrap
+#print axioms Tests.NativeReducedArithmetic.auipc_wrap
+#print axioms Tests.NativeReducedArithmetic.sub_borrow
+#print axioms Tests.NativeReducedArithmetic.lui_high_word

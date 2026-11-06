@@ -30,6 +30,45 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Native reduced arithmetic equations (6 November 2026)
+
+[Two short local claims](Airbender/Review/Circuits/ReducedMachine/ArithmeticTheorems.lean)
+now cover actual ADD/ADDI/SUB/LUI/AUIPC routing, four zero tags, readonly rs2
+address/register space, native candidate assembly, actual masked destination
+write/address and default-PC selection. [Five explicit native masks](Airbender/Review/Circuits/ReducedMachine/Arithmetic.lean)
+remain inputs here; original arithmetic public decoding is not yet connected.
+[All eighteen flags](Airbender/Proofs/ReducedMachine/NativeArithmeticSelectors.lean)
+follow from accepted Boolean/packed equations. [Native fields](Airbender/Proofs/ReducedMachine/NativeArithmeticFields.lean)
+connect actual equations32/33,54/55,60/61,74/75,85/89/93/97,98..107,110/111,113/114.
+No standalone arithmetic mask,table or compiled equation is transferred.
+
+[Internal numerical proofs](Airbender/Proofs/ReducedMachine/NativeArithmeticResult.lean)
+derive scalar result bounds from actual lookups0/1 and carry/borrow bounds from
+Boolean20/23,then instantiate unchanged pure RV32 limb lemmas. They retain
+full wrap/borrow and immediate LUI words. Arithmetic input/PC/immediate bounds
+remain internal prerequisites awaiting original public decoder and initialized
+range/history discharge; no new public numerical/execution claim supplies them
+as answers. LUI output preservation specifically still needs decoded immediate
+bounds. [Nine regressions](Tests/NativeReducedArithmetic.lean) pass for explicit
+masks,immediate readonly participation,RAM-source rejection,source-independent
+ADD output bounds,x0 discard,ADD/AUIPC wrap,SUB borrow and high LUI words. These
+are conditional native consequences,not complete accepted arithmetic fixtures.
+
+The five profile proofs replace one combined selector proof that reached the
+DEFAULT heartbeat limit; no limit increased. The targeted bounded modules and full gates pass:
+2,666 standard-only axiom roots, 163 public Review roots, four guide declaration
+names, 2,619 guide links/anchors and context/trace separation. Full Review used
+540.16 MiB footprint / 3096.58 MiB resident in 14.05 seconds. Independent exact
+provenance passes 189 v3-origin and 863 backport-origin identities, 80 unchanged
+reused modules, eight circuit artifacts, 63 native sources, 23 setup artifacts
+and four exporter files. It used 18.72 / 34.81 MiB in 6.69 seconds. All owned
+workers terminated under unchanged 3072/4096 MiB caps and Lean -j1 -M3072.
+No native/importer/exporter/literal/configuration/dependency input changed.
+Three unchanged Rust source files are additionally hash-pinned,not modified.
+No native defect,fix,issue-handling assumption or parity is established. Other
+combined arithmetic decoding/initialized original execution,remaining operation
+profiles,workers/accounting/protocol,padding/terminal and init/teardown remain.
+
 ## Current v3 adaptation (2026-11-06)
 
 [The adaptation snapshot](V3_ADAPTATION.md) pins PR #585 at

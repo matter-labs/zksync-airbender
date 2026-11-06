@@ -240,6 +240,16 @@ fixed configuration are NOT equated; native preprocessing/physical setup fidelit
 remains separate. Other mode/alias/multi-row fixtures and combined operations stay
 open. No new issue,fix or interface assumption is added.
 
+[Native reduced arithmetic row claims](Airbender/Review/Circuits/ReducedMachine/ArithmeticTheorems.lean)
+now derive routing/zero tags,actual candidate/masked write,address and default-PC
+selection from accepted native equations under explicit five-profile masks.
+[Internal arithmetic calculations](Airbender/Proofs/ReducedMachine/NativeArithmeticResult.lean)
+use actual scalar/carry constraints and unchanged pure RV32 lemmas. Their input
+bounds are not public interface answers: original arithmetic public decoding and
+initialized range/Sail-history discharge are still pending. The two short public
+roots do not claim instruction execution,physical setup or parity. No defect or
+new issue-handling assumption is added.
+
 ## Import and generation fidelity
 
 Mersenne31 coefficients are non-Montgomery residues in 0..=2147483647; the upper

@@ -247,3 +247,19 @@ stateful decoder membership. [Initialized positive execution](../../../../Tests/
 derives actual terminal PC/GPR reads,retains nonzero discarded candidate2 and
 rejects an altered actual write. These2SLL examples do not generalize fixtures to
 other combined operations or certify native public/setup/physical/protocol spans.
+
+## Other combined arithmetic profiles
+
+[Arithmetic routing/writes](ArithmeticTheorems.lean) derive actual ADD/ADDI/SUB/
+LUI/AUIPC candidate assembly,masked destination,address,readonly rs2,zero tags and
+default-PC selection under [five explicit native masks](Arithmetic.lean).
+[Selector calculations](../../../Proofs/ReducedMachine/NativeArithmeticSelectors.lean)
+and [field equations](../../../Proofs/ReducedMachine/NativeArithmeticFields.lean)
+stay under Proofs. [Numerical references](ArithmeticResult.lean) and
+[internal bounded-input proofs](../../../Proofs/ReducedMachine/NativeArithmeticResult.lean)
+retain RV32 wrap/borrow and LUI high words after actual scalar/carry extraction.
+Original public arithmetic decoding,initialized ranges/GPR history and execution
+remain pending; internal input bounds are not exposed as public answers.
+[Nine conditional regressions](../../../../Tests/NativeReducedArithmetic.lean)
+are not complete positive accepted arithmetic fixtures. No native fix,defect,
+new issue assumption or full-machine/parity claim is introduced.

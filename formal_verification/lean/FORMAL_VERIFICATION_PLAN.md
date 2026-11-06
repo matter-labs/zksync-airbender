@@ -65,7 +65,12 @@ Full combined row effects and execution remain pending. See the
    from original public decoding and actual native carry/inverse/select equations.
    Original normal preparation/retirement and finite fetched execution now follow
    for initialized selected-shift traces from actual native matching and public
-   decoding. Other combined profiles remain open.
+   decoding. Native ADD/ADDI/SUB/LUI/AUIPC local routing/flags, actual scalar/carry
+   equations, candidate/masked-write assembly and default-PC selection are now
+   checked under five explicit native masks. Their bounded-input numerical
+   calculations are INTERNAL; next connect original arithmetic public decoding,
+   rd/x0/immediate fields and initialized preservation/ranges/history before
+   exposing a combined arithmetic execution result. Other combined profiles remain open.
    The former projection allocation gap is closed by generic projections and separate proof units,
    without increasing limits or adding result/equivalence premises.
 3. Compose initialized combined histories, public decoding and original execution.

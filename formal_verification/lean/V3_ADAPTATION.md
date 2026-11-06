@@ -341,3 +341,21 @@ All 2,643 standard-only axiom and 161 public Review roots pass. Native inputs ar
 unchanged;small transparent certificates replace deep reduction without raising
 limits. This fixture checkpoint is not new general coverage,full machine/parity,
 a native defect/fix or a new issue-handling assumption.
+
+## Native reduced arithmetic profile connection
+
+[Actual native arithmetic routing/writes](Airbender/Review/Circuits/ReducedMachine/ArithmeticTheorems.lean)
+now cover ADD/ADDI/SUB/LUI/AUIPC under their five explicit reduced masks. All
+native flags,scalar/carry equations,candidate assembly,readonly rs2 participation,
+zero dynamic tags and default-PC selection are derived independently of the
+standalone family. Unchanged pure RV32 lemmas are used only after these actual
+connections. Numerical calculations keep input bounds INTERNAL until original
+public arithmetic decoding and initialized preservation/history discharge them.
+[Nine conditional regressions](Tests/NativeReducedArithmetic.lean) retain RV32
+wrap/borrow,LUI words above Mersenne31 and x0 participation. This is local native
+coverage,not initialized arithmetic execution,physical setup or v3 parity. Native
+production inputs are unchanged and no issue-handling assumption is added.
+All 2,666 standard-only axiom roots and 163 public Review roots pass, with exact
+189/863 origin identities and the unchanged memory ceilings. The next native
+connection is original arithmetic public decoding and initialized preservation,
+ranges, GPR history and retained Sail execution across combined profiles.

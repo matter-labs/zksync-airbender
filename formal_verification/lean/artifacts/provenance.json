@@ -575,6 +575,18 @@
     {
       "path": "../../prover/src/tests/unrolled/reduced_machine.rs",
       "sha256": "a07b8cb10cac21b7e2f0c23016d79b022dedfbf003ca42e516092f50b24dd755"
+    },
+    {
+      "path": "../../cs/src/machine/ops/add_sub.rs",
+      "sha256": "a04fa56a3c617567745cc2f9a76698614300ca7cc1e3a802723170c64a43e78d"
+    },
+    {
+      "path": "../../cs/src/machine/ops/lui_auipc.rs",
+      "sha256": "917bf48e4339e466faceddb3f26d8e6da12824cc32c759aedeb966d14a15cd1d"
+    },
+    {
+      "path": "../../cs/src/machine/instruction_decoding_data/mod.rs",
+      "sha256": "4551972c3a76b6963534fe33d0e600a989f889ad3edcc2fa28645999fa545bf4"
     }
   ],
   "adaptations": [
@@ -7903,6 +7915,83 @@
       "backport_reuse_revision": "d8b237e4fd61794b3b5e422afb06d04c90316038",
       "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftWrite.lean",
       "backport_reuse_sha256": "4f5aeae6fec3445150e22ca1b20a0de3068061b0138d5166fd78e6cc9f97bce8"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Arithmetic.lean",
+      "change": "Adapt the small explicit-mask profile pattern to five actual native arithmetic forms. New masks11/9/8195/513/17 follow the pinned reduced Rust parser/header and lexically ordered major keys; no standalone mask/table equivalence or public decoder-export claim.",
+      "backport_reuse_revision": "10380058292a567bc791dfe4b68ffed807c40e4b",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Row.lean",
+      "backport_reuse_sha256": "b94af1454120c79e309953dcd7f47fa4b05aa7652d4c918de52a488c7665c82e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticSelectors.lean",
+      "change": "Reuse unchanged native eighteen Boolean bounds and exact canonical packed equality; derive every arithmetic header/major/minor bit with five small finite profile proofs at default settings.",
+      "backport_reuse_revision": "10380058292a567bc791dfe4b68ffed807c40e4b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeSelectors.lean",
+      "backport_reuse_sha256": "f4758e82996a4a90e0f4d5f4fa5c770a050c63686396f0cd496f70f12e7acbb5"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticSelectors.lean",
+      "change": "Adapt the canonical value-injection/omega assembly only. Arithmetic mask values and all selected bits are separately proved against the actual native artifact,not inherited shift facts.",
+      "backport_reuse_revision": "10380058292a567bc791dfe4b68ffed807c40e4b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftHeader.lean",
+      "backport_reuse_sha256": "28227c81a4823087f203cef305d251697e14546cd1154be16215cd4cee3dde8b"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticFields.lean",
+      "change": "Adapt exact native equation extraction for source32/33 and actual tag85/89/93/97 recovery. Arithmetic profile flags derive zero tags; Clean still checks query data.",
+      "backport_reuse_revision": "10380058292a567bc791dfe4b68ffed807c40e4b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftRouting.lean",
+      "backport_reuse_sha256": "6fcc5cc1b5ff7f5baac9793d41009d9d2b0e554026d6fe6af06ec9b913df5f1c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticFields.lean",
+      "change": "Adapt actual candidate54/55/98/99,mask100/101,destination102/103/106/107/114 and final-PC110/111 assembly to newly derived arithmetic flags. No result/write/PC answer premise.",
+      "backport_reuse_revision": "10380058292a567bc791dfe4b68ffed807c40e4b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftWrite.lean",
+      "backport_reuse_sha256": "4f5aeae6fec3445150e22ca1b20a0de3068061b0138d5166fd78e6cc9f97bce8"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticFields.lean",
+      "change": "Reuse the actual source-two field equations60/61/113 with newly proved arithmetic flags,retaining readonly rs2 participation on immediate forms. Original GPR transport remains separate.",
+      "backport_reuse_revision": "10380058292a567bc791dfe4b68ffed807c40e4b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftPorts.lean",
+      "backport_reuse_sha256": "ea9c1908ff633fed595c1cf3ff12dec95eaf9f6589a58813a91bcd1987e7a494"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/ArithmeticResult.lean",
+      "change": "Reuse unchanged native source/selected operand/candidate Word observables; add arithmetic immediate and RV32 numerical references without an original Sail state execution claim.",
+      "backport_reuse_revision": "10380058292a567bc791dfe4b68ffed807c40e4b",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/ShiftResult.lean",
+      "backport_reuse_sha256": "31f346357e1ff94e2d01791fc955409022a5e785edc123129e75f6a93bb1be4d"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticResult.lean",
+      "change": "Instantiate unchanged pure Word.add_of_limbs/sub_of_limbs only after actual native scalar queries0/1,Boolean20/23,result equations74/75 and candidate assembly are proved. Input bounds remain INTERNAL pending original public decoding/initialized history.",
+      "backport_reuse_revision": "10380058292a567bc791dfe4b68ffed807c40e4b",
+      "backport_reuse_path": "Airbender/Proofs/Arithmetic/Word.lean",
+      "backport_reuse_sha256": "e857d0b75dad00582d3c782f9d2f1a0a7e9528e40ca5bbe8045a14da49228590"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticResult.lean",
+      "change": "Reuse the canonical two-limb arithmetic pattern only,not standalone masks/constraints or its conditional interface. Actual reduced ADD/ADDI/SUB/LUI/AUIPC equations,scalar bounds and carries are derived independently.",
+      "backport_reuse_revision": "10380058292a567bc791dfe4b68ffed807c40e4b",
+      "backport_reuse_path": "Airbender/Proofs/AddSub/Arithmetic.lean",
+      "backport_reuse_sha256": "21ee6a6e15c0b6030e416bee0e6a6fbb898006516eb65eac6e7a7bec9410ff99"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/ArithmeticTheorems.lean",
+      "change": "Keep two short explicit-mask native routing/masked-write public roots. Numerical calculations and all proof assembly stay under Proofs; no public source-bound,result,state or table-equivalence premise.",
+      "backport_reuse_revision": "10380058292a567bc791dfe4b68ffed807c40e4b",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Theorems.lean",
+      "backport_reuse_sha256": "06870ba215c865d3c04c0b7b0109e5876cda35807526087fb4c52b93ae197ff8"
+    },
+    {
+      "path": "Tests/NativeReducedArithmetic.lean",
+      "change": "Adapt focused conditional native consequence/rejection checks to five arithmetic profiles,ADD/AUIPC wrap,SUB borrow,LUI high words,x0 masking and immediate readonly routing. These are not full accepted arithmetic execution fixtures.",
+      "backport_reuse_revision": "10380058292a567bc791dfe4b68ffed807c40e4b",
+      "backport_reuse_path": "Tests/NativeReducedWrite.lean",
+      "backport_reuse_sha256": "e24021526b775d895869f6a18d0043c45436dc47da6b16e979046aaf1f227d99"
     }
   ],
   "setup_artifacts": [
