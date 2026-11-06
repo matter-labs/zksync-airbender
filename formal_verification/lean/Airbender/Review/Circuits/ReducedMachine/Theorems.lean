@@ -1,5 +1,6 @@
 import Airbender.Proofs.ReducedMachine.NativeShiftFill
 import Airbender.Proofs.ReducedMachine.NativeShiftWrite
+import Airbender.Proofs.ReducedMachine.NativeShiftContributions
 
 namespace Airbender.ReducedMachine.Native
 open Verification
@@ -57,6 +58,20 @@ theorem shift_table_queries {w : Nat → ZMod mersenne31Modulus}
     (NativeFixed.table (p := mersenne31Modulus)).Contains #[]
       #v[mode.lookupKey (source1 w)[1] (shiftAmount w),(shiftHighParts w)[0],(shiftHighParts w)[1],37] :=
   NativeShiftQueryProofs.queries holds mode useRegister mask
+
+/-- Native acceptance fixes both bounded numerical contributions at the actual packed key.
+    This does not yet identify that field key with an initialized architectural source word. -/
+theorem shift_contribution_values {w : Nat → ZMod mersenne31Modulus}
+    (holds : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints NativeFixed.table))
+    (mode : ShiftMode) (useRegister : Bool)
+    (mask : w 12 = (mode.mask useRegister : ZMod mersenne31Modulus)) (limb : Fin 2) :
+    (mode.lookupKey (source1 w)[limb] (shiftAmount w)).val < 4194304 ∧
+      (shiftContribution w limb)[0].val =
+        (NativeFixed.shiftOutputs (mode.lookupKey (source1 w)[limb] (shiftAmount w)).val)[0] ∧
+      (shiftContribution w limb)[1].val =
+        (NativeFixed.shiftOutputs (mode.lookupKey (source1 w)[limb] (shiftAmount w)).val)[1] ∧
+      (shiftContribution w limb)[0].val < 65536 ∧ (shiftContribution w limb)[1].val < 65536 :=
+  NativeShiftContributionProofs.values holds mode useRegister mask limb
 
 /-- Native destination selection and actual masked contribution assembly. -/
 theorem shift_masked_write {w : Nat → ZMod mersenne31Modulus}

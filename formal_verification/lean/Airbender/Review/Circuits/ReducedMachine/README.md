@@ -125,3 +125,18 @@ pooled numerical row/query composition and complete results remain separate.
 The combined second-output draft still exceeds the unchanged Lean allocation cap
 and is excluded from source/coverage. The public row surface and native inputs
 are unchanged. Decoder/source/PC/execution and protocol obligations remain open.
+
+[Actual numerical rows](../../../Proofs/ReducedMachine/NativeShiftRows.lean) and
+[full-pool numerical queries](Tables/ShiftTheorems.lean) now close the composition
+gap above. Every tag-37 row has its exact key and arithmetic outputs; accepted
+full-pool queries derive both 16-bit output bounds. Separate low/high getter
+proofs and generic vector projections resolve the allocation failure without
+changing limits, literals or native circuits. The [selected-row theorem](Theorems.lean)
+now fixes both fields and bounds of each [actual contribution](ShiftContributions.lean)
+at the canonical value of its actual field-packed key.
+[Eleven regressions](../../../../Tests/NativeReducedNumerics.lean) retain real pool
+boundary membership, output-order/carry/key rejection and discarded-write
+bounds. They are not full accepted execution fixtures. Canonical architectural
+source-key binding, original decoding/mask and rd/x0, initialized reads, complete
+word results, numerical PC+4/wraparound and execution/protocol boundaries remain
+open. No source-range, result or equivalence premise is added.

@@ -146,3 +146,21 @@ Pooled canonical numerical query composition and actual shift/Sail execution
 remain open. The second-output composition draft still hits the allocation cap
 and stays outside committed coverage. This is native connection progress, not
 checked v3 parity.
+
+## Actual numerical row and contribution connection
+
+The later [native numerical certificate](Airbender/Proofs/ReducedMachine/NativeShiftRows.lean)
+closes the row/query composition gap above. It reuses exact certified getter
+transport and unchanged arithmetic references through separate low/high proofs.
+Generic projections prevent selecting a tuple limb from reducing its expanded
+arithmetic; all proof/resource limits remain unchanged. Full actual pooled
+membership now derives the canonical packed key, both exact outputs and bounds.
+The [short row interface](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+derives all four numerical contribution fields/bounds from the actual queries.
+Eleven native boundary/rejection/discarded-write regressions, all 2,482 standard-only
+axiom roots, 150 public Review roots and exact provenance/guide gates pass. The
+old second-output drafts remain excluded; the committed split proof supersedes
+their resource gap. No circuit/importer/data/dependency change or new assumption
+is used. Canonical architectural source-key binding, original public decoding,
+initialized reads, complete shifted words, numerical PC and execution remain
+open, followed by worker/protocol/terminal/init boundaries. This is not parity.

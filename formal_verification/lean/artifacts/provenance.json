@@ -7137,6 +7137,99 @@
       "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
       "backport_reuse_path": "Airbender/Proofs/Tables/SllLowParts.lean",
       "backport_reuse_sha256": "dd9eacc584666cba45d9b0b07c69a7b9831fe8997ff662b186ebd543c548a31c"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Tables/ShiftImplementation.lean",
+      "change": "Reuse unchanged left arithmetic references; retain actual monolithic packed-key direction and native right-output order. No table-equivalence or source-bound premise.",
+      "backport_reuse_revision": "f8b935a73e92f4a8995f9e8de9ffd9197708feb7",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SllLow.lean",
+      "backport_reuse_sha256": "92062c2bec93e2c68ec0247cef6fe9f8dae5405ef27174b9dea305c93aae13d7"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Tables/ShiftImplementation.lean",
+      "change": "Reuse unchanged right arithmetic references in the native high/low output order, independently established by the actual column certificate.",
+      "backport_reuse_revision": "f8b935a73e92f4a8995f9e8de9ffd9197708feb7",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SrlHigh.lean",
+      "backport_reuse_sha256": "4adb8d00c3a84c86a5c541622c1706ebb59118e6a3e578ca0ec81e64bab7288f"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftArithmetic.lean",
+      "change": "Reuse unchanged numerical bound lemmas. Separate canonical reference branches and generic vector projections so selecting a limb does not reduce expanded shift arithmetic; default proof/resource settings unchanged.",
+      "backport_reuse_revision": "f8b935a73e92f4a8995f9e8de9ffd9197708feb7",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighMath.lean",
+      "backport_reuse_sha256": "448cb4ae49ba3fb6f76c5eedfbcaaf550beeea07c48ac237e791ae5ac35b825c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftArithmetic.lean",
+      "change": "Reuse unchanged numerical bound lemmas. Separate canonical reference branches and generic vector projections so selecting a limb does not reduce expanded shift arithmetic; default proof/resource settings unchanged.",
+      "backport_reuse_revision": "f8b935a73e92f4a8995f9e8de9ffd9197708feb7",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLowMath.lean",
+      "backport_reuse_sha256": "dc579f90818191c9944d9bf3bd80e60016bacb6291a5c8bbf25f96ffb9c629b5"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftArithmetic.lean",
+      "change": "Reuse unchanged numerical bound lemmas. Separate canonical reference branches and generic vector projections so selecting a limb does not reduce expanded shift arithmetic; default proof/resource settings unchanged.",
+      "backport_reuse_revision": "f8b935a73e92f4a8995f9e8de9ffd9197708feb7",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowMath.lean",
+      "backport_reuse_sha256": "471c7ffdae1ef7260838a438e3cd7ac1849d6be1dbd05c22a2ce8a861adcb818"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftArithmetic.lean",
+      "change": "Reuse unchanged numerical bound lemmas. Separate canonical reference branches and generic vector projections so selecting a limb does not reduce expanded shift arithmetic; default proof/resource settings unchanged.",
+      "backport_reuse_revision": "f8b935a73e92f4a8995f9e8de9ffd9197708feb7",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighMath.lean",
+      "backport_reuse_sha256": "3b9ad8145ac9c4bf2eda6a9be703d094524d73aeeb2b0b41fdbe9fdfa6a15dbf"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftLow.lean",
+      "change": "Compose exact native getter transport with unchanged split-table arithmetic and generic branch/projection lemmas in a small standalone proof; no arithmetic meaning or equivalence premise.",
+      "backport_reuse_revision": "f8b935a73e92f4a8995f9e8de9ffd9197708feb7",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftColumns.lean",
+      "backport_reuse_sha256": "06937a7adc41e1fd76cba0402377cb37988119ce919e7d53ed1a846546d6b4bc"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftHigh.lean",
+      "change": "Compose exact native getter transport with unchanged split-table arithmetic and generic branch/projection lemmas in a small standalone proof; no arithmetic meaning or equivalence premise.",
+      "backport_reuse_revision": "f8b935a73e92f4a8995f9e8de9ffd9197708feb7",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftColumns.lean",
+      "backport_reuse_sha256": "06937a7adc41e1fd76cba0402377cb37988119ce919e7d53ed1a846546d6b4bc"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftRows.lean",
+      "change": "Adapt actual row assembly/full-pool tag isolation to all 4194304 native shift rows; derive canonical key, exact outputs and bounds from stored data. Generic tuple construction avoids expanding arithmetic during projections.",
+      "backport_reuse_revision": "f8b935a73e92f4a8995f9e8de9ffd9197708feb7",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeTruncation.lean",
+      "backport_reuse_sha256": "fe9cfcb11b8a6094edc6f9034c57e70a5a4eea81e2ee56044cb4ad2c46cfb88e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTable.lean",
+      "change": "Adapt actual row assembly/full-pool tag isolation to all 4194304 native shift rows; derive canonical key, exact outputs and bounds from stored data. Generic tuple construction avoids expanding arithmetic during projections.",
+      "backport_reuse_revision": "f8b935a73e92f4a8995f9e8de9ffd9197708feb7",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeTruncation.lean",
+      "backport_reuse_sha256": "fe9cfcb11b8a6094edc6f9034c57e70a5a4eea81e2ee56044cb4ad2c46cfb88e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftContributions.lean",
+      "change": "Compose actual accepted native slot1/2 queries with certified pooled arithmetic, deriving all four contribution bounds and exact values at the actual field-packed key. Canonical source-key and initialized source binding remain open.",
+      "backport_reuse_revision": "f8b935a73e92f4a8995f9e8de9ffd9197708feb7",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftQueries.lean",
+      "backport_reuse_sha256": "7e9f4aa6b644a2a65d95e789e47f42aae0f039c8f48574cf1ca2ff0c74a79d58"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Tables/ShiftTheorems.lean",
+      "change": "Short actual pooled tag37 numerical interface; no supplied region or table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/ShiftContributions.lean",
+      "change": "Observable grouping of the actual two contribution fields for each native source-one limb; no result or source bounds embedded."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Theorems.lean",
+      "change": "Add one short native shift contribution numerical claim under the existing explicit packed mask. Derive exact outputs at actual field keys and all four output bounds; source-key canonicalization and execution are not claimed."
+    },
+    {
+      "path": "Tests/NativeReducedNumerics.lean",
+      "change": "Eleven native full-pool boundary/rejection and selected-row regressions, including reversed right columns, last left carry and discarded-write numerical bounds. Positive pool rows use independently certified actual data at the native offset; these are not complete accepted execution fixtures."
     }
   ],
   "setup_artifacts": [

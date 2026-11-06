@@ -91,19 +91,16 @@ machine work targets the separately regenerated constraints and complete pool.
 No circuit fix or equivalence assumption is introduced. General compiler and
 runtime configuration correspondence remain B01/B03 boundaries below.
 
-The [native shift routing/truncation/filler and port-write claims](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
-adds local coverage under an explicit decoded packed mask. The table-37 proof
-calculation hitting resource limits is also a coverage boundary, not evidence
-of incorrect native behavior. Recovering that mask
-from public decoding and proving table arithmetic, numerical PC effects and
-initialized execution are unfinished connections. The actual field assembly,
-masked port write/address and default-PC selection are now checked. These are
-coverage milestones, not native findings or restrictions introduced to hide a defect.
-Both actual shift output columns now have complete checked getter transport to
-previous native certificates, including the native compression boundary and
-right-column order. The remaining combined numerical-row draft still hits the
-allocation cap and is excluded from coverage. Neither the successful transport
-nor that resource boundary is a native defect or new restriction.
+The [native shift routing/filler/port and numerical contribution claims](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+add coverage under an explicit decoded packed mask. Both actual output columns
+and all 4,194,304 numerical rows are checked; full native pool membership now
+derives exact bounded outputs, and native equations connect them to the actual
+selected contribution fields. Separate generic projections close the former
+numerical proof allocation gap without raising limits. Resource failures and
+proof completion are neither circuit defects nor fixes. Public decoding/mask,
+canonical architectural source-key binding, initialized reads, complete word,
+rd/x0, numerical PC and execution remain unfinished connections. No new
+restriction or issue-handling assumption is introduced.
 Confirmed native-v2 defects remain zero.
 
 ## Open bindings

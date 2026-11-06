@@ -1,3 +1,4 @@
+import Tests.NativeReducedNumerics
 import Airbender.Proofs.ReducedMachine.NativeShiftColumns
 import Tests.NativeReducedWrite
 import Tests.NativeReducedSignFill
@@ -2660,3 +2661,26 @@ import Tests.SubwordStoreData
 #print axioms Airbender.ReducedMachine.NativeShiftColumnProofs.first_reads
 #print axioms Airbender.ReducedMachine.NativeShiftColumnProofs.second_reads
 #print axioms Airbender.ReducedMachine.NativeShiftColumnProofs.output
+#print axioms Airbender.ReducedMachine.NativeShiftArithmeticProofs.right_index
+#print axioms Airbender.ReducedMachine.NativeShiftArithmeticProofs.branches
+#print axioms Airbender.ReducedMachine.NativeShiftArithmeticProofs.low_option
+#print axioms Airbender.ReducedMachine.NativeShiftArithmeticProofs.high_option
+#print axioms Airbender.ReducedMachine.NativeShiftArithmeticProofs.output_bounds
+#print axioms Airbender.ReducedMachine.NativeShiftLowProofs.output
+#print axioms Airbender.ReducedMachine.NativeShiftHighProofs.output
+#print axioms Airbender.ReducedMachine.NativeShiftRowProofs.rows
+#print axioms Airbender.ReducedMachine.NativeShiftTableProofs.result
+#print axioms Airbender.ReducedMachine.NativeFixed.shift_implementation
+#print axioms Airbender.ReducedMachine.NativeShiftContributionProofs.values
+#print axioms Airbender.ReducedMachine.Native.shift_contribution_values
+#print axioms Tests.NativeReducedNumerics.left_first
+#print axioms Tests.NativeReducedNumerics.left_last
+#print axioms Tests.NativeReducedNumerics.right_first
+#print axioms Tests.NativeReducedNumerics.right_zero_shift
+#print axioms Tests.NativeReducedNumerics.right_cross_bit
+#print axioms Tests.NativeReducedNumerics.right_shift16
+#print axioms Tests.NativeReducedNumerics.right_last
+#print axioms Tests.NativeReducedNumerics.reversed_right_outputs_rejected
+#print axioms Tests.NativeReducedNumerics.corrupted_left_carry_rejected
+#print axioms Tests.NativeReducedNumerics.outside_key_rejected
+#print axioms Tests.NativeReducedNumerics.discarded_contributions_bounded

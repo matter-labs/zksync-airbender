@@ -294,6 +294,42 @@ initialized execution and machine/protocol boundaries remain open. Resource
 failures and unfinished composition are not native defects or new interface
 assumptions.
 
+## Native reduced numerical shift contributions (6 November 2026)
+
+The [numerical row certificate](Airbender/Proofs/ReducedMachine/NativeShiftRows.lean)
+now fixes the key, both arithmetic outputs and tag at every one of the actual
+4,194,304 shift rows. The [pooled query theorem](Airbender/Review/Circuits/ReducedMachine/Tables/ShiftTheorems.lean)
+derives a canonical 22-bit packed key, exact numerical outputs and both 16-bit
+bounds from original full native pool membership with tag 37. Right outputs
+retain their actual high/low order. The existing exact column certificate is
+used as a proved connection, never as an equivalence assumption.
+
+The [short selected-row claim](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+now derives both numerical fields and bounds for each actual source-one limb's
+contribution. [Proof assembly](Airbender/Proofs/ReducedMachine/NativeShiftContributions.lean)
+uses both queries already recovered from native equations, the derived tags and
+the complete pool. The decoded packed mask remains explicit. The statement
+uses the actual field-packed key's canonical value: it does not yet identify
+that key with the initialized architectural source limb, supply a source bound,
+or establish the complete shifted word, rd/x0, numerical PC or execution.
+
+[Eleven regressions](Tests/NativeReducedNumerics.lean) cover the first/last left
+and right rows, right shift-zero/one/sixteen boundaries, reversed right output
+rejection, corrupted left carry, oversized key and retained numerical bounds
+for discarded writes. Positive cases are members of the actual complete pool;
+they are not complete 117-equation execution fixtures. Existing affected native
+routing/filler/write/pool tests also pass.
+
+This closes the numerical composition allocation gap recorded at the preceding
+column checkpoint. A small generic vector projection prevents arithmetic
+expansion when selecting a limb. Separate arithmetic, low getter, high getter,
+row, pool and contribution modules pass at default proof settings; no literal,
+importer, exporter, production circuit/Rust or dependency changed. All 2,482
+explicit standard-only axiom roots and 150 public Review roots pass, with exact
+provenance and guide/layer gates. The prior 592 importer controls, eight CLI inputs
+and 47 native generation/export controls retain unchanged inputs. No native
+issue or new interface restriction is established; parity remains open.
+
 ## Checked coverage
 
 | Circuit | Coverage |

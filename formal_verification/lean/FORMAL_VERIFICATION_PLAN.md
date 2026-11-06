@@ -42,12 +42,15 @@ Full combined row effects and execution remain pending. See the
    are now derived, including minor flags and positive/logical/zero-shift cases.
    Both actual table-37 queries, contribution assembly, destination address, masked
    port write and default-PC candidate selection are now derived from native
-   equations. Table-37 arithmetic, complete word results, architectural rd/x0
-   decoding and numerical PC successor remain open. Both actual table-37 output
-   columns now have complete checked getter transport to certified split-table
-   columns, including the merged boundary and reversed right outputs. Compose
-   numerical rows/pooled-query meanings with a smaller proof assembly; its current
-   second-output draft still hits the unchanged allocation cap.
+   equations. All 4,194,304 actual table-37 rows now have checked numerical
+   meanings, including the merged boundary and reversed right outputs. Complete
+   native-pool membership derives canonical keys, exact arithmetic outputs and
+   bounds; the selected native row derives all four contribution values/bounds
+   at its actual field-packed keys. Next derive canonical source-key binding
+   from native bounds/initialized reads, complete word results, architectural
+   rd/x0/public decoding and numerical PC successor. The former projection
+   allocation gap is closed by generic projections and separate proof units,
+   without increasing limits or adding result/equivalence premises.
 3. Compose initialized combined histories, public decoding and original execution.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.

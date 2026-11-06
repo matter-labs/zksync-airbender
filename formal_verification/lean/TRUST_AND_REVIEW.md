@@ -94,11 +94,18 @@ now identifies both actual tag-37 output getters at every one of its 4,194,304
 indices with the earlier certified native columns. Periodic block values,
 canonical block shapes, the exact native merged boundary and reversed right
 column order are kernel checked. This removes the prior literal identity gap
-without adding a table premise. The existing public row surface is unchanged:
-pooled canonical numerical row/query composition, source/key binding and complete
-shift/execution meaning are still separate obligations. The unverified combined
-second-output draft remains outside the source tree after allocation-limit
-failures; neither those failures nor the new identities establish a native defect.
+without adding a table premise. The later numerical checkpoint now composes
+these identities through separate low/high getter and generic projection proofs.
+The [actual pooled numerical interface](Airbender/Review/Circuits/ReducedMachine/Tables/ShiftTheorems.lean)
+derives canonical keys and exact bounded outputs. The
+[selected contribution claim](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+derives all four actual numerical contribution fields/bounds at their field-packed
+keys from Clean acceptance. No supplied table meaning, source bound or desired
+write is used. The explicit decoded mask, canonical architectural source-key
+binding, initialized reads, complete word, rd/x0, numerical PC and execution
+remain separate obligations. Generic tuple projections resolve the former
+allocation failure at unchanged proof/resource limits; no native defect or
+issue-handling assumption is established.
 
 Production circuit and machine code must stay unchanged. Confirmed native issues
 are documented with their exact evidence and, where necessary, narrow explicit
