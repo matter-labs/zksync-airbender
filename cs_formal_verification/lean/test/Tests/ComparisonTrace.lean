@@ -1,6 +1,4 @@
 import Slop.Sail.ResetState
-import Slop.Verification.StaticLookup
-import Mathlib.Tactic.IntervalCases
 import Tests.Comparison
 import Slop.JumpBranchSlt.Claims
 import Tests.JumpHistory
@@ -58,29 +56,19 @@ private def trace (signed immediate : Bool) (rom : Table (ZMod babyBearModulus) 
     [token 0 5 0, token 1 6 (Nat.pair (if signed then 0 else 1) 0), token 2 0 (Nat.pair 65535 65535)]
     else [token 0 0 0, token 1 4 0, token 2 6 (Nat.pair (if signed then 0 else 1) 0)]
 
+/-- The honest inputs: `Comparison`'s at PC 0 and clock 4; rd's old value is the selected
+    source and its port was last accessed at clock 4 (alias of rs1) or 5 (alias of rs2). -/
+private def witness (signed immediate : Bool) : JumpBranchSlt.Completeness.Inputs :=
+  { Comparison.edgeWitness signed immediate false with
+    tsLo := 4, oldLo := if immediate then 0 else 65535, oldHi := if immediate then 0 else 65535,
+    prev2Lo := if immediate then 4 else 5, borrow0 := 1, borrow1 := 1, borrow2 := 1 }
+
 private theorem constraints (signed immediate : Bool) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment signed immediate)) JumpBranchSlt.clockConstraints := by
-  apply Verification.holds_append (left := JumpBranchSlt.importedConstraints)
-    (right := JumpBranchSlt.importedConstraintsTimestampLookups)
-  · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
-    constructor
-    · cases signed <;> cases immediate <;> decide
-    · rw [List.forall_mem_iff_forall_getElem]
-      intro i bound
-      have short : i < 8 := by simpa only [JumpBranchSlt.lookup_count] using bound
-      interval_cases i
-      all_goals first
-        | exact Verification.range16_contains (by cases signed <;> cases immediate <;> decide)
-        | exact Verification.static_lookup_contains _ _ _ (by cases signed <;> cases immediate <;> decide +kernel)
-            (by cases signed <;> cases immediate <;> decide +kernel)
-  · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
-    constructor
-    · simp [JumpBranchSlt.importedConstraintsTimestampLookups, FlatOperation.constraints]
-    · rw [List.forall_mem_iff_forall_getElem]
-      intro i bound
-      have short : i < 8 := by simpa only [JumpBranchSlt.timestamp_count] using bound
-      interval_cases i
-      all_goals exact Proofs.range_contains (by cases signed <;> cases immediate <;> decide)
+    (Verification.environment (assignment signed immediate)) JumpBranchSlt.clockConstraints :=
+  JumpBranchSlt.Completeness.clock_complete_of_agree (witness signed immediate)
+    (by cases signed <;> cases immediate <;> constructor <;> decide)
+    (by cases signed <;> cases immediate <;> constructor <;> decide)
+    (by cases signed <;> cases immediate <;> decide)
 
 private theorem accepted (signed immediate : Bool)
     (rom : Table (ZMod babyBearModulus) (fields 9)) : Accepted (trace signed immediate rom) := by

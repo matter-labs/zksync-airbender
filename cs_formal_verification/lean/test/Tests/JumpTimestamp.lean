@@ -1,10 +1,10 @@
 import Slop.JumpBranchSlt.Claims
+import Slop.JumpBranchSlt.Completeness.Witness
 
 namespace Tests.JumpTimestamp
 open Airbender Arithmetic Trace
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1000000
 
 -- JAL x1,-4 at PC zero. Clock rollover crosses a 19-bit limb while the
 -- architectural target is unchanged; every previous-write clock is earlier.
@@ -19,35 +19,42 @@ def assignment (rollover : Bool) : Nat → ZMod babyBearModulus
   | 30 | 34 | 47 => 4
   | _ => 0
 
+/-- The honest inputs `assignment` is built from; every previous clock is `(0, tsHi)`. -/
+def witness (rollover : Bool) : JumpBranchSlt.Completeness.Inputs where
+  sel := 0
+  rdZero := false
+  funct3 := 0
+  rs1 := 0
+  rs2 := 0
+  rd := 1
+  pcLo := 0
+  pcHi := 0
+  aLo := 0
+  aHi := 0
+  bLo := 0
+  bHi := 0
+  immLo := 65532
+  immHi := 65535
+  oldLo := 0
+  oldHi := 0
+  tsLo := if rollover then 524284 else 4
+  tsHi := if rollover then 7 else 0
+  prev0Lo := 0
+  prev0Hi := if rollover then 7 else 0
+  prev1Lo := 0
+  prev1Hi := if rollover then 7 else 0
+  prev2Lo := 0
+  prev2Hi := if rollover then 7 else 0
+  borrow0 := 1
+  borrow1 := 1
+  borrow2 := 1
+
 theorem constraints (rollover : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (assignment rollover))
-      JumpBranchSlt.clockConstraints := by
-  cases rollover <;>
-    simp [JumpBranchSlt.clockConstraints, JumpBranchSlt.importedConstraints,
-      JumpBranchSlt.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat,
-      Expression.eval, Verification.environment, assignment]
-  all_goals repeat' apply And.intro
-  all_goals first
-    | decide
-    | (apply Verification.range16_contains; decide)
-    | (apply Proofs.range_contains; decide)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-        ((0, 0) : fieldPair (ZMod babyBearModulus)) =
-          ((i.val : ZMod babyBearModulus), ((i.val / 32768 : Nat) : ZMod babyBearModulus))
-       exact ⟨0, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 131072,
-        ((4, 0) : fieldPair (ZMod babyBearModulus)) =
-          ((i.val : ZMod babyBearModulus), ((if i.val = 0 then 1 else 0 : Nat) : ZMod babyBearModulus))
-       exact ⟨4, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 4194304,
-        ((0, 0) : fieldPair (ZMod babyBearModulus)) =
-          ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-       exact ⟨0, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-        ((65532, 0, 65532) : fieldTriple (ZMod babyBearModulus)) =
-          ((i.val : ZMod babyBearModulus), ((i.val / 2 % 2 : Nat) : ZMod babyBearModulus),
-            ((i.val - i.val % 4 : Nat) : ZMod babyBearModulus))
-       exact ⟨65532, rfl⟩)
+      JumpBranchSlt.clockConstraints :=
+  JumpBranchSlt.Completeness.clock_complete_of_agree (witness rollover)
+    (by cases rollover <;> constructor <;> decide) (by cases rollover <;> constructor <;> decide)
+    (by cases rollover <;> decide)
 
 private theorem inputs (rollover : Bool) :
     ClockInputs JumpBranchSlt.importedConstraintsTraceColumns (assignment rollover) := by

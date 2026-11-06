@@ -6,7 +6,6 @@ namespace Tests.JumpPorts
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
-set_option maxHeartbeats 2000000
 
 -- The source and destination are both x1. Its old value is five, whereas
 -- the link written by JALR is four. Native memory must retain that old read.
@@ -26,12 +25,8 @@ theorem airbender_before : Configured before := by
 
 private theorem constraints :
     FlatOperation.ConstraintsHoldFlat (Verification.environment assignment)
-      JumpBranchSlt.importedConstraints := by
-  simpa [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat, Lookup.Contains,
-    Expression.eval, Verification.environment, assignment, Vector.map, Verification.range16,
-    Verification.pairLookup,
-    Verification.jumpCleanup] using
-      Tests.Jump.satisfies true false false
+      JumpBranchSlt.importedConstraints :=
+  (JumpBranchSlt.Completeness.imported_congr (by decide)).mp (Tests.Jump.satisfies true false false)
 
 private theorem query : JumpBranchSlt.decoderQuery assignment = entry.query := by decide
 

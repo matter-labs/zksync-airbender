@@ -3,8 +3,6 @@ import Tests.Branch
 import Slop.JumpBranchSlt.Claims
 import Tests.JumpHistory
 import Slop.JumpBranchSlt.BranchExecution
-import Slop.Verification.StaticLookup
-import Mathlib.Tactic.IntervalCases
 
 namespace Tests.BranchTrace
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -55,30 +53,16 @@ private def trace (tag : Fin 6) (wrap : Bool) (rom : Table (ZMod babyBearModulus
     ⟨(Cell.register 2).addressCode, (5, 0), Nat.pair 65535 65535⟩,
     ⟨(Cell.register 0).addressCode, (6, 0), 0⟩]
 
+/-- The honest inputs: `Branch`'s, at clock 4 with every previous access at clock 0. -/
+private def witness (tag : Fin 6) (wrap : Bool) : JumpBranchSlt.Completeness.Inputs :=
+  { Branch.witness tag wrap with tsLo := 4, borrow0 := 1, borrow1 := 1, borrow2 := 1 }
+
 private theorem constraints (tag : Fin 6) (wrap : Bool) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment tag wrap)) JumpBranchSlt.clockConstraints := by
-  apply Verification.holds_append (left := JumpBranchSlt.importedConstraints)
-    (right := JumpBranchSlt.importedConstraintsTimestampLookups)
-  · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
-    constructor
-    · fin_cases tag <;> cases wrap <;> decide
-    · rw [List.forall_mem_iff_forall_getElem]
-      intro i bound
-      have short : i < 8 := by simpa only [JumpBranchSlt.lookup_count] using bound
-      interval_cases i
-      all_goals first
-        | exact Verification.range16_contains (by fin_cases tag <;> cases wrap <;> decide)
-        | exact Verification.static_lookup_contains _ _ _
-            (by fin_cases tag <;> cases wrap <;> decide +kernel)
-            (by fin_cases tag <;> cases wrap <;> decide +kernel)
-  · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
-    constructor
-    · simp [JumpBranchSlt.importedConstraintsTimestampLookups, FlatOperation.constraints]
-    · rw [List.forall_mem_iff_forall_getElem]
-      intro i bound
-      have short : i < 8 := by simpa only [JumpBranchSlt.timestamp_count] using bound
-      interval_cases i
-      all_goals exact Proofs.range_contains (by fin_cases tag <;> cases wrap <;> decide)
+    (Verification.environment (assignment tag wrap)) JumpBranchSlt.clockConstraints :=
+  JumpBranchSlt.Completeness.clock_complete_of_agree (witness tag wrap)
+    (by fin_cases tag <;> cases wrap <;> constructor <;> decide)
+    (by fin_cases tag <;> cases wrap <;> constructor <;> decide)
+    (by fin_cases tag <;> cases wrap <;> decide)
 
 private theorem accepted (tag : Fin 6) (wrap : Bool)
     (rom : Table (ZMod babyBearModulus) (fields 9)) : Accepted (trace tag wrap rom) := by

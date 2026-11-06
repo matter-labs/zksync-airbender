@@ -6,7 +6,6 @@ namespace Tests.JumpHistory
 open Airbender Arithmetic Trace
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1000000
 
 -- JAL x1,-4; the two x0 reads alias. The second must refer to the first
 -- port's fresh timestamp. The old destination value is independently supplied.
@@ -32,24 +31,23 @@ def trace (old : Nat) (rollover : Bool) (rom : Table (ZMod babyBearModulus) (fie
   terminalMemory := [token 0 (if rollover then 524285 else 5) (if rollover then 7 else 0) 0,
     token 1 (if rollover then 524286 else 6) (if rollover then 7 else 0) 4]
 
+/-- The honest inputs: `JumpTimestamp`'s, with the second read at the fresh clock. Column 28
+    (the old destination value) is unconstrained, so `old` stays out of the witness. -/
+def witness (rollover : Bool) : JumpBranchSlt.Completeness.Inputs :=
+  { JumpTimestamp.witness rollover with prev1Lo := if rollover then 524284 else 4 }
+
+private theorem agree (rollover : Bool) : ∀ i ∈ JumpBranchSlt.Completeness.columns,
+    assignment 0 rollover i = (witness rollover).honest i := by
+  cases rollover <;> decide
+
 theorem constraints (old : Nat) (rollover : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (assignment old rollover))
       JumpBranchSlt.clockConstraints := by
-  have core := Verification.holds_of_sublist (JumpTimestamp.constraints rollover)
-    (List.sublist_append_left JumpBranchSlt.importedConstraints
-      JumpBranchSlt.importedConstraintsTimestampLookups)
-  apply Verification.holds_append (left := JumpBranchSlt.importedConstraints)
-    (right := JumpBranchSlt.importedConstraintsTimestampLookups)
-  · simpa [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Lookup.Contains, Vector.map, Expression.eval, Verification.environment, assignment,
-      JumpTimestamp.assignment, Verification.range16, Verification.pairLookup,
-      Verification.jumpCleanup] using core
-  · cases rollover <;>
-      simp [JumpBranchSlt.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    all_goals repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment, JumpTimestamp.assignment]
-    all_goals decide
+  refine JumpBranchSlt.Completeness.clock_complete_of_agree (witness rollover)
+    (by cases rollover <;> constructor <;> decide) (by cases rollover <;> constructor <;> decide) ?_
+  intro i member
+  have other : i ≠ 28 := by rintro rfl; exact absurd member (by decide)
+  simpa only [assignment, other, ↓reduceIte] using agree rollover i member
 
 theorem accepted (rollover : Bool) (rom : Table (ZMod babyBearModulus) (fields 9)) :
     Accepted (trace 5 rollover rom) := by

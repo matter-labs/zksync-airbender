@@ -11,7 +11,6 @@ namespace Tests.JumpSailHistory
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
-set_option maxHeartbeats 2000000
 
 -- JAL x1,-4 and JAL x0,-4. All three x0 ports in the discarded form
 -- retain the latest preceding native clock; public x1 starts at five.
@@ -56,25 +55,17 @@ private def trace (discarded : Bool) (rom : Table (ZMod babyBearModulus) (fields
   terminalMemory := if discarded then [token 0 6 0, token 1 0 5]
     else [token 0 5 0, token 1 6 4]
 
+/-- The honest inputs: `JumpHistory`'s, discarding into x0 whose third port read is at 5. -/
+private def witness (discarded : Bool) : JumpBranchSlt.Completeness.Inputs :=
+  { JumpHistory.witness false with
+    rdZero := discarded, rd := if discarded then 0 else 1, oldLo := if discarded then 0 else 5,
+    prev2Lo := if discarded then 5 else 0 }
+
 private theorem constraints (discarded : Bool) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment discarded)) JumpBranchSlt.clockConstraints := by
-  have core := Verification.holds_of_sublist (JumpHistory.constraints 5 false)
-    (List.sublist_append_left JumpBranchSlt.importedConstraints
-      JumpBranchSlt.importedConstraintsTimestampLookups)
-  apply Verification.holds_append (left := JumpBranchSlt.importedConstraints)
-    (right := JumpBranchSlt.importedConstraintsTimestampLookups)
-  · cases discarded <;>
-      simpa [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-        Lookup.Contains, Vector.map, Expression.eval, Verification.environment, assignment,
-        JumpHistory.assignment, Tests.JumpTimestamp.assignment, Verification.range16,
-        Verification.pairLookup, Verification.jumpCleanup] using core
-  · cases discarded <;>
-      simp [JumpBranchSlt.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    all_goals repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment,
-      JumpHistory.assignment, Tests.JumpTimestamp.assignment]
-    all_goals decide
+    (Verification.environment (assignment discarded)) JumpBranchSlt.clockConstraints :=
+  JumpBranchSlt.Completeness.clock_complete_of_agree (witness discarded)
+    (by cases discarded <;> constructor <;> decide) (by cases discarded <;> constructor <;> decide)
+    (by cases discarded <;> decide)
 
 private theorem accepted (discarded : Bool)
     (rom : Table (ZMod babyBearModulus) (fields 9)) : Accepted (trace discarded rom) := by

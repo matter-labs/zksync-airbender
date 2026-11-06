@@ -8,7 +8,6 @@ namespace Tests.JalrTrace
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
-set_option maxHeartbeats 2000000
 
 -- JALR x1,-4(x1): the old source is five, the link is four, and target is zero.
 private def assignment (i : Nat) : ZMod babyBearModulus :=
@@ -44,40 +43,15 @@ private def trace (rom : Table (ZMod babyBearModulus) (fields 9)) :
   terminalMemory := [⟨(Cell.register 0).addressCode, (5, 0), Nat.pair 0 0⟩,
     ⟨(Cell.register 1).addressCode, (6, 0), Nat.pair 4 0⟩]
 
+/-- The honest inputs: JALR from x1 = 5 with `JumpHistory`'s clock; the second port reads
+    at clock 0 and the third at 4. -/
+private def witness : JumpBranchSlt.Completeness.Inputs :=
+  { JumpHistory.witness false with sel := 1, rs1 := 1, aLo := 5, oldLo := 5, prev1Lo := 0, prev2Lo := 4 }
+
 private theorem constraints : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment assignment) JumpBranchSlt.clockConstraints := by
-  apply Verification.holds_append (left := JumpBranchSlt.importedConstraints)
-    (right := JumpBranchSlt.importedConstraintsTimestampLookups)
-  · simp [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Expression.eval, Verification.environment, assignment,
-      JumpHistory.assignment, JumpTimestamp.assignment]
-    repeat' apply And.intro
-    all_goals first
-      | decide
-      | (apply Verification.range16_contains; decide)
-      | (with_unfolding_all change ∃ i : Fin 65536,
-          ((0, 0) : fieldPair (ZMod babyBearModulus)) =
-            ((i.val : ZMod babyBearModulus), ((i.val / 32768 : Nat) : ZMod babyBearModulus))
-         exact ⟨0, rfl⟩)
-      | (with_unfolding_all change ∃ i : Fin 131072,
-          ((4, 0) : fieldPair (ZMod babyBearModulus)) =
-            ((i.val : ZMod babyBearModulus), ((if i.val = 0 then 1 else 0 : Nat) : ZMod babyBearModulus))
-         exact ⟨4, rfl⟩)
-      | (with_unfolding_all change ∃ i : Fin 4194304,
-          ((0, 0) : fieldPair (ZMod babyBearModulus)) =
-            ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-         exact ⟨0, rfl⟩)
-      | (with_unfolding_all change ∃ i : Fin 65536,
-          ((1, 0, 0) : fieldTriple (ZMod babyBearModulus)) =
-            ((i.val : ZMod babyBearModulus), ((i.val / 2 % 2 : Nat) : ZMod babyBearModulus),
-              ((i.val - i.val % 4 : Nat) : ZMod babyBearModulus))
-         exact ⟨1, rfl⟩)
-  · simp [JumpBranchSlt.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    repeat' apply And.intro
-    all_goals apply Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment,
-      JumpHistory.assignment, JumpTimestamp.assignment]
-    all_goals decide
+    (Verification.environment assignment) JumpBranchSlt.clockConstraints :=
+  JumpBranchSlt.Completeness.clock_complete_of_agree witness
+    (by constructor <;> decide) (by constructor <;> decide) (by decide)
 
 private theorem accepted (rom : Table (ZMod babyBearModulus) (fields 9)) : Accepted (trace rom) := by
   constructor
