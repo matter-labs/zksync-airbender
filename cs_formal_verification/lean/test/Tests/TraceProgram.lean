@@ -3,6 +3,8 @@ import Slop.Trace.Program
 import Slop.BabyBear
 import Tests.SailDecoder
 import Slop.Trace.CodeHistory
+import Human.Helpers.Context.FamilyLayout
+import Human.Helpers.Decoder.Decoded
 
 namespace Tests.TraceProgram
 open Airbender Trace Arithmetic

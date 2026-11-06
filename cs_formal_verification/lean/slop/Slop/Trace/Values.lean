@@ -1,6 +1,5 @@
 import Human.Helpers.Memory.Values
 import Slop.Trace.MemoryOrigins
-import Human.Helpers.Memory.ValueBoundary
 namespace Airbender.Trace.Proofs
 open Arithmetic
 

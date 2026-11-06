@@ -2,6 +2,7 @@ import Slop.Trace.Family.Timestamps
 import Slop.Trace.PC
 import Slop.AddSub.PC
 import Slop.WordMemory
+import Human.Helpers.Context.FamilyLayout
 
 namespace Airbender.Trace.Proofs
 open Arithmetic
