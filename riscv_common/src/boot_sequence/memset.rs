@@ -9,6 +9,6 @@ pub unsafe extern "C" fn memset(
     value: core::ffi::c_int,
     n: usize,
 ) -> *mut core::ffi::c_void {
-    crate::memset::memset_impl(dest as *mut u8, value as core::ffi::c_uint as u32, n)
+    crate::memset::memset_impl(dest as *mut u8, value as core::ffi::c_uint, n)
         as *mut core::ffi::c_void
 }
