@@ -1289,6 +1289,8 @@ import Human.Import.Coefficients
 #print axioms Airbender.Keccak.Split.Call.Proofs.permutation_of_executions
 #print axioms Airbender.Keccak.Split.Native.operation_execution
 #print axioms Airbender.Keccak.Split.Native.permutation_soundness
+#print axioms Airbender.Keccak.Split.schedule_length
+#print axioms Airbender.Keccak.Split.schedule_kinds
 
 #print axioms Airbender.Delegation.Caller.Proofs.query_csr
 #print axioms Airbender.Delegation.Caller.Proofs.query_selected
