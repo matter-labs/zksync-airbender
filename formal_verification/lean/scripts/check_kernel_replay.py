@@ -18,6 +18,11 @@ import sys
 from check_axioms import HERE, ROOT, run_guarded, sha, write_bytes, write_json
 
 
+# Match the existing source-build allowance for this exact kernel binding leaf.
+# Inventory jobs and every other replay keep the ordinary 900-second bound.
+REPLAY_REVIEW_MODULES = {'Airbender.Proofs.FullUnsigned.Source.ChiCharacters'}
+
+
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
@@ -135,6 +140,7 @@ def run_replay(args, modules=None):
         return {artifact_name(path): value for path, value in parts.items()}
     stack_mib = getattr(args, 'stack_mib', 2048)
     tool_key = digest({'files': artifact_parts(identities), 'limits': [2560, 5120, 900],
+                       'review_modules': sorted(REPLAY_REVIEW_MODULES), 'review_seconds': 1800,
                        'thread_stack_mib': stack_mib,
                        'process_stack_bytes': stack_mib << 20 if sys.platform == 'linux'
                            else resource.getrlimit(resource.RLIMIT_STACK)[0], 'adapter': 4})
@@ -147,7 +153,8 @@ def run_replay(args, modules=None):
     def job(label, command, expected_exit=0):
         return run_guarded(root, args.guard.resolve(), args.sysroot.resolve(), output / 'jobs', label,
                            command, expected_exit=expected_exit, lean_path=lean_path,
-                           stack_mib=stack_mib if sys.platform == 'linux' else None)
+                           stack_mib=stack_mib if sys.platform == 'linux' else None,
+                           review=label in {'replay-' + module for module in REPLAY_REVIEW_MODULES})
     try:
         job('search-path', helper + ['paths', str(output / 'search-path.json')])
         search_path = [Path(path).resolve() for path in json.loads((output / 'search-path.json').read_text())]

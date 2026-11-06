@@ -44,6 +44,39 @@ redundant branch-only repair is removed; see [FINDINGS.md](FINDINGS.md).
 
 ## Current checkpoint
 
+Final full run [42194460969](https://github.com/matter-labs/zksync-airbender/actions/runs/42194460969)
+on signed head b29277dd895499574e317a994fd89243a72f06cb passed fresh native
+qualification, complete source/runtime/Review, generated freshness, decoder
+differentials and the fixed-baseline compiled environment audit. The actual audit
+retains all 5,164 protected roots and 229,263 dependency declarations, with no
+forbidden axioms, unsafe proof dependencies, missing roots or changed reports.
+Its child exited 0 in 248.11 seconds at 1,324.83 MiB charged footprint.
+
+Independent replay then failed at 17:35:29 UTC on 6 November. The exact
+ChiCharacters source-binding leaf reached the shared helper's 900-second limit:
+exit 125, 900.23 seconds, 920.22 MiB charged footprint, 2,048 MiB stack and no
+owned processes left. Its log contains no kernel rejection. The retained artifact
+contains 3,935 successful replay guards before that leaf in the 8,381-module
+compiled dependency DAG. This is partial replay evidence; there is no completion
+certificate, and direct/transitive false-proof controls were skipped.
+
+The repair applies the existing named 1,800-second ChiCharacters allowance to
+that exact replay leaf. Inventory jobs, neighboring modules and ordinary audit
+calls retain 900 seconds. Memory caps remain 2,560/5,120 MiB and replay stack
+remains 2,048 MiB. The named timing policy is included in ledger identity; safe
+declaration coverage, import ordering and fresh project replay are unchanged.
+No Lean statement, proof, premise, baseline, production function, native input,
+workflow or axiom policy changes. All 923 captured native inputs are byte-identical.
+
+Six replay controls pass, including execution of the driver over a simulated
+compiled DAG: only the exact replay leaf gets the allowance, not its inventory,
+suffix/nested names or dependencies. Actual guard argument parsing retains both
+memory caps and stack; an unsuccessful fake child still fails. Six axiom controls
+also pass. The existing guard suite passes 30 controls with four Linux runtime
+controls skipped locally. These are lightweight controls, not a successful Lean
+replay. A new complete full assurance run with baseline refresh disabled remains
+required; no final assurance is claimed.
+
 Run [42183091911](https://github.com/matter-labs/zksync-airbender/actions/runs/42183091911)
 on signed head e9f9354f8854e1dcf5ff10900d566c457b0adcd0 passed every warm
 verification gate. Fresh native qualification completed at 08:05:15 UTC on

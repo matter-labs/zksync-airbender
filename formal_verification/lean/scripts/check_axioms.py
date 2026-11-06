@@ -43,7 +43,8 @@ def write_json(path, value):
     write_bytes(path, (json.dumps(value, indent=2) + '\n').encode())
 
 
-def run_guarded(root, guard, sysroot, directory, label, command, expected_exit=0, lean_path=None, stack_mib=None):
+def run_guarded(root, guard, sysroot, directory, label, command, expected_exit=0, lean_path=None, stack_mib=None,
+                review=False):
     """One owned heavy child, using the caller's unchanged global bounded worker."""
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -55,7 +56,9 @@ def run_guarded(root, guard, sysroot, directory, label, command, expected_exit=0
         # after initSearchPath so an existing package root cannot shadow them.
         env['AIRBENDER_ASSURANCE_PATH'] = lean_path
     args = [sys.executable, str(guard), '--mib', '2560', '--resident-mib', '5120',
-            '--seconds', '900', '--log', str(log)]
+            '--seconds', '1800' if review else '900', '--log', str(log)]
+    if review:
+        args.append('--review')
     if stack_mib is not None:
         args += ['--stack-mib', str(stack_mib)]
     args += ['--', *map(str, command)]
