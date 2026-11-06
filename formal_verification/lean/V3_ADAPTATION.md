@@ -120,3 +120,16 @@ whole/sliced cross-artifact checks exceeded the existing resident or Lean
 allocation limits and were terminated without survivors. The attempted draft
 is excluded from coverage and committed source. No limit increase, table
 assumption or circuit change was made to bypass that unfinished proof.
+
+## Native contribution/port connection
+
+The [native reduced claims](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+now derive both actual table-37 keys/output fields, directional contribution
+assembly, the actual masked destination port/address and default-PC selection.
+The existing native equation-extraction and metadata-check patterns are reused
+with exact prior-backport source hashes in provenance. The decoded mask remains
+explicit. No table meaning, desired write or numerical PC answer is supplied as
+a premise. Eight conditional native regressions and all 2,420 axiom/148 public
+Review roots pass. This advances the monolithic v2 target on the v3 Unified
+migration path; it does not establish table-37 arithmetic, public decoding,
+initialized source reads, original shift execution or coverage parity.

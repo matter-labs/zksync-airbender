@@ -6762,7 +6762,7 @@
     },
     {
       "path": "Airbender/Review/Circuits/ReducedMachine/Theorems.lean",
-      "change": "Short native claims for constant queries, dynamic domains, selected shift routing/truncation and actual arithmetic filler; decoded-mask/public execution boundaries remain explicit."
+      "change": "Short native claims for constant queries, dynamic domains, shift routing/truncation/filler, both selected table37 queries, actual masked destination write/address and default-PC selection. Decoded-mask, table arithmetic, numerical PC and initialized/public execution boundaries remain explicit."
     },
     {
       "path": "Airbender/Proofs/ReducedMachine/NativeArtifactChecks.lean",
@@ -6834,6 +6834,42 @@
     {
       "path": "Tests/NativeReducedSignFill.lean",
       "change": "Eleven native sign-fill boundary/rejection regressions and selected-row consequences; no full instruction or execution claim."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/ShiftWrite.lean",
+      "change": "Native port/decoder/PC observables and original field key/contribution references. Table37 arithmetic, initialized source reads, decoded x0 and numerical PC successor remain separate."
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftHeader.lean",
+      "change": "Adapt canonical packed-mask/Boolean recovery to derive the actual update/no-source header bits for all six shift masks at unchanged default proof limits.",
+      "backport_reuse_revision": "ac39ac8a726246afb22246c3083a14fa1e59753f",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftMinor.lean",
+      "backport_reuse_sha256": "e198d53081e06a8d34b83d73661b58de98283c28e9dda9617ddfa939f50ab109"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativePorts.lean",
+      "change": "Adapt native metadata checks to actual reduced source-one/destination ports, decoder fields and outgoing PC coordinates; no range or architectural state meaning is inferred from coordinates.",
+      "backport_reuse_revision": "ac39ac8a726246afb22246c3083a14fa1e59753f",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/ClockMetadata.lean",
+      "backport_reuse_sha256": "9d2da44a6929bde71c8aaa3bbab5ad3c0e023ec6c8641de5536718ccca569f50"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftQueries.lean",
+      "change": "Adapt native equation extraction to equations86..88/90..92; recover both actual table37 keys and contribution fields using derived direction/tags and original Clean full-pool membership. No table arithmetic or equivalence premise.",
+      "backport_reuse_revision": "ac39ac8a726246afb22246c3083a14fa1e59753f",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftRouting.lean",
+      "backport_reuse_sha256": "6fcc5cc1b5ff7f5baac9793d41009d9d2b0e554026d6fe6af06ec9b913df5f1c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftWrite.lean",
+      "change": "Adapt native extraction to selected contribution equations44/45, inactive load54/55, candidate98/99, masking100/101, address102/103/114, write106/107 and PC110/111. Connect actual port metadata and candidate selection without desired result, source-bound or PC-successor premises.",
+      "backport_reuse_revision": "ac39ac8a726246afb22246c3083a14fa1e59753f",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftFill.lean",
+      "backport_reuse_sha256": "fdef87b7db3dd207c9273506d4e13a006cc96b4cab49488693d4e7d71308bf33"
+    },
+    {
+      "path": "Tests/NativeReducedWrite.lean",
+      "change": "Eight conditional native regressions for discarded write/query participation, nonzero masked-write rejection, logical cross-limb assembly, arithmetic zero-shift filler and outgoing PC mismatches. These do not assert a complete accepted execution fixture."
     }
   ],
   "setup_artifacts": [

@@ -72,9 +72,11 @@ The [active regenerated reduced target](ReducedMachine/NativeArtifact.lean)
 keeps the historical JSON separate. Its [local shift claim](ReducedMachine/Theorems.lean)
 derives selected tags, operand routing and five-bit truncation from native
 acceptance plus an explicit decoded packed mask. This is native combined-row
-coverage; public decoding, results/writes/PC and execution remain open.
+coverage; public decoding, numerical results/PC and execution remain open.
 
 The [native reduced shift claim](ReducedMachine/Theorems.lean) also derives the
 actual sign filler from accepted native sign/control/amount queries, including
-logical/positive/zero-shift cases. Table-37 contributions, full results/writes/PC,
-public decoding and initialized execution remain separate obligations.
+logical/positive/zero-shift cases. Both actual table-37 queries, native field
+assembly, destination address/masked port write and default-PC candidate selection
+are also derived. Table-37 arithmetic, full numerical shift/PC results, public
+decoding and initialized execution remain separate obligations.

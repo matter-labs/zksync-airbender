@@ -1,4 +1,5 @@
 import Airbender.Proofs.ReducedMachine.NativeShiftFill
+import Airbender.Proofs.ReducedMachine.NativeShiftWrite
 
 namespace Airbender.ReducedMachine.Native
 open Verification
@@ -45,5 +46,35 @@ theorem shift_sign_fill {w : Nat → ZMod mersenne31Modulus}
       mode.filler (w 36).val (shiftAmount w).val ∧
       (shiftSignFill w)[0].val < 65536 ∧ (shiftSignFill w)[1].val < 65536 :=
   NativeShiftFillProofs.result holds mode useRegister mask
+
+/-- Actual table-37 inputs and contribution fields; arithmetic table meaning is separate. -/
+theorem shift_table_queries {w : Nat → ZMod mersenne31Modulus}
+    (holds : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints NativeFixed.table))
+    (mode : ShiftMode) (useRegister : Bool)
+    (mask : w 12 = (mode.mask useRegister : ZMod mersenne31Modulus)) :
+    (NativeFixed.table (p := mersenne31Modulus)).Contains #[]
+      #v[mode.lookupKey (source1 w)[0] (shiftAmount w),(shiftLowParts w)[0],(shiftLowParts w)[1],37] ∧
+    (NativeFixed.table (p := mersenne31Modulus)).Contains #[]
+      #v[mode.lookupKey (source1 w)[1] (shiftAmount w),(shiftHighParts w)[0],(shiftHighParts w)[1],37] :=
+  NativeShiftQueryProofs.queries holds mode useRegister mask
+
+/-- Native destination selection and actual masked contribution assembly. -/
+theorem shift_masked_write {w : Nat → ZMod mersenne31Modulus}
+    (holds : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints NativeFixed.table))
+    (mode : ShiftMode) (useRegister : Bool)
+    (mask : w 12 = (mode.mask useRegister : ZMod mersenne31Modulus)) :
+    rdPort.address.code w = Nat.pair 0 (Nat.pair (rdIndex w).val 0) ∧
+    rdWrite w = (mode.assemble (shiftLowParts w) (shiftHighParts w) (shiftSignFill w)).map
+      (fun value => (1 - rdZeroFlag w) * value) :=
+  ⟨NativeShiftWriteProofs.address holds mode useRegister mask,
+    NativeShiftWriteProofs.write holds mode useRegister mask⟩
+
+/-- Select the actual default-PC candidate; numerical successor meaning is separate. -/
+theorem shift_default_pc {w : Nat → ZMod mersenne31Modulus}
+    (holds : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints NativeFixed.table))
+    (mode : ShiftMode) (useRegister : Bool)
+    (mask : w 12 = (mode.mask useRegister : ZMod mersenne31Modulus)) :
+    finalPC w = defaultPC w :=
+  NativeShiftWriteProofs.pc holds mode useRegister mask
 
 end Airbender.ReducedMachine.Native

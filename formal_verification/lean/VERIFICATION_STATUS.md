@@ -221,6 +221,42 @@ Table-37 meaning, contribution assembly, full results, masked writes/PC, public
 decoding and initialized execution remain open. This resource boundary is not
 a native circuit defect, table-equivalence premise or new interface assumption.
 
+## Native reduced contribution writes and PC selection (6 November 2026)
+
+The [short native claims](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+now recover both actual tag-37 queries, including the native direction/amount/limb
+keys and the actual output fields. [Query assembly](Airbender/Proofs/ReducedMachine/NativeShiftQueries.lean)
+uses original Clean acceptance and derived direction/tags; it does not supply
+membership, table equivalence or arithmetic output answers as premises.
+
+[Actual port observables](Airbender/Review/Circuits/ReducedMachine/ShiftWrite.lean)
+retain the imported source-one read, mixed destination address, destination write,
+rd/zero-flag coordinates and outgoing PC. [Metadata checks](Airbender/Proofs/ReducedMachine/NativePorts.lean)
+bind their real columns. [Header recovery](Airbender/Proofs/ReducedMachine/NativeShiftHeader.lean)
+derives the update/no-source bits. [Native equation assembly](Airbender/Proofs/ReducedMachine/NativeShiftWrite.lean)
+then derives left/right cross-limb selection, inactive load zeros, the candidate,
+actual zero-flag masking and destination register-space address. The actual final
+PC selects the native default-PC candidate. These statements need no expected
+write, source-range or successor-PC premise.
+
+[Eight conditional regressions](Tests/NativeReducedWrite.lean) cover discarded
+writes with both queries retained, rejection of nonzero discarded writes,
+left/right cross-limb assembly, arithmetic zero-shift filler and either outgoing
+PC limb mismatch. They are consequences of original native acceptance, not
+complete accepted execution fixtures. The affected bounded modules and complete
+axiom/Review gates pass: 2,420 explicit axiom roots and 148 public Review roots,
+with exact provenance and guide/layer checks. All owned workers terminated under
+the unchanged allocation, footprint, resident and wall-time limits. No circuit,
+compiler/importer input or literal pool changed; the preceding 592 importer,
+eight CLI and 47 native controls remain applicable.
+
+Table-37 arithmetic meaning remains unverified. This milestone proves assembly
+of its actual output fields, not their numeric shift result. The explicit packed
+mask, original public decoding, architectural rd/x0 connection, initialized source
+reads, numerical PC+4/wraparound, combined Sail execution, workers and protocol
+boundaries remain open. The earlier failed large table-37 checks were not retried.
+No defect, circuit fix or new interface restriction is introduced.
+
 ## Checked coverage
 
 | Circuit | Coverage |

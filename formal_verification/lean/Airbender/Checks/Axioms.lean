@@ -1,3 +1,4 @@
+import Tests.NativeReducedWrite
 import Tests.NativeReducedSignFill
 import Tests.NativeReducedShift
 import Tests.NativeReducedPool
@@ -2597,3 +2598,25 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedSignFill.arithmetic_zero_amount
 #print axioms Tests.NativeReducedSignFill.logical_right_no_fill
 #print axioms Tests.NativeReducedSignFill.arithmetic_negative_last
+#print axioms Airbender.ReducedMachine.NativePortProofs.source_columns
+#print axioms Airbender.ReducedMachine.NativePortProofs.address_columns
+#print axioms Airbender.ReducedMachine.NativePortProofs.write_columns
+#print axioms Airbender.ReducedMachine.NativePortProofs.decoder_columns
+#print axioms Airbender.ReducedMachine.NativePortProofs.final_pc_columns
+#print axioms Airbender.ReducedMachine.NativeShiftHeaderProofs.bits
+#print axioms Airbender.ReducedMachine.NativeShiftQueryProofs.queries
+#print axioms Airbender.ReducedMachine.NativeShiftWriteProofs.candidate
+#print axioms Airbender.ReducedMachine.NativeShiftWriteProofs.write
+#print axioms Airbender.ReducedMachine.NativeShiftWriteProofs.address
+#print axioms Airbender.ReducedMachine.NativeShiftWriteProofs.pc
+#print axioms Airbender.ReducedMachine.Native.shift_table_queries
+#print axioms Airbender.ReducedMachine.Native.shift_masked_write
+#print axioms Airbender.ReducedMachine.Native.shift_default_pc
+#print axioms Tests.NativeReducedWrite.discarded_write
+#print axioms Tests.NativeReducedWrite.discarded_nonzero_rejected
+#print axioms Tests.NativeReducedWrite.logical_right_assembly
+#print axioms Tests.NativeReducedWrite.logical_left_assembly
+#print axioms Tests.NativeReducedWrite.arithmetic_zero_assembly
+#print axioms Tests.NativeReducedWrite.discarded_queries_retained
+#print axioms Tests.NativeReducedWrite.pc_low_mismatch_rejected
+#print axioms Tests.NativeReducedWrite.pc_high_mismatch_rejected

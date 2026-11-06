@@ -84,7 +84,8 @@ lemma, with distinct offsets and no equivalence premise.
 [Boundary/rejection checks](../../../../Tests/NativeReducedShift.lean) include
 wrong/oversized/unused fields and the distinct standalone sign-fill selector.
 Public decoding still needs to supply the packed mask; initialized operands,
-shift results, writes, PC and original execution remain open.
+numerical shift/PC results and original execution remain open. The later native
+port connection below derives actual contribution writes and PC selection.
 
 [Native sign-fill results](Theorems.lean) now derive the actual filler word and
 both limb bounds from the same six decoded-mask cases. All three
@@ -95,7 +96,21 @@ checks the native ID-20 region; [reference definitions](Tables/Shift.lean) retai
 logical/positive/zero-shift behavior. [Proof assembly](../../../Proofs/ReducedMachine/NativeShiftFill.lean)
 stays separate from the short Review statement.
 [Eleven regressions](../../../../Tests/NativeReducedSignFill.lean) include native
-shift 0/16/17/31 boundaries and altered filler rejection. Table-37 contributions,
-full results/writes/PC, public decoding and execution remain open. The direct
+shift 0/16/17/31 boundaries and altered filler rejection. Table-37 arithmetic,
+full numerical results, public decoding and execution remain open. The direct
 large column comparison exceeded existing resource caps and is excluded from
 coverage; further work must use a smaller proof evaluation strategy.
+
+[Native contribution and write claims](Theorems.lean) recover both actual table-37
+keys/output fields, cross-limb selection, destination address and masked port write.
+The outgoing PC is selected from the native default candidate; numerical successor
+meaning is separate. [Actual port observables](ShiftWrite.lean) stay small;
+[metadata](../../../Proofs/ReducedMachine/NativePorts.lean),
+[query recovery](../../../Proofs/ReducedMachine/NativeShiftQueries.lean) and
+[write assembly](../../../Proofs/ReducedMachine/NativeShiftWrite.lean) stay under
+Proofs. [Eight conditional regressions](../../../../Tests/NativeReducedWrite.lean)
+retain discarded lookup participation, asymmetric cross-limb contributions,
+zero-shift arithmetic filler and rejected PC mismatches. They do not assert a
+complete accepted witness. The decoded mask, architectural rd/x0 binding,
+initialized reads, table-37 arithmetic, numeric PC+4/wraparound and original Sail
+execution remain separate obligations. No new premise or circuit change bypasses them.

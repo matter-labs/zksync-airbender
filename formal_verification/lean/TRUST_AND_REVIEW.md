@@ -6,8 +6,10 @@ For the active combined reduced machine, start with the
 [regenerated native artifact](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean),
 [complete fixed fixture](Airbender/Review/Circuits/ReducedMachine/Tables/Native.lean)
 and [short native row theorem](Airbender/Review/Circuits/ReducedMachine/Theorems.lean).
-The checked claims currently cover two sign/high-byte queries and the four
-dynamic selector domains, not instructions or whole execution. Earlier standalone libraries retain their separate scope.
+The checked claims include sign/high-byte queries, selector domains, selected
+shift routing/filler, both contribution queries, actual masked port writes and
+default-PC selection. The decoded shift mask remains explicit; instruction and
+whole-execution soundness are open. Earlier standalone libraries retain their separate scope.
 
 Start with [Properties](Airbender/Review/Helpers/Properties.lean), then the short
 [ADD/SUB theorems](Airbender/Review/Circuits/AddSub/Theorems.lean) and their
@@ -64,16 +66,28 @@ derives operation flags, all four selected tags, actual source-two routing and
 exact five-bit truncation under an explicit decoded packed mask. The actual
 truncation columns are kernel-identified with the certified scalar columns,
 without equating offsets or assuming tables equivalent. The public decoder
-connection must still derive that mask. Neither this row claim nor its operand
-boundaries establish initialized reads, shift results, writes, PC or execution.
+connection must still derive that mask. Neither this routing claim nor its operand
+boundaries establish initialized reads, numerical shift results or execution.
 
 The same [native row surface](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
 now derives the actual two-limb arithmetic sign filler and its bounds. All 128
 stored tag-20 rows are checked. Minor flags, sign and amount follow from native
 acceptance; the selected query and seven-bit key are recovered without supplied
 payload/control or range answers. Logical shifts, positive values and shift zero
-retain zero filler. This still leaves table-37 contributions, full shift results,
-actual writes/PC and original Sail execution unproved.
+retain zero filler. The later contribution/write claim below retains the separate
+table-37 arithmetic, numerical PC and original Sail execution obligations.
+
+[Actual selected contribution queries and writes](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+now connect the native port metadata to both table-37 keys/outputs, direction-specific
+field assembly, the actual destination address and zero-flag-masked write. Native
+acceptance also selects the actual default-PC candidate. The
+[separate observables](Airbender/Review/Circuits/ReducedMachine/ShiftWrite.lean)
+contain no calculation proofs. The actual equations derive update/no-source flags
+and inactive load zeros, rather than adding them as assumptions. Public decoding
+must still derive the explicit packed mask and bind rd/x0 to original fields;
+initialized history must supply actual source reads. Table-37 numerical semantics,
+complete shift results, numeric PC+4/wraparound and original execution are not
+established by these field equalities. No issue-handling assumption is added.
 
 Production circuit and machine code must stay unchanged. Confirmed native issues
 are documented with their exact evidence and, where necessary, narrow explicit

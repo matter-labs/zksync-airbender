@@ -40,9 +40,11 @@ Full combined row effects and execution remain pending. See the
    source-two routing and exact five-bit truncation. The explicit decoded mask
    still needs the original public-decoder connection. Actual sign-fill outputs
    are now derived, including minor flags and positive/logical/zero-shift cases.
-   Table-37 shift contributions, complete results, actual writes and PC effects
-   remain open; its large literal-column checks must be redesigned to fit the
-   existing resource caps, not retried with higher limits.
+   Both actual table-37 queries, contribution assembly, destination address, masked
+   port write and default-PC candidate selection are now derived from native
+   equations. Table-37 arithmetic, complete word results, architectural rd/x0
+   decoding and numerical PC successor remain open. Redesign the large literal
+   checks to fit existing caps; do not retry with higher limits.
 3. Compose initialized combined histories, public decoding and original execution.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.
