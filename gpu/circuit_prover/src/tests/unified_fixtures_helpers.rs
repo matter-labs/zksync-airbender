@@ -1081,7 +1081,7 @@ pub(super) fn prepare_unified_fixture(
             .unwrap(),
         );
 
-        let mut bundle = gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::new(
+        let mut bundle = gpu_trace::trace::memory::GpuGKRCommitMemoryTransfer::new(
             decoder,
             inits_and_teardowns,
             tracing_data,

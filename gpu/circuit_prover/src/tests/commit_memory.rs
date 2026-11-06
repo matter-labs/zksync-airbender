@@ -174,7 +174,7 @@ fn test_blake2_delegation_zero_call_commit_memory_matches_cpu() {
 #[ignore]
 fn run_unified_commit_memory_matches_cpu_test() {
     use gpu_trace::trace::memory::commit_memory_from_transfers_for_geometry;
-    use gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer;
+    use gpu_trace::trace::memory::GpuGKRCommitMemoryTransfer;
 
     let fixture = prepare_unified_proof_fixture();
     let base = &fixture.base;

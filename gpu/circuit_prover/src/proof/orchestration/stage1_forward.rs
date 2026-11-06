@@ -19,7 +19,7 @@ use gpu_hash::blake2s::STATE_SIZE;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
-use gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer;
+use gpu_trace::trace::memory_cap::GpuGKRMemoryCapTransfer;
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 
 pub(in crate::proof) struct Stage1AndForwardPreparation {
@@ -36,7 +36,7 @@ pub(in crate::proof) struct BundleDeviceRefs<'b, 'a, A: GoodAllocator> {
     pub setup: Option<&'b GpuGKRSetupTransfer<'a>>,
     pub decoder: Option<&'b DecoderTableTransfer<'a>>,
     pub inits_and_teardowns: Option<&'b InitsAndTeardownsTransfer<'a, A>>,
-    pub memory: &'b GpuGKRMemoryTransfer<'a>,
+    pub memory: &'b GpuGKRMemoryCapTransfer<'a>,
     pub top_bits_device: Option<&'b DeviceAllocation<u32>>,
     pub external_challenges_device: &'b DeviceAllocation<E4>,
 }

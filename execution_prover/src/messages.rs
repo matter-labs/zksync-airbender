@@ -86,7 +86,7 @@ pub struct ProofRequest<A: GoodAllocator, P> {
     pub external_challenges: GKRExternalChallenges<BF, E4>,
     /// Per-coset caps from this circuit's prior `commit_memory` (one entry
     /// per coset, in natural order). The GPU backend builds a
-    /// `GpuGKRMemoryTransfer` from these caps.
+    /// `GpuGKRMemoryCapTransfer` from these caps.
     pub memory_caps: Vec<MerkleTreeCapVarLength>,
 }
 

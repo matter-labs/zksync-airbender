@@ -40,7 +40,7 @@ pub(super) fn gpu_memory_caps(
         commit_merged_from_transfers(&base.gkr_programs, &base.prover_config, inputs, context)
             .unwrap()
     } else {
-        let mut inputs = gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::new(
+        let mut inputs = gpu_trace::trace::memory::GpuGKRCommitMemoryTransfer::new(
             decoder,
             inits,
             Some(trace),

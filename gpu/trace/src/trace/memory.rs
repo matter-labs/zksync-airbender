@@ -1,7 +1,9 @@
+use crate::trace::decoder::DecoderTableTransfer;
 use crate::trace::holder::{bitreverse_index, TraceHolder, TreesCacheMode};
 use crate::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
+use crate::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 use crate::witness::memory_delegation::generate_memory_values_delegation;
 use crate::witness::memory_unrolled::{
@@ -16,7 +18,7 @@ use gpu_core::primitives::device_structures::DeviceMatrixMut;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::BF;
 use gpu_hash::blake2s::Digest;
-use gpu_prover_context::transfer::TransferKeepalive;
+use gpu_prover_context::transfer::{Transfer, TransferKeepalive};
 use gpu_prover_context::ProverContext;
 
 use crate::upstream::{
@@ -376,18 +378,62 @@ pub fn commit_memory<'a>(
     )
 }
 
+/// Input transfers for `commit_memory_from_transfers_for_geometry`: decoder,
+/// inits-and-teardowns, and tracing data share one transfer fence.
+pub struct GpuGKRCommitMemoryTransfer<'a, A: GoodAllocator> {
+    pub(crate) transfer: Transfer<'a>,
+    pub(crate) decoder: Option<DecoderTableTransfer<'a>>,
+    pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
+    pub(crate) tracing_data: Option<TracingDataTransfer<'a, A>>,
+}
+
+impl<'a, A: GoodAllocator + 'a> GpuGKRCommitMemoryTransfer<'a, A> {
+    pub fn new(
+        decoder: Option<DecoderTableTransfer<'a>>,
+        inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
+        tracing_data: Option<TracingDataTransfer<'a, A>>,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let transfer = Transfer::new()?;
+        transfer.record_allocated(context)?;
+        Ok(Self {
+            transfer,
+            decoder,
+            inits_and_teardowns,
+            tracing_data,
+        })
+    }
+
+    pub fn schedule(&mut self, context: &ProverContext) -> CudaResult<()> {
+        if let Some(decoder) = self.decoder.as_mut() {
+            decoder.schedule_transfer(&mut self.transfer, context)?;
+        }
+        if let Some(it) = self.inits_and_teardowns.as_mut() {
+            it.schedule_transfer(&mut self.transfer, context)?;
+        }
+        if let Some(td) = self.tracing_data.as_mut() {
+            td.schedule_transfer(&mut self.transfer, context)?;
+        }
+        self.transfer.record_transferred(context)
+    }
+
+    pub(crate) fn ensure_transferred(&self, context: &ProverContext) -> CudaResult<()> {
+        self.transfer.ensure_transferred(context)
+    }
+}
+
 /// Use the worker's already resolved config/geometry without another CPU lookup.
 pub fn commit_memory_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
-    inputs: super::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>,
+    inputs: GpuGKRCommitMemoryTransfer<'a, A>,
     geometry: BaseCommitmentGeometry,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     // One exec-stream wait covers every H2D bundled by `inputs` (decoder,
     // inits_and_teardowns, tracing_data).
     inputs.ensure_transferred(context)?;
-    let super::memory_transfer::GpuGKRCommitMemoryTransfer {
+    let GpuGKRCommitMemoryTransfer {
         transfer,
         decoder,
         inits_and_teardowns,

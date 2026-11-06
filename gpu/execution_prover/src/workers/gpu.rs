@@ -18,7 +18,7 @@ use gpu_gkr::stage1::merged_commitment::{
 use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::{commit_memory_from_transfers_for_geometry, MemoryCommitmentJob};
-use gpu_trace::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
+use gpu_trace::trace::memory_cap::{GpuGKRMemoryCapHost, GpuGKRMemoryCapTransfer};
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
@@ -97,7 +97,7 @@ struct PhaseOne<'a> {
 #[allow(clippy::large_enum_variant)]
 enum PhaseOneInputs<'a> {
     Proof(gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, A>),
-    MemoryCommitment(gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>),
+    MemoryCommitment(gpu_trace::trace::memory::GpuGKRCommitMemoryTransfer<'a, A>),
     MergedMemoryCommitment(GpuGKRMergedCommitTransfer<'a, A>),
     SetupInitialization,
 }
@@ -287,7 +287,7 @@ fn schedule_phase_one<'a>(
     let setup_host = state.precomputations.setup_host.get_initialized();
     let geometry = state.precomputations.geometry;
     let memory_host = state.memory_caps.as_deref().map(|caps| {
-        let host = GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(caps, geometry);
+        let host = GpuGKRMemoryCapHost::from_per_coset_caps_for_geometry(caps, geometry);
         Arc::new(host)
     });
     let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
@@ -337,7 +337,7 @@ fn schedule_phase_one<'a>(
             .as_ref()
             .map(|host| GpuGKRSetupTransfer::new(Arc::clone(host), context))
             .transpose()?;
-        let memory_transfer = GpuGKRMemoryTransfer::new(
+        let memory_transfer = GpuGKRMemoryCapTransfer::new(
             Arc::clone(memory_host.as_ref().expect("proof requires memory caps")),
             context,
         )?;
@@ -386,13 +386,12 @@ fn schedule_phase_one<'a>(
         bundle.schedule(context)?;
         PhaseOneInputs::MergedMemoryCommitment(bundle)
     } else {
-        let mut bundle =
-            gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
-                decoder_transfer,
-                inits_and_teardowns_transfer,
-                tracing_data_transfer,
-                context,
-            )?;
+        let mut bundle = gpu_trace::trace::memory::GpuGKRCommitMemoryTransfer::<'_, A>::new(
+            decoder_transfer,
+            inits_and_teardowns_transfer,
+            tracing_data_transfer,
+            context,
+        )?;
         trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling commit-memory H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );

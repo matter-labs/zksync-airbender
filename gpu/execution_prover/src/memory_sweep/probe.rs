@@ -13,10 +13,10 @@ use gpu_gkr::stage1::merged_commitment::{
 };
 use gpu_prover_context::{AllocationMode, ProverContext};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
-use gpu_trace::trace::memory::commit_memory_from_transfers_for_geometry;
-use gpu_trace::trace::memory_transfer::{
-    GpuGKRCommitMemoryTransfer, GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost,
+use gpu_trace::trace::memory::{
+    commit_memory_from_transfers_for_geometry, GpuGKRCommitMemoryTransfer,
 };
+use gpu_trace::trace::memory_cap::{GpuGKRMemoryCapHost, GpuGKRMemoryCapTransfer};
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -130,14 +130,14 @@ fn schedule_proof_inputs<'a>(
         .as_deref()
         .expect("warm memory commitment");
     let geometry = circuit.precomputations.geometry;
-    let memory_host = Arc::new(GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(
+    let memory_host = Arc::new(GpuGKRMemoryCapHost::from_per_coset_caps_for_geometry(
         caps, geometry,
     ));
     let (decoder, inits, trace) = input_transfers(context, circuit)?;
     let setup = setup_host
         .map(|host| GpuGKRSetupTransfer::new(host, context))
         .transpose()?;
-    let memory = GpuGKRMemoryTransfer::new(memory_host, context)?;
+    let memory = GpuGKRMemoryCapTransfer::new(memory_host, context)?;
     let num_teardown_sets = programs
         .compiled_circuit()
         .memory_layout
