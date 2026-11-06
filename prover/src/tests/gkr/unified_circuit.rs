@@ -10,7 +10,7 @@ fn gkr_run_unified_test_sec_100() {
 }
 
 fn run_unified_test(level: SecurityLevel) {
-    // `sec_100` in the default soundness mode, `sec_100_<mode>` otherwise (or GKR_PROOF_SUFFIX)
+    // `sec_100` in the default soundness mode, `sec_100_<mode>` otherwise
     let proof_suffix = super::orchestration::common::proof_suffix(level);
     let proof_suffix = proof_suffix.as_str();
     let worker = Worker::new_with_num_threads(8);
