@@ -1,5 +1,7 @@
 import Slop.MulDiv.Claims
 import Slop.BabyBear
+import Slop.Verification.StaticLookup
+import Mathlib.Tactic.IntervalCases
 
 namespace Tests.MulDivProduct
 open Airbender
@@ -42,34 +44,18 @@ set_option maxHeartbeats 800000 in
 private theorem satisfies (operation : Fin 4) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row operation))
       Airbender.MulDiv.importedConstraints := by
-  fin_cases operation <;>
-    simp [Airbender.MulDiv.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Expression.eval, Verification.environment, row]
-  repeat' apply And.intro
-  all_goals solve
-    | (apply Verification.range16_contains; decide)
-    | (apply Verification.range13_contains; decide)
-    | (with_unfolding_all change ∃ i : Fin 131072,
-         ((131070, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((if i.val = 0 then 1 else 0 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨131070, by decide⟩, by decide⟩)
-    | (with_unfolding_all change ∃ i : Fin 131072,
-         ((2, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((if i.val = 0 then 1 else 0 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨2, by decide⟩, by decide⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((65535, 255) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val % 256 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨65535, by decide⟩, by decide⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((1, 1) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val % 256 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨1, by decide⟩, by decide⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((0, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val % 256 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨0, by decide⟩, rfl⟩)
-    | decide
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · fin_cases operation <;> decide
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 16 := by simpa only [Airbender.MulDiv.lookup_count] using bound
+    interval_cases i
+    all_goals first
+      | exact Verification.range16_contains (by fin_cases operation <;> decide)
+      | exact Verification.range13_contains (by fin_cases operation <;> decide)
+      | exact Verification.static_lookup_contains _ _ _ (by fin_cases operation <;> decide +kernel)
+          (by fin_cases operation <;> decide +kernel)
 
 -- Apply the generic theorem to actual imported rows in all four selector cases.
 example (operation : Fin 4) :

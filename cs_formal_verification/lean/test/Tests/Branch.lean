@@ -1,5 +1,7 @@
 import Slop.JumpBranchSlt.Claims
 import Slop.Sail.ControlFlow
+import Slop.Verification.StaticLookup
+import Mathlib.Tactic.IntervalCases
 
 namespace Tests.Branch
 open Airbender
@@ -40,57 +42,17 @@ set_option maxHeartbeats 800000 in
 theorem satisfies (tag : Fin 6) (wrap : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row tag wrap))
       JumpBranchSlt.importedConstraints := by
-  fin_cases tag <;> cases wrap <;>
-    simp [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Expression.eval, Verification.environment, row, taken, initial, offset, final]
-  repeat' apply And.intro
-  all_goals solve
-    | (apply Verification.range16_contains; decide)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((0, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 32768 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨0, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((0, 0, 0) : fieldTriple (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 2 % 2 : Nat) : ZMod babyBearModulus), ((i.val - i.val % 4 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨0, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 131072,
-         ((1, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((if i.val = 0 then 1 else 0 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨1, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((4, 0, 4) : fieldTriple (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 2 % 2 : Nat) : ZMod babyBearModulus), ((i.val - i.val % 4 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨4, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((65532, 0, 65532) : fieldTriple (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 2 % 2 : Nat) : ZMod babyBearModulus), ((i.val - i.val % 4 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨65532, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 4194304,
-         ((196607, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-       exact ⟨⟨196607, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 4194304,
-         ((720895, 1) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-       exact ⟨⟨720895, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 4194304,
-         ((2293759, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-       exact ⟨⟨2293759, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 4194304,
-         ((2818047, 1) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-       exact ⟨⟨2818047, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 4194304,
-         ((3342335, 1) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-       exact ⟨⟨3342335, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 4194304,
-         ((3866623, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-       exact ⟨⟨3866623, by decide⟩, rfl⟩)
-    | decide
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · fin_cases tag <;> cases wrap <;> decide
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [JumpBranchSlt.lookup_count] using bound
+    interval_cases i
+    all_goals first
+      | exact Verification.range16_contains (by fin_cases tag <;> cases wrap <;> decide)
+      | exact Verification.static_lookup_contains _ _ _ (by fin_cases tag <;> cases wrap <;> decide +kernel)
+          (by fin_cases tag <;> cases wrap <;> decide +kernel)
 
 /-- Every real branch tag, with opposite signed/unsigned outcomes, has the
     resolved bit required by the local imported relation. -/

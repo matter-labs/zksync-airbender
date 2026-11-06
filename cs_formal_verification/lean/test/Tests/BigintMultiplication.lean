@@ -1,4 +1,6 @@
 import Slop.Bigint.Claims
+import Slop.Verification.StaticLookup
+import Mathlib.Tactic.IntervalCases
 
 namespace Tests.BigintMultiplication
 open Airbender Bigint.Multiplication.Proofs
@@ -67,22 +69,17 @@ def fiveTimesSevenRow (high carryFlag : Bool) : Nat → ZMod babyBearModulus := 
 theorem fiveTimesSevenSatisfies (high carryFlag : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (fiveTimesSevenRow high carryFlag))
       (Bigint.importedConstraints Bigint.setupTable) := by
-  cases high <;> cases carryFlag
-  all_goals simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, fiveTimesSevenRow, Lookup.Contains, Table.toRaw,
-    fromElements]
-  all_goals repeat' apply And.intro
-  all_goals solve
-    | decide
-    | (apply Verification.range16_contains; decide)
-    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1325061, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
-    | (refine ⟨⟨1325063, by decide⟩, ?_⟩; norm_num [Bigint.setupTable, Bigint.setupRow])
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · cases high <;> cases carryFlag <;> decide
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 95 := by simpa only [Bigint.lookup_count] using bound
+    interval_cases i
+    all_goals first
+        | exact Verification.range16_contains (by cases high <;> cases carryFlag <;> decide)
+        | exact Verification.static_lookup_contains _ _ _ (by cases high <;> cases carryFlag <;> decide +kernel)
+            (by cases high <;> cases carryFlag <;> decide +kernel)
 
 -- (2^256 - 1) * 2: low half is 2^256 - 2, high half is one.
 def overflowRow : Nat → ZMod babyBearModulus := fun column =>
@@ -101,25 +98,17 @@ def overflowRow : Nat → ZMod babyBearModulus := fun column =>
 theorem overflowSatisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment overflowRow)
       (Bigint.importedConstraints Bigint.setupTable) := by
-  simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, overflowRow, Lookup.Contains, Table.toRaw, fromElements]
-  repeat' apply And.intro
-  all_goals solve
-    | decide
-    | (apply Verification.range16_contains; decide)
-    | (exact ⟨⟨0, by decide⟩, by decide⟩)
-    | (exact ⟨⟨512, by decide⟩, by decide⟩)
-    | (exact ⟨⟨262144, by decide⟩, by decide⟩)
-    | (exact ⟨⟨263168, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1310720, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1310721, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1312768, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1312769, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1316864, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1316865, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1325056, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1325058, by decide⟩, by decide⟩)
-    | (exact ⟨⟨1390591, by decide⟩, by decide⟩)
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · decide
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 95 := by simpa only [Bigint.lookup_count] using bound
+    interval_cases i
+    all_goals first
+        | exact Verification.range16_contains (by decide)
+        | exact Verification.static_lookup_contains _ _ _ (by decide +kernel)
+            (by decide +kernel)
 
 def smallWord (value : Nat) : Vector Nat 16 :=
   Vector.ofFn fun i => if i.val = 0 then value else 0
