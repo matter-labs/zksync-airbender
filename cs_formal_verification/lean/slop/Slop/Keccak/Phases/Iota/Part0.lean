@@ -6,7 +6,6 @@ namespace Airbender.Keccak.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 set_option maxRecDepth 65536
-set_option maxHeartbeats 64000000
 
 local macro "solve_iota_lanes" : tactic => `(tactic| (
   simp only [iotaPhase, Fin.foldl_succ_last, Fin.foldl_zero]

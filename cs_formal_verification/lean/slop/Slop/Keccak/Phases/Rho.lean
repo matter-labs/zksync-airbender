@@ -6,7 +6,6 @@ namespace Airbender.Keccak.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 set_option maxRecDepth 65536
-set_option maxHeartbeats 64000000
 
 theorem rho_phase_lanes (round : Fin 24) (state : LaneState) :
     logicalLanes (round.val + 1) (rhoPhase round state) = rhoPi (logicalLanes round.val state) := by

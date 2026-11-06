@@ -5,7 +5,6 @@ namespace Airbender.Keccak.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 set_option maxRecDepth 65536
-set_option maxHeartbeats 64000000
 
 theorem mix_phase_frame (round : Fin 24) (state : LaneState) (lane : Fin 25) :
     mixPhase round state ⟨lane.val, by omega⟩ = state ⟨lane.val, by omega⟩ := by
