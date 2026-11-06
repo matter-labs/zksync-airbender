@@ -17,13 +17,10 @@ const RAM_BOUND: usize = 1 << 30;
 /// Calls a delegation, so the comparison covers a delegation proof.
 fn delegating_fixture() -> (Vec<u32>, Vec<u32>) {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-    let (_, binary) = setups::read_and_pad_binary(
+    riscv_transpiler::elf::load_legacy_binaries(
         &root.join("examples/hashed_fibonacci/app_blake2_with_compression.bin"),
-    );
-    let (_, text) = setups::read_and_pad_binary(
         &root.join("examples/hashed_fibonacci/app_blake2_with_compression.text"),
-    );
-    (binary, text)
+    )
 }
 
 type Proof = prover::gkr::prover::GKRProof<
@@ -60,8 +57,16 @@ fn assert_memory_cap_and_bytes(
         "memory cap of {label}"
     );
     assert_eq!(
-        verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(mine, circuit),
-        verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(legacy, circuit),
+        verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+            mine,
+            circuit,
+            verifier_common::BLAKE_MODE
+        ),
+        verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+            legacy,
+            circuit,
+            verifier_common::BLAKE_MODE
+        ),
         "flattened proof of {label}"
     );
 }
@@ -94,24 +99,26 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
     };
 
     let worker = worker::Worker::new();
-    let (legacy, legacy_setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer::<
-        riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
-        std::alloc::Global,
-        _,
-        _,
-    >(
-        CYCLES_BOUND,
-        &binary,
-        &text,
-        true,
-        non_determinism(),
-        RAM_BOUND,
-        &worker,
-        prover::definitions::SecurityLevel::Sec100,
-        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
-        &prover::gkr::prover::DefaultBabyBearBackend::default(),
-        &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
-    );
+    let (legacy, legacy_setups) =
+        program_prover::unrolled::prove_unrolled_execution_with_replayer_in_mode::<
+            riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
+            std::alloc::Global,
+            _,
+            _,
+        >(
+            CYCLES_BOUND,
+            &binary,
+            &text,
+            true,
+            non_determinism(),
+            RAM_BOUND,
+            &worker,
+            prover::definitions::SecurityLevel::Sec100,
+            prover::definitions::SoundnessMode::PessimisticConjecture,
+            verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+            &prover::gkr::prover::DefaultBabyBearBackend::default(),
+            &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
+        );
 
     assert_eq!(mine.final_pc, legacy.final_pc, "final pc");
     assert_eq!(

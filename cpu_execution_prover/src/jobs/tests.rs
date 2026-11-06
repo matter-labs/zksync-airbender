@@ -11,10 +11,9 @@ use execution_prover_model::circuit_type::{CircuitType, DelegationCircuitType};
 use execution_prover_model::trace::{
     ChunkedTraceHolder, DelegationTracingDataHost, TracingDataHost,
 };
-use prover::definitions::{GKRExternalChallenges, SecurityLevel};
+use prover::definitions::{GKRExternalChallenges, SoundnessMode};
 use worker::Worker;
 
-const SECURITY_LEVEL: SecurityLevel = SecurityLevel::Sec100;
 /// The smallest delegation circuit.
 const DELEGATION: DelegationCircuitType = DelegationCircuitType::Blake2GFunction;
 
@@ -50,6 +49,7 @@ fn prove(
     let precomputations = CpuCircuitPrecomputations::from_canonical(
         circuit_type,
         build_delegation_setup(DELEGATION, &worker),
+        SoundnessMode::DEFAULT,
     );
     jobs.execute::<CpuTraceAllocator>(
         WorkRequest::SetupInitialization(SetupInitializationRequest {
@@ -57,7 +57,6 @@ fn prove(
             circuit_type,
             sequence_id: 0,
             precomputations: precomputations.clone(),
-            security_level: SECURITY_LEVEL,
         }),
         &worker,
     );
@@ -69,7 +68,6 @@ fn prove(
             precomputations: precomputations.clone(),
             inits_and_teardowns: None,
             tracing_data: Some(empty_trace()),
-            security_level: SECURITY_LEVEL,
         }),
         &worker,
     ) else {
@@ -85,7 +83,6 @@ fn prove(
             tracing_data: Some(empty_trace()),
             external_challenges: challenges(),
             memory_caps: memory_caps(committed.merkle_tree_caps),
-            security_level: SECURITY_LEVEL,
         }),
         &worker,
     ) else {
@@ -98,13 +95,14 @@ fn prove(
 #[test]
 fn a_delegation_proof_verifies_natively() {
     use execution_prover::backend::CircuitPrecomputation;
-    use full_statement_verifier::imports::blake2_g_function_sec_100;
+    use full_statement_verifier::imports::pessimistic_conjecture::blake2_g_function;
     use verifier_common::errors::DebugErrorCreator;
 
     let (precomputations, proved) = prove(|caps| caps);
     let stream = verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
         &proved.proof,
         precomputations.compiled_circuit(),
+        verifier_common::BLAKE_MODE,
     );
     let challenges = challenges();
     // The verifier recurses deeply, so it gets its own stack.
@@ -112,7 +110,7 @@ fn a_delegation_proof_verifies_natively() {
         .stack_size(1 << 27)
         .spawn(move || {
             let mut source = stream.into_iter();
-            blake2_g_function_sec_100::verify::<_, DebugErrorCreator>(&challenges, &mut source)
+            blake2_g_function::verify::<_, DebugErrorCreator>(&challenges, &mut source)
                 .expect("the verifier rejected a proof this handler produced");
         })
         .unwrap()

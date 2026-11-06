@@ -354,7 +354,7 @@ mod imp {
             );
         let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
         let setup_commitment =
-            setup.commit_for_config(twiddles.plain(), &prover_config, setup_worker);
+            setup.commit_for_config(twiddles.plain(), prover_config, setup_worker);
         println!(
             "[outer] shared setup (twiddles + setup construct + commit) took {:.3?}",
             t.elapsed()
@@ -712,13 +712,13 @@ mod imp {
         circuit.witness_layout.total_width,
         circuit.layers.len(),
         widths.join(","),
-        prover_config.lde_factor,
+        prover_config.lde_factor(),
         prover_config.cap_size,
-        prover_config.base_oracles_values_per_leaf,
-        prover_config.whir_schedule.whir_steps_schedule,
-        prover_config.whir_schedule.whir_queries_schedule,
-        prover_config.whir_schedule.whir_steps_lde_factors,
-        prover_config.whir_schedule.whir_pow_schedule,
+        prover_config.base_oracles_values_per_leaf(),
+        prover_config.whir_schedule.fold_steps(),
+        prover_config.whir_schedule.queries_per_round(),
+        prover_config.whir_schedule.intermediate_lde_factors(),
+        prover_config.whir_schedule.queries_pow_bits_per_round(),
     );
 
         // The VM run + binary preprocessing are thread-count independent: once.

@@ -64,16 +64,14 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static>(
 
     CircuitSetup {
         family_idx: ::unified_reduced_machine::FAMILY_IDX,
+        geometry: <::unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<
+            BabyBearField,
+            true,
+        >>::geometry(),
         trace_len,
         compiled_circuit,
         table_driver,
         setup,
         witness_eval_fn,
-        prover_configs: circuit_common::prover_configs_for_all_levels(
-            <::unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<
-                BabyBearField,
-                true,
-            >>::prover_config,
-        ),
     }
 }

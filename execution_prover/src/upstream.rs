@@ -17,9 +17,8 @@ pub(crate) use field::baby_bear::ext4::BabyBearExt4 as E4;
 
 // `prover` — shared proof, setup and transcript types.
 pub(crate) use prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
-pub(crate) use prover::definitions::{FinalRegisterValue, GKRExternalChallenges, SecurityLevel};
+pub(crate) use prover::definitions::{FinalRegisterValue, GKRExternalChallenges};
 pub(crate) use prover::gkr::prover::GKRProof;
-pub(crate) use prover::gkr::prover_config::ProverConfig;
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 pub(crate) use prover::transcript::Seed;
 pub type Blake2sTranscript = prover::transcript::Blake2sTranscript<{ USE_REDUCED_BLAKE2_ROUNDS }>;

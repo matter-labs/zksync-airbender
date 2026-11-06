@@ -6,9 +6,14 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         Self::with_configuration(ExecutionProverConfiguration::default())
     }
 
+    pub fn soundness_mode(&self) -> crate::config::SoundnessMode {
+        self.configuration.soundness_mode
+    }
+
     pub fn with_configuration(
         configuration: ExecutionProverConfiguration<B::Configuration>,
     ) -> Self {
+        let soundness_mode = configuration.soundness_mode;
         let ExecutionProverConfiguration {
             max_thread_pool_threads,
             expected_concurrent_jobs,
@@ -16,7 +21,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             host_allocator_backing_allocation_size,
             host_allocators_per_job_count,
             min_free_host_allocators_per_job: _,
-            security_level,
+            soundness_mode: _,
             ram_config,
             assume_canonical_mop_inputs: _,
             backend: _,
@@ -66,13 +71,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .map(|(circuit_type, setup)| {
                 (
                     circuit_type,
-                    backend.prepare(circuit_type, setup, security_level),
+                    backend.prepare(circuit_type, setup, soundness_mode),
                 )
             })
             .collect();
         let pending_setup_initialization = request_setup_initialization(
             &backend,
-            security_level,
             common_precomputations
                 .iter()
                 .map(|(circuit_type, precomputations)| (*circuit_type, precomputations.clone()))

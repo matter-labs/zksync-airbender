@@ -25,16 +25,13 @@ use prover::field::Proth120;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::prover::{
     prove_configured_with_gkr_with_storage_and_backend, GKRProof, NaiveGKRBackend, OperationMode,
-    Proth120WorkStealingLazyBackend, SetupCommitment, WhirOracleStorage,
+    Proth120WorkStealingLazyBackend, WhirOracleStorage,
 };
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use prover::tests::gkr::large_field::{
-    build_unified_trace_without_precompiles, evm_production_packed_prover_config,
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
+    build_unified_trace_without_precompiles, EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
 };
-use prover::tests::gkr::orchestration::common::{
-    dummy_external_challenges, run_vm_and_capture, ProgramConfig,
-};
+use prover::tests::gkr::orchestration::common::{dummy_external_challenges, run_words_and_capture};
 use prover::tests::gkr::unified_reduced_machine_proth120;
 use prover::transcript::Keccak256Transcript;
 use prover::worker::Worker;
@@ -58,32 +55,43 @@ pub struct L1WrapTimings {
     pub prove_ms: u128,
 }
 
-/// Prove `program`'s execution as a single Proth120 packed unified proof with
-/// ALL oracles in memory and the EVM-production parameters. Returns the proof,
-/// the `OperationMode` aux data (the boundary state the EVM transcript recipe
-/// replays — the exact fixture pair the verifier_evm generation and the
-/// two-transaction test consume), and the timing breakdown.
+/// Prove a run of the program given by its unpadded ROM image and text words (as
+/// [`ProgramSource::load_unpadded`](riscv_transpiler::elf::ProgramSource::load_unpadded)
+/// returns them) as a single Proth120 packed unified proof with ALL oracles in memory and the
+/// EVM-production parameters. Returns the proof, the `OperationMode` aux data (the boundary
+/// state the EVM transcript recipe replays — the exact fixture pair the verifier_evm generation
+/// and the two-transaction test consume), and the timing breakdown.
 ///
 /// `circuit_layout_path` is the compiled
 /// `unified_reduced_machine_layout_gkr_proth120.json`. The run must fit one
 /// 2^22 chunk and make no delegation calls.
 pub fn prove_l1_wrap_in_memory(
-    program: &ProgramConfig,
+    binary: Vec<u32>,
+    text_section: Vec<u32>,
+    non_determinism_reads: &[u32],
+    cycles_bound: usize,
+    ram_bound_bytes: usize,
     circuit_layout_path: &Path,
     worker: &Worker,
 ) -> (L1Proof, OperationMode, L1WrapTimings) {
+    use prover::gkr::prover_config::example_configs::evm_production_packed_prover_config;
+    let security_level = prover::definitions::SecurityLevel::Sec100;
+    let prover_config = evm_production_packed_prover_config(security_level);
     let mut timings = L1WrapTimings::default();
     let external_challenges_pow_bits = EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS;
-    let level = prover::definitions::SecurityLevel::Sec100;
-    let prover_config = evm_production_packed_prover_config(level);
     // the base-commitment packing is a property of the prover config
-    let pack_log2 = prover_config.pack_log2;
+    let pack_log2 = prover_config.pack_log2();
     let trace_len = 1usize << prover_config.trace_len_log2;
 
     // 1. Run the program on the reduced machine and capture the execution.
     let trace_started = std::time::Instant::now();
-    let vm = run_vm_and_capture::<DelegationsAndUnifiedCounters, ReducedMachineDecoderConfig>(
-        program, worker,
+    let vm = run_words_and_capture::<DelegationsAndUnifiedCounters, ReducedMachineDecoderConfig>(
+        binary,
+        text_section,
+        non_determinism_reads,
+        cycles_bound,
+        ram_bound_bytes,
+        worker,
     );
     println!(
         "L1 wrap: program finished at PC = 0x{:08x}, timestamp {}",
@@ -95,7 +103,7 @@ pub fn prove_l1_wrap_in_memory(
     let unified_circuit: GKRCircuitArtifact<Proth120> = {
         let src = std::fs::File::open(circuit_layout_path)
             .unwrap_or_else(|e| panic!("open {}: {e}", circuit_layout_path.display()));
-        serde_json::from_reader(src).expect("deserialize unified circuit")
+        serde_json::from_reader(std::io::BufReader::new(src)).expect("deserialize unified circuit")
     };
     let num_teardown_sets = unified_circuit.memory_layout.teardown_sets.len();
 
@@ -180,5 +188,5 @@ pub fn prove_l1_wrap_in_memory(
         now.elapsed()
     );
 
-    (proof, commitment_mode, timings)
+    (proof, operation_mode, timings)
 }

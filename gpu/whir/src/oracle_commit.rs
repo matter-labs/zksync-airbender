@@ -87,6 +87,9 @@ pub(crate) fn schedule_recursive_oracle_commit(
     let evals_total_len = lde_factor * trace_len * src_cols_per_coset;
     let total_leaf_count_log2 = (log_trace_len - log_values_per_leaf) + natural_log_lde_factor;
     let total_leaf_count = 1usize << total_leaf_count_log2;
+    let upper_layers = total_leaf_count_log2
+        .checked_sub(PARTIAL_TREE_REDUCTION_LAYERS + log_tree_cap_size)
+        .expect("recursive WHIR commitments require a partial tree");
     let cap_words = (cap_size * STATE_SIZE) as u32;
     let stream = context.get_exec_stream();
 
@@ -106,8 +109,6 @@ pub(crate) fn schedule_recursive_oracle_commit(
             context.ntt_device_context().whir_leaf_transform_params(),
             stream,
         )?;
-        let upper_layers =
-            total_leaf_count_log2 - PARTIAL_TREE_REDUCTION_LAYERS - log_tree_cap_size;
         gpu_hash::blake2s::build_merkle_tree_nodes(roots, nodes, upper_layers, stream)?;
         let cap_offset_digests = backing.len() - (cap_size << 1);
         let cap_base =
@@ -141,7 +142,6 @@ pub(crate) fn schedule_recursive_oracle_commit(
         src_cols_per_coset,
         context,
     )?;
-    let upper_layers = total_leaf_count_log2 - PARTIAL_TREE_REDUCTION_LAYERS - log_tree_cap_size;
     gpu_hash::blake2s::build_merkle_tree_nodes(boundary_roots, upper_nodes, upper_layers, stream)?;
     let cap_offset = backing.len() - (cap_size << 1);
     let cap_base = unsafe { (backing.as_ptr() as *const u32).add(cap_offset * STATE_SIZE) };

@@ -3,9 +3,8 @@
 /// alignments, the backward path composes each destination word from an aligned
 /// source word below it and the already loaded bytes above it; neither load
 /// reaches outside the source range.
+#[cfg(not(feature = "checked_word_memory"))]
 #[allow(dead_code)]
-// seq! expands reverse offsets to literals, including intentional zero/equal operands.
-#[allow(clippy::eq_op, clippy::identity_op)]
 #[inline(always)]
 pub(crate) unsafe fn memmove_impl(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
     #[cfg(not(target_endian = "little"))]
@@ -34,50 +33,7 @@ pub(crate) unsafe fn memmove_impl(dest: *mut u8, src: *const u8, n: usize) -> *m
     }
 
     if d.addr() % 4 == s.addr() % 4 {
-        debug_assert_eq!(d.addr() % 4, 0);
-        debug_assert_eq!(s.addr() % 4, 0);
-
-        let mut d = d.cast::<u32>();
-        let mut s = s.cast::<u32>();
-
-        while n >= 64 {
-            d = d.sub(16);
-            s = s.sub(16);
-            debug_assert_eq!(d.addr() % 4, 0);
-            debug_assert_eq!(s.addr() % 4, 0);
-            // Descending stores preserve source words even for a one-word overlap.
-            seq_macro::seq!(N in 0..16 {
-                d.add(15 - N).write(s.add(15 - N).read());
-            });
-            n -= 64;
-        }
-
-        if n & 32 != 0 {
-            d = d.sub(8);
-            s = s.sub(8);
-            seq_macro::seq!(N in 0..8 {
-                d.add(7 - N).write(s.add(7 - N).read());
-            });
-        }
-        if n & 16 != 0 {
-            d = d.sub(4);
-            s = s.sub(4);
-            seq_macro::seq!(N in 0..4 {
-                d.add(3 - N).write(s.add(3 - N).read());
-            });
-        }
-        if n & 8 != 0 {
-            d = d.sub(2);
-            s = s.sub(2);
-            seq_macro::seq!(N in 0..2 {
-                d.add(1 - N).write(s.add(1 - N).read());
-            });
-        }
-        if n & 4 != 0 {
-            d = d.sub(1);
-            s = s.sub(1);
-            d.write(s.read());
-        }
+        let (d, s) = copy_aligned_words_backward(d, s, n);
 
         // The remaining one to three bytes lie below the aligned words.
         if n & 3 != 0 {
@@ -110,6 +66,7 @@ pub(crate) unsafe fn memmove_impl(dest: *mut u8, src: *const u8, n: usize) -> *m
     return_value
 }
 
+#[cfg(not(feature = "checked_word_memory"))]
 #[inline(always)]
 unsafe fn copy_misaligned<const R: usize>(mut d: *mut u8, mut s: *const u8, mut n: usize) {
     debug_assert_eq!(d.addr() % 4, 0);
@@ -162,4 +119,87 @@ unsafe fn copy_misaligned<const R: usize>(mut d: *mut u8, mut s: *const u8, mut 
         d.write(s.read());
         n -= 1;
     }
+}
+
+/// Copies the `n & !3` bytes below the word-aligned ends `d` and `s` in descending word order and
+/// returns the new ends. Descending stores preserve source words even for a one-word overlap.
+///
+/// # Safety
+/// `memmove` contract for the copied bytes, `d % 4 == 0` and `s % 4 == 0`.
+#[inline(always)]
+#[allow(clippy::eq_op, clippy::identity_op)]
+unsafe fn copy_aligned_words_backward(
+    d: *mut u8,
+    s: *const u8,
+    mut n: usize,
+) -> (*mut u8, *const u8) {
+    debug_assert_eq!(d.addr() % 4, 0);
+    debug_assert_eq!(s.addr() % 4, 0);
+
+    let mut d = d.cast::<u32>();
+    let mut s = s.cast::<u32>();
+
+    while n >= 64 {
+        d = d.sub(16);
+        s = s.sub(16);
+        debug_assert_eq!(d.addr() % 4, 0);
+        debug_assert_eq!(s.addr() % 4, 0);
+        // Descending stores preserve source words even for a one-word overlap.
+        seq_macro::seq!(N in 0..16 {
+            d.add(15 - N).write(s.add(15 - N).read());
+        });
+        n -= 64;
+    }
+
+    if n & 32 != 0 {
+        d = d.sub(8);
+        s = s.sub(8);
+        seq_macro::seq!(N in 0..8 {
+            d.add(7 - N).write(s.add(7 - N).read());
+        });
+    }
+    if n & 16 != 0 {
+        d = d.sub(4);
+        s = s.sub(4);
+        seq_macro::seq!(N in 0..4 {
+            d.add(3 - N).write(s.add(3 - N).read());
+        });
+    }
+    if n & 8 != 0 {
+        d = d.sub(2);
+        s = s.sub(2);
+        seq_macro::seq!(N in 0..2 {
+            d.add(1 - N).write(s.add(1 - N).read());
+        });
+    }
+    if n & 4 != 0 {
+        d = d.sub(1);
+        s = s.sub(1);
+        d.write(s.read());
+    }
+
+    (d.cast(), s.cast())
+}
+
+/// `checked_word_memory` `memmove`: for nonzero `n`, traps unless `dest`, `src` and `n` are word
+/// multiples; `n == 0` returns with no memory access whatever the pointers. Overlap is copied
+/// forward (`copy_aligned_words`, ascending) when `dest` is below `src`, backward otherwise.
+///
+/// # Safety
+/// For nonzero `n`, the `memmove` contract: valid, non-wrapping ranges.
+#[cfg(feature = "checked_word_memory")]
+#[allow(dead_code)]
+#[inline(always)]
+pub(crate) unsafe fn memmove_impl(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
+    if n != 0 {
+        if !(dest.addr() | src.addr() | n).is_multiple_of(4) {
+            crate::checked_word::refuse();
+        }
+        if dest.addr() < src.addr() {
+            crate::memcpy::copy_aligned_words(dest, src, n);
+        } else {
+            copy_aligned_words_backward(dest.add(n), src.add(n), n);
+        }
+    }
+    dest
 }

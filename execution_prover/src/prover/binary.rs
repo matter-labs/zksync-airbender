@@ -10,7 +10,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         cycles_bound: Option<u32>,
     ) -> BinaryHandle {
         let key = self.next_binary_id;
-        self.next_binary_id += 1;
         info!("PROVER inserting binary with key {key:?}");
         let preprocessed_bytecode = match machine_type {
             MachineType::Full => {
@@ -67,14 +66,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 let precomp = self.backend.prepare(
                     CircuitType::Unrolled(circuit_type),
                     setup,
-                    self.configuration.security_level,
+                    self.configuration.soundness_mode,
                 );
                 (circuit_type, precomp)
             })
             .collect();
         let pending_setup_initialization = request_setup_initialization(
             &self.backend,
-            self.configuration.security_level,
             precomputations
                 .iter()
                 .map(|(circuit_type, precomp)| {
@@ -97,6 +95,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             precomputations,
         };
         assert!(self.binary_holders.insert(key, holder).is_none());
+        self.next_binary_id += 1;
         BinaryHandle(key)
     }
 }

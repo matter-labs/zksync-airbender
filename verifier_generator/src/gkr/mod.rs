@@ -1067,7 +1067,7 @@ fn emit_memory_tuple_check<MW: FieldWrapper>(
 /// Every proving-geometry parameter (trace length, explicit sumcheck output
 /// size, WHIR schedule, security level, packing) comes from `prover_config` —
 /// the circuit's own serialized config — so the generated verifier cannot
-/// disagree with the prover. `prover_config.pack_log2` is the base-commitment
+/// disagree with the prover. `prover_config.pack_log2()` is the base-commitment
 /// packing factor: every committed set
 /// (memory and witness — one merged set in the merged modes — and setup) is
 /// packed by `2^pack_log2` consecutive columns into one committed column of
@@ -1093,7 +1093,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let sumcheck_output_size_log_2 = prover_config.sumcheck_explicit_output_size_log_2;
     let whir_schedule = &prover_config.whir_schedule;
     let security_bits = prover_config.security_level.security_bits() as u32;
-    let pack_log2 = prover_config.pack_log2;
+    let pack_log2 = prover_config.pack_log2();
     // The generated verifier takes caller-supplied external challenges
     // (`OperationMode::MultipleChunks`); the self-derived transcript init of
     // `OperationMode::SingleChunk` is served by the EVM generator only.
@@ -2054,19 +2054,43 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
     let field_use_stmts = MW::field_use_statements();
 
-    let whir_rounds = whir_schedule.whir_steps_schedule.len();
-    let whir_fold_steps = &whir_schedule.whir_steps_schedule;
-    let whir_queries = &whir_schedule.whir_queries_schedule;
-    let whir_pow_bits = &whir_schedule.whir_pow_schedule;
-    let whir_lde_factors = &whir_schedule.whir_steps_lde_factors;
-    let whir_base_lde_factor = whir_schedule.base_lde_factor;
-    let batched_proximity_pow_bits =
-        pow_bits::batched_proximity_check_pow_bits::<MW::BaseField, MW::ChallengeField>(
+    let whir_rounds = whir_schedule.num_rounds();
+    let whir_fold_steps = whir_schedule.fold_steps();
+    let whir_queries = whir_schedule.queries_per_round();
+    let whir_pow_bits = whir_schedule.queries_pow_bits_per_round();
+    let whir_lde_factors = whir_schedule.intermediate_lde_factors();
+    let whir_base_lde_factor = whir_schedule.base_lde_factor();
+    // Per intermediate oracle: its OOD sample count and OOD-draw PoW; per
+    // round: the PoW gating its folding-challenge draws.
+    let whir_num_ood_samples: Vec<usize> = whir_schedule
+        .internal_rounds
+        .iter()
+        .map(|r| r.num_ood_samples)
+        .collect();
+    let whir_ood_pow_bits: Vec<u32> = whir_schedule
+        .internal_rounds
+        .iter()
+        .map(|r| r.ood_pow_bits)
+        .collect();
+    let whir_folding_pow_bits: Vec<u32> =
+        core::iter::once(whir_schedule.base_round.folding_pow_bits)
+            .chain(
+                whir_schedule
+                    .internal_rounds
+                    .iter()
+                    .map(|r| r.folding_pow_bits),
+            )
+            .collect();
+    let whir_ood_entries: usize = whir_schedule.total_ood_samples();
+    // The PoW gating the batching-challenge draw (the batched-proximity PoW,
+    // or the initial-folding PoW under virtual packing): the schedule's explicit
+    // bits, or the derivation from the batched (packed) polynomial size and the
+    // PHYSICALLY committed (packed) column count, exactly as the prover computes it.
+    let batched_proximity_pow_bits = whir_schedule
+        .base_round
+        .batching_pow_bits::<MW::BaseField, MW::ChallengeField>(
             security_bits as usize,
-            // the batched (packed) polynomial size and the PHYSICALLY
-            // committed (packed) column count, exactly as the prover computes it
             whir_message_size_log2,
-            whir_base_lde_factor.trailing_zeros() as usize,
             pow_bits::committed_base_oracle_columns(
                 compiled_circuit,
                 pack_log2,
@@ -2083,7 +2107,11 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let whir_cap_size = whir_schedule.cap_size;
     let whir_cap_size_log2 = whir_cap_size.trailing_zeros() as usize;
 
-    let max_pow_entries: usize = whir_queries[..whir_rounds - 1].iter().map(|q| 1 + q).sum();
+    // every non-final round pushes the committed oracle's OOD samples and its
+    // query points into the accumulator
+    let max_pow_entries: usize = (0..whir_rounds - 1)
+        .map(|r| whir_num_ood_samples[r] + whir_queries[r])
+        .sum();
 
     let total_fold_steps: usize = whir_fold_steps.iter().sum();
     assert!(
@@ -2269,6 +2297,15 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         pub const WHIR_FOLD_STEPS: [usize; #whir_rounds] = [#(#whir_fold_steps),*];
         pub const WHIR_QUERIES: [usize; #whir_rounds] = [#(#whir_queries),*];
         pub const WHIR_POW_BITS: [u32; #whir_rounds] = [#(#whir_pow_bits),*];
+        /// Per round: PoW bits gating each folding-challenge draw (0 = plain draws).
+        pub const WHIR_FOLDING_POW_BITS: [u32; #whir_rounds] = [#(#whir_folding_pow_bits),*];
+        /// Per intermediate oracle: its out-of-domain sample count and the PoW
+        /// bits gating the OOD point draw (0 = a plain draw).
+        pub const WHIR_NUM_OOD_SAMPLES: [usize; #num_intermediate_oracles] = [#(#whir_num_ood_samples),*];
+        pub const WHIR_OOD_POW_BITS: [u32; #num_intermediate_oracles] = [#(#whir_ood_pow_bits),*];
+        /// Total OOD samples across the intermediate oracles (the accumulator's
+        /// out-of-domain entry capacity).
+        pub const WHIR_OOD_ENTRIES: usize = #whir_ood_entries;
         pub const LOOKUP_CHALLENGES_POW_BITS: u32 = #lookup_challenges_pow_bits;
         pub const BATCHED_PROXIMITY_POW_BITS: u32 = #batched_proximity_pow_bits;
         pub const MAX_POW_ENTRIES: usize = #max_pow_entries;
@@ -2278,6 +2315,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         pub const ORACLE_DEPTHS: [usize; #num_oracles] = [#(#oracle_depths),*];
         pub const TOTAL_ORACLE_COLS: usize = #total_oracle_cols;
         pub const WHIR_ORACLE_DEPTHS: [usize; #num_intermediate_oracles] = [#(#whir_oracle_depths),*];
+        pub const WHIR_CAP_SIZE: usize = #whir_cap_size;
         pub const WHIR_CAP_WORDS: usize = #whir_cap_words;
         #packing_constants
 

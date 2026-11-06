@@ -15,13 +15,11 @@ pub fn inits_and_teardowns_circuit_setup<A: GoodAllocator>(
 
     CircuitSetup {
         family_idx: u8::MAX,
+        geometry: ::inits_and_teardowns::geometry(),
         trace_len: 1 << ::inits_and_teardowns::TRACE_LEN_LOG2,
         compiled_circuit: circuit,
         table_driver,
         setup,
         witness_eval_fn: None,
-        prover_configs: circuit_common::prover_configs_for_all_levels(
-            ::inits_and_teardowns::prover_config,
-        ),
     }
 }

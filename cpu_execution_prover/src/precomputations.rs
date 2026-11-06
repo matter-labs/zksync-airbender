@@ -3,6 +3,7 @@ use crate::upstream::{
     ProverConfig, SetupCommitment, TableDriver, TwiddleSetOps, UnrolledCircuitWitnessEvalFn, BF,
 };
 use execution_prover::backend::CircuitPrecomputation;
+use execution_prover::config::SoundnessMode;
 use execution_prover::setup::CanonicalCircuitSetup;
 use execution_prover_model::circuit_type::CircuitType;
 use std::alloc::Global;
@@ -14,6 +15,7 @@ use worker::Worker;
 pub struct CpuCircuitPrecomputations(Arc<Precomputed>);
 
 pub struct Precomputed {
+    pub(crate) config: ProverConfig,
     pub(crate) compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
     pub(crate) setup: CpuGKRSetup<BF>,
     pub(crate) table_driver: TableDriver<BF>,
@@ -32,17 +34,27 @@ impl Deref for CpuCircuitPrecomputations {
 }
 
 impl CpuCircuitPrecomputations {
-    pub(crate) fn from_canonical(circuit_type: CircuitType, setup: CanonicalCircuitSetup) -> Self {
+    pub(crate) fn from_canonical(
+        circuit_type: CircuitType,
+        setup: CanonicalCircuitSetup,
+        soundness_mode: SoundnessMode,
+    ) -> Self {
+        let compiled = match &setup {
+            CanonicalCircuitSetup::Riscv(setup) => &setup.compiled_circuit,
+            CanonicalCircuitSetup::Delegation(setup) => &setup.compiled_circuit,
+        };
+        let config = circuit_type.prover_config_in_mode(compiled, soundness_mode);
         let precomputed = match setup {
             CanonicalCircuitSetup::Riscv(CircuitSetup {
                 family_idx: _,
+                geometry: _,
                 trace_len,
                 compiled_circuit,
                 table_driver,
                 setup,
                 witness_eval_fn,
-                prover_configs: _,
             }) => Precomputed {
+                config,
                 compiled_circuit: Arc::new(compiled_circuit),
                 setup,
                 table_driver,
@@ -51,6 +63,7 @@ impl CpuCircuitPrecomputations {
                 setup_commitment: OnceLock::new(),
             },
             CanonicalCircuitSetup::Delegation(setup) => Precomputed {
+                config,
                 compiled_circuit: Arc::new(setup.compiled_circuit),
                 setup: setup.setup,
                 table_driver: setup.table_driver,
@@ -69,14 +82,13 @@ impl CpuCircuitPrecomputations {
 
     pub(crate) fn initialize_setup<T: TwiddleSetOps<BF>>(
         &self,
-        config: &ProverConfig,
         twiddles: &T,
         worker: &Worker,
     ) -> &SetupCommitment<BF, DefaultTreeConstructor> {
         self.setup_commitment.get_or_init(|| {
             self.setup.commit_for_config::<DefaultTreeConstructor>(
                 twiddles.plain(),
-                &config,
+                &self.config,
                 worker,
             )
         })

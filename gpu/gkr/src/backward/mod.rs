@@ -17,7 +17,6 @@ mod stage_snapshots;
 pub mod window;
 pub(crate) mod window_dr;
 
-pub use dr_tail::{preflight_dr_tail_resources, DrTailProofPlan};
 pub(crate) use kernels::*;
 pub use kernels::{
     eq_group_count, eq_group_tables_len, gkr_dim_reducing_launch_config,
@@ -33,7 +32,7 @@ pub(crate) use window::bank::final_evaluation_repoint_probe;
 pub(crate) use main_layer::extras::derive_dimension_reducing_inputs;
 
 use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
-use dr_tail::resources::DrTailPlanCursor;
+use dr_tail::resources::DrTailResources;
 use main_layer::blueprints::build_dimension_reducing_slots_static;
 
 fn validate_dr_window_layer_program(
@@ -50,7 +49,7 @@ fn validate_dr_window_layer_program(
     assert_eq!(
         program.folding_steps(),
         folding_steps,
-        "preflighted DR geometry must match the runtime layer"
+        "compiled DR geometry must match the runtime layer"
     );
     assert_eq!(
         program.input_projection().canonical_sources(),
@@ -70,7 +69,7 @@ fn dr_window_pass_eq_geometry(folding_steps: usize) -> DrWindowPassEqGeometry {
     const BUILD_OFFSET: usize = 3;
     let challenge_count = folding_steps
         .checked_sub(BUILD_OFFSET)
-        .expect("preflighted DR R0 geometry must include the first three coordinates");
+        .expect("compiled DR R0 geometry must include the first three coordinates");
     DrWindowPassEqGeometry {
         build_offset: BUILD_OFFSET,
         challenge_count,
@@ -144,7 +143,7 @@ impl GpuGKRDimensionReducingBackwardState {
         layer_idx: usize,
         layer_slots: GpuGKRDimensionReducingLayerSlots,
         dr_window_program: &std::sync::Arc<crate::DrWindowLayerProgram>,
-        dr_tail_plan_cursor: &mut DrTailPlanCursor<'_>,
+        dr_tail_resources: &mut DrTailResources,
         context: &ProverContext,
     ) -> era_cudart::result::CudaResult<GpuGKRDimensionReducingSumcheckLayerPlan> {
         let trace_len_after_reduction = self.next_trace_len_after_reduction;
@@ -169,7 +168,13 @@ impl GpuGKRDimensionReducingBackwardState {
             .collect();
         let folding_addresses: Vec<GKRAddress> = dim_reducing_ext_inputs.into_iter().collect();
         let dr_tail_capacity =
-            dr_tail_plan_cursor.bind(layer_idx, folding_steps, &folding_addresses);
+            dr_tail_resources.capacity(folding_steps, folding_addresses.len())?;
+        if dr_tail::resources::dr_continuation_window_count(dr_tail_capacity.entry_round) != 0 {
+            gpu_gkr_compiler::validate_dr_window_split_ownership(
+                dr_window_program.input_projection(),
+            )
+            .unwrap_or_else(|error| panic!("DR continuation split at layer {layer_idx}: {error}"));
+        }
         validate_dr_window_layer_program(
             dr_window_program,
             layer_idx,
@@ -205,7 +210,7 @@ impl GpuGKRDimensionReducingBackwardState {
                 eq,
                 partials.as_mut_ptr(),
             )
-            .expect("preflighted DR window program must bind to runtime storage");
+            .expect("compiled DR window program must bind to runtime storage");
             assert_eq!(dr_window.r0_launch.binding.batch.eq_low, eq_pointer);
 
             (Some(dr_window), None, Some(partials))
@@ -229,7 +234,7 @@ impl GpuGKRDimensionReducingBackwardState {
     pub(crate) fn prepare_next_layer_static(
         &mut self,
         dr_window_programs: &crate::DrWindowProgramBundle,
-        dr_tail_plan_cursor: &mut DrTailPlanCursor<'_>,
+        dr_tail_resources: &mut DrTailResources,
         context: &ProverContext,
     ) -> era_cudart::result::CudaResult<Option<GpuGKRDimensionReducingSumcheckLayerPlan>> {
         let Some((layer_idx, layer)) = self.pending_layers.pop_front() else {
@@ -237,13 +242,13 @@ impl GpuGKRDimensionReducingBackwardState {
         };
         let layer_slots = build_dimension_reducing_slots_static(&layer);
         let dr_window_program = dr_window_programs.layer(layer_idx).unwrap_or_else(|| {
-            panic!("preflighted DR window bundle is missing absolute layer {layer_idx}")
+            panic!("compiled DR window bundle is missing absolute layer {layer_idx}")
         });
         Ok(Some(self.prepare_layer_from_slots(
             layer_idx,
             layer_slots,
             dr_window_program,
-            dr_tail_plan_cursor,
+            dr_tail_resources,
             context,
         )?))
     }

@@ -1,20 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::upstream::{GKRAddress, WhirSchedule};
+use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, GKRAddress, WhirSchedule};
 use crate::GkrPrograms;
 
 use super::{
-    BackwardLayerDims, ProofLayoutBaseLayerGeometry, ProofLayoutInputs, WhirBaseLayerDims,
-    WhirDims, WhirIntermediateDims,
+    BackwardLayerDims, ProofLayoutInputs, WhirBaseLayerDims, WhirDims, WhirIntermediateDims,
 };
 
-pub fn build_proof_layout_inputs(
+pub fn build_proof_layout_inputs_for_geometry(
     gkr_programs: &GkrPrograms,
     whir_schedule: &WhirSchedule,
     final_trace_size_log_2: u32,
-    memory_geometry: ProofLayoutBaseLayerGeometry,
-    witness_geometry: ProofLayoutBaseLayerGeometry,
-    setup_geometry: ProofLayoutBaseLayerGeometry,
+    geometry: BaseCommitmentGeometry,
 ) -> ProofLayoutInputs {
     let compiled_circuit = gkr_programs.runtime_circuit();
     let initial_trace_size_log_2 = compiled_circuit.trace_len.trailing_zeros();
@@ -118,58 +115,81 @@ pub fn build_proof_layout_inputs(
     // ------------------------------------------------------------------
     // whir
     // ------------------------------------------------------------------
+    // The GPU prover implements one OOD sample per intermediate oracle and
+    // internal-round OOD / folding-challenge PoW, but no base-round folding
+    // PoW.
+    for round in whir_schedule.internal_rounds.iter() {
+        assert_eq!(
+            round.num_ood_samples, 1,
+            "GPU prover: exactly one OOD sample per oracle is implemented"
+        );
+    }
     assert_eq!(
-        whir_schedule.whir_steps_schedule.len(),
-        whir_schedule.whir_queries_schedule.len(),
+        whir_schedule.base_round.folding_pow_bits, 0,
+        "GPU prover: base-round folding PoW is not implemented"
     );
-    assert_eq!(
-        whir_schedule.whir_steps_schedule.len(),
-        whir_schedule.whir_pow_schedule.len(),
-    );
-    assert_eq!(
-        whir_schedule.whir_steps_schedule.len(),
-        whir_schedule.whir_steps_lde_factors.len() + 1,
-    );
-    let initial_values_per_leaf = 1usize << whir_schedule.whir_steps_schedule[0];
+    let whir_fold_steps = whir_schedule.fold_steps();
+    let whir_queries = whir_schedule.queries_per_round();
+    let whir_lde_factors = whir_schedule.intermediate_lde_factors();
+    let initial_values_per_leaf = whir_schedule.base_values_per_leaf();
     let tree_cap_size = whir_schedule.cap_size;
     let tree_cap_log2 = tree_cap_size.trailing_zeros();
-    let initial_query_count = whir_schedule.whir_queries_schedule[0];
+    let initial_query_count = whir_schedule.base_round.num_queries;
 
-    let base_layer_dims = |g: ProofLayoutBaseLayerGeometry| -> WhirBaseLayerDims {
-        let cap_digest_count = if g.columns_count == 0 {
+    let base_layer_dims = |role: BaseOracleRole| -> WhirBaseLayerDims {
+        let oracle = geometry.oracle(role);
+        let columns = oracle.physical_columns();
+        let cap_digest_count = if columns == 0 { 0 } else { geometry.cap_size() };
+        let path_len = if columns == 0 {
             0
         } else {
-            1usize << g.log_tree_cap_size
-        };
-        let leaf_values_len = g.columns_count * initial_values_per_leaf;
-        // Matches whir_fold.rs:1765-1776 and the setup_columns_count==0
-        // branch at 1846.
-        let path_len = if g.columns_count == 0 {
-            0
-        } else {
-            (g.log_domain_size - g.log_rows_per_leaf - (g.log_tree_cap_size - g.log_lde_factor))
-                as usize
+            geometry.message_size_log2()
+                - geometry.values_per_leaf().trailing_zeros() as usize
+                - (geometry.cap_size().trailing_zeros() - geometry.lde_factor().trailing_zeros())
+                    as usize
         };
         WhirBaseLayerDims {
-            num_columns: g.columns_count,
+            num_columns: columns,
+            logical_num_columns: oracle.logical_columns(),
             cap_digest_count,
             query_count: initial_query_count,
-            leaf_values_len,
+            leaf_values_len: columns * initial_values_per_leaf,
             path_len,
         }
     };
 
-    let mut folded_trace_len_log2 = initial_trace_size_log_2;
-    let mut intermediate = Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len());
-    for (oracle_idx, &lde_factor) in whir_schedule.whir_steps_lde_factors.iter().enumerate() {
-        folded_trace_len_log2 -= whir_schedule.whir_steps_schedule[oracle_idx] as u32;
-        let values_per_leaf_log2 = whir_schedule.whir_steps_schedule[oracle_idx + 1];
+    let message_log = geometry.message_size_log2();
+    assert!(
+        whir_schedule.base_round.fold_log2 <= 1,
+        "the GPU base opening reader supports only fold_log2 <= 1 (one or two accumulators)"
+    );
+    let mut previous_lde = whir_schedule.base_lde_factor_log2();
+    assert!(
+        message_log - whir_schedule.base_round.fold_log2 + previous_lde
+            < <super::BF as crate::upstream::TwoAdicField>::TWO_ADICITY,
+        "BabyBear WHIR query domain must be strictly below field two-adicity for symbolic terms"
+    );
+    for round in &whir_schedule.internal_rounds {
+        assert!(
+            previous_lde <= round.lde_factor_log2,
+            "symbolic term outside current oracle domain"
+        );
+        previous_lde = round.lde_factor_log2;
+    }
+    let mut intermediate = Vec::with_capacity(whir_lde_factors.len());
+    for (oracle_idx, (folded_log, &lde_factor)) in whir_schedule
+        .oracle_domains(message_log)
+        .zip(&whir_lde_factors)
+        .enumerate()
+    {
+        let folded_trace_len_log2 = u32::try_from(folded_log).expect("message log2 exceeds u32");
+        let values_per_leaf_log2 = whir_fold_steps[oracle_idx + 1];
         let path_len = (folded_trace_len_log2 + lde_factor.trailing_zeros()
             - values_per_leaf_log2 as u32
             - tree_cap_log2) as usize;
         intermediate.push(WhirIntermediateDims {
             cap_digest_count: tree_cap_size,
-            query_count: whir_schedule.whir_queries_schedule[oracle_idx + 1],
+            query_count: whir_queries[oracle_idx + 1],
             leaf_values_len: 1usize << values_per_leaf_log2,
             path_len,
         });
@@ -180,21 +200,22 @@ pub fn build_proof_layout_inputs(
     // `1 << (initial_trace_size_log_2 - sum(whir_steps_schedule))` E4 values
     // into this range; the terminal slab D2H + `parse_whir_proof` then
     // populates `WhirPolyCommitProof::final_monomials` from it.
-    let total_folding_steps = whir_schedule.whir_steps_schedule.iter().sum::<usize>();
+    let total_folding_steps = whir_fold_steps.iter().sum::<usize>();
     assert!(
-        initial_trace_size_log_2 as usize >= total_folding_steps,
-        "whir_steps_schedule sum {total_folding_steps} exceeds initial_trace_size_log_2 {initial_trace_size_log_2}",
+        message_log >= total_folding_steps,
+        "whir_steps_schedule sum {total_folding_steps} exceeds message log2 {message_log}",
     );
-    let final_monomials_len = 1usize << (initial_trace_size_log_2 as usize - total_folding_steps);
+    let final_monomials_len = 1usize << (message_log - total_folding_steps);
     let whir = WhirDims {
-        original_evaluation_point_len: compiled_circuit.trace_len.trailing_zeros() as usize,
-        setup: base_layer_dims(setup_geometry),
-        memory: base_layer_dims(memory_geometry),
-        witness: base_layer_dims(witness_geometry),
+        pack_log2: geometry.pack_log2(),
+        original_evaluation_point_len: message_log,
+        setup: base_layer_dims(BaseOracleRole::Setup),
+        memory: base_layer_dims(BaseOracleRole::Memory),
+        witness: base_layer_dims(BaseOracleRole::Witness),
         intermediate,
-        num_ood_samples: whir_schedule.whir_steps_lde_factors.len(),
-        total_sumcheck_polys: whir_schedule.whir_steps_schedule.iter().sum::<usize>(),
-        pow_rounds: whir_schedule.whir_pow_schedule.len(),
+        num_ood_samples: whir_lde_factors.len(),
+        total_sumcheck_polys: total_folding_steps,
+        pow_rounds: whir_queries.len(),
         final_monomials_len,
     };
 

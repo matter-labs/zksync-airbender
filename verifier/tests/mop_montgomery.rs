@@ -1,53 +1,25 @@
 #[macro_use]
 mod common;
 
-use common::SecurityLevel;
-use field::baby_bear::base::BabyBearField;
-use field::baby_bear::ext4::BabyBearExt4;
-use prover::gkr::prover::GKRProof;
-use prover::merkle_trees::DefaultTreeConstructor;
+use common::{SecurityLevel, SoundnessMode};
 
-fn repo_root() -> String {
-    format!("{}/..", env!("CARGO_MANIFEST_DIR"))
+fn verify_mop(name: &str) {
+    let level = SecurityLevel::Sec100;
+    for &mode in SoundnessMode::ALL {
+        let proof = common::circuit_by_name(name).proof_for_mode(level, mode);
+        let (nds, external_challenges) = common::proof_to_nds(name, level, &proof);
+        common::verify_nds(name, level, mode, &external_challenges, nds).unwrap();
+    }
 }
 
-fn deserialize_from_file<T: serde::de::DeserializeOwned>(path: &str) -> T {
-    let src = std::fs::File::open(path).unwrap();
-    serde_json::from_reader(src).unwrap()
-}
-
+/// Both canonical add/sub proofs use `mop_smoke`'s MOP rows.
 #[test]
-#[ignore]
 fn verifier_mop_proof() {
-    let path = format!(
-        "{}/prover/test_proofs/mop_add_sub_gkr_proof.json",
-        repo_root()
-    );
-    let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> =
-        deserialize_from_file(&path);
-
-    let name = "add_sub_lui_auipc_mop";
-    let level = SecurityLevel::Sec100;
-    let (nds, external_challenges) = common::proof_to_nds(name, level, &proof);
-
-    common::verify_nds(name, level, &external_challenges, nds).unwrap();
+    verify_mop("add_sub_lui_auipc_mop");
 }
 
-/// `mop_smoke`'s shift/binop proof: its trace carries `rev8` byte-swap rows (funct3 = BSWAP
-/// in the shift table), so this exercises the BSWAP lookup rows through the verifier.
+/// Both canonical shift/binop proofs use `mop_smoke`'s `rev8` byte-swap rows.
 #[test]
-#[ignore]
 fn verifier_mop_shift_binop_proof() {
-    let path = format!(
-        "{}/prover/test_proofs/mop_shift_binop_gkr_proof.json",
-        repo_root()
-    );
-    let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> =
-        deserialize_from_file(&path);
-
-    let name = "shift_binop";
-    let level = SecurityLevel::Sec100;
-    let (nds, external_challenges) = common::proof_to_nds(name, level, &proof);
-
-    common::verify_nds(name, level, &external_challenges, nds).unwrap();
+    verify_mop("shift_binop");
 }

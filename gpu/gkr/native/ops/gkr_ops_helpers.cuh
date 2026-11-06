@@ -101,11 +101,11 @@ DEVICE_FORCEINLINE void run_round_update_single_thread(const e4 e_partial, const
   *challenge_out = run_round_update_with_inverses(e_partial, c_partial, prev_coord, inv_eq, inv_prev_coord, seed_io, claim_io, eq_prefactor_io, coeffs_out);
 }
 
-// Body of `ab_whir_fold_round_update_kernel`: one thread consumes the three
-// reductions and the running seed, writes the round's coefficients, the
-// advanced seed and the fold challenge. Also called from `gpu_whir`'s fused
-// symbolic step kernel.
-DEVICE_FORCEINLINE void whir_fold_round_update_inline(const e4 *reduction_output, u32 *seed_io, e4 *coeffs_out, e4 *challenge_out) {
+// The commit half of a WHIR fold round: one thread consumes the three
+// reductions and the running seed, writes the round's coefficients and the
+// advanced seed, and leaves the post-commit seed in `state`. It draws no
+// challenge, so `gpu_whir`'s PoW-gated folding step can draw it afterward.
+DEVICE_FORCEINLINE void whir_fold_round_commit_inline(const e4 *reduction_output, u32 *seed_io, e4 *coeffs_out, u32 state[STATE_SIZE]) {
   // Derive constants: quart = 1/4, two_inv = 1/2 (Montgomery form).
   const bf two = bf::from_u32_unchecked(2);
   const bf four = bf::from_u32_unchecked(4);
@@ -175,7 +175,6 @@ DEVICE_FORCEINLINE void whir_fold_round_update_inline(const e4 *reduction_output
 
   // Blake2s commit of flatten(3 × E4 = 12 words) chained from the seed: one
   // final 12-word block.
-  u32 state[STATE_SIZE];
 #pragma unroll
   for (unsigned i = 0; i < STATE_SIZE; i++)
     state[i] = seed_io[i];
@@ -193,8 +192,14 @@ DEVICE_FORCEINLINE void whir_fold_round_update_inline(const e4 *reduction_output
 #pragma unroll
   for (unsigned i = 0; i < STATE_SIZE; i++)
     seed_io[i] = state[i];
+}
 
-  // Extract the fold challenge from the first 4 words of the new seed.
+// Body of `ab_whir_fold_round_update_kernel`: the commit above plus the plain
+// fold challenge drawn from the first 4 words of the new seed. Also called from
+// `gpu_whir`'s fused symbolic step kernel.
+DEVICE_FORCEINLINE void whir_fold_round_update_inline(const e4 *reduction_output, u32 *seed_io, e4 *coeffs_out, e4 *challenge_out) {
+  u32 state[STATE_SIZE];
+  whir_fold_round_commit_inline(reduction_output, seed_io, coeffs_out, state);
   *challenge_out = e4_from_raw_u32x4(state);
 }
 

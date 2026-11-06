@@ -1,6 +1,7 @@
 //! Memory caps use bit-reversed tree order and natural per-coset order.
 
 use crate::upstream::MerkleTreeCapVarLength;
+pub(super) use prover::merkle_trees::split_memory_cap;
 
 #[inline]
 fn bitreverse_index(index: usize, num_bits: u32) -> usize {
@@ -15,23 +16,6 @@ fn segment_size(lde_factor: usize, cap_size: usize) -> usize {
     assert!(lde_factor.is_power_of_two());
     assert!(cap_size.is_power_of_two() && cap_size >= lde_factor);
     cap_size / lde_factor
-}
-
-pub(super) fn split_memory_cap(
-    flat: &MerkleTreeCapVarLength,
-    lde_factor: usize,
-    cap_size: usize,
-) -> Vec<MerkleTreeCapVarLength> {
-    let size = segment_size(lde_factor, cap_size);
-    assert_eq!(flat.cap.len(), cap_size);
-    (0..lde_factor)
-        .map(|coset| {
-            let start = bitreverse_index(coset, lde_factor.trailing_zeros()) * size;
-            MerkleTreeCapVarLength {
-                cap: flat.cap[start..start + size].to_vec(),
-            }
-        })
-        .collect()
 }
 
 pub(super) fn join_memory_caps(

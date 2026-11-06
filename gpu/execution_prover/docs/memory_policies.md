@@ -27,7 +27,10 @@ explicit preset with an explicit block count is rejected. An arena below the
 smallest preset is rejected. Each preset must cover every circuit with the
 largest follower's complete inputs resident. Context, driver allocations and NTT tables are outside the arena.
 
-The sweep compares supported policy combinations, including retained-monomial
+Presets select defaults only; direct proof calls may use any valid policy that
+fits the arena.
+
+The sweep compares valid policy combinations, including retained-monomial
 and in-place recomputation. It uses maximum-capacity synthetic inputs, warmup
 proofs and interleaved timing rounds. Its proof fingerprints must agree across
 policies; CPU-proof parity is checked separately.

@@ -11,7 +11,7 @@ categories.workspace = true
 
 # Fast-iteration GKR harness: a single integration test that proves ONLY the
 # add_sub_lui_auipc_mop family circuit — the analog of the add/sub section of
-# `prover`'s per-family `gkr_run_basic_unrolled_test_sec_100`. Rebuilding after
+# `prover`'s canonical circuit-proof producer. Rebuilding after
 # a `prover` edit compiles the prover lib plus this thin test crate, instead
 # of the full `prover` test harness (all family/unified/malicious test suites
 # and ~49K lines of other generated witness-eval code).

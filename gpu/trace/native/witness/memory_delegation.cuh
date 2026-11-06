@@ -199,30 +199,29 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
     PRINT_U16(W, borrow_address, intermediate_borrow);
   }
 
-  if (!COMPUTE_WITNESS)
-    return;
-
-  for (u32 group_idx = 0; group_idx < MAX_RELATIVE_TIMESTAMP_GROUPS_COUNT; ++group_idx) {
-    if (group_idx == aux_layout_data.relative_timestamp_groups_count)
-      break;
-
-    const auto &group = aux_layout_data.relative_timestamp_groups[group_idx];
-    TimestampData read_timestamp_value{};
-    for (u32 member_idx = 0; member_idx < MAX_RELATIVE_TIMESTAMP_GROUP_MEMBERS_COUNT; ++member_idx) {
-      if (member_idx == group.members_count)
+  if constexpr (COMPUTE_WITNESS) {
+    for (u32 group_idx = 0; group_idx < MAX_RELATIVE_TIMESTAMP_GROUPS_COUNT; ++group_idx) {
+      if (group_idx == aux_layout_data.relative_timestamp_groups_count)
         break;
-      const auto &mem_query = layout.ram_access_sets[group.members[member_idx]];
-      const RamAddress &address = mem_query.tag == Readonly ? mem_query.payload.ram_read_query.address : mem_query.payload.ram_write_query.address;
-      const TimestampData member_read_timestamp_value = get_read_timestamp(address, oracle, index);
-      if (member_idx == 0)
-        read_timestamp_value = member_read_timestamp_value;
-      else if (member_read_timestamp_value.as_scalar() != read_timestamp_value.as_scalar())
+
+      const auto &group = aux_layout_data.relative_timestamp_groups[group_idx];
+      TimestampData read_timestamp_value{};
+      for (u32 member_idx = 0; member_idx < MAX_RELATIVE_TIMESTAMP_GROUP_MEMBERS_COUNT; ++member_idx) {
+        if (member_idx == group.members_count)
+          break;
+        const auto &mem_query = layout.ram_access_sets[group.members[member_idx]];
+        const RamAddress &address = mem_query.tag == Readonly ? mem_query.payload.ram_read_query.address : mem_query.payload.ram_write_query.address;
+        const TimestampData member_read_timestamp_value = get_read_timestamp(address, oracle, index);
+        if (member_idx == 0)
+          read_timestamp_value = member_read_timestamp_value;
+        else if (member_read_timestamp_value.as_scalar() != read_timestamp_value.as_scalar())
+          __trap();
+      }
+
+      const u32 borrow = invocation_timestamp.get_high() - read_timestamp_value.get_high();
+      if (borrow > 1)
         __trap();
     }
-
-    const u32 borrow = invocation_timestamp.get_high() - read_timestamp_value.get_high();
-    if (borrow > 1)
-      __trap();
   }
 }
 

@@ -1,4 +1,4 @@
-//! Monomial buffers use non-transposed, column-major storage.
+//! Monomial buffers use column-major storage.
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
@@ -20,6 +20,11 @@ use super::hypercube::{
 use super::kernels::*;
 use super::{hypercube_three_pass, select_ntt_strategy, NttDirection, OMEGA_LOG_ORDER};
 
+/// Supported generated retained-monomial/pre-tail dispatch sizes.
+pub fn log_size_supports_retained_monomials(log_n: usize) -> bool {
+    (20..=24).contains(&log_n)
+}
+
 fn check_shape(
     monomials: &DeviceSlice<BF>,
     coset: &DeviceSlice<BF>,
@@ -27,7 +32,7 @@ fn check_shape(
     log_f: usize,
     coset_index: usize,
 ) {
-    assert!((20..=24).contains(&log_n));
+    assert!(log_size_supports_retained_monomials(log_n));
     assert!(log_n + log_f <= OMEGA_LOG_ORDER as usize);
     assert!(coset_index < (1usize << log_f));
     assert_eq!(monomials.len(), coset.len());
@@ -160,7 +165,7 @@ unsafe fn initialize(
             .launch(&config, &args)?;
         } else {
             // The original full-LDE schedule is also unfused in this regime.
-            launch_hypercube_two_pass_column(input, m_const, m_mut, log_n, false, stream)?;
+            launch_hypercube_two_pass_column(input, m_const, m_mut, log_n, stream)?;
             generate_column(
                 &monomials[offset..offset + n],
                 &mut coset[offset..offset + n],
@@ -244,7 +249,6 @@ pub fn retained_monomials_to_coset(
                 columns,
                 1,
                 strategy.columns_per_launch,
-                false,
                 stream,
             );
         }
@@ -258,7 +262,6 @@ pub fn retained_monomials_to_coset(
             columns,
             1,
             strategy.columns_per_launch,
-            false,
             stream,
         );
     }
@@ -300,7 +303,6 @@ fn generate_column(
         let args = MonomialsToEvalsCompactArguments::new(
             input,
             output,
-            false,
             log_n as i32,
             coset_index as i32,
             shift as i32,
@@ -336,7 +338,6 @@ fn generate_column(
             1,
             1,
             1,
-            false,
             stream,
         )
     }

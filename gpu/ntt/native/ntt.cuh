@@ -22,17 +22,6 @@ DEVICE_FORCEINLINE int linear_to_swizzled(const int i) {
   return xy_to_swizzled(i & BANK_MASK, i >> LOG_BANKS);
 }
 
-// helper for dealing with intermediate transposed monomials
-DEVICE_FORCEINLINE int transposed_row_to_effective_row(const int row) {
-  constexpr int ROW_SIZE = 32;
-  constexpr int ROW_MASK = ROW_SIZE - 1;
-  constexpr int CHUNK_MASK = 1023;
-  const int x_in_chunk = row & ROW_MASK;
-  const int y_in_chunk = (row & CHUNK_MASK) >> 5;
-  const int effective_row = (row & (~CHUNK_MASK)) + ROW_SIZE * x_in_chunk + y_in_chunk;
-  return effective_row;
-}
-
 // This is a little tricky:
 // it assumes "i" NEEDS to be bitreved and accounts for that by assuming "fine" and "coarse"
 // arrays are already bitreved.
@@ -96,46 +85,6 @@ DEVICE_FORCEINLINE void exchg_dif(bf &a, bf &b, const bf &twiddle) {
   b = bf::mul(b, twiddle);
 }
 
-template <typename T, int STRIDE, int REGION_SIZE, int NUM_REGIONS, const bf *cmem_twiddles>
-DEVICE_FORCEINLINE void reg_exchg_cmem_smem_twiddles_inv(bf *vals, const int exchg_region_offset, const bf *smem_twiddles) {
-#pragma unroll
-  for (int region{0}; region < NUM_REGIONS; region++) {
-    const bf twiddle = get_cmem_smem_twiddle<T, cmem_twiddles>(exchg_region_offset + region, smem_twiddles);
-    const int region_offset = region * REGION_SIZE;
-#pragma unroll
-    for (int lane_in_region{0}; lane_in_region < STRIDE; lane_in_region++) {
-      const int i = region_offset + lane_in_region;
-      exchg_dit(vals[i], vals[i + STRIDE], twiddle);
-    }
-  }
-}
-
-template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void reg_exchg_cmem_twiddles_inv(bf *vals, const int exchg_region_offset) {
-#pragma unroll
-  for (int region{0}; region < NUM_REGIONS; region++) {
-    const bf twiddle = get_cmem_twiddle<ab_inv_cmem_twiddles_coarse, ab_inv_cmem_twiddles_fine>(exchg_region_offset + region);
-    const int region_offset = region * REGION_SIZE;
-#pragma unroll
-    for (int lane_in_region{0}; lane_in_region < STRIDE; lane_in_region++) {
-      const int i = region_offset + lane_in_region;
-      exchg_dit(vals[i], vals[i + STRIDE], twiddle);
-    }
-  }
-}
-
-template <int STRIDE, int REGION_SIZE, int NUM_REGIONS> DEVICE_FORCEINLINE void reg_exchg_inv(bf *vals, const int exchg_region_offset) {
-#pragma unroll
-  for (int region{0}; region < NUM_REGIONS; region++) {
-    const bf twiddle = ab_inv_cmem_twiddles_coarse[exchg_region_offset + region];
-    const int region_offset = region * REGION_SIZE;
-#pragma unroll
-    for (int lane_in_region{0}; lane_in_region < STRIDE; lane_in_region++) {
-      const int i = region_offset + lane_in_region;
-      exchg_dit(vals[i], vals[i + STRIDE], twiddle);
-    }
-  }
-}
-
 template <int STRIDE, int REGION_SIZE, int NUM_REGIONS, bool RESTORE_EVALUATIONS = false> DEVICE_FORCEINLINE void reg_exchg_hypercube_inv(bf *vals) {
 #pragma unroll
   for (int region{0}; region < NUM_REGIONS; region++) {
@@ -166,7 +115,7 @@ DEVICE_FORCEINLINE void reg_exchg_cmem_smem_twiddles_fwd(bf *vals, const int exc
 }
 
 // The traversal remains DIF when INVERSE_TWIDDLES is true. This is the inverse
-// of the natural-to-bitreversed forward network, not the DIT `_inv` family.
+// of the natural-to-bitreversed forward network.
 template <int STRIDE, int REGION_SIZE, int NUM_REGIONS, bool INVERSE_TWIDDLES = false>
 DEVICE_FORCEINLINE void reg_exchg_cmem_twiddles_fwd(bf *vals, const int exchg_region_offset) {
 #pragma unroll
@@ -224,9 +173,9 @@ DEVICE_FORCEINLINE bf normalize_coset_inverse(const bf value, const unsigned nat
   return result;
 }
 
-// DIT-over-forward-twiddles family: the `_inv` traversal and `exchg_dit`
-// butterfly (twiddle applied BEFORE the add/sub) over the FORWARD twiddle
-// tables. Computes a natural-order-in / bitreversed-order-out forward NTT.
+// DIT-over-forward-twiddles family: the `exchg_dit` butterfly (twiddle
+// applied BEFORE the add/sub) over the FORWARD twiddle tables. Computes a
+// natural-order-in / bitreversed-order-out forward NTT.
 template <typename T, int STRIDE, int REGION_SIZE, int NUM_REGIONS, const bf *cmem_twiddles>
 DEVICE_FORCEINLINE void reg_exchg_cmem_smem_twiddles_fwd_dit(bf *vals, const int exchg_region_offset, const bf *smem_twiddles) {
 #pragma unroll

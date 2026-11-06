@@ -1,13 +1,13 @@
 //! A finite host pool with synthetic commitments for orchestration tests.
 
 use crate::backend::{CircuitPrecomputation, ExecutionBackend};
-use crate::config::{BackendConfiguration, ExecutionProverConfiguration};
+use crate::config::{BackendConfiguration, ExecutionProverConfiguration, SoundnessMode};
 use crate::messages::{
     MemoryCommitmentResult, SetupInitializationResult, WorkBatch, WorkRequest, WorkResult,
     WorkerResult,
 };
 use crate::setup::CanonicalCircuitSetup;
-use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel, BF};
+use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, BF};
 use execution_prover_model::allocator::CpuTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
@@ -37,7 +37,9 @@ impl CircuitPrecomputation for TestPrecomputations {
 pub(crate) struct TestConfiguration;
 
 impl BackendConfiguration for TestConfiguration {
-    fn execution_defaults() -> ExecutionProverConfiguration<Self> {
+    fn execution_defaults(
+        soundness_mode: prover::definitions::SoundnessMode,
+    ) -> ExecutionProverConfiguration<Self> {
         ExecutionProverConfiguration {
             max_thread_pool_threads: Some(1),
             expected_concurrent_jobs: 1,
@@ -45,7 +47,7 @@ impl BackendConfiguration for TestConfiguration {
             host_allocator_backing_allocation_size: BLOCK_BYTES,
             host_allocators_per_job_count: POOL_BLOCKS,
             min_free_host_allocators_per_job: 1,
-            security_level: SecurityLevel::Sec100,
+            soundness_mode,
             ram_config: JitRunnerRam::Medium,
             assume_canonical_mop_inputs: false,
             backend: Self,
@@ -99,7 +101,7 @@ impl ExecutionBackend for TestBackend {
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
-        _security: SecurityLevel,
+        _soundness_mode: SoundnessMode,
     ) -> TestPrecomputations {
         let compiled_circuit = match setup {
             CanonicalCircuitSetup::Riscv(setup) => setup.compiled_circuit,
@@ -128,8 +130,9 @@ impl ExecutionBackend for TestBackend {
                             })
                         }
                         WorkRequest::MemoryCommitment(request) => {
-                            let config =
-                                crate::prover_config(request.circuit_type, request.security_level);
+                            let config = request
+                                .circuit_type
+                                .prover_config(prover::definitions::SecurityLevel::Sec100);
                             WorkResult::MemoryCommitment(MemoryCommitmentResult {
                                 batch_id: request.batch_id,
                                 circuit_type: request.circuit_type,
@@ -138,9 +141,9 @@ impl ExecutionBackend for TestBackend {
                                 tracing_data: request.tracing_data,
                                 merkle_tree_caps: vec![
                                     MerkleTreeCapVarLength {
-                                        cap: vec![[0; 8]; config.cap_size / config.lde_factor]
+                                        cap: vec![[0; 8]; config.cap_size / config.lde_factor()]
                                     };
-                                    config.lde_factor
+                                    config.lde_factor()
                                 ],
                             })
                         }

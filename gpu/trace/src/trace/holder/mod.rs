@@ -1,24 +1,20 @@
 mod openings;
 
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-use era_cudart::memory::memory_copy_async;
+use era_cudart::memory::{memory_copy_async, memory_set_async};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
-use crate::upstream::MerkleTreeCapVarLength;
+use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, MerkleTreeCapVarLength};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::HostAllocation;
 use gpu_core::primitives::device_structures::DeviceMatrix;
-#[cfg(test)]
-use gpu_core::primitives::device_structures::DeviceMatrixImpl;
 use gpu_core::primitives::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkMut, DeviceMatrixMut,
 };
 use gpu_core::primitives::field::BF;
-#[cfg(test)]
-use gpu_hash::blake2s::{build_merkle_tree_multi_coset, build_partial_merkle_tree_multi_coset};
 use gpu_hash::blake2s::{
     build_merkle_tree_nodes_multi_coset_over_existing_layer,
     build_partial_merkle_tree_multi_coset_physical, gather_tree_caps_inline,
@@ -28,11 +24,9 @@ use gpu_hash::blake2s::{
     gather_leaf_rows_physical, gather_merkle_paths_device, gather_merkle_paths_from_rows_physical,
 };
 use gpu_ntt::ntt::{
-    bitreversed_monomials_to_natural_evals_multi_coset, hypercube_evals_to_monomials,
-    hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20,
+    hypercube_evals_to_monomials, hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20,
     hypercube_to_multi_coset_bitrev_evals_fused, log_size_supports_natural_to_bitrev_lde,
-    log_size_supports_transposed_monomials, natural_monomials_to_bitreversed_evals_multi_coset,
-    MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE,
+    natural_monomials_to_bitreversed_evals_multi_coset,
 };
 use gpu_ops::bit_reverse::bit_reverse_in_place;
 use gpu_prover_context::ProverContext;
@@ -94,11 +88,13 @@ pub struct LeafsAndMerklePaths {
 
 #[doc(hidden)]
 pub struct TraceHolder<T> {
+    /// Logical GKR dimensions; commitment readers use the committed getters.
     pub log_domain_size: u32,
     pub log_lde_factor: u32,
     pub log_rows_per_leaf: u32,
     pub log_tree_cap_size: u32,
     pub columns_count: usize,
+    base_geometry: Option<(BaseCommitmentGeometry, BaseOracleRole)>,
     raw_hypercube_evals: Option<std::sync::Arc<DeviceAllocation<T>>>,
     cosets_materialized: bool,
     opening_raw: Option<DeviceAllocation<T>>,
@@ -112,6 +108,83 @@ pub struct TraceHolder<T> {
     /// reading from `coset[bitreverse(stage1_pos)]`). Populated by `commit_all`
     /// or supplied through `install_unified_device_cap`.
     pub unified_device_cap: Option<DeviceAllocation<Digest>>,
+}
+
+impl<T> TraceHolder<T> {
+    pub fn commitment_log_domain_size(&self) -> u32 {
+        self.base_geometry
+            .as_ref()
+            .map_or(self.log_domain_size, |(geometry, _)| {
+                u32::try_from(geometry.message_size_log2()).expect("message log2 exceeds u32")
+            })
+    }
+
+    pub fn committed_columns_count(&self) -> usize {
+        self.base_geometry
+            .as_ref()
+            .map_or(self.columns_count, |(geometry, role)| {
+                geometry.oracle(*role).physical_columns()
+            })
+    }
+
+    fn is_empty_base_oracle(&self) -> bool {
+        self.base_geometry.is_some() && self.committed_columns_count() == 0
+    }
+}
+
+impl TraceHolder<BF> {
+    pub fn new_base_without_cosets(
+        geometry: BaseCommitmentGeometry,
+        role: BaseOracleRole,
+        trees_mode: TreesCacheMode,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let mut holder = Self::new_without_cosets_padded(
+            u32::try_from(geometry.trace_len_log2()).expect("trace log2 exceeds u32"),
+            geometry.lde_factor().trailing_zeros(),
+            geometry.values_per_leaf().trailing_zeros(),
+            geometry.cap_size().trailing_zeros(),
+            geometry.oracle(role).logical_columns(),
+            u32::try_from(geometry.pack_log2()).expect("packing log2 exceeds u32"),
+            TreesCacheMode::CacheNone,
+            context,
+        )?;
+        holder.base_geometry = Some((geometry, role));
+        if !holder.is_empty_base_oracle() {
+            holder.trees = match trees_mode {
+                TreesCacheMode::CacheNone => TreesHolder::None,
+                TreesCacheMode::CachePartial => TreesHolder::Partial(allocate_trees(
+                    1usize << holder.log_lde_factor,
+                    holder.commitment_log_domain_size() - PARTIAL_TREE_REDUCTION_LAYERS,
+                    holder.log_rows_per_leaf,
+                    context,
+                )?),
+                TreesCacheMode::CacheFull => TreesHolder::Full(allocate_trees(
+                    1usize << holder.log_lde_factor,
+                    holder.commitment_log_domain_size(),
+                    holder.log_rows_per_leaf,
+                    context,
+                )?),
+            };
+        }
+        Ok(holder)
+    }
+
+    pub fn new_base(
+        geometry: BaseCommitmentGeometry,
+        role: BaseOracleRole,
+        trees_mode: TreesCacheMode,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let mut holder = Self::new_base_without_cosets(geometry, role, trees_mode, context)?;
+        holder.cosets = CosetsHolder::Full(allocate_cosets(
+            1usize << holder.log_lde_factor,
+            holder.commitment_log_domain_size(),
+            holder.committed_columns_count(),
+            context,
+        )?);
+        Ok(holder)
+    }
 }
 
 impl<T> TraceHolder<T> {
@@ -235,6 +308,7 @@ impl<T> TraceHolder<T> {
             log_tree_cap_size,
             columns_count,
             raw_hypercube_evals,
+            base_geometry: None,
             cosets_materialized: false,
             opening_raw: None,
             opening_monomials: None,
@@ -258,11 +332,59 @@ impl<T> TraceHolder<T> {
         trees_cache_mode: TreesCacheMode,
         context: &ProverContext,
     ) -> CudaResult<Self> {
+        Self::new_without_cosets_padded(
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            columns_count,
+            0,
+            trees_cache_mode,
+            context,
+        )
+    }
+
+    /// Rounds raw backing up to groups of `2^pad_columns_to_log2` columns,
+    /// zeroing the tail on exec before a producer can fork onto another stream.
+    /// Logical readers and writers retain their original prefix view.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_without_cosets_padded(
+        log_domain_size: u32,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_tree_cap_size: u32,
+        columns_count: usize,
+        pad_columns_to_log2: u32,
+        trees_cache_mode: TreesCacheMode,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         let instances_count = 1usize << log_lde_factor;
-        let raw_hypercube_evals = std::sync::Arc::new(context.alloc(
-            columns_count << log_domain_size,
-            AllocationPlacement::Bottom,
-        )?);
+        let padding = 1usize
+            .checked_shl(pad_columns_to_log2)
+            .expect("raw column padding shift overflow");
+        let rows = 1usize
+            .checked_shl(log_domain_size)
+            .expect("raw trace size shift overflow");
+        let allocated_columns = columns_count
+            .checked_next_multiple_of(padding)
+            .expect("padded column count overflow");
+        let allocation_len = allocated_columns
+            .checked_mul(rows)
+            .expect("padded raw element count overflow");
+        let logical_len = columns_count
+            .checked_mul(rows)
+            .expect("logical raw element count overflow");
+        let mut backing = context.alloc(allocation_len, AllocationPlacement::Bottom)?;
+        if allocated_columns > columns_count {
+            let tail = &mut backing[logical_len..];
+            memory_set_async(
+                // SAFETY: the exclusive byte view covers only padding owned by this allocation.
+                unsafe { tail.transmute_mut::<u8>() },
+                0,
+                context.get_exec_stream(),
+            )?;
+        }
+        let raw_hypercube_evals = std::sync::Arc::new(backing);
         let trees = match trees_cache_mode {
             TreesCacheMode::CacheNone => TreesHolder::None,
             TreesCacheMode::CachePartial => TreesHolder::Partial(allocate_trees(
@@ -285,6 +407,7 @@ impl<T> TraceHolder<T> {
             log_tree_cap_size,
             columns_count,
             raw_hypercube_evals: Some(raw_hypercube_evals),
+            base_geometry: None,
             cosets_materialized: false,
             opening_raw: None,
             opening_monomials: None,
@@ -318,6 +441,12 @@ impl<T> TraceHolder<T> {
 
     #[doc(hidden)]
     pub fn get_hypercube_evals(&self) -> &DeviceSlice<T> {
+        let len = self.columns_count << self.log_domain_size;
+        &self.padded_hypercube_evals()[..len]
+    }
+
+    /// Complete raw backing, including the zeroed columns used by packed readers.
+    pub fn padded_hypercube_evals(&self) -> &DeviceSlice<T> {
         self.raw_hypercube_evals
             .as_ref()
             .expect("raw hypercube values are unavailable for this holder")
@@ -325,12 +454,13 @@ impl<T> TraceHolder<T> {
 
     pub fn get_uninit_hypercube_evals_mut(&mut self) -> &mut DeviceSlice<T> {
         self.cosets_materialized = false;
-        std::sync::Arc::get_mut(
+        let len = self.columns_count << self.log_domain_size;
+        &mut std::sync::Arc::get_mut(
             self.raw_hypercube_evals
                 .as_mut()
                 .expect("raw hypercube values are unavailable for this holder"),
         )
-        .expect("raw hypercube allocation must not be shared while being initialized")
+        .expect("raw hypercube allocation must not be shared while being initialized")[..len]
     }
 
     pub fn raw_hypercube_backing(&self) -> std::sync::Arc<DeviceAllocation<T>> {
@@ -359,6 +489,18 @@ impl<T> TraceHolder<T> {
     /// Defer LDE materialization until queries. Requires raw backing and no
     /// materialized cosets; configure before `finish_raw_batching`.
     pub fn defer_materialization_until_queries(&mut self, policy: OpeningStrategy) {
+        if self.base_geometry.is_some() && policy == OpeningStrategy::InPlace {
+            assert!(
+                matches!(self.trees, TreesHolder::None | TreesHolder::Partial(_)),
+                "in-place openings require partial or uncached trees"
+            );
+        }
+        if self.base_geometry.is_some() && policy == OpeningStrategy::PerCoset {
+            assert!(
+                matches!(self.trees, TreesHolder::None | TreesHolder::Partial(_)),
+                "geometry-backed PerCoset openings require partial or uncached trees"
+            );
+        }
         assert!(!self.cosets_materialized);
         assert!(self.raw_hypercube_evals.is_some());
         self.defer_opening = true;
@@ -395,7 +537,7 @@ impl<T> TraceHolder<T> {
         );
         match &self.cosets {
             CosetsHolder::Full(backing) => {
-                let stride = self.columns_count << self.log_domain_size;
+                let stride = self.committed_columns_count() << self.commitment_log_domain_size();
                 &backing[coset_index * stride..(coset_index + 1) * stride]
             }
             CosetsHolder::None(_) => {
@@ -425,10 +567,11 @@ impl<T> TraceHolder<T> {
     fn per_coset_tree_len(&self) -> Option<usize> {
         match &self.trees {
             TreesHolder::Full(_) => {
-                Some(1usize << (self.log_domain_size + 1 - self.log_rows_per_leaf))
+                Some(1usize << (self.commitment_log_domain_size() + 1 - self.log_rows_per_leaf))
             }
             TreesHolder::Partial(_) => {
-                let partial_log_domain = self.log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS;
+                let partial_log_domain =
+                    self.commitment_log_domain_size() - PARTIAL_TREE_REDUCTION_LAYERS;
                 Some(1usize << (partial_log_domain + 1 - self.log_rows_per_leaf))
             }
             TreesHolder::None => None,
@@ -499,47 +642,24 @@ impl TraceHolder<BF> {
         source: &DeviceSlice<BF>,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let domain_size = 1usize << self.log_domain_size;
+        let log_domain_size = self.commitment_log_domain_size();
+        let columns_count = self.committed_columns_count();
+        let domain_size = 1usize << log_domain_size;
 
-        let log_n = self.log_domain_size as usize;
+        let log_n = log_domain_size as usize;
         // The committed backing is the BITREVERSED-order codeword the Merkle
         // builders and query gathers consume; the natural->bitrev LDE produces
         // it directly.
-        //
-        // Below that family's dispatch floor, the natural LDE plus a row
-        // permutation gives the same ROW ORDER but a DIFFERENT CODEWORD: both
-        // arms read the same Mobius coefficients, but the natural family labels
-        // them bitreversed, so the sub-floor arm commits the OLD MSB-convention
-        // polynomial. It exists only for sub-floor test holders. Whoever raises
-        // `MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE` must RETIRE this arm, never
-        // widen it.
-        //
-        // `hypercube_to_multi_coset_evals_fused` is not usable on either arm: it
-        // emits natural-order evaluations.
-        let natural_to_bitrev = log_size_supports_natural_to_bitrev_lde(log_n);
         assert!(
-            natural_to_bitrev || log_n < MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE,
-            "log_n {log_n} is above the natural->bitrev LDE range: the sub-floor arm \
-             commits the OLD MSB-convention codeword and must not serve it",
+            log_size_supports_natural_to_bitrev_lde(log_n),
+            "log_n {log_n} is outside the natural->bitrev LDE range",
         );
 
         let mut coeff_scratch = context.alloc(domain_size, AllocationPlacement::BestFit)?;
         let stream = context.get_exec_stream();
         let ntt_ctx = context.ntt_device_context();
-        // Pooled d-table scratch (len >= N) for the natural LDE's in-range DIT
-        // path, keeping it enqueue-only per the GPU scheduling contract. The
-        // natural->bitrev families have no DIT arm and ignore the scratch.
-        let mut d_scratch;
-        let mut scratch_opt = if !natural_to_bitrev {
-            d_scratch = context.alloc::<BF>(domain_size, AllocationPlacement::BestFit)?;
-            Some(&mut d_scratch[..])
-        } else {
-            None
-        };
-        let use_transposed_monomials =
-            !natural_to_bitrev && log_size_supports_transposed_monomials(log_n);
         let mut current_finest_already_computed = false;
-        for column in 0..self.columns_count {
+        for column in 0..columns_count {
             let offset = column * domain_size;
             let source_column = &source[offset..offset + domain_size];
 
@@ -552,44 +672,39 @@ impl TraceHolder<BF> {
                     // columns_count to write each coset's slab in one launch,
                     // replacing the per-coset NTT loop.
                     let backing_from_col = &mut backing[offset..];
-                    if natural_to_bitrev && log_n == 20 {
+                    if log_n == 20 {
                         hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20(
                             source_column,
                             &mut coeff_scratch[0..domain_size],
                             backing_from_col,
                             self.log_lde_factor as usize,
-                            self.columns_count,
+                            columns_count,
                             stream,
                             context.get_device_properties(),
                         )?;
                         current_finest_already_computed = false;
                         continue;
                     }
-                    // Natural arm: fused boundary first — the hypercube coarse
-                    // tail, monomial writeback, coset scale, and the first
-                    // coset's DIT initial stages run as one launch.
-                    let fused = if natural_to_bitrev {
-                        // The last tail launch also performs the NEXT
-                        // column's hypercube finest pass. The next iteration
-                        // therefore starts at the in-place middle pass.
-                        let next_column_hypercube = (column + 1 < self.columns_count)
-                            .then(|| source[offset + domain_size..].as_ptr());
-                        hypercube_to_multi_coset_bitrev_evals_fused(
-                            source_column,
-                            backing_from_col,
-                            log_n,
-                            self.log_lde_factor as usize,
-                            self.columns_count,
-                            current_finest_already_computed,
-                            next_column_hypercube,
-                            stream,
-                            context.get_device_properties(),
-                        )?
-                    } else {
-                        false
-                    };
+                    // Fused boundary first: the hypercube coarse tail, monomial
+                    // writeback, coset scale, and the first coset's initial
+                    // stages run as one launch. The last tail launch also
+                    // performs the NEXT column's hypercube finest pass, so the
+                    // next iteration starts at the in-place middle pass.
+                    let next_column_hypercube = (column + 1 < columns_count)
+                        .then(|| source[offset + domain_size..].as_ptr());
+                    let fused = hypercube_to_multi_coset_bitrev_evals_fused(
+                        source_column,
+                        backing_from_col,
+                        log_n,
+                        self.log_lde_factor as usize,
+                        columns_count,
+                        current_finest_already_computed,
+                        next_column_hypercube,
+                        stream,
+                        context.get_device_properties(),
+                    )?;
                     if fused {
-                        current_finest_already_computed = column + 1 < self.columns_count;
+                        current_finest_already_computed = column + 1 < columns_count;
                         continue;
                     }
                     current_finest_already_computed = false;
@@ -597,7 +712,6 @@ impl TraceHolder<BF> {
                         source_column,
                         &mut coeff_scratch[0..domain_size],
                         log_n,
-                        use_transposed_monomials,
                         stream,
                         context.get_device_properties(),
                     )?;
@@ -607,46 +721,21 @@ impl TraceHolder<BF> {
                         0,
                         domain_size,
                     );
-                    if natural_to_bitrev {
-                        natural_monomials_to_bitreversed_evals_multi_coset(
-                            &monomials,
-                            backing_from_col,
-                            log_n,
-                            self.log_lde_factor as usize,
-                            self.columns_count,
-                            false,
-                            ntt_ctx,
-                            None,
-                            stream,
-                            context.get_device_properties(),
-                        )?;
-                    } else {
-                        bitreversed_monomials_to_natural_evals_multi_coset(
-                            &monomials,
-                            backing_from_col,
-                            log_n,
-                            self.log_lde_factor as usize,
-                            self.columns_count,
-                            use_transposed_monomials,
-                            ntt_ctx,
-                            scratch_opt.as_deref_mut(),
-                            stream,
-                            context.get_device_properties(),
-                        )?;
-                    }
+                    natural_monomials_to_bitreversed_evals_multi_coset(
+                        &monomials,
+                        backing_from_col,
+                        log_n,
+                        self.log_lde_factor as usize,
+                        columns_count,
+                        ntt_ctx,
+                        None,
+                        stream,
+                        context.get_device_properties(),
+                    )?;
                 }
                 CosetsHolder::None(_) => {
                     panic!("cosets not allocated — call ensure_cosets_materialized first")
                 }
-            }
-        }
-        if !natural_to_bitrev && self.columns_count != 0 {
-            match &mut self.cosets {
-                CosetsHolder::Full(backing) => {
-                    let mut rows = DeviceMatrixMut::new(&mut backing[..], domain_size);
-                    bit_reverse_in_place(&mut rows, stream)?;
-                }
-                CosetsHolder::None(_) => unreachable!("the column loop above panics on None"),
             }
         }
         self.cosets_materialized = true;
@@ -655,8 +744,10 @@ impl TraceHolder<BF> {
 
     #[doc(hidden)]
     pub fn ensure_cosets_materialized(&mut self, context: &ProverContext) -> CudaResult<()> {
+        let log_domain_size = self.commitment_log_domain_size();
+        let columns_count = self.committed_columns_count();
         if !self.cosets_materialized {
-            if self.columns_count != 0 {
+            if columns_count != 0 {
                 assert!(
                     self.raw_hypercube_evals.is_some()
                         || self.opening_raw.is_some()
@@ -668,25 +759,24 @@ impl TraceHolder<BF> {
                 let instances_count = 1usize << self.log_lde_factor;
                 self.cosets = CosetsHolder::Full(allocate_cosets(
                     instances_count,
-                    self.log_domain_size,
-                    self.columns_count,
+                    log_domain_size,
+                    columns_count,
                     context,
                 )?);
             }
-            if self.columns_count == 0 {
+            if columns_count == 0 {
                 self.cosets_materialized = true;
             } else if let Some(monomials) = self.opening_monomials.take() {
-                let matrix = DeviceMatrix::new(&monomials, 1usize << self.log_domain_size);
+                let matrix = DeviceMatrix::new(&monomials, 1usize << log_domain_size);
                 let CosetsHolder::Full(backing) = &mut self.cosets else {
                     unreachable!()
                 };
                 natural_monomials_to_bitreversed_evals_multi_coset(
                     &matrix,
                     backing,
-                    self.log_domain_size as usize,
+                    log_domain_size as usize,
                     self.log_lde_factor as usize,
-                    self.columns_count,
-                    false,
+                    columns_count,
                     context.ntt_device_context(),
                     None,
                     context.get_exec_stream(),
@@ -723,10 +813,10 @@ impl TraceHolder<BF> {
     /// Materialize all cosets and build partial trees if no trees are cached.
     pub fn prepare_full_opening(&mut self, context: &ProverContext) -> CudaResult<()> {
         self.ensure_cosets_materialized(context)?;
-        if self.columns_count != 0 && matches!(self.trees, TreesHolder::None) {
+        if self.committed_columns_count() != 0 && matches!(self.trees, TreesHolder::None) {
             self.trees = TreesHolder::Partial(allocate_trees(
                 1usize << self.log_lde_factor,
-                self.log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
+                self.commitment_log_domain_size() - PARTIAL_TREE_REDUCTION_LAYERS,
                 self.log_rows_per_leaf,
                 context,
             )?);
@@ -764,6 +854,10 @@ impl TraceHolder<BF> {
         context: &ProverContext,
     ) -> CudaResult<()> {
         self.ensure_cosets_materialized(context)?;
+        if self.is_empty_base_oracle() {
+            assert!(dst_u32.is_empty(), "empty base oracle has an empty cap");
+            return Ok(());
+        }
         let lde_factor = 1usize << self.log_lde_factor;
         let cap_size = 1usize << self.log_tree_cap_size;
         assert_eq!(
@@ -772,11 +866,11 @@ impl TraceHolder<BF> {
             "commit_all_into dst_u32 length must match cap_size * DIGEST_U32_WORDS",
         );
 
-        let log_domain_size = self.log_domain_size;
+        let log_domain_size = self.commitment_log_domain_size();
         let log_lde_factor = self.log_lde_factor;
         let log_rows_per_leaf = self.log_rows_per_leaf;
         let log_tree_cap_size = self.log_tree_cap_size;
-        let columns_count = self.columns_count;
+        let columns_count = self.committed_columns_count();
         let stream = context.get_exec_stream();
 
         // Snapshot the cosets backing as a raw pointer to dodge the
@@ -877,7 +971,11 @@ impl TraceHolder<BF> {
 
     #[doc(hidden)]
     pub fn commit_all(&mut self, context: &ProverContext) -> CudaResult<()> {
-        let cap_size = 1usize << self.log_tree_cap_size;
+        let cap_size = if self.is_empty_base_oracle() {
+            0
+        } else {
+            1usize << self.log_tree_cap_size
+        };
         let unified_cap: DeviceAllocation<Digest> =
             context.alloc(cap_size, AllocationPlacement::BestFit)?;
         assert!(self.unified_device_cap.replace(unified_cap).is_none());
@@ -906,11 +1004,11 @@ impl TraceHolder<BF> {
             self.cosets_materialized,
             "cosets must be materialized before building partial trees"
         );
-        let log_domain_size = self.log_domain_size;
+        let log_domain_size = self.commitment_log_domain_size();
         let log_lde_factor = self.log_lde_factor;
         let log_rows_per_leaf = self.log_rows_per_leaf;
         let log_tree_cap_size = self.log_tree_cap_size;
-        let columns_count = self.columns_count;
+        let columns_count = self.committed_columns_count();
         let instances_count = 1usize << log_lde_factor;
         let stream = context.get_exec_stream();
         let _per_coset_partial_len = self
@@ -959,14 +1057,17 @@ impl TraceHolder<BF> {
     }
 
     fn query_leafs_layout(&self, queries_count: usize) -> (usize, usize) {
-        let domain_size = 1usize << self.log_domain_size;
+        let domain_size = 1usize << self.commitment_log_domain_size();
         let values_per_column_count = queries_count << self.log_rows_per_leaf;
-        let leafs_len = values_per_column_count * self.columns_count;
+        let leafs_len = values_per_column_count * self.committed_columns_count();
         (domain_size, leafs_len)
     }
 
     fn query_merkle_path_layout(&self, queries_count: usize) -> (u32, usize) {
-        let layers_count = self.log_domain_size
+        if self.is_empty_base_oracle() {
+            return (0, 0);
+        }
+        let layers_count = self.commitment_log_domain_size()
             - self.log_rows_per_leaf
             - (self.log_tree_cap_size - self.log_lde_factor);
         let digests_len = queries_count * layers_count as usize;
@@ -1036,7 +1137,7 @@ impl TraceHolder<BF> {
         let stream = context.get_exec_stream();
         let log_packed_leaf_count = log_trace_len - log_values_per_leaf;
         let trace_len = 1u32 << log_trace_len;
-        let log_total_leaves_count = self.log_domain_size - self.log_rows_per_leaf;
+        let log_total_leaves_count = self.commitment_log_domain_size() - self.log_rows_per_leaf;
         match &self.trees {
             TreesHolder::Full(_) => {
                 let consolidated_tree = self
@@ -1097,6 +1198,10 @@ impl TraceHolder<BF> {
         indexes: &DeviceSlice<u32>,
         context: &ProverContext,
     ) -> CudaResult<HostAllocation<[BF]>> {
+        if self.is_empty_base_oracle() {
+            // SAFETY: an empty allocation has no elements or stream readers.
+            return Ok(unsafe { context.alloc_host_uninit_slice(0) });
+        }
         self.ensure_cosets_materialized(context)?;
         let queries_count = indexes.len();
         let (domain_size, leafs_len) = self.query_leafs_layout(queries_count);
@@ -1126,6 +1231,10 @@ impl TraceHolder<BF> {
         indexes: &DeviceSlice<u32>,
         context: &ProverContext,
     ) -> CudaResult<HostAllocation<[Digest]>> {
+        if self.is_empty_base_oracle() {
+            // SAFETY: an empty allocation has no elements or stream readers.
+            return Ok(unsafe { context.alloc_host_uninit_slice(0) });
+        }
         self.ensure_cosets_materialized(context)?;
         let queries_count = indexes.len();
         let (_, digests_len) = self.query_merkle_path_layout(queries_count);
@@ -1154,7 +1263,7 @@ impl TraceHolder<BF> {
                     false,
                     self.get_coset_evaluations(coset_index),
                     self.log_rows_per_leaf,
-                    self.columns_count,
+                    self.committed_columns_count(),
                     tree_bottom,
                     &mut d_merkle_paths,
                     layers_count,
@@ -1163,16 +1272,19 @@ impl TraceHolder<BF> {
             }
             TreesHolder::None => {
                 let values = self.get_coset_evaluations(coset_index);
-                let mut tree =
-                    allocate_tree(self.log_domain_size, self.log_rows_per_leaf, context)?;
+                let mut tree = allocate_tree(
+                    self.commitment_log_domain_size(),
+                    self.log_rows_per_leaf,
+                    context,
+                )?;
                 build_full_trees_from_physical(
                     values,
                     &mut tree,
-                    self.log_domain_size,
+                    self.commitment_log_domain_size(),
                     0,
                     self.log_rows_per_leaf,
                     self.log_tree_cap_size - self.log_lde_factor,
-                    self.columns_count,
+                    self.committed_columns_count(),
                     1,
                     stream,
                 )?;
@@ -1238,53 +1350,9 @@ pub fn allocate_trees(
     context.alloc(total, AllocationPlacement::Bottom)
 }
 
-/// Builds all `cosets_in_tile` per-
-/// coset Merkle trees in one launch per layer. `evals_backing` holds
-/// `[coset0_evals | coset1_evals | ...]` (each coset's evals span
-/// `columns_count << log_domain_size` BFs); `trees_backing` holds the same
-/// shape with `tree_len = 2 << (log_domain_size - log_rows_per_leaf)` digests
-/// per coset.
-// Natural-order reference for `build_full_trees_from_physical`.
-#[cfg(test)]
-pub(crate) fn commit_trace_multi_coset(
-    evals_backing: &DeviceSlice<BF>,
-    trees_backing: &mut DeviceSlice<Digest>,
-    log_domain_size: u32,
-    log_lde_factor: u32,
-    log_rows_per_leaf: u32,
-    log_tree_cap_size: u32,
-    columns_count: usize,
-    cosets_in_tile: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert!(log_tree_cap_size >= log_lde_factor);
-    let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
-    assert!(log_domain_size >= log_rows_per_leaf + log_coset_tree_cap_size);
-    let per_coset_evals_stride = columns_count << log_domain_size;
-    let per_coset_leaves_count = 1usize << (log_domain_size - log_rows_per_leaf);
-    let per_coset_tree_stride = per_coset_leaves_count << 1;
-    assert_eq!(evals_backing.len(), per_coset_evals_stride * cosets_in_tile);
-    assert_eq!(trees_backing.len(), per_coset_tree_stride * cosets_in_tile);
-    let layers_count = log_domain_size + 1 - log_rows_per_leaf - log_coset_tree_cap_size;
-    build_merkle_tree_multi_coset(
-        evals_backing,
-        trees_backing,
-        log_rows_per_leaf,
-        layers_count,
-        cosets_in_tile,
-        per_coset_leaves_count,
-        per_coset_evals_stride,
-        per_coset_tree_stride,
-        columns_count,
-        stream,
-    )
-}
-
-/// LSB sibling of [`commit_trace_multi_coset`]: each coset slab is the
-/// BITREVERSED-order codeword, so every leaf is one physically contiguous row
-/// block and leaf digests land in physical-block order. The strided bit-reverse
-/// canonicalizes them; the result is byte-identical to
-/// [`commit_trace_multi_coset`] over the natural-order codeword.
+/// Builds all `cosets_in_tile` per-coset Merkle trees from BITREVERSED-order codewords: every leaf
+/// is one physically contiguous row block and leaf digests land in physical-block order. The
+/// strided bit-reverse canonicalizes them, so the trees equal those of the natural-order codeword.
 #[doc(hidden)]
 pub fn build_full_trees_from_physical(
     evals_backing: &DeviceSlice<BF>,
@@ -1339,50 +1407,10 @@ pub fn build_full_trees_from_physical(
     )
 }
 
-// Natural-order reference for `build_partial_trees_from_physical`.
-#[cfg(test)]
-pub(crate) fn commit_trace_with_partial_tree_multi_coset(
-    evals_backing: &DeviceSlice<BF>,
-    tree_backing: &mut DeviceSlice<Digest>,
-    log_domain_size: u32,
-    log_lde_factor: u32,
-    log_rows_per_leaf: u32,
-    log_tree_cap_size: u32,
-    columns_count: usize,
-    cosets_in_tile: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert!(log_tree_cap_size >= log_lde_factor);
-    let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
-    assert!(
-        log_domain_size
-            > log_rows_per_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_coset_tree_cap_size
-    );
-    let per_coset_evals_stride = columns_count << log_domain_size;
-    let per_coset_leaves_count = 1usize << (log_domain_size - log_rows_per_leaf);
-    let per_coset_tree_stride = (per_coset_leaves_count << 1) >> PARTIAL_TREE_REDUCTION_LAYERS;
-    assert_eq!(evals_backing.len(), per_coset_evals_stride * cosets_in_tile);
-    assert_eq!(tree_backing.len(), per_coset_tree_stride * cosets_in_tile);
-    let layers_count = log_domain_size + 1
-        - log_rows_per_leaf
-        - PARTIAL_TREE_REDUCTION_LAYERS
-        - log_coset_tree_cap_size;
-    build_partial_merkle_tree_multi_coset(
-        evals_backing,
-        tree_backing,
-        log_rows_per_leaf,
-        layers_count,
-        cosets_in_tile,
-        stream,
-    )
-}
-
-/// LSB sibling of [`commit_trace_with_partial_tree_multi_coset`]: each coset
-/// slab is the BITREVERSED-order codeword. The fused bottom-five-level kernel
-/// writes logical boundary roots, then the ordinary node builder materializes
-/// every cached level through the cap. The result and cached query subtree are
-/// byte-identical to [`commit_trace_with_partial_tree_multi_coset`] over the
-/// natural-order codeword.
+/// Builds the partial per-coset Merkle trees from BITREVERSED-order codewords. The fused
+/// bottom-five-level kernel writes logical boundary roots, then the ordinary node builder
+/// materializes every cached level through the cap; the result and cached query subtree equal
+/// those of the natural-order codeword.
 #[doc(hidden)]
 pub fn build_partial_trees_from_physical(
     evals_backing: &DeviceSlice<BF>,
@@ -1397,9 +1425,10 @@ pub fn build_partial_trees_from_physical(
 ) -> CudaResult<()> {
     assert!(log_tree_cap_size >= log_lde_factor);
     let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
+    // At equality the bottom-five-level reduction produces the cap directly.
     assert!(
         log_domain_size
-            > log_rows_per_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_coset_tree_cap_size
+            >= log_rows_per_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_coset_tree_cap_size
     );
     let per_coset_evals_stride = columns_count << log_domain_size;
     let per_coset_leaves_count = 1usize << (log_domain_size - log_rows_per_leaf);
@@ -1438,7 +1467,17 @@ impl<T> TraceHolder<T> {
     ) -> CudaResult<MerkleTreeCapVarLength> {
         let device_cap = self.unified_device_cap();
         let cap_size = device_cap.len();
-        debug_assert_eq!(cap_size, 1usize << self.log_tree_cap_size);
+        debug_assert_eq!(
+            cap_size,
+            if self.is_empty_base_oracle() {
+                0
+            } else {
+                1usize << self.log_tree_cap_size
+            }
+        );
+        if cap_size == 0 {
+            return Ok(MerkleTreeCapVarLength { cap: Vec::new() });
+        }
         let stream = context.get_exec_stream();
         let mut host = vec![Digest::default(); cap_size];
         memory_copy_async(host.as_mut_slice(), device_cap, stream)?;

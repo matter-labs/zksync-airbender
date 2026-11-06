@@ -1,5 +1,7 @@
 use super::super::*;
 
+use crate::pow::schedule_draw_e4_challenges_with_pow;
+
 /// Schedules one fold-round group: `num_folding_steps` sumcheck/fold iterations
 /// driven by a rolling device-resident seed buffer threaded by the caller.
 /// Each fold round advances `device_seed` via `whir_fold_round_update`, which
@@ -11,8 +13,17 @@ use super::super::*;
 /// offset and advanced once per inner round so the next group starts at the
 /// correct slab/proof index. The device challenge drops on return, after every
 /// fold reading it has been enqueued on the exec stream.
+///
+/// With `folding_pow_bits > 0` each round's challenge derivation is split
+/// from the update: the round polynomial is committed first, then the
+/// challenge is drawn under PoW (nonce into the slab's folding-PoW slot that
+/// parallels the round's sumcheck polynomial), then the symbolic terms fold
+/// with it. Only intermediate-oracle rounds are gated, and they always carry
+/// symbolic terms. With `folding_pow_bits == 0` the fused update runs
+/// unchanged.
 pub(super) fn schedule_fold_round(
     num_folding_steps: usize,
+    folding_pow_bits: u32,
     state: &mut GpuWhirState,
     scheduled_sumcheck_poly_idx: &mut usize,
     proof_slab: &DeviceAllocation<E4>,
@@ -40,6 +51,17 @@ pub(super) fn schedule_fold_round(
         slab_sumcheck_total_len,
     );
 
+    // One folding-PoW nonce slot per sumcheck polynomial, at the same index.
+    let (slab_folding_nonces_ptr, slab_folding_nonces_len) =
+        unsafe { proof_layout.whir_folding_pow_nonces_device_mut(proof_slab.as_ptr() as *mut u8) };
+    assert!(
+        group_start_idx + num_folding_steps <= slab_folding_nonces_len,
+        "folding_pow_nonces slab range overflow: {}+{} > {}",
+        group_start_idx,
+        num_folding_steps,
+        slab_folding_nonces_len,
+    );
+
     // Per-group device challenge buffer: overwritten each round
     // (stream-ordered, so safe to reuse).
     let mut d_challenge: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
@@ -62,21 +84,48 @@ pub(super) fn schedule_fold_round(
             )
         };
 
-        let terms_updated = state.in_domain.try_update_and_fold(
-            &mut state.reduce_out[..3],
-            device_seed,
-            slab_round_dst,
-            &mut d_challenge,
-            context,
-        )?;
-        if !terms_updated {
-            gpu_gkr::gkr_ops::whir_fold_round_update(
-                &state.reduce_out[..3],
+        if folding_pow_bits == 0 {
+            let terms_updated = state.in_domain.try_update_and_fold(
+                &mut state.reduce_out[..3],
                 device_seed,
                 slab_round_dst,
                 &mut d_challenge,
-                stream,
+                context,
             )?;
+            if !terms_updated {
+                gpu_gkr::gkr_ops::whir_fold_round_update(
+                    &state.reduce_out[..3],
+                    device_seed,
+                    slab_round_dst,
+                    &mut d_challenge,
+                    stream,
+                )?;
+            }
+        } else {
+            // SAFETY: `slab_folding_nonces_ptr.add(group_start_idx + round)`
+            // is an 8-byte-aligned, live, disjoint single-`u64` slot inside
+            // the pool-backed `proof_slab` (bounds-checked above). The PoW
+            // search writes it and the nonce commit reads it, both
+            // stream-ordered on `exec_stream`.
+            let nonce_slab_dst = unsafe {
+                era_cudart::slice::DeviceVariable::from_raw_parts_mut(
+                    slab_folding_nonces_ptr.add(group_start_idx + round),
+                )
+            };
+            state.in_domain.correct_and_commit(
+                &mut state.reduce_out[..3],
+                device_seed,
+                slab_round_dst,
+                context,
+            )?;
+            schedule_draw_e4_challenges_with_pow(
+                device_seed,
+                &mut d_challenge,
+                folding_pow_bits,
+                nonce_slab_dst,
+                context,
+            )?;
+            state.in_domain.fold_terms(&d_challenge, context)?;
         }
         schedule_fold_state(state, &d_challenge[0], context)?;
         *scheduled_sumcheck_poly_idx += 1;

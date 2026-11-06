@@ -200,27 +200,15 @@ mod test {
     #[test]
     fn test_on_external_witness() {
         use crate::tests::gkr::bincode_deserialize_from_file;
-        use std::path::Path;
-
-        fn read_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
-            use std::io::Read;
-            let mut file = std::fs::File::open(path).expect("must open provided file");
-            let mut buffer = vec![];
-            file.read_to_end(&mut buffer).expect("must read the file");
-            assert_eq!(buffer.len() % core::mem::size_of::<u32>(), 0);
-            let mut binary = Vec::with_capacity(buffer.len() / core::mem::size_of::<u32>());
-            for el in buffer.as_chunks::<4>().0 {
-                binary.push(u32::from_le_bytes(*el));
-            }
-
-            (buffer, binary)
-        }
-
         let witness: Vec<NonMemoryOpcodeTracingDataWithTimestamp> = bincode_deserialize_from_file(
             "../circuit_defs/prover_examples/family_4_circuit_0_oracle_witness.bin",
         );
         println!("{} inputs in total", witness.len());
-        let (_, binary) = read_binary(Path::new("../riscv_transpiler/examples/zksync_os/app.text"));
+        let (_, binary) = riscv_transpiler::elf::ProgramSource::legacy_binaries(
+            "../riscv_transpiler/examples/zksync_os/app.bin",
+            "../riscv_transpiler/examples/zksync_os/app.text",
+        )
+        .load_unpadded();
         for (i, wit) in witness.into_iter().enumerate() {
             if i % 100 == 0 {
                 println!("{}", i);

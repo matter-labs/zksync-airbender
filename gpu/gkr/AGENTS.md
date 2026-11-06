@@ -2,7 +2,8 @@
 
 `gpu_gkr` owns the GKR engine: the forward pass (`forward/`), the
 backward/sumcheck rounds (`backward/`), setup (`setup/`), base-layer claims
-(`base_layer_claims/`), the proof layout model (`proof_layout/`), and the
+(`base_layer_claims/`), the proof layout model (`proof_layout/`), stage 1 with the
+merged memory/witness commitment producer (`stage1/`), and the
 GKR/WHIR protocol kernels (`gkr_ops/`, e.g. transcript/PoW-adjacent
 sumcheck-round helpers) that used to live in `circuit_prover`'s
 `ops::gkr_ops`. It carries the `gpu_gkr_native` CUDA archive (the tree that

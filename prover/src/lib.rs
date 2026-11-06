@@ -30,8 +30,6 @@ pub mod allocation_pool;
 #[cfg(feature = "prover")]
 pub mod cap_holder;
 #[cfg(feature = "prover")]
-pub mod fsv_fixture;
-#[cfg(feature = "prover")]
 pub mod gkr;
 #[cfg(feature = "prover")]
 pub mod merkle_trees;

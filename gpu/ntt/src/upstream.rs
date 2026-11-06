@@ -6,8 +6,6 @@
 // `field` — trait bounds used in twiddle generation
 // -----------------------------------------------------------------------
 
-#[cfg(test)]
-pub(crate) use field::PrimeField;
 pub(crate) use field::{Field, TwoAdicField};
 
 // -----------------------------------------------------------------------

@@ -43,6 +43,8 @@ pub mod orchestration;
 #[cfg(test)]
 mod bigint_eq_result;
 #[cfg(test)]
+mod canonical_proofs;
+#[cfg(test)]
 mod constraint_check;
 #[cfg(test)]
 mod family_circuits;
@@ -55,8 +57,6 @@ pub mod large_field;
 mod malicious_proofs;
 #[cfg(test)]
 mod relative_timestamps;
-#[cfg(test)]
-mod unified_circuit;
 #[cfg(test)]
 mod unified_generated_witness;
 #[cfg(test)]
@@ -860,37 +860,6 @@ mod keccak_theta_rho {
         let fn_ptr = evaluate_witness_fn::<
             ScalarWitnessTypeSet<BabyBearField, true>,
             ColumnMajorWitnessProxy<'a, KeccakThetaRhoDelegationOracle<'b>, BabyBearField>,
-        >;
-        (fn_ptr)(proxy);
-    }
-}
-
-#[cfg(test)]
-mod blake2_g_function {
-    use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
-    use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
-    use crate::tracers::oracles::transpiler_oracles::delegation::Blake2sGFunctionDelegationOracle;
-
-    use ::cs::witness_placer::WitnessTypeSet;
-    use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32,
-    };
-    use ::field::baby_bear::base::BabyBearField;
-    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-
-    include!("../../../compiled_circuits/blake2_g_function_generated_gkr.rs");
-
-    pub fn witness_eval_fn<'a, 'b>(
-        proxy: &'_ mut ColumnMajorWitnessProxy<
-            'a,
-            Blake2sGFunctionDelegationOracle<'b>,
-            BabyBearField,
-        >,
-    ) {
-        let fn_ptr = evaluate_witness_fn::<
-            ScalarWitnessTypeSet<BabyBearField, true>,
-            ColumnMajorWitnessProxy<'a, Blake2sGFunctionDelegationOracle<'b>, BabyBearField>,
         >;
         (fn_ptr)(proxy);
     }

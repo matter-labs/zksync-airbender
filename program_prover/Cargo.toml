@@ -26,10 +26,6 @@ flate2 = { version = "*", optional = true }
 verifier_common = { workspace = true, default-features = false }
 full_statement_verifier = { workspace = true, default-features = false, features = ["proof_utils", "host_utils"]}
 
-[dev-dependencies]
-test_utils = { workspace = true }
-serial_test = "3"
-
 [[bin]]
 name = "l1_compression"
 required-features = ["l1"]

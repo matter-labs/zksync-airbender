@@ -7,15 +7,20 @@
 //!
 //! Fixtures live in `$COST_MODEL_FIXTURE_DIR` as `<fixture>_proof.bin` /
 //! `<fixture>_setups.bin`: zlib-compressed JSON of `ProgramProof` and `Setups`.
-//! Generate the Sec100 Compression fixtures with the ignored GPU test
+//! One directory holds one soundness mode's proofs, named by its `soundness_mode`
+//! file (`SoundnessMode::cli_name`, required).
+//! Every test uses that mode's Sec100 Compression guests and census tables.
+//! Generate the fixtures with the ignored GPU test
 //! `test_generate_sec100_cost_model_fixtures` in
-//! `gpu/execution_prover/tests/program.rs`. It
+//! `gpu/execution_prover/tests/program.rs`, once per mode
+//! (`COST_MODEL_SOUNDNESS_MODE`, default `pessimistic-conjecture`). It
 //! proves the recursion layers explicitly instead of depending on the production
 //! scheduling threshold. From the repository root:
 //!
 //! ```text
 //! cargo nextest run -p gpu_execution_prover --release --features verifiers --no-run
-//! COST_MODEL_FIXTURE_DIR="$PWD/target/cost-model-fixtures/sec100" \
+//! COST_MODEL_SOUNDNESS_MODE=ethproofs-soundcalc \
+//! COST_MODEL_FIXTURE_DIR="$PWD/target/cost-model-fixtures/sec100-ethproofs" \
 //!   .agents/bin/with_gpu_lock.sh cargo nextest run -p gpu_execution_prover \
 //!   --release --features verifiers \
 //!   -E 'test(=test_generate_sec100_cost_model_fixtures)' \
@@ -36,7 +41,7 @@
 //! discovers every `*_proof.bin` and its matching `*_setups.bin`; fixture names
 //! containing `recursion` select the recursion verifier.
 //!
-//! `emit_census_tables` prints the fitted tables for `census.rs`. The total and
+//! `emit_census_tables` writes the fitted per-mode table included by `census.rs`. The total and
 //! census acceptance gates allow the original 0.1% family / 0.05% delegation
 //! and total budget on max(measured - V, 0), plus V = proof count times the
 //! largest measured per-proof deviation from its circuit mean. The total row
@@ -46,24 +51,23 @@
 
 mod trace;
 
+use full_statement_verifier::host_utils::fsv_stream;
+use trace::calibrate::load_guest;
 use trace::fixtures::{all_fixtures, Fixture};
-use trace::fsv_dir;
-use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+use verifier_common::fsv_binaries::FsvProgram;
 
-fn load_base_layer() -> (Vec<u32>, Vec<u32>) {
-    full_statement_verifier::host_utils::load_fsv_program(
-        fsv_dir(),
-        FsvProgram::UnrolledBaseLayer,
-        BlakeMode::Compression,
-    )
+/// The `base` fixture's guest and stream.
+fn load_base_layer() -> ((Vec<u32>, Vec<u32>), Vec<u32>) {
+    let base = trace::fixtures::fixture("base");
+    let (setups, proof) = trace::load_calibration_proof(&base.name);
+    let stream = fsv_stream(&setups, &proof, &base.descriptor);
+    (load_guest(&base.descriptor), stream)
 }
 
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn marks_are_monotonic_and_one_per_stream_word() {
-    let (bin, text) = load_base_layer();
-    let (setups, proof) = trace::load_calibration_proof("base");
-    let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
+    let ((bin, text), stream) = load_base_layer();
     let expected_reads = stream.len();
 
     let t = trace::trace_verifier(&bin, &text, stream);
@@ -83,9 +87,7 @@ fn marks_are_monotonic_and_one_per_stream_word() {
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn total_cycles_matches_the_uninstrumented_measurement() {
-    let (bin, text) = load_base_layer();
-    let (setups, proof) = trace::load_calibration_proof("base");
-    let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
+    let ((bin, text), stream) = load_base_layer();
 
     let instrumented = trace::trace_verifier(&bin, &text, stream.clone()).total_cycles;
     let plain = trace::measure_verifier_cycles(&bin, &text, stream);
@@ -102,11 +104,11 @@ fn stream_plan_matches_the_actual_stream() {
     for Fixture {
         name: fixture,
         program,
-        ..
+        descriptor,
     } in &all_fixtures()
     {
         let (setups, proof) = trace::load_calibration_proof(fixture);
-        let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
+        let stream = fsv_stream(&setups, &proof, descriptor);
         let plan = trace::plan::plan_unrolled_stream(&setups, &proof, *program);
 
         assert_eq!(
@@ -195,52 +197,75 @@ fn proof_counts_matches_the_planned_regions() {
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn every_fixture_verifies_natively() {
-    for Fixture { name, program, .. } in &all_fixtures() {
+    for Fixture {
+        name,
+        program,
+        descriptor,
+    } in &all_fixtures()
+    {
         let (setups, proof) = trace::load_calibration_proof(name);
-        let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
-        full_statement_verifier::host_utils::native_verify_unrolled(
+        let stream = full_statement_verifier::host_utils::build_unrolled_stream(
+            &setups,
+            &proof,
+            verifier_common::BLAKE_MODE,
+        );
+        full_statement_verifier::host_utils::native_verify_unrolled_in_mode(
             stream,
             *program == FsvProgram::UnrolledBaseLayer,
-        );
+            descriptor.soundness_mode,
+        )
+        .unwrap_or_else(|error| panic!("{name}: {error}"));
     }
 }
 
 fn acceptance_budget(
     proof: &full_statement_verifier::program_proof::ProgramProof,
-    program: FsvProgram,
+    descriptor: &verifier_common::fsv_binaries::FsvDescriptor,
     row: usize,
     measured: u64,
 ) -> u64 {
-    use full_statement_verifier::host_utils::cost_model::{census::CENSUS_TABLES, proof_counts};
+    use full_statement_verifier::host_utils::cost_model::{census::census_table, proof_counts};
     let proofs = proof_counts(proof).iter().map(|(_, n)| *n as u64).sum();
-    let table = &CENSUS_TABLES
-        .iter()
-        .find(|(p, mode, _)| *p == program && *mode == BlakeMode::Compression)
-        .unwrap()
-        .2;
+    let table = census_table(descriptor);
     trace::calibrate::gate_budget(row, measured, proofs, table.per_proof_spread[row])
 }
 
+/// One row per fixture: measured and estimated cycles, error, budget and both switch
+/// decisions. Fails on an error above the calibrated budget, or on a switch decision that differs
+/// from the measured one while the measurement is farther than the budget from the threshold.
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn estimate_matches_measurement_on_every_fixture() {
-    use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles;
+    use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles_for;
+    use full_statement_verifier::host_utils::unified_switch_cycles;
 
-    for Fixture { name, program } in &all_fixtures() {
-        let (bin, text) = full_statement_verifier::host_utils::load_fsv_program(
-            fsv_dir(),
-            *program,
-            BlakeMode::Compression,
-        );
+    let threshold = unified_switch_cycles();
+    for Fixture {
+        name, descriptor, ..
+    } in &all_fixtures()
+    {
+        let (bin, text) = load_guest(descriptor);
         let (setups, proof) = trace::load_calibration_proof(name);
-        let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
+        let stream = fsv_stream(&setups, &proof, descriptor);
         let measured = trace::measure_verifier_cycles(&bin, &text, stream);
-        let estimate = estimate_verifier_cycles(&proof, *program, BlakeMode::Compression).unwrap();
+        let estimate = estimate_verifier_cycles_for(&proof, descriptor).unwrap();
         let error = estimate.abs_diff(measured);
-        let budget = acceptance_budget(&proof, *program, trace::calibrate::TOTAL_ROW, measured);
+        let budget = acceptance_budget(&proof, descriptor, trace::calibrate::TOTAL_ROW, measured);
+        let unrolled = |cycles: u64| cycles >= threshold;
+        println!(
+            "{descriptor:?} {name}: measured {measured} estimate {estimate} error {error} \
+             ({:.4}%) budget {budget}; unrolled at {threshold}: measured {} estimate {}",
+            100.0 * error as f64 / measured as f64,
+            unrolled(measured),
+            unrolled(estimate),
+        );
         assert!(
             error <= budget,
             "{name}: estimate {estimate} vs measured {measured}: {error} > {budget}"
+        );
+        assert!(
+            unrolled(estimate) == unrolled(measured) || measured.abs_diff(threshold) <= budget,
+            "{name}: the estimate decides the switch differently from the measurement"
         );
     }
 }
@@ -248,30 +273,36 @@ fn estimate_matches_measurement_on_every_fixture() {
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn emit_census_tables() {
+    let mut rows = String::new();
     // Sharing a WHIR schedule does not guarantee identical per-proof
     // instruction counts across verifier programs. Fit each program separately.
     for program in [
         FsvProgram::UnrolledBaseLayer,
         FsvProgram::UnrolledRecursionLayer,
     ] {
-        let cals: Vec<_> = all_fixtures()
-            .iter()
+        let fixtures: Vec<_> = all_fixtures()
+            .into_iter()
             .filter(|f| f.program == program)
-            .map(|f| trace::calibrate::calibrate_census_fixture(&f.name, f.program))
+            .collect();
+        let cals: Vec<_> = fixtures
+            .iter()
+            .map(trace::calibrate::calibrate_census_fixture)
             .collect();
         let pooled = trace::calibrate::pool_census(&cals);
-        println!(
-            "{}",
-            trace::calibrate::render_census_tables(program, &pooled)
-        );
+        rows.push_str(&trace::calibrate::render_census_tables(
+            &fixtures[0].descriptor,
+            &pooled,
+        ));
     }
+    trace::calibrate::write_census_tables(trace::fixtures::fixture_soundness_mode(), &rows);
 }
 
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn census_family_cycles_sum_to_total() {
-    for Fixture { name, program, .. } in &all_fixtures() {
-        let (t, _) = trace::calibrate::trace_fixture(name, *program);
+    for fixture in &all_fixtures() {
+        let name = &fixture.name;
+        let (t, _) = trace::calibrate::trace_fixture(fixture);
         let family_sum: u64 = t.total_census
             [..full_statement_verifier::host_utils::cost_model::census::NUM_FAMILY_DIMS]
             .iter()
@@ -287,18 +318,19 @@ fn census_family_cycles_sum_to_total() {
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn census_estimate_matches_measurement_on_every_fixture() {
     use full_statement_verifier::host_utils::cost_model::census::{
-        estimate_verifier_census, CENSUS_DIMS, NUM_CENSUS_DIMS,
+        estimate_verifier_census_for, CENSUS_DIMS, NUM_CENSUS_DIMS,
     };
-    for Fixture { name, program } in &all_fixtures() {
-        let (t, _) = trace::calibrate::trace_fixture(name, *program);
+    for fixture in &all_fixtures() {
+        let (name, descriptor) = (&fixture.name, &fixture.descriptor);
+        let (t, _) = trace::calibrate::trace_fixture(fixture);
         let proof = trace::load_calibration_proof(name).1;
-        let estimate = estimate_verifier_census(&proof, *program, BlakeMode::Compression).unwrap();
+        let estimate = estimate_verifier_census_for(&proof, descriptor).unwrap();
         assert_eq!(estimate.len(), NUM_CENSUS_DIMS);
         for (d, (dim, value)) in estimate.iter().enumerate() {
             assert_eq!(*dim, CENSUS_DIMS[d]);
             let measured = t.total_census[d];
             let error = value.abs_diff(measured);
-            let budget = acceptance_budget(&proof, *program, d, measured);
+            let budget = acceptance_budget(&proof, descriptor, d, measured);
             assert!(
                 error <= budget,
                 "{name} dim {d} ({dim:?}): estimate {value} vs measured {measured}: \
@@ -313,13 +345,9 @@ fn census_estimate_matches_measurement_on_every_fixture() {
 fn per_proof_census_spans_agree_within_a_circuit() {
     use full_statement_verifier::host_utils::cost_model::census::NUM_CENSUS_DIMS;
 
-    for Fixture {
-        name: fixture,
-        program,
-        ..
-    } in &all_fixtures()
-    {
-        let c = trace::calibrate::calibrate_census_fixture(fixture, *program);
+    for f in &all_fixtures() {
+        let fixture = &f.name;
+        let c = trace::calibrate::calibrate_census_fixture(f);
         for trace::calibrate::RegionCensus { circuit, spans, .. } in &c.regions {
             if spans.len() < 2 {
                 continue;
@@ -336,4 +364,33 @@ fn per_proof_census_spans_agree_within_a_circuit() {
             }
         }
     }
+}
+
+/// The unrolled loop stops at any allowed threshold only if verifying a recursion proof
+/// costs less than the floor: each `recursion1` fixture proves the recursion verifier, so
+/// verifying it bounds the loop's fixed point from above.
+#[test]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
+fn recursion_fixed_point_is_below_the_switch_floor() {
+    use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles_for;
+    use full_statement_verifier::host_utils::MIN_UNIFIED_SWITCH_CYCLES;
+    let mut checked = 0;
+    for fixture in all_fixtures()
+        .iter()
+        .filter(|f| f.name.starts_with("recursion1"))
+    {
+        let proof = trace::load_calibration_proof(&fixture.name).1;
+        let estimate = estimate_verifier_cycles_for(&proof, &fixture.descriptor).unwrap();
+        println!(
+            "{:?} {}: next layer {estimate}",
+            fixture.descriptor, fixture.name
+        );
+        assert!(
+            estimate < MIN_UNIFIED_SWITCH_CYCLES,
+            "{}: {estimate}",
+            fixture.name
+        );
+        checked += 1;
+    }
+    assert!(checked > 0, "no recursion1 fixture");
 }

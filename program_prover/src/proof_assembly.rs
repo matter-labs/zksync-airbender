@@ -34,7 +34,7 @@ pub fn program_setups(artifacts: &ProgramArtifacts) -> Setups {
 
 /// Assemble a `ProgramProof` + its `Setups` map from a prove result.
 ///
-/// Mirrors the tail of `program_prover::prove_unrolled_execution_with_replayer`:
+/// Mirrors the tail of `program_prover::prove_unrolled_execution_with_replayer_in_mode`:
 /// every RISC-V family present in the artifacts gets a setup-params entry and
 /// a (possibly empty) proof list; all delegation circuit artifacts are
 /// embedded regardless of whether that delegation fired.

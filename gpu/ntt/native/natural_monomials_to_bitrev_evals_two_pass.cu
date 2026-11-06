@@ -5,8 +5,7 @@ namespace airbender::ntt {
 
 // Natural-order monomials -> bitreversed-order evaluations, two-pass regime
 // (log_n in [23, 24], one column >= device L2): out_k[p] = f(g_k * omega^rev_n(p)).
-// Descending-stride DIT network (pass structure cloned from
-// evals_to_monomials_two_pass.cu) over FORWARD twiddles, with no 1/N
+// Descending-stride DIT network over FORWARD twiddles, with no 1/N
 // normalization. Pass 1 carries the multi-coset shape: one shared input column
 // feeds every coset's output slab, with the coset pre-scale g_k^row applied on
 // the full global row.
@@ -15,8 +14,8 @@ namespace airbender::ntt {
 // five more).
 EXTERN __launch_bounds__(512, 1) __global__
     void ab_natural_monomials_to_bitrev_evals_first_10_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                                     const bool transposed_monomials, const int log_n, const int coset_index_base,
-                                                                     const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
+                                                                     const int log_n, const int coset_index_base, const int coset_factor_shift,
+                                                                     const int num_cols_per_coset, const int log_cosets_in_tile) {
   using namespace pass_config::two_pass_phase_a;
   using namespace pass_config::pipeline_prefetch;
 
@@ -33,7 +32,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   const int lane_in_tile = threadIdx.x & 15;
   const int tile_id = threadIdx.x >> LOG_DATA_TILE_SIZE;
   // Full global physical row = block offset + tile/lane/iteration offsets, so
-  // the coset exponent and the transposed-layout mapping see absolute rows.
+  // the coset exponent sees absolute rows.
   const int gmem_block_offset = static_cast<int>(fi.intra_x) << LOG_DATA_TILE_SIZE;
 
   extern __shared__ bf smem_block[]; // 16384 * 4 bytes
@@ -59,15 +58,11 @@ EXTERN __launch_bounds__(512, 1) __global__
   prefetch_pipeline_group<6, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
   prefetch_pipeline_group<7, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
 
-  // The natural labeling IS the exponent, so no bitrev here;
-  // `transposed_row_to_effective_row` resolves the physical row of the
-  // transposed-monomial layout to its logical row.
+  // The natural labeling IS the exponent, so no bitrev here.
   if (coset_factor_power != 0) {
 #pragma unroll
-    for (int i{0}, row{thread_il_gmem_start}; i < VALS_PER_THREAD; i++, row += IL_GMEM_STRIDE) {
-      const int effective_row = transposed_monomials ? transposed_row_to_effective_row(row) : row;
-      vals[i] = bf::mul(vals[i], get_forward_twiddle_power(static_cast<unsigned>(effective_row) * coset_factor_power));
-    }
+    for (int i{0}, row{thread_il_gmem_start}; i < VALS_PER_THREAD; i++, row += IL_GMEM_STRIDE)
+      vals[i] = bf::mul(vals[i], get_forward_twiddle_power(static_cast<unsigned>(row) * coset_factor_power));
   }
 
   const bf pipeline_twiddle = ab_fwd_cmem_twiddles_coarse[1];
@@ -105,20 +100,16 @@ EXTERN __launch_bounds__(512, 1) __global__
   tile_exchg_region_offset <<= 1;
   reg_exchg_fwd_dit<1, 2, 16>(vals, tile_exchg_region_offset);
 
-  // Un-transpose on the way out: pass 1's strides are all multiples of the
-  // 1024-row transposition chunk (so the layout does not disturb its
-  // butterflies or twiddle groups), but pass 2 exchanges rows WITHIN a chunk
-  // and requires natural row order.
 #pragma unroll
   for (int i{0}, row{thread_ct_gmem_start}; i < 32; i++, row += TILE_GMEM_STRIDE)
-    gmem_out.set_at_row(transposed_monomials ? transposed_row_to_effective_row(row) : row, vals[i]);
+    gmem_out.set_at_row(row, vals[i]);
 }
 
 // Pass 1 for log_n = 23: stages 0..8.
 EXTERN __launch_bounds__(512, 1) __global__
     void ab_natural_monomials_to_bitrev_evals_first_9_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                                    const bool transposed_monomials, const int log_n, const int coset_index_base,
-                                                                    const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
+                                                                    const int log_n, const int coset_index_base, const int coset_factor_shift,
+                                                                    const int num_cols_per_coset, const int log_cosets_in_tile) {
   using namespace pass_config::two_pass_phase_b;
   using namespace pass_config::pipeline_prefetch;
 
@@ -152,10 +143,8 @@ EXTERN __launch_bounds__(512, 1) __global__
 
   if (coset_factor_power != 0) {
 #pragma unroll
-    for (int i{0}, row{thread_il_gmem_start}; i < VALS_PER_THREAD; i++, row += IL_GMEM_STRIDE) {
-      const int effective_row = transposed_monomials ? transposed_row_to_effective_row(row) : row;
-      vals[i] = bf::mul(vals[i], get_forward_twiddle_power(static_cast<unsigned>(effective_row) * coset_factor_power));
-    }
+    for (int i{0}, row{thread_il_gmem_start}; i < VALS_PER_THREAD; i++, row += IL_GMEM_STRIDE)
+      vals[i] = bf::mul(vals[i], get_forward_twiddle_power(static_cast<unsigned>(row) * coset_factor_power));
   }
 
   const bf pipeline_twiddle = ab_fwd_cmem_twiddles_coarse[1];
@@ -193,12 +182,12 @@ EXTERN __launch_bounds__(512, 1) __global__
 
 #pragma unroll
   for (int i{0}, row{thread_ct_gmem_start}; i < 32; i++, row += TILE_GMEM_STRIDE)
-    gmem_out.set_at_row(transposed_monomials ? transposed_row_to_effective_row(row) : row, vals[i]);
+    gmem_out.set_at_row(row, vals[i]);
 }
 
 // Pass 2: the last 14 stages, in place per coset slab. Outputs are always
-// written in plain (non-transposed) row order: the bitreversed codeword is what
-// the tree layer consumes.
+// written in plain row order: the bitreversed codeword is what the tree layer
+// consumes.
 EXTERN __launch_bounds__(512, 1) __global__
     void ab_natural_monomials_to_bitrev_evals_last_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                                     const int log_n, const int num_cols_per_coset, const int log_cosets_in_tile) {

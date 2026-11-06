@@ -13,8 +13,6 @@ add_library(gpu_ntt_native STATIC
         context.cu
         dit_kernels_extern.cu
         dit_twiddle_fill.cu
-        evals_to_monomials_three_pass.cu
-        evals_to_monomials_two_pass.cu
         hypercube.cu
         hypercube_evals_to_monomials_three_pass.cu
         hypercube_evals_to_monomials_two_pass.cu
@@ -28,7 +26,6 @@ add_library(gpu_ntt_native STATIC
         natural_monomials_to_bitrev_evals_three_pass.cu
         natural_monomials_to_bitrev_evals_two_pass.cu
         natural_monomials_to_bitrev_evals_two_pass_compact.cu
-        ntt.cu
         ntt.cuh
         whir_leaf_transform.cuh
 )

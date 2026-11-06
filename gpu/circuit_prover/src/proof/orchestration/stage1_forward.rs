@@ -7,21 +7,19 @@ use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::EXTERNAL_CHALLENGES_E4_LEN;
-use crate::upstream::{ProverConfig, WhirSchedule};
+use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, ProverConfig, WhirSchedule};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::proof_layout::build_proof_layout_inputs;
-use gpu_gkr::proof_layout::{
-    GpuGKRTraceGeometry, ProofLayout, ProofLayoutBaseLayerGeometry, WhirBaseLayerKind,
-};
+use gpu_gkr::proof_layout::build_proof_layout_inputs_for_geometry;
+use gpu_gkr::proof_layout::{GpuGKRTraceGeometry, ProofLayout, WhirBaseLayerKind};
 use gpu_gkr::setup::{schedule_forward_setup_for_shape, GpuGKRForwardSetup, GpuGKRSetupTransfer};
 use gpu_gkr::stage1::GpuGKRStage1Output;
 use gpu_hash::blake2s::STATE_SIZE;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
-use gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer;
+use gpu_trace::trace::memory_cap::GpuGKRMemoryCapTransfer;
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 
 pub(in crate::proof) struct Stage1AndForwardPreparation {
@@ -38,7 +36,7 @@ pub(in crate::proof) struct BundleDeviceRefs<'b, 'a, A: GoodAllocator> {
     pub setup: Option<&'b GpuGKRSetupTransfer<'a>>,
     pub decoder: Option<&'b DecoderTableTransfer<'a>>,
     pub inits_and_teardowns: Option<&'b InitsAndTeardownsTransfer<'a, A>>,
-    pub memory: &'b GpuGKRMemoryTransfer<'a>,
+    pub memory: &'b GpuGKRMemoryCapTransfer<'a>,
     pub top_bits_device: Option<&'b DeviceAllocation<u32>>,
     pub external_challenges_device: &'b DeviceAllocation<E4>,
 }
@@ -71,6 +69,7 @@ fn allocate_proof_slab(
 pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 'a>(
     gkr_programs: &gpu_gkr::GkrPrograms,
     prover_config: &ProverConfig,
+    base_geometry: BaseCommitmentGeometry,
     final_trace_size_log_2: u32,
     whir_schedule: &WhirSchedule,
     bundle: BundleDeviceRefs<'_, 'a, A>,
@@ -81,6 +80,10 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     let circuit_type = gkr_programs.circuit_type();
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     let stream = context.get_exec_stream();
+    bundle.memory.host.validate_for_geometry(&base_geometry);
+    if let Some(setup) = bundle.setup {
+        setup.host.validate_for_geometry(&base_geometry);
+    }
     let setup_geometry = bundle
         .setup
         .map(|setup| GpuGKRTraceGeometry {
@@ -92,45 +95,26 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         .unwrap_or(GpuGKRTraceGeometry {
             log_domain_size: compiled_circuit.trace_len.trailing_zeros(),
             // Setup-less circuits use the same geometry as memory and witness.
-            log_lde_factor: prover_config.lde_factor.trailing_zeros(),
-            log_rows_per_leaf: prover_config.base_oracles_values_per_leaf.trailing_zeros(),
+            log_lde_factor: prover_config.lde_factor().trailing_zeros(),
+            log_rows_per_leaf: prover_config
+                .base_oracles_values_per_leaf()
+                .trailing_zeros(),
             log_tree_cap_size: prover_config.cap_size.trailing_zeros(),
         });
 
     let top_bits_len = bundle.top_bits_device.map(|d| d.len()).unwrap_or(0);
     let external_challenges_u32_len = EXTERNAL_CHALLENGES_E4_LEN * 4;
-    debug_assert_eq!(
-        bundle.memory.host.log_lde_factor, setup_geometry.log_lde_factor,
-        "memory transfer log_lde_factor must match setup geometry",
-    );
-    let setup_columns_count = bundle.setup.map_or(0, |setup| {
+    if let Some(setup) = bundle.setup {
         assert!(
             setup.trace_holder.columns_count > 0,
-            "zero-width setup must be represented by no setup transfer",
+            "zero-width setup must be represented by no setup transfer"
         );
-        setup.trace_holder.columns_count
-    });
-
-    let memory_layer_geometry = GpuGKRTraceGeometry {
-        log_domain_size: compiled_circuit.trace_len.trailing_zeros(),
-        log_lde_factor: bundle.memory.host.log_lde_factor,
-        log_rows_per_leaf: prover_config.base_oracles_values_per_leaf.trailing_zeros(),
-        log_tree_cap_size: bundle.memory.host.log_tree_cap_size,
-    };
-    let witness_layer_geometry = setup_geometry;
-    let proof_layout_inputs = build_proof_layout_inputs(
+    }
+    let proof_layout_inputs = build_proof_layout_inputs_for_geometry(
         gkr_programs,
         whir_schedule,
         final_trace_size_log_2,
-        ProofLayoutBaseLayerGeometry::from_geometry(
-            memory_layer_geometry,
-            compiled_circuit.memory_layout.total_width,
-        ),
-        ProofLayoutBaseLayerGeometry::from_geometry(
-            witness_layer_geometry,
-            compiled_circuit.witness_layout.total_width,
-        ),
-        ProofLayoutBaseLayerGeometry::from_geometry(setup_geometry, setup_columns_count),
+        base_geometry,
     );
     let proof_layout = ProofLayout::new(&proof_layout_inputs);
     assert!(
@@ -176,10 +160,11 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     let mut witness_cap_dst =
         unsafe { DeviceSlice::from_raw_parts_mut(witness_cap_ptr, witness_cap_len_u32) };
 
-    let mut stage1_output = GpuGKRStage1Output::generate(
+    let mut stage1_output = GpuGKRStage1Output::generate_for_geometry(
         circuit_type,
         compiled_circuit,
         setup_geometry,
+        base_geometry,
         bundle
             .setup
             .filter(|transfer| transfer.host.columns_count > 0)
@@ -200,13 +185,10 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
             .defer_materialization_until_queries(opening);
     }
     let synthetic_setup_trace_holder = if bundle.setup.is_none() {
-        Some(TraceHolder::new_without_cosets(
-            setup_geometry.log_domain_size,
-            setup_geometry.log_lde_factor,
-            setup_geometry.log_rows_per_leaf,
-            setup_geometry.log_tree_cap_size,
-            0,
-            TreesCacheMode::CachePartial,
+        Some(TraceHolder::new_base_without_cosets(
+            base_geometry,
+            BaseOracleRole::Setup,
+            TreesCacheMode::CacheNone,
             context,
         )?)
     } else {
@@ -242,8 +224,10 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
 
     let mut d_lookup_challenges: DeviceAllocation<E4> =
         context.alloc(2, AllocationPlacement::BestFit)?;
-    let lookup_pow_bits =
-        crate::config::lookup_challenges_pow_bits(prover_config, compiled_circuit);
+    let lookup_pow_bits = crate::upstream::pow_bits::lookup_challenges_pow_bits::<BF, E4>(
+        prover_config.security_level.security_bits(),
+        crate::upstream::pow_bits::lookup_identity_degree(compiled_circuit),
+    );
     // SAFETY: the layout owns this live, disjoint u64 slot in the slab.
     let (lookup_nonce_ptr, _lookup_nonce_len) =
         unsafe { proof_layout.lookup_pow_nonce_device_mut(slab_base) };

@@ -26,9 +26,7 @@ use crate::upstream::FieldExtension;
 use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixImpl};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::holder::{
-    TraceHolder, TreesCacheMode, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
-};
+use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode, TreesHolder};
 
 #[cfg(test)]
 use crate::upstream::{extension_field_from_base_coeffs, Field, MerkleTreeCapVarLength};
@@ -132,15 +130,7 @@ impl GpuWhirExtensionOracle {
         let packed_leaf_count = trace_len / values_per_leaf;
         let packed_leaf_count_log2 = packed_leaf_count.trailing_zeros();
         let total_leaf_count_log2 = packed_leaf_count_log2 + log_lde_factor;
-        assert!(
-            total_leaf_count_log2 > PARTIAL_TREE_REDUCTION_LAYERS + log_tree_cap_size,
-            "recursive WHIR commitments require a partial tree",
-        );
         let fused_coefficients = fused_commit::supported(trace_len_log2, log_values_per_leaf);
-        assert!(
-            fused_coefficients || matches!((trace_len_log2, log_values_per_leaf), (14..=23, 5)),
-            "unsupported recursive WHIR coefficient shape: log_n={trace_len_log2}, log_v={log_values_per_leaf}",
-        );
 
         // Reinterpret bitreverse-N coefficients as V bitreverse-(N/V)
         // residue polynomials per BF limb. The leaf reader's bit-reversed

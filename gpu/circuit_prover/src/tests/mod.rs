@@ -3,7 +3,7 @@ use crate::proof::{prove, GpuGKRProofJob};
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use fft::{materialize_powers_serial_starting_with_elem, Twiddles};
+use fft::Twiddles;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
@@ -16,10 +16,8 @@ use gpu_gkr::{
 };
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
-use gpu_trace::trace::memory::commit_memory;
 use gpu_trace::trace::tracing_data::{
-    DelegationTracingDataDevice, InitsAndTeardownsTransfer, TracingDataDevice, TracingDataHost,
-    TracingDataTransfer, UnrolledTracingDataDevice, UnrolledTracingDataHost,
+    InitsAndTeardownsTransfer, TracingDataHost, TracingDataTransfer, UnrolledTracingDataHost,
 };
 use gpu_trace::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
@@ -27,50 +25,24 @@ use gpu_trace::witness::circuit_type::{
 };
 use gpu_trace::witness::trace::ChunkedTraceHolder;
 use gpu_trace::witness::trace_unrolled::{
-    ExecutorFamilyDecoderData, InitsAndTeardownsTraceHost, UnrolledMemoryTraceDevice,
-    UnrolledNonMemoryTraceDevice, PAGE_SIZE_LOG2,
+    ExecutorFamilyDecoderData, InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2,
 };
 
 use itertools::Itertools;
 
-use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
-use riscv_transpiler::ir::DecodingOptions;
-use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
-use riscv_transpiler::ir::ReducedMachineDecoderConfig;
-use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
-use riscv_transpiler::vm::{
-    Counters, DelegationsAndFamiliesCounters, DelegationsAndUnifiedCounters, RamWithRomRegion,
-    ReplayBuffer, SimpleSnapshotter, SimpleTape, State, VM,
-};
 use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
-use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
-use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
-use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 use riscv_transpiler::witness::{
-    BigintDelegationDestinationHolder, BlakeDelegationDestinationHolder,
-    KeccakDelegationDestinationHolder, MemDestinationHolder, MemoryOpcodeTracingDataWithTimestamp,
-    NonMemDestinationHolder, NonMemoryOpcodeTracingDataWithTimestamp, UnifiedDestinationHolder,
+    MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
 };
 use std::alloc::Global;
 use std::path::PathBuf;
 use std::sync::Arc;
 use worker::Worker;
 
-const BASIC_UNROLLED_CPU_PARITY_BINARY_PATH: &str =
-    "riscv_transpiler/examples/keccak_f1600/app.bin";
-const BASIC_UNROLLED_CPU_PARITY_TEXT_PATH: &str = "riscv_transpiler/examples/keccak_f1600/app.text";
-const BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH: &str =
-    "cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json";
-const JUMP_BRANCH_SLT_LAYOUT_PATH: &str = "cs/compiled_circuits/jump_branch_slt_layout_gkr.json";
-const SHIFT_BINOP_LAYOUT_PATH: &str = "cs/compiled_circuits/shift_binop_layout_gkr.json";
-const UNSIGNED_MUL_DIV_LAYOUT_PATH: &str = "cs/compiled_circuits/unsigned_mul_div_layout_gkr.json";
-const MEM_WORD_ONLY_LAYOUT_PATH: &str = "cs/compiled_circuits/mem_word_only_layout_gkr.json";
-const MEM_SUBWORD_ONLY_LAYOUT_PATH: &str = "cs/compiled_circuits/mem_subword_only_layout_gkr.json";
-
 mod asserts;
 mod commit_memory;
 mod fixtures;
+mod geometry_proof;
 mod inits_and_teardowns;
 mod lsb_commit_pipeline;
 mod memory_policies;
@@ -81,6 +53,7 @@ use asserts::*;
 
 use crate::upstream::*;
 use fixtures::*;
+use prover::tests::gkr::orchestration::canonical_fixtures::CanonicalCircuit;
 
 fn test_artifact_path(relative_path: &str) -> PathBuf {
     let root = std::env::var_os("AB_TEST_ARTIFACT_ROOT")
@@ -102,47 +75,6 @@ fn upload_slice_to_device_for_test<T: Copy>(
         .unwrap();
     memory_copy_async(&mut device, values, context.get_exec_stream()).unwrap();
     device
-}
-
-fn read_test_words(relative_path: &str) -> Vec<u32> {
-    let bytes = std::fs::read(test_artifact_path(relative_path)).unwrap();
-    assert_eq!(bytes.len() % 4, 0);
-    bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect()
-}
-
-fn deserialize_json_for_test<T: serde::de::DeserializeOwned>(relative_path: &str) -> T {
-    let src = std::fs::File::open(test_artifact_path(relative_path)).unwrap();
-    serde_json::from_reader(src).unwrap()
-}
-
-fn ensure_memory_trace_consistency<F: PrimeField>(
-    memory_trace: &GKRMemoryOnlyWitnessTrace<
-        F,
-        impl std::alloc::Allocator + Clone,
-        impl std::alloc::Allocator + Clone,
-    >,
-    witness_trace: &GKRFullWitnessTrace<
-        F,
-        impl std::alloc::Allocator + Clone,
-        impl std::alloc::Allocator + Clone,
-    >,
-) {
-    assert_eq!(
-        memory_trace.column_major_trace.len(),
-        witness_trace.column_major_memory_trace.len()
-    );
-    for (col, from_mem) in memory_trace.column_major_trace.iter().enumerate() {
-        let from_wit = &witness_trace.column_major_memory_trace[col];
-        assert_eq!(from_mem.len(), from_wit.len());
-        for (row, (a, b)) in from_mem.iter().zip(from_wit.iter()).enumerate() {
-            assert_eq!(*a, *b, "diverged for column {}, row {}", col, row);
-        }
-    }
 }
 
 fn make_decoder_table_host_for_test(
@@ -210,7 +142,7 @@ pub(crate) struct BasicUnrolledFixture {
     pub(crate) gpu_setup_host: Option<Arc<GpuGKRSetupHost>>,
     pub(crate) decoder_table_host:
         Arc<gpu_core::primitives::static_host::StaticPinnedBox<ExecutorFamilyDecoderData>>,
-    pub(crate) tracing_data_host: TracingDataHost<Global>,
+    pub(crate) tracing_data_host: Option<TracingDataHost<Global>>,
     pub(crate) memory_tree_caps: Vec<MerkleTreeCapVarLength>,
     /// Sparse RAM init/teardown trace host. `None` for per-family fixtures
     /// (their memory is fully covered by the per-row shuffle); `Some` for the
@@ -233,7 +165,8 @@ type BasicUnrolledTransfers<'a> = crate::proof::inputs::GpuGKRProofTransfer<'a, 
 
 pub(crate) struct BasicUnrolledProofFixture {
     pub(crate) base: BasicUnrolledFixture,
-    pub(crate) expected_cpu_proof: GKRProof<BF, E4, DefaultTreeConstructor>,
+    pub(crate) committed_proof: GKRProof<BF, E4, DefaultTreeConstructor>,
+    pub(crate) committed_proof_bytes: Vec<u8>,
 }
 
 impl BasicUnrolledFixture {
@@ -258,32 +191,24 @@ impl BasicUnrolledFixture {
         } else {
             None
         };
-        let tracing_data_transfer = Some(TracingDataTransfer::new(
-            self.tracing_data_host.clone(),
-            self.compiled_circuit.trace_len,
-            context,
-        )?);
-        // Memory-cap geometry comes from the setup host when present; the
-        // standalone i/t circuit has no setup host, so fall back to the
-        // equivalent values carried by the WHIR schedule.
-        let (mem_log_lde_factor, mem_log_tree_cap_size) = match self.gpu_setup_host.as_ref() {
-            Some(host) => (host.log_lde_factor, host.log_tree_cap_size),
-            None => (
-                self.prover_config
-                    .whir_schedule
-                    .base_lde_factor
-                    .trailing_zeros(),
-                self.prover_config.whir_schedule.cap_size.trailing_zeros(),
-            ),
-        };
+        let tracing_data_transfer = self
+            .tracing_data_host
+            .as_ref()
+            .map(|host| {
+                TracingDataTransfer::new(host.clone(), self.compiled_circuit.trace_len, context)
+            })
+            .transpose()?;
+        let geometry = BaseCommitmentGeometry::from_config(
+            &self.prover_config,
+            BaseColumns::of(&self.compiled_circuit),
+        );
         let memory_transfer_host = Arc::new(
-            gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
+            gpu_trace::trace::memory_cap::GpuGKRMemoryCapHost::from_per_coset_caps_for_geometry(
                 &self.memory_tree_caps,
-                mem_log_lde_factor,
-                mem_log_tree_cap_size,
+                geometry,
             ),
         );
-        let memory_transfer = gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer::new(
+        let memory_transfer = gpu_trace::trace::memory_cap::GpuGKRMemoryCapTransfer::new(
             memory_transfer_host,
             context,
         )?;
@@ -329,23 +254,13 @@ impl BasicUnrolledFixture {
         &self,
         transfers: BasicUnrolledTransfers<'static>,
     ) -> CudaResult<GpuGKRProofJob<'static>> {
-        let dr_tail_plan = self.dr_tail_plan()?;
         prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,
-            &dr_tail_plan,
             self.memory_policy(),
             &self.context,
-        )
-    }
-
-    fn dr_tail_plan(&self) -> CudaResult<gpu_gkr::DrTailProofPlan> {
-        gpu_gkr::preflight_dr_tail_resources(
-            &self.gkr_programs,
-            self.final_trace_size_log_2,
-            era_cudart::device::get_device()?,
         )
     }
 
@@ -370,13 +285,11 @@ impl BasicUnrolledFixture {
         transfers.schedule(&self.context)?;
         transfer_range.end(h2d_stream)?;
 
-        let dr_tail_plan = self.dr_tail_plan()?;
         let mut proof_job = crate::proof::prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,
-            &dr_tail_plan,
             policy,
             &self.context,
         )?;
@@ -389,27 +302,56 @@ impl BasicUnrolledFixture {
 }
 
 impl BasicUnrolledProofFixture {
+    fn assert_proof(&self, proof: &GKRProof<BF, E4, DefaultTreeConstructor>) {
+        assert_gkr_proof_structure_for_test(proof, &self.base.prover_config.whir_schedule);
+        if self.base.circuit_type == CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) {
+            assert_eq!(self.base.compiled_circuit.witness_layout.total_width, 0);
+            assert_eq!(self.base.compiled_circuit.generic_lookup_tables_width, 0);
+            assert!(self.base.gpu_setup_host.is_none());
+            assert!(self.base.tracing_data_host.is_none());
+        }
+        assert_gkr_proof_eq_for_test(proof, &self.committed_proof);
+        assert_eq!(
+            serde_json::to_vec_pretty(proof).unwrap(),
+            self.committed_proof_bytes,
+            "GPU proof differs from committed file bytes",
+        );
+        if self.base.circuit_type == CircuitType::Unrolled(UnrolledCircuitType::Unified) {
+            let mut product = produce_initial_permutation_product_contribution::<BF, E4>(
+                &self.base.unified_register_final_state,
+                INITIAL_PC,
+                split_timestamp(INITIAL_TIMESTAMP),
+                self.base.unified_final_pc,
+                split_timestamp(self.base.unified_final_timestamp),
+                &self.base.external_challenges,
+            );
+            product.mul_assign(&proof.grand_product_accumulator_computed);
+            for factor in &self.base.delegation_grand_product_factors {
+                product.mul_assign(factor);
+            }
+            assert_eq!(product, E4::ONE, "canonical unified permutation closure");
+        }
+    }
+
     fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {
         self.base.schedule_prove()
     }
 }
 
-// Every field is a shared reference or a small Copy value, so this is
-// trivially `Copy`.
-#[derive(Clone, Copy)]
-struct BasicUnrolledFixtureBuildConfig<'a> {
-    binary_path: &'a str,
-    text_path: &'a str,
-    layout_path: &'a str,
-    circuit_type: CircuitType,
-    non_determinism_reads: &'a [u32],
-    compute_cpu_reference: bool,
-    device_allocator_block_log_size: u32,
-    security_level: crate::upstream::SecurityLevel,
+fn record_test_resources(base: &BasicUnrolledFixture, preparation_peak: usize, checked: usize) {
+    if let Some(path) = std::env::var_os("AB_GPU_TEST_RESOURCE_PATH") {
+        let proof_peak = base.context.get_used_mem_peak();
+        let data = serde_json::json!({
+            "circuit_type": format!("{:?}", base.circuit_type),
+            "proofs_checked": checked,
+            "device_baseline_bytes": base.context.get_used_mem_current(),
+            "preparation_device_peak_bytes": preparation_peak,
+            "proof_device_peak_bytes": proof_peak,
+            "device_peak_bytes": preparation_peak.max(proof_peak),
+        });
+        std::fs::write(path, serde_json::to_vec_pretty(&data).unwrap()).unwrap();
+    }
 }
 
 mod fixtures_helpers;
-pub(super) use fixtures_helpers::*;
-
-mod unified_fixtures_helpers;
-pub(super) use unified_fixtures_helpers::*;
+use fixtures_helpers::*;

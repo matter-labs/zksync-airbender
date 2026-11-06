@@ -8,16 +8,14 @@ namespace airbender::ntt {
 
 // Natural-order monomials -> bitreversed-order evaluations, three-pass regime
 // (log_n in [21, 24]): out_k[p] = f(g_k * omega^rev_n(p)). Descending-stride
-// DIT network (pass structure cloned from evals_to_monomials_three_pass.cu)
-// over FORWARD twiddles, with no 1/N normalization. Pass 1 also carries the
-// multi-coset shape: one shared input column feeds every coset's output slab,
-// with the coset pre-scale g_k^row fused into the load.
+// DIT network over FORWARD twiddles, with no 1/N normalization. Pass 1 also
+// carries the multi-coset shape: one shared input column feeds every coset's
+// output slab, with the coset pre-scale g_k^row fused into the load.
 
 template <bool HYPERCUBE_FINAL4, bool WRITEBACK = false, typename Input>
-DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_initial_8_stages(Input gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                                           const bool transposed_monomials, const int log_n, const int coset_index_base,
-                                                                           const int coset_factor_shift, const int num_cols_per_coset,
-                                                                           const int log_cosets_in_tile) {
+DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_initial_8_stages(Input gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,
+                                                                           const int coset_index_base, const int coset_factor_shift,
+                                                                           const int num_cols_per_coset, const int log_cosets_in_tile) {
   using namespace pass_config::three_pass_phase_a;
   constexpr int ROLES = 2;
   constexpr int ROLE_TILE_STRIDE = THREAD_TILES_PER_BLOCK / ROLES;
@@ -39,7 +37,7 @@ DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_initial_8_stages(Input
   const unsigned coset_factor_power = static_cast<unsigned>((coset_index_base + static_cast<int>(fi.coset)) << coset_factor_shift);
 
   // Full global physical row = block offset + tile/lane/iteration offsets, so
-  // the coset exponent and the transposed-layout mapping see absolute rows.
+  // the coset exponent sees absolute rows.
   const int gmem_block_offset = static_cast<int>(fi.intra_x) << LOG_DATA_TILE_SIZE;
 
   __shared__ bf smem_block[8192];
@@ -88,34 +86,24 @@ DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_initial_8_stages(Input
 
     // A separate coset adjustment loop performs better than interleaving
     // adjustments with loads. The natural labeling IS the exponent, so no
-    // bitrev here; `transposed_row_to_effective_row` resolves the physical
-    // row of the transposed-monomial layout to its logical row.
-    // Branch (grid-uniform) instead of a per-element ternary: the ternary
-    // makes the compiler compute the transposed-layout row math and discard
-    // it on the natural path.
+    // bitrev here.
     if (coset_factor_power != 0) {
-      if (transposed_monomials) {
+      if constexpr (HYPERCUBE_FINAL4) {
+        // The log_n=20 fused boundary reads natural rows in an arithmetic
+        // progression. Seed its geometric power progression once per role
+        // instead of reconstructing all 16 powers independently.
+        const bf power_delta = get_forward_twiddle_power(static_cast<unsigned>(interleaved_gmem_stride) * coset_factor_power);
+        bf power = get_forward_twiddle_power(static_cast<unsigned>(thread_il_gmem_start) * coset_factor_power);
+#pragma unroll
+        for (int i = 0; i < VALS_PER_THREAD - 1; i++) {
+          vals[i] = bf::mul(vals[i], power);
+          power = bf::mul(power, power_delta);
+        }
+        vals[VALS_PER_THREAD - 1] = bf::mul(vals[VALS_PER_THREAD - 1], power);
+      } else {
 #pragma unroll
         for (int i{0}, row{thread_il_gmem_start}; i < VALS_PER_THREAD; i++, row += interleaved_gmem_stride)
-          vals[i] = bf::mul(vals[i], get_forward_twiddle_power(static_cast<unsigned>(transposed_row_to_effective_row(row)) * coset_factor_power));
-      } else {
-        if constexpr (HYPERCUBE_FINAL4) {
-          // The log_n=20 fused boundary reads natural rows in an arithmetic
-          // progression. Seed its geometric power progression once per role
-          // instead of reconstructing all 16 powers independently.
-          const bf power_delta = get_forward_twiddle_power(static_cast<unsigned>(interleaved_gmem_stride) * coset_factor_power);
-          bf power = get_forward_twiddle_power(static_cast<unsigned>(thread_il_gmem_start) * coset_factor_power);
-#pragma unroll
-          for (int i = 0; i < VALS_PER_THREAD - 1; i++) {
-            vals[i] = bf::mul(vals[i], power);
-            power = bf::mul(power, power_delta);
-          }
-          vals[VALS_PER_THREAD - 1] = bf::mul(vals[VALS_PER_THREAD - 1], power);
-        } else {
-#pragma unroll
-          for (int i{0}, row{thread_il_gmem_start}; i < VALS_PER_THREAD; i++, row += interleaved_gmem_stride)
-            vals[i] = bf::mul(vals[i], get_forward_twiddle_power(static_cast<unsigned>(row) * coset_factor_power));
-        }
+          vals[i] = bf::mul(vals[i], get_forward_twiddle_power(static_cast<unsigned>(row) * coset_factor_power));
       }
     }
 
@@ -157,39 +145,30 @@ DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_initial_8_stages(Input
     tile_exchg_region_offset <<= 1;
     reg_exchg_fwd_dit<1, 2, 8>(vals, tile_exchg_region_offset);
 
-    // Un-transpose on the way out: pass 1's strides are all multiples of the
-    // 1024-row transposition chunk (so the layout does not disturb its
-    // butterflies or twiddle groups), but passes 2 and 3 exchange rows WITHIN
-    // a chunk and require natural row order.
-    if (transposed_monomials) {
 #pragma unroll
-      for (int i{0}, row{thread_ct_gmem_start}; i < VALS_PER_THREAD; i++, row += tile_gmem_stride)
-        gmem_out.set_at_row(transposed_row_to_effective_row(row), vals[i]);
-    } else {
-#pragma unroll
-      for (int i{0}, row{thread_ct_gmem_start}; i < VALS_PER_THREAD; i++, row += tile_gmem_stride)
-        gmem_out.set_at_row(row, vals[i]);
-    }
+    for (int i{0}, row{thread_ct_gmem_start}; i < VALS_PER_THREAD; i++, row += tile_gmem_stride)
+      gmem_out.set_at_row(row, vals[i]);
   }
 }
 
 // Pass 1: stages 0..7 (exchange region = the whole NTT).
 EXTERN __launch_bounds__(256, 3) __global__
     void ab_natural_monomials_to_bitrev_evals_initial_8_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                                      const bool transposed_monomials, const int log_n, const int coset_index_base,
-                                                                      const int coset_factor_shift, const int num_cols_per_coset,
-                                                                      const int log_cosets_in_tile) {
-  natural_monomials_to_bitrev_evals_initial_8_stages<false>(gmem_in, gmem_out, transposed_monomials, log_n, coset_index_base, coset_factor_shift,
-                                                            num_cols_per_coset, log_cosets_in_tile);
+                                                                      const int log_n, const int coset_index_base, const int coset_factor_shift,
+                                                                      const int num_cols_per_coset, const int log_cosets_in_tile) {
+  natural_monomials_to_bitrev_evals_initial_8_stages<false>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset,
+                                                            log_cosets_in_tile);
 }
 
 // Commitment-only log_n=20 boundary: hypercube final4 plus the unchanged
 // natural-to-bitrev initial8. The pre-tail scratch is deliberately read-only.
-EXTERN __launch_bounds__(256, 1) __global__ void ab_natural_monomials_to_bitrev_evals_initial_8_stages_from_hypercube_final_4_kernel(
-    bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const bool transposed_monomials, const int log_n,
-    const int coset_index_base, const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
-  natural_monomials_to_bitrev_evals_initial_8_stages<true>(gmem_in, gmem_out, transposed_monomials, log_n, coset_index_base, coset_factor_shift,
-                                                           num_cols_per_coset, log_cosets_in_tile);
+EXTERN __launch_bounds__(256, 1) __global__
+    void ab_natural_monomials_to_bitrev_evals_initial_8_stages_from_hypercube_final_4_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in,
+                                                                                             bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,
+                                                                                             const int coset_index_base, const int coset_factor_shift,
+                                                                                             const int num_cols_per_coset, const int log_cosets_in_tile) {
+  natural_monomials_to_bitrev_evals_initial_8_stages<true>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset,
+                                                           log_cosets_in_tile);
 }
 
 // One coset only: multiple cosets would read and rewrite the same input
@@ -198,7 +177,7 @@ EXTERN __launch_bounds__(256, 1) __global__
     void ab_natural_lde_fused_boundary_writeback_log_n_20_kernel(bf_matrix_getter_setter<ld_modifier::cg, st_modifier::cg> gmem_scratch,
                                                                  bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n, const int coset_index_base,
                                                                  const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
-  natural_monomials_to_bitrev_evals_initial_8_stages<true, true>(gmem_scratch, gmem_out, false, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset,
+  natural_monomials_to_bitrev_evals_initial_8_stages<true, true>(gmem_scratch, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset,
                                                                  log_cosets_in_tile);
 }
 
@@ -526,8 +505,8 @@ EXTERN __launch_bounds__(256, 3) __global__
 }
 
 // Pass 3: the final STAGES (= log_n - 16) finest stages, in place per coset.
-// Outputs are always written in plain (non-transposed) row order: the
-// bitreversed codeword is what the tree layer consumes.
+// Outputs are always written in plain row order: the bitreversed codeword is
+// what the tree layer consumes.
 template <int STRIDE, int REGION_SIZE, int NUM_REGIONS>
 DEVICE_FORCEINLINE void reg_exchg_aligned_cmem_smem_twiddles_fwd_dit(bf *vals, const int exchg_region_offset, const bf *smem_twiddles) {
   static_assert(NUM_REGIONS > 0 && NUM_REGIONS <= 16);

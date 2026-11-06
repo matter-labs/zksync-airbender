@@ -1,5 +1,5 @@
 use crate::statement_common::{
-    read_setup_cap, FINAL_PC_BUFFER_PC_IDX, FINAL_PC_BUFFER_TS_HIGH_IDX, FINAL_PC_BUFFER_TS_LOW_IDX,
+    FINAL_PC_BUFFER_PC_IDX, FINAL_PC_BUFFER_TS_HIGH_IDX, FINAL_PC_BUFFER_TS_LOW_IDX,
 };
 use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
 use verifier_common::cs::definitions::split_timestamp;
@@ -364,33 +364,9 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     Ok(output)
 }
 
-pub fn verify_unrolled_base_layer_sec_100<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
-    const REDUCED_ROUNDS: bool,
->(
-    nd_source: &mut I,
-) -> Result<[u32; 16], E::Error> {
-    unsafe {
-        let circuits_setups: [MerkleTreeCap<_>; NUM_BASE_LAYER_CIRCUITS] =
-            core::array::from_fn(|_| {
-                read_setup_cap::<I, { prover::definitions::DEFAULT_CAP_SIZE }>(nd_source)
-            });
-        let circuits_setups_refs = circuits_setups.each_ref();
-        verify_full_statement_for_unrolled_circuits::<I, E, true, REDUCED_ROUNDS>(
-            &circuits_setups_refs,
-            &crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_100::<
-                I,
-                E,
-            >(),
-            crate::unrolled_circuit_params::inits_and_teardowns_verifier_sec_100::<I, E>(),
-            &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
-            &crate::delegation_params::all_delegation_circuit_verifiers_sec_100::<I, E>(),
-            nd_source,
-        )
-    }
-}
-
+/// [`crate::pessimistic_conjecture::verify_unrolled_base_layer`] /
+/// [`crate::ethproofs_soundcalc::verify_unrolled_base_layer`], dispatched on
+/// the soundness mode.
 pub fn verify_unrolled_base_layer<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
@@ -398,38 +374,20 @@ pub fn verify_unrolled_base_layer<
 >(
     nd_source: &mut I,
     security_level: prover::definitions::SecurityLevel,
+    mode: prover::definitions::SoundnessMode,
 ) -> Result<[u32; 16], E::Error> {
-    match security_level {
-        prover::definitions::SecurityLevel::Sec100 => {
-            verify_unrolled_base_layer_sec_100::<I, E, REDUCED_ROUNDS>(nd_source)
+    use prover::definitions::{SecurityLevel, SoundnessMode};
+    match (security_level, mode) {
+        (SecurityLevel::Sec100, SoundnessMode::PessimisticConjecture) => {
+            crate::pessimistic_conjecture::verify_unrolled_base_layer::<I, E, REDUCED_ROUNDS>(
+                nd_source,
+            )
         }
-    }
-}
-
-pub fn verify_unrolled_recursion_layer_sec_100<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
-    const REDUCED_ROUNDS: bool,
->(
-    nd_source: &mut I,
-) -> Result<[u32; 16], E::Error> {
-    unsafe {
-        let circuits_setups: [MerkleTreeCap<_>; NUM_RECURSION_LAYER_CIRCUITS] =
-            core::array::from_fn(|_| {
-                read_setup_cap::<I, { prover::definitions::DEFAULT_CAP_SIZE }>(nd_source)
-            });
-        let circuits_setups_refs = circuits_setups.each_ref();
-        verify_full_statement_for_unrolled_circuits::<I, E, false, REDUCED_ROUNDS>(
-            &circuits_setups_refs,
-            &crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_recursion_layer_sec_100::<
-                I,
-                E,
-            >(),
-            crate::unrolled_circuit_params::inits_and_teardowns_verifier_sec_100::<I, E>(),
-            &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
-            &crate::delegation_params::all_delegation_circuit_verifiers_sec_100::<I, E>(),
-            nd_source,
-        )
+        (SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc) => {
+            crate::ethproofs_soundcalc::verify_unrolled_base_layer::<I, E, REDUCED_ROUNDS>(
+                nd_source,
+            )
+        }
     }
 }
 
@@ -440,33 +398,19 @@ pub fn verify_unrolled_recursion_layer<
 >(
     nd_source: &mut I,
     security_level: prover::definitions::SecurityLevel,
+    mode: prover::definitions::SoundnessMode,
 ) -> Result<[u32; 16], E::Error> {
-    match security_level {
-        prover::definitions::SecurityLevel::Sec100 => {
-            verify_unrolled_recursion_layer_sec_100::<I, E, REDUCED_ROUNDS>(nd_source)
+    use prover::definitions::{SecurityLevel, SoundnessMode};
+    match (security_level, mode) {
+        (SecurityLevel::Sec100, SoundnessMode::PessimisticConjecture) => {
+            crate::pessimistic_conjecture::verify_unrolled_recursion_layer::<I, E, REDUCED_ROUNDS>(
+                nd_source,
+            )
         }
-    }
-}
-
-pub fn verify_base_or_recursion_unrolled_circuits_sec_100<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
-    const REDUCED_ROUNDS: bool,
->(
-    nd_source: &mut I,
-) -> Result<[u32; 16], E::Error> {
-    // we just branch
-    let op_type = nd_source.read_word();
-    use crate::definitions::*;
-    match op_type {
-        OP_VERIFY_BASE_LAYER_IN_UNROLLED_CIRCUITS => {
-            verify_unrolled_base_layer_sec_100::<I, E, REDUCED_ROUNDS>(nd_source)
-        }
-        OP_VERIFY_RECURSIVE_LAYER_IN_UNROLLED_CIRCUITS => {
-            verify_unrolled_recursion_layer_sec_100::<I, E, REDUCED_ROUNDS>(nd_source)
-        }
-        _ => {
-            panic!("Unknown op");
+        (SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc) => {
+            crate::ethproofs_soundcalc::verify_unrolled_recursion_layer::<I, E, REDUCED_ROUNDS>(
+                nd_source,
+            )
         }
     }
 }
@@ -478,10 +422,23 @@ pub fn verify_base_or_recursion_unrolled_circuits<
 >(
     nd_source: &mut I,
     security_level: prover::definitions::SecurityLevel,
+    mode: prover::definitions::SoundnessMode,
 ) -> Result<[u32; 16], E::Error> {
-    match security_level {
-        prover::definitions::SecurityLevel::Sec100 => {
-            verify_base_or_recursion_unrolled_circuits_sec_100::<I, E, REDUCED_ROUNDS>(nd_source)
+    use prover::definitions::{SecurityLevel, SoundnessMode};
+    match (security_level, mode) {
+        (SecurityLevel::Sec100, SoundnessMode::PessimisticConjecture) => {
+            crate::pessimistic_conjecture::verify_base_or_recursion_unrolled_circuits::<
+                I,
+                E,
+                REDUCED_ROUNDS,
+            >(nd_source)
+        }
+        (SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc) => {
+            crate::ethproofs_soundcalc::verify_base_or_recursion_unrolled_circuits::<
+                I,
+                E,
+                REDUCED_ROUNDS,
+            >(nd_source)
         }
     }
 }

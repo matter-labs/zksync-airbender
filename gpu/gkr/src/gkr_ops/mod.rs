@@ -313,3 +313,46 @@ pub fn assemble_query_indexes(
     );
     AssembleQueryIndexesFunction::default().launch(&config, &args)
 }
+
+cuda_kernel!(
+    MergePackedClaims,
+    ab_gkr_merge_claims_e4_kernel(
+        claims: *const E4,
+        count: u32,
+        coordinates: *const E4,
+        pack_log2: u32,
+        merged: *mut E4,
+    )
+);
+
+/// Folds each group of `2^pack_log2` consecutive claims of a physically packed polynomial into one,
+/// coordinate zero first, zero-padding the last group. `pack_log2 = 0` aliases the claims at the
+/// caller and never reaches this launcher; a group fits one warp for `pack_log2 <= 5`.
+pub fn merge_packed_claims(
+    claims: &DeviceSlice<E4>,
+    coordinates: &DeviceSlice<E4>,
+    pack_log2: u32,
+    merged: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(
+        (1..=5).contains(&pack_log2),
+        "E4 claim merging requires pack_log2 in 1..=5; larger groups need a cross-warp reduction"
+    );
+    assert_eq!(coordinates.len(), pack_log2 as usize);
+    assert_eq!(merged.len(), claims.len().div_ceil(1usize << pack_log2));
+    if claims.is_empty() {
+        return Ok(());
+    }
+    let count = u32::try_from(claims.len()).expect("E4 packed claim count exceeds u32");
+    let groups = u32::try_from(merged.len()).expect("E4 packed group count exceeds u32");
+    let config = CudaLaunchConfig::basic(groups.div_ceil(4), 128u32, stream);
+    let args = MergePackedClaimsArguments::new(
+        claims.as_ptr(),
+        count,
+        coordinates.as_ptr(),
+        pack_log2,
+        merged.as_mut_ptr(),
+    );
+    MergePackedClaimsFunction::default().launch(&config, &args)
+}
