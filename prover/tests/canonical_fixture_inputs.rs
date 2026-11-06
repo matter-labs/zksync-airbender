@@ -1,10 +1,9 @@
 #![cfg(feature = "test")]
 
-use common_constants::{BLAKE2S_DELEGATION_CSR_REGISTER, ROM_SECOND_WORD_BITS};
+use common_constants::ROM_SECOND_WORD_BITS;
 use cs::utils::split_timestamp;
 use field::Field;
 use prover::definitions::{SecurityLevel, SoundnessMode};
-use prover::fsv_fixture::UnifiedBaseLayerComponents;
 use prover::tests::gkr::orchestration::canonical_fixtures::{
     capture_canonical_inputs, compression_pair_external_challenges, CanonicalCircuit,
     CanonicalInputs, CanonicalTrace, CANONICAL_CIRCUITS,
@@ -142,62 +141,44 @@ replay_test!(
 replay_test!(canonical_fixture_inputs_keccak_theta_rho, KeccakThetaRho);
 replay_test!(canonical_fixture_inputs_keccak_chi5, KeccakChi5);
 
-/// The existing FSV fixture supplies the independent expected compression
-/// bundle. Replay its memory transcript from freshly simulated boundary state.
-/// No witness evaluation, oracle commitment or circuit proving is performed.
+/// Replay the production memory transcript from the canonical pair and fresh
+/// boundary state, including closure and a wrong-boundary rejection in both modes.
 #[test]
 fn canonical_fixture_inputs_reproduce_compression_memory_transcript() {
+    type Proof = prover::gkr::prover::GKRProof<
+        field::baby_bear::base::BabyBearField,
+        field::baby_bear::ext4::BabyBearExt4,
+        prover::merkle_trees::DefaultTreeConstructor,
+    >;
     let root = root();
-    let file = std::fs::File::open(
-        root.join("full_statement_verifier/tests/fixtures/unified_base_layer_fixture_sec_100.json"),
-    )
-    .unwrap();
-    let bundle: UnifiedBaseLayerComponents =
-        serde_json::from_reader(std::io::BufReader::new(file)).unwrap();
-    assert_eq!(bundle.delegations.len(), 1);
-    assert_eq!(
-        bundle.delegations[0].delegation_csr,
-        BLAKE2S_DELEGATION_CSR_REGISTER
-    );
     let worker = Worker::new_with_num_threads(8);
     let inputs = capture_canonical_inputs(&root, CanonicalCircuit::UnifiedReducedMachine, &worker);
-    assert_eq!(
-        inputs.boundary.registers.as_slice(),
-        bundle.register_final_values
-    );
-    assert_eq!(inputs.boundary.final_pc, bundle.final_pc);
-    assert_eq!(inputs.boundary.final_timestamp, bundle.final_timestamp);
     let top_bits = &inputs.inits_and_teardowns.as_ref().unwrap().top_bits;
-    assert_eq!(top_bits, &bundle.unified_proof.inits_and_teardowns_top_bits);
-    let challenges = compression_pair_external_challenges(
-        &inputs.boundary,
-        top_bits,
-        &bundle
-            .unified_proof
-            .whir_proof
-            .memory_commitment
-            .commitment
-            .cap,
-        &bundle.delegations[0]
-            .proof
-            .whir_proof
-            .memory_commitment
-            .commitment
-            .cap,
-        &worker,
-    );
-    assert_eq!(challenges.pow_bits, bundle.pow_bits);
-    assert_eq!(challenges.pow_challenge, bundle.pow_challenge);
-    assert_eq!(
-        serde_json::to_value(&challenges.external_challenges).unwrap(),
-        serde_json::to_value(&bundle.unified_proof.external_challenges).unwrap(),
-    );
-    assert_eq!(
-        serde_json::to_value(&challenges.external_challenges).unwrap(),
-        serde_json::to_value(&bundle.delegations[0].proof.external_challenges).unwrap(),
-    );
-    let boundary_contribution =
-        prover::definitions::produce_initial_permutation_product_contribution::<
+    for &mode in SoundnessMode::ALL {
+        let load = |circuit: CanonicalCircuit| -> Proof {
+            serde_json::from_reader(std::io::BufReader::new(
+                std::fs::File::open(circuit.proof_path(&root, mode)).unwrap(),
+            ))
+            .unwrap()
+        };
+        let unified = load(CanonicalCircuit::UnifiedReducedMachine);
+        let compression = load(CanonicalCircuit::Blake2WithExtendedControl);
+        assert_eq!(top_bits, &unified.inits_and_teardowns_top_bits);
+        let challenges = compression_pair_external_challenges(
+            &inputs.boundary,
+            top_bits,
+            &unified.whir_proof.memory_commitment.commitment.cap,
+            &compression.whir_proof.memory_commitment.commitment.cap,
+            &worker,
+        );
+        assert_eq!(challenges.pow_bits, 19);
+        for proof in [&unified, &compression] {
+            assert_eq!(
+                serde_json::to_value(&challenges.external_challenges).unwrap(),
+                serde_json::to_value(&proof.external_challenges).unwrap(),
+            );
+        }
+        let mut product = prover::definitions::produce_initial_permutation_product_contribution::<
             field::baby_bear::base::BabyBearField,
             field::baby_bear::ext4::BabyBearExt4,
         >(
@@ -213,37 +194,22 @@ fn canonical_fixture_inputs_reproduce_compression_memory_transcript() {
             split_timestamp(inputs.boundary.final_timestamp),
             &challenges.external_challenges,
         );
-    let mut product = boundary_contribution;
-    product.mul_assign(&bundle.unified_proof.grand_product_accumulator_computed);
-    product.mul_assign(
-        &bundle.delegations[0]
-            .proof
-            .grand_product_accumulator_computed,
-    );
-    assert_eq!(product, field::baby_bear::ext4::BabyBearExt4::ONE);
+        product.mul_assign(&unified.grand_product_accumulator_computed);
+        product.mul_assign(&compression.grand_product_accumulator_computed);
+        assert_eq!(product, field::baby_bear::ext4::BabyBearExt4::ONE);
 
-    // A wrong boundary must not reproduce the recorded external challenges.
-    let mut wrong_boundary = inputs.boundary.clone();
-    wrong_boundary.final_pc ^= 4;
-    let wrong = compression_pair_external_challenges(
-        &wrong_boundary,
-        top_bits,
-        &bundle
-            .unified_proof
-            .whir_proof
-            .memory_commitment
-            .commitment
-            .cap,
-        &bundle.delegations[0]
-            .proof
-            .whir_proof
-            .memory_commitment
-            .commitment
-            .cap,
-        &worker,
-    );
-    assert_ne!(
-        serde_json::to_value(&wrong.external_challenges).unwrap(),
-        serde_json::to_value(&challenges.external_challenges).unwrap(),
-    );
+        let mut wrong_boundary = inputs.boundary.clone();
+        wrong_boundary.final_pc ^= 4;
+        let wrong = compression_pair_external_challenges(
+            &wrong_boundary,
+            top_bits,
+            &unified.whir_proof.memory_commitment.commitment.cap,
+            &compression.whir_proof.memory_commitment.commitment.cap,
+            &worker,
+        );
+        assert_ne!(
+            serde_json::to_value(&wrong.external_challenges).unwrap(),
+            serde_json::to_value(&challenges.external_challenges).unwrap(),
+        );
+    }
 }

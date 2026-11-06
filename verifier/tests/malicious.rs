@@ -160,7 +160,7 @@ fn rejects_malicious_memory_value() {
 }
 
 // ---- subword address malleability ----
-// Proof produced by prover `gkr_run_basic_unrolled_test_sec_100` with SUBWORD_ALIAS_FORGE=1,
+// Proof produced by prover `generate_subword_regression_proof`,
 // which trades the byte offset (b0,b1) against the word-cell address on an active byte-load
 // row while preserving the address equation (all pre-fix constraints hold). The word-
 // alignment constraint (cleanaddr_lo == 4*(cleanaddr_lo>>2), cleanaddr_lo>>2 range-checked)
