@@ -306,3 +306,15 @@ discharges both source ranges and all state/PC/decoder replay inputs.
 nonzero-PC AUIPC, sign/upper immediates and RV32 wrap. Generic modeled setup stays
 explicit; mixed shifts still require exact fixed-pool acceptance. Other profiles,
 positive nonempty arithmetic fixtures and physical/protocol boundaries remain open.
+
+## Mixed selected shift/arithmetic rows
+
+[The common original projection](SupportedDecoder.lean) changes only the registry
+tag of the checked per-profile data; original opcodes/x0/sign/SRAI/raw funct3 are
+retained. [Profile/query proofs](../../../Proofs/ReducedMachine/NativeSupportedDecoder.lean)
+and [actual local rules](../../../Proofs/ReducedMachine/NativeSupportedLocal.lean)
+derive common preservation/register-space/PC/execution. [Initialized fetched execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+now composes mixed supported rows using exact fixedData acceptance and derived
+common ranges/history/decoder replay. [Public image checks](../../../../Tests/NativeReducedSupportedDecoder.lean)
+retain original SLL atPC0 and ADD atPC96 together. Other ordinary operations,
+nonempty arithmetic/mixed native fixtures and broader setup/protocol boundaries remain open.

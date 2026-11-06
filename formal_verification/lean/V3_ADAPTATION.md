@@ -413,3 +413,22 @@ prove mixed-profile execution, other combined operations, worker/protocol spans,
 padding/terminal/init, native public setup/compiler/physical fidelity or parity.
 No production/native/literal/dependency input changes or native findings are added.
 The continuation remains active every thirty minutes.
+
+## Mixed selected shift/arithmetic execution checkpoint
+
+[Common original decoding](Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean)
+now preserves checked native fields while admitting both selected shifts and
+ADD/ADDI/SUB/LUI/AUIPC. [Mixed initialized execution](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+derives actual native-clock order/original Sail states, all source ranges,
+original decoder replay and finite successful fetched execution with actual
+terminal PC/cell reads. Profile/query transport and common write/x0/range/history
+proofs justify reuse of the checked local native executions; separate-profile
+public theorems alone are not used to assume mixed history. Exact fixedData pool
+acceptance stays explicit; no table-equivalence or local read/result/state/PC
+answer is supplied. [New image tests](Tests/NativeReducedSupportedDecoder.lean)
+construct one original 25-word mixed public decoder with holes/seven padding rows;
+[initialized/empty tests](Tests/NativeReducedSupportedExecution.lean) retain source/
+x0/terminal rejection. These are not positive nonempty arithmetic/mixed native
+117-equation fixtures. Remaining ordinary combined profiles, workers/accounting,
+protocol/padding/terminal/init and public/compiler/physical/completeness boundaries
+remain open. No native finding/fix/issue assumption or parity claim is added.

@@ -243,3 +243,13 @@ derives actual masks/indices/zero/immediate fields; native Boolean packing exclu
 holes/tail. [Initialized numerical values](../../Trace/Families/ReducedMachine/ArithmeticResults.lean)
 derive all range prerequisites, not pre-row Sail GPR or clause execution. Universal
 native public preprocessing/ROM/physical setup fidelity remains separate.
+
+## Mixed native reduced supported profiles
+
+[Common full membership](ReducedMachineSupported.lean) uses one [original projection](../../Circuits/ReducedMachine/SupportedDecoder.lean)
+for selected shifts and ADD/ADDI/SUB/LUI/AUIPC. [The public source claim](../../Trace/Families/ReducedMachine/SupportedDecoder.lean)
+derives entries/actual queries; internal profile transport retains every original
+field and native packing excludes holes/tail. [Mixed execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+now derives common ranges, native Sail row states and original stateful decoder
+replay. No per-row profile or read/result/state answer is supplied. General native
+public preprocessing/ROM/physical fidelity remains separate from modeled membership.

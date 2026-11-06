@@ -300,6 +300,33 @@ worker/protocol/padding/terminal/init and other combined operations remain separ
 No native defect or issue-handling assumption is added; production circuit/Sail
 and native/exported/imported/literal/configuration/dependency inputs are unchanged.
 
+## Mixed supported native execution boundary
+
+[Mixed original decoding](Airbender/Review/Trace/Families/ReducedMachine/SupportedDecoder.lean),
+[common initialized ranges](Airbender/Review/Trace/Families/ReducedMachine/SupportedValues.lean)
+and [fetched execution](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+now cover interleaved selected shifts and ADD/ADDI/SUB/LUI/AUIPC. Inputs remain
+original public byte/stateful image construction, ImageBoundary(fixedData trace),
+Accepted(fixedData trace), complete supported sparse/padded membership and aligned
+tracked public cells. Native constraints/public construction derive profile/query,
+all local read/range/operand/result/PC/state/order/replay answers and terminal PC/
+cell reads. [Local transport](Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean)
+uses exact checked native per-profile proofs only after deriving the original
+constructor/query connection; common initialized range/x0 induction is proved,
+not supplied. Code/misa preservation and decoder replay are derived across both
+profiles. AUIPC's architectural PC still comes from actual prepared incoming PC.
+
+Exact fixedData acceptance selects NativeFixed.table; no arbitrary-table identity
+or v3 table equivalence is assumed. The modeled 25-word mixed decoder fixture is
+not equated with the unchanged native eight-word/CSR/nondeterminism configuration.
+[Image regressions](Tests/NativeReducedSupportedDecoder.lean) and [initialized/empty
+checks](Tests/NativeReducedSupportedExecution.lean) are not a complete nonempty
+arithmetic/mixed accepted 117-equation witness. Other combined operations, original
+interrupt/exception paths, native public/compiler/preprocessing/ROM/physical
+fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
+terminal/init boundaries remain open. No native defect or issue-handling assumption
+is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
+
 ## Import and generation fidelity
 
 Mersenne31 coefficients are non-Montgomery residues in 0..=2147483647; the upper

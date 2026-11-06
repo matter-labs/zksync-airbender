@@ -8307,6 +8307,160 @@
       "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
       "backport_reuse_path": "Tests/NativeReducedFetched.lean",
       "backport_reuse_sha256": "3019c88db73c3bb3f02825b912d5226108fa6cf3b2eaa656691d18d43f7f3405"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean",
+      "change": "Reuse the exact retained original shift projection and map only its registry tag into a selected shift/arithmetic sum.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Decoder.lean",
+      "backport_reuse_sha256": "c3842345d45e2c9385b40c124a7a9a166937e57e03a46a16443881951c0eeffd"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean",
+      "change": "Reuse the exact retained original arithmetic projection on remaining constructors. No x0 rewriting, sign-extension change or old split masks.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/ArithmeticDecoder.lean",
+      "backport_reuse_sha256": "1de9bbe630576d846f1dedc548416c1539f94597a4f50e250e56bbc834b93885"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean",
+      "change": "Use unchanged DecoderData.mapFamily/ProgramEntry query definitions; family mapping preserves every actual ten-field query value.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/Program.lean",
+      "backport_reuse_sha256": "5d4682f64b9d18e3cd615ec4ff6de95a95a56b832336dff710b946cec3823c8b"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean",
+      "change": "Adapt full original public sparse/padded membership to one selected shift/arithmetic projection; keep native fixed-ROM/compiler/physical fidelity separate.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ReducedMachineArithmetic.lean",
+      "backport_reuse_sha256": "74a98066ecc68471f5f7c9cfc8210e77cecd06b73f6e0464b2a58346f04fc26e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean",
+      "change": "Recover original sources via complete membership and previously proved native sentinel exclusion. Derive profile-specific entries and unchanged query fields from the new reference projection, never from supplied per-row classifications.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecoder.lean",
+      "backport_reuse_sha256": "0526a342d564270f5ef9e2e896854fe1ab45cd25b4fd2ce582e95214834a144a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Instantiate checked actual native shift write preservation only after original profile/query transport; retain exact NativeFixed.table and internal earlier-read induction.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftPreservation.lean",
+      "backport_reuse_sha256": "3e14bcc3077ab54f1c54cc1685f2790ed3788037b4d759c7c4727456da873c2f"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Instantiate checked actual native arithmetic write preservation after original profile/query transport; derive common range rules rather than supply them.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPreservation.lean",
+      "backport_reuse_sha256": "ff923b62c5ca5801d0909eda0ab4b74ca66b4984a1abd4e0720fce7b4545f05f"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Use checked actual native shift x0/address rules after deriving the original profile.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ZeroRegister.lean",
+      "backport_reuse_sha256": "61be549aefef5b77380693fd48712aaa6c577deaa4cdf64be783ff893ba39fc3"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Use checked actual native arithmetic x0/address rules after deriving the original profile.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticZeroRegister.lean",
+      "backport_reuse_sha256": "cf02af51888dadeef9387ee005c3c66b8fc2ecc70c294439d8441aa38cc2f983"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Reuse exact checked native shift local normal execution and PC prerequisites after actual entry/query transport; internal read ranges discharged by common initialized induction.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftExecution.lean",
+      "backport_reuse_sha256": "d7ce415f5a25c2f26afa4ac34391e8db534e51ece9fe9c7707dc4ae34807fff1"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Reuse exact checked native arithmetic local normal execution after actual entry/query transport, retaining both source reads, AUIPC prepared incoming PC and RV32 wrap.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticExecution.lean",
+      "backport_reuse_sha256": "b1d80c0da529b13dd6d17601c6d362eff51be001034f63653f68ec485d34bfdb"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedDecoder.lean",
+      "change": "Transport actual registry queries to original mixed-profile public source entries. Import the exact fixedData constructor at the trace layer, without a table-equivalence premise.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticDecoder.lean",
+      "backport_reuse_sha256": "e3a238f2181917f6ad0a2495491e3ebdade5bf62d3f52a5f3ebe20e7ee2306ae"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedValues.lean",
+      "change": "Run one unchanged shared initialized range induction using derived local rules for either native profile; exact fixedData acceptance retains shift numerical semantics.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticValues.lean",
+      "backport_reuse_sha256": "74e1c3fffa98f17ad3c4dcd40ce94f4fe34db0f5c246e97ec1245a720e42404b"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedZeroRegister.lean",
+      "change": "Derive one common x0-preserving native history and chronological original Sail row-state realization across interleaved profiles.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticZeroRegister.lean",
+      "backport_reuse_sha256": "cf02af51888dadeef9387ee005c3c66b8fc2ecc70c294439d8441aa38cc2f983"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedCodeHistory.lean",
+      "change": "Derive register space for every actual native event across mixed profiles; preserve original bytes/misa and replay stateful original supported decoding in constructed pre-states.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticCodeHistory.lean",
+      "backport_reuse_sha256": "100691cb67a8e6e733d1fc2299c901724e8417f70e5944b94feb44e6d7fc99d2"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "change": "Compose original fetched successful four-byte execution across mixed supported native rows, deriving common bounds/history/order/PC/replay and actual terminal PC/cell reads. No per-row result/state/profile answer is supplied.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticComposition.lean",
+      "backport_reuse_sha256": "f0cad762e371697cb48faf259f61444bcbf63b1c235e1000ed5f19e1fc44c59b"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/SupportedDecoder.lean",
+      "change": "Expose one short original mixed-profile source/query root with complete public membership and accepted actual native constraints.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticDecoder.lean",
+      "backport_reuse_sha256": "97ef709635806bcb4ddb8a4b25354254d7b6b411f6c3b648c16f0dac05c15737"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/SupportedValues.lean",
+      "change": "Expose derived common read/write/terminal ranges under exact fixedData acceptance, not an arbitrary/native table identity.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticValues.lean",
+      "backport_reuse_sha256": "b00b38dfd7c659837ed64bca430f8c1fe9d148e077ab373f0bbaf919c740fe12"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "change": "Expose one short original initialized mixed shift/arithmetic execution root without local range/read/result/PC/state/replay premises; retain native public/physical setup boundaries.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticFetchedExecution.lean",
+      "backport_reuse_sha256": "eef81e93de709b83addea3c5da089caf33fcd622a79a624ac26026d70e4434a7"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedDecoder.lean",
+      "change": "Reuse only exact original 25-word state/byte/Sail decoder lemmas. Construct the new complete mixed prefix/padding and prove original SLL atPC0 plus ADD atPC96 source evidence; old split masks/tables are not inherited.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Tests/NativeReducedDecoder.lean",
+      "backport_reuse_sha256": "07a93d6bbdb9b3983f62e79d94fec7b309ae9ebee89ee86c210d48f30653b6a2"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedDecoder.lean",
+      "change": "Retain negative ADDI, original x0 constructors, encoded SRAI1055 and U-type raw funct3 in new common projection checks. No complete positive native arithmetic/mixed row fixture is claimed.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Tests/NativeReducedArithmeticDecoder.lean",
+      "backport_reuse_sha256": "e591f8bca8448edc136a9fd163c0d939abebbf0394a9d127b45ebf2640df44d7"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedExecution.lean",
+      "change": "Adapt concrete zero-row full public execution/top-word endpoint and add mixed initialized source/x0/terminal rejection consequences with no public local range/result/state/profile answers.",
+      "backport_reuse_revision": "aa76e8cb432b9d0923dd0aa637e2fd18dacf0239",
+      "backport_reuse_path": "Tests/NativeReducedArithmeticFetched.lean",
+      "backport_reuse_sha256": "8069959392000ed53ed0217c284233429888c5c0f909982470f3aa25d2ae3e95"
     }
   ],
   "setup_artifacts": [

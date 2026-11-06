@@ -190,3 +190,17 @@ nonempty arithmetic 117-equation witness. Separate arithmetic/shift traces are
 checked; mixed traces and other combined operations remain next. Exact fixedData
 acceptance stays mandatory for shift numerical lookups; public/physical setup,
 workers/protocol/padding/terminal/init and completeness remain separate.
+
+## Mixed selected shift/arithmetic execution
+
+[Original source recovery](SupportedDecoder.lean), [common initialized ranges](SupportedValues.lean)
+and [finite fetched execution](SupportedExecution.lean) now cover interleaved supported
+rows with one original public projection. [Native local transport](../../../../Proofs/ReducedMachine/NativeSupportedLocal.lean)
+derives profile-specific preservation/addresses/PC/execution. [Common composition](../../../../Proofs/Trace/Families/ReducedMachine/SupportedExecution.lean)
+discharges every read bound/alignment/state/replay input using exact fixedData
+acceptance, native matching and original public construction. [Mixed image tests](../../../../../Tests/NativeReducedSupportedDecoder.lean)
+retain original shift+ADD bytes/slots/queries; [initialized/empty tests](../../../../../Tests/NativeReducedSupportedExecution.lean)
+reject oversized sources/terminal PCs and nonzero x0 events. These do not certify
+positive nonempty arithmetic/mixed accepted native witnesses. Other ordinary
+profiles, native public/physical fidelity and worker/protocol/padding/terminal/init
+boundaries remain open; no parity follows from this selected coverage.

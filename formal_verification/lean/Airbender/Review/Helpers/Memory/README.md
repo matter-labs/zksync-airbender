@@ -193,3 +193,14 @@ proves AUIPC's prepared incoming PC read and derives original operands/results
 from actual GPR history and initialized ranges. No per-row state/range/read/result
 or PC answer is a public input. Generic modeled setup and tracked-cell alignment
 remain explicit; mixed profiles/native physical setup/protocol boundaries remain open.
+
+## Mixed supported native history
+
+[Common range induction](../../../Proofs/Trace/Families/ReducedMachine/SupportedValues.lean)
+and [x0/state realization](../../../Proofs/Trace/Families/ReducedMachine/SupportedZeroRegister.lean)
+now cover interleaved selected shift/arithmetic rows. [Actual local rules](../../../Proofs/ReducedMachine/NativeSupportedLocal.lean)
+are derived from original decoded profiles; they are not supplied publicly.
+[Code/misa frames](../../../Proofs/Trace/Families/ReducedMachine/SupportedCodeHistory.lean)
+and [finite original execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+construct all states, decoder replay and terminal observations with exact fixedData
+acceptance. Other profiles and native public/physical/protocol boundaries remain open.

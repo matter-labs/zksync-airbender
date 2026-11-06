@@ -18,9 +18,9 @@ false. Subword retirement is therefore not a prerequisite for this machine.
 This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
-**The reduced machine now has conditional fetched-execution soundness separately
-for selected original shift and ADD/ADDI/SUB/LUI/AUIPC profiles; mixed-profile
-and full combined-operation coverage remain open.** The active
+**The reduced machine now has conditional fetched-execution soundness for mixed
+selected original shifts and ADD/ADDI/SUB/LUI/AUIPC rows. Full combined-operation
+coverage remains open.** The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 is independently reproducible from unchanged pinned Rust: 117 equations,
 142 variables and 14 fixed regions. The original [historical artifact](Airbender/Review/Circuits/ReducedMachine/Artifact.lean)
@@ -80,11 +80,16 @@ Full combined row effects and execution remain pending. See the
    fetched execution now follow for initialized arithmetic-profile traces.
    AUIPC's original get_arch_pc is derived from the actual incoming native PC
    placed into constructed row states before preparation. Both internal read
-   ranges, alignment and every state/control answer are discharged. Next mix
-   supported shift/arithmetic rows with one original public decoder, native
-   preservation/range induction and chronological execution. Keep exact fixedData
-   acceptance for shift lookup semantics; no arbitrary-table equivalence. Other
-   combined profiles and positive nonempty arithmetic fixtures remain open.
+   ranges, alignment and every state/control answer are discharged. One original
+   supported projection now admits mixed shift/arithmetic rows. Derived profile/
+   query transport supplies proved local range/x0/register-space/PC/execution
+   rules; common initialized induction derives every read/write/terminal bound,
+   original Sail state and code/misa/decoder frame. Finite mixed fetched execution
+   now follows under exact fixedData acceptance without local answer premises or
+   arbitrary-table equivalence. Next extend actual monolithic native decoding,
+   fixed-table/local effects and preservation to remaining ordinary profiles
+   (including bitwise operations), then workers/protocol/padding/terminal/init.
+   Positive nonempty arithmetic/mixed fixtures remain distinct open test coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,
    without increasing limits or adding result/equivalence premises.
 3. Compose initialized combined histories, public decoding and original execution.
@@ -105,8 +110,10 @@ Full combined row effects and execution remain pending. See the
    preparation/retirement and finite fetched execution now compose for selected
    shifts, including actual terminal PC bounds/reads and empty traces. A complete
    nonempty ordinary/x0 SLL fixtures now check all117equations,22lookups and full
-   modeled public execution boundaries. Other shift fixture variants and combined
-   profiles,physical setup/protocol/terminal/init correspondence remain unfinished.
+   modeled public execution boundaries. Common initialized mixed shift/arithmetic
+   execution is now checked with one original public decoder and shared derived
+   range/x0/history/code frames. Other combined profiles, nonempty arithmetic/mixed
+   fixtures and physical setup/protocol/terminal/init correspondence remain unfinished.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.
 

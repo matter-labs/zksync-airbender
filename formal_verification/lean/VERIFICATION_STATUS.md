@@ -17,19 +17,80 @@ false. Subword retirement is therefore not a prerequisite for this machine.
 This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
-**The reduced machine now has conditional fetched-execution soundness separately
-for selected original shift and ADD/ADDI/SUB/LUI/AUIPC profiles; mixed-profile
-and full combined-operation coverage remain open.** The active
+**The reduced machine now has conditional fetched-execution soundness for mixed
+selected original shifts and ADD/ADDI/SUB/LUI/AUIPC rows. Full combined-operation
+coverage remains open.** The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 imports 117 native equations, 142 variables and a complete fourteen-region fixed
 pool. Original Clean acceptance derives its two actual sign/high-byte queries.
 The public fixture is explicit; general public configuration and other operation
-semantics and global/physical enforcement remain open. Selected-shift and arithmetic
-initialized original normal/fetched execution are now proved separately under the
-explicit public initialization/decoder interfaces; mixed and other profiles are unfinished.
+semantics and global/physical enforcement remain open. Mixed supported-profile
+initialized original normal/fetched execution is now proved under explicit public
+initialization/decoder interfaces; other combined profiles remain unfinished.
 The historical 119-equation/141-variable/13-region artifact is preserved separately.
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
+
+## Mixed native shift/arithmetic fetched execution (6 November 2026)
+
+[One original public projection](Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean)
+now admits the previously checked SLL/SRL/SRA register/immediate forms together
+with ADD/ADDI/SUB/LUI/AUIPC. It preserves original instructions/operands, x0,
+sign extension, encoded SRAI 1055 and raw U-type funct3. Other combined operations
+remain unsupported. [Profile/query transport](Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean)
+derives a checked local interface from that original projection; mapping only
+its family tag preserves every actual ten-field query value. Full original
+public byte/stateful sparse/padded membership and native packing exclude holes/tail.
+[The public decoding claim](Airbender/Review/Trace/Families/ReducedMachine/SupportedDecoder.lean)
+returns original sources and actual queries without supplied per-row classifications.
+
+[Common initialized ranges](Airbender/Review/Trace/Families/ReducedMachine/SupportedValues.lean)
+now derive every read/write/terminal word bound across interleaved supported rows.
+[Native local rules](Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean) derive
+write preservation, x0 preservation, register space, numerical PC and normal row
+execution by exact original profile/query transport into the separately checked
+actual native proofs. [One range induction](Airbender/Proofs/Trace/Families/ReducedMachine/SupportedValues.lean)
+and [one x0/history induction](Airbender/Proofs/Trace/Families/ReducedMachine/SupportedZeroRegister.lean)
+retain all readonly refreshes/discarded accesses. [Code history](Airbender/Proofs/Trace/Families/ReducedMachine/SupportedCodeHistory.lean)
+derives original code/misa preservation and stateful decoder replay across both profiles.
+
+[One short fetched-execution root](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+now composes mixed supported rows into finite original successful four-byte Sail
+execution, deriving terminal PC bounds and all terminal cell reads. [Assembly](Airbender/Proofs/Trace/Families/ReducedMachine/SupportedExecution.lean)
+constructs chronological native row states/PC chain, discharges both actual read
+bounds/alignment and invokes checked native local execution. AUIPC retains its
+derived prepared incoming PC observation. No per-row profile, source/range/read,
+write-preservation, operand/result, PC/carry/state/order/replay answer is supplied.
+Every mixed numerical claim uses Accepted(fixedData trace), selecting exactly
+NativeFixed.table without an arbitrary-table equality/equivalence premise.
+
+[Seven decoder/image regressions](Tests/NativeReducedSupportedDecoder.lean) construct
+all 25 original public slots and seven padding rows with the new projection,
+retaining SLL at PC0 and ADD at PC96 in one original Sail image. They check both
+sources, native masks/x0/sign/SRAI/U-type fields, unsupported holes, actual query/
+padding membership and corrupt raw funct3 rejection. [Five execution/range roots](Tests/NativeReducedSupportedExecution.lean)
+check concrete empty execution/every RV32 terminal endpoint, initialized oversized
+source/terminal rejection and nonzero native x0-event rejection. Public-image and
+empty/local positives do not certify a complete positive nonempty 117-equation
+arithmetic or mixed trace; those remain separate fixture coverage.
+
+Other combined operations, workers/callers/accounting, protocol spans,
+padding/terminal and initialization/teardown remain open. Original interrupt/
+exception paths, general compiler/Rust/JSON, native public decoder-export,
+preprocessing/ROM/physical setup, cryptography and completeness stay separate.
+The native eight-word/CSR/nondeterminism fixture is unchanged and is not equated
+with the original 25-word modeled decoder image. No native defect, issue-handling
+assumption, production fix or parity claim is added. Native/importer/exporter/
+literal/configuration inputs, original Sail clauses and dependencies are unchanged.
+
+All affected bounded modules and final gates pass: 2,772 explicit standard-only
+axiom roots, 172 public Review roots, four guide names, 2,744 links/anchors and
+context/trace separation. Full Review used 543.54 MiB footprint / 3104.62 MiB
+resident in 14.19 seconds. Independent exact provenance passes 189 v3-origin and
+930 backport-origin identities, 80 reused modules, eight circuit artifacts,
+63 native sources, 23 setup artifacts and four exporter files. It used
+18.89 / 34.95 MiB in 6.95 seconds. Every owned worker terminated under unchanged
+3072/4096 MiB ceilings, Lean -j1 -M3072 and default proof limits.
 
 ## Original native arithmetic fetched execution (6 November 2026)
 
