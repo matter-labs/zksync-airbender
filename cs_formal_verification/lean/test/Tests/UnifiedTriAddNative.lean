@@ -1,12 +1,12 @@
 import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 import Slop.Sail.WordMemoryState
+import Slop.UnifiedReduced.Completeness.Arith
 
 namespace Tests.UnifiedTriAddNative
 open Airbender Arithmetic UnifiedReduced Trace Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 3000000
 
 private def setup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic {
   name := "UnifiedDisabledQueries"
@@ -17,15 +17,14 @@ private def setup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic {
   contains_iff _ := Iff.rfl
 }
 
-private def assignment : Nat → ZMod babyBearModulus
-  | 4 | 5 | 6 | 7 | 20 | 38 | 44 | 123 | 124 | 125 => 1
-  | 2 | 30 | 40 => 4
-  | 32 => 8
-  | 46 => 5
-  | 36 | 42 | 48 => 123
-  | 50 => 369
-  | 78 => 123 * 123 * 943718400
-  | _ => 0
+private theorem setup_zero : Completeness.ZeroRow setup := by
+  intro env entry h
+  change ∃ i : Fin 1, entry.map (Expression.eval env) = #v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  exact ⟨0, h.trans (by decide)⟩
+/-- TRIADD x1 (= x1 + x1 + old x1) at PC 0, clock 4. -/
+private def witness : Completeness.Arith :=
+  ⟨⟨0, 0, 4, 0, 0, 0, 4, 0, 5, 0⟩, 3, 1, 1, 1, 123, 0, 123, 0, 0, 0, 123, 0⟩
+private def assignment : Nat → ZMod babyBearModulus := witness.honest
 
 private noncomputable def before : State :=
   wordWriteState { resetMachine with
@@ -49,20 +48,10 @@ private noncomputable def entry : UnifiedReduced.ProgramEntry :=
     ⟨.machine, 1, 1, 1, ⟨0, 0⟩, 512, 0⟩⟩
 
 private theorem constraints : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment assignment) (clockConstraints setup) := by
-  apply Verification.holds_append
-  · simp [importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Verification.environment, Expression.eval, assignment, Lookup.Contains, Table.toRaw, fromElements]
-    repeat' apply And.intro
-    all_goals solve
-      | decide
-      | (apply Verification.range16_contains; decide)
-      | (exact ⟨⟨0, by decide⟩, rfl⟩)
-  · simp [importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    repeat' apply And.intro
-    all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment]
-    all_goals decide
+    (Verification.environment assignment) (clockConstraints setup) :=
+  Completeness.Arith.complete _
+    (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide)
+    (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _ setup_zero
 
 private theorem accepted : Accepted trace := by
   constructor
