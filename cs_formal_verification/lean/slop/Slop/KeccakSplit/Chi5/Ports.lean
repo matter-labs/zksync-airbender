@@ -5,7 +5,7 @@ import Human.Circuits.KeccakSplit.Native
    and high word of each lane, with their value columns and RAM addresses. -/
 
 namespace Airbender.Keccak.Split.Chi5.Proofs
-open Airbender.Trace Airbender.Arithmetic
+open Airbender.Trace Airbender.Arithmetic Airbender.Keccak.Split.RowProofs
 set_option warningAsError true
 
 /-- Value columns (low limb) of port `k`, read and written. -/
@@ -24,10 +24,6 @@ theorem read_code (w : Nat → ZMod babyBearModulus) (k : Fin 12) :
 theorem write_code (w : Nat → ZMod babyBearModulus) (k : Fin 12) :
     (port k).writeCode w = Nat.pair (w (writeCol k)).val (w (writeCol k + 1)).val := by
   fin_cases k <;> rfl
-
-theorem token_word {t : MemoryToken babyBearModulus} {a b : Nat} (h : t.value = Nat.pair a b) :
-    t.word = ⟨a, b⟩ := by
-  simp [MemoryToken.word, h]
 
 theorem read_token_word (w : Nat → ZMod babyBearModulus) (k : Fin 12) :
     (readToken w (port k)).word = ⟨(w (readCol k)).val, (w (readCol k + 1)).val⟩ :=

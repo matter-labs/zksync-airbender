@@ -5,7 +5,7 @@ import Slop.Arithmetic.BitwiseAssembly
    SplitChiLimbValues, SplitChiLimbOperation, SplitChiLaneOperation). -/
 
 namespace Airbender.Keccak.Split.Chi5.Proofs
-open Airbender.Trace Airbender.Arithmetic
+open Airbender.Trace Airbender.Arithmetic Airbender.Keccak.Split.RowProofs
 set_option warningAsError true
 
 theorem nibble_values {w : Nat → ZMod babyBearModulus} (h : Holds w)
@@ -18,22 +18,6 @@ theorem nibble_values {w : Nat → ZMod babyBearModulus} (h : Holds w)
   have values := nibble_facts h digit
   simpa only [nibble, Bool.false_eq_true, ↓reduceIte] using
     And.intro (values.1 lane) (values.2 lane)
-
-/-- Four bounded field nibbles recover the canonical sixteen-bit value. -/
-theorem value_of_nibbles {x a b c d : ZMod babyBearModulus}
-    (ha : a.val < 16) (hb : b.val < 16) (hc : c.val < 16) (hd : d.val < 16)
-    (equation : x = a + 16 * b + 256 * c + 4096 * d) :
-    x.val = a.val + 16 * (b.val + 16 * (c.val + 16 * d.val)) := by
-  have small : a.val + 16 * (b.val + 16 * (c.val + 16 * d.val)) < babyBearModulus :=
-    lt_of_lt_of_le (by omega : _ < 65536) (by decide)
-  have cast : ((a.val + 16 * (b.val + 16 * (c.val + 16 * d.val)) : Nat) :
-      ZMod babyBearModulus) = x := by
-    rw [equation]
-    push_cast
-    simp only [ZMod.natCast_zmod_val]
-    ring
-  rw [← cast]
-  exact ZMod.val_natCast_of_lt small
 
 theorem limb_value {w : Nat → ZMod babyBearModulus} (h : Holds w) (writing : Bool)
     (lane : Fin 5) (limb : Fin 4) :

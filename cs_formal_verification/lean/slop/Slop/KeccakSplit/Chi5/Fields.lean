@@ -7,22 +7,10 @@ import Slop.KeccakSplit.Setup.Facts
    chi5_call_lane_address). -/
 
 namespace Airbender.Keccak.Split.Chi5.Proofs
-open Airbender.Trace Airbender.Arithmetic
+open Airbender.Trace Airbender.Arithmetic Airbender.Keccak.Split.RowProofs
 set_option warningAsError true
 
 abbrev chiRow (w : Nat → ZMod babyBearModulus) : Native.Row babyBearModulus := ⟨.chi5, w⟩
-
-theorem bump_small {c : Nat} (h : c < 1600) : bump c < 65536 := by
-  dsimp only [bump, encode, Kind.mode]
-  split_ifs <;> omega
-
-theorem control_val (index : Fin 361) :
-    ((controlAt index.val : ZMod babyBearModulus)).val = controlAt index.val :=
-  SetupProofs.val_cast (by have := SetupProofs.controlAt_lt index.isLt; omega)
-
-theorem bump_val (index : Fin 361) :
-    ((bump (controlAt index.val) : ZMod babyBearModulus)).val = bump (controlAt index.val) :=
-  SetupProofs.val_cast (by have := bump_small (SetupProofs.controlAt_lt index.isLt); omega)
 
 theorem pointer_aligned_word (w : Nat → ZMod babyBearModulus) (h : Holds w) :
     ((chiRow w).readWord 1).value % 256 = 0 := by
@@ -114,22 +102,6 @@ theorem effects (w : Nat → ZMod babyBearModulus) (h : Holds w) (active : w 0 =
   · rw [read_lanes, written_lanes]
     exact reference_result w h index kind
 
-/-- Every lane slot is one of the 25 state slots. -/
-theorem state_slot (index : Fin 361) (lane : Fin 5) : ((Call.slots index)[lane.val]).val < 25 := by
-  simp only [Call.slots, Vector.getElem_ofFn, lane.isLt, ↓reduceDIte]
-  exact (Call.physicalSlot _ _).isLt
-
-/-- An aligned pointer plus a slot offset does not carry out of the low limb. -/
-theorem lane_cell_code {lo hi slot c : Nat} (hlo : lo < 65536) (hhi : hi < 65536)
-    (al : lo % 256 = 0) (hs : slot < 25) (hc : c ≤ 4) :
-    Nat.pair 1 (Nat.pair (lo + (8 * slot + c)) hi) =
-      (Cell.ram (BitVec.ofNat 32 (lo + 65536 * hi) + BitVec.ofNat 32 (8 * slot + c))).addressCode := by
-  simp only [Cell.addressCode, Word.ofBitVec, limbBase, BitVec.toNat_add, BitVec.toNat_ofNat]
-  rw [Nat.mod_eq_of_lt (by omega : lo + 65536 * hi < 2 ^ 32),
-    Nat.mod_eq_of_lt (by omega : 8 * slot + c < 2 ^ 32),
-    Nat.mod_eq_of_lt (by omega : lo + 65536 * hi + (8 * slot + c) < 2 ^ 32)]
-  congr 2 <;> omega
-
 theorem addresses (w : Nat → ZMod babyBearModulus) (index : Fin 361) (h : Holds w)
     (active : w 0 = 1) (control : (chiRow w).readWord 0 = ⟨controlAt index.val, 0⟩)
     (pointerBound : ((chiRow w).readWord 1).Bounded) :
@@ -150,25 +122,6 @@ theorem addresses (w : Nat → ZMod babyBearModulus) (index : Fin 361) (h : Hold
   refine ⟨port (lanePort ⟨lane.val, live⟩ high), port_member w _, ?_⟩
   rw [lane_address, slots ⟨lane.val, live⟩]
   rw [read_word_pointer] at pointerBound ⊢
-  dsimp only
-  have aligned := pointer_aligned h
-  have room := state_slot actual ⟨lane.val, live⟩
-  dsimp only at room
-  obtain ⟨b0, b1⟩ := pointerBound
-  simp only [limbBase] at b0 b1
-  have hc : (if high then 4 else 0 : Nat) ≤ 4 := by split <;> omega
-  have packed : (w 12 + 8 * ((((Call.slots actual)[lane.val]).val : Nat) : ZMod babyBearModulus) +
-      (if high then 4 else 0 : ZMod babyBearModulus)).val =
-      (w 12).val + (8 * ((Call.slots actual)[lane.val]).val + (if high then 4 else 0 : Nat)) := by
-    have cast : (((w 12).val + (8 * ((Call.slots actual)[lane.val]).val +
-        (if high then 4 else 0 : Nat)) : Nat) : ZMod babyBearModulus) =
-        w 12 + 8 * ((((Call.slots actual)[lane.val]).val : Nat) : ZMod babyBearModulus) +
-          (if high then 4 else 0 : ZMod babyBearModulus) := by
-      cases high <;> push_cast [ZMod.natCast_zmod_val] <;> ring
-    rw [← cast]
-    exact ZMod.val_natCast_of_lt (lt_of_lt_of_le (by omega : _ < 131072) (by decide))
-  rw [packed]
-  simp only [Call.laneCell, Word.toBitVec, Word.value, limbBase, Fin.getElem_fin]
-  exact lane_cell_code b0 b1 aligned room hc
+  exact lane_address_code high pointerBound.1 pointerBound.2 (pointer_aligned h)
 
 end Airbender.Keccak.Split.Chi5.Proofs
