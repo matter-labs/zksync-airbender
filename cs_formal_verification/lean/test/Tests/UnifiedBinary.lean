@@ -16,7 +16,7 @@ private def outputWord (kind : Fin 3) : BitVec 32 :=
 private def tag (kind : Fin 3) : Nat := UnifiedReduced.Setup.binaryTag (operation kind).tag
 
 private def inputs (kind : Fin 3) : UnifiedReduced.Completeness.Binary :=
-  ⟨⟨0, 0, 4, 0, 0, 0, 0, 0, 0, 0⟩, (operation kind).tag, false, 1, 2, 3, 0x34, 0x12, 0xcd, 0xab,
+  ⟨⟨0, 0, 4, 0, 0, 0, 0, 0, 0, 0⟩, (operation kind).tag, false, 0, false, 1, 2, 3, 0x34, 0x12, 0xcd, 0xab,
     0x78, 0x56, 0x01, 0xef, 0, 0⟩
 private def assignment (kind : Fin 3) : Nat → ZMod babyBearModulus := (inputs kind).honest
 
@@ -35,7 +35,8 @@ private def row (kind : Fin 3) : Row babyBearModulus UnifiedFamily := ⟨.machin
 
 private theorem valid (kind : Fin 3) : (inputs kind).Valid := by
   fin_cases kind <;>
-    refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
+    refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
+      ?_, ?_⟩ <;>
     decide
 
 private theorem constraints (kind : Fin 3) : FlatOperation.ConstraintsHoldFlat
