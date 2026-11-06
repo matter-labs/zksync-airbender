@@ -22,7 +22,7 @@ derives issued-worker placement and shared histories. The
 why matching imposes history. It does not require valid bigint controls or exclude
 surplus zero-clock effects to make that core memory implication true.
 
-Start with [Columns](Columns.lean), [Requests](Requests.lean) and [Decoder](Decoder.lean)
+Start with [Columns](Columns.lean), [Requests](Requests.lean), [CallerRequests](CallerRequests.lean) and [Decoder](Decoder.lean)
 to identify the caller token, full CSR family and imported worker observables.
 [RequestTrace](RequestTrace.lean) and [RequestEffects](RequestEffects.lean)
 state logical request matching and context; matching does not establish the full CSR ABI.

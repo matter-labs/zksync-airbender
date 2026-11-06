@@ -52,7 +52,8 @@ and the tracked cell domain. [Initialization](Initialization.lean) describes the
 boot profile; [Platform](Platform.lean) records the ordinary-memory configuration.
 
 [Ports](Ports.lean) and [IndirectPorts](IndirectPorts.lean) interpret imported
-addresses, timestamps and values. [Values](Values.lean) gives the word view.
+addresses, timestamps and values. [Values](Values.lean) gives the word view;
+[ValueBoundary](ValueBoundary.lean) the restricted scope's seed and ROM value conditions.
 [History](History.lean) states logical native events and matching; its rows and
 tokens come from the shared [`model`](../Context/Model.lean).
 

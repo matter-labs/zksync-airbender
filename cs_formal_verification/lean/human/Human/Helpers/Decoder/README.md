@@ -24,6 +24,7 @@ is still a separate condition.
 Start with [Program](Program.lean): public bytes are read and passed to the
 original Sail decoder, then projected into native family/register/immediate metadata.
 The public entry record alone does not establish correct decoding.
+[Decoded](Decoded.lean) states the restricted scope's decoder-table membership and fetch agreement.
 
 [Columns](Columns.lean) identifies imported decoder columns.
 [PooledProgram](PooledProgram.lean) combines the six admitted families and defines
