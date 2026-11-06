@@ -7,6 +7,8 @@ import Slop.UnifiedReduced.Claims
 import Slop.UnifiedReduced.Completeness.Control
 import Slop.UnifiedReduced.Completeness.Binary
 import Slop.UnifiedReduced.Completeness.Arith
+import Slop.UnifiedReduced.Completeness.Memory
+import Slop.UnifiedReduced.Completeness.Call
 import Human.Circuits.UnifiedReduced.Tables.Setup
 
 namespace Tests.UnifiedDelegation
@@ -20,12 +22,13 @@ private noncomputable def before (family : Delegation.Family) : State :=
 private theorem airbender_before (family : Delegation.Family) : Configured (before family) := by
   configured_fixture [before, wordWriteState, Tests.BigintMemory.before]
 
-private def assignmentWith (address : ZMod babyBearModulus) (column : Nat) : ZMod babyBearModulus :=
-  if column = 2 ∨ column = 30 then 4
-  else if column = 32 then 8
-  else if column = 4 ∨ column = 18 ∨
-      column = 123 ∨ column = 124 ∨ column = 125 then 1
-  else if column = 6 ∨ column = 38 then address else 0
+/-- The delegation-call row at PC 0, clock 4, issuing CSR `address`. -/
+private def callerFrame : UnifiedReduced.Completeness.Frame := ⟨0, 0, 4, 0, 0, 0, 0, 0, 0, 0⟩
+private theorem callerFrame_clock : callerFrame.Clock := ⟨by decide, by decide, by decide⟩
+private def callWitness (address : ZMod babyBearModulus) : UnifiedReduced.Completeness.Call :=
+  ⟨callerFrame, 0, 0, address, 0, 0, 0, 0⟩
+private def assignmentWith (address : ZMod babyBearModulus) : Nat → ZMod babyBearModulus :=
+  (callWitness address).honest
 
 private def assignment (family : Delegation.Family) := assignmentWith (Delegation.Requests.csr family)
 
@@ -45,26 +48,16 @@ private theorem public_image (family : Delegation.Family) :
 
 private theorem generic_core (state : State) (address : ZMod babyBearModulus) (addressBound : address.val < limbBase) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignmentWith address))
-    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table state)) := by
-  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, assignmentWith, Lookup.Contains, Table.toRaw, fromElements]
-  repeat' apply And.intro
-  all_goals solve
-    | decide +kernel
-    | (apply Verification.range16_contains
-       simpa [Expression.eval, assignmentWith] using addressBound)
-    | (apply Verification.range16_contains
-       simp [Expression.eval, assignmentWith]
-       decide +kernel)
-    | (refine ⟨(0 : Fin 2097537), ?_⟩
-       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
-         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun (n : Nat) => (n : ZMod babyBearModulus))
-       decide +kernel)
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table state)) :=
+  UnifiedReduced.Completeness.Call.complete_core _
+    ⟨callerFrame_clock, Nat.zero_lt_succ _, addressBound, rfl, rfl⟩ _
+    (UnifiedReduced.Completeness.setup_zero state)
 
 private theorem core (family : Delegation.Family) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment family))
     (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (before family))) :=
-  generic_core (before family) _ (by cases family <;> decide +kernel)
+  generic_core (before family) _ (by
+    rw [ZMod.val_natCast]; exact lt_of_le_of_lt (Nat.mod_le _ _) (by cases family <;> decide))
 
 private theorem timestamps (family : Delegation.Family) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment family)) UnifiedReduced.importedConstraintsTimestampLookups := by
@@ -97,12 +90,14 @@ theorem caller_request_retains_full_csr (family : Delegation.Family) :
     31 < (UnifiedReduced.Caller.request (assignment family)).csr := by
   cases family <;> decide +kernel
 
-private def truncated (family : Delegation.Family) := assignmentWith (Delegation.Requests.csr family % 32)
+private def truncated (family : Delegation.Family) :=
+  assignmentWith ((Delegation.Requests.csr family % 32 : Nat) : ZMod babyBearModulus)
 
 theorem truncated_csr_locally_satisfies (family : Delegation.Family) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (truncated family))
       (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (before family))) :=
-  generic_core (before family) _ (by cases family <;> decide +kernel)
+  generic_core (before family) _ (by
+    rw [ZMod.val_natCast]; exact lt_of_le_of_lt (Nat.mod_le _ _) (by cases family <;> decide))
 
 theorem truncated_csr_rejected_by_public_decoder (family : Delegation.Family) :
     ¬ (UnifiedReduced.Caller.decoderTable (p := babyBearModulus) [Tests.DelegationCaller.entry family]).Contains
@@ -1368,18 +1363,10 @@ private def memoryEntry (store : Bool) : UnifiedReduced.ProgramEntry :=
     else .LOAD (0, .Regidx 10, .Regidx 12, false, 4),
     ⟨.machine, 10, if store then 12 else 0, if store then 0 else 12,
       ⟨0, 0⟩, if store then 262144 else 131072, 0⟩⟩
-private def memoryAssignment (store : Bool) (column : Nat) : ZMod babyBearModulus :=
-  if column = 5 then 10
-  else if column = 6 ∨ column = 38 then (if store then 12 else 0)
-  else if column = 7 ∨ column = 44 then (if store then 0 else 12)
-  else if column = 8 ∨ column = 11 ∨ column = 50 then 0
-  else if column = 28 then (if store then 0 else 1)
-  else if column = 29 then (if store then 1 else 0)
-  else if column = 37 ∨ column = 58 then 64
-  else if column = 39 then (if store then 0 else 64)
-  else if column = 45 then (if store then 64 else 0)
-  else if column = 34 ∨ column = 40 ∨ column = 46 then 7
-  else arithmetic 0 column
+/-- LW x12, 0(x10) / SW x12, 0(x10) at PC 4 with x10 = 0x400000 and the word 0. -/
+private def memoryWitness (store : Bool) : UnifiedReduced.Completeness.Memory :=
+  ⟨⟨4, 0, 8, 0, 7, 0, 7, 0, 7, 0⟩, store, 10, 12, 0, 64, 0, 0, 0, 0, 0, 0⟩
+private def memoryAssignment (store : Bool) : Nat → ZMod babyBearModulus := (memoryWitness store).honest
 private def memoryRow (store : Bool) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, memoryAssignment store⟩
 private noncomputable def memoryTerminal (store : Bool) : List (MemoryToken babyBearModulus) :=
   base.machine.terminalMemory.map fun token =>
@@ -1400,17 +1387,10 @@ private noncomputable def memoryData (store : Bool) : UnifiedReduced.Caller.Requ
 
 private theorem memoryCore (store : Bool) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (memoryAssignment store)) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (memoryBefore store))) := by
-  cases store
-  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, memoryAssignment, arithmetic, Lookup.Contains, Table.toRaw, fromElements]
-  all_goals repeat' apply And.intro
-  all_goals solve
-    | decide +kernel
-    | (apply Verification.range16_contains; decide +kernel)
-    | (refine ⟨(0 : Fin 2097537), ?_⟩
-       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
-         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun (n : Nat) => (n : ZMod babyBearModulus))
-       decide +kernel)
+  cases store <;>
+    exact UnifiedReduced.Completeness.Memory.complete_core _
+      (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _
+      (UnifiedReduced.Completeness.setup_zero _)
 
 private theorem memoryClocks (store : Bool) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (memoryAssignment store)) UnifiedReduced.importedConstraintsTimestampLookups := by
