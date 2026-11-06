@@ -1,6 +1,6 @@
 import Slop.Keccak.PhaseDefinitions
 import Slop.Keccak.SlotReduction
-import Slop.DeferredRfl
+import Slop.KernelRfl
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256
@@ -12,11 +12,11 @@ local macro "solve_iota_lanes" : tactic => `(tactic| (
   apply Vector.ext
   intro i bound
   interval_cases i <;>
-    simp only [logicalLanes, Vector.getElem_ofFn, physical_cached, micro_normalized] <;> deferred_rfl))
+    simp only [logicalLanes, Vector.getElem_ofFn, physical_cached, micro_normalized] <;> kernel_rfl))
 local macro "solve_iota_parities" column:term : tactic => `(tactic| (
   simp only [iotaPhase, Fin.foldl_succ_last, Fin.foldl_zero]
   fin_cases $column:term <;>
-    simp only [logicalLanes, Vector.getElem_ofFn, physical_cached, micro_normalized] <;> deferred_rfl))
+    simp only [logicalLanes, Vector.getElem_ofFn, physical_cached, micro_normalized] <;> kernel_rfl))
 
 theorem iota_lanes_0 (state : LaneState) :
     logicalLanes 0 (iotaPhase 0 state) =

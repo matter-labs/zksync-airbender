@@ -1,6 +1,6 @@
 import Slop.Keccak.PhaseDefinitions
 import Slop.Keccak.SlotReduction
-import Slop.DeferredRfl
+import Slop.KernelRfl
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256
@@ -17,7 +17,7 @@ theorem chi_lanes_0 (state : LaneState) :
   all_goals norm_num only [Specs.Keccak256.chi, Fin.getElem_fin, Vector.getElem_mk,
     List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
   all_goals simp only [physical_cached, micro_normalized]
-  all_goals deferred_rfl
+  all_goals kernel_rfl
 
 
 theorem chi_lanes_1 (state : LaneState) :
@@ -30,7 +30,7 @@ theorem chi_lanes_1 (state : LaneState) :
   all_goals norm_num only [Specs.Keccak256.chi, Fin.getElem_fin, Vector.getElem_mk,
     List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
   all_goals simp only [physical_cached, micro_normalized]
-  all_goals deferred_rfl
+  all_goals kernel_rfl
 
 
 theorem chi_lanes_2 (state : LaneState) :
@@ -43,7 +43,7 @@ theorem chi_lanes_2 (state : LaneState) :
   all_goals norm_num only [Specs.Keccak256.chi, Fin.getElem_fin, Vector.getElem_mk,
     List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
   all_goals simp only [physical_cached, micro_normalized]
-  all_goals deferred_rfl
+  all_goals kernel_rfl
 
 
 theorem chi_lanes_3 (state : LaneState) :
@@ -56,7 +56,7 @@ theorem chi_lanes_3 (state : LaneState) :
   all_goals norm_num only [Specs.Keccak256.chi, Fin.getElem_fin, Vector.getElem_mk,
     List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
   all_goals simp only [physical_cached, micro_normalized]
-  all_goals deferred_rfl
+  all_goals kernel_rfl
 
 
 theorem chi_lanes_4 (state : LaneState) :
@@ -69,7 +69,7 @@ theorem chi_lanes_4 (state : LaneState) :
   all_goals norm_num only [Specs.Keccak256.chi, Fin.getElem_fin, Vector.getElem_mk,
     List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
   all_goals simp only [physical_cached, micro_normalized]
-  all_goals deferred_rfl
+  all_goals kernel_rfl
 
 
 theorem chi_lanes_5 (state : LaneState) :
@@ -82,6 +82,6 @@ theorem chi_lanes_5 (state : LaneState) :
   all_goals norm_num only [Specs.Keccak256.chi, Fin.getElem_fin, Vector.getElem_mk,
     List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
   all_goals simp only [physical_cached, micro_normalized]
-  all_goals deferred_rfl
+  all_goals kernel_rfl
 
 end Airbender.Keccak.Proofs
