@@ -180,9 +180,18 @@ structure RamAuxComparisonSet where
   intermediate_borrow : GKRAddress
   deriving Repr, FromJson, ToJson
 
-/-- Source: `cs/src/gkr_compiler/layout.rs`, `GKRAuxLayoutData`. -/
+/-- One shared read timestamp of the split Keccak workers: `members` index the
+    memory ports that read at that time. Source: `cs/src/gkr_compiler/layout.rs`. -/
+structure RelativeTimestampGroup where
+  read_timestamp : Fixed 2 Nat
+  members : Array Nat
+  deriving Repr, FromJson, ToJson
+
+/-- Source: `cs/src/gkr_compiler/layout.rs`, `GKRAuxLayoutData`. Split workers
+    with grouped timestamps have no per-port borrow (`null` entries). -/
 structure GKRAuxLayoutData where
-  shuffle_ram_timestamp_comparison_aux_vars : (Array RamAuxComparisonSet)
+  shuffle_ram_timestamp_comparison_aux_vars : Array (Option RamAuxComparisonSet)
+  relative_timestamp_groups : Option (Array RelativeTimestampGroup) := none
   deriving Repr, FromJson, ToJson
 
 /-- Source: `cs/src/gkr_compiler/layout.rs`, `GKRLayerDescription`. -/

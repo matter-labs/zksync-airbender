@@ -171,6 +171,30 @@ roots = ["Human.Circuits.Keccak.Artifact"]
 globs = ["Human.Circuits.Keccak.Artifact"]
 needs = ["keccakJson"]
 
+# Split Keccak ColumnParity: rebuilt when keccak_column_parity_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "KeccakColumnParityArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.KeccakSplit.ColumnParity.Artifact"]
+globs = ["Human.Circuits.KeccakSplit.ColumnParity.Artifact"]
+needs = ["keccakColumnParityJson"]
+
+# Split Keccak ThetaRho: rebuilt when keccak_theta_rho_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "KeccakThetaRhoArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.KeccakSplit.ThetaRho.Artifact"]
+globs = ["Human.Circuits.KeccakSplit.ThetaRho.Artifact"]
+needs = ["keccakThetaRhoJson"]
+
+# Split Keccak Chi5: rebuilt when keccak_chi5_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "KeccakChi5Artifact"
+srcDir = "human"
+roots = ["Human.Circuits.KeccakSplit.Chi5.Artifact"]
+globs = ["Human.Circuits.KeccakSplit.Chi5.Artifact"]
+needs = ["keccakChi5Json"]
+
 # MulDiv: rebuilt when unsigned_mul_div_layout_no_caches_gkr.json changes
 [[lean_lib]]
 name = "MulDivArtifact"
@@ -244,6 +268,21 @@ text = true
 [[input_file]]
 name = "keccakJson"
 path = "../../cs/compiled_circuits/keccak_special5_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "keccakColumnParityJson"
+path = "../../cs/compiled_circuits/keccak_column_parity_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "keccakThetaRhoJson"
+path = "../../cs/compiled_circuits/keccak_theta_rho_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "keccakChi5Json"
+path = "../../cs/compiled_circuits/keccak_chi5_layout_no_caches_gkr.json"
 text = true
 
 [[input_file]]

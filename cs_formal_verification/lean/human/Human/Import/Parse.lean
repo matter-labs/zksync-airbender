@@ -90,6 +90,8 @@ private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat)
     c.logicalVariable (.BaseLayerMemory n)
   let pair := fun (columns : Fixed 2 Nat) => do
     pure (#v[← column columns.values[0]!, ← column columns.values[1]!] : Vector Nat 2)
+  unless c.aux_layout_data.relative_timestamp_groups.isNone do
+    throw "grouped timestamps are only imported for the split workers"
   let queries := c.memory_layout.ram_access_sets
   let borrows := c.aux_layout_data.shuffle_ram_timestamp_comparison_aux_vars
   unless queries.size == borrows.size do throw "timestamp comparison count differs from memory ports"
@@ -98,7 +100,7 @@ private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat)
   let mut ports := #[]
   for i in [:queries.size] do
     let some query := queries[i]? | throw "memory timestamp port is missing"
-    let some auxiliary := borrows[i]? | throw "memory timestamp borrow is missing"
+    let some (some auxiliary) := borrows[i]? | throw "memory timestamp borrow is missing"
     let (offset, previous) := match query with
       | .Readonly q => (q.in_cycle_write_index.val, q.read_timestamp)
       | .Write q => (q.in_cycle_write_index.val, q.read_timestamp)
@@ -208,6 +210,81 @@ def Circuit.memoryPorts (c : Circuit) : Except String (Array Trace.MemoryPort) :
     accesses, paired with its own native previous timestamp and write slot. -/
 def Circuit.delegationPorts (c : Circuit) : Except String (Array Trace.MemoryPort) := do
   c.resolveMemoryPorts (← c.delegationColumns).ports true
+
+/-- The split theta/rho and chi5 workers share one read timestamp per native
+    group of ports. Check that the groups partition the memory ports, that each
+    group names the same read-time columns as its ports, and that no per-port
+    borrow exists. -/
+def Circuit.splitTimestampGroups (c : Circuit) :
+    Except String (Array Delegation.GroupedTimestamp) := do
+  let some groups := c.aux_layout_data.relative_timestamp_groups |
+    throw "split delegation is missing grouped timestamp metadata"
+  if groups.isEmpty then throw "split delegation has no grouped timestamp metadata"
+  let ports := c.memory_layout.ram_access_sets
+  let borrows := c.aux_layout_data.shuffle_ram_timestamp_comparison_aux_vars
+  unless borrows.size == ports.size && borrows.all Option.isNone do
+    throw "split delegation ports cannot carry comparison borrows"
+  for group in groups do
+    if group.members.isEmpty then throw "split timestamp group has no memory ports"
+    for member in group.members do
+      unless member < ports.size do throw "split timestamp group names an absent memory port"
+  for index in [:ports.size] do
+    let owners := groups.filter (fun group => group.members.contains index)
+    unless owners.size == 1 do
+      throw "split memory port must belong to exactly one timestamp group"
+    let some owner := owners[0]? | throw "split memory port has no timestamp group"
+    let some query := ports[index]? | throw "split memory port is missing"
+    let readTimestamp := match query with
+      | .Readonly q => q.read_timestamp
+      | .Write q => q.read_timestamp
+    unless owner.read_timestamp.values == readTimestamp.values do
+      throw "split timestamp group disagrees with native memory port"
+  let some state := c.memory_layout.delegation_state |
+    throw "split timestamp groups need an invocation clock"
+  let column := fun n => do
+    unless n < c.memory_layout.total_width do throw "split delegation clock outside memory layout"
+    c.logicalVariable (.BaseLayerMemory n)
+  let invocationHigh ← column state.invocation_timestamp.values[1]!
+  groups.mapM fun group => do
+    let raw := group.read_timestamp.values
+    pure ⟨#v[← column raw[0]!, ← column raw[1]!], invocationHigh, group.members⟩
+
+/-- Split-worker clocks. Every port writes at slot two and reads at its group's
+    previous timestamp. A grouped port has no borrow column: its `borrow` field
+    names the invocation-high column, and the circuit's borrow is
+    `GroupedTimestamp.borrowValue` (invocation-high minus previous-high). The
+    timestamp queries are the invocation query and one alignment query per
+    indirect base register; the grouped comparisons are native equations. -/
+def Circuit.splitDelegationColumns (c : Circuit) : Except String Delegation.ClockColumns := do
+  let some state := c.memory_layout.delegation_state | throw "split delegation metadata is missing"
+  unless c.memory_layout.machine_state.isNone && c.memory_layout.decoder_input.isNone do
+    throw "split delegation cannot contain machine/decoder state"
+  let column := fun n => do
+    unless n < c.memory_layout.total_width do throw "split delegation clock outside memory layout"
+    c.logicalVariable (.BaseLayerMemory n)
+  let groups ← c.splitTimestampGroups
+  let mut alignedRegisters : Array Nat := #[]
+  for port in ← c.indirectPorts do
+    if !alignedRegisters.contains port.register then
+      alignedRegisters := alignedRegisters.push port.register
+  unless c.timestamp_range_check_lookup_expressions.size == 1 + alignedRegisters.size do
+    throw "split timestamp queries are not the invocation and alignment queries"
+  let mut clocks : Array Trace.TimestampPort := #[]
+  for index in [:c.memory_layout.ram_access_sets.size] do
+    let some group := groups.find? (fun group => group.members.contains index) |
+      throw "split memory port has no timestamp group"
+    let some query := c.memory_layout.ram_access_sets[index]? | throw "split memory port is missing"
+    let offset := match query with
+      | .Readonly q => q.in_cycle_write_index.val
+      | .Write q => q.in_cycle_write_index.val
+    unless offset == 2 do throw "split memory port write offset is not two"
+    clocks := clocks.push ⟨offset, group.previous, group.invocationHigh⟩
+  return ⟨← column state.execute,
+    #v[← column state.invocation_timestamp.values[0]!, ← column state.invocation_timestamp.values[1]!],
+    clocks⟩
+
+def Circuit.splitMemoryPorts (c : Circuit) : Except String (Array Trace.MemoryPort) := do
+  c.resolveMemoryPorts (← c.splitDelegationColumns).ports true
 
 /-- Validate a fixed-table query shape, including tags, padding and placement. -/
 private def Circuit.fixedQueries (c : Circuit) (width : Nat) (tables : List (Nat × Nat)) :
@@ -452,6 +529,37 @@ def Circuit.keccakQueries (c : Circuit) : Except String (Array (Array Expr)) := 
         unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
           throw "Keccak byte lookup padding must be zero"
     query.columns.mapM c.lookupExpression
+
+/-- The three split Keccak workers have different fixed-table widths. Keep every
+    native query column, including its table ID, and check the setup profile. -/
+private def Circuit.splitKeccakQueries (c : Circuit) (width count boundary : Nat)
+    (ids : List Nat) : Except String (Array (Array Expr)) := do
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == width do
+    throw "split Keccak lookup width or table-ID profile mismatch"
+  unless !c.has_decoder_lookup && c.offset_for_decoder_table == boundary &&
+      c.total_tables_size == boundary do
+    throw "unexpected split Keccak setup boundary"
+  unless c.num_generic_lookups == count && c.generic_lookups.size == count do
+    throw "unexpected split Keccak lookup count"
+  c.generic_lookups.mapIdxM fun index query => do
+    unless query.columns.size == width && query.lookup_set_index == index do
+      throw "split Keccak query width or set mismatch"
+    let some tag := query.columns[width - 1]? | throw "split Keccak query is missing its table ID"
+    unless tag.linear_terms.isEmpty && ids.contains tag.constant.canonical.val do
+      throw "split Keccak query uses an unexpected table ID"
+    query.columns.mapM c.lookupExpression
+
+/-- Column parity: iota (38), slots (62), control (63) and five-input XOR (64). -/
+def Circuit.keccakColumnParityQueries (c : Circuit) : Except String (Array (Array Expr)) :=
+  c.splitKeccakQueries 8 22 1114356 [38, 62, 63, 64]
+
+/-- Theta/rho: byte XOR (4), XOR-and-split (58), control (59) and slots (60). -/
+def Circuit.keccakThetaRhoQueries (c : Circuit) : Except String (Array (Array Expr)) :=
+  c.splitKeccakQueries 9 50 590066 [4, 58, 59, 60]
+
+/-- Chi5: the chi table (65) and control (66). -/
+def Circuit.keccakChi5Queries (c : Circuit) : Except String (Array (Array Expr)) :=
+  c.splitKeccakQueries 11 17 1048697 [65, 66]
 
 /-- Decode the Rust artifact using Lean's JSON parser and the typed serde mirror. -/
 def parseCircuit (text : String) : Except String Circuit := do

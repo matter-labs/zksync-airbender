@@ -12,4 +12,17 @@ structure ClockColumns where
   ports : Array Trace.TimestampPort
   deriving DecidableEq
 
+/-- One shared read timestamp of a split Keccak worker (theta/rho, chi5): the
+    native `members` ports all read at `previous`. These circuits commit no borrow
+    column: their equations use `invocationHigh - previous[1]` as the borrow
+    (`borrowValue`). The descriptor itself asserts no timing relation. -/
+structure GroupedTimestamp where
+  previous : Vector Nat 2
+  invocationHigh : Nat
+  members : Array Nat
+  deriving DecidableEq
+
+def GroupedTimestamp.borrowValue {F : Type} [Sub F] (group : GroupedTimestamp) (w : Nat → F) : F :=
+  w group.invocationHigh - w group.previous[1]
+
 end Airbender.Delegation

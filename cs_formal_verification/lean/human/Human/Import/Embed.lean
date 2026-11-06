@@ -44,13 +44,18 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     submemory:(" subword_memory_lookups")? unified:(" unified_reduced_lookups")?
     blake:(" blake_g_lookups")? blakeRound:(" blake_round_lookups")?
     bigint:(" bigint_lookups")? keccak:(" keccak_lookups")?
-    traceMetadata:(" trace_metadata")? delegationMetadata:(" delegation_metadata")? : command => do
-  if traceMetadata.isSome && delegationMetadata.isSome then
-    throwError "select either machine or delegation metadata"
+    keccakParity:(" keccak_column_parity_lookups")? keccakThetaRho:(" keccak_theta_rho_lookups")?
+    keccakChi5:(" keccak_chi5_lookups")?
+    traceMetadata:(" trace_metadata")? delegationMetadata:(" delegation_metadata")?
+    splitMetadata:(" split_delegation_timestamps")? : command => do
+  if (traceMetadata.isSome.toNat + delegationMetadata.isSome.toNat + splitMetadata.isSome.toNat) > 1 then
+    throwError "select one of machine, delegation or split metadata"
   if (comparisons.isSome.toNat + muldiv.isSome.toNat + shifts.isSome.toNat +
       memory.isSome.toNat + submemory.isSome.toNat + unified.isSome.toNat + blake.isSome.toNat +
-      blakeRound.isSome.toNat + bigint.isSome.toNat + keccak.isSome.toNat) > 1 then
+      blakeRound.isSome.toNat + bigint.isSome.toNat + keccak.isSome.toNat +
+      keccakParity.isSome.toNat + keccakThetaRho.isSome.toNat + keccakChi5.isSome.toNat) > 1 then
     throwError "select one fixed-lookup family"
+  let splitKeccak := keccakParity.isSome || keccakThetaRho.isSome || keccakChi5.isSome
   let source ← IO.FS.readFile path.getString
   let c ← match parseCircuit source with
     | .ok c => pure c
@@ -64,23 +69,31 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
   -- Native worker pointer alignment moved to the timestamp range table.
   -- Keep these actual queries in the operation core, before its fixed-table
   -- queries, while retaining the complete timestamp metadata separately.
-  let alignments ← if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome then do
-      let _ ← match c.delegationColumns with
+  -- Split theta/rho and chi5 compare grouped timestamps by native equations,
+  -- so only their invocation query precedes the alignment queries.
+  let alignments ← if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome ||
+      splitKeccak then do
+      let _ ← match (if splitMetadata.isSome then c.splitDelegationColumns else c.delegationColumns) with
         | .ok columns => pure columns
         | .error e => throwError "circuit import failed: {e}"
       let queries ← match c.timestampExpressions with
         | .ok queries => pure queries
         | .error e => throwError "circuit import failed: {e}"
-      (queries.toList.drop (1 + 2 * c.memory_layout.ram_access_sets.size)).mapM fun e => do
+      let comparisons := if splitMetadata.isSome then 0 else 2 * c.memory_layout.ram_access_sets.size
+      (queries.toList.drop (1 + comparisons)).mapM fun e => do
         `(_root_.FlatOperation.lookup (Airbender.Trace.timestampLookup $(← cleanExprSyntax e)))
     else pure []
   let memoryFamily := memory.isSome || submemory.isSome || unified.isSome || blake.isSome ||
-    blakeRound.isSome || bigint.isSome || keccak.isSome
-  let tableWidth := if keccak.isSome then 8 else if bigint.isSome then 3 else if blakeRound.isSome then 6 else if unified.isSome then 10 else 9
+    blakeRound.isSome || bigint.isSome || keccak.isSome || splitKeccak
+  let tableWidth := if keccak.isSome || keccakParity.isSome then 8 else if bigint.isSome then 3
+    else if blakeRound.isSome then 6 else if unified.isSome then 10 else if keccakChi5.isSome then 11 else 9
   let rom := mkIdent (if submemory.isSome || unified.isSome || blake.isSome || blakeRound.isSome ||
-    bigint.isSome || keccak.isSome then `setup else `rom)
+    bigint.isSome || keccak.isSome || splitKeccak then `setup else `rom)
   let generic ← if memoryFamily then do
     let queries ← match (if keccak.isSome then c.keccakQueries else if bigint.isSome then c.bigintQueries else if blakeRound.isSome then c.blakeRoundQueries
+        else if keccakParity.isSome then c.keccakColumnParityQueries
+        else if keccakThetaRho.isSome then c.keccakThetaRhoQueries
+        else if keccakChi5.isSome then c.keccakChi5Queries
         else if blake.isSome then c.blakeGQueries else if unified.isSome then c.unifiedReducedQueries
         else if submemory.isSome then c.subwordMemoryQueries else c.wordMemoryQueries) with
       | .ok queries => pure queries
@@ -138,7 +151,7 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     `((($(quote v) : Nat), ($(quote n) : String)))
   let names := names.toArray
   elabCommand (← `(def $namesName : List (Nat × String) := [$[$names],*]))
-  if traceMetadata.isSome || delegationMetadata.isSome then
+  if traceMetadata.isSome || delegationMetadata.isSome || splitMetadata.isSome then
     let timestamps ← match c.timestampExpressions with
       | .ok queries => pure queries
       | .error e => throwError "timestamp import failed: {e}"
@@ -148,8 +161,19 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     let timestampName := mkIdent (name.getId.appendAfter "TimestampLookups")
     elabCommand (← `(def $timestampName {$prime : Nat} [Fact (Nat.Prime $prime)] :
       List (_root_.FlatOperation (ZMod $prime)) := [$[$operations],*]))
-  if delegationMetadata.isSome then
-    let columns ← match c.delegationColumns with
+  if splitMetadata.isSome then
+    let groups ← match c.splitTimestampGroups with
+      | .ok groups => pure groups
+      | .error e => throwError "split timestamp metadata import failed: {e}"
+    let groupTerms ← groups.toList.mapM fun group => do
+      let members := group.members.map quote
+      `(Airbender.Delegation.GroupedTimestamp.mk #v[$(quote group.previous[0]), $(quote group.previous[1])]
+        $(quote group.invocationHigh) #[$[$members],*])
+    let groupTerms := groupTerms.toArray
+    let groupName := mkIdent (name.getId.appendAfter "TimestampGroups")
+    elabCommand (← `(def $groupName : Array Airbender.Delegation.GroupedTimestamp := #[$[$groupTerms],*]))
+  if delegationMetadata.isSome || splitMetadata.isSome then
+    let columns ← match (if splitMetadata.isSome then c.splitDelegationColumns else c.delegationColumns) with
       | .ok columns => pure columns
       | .error e => throwError "delegation metadata import failed: {e}"
     let pairSyntax := fun (columns : Vector Nat 2) => do
@@ -177,11 +201,12 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     elabCommand (← `(def $columnsName : Airbender.Trace.TraceColumns :=
       ⟨$(quote columns.execute), $(← pairSyntax columns.initialPC), $(← pairSyntax columns.finalPC),
         $(← pairSyntax columns.initialTime), $(← pairSyntax columns.finalTime), #[$[$portTerms],*]⟩))
-  if traceMetadata.isSome || delegationMetadata.isSome then
+  if traceMetadata.isSome || delegationMetadata.isSome || splitMetadata.isSome then
     let pairSyntax := fun (columns : Vector Nat 2) => do
       let terms := columns.toArray.map quote
       `(#v[$[$terms],*])
-    let ports ← match (if delegationMetadata.isSome then c.delegationPorts else c.memoryPorts) with
+    let ports ← match (if splitMetadata.isSome then c.splitMemoryPorts
+        else if delegationMetadata.isSome then c.delegationPorts else c.memoryPorts) with
       | .ok ports => pure ports
       | .error e => throwError "memory metadata import failed: {e}"
     let wordSyntax := fun (word : Airbender.Trace.WordColumns) => do
@@ -234,7 +259,7 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     elabCommand (← `(def $decoderName : Airbender.Trace.DecoderColumns :=
       ⟨$(quote decoder.rs1), $(quote decoder.rs2), $(quote decoder.rd),
         $(← pairSyntax decoder.immediate), $funct3, #[$[$flags],*]⟩))
-  if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome then
+  if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome || splitKeccak then
     let ports ← match c.indirectPorts with
       | .ok ports => pure ports
       | .error e => throwError "indirect port import failed: {e}"
