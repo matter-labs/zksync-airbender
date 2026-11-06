@@ -56,12 +56,12 @@ jobs:
         env:
           RUST_MIN_STACK: 1073741824
         run: |
-          cargo test -p verifier --profile cli --test native --test mop_montgomery -- --test-threads=1
+          cargo test -p verifier --profile cli --test native --test mop_montgomery
           cargo test -p verifier --profile cli --test corruption rejects_corrupted_folding_and_ood_pow_nonces_ethproofs_bigint_with_extended_control
       - name: Guest memory runtime, general and checked word-memory builds
         run: |
           cargo test -p riscv_common
-          cargo test -p riscv_common --features checked_word_memory --release
+          cargo test -p riscv_common --features checked_word_memory
 
   formatting:
     name: cargo fmt
