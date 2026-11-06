@@ -18,23 +18,28 @@ false. Subword retirement is therefore not a prerequisite for this machine.
 This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
-**The reduced machine has not passed.** A direct bounded importer probe of the
-pinned native layout rejects its U16GetSignAndHighByte selector before a reduced
-theorem is emitted. The actual artifact has 114 quadratic/five linear equations,
-eight scalar/eight timestamp queries, two constant/four dynamic tagged slots,
-141 logical variables and a log-23 trace. Its native state, decoder, lazy
-initialization/teardown and delegation-request descriptors must be retained
-explicitly. The importer currently checks different standalone selector/setup
-profiles. This is an importer/coverage blocker, not a source-defect finding or
-an accepted execution counterexample.
+**The reduced machine has no execution soundness theorem yet.** The resumed
+combined importer retains every native local equation/query and the original
+state, decoder, initialization and request coordinates. Its explicit tagged
+setup-table interface follows the current v3 unified importer, with the actual
+v2 four-field layout and Mersenne31 coefficients. Validation passed; see the
+[current adaptation snapshot](V3_ADAPTATION.md). Retained stage-two JSON has no
+claimed enforcement interpretation.
 
-The immediate sequence is exact reduced-layout intake and native table/setup
-connections, reduced selector/operand/write recovery, original clause execution,
-then combined histories, delegation accounting and terminal/public-state
-obligations. Reuse the existing ordinary proofs only through checked native
-reduced connections. Preserve original Clean/Sail semantics and all resource
-caps. Do not replace missing obligations with desired outputs, table equivalence
-or supplied intermediate states. The recurring task now records this priority.
+1. Bind actual reduced fixed regions and public ROM/CSR setup. Do not inherit
+   standalone fixture tables, supplied row answers or v3 table encodings.
+2. Derive combined native selectors, operand routing, actual masked writes,
+   PC/clock effects and original Sail clauses from these exact constraints.
+3. Compose initialized combined histories, public decoding and original execution.
+4. Connect native delegation workers/callers and supported public use.
+5. Close combined protocol, terminal/padding and initialization/teardown boundaries.
+
+The new v3 reference is PR #585 at b29277dd895499574e317a994fd89243a72f06cb.
+Its unified and reduced unrolled targets are distinct; the monolithic v2 reduced
+artifact maps to the unified migration path. Its newer compiler certificates and
+initialization contracts are dependencies to adapt, not established v2 coverage.
+Preserve original Clean/Sail semantics and existing resource caps. Do not replace
+missing obligations with desired outputs, table equivalence or intermediate states.
 
 ## Integrated review contract
 
@@ -54,15 +59,16 @@ an interface. Keep public assumptions visible and v2 findings independent.
 
 ## Continuing execution
 
-The user authorized hourly continuation and regular commits on 17 October 2026.
-The active schedule is Continue Airbender v2 formal verification backport, attached
-to this backport chat. Keep working in the isolated dev-based worktree and commit
-small verified milestones with Conventional Commits. Do not push without authorization.
-Use the [serial bounded verification runner](scripts/check_all.py) and its
+The user authorized continuation and regular commits on 17 October, stopped the
+scheduled task on 21 October, and resumed foreground work on 6 November against
+the latest PR #585. The scheduled task stays paused. Keep working in the isolated
+dev-based worktree and commit small verified milestones with Conventional Commits.
+Do not push without authorization. Use the
+[serial bounded verification runner](scripts/check_all.py) and its
 [validated watchdog](scripts/bounded_fv.py): one Lean worker, Lean memory cap
 3072 MiB, total footprint at most 3072 MiB, resident at most 4096 MiB and finite
 wall budgets. Confirm termination after limits and redesign instead of raising caps.
-The original v3 schedule remains separate and paused.
+This sampled guard and Lean allocation cap are not an OS hard physical-memory limit.
 
 ## Pending integration work
 

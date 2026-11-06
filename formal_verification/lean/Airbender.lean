@@ -60,3 +60,4 @@ import Airbender.Review.Helpers.Tables.NativeSllLow
 import Airbender.Review.Helpers.Tables.NativeSrlHigh
 import Airbender.Review.Circuits.ShiftBinop.Artifact
 import Airbender.Review.Circuits.SubwordMemory.Lookups
+import Airbender.Review.Circuits.ReducedMachine.Artifact

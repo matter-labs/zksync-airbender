@@ -1,3 +1,4 @@
+import Airbender.Proofs.ReducedMachine.ArtifactChecks
 import Tests.ShiftPC
 import Tests.ShiftFetched
 import Tests.ShiftClauses
@@ -2485,3 +2486,18 @@ import Tests.SubwordStoreData
 #print axioms Tests.SubwordStoreData.actual_stores
 #print axioms Tests.SubwordStoreData.actual_sb
 #print axioms Tests.SubwordStoreData.actual_sh
+#print axioms Airbender.ReducedMachine.Proofs.equation_count
+#print axioms Airbender.ReducedMachine.Proofs.lookup_count
+#print axioms Airbender.ReducedMachine.Proofs.argument_metadata
+#print axioms Airbender.ReducedMachine.Proofs.query0_fields
+#print axioms Airbender.ReducedMachine.Proofs.query0_table
+#print axioms Airbender.ReducedMachine.Proofs.query1_fields
+#print axioms Airbender.ReducedMachine.Proofs.query1_table
+#print axioms Airbender.ReducedMachine.Proofs.query2_fields
+#print axioms Airbender.ReducedMachine.Proofs.query2_table
+#print axioms Airbender.ReducedMachine.Proofs.query3_fields
+#print axioms Airbender.ReducedMachine.Proofs.query3_table
+#print axioms Airbender.ReducedMachine.Proofs.query4_fields
+#print axioms Airbender.ReducedMachine.Proofs.query4_table
+#print axioms Airbender.ReducedMachine.Proofs.query5_fields
+#print axioms Airbender.ReducedMachine.Proofs.query5_table

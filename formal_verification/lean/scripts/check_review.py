@@ -13,7 +13,7 @@ from urllib.parse import unquote, urlsplit
 ROOT = Path(__file__).resolve().parent.parent
 GUIDES = tuple(ROOT / name for name in (
     "README.md", "VERIFICATION_STATUS.md", "TRUST_AND_REVIEW.md",
-    "FORMAL_VERIFICATION_PLAN.md",
+    "FORMAL_VERIFICATION_PLAN.md", "V3_ADAPTATION.md",
 )) + tuple(sorted((ROOT / "Airbender/Review").rglob("README.md")))
 # File names, source-only Rust/Sail names, and prose are not emitted Lean declarations.
 SOURCE_NAMES = {

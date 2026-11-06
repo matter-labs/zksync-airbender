@@ -56,12 +56,22 @@ def Circuit.hasSubwordLookups (c : Circuit) : Bool :=
     #[.Constant .MemoryGetOffsetAndMaskWithTrap, .Constant .RomAddressSpaceSeparator,
       .Variable (.WitnessSubtree 28), .Variable (.WitnessSubtree 32)]
 
+/-- Exact six-slot reduced-machine intake profile. This does not authorize
+    Clean lookup emission or establish native table contents. -/
+def Circuit.hasReducedLookups (c : Circuit) : Bool :=
+  c.witness_layout.width_3_lookups.map (·.table_index) ==
+    #[.Constant .U16GetSignAndHighByte, .Constant .U16GetSignAndHighByte,
+      .Variable (.WitnessSubtree 58), .Variable (.WitnessSubtree 62),
+      .Variable (.WitnessSubtree 66), .Variable (.WitnessSubtree 70)]
+
 /-- Validate the selected v2 physical setup geometry, including full table
     offsets and the row reserved by get_main_domain_trace/normalization.
     This imports placement, not Rust-generated field values or LDE commitments. -/
 def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns := do
   let layout := c.setup_layout
-  unless c.trace_len == 16777216 && c.executor_family_decoder_table_size == 1048576 do
+  let reduced := c.hasReducedLookups
+  unless c.trace_len == (if reduced then 8388608 else 16777216) &&
+      c.executor_family_decoder_table_size == 1048576 do
     throw "unsupported native setup trace/decoder capacity"
   unless layout.timestamp_setup_columns.num_elements == 0 do
     throw "native timestamp setup groups are not supported"
@@ -77,9 +87,9 @@ def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns
   let small := !ids.isEmpty && ids.all (· == some FixedTableId.RangeCheckSmall)
   let shift := c.hasShiftLookups
   let subword := c.hasSubwordLookups
-  unless ids.isEmpty || memory || control || small || shift || subword do throw "unsupported native fixed lookup profile"
+  unless ids.isEmpty || memory || control || small || shift || subword || reduced do throw "unsupported native fixed lookup profile"
   let generic := if ids.isEmpty then 0 else 1
-  let rows := if memory then 1114113 else if control then 65664 else if small then 65536 else if shift then 10817537 else if subword then 9502721 else 0
+  let rows := if memory then 1114113 else if control then 65664 else if small then 65536 else if shift then 10817537 else if subword then 9502721 else if reduced then 5705985 else 0
   unless layout.generic_lookup_setup_columns.start == 2 &&
       layout.generic_lookup_setup_columns.num_elements == generic do
     throw "unsupported native tagged setup groups"
@@ -92,6 +102,13 @@ def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns
   let expected := (List.range 62).toArray.map fun id =>
     if memory then
       if id == 0 then 0 else if id ≤ 23 then 1 else if id == 24 then 65537 else 1114113
+    else if reduced then
+      if id == 0 then 0 else if id ≤ 4 then 1 else if id ≤ 6 then 65537
+      else if id == 7 then 131073 else if id ≤ 16 then 196609
+      else if id == 17 then 262145 else if id == 18 then 327681
+      else if id ≤ 20 then 393217 else if id ≤ 22 then 393345
+      else if id == 23 then 393473 else if id == 24 then 459009
+      else if id == 25 then 1507585 else if id ≤ 37 then 1511681 else 5705985
     else if subword then
       if id == 0 then 0 else if id ≤ 23 then 1 else if id ≤ 44 then 65537
       else if id == 45 then 2162689 else if id == 46 then 4259841
@@ -114,7 +131,7 @@ def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns
     layout.preprocessed_decoder_setup_columns.start, c.executor_family_decoder_table_size, rows⟩
 
 /-- Check every consumed address and expression before emitting a theorem target. -/
-def Circuit.validate (c : Circuit) : Except String Unit := do
+private def Circuit.validateLocal (c : Circuit) : Except String Unit := do
   let _ ← c.setupColumns
   let keys := c.variable_mapping.entries.map Prod.fst
   unless keys.toList.Nodup do throw "duplicate logical variable IDs"
@@ -126,6 +143,22 @@ def Circuit.validate (c : Circuit) : Except String Unit := do
       unless (c.variable_mapping.entries.filter fun (_, a) => a == address).size == 1 do
         throw "ambiguous optimized-out scratch mapping"
     | _ => let _ ← c.logicalVariable address
+  unless c.memory_layout.delegation_processor_layout.isNone do
+    throw "unsupported native delegation processor layout"
+  let _ ← c.stage_2_layout.raw.getObj?
+  let batched := c.batched_memory_access_timestamp_comparison_aux_vars
+  let indirect := c.register_and_indirect_access_timestamp_comparison_aux_vars
+  unless batched.predicate == .OptimizedOut 0 &&
+      batched.write_timestamp_columns.start == 0 && batched.write_timestamp_columns.num_elements == 0 &&
+      batched.write_timestamp == #[.OptimizedOut 0,.OptimizedOut 0] &&
+      indirect.predicate == .OptimizedOut 0 &&
+      indirect.write_timestamp_columns.start == 0 && indirect.write_timestamp_columns.num_elements == 0 &&
+      indirect.write_timestamp == #[.OptimizedOut 0,.OptimizedOut 0] do
+    throw "unsupported active batched/indirect timestamp metadata"
+  unless c.hasReducedLookups || c.memory_layout.shuffle_ram_inits_and_teardowns.isEmpty do
+    throw "native initialization metadata requires the reduced intake profile"
+  unless c.hasReducedLookups || c.lazy_init_address_aux_vars.isEmpty do
+    throw "native initialization auxiliaries require the reduced intake profile"
   let w := c.witness_layout
   unless w.boolean_vars_columns_range.start + w.boolean_vars_columns_range.num_elements ≤ w.total_width do
     throw "Boolean column range outside witness layout"
@@ -256,13 +289,103 @@ def Circuit.decoderColumns (c : Circuit) : Except String Trace.DecoderColumns :=
     zero[0]!, #v[immediate[0]!, immediate[1]!], funct3[0]!,
     ← c.logicalVariable state.circuit_family_extra_mask⟩
 
+/-- Native request observables. An absent ABI group stays absent; it is not
+    resolved as memory column zero or interpreted as an ABI value. -/
+structure DelegationRequestCoordinates where
+  multiplicity : Nat
+  kind : Nat
+  offsetHigh : Option Nat
+  clockOffset : Nat
+  deriving Repr, DecidableEq
+
+def Circuit.requestColumns (c : Circuit) : Except String (Option DelegationRequestCoordinates) := do
+  if !c.hasReducedLookups && !c.hasShiftLookups then
+    unless c.memory_layout.delegation_request_layout.isNone do
+      throw "native delegation requests require a supported request profile"
+    return none
+  let some request := c.memory_layout.delegation_request_layout
+    | throw "native request profile lacks its request descriptor"
+  let groupAt := fun (columns : ColumnSet) (start count : Nat) =>
+    columns.start == start && columns.num_elements == count
+  let reduced := c.hasReducedLookups
+  unless groupAt request.multiplicity (if reduced then 27 else 17) 1 &&
+      groupAt request.delegation_type (if reduced then 28 else 18) 1 &&
+      groupAt request.abi_mem_offset_high (if reduced then 29 else 0) (if reduced then 1 else 0) &&
+      request.in_cycle_write_index.val == 3 do
+    throw "unsupported native request placement or issue offset"
+  let multiplicity ← c.memoryColumns request.multiplicity 1
+  let kind ← c.memoryColumns request.delegation_type 1
+  let offset ← if reduced then do
+      let columns ← c.memoryColumns request.abi_mem_offset_high 1
+      pure (some columns[0]!)
+    else pure none
+  pure (some ⟨multiplicity[0]!,kind[0]!,offset,3⟩)
+
+/-- Logical coordinates of the native reduced argument descriptors. These
+    are observables, not initialized-history, issue or public-value premises. -/
+structure ReducedArgumentColumns where
+  initialAddress : Vector Nat 2
+  terminalValue : Vector Nat 2
+  terminalTime : Vector Nat 2
+  addressAux : Vector Nat 2
+  addressBorrows : Vector Nat 2
+  requestMultiplicity : Nat
+  requestType : Nat
+  requestOffsetHigh : Nat
+  requestClockOffset : Nat
+  deriving Repr, DecidableEq
+
+def Circuit.reducedArgumentColumns (c : Circuit) : Except String ReducedArgumentColumns := do
+  unless c.hasReducedLookups do throw "not the native reduced intake profile"
+  let [initial] := c.memory_layout.shuffle_ram_inits_and_teardowns.toList
+    | throw "reduced intake requires one native init/teardown descriptor"
+  let [aux] := c.lazy_init_address_aux_vars.toList
+    | throw "reduced intake requires one native initialization auxiliary"
+  let some request := c.memory_layout.delegation_request_layout
+    | throw "reduced intake requires native delegation request metadata"
+  let groupAt := fun (columns : ColumnSet) (start : Nat) =>
+    columns.start == start && columns.num_elements == 1
+  unless groupAt initial.lazy_init_addresses_columns 0 &&
+      groupAt initial.lazy_teardown_values_columns 2 &&
+      groupAt initial.lazy_teardown_timestamps_columns 4 &&
+      groupAt request.multiplicity 27 && groupAt request.delegation_type 28 &&
+      groupAt request.abi_mem_offset_high 29 do
+    throw "unsupported native reduced initialization/request placement"
+  unless aux.aux_low_high == #[.WitnessSubtree 17,.WitnessSubtree 18] &&
+      aux.intermediate_borrow == .WitnessSubtree 44 && aux.final_borrow == .WitnessSubtree 45 do
+    throw "unsupported native reduced initialization auxiliary placement"
+  unless request.in_cycle_write_index.val == 3 do
+    throw "reduced delegation issue offset must be three"
+  let address ← c.memoryPair initial.lazy_init_addresses_columns
+  let value ← c.memoryPair initial.lazy_teardown_values_columns
+  let time ← c.memoryPair initial.lazy_teardown_timestamps_columns
+  let [low,high] := aux.aux_low_high.toList
+    | throw "native initialization auxiliary must have two limbs"
+  let limbs := #v[← c.logicalVariable low, ← c.logicalVariable high]
+  let borrowLow ← c.logicalVariable aux.intermediate_borrow
+  let borrowHigh ← c.logicalVariable aux.final_borrow
+  unless c.hasBoolean aux.intermediate_borrow && c.hasBoolean aux.final_borrow do
+    throw "native initialization borrow lacks its Boolean equation"
+  let multiplicity ← c.memoryColumns request.multiplicity 1
+  let kind ← c.memoryColumns request.delegation_type 1
+  let offset ← c.memoryColumns request.abi_mem_offset_high 1
+  pure ⟨address,value,time,limbs,#v[borrowLow,borrowHigh],multiplicity[0]!,kind[0]!,offset[0]!,3⟩
+
+/-- Validate every consumed local expression and physical descriptor. Reduced
+    initialization/request metadata cannot bypass checks through a typed value. -/
+def Circuit.validate (c : Circuit) : Except String Unit := do
+  c.validateLocal
+  let _ ← c.requestColumns
+  if c.memory_layout.intermediate_state_layout.isSome || c.memory_layout.machine_state_layout.isSome then
+    let _ ← c.memoryPorts
+    let _ ← c.decoderColumns
+  if c.hasReducedLookups then
+    let _ ← c.reducedArgumentColumns
+
 def parseCircuit (source : String) : Except String Circuit := do
   let json ← Json.parse source
   let c : Circuit ← fromJson? json
   c.validate
-  if c.memory_layout.intermediate_state_layout.isSome || c.memory_layout.machine_state_layout.isSome then
-    let _ ← c.memoryPorts
-    let _ ← c.decoderColumns
   pure c
 
 def loadCircuit (path : System.FilePath) : IO (Except String Circuit) :=

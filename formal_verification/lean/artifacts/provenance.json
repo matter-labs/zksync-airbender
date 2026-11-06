@@ -23,14 +23,6 @@
       "sha256": "b9faa36bcb59136c8b1b87af02c81186e3ad77c966c558cf4a2d457d5ccdf60e"
     },
     {
-      "path": "Airbender/Proofs/Arithmetic/Lemmas.lean",
-      "sha256": "a658bfbb16c085a21de61f86c290b165435f4bef6174ad0ca15cf39f8fc727cc"
-    },
-    {
-      "path": "Airbender/Proofs/Arithmetic/Word.lean",
-      "sha256": "3d21bbc1aee3b09c7978f3365504e1ad0ed85ad2fd7db957647b8e8cb3efff15"
-    },
-    {
       "path": "Airbender/Proofs/Sail/Sequential.lean",
       "sha256": "dbd6d8cb7836b40e74d4bdac0c613e3ab4fa604cfdba518a5c69cafd41fd7da9"
     },
@@ -215,10 +207,6 @@
       "sha256": "5d19ed3b9848e755522aaf758f07646990fba7a6add595e05098c4c0b2080864"
     },
     {
-      "path": "Airbender/Proofs/Arithmetic/Bytes.lean",
-      "sha256": "54099627ad981d8fa9068e6d52e2651e35e067a472b83782896622d551d1519d"
-    },
-    {
       "path": "Airbender/Proofs/Sail/Memory.lean",
       "sha256": "6558e455370333012f15ba9c3381b8f6513705da8ed831b398bcbdf63c1e2181"
     },
@@ -299,10 +287,6 @@
       "sha256": "d220d575bc0af1558f3b06d16b7d618e5b3af930c704e8903955a42007920b33"
     },
     {
-      "path": "Airbender/Proofs/Arithmetic/Multiplication.lean",
-      "sha256": "f949ca8681dd30cf010a3aedb43f4e464a875ec60705df92563a591f8990acb9"
-    },
-    {
       "path": "Airbender/Proofs/Sail/DecoderFrame.lean",
       "sha256": "8b0a1ff2bfe736cf05d02a5b000e553650560a6429e8ab9af0521c14007374d2"
     },
@@ -343,6 +327,10 @@
     {
       "path": "../../cs/subword_only_load_store_preprocessed_layout.json",
       "sha256": "6b58d4da289e00aaa14764cde45ad84d0659ce7773a618a5228fe0692e52c72b"
+    },
+    {
+      "path": "../../cs/reduced_machine_preprocessed_layout.json",
+      "sha256": "b039058651675ec19795de6eff609170612313cd55e9215029e3752286ae7923"
     }
   ],
   "native_sources": [
@@ -551,6 +539,26 @@
     {
       "path": "../../cs/src/machine/ops/unrolled/decoder/memory_subword_only.rs",
       "sha256": "40519ff0ef6c0236b92ecb313332f83c19497b90d6f3d350d1a821fd81314dfa"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/reduced_machine_ops.rs",
+      "sha256": "52743b635910b9d40b38548eeb39e3b453a65c8cc56f81d45906854b8e8ec287"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/decoder/reduced_machine_ops.rs",
+      "sha256": "70a0f9c600bbb4b32ed7adae835efb1c47ad7ee2884076d10a4b106ddf4553a1"
+    },
+    {
+      "path": "../../cs/src/machine/machine_configurations/minimal_no_exceptions_with_delegation/mod.rs",
+      "sha256": "e3efb6d08a8c7d90c0ea8c94612f11ca7e8a07867fba0454d4fb56c6837a04f4"
+    },
+    {
+      "path": "../../cs/src/definitions/memory_tree.rs",
+      "sha256": "706587e6ddd5a003e0488c428e8b4af1389bbbeb9de51d3bce9f11b4b960cdeb"
+    },
+    {
+      "path": "../../cs/src/definitions/delegation.rs",
+      "sha256": "89a39978d83423551a5890d7af510249971f9edf746cc60dda9484c891f9696c"
     }
   ],
   "adaptations": [
@@ -6624,6 +6632,40 @@
       "source_path": "Airbender/Proofs/SubwordMemory/Stores.lean",
       "source_sha256": "45849c2a38f4c71838adad5c7f48330cc528ab325687a1241d971f3a38f4cd44",
       "change": "Adapt pinned v3 store assembly to actual v2 clearing/placement raw-funct3 keys, two-bit offset, old/source read columns and actual store writes. Every selector/key/range/mapping is derived from native acceptance and initialized reads before the byte-window claim. Keep all full literal helper rows and derive SH alignment from original decoded metadata and actual fixed offset constraints."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Artifact.lean",
+      "source_path": "Airbender/Import/Embed.lean",
+      "source_revision": "b29277dd895499574e317a994fd89243a72f06cb",
+      "source_sha256": "a5fc1d9c36c7741e65b95b24e8952bf1d72a16461fc2d55fafafb9fd0ef98b0f",
+      "change": "Adapt current v3 fixed tagged setup parameter and retained source bytes to the actual v2 four-field reduced queries. Retain all native v2 equations, scalar/timestamp queries, original decoder/x0 metadata and Mersenne31 coefficients. Setup correspondence and global argument enforcement remain separate."
+    },
+    {
+      "path": "Airbender/Import/Embed.lean",
+      "source_path": "Airbender/Import/Embed.lean",
+      "source_revision": "b29277dd895499574e317a994fd89243a72f06cb",
+      "source_sha256": "a5fc1d9c36c7741e65b95b24e8952bf1d72a16461fc2d55fafafb9fd0ef98b0f",
+      "change": "Adapt current v3 fixed tagged setup parameter and retained source bytes to the actual v2 four-field reduced queries. Retain all native v2 equations, scalar/timestamp queries, original decoder/x0 metadata and Mersenne31 coefficients. Setup correspondence and global argument enforcement remain separate."
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/ArtifactChecks.lean",
+      "change": "Native v2 combined reduced-machine intake and structural regression; metadata and all tagged query fields remain explicit. This does not import v3 field/layout semantics or establish whole-machine execution."
+    },
+    {
+      "path": "Tests/ReducedMachineEmission.lean",
+      "change": "Native v2 combined reduced-machine intake and structural regression; metadata and all tagged query fields remain explicit. This does not import v3 field/layout semantics or establish whole-machine execution."
+    },
+    {
+      "path": "Tests/ReducedMachineImport.lean",
+      "change": "Native v2 combined reduced-machine intake and structural regression; metadata and all tagged query fields remain explicit. This does not import v3 field/layout semantics or establish whole-machine execution."
+    },
+    {
+      "path": "Airbender/Import/Schema.lean",
+      "change": "Native v2 combined reduced-machine intake and structural regression; metadata and all tagged query fields remain explicit. This does not import v3 field/layout semantics or establish whole-machine execution."
+    },
+    {
+      "path": "Airbender/Import/Parse.lean",
+      "change": "Native v2 combined reduced-machine intake and structural regression; metadata and all tagged query fields remain explicit. This does not import v3 field/layout semantics or establish whole-machine execution."
     }
   ],
   "setup_artifacts": [
@@ -6827,6 +6869,83 @@
       "source_repository_path": "prover/src/gkr/prover/setup_artifact.rs",
       "source_sha256": "8f75a6131a23bc70e36936421a94c510d3ea9e3c7c52ea64bd6f46969ca976c4",
       "change": "Copy unchanged ColumnBlock and EncodedColumn implementations, including exhaustive matches_values validation; omit unrelated GKR/full-trace setup assembly."
+    }
+  ],
+  "current_v3_revision": "b29277dd895499574e317a994fd89243a72f06cb",
+  "current_v3_base_revision": "c1a662222cafcd96db4383dce737edb79fa62b09",
+  "current_v3_pr": "https://github.com/matter-labs/zksync-airbender/pull/585",
+  "historical_reused_files": [
+    {
+      "path": "Airbender/Proofs/Arithmetic/Lemmas.lean",
+      "sha256": "a658bfbb16c085a21de61f86c290b165435f4bef6174ad0ca15cf39f8fc727cc"
+    },
+    {
+      "path": "Airbender/Proofs/Arithmetic/Word.lean",
+      "sha256": "3d21bbc1aee3b09c7978f3365504e1ad0ed85ad2fd7db957647b8e8cb3efff15"
+    },
+    {
+      "path": "Airbender/Proofs/Arithmetic/Bytes.lean",
+      "sha256": "54099627ad981d8fa9068e6d52e2651e35e067a472b83782896622d551d1519d"
+    },
+    {
+      "path": "Airbender/Proofs/Arithmetic/Multiplication.lean",
+      "sha256": "f949ca8681dd30cf010a3aedb43f4e464a875ec60705df92563a591f8990acb9"
+    }
+  ],
+  "current_v3_reused_files": [
+    {
+      "path": "Airbender/Review/Helpers/Core/FieldCapacity.lean",
+      "sha256": "d13462a620f60152e192b032ed3dbf280591dd4b4c675dd075909204a610a32c"
+    },
+    {
+      "path": "Airbender/Proofs/Arithmetic/Lemmas.lean",
+      "sha256": "aa3e1d7fefb81aef9fbb3a92026002a304ef129e9cda2b4e58f3c7f445114cc2"
+    },
+    {
+      "path": "Airbender/Proofs/Arithmetic/Word.lean",
+      "sha256": "e857d0b75dad00582d3c782f9d2f1a0a7e9528e40ca5bbe8045a14da49228590"
+    },
+    {
+      "path": "Airbender/Proofs/Arithmetic/Bytes.lean",
+      "sha256": "0ba857dc6ebaa32eb35055f2c2d92ff92fdfadb954f10aa778f13900b98ab776"
+    },
+    {
+      "path": "Airbender/Proofs/Arithmetic/Multiplication.lean",
+      "sha256": "aeee1bd94640fe85da05028e597ceb49a6f5298ea14f382954b4774e58826cff"
+    }
+  ],
+  "current_v3_reference_files": [
+    {
+      "path": "Airbender/Import/Embed.lean",
+      "sha256": "a5fc1d9c36c7741e65b95b24e8952bf1d72a16461fc2d55fafafb9fd0ef98b0f"
+    },
+    {
+      "path": "Airbender/Review/Compiler/MachineTargets.lean",
+      "sha256": "ed042a2b32b80231fc2949067bf8366e8fbbb30d6cc3db7421749e2cc4b8ef78"
+    },
+    {
+      "path": "Airbender/Review/Compiler/Theorems.lean",
+      "sha256": "239de513ca493ee4ce3b3398e5ce9bd317d5d74cf2cbfb43eeed2bb3485fbb88"
+    },
+    {
+      "path": "Airbender/Proofs/UnifiedReduced/MachineTarget.lean",
+      "sha256": "2cee9033a6732fcc475e7abe76a121524baaa8e10bb5684eaf667b802a01fcdc"
+    },
+    {
+      "path": "Airbender/Review/Circuits/UnifiedReduced/Artifact.lean",
+      "sha256": "dce6f294449672d606b49939e8d064076c3d45de89967e77e2b784c4d0d3932f"
+    },
+    {
+      "path": "FINDINGS.md",
+      "sha256": "4272e2327339fc515724c533a6b4054d162eca0cadf26be1d06502014b593032"
+    },
+    {
+      "path": "TRUST_AND_REVIEW.md",
+      "sha256": "ace33bca23cb14a97eef64cfec8204594b3b6e19b8236834bb4c678f2f5b71bf"
+    },
+    {
+      "path": "VERIFICATION_STATUS.md",
+      "sha256": "7b8d4231048a8c228ef2e6e195c3b38304fca474ac16de75a5e9a12b3b2c50d9"
     }
   ]
 }

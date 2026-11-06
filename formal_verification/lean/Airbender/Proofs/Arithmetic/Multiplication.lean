@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Arithmetic.Word
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.FinCases
@@ -27,7 +28,7 @@ def productColumnOutputs (low high : Word) (carry : Fin 3 → Nat) : Fin 4 → N
 /-- Lift the byte-column equations before combining them. A single field
     equality for a 64-bit product would lose multiples of the characteristic. -/
 theorem product_of_columns {F : Type} [CommRing F] {p : Nat} [CharP F p]
-    (hp : 536870912 ≤ p) (q d r low high : Word) (carry : Fin 3 → Nat)
+    (hp : FieldCapacity.NativeWordCapacity p) (q d r low high : Word) (carry : Fin 3 → Nat)
     (qb : q.Bounded) (db : d.Bounded) (rb : r.Bounded)
     (lb : low.Bounded) (hb : high.Bounded)
     (cb : ∀ i, carry i < 8192)

@@ -30,10 +30,13 @@ private partial def cleanExprSyntax (e : Expr) : CommandElabM (TSyntax `term) :=
 
 /-- Import v2 compiled row equations, ranges and selected fixed queries into Clean.
     Import/generation fidelity and setup/memory arguments remain explicit boundaries. -/
-elab "import_clean " name:ident " from " path:str fixed:(" word_memory_lookups")? control:(" control_lookups")? muldiv:(" mul_div_lookups")? shift:(" shift_binop_lookups")? subword:(" subword_memory_lookups")? metadata:(" trace_metadata")? : command => do
-  let c ← match parseCircuit (← IO.FS.readFile path.getString) with
+elab "import_clean " name:ident " from " path:str fixed:(" word_memory_lookups")? control:(" control_lookups")? muldiv:(" mul_div_lookups")? shift:(" shift_binop_lookups")? subword:(" subword_memory_lookups")? reduced:(" reduced_machine_lookups")? metadata:(" trace_metadata")? : command => do
+  let source ← IO.FS.readFile path.getString
+  let c ← match parseCircuit source with
     | .ok c => pure c
     | .error e => throwError "v2 circuit import failed: {e}"
+  if c.hasReducedLookups != reduced.isSome then
+    throwError "native reduced-machine lookups require their explicit target"
   let expressions ← match do
     let qs ← c.degree_2_constraints.mapM c.quadraticExpression
     let ls ← c.degree_1_constraints.mapM c.linearExpression
@@ -54,13 +57,14 @@ elab "import_clean " name:ident " from " path:str fixed:(" word_memory_lookups")
     `(_root_.FlatOperation.lookup (Airbender.Verification.timestamp19 $(← cleanExprSyntax e)))
   let prime := mkIdent `p
   let rom := mkIdent `rom
-  if fixed.isSome.toNat + control.isSome.toNat + muldiv.isSome.toNat + shift.isSome.toNat + subword.isSome.toNat > 1 then throwError "choose one native fixed-table profile"
-  unless c.witness_layout.width_3_lookups.isEmpty || fixed.isSome || control.isSome || muldiv.isSome || shift.isSome || subword.isSome do
+  let setup := mkIdent `setup
+  if fixed.isSome.toNat + control.isSome.toNat + muldiv.isSome.toNat + shift.isSome.toNat + subword.isSome.toNat + reduced.isSome.toNat > 1 then throwError "choose one native fixed-table profile"
+  unless c.witness_layout.width_3_lookups.isEmpty || fixed.isSome || control.isSome || muldiv.isSome || shift.isSome || subword.isSome || reduced.isSome do
     throwError "v2 fixed lookups require an explicit native target"
-  if (fixed.isSome || control.isSome || muldiv.isSome || shift.isSome || subword.isSome) && c.witness_layout.width_3_lookups.isEmpty then
+  if (fixed.isSome || control.isSome || muldiv.isSome || shift.isSome || subword.isSome || reduced.isSome) && c.witness_layout.width_3_lookups.isEmpty then
     throwError "v2 fixed-table target has no native fixed lookups"
   for query in c.witness_layout.width_3_lookups do
-    let allowed := match query.table_index with
+    let allowed := if reduced.isSome then c.hasReducedLookups else match query.table_index with
       | .Variable _ => (shift.isSome && c.hasShiftLookups) || (subword.isSome && c.hasSubwordLookups)
       | .Constant id => match id with
         | .RomAddressSpaceSeparator => fixed.isSome || subword.isSome
@@ -68,11 +72,24 @@ elab "import_clean " name:ident " from " path:str fixed:(" word_memory_lookups")
         | .MemoryGetOffsetAndMaskWithTrap => subword.isSome
         | .ConditionalJmpBranchSlt | .JumpCleanupOffset => control.isSome
         | .RangeCheckSmall => muldiv.isSome
+        | .U16GetSignAndHighByte => false
     unless allowed do throwError "native fixed tables do not match the explicit target"
   let fixedLookups ← c.witness_layout.width_3_lookups.toList.mapM fun query => do
     let entries ← match query.input_columns.mapM c.lookupExpression with
       | .ok entries => entries.mapM cleanExprSyntax
       | .error e => throwError "v2 fixed lookup import failed: {e}"
+    if reduced.isSome then
+      let selector ← match query.table_index with
+        | .Constant .U16GetSignAndHighByte => cleanConstantSyntax 16
+        | .Variable address =>
+          match c.logicalVariable address with
+          | .ok index => cleanExprSyntax (.Var index)
+          | .error error => throwError "v2 reduced selector import failed: {error}"
+        | _ => throwError "unsupported reduced fixed selector"
+      return ← `(_root_.FlatOperation.lookup {
+        table := ($setup).toRaw
+        entry := #v[$(entries[0]!), $(entries[1]!), $(entries[2]!), $selector]
+      })
     if let .Variable address := query.table_index then
       let selector ← match c.logicalVariable address with
         | .ok index => cleanExprSyntax (.Var index)
@@ -89,16 +106,23 @@ elab "import_clean " name:ident " from " path:str fixed:(" word_memory_lookups")
       | .Constant .ConditionalJmpBranchSlt => `(Verification.conditionalControlTable (p := $prime))
       | .Constant .JumpCleanupOffset => `(Verification.jumpCleanupTable (p := $prime))
       | .Constant .RangeCheckSmall => `(Verification.smallRangeTable (p := $prime))
+      | .Constant .U16GetSignAndHighByte => throwError "reduced lookup emission is not connected"
       | .Variable _ => throwError "unexpected dynamic lookup profile"
     `(_root_.FlatOperation.lookup (Verification.fixed3 $table
       #v[$(entries[0]!), $(entries[1]!), $(entries[2]!)]))
   let ops := (assertions ++ lookups ++ timestamps ++ fixedLookups).toArray
-  if fixed.isSome || subword.isSome then
+  if reduced.isSome then
+    elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)]
+      ($setup : _root_.Table (ZMod $prime) (_root_.fields 4)) :
+      List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
+  else if fixed.isSome || subword.isSome then
     elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)]
       ($rom : Verification.WordROM) : List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
   else
     elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)] :
       List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
+  let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")
+  elabCommand (← `(def $sourceName : String := $(quote source)))
   if metadata.isSome then
     let setup ← match c.setupColumns with
       | .ok setup => pure setup
@@ -144,5 +168,27 @@ elab "import_clean " name:ident " from " path:str fixed:(" word_memory_lookups")
       ⟨$(quote decoder.rs1), $(quote decoder.rs2), $(quote decoder.rd),
         $(quote decoder.rdIsZero), $(← pair decoder.immediate),
         $(quote decoder.funct3), $(quote decoder.mask)⟩))
+
+    let request ← match c.requestColumns with
+      | .ok columns => pure columns
+      | .error error => throwError "v2 request metadata import failed: {error}"
+    if let some request := request then
+      let offset ← match request.offsetHigh with
+        | none => `(none)
+        | some column => `(some $(quote column))
+      let requestName := mkIdent (name.getId.appendAfter "RequestColumns")
+      elabCommand (← `(def $requestName : Airbender.DelegationRequestCoordinates :=
+        ⟨$(quote request.multiplicity), $(quote request.kind), $offset,
+          $(quote request.clockOffset)⟩))
+    if reduced.isSome then
+      let args ← match c.reducedArgumentColumns with
+        | .ok args => pure args
+        | .error error => throwError "v2 reduced argument metadata import failed: {error}"
+      let argsName := mkIdent (name.getId.appendAfter "ArgumentColumns")
+      elabCommand (← `(def $argsName : Airbender.ReducedArgumentColumns :=
+        ⟨$(← pair args.initialAddress), $(← pair args.terminalValue),
+          $(← pair args.terminalTime), $(← pair args.addressAux), $(← pair args.addressBorrows),
+          $(quote args.requestMultiplicity), $(quote args.requestType),
+          $(quote args.requestOffsetHigh), $(quote args.requestClockOffset)⟩))
 
 end Airbender

@@ -59,3 +59,11 @@ now connect actual native clearing/placement queries and write muxes to every
 changed/preserved SB/SH byte. Actual source/old ranges and selectors are derived;
 full literal helper domains remain unchanged. Architectural memory/ROM and
 original access/exception/retirement remain separate next dependencies.
+
+## Combined native reduced machine
+
+[The reduced artifact](ReducedMachine/Artifact.lean) retains all native local
+row equations/queries, the complete source bytes and validated state, decoder,
+initialization and request coordinates. [The guide](ReducedMachine/README.md)
+separates that intake from pending native fixed setup, execution and argument
+connections. Existing standalone family results do not establish this machine.

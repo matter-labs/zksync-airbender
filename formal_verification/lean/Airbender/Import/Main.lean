@@ -14,7 +14,10 @@ def main (paths : List String) : IO UInt32 := do
         IO.eprintln s!"{path}: {error}"
         failures := failures + 1
       | .ok c =>
-        IO.println s!"{path}: OK; Mersenne31; {c.degree_1_constraints.size}/{c.degree_2_constraints.size} linear/quadratic equations, {c.witness_layout.range_check_16_lookup_expressions.size} scalar and {c.witness_layout.timestamp_range_check_lookup_expressions.size} timestamp queries, {c.witness_layout.width_3_lookups.size} native tagged queries; local row scope"
+        let scope := if c.hasReducedLookups then
+          "reduced-machine local rows; setup, decoder and global arguments remain external"
+          else "local row scope"
+        IO.println s!"{path}: OK; Mersenne31; {c.degree_1_constraints.size}/{c.degree_2_constraints.size} linear/quadratic equations, {c.witness_layout.range_check_16_lookup_expressions.size} scalar and {c.witness_layout.timestamp_range_check_lookup_expressions.size} timestamp queries, {c.witness_layout.width_3_lookups.size} native tagged queries; {scope}"
     catch error =>
       IO.eprintln s!"{path}: {error}"
       failures := failures + 1

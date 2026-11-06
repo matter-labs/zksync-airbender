@@ -15,12 +15,32 @@ tokens and the initial PC from actual Sail reads of a supplied state/domain.
 ## Sources and pins
 
 The target is dev revision 67ee094449abaebc77e58435f130ce6ea27721e5. The source
-formalization is revision 805909325; [provenance](artifacts/provenance.json)
-records its full commit and byte-identical shared modules, generated references,
+formalization retains revision 805909325 origins and now references PR #585
+at b29277dd895499574e317a994fd89243a72f06cb. The [adaptation snapshot](V3_ADAPTATION.md)
+separates these sources and remaining machine obligations. [Provenance](artifacts/provenance.json)
+records both full commits and byte-identical shared modules, generated references,
 native Rust source hashes and the v2 JSON identity. Lean, Mathlib, Clean and
 lean-sail versions are unchanged. The [Clean preparation](scripts/prepare_clean.py)
 is the existing guarded compatibility patch, not a change to its semantics.
 The [Sail generation record](generated/sail-rv32/provenance.json) is copied unchanged.
+
+## Combined reduced-machine boundary
+
+The [combined native artifact](Airbender/Review/Circuits/ReducedMachine/Artifact.lean)
+now emits all local row operations against an explicit fixed four-field setup
+table. Both constant sign/high-byte tags and all dynamic tags are retained.
+The source bytes and validated initialization/request coordinates are exposed;
+they do not imply physical setup, global matching, argument enforcement or Sail
+execution. The current v3 unified importer supplies the ownership pattern, not
+its BabyBear equations, ten-field tables or compiler certificates. The v2 target
+and native coefficients remain Mersenne31. No native reduced machine theorem
+is claimed by this import layer.
+
+The existing shift/CSR family also carries request metadata. Its multiplicity
+and type columns are retained separately from the reduced request, and its
+zero-width ABI group stays absent rather than resolving to memory column zero.
+Unsupported request profiles and altered group extents reject. Retaining these
+coordinates does not close runtime CSR setup or issue/fulfillment semantics.
 
 ## Import and generation fidelity
 

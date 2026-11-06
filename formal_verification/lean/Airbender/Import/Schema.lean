@@ -41,6 +41,7 @@ inductive FixedTableId where
   | JumpCleanupOffset
   | RangeCheckSmall
   | MemoryGetOffsetAndMaskWithTrap
+  | U16GetSignAndHighByte
   deriving Repr, DecidableEq, FromJson, ToJson
 
 /-- Native constants and physical witness selectors. Variable selectors are
@@ -134,9 +135,58 @@ structure IntermediateStatePermutationVariables where
   circuit_family_extra_mask : ColumnAddress
   deriving Repr, FromJson
 
+/-- Physical lazy-init/teardown columns. Imported descriptors do not establish
+    sorted initialization windows, public values or argument enforcement. -/
+structure InitTeardownColumns where
+  lazy_init_addresses_columns : ColumnSet
+  lazy_teardown_values_columns : ColumnSet
+  lazy_teardown_timestamps_columns : ColumnSet
+  deriving Repr, FromJson
+
+/-- Actual caller request fields and issue-clock offset. Worker participation
+    and cancellation are separate obligations, not consequences of this record. -/
+structure DelegationRequestColumns where
+  multiplicity : ColumnSet
+  delegation_type : ColumnSet
+  abi_mem_offset_high : ColumnSet
+  in_cycle_write_index : U32
+  deriving Repr, FromJson
+
+/-- An unsupported active processor layout must never disappear on parsing. -/
+structure UnsupportedProcessor where
+  deriving Repr
+
+instance : FromJson UnsupportedProcessor where
+  fromJson? _ := .error "unsupported native delegation processor layout"
+
+structure LazyInitAddressAux where
+  aux_low_high : Array ColumnAddress
+  intermediate_borrow : ColumnAddress
+  final_borrow : ColumnAddress
+  deriving Repr, FromJson
+
+structure InactiveBatchedTimestampAux where
+  predicate : ColumnAddress
+  write_timestamp_columns : ColumnSet
+  write_timestamp : Array ColumnAddress
+  aux_borrow_vars : EmptyArray
+  deriving Repr, FromJson
+
+structure InactiveIndirectTimestampAux where
+  predicate : ColumnAddress
+  write_timestamp_columns : ColumnSet
+  write_timestamp : Array ColumnAddress
+  aux_borrow_sets : EmptyArray
+  deriving Repr, FromJson
+
 /-- Consumed direct shuffle-RAM and state metadata. Batched delegation arguments
     and cryptographic memory/state enforcement are separate milestones. -/
 structure MemorySubtree where
+  shuffle_ram_inits_and_teardowns : Array InitTeardownColumns
+  delegation_request_layout : Option DelegationRequestColumns
+  delegation_processor_layout : Option UnsupportedProcessor
+  batched_ram_accesses : EmptyArray
+  register_and_indirect_accesses : EmptyArray
   total_width : Nat
   shuffle_ram_access_sets : Array ShuffleRamQueryColumns
   machine_state_layout : Option MachineStatePermutationVariables
@@ -152,9 +202,26 @@ structure SetupLayout where
   total_width : Nat
   deriving Repr, FromJson
 
+/-- Preserve the native stage-two descriptor without claiming its argument
+    polynomials or commitments have been interpreted by local-row intake. -/
+structure RetainedStageTwo where
+  raw : Json
+
+instance : FromJson RetainedStageTwo where
+  fromJson? raw := do
+    let _ ← raw.getObj?
+    pure ⟨raw⟩
+instance : Repr RetainedStageTwo := ⟨fun stage _ => repr stage.raw.compress⟩
+
 /-- Consumed projection of CompiledCircuitArtifact at the pinned v2 revision.
     Stage-two arguments and public boundaries are separate from local row claims. -/
 structure Circuit where
+  /-- Retained verbatim at the separate stage-two/cryptographic boundary. -/
+  stage_2_layout : RetainedStageTwo
+  public_inputs : EmptyArray
+  lazy_init_address_aux_vars : Array LazyInitAddressAux
+  batched_memory_access_timestamp_comparison_aux_vars : InactiveBatchedTimestampAux
+  register_and_indirect_access_timestamp_comparison_aux_vars : InactiveIndirectTimestampAux
   witness_layout : WitnessSubtree
   memory_layout : MemorySubtree
   setup_layout : SetupLayout

@@ -17,23 +17,46 @@ false. Subword retirement is therefore not a prerequisite for this machine.
 This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
-**The reduced machine has not passed.** A direct bounded importer probe of the
-pinned native layout rejects its U16GetSignAndHighByte selector before a reduced
-theorem is emitted. The actual artifact has 114 quadratic/five linear equations,
-eight scalar/eight timestamp queries, two constant/four dynamic tagged slots,
-141 logical variables and a log-23 trace. Its native state, decoder, lazy
-initialization/teardown and delegation-request descriptors must be retained
-explicitly. The importer currently checks different standalone selector/setup
-profiles. This is an importer/coverage blocker, not a source-defect finding or
-an accepted execution counterexample.
+**The reduced machine has no execution soundness theorem yet.** The original
+21 October probe rejected the sign/high-byte selector. The resumed native intake
+and Clean emitter now retain its 114 quadratic/five linear equations, eight
+scalar/eight timestamp queries and two constant/four dynamic tagged slots, with
+141 logical variables and log-23 setup. Original decoder/state/direct memory
+coordinates and initialization/teardown/delegation-request coordinates remain
+explicit. Stage-two descriptors are retained as source data, without an argument
+enforcement interpretation. The fixed tagged setup table is an explicit input;
+its actual native contents, decoder membership and global acceptance are open.
+This is import/coverage work, not a source-defect finding.
 
-The immediate sequence is exact reduced-layout intake and native table/setup
-connections, reduced selector/operand/write recovery, original clause execution,
-then combined histories, delegation accounting and terminal/public-state
-obligations. Reuse the existing ordinary proofs only through checked native
-reduced connections. Preserve original Clean/Sail semantics and all resource
-caps. Do not replace missing obligations with desired outputs, table equivalence
-or supplied intermediate states. The recurring task now records this priority.
+## Current v3 adaptation (2026-11-06)
+
+[The adaptation snapshot](V3_ADAPTATION.md) pins PR #585 at
+b29277dd895499574e317a994fd89243a72f06cb and distinguishes its unified CPU from
+the reduced unrolled assembly. Five shared modules are copied unchanged from
+that revision, including four arithmetic proof modules with transparent capacity
+names. Original Clean and pinned Sail instruction semantics remain unchanged;
+no v3 field encoding, native compiler certificate, finding, fix or machine
+soundness result is inherited.
+
+The structural reduced checks cover every tagged query field/table and actual
+argument coordinates. The complete source bytes are retained. The complete serial bounded pass covers 777 source/test modules, including
+139 test modules; 492 existing importer controls and 44 reduced/request
+controls pass, as do all seven native CLI inputs, native exporter checks,
+2,306 axiom roots and all 137 public Review claims. Dependency fingerprints
+retain only unchanged verified modules. Peak charged footprint was
+1387.39 MiB and peak resident usage 3601.03 MiB, below the unchanged
+3072/4096 MiB ceilings. Every guard completed without a live owned process.
+
+The independent bounded provenance audit also passes: 75 legacy and five
+current byte-identical sources, seven native circuits, 56 native sources,
+21 setup artifacts, four exporter files, 189 v3 adaptation identities and
+693 earlier v2 reuse identities. Current architecture references and
+historical reuse origins match their exact Git objects. The original
+checkout and dependency versions are unchanged. The immediate next connection is actual native reduced
+fixed/setup regions and public ROM/CSR configuration, then combined native row
+semantics, initialized execution, worker/caller accounting and terminal/padding
+boundaries. Existing five-family standalone execution remains separate.
+The scheduled task stays paused; this resumption is foreground only.
 
 ## Checked coverage
 

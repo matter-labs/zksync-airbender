@@ -4,7 +4,11 @@ This register concerns native v2 dev revision
 67ee094449abaebc77e58435f130ce6ea27721e5, pinned in
 [provenance](artifacts/provenance.json). It uses the finding-status standard from
 FINDINGS.md in the pinned v3 source revision
-805909325323812df4b7479288b9058d1d2671f5. Proof progress belongs in
+805909325323812df4b7479288b9058d1d2671f5, reviewed against the current PR #585
+reference b29277dd895499574e317a994fd89243a72f06cb on 6 November. Native fixes
+in its newer v3 base are not inherited by this unchanged v2 target. The reduced
+importer limitation and its removal are coverage work, not a native defect.
+Proof progress belongs in
 [verification status](VERIFICATION_STATUS.md), not in the finding count.
 
 ## Assessment standard

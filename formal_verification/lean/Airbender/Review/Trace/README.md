@@ -427,3 +427,11 @@ actual matching; SB offset-three and SH halfword replacement preserve all other
 old bytes. No per-row expected read/write, range, alignment or intermediate
 state is supplied. Architectural read/write/ROM binding and original exception/
 retirement behavior remain open dependencies.
+
+## Combined reduced-machine scope
+
+The [combined row intake](../Circuits/ReducedMachine/README.md) is separate from
+these standalone execution claims. Native reduced fixed setup and selector/operand
+connections precede initialized combined histories and original Sail execution.
+The [current v3 adaptation](../../../V3_ADAPTATION.md) keeps compiler, logical
+acceptance, initialization and worker boundaries explicit.
