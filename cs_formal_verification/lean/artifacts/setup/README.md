@@ -52,3 +52,15 @@ Command: `cargo run --release -p execution_prover --example export_setup_json --
 Output byte-identical to the committed files (and to a first export from a detached
 `c1a662222` tree). The same exporter at this tree also reproduces `blake-round.json`
 (sha256 `333f3d63…`), so the detached-tree step above is no longer needed.
+
+Row meaning (slop/Slop/KeccakSplit/Setup/{ColumnParity,ThetaRho,Chi5}/): `Rows.setupRow_eq`
+proves that each of the 2^22 decoded rows equals the region formula (`Spec.spec*`; controller
+rows via `controlAt`, `bump`, `Call.slots`, call index `Common.callIndex`), and `Members`
+gives the per-tag facts used by the circuit proofs (BabyBear). Regions:
+column parity: iota 38 [0, 65536), slots 62 [65536, 65658), control 63 [65658, 65780),
+XOR5 64 [65780, 1114356); theta/rho: byte XOR 4 [0, 65536), XOR-and-split 58
+[65536, 589824), control 59 [589824, 589945), slots 60 [589945, 590066); chi5: chi 65
+[0, 1048576), control 66 [1048576, 1048697). The first row of each controller region is
+its zero key (zeros but the tag); all later rows are padding (tag 0). Short blocks are
+checked by `decide +kernel` walks (`Slop.Setup.Blocks.walkUpTo`, `Col*Walk`/`Col*Part*`,
+generated); listed long blocks are affine/periodic shapes proved in `ShapesOk`.
