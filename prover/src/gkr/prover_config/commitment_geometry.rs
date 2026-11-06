@@ -41,7 +41,6 @@ impl BaseCommitmentGeometry {
     pub fn from_config(config: &ProverConfig, columns: BaseColumns) -> Self {
         let pack_log2 = config.pack_log2();
         let message_size_log2 = config.trace_len_log2 + pack_log2;
-        config.validate_for_whir_message_size(message_size_log2);
         let base = config.base_round();
         let widths = if config.merged_memory_and_witness() {
             [columns.memory + columns.witness, 0, columns.setup]

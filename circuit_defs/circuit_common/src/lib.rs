@@ -365,8 +365,7 @@ pub fn prover_config_notes_file_name(level: SecurityLevel, mode: SoundnessMode) 
 /// Serialize the circuit's prover config for every security level and every
 /// [`SoundnessMode`] next to the layout ([`prover_config_file_name`], the
 /// notes as [`prover_config_notes_file_name`]), built from the compiled
-/// circuit (the committed column widths) and checked against the WHIR message
-/// size (`validate_for_whir_message_size`).
+/// circuit (the committed column widths).
 pub fn save_prover_configs(
     compiled_circuit: &cs::gkr_compiler::GKRCircuitArtifact<BabyBearField>,
     geometry: &CircuitGeometry,
@@ -384,7 +383,6 @@ pub fn save_prover_configs_in(
         for &mode in SoundnessMode::ALL {
             let config = geometry.prover_config(compiled_circuit, level, mode);
             assert_eq!(1usize << config.trace_len_log2, compiled_circuit.trace_len);
-            config.validate_for_whir_message_size(config.whir_message_size_log2());
             let mut dst =
                 std::fs::File::create(crate_root.join(prover_config_file_name(level, mode)))
                     .unwrap();
