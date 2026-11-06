@@ -57,7 +57,7 @@ mod tests {
     use std::alloc::Global;
     use std::path::Path;
     use test_utils::skip_if_ci;
-    use verifier_common::fsv_binaries::{FsvDescriptor, FsvProfile, FsvProgram};
+    use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile, FsvProgram};
 
     /// The MERGED-mode L1-feeder guest: the unified recursion layer with special
     /// opcodes under the `L1Feeder` profile.
@@ -67,7 +67,7 @@ mod tests {
             ..FsvDescriptor::new(
                 SoundnessMode::PessimisticConjecture,
                 FsvProgram::UnifiedRecursionLayer,
-                verifier_common::fsv_binaries::BlakeMode::BlakeSpecialOpcodes,
+                BlakeMode::BlakeSpecialOpcodes,
             )
         }
     }
@@ -610,7 +610,6 @@ mod tests {
     #[ignore = "needs the cached artifacts of test_recursive_proving_pipeline_zksync_os"]
     #[serial_test::serial(prover_examples_proof_artifacts)]
     fn measure_final_proof_verifier_variants() {
-        use verifier_common::fsv_binaries::BlakeMode;
         skip_if_ci!();
 
         let u_tag = unrolled_blake_mode().tag();
@@ -661,7 +660,6 @@ mod tests {
     #[ignore = "manual research run (needs the converged pipeline caches)"]
     #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_special_opcodes_convergence_research() {
-        use verifier_common::fsv_binaries::BlakeMode;
         skip_if_ci!();
 
         let use_caches = true;
@@ -835,7 +833,6 @@ mod tests {
     #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_l1_feeder_high_lde_research() {
         use program_prover::unified_transition::prove_unified_transition_with_replayer;
-        use verifier_common::fsv_binaries::BlakeMode;
         skip_if_ci!();
 
         let use_caches = true;
@@ -1031,11 +1028,7 @@ mod tests {
             "feeder_layer_1_setups_{tags}.json.zlib"
         ))
         .unwrap();
-        let stream = build_unified_stream(
-            &setups,
-            &proof,
-            verifier_common::fsv_binaries::BlakeMode::BlakeSpecialOpcodes,
-        );
+        let stream = build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes);
 
         let feeder = l1_feeder_guest();
         let program = prover::tests::gkr::orchestration::common::ProgramConfig {
