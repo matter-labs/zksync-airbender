@@ -1,5 +1,5 @@
 use super::common::{circuit_in_filter, ensure_memory_trace_consistency, log_prove_decision};
-use super::delegations::{deserialize_from_file, serialize_to_file};
+use super::delegations::deserialize_from_file;
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::cs::tables::TableDriver;
 use crate::definitions::SecurityLevel;
@@ -63,10 +63,8 @@ pub struct BuiltFamilyTrace {
 
 /// Prove a *pre-built* family witness trace: build the prover config + twiddles,
 /// construct & commit the setup, and run the GKR prover. Split out of the family
-/// helpers so callers that build the trace another way — the
-/// `add_sub_mop_real_program_check_satisfied` smoke test and the malicious-proof
-/// generator (which mutates the trace before proving) — share the exact same
-/// prove path. The caller owns `check_satisfied`, the empty grand-product
+/// helpers so malicious-proof generators and CPU experiments can reuse the
+/// prover engine. The caller owns `check_satisfied`, the empty grand-product
 /// assertion, and serialization.
 pub fn prove_built_family_trace(
     circuit: &GKRCircuitArtifact<BabyBearField>,
@@ -389,7 +387,6 @@ pub fn prove_non_mem_family<const CIRCUIT_TYPE: u8, C>(
     compute_only: bool,
     circuits_filter: &Option<std::collections::HashSet<String>>,
     circuit_stem: &str,
-    proof_suffix: &str,
     worker: &Worker,
     eval_fn: fn(&mut ColumnMajorWitnessProxy<'_, NonMemoryCircuitOracle<'_>, BabyBearField>),
 ) -> FamilyProveOutput
@@ -415,7 +412,6 @@ where
         compute_only,
         circuits_filter,
         circuit_stem,
-        proof_suffix,
         worker,
         eval_fn,
     )
@@ -441,7 +437,6 @@ pub fn prove_non_mem_family_with_prover_config<const CIRCUIT_TYPE: u8, C>(
     compute_only: bool,
     circuits_filter: &Option<std::collections::HashSet<String>>,
     circuit_stem: &str,
-    proof_suffix: &str,
     worker: &Worker,
     eval_fn: fn(&mut ColumnMajorWitnessProxy<'_, NonMemoryCircuitOracle<'_>, BabyBearField>),
 ) -> FamilyProveOutput
@@ -498,11 +493,6 @@ where
             assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
         }
 
-        serialize_to_file(
-            &proof,
-            &format!("test_proofs/{circuit_stem}_{proof_suffix}_gkr_proof.json"),
-        );
-
         Some(proof)
     } else {
         None
@@ -535,7 +525,6 @@ pub fn prove_mem_family<const CIRCUIT_TYPE: u8, C>(
     compute_only: bool,
     circuits_filter: &Option<std::collections::HashSet<String>>,
     circuit_stem: &str,
-    proof_suffix: &str,
     worker: &Worker,
     eval_fn: fn(&mut ColumnMajorWitnessProxy<'_, MemoryCircuitOracle<'_>, BabyBearField>),
 ) -> FamilyProveOutput
@@ -595,11 +584,6 @@ where
             assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
         }
 
-        serialize_to_file(
-            &proof,
-            &format!("test_proofs/{circuit_stem}_{proof_suffix}_gkr_proof.json"),
-        );
-
         Some(proof)
     } else {
         None
@@ -627,7 +611,6 @@ pub fn prove_inits_and_teardowns(
     level: SecurityLevel,
     compute_only: bool,
     circuits_filter: &Option<std::collections::HashSet<String>>,
-    proof_suffix: &str,
     worker: &Worker,
 ) -> FamilyProveOutput {
     // i/t has historically always read the `no_caches` layout in this
@@ -718,11 +701,6 @@ pub fn prove_inits_and_teardowns(
     if total_unique_teardowns == 0 {
         assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
     }
-
-    serialize_to_file(
-        &proof,
-        &format!("test_proofs/inits_and_teardowns_{proof_suffix}_gkr_proof.json"),
-    );
 
     FamilyProveOutput {
         memory_trace,

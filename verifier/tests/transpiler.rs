@@ -173,4 +173,4 @@ macro_rules! generate_transpiler_tests {
         }
     };
 }
-verifier_common::gkr_circuits!(generate_transpiler_tests);
+verifier_common::gkr_fixture_circuits!(generate_transpiler_tests);

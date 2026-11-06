@@ -25,7 +25,8 @@ macro_rules! make_circuits {
     };
 }
 
-pub static CIRCUITS: LazyLock<Vec<CircuitData>> = LazyLock::new(|| gkr_circuits!(make_circuits));
+pub static CIRCUITS: LazyLock<Vec<CircuitData>> =
+    LazyLock::new(|| gkr_fixture_circuits!(make_circuits));
 
 pub use prover::definitions::SecurityLevel;
 

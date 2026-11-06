@@ -3,7 +3,11 @@
 #[macro_export]
 macro_rules! gkr_circuits {
     ($callback:ident) => {
-        $callback! {
+        $crate::gkr_circuits! { $callback; }
+    };
+    ($($callback:ident)::+; $($prefix:tt)*) => {
+        $($callback)::+! {
+            $($prefix)*
             add_sub_lui_auipc_mop; "../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
             bigint_with_extended_control; "../circuit_defs/bigint_with_control",
             blake2_g_function; "../circuit_defs/blake2_g_function",
@@ -20,6 +24,24 @@ macro_rules! gkr_circuits {
             unified_reduced_machine; "../circuit_defs/unrolled_circuits/unified_reduced_machine",
             unsigned_mul_div; "../circuit_defs/unrolled_circuits/mul_div_unsigned",
         }
+    };
+}
+
+/// Circuits with canonical committed proofs. Keep legacy G-function verifier
+/// support in `gkr_circuits!`, without requiring a fixture for that circuit.
+#[macro_export]
+macro_rules! gkr_fixture_circuits {
+    ($callback:ident) => {
+        $crate::gkr_circuits! { $crate::gkr_fixture_circuits; @filter $callback [] }
+    };
+    (@filter $callback:ident [$($out:tt)*] blake2_g_function; $path:expr, $($rest:tt)*) => {
+        $crate::gkr_fixture_circuits! { @filter $callback [$($out)*] $($rest)* }
+    };
+    (@filter $callback:ident [$($out:tt)*] $name:ident; $path:expr, $($rest:tt)*) => {
+        $crate::gkr_fixture_circuits! { @filter $callback [$($out)* $name; $path,] $($rest)* }
+    };
+    (@filter $callback:ident [$($out:tt)*]) => {
+        $callback! { $($out)* }
     };
 }
 

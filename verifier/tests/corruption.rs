@@ -574,7 +574,7 @@ macro_rules! generate_corruption_tests {
         )*
     };
 }
-verifier_common::gkr_circuits!(generate_corruption_tests);
+verifier_common::gkr_fixture_circuits!(generate_corruption_tests);
 
 // PoW-nonce corruption: at Sec100 (non-zero PoW bits) these hit `verify_pow`'s
 // threshold-rejection branch directly.
@@ -594,4 +594,4 @@ macro_rules! generate_pow_nonce_corruption_tests {
         )*
     };
 }
-verifier_common::gkr_circuits!(generate_pow_nonce_corruption_tests);
+verifier_common::gkr_fixture_circuits!(generate_pow_nonce_corruption_tests);

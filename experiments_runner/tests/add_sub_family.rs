@@ -1,10 +1,5 @@
-//! Analog of the `add_sub_lui_auipc_mop` section of
-//! `prover::tests::gkr::family_circuits::gkr_run_basic_unrolled_test_impl`:
-//! run the default keccak-f1600 program, preprocess the binary, and prove
-//! ONLY the add/sub family circuit at Sec100. Kept byte-compatible with the
-//! per-family test by reusing the exact same orchestration helpers
-//! (`run_vm_and_capture` + `prove_non_mem_family`); the proof lands in
-//! `experiments_runner/test_proofs/add_sub_lui_auipc_mop_sec_100_gkr_proof.json`.
+//! Standalone add/sub CPU experiment on the legacy Keccak workload. It reuses
+//! the per-family prover engine and never writes canonical fixture files.
 
 // Same nightly features the prover crate builds with: its orchestration API
 // surfaces `Global` and a const-generic snapshotter parameter.
@@ -142,7 +137,6 @@ fn gkr_prove_add_sub_family_sec_100() {
         false,
         &None,
         "add_sub_lui_auipc_mop",
-        level.dir_suffix(),
         &worker,
         add_sub_lui_auipc_mop::witness_eval_fn,
     );

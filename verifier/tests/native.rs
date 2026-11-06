@@ -50,4 +50,4 @@ macro_rules! generate_native_tests {
         }
     };
 }
-verifier_common::gkr_circuits!(generate_native_tests);
+verifier_common::gkr_fixture_circuits!(generate_native_tests);
