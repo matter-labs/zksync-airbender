@@ -219,14 +219,6 @@ theorem condition_row (before : Reference.RiscV.Sail.State) (key : Nat) (hk : ke
       ite_eq_left (show n < 786817 by omega)]
   rw [e, show n - 786689 = key by omega]
 
-theorem byteOp_lt (tag a b : Nat) (ha : a < 256) (hb : b < 256) : byteOp tag a b < 256 := by
-  unfold byteOp
-  split
-  · exact Nat.mod_lt _ (by decide)
-  · split
-    · exact Nat.or_lt_two_pow (n := 8) ha hb
-    · exact lt_of_le_of_lt Nat.and_le_left ha
-
 /-- Membership from an explicit row, checked column by column. -/
 theorem table_contains_row {p : Nat} [Fact p.Prime] {before : Reference.RiscV.Sail.State}
     {entry : Vector (Expression (ZMod p)) 10} {env : Environment (ZMod p)} (i : Fin 2097537)

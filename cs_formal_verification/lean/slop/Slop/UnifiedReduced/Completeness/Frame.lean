@@ -87,9 +87,6 @@ theorem natCast_val_lt {n bound : Nat} (x : ZMod babyBearModulus) (h : x = n) (h
   rw [ZMod.val_natCast, Nat.mod_eq_of_lt (by omega)]
   exact hn
 
-theorem borrow_le (prevLo tsLo k : Nat) : borrow prevLo tsLo k ≤ 1 := by
-  unfold borrow; split <;> omega
-
 /-- Normal form of imported constants: `Int.ofNat`/`Int.negSucc` casts become numerals. -/
 theorem cast_ofNat (n : Nat) : ((Int.ofNat n : Int) : ZMod babyBearModulus) = (n : ZMod babyBearModulus) := by
   simp

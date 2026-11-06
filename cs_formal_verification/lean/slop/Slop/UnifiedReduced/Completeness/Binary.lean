@@ -258,7 +258,6 @@ def honest (x : Binary) : Nat → ZMod babyBearModulus
 theorem columns (x : Binary) : x.frame.Columns x.honest :=
   ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
-set_option maxHeartbeats 800000 in
 theorem complete (x : Binary) (hx : x.Valid) (before : Reference.RiscV.Sail.State) :
     FlatOperation.ConstraintsHoldFlat (environment x.honest)
       (clockConstraints (Setup.table before)) := by

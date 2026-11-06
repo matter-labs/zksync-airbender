@@ -265,7 +265,6 @@ private theorem contribution_row (before : Reference.RiscV.Sail.State) (x : Shif
         · exact hx.payload
         · exact Nat.mod_lt _ (by decide)) hx.op _ rfl
 
-set_option maxHeartbeats 800000 in
 theorem complete (x : Shift) (hx : x.Valid) (before : Reference.RiscV.Sail.State) :
     FlatOperation.ConstraintsHoldFlat (environment x.honest)
       (clockConstraints (Setup.table before)) := by

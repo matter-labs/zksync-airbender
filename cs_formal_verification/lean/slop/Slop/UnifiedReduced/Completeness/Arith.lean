@@ -335,7 +335,6 @@ theorem high (x : Arith) (hx : x.Valid) :
     simp only [sumHi, h, Nat.reduceEqDiff, ↓reduceIte] at e'
     push_cast at e' ⊢; linear_combination e'
 
-set_option maxHeartbeats 800000 in
 theorem complete_core (x : Arith) (hx : x.Valid) (t : Table (ZMod babyBearModulus) (fields 10))
     (zero : ZeroRow t) :
     FlatOperation.ConstraintsHoldFlat (environment x.honest) (importedConstraints t) := by

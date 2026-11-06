@@ -390,7 +390,6 @@ theorem taken_misaligned {x : Control} (hx : x.Valid) :
   · simp [e]
   · simp [hx.aligned (Or.inr e)]
 
-set_option maxHeartbeats 800000 in
 set_option linter.unusedSimpArgs false in
 theorem complete (x : Control) (hx : x.Valid) (before : Reference.RiscV.Sail.State) :
     FlatOperation.ConstraintsHoldFlat (environment x.honest)
