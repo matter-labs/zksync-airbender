@@ -64,3 +64,10 @@ inputs and UNIMP padding. No production circuit code is changed.
 The active claim is specific to its retained public fixed fixture. Other operation
 semantics, universal public/physical setup, full decoding/history and execution
 remain open. Current v3 source material does not close those v2 obligations.
+
+The same [row theorem surface](Theorems.lean) now derives all four dynamic selector
+domains from accepted native queries and the complete pool. The actual fourth
+expressions remain unchanged; no row selector values are supplied. The
+[absent-tag regression](../../../../Tests/NativeReducedPool.lean) rejects ID 32.
+Domains do not yet identify the operation-selected tag or prove its arithmetic,
+memory or CSR effect.

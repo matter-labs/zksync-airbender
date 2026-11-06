@@ -32,8 +32,10 @@ All other combined row effects and execution remain pending. See the
    prove the remaining regions' operation semantics and connect physical setup.
    All 14 literal regions, exact tags and sign/high-byte recovery are checked.
    Do not inherit standalone fixture configuration, supplied row answers or v3 encodings.
-2. Derive combined native selectors, operand routing, actual masked writes,
-   PC/clock effects and original Sail clauses from these exact constraints.
+2. Derive operation-specific native selector identities and flags, operand routing,
+   actual masked writes, PC/clock effects and original Sail clauses. The domains
+   of all four dynamic table selectors and both sign/high-byte queries are now
+   derived from the regenerated constraints and complete pool.
 3. Compose initialized combined histories, public decoding and original execution.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.

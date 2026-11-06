@@ -86,3 +86,8 @@ no coverage transfers through an equivalence premise. The full pool now yields
 tag isolation and both actual sign/high-byte query results from Clean acceptance.
 The next work is the other native operation tables, general public setup and
 combined row/initialized execution, followed by workers and protocol boundaries.
+
+The native Clean connection additionally derives all four dynamic selector
+domains from exact pooled membership. Each tag comes from its actual fourth
+expression and a certified stored region. The public theorem supplies no selector
+answer; operation-specific identity and effects remain pending.

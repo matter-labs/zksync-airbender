@@ -48,4 +48,7 @@ def table {p : Nat} [Fact p.Prime] : Table (ZMod p) (fields 4) := .fromStatic {
   contains_iff _ := Iff.rfl
 }
 
+/-- Actual native region IDs, checked against every stored row by the proof layer. -/
+def tags : List Nat := [0,4,6,7,16,17,18,20,22,23,24,25,37,47]
+
 end Airbender.ReducedMachine.NativeFixed

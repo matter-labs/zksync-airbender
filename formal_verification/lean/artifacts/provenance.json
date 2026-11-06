@@ -6736,7 +6736,7 @@
     },
     {
       "path": "Airbender/Proofs/ReducedMachine/NativeQueries.lean",
-      "change": "Reuse original Clean acceptance extraction for actual constant queries16/17 and derive both native sign/high-byte results.",
+      "change": "Reuse original Clean acceptance extraction for actual constant queries16/17 and all four dynamic queries; derive both sign/high-byte results and canonical native selector domains without per-row selector premises.",
       "backport_reuse_revision": "0cecce53098a474d300bf5c2398f1d456f8c8634",
       "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeQueries.lean",
       "backport_reuse_sha256": "cc7a40ca680195a60c7927841a7416997cf569b5f3793fa2a3b88ce0a489972d"

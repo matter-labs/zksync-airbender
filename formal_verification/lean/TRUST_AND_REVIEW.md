@@ -6,8 +6,8 @@ For the active combined reduced machine, start with the
 [regenerated native artifact](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean),
 [complete fixed fixture](Airbender/Review/Circuits/ReducedMachine/Tables/Native.lean)
 and [short native row theorem](Airbender/Review/Circuits/ReducedMachine/Theorems.lean).
-The checked claim currently covers two sign/high-byte queries, not instructions
-or whole execution. Earlier standalone libraries retain their separate scope.
+The checked claims currently cover two sign/high-byte queries and the four
+dynamic selector domains, not instructions or whole execution. Earlier standalone libraries retain their separate scope.
 
 Start with [Properties](Airbender/Review/Helpers/Properties.lean), then the short
 [ADD/SUB theorems](Airbender/Review/Circuits/AddSub/Theorems.lean) and their

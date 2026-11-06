@@ -166,6 +166,14 @@ theorem region_row_tag (region : Region) (i : Fin region.data.length) :
 theorem tag_bound (region : Region) : region.tag < mersenne31Modulus := by
   cases region <;> decide
 
+/-- A full-pool member cannot use a tag absent from the actual native registry. -/
+theorem accepted_selector (query : Vector (ZMod mersenne31Modulus) 4)
+    (member : (table (p := mersenne31Modulus)).Contains #[] query) :
+    query[3].val ∈ NativeFixed.tags := by
+  obtain ⟨region,i,rfl⟩ := member_region query member
+  rw [region_row_tag,ZMod.val_natCast,Nat.mod_eq_of_lt (tag_bound region)]
+  cases region <;> simp [Region.tag,NativeFixed.tags]
+
 theorem shared_sign_data : dataT16 = SignHigh.data := rfl
 
 /-- Native tag isolation recovers the previously certified literal sign region. -/

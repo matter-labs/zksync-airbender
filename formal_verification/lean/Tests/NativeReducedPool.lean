@@ -58,4 +58,13 @@ theorem bad_high_rejected :
   exact (by decide +kernel : ¬ (254 : ZMod mersenne31Modulus).val =
     (65535 : ZMod mersenne31Modulus).val / 256) result
 
+theorem absent_selector_rejected :
+    ¬ (NativeFixed.table (p := mersenne31Modulus)).Contains #[] #v[0,0,0,32] := by
+  intro member
+  have selected := NativePoolProofs.accepted_selector _ member
+  change (32 : ZMod mersenne31Modulus).val ∈ NativeFixed.tags at selected
+  have value : (32 : ZMod mersenne31Modulus).val = 32 := by decide +kernel
+  rw [value] at selected
+  exact (by decide : ¬ (32 : Nat) ∈ NativeFixed.tags) selected
+
 end Tests.NativeReducedPool

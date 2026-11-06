@@ -2550,3 +2550,8 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedPool.last_sign_member
 #print axioms Tests.NativeReducedPool.bad_sign_rejected
 #print axioms Tests.NativeReducedPool.bad_high_rejected
+#print axioms Airbender.ReducedMachine.NativePoolProofs.accepted_selector
+#print axioms Airbender.ReducedMachine.NativeQueryProofs.dynamic_queries
+#print axioms Airbender.ReducedMachine.NativeQueryProofs.dynamic_selectors
+#print axioms Airbender.ReducedMachine.Native.lookup_selectors
+#print axioms Tests.NativeReducedPool.absent_selector_rejected

@@ -131,6 +131,25 @@ membership, initialized histories, delegation accounting or execution soundness.
 Those remain the next native-machine obligations. The historical checkpoint
 continues to have exactly its previous conditional meaning.
 
+## Native dynamic selector domains (6 November 2026)
+
+The [native row theorem](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+now derives the domain of every one of the four dynamic lookup selectors from
+original Clean acceptance. The fourth field remains the actual evaluated witness
+expression. Complete pooled membership proves its canonical value belongs to the
+fourteen actual native IDs; no per-row selector premise or extra disabled row is
+introduced. An absent-ID-32 query is rejected by the checked complete pool.
+
+Seven affected modules, including the expanded axiom module, pass direct serial
+bounded compilation with explicit correct output paths. The complete audit now
+passes 2,358 roots and all 141 public Review theorems, with standard axioms only.
+The selector proof checks used at most 530.52 MiB footprint and 3048.59 MiB
+resident, with unchanged limits and no owned survivors. Native generated inputs,
+public configuration and operation semantics are unchanged, so the preceding
+592 importer/eight CLI/47 native export controls remain the relevant checkpoint.
+Operation-specific selector identities, flags, operand routing and results still
+need proofs against the actual native constraints.
+
 ## Checked coverage
 
 | Circuit | Coverage |
