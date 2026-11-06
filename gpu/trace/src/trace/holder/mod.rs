@@ -11,14 +11,10 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::HostAllocation;
 use gpu_core::primitives::device_structures::DeviceMatrix;
-#[cfg(test)]
-use gpu_core::primitives::device_structures::DeviceMatrixImpl;
 use gpu_core::primitives::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkMut, DeviceMatrixMut,
 };
 use gpu_core::primitives::field::BF;
-#[cfg(test)]
-use gpu_hash::blake2s::{build_merkle_tree_multi_coset, build_partial_merkle_tree_multi_coset};
 use gpu_hash::blake2s::{
     build_merkle_tree_nodes_multi_coset_over_existing_layer,
     build_partial_merkle_tree_multi_coset_physical, gather_tree_caps_inline,
@@ -1436,53 +1432,9 @@ pub fn allocate_trees(
     context.alloc(total, AllocationPlacement::Bottom)
 }
 
-/// Builds all `cosets_in_tile` per-
-/// coset Merkle trees in one launch per layer. `evals_backing` holds
-/// `[coset0_evals | coset1_evals | ...]` (each coset's evals span
-/// `columns_count << log_domain_size` BFs); `trees_backing` holds the same
-/// shape with `tree_len = 2 << (log_domain_size - log_rows_per_leaf)` digests
-/// per coset.
-// Natural-order reference for `build_full_trees_from_physical`.
-#[cfg(test)]
-pub(crate) fn commit_trace_multi_coset(
-    evals_backing: &DeviceSlice<BF>,
-    trees_backing: &mut DeviceSlice<Digest>,
-    log_domain_size: u32,
-    log_lde_factor: u32,
-    log_rows_per_leaf: u32,
-    log_tree_cap_size: u32,
-    columns_count: usize,
-    cosets_in_tile: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert!(log_tree_cap_size >= log_lde_factor);
-    let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
-    assert!(log_domain_size >= log_rows_per_leaf + log_coset_tree_cap_size);
-    let per_coset_evals_stride = columns_count << log_domain_size;
-    let per_coset_leaves_count = 1usize << (log_domain_size - log_rows_per_leaf);
-    let per_coset_tree_stride = per_coset_leaves_count << 1;
-    assert_eq!(evals_backing.len(), per_coset_evals_stride * cosets_in_tile);
-    assert_eq!(trees_backing.len(), per_coset_tree_stride * cosets_in_tile);
-    let layers_count = log_domain_size + 1 - log_rows_per_leaf - log_coset_tree_cap_size;
-    build_merkle_tree_multi_coset(
-        evals_backing,
-        trees_backing,
-        log_rows_per_leaf,
-        layers_count,
-        cosets_in_tile,
-        per_coset_leaves_count,
-        per_coset_evals_stride,
-        per_coset_tree_stride,
-        columns_count,
-        stream,
-    )
-}
-
-/// LSB sibling of [`commit_trace_multi_coset`]: each coset slab is the
-/// BITREVERSED-order codeword, so every leaf is one physically contiguous row
-/// block and leaf digests land in physical-block order. The strided bit-reverse
-/// canonicalizes them; the result is byte-identical to
-/// [`commit_trace_multi_coset`] over the natural-order codeword.
+/// Builds all `cosets_in_tile` per-coset Merkle trees from BITREVERSED-order codewords: every leaf
+/// is one physically contiguous row block and leaf digests land in physical-block order. The
+/// strided bit-reverse canonicalizes them, so the trees equal those of the natural-order codeword.
 #[doc(hidden)]
 pub fn build_full_trees_from_physical(
     evals_backing: &DeviceSlice<BF>,
@@ -1537,51 +1489,10 @@ pub fn build_full_trees_from_physical(
     )
 }
 
-// Natural-order reference for `build_partial_trees_from_physical`.
-#[cfg(test)]
-pub(crate) fn commit_trace_with_partial_tree_multi_coset(
-    evals_backing: &DeviceSlice<BF>,
-    tree_backing: &mut DeviceSlice<Digest>,
-    log_domain_size: u32,
-    log_lde_factor: u32,
-    log_rows_per_leaf: u32,
-    log_tree_cap_size: u32,
-    columns_count: usize,
-    cosets_in_tile: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert!(log_tree_cap_size >= log_lde_factor);
-    let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
-    // At equality the bottom-five-level reduction produces the cap directly.
-    assert!(
-        log_domain_size
-            >= log_rows_per_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_coset_tree_cap_size
-    );
-    let per_coset_evals_stride = columns_count << log_domain_size;
-    let per_coset_leaves_count = 1usize << (log_domain_size - log_rows_per_leaf);
-    let per_coset_tree_stride = (per_coset_leaves_count << 1) >> PARTIAL_TREE_REDUCTION_LAYERS;
-    assert_eq!(evals_backing.len(), per_coset_evals_stride * cosets_in_tile);
-    assert_eq!(tree_backing.len(), per_coset_tree_stride * cosets_in_tile);
-    let layers_count = log_domain_size + 1
-        - log_rows_per_leaf
-        - PARTIAL_TREE_REDUCTION_LAYERS
-        - log_coset_tree_cap_size;
-    build_partial_merkle_tree_multi_coset(
-        evals_backing,
-        tree_backing,
-        log_rows_per_leaf,
-        layers_count,
-        cosets_in_tile,
-        stream,
-    )
-}
-
-/// LSB sibling of [`commit_trace_with_partial_tree_multi_coset`]: each coset
-/// slab is the BITREVERSED-order codeword. The fused bottom-five-level kernel
-/// writes logical boundary roots, then the ordinary node builder materializes
-/// every cached level through the cap. The result and cached query subtree are
-/// byte-identical to [`commit_trace_with_partial_tree_multi_coset`] over the
-/// natural-order codeword.
+/// Builds the partial per-coset Merkle trees from BITREVERSED-order codewords. The fused
+/// bottom-five-level kernel writes logical boundary roots, then the ordinary node builder
+/// materializes every cached level through the cap; the result and cached query subtree equal
+/// those of the natural-order codeword.
 #[doc(hidden)]
 pub fn build_partial_trees_from_physical(
     evals_backing: &DeviceSlice<BF>,
@@ -1675,7 +1586,5 @@ impl<T> TraceHolder<T> {
     }
 }
 
-#[cfg(test)]
-mod packed_tests;
 #[cfg(test)]
 mod tests;

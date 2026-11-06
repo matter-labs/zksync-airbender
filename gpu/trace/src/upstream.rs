@@ -74,14 +74,4 @@ pub(crate) use prover::gkr::prover_config::commitment_geometry::{
     BaseCommitmentGeometry, BaseOracleRole,
 };
 pub(crate) use prover::gkr::prover_config::{BaseColumns, CommitmentMode, ProverConfig};
-// CPU-reference helper only exercised by `trace::holder::tests`.
-#[cfg(test)]
-pub(crate) use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
-// CPU merkle-tree reference construction only exercised by `trace::holder::tests`.
-#[cfg(test)]
-pub(crate) use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
-#[cfg(test)]
-pub(crate) use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 pub(crate) use prover::merkle_trees::MerkleTreeCapVarLength;
-#[cfg(test)]
-pub(crate) use prover::merkle_trees::PathQueryable;
