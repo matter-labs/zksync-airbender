@@ -1,4 +1,4 @@
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_1<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where

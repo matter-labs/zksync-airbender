@@ -2,7 +2,7 @@ use super::*;
 
 pub fn get_keccak_special5_circuit_setup(
     use_caches: bool,
-    worker: &Worker,
+    _worker: &Worker,
 ) -> DelegationCircuitSetup {
     type C = ::keccak_special5::KeccakSpecial5DelegationCircuit;
 

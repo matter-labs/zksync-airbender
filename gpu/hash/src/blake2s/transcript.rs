@@ -75,6 +75,11 @@ cuda_kernel!(
 );
 
 cuda_kernel!(
+    TranscriptPowUpdate,
+    ab_transcript_pow_update_kernel(seed_io: *mut u32, nonce_words: *const u32)
+);
+
+cuda_kernel!(
     TranscriptSqueeze,
     ab_transcript_squeeze_kernel(seed_io: *mut u32, output: *mut u32, output_len: u32)
 );
@@ -82,6 +87,11 @@ cuda_kernel!(
 cuda_kernel!(
     TranscriptSqueezeE4,
     ab_transcript_squeeze_e4_kernel(seed_io: *mut u32, output_e4: *mut E4, count: u32)
+);
+
+cuda_kernel!(
+    TranscriptSqueezeFreshE4,
+    ab_transcript_squeeze_fresh_e4_kernel(seed_io: *mut u32, output_e4: *mut E4, count: u32)
 );
 
 cuda_kernel!(
@@ -121,7 +131,8 @@ pub fn transcript_commit_initial_chunked(
     TranscriptCommitInitialChunkedFunction::default().launch(&config, &args)
 }
 
-/// Device-side `commit_with_seed`: computes `new_seed = Blake2s(old_seed || input)`.
+/// Device-side `commit_with_seed`: hashes `input` with `old_seed` as the Blake2s chaining
+/// value, writing the new seed.
 ///
 /// `seed` must be exactly `STATE_SIZE` u32 words. Updated in place.
 /// `input` contains the u32 words to absorb after the seed.
@@ -137,6 +148,20 @@ pub fn transcript_commit(
     let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
     let args = TranscriptCommitArguments::new(seed_ptr, input_ptr, input_len);
     TranscriptCommitFunction::default().launch(&config, &args)
+}
+
+/// Device-side seed update of the host `verify_pow`: `seed = Blake2s(seed || nonce)` from the
+/// IV, where `nonce_words` holds the little-endian `[lo, hi]` halves of the `u64` nonce.
+pub fn transcript_pow_update(
+    seed: &mut DeviceSlice<u32>,
+    nonce_words: &DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(seed.len(), STATE_SIZE);
+    assert_eq!(nonce_words.len(), 2);
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = TranscriptPowUpdateArguments::new(seed.as_mut_ptr(), nonce_words.as_ptr());
+    TranscriptPowUpdateFunction::default().launch(&config, &args)
 }
 
 /// Device-side `draw_randomness`: expands the seed into `output.len()` u32 words.
@@ -182,6 +207,24 @@ pub fn transcript_squeeze_e4(
     let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
     let args = TranscriptSqueezeE4Arguments::new(seed_ptr, output_ptr, count as u32);
     TranscriptSqueezeE4Function::default().launch(&config, &args)
+}
+
+/// Device-side `draw_fresh_random_field_els::<BF, E4>(seed, count)`: advances `seed` past the
+/// digest the preceding squeeze emitted, then draws like [`transcript_squeeze_e4`].
+pub fn transcript_squeeze_fresh_e4(
+    seed: &mut DeviceSlice<u32>,
+    output: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(seed.len(), STATE_SIZE);
+    let count = output.len();
+    assert!(count > 0);
+    assert!(count as u64 * 4 + (STATE_SIZE as u64 - 1) <= u32::MAX as u64);
+    let seed_ptr = seed.as_mut_ptr();
+    let output_ptr = output.as_mut_ptr();
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = TranscriptSqueezeFreshE4Arguments::new(seed_ptr, output_ptr, count as u32);
+    TranscriptSqueezeFreshE4Function::default().launch(&config, &args)
 }
 
 /// Device-side reduction of a flat run of raw squeeze u32 words into `count` E4

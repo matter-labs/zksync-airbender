@@ -9,9 +9,7 @@
 //! it fits a workstation. Run with:
 //!   `cargo bench -p prover --bench lde_scheduling`
 
-use field::{
-    baby_bear::base::BabyBearField, Field, FieldExtension, PrimeField, Proth120, Rand, TwoAdicField,
-};
+use field::{baby_bear::base::BabyBearField, PrimeField, Proth120, Rand, TwoAdicField};
 use prover::allocation_pool::GenericAllocationPool;
 use prover::fft::Twiddles;
 use prover::gkr::prover::{Backend, NaiveBackend, WorkStealingBackend};

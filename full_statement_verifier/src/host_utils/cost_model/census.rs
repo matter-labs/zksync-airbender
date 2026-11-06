@@ -39,6 +39,10 @@ pub const CENSUS_DIMS: [CircuitId; NUM_CENSUS_DIMS] = [
 
 pub struct CensusTable {
     pub c0: CensusVec,
+    /// Frozen empirical max-deviation envelope emitted from calibration proofs:
+    /// the ten census dimensions, then total family cycles. Accuracy gates use
+    /// this same reference for every acceptance corpus; point estimates ignore it.
+    pub per_proof_spread: [u64; NUM_CENSUS_DIMS + 1],
     pub v: &'static [(CircuitId, CensusVec)],
 }
 
@@ -111,47 +115,60 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
         FsvProgram::UnrolledBaseLayer,
         BlakeMode::Compression,
         CensusTable {
-            c0: [21759, 5959, 931, 0, 104312, 0, 455, 0, 0, 0],
+            c0: [20537, 5419, 1028, 0, 87122, 0, 504, 0, 0, 0],
+            per_proof_spread: [123, 205, 235, 0, 0, 0, 0, 0, 0, 0, 500],
             v: &[
                 (
                     CircuitId::Riscv(1),
-                    [637995, 77415, 48402, 0, 267892, 0, 57484, 0, 0, 0],
+                    [484489, 54574, 35954, 0, 216287, 0, 55552, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(2),
-                    [653600, 78455, 48637, 0, 277827, 0, 58730, 0, 0, 0],
+                    [501029, 55801, 36029, 0, 224512, 0, 56833, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(3),
-                    [662666, 79227, 48832, 0, 281883, 0, 58800, 0, 0, 0],
+                    [509687, 56653, 36451, 0, 227650, 0, 56896, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(4),
-                    [627230, 75215, 47417, 0, 266765, 0, 54880, 0, 0, 0],
+                    [472050, 52457, 33690, 0, 210308, 0, 53144, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(16),
-                    [626697, 76694, 48601, 0, 267011, 0, 57491, 0, 0, 0],
+                    [475363, 53995, 35836, 0, 214190, 0, 55552, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(17),
-                    [639276, 77469, 48957, 0, 272092, 0, 58128, 0, 0, 0],
+                    [486620, 54800, 36148, 0, 219164, 0, 56210, 0, 0, 0],
                 ),
                 (
                     CircuitId::InitsAndTeardowns,
-                    [505050, 62746, 40228, 0, 200778, 0, 29526, 0, 0, 0],
+                    [342836, 39989, 28035, 0, 148426, 0, 27146, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1991),
-                    [1919541, 164198, 57234, 0, 799260, 0, 111489, 0, 0, 0],
+                    [1631820, 141519, 48440, 0, 698465, 0, 102662, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1994),
-                    [1006433, 94978, 52266, 0, 414518, 0, 68432, 0, 0, 0],
+                    [812501, 73824, 36556, 0, 354520, 0, 66255, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1995),
-                    [996960, 94904, 50834, 0, 408699, 0, 67914, 0, 0, 0],
+                    [813885, 74283, 36189, 0, 357523, 0, 66367, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Delegation(1996),
+                    [698168, 67765, 35341, 0, 302917, 0, 61194, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Delegation(1997),
+                    [623010, 62777, 34255, 0, 280103, 0, 58443, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Delegation(1998),
+                    [653822, 64498, 34033, 0, 290264, 0, 60816, 0, 0, 0],
                 ),
             ],
         },
@@ -160,39 +177,45 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
         FsvProgram::UnrolledRecursionLayer,
         BlakeMode::Compression,
         CensusTable {
-            c0: [19146, 4823, 641, 0, 96233, 0, 364, 0, 0, 0],
+            c0: [17602, 4527, 949, 0, 79288, 0, 364, 0, 0, 0],
+            per_proof_spread: [94, 128, 129, 0, 0, 0, 0, 0, 0, 0, 351],
             v: &[
                 (
                     CircuitId::Riscv(1),
-                    [637995, 77415, 48402, 0, 267892, 0, 57484, 0, 0, 0],
+                    [484461, 54533, 35923, 0, 216287, 0, 55552, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(2),
-                    [653600, 78455, 48637, 0, 277827, 0, 58730, 0, 0, 0],
+                    [501016, 55774, 35971, 0, 224512, 0, 56833, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(3),
-                    [662666, 79227, 48832, 0, 281883, 0, 58800, 0, 0, 0],
+                    [509706, 56681, 36473, 0, 227650, 0, 56896, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(16),
-                    [626697, 76694, 48601, 0, 267011, 0, 57491, 0, 0, 0],
+                    [475371, 54023, 35879, 0, 214190, 0, 55552, 0, 0, 0],
                 ),
                 (
                     CircuitId::InitsAndTeardowns,
-                    [505050, 62746, 40228, 0, 200778, 0, 29526, 0, 0, 0],
+                    [342814, 39973, 28019, 0, 148426, 0, 27146, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1991),
-                    [1919541, 164198, 57234, 0, 799260, 0, 111489, 0, 0, 0],
+                    [1631804, 141505, 48404, 0, 698466, 0, 102662, 0, 0, 0],
+                ),
+                // K2 rows: special5's row scaled by layout size, not calibrated
+                (
+                    CircuitId::Delegation(1997),
+                    [805590, 82564, 44879, 0, 335103, 0, 61453, 0, 0, 0],
                 ),
                 (
-                    CircuitId::Delegation(1994),
-                    [1006433, 94978, 52266, 0, 414518, 0, 68432, 0, 0, 0],
+                    CircuitId::Delegation(1996),
+                    [969650, 95042, 48588, 0, 404768, 0, 68866, 0, 0, 0],
                 ),
                 (
-                    CircuitId::Delegation(1995),
-                    [996960, 94904, 50834, 0, 408699, 0, 67914, 0, 0, 0],
+                    CircuitId::Delegation(1998),
+                    [837692, 85875, 45178, 0, 354250, 0, 63896, 0, 0, 0],
                 ),
             ],
         },
@@ -227,6 +250,7 @@ mod tests {
     fn test_table() -> CensusTable {
         CensusTable {
             c0: vec0(800),
+            per_proof_spread: [0; NUM_CENSUS_DIMS + 1],
             v: &TEST_ROWS,
         }
     }
@@ -283,6 +307,7 @@ mod tests {
         ];
         let table = CensusTable {
             c0: vec0(0),
+            per_proof_spread: [0; NUM_CENSUS_DIMS + 1],
             v: &ROWS,
         };
         let counts = [(CircuitId::Riscv(7), 1), (CircuitId::Delegation(7), 1)];

@@ -100,7 +100,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         storage: &mut GKRStorage<F, E>,
         expected_output_layer: usize,
         trace_len: usize,
-        pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
+        _pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
         worker: &Worker,
     ) {
         let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
@@ -177,7 +177,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             result.add_assign(&t);
         }
 
-        if result.is_zero() == false {
+        if !result.is_zero() {
             for (i, source) in sources.iter().enumerate() {
                 let value = source.get_at_index(index).0;
                 println!("Source {} = {}", i, value);

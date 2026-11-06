@@ -13,15 +13,18 @@ use crate::gkr::sumcheck::evaluation_kernels::{
     LookupBaseMinusMultiplicityByBaseGKRRelation, LookupBasePairGKRRelation,
     LookupBasePairWithoutCachesGKRRelation, LookupExtensionMinusMultiplicityByExtensionGKRRelation,
     LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation,
-    LookupExtensionPairGKRRelation, LookupExtensionPairGKRRelationKernel,
-    LookupExtensionPairWithoutCachesGKRRelation, LookupPairGKRRelation,
-    LookupRationalPairWithUnbalancedBaseGKRRelation,
+    LookupExtensionPairGKRRelation, LookupExtensionPairWithoutCachesGKRRelation,
+    LookupPairGKRRelation, LookupRationalPairWithUnbalancedBaseGKRRelation,
     LookupRationalPairWithUnbalancedExtensionGKRRelation,
-    LookupRationalPairWithUnbalancedExtensionGKRRelationKernel,
     LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation,
     MaskIntoIdentityProductGKRRelation, MaterializeMemoryTermGKRRelation,
     MaterializeSingleLookupInputGKRRelation, MaterializeVectorLookupInputGKRRelation,
     MaxQuadraticGKRRelation, SameSizeProductGKRRelation, SameSizeProductGKRRelationWithoutCaches,
+};
+#[cfg(feature = "gkr_self_checks")]
+use crate::gkr::sumcheck::evaluation_kernels::{
+    LookupExtensionPairGKRRelationKernel,
+    LookupRationalPairWithUnbalancedExtensionGKRRelationKernel,
 };
 use crate::worker::Worker;
 use field::{Field, FieldExtension, PrimeField};
@@ -31,15 +34,15 @@ use cs::gkr_compiler::{GKRLayerDescription, GKRRelation, OutputType};
 
 macro_rules! define_kernel_variants {
     (
-        single { $($s_name:ident($s_type:ty)),* $(,)? }
-        pair { $($p_name:ident($p_type:ty)),* $(,)? }
-        no_output { $($n_name:ident($n_type:ty)),* $(,)? }
+        single { $($(#[$s_attr:meta])* $s_name:ident($s_type:ty)),* $(,)? }
+        pair { $($(#[$p_attr:meta])* $p_name:ident($p_type:ty)),* $(,)? }
+        no_output { $($(#[$n_attr:meta])* $n_name:ident($n_type:ty)),* $(,)? }
     ) => {
         #[derive(Debug)]
         pub(super) enum KernelVariant<F: PrimeField, E: FieldExtension<F> + Field> {
-            $($s_name($s_type, [E; 1], GKRAddress),)*
-            $($p_name($p_type, [E; 2], [GKRAddress; 2]),)*
-            $($n_name($n_type, [E; 1]),)*
+            $($(#[$s_attr])* $s_name($s_type, [E; 1], GKRAddress),)*
+            $($(#[$p_attr])* $p_name($p_type, [E; 2], [GKRAddress; 2]),)*
+            $($(#[$n_attr])* $n_name($n_type, [E; 1]),)*
         }
 
         impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
@@ -136,6 +139,7 @@ define_kernel_variants! {
         Product(SameSizeProductGKRRelation),
         ProductWithoutCaches(SameSizeProductGKRRelationWithoutCaches),
         MaskIdentity(MaskIntoIdentityProductGKRRelation),
+        #[allow(dead_code)]
         PairwiseProductDimensionReducing(PairwiseProductDimensionReducingGKRRelation),
         MaxQuadratic(MaxQuadraticGKRRelation::<F, E>),
         MaterializeSingleLookupInput(MaterializeSingleLookupInputGKRRelation<F>),
@@ -157,12 +161,14 @@ define_kernel_variants! {
         LookupUnbalancedWithExtension(LookupRationalPairWithUnbalancedExtensionGKRRelation<F, E>),
         LookupUnbalancedWithExtensionWithoutCaches(LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation<F>),
         LookupMaskedVectorMinusSetup(LookupBaseExtMinusBaseExtGKRRelation<F, E>),
+        #[allow(dead_code)]
         LookupPairDimensionReducing(LookupPairDimensionReducingGKRRelation),
         LookupBaseExtMinusBaseExtWithoutCaches(LookupBaseExtMinusBaseExtWithoutCachesGKRRelation<F>),
     }
     // single challenge, no output
     no_output {
         EnforceSingleMaxQuadraticConstraint(EnforceSingleMaxQuadraticConstraintGKRRelation<F>),
+        #[allow(dead_code)]
         EnforceConstraintsMaxQuadratic(BatchConstraintEvalGKRRelation<F, E>),
     }
 }
@@ -170,7 +176,7 @@ define_kernel_variants! {
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
     pub fn from_enforced_relations(
         relation: &GKRRelation<F>,
-        layer_idx: usize,
+        _layer_idx: usize,
         lookup_challenges_multiplicative_part: E,
         lookup_challenges_additive_part: E,
         inits_and_teardowns_top_bits: &[u32],
@@ -331,7 +337,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            GKRRelation::EnforceConstraintsMaxQuadratic { input } => {
+            GKRRelation::EnforceConstraintsMaxQuadratic { input: _ } => {
                 unimplemented!("no longer supported");
                 // let challenge = [get_challenge()];
                 // Self::EnforceConstraintsMaxQuadratic(
@@ -527,7 +533,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
             // GKRRelation::MaterializedVectorLookupInput { .. } => todo!(),
             // GKRRelation::LookupPairFromBaseInputs { .. } => todo!(),
             // GKRRelation::LookupPairFromVectorInputs { .. } => todo!(),
-            a @ _ => {
+            a => {
                 panic!("Relation {:?} is not yet implemented", a);
             }
         }
@@ -557,13 +563,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
     pub(super) fn register(&mut self, kernel: KernelVariant<F, E>) {
         // Kernels can have a bug in them, place to debug
-        match kernel {
-            // KernelVariant::LookupVectorPair(..) if self.layer == 1 => {}
-            // KernelVariant::AggregateLookupPair(..) if self.layer == 1 => {}
-            // KernelVariant::EnforceSingleMaxQuadraticConstraint(..) if self.layer == 1 => {}
-            // KernelVariant::LookupUnbalancedWithExtensionWithoutCaches(..) => {}
-            _ => self.kernels.push(kernel),
-        }
+        // match kernel {
+        //     KernelVariant::LookupVectorPair(..) if self.layer == 1 => {}
+        //     KernelVariant::AggregateLookupPair(..) if self.layer == 1 => {}
+        //     KernelVariant::EnforceSingleMaxQuadraticConstraint(..) if self.layer == 1 => {}
+        //     KernelVariant::LookupUnbalancedWithExtensionWithoutCaches(..) => {}
+        //     _ => self.kernels.push(kernel),
+        // }
+        self.kernels.push(kernel)
     }
 
     pub(super) fn compute_combined_claim(&self, output_claims: &BTreeMap<GKRAddress, E>) -> E {
@@ -610,6 +617,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         collector
     }
 
+    #[allow(dead_code)]
     pub(super) fn from_dimension_reducing_relations(
         layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
         layer_idx: usize,
@@ -708,11 +716,11 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 {
                     for (b, c) in other.iter() {
                         let a = last_evaluations
-                            .get(&a)
+                            .get(a)
                             .unwrap_or_else(|| panic!("input addr {a:?} not in last_evaluations"))
                             [j];
                         let b = last_evaluations
-                            .get(&b)
+                            .get(b)
                             .unwrap_or_else(|| panic!("input addr {b:?} not in last_evaluations"))
                             [j];
                         let mut t = *c;
@@ -727,7 +735,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     .chain(term.linear_part_ext.iter())
                 {
                     let a = last_evaluations
-                        .get(&a)
+                        .get(a)
                         .unwrap_or_else(|| panic!("input addr {a:?} not in last_evaluations"))[j];
                     let mut t = *c;
                     t.mul_assign(&a);

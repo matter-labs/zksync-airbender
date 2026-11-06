@@ -26,7 +26,7 @@ pub const DEFAULT_LDE_FACTOR: usize = 2;
 pub const DEFAULT_CAP_SIZE: usize = 16;
 pub const DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2: usize = 4;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[repr(usize)]
 pub enum SecurityLevel {
     Sec100 = 0,
@@ -88,10 +88,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
     }
 
     #[cfg(feature = "prover")]
-    pub fn flatten_into_buffer(&self, dst: &mut Vec<u32>)
-    where
-        [(); E::DEGREE]: Sized,
-    {
+    pub fn flatten_into_buffer(&self, dst: &mut Vec<u32>) {
         use crate::gkr::prover::transcript_utils::flatten_field_els_into;
         flatten_field_els_into(&self.permutation_argument_linearization_challenges, dst);
         flatten_field_els_into(&[self.permutation_argument_additive_part], dst);
@@ -99,24 +96,21 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
 
     #[cfg(feature = "prover")]
     #[inline(always)]
-    pub fn flatten_into_fixed_size_buffer_dst<const N: usize>(&self, dst: &mut [u32; N])
-    where
-        [(); E::DEGREE]: Sized,
-    {
+    pub fn flatten_into_fixed_size_buffer_dst<const N: usize>(&self, dst: &mut [u32; N]) {
         assert_eq!(
             N,
             E::DEGREE * (NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1)
         );
-        unsafe {
-            let mut it = dst.as_chunks_unchecked_mut::<{ E::DEGREE }>().iter_mut();
-            for src in self.permutation_argument_linearization_challenges.iter() {
-                *it.next().unwrap_unchecked() = E::into_coeffs(*src)
-                    .into_array::<{ E::DEGREE }>()
-                    .map(|el: F| el.as_u32_raw_repr_reduced());
+        let mut it = dst.chunks_exact_mut(E::DEGREE);
+        for src in self
+            .permutation_argument_linearization_challenges
+            .iter()
+            .chain(core::iter::once(&self.permutation_argument_additive_part))
+        {
+            let chunk = it.next().unwrap();
+            for (dst, el) in chunk.iter_mut().zip(E::into_coeffs(*src).as_ref()) {
+                *dst = el.as_u32_raw_repr_reduced();
             }
-            *it.next().unwrap_unchecked() = E::into_coeffs(self.permutation_argument_additive_part)
-                .into_array::<{ E::DEGREE }>()
-                .map(|el: F| el.as_u32_raw_repr_reduced());
         }
     }
 
@@ -255,12 +249,12 @@ pub fn produce_initial_permutation_product_separate_contributions<
 
         let mut t = external_challenges.permutation_argument_linearization_challenges
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-        t.mul_assign_by_base(&F::from_u32_unchecked(value_low as u32));
+        t.mul_assign_by_base(&F::from_u32_unchecked(value_low));
         contribution.add_assign(&t);
 
         let mut t = external_challenges.permutation_argument_linearization_challenges
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
-        t.mul_assign_by_base(&F::from_u32_unchecked(value_high as u32));
+        t.mul_assign_by_base(&F::from_u32_unchecked(value_high));
         contribution.add_assign(&t);
 
         contribution.add_assign(&external_challenges.permutation_argument_additive_part);
@@ -269,7 +263,7 @@ pub fn produce_initial_permutation_product_separate_contributions<
 
     for (dst, (pc, (ts_low, ts_high))) in [&mut write_set_contribution, &mut read_set_contribution]
         .into_iter()
-        .zip([(initial_pc, initial_timestamp), (final_pc, final_timestamp)].into_iter())
+        .zip([(initial_pc, initial_timestamp), (final_pc, final_timestamp)])
     {
         let (pc_low, pc_high) = split_u32_into_pair_u16(pc);
 

@@ -124,7 +124,6 @@ fn prepare_extra_eq(
 ///
 /// Operates entirely on `exec_stream`. No host blocking. Compatible
 /// with the GPU scheduling contract (`gpu/docs/gpu_scheduling_contract.md`).
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn schedule_main_layer_extras_eval(
     extra_addresses: &[GKRAddress],
     storage: &GpuGKRStorage<BF, E4>,

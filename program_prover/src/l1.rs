@@ -5,7 +5,7 @@
 //!
 //! Analog of `prover_examples::l1::prove_l1_wrap_in_recompute_mode`, with the
 //! opposite storage policy: the packed setup is committed fully in memory
-//! (`GKRSetup::commit_packed`, no coset recomputation and no on-disk staging)
+//! (`GKRSetup::commit_for_config`, no coset recomputation and no on-disk staging)
 //! and the memory/witness base + intermediate WHIR oracles are fully
 //! materialized, intermediates in one contiguous buffer per oracle
 //! (`WhirOracleStorage::fully_in_memory_continuous()`). Meant for large
@@ -24,13 +24,13 @@ use prover::fft::Twiddles;
 use prover::field::Proth120;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::prover::{
-    prove_configured_with_gkr_with_storage_and_backend, CommitmentMode, GKRProof, NaiveGKRBackend,
+    prove_configured_with_gkr_with_storage_and_backend, GKRProof, NaiveGKRBackend, OperationMode,
     Proth120WorkStealingLazyBackend, SetupCommitment, WhirOracleStorage,
 };
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use prover::tests::gkr::large_field::{
     build_unified_trace_without_precompiles, evm_production_packed_prover_config,
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
+    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
 };
 use prover::tests::gkr::orchestration::common::{
     dummy_external_challenges, run_vm_and_capture, ProgramConfig,
@@ -51,7 +51,7 @@ pub struct L1WrapTimings {
     pub trace_build_ms: u128,
     /// `GKRSetup::construct` (tables + setup hypercube evals).
     pub setup_ms: u128,
-    /// The in-memory packed setup commitment (`GKRSetup::commit_packed`).
+    /// The in-memory packed setup commitment (`GKRSetup::commit_for_config`).
     pub setup_commit_ms: u128,
     /// The packed `prove_configured_*` call (includes the in-proof merged
     /// memory+witness commitment — the packed mode commits it itself).
@@ -60,7 +60,7 @@ pub struct L1WrapTimings {
 
 /// Prove `program`'s execution as a single Proth120 packed unified proof with
 /// ALL oracles in memory and the EVM-production parameters. Returns the proof,
-/// the `CommitmentMode` aux data (the boundary state the EVM transcript recipe
+/// the `OperationMode` aux data (the boundary state the EVM transcript recipe
 /// replays — the exact fixture pair the verifier_evm generation and the
 /// two-transaction test consume), and the timing breakdown.
 ///
@@ -71,12 +71,13 @@ pub fn prove_l1_wrap_in_memory(
     program: &ProgramConfig,
     circuit_layout_path: &Path,
     worker: &Worker,
-) -> (L1Proof, CommitmentMode, L1WrapTimings) {
+) -> (L1Proof, OperationMode, L1WrapTimings) {
     let mut timings = L1WrapTimings::default();
-    let pack_log2 = EVM_PRODUCTION_PACK_LOG2;
     let external_challenges_pow_bits = EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS;
     let level = prover::definitions::SecurityLevel::Sec100;
     let prover_config = evm_production_packed_prover_config(level);
+    // the base-commitment packing is a property of the prover config
+    let pack_log2 = prover_config.pack_log2;
     let trace_len = 1usize << prover_config.trace_len_log2;
 
     // 1. Run the program on the reduced machine and capture the execution.
@@ -114,7 +115,7 @@ pub fn prove_l1_wrap_in_memory(
     // 4. Packed twiddles: the commitment interpolates the packed polynomials
     //    over the 2^(22 + pack_log2) domain.
     let packed_twiddles: Twiddles<Proth120, std::alloc::Global> =
-        Twiddles::new(trace_len << pack_log2, worker);
+        Twiddles::new(1usize << prover_config.whir_message_size_log2(), worker);
 
     // 5. Setup, then its FULLY IN-MEMORY packed commitment: RS codewords and
     //    the monolithic Merkle tree are materialized (byte-identical
@@ -123,21 +124,14 @@ pub fn prove_l1_wrap_in_memory(
     let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &unified_circuit);
     timings.setup_ms = setup_started.elapsed().as_millis();
 
-    let lde_factor = prover_config.lde_factor;
-    let values_per_leaf = prover_config.base_oracles_values_per_leaf;
-
     println!("L1 wrap: committing setup in memory (packed)");
     let setup_commit_started = std::time::Instant::now();
-    let setup_commitment =
-        SetupCommitment::InMemory(setup.commit_packed::<Keccak256MerkleTreeWithCap>(
-            &packed_twiddles,
-            lde_factor,
-            values_per_leaf.trailing_zeros() as usize,
-            prover_config.cap_size,
-            prover_config.trace_len_log2,
-            pack_log2,
-            worker,
-        ));
+    // the setup geometry (LDE factor, leaf size, cap, packing) is the config's
+    let setup_commitment = setup.commit_for_config::<Keccak256MerkleTreeWithCap>(
+        &packed_twiddles,
+        &prover_config,
+        worker,
+    );
     timings.setup_commit_ms = setup_commit_started.elapsed().as_millis();
 
     // 6. Prove the single unified instance with the packed commitment mode
@@ -145,8 +139,7 @@ pub fn prove_l1_wrap_in_memory(
     //    oracle materialized in RAM.
     let external_challenges = dummy_external_challenges::<Proth120, Proth120>();
 
-    let commitment_mode = CommitmentMode::MergedAndPackedMemoryAndWitness {
-        pack_log2,
+    let operation_mode = OperationMode::SingleChunk {
         external_challenges_pow_bits,
         final_pc: vm.final_pc(),
         final_timestamp: vm.final_timestamp(),
@@ -173,7 +166,7 @@ pub fn prove_l1_wrap_in_memory(
         &setup_commitment,
         &packed_twiddles,
         &prover_config,
-        commitment_mode,
+        operation_mode,
         WhirOracleStorage::fully_in_memory_continuous(),
         top_bits,
         trace_len,

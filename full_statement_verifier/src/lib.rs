@@ -1,6 +1,4 @@
 #![cfg_attr(not(any(test, feature = "proof_utils")), no_std)]
-#![cfg_attr(any(test, feature = "proof_utils"), allow(incomplete_features))]
-#![cfg_attr(any(test, feature = "proof_utils"), feature(generic_const_exprs))]
 
 pub use verifier_common;
 
@@ -51,14 +49,14 @@ use self::verifier_imports::*;
 use verifier_common::cs::definitions::{
     NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP, NUM_TIMESTAMP_COLUMNS_FOR_RAM, TIMESTAMP_COLUMNS_NUM_BITS,
 };
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use verifier_common::prover;
 
 pub const MAX_CYCLES: u64 = const {
     let max_unique_timestamps =
         1u64 << (TIMESTAMP_COLUMNS_NUM_BITS as usize * NUM_TIMESTAMP_COLUMNS_FOR_RAM);
-    let max_cycles = max_unique_timestamps >> NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
 
-    max_cycles
+    max_unique_timestamps >> NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP
 };
 
 // Single source of truth lives in `verifier_common` so the prover and verifier provably

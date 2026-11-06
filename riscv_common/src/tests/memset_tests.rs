@@ -71,7 +71,7 @@ fn test_memset() {
 
             assert_eq!(ret_value, output[..].as_mut_ptr());
 
-            if output.iter().all(|el| *el == fill_value as u8) == false {
+            if !output.iter().all(|el| *el == fill_value as u8) {
                 // dbg!(source);
                 // dbg!(output);
                 panic!(

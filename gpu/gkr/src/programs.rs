@@ -128,6 +128,12 @@ const JUMP: &[u8] =
     include_bytes!("../../../cs/compiled_circuits/jump_branch_slt_schedule_b4_gkr.json");
 const KECCAK: &[u8] =
     include_bytes!("../../../cs/compiled_circuits/keccak_special5_schedule_b4_gkr.json");
+const KECCAK_COLUMN_PARITY: &[u8] =
+    include_bytes!("../../../cs/compiled_circuits/keccak_column_parity_schedule_b4_gkr.json");
+const KECCAK_THETA_RHO: &[u8] =
+    include_bytes!("../../../cs/compiled_circuits/keccak_theta_rho_schedule_b4_gkr.json");
+const KECCAK_CHI5: &[u8] =
+    include_bytes!("../../../cs/compiled_circuits/keccak_chi5_schedule_b4_gkr.json");
 const MEM_SUBWORD: &[u8] =
     include_bytes!("../../../cs/compiled_circuits/mem_subword_only_schedule_b4_gkr.json");
 const MEM_WORD: &[u8] =
@@ -175,6 +181,13 @@ fn forward_artifact(circuit_type: CircuitType) -> (&'static [u8], &'static str) 
         CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => {
             (KECCAK, "keccak_special5")
         }
+        CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity) => {
+            (KECCAK_COLUMN_PARITY, "keccak_column_parity")
+        }
+        CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho) => {
+            (KECCAK_THETA_RHO, "keccak_theta_rho")
+        }
+        CircuitType::Delegation(DelegationCircuitType::KeccakChi5) => (KECCAK_CHI5, "keccak_chi5"),
     }
 }
 

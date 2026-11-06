@@ -1,4 +1,4 @@
-use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
+use crate::allocation_pool::{AllocationPool, ColumnLayout};
 use cs::definitions::gkr::VectorLookupRelation;
 
 use super::*;
@@ -15,9 +15,12 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
     decoder_lookup_fill_value: E,
+    setup_padding_fill: E,
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     offset_for_decoder_table: u32,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
@@ -27,7 +30,7 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
         DECODER_LOOKUP_FORMAL_SET_INDEX
     );
     #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
-    if super::avx512::enabled::<F, E>(trace_len) {
+    if super::avx512::enabled::<F, E>(trace_len) && setup_padding_fill.is_zero() {
         return super::avx512::decoder_lookup_minus_setup(
             decoder_predicate_address,
             decoder_relation,
@@ -46,10 +49,10 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
     let mut num_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
     let mut den_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
     let mapping_ref = {
-        assert!(witness_trace.generic_lookup_mapping.len() > 0);
+        assert!(!witness_trace.generic_lookup_mapping.is_empty());
         witness_trace.generic_lookup_mapping.pop().unwrap()
     };
-    assert!(mapping_ref.len() > 0);
+    assert!(!mapping_ref.is_empty());
     let decoder_predicate = gkr_storage.get_base_layer(decoder_predicate_address);
     let multiplicity = gkr_storage.get_base_layer(multiplicity_address);
 
@@ -76,7 +79,7 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
                 let setup_value = preprocessed_generic_lookup
                     .get(row)
                     .copied()
-                    .unwrap_or(E::ZERO);
+                    .unwrap_or(setup_padding_fill);
 
                 // a/(b + gamma) - c/(d + gamma) -> (a*(d+gamma) - c*(b+gamma)), (b+gamma) * (d+gamma)
 
@@ -163,10 +166,7 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination].into_iter())
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         output.assert_as_layer(1);
         gkr_storage.insert_extension_at_layer(1, output, unsafe {
             ExtensionFieldPoly::from_pooled(destination)
@@ -182,8 +182,10 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
     expected_output_layer: usize,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     offset_for_decoder_table: u32,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
@@ -207,16 +209,12 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
     }
     let mut num_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
     let mut den_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
-    let lhs_mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[inputs[0].lookup_set_index],
-        Vec::new(),
-    );
-    let rhs_mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[inputs[1].lookup_set_index],
-        Vec::new(),
-    );
-    assert!(lhs_mapping.len() > 0);
-    assert!(rhs_mapping.len() > 0);
+    let lhs_mapping =
+        std::mem::take(&mut witness_trace.generic_lookup_mapping[inputs[0].lookup_set_index]);
+    let rhs_mapping =
+        std::mem::take(&mut witness_trace.generic_lookup_mapping[inputs[1].lookup_set_index]);
+    assert!(!lhs_mapping.is_empty());
+    assert!(!rhs_mapping.is_empty());
 
     apply_row_wise::<F, _>(
         vec![],
@@ -297,10 +295,7 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination].into_iter())
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(expected_output_layer, output, unsafe {
             ExtensionFieldPoly::from_pooled(destination)
@@ -320,8 +315,10 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
     expected_output_layer: usize,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     offset_for_decoder_table: u32,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
@@ -345,11 +342,9 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
     }
     let mut num_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
     let mut den_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
-    let mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[remainder.lookup_set_index],
-        Vec::new(),
-    );
-    assert!(mapping.len() > 0);
+    let mapping =
+        std::mem::take(&mut witness_trace.generic_lookup_mapping[remainder.lookup_set_index]);
+    assert!(!mapping.is_empty());
     let mapping_ref = &mapping;
     let num = gkr_storage.get_ext_poly(inputs[0]);
     let den = gkr_storage.get_ext_poly(inputs[1]);
@@ -427,10 +422,7 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination].into_iter())
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(expected_output_layer, output, unsafe {
             ExtensionFieldPoly::from_pooled(destination)
@@ -449,8 +441,10 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     offset_for_decoder_table: u32,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
@@ -473,11 +467,8 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
     }
     let mut num_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
     let mut den_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
-    let mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[input.lookup_set_index],
-        Vec::new(),
-    );
-    assert!(mapping.len() > 0);
+    let mapping = std::mem::take(&mut witness_trace.generic_lookup_mapping[input.lookup_set_index]);
+    assert!(!mapping.is_empty());
     let mapping_ref = &mapping;
     let multiplicity = gkr_storage.get_base_layer(multiplicity_address);
 
@@ -563,10 +554,7 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination].into_iter())
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         output.assert_as_layer(1);
         gkr_storage.insert_extension_at_layer(1, output, unsafe {
             ExtensionFieldPoly::from_pooled(destination)

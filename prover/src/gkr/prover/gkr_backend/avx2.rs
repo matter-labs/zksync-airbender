@@ -164,7 +164,7 @@ pub fn forward_logup_avx2<F: PrimeField, E: FieldExtension<F> + Field>(
                 })
             }
         });
-        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst].into_iter()) {
+        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst]) {
             addr.assert_as_layer(expected_output_layer);
             gkr_storage.insert_extension_at_layer(
                 expected_output_layer,
@@ -563,7 +563,7 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
         use crate::gkr::prover::sumcheck_loop::windowed_mode::lsb_chain::quasi;
         let base_srcs = quasi::<BabyBearField, false>(base_polys);
         let ext_srcs = quasi::<BabyBearExt4, false>(ext_polys);
-        let acc = if out_size % 2 == 0 {
+        let acc = if out_size.is_multiple_of(2) {
             lsb_avx2::lsb_soa_full_parallel_w3::<2>(
                 &base_srcs,
                 &ext_srcs,
@@ -604,7 +604,7 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
     ) -> [BabyBearExt4; 27] {
         use crate::gkr::prover::sumcheck_loop::windowed_mode::lsb_chain::quasi;
         let srcs = quasi::<BabyBearExt4, false>(folded);
-        let acc = if out_size % 2 == 0 {
+        let acc = if out_size.is_multiple_of(2) {
             lsb_avx2::lsb_soa_ext_pass_parallel_w3::<2>(
                 &srcs,
                 &self.folded_interp,

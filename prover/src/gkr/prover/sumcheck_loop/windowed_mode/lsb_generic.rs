@@ -91,7 +91,6 @@ fn extend_ext_grid<F: PrimeField, E: FieldExtension<F> + Field>(
 /// Head pass (pass 0): sources are the layer's original base/ext polynomials
 /// read in natural order, 8 consecutive values per suffix index. Returns the
 /// eq-weighted 16 domain evaluations of q_0.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn head_pass<F: PrimeField, E: FieldExtension<F> + Field>(
     base_sources: &[DisjointAccessQuasiSlice<F, false>],
     ext_sources: &[DisjointAccessQuasiSlice<E, false>],
@@ -196,7 +195,6 @@ pub(crate) fn head_pass<F: PrimeField, E: FieldExtension<F> + Field>(
 /// Ext pass (pass > 0): all sources are already-folded extension-field
 /// tables over the COMBINED slot space (base-then-ext order); the program is
 /// the folded one (forms + products + folded_quad + folded_lin + constant).
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn ext_pass<F: PrimeField, E: FieldExtension<F> + Field>(
     srcs: &[DisjointAccessQuasiSlice<E, false>],
     prog: &OwnedSoaProgram<F, E>,
@@ -406,12 +404,11 @@ pub(crate) fn fold_base<F: PrimeField, E: FieldExtension<F> + Field>(
 ) {
     let rows = dst.len();
     let dst_ptr = SendPtr(dst.as_mut_ptr());
-    let src = src.clone();
+    let src = *src;
     worker.scope_with_threshold(rows, PAR_THRESHOLD, |scope, geometry| {
         for thread_idx in 0..geometry.num_chunks {
             let chunk_start = geometry.get_chunk_start_pos(thread_idx);
             let chunk_size = geometry.get_chunk_size(thread_idx);
-            let src = src.clone();
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                 let dp = dst_ptr.get();
                 for row in chunk_start..(chunk_start + chunk_size) {
@@ -505,7 +502,6 @@ fn extend_window27<T: Field>(grid: &mut [T; 27]) {
 /// Window-3 head pass: the 27-cell {0,1,inf}^3 accumulator over the layer's
 /// original sources (8 consecutive values per suffix index, difference
 /// extension), suffix-eq weighted.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn window27_head_pass<F: PrimeField, E: FieldExtension<F> + Field>(
     base_sources: &[DisjointAccessQuasiSlice<F, false>],
     ext_sources: &[DisjointAccessQuasiSlice<E, false>],
@@ -615,7 +611,6 @@ pub(crate) fn window27_head_pass<F: PrimeField, E: FieldExtension<F> + Field>(
 }
 
 /// Window-3 ext pass over the folded COMBINED slots (all extension field).
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn window27_ext_pass<F: PrimeField, E: FieldExtension<F> + Field>(
     srcs: &[DisjointAccessQuasiSlice<E, false>],
     prog: &OwnedSoaProgram<F, E>,

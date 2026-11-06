@@ -11,22 +11,8 @@ pub(crate) const PRESET_ARENA_BYTES: &[usize] = &[22548578304, 32212254720];
 pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMemoryPolicy {
     match arena_bytes {
         22548578304 => match circuit {
-            CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
-                ProofMemoryPolicy {
-                    gkr: GkrMemoryPolicy::Recompute {
-                        value_layers: 1,
-                        cache_layers: 2,
-                    },
-                    setup: OpeningStrategy::AllCosets,
-                    memory: OpeningStrategy::AllCosets,
-                    witness: WitnessMemoryPolicy {
-                        commitment: WitnessCommitmentStrategy::AllCosets,
-                        post_commitment: WitnessPostCommitStorage::RawEvaluations,
-                        opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::AllCosets),
-                    },
-                }
-            }
             CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)
+            | CircuitType::Delegation(DelegationCircuitType::KeccakChi5)
             | CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
                 UnrolledNonMemoryCircuitType::MulDivUnsigned,
             )) => ProofMemoryPolicy {
@@ -39,7 +25,8 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
                     opening: WitnessOpeningStrategy::ReuseCosets,
                 },
             },
-            CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => ProofMemoryPolicy {
+            CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho)
+            | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => ProofMemoryPolicy {
                 gkr: GkrMemoryPolicy::Materialize,
                 setup: OpeningStrategy::AllCosets,
                 memory: OpeningStrategy::AllCosets,
@@ -49,7 +36,8 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
                     opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::AllCosets),
                 },
             },
-            CircuitType::Unrolled(UnrolledCircuitType::Memory(
+            CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity)
+            | CircuitType::Unrolled(UnrolledCircuitType::Memory(
                 UnrolledMemoryCircuitType::LoadStoreWordOnly,
             ))
             | CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
@@ -112,6 +100,21 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
                     opening: WitnessOpeningStrategy::ReuseCosets,
                 },
             },
+            CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
+                ProofMemoryPolicy {
+                    gkr: GkrMemoryPolicy::Recompute {
+                        value_layers: 1,
+                        cache_layers: 2,
+                    },
+                    setup: OpeningStrategy::AllCosets,
+                    memory: OpeningStrategy::AllCosets,
+                    witness: WitnessMemoryPolicy {
+                        commitment: WitnessCommitmentStrategy::AllCosets,
+                        post_commitment: WitnessPostCommitStorage::RawEvaluations,
+                        opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::AllCosets),
+                    },
+                }
+            }
             CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
                 UnrolledNonMemoryCircuitType::ShiftBinary,
             )) => ProofMemoryPolicy {
@@ -129,24 +132,12 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
             },
         },
         32212254720 => match circuit {
-            CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
-                ProofMemoryPolicy {
-                    gkr: GkrMemoryPolicy::Recompute {
-                        value_layers: 1,
-                        cache_layers: 1,
-                    },
-                    setup: OpeningStrategy::AllCosets,
-                    memory: OpeningStrategy::AllCosets,
-                    witness: WitnessMemoryPolicy {
-                        commitment: WitnessCommitmentStrategy::AllCosets,
-                        post_commitment: WitnessPostCommitStorage::RawAndCosets,
-                        opening: WitnessOpeningStrategy::ReuseCosets,
-                    },
-                }
-            }
             CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression)
             | CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)
             | CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5)
+            | CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity)
+            | CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho)
+            | CircuitType::Delegation(DelegationCircuitType::KeccakChi5)
             | CircuitType::Unrolled(UnrolledCircuitType::Memory(
                 UnrolledMemoryCircuitType::LoadStoreSubwordOnly,
             ))
@@ -185,6 +176,21 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
                     opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::AllCosets),
                 },
             },
+            CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
+                ProofMemoryPolicy {
+                    gkr: GkrMemoryPolicy::Recompute {
+                        value_layers: 1,
+                        cache_layers: 1,
+                    },
+                    setup: OpeningStrategy::AllCosets,
+                    memory: OpeningStrategy::AllCosets,
+                    witness: WitnessMemoryPolicy {
+                        commitment: WitnessCommitmentStrategy::AllCosets,
+                        post_commitment: WitnessPostCommitStorage::RawAndCosets,
+                        opening: WitnessOpeningStrategy::ReuseCosets,
+                    },
+                }
+            }
         },
         _ => panic!("unsupported memory preset arena"),
     }

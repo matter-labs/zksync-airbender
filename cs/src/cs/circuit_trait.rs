@@ -118,19 +118,19 @@ impl MemoryAccess {
 
     pub fn read_value(&self) -> WordRepresentation {
         match self {
-            Self::ConstantRegister(inner) => inner.read_value.clone(),
-            Self::RegisterOnly(inner) => inner.read_value.clone(),
-            Self::RegisterOrRam(inner) => inner.read_value.clone(),
-            Self::RamIndirect(inner) => inner.read_value.clone(),
+            Self::ConstantRegister(inner) => inner.read_value,
+            Self::RegisterOnly(inner) => inner.read_value,
+            Self::RegisterOrRam(inner) => inner.read_value,
+            Self::RamIndirect(inner) => inner.read_value,
         }
     }
 
     pub fn write_value(&self) -> WordRepresentation {
         match self {
-            Self::ConstantRegister(inner) => inner.write_value.clone(),
-            Self::RegisterOnly(inner) => inner.write_value.clone(),
-            Self::RegisterOrRam(inner) => inner.write_value.clone(),
-            Self::RamIndirect(inner) => inner.write_value.clone(),
+            Self::ConstantRegister(inner) => inner.write_value,
+            Self::RegisterOnly(inner) => inner.write_value,
+            Self::RegisterOrRam(inner) => inner.write_value,
+            Self::RamIndirect(inner) => inner.write_value,
         }
     }
 
@@ -208,6 +208,8 @@ pub trait Circuit<F: PrimeField>: Sized {
         name: &str,
         local_timestamp_in_cycle: u32,
     ) -> RegisterAndIndirectAccesses;
+
+    fn set_read_timestamp_group_distance(&mut self, group: u8, distance: Expr<F>);
 
     fn require_invariant(&mut self, variable: Variable, invariant: Invariant);
     fn require_invariant_from_lookup_input(&mut self, input: LookupInput<F>, invariant: Invariant);
@@ -337,9 +339,9 @@ pub trait Circuit<F: PrimeField>: Sized {
     #[track_caller]
     fn peek_lookup_value_unconstrained<const M: usize, const N: usize>(
         &mut self,
-        inputs: &[LookupInput<F>; M],
-        table_type: TableType,
-        exec_flag: Boolean,
+        _inputs: &[LookupInput<F>; M],
+        _table_type: TableType,
+        _exec_flag: Boolean,
     ) -> [Variable; N] {
         assert_eq!(M + N, COMMON_TABLE_WIDTH);
         assert!(M > 0);
@@ -391,9 +393,9 @@ pub trait Circuit<F: PrimeField>: Sized {
         table: Num<F>,
         exec_flag: Boolean,
     ) {
-        assert!(inputs.len() > 0);
+        assert!(!inputs.is_empty());
 
-        let output_variables: [Variable; N] = outputs.clone();
+        let output_variables: [Variable; N] = *outputs;
         let inputs = inputs.clone();
         let exec_flag = exec_flag.get_variable().unwrap();
 

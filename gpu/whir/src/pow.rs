@@ -5,7 +5,7 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::E4;
 use gpu_gkr::gkr_ops::assemble_query_indexes;
 use gpu_hash::blake2s::{
-    blake2s_pow, reduce_raw_words_to_e4, transcript_commit, transcript_squeeze, STATE_SIZE,
+    blake2s_pow, reduce_raw_words_to_e4, transcript_pow_update, transcript_squeeze, STATE_SIZE,
 };
 use gpu_prover_context::ProverContext;
 
@@ -23,7 +23,7 @@ pub(crate) struct PowAndQueryIndexesState {
 /// 1. run `ab_blake2s_pow_kernel` against `device_seed` to search a nonce and
 ///    write it into the caller-supplied `nonce_slab_dst` slot inside the proof
 ///    slab (at `pow_bits == 0` the nonce is 0, matching the host `search_pow`).
-/// 2. `transcript_commit(device_seed, [nonce_lo, nonce_hi])` advances the seed
+/// 2. `transcript_pow_update(device_seed, [nonce_lo, nonce_hi])` advances the seed
 ///    to match the post-`verify_pow` state. Runs for EVERY bit count: the host
 ///    `verify_pow` hashes `seed || nonce` and updates the seed even at
 ///    `pow_bits == 0` (nonce 0), so this must not be skipped.
@@ -73,12 +73,12 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     // currently non-zero, so the 0-bit case is not exercised today, but the two
     // paths must agree (and it mirrors `schedule_draw_e4_challenges_with_pow`).
     // SAFETY: the slab slot is a single `u64` (8 bytes, align 8) viewable as 2
-    // little-endian `u32` words — the layout `transcript_commit` consumes (the
+    // little-endian `u32` words — the layout `transcript_pow_update` consumes (the
     // host `verify_pow` nonce encoding). The read is stream-ordered on the same
     // `exec_stream` as the `blake2s_pow` / `memory_set_async` write above.
     let nonce_as_u32: &DeviceSlice<u32> = unsafe { nonce_slab_dst.transmute::<u32>() };
     let nonce_words = &nonce_as_u32[..2];
-    transcript_commit(device_seed, nonce_words, stream)?;
+    transcript_pow_update(device_seed, nonce_words, stream)?;
 
     // Squeeze enough random u32 words to cover `num_queries * query_domain_log2`
     // bits of query material plus the first PoW header word that the index
@@ -113,7 +113,7 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
 ///
 /// 1. (`pow_bits > 0`) `blake2s_pow` searches a nonce against `device_seed`, written
 ///    into `nonce_slab_dst`; otherwise the slot is set to the canonical `nonce = 0`.
-/// 2. `transcript_commit(device_seed, [nonce_lo, nonce_hi])` advances the seed to the
+/// 2. `transcript_pow_update(device_seed, [nonce_lo, nonce_hi])` advances the seed to the
 ///    post-`verify_pow` state — ALWAYS, including at `pow_bits == 0`: the host
 ///    `verify_pow` hashes `seed || nonce` and updates the seed for every bit count.
 /// 3. `transcript_squeeze` draws `(count*4 + 1)` raw words padded to `STATE_SIZE`
@@ -153,11 +153,11 @@ pub fn schedule_draw_e4_challenges_with_pow(
     // a 0-bit / nonce-0 draw, so skipping this at 0 bits would diverge from the
     // CPU transcript on the very next challenge.
     // SAFETY: the slab slot is a single `u64` (8 bytes, align 8) viewable as 2
-    // little-endian `u32` words — the layout `transcript_commit` consumes (the
+    // little-endian `u32` words — the layout `transcript_pow_update` consumes (the
     // host `verify_pow` nonce encoding). The read is stream-ordered on the same
     // `exec_stream` as the `blake2s_pow` / `memory_set_async` write above.
     let nonce_as_u32: &DeviceSlice<u32> = unsafe { nonce_slab_dst.transmute::<u32>() };
-    transcript_commit(device_seed, &nonce_as_u32[..2], stream)?;
+    transcript_pow_update(device_seed, &nonce_as_u32[..2], stream)?;
 
     let e4_words = count * 4;
     let padded_words = (e4_words + 1).next_multiple_of(STATE_SIZE);

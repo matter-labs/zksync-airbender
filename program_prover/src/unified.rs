@@ -18,7 +18,7 @@ use prover::field::baby_bear::ext4::BabyBearExt4;
 use prover::field::*;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::{
-    prove_configured_with_gkr_with_storage_and_backend, Backend, CommitmentMode, GKRBackend,
+    prove_configured_with_gkr_with_storage_and_backend, Backend, GKRBackend, OperationMode,
     TwiddleSetOps, WhirOracleStorage,
 };
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
@@ -38,6 +38,7 @@ use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
+use riscv_transpiler::witness::DelegationAbiDescription;
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 use setups::UnrolledCircuitSetupParams;
 use setups::UnrolledCircuitWitnessEvalFn;
@@ -156,7 +157,6 @@ pub fn prove_unified_execution_with_replayer<
 /// parameters (e.g. the high-LDE "L1 feeder" config) — the corresponding
 /// generated verifier must be used to verify the result, since the LDE factor
 /// and WHIR schedule are baked into the verify function.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_unified_execution_with_replayer_with_unified_config<
     B: Backend<BabyBearField, BabyBearExt4>,
     GB: GKRBackend<BabyBearField, BabyBearExt4>,
@@ -193,7 +193,6 @@ pub fn prove_unified_execution_with_replayer_with_unified_config<
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn prove_unified_execution_with_replayer_impl<
     B: Backend<BabyBearField, BabyBearExt4>,
     GB: GKRBackend<BabyBearField, BabyBearExt4>,
@@ -246,7 +245,7 @@ fn prove_unified_execution_with_replayer_impl<
         dst: &mut HashMap<u16, usize>,
     ) {
         assert!(dst
-            .insert(C::DELEGATION_TYPE_ID, 1 << C::DOMAIN_SIZE_LOG2)
+            .insert(C::DELEGATION_TYPE_ID, 1 << C::trace_len_log2())
             .is_none());
     }
     get_delegation_chunk_size::<setups::BigIntDelegationCircuit>(&mut delegation_chunk_sizes);
@@ -289,7 +288,7 @@ fn prove_unified_execution_with_replayer_impl<
     // The unified circuit handles all executor cycles in a single circuit.
     let num_unified_calls =
         counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+    let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::trace_len_log2();
 
     // Replay the trace into the unified witness buffer and each delegation family.
     let unified_buffers = replay_unified_circuit::<DelegationsAndUnifiedCounters>(
@@ -304,7 +303,7 @@ fn prove_unified_execution_with_replayer_impl<
 
     let blake_circuits = replay_delegation_circuit::<
         DelegationsAndUnifiedCounters,
-        Blake2sRoundFunctionAbiDescription,
+        { <Blake2sRoundFunctionAbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,
@@ -321,7 +320,7 @@ fn prove_unified_execution_with_replayer_impl<
     );
     let bigint_circuits = replay_delegation_circuit::<
         DelegationsAndUnifiedCounters,
-        BigintAbiDescription,
+        { <BigintAbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,
@@ -338,7 +337,7 @@ fn prove_unified_execution_with_replayer_impl<
     );
     let keccak_special5_circuits = replay_delegation_circuit::<
         DelegationsAndUnifiedCounters,
-        KeccakSpecial5AbiDescription,
+        { <KeccakSpecial5AbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,
@@ -355,7 +354,7 @@ fn prove_unified_execution_with_replayer_impl<
     );
     let blake_g_function_circuits = replay_delegation_circuit::<
         DelegationsAndUnifiedCounters,
-        Blake2sGFunctionAbiDescription,
+        { <Blake2sGFunctionAbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,
@@ -423,7 +422,7 @@ fn prove_unified_execution_with_replayer_impl<
     // of RAM to check if any address in those is touched, but we assume to fully control the recursion program
     // (and it's the only one + may be few test ones that will run in such mode), so we know that we will not touch anything above
     // quite low upper bound (and we can update linker script to make this bound even lower)
-    let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+    let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::trace_len_log2();
     let inits_and_teardown_chunks = ram.collect_inits_and_teardowns_sets::<BabyBearField, Global>(
         worker,
         trace_len_log2 as usize,
@@ -449,17 +448,23 @@ fn prove_unified_execution_with_replayer_impl<
         .entry(trace_len)
         .or_insert_with(|| backend.make_twiddles(trace_len, worker));
 
-    // The UNIFIED circuit's commitment parameters; delegation circuits below
-    // always use the standard per-level configs for their own trace lengths.
+    // The UNIFIED circuit's commitment parameters: its own config from the
+    // setup unless overridden; delegation circuits below always use their own
+    // setups' configs.
     let prover_config = match unified_prover_config_override {
         Some(config) => {
             assert_eq!(
                 config.security_level, security_level,
                 "override config must match the requested security level"
             );
+            assert_eq!(
+                1usize << config.trace_len_log2,
+                trace_len,
+                "override config must match the unified trace length"
+            );
             config.clone()
         }
-        None => prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level),
+        None => unified_setup.prover_config(security_level).clone(),
     };
 
     // Commit the unified memory tree (which embeds inits/teardowns).
@@ -479,7 +484,7 @@ fn prove_unified_execution_with_replayer_impl<
                 inits_and_teardown_chunks[i - num_dummy_inits_and_teardowns].clone()
             } else {
                 // create zeroes ones
-                let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+                let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::trace_len_log2();
                 let mut inits_and_teardowns = Vec::with_capacity(num_teardown_sets);
                 for _ in 0..num_teardown_sets {
                     let a = vec![BabyBearField::ZERO; 1 << trace_len_log2];
@@ -522,7 +527,7 @@ fn prove_unified_execution_with_replayer_impl<
         let setup = &blake_round_function_setup;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+            let prover_config = setup.prover_config(security_level).clone();
             let twiddles_for_size = twiddles
                 .entry(trace_len)
                 .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -562,7 +567,7 @@ fn prove_unified_execution_with_replayer_impl<
         let setup = &bigint_setup;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+            let prover_config = setup.prover_config(security_level).clone();
             let twiddles_for_size = twiddles
                 .entry(trace_len)
                 .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -603,7 +608,7 @@ fn prove_unified_execution_with_replayer_impl<
         let setup = &keccak_special5_setup;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+            let prover_config = setup.prover_config(security_level).clone();
             let twiddles_for_size = twiddles
                 .entry(trace_len)
                 .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -644,7 +649,7 @@ fn prove_unified_execution_with_replayer_impl<
         let setup = &blake_g_function_setup;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+            let prover_config = setup.prover_config(security_level).clone();
             let twiddles_for_size = twiddles
                 .entry(trace_len)
                 .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -731,16 +736,15 @@ fn prove_unified_execution_with_replayer_impl<
     let mut unified_proofs = vec![];
     {
         let twiddles_for_size = &twiddles[&trace_len];
-        // GKRSetup::commit runs on the naive backend internally and consumes
-        // only the plain radix-2 tables (not performance-sensitive).
-        let setup_commitment = unified_setup.setup.commit::<DefaultTreeConstructor>(
-            twiddles_for_size.plain(),
-            prover_config.lde_factor,
-            prover_config.whir_schedule.whir_steps_schedule[0],
-            prover_config.cap_size,
-            trace_len.trailing_zeros() as usize,
-            worker,
-        );
+        // The setup is committed with the prover config's geometry on the naive
+        // backend (`GKRSetup::commit_for_config`, not performance-sensitive).
+        let setup_commitment = unified_setup
+            .setup
+            .commit_for_config::<DefaultTreeConstructor>(
+                twiddles_for_size.plain(),
+                &prover_config,
+                worker,
+            );
 
         risc_v_setup_params.insert(
             REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
@@ -769,7 +773,7 @@ fn prove_unified_execution_with_replayer_impl<
             } else {
                 // create zeroes ones
                 let mut inits_and_teardowns = Vec::with_capacity(num_teardown_sets);
-                let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+                let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::trace_len_log2();
                 for _ in 0..num_teardown_sets {
                     let a = vec![BabyBearField::ZERO; 1 << trace_len_log2];
                     let b = vec![BabyBearField::ZERO; 1 << trace_len_log2];
@@ -823,7 +827,7 @@ fn prove_unified_execution_with_replayer_impl<
                 &setup_commitment,
                 twiddles_for_size,
                 &prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 storage,
                 top_bits.clone(),
                 trace_len,
@@ -857,7 +861,9 @@ fn prove_unified_execution_with_replayer_impl<
     let should_dump_witness = false;
     {
         let delegation_type = <setups::Blake2sWithCompressionDelegationCircuit as circuit_common::DelegationCircuit<BabyBearField>>::DELEGATION_TYPE_ID;
-        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(blake_round_function_setup.trace_len.trailing_zeros() as usize, security_level);
+        let prover_config = blake_round_function_setup
+            .prover_config(security_level)
+            .clone();
         if !blake_circuits.is_empty() {
             let (proofs, per_tree_set) = prove_delegation_circuit::<
                 Global,
@@ -894,7 +900,7 @@ fn prove_unified_execution_with_replayer_impl<
         let delegation_type = <setups::BigIntDelegationCircuit as circuit_common::DelegationCircuit<
             BabyBearField,
         >>::DELEGATION_TYPE_ID;
-        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(bigint_setup.trace_len.trailing_zeros() as usize, security_level);
+        let prover_config = bigint_setup.prover_config(security_level).clone();
         if !bigint_circuits.is_empty() {
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, BigintAbiDescription, _, _, _, _, _, _>(
@@ -925,7 +931,7 @@ fn prove_unified_execution_with_replayer_impl<
             <setups::KeccakSpecial5DelegationCircuit as circuit_common::DelegationCircuit<
                 BabyBearField,
             >>::DELEGATION_TYPE_ID;
-        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(keccak_special5_setup.trace_len.trailing_zeros() as usize, security_level);
+        let prover_config = keccak_special5_setup.prover_config(security_level).clone();
         if !keccak_special5_circuits.is_empty() {
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, KeccakSpecial5AbiDescription, _, _, _, _, _, _>(
@@ -956,7 +962,7 @@ fn prove_unified_execution_with_replayer_impl<
             <setups::Blake2sGFunctionDelegationCircuit as circuit_common::DelegationCircuit<
                 BabyBearField,
             >>::DELEGATION_TYPE_ID;
-        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(blake_g_function_setup.trace_len.trailing_zeros() as usize, security_level);
+        let prover_config = blake_g_function_setup.prover_config(security_level).clone();
         if !blake_g_function_circuits.is_empty() {
             let (proofs, per_tree_set) = prove_delegation_circuit::<
                 Global,

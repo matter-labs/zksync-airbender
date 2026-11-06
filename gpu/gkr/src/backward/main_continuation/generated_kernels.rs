@@ -77,6 +77,18 @@ cuda_kernel_declaration!(
     pub(crate) ab_gkr_main_cont_fused_07_b2_x01(desc: MainContinuationWindowLaunchBinding)
 );
 cuda_kernel_declaration!(
+    pub(crate) ab_gkr_bwd_main_cont_window3_shape_0f_b4_kernel(desc: MainContinuationWindowLaunchBinding)
+);
+cuda_kernel_declaration!(
+    pub(crate) ab_gkr_bwd_main_cont_window3_shape_0f_b4_x01_kernel(desc: MainContinuationWindowLaunchBinding)
+);
+cuda_kernel_declaration!(
+    pub(crate) ab_gkr_main_cont_fused_0f_b2(desc: MainContinuationWindowLaunchBinding)
+);
+cuda_kernel_declaration!(
+    pub(crate) ab_gkr_main_cont_fused_0f_b2_x01(desc: MainContinuationWindowLaunchBinding)
+);
+cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_13_b4_kernel(desc: MainContinuationWindowLaunchBinding)
 );
 cuda_kernel_declaration!(
@@ -113,7 +125,7 @@ cuda_kernel_declaration!(
     pub(crate) ab_gkr_main_cont_fused_1f_b2_x01(desc: MainContinuationWindowLaunchBinding)
 );
 
-pub(crate) const MAIN_CONTINUATION_WINDOW_KERNELS: [MainContinuationWindowKernelEntry; 7] = [
+pub(crate) const MAIN_CONTINUATION_WINDOW_KERNELS: [MainContinuationWindowKernelEntry; 8] = [
     MainContinuationWindowKernelEntry {
         mask: 0x00,
         symbol: ab_gkr_bwd_main_cont_window3_shape_00_b4_kernel,
@@ -141,6 +153,13 @@ pub(crate) const MAIN_CONTINUATION_WINDOW_KERNELS: [MainContinuationWindowKernel
         x01_symbol: ab_gkr_bwd_main_cont_window3_shape_07_b4_x01_kernel,
         fused_symbol: ab_gkr_main_cont_fused_07_b2,
         fused_x01_symbol: ab_gkr_main_cont_fused_07_b2_x01,
+    },
+    MainContinuationWindowKernelEntry {
+        mask: 0x0f,
+        symbol: ab_gkr_bwd_main_cont_window3_shape_0f_b4_kernel,
+        x01_symbol: ab_gkr_bwd_main_cont_window3_shape_0f_b4_x01_kernel,
+        fused_symbol: ab_gkr_main_cont_fused_0f_b2,
+        fused_x01_symbol: ab_gkr_main_cont_fused_0f_b2_x01,
     },
     MainContinuationWindowKernelEntry {
         mask: 0x13,

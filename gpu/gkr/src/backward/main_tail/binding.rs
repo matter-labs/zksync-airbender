@@ -196,7 +196,6 @@ fn validate_program(program: &MainTailProgram) {
     assert_ne!(program.source_count, 0);
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn bind_main_tail(
     expected_layer: usize,
     program: &MainTailProgram,

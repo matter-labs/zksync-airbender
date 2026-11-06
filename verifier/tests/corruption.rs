@@ -9,9 +9,11 @@ use field::baby_bear::ext4::BabyBearExt4;
 use field::Field;
 use verifier_common::errors::VerificationError;
 
+#[cfg(not(feature = "no_caches"))]
+use common::assert_rejects_with_variant;
 use common::{
-    assert_rejects_any, assert_rejects_corrupted_nds, assert_rejects_via_panic,
-    assert_rejects_with_variant, SecurityLevel, VerifyRejection,
+    assert_rejects_any, assert_rejects_corrupted_nds, assert_rejects_via_panic, SecurityLevel,
+    VerifyRejection,
 };
 
 fn test_rejects_garbage_proof(name: &str) {
@@ -404,6 +406,7 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
     );
 }
 
+#[allow(clippy::assertions_on_constants)]
 fn test_rejects_corrupted_it_evals(name: &str) {
     with_circuit!(name, SecurityLevel::Sec100, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;

@@ -26,8 +26,9 @@ impl<F: PrimeField> GKRCompiler<F> {
             memory_queries,
             range_check_expressions,
             boolean_vars,
-            substitutions,
+            substitutions: _,
             register_and_indirect_memory_accesses,
+            read_timestamp_group_distances,
             executor_machine_state,
             delegation_circuit_state,
             circuit_family_bitmask,
@@ -113,10 +114,10 @@ impl<F: PrimeField> GKRCompiler<F> {
                 table_id_width = 1;
             }
 
-            if generic_lookups.len() > 0 {
+            if !generic_lookups.is_empty() {
                 let t = &generic_lookups[0].1;
                 let all_same = generic_lookups.iter().map(|el| &el.1).all(|el| el == t);
-                if all_same == false {
+                if !all_same {
                     expect_table_id_for_generic_lookup = true;
                     table_id_width = 1;
                 }
@@ -143,13 +144,15 @@ impl<F: PrimeField> GKRCompiler<F> {
             all_variables_to_place.insert(Variable(variable_idx));
         }
 
-        let mut range_check_16_expressions = range_check_16_expressions;
-
         let mut ram_access_sets: Vec<RamQuery> = vec![];
         let mut ram_augmented_sets: Vec<(MemoryAccess, ShuffleRamTimestampComparisonPartialData)> =
             vec![];
         let mut indirect_access_variable_offsets = BTreeMap::new();
-        use crate::gkr_compiler::delegation_mem_accesses::compile_register_and_indirect_mem_accesses;
+        let mut read_timestamp_groups = BTreeMap::new();
+        let mut alignment_range_check_expressions = vec![];
+        use crate::gkr_compiler::delegation_mem_accesses::{
+            compile_read_timestamp_group_constraints, compile_register_and_indirect_mem_accesses,
+        };
         compile_register_and_indirect_mem_accesses(
             &mut graph,
             &mut num_variables,
@@ -161,19 +164,27 @@ impl<F: PrimeField> GKRCompiler<F> {
             &mut ram_access_sets,
             &mut ram_augmented_sets,
             &mut indirect_access_variable_offsets,
-            &mut range_check_16_expressions,
+            &mut alignment_range_check_expressions,
+            &mut read_timestamp_groups,
         );
 
         // we can add explicit nodes for memory access accumulation, and we also explicitly check write timestamps to be in range
         let mut timestamp_range_check_expressions_to_compile = vec![];
         {
             // As all timestamps make a permutation, we only constraint write set
-            timestamp_range_check_expressions_to_compile.push(LookupInput::<F>::Variable(
-                delegation_circuit_state.invocation_timestamp[0],
-            ));
-            timestamp_range_check_expressions_to_compile.push(LookupInput::<F>::Variable(
-                delegation_circuit_state.invocation_timestamp[1],
-            ));
+            // Active invocations occur at cycle_start + 1; this also excludes the self-cancelling timestamp zero.
+            let inv_four = F::from_u32_unchecked(4).inverse().unwrap();
+            let mut minus_inv_four = inv_four;
+            minus_inv_four.negate();
+            timestamp_range_check_expressions_to_compile.push(LookupInput::<F>::Expression {
+                linear_terms: vec![
+                    (inv_four, delegation_circuit_state.invocation_timestamp[0]),
+                    (minus_inv_four, delegation_circuit_state.execute),
+                ],
+                constant_coeff: F::ZERO,
+            });
+            // The memory permutation pairs invocation timestamps with the main machine's
+            // range-checked timestamps, so the high limb needs no additional range check.
         };
 
         let delegation_state = layout_delegation_circuit_state(
@@ -204,11 +215,34 @@ impl<F: PrimeField> GKRCompiler<F> {
         // ones, and "generic" ones (that includes decoder)
 
         // Timestamps are the easiest - we collect them, and will transform into GKR layers very separately
+        let per_access_comparisons =
+            ram_augmented_sets
+                .iter()
+                .filter_map(|(_, aux)| match aux.comparison {
+                    ReadTimestampComparison::PerAccess {
+                        intermediate_borrow,
+                    } => Some((intermediate_borrow, aux)),
+                    ReadTimestampComparison::Grouped { group } => {
+                        assert_eq!(
+                            aux.read_timestamp,
+                            read_timestamp_groups[&group].read_timestamp
+                        );
+                        None
+                    }
+                });
         super::range_check_exprs::compile_timestamp_comparison_range_checks(
             &mut timestamp_range_check_expressions_to_compile,
-            &ram_augmented_sets,
+            per_access_comparisons,
             delegation_circuit_state.invocation_timestamp,
         );
+        compile_read_timestamp_group_constraints(
+            &mut structured_statements,
+            &read_timestamp_groups,
+            read_timestamp_group_distances,
+            delegation_circuit_state.execute,
+            delegation_circuit_state.invocation_timestamp,
+        );
+        timestamp_range_check_expressions_to_compile.extend(alignment_range_check_expressions);
 
         let total_timestamp_range_check_lookups =
             timestamp_range_check_expressions_to_compile.len() as u64 * trace_len as u64;
@@ -260,7 +294,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         // placing lookup is move involved
         {
-            if range_check_16_expressions.len() > 0 {
+            if !range_check_16_expressions.is_empty() {
                 let (multiplicity, final_pair, final_rel, rels_for_witness_eval) =
                     layout_width_1_lookup_expressions(
                         &mut graph,
@@ -277,7 +311,7 @@ impl<F: PrimeField> GKRCompiler<F> {
                 lookup_outputs.insert(LookupType::RangeCheck16, (final_pair, final_rel));
             }
 
-            if timestamp_range_check_expressions_to_compile.len() > 0 {
+            if !timestamp_range_check_expressions_to_compile.is_empty() {
                 let (multiplicity, final_pair, final_rel, rels_for_witness_eval) =
                     layout_width_1_lookup_expressions(
                         &mut graph,
@@ -294,7 +328,7 @@ impl<F: PrimeField> GKRCompiler<F> {
                 lookup_outputs.insert(LookupType::TimestampRangeCheck, (final_pair, final_rel));
             }
 
-            if generic_lookups.len() > 0 || decoder_lookup_pair.is_some() {
+            if !generic_lookups.is_empty() || decoder_lookup_pair.is_some() {
                 let decoder_lookup_is_present = decoder_lookup_pair.is_some();
                 num_generic_lookups += decoder_lookup_is_present as usize;
                 num_generic_lookups += generic_lookups.len();
@@ -350,8 +384,8 @@ impl<F: PrimeField> GKRCompiler<F> {
         }
 
         let indirect_access_variable_offsets = indirect_access_variable_offsets
-            .into_iter()
-            .map(|(idx, place)| {
+            .into_values()
+            .map(|place| {
                 let GKRAddress::BaseLayerMemory(offset) = place else {
                     unreachable!()
                 };
@@ -411,27 +445,45 @@ impl<F: PrimeField> GKRCompiler<F> {
         let aux_layout_data = {
             let shuffle_ram_timestamp_comparison_aux_vars = ram_augmented_sets
                 .iter()
-                .map(|(_, el)| RamAuxComparisonSet {
-                    intermediate_borrow: graph.get_address_for_variable(el.intermediate_borrow),
+                .map(|(_, el)| match el.comparison {
+                    ReadTimestampComparison::PerAccess {
+                        intermediate_borrow,
+                    } => Some(RamAuxComparisonSet {
+                        intermediate_borrow: graph.get_address_for_variable(intermediate_borrow),
+                    }),
+                    ReadTimestampComparison::Grouped { .. } => None,
+                })
+                .collect();
+            let relative_timestamp_groups = read_timestamp_groups
+                .into_values()
+                .map(|group| {
+                    let read_timestamp = group.read_timestamp_places.map(|el| {
+                        let GKRAddress::BaseLayerMemory(el) = el else {
+                            unreachable!()
+                        };
+                        el
+                    });
+                    RelativeTimestampGroup {
+                        read_timestamp,
+                        members: group.members,
+                    }
                 })
                 .collect();
 
             GKRAuxLayoutData {
                 shuffle_ram_timestamp_comparison_aux_vars,
+                relative_timestamp_groups,
             }
         };
 
         let mut scratch_space_mapping = BTreeMap::new();
         let mut scratch_space_mapping_rev = BTreeMap::new();
         let mut scratch_space_counter = 0usize;
-        for (_var, pos) in placement_data.iter() {
-            match pos {
-                GKRAddress::InnerLayer { .. } => {
-                    scratch_space_mapping.insert(*pos, scratch_space_counter);
-                    scratch_space_mapping_rev.insert(scratch_space_counter, *pos);
-                    scratch_space_counter += 1;
-                }
-                _ => {}
+        for pos in placement_data.values() {
+            if let GKRAddress::InnerLayer { .. } = pos {
+                scratch_space_mapping.insert(*pos, scratch_space_counter);
+                scratch_space_mapping_rev.insert(scratch_space_counter, *pos);
+                scratch_space_counter += 1;
             }
         }
 
@@ -449,8 +501,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             .chain(
                 generic_lookups_compiled
                     .iter_mut()
-                    .map(|el: &mut VectorLookupRelation<F>| el.columns.iter_mut())
-                    .flatten(),
+                    .flat_map(|el: &mut VectorLookupRelation<F>| el.columns.iter_mut()),
             )
         {
             for (_, addr) in rel.linear_terms.iter_mut() {
@@ -478,6 +529,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             placement_data,
             generic_lookup_tables_width: generic_lookup_width,
             tables_ids_in_generic_lookups: expect_table_id_for_generic_lookup,
+            generic_lookup_padding: None,
             decode_table_columns_mask: Vec::new(),
             has_decoder_lookup: false,
 
@@ -489,7 +541,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             range_check_16_lookup_expressions: range_check_16_lookups_compiled,
             timestamp_range_check_lookup_expressions: timestamp_range_check_lookups_compiled,
 
-            variable_names: BTreeMap::from_iter(variable_names.into_iter()),
+            variable_names: BTreeMap::from_iter(variable_names),
             scratch_space_mapping,
             scratch_space_mapping_rev,
 

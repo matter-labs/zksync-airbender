@@ -15,7 +15,7 @@
 use fft::*;
 use field::{
     baby_bear::{base::BabyBearField, ext4::BabyBearExt4},
-    Field, FieldExtension, PrimeField, Proth120, Rand, TwoAdicField,
+    Field, PrimeField, Proth120, Rand, TwoAdicField,
 };
 use std::alloc::Global;
 use std::time::Instant;

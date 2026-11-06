@@ -10,7 +10,10 @@
 //! rows transposed into natural order. Two DRAM sweeps per coset (read input,
 //! write/read the intermediate once, write the output), 16 KB twiddle tables.
 //! Values are checked against the blocked kernel before timing.
-#![feature(allocator_api)]
+#![cfg_attr(
+    all(target_arch = "x86_64", target_feature = "avx2"),
+    feature(allocator_api)
+)]
 
 #[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
 fn main() {
@@ -104,6 +107,7 @@ mod imp {
         fn ptr(&mut self) -> *mut u32 {
             unsafe { self.v.as_mut_ptr().add(self.off) }
         }
+        #[allow(dead_code)]
         fn slice(&mut self) -> &mut [u32] {
             let (off, len) = (self.off, self.len);
             &mut self.v[off..off + len]

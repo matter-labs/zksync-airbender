@@ -34,6 +34,7 @@ pub const CACHE_LINE_MULTIPLE: usize = const {
 
 #[cfg(target_arch = "aarch64")]
 #[inline(always)]
+#[allow(dead_code)]
 unsafe fn prefetch_next_line(ptr: *const u32) {
     use core::arch::aarch64::{_PREFETCH_LOCALITY3, _PREFETCH_WRITE};
     core::arch::aarch64::_prefetch::<_PREFETCH_WRITE, _PREFETCH_LOCALITY3>(ptr.cast());
@@ -41,6 +42,7 @@ unsafe fn prefetch_next_line(ptr: *const u32) {
 
 #[cfg(target_arch = "x86_64")]
 #[inline(always)]
+#[allow(dead_code)]
 unsafe fn prefetch_next_line(ptr: *const u32) {
     use core::arch::x86_64::{_mm_prefetch, _MM_HINT_ET0};
     _mm_prefetch(ptr as *const i8, _MM_HINT_ET0);
@@ -48,6 +50,7 @@ unsafe fn prefetch_next_line(ptr: *const u32) {
 
 #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
 #[inline(always)]
+#[allow(dead_code)]
 unsafe fn prefetch_next_line(ptr: *const u32) {}
 
 use std::time::Instant;
@@ -67,5 +70,11 @@ impl Timer {
         let duration = end_time - self.starting_time;
         println!("{}: {:?}", message, duration);
         self.starting_time = end_time;
+    }
+}
+
+impl Default for Timer {
+    fn default() -> Self {
+        Self::new()
     }
 }

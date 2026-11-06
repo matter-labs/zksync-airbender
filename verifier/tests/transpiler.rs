@@ -9,14 +9,32 @@ use riscv_transpiler::vm::*;
 
 fn run_transpiler(name: &str, level: SecurityLevel) {
     let (nds, external_challenges) = common::load_nds(name, level);
-    println!(
-        "{} {:?}: oracle data length: {} u32 words",
-        name,
-        level,
-        nds.len()
-    );
-
     let (bin_path, text_path, elf_path) = common::binary_paths(name, level);
+    run_transpiler_on(
+        &format!("{}_{}", name, level.dir_suffix()),
+        nds,
+        external_challenges,
+        bin_path,
+        text_path,
+        elf_path,
+    );
+}
+
+/// Run the RISC-V verifier binary at `bin_path`/`text_path` (symbols from
+/// `elf_path`) on the flattened proof `nds`, asserting success and printing the
+/// exact cycle count + a flamegraph.
+fn run_transpiler_on(
+    name: &str,
+    nds: Vec<u32>,
+    external_challenges: prover::definitions::GKRExternalChallenges<
+        BabyBearField,
+        field::baby_bear::ext4::BabyBearExt4,
+    >,
+    bin_path: String,
+    text_path: String,
+    elf_path: String,
+) {
+    println!("{}: oracle data length: {} u32 words", name, nds.len());
 
     let binary = common::load_binary_section(&bin_path);
     let text_section = common::load_binary_section(&text_path);
@@ -43,11 +61,9 @@ fn run_transpiler(name: &str, level: SecurityLevel) {
     let mut non_determinism = QuasiUARTSource::new_with_reads(oracle_responses);
 
     let symbols_path = std::path::PathBuf::from(&elf_path);
-    let output_path = std::env::current_dir().unwrap().join(format!(
-        "gkr_flamegraph_{}_{}.svg",
-        name,
-        level.dir_suffix()
-    ));
+    let output_path = std::env::current_dir()
+        .unwrap()
+        .join(format!("gkr_flamegraph_{}.svg", name));
     let mut fg_config =
         riscv_transpiler::vm::FlamegraphConfig::new(symbols_path, output_path.clone());
     fg_config.frequency_recip = 1;
@@ -132,3 +148,36 @@ macro_rules! generate_transpiler_tests {
     };
 }
 verifier_common::gkr_circuits!(generate_transpiler_tests);
+
+/// The PACKED-base-commitment fixture (`blake2_with_extended_control` proved
+/// with `pack_log2 = 4`, see `verifier_common::test_circuits::packed_fixture`)
+/// on its own RISC-V verifier binary
+/// `tools/gkr_verifier/blake2_with_extended_control_sec_100_pack4.*`
+/// (build it with `dump_bin.sh blake2_with_extended_control_sec_100_pack4`).
+/// Compare its cycle count with `blake2_with_extended_control_sec_100`.
+#[test]
+#[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
+fn blake2_with_extended_control_sec_100_pack4() {
+    use verifier_common::test_circuits::packed_fixture;
+    let (nds, external_challenges) = packed_fixture::load_nds();
+    let (bin_path, text_path, elf_path) =
+        common::binary_paths(packed_fixture::CIRCUIT_NAME, SecurityLevel::Sec100);
+    let packed = |path: String| -> String {
+        let suffix = format!("_{}", packed_fixture::DIR_SUFFIX);
+        let replaced = path.replace("_sec_100", &suffix);
+        assert_ne!(replaced, path, "unexpected binary path layout: {path}");
+        replaced
+    };
+    run_transpiler_on(
+        &format!(
+            "{}_{}",
+            packed_fixture::CIRCUIT_NAME,
+            packed_fixture::DIR_SUFFIX
+        ),
+        nds,
+        external_challenges,
+        packed(bin_path),
+        packed(text_path),
+        packed(elf_path),
+    );
+}

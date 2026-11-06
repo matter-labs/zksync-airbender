@@ -11,6 +11,8 @@ AB_GKR_MAIN_CONT_DEFINE_FUSED(ab_gkr_main_cont_fused_03_b2, 0x03, 2, false, fals
 AB_GKR_MAIN_CONT_DEFINE_FUSED(ab_gkr_main_cont_fused_03_b2_x01, 0x03, 2, true, false);
 AB_GKR_MAIN_CONT_DEFINE_FUSED(ab_gkr_main_cont_fused_07_b2, 0x07, 2, false, false);
 AB_GKR_MAIN_CONT_DEFINE_FUSED(ab_gkr_main_cont_fused_07_b2_x01, 0x07, 2, true, false);
+AB_GKR_MAIN_CONT_DEFINE_FUSED(ab_gkr_main_cont_fused_0f_b2, 0x0f, 2, false, false);
+AB_GKR_MAIN_CONT_DEFINE_FUSED(ab_gkr_main_cont_fused_0f_b2_x01, 0x0f, 2, true, false);
 AB_GKR_MAIN_CONT_DEFINE_FUSED(ab_gkr_main_cont_fused_13_b2, 0x13, 2, false, false);
 AB_GKR_MAIN_CONT_DEFINE_FUSED(ab_gkr_main_cont_fused_13_b2_x01, 0x13, 2, true, false);
 AB_GKR_MAIN_CONT_DEFINE_FUSED(ab_gkr_main_cont_fused_17_b2, 0x17, 2, false, false);

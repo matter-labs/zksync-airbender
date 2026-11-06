@@ -253,14 +253,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
 
     // --- CPU reference proof (only when requested) ---
     let expected_cpu_proof = if compute_cpu_reference {
-        let setup_commitment = setup.commit(
-            &twiddles,
-            whir_schedule.base_lde_factor,
-            whir_schedule.whir_steps_schedule[0],
-            whir_schedule.cap_size,
-            trace_len.trailing_zeros() as usize,
-            &worker,
-        );
+        let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, &worker);
         Some(prove_configured_with_gkr::<
             BF,
             E4,
@@ -274,7 +267,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             &setup_commitment,
             &twiddles,
             &prover_config,
-            CommitmentMode::SeparateMemoryAndWitness,
+            OperationMode::MultipleChunks,
             top_bits.clone(),
             trace_len,
             &worker,
@@ -302,10 +295,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
                 &NaiveBackend,
                 &make_full_trace(),
                 &twiddles,
-                whir_schedule.base_lde_factor,
-                whir_schedule.whir_steps_schedule[0],
-                whir_schedule.cap_size,
-                trace_len.trailing_zeros() as usize,
+                &prover_config,
                 &prover::allocation_pool::GenericAllocationPool::proxy(),
                 &worker,
             );

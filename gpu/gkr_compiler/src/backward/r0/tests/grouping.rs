@@ -214,7 +214,8 @@ fn cpu_linear_tails_preserve_terms_and_seed_corpus() {
             );
             assert_eq!(a.window.shape.bits() & !0x7f7, 0);
             assert_eq!(b.window.shape.bits() & !0x7ff, 0);
-            assert!(a.window.words.len() <= 8192 && b.window.words.len() <= 8192);
+            let capacity = crate::backward::window::WINDOW_PROGRAM_WORD_CAP;
+            assert!(a.window.words.len() <= capacity && b.window.words.len() <= capacity);
             layers += 1;
         }
     }

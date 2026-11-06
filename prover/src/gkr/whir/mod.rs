@@ -61,25 +61,29 @@
 // - then we draw a challenge and evaluate p(alpha) = \sum_{X'} eq(r1, ...., alpha, X') f(alpha, X') =
 // = \sum_{X''} eq(r1, ...., alpha, 0, X'') f(alpha, 0, X'') + eq(r1, ...., alpha, 1, X'') f(alpha, 1, X'')
 
-use crate::allocation_pool::{AllocationPool, GenericAllocationPool};
+use crate::allocation_pool::AllocationPool;
+#[cfg(test)]
+use crate::allocation_pool::GenericAllocationPool;
 use crate::gkr::prover::backend::LeafConversionHandle;
 use crate::gkr::prover::backend::TwiddleSetOps;
 use crate::gkr::prover::gkr_backend::BatchedBaseColumn;
-use crate::gkr::prover::stages::commitment_utils::{
-    compute_column_major_lde_from_monomial_form, ColumnMajorCosetBoundTracePart,
-};
+use crate::gkr::prover::stages::commitment_utils::ColumnMajorCosetBoundTracePart;
 use crate::gkr::prover::transcript_utils::{
-    add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
+    add_whir_commitment_to_transcript, commit_field_els, draw_fresh_random_field_els,
+    draw_query_bits, draw_random_field_els,
 };
-use crate::gkr::prover::WhirSchedule;
+use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::sumcheck::access_and_fold::GKRStorage;
 use crate::gkr::sumcheck::*;
 use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
+#[cfg(any(test, feature = "gkr_self_checks"))]
 use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
 use crate::gkr::PAR_THRESHOLD;
+#[cfg(test)]
+use crate::merkle_trees::PathQueryable;
 use crate::merkle_trees::{
     ColumnMajorMerkleTreeConstructor, CosetIndexedAccessor, MainDomainColumn,
-    MerkleTreeCapVarLength, PathQueryable, RSQueryable, SingleCosetRSQueryable,
+    MerkleTreeCapVarLength, RSQueryable, SingleCosetRSQueryable,
 };
 use crate::query_utils::assemble_query_index;
 use cs::definitions::GKRAddress;
@@ -184,7 +188,7 @@ impl<F: PrimeField + TwoAdicField> SingleCosetRSQueryable<F> for ColumnMajorBase
                     }
                 }
             }
-            a @ _ => {
+            a => {
                 panic!("unsupported: {} values per leaf", a);
             }
         }
@@ -507,10 +511,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
         query_indices: &[usize],
         twiddles: &Twiddles<F, Global>,
         worker: &Worker,
-    ) -> Vec<(Vec<Vec<F>>, BaseFieldQuery<F, T>)>
-    where
-        [(); F::DEGREE]: Sized,
-    {
+    ) -> Vec<(Vec<Vec<F>>, BaseFieldQuery<F, T>)> {
         match self {
             Self::InMemory(o) => query_indices
                 .iter()
@@ -633,7 +634,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
                     result.push(value);
                 }
             }
-            a @ _ => {
+            a => {
                 panic!("unsupported: {} values per leaf", a);
             }
         }
@@ -868,7 +869,6 @@ where
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
-    [(); E::DEGREE]: Sized,
 {
     /// Number of LDE cosets (sizes the next round's query domain).
     fn num_cosets(&self) -> usize {
@@ -974,7 +974,6 @@ where
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
-    [(); E::DEGREE]: Sized,
 {
     assert_eq!(monomial_form.len(), evaluation_form.len());
     match mode {
@@ -1090,16 +1089,19 @@ pub fn whir_fold<
     // hypercube evaluations the batched proximity polynomial is accumulated
     // from; it is released to `pool` right after.
     gkr_storage: GKRStorage<F, E>,
-    // log2 of the packing factor of the base commitments (0 = unpacked):
-    // `trace_len_log2 - pack_log2` is the base-layer column length.
-    pack_log2: usize,
+    // The proving geometry: the WHIR schedule (folds, queries, PoW, LDE
+    // factors, the tree cap), the message size `trace_len_log2 + pack_log2`
+    // (the committed column length), the packing factor (`trace_len_log2 -
+    // pack_log2` is the base-layer column length) and the commitment mode —
+    // whether memory and witness were committed as ONE merged set (the whole
+    // mem ++ wit sequence in `mem_oracle`, an EMPTY `wit_oracle`) or as two
+    // separate oracles, which decides how the base columns are grouped into
+    // committed (packed) columns; the oracles are asserted to have that shape.
+    prover_config: &ProverConfig,
     original_evaluation_point: Vec<E>,
     batching_challenge: E,
-    whir_schedule: &WhirSchedule,
     twiddles: &B::TwiddleSet,
     mut transcript_seed: TR::Seed,
-    tree_cap_size: usize,
-    trace_len_log2: usize,
     // Compute backend for the in-memory-path heavy ops (intermediate-oracle LDEs,
     // the batched poly's hypercube -> monomial transform). The backend must not
     // change any produced values.
@@ -1115,12 +1117,13 @@ pub fn whir_fold<
     intermediate_oracle_mode: WhirIntermediateOracleMode,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> WhirPolyCommitProof<F, E, T>
-where
-    [(); F::DEGREE]: Sized,
-    [(); E::DEGREE]: Sized,
-{
+) -> WhirPolyCommitProof<F, E, T> {
     let two_inv = F::TWO.inverse().unwrap();
+    let whir_schedule = &prover_config.whir_schedule;
+    let pack_log2 = prover_config.pack_log2;
+    let merged_memory_and_witness = prover_config.merged_memory_and_witness();
+    let tree_cap_size = whir_schedule.cap_size;
+    let trace_len_log2 = prover_config.whir_message_size_log2();
 
     let evals_refs = [&mem_polys_claims, &wit_polys_claims, &setup_polys_claims];
     // Per-set accessors (0 = memory, 1 = witness, 2 = setup). The setup set is served
@@ -1246,12 +1249,15 @@ where
     // The batched proximity polynomial straight from the base layer: the
     // committed columns' hypercube evaluations weighted by the powers of the
     // batching challenge (no codeword batching / IFFT round trip). The
-    // columns come in commitment order — memory then witness (one committed
-    // set when the commitment merged them, two otherwise: the same sequence
-    // either way), then setup; virtual setup polys are not committed. Each
-    // set is packed by `2^pack_log2` consecutive columns into one committed
-    // column (sub-poly `y` of a pack is block `y` of the packed poly) and the
-    // batching powers run over the COMMITTED columns.
+    // columns come in commitment order — memory then witness, then setup;
+    // virtual setup polys are not committed. Each COMMITTED SET is packed by
+    // `2^pack_log2` consecutive columns into one committed column (sub-poly
+    // `y` of a pack is block `y` of the packed poly; a short tail group is
+    // zero-padded) and the batching powers run over the COMMITTED columns, so
+    // the sets must follow the oracles: a merged commitment (every base column
+    // in the memory oracle, an empty witness oracle) packed the mem ++ wit
+    // sequence as ONE set, separate memory and witness oracles packed each on
+    // its own (the two structures only coincide when unpacked).
     let base_len = 1usize << (trace_len_log2 - pack_log2);
     let pack = 1usize << pack_log2;
     let base_columns = |key: fn(usize) -> GKRAddress| -> Vec<&[F]> {
@@ -1259,13 +1265,42 @@ where
             .map_while(|i| gkr_storage.try_get_base_poly(key(i)))
             .collect()
     };
-    let mut mem_wit_columns = base_columns(GKRAddress::BaseLayerMemory);
-    mem_wit_columns.extend(base_columns(GKRAddress::BaseLayerWitness));
+    let mem_columns = base_columns(GKRAddress::BaseLayerMemory);
+    let wit_columns = base_columns(GKRAddress::BaseLayerWitness);
     let setup_columns = base_columns(GKRAddress::Setup);
-    let mut terms: Vec<BatchedBaseColumn<'_, F, E>> =
-        Vec::with_capacity(mem_wit_columns.len() + setup_columns.len());
+    if merged_memory_and_witness {
+        assert_eq!(
+            set_num_columns[1], 0,
+            "a merged memory+witness commitment has no witness oracle"
+        );
+    }
+    let committed_sets: Vec<(Vec<&[F]>, usize)> = if merged_memory_and_witness {
+        let mut merged = mem_columns;
+        merged.extend(wit_columns);
+        vec![
+            (merged, set_num_columns[0]),
+            (setup_columns, set_num_columns[2]),
+        ]
+    } else {
+        vec![
+            (mem_columns, set_num_columns[0]),
+            (wit_columns, set_num_columns[1]),
+            (setup_columns, set_num_columns[2]),
+        ]
+    };
+    let mut terms: Vec<BatchedBaseColumn<'_, F, E>> = Vec::with_capacity(
+        committed_sets
+            .iter()
+            .map(|(set, _)| set.len())
+            .sum::<usize>(),
+    );
     let mut committed = 0usize;
-    for set in [&mem_wit_columns, &setup_columns] {
+    for (set, expected_committed) in committed_sets.iter() {
+        assert_eq!(
+            set.len().div_ceil(pack),
+            *expected_committed,
+            "one committed (packed) column per group of 2^{pack_log2} base-layer columns"
+        );
         for (c, column) in set.iter().enumerate() {
             assert_eq!(column.len(), base_len, "base-layer column length");
             terms.push(BatchedBaseColumn {
@@ -1302,8 +1337,7 @@ where
         gkr_backend.accumulate_base_columns_into(dst, &terms, worker)
     });
     drop(terms);
-    drop(mem_wit_columns);
-    drop(setup_columns);
+    drop(committed_sets);
     let t_release = std::time::Instant::now();
     gkr_storage.release_into(pool);
     println!(
@@ -1322,12 +1356,12 @@ where
     let mut batched_claim = E::ZERO;
     for (challenges_set, values_set) in [base_mem_powers, base_witness_powers, base_setup_powers]
         .into_iter()
-        .zip(evals_refs.into_iter())
+        .zip(evals_refs)
     {
         assert_eq!(challenges_set.len(), values_set.len());
-        for (a, b) in challenges_set.iter().zip(values_set.into_iter()) {
+        for (a, b) in challenges_set.iter().zip(values_set) {
             let mut result = *b;
-            result.mul_assign(&a);
+            result.mul_assign(a);
             batched_claim.add_assign(&result);
         }
     }
@@ -1580,7 +1614,7 @@ where
 
         // and delinearization challenge
         let delinearization_challenges: Vec<E> =
-            draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
+            draw_fresh_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
         let delinearization_challenge = delinearization_challenges[0];
         delinearization_challenges_per_round.push(delinearization_challenge);
 
@@ -1963,7 +1997,7 @@ where
 
         // and delinearization challenge
         let delinearization_challenges: Vec<E> =
-            draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
+            draw_fresh_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
         let delinearization_challenge = delinearization_challenges[0];
         delinearization_challenges_per_round.push(delinearization_challenge);
 
@@ -2129,8 +2163,10 @@ where
             let folding_challenge = folding_challenges[0];
             folding_challenges_in_round.push(folding_challenge);
 
-            let next_claim = evaluate_small_univariate_poly(&univariate_coeffs, &folding_challenge);
-            claim = next_claim;
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                claim = evaluate_small_univariate_poly(&univariate_coeffs, &folding_challenge);
+            }
             // and fold the poly itself - both multivariate evals mapping, and monomial form
 
             fold_monomial_form(
@@ -2428,7 +2464,6 @@ impl<F: PrimeField + TwoAdicField> ExtCoeffConvCtx<F> {
             for chunk_idx in 0..geometry.len() {
                 let chunk_start = geometry.get_chunk_start_pos(chunk_idx);
                 let chunk_size = geometry.get_chunk_size(chunk_idx);
-                let base_ptr = base_ptr;
                 let offsets = &self.offsets;
                 let base_root_invs = &base_root_invs;
                 let high_powers_offsets = &self.high_powers_offsets;
@@ -2610,10 +2645,7 @@ fn commit_single_ext_poly<
     tree_cap_size: usize,
     backend: &B,
     worker: &Worker,
-) -> ColumnMajorExtensionOracleForLDE<F, E, T>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> ColumnMajorExtensionOracleForLDE<F, E, T> {
     let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
     let trace_len = 1usize << trace_len_log2;
     let conv = backend.ext_coeff_conv(trace_len, values_per_leaf);
@@ -2707,10 +2739,7 @@ fn commit_single_ext_poly_continuous<
     tree_cap_size: usize,
     backend: &B,
     worker: &Worker,
-) -> ContinuousExtensionOracleForLDE<F, E, T>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> ContinuousExtensionOracleForLDE<F, E, T> {
     let num_cosets = coset_offsets.len();
     assert!(num_cosets.is_power_of_two());
     assert_eq!(buffer.len() % num_cosets, 0);
@@ -2787,10 +2816,7 @@ pub fn commit_single_ext_poly_for_test<
     values_per_leaf: usize,
     tree_cap_size: usize,
     worker: &Worker,
-) -> ColumnMajorExtensionOracleForLDE<F, E, T>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> ColumnMajorExtensionOracleForLDE<F, E, T> {
     commit_single_ext_poly::<F, E, T, _>(
         cosets,
         values_per_leaf,
@@ -2814,10 +2840,7 @@ pub fn commit_single_ext_poly_no_transform_for_test<
     values_per_leaf: usize,
     tree_cap_size: usize,
     worker: &Worker,
-) -> ColumnMajorExtensionOracleForLDE<F, E, T>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> ColumnMajorExtensionOracleForLDE<F, E, T> {
     let mut t = Vec::with_capacity(cosets.len());
     let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
     for (column, offset) in cosets.into_iter() {
@@ -2880,10 +2903,7 @@ pub fn commit_single_ext_poly_with_transform_for_test<
     values_per_leaf: usize,
     tree_cap_size: usize,
     worker: &Worker,
-) -> ColumnMajorExtensionOracleForLDE<F, E, T>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> ColumnMajorExtensionOracleForLDE<F, E, T> {
     let num_folding_rounds = values_per_leaf.trailing_zeros() as usize;
     let mut t = Vec::with_capacity(cosets.len());
     let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
@@ -2906,7 +2926,7 @@ where
     let coset_generator_inv = coset_generator.inverse().unwrap();
 
     for (mut column, offset) in cosets.into_iter() {
-        assert!(column.len() > 0);
+        assert!(!column.is_empty());
 
         if num_folding_rounds > 0 {
             let offset_inv = offset.inverse().unwrap();
@@ -2928,7 +2948,6 @@ where
                 for chunk_idx in 0..geometry.len() {
                     let chunk_start = geometry.get_chunk_start_pos(chunk_idx);
                     let chunk_size = geometry.get_chunk_size(chunk_idx);
-                    let base_ptr = base_ptr;
                     let offsets = &offsets;
                     let base_root_invs = &base_root_invs;
                     let high_powers_offsets = &high_powers_offsets;
@@ -3212,7 +3231,7 @@ pub fn fold_eq_poly<'a, F: PrimeField, E: FieldExtension<F> + Field>(
 
 #[cfg(test)]
 fn dot_product_serial<F: PrimeField, E: FieldExtension<F> + Field>(a: &[E], b: &[E]) -> E {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
     let mut result = E::ZERO;
     for (a, b) in a.iter().zip(b.iter()) {
@@ -3223,12 +3242,13 @@ fn dot_product_serial<F: PrimeField, E: FieldExtension<F> + Field>(a: &[E], b: &
     result
 }
 
+#[cfg(any(test, feature = "gkr_self_checks"))]
 fn dot_product<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     b: &[E],
     worker: &Worker,
 ) -> E {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
 
     let geometry = worker.get_geometry_with_threshold(a.len(), PAR_THRESHOLD);
@@ -3291,7 +3311,7 @@ fn special_three_point_eval_serial<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     b: &[E],
 ) -> (E, E, E) {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
     let quart = F::from_u32_unchecked(4).inverse().unwrap();
     let [f0, f1, mut f_half] = three_point_partial(a.as_chunks::<2>().0, b.as_chunks::<2>().0);
@@ -3304,7 +3324,7 @@ pub fn special_three_point_eval<F: PrimeField, E: FieldExtension<F> + Field>(
     b: &[E],
     worker: &Worker,
 ) -> (E, E, E) {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
 
     let quart = F::from_u32_unchecked(4).inverse().unwrap();
@@ -3533,6 +3553,7 @@ pub(crate) fn update_eq_poly_reference<F: PrimeField, E: FieldExtension<F> + Fie
     }
 }
 
+#[cfg(test)]
 fn evaluate_base_multivariate<F: PrimeField, E: FieldExtension<F> + Field>(
     evals: &[F],
     point: &[E],
@@ -3561,6 +3582,7 @@ pub fn evaluate_multivariate<E: Field>(evals: &[E], point: &[E], worker: &Worker
     result
 }
 
+#[cfg(feature = "gkr_self_checks")]
 fn evaluate_multivariate_at_base<F: PrimeField, E: FieldExtension<F> + Field>(
     evals: &[E],
     point: &[F],
@@ -3577,6 +3599,7 @@ fn evaluate_multivariate_at_base<F: PrimeField, E: FieldExtension<F> + Field>(
     result
 }
 
+#[cfg(test)]
 fn evaluate_multivariate_at_base_for_domain_hypercube<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -3724,7 +3747,7 @@ fn fold_coset<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
             (&buffer[..], &mut flattened_evals)
         };
         assert!(dst.is_empty());
-        assert!(src.is_empty() == false);
+        assert!(!src.is_empty());
         assert!(src.len().is_power_of_two());
         assert_eq!(src.len(), 1 << (num_folding_rounds - folding_step));
         let folding_challenge = folding_challenges[folding_step];
@@ -3764,6 +3787,7 @@ fn fold_coset<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::gkr::prover::WhirSchedule;
     use crate::{
         field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4},
         merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap,
@@ -3774,10 +3798,7 @@ mod test {
     type F = BabyBearField;
     type E = BabyBearExt4;
 
-    fn random_e(rng: &mut ThreadRng) -> E
-    where
-        [(); <E as FieldExtension<F>>::DEGREE]: Sized,
-    {
+    fn random_e(rng: &mut ThreadRng) -> E {
         let coefs = [(); <E as FieldExtension<F>>::DEGREE]
             .map(|_| F::from_u32_with_reduction(rng.next_u32()));
 
@@ -3900,7 +3921,7 @@ mod test {
         use fft::Twiddles;
         use field::Rand;
         let worker = Worker::new_with_num_threads(4);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for (poly_log2, lde_factor, values_per_leaf) in
             [(10usize, 8usize, 16usize), (12, 4, 32), (9, 16, 4)]
         {
@@ -4116,9 +4137,9 @@ mod test {
     // }
 
     fn make_base_oracle(
-        size: usize,
-        worker: &Worker,
-        offset: usize,
+        _size: usize,
+        _worker: &Worker,
+        _offset: usize,
     ) -> (
         ColumnMajorBaseOracleForLDE<F, Blake2sU32MerkleTreeWithCap>,
         Vec<F>,
@@ -4187,7 +4208,7 @@ mod test {
         use crate::gkr::prover::gkr_backend::NaiveGKRBackend;
         use field::Rand;
         let worker = Worker::new_with_num_threads(4);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let n = 1usize << 12;
         let table: Vec<E> = (0..n).map(|_| E::random_element(&mut rng)).collect();
         let challenges: Vec<E> = (0..5).map(|_| E::random_element(&mut rng)).collect();
@@ -4309,26 +4330,26 @@ mod test {
             let b: Vec<E> = (0..size).map(|_| random_e(&mut rng)).collect();
             let half = size / 2;
 
-            // f(0) = dot(a[0..half], b[0..half])
+            // LSB binding pairs adjacent entries: f(0) uses even indexes.
             let expected_f0 = (0..half).fold(E::ZERO, |mut acc, i| {
-                let mut t = a[i];
-                t.mul_assign(&b[i]);
+                let mut t = a[2 * i];
+                t.mul_assign(&b[2 * i]);
                 acc.add_assign(&t);
                 acc
             });
-            // f(1) = dot(a[half..], b[half..])
+            // f(1) uses odd indexes.
             let expected_f1 = (0..half).fold(E::ZERO, |mut acc, i| {
-                let mut t = a[i + half];
-                t.mul_assign(&b[i + half]);
+                let mut t = a[2 * i + 1];
+                t.mul_assign(&b[2 * i + 1]);
                 acc.add_assign(&t);
                 acc
             });
-            // f(1/2) = 1/4 * sum_i (a[i]+a[i+half]) * (b[i]+b[i+half])
+            // f(1/2) = 1/4 * sum_i (a[2i]+a[2i+1]) * (b[2i]+b[2i+1])
             let mut expected_fh = (0..half).fold(E::ZERO, |mut acc, i| {
-                let mut ta = a[i];
-                ta.add_assign(&a[i + half]);
-                let mut tb = b[i];
-                tb.add_assign(&b[i + half]);
+                let mut ta = a[2 * i];
+                ta.add_assign(&a[2 * i + 1]);
+                let mut tb = b[2 * i];
+                tb.add_assign(&b[2 * i + 1]);
                 ta.mul_assign(&tb);
                 acc.add_assign(&ta);
                 acc
@@ -4407,7 +4428,6 @@ mod test {
 
     #[test]
     fn test_domain_hypercube_evals() {
-        let worker = Worker::new_with_num_threads(1);
         let size: usize = 4;
 
         let main_domain: Vec<F> = (1..=size)
@@ -4491,7 +4511,7 @@ mod test {
                 crate::gkr::sumcheck::access_and_fold::BaseFieldPoly::new(t.into_boxed_slice()),
             );
         }
-        let proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript, _, _>(
+        let _proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript, _, _>(
             mem,
             a,
             wit,
@@ -4499,14 +4519,15 @@ mod test {
             &setup_commitment,
             c,
             gkr_storage,
-            0,
+            &crate::gkr::prover_config::ProverConfig::whir_only(
+                size.trailing_zeros() as usize,
+                whir_schedule,
+                crate::definitions::SecurityLevel::Sec100,
+            ),
             original_evaluation_point,
             E::from_base(F::from_u32_with_reduction(7)),
-            &whir_schedule,
             &twiddles,
             ::transcript::Seed::default(),
-            1,
-            size.trailing_zeros() as usize,
             &crate::gkr::prover::backend::NaiveBackend,
             &crate::gkr::prover::gkr_backend::NaiveGKRBackend,
             WhirIntermediateOracleMode::Monolithic,

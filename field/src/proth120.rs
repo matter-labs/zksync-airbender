@@ -23,13 +23,12 @@ use core::ops::{Add, Sub};
 /// and is always kept canonical (strictly less than the modulus).
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[repr(transparent)]
+#[derive(Default)]
 pub struct Proth120(pub u128);
 
 const _: () = const {
     assert!(core::mem::size_of::<Proth120>() == core::mem::size_of::<u128>());
     assert!(core::mem::align_of::<Proth120>() == core::mem::align_of::<u128>());
-
-    ()
 };
 
 // --- 128-bit limb helpers used by the Montgomery routines ---
@@ -294,12 +293,6 @@ const fn mont_mul(a: u128, b: u128) -> u128 {
         (t[0] as u128) | ((t[1] as u128) << 64)
     } else {
         (r0 as u128) | ((r1 as u128) << 64)
-    }
-}
-
-impl Default for Proth120 {
-    fn default() -> Self {
-        Self(0u128)
     }
 }
 

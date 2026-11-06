@@ -18,10 +18,7 @@ pub fn blake2s_leaf_hashes_from_columns<
     bitreverse_input: bool,
     bitreverse_output_leaf_hashes: bool,
     worker: &Worker,
-) -> Vec<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS], B>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> Vec<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS], B> {
     let num_columns = trace.len();
     let trace_len = trace[0].len();
     assert!(combine_by.is_power_of_two());
@@ -76,9 +73,13 @@ where
                             for column in trace.iter() {
                                 for offset in offsets_ref.iter() {
                                     let el = column[i + *offset];
-                                    let as_base = extension_field_into_base_coeffs(el)
-                                        .map(|el| el.as_u32_raw_repr_reduced());
-                                    buffer.extend(as_base);
+                                    let as_base = extension_field_into_base_coeffs(el);
+                                    buffer.extend(
+                                        as_base
+                                            .as_ref()
+                                            .iter()
+                                            .map(|el| el.as_u32_raw_repr_reduced()),
+                                    );
                                 }
                             }
                             debug_assert_eq!(buffer.len(), leaf_width_in_field_elements);
@@ -99,11 +100,11 @@ where
                                         write_into,
                                     );
                                 } else {
-                                    hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(&block);
+                                    hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(block);
                                 }
                             }
 
-                            if only_full_rounds == false {
+                            if !only_full_rounds {
                                 let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
                                 let len = remainder.len();
                                 block[..len].copy_from_slice(remainder);
@@ -193,17 +194,19 @@ pub(crate) struct ColumnsGather<'a, A> {
 
 impl<'a, F: PrimeField, E: FieldExtension<F>, A: CosetIndexedAccessor<E>> LeafGather<F, E>
     for ColumnsGather<'a, A>
-where
-    [(); E::DEGREE]: Sized,
 {
     #[inline(always)]
     fn gather(&self, i: usize, _ebuf: &mut Vec<E>, dst: &mut Vec<u32>) {
         for column in self.coset.iter() {
             for offset in self.offsets.iter() {
                 let el = column.get(i + *offset);
-                let as_base =
-                    extension_field_into_base_coeffs(el).map(|el| el.as_u32_raw_repr_reduced());
-                dst.extend(as_base);
+                let as_base = extension_field_into_base_coeffs(el);
+                dst.extend(
+                    as_base
+                        .as_ref()
+                        .iter()
+                        .map(|el| el.as_u32_raw_repr_reduced()),
+                );
             }
         }
     }
@@ -216,9 +219,13 @@ where
             for offset in self.offsets.iter() {
                 for (w, dst) in dsts.iter_mut().enumerate() {
                     let el = column.get(first + w + *offset);
-                    let as_base =
-                        extension_field_into_base_coeffs(el).map(|el| el.as_u32_raw_repr_reduced());
-                    dst.extend(as_base);
+                    let as_base = extension_field_into_base_coeffs(el);
+                    dst.extend(
+                        as_base
+                            .as_ref()
+                            .iter()
+                            .map(|el| el.as_u32_raw_repr_reduced()),
+                    );
                 }
             }
         }
@@ -235,8 +242,6 @@ pub(crate) struct AccessorsGather<'a, L> {
 
 impl<'a, F: PrimeField, E: FieldExtension<F> + field::Field, L: CosetLeafAccessor<E>>
     LeafGather<F, E> for AccessorsGather<'a, L>
-where
-    [(); E::DEGREE]: Sized,
 {
     #[inline(always)]
     fn gather(&self, i: usize, ebuf: &mut Vec<E>, dst: &mut Vec<u32>) {
@@ -245,9 +250,13 @@ where
             ebuf.resize(self.values_per_leaf, E::ZERO);
             accessor.leaf_into(i, &mut ebuf[..]);
             for el in ebuf.iter() {
-                let as_base =
-                    extension_field_into_base_coeffs(*el).map(|el| el.as_u32_raw_repr_reduced());
-                dst.extend(as_base);
+                let as_base = extension_field_into_base_coeffs(*el);
+                dst.extend(
+                    as_base
+                        .as_ref()
+                        .iter()
+                        .map(|el| el.as_u32_raw_repr_reduced()),
+                );
             }
         }
     }
@@ -261,9 +270,13 @@ where
             if accessor.leaves_into_slot_major(first, count, &mut ebuf[..]) {
                 for (w, dst) in dsts.iter_mut().enumerate() {
                     for k in 0..vpl {
-                        let as_base = extension_field_into_base_coeffs(ebuf[k * count + w])
-                            .map(|el| el.as_u32_raw_repr_reduced());
-                        dst.extend(as_base);
+                        let as_base = extension_field_into_base_coeffs(ebuf[k * count + w]);
+                        dst.extend(
+                            as_base
+                                .as_ref()
+                                .iter()
+                                .map(|el| el.as_u32_raw_repr_reduced()),
+                        );
                     }
                 }
                 continue;
@@ -271,9 +284,13 @@ where
             accessor.leaves_into(first, count, &mut ebuf[..]);
             for (w, dst) in dsts.iter_mut().enumerate() {
                 for el in ebuf[w * vpl..(w + 1) * vpl].iter() {
-                    let as_base = extension_field_into_base_coeffs(*el)
-                        .map(|el| el.as_u32_raw_repr_reduced());
-                    dst.extend(as_base);
+                    let as_base = extension_field_into_base_coeffs(*el);
+                    dst.extend(
+                        as_base
+                            .as_ref()
+                            .iter()
+                            .map(|el| el.as_u32_raw_repr_reduced()),
+                    );
                 }
             }
         }
@@ -297,9 +314,7 @@ unsafe fn hash_leaf_scalar<
     hasher: &mut Blake2sState,
     buffer: &mut Vec<u32>,
     ebuf: &mut Vec<E>,
-) where
-    [(); E::DEGREE]: Sized,
-{
+) {
     hasher.reset();
     buffer.clear();
     coset.gather(i, ebuf, buffer);
@@ -320,11 +335,11 @@ unsafe fn hash_leaf_scalar<
                 write_into,
             );
         } else {
-            hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(&block);
+            hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(block);
         }
     }
 
-    if only_full_rounds == false {
+    if !only_full_rounds {
         let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
         let len = remainder.len();
         block[..len].copy_from_slice(remainder);
@@ -364,9 +379,7 @@ unsafe fn hash_coset_leaf_range<
     only_full_rounds: bool,
     scratch: &mut LeafHashScratch,
     ebuf: &mut Vec<E>,
-) where
-    [(); E::DEGREE]: Sized,
-{
+) {
     const WAYS: usize = 4;
 
     // scalar head up to the first 4-aligned leaf index
@@ -420,7 +433,7 @@ unsafe fn hash_coset_leaf_range<
             }
         }
 
-        if only_full_rounds == false {
+        if !only_full_rounds {
             let len = leaf_width_in_field_elements % BLAKE2S_BLOCK_SIZE_U32_WORDS;
             for w in 0..WAYS {
                 let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
@@ -469,10 +482,7 @@ fn blake2s_leaf_hashes_driver<
     bitreverse_cosets: bool,
     bitreverse_leaf_hashes: bool,
     worker: &Worker,
-) -> Vec<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS], B>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> Vec<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS], B> {
     let num_cosets = gathers.len();
     assert!(coset_tree_size.is_power_of_two());
     let tree_size = num_cosets * coset_tree_size;
@@ -519,7 +529,7 @@ where
                     Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                         let mut scratch = LeafHashScratch::new(leaf_width_in_field_elements);
                         let mut ebuf: Vec<E> = Vec::new();
-                        for (coset_index, dest) in idx_chunk.iter().zip(dests.into_iter()) {
+                        for (coset_index, dest) in idx_chunk.iter().zip(dests) {
                             hash_coset_leaf_range::<F, E, G, USE_REDUCED_BLAKE2_ROUNDS>(
                                 &gathers[*coset_index],
                                 0..coset_tree_size,
@@ -548,7 +558,7 @@ where
 
                     let mut dests = Vec::with_capacity(num_cosets);
                     let mut new_dests = Vec::with_capacity(num_cosets);
-                    for el in coset_destinations.drain(..).into_iter() {
+                    for el in coset_destinations.drain(..) {
                         let (chunk, rest) = el.split_at_mut(chunk_size);
                         dests.push(chunk);
                         new_dests.push(rest);
@@ -559,7 +569,7 @@ where
                     Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                         let mut scratch = LeafHashScratch::new(leaf_width_in_field_elements);
                         let mut ebuf: Vec<E> = Vec::new();
-                        for (coset_index, dest) in coset_indexes_ref.iter().zip(dests.into_iter()) {
+                        for (coset_index, dest) in coset_indexes_ref.iter().zip(dests) {
                             hash_coset_leaf_range::<F, E, G, USE_REDUCED_BLAKE2_ROUNDS>(
                                 &gathers[*coset_index],
                                 src_range.clone(),
@@ -603,10 +613,7 @@ pub fn blake2s_leaf_hashes_from_cosets<
     bitreverse_cosets: bool,
     bitreverse_leaf_hashes: bool,
     worker: &Worker,
-) -> Vec<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS], B>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> Vec<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS], B> {
     let num_columns = trace[0].len();
     let trace_len = trace[0][0].len();
     assert!(combine_by.is_power_of_two());
@@ -671,10 +678,7 @@ pub fn blake2s_leaf_hashes_from_leaf_accessors<
     bitreverse_cosets: bool,
     bitreverse_leaf_hashes: bool,
     worker: &Worker,
-) -> Vec<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS], B>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> Vec<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS], B> {
     let num_columns = cosets[0].len();
     let values_per_leaf = cosets[0][0].values_per_leaf();
     let coset_tree_size = cosets[0][0].num_leaves();

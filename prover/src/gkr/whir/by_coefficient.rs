@@ -34,7 +34,7 @@ use crate::gkr::prover::stages::commitment_utils::ColumnMajorCosetBoundTracePart
 use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, CosetLeafAccessor};
 use crate::utils::extension_field_into_base_coeffs;
 use fft::{batch_inverse_inplace, bitreverse_index};
-use field::{Field, FieldExtension, FixedArrayConvertible, PrimeField, TwoAdicField};
+use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::sync::Arc;
 use worker::Worker;
 
@@ -55,6 +55,7 @@ pub struct ByCoefficientLeaves<'a, F, E, C: ?Sized> {
     num_leaves: usize,
     /// Four consecutive leaves gather as aligned 8-lane vectors (BabyBear
     /// Ext4 over BabyBear, AVX2, 4-aligned leaf offsets).
+    #[cfg(target_arch = "x86_64")]
     vector4: bool,
     _marker: core::marker::PhantomData<E>,
 }
@@ -64,7 +65,6 @@ where
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     C: ExtCoeffConversion<F, E> + ?Sized,
-    [(); E::DEGREE]: Sized,
 {
     pub fn new(
         conv: &'a C,
@@ -84,6 +84,7 @@ where
         assert_eq!(storage_len, 2 * num_leaves * offsets.len());
         assert!(parity < 2);
         let limbs: Vec<&'a [F]> = storage_coset.iter().map(|part| &part.column[..]).collect();
+        #[cfg(target_arch = "x86_64")]
         let vector4 = Self::vector4_applicable(&limbs, offsets, num_leaves);
         Self {
             conv,
@@ -93,6 +94,7 @@ where
             offsets,
             offset_inv,
             num_leaves,
+            #[cfg(target_arch = "x86_64")]
             vector4,
             _marker: core::marker::PhantomData,
         }
@@ -104,14 +106,9 @@ where
         let _ = limbs;
         TypeId::of::<E>() == TypeId::of::<crate::field::baby_bear::ext4::BabyBearExt4>()
             && TypeId::of::<F>() == TypeId::of::<crate::field::baby_bear::base::BabyBearField>()
-            && num_leaves % 4 == 0
+            && num_leaves.is_multiple_of(4)
             && offsets.iter().all(|&o| o % 4 == 0)
             && is_x86_feature_detected!("avx2")
-    }
-
-    #[cfg(not(target_arch = "x86_64"))]
-    fn vector4_applicable(_limbs: &[&'a [F]], _offsets: &[usize], _num_leaves: usize) -> bool {
-        false
     }
 
     /// Leaves `first .. first + 4` (`first % 4 == 0`) of a BabyBear Ext4
@@ -191,26 +188,24 @@ where
     pub fn gather_leaf(&self, leaf_index: usize, out: &mut [E]) {
         debug_assert!(leaf_index < self.num_leaves);
         debug_assert_eq!(out.len(), self.offsets.len());
-        let mut coeffs = [F::ZERO; E::DEGREE];
+        let mut coeffs = <E as FieldExtension<F>>::into_coeffs(E::ZERO);
         match self.layout {
             ColumnLayout::Contiguous => {
                 for (o, &off) in out.iter_mut().zip(self.offsets.iter()) {
                     let p = 2 * (off + leaf_index) + self.parity;
-                    for (c, limb) in coeffs.iter_mut().zip(self.limbs.iter()) {
+                    for (c, limb) in coeffs.as_mut().iter_mut().zip(self.limbs.iter()) {
                         *c = limb[p];
                     }
-                    *o =
-                        E::from_coeffs(<E::Coeffs as FixedArrayConvertible<F>>::from_array(coeffs));
+                    *o = E::from_coeffs(coeffs);
                 }
             }
             ColumnLayout::PaddedBlocks(geo) => {
                 for (o, &off) in out.iter_mut().zip(self.offsets.iter()) {
                     let p = geo.index(2 * (off + leaf_index) + self.parity);
-                    for (c, limb) in coeffs.iter_mut().zip(self.limbs.iter()) {
+                    for (c, limb) in coeffs.as_mut().iter_mut().zip(self.limbs.iter()) {
                         *c = limb[p];
                     }
-                    *o =
-                        E::from_coeffs(<E::Coeffs as FixedArrayConvertible<F>>::from_array(coeffs));
+                    *o = E::from_coeffs(coeffs);
                 }
             }
         }
@@ -222,7 +217,6 @@ where
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     C: ExtCoeffConversion<F, E> + ?Sized,
-    [(); E::DEGREE]: Sized,
 {
     fn num_leaves(&self) -> usize {
         self.num_leaves
@@ -240,7 +234,7 @@ where
     fn leaves_into(&self, first_leaf: usize, count: usize, out: &mut [E]) {
         let vpl = self.offsets.len();
         #[cfg(target_arch = "x86_64")]
-        if count == 4 && self.vector4 && first_leaf % 4 == 0 {
+        if count == 4 && self.vector4 && first_leaf.is_multiple_of(4) {
             unsafe { self.gather_leaves4_avx2(first_leaf, &mut out[..4 * vpl], false) };
             self.conv
                 .convert_gathered_leaves(self.offset_inv, first_leaf, count, out);
@@ -255,7 +249,7 @@ where
     #[inline(always)]
     fn leaves_into_slot_major(&self, first_leaf: usize, count: usize, out: &mut [E]) -> bool {
         #[cfg(target_arch = "x86_64")]
-        if count == 4 && self.vector4 && first_leaf % 4 == 0 {
+        if count == 4 && self.vector4 && first_leaf.is_multiple_of(4) {
             let vpl = self.offsets.len();
             unsafe { self.gather_leaves4_avx2(first_leaf, &mut out[..4 * vpl], true) };
             self.conv
@@ -296,8 +290,6 @@ impl<
         E: FieldExtension<F> + Field,
         T: ColumnMajorMerkleTreeConstructor<F>,
     > ByCoefficientExtOracle<F, E, T>
-where
-    [(); E::DEGREE]: Sized,
 {
     pub fn num_cosets(&self) -> usize {
         self.num_cosets
@@ -396,10 +388,7 @@ pub(crate) fn commit_by_coefficient<
     ByCoefficientExtOracle<F, E, T>,
     std::time::Duration,
     std::time::Duration,
-)
-where
-    [(); E::DEGREE]: Sized,
-{
+) {
     let n = evaluation_form.len();
     assert!(n.is_power_of_two());
     assert!(lde_factor.is_power_of_two() && lde_factor >= 2);
@@ -423,7 +412,7 @@ where
                 Worker::smart_spawn(scope, is_last, move |_| {
                     for i in start..start + size {
                         let coeffs = extension_field_into_base_coeffs::<F, E>(evaluation_form[i]);
-                        for (l, c) in coeffs.iter().enumerate() {
+                        for (l, c) in coeffs.as_ref().iter().enumerate() {
                             let p = ptrs[l] as *mut F;
                             unsafe {
                                 p.add(i).write(*c);
@@ -525,7 +514,7 @@ mod tests {
         worker: &Worker,
     ) {
         let poly_size = 1usize << poly_log2;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let evals: Vec<E> = (0..poly_size)
             .map(|_| E::random_element(&mut rng))
             .collect();

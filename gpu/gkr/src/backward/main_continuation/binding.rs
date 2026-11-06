@@ -667,7 +667,6 @@ fn encode_main_continuation_immediate_prefix(canonical: &[u32], destination: &mu
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn assemble_launch<'input>(
     program: &MainContinuationWindowProgram,
     folding_steps: usize,

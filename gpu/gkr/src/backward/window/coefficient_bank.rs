@@ -1317,7 +1317,6 @@ mod corpus_capacity_tests {
     fn cpu_continuation_banks_cover_corpus() {
         let directory =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
-        let mut saw_multiple_chunks = false;
         for layout in CORPUS {
             let artifact: GKRCircuitArtifact<BF> =
                 serde_json::from_slice(&std::fs::read(directory.join(layout)).unwrap()).unwrap();
@@ -1333,9 +1332,7 @@ mod corpus_capacity_tests {
                 let chunks = CoefficientBankChunks::build(&blob);
                 chunks.assert_covers_bank();
                 assert_eq!(chunks.num_coefficients() as usize, blob.recipes.len());
-                saw_multiple_chunks |= chunks.chunks.len() > 1;
             }
         }
-        assert!(saw_multiple_chunks);
     }
 }

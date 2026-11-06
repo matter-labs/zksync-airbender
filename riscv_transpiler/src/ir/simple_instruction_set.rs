@@ -12,6 +12,7 @@ pub enum DelegationType {
     BigInt = common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
     Keccak = common_constants::KECCAK_SPECIAL5_CSR_REGISTER,
     BlakeGFunction = common_constants::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
+    KeccakColumnParity = common_constants::KECCAK_COLUMN_PARITY_CSR_REGISTER,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -188,7 +189,14 @@ pub fn preprocess_bytecode<
                 Instruction::from_imm(InstructionName::Jal, 0, 0, rd, imm)
             }
             OPCODE_JALR => {
-                // I format
+                // I format, funct3 must be 000; the other seven encodings are reserved
+                if funct3 != 0 {
+                    panic!(
+                        "Unknown JALR-like opcode 0x{:08x} at PC = 0x{:08x}",
+                        opcode,
+                        i * 4
+                    );
+                }
                 let mut imm: u32 = ITypeOpcode::imm(opcode);
                 // quasi sign extend
                 sign_extend(&mut imm, 12);
@@ -505,72 +513,64 @@ pub fn preprocess_bytecode<
                 sign_extend(&mut imm, 12);
 
                 match funct3 {
-                    a @ 0 | a @ 1 | a @ 2 | a @ 4 | a @ 5 => {
-                        let instr = match a {
-                            0 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lb,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                    a @ 0 | a @ 1 | a @ 2 | a @ 4 | a @ 5 => match a {
+                        0 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lb,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
                             }
-                            1 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lh,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                        }
+                        1 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lh,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
                             }
-                            2 => Instruction::pure_from_imm(
-                                InstructionName::Lw,
-                                formal_rs1,
-                                0,
-                                rd,
-                                imm,
-                            ),
-                            4 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lbu,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                        }
+                        2 => {
+                            Instruction::pure_from_imm(InstructionName::Lw, formal_rs1, 0, rd, imm)
+                        }
+                        4 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lbu,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
                             }
-                            5 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lhu,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                        }
+                        5 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lhu,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
                             }
-                            _ => unreachable!(),
-                        };
-
-                        instr
-                    }
+                        }
+                        _ => unreachable!(),
+                    },
                     _ => {
                         panic!(
                             "Unknown LOAD opcode 0x{:08x} at PC = 0x{:08x}",
@@ -645,6 +645,7 @@ pub fn preprocess_bytecode<
                 const ZIMOP_FUNCT3: u8 = 0b100;
 
                 // if funct3 & ZIMOP_MASK == ZIMOP_MASK {
+                #[allow(clippy::unusual_byte_groupings)] // groups follow the Zimop encoding fields
                 let instr = if funct3 == ZIMOP_FUNCT3 {
                     const MOP_FUNCT7_MASK: u8 = 0b10_11_00_1;
                     const MOP_FUNCT7_TEST: u8 = 0b10_00_00_1;
@@ -764,7 +765,13 @@ pub fn preprocess_bytecode<
                             panic!("Unknown system space opcode 0x{:08x}", opcode);
                         }
                     }
-                } else if funct3 & ZICSR_MASK != 0 {
+                } else if funct3 != 0b001 && funct3 & ZICSR_MASK != 0 {
+                    // not CSRRW (csrrs/csrrc/csrrwi/...): decode as illegal so the
+                    // program only fails if the instruction is actually executed.
+                    // Checked before the CSR match below because the delegation
+                    // branches `continue` early and would otherwise skip it.
+                    illegal_instr
+                } else if funct3 == 0b001 {
                     let csr_number = ITypeOpcode::imm(opcode);
 
                     // read
@@ -849,10 +856,10 @@ pub fn preprocess_bytecode<
                         common_constants::KECCAK_SPECIAL5_CSR_REGISTER => {
                             assert_eq!(formal_rs1, 0);
                             assert_eq!(rd, 0);
-                            use common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600;
+                            use common_constants::KECCAK_SPECIAL5_NUM_DELEGATION_CALLS;
 
                             let mut num_calls = 0;
-                            for j in 1..=NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
+                            for j in 1..=KECCAK_SPECIAL5_NUM_DELEGATION_CALLS {
                                 if bytecode[i + j] == opcode {
                                     continue;
                                 } else {
@@ -860,7 +867,7 @@ pub fn preprocess_bytecode<
                                     break;
                                 }
                             }
-                            assert_eq!(num_calls, NUM_DELEGATION_CALLS_FOR_KECCAK_F1600);
+                            assert_eq!(num_calls, KECCAK_SPECIAL5_NUM_DELEGATION_CALLS);
 
                             let instr = Instruction::from_imm(
                                 InstructionName::ZicsrDelegation,
@@ -880,6 +887,41 @@ pub fn preprocess_bytecode<
                             i += num_calls;
                             // short-cut
                             continue;
+                        }
+                        common_constants::KECCAK_COLUMN_PARITY_CSR_REGISTER => {
+                            // each call keeps its own CSR: a circuit's delegation argument only
+                            // accepts calls of its own type
+                            assert_eq!(formal_rs1, 0);
+                            assert_eq!(rd, 0);
+                            use common_constants::keccak_f1600::*;
+                            for j in 0..NUM_KECCAK_F1600_CALLS {
+                                let csr = keccak_f1600_call_csr(j);
+                                assert_eq!(
+                                    bytecode[i + j],
+                                    (csr << 20) | (0b001 << 12) | OPCODE_SYSTEM as u32,
+                                    "Keccak-f1600 run broken at call {j}, PC = 0x{:08x}",
+                                    (i + j) * 4
+                                );
+                                if j == 0 || !PROTECT_AGAINST_MID_DELEGATION_JUMPS {
+                                    instructions[i + j] = Instruction::from_imm(
+                                        InstructionName::ZicsrDelegation,
+                                        0,
+                                        0,
+                                        0,
+                                        csr,
+                                    );
+                                }
+                            }
+                            i += NUM_KECCAK_F1600_CALLS;
+                            continue;
+                        }
+                        common_constants::KECCAK_THETA_RHO_CSR_REGISTER
+                        | common_constants::KECCAK_CHI5_CSR_REGISTER => {
+                            panic!(
+                                "Keccak-f1600 CSR 0x{:04x} outside a permutation run at PC = 0x{:08x}",
+                                csr_number,
+                                i * 4
+                            );
                         }
                         common_constants::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER => {
                             assert_eq!(formal_rs1, 0);
@@ -948,12 +990,7 @@ pub fn preprocess_bytecode<
                         }
                     };
 
-                    if funct3 != 0b001 {
-                        // not CSRRW (csrrs/csrrc/csrrwi/...): same treatment
-                        illegal_instr
-                    } else {
-                        instr
-                    }
+                    instr
                 } else {
                     // funct3 == 0: ecall/ebreak/mret/wfi... GCC emits `ebreak`
                     // for `__builtin_trap` on unreachable paths; decode as

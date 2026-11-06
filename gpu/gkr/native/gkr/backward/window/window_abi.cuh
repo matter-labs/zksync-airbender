@@ -13,7 +13,7 @@ constexpr u32 BWD_WINDOW_SECTION_BF = 0;
 constexpr u32 BWD_WINDOW_SECTION_LINEAR_E4 = 1;
 constexpr u32 BWD_WINDOW_SECTION_SINGLETON_E4 = 2;
 constexpr u32 BWD_WINDOW_SECTION_PAIR_E4 = 3;
-constexpr u32 BWD_WINDOW_PROGRAM_WORD_CAP = 8192;
+constexpr u32 BWD_WINDOW_PROGRAM_WORD_CAP = 9216;
 constexpr u32 BWD_WINDOW_ADDR_SLOTS = BWD_SOURCE_WINDOW_SLOTS;
 constexpr u32 BWD_WINDOW_MAX_IMMEDIATES = BWD_CONTINUATION_MAX_IMMEDIATES;
 
@@ -84,7 +84,7 @@ struct alignas(BWD_WINDOW_DESC_ALIGN) bwd_window_desc {
   u32 immediates[BWD_WINDOW_MAX_IMMEDIATES];
 };
 
-static_assert(sizeof(bwd_window_desc) == 19504, "bwd_window_desc/WindowLaunchBinding ABI size drift");
+static_assert(sizeof(bwd_window_desc) == 21552, "bwd_window_desc/WindowLaunchBinding ABI size drift");
 static_assert(alignof(bwd_window_desc) == BWD_WINDOW_DESC_ALIGN, "bwd_window_desc ABI alignment drift");
 static_assert(sizeof(bwd_window_desc) + sizeof(u32) <= BWD_WINDOW_DESC_CAP, "bwd_window_desc exceeds the __grid_constant__ parameter budget");
 static_assert(__builtin_offsetof(bwd_window_desc, slot) == 0, "slot ABI offset drift");
@@ -94,7 +94,7 @@ static_assert(__builtin_offsetof(bwd_window_desc, log_rows) == 1040, "log_rows A
 static_assert(__builtin_offsetof(bwd_window_desc, eq_sizes) == 1044, "eq_sizes ABI offset drift");
 static_assert(__builtin_offsetof(bwd_window_desc, sections) == 1056, "sections ABI offset drift");
 static_assert(__builtin_offsetof(bwd_window_desc, program) == 1072, "program ABI offset drift");
-static_assert(__builtin_offsetof(bwd_window_desc, immediates) == 17456, "immediates ABI offset drift");
+static_assert(__builtin_offsetof(bwd_window_desc, immediates) == 19504, "immediates ABI offset drift");
 static_assert(BWD_WINDOW_PROGRAM_WORD_CAP * sizeof(u16) % BWD_WINDOW_DESC_ALIGN == 0, "the program array is not a whole number of 16-byte quanta");
 static_assert(BWD_WINDOW_PROGRAM_WORD_CAP % BWD_WINDOW_INSTRUCTION_WORDS == 0, "the program array must hold whole instructions");
 static_assert(BWD_WINDOW_BLOCK_THREADS == BWD_WINDOW_SELECTOR_PAIRS * BWD_WINDOW_WARP_LANES, "one warp per selector pair");

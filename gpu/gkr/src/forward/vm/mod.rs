@@ -13,6 +13,10 @@ use era_cudart_sys::cuda_struct_and_stub;
 use self::desc::{FwdVmDesc, CONST_DERIVED_E4_CAP};
 use gpu_core::primitives::field::E4;
 use gpu_prover_context::ProverContext;
+use gpu_trace::witness::circuit_type::{
+    CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
+    UnrolledNonMemoryCircuitType,
+};
 
 pub(crate) const FWD_VM_THREADS_PER_BLOCK: u32 = 128;
 
@@ -27,7 +31,43 @@ cuda_kernel_declaration!(pub(crate)
     ab_gkr_fwd_vm_kernel(desc: FwdVmDesc)
 );
 
-pub(crate) fn launch_fwd_vm(desc: &FwdVmDesc, context: &ProverContext) -> CudaResult<()> {
+cuda_kernel_declaration!(pub(crate)
+    ab_gkr_fwd_vm_b8_kernel(desc: FwdVmDesc)
+);
+
+const fn production_fwd_vm_kernel(circuit_type: CircuitType) -> GkrFwdVmReleaseSignature {
+    match circuit_type {
+        CircuitType::Delegation(circuit_type) => match circuit_type {
+            DelegationCircuitType::BigIntWithControl => ab_gkr_fwd_vm_b8_kernel,
+            DelegationCircuitType::Blake2GFunction => ab_gkr_fwd_vm_b8_kernel,
+            DelegationCircuitType::Blake2WithCompression => ab_gkr_fwd_vm_b8_kernel,
+            DelegationCircuitType::KeccakChi5 => ab_gkr_fwd_vm_b8_kernel,
+            DelegationCircuitType::KeccakColumnParity => ab_gkr_fwd_vm_b8_kernel,
+            DelegationCircuitType::KeccakSpecial5 => ab_gkr_fwd_vm_b8_kernel,
+            DelegationCircuitType::KeccakThetaRho => ab_gkr_fwd_vm_b8_kernel,
+        },
+        CircuitType::Unrolled(circuit_type) => match circuit_type {
+            UnrolledCircuitType::InitsAndTeardowns => ab_gkr_fwd_vm_kernel,
+            UnrolledCircuitType::Memory(circuit_type) => match circuit_type {
+                UnrolledMemoryCircuitType::LoadStoreSubwordOnly => ab_gkr_fwd_vm_b8_kernel,
+                UnrolledMemoryCircuitType::LoadStoreWordOnly => ab_gkr_fwd_vm_b8_kernel,
+            },
+            UnrolledCircuitType::NonMemory(circuit_type) => match circuit_type {
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop => ab_gkr_fwd_vm_b8_kernel,
+                UnrolledNonMemoryCircuitType::JumpBranchSlt => ab_gkr_fwd_vm_b8_kernel,
+                UnrolledNonMemoryCircuitType::MulDivUnsigned => ab_gkr_fwd_vm_b8_kernel,
+                UnrolledNonMemoryCircuitType::ShiftBinary => ab_gkr_fwd_vm_b8_kernel,
+            },
+            UnrolledCircuitType::Unified => ab_gkr_fwd_vm_b8_kernel,
+        },
+    }
+}
+
+pub(crate) fn launch_fwd_vm(
+    desc: &FwdVmDesc,
+    circuit_type: CircuitType,
+    context: &ProverContext,
+) -> CudaResult<()> {
     assert!(
         desc.layer_count > 0,
         "forward VM must have at least one layer"
@@ -38,7 +78,7 @@ pub(crate) fn launch_fwd_vm(desc: &FwdVmDesc, context: &ProverContext) -> CudaRe
         .stream(context.get_exec_stream())
         .build();
     let args = GkrFwdVmReleaseArguments::new(*desc);
-    GkrFwdVmReleaseFunction(ab_gkr_fwd_vm_kernel).launch(&config, &args)
+    GkrFwdVmReleaseFunction(production_fwd_vm_kernel(circuit_type)).launch(&config, &args)
 }
 
 cuda_kernel_declaration!(pub(crate)

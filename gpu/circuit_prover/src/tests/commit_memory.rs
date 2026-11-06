@@ -635,7 +635,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     eprintln!("Memory commitment tree caps match!");
 }
 
-fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
+pub(super) fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
     label: &str,
     circuit_type: DelegationCircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,

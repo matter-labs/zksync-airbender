@@ -1,7 +1,5 @@
 //! CPU backend with heap storage and one active proving request.
-#![allow(incomplete_features)]
 #![feature(allocator_api)]
-#![feature(generic_const_exprs)]
 
 mod backend;
 mod config;

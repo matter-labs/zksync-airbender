@@ -10,7 +10,7 @@ pub fn create_blake_g_function_control_and_offsets_table<F: PrimeField>(id: u32)
         let key = [F::from_u32_unchecked(control_with_exe)];
         keys.push(key);
     }
-    let table_name = format!("Blake G-function control and offsets table");
+    let table_name = "Blake G-function control and offsets table".to_string();
 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,

@@ -13,6 +13,7 @@ use super::mem_word_only_lw_sw::apply_unified_mem_word_only_lw_sw_data_path;
 /// that fire for every family, gated on the per-family bits:
 ///   - `(NOT is_lw) * (readaddr  - rs2_index) = 0`,  `(NOT is_lw) * readaddr_hi  = 0`
 ///   - `(NOT is_sw) * (writeaddr - rd_index)  = 0`,  `(NOT is_sw) * writeaddr_hi = 0`
+///
 /// then hands off to [`apply_unified_mem_word_only_lw_sw_data_path`] for the
 /// Family-4-only data path (rs1+imm RAM address, ROM check, ROM-or-data
 /// lookup, SW alignment trap).

@@ -41,6 +41,7 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn write_timestamp_placeholder_into_columns(
         &mut self,
         placeholder_columns: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
@@ -69,10 +70,10 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
         unsafe {
             self.memory_rows_starts
                 .get_unchecked_mut(offset_low)
-                .write(F::from_u32_unchecked(low as u32));
+                .write(F::from_u32_unchecked(low));
             self.memory_rows_starts
                 .get_unchecked_mut(offset_high)
-                .write(F::from_u32_unchecked(high as u32));
+                .write(F::from_u32_unchecked(high));
         }
     }
 
@@ -206,7 +207,7 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
                 debug_assert!(*el < self.memory_rows_starts.len());
             }
 
-            for (value, offset) in bytes.into_iter().zip(placeholder_columns.into_iter()) {
+            for (value, offset) in bytes.into_iter().zip(placeholder_columns) {
                 unsafe {
                     self.memory_rows_starts
                         .get_unchecked_mut(offset)
@@ -218,7 +219,7 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
                 debug_assert!(*el < self.witness_rows_starts.len());
             }
 
-            for (value, offset) in bytes.into_iter().zip(placeholder_columns.into_iter()) {
+            for (value, offset) in bytes.into_iter().zip(placeholder_columns) {
                 unsafe {
                     self.witness_rows_starts
                         .get_unchecked_mut(offset)
@@ -271,6 +272,7 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn write_u8_placeholder_into_columns<const USE_MEMORY: bool>(
         &mut self,
         placeholder_columns: usize,
@@ -313,6 +315,7 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn write_boolean_placeholder_into_columns<const USE_MEMORY: bool>(
         &mut self,
         placeholder_columns: usize,
@@ -355,6 +358,7 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn write_field_value_into_columns<const USE_MEMORY: bool>(
         &mut self,
         column: usize,

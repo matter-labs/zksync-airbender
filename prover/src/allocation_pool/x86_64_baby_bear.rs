@@ -75,7 +75,7 @@ impl X86BabyBearAllocationPool {
     /// Elements of the box that holds `requested_len` elements of `T`.
     fn box_len<T>(requested_len: usize) -> usize {
         let elem = core::mem::size_of::<T>();
-        debug_assert!(WINDOW_ALIGN % elem == 0);
+        debug_assert!(WINDOW_ALIGN.is_multiple_of(elem));
         (requested_len * elem + WINDOW_ALIGN) / elem
     }
 
@@ -97,7 +97,7 @@ impl X86BabyBearAllocationPool {
         let ptr = self.store.alloc(l);
         let base = ptr.as_ptr() as usize;
         let aligned = base.div_ceil(WINDOW_ALIGN) * WINDOW_ALIGN;
-        debug_assert!((aligned - base) % elem == 0);
+        debug_assert!((aligned - base).is_multiple_of(elem));
         let offset = (aligned - base) / elem;
         debug_assert!(offset + requested_len <= n_alloc);
         if trace() {

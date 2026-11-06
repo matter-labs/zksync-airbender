@@ -11,6 +11,7 @@ pub struct DelegationsCounters {
     pub blake_calls: usize,
     pub bigint_calls: usize,
     pub keccak_calls: usize,
+    pub keccak_f1600_calls: usize,
     pub blake_g_function_calls: usize,
 }
 
@@ -26,6 +27,9 @@ impl Counters for DelegationsCounters {
     #[inline(always)]
     fn bump_keccak_special5(&mut self, by: usize) {
         self.keccak_calls += by;
+    }
+    fn bump_keccak_f1600(&mut self, by: usize) {
+        self.keccak_f1600_calls += by;
     }
     #[inline(always)]
     fn bump_blake2_g_function(&mut self, by: usize) {
@@ -53,6 +57,7 @@ pub struct DelegationsAndFamiliesCounters {
     pub blake_calls: usize,
     pub bigint_calls: usize,
     pub keccak_calls: usize,
+    pub keccak_f1600_calls: usize,
     pub blake_g_function_calls: usize,
 }
 
@@ -68,6 +73,9 @@ impl Counters for DelegationsAndFamiliesCounters {
     #[inline(always)]
     fn bump_keccak_special5(&mut self, by: usize) {
         self.keccak_calls += by;
+    }
+    fn bump_keccak_f1600(&mut self, by: usize) {
+        self.keccak_f1600_calls += by;
     }
     #[inline(always)]
     fn bump_blake2_g_function(&mut self, by: usize) {
@@ -141,6 +149,8 @@ impl From<MachineCounters> for DelegationsAndFamiliesCounters {
             blake_calls: counters[CounterType::BlakeDelegation as u8 as usize] as usize,
             bigint_calls: counters[CounterType::BigintDelegation as u8 as usize] as usize,
             keccak_calls: counters[CounterType::KeccakDelegation as u8 as usize] as usize,
+            keccak_f1600_calls: counters[CounterType::KeccakF1600Delegation as u8 as usize]
+                as usize,
             blake_g_function_calls: counters[CounterType::BlakeGFunctionDelegation as u8 as usize]
                 as usize,
         }
@@ -154,6 +164,7 @@ pub struct DelegationsAndUnifiedCounters {
     pub blake_calls: usize,
     pub bigint_calls: usize,
     pub keccak_calls: usize,
+    pub keccak_f1600_calls: usize,
     pub blake_g_function_calls: usize,
     pub cycles: usize,
 }
@@ -171,23 +182,23 @@ impl Counters for DelegationsAndUnifiedCounters {
     fn bump_keccak_special5(&mut self, by: usize) {
         self.keccak_calls += by;
     }
+    fn bump_keccak_f1600(&mut self, by: usize) {
+        self.keccak_f1600_calls += by;
+    }
     #[inline(always)]
     fn bump_blake2_g_function(&mut self, by: usize) {
         self.blake_g_function_calls += by;
     }
     #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {
-        if const { FAMILY == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX } {
-            self.cycles += 1;
-        } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
-            self.cycles += 1;
-        } else if const { FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX } {
-            self.cycles += 1;
-        } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
-            self.cycles += 1;
-        } else if const { FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX } {
-            self.cycles += 1;
-        } else if const { FAMILY == LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX } {
+        if const {
+            FAMILY == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX
+                || FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX
+                || FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX
+                || FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX
+                || FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX
+                || FAMILY == LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX
+        } {
             self.cycles += 1;
         } else {
             unsafe { core::hint::unreachable_unchecked() }
@@ -195,17 +206,14 @@ impl Counters for DelegationsAndUnifiedCounters {
     }
     #[inline(always)]
     fn log_multiple_circuit_family_calls<const FAMILY: u8>(&mut self, num_calls: usize) {
-        if const { FAMILY == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX } {
-            self.cycles += num_calls;
-        } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
-            self.cycles += num_calls;
-        } else if const { FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX } {
-            self.cycles += num_calls;
-        } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
-            self.cycles += num_calls;
-        } else if const { FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX } {
-            self.cycles += num_calls;
-        } else if const { FAMILY == LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX } {
+        if const {
+            FAMILY == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX
+                || FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX
+                || FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX
+                || FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX
+                || FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX
+                || FAMILY == LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX
+        } {
             self.cycles += num_calls;
         } else {
             unsafe { core::hint::unreachable_unchecked() }
@@ -240,6 +248,8 @@ impl From<MachineCounters> for DelegationsAndUnifiedCounters {
             blake_calls: counters[CounterType::BlakeDelegation as u8 as usize] as usize,
             bigint_calls: counters[CounterType::BigintDelegation as u8 as usize] as usize,
             keccak_calls: counters[CounterType::KeccakDelegation as u8 as usize] as usize,
+            keccak_f1600_calls: counters[CounterType::KeccakF1600Delegation as u8 as usize]
+                as usize,
             blake_g_function_calls: counters[CounterType::BlakeGFunctionDelegation as u8 as usize]
                 as usize,
             cycles,
@@ -261,11 +271,18 @@ pub struct PartialSnapshot {
 
 pub trait ReplayBuffer<T: Sized> {
     fn new_with_snapshots_bound(bound: usize) -> Self;
+    /// # Safety
+    ///
+    /// `self.len()` must be less than the `bound` the buffer was created with by
+    /// `new_with_snapshots_bound`.
     unsafe fn push_within_capacity_unchecked(&mut self, value: T);
     fn make_range<'a>(&'a self, range: core::ops::Range<usize>) -> Vec<&'a [T]>
     where
         T: 'a;
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl<T: Sized, A: Allocator + Default> ReplayBuffer<T> for Vec<T, A> {

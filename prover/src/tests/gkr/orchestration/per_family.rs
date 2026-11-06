@@ -6,7 +6,7 @@ use crate::definitions::SecurityLevel;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::{
     prove_configured_with_gkr_with_storage, prove_configured_with_gkr_with_storage_and_backend,
-    CommitmentMode, DefaultBabyBearBackend, SetupCommitment, WhirOracleStorage,
+    DefaultBabyBearBackend, OperationMode, SetupCommitment, WhirOracleStorage,
 };
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
@@ -68,7 +68,6 @@ pub struct BuiltFamilyTrace {
 /// generator (which mutates the trace before proving) — share the exact same
 /// prove path. The caller owns `check_satisfied`, the empty grand-product
 /// assertion, and serialization.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_family_trace(
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -100,7 +99,6 @@ pub fn prove_built_family_trace(
 /// can A/B config variations (e.g. windowed vs all-naive same-size
 /// schedules) over the exact same prove path.
 /// Prove a pre-built family trace on the target-default GKR backend.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_family_trace_with_prover_config(
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -127,7 +125,6 @@ pub fn prove_built_family_trace_with_prover_config(
 /// [`prove_built_family_trace_with_prover_config`] with an explicit GKR
 /// backend (backend parity experiments run the same trace through two
 /// backends and compare the proofs byte for byte).
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_family_trace_with_prover_config_and_gkr_backend<
     GB: crate::gkr::prover::GKRBackend<BabyBearField, BabyBearExt4>,
 >(
@@ -144,22 +141,20 @@ pub fn prove_built_family_trace_with_prover_config_and_gkr_backend<
     // Concretely BabyBear/Ext4, so pick the target-recommended backend (the
     // NEON one on aarch64) and build ITS twiddle set once — the setup commit
     // reads the plain tables through the set.
-    use crate::gkr::prover::{Backend, TwiddleSetOps};
+    use crate::gkr::prover::Backend;
     let backend = DefaultBabyBearBackend::default();
     let twiddles = <DefaultBabyBearBackend as Backend<BabyBearField, BabyBearExt4>>::make_twiddles(
         &backend, trace_len, worker,
     );
     let t_setup = std::time::Instant::now();
     let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
-    let setup_commitment = setup.commit_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
-        &backend,
-        &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    );
+    let setup_commitment = setup
+        .commit_for_config_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
+            &backend,
+            &twiddles,
+            &prover_config,
+            worker,
+        );
     println!(
         "[timing] setup construct + commit: {:.3?}",
         t_setup.elapsed()
@@ -184,7 +179,7 @@ pub fn prove_built_family_trace_with_prover_config_and_gkr_backend<
         &setup_commitment,
         &twiddles,
         prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
         WhirOracleStorage::fully_in_memory(),
         Vec::new(),
         trace_len,
@@ -204,7 +199,6 @@ pub fn prove_built_family_trace_with_prover_config_and_gkr_backend<
 /// `ColumnMajorMerkleTreeConstructor::open_disk_artifacts` (`SetupCommitment::OnDisk`). The
 /// memory/witness commitments stay in memory. `disk_prefix` is a filesystem path
 /// prefix the test owns.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_family_trace_on_disk_setup(
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -229,15 +223,10 @@ pub fn prove_built_family_trace_on_disk_setup(
 
     // 1) Commit the setup in memory (RS codewords + tree), the standard way. Unwrap the
     //    owned `SetupCommitment::InMemory` to reach the oracle for on-disk serialization.
-    let SetupCommitment::InMemory(setup_oracle) = setup.commit::<DefaultTreeConstructor>(
-        &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    ) else {
-        unreachable!("GKRSetup::commit always returns the InMemory variant")
+    let SetupCommitment::InMemory(setup_oracle) =
+        setup.commit_for_config::<DefaultTreeConstructor>(&twiddles, &prover_config, worker)
+    else {
+        unreachable!("GKRSetup::commit_for_config always returns the InMemory variant")
     };
     let values_per_leaf = setup_oracle.values_per_leaf();
     let coset_size_log2 = setup_oracle.coset_size_log2();
@@ -245,9 +234,9 @@ pub fn prove_built_family_trace_on_disk_setup(
     // 2) Write the RS codewords (one file per coset) and the monolithic tree to disk.
     //    The tree goes out through `write_disk_artifacts` (the only disk serializer):
     //    it rebuilds the tree from the materialized cosets — byte-identical to
-    //    `setup.commit`'s tree since the coset order + bitreverse flags match.
+    //    `commit_for_config`'s tree since the coset order + bitreverse flags match.
     let ColumnMajorBaseOracleForLDE::InMemory(ref setup_in_memory) = setup_oracle else {
-        unreachable!("setup.commit produces the in-memory (materialized) variant")
+        unreachable!("commit_for_config produces the in-memory (materialized) variant")
     };
     let materialized: &MaterializedCosets<BabyBearField> = &setup_in_memory.cosets;
     let coset_paths = materialized
@@ -284,7 +273,6 @@ pub fn prove_built_family_trace_on_disk_setup(
     let tree_path = crate::merkle_trees::on_disk::monolithic_tree_file_path(disk_prefix);
 
     // Drop the in-memory setup oracle: from here the setup lives only on disk.
-    drop(materialized);
     drop(setup_oracle);
 
     // 3) Read them back: RS codewords + (monolithic) tree both served lazily via mmap.
@@ -314,7 +302,7 @@ pub fn prove_built_family_trace_on_disk_setup(
         &setup_commitment,
         &twiddles,
         &prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
         WhirOracleStorage::fully_in_memory(),
         Vec::new(),
         trace_len,
@@ -325,10 +313,9 @@ pub fn prove_built_family_trace_on_disk_setup(
 /// Like [`prove_built_family_trace`] but lets the caller pick the WHIR oracle
 /// storage policy ([`WhirOracleStorage`]: base RS-codeword source + intermediate
 /// oracle mode) via the config-aware prover entry point. The setup commitment is
-/// always in-memory. For a fixed [`CommitmentMode`] the resulting proof must be
+/// always in-memory. For a fixed config the resulting proof must be
 /// identical across storage policies — see
 /// `add_sub_family_rs_codeword_source_parity`.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_family_trace_with_rs_source(
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -340,29 +327,16 @@ pub fn prove_built_family_trace_with_rs_source(
     storage: WhirOracleStorage,
     worker: &Worker,
 ) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
-    let mut prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
+    // The production family config (cap 16 over an LDE factor of 2) is used
+    // as-is: the coset-by-coset (`Recompute`) commitments support any cap size,
+    // including a cap that lives inside the cosets.
+    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
         trace_len.trailing_zeros() as usize,
         level,
     );
-    // `RsCodewordSource::Recompute` (coset-by-coset) requires `cap_size <= lde_factor`
-    // (the cap must sit at or above the per-coset subtree roots). The default family
-    // config has cap_size (16) > lde_factor (2), so clamp the cap for this parity
-    // path — applied identically to both storage policies, so the comparison stays
-    // apples-to-apples.
-    if prover_config.cap_size > prover_config.lde_factor {
-        prover_config.cap_size = prover_config.lde_factor;
-        prover_config.whir_schedule.cap_size = prover_config.lde_factor;
-    }
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
     let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
-    let setup_commitment = setup.commit(
-        &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    );
+    let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, worker);
 
     prove_configured_with_gkr_with_storage::<
         BabyBearField,
@@ -377,7 +351,7 @@ pub fn prove_built_family_trace_with_rs_source(
         &setup_commitment,
         &twiddles,
         &prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
         storage,
         Vec::new(),
         trace_len,
@@ -452,7 +426,6 @@ where
 /// instead of the security level (the example config is built from the level
 /// by the wrapper above), so tests can A/B config variations over the exact
 /// same orchestration.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_non_mem_family_with_prover_config<const CIRCUIT_TYPE: u8, C>(
     snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     tape: &SimpleTape,
@@ -709,14 +682,7 @@ pub fn prove_inits_and_teardowns(
         &backend, trace_len, worker,
     );
     let setup = GKRSetup::construct(&table_driver, &[], trace_len, &circuit);
-    let setup_commitment = setup.commit(
-        twiddles.plain(),
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    );
+    let setup_commitment = setup.commit_for_config(twiddles.plain(), &prover_config, worker);
 
     let inits_and_teardowns_top_bits: Vec<u32> = (0..circuit.memory_layout.teardown_sets.len())
         .map(|el| el as u32)
@@ -738,7 +704,7 @@ pub fn prove_inits_and_teardowns(
         &setup_commitment,
         &twiddles,
         &prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
         WhirOracleStorage::fully_in_memory(),
         inits_and_teardowns_top_bits,
         trace_len,
@@ -789,7 +755,7 @@ where
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = NonMemDestinationHolder::<CIRCUIT_TYPE> {
         buffers: &mut buffers[..],
     };
@@ -859,7 +825,6 @@ where
 /// witness trace, and (optionally) run the memory-trace consistency check.
 /// Used by the malicious-proof generator to obtain a mem-family trace it can
 /// mutate before proving.
-#[allow(clippy::too_many_arguments)]
 pub fn build_mem_family_full_trace<const CIRCUIT_TYPE: u8, C>(
     snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     tape: &SimpleTape,
@@ -885,7 +850,7 @@ where
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = MemDestinationHolder::<CIRCUIT_TYPE> {
         buffers: &mut buffers[..],
     };

@@ -175,7 +175,6 @@ fn reduce_chunks(mut chunks: Vec<[BabyBearExt4; OUT]>) -> [BabyBearExt4; OUT] {
 /// gate polynomial cellwise (base*base products and base linear terms lazily
 /// in u64, mixed/ext terms through the reduced path), weight by the scalar
 /// suffix-eq factor and accumulate. `U` unrolls rows.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn lsb_soa_full_parallel_w3<const U: usize>(
     base_field_inputs: &[DisjointAccessQuasiSlice<BabyBearField, false>],
     ext_field_inputs: &[DisjointAccessQuasiSlice<BabyBearExt4, false>],
@@ -387,7 +386,6 @@ pub(crate) fn lsb_soa_full_parallel_w3<const U: usize>(
 /// CONTINUING window-3 pass over the folded (all-ext) tables: forms, factored
 /// products, expanded quads and linear terms all through the lazy ext path;
 /// the additive constant is added in the canonical domain after the REDC.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn lsb_soa_ext_pass_parallel_w3<const U: usize>(
     ext_inputs: &[DisjointAccessQuasiSlice<BabyBearExt4, false>],
     interp: &[bool],

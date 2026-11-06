@@ -1,7 +1,4 @@
 #![no_std]
-#![allow(incomplete_features)]
-#![feature(allocator_api)]
-#![feature(generic_const_exprs)]
 #![no_main]
 
 use common_constants::bigint_with_control::{bigint_csr_trigger_delegation, ADD_OP_BIT_IDX};

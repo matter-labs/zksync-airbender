@@ -6,16 +6,10 @@ use field::{Field, FieldExtension, PrimeField};
 use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 
-fn flatten_field_els<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>)
-where
-    [(); E::DEGREE]: Sized,
-{
-    use field::FixedArrayConvertible;
+fn flatten_field_els<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>) {
     for el in src {
-        let coeffs = E::into_coeffs(*el)
-            .into_array::<{ E::DEGREE }>()
-            .map(|e: F| e.as_u32_raw_repr_reduced());
-        dst.extend(coeffs);
+        let coeffs = E::into_coeffs(*el);
+        dst.extend(coeffs.as_ref().iter().map(|e| e.as_u32_raw_repr_reduced()));
     }
 }
 
@@ -25,7 +19,6 @@ pub fn flatten_gkr_proof_for_nds<F: PrimeField, E: FieldExtension<F> + Field, T>
 ) -> Vec<u32>
 where
     T: ColumnMajorMerkleTreeConstructor<F>,
-    [(); E::DEGREE]: Sized,
 {
     let mut result = Vec::new();
 
@@ -61,7 +54,7 @@ where
     result.push(lookup_nonce as u32);
     result.push((lookup_nonce >> 32) as u32);
 
-    for (_output_type, pair) in &proof.final_explicit_evaluations {
+    for pair in proof.final_explicit_evaluations.values() {
         flatten_field_els::<F, E>(&pair[0], &mut result);
         flatten_field_els::<F, E>(&pair[1], &mut result);
     }
@@ -89,11 +82,14 @@ where
             flatten_field_els::<F, E>(coeffs.as_multilinear(), &mut result);
         }
 
-        for (_addr, evals) in &proof_values.final_step_evaluations {
+        for evals in proof_values.final_step_evaluations.values() {
             flatten_field_els::<F, E>(evals, &mut result);
         }
 
-        for (_addr, eval) in &proof_values.extra_evaluations_from_caching_relations {
+        for eval in proof_values
+            .extra_evaluations_from_caching_relations
+            .values()
+        {
             flatten_field_els::<F, E>(&[*eval], &mut result);
         }
     }

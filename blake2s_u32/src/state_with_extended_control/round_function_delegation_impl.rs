@@ -5,6 +5,9 @@ use core::mem::MaybeUninit;
 impl Blake2RoundFunctionEvaluator {
     pub const SUPPORT_SPEC_SINGLE_ROUND: bool = false;
 
+    /// # Safety
+    ///
+    /// Not supported by this implementation (`SUPPORT_SPEC_SINGLE_ROUND` is `false`): it panics.
     #[unroll::unroll_for_loops]
     #[inline(always)]
     pub unsafe fn spec_run_single_round_into_destination<const REDUCED_ROUNDS: bool>(
@@ -17,6 +20,7 @@ impl Blake2RoundFunctionEvaluator {
 
     /// NOTE: caller must explicitly "reset" before using if use mode is not compression
     #[allow(invalid_value)]
+    #[allow(clippy::new_without_default, clippy::uninit_assumed_init)]
     pub fn new() -> Self {
         unsafe {
             // NOTE: it would only be used in RISC-V simulated machine with zero-by-default state,
@@ -46,6 +50,11 @@ impl Blake2RoundFunctionEvaluator {
 
     /// caller must fill the buffer (do not forget to zero-pad),
     /// and then specify the parameters of the input block
+    ///
+    /// # Safety
+    ///
+    /// `input_buffer` must hold the block, zero-padded past `input_size_words`, and
+    /// `input_size_words` must not exceed `BLAKE2S_BLOCK_SIZE_U32_WORDS`.
     #[inline(always)]
     pub unsafe fn run_round_function_with_input<const REDUCED_ROUNDS: bool>(
         &mut self,
@@ -60,6 +69,10 @@ impl Blake2RoundFunctionEvaluator {
         );
     }
 
+    /// # Safety
+    ///
+    /// `input_buffer` must hold the block, zero-padded past `input_size_bytes`, and
+    /// `input_size_bytes` must not exceed `BLAKE2S_BLOCK_SIZE_BYTES`.
     #[inline]
     pub unsafe fn run_round_function_with_input_and_byte_len<const REDUCED_ROUNDS: bool>(
         &mut self,
@@ -94,6 +107,10 @@ impl Blake2RoundFunctionEvaluator {
         }
     }
 
+    /// # Safety
+    ///
+    /// `self.input_buffer` must hold the block, zero-padded past `input_size_words`, and
+    /// `input_size_words` must not exceed `BLAKE2S_BLOCK_SIZE_U32_WORDS`.
     #[inline(always)]
     pub unsafe fn run_round_function<const REDUCED_ROUNDS: bool>(
         &mut self,
@@ -106,6 +123,10 @@ impl Blake2RoundFunctionEvaluator {
         );
     }
 
+    /// # Safety
+    ///
+    /// `self.input_buffer` must hold the block, zero-padded past `input_size_bytes`, and
+    /// `input_size_bytes` must not exceed `BLAKE2S_BLOCK_SIZE_BYTES`.
     #[inline]
     pub unsafe fn run_round_function_with_byte_len<const REDUCED_ROUNDS: bool>(
         &mut self,

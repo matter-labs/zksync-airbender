@@ -44,3 +44,6 @@ deterministic_pow = ["prover_pipeline/deterministic_pow"]
 debug_logs = ["prover/debug_logs", "prover_pipeline/debug_logs"]
 # if enabled - allow GPU for proving.
 gpu = ["prover_pipeline/gpu"]
+
+[lints]
+workspace = true

@@ -64,12 +64,14 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
             offset_constant: (access_idx * core::mem::size_of::<u32>()) as u32,
             assume_no_alignment_overflow: true,
             is_write_access: true,
+            read_timestamp_group: None,
         })
         .collect();
 
     let x10_request = RegisterAccessRequest {
         register_index: 10,
         register_write: false,
+        read_timestamp_group: None,
         indirects_alignment_log2: 5, // 32 bytes
         indirect_accesses: dst_accesses,
     };
@@ -81,12 +83,14 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
             offset_constant: (access_idx * core::mem::size_of::<u32>()) as u32,
             assume_no_alignment_overflow: true,
             is_write_access: false,
+            read_timestamp_group: None,
         })
         .collect();
 
     let x11_request = RegisterAccessRequest {
         register_index: 11,
         register_write: false,
+        read_timestamp_group: None,
         indirects_alignment_log2: 5, // 32 bytes
         indirect_accesses: src_accesses,
     };
@@ -94,6 +98,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     let x12_request = RegisterAccessRequest {
         register_index: 12,
         register_write: true,
+        read_timestamp_group: None,
         indirects_alignment_log2: 0, // no indirects
         indirect_accesses: vec![],
     };
@@ -563,7 +568,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
     let full_product: [Variable; 32] = product_low
         .into_iter()
-        .chain(product_high.into_iter())
+        .chain(product_high)
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
@@ -652,11 +657,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     // merge range checks between additive results and multiplicative result low,
     // and we can push it into intermediate layer
     {
-        for (i, (a, b)) in additive_ops_result
-            .into_iter()
-            .zip(product_low.into_iter())
-            .enumerate()
-        {
+        for (i, (a, b)) in additive_ops_result.into_iter().zip(product_low).enumerate() {
             let expr = Expr::var(a).mask(perform_add_boolean)
                 + Expr::var(a).mask(perform_sub_boolean)
                 + Expr::var(a).mask(perform_sub_negate_boolean)
@@ -693,7 +694,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
                 let b = LookupInput::from(b.clone());
                 cs.enforce_lookup_tuple_for_fixed_table(&[a, b], table_type, false);
             }
-            if remainder.len() > 0 {
+            if !remainder.is_empty() {
                 let a = &remainder[0];
                 let a = LookupInput::from(a.clone());
                 cs.enforce_lookup_tuple_for_fixed_table(
@@ -766,7 +767,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
         let mut accumulation_expr = Expr::<F>::zero();
         for (comparison_output, product_high) in eq_operation_words_for_zero_check
             .into_iter()
-            .zip(product_high.into_iter())
+            .zip(product_high)
         {
             accumulation_expr = accumulation_expr
                 + Expr::var(comparison_output).mask(perform_eq_boolean)
@@ -817,7 +818,10 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
     let values_are_equal_for_perform_eq =
         Boolean::and(&all_zeroes, &result_of_boolean.toggle(), cs);
-    let perform_eq_bit = Boolean::and(&perform_eq_boolean, &values_are_equal_for_perform_eq, cs);
+    cs.set_name_for_variable(
+        values_are_equal_for_perform_eq.get_variable().unwrap(),
+        "values are equal for perform eq",
+    );
 
     // now we need to resolve a condition
     // - for all add/sub ops our return register is just an overflow
@@ -835,7 +839,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     let mut expr = Expr::var(result_of_variable).mask(perform_add_boolean)
         + Expr::var(result_of_variable).mask(perform_sub_boolean)
         + Expr::var(result_of_variable).mask(perform_sub_negate_boolean)
-        + Expr::from(perform_eq_bit).mask(perform_eq_boolean)
+        + Expr::from(values_are_equal_for_perform_eq).mask(perform_eq_boolean)
         + Expr::from(all_zeroes.toggle()).mask(perform_mul_low_boolean);
     // memcopy is same as addition
     expr = expr + Expr::var(result_of_variable).mask(perform_memcopy_boolean);

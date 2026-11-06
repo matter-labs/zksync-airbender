@@ -7,7 +7,6 @@ use fft::materialize_powers_serial_starting_with_elem;
 use field::{Field, FieldExtension, PrimeField};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
-use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 use riscv_transpiler::vm::{Counters, RamWithRomRegion, SimpleSnapshotter, SimpleTape, State, VM};
 use std::alloc::Global;
 use worker::Worker;
@@ -114,6 +113,18 @@ impl ProgramConfig {
         }
     }
 
+    /// `keccak` — Keccak-f1600 permutations through the column parity, theta/rho and chi5
+    /// delegations.
+    pub fn keccak() -> Self {
+        Self {
+            binary_path: "../examples/keccak/app.bin".to_string(),
+            text_section_path: "../examples/keccak/app.text".to_string(),
+            non_determinism_reads: vec![],
+            cycles_bound: 1 << 20,
+            ram_bound_bytes: RAM_BOUND_BYTES,
+        }
+    }
+
     /// `mop_smoke` — a program built to exercise all four `mop.*` opcodes
     /// (the modular-arithmetic extension handled by the `add_sub_lui_auipc_mop`
     /// family). Per-family use; drives `add_sub_mop_real_program_check_satisfied`.
@@ -188,8 +199,8 @@ where
 
     let binary_bytes = std::fs::read(&config.binary_path).expect("program binary");
     let text_bytes = std::fs::read(&config.text_section_path).expect("program text section");
-    assert!(binary_bytes.len() % 4 == 0);
-    assert!(text_bytes.len() % 4 == 0);
+    assert!(binary_bytes.len().is_multiple_of(4));
+    assert!(text_bytes.len().is_multiple_of(4));
     let binary: Vec<u32> = binary_bytes
         .as_chunks::<4>()
         .0

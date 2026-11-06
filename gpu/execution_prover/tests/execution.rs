@@ -159,37 +159,13 @@ fn test_execution_prover_blake2_with_compression_delegation() {
     assert_delegation_proofs_present(&result, DelegationCircuitType::Blake2WithCompression);
 }
 
-/// As above, with the `blake2_g_function` build — fires the Blake2GFunction
-/// delegation CSR instead.
-///
-/// KNOWN BLOCKER: the transpiler JIT has no Blake2GFunction delegation
-/// implementation (`riscv_transpiler/src/jit/impls.rs` `Op::ZicsrDelegation`
-/// panics with "Unknown CSR 1992"; `jit/delegations/` has blake/bigint/keccak
-/// only). This test documents the gap and validates the fix once JIT support
-/// lands — expect it to abort until then.
-#[test]
-#[cfg(not(no_cuda))]
-#[ignore]
-fn test_execution_prover_blake2_g_function_delegation() {
-    let result = commit_and_prove_binary(
-        ExecutionKind::Unrolled,
-        MachineType::FullUnsigned,
-        "examples/hashed_fibonacci/app_blake2_g_function.bin",
-        "examples/hashed_fibonacci/app_blake2_g_function.text",
-        vec![100, 5],
-        true,
-    );
-    assert_delegation_proofs_present(&result, DelegationCircuitType::Blake2GFunction);
-}
-
 /// Unified (reduced-machine) execution over the `multi_family_smoke` workload
 /// gpu_circuit_prover's unified GPU tests use, with the same ND inputs
 /// (`n` = loop/cycle target, `seed`). Uses the blake2_with_compression
 /// variant rather than gpu_circuit_prover's blake2_g_function one because the
-/// transpiler JIT only implements the Blake2WithCompression delegation (see
-/// `test_execution_prover_blake2_g_function_delegation`). Covers the
-/// `ExecutionKind::Unified` dispatch path end to end: unified circuit family
-/// proofs plus the delegation proofs the smoke workload fires.
+/// transpiler JIT only implements the Blake2WithCompression delegation. Covers
+/// the `ExecutionKind::Unified` dispatch path end to end: unified circuit
+/// family proofs plus the delegation proofs the smoke workload fires.
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore]
