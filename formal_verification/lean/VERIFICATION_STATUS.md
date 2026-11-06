@@ -37,8 +37,11 @@ setup requalification always retain fresh native generation. Run
 [42008848844](https://github.com/matter-labs/zksync-airbender/actions/runs/42008848844)
 on `5a255e6103bc49f5f321601b8c72829e166cbc90` passed fresh native generation,
 compiler capture, immutable-input revalidation and receipt publication. The saved
-receipt was inspected in its diagnostic artifact. Actual later cache-hit reuse
-remains untested. The older `41987147083` was cancelled with user authorization.
+receipt was inspected in its diagnostic artifact. Run `42151721613` later reused
+the exact completed native receipt from `42037931876` after strict current-input
+validation; its retained receipt and reuse decision were inspected. This is reuse
+of qualified evidence, not fresh native generation on the later head.
+The older `41987147083` was cancelled with user authorization.
 
 Run `42008848844` then hit the 10,800-second preliminary fixture-stage deadline,
 while normally compiling `Blake2Round.NativeColumnRows3Part1`. The last guard
@@ -69,6 +72,21 @@ A regression control checks all eleven referenced artifact providers through the
 runtime import closure and rejects the original missing MulDiv import. All 37
 focused controls pass locally. Actual repaired Lean source/runtime validation,
 the environment/axiom audit and final full assurance remain pending.
+
+Run [42151721613](https://github.com/matter-labs/zksync-airbender/actions/runs/42151721613)
+on `06d7f3ff30dcae43e2af8fc362be2633b19c35b4` completed normal Lake source
+freshness for all 4,205 project modules, native freshness for the 2,132-module
+runtime closure, and the library/executable builds. The direct Lean axiom command
+exited normally after 5.38 seconds at 360.25 MiB charged footprint, with no owned
+processes left, and reported only the three permitted axioms for all six requests.
+The Python smoke comparison then incorrectly required all 4,379 roots from the
+separate compiled-environment baseline in that six-root log. No runtime execution
+or environment audit success is claimed. The repair compares the smoke inventory
+against its exact source requests, including any requested baseline roots; the
+separate full environment inventory/baseline audit is unchanged. Retained-log
+replay and 42 focused controls pass, including missing/extra/duplicate/forbidden
+smoke-report controls and rejection of a missing protected Review audit root.
+Actual complete runtime/audit validation and final full assurance remain pending.
 
 The 4 November specification review makes the existing one-instance
 initialization and submitted-pool premises explicit. Native corollaries certify

@@ -461,8 +461,11 @@ def direct_axioms(root, log, output):
     reports = {match[1]: sorted(set((match[2] or '').replace(',', ' ').split())) for match in found}
     baseline = json.loads((root / 'scripts/axiom_baseline.json').read_text())
     prior = baseline['roots']
+    # This smoke log covers exactly the explicit #print requests. The separate
+    # compiled-environment audit owns the complete baseline/Review inventory.
+    expected_baseline = prior.keys() & set(expected_list)
     result = {'scope': 'direct_explicit_axiom_smoke_test', 'baseline_commit': baseline['commit'],
-              'roots': reports, 'missing_baseline_roots': sorted(prior.keys() - reports.keys()),
+              'roots': reports, 'missing_baseline_roots': sorted(expected_baseline - reports.keys()),
               'changed_baseline_reports': {name: {'before': prior[name], 'after': reports[name]}
                   for name in prior.keys() & reports.keys() if prior[name] != reports[name]},
               'missing_source_reports': sorted(set(expected_list) - reports.keys()),

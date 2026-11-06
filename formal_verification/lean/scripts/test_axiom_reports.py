@@ -40,7 +40,8 @@ class AxiomReportTests(unittest.TestCase):
             (root / 'Airbender/Checks').mkdir(parents=True)
             (root / 'scripts').mkdir()
             (root / 'Airbender/Checks/Axioms.lean').write_text('#print axioms Fixture\n')
-            (root / 'scripts/axiom_baseline.json').write_text(json.dumps({'commit': 'fixture', 'roots': {'Fixture': ['propext']}}))
+            (root / 'scripts/axiom_baseline.json').write_text(json.dumps({
+                'commit': 'fixture', 'roots': {'Fixture': ['propext'], 'Review.InventoryOnly': []}}))
             log = root / 'smoke.log'
             log.write_text("'Fixture' does not depend on any axioms\n")
             direct_axioms(root, log, root / 'result.json')
@@ -48,6 +49,45 @@ class AxiomReportTests(unittest.TestCase):
             log.write_text('')
             with self.assertRaises(ValueError):
                 direct_axioms(root, log, root / 'result.json')
+
+    def test_direct_smoke_accepts_multiline_standard_axioms(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Airbender/Checks').mkdir(parents=True)
+            (root / 'scripts').mkdir()
+            (root / 'Airbender/Checks/Axioms.lean').write_text('#print axioms Fixture\n')
+            (root / 'scripts/axiom_baseline.json').write_text(json.dumps({
+                'commit': 'fixture', 'roots': {'Review.InventoryOnly': []}}))
+            log = root / 'smoke.log'
+            log.write_text("'Fixture' depends on axioms: [propext,\n Classical.choice,\n Quot.sound]\n")
+            direct_axioms(root, log, root / 'result.json')
+            result = json.loads((root / 'result.json').read_text())
+            self.assertEqual(result['roots'], {'Fixture': ['Classical.choice', 'Quot.sound', 'propext']})
+            self.assertTrue(result['passed'])
+
+    def test_direct_smoke_rejects_missing_extra_duplicate_and_forbidden_reports(self):
+        valid = "'Fixture' does not depend on any axioms\n"
+        cases = [
+            ('missing', '', False, 'missing_source_reports'),
+            ('extra', valid + "'Extra' does not depend on any axioms\n", False, 'extra_reports'),
+            ('duplicate-report', valid + valid, False, 'duplicate_reports'),
+            ('duplicate-source', valid, True, 'duplicate_source_roots'),
+            ('forbidden', "'Fixture' depends on axioms: [sorryAx]\n", False, 'forbidden_axioms'),
+        ]
+        for name, text, duplicate_source, field in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / 'Airbender/Checks').mkdir(parents=True)
+                (root / 'scripts').mkdir()
+                (root / 'Airbender/Checks/Axioms.lean').write_text(
+                    '#print axioms Fixture\n' * (2 if duplicate_source else 1))
+                (root / 'scripts/axiom_baseline.json').write_text(json.dumps({
+                    'commit': 'fixture', 'roots': {'Fixture': [], 'Review.InventoryOnly': []}}))
+                log = root / 'smoke.log'
+                log.write_text(text)
+                with self.assertRaises(ValueError):
+                    direct_axioms(root, log, root / 'result.json')
+                self.assertTrue(json.loads((root / 'result.json').read_text())[field])
 
     def test_environment_constructor_dependency_requires_an_exact_disposition(self):
         with tempfile.TemporaryDirectory() as directory:
