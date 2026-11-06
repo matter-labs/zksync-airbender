@@ -44,6 +44,32 @@ redundant branch-only repair is removed; see [FINDINGS.md](FINDINGS.md).
 
 ## Current checkpoint
 
+Run [42183091911](https://github.com/matter-labs/zksync-airbender/actions/runs/42183091911)
+on signed head e9f9354f8854e1dcf5ff10900d566c457b0adcd0 passed every warm
+verification gate. Fresh native qualification completed at 08:05:15 UTC on
+6 November; its exact receipt was inspected. The complete source/runtime/Review
+frontend passed in 365.48 seconds, followed by generated-source freshness and
+all 126 exact decoder-row and circuit-object comparisons across eleven inputs,
+including the production OS program. The exporter prerequisite exited 0 through
+the native guard; every decoder guard left no owned processes.
+
+The separate compiled environment audit passed at 09:09:30 UTC: 5,164 roots and
+229,263 dependency declarations, no forbidden axioms or project axiom declarations,
+no unsafe proof dependencies, no missing protected roots and no undispositioned
+report changes. Its Lean child exited 0 after 247.87 seconds at 1,329.04 MiB
+charged footprint, with no owned processes left. The direct smoke reports cover
+173 requests; Review validates all 4,205 source targets and 170 public theorems.
+Ordinary checks also completed without failures on this exact head.
+
+The [retained baseline](scripts/axiom_baseline.json) is the exact refreshed JSON
+from that successful audit, SHA-256
+f84e619abb15374a4e6bbcc6ea246c0f7c257fe4c8658866bb1f6b110e38520e.
+All 5,164 current roots are protected; every previously protected root remains
+present, and reports for shared roots are unchanged. This baseline/status revision
+requires final full assurance with baseline refresh disabled. Independent complete
+dependency kernel replay and direct/transitive false-proof controls were disabled
+in the warm run and remain pending; no final assurance is claimed.
+
 Warm CI now separates native qualification from Lean proof validation. An exact
 input fingerprint and completed native receipt can omit repeated Rust generation
 and compiler captures after proof-only edits. Strict retained-source/payload
@@ -682,10 +708,12 @@ The signing rewrite leaves the source tree unchanged.
    freshness, the complete frontend and runtime checks, generator freshness,
    and the environment/axiom audit. The cold benchmark and independent replay
    are not in this iteration gate.
-3. After iteration, run full assurance once with transitive kernel replay and
-   the false-proof controls. Use a 2,048 MiB stack and refresh the axiom
-   baseline. Weekly default-branch runs also include this assurance. Request
-   a cold source benchmark separately when new performance data is needed.
+3. Retain the exact refreshed baseline from the passing warm environment audit,
+   then run full assurance with transitive kernel replay and the false-proof
+   controls on the signed final revision. Use a 2,048 MiB stack and disable
+   baseline refresh for this final check. Weekly default-branch runs also include
+   assurance. Request a cold source benchmark separately when new performance
+   data is needed.
 4. Fix proof and validation failures within the formal model and CI. Record
    production defects in FINDINGS.md and expose the required property as a
    temporary interface assumption. Do not repair production behavior here.
@@ -735,8 +763,8 @@ Other source leaves retain 900 seconds. Memory caps and kernel checks stay uncha
 | CI cold source partial, 2,756 of 4,202 modules | Stopped at parse failure | 33,462.48 | 2,198.55 |
 | CI `ShiftAssembly` parse failure | Fixed; focused source passes | 4.62 | 353.58 |
 | CI cold source partial, 756 of 4,202 modules | Stopped at guard error; fixed | 11,130.39 | 2,278.52 |
-| CI full frontend and runtime gates | Queued | Pending | Pending |
-| CI environment audit and baseline refresh | Queued | Pending | Pending |
+| CI full frontend and runtime gates, run 42183091911 | Passed | 365.48 | 790.46 |
+| CI environment audit and baseline refresh, run 42183091911 | Passed; exact baseline retained | 247.87 | 1,329.04 |
 | CI full transitive replay, 2,048 MiB stack | Queued | Pending | Pending |
 | Local Linux cold partial, 857 modules | Stopped; moved to CI | 8,383.54 | 2,202.59 |
 | Local Mac frontend partial | Stopped; moved to CI | 5,108.33 | 2,100.26 |
