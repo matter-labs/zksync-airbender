@@ -168,31 +168,14 @@ private def negativeRow : Nat → ZMod babyBearModulus
   | 22 | 23 | 34 | 35 => 65535
   | _ => 0
 
+/-- `negativeRow`'s honest inputs: SLT of -1 against x0's 0, rd = x1. -/
+private def negativeWitness : JumpBranchSlt.Completeness.Inputs :=
+  { edgeWitness true false false with rd := 1, aLo := 65535, aHi := 65535, bLo := 0, bHi := 0 }
+
 private theorem negativeSatisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment negativeRow)
-      JumpBranchSlt.importedConstraints := by
-  simp [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Expression.eval, Verification.environment, negativeRow]
-  repeat' apply And.intro
-  all_goals first
-    | (apply Verification.range16_contains; decide)
-    | (with_unfolding_all change ∃ i : Fin 131072,
-         ((131070, 0) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((if i.val = 0 then 1 else 0 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨131070, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((65535, 1) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 32768 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨65535, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 4194304,
-         ((1114112, 1) : fieldPair (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), (Verification.conditionalValue i.val : ZMod babyBearModulus))
-       exact ⟨⟨1114112, by decide⟩, rfl⟩)
-    | (with_unfolding_all change ∃ i : Fin 65536,
-         ((4, 0, 4) : fieldTriple (ZMod babyBearModulus)) =
-           ((i.val : ZMod babyBearModulus), ((i.val / 2 % 2 : Nat) : ZMod babyBearModulus),
-             ((i.val - i.val % 4 : Nat) : ZMod babyBearModulus))
-       exact ⟨⟨4, by decide⟩, rfl⟩)
+      JumpBranchSlt.importedConstraints :=
+  JumpBranchSlt.Completeness.complete_of_agree negativeWitness (by constructor <;> decide) (by decide)
 
 private def negativeInput : JumpBranchSlt.Comparison.Input :=
   { (input false false false) with
