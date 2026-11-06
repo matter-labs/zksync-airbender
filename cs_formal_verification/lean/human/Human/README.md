@@ -21,7 +21,7 @@ an operation effect and a whole-instruction retirement result are distinct claim
 
 Choose one of the two routes below. Start with [Properties](Helpers/Properties.lean)
 for the meaning of soundness, completeness and the observable circuit relation.
-That module imports only Clean.
+That module imports only [CleanCore](../CleanCore.lean), our transcription of the Clean definitions we use.
 
 Soundness says every input/output transition admitted by the circuit relation,
 for any witness, is allowed by the selected reference. Completeness asks for a

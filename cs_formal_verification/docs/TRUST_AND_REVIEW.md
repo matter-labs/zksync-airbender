@@ -76,7 +76,7 @@ when reviewing or strengthening a theorem.
 | --- | --- |
 | Lean kernel and standard axioms | Accepted proof-checking foundation. The [axiom audit](../lean/test/Checks/Axioms.lean) records actual dependencies. |
 | Lean / Mathlib | `v4.34.1`, pinned in `lean-toolchain` and [lakefile.toml](../lean/lakefile.toml). |
-| Clean | tag `v4.33.1`, `93c9d1ef45be9f687214625d7857889cf2485504` (builds unchanged on Lean `v4.34.1`); upstream definitions in `lean/.lake/packages/Clean`. Review their applicability; Lean checks proof terms. |
+| Clean | tag `v4.33.1`, `93c9d1ef45be9f687214625d7857889cf2485504` (builds unchanged on Lean `v4.34.1`); upstream definitions in `lean/.lake/packages/Clean`. The spec does not import Clean: [CleanCore](../lean/human/CleanCore.lean) transcribes the definitions it uses, and [its equivalence with Clean](../lean/human/CleanCore/Equivalence.lean) (built by `verify.sh`) proves each equal to Clean's and lists the deviations. Review the transcription and the deviations; Lean checks proof terms. |
 | Sail model/compiler | The official sail-riscv model `6136f84` (tag `2026-10-12-6136f84`) compiled by Sail `2ba3212` (0.20.3) with the [airbender-base config](../sail/config/airbender-base.json); pins and their rationale in [PINS.md](../sail/PINS.md), generation in [regen.sh](../sail/regen.sh). The generated model is not committed. |
 | Sail runtime | `lean-sail` revision `c816ea7ad03cce98d51acee252540fd4215fede8`, fetched by [fetch-lean-sail.sh](../sail/fetch-lean-sail.sh) with the Lean 4.34 [patch](../sail/patches/lean-sail-lean4.34.1.patch). |
 | Platform support | The full model implements the platform hooks concretely; three upstream hooks without a Lean body get trivial bodies in [sail-riscv-lean-missing-externs.patch](../sail/patches/sail-riscv-lean-missing-externs.patch). Experimental extensions and CLINT/interrupt devices are off in [airbender-base.json](../sail/config/airbender-base.json). |
@@ -86,7 +86,7 @@ when reviewing or strengthening a theorem.
 
 ## Import and generation fidelity
 
-Clean supplies `Expression`, `FlatOperation`, `Environment`, static tables and
+CleanCore (Clean's definitions, transcribed) supplies `Expression`, `FlatOperation`, `Environment`, static tables and
 `ConstraintsHoldFlat` directly. The JSON schema is parser data, not a second
 arithmetic semantics. Lean's `Json.parse` and typed `FromJson` instances decode
 the Rust artifact directly. Audit [Parse](../lean/human/Human/Import/Parse.lean),

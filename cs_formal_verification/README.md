@@ -11,7 +11,7 @@ does not import the proofs, runs the regressions and the axiom audits, checks th
 - `lean/human/` — **what a human reads**: everything a claim's meaning depends on. The circuit models, references,
   artifacts and interface assumptions (`Human/Circuits/`), the shared context (`Human/Helpers/`, starting from
   `Human/Helpers/Properties.lean`), whole-trace execution contracts (`Human/Trace/`) and the JSON importer that turns
-  an artifact into Clean constraints (`Human/Import/`). It imports only Mathlib, Clean, the Sail model and itself
+  an artifact into CleanCore constraints (`Human/Import/`). It imports only Mathlib, CleanCore, the Sail model and itself
   (`./verify.sh` step 1). Its directory READMEs are the review guide.
   The final statements are `def …Claim : Prop` in `Human/**/Theorems.lean` (and `Human/Trace/Soundness.lean`),
   imported by `lean/human/Human.lean`.
@@ -64,7 +64,9 @@ Lean and Mathlib are `v4.34.1`. Clean is pinned at tag `v4.33.1`
 The original Keccak permutation reference compiles unchanged; the [Theta column](lean/human/Human/Circuits/Keccak/Theta.lean) and [two-call Chi row](lean/human/Human/Circuits/Keccak/Chi.lean) claims use its `thetaXor` and `chi` directly. We use Clean's native
 `Expression`, `FlatOperation.assert`, `StaticTable`, `FlatOperation.lookup`,
 `Environment` and `ConstraintsHoldFlat`.
-The witness-generation DSL and full `FormalCircuit` bundle are not used.
+The witness-generation DSL and full `FormalCircuit` bundle are not used. The spec imports these from
+[CleanCore](lean/human/CleanCore.lean), a transcription of the Clean definitions used, proved equal to Clean's
+in [CleanCore/Equivalence.lean](lean/human/CleanCore/Equivalence.lean) (deviations listed there).
 Airbender's two-16-bit-limb representation is preserved.
 
 The reference uses the unmodified upstream Sail RISC-V model (pins in [PINS.md](sail/PINS.md)), generated to Lean
