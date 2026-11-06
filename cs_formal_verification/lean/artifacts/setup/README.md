@@ -46,5 +46,9 @@ All three are identical to Antonio's `formal_verification/lean/artifacts/setup/`
 manifest values (`origin/codex/lean-circuit-verification`), and each file's `circuit` equals
 the imported `cs/compiled_circuits/keccak_*_layout_no_caches_gkr.json` (checked with `==`).
 Command: `cargo run --release -p execution_prover --example export_setup_json -- keccak-column-parity - - keccak-column-parity.json`
-(likewise `keccak-theta-rho`, `keccak-chi5`). First exported from a `c1a662222` tree with
-Antonio's exporter.
+(likewise `keccak-theta-rho`, `keccak-chi5`), run at this branch after the upstream merge
+`049f2aa24` (sources = `c1a662222`) with the split-Keccak arms of the exporter restored
+(the commit that adds this paragraph); `cargo check -p execution_prover --examples` passes.
+Output byte-identical to the committed files (and to a first export from a detached
+`c1a662222` tree). The same exporter at this tree also reproduces `blake-round.json`
+(sha256 `333f3d63…`), so the detached-tree step above is no longer needed.

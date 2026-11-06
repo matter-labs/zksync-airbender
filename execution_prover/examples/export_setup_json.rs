@@ -22,7 +22,9 @@ use prover::gkr::prover::setup_artifact::SetupProgram;
 use riscv_transpiler::ir::{FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig};
 use setups::circuits::{
     get_bigint_with_control_circuit_setup, get_blake2_g_function_circuit_setup,
-    get_blake2_with_compression_circuit_setup, get_keccak_special5_circuit_setup,
+    get_blake2_with_compression_circuit_setup, get_keccak_chi5_circuit_setup,
+    get_keccak_column_parity_circuit_setup, get_keccak_special5_circuit_setup,
+    get_keccak_theta_rho_circuit_setup,
 };
 use setups::unrolled_circuits::{
     add_sub_lui_auipc_mop_circuit_setup, jump_branch_slt_circuit_setup,
@@ -56,13 +58,14 @@ fn build_delegation_setup_with_cache_mode(
     use_caches: bool,
     worker: &Worker,
 ) -> CanonicalCircuitSetup {
-    // The split-Keccak delegation variants (column parity, theta/rho, chi5) are not in this
-    // tree; the export of blake-round and the Keccak special5 circuit does not need them.
     let setup = match delegation_type {
         D::BigIntWithControl => get_bigint_with_control_circuit_setup(use_caches, worker),
         D::Blake2WithCompression => get_blake2_with_compression_circuit_setup(use_caches, worker),
         D::Blake2GFunction => get_blake2_g_function_circuit_setup(use_caches, worker),
         D::KeccakSpecial5 => get_keccak_special5_circuit_setup(use_caches, worker),
+        D::KeccakColumnParity => get_keccak_column_parity_circuit_setup(use_caches, worker),
+        D::KeccakThetaRho => get_keccak_theta_rho_circuit_setup(use_caches, worker),
+        D::KeccakChi5 => get_keccak_chi5_circuit_setup(use_caches, worker),
     };
     CanonicalCircuitSetup::Delegation(setup)
 }
@@ -171,6 +174,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "blake-g" => Some(D::Blake2GFunction),
         "blake-round" => Some(D::Blake2WithCompression),
         "keccak" => Some(D::KeccakSpecial5),
+        "keccak-column-parity" => Some(D::KeccakColumnParity),
+        "keccak-theta-rho" => Some(D::KeccakThetaRho),
+        "keccak-chi5" => Some(D::KeccakChi5),
         _ => None,
     };
     let (setup, program) = if args[0] == "inits-and-teardowns" {
