@@ -125,9 +125,8 @@ EXTERN __launch_bounds__(512, 1) __global__
 }
 
 EXTERN __launch_bounds__(512, 1) __global__
-    void ab_evals_to_monomials_last_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                     const bool transposed_monomials, const int log_n, const int num_cols_per_coset,
-                                                     const int log_cosets_in_tile) {
+    void ab_evals_to_monomials_last_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,
+                                                     const int num_cols_per_coset, const int log_cosets_in_tile) {
   using namespace pass_config::two_pass_phase_c;
 
   // Flat-blockIdx.x layout: gridDim.x packs blocks_per_ntt (= n / VALS_PER_BLOCK
@@ -222,18 +221,12 @@ EXTERN __launch_bounds__(512, 1) __global__
   for (int i = 0; i < 32; i++)
     vals[i] = bf::mul(vals[i], size_inv);
 
-  if (transposed_monomials) {
+  // un-swizzling + coalesced stores performs better on 5090
+  __syncwarp();
+  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 #pragma unroll
-    for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
-      gmem_out.set_at_row(row, vals[i]);
-  } else {
-    // un-swizzling + coalesced stores performs better on 5090
-    __syncwarp();
-    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
-#pragma unroll
-    for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
-      gmem_out.set_at_row(row, vals[i]);
-  }
+  for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
+    gmem_out.set_at_row(row, vals[i]);
 }
 
 } // namespace airbender::ntt

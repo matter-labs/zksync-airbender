@@ -22,7 +22,6 @@ pub(crate) fn evals_to_monomials_3_pass(
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
     columns_per_launch: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     // Column batching mirrors the forward 3-pass: the two nonfinal_8 passes use
@@ -105,7 +104,6 @@ pub(crate) fn evals_to_monomials_3_pass(
         let args = EvalsToMonomialsFinalArguments::new(
             output_matrix_const,
             output_matrix_mut,
-            transposed_monomials,
             log_n as i32,
             0,
             0,
@@ -133,7 +131,6 @@ pub(crate) fn evals_to_monomials_2_pass(
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
     columns_per_launch: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     // Column batching: both passes use `grid_dim.y` for column (.x = blocks).
@@ -208,7 +205,6 @@ pub(crate) fn evals_to_monomials_2_pass(
         let args = EvalsToMonomialsFinalArguments::new(
             output_matrix_const,
             output_matrix_mut,
-            transposed_monomials,
             log_n as i32,
             0,
             0,

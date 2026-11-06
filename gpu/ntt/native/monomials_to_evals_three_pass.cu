@@ -148,8 +148,8 @@ EXTERN __launch_bounds__(256, 3) __global__
 
 template <int STAGES, bool INVERSE = false>
 DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                                  const bool transposed_monomials, const int log_n, const int coset_index_base,
-                                                                  const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
+                                                                  const int log_n, const int coset_index_base, const int coset_factor_shift,
+                                                                  const int num_cols_per_coset, const int log_cosets_in_tile) {
   using namespace pass_config::three_pass_phase_b;
   constexpr int OUTPUT_EXCHG_REGIONS_PER_WARP = 1 << (10 - STAGES);
 
@@ -192,27 +192,21 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
   if (!INVERSE && coset_factor_power > 0) {
 #pragma unroll
     for (int i{0}, global_row{lane_id + gmem_block_offset + warp_id * VALS_PER_WARP}; i < VALS_PER_THREAD; i++, global_row += WARP_SIZE) {
-      const int effective_row = transposed_monomials ? transposed_row_to_effective_row(global_row) : global_row;
-      const bf coset_offset = get_power_from_layers(::ab_ntt_forward_powers, bitrev(effective_row, log_n) * coset_factor_power);
+      const bf coset_offset = get_power_from_layers(::ab_ntt_forward_powers, bitrev(global_row, log_n) * coset_factor_power);
       vals[i] = bf::mul(vals[i], coset_offset);
     }
   }
 
-  if (transposed_monomials) {
-    __pipeline_wait_prior(0); // Unfortunately we use all the coarse twiddles in the first exchange, so we can't overlap this with compute.
-    __syncthreads();
-  } else {
-    // transpose coalesced loads into registers
-    if (warp_id & 4) {
-      warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
-    }
+  // transpose coalesced loads into registers
+  if (warp_id & 4) {
+    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
+  }
 
-    __pipeline_wait_prior(0); // might as well also use this sync to ensure twiddles are ready
-    __syncthreads();
+  __pipeline_wait_prior(0); // might as well also use this sync to ensure twiddles are ready
+  __syncthreads();
 
-    if (!(warp_id & 4)) {
-      warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
-    }
+  if (!(warp_id & 4)) {
+    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
   }
 
   int thread_exchg_region_offset = (threadIdx.x + static_cast<int>(fi.intra_x) * blockDim.x) << 4;
@@ -268,10 +262,9 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
 
 #define DEFINE_INITIAL_KERNEL(STAGES)                                                                                                                          \
   EXTERN __launch_bounds__(256, 3) __global__ void ab_monomials_to_evals_initial_##STAGES##_stages_kernel(                                                     \
-      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const bool transposed_monomials, const int log_n,                 \
-      const int coset_index_base, const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {                                  \
-    monomials_to_evals_initial_up_to_8_stages<STAGES>(gmem_in, gmem_out, transposed_monomials, log_n, coset_index_base, coset_factor_shift,                    \
-                                                      num_cols_per_coset, log_cosets_in_tile);                                                                 \
+      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n, const int coset_index_base,                      \
+      const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {                                                              \
+    monomials_to_evals_initial_up_to_8_stages<STAGES>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, log_cosets_in_tile); \
   }
 
 DEFINE_INITIAL_KERNEL(5)
@@ -292,10 +285,10 @@ EXTERN __launch_bounds__(256, 3) __global__
 
 #define DEFINE_INVERSE_INITIAL(STAGES)                                                                                                                         \
   EXTERN __launch_bounds__(256, 3) __global__ void ab_coset_to_monomials_initial_##STAGES##_stages_kernel(                                                     \
-      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const bool transposed_monomials, const int log_n,                 \
-      const int coset_index_base, const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {                                  \
-    monomials_to_evals_initial_up_to_8_stages<STAGES, true>(gmem_in, gmem_out, transposed_monomials, log_n, coset_index_base, coset_factor_shift,              \
-                                                            num_cols_per_coset, log_cosets_in_tile);                                                           \
+      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n, const int coset_index_base,                      \
+      const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {                                                              \
+    monomials_to_evals_initial_up_to_8_stages<STAGES, true>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset,                \
+                                                            log_cosets_in_tile);                                                                               \
   }
 DEFINE_INVERSE_INITIAL(5)
 DEFINE_INVERSE_INITIAL(6)

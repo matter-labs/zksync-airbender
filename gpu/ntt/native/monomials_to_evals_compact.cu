@@ -112,13 +112,10 @@ DEVICE_FORCEINLINE void monomials_to_evals_all_stages_in_block(bf_matrix_getter<
 // 2 blocks/SM at all supported LOG_N: per-block smem (<= 16 KB) leaves room.
 #define DEFINE_COMPACT_KERNEL(LOG_N, MIN_BLOCKS_PER_SM)                                                                                                        \
   EXTERN __launch_bounds__(COMPACT_THREADS, MIN_BLOCKS_PER_SM)                                                                                                 \
-  __global__ void ab_monomials_to_evals_all_##LOG_N##_stages_kernel(                                                                                           \
-      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const bool transposed_monomials, const int log_n,                 \
-      const int coset_index_base, const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {                                  \
-    /* These flags are part of the shared MonomialsToEvalsInitial signature but */                                                                             \
-    /* are irrelevant to the compact kernel: log_n is encoded in the template, */                                                                              \
-    /* and transposed_monomials is unsupported (asserted host-side). */                                                                                        \
-    (void)transposed_monomials;                                                                                                                                \
+  __global__ void ab_monomials_to_evals_all_##LOG_N##_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,     \
+                                                                    const int log_n, const int coset_index_base, const int coset_factor_shift,                 \
+                                                                    const int num_cols_per_coset, const int log_cosets_in_tile) {                              \
+    /* log_n is part of the shared MonomialsToEvalsCompact signature; this kernel takes it from LOG_N. */                                                      \
     (void)log_n;                                                                                                                                               \
     monomials_to_evals_all_stages_in_block<LOG_N>(gmem_in, gmem_out, coset_index_base, coset_factor_shift, num_cols_per_coset, log_cosets_in_tile);            \
   }
@@ -153,7 +150,6 @@ DEFINE_COMPACT_KERNEL(12, 2)
 //     `bitrev(g_global, log_n - 1) << (OMEGA_LOG_ORDER - log_n)`. The standalone
 //     kernel's "skip twiddle on the last stage" optimization does not apply
 //     here -- more stages follow in pass 2, so every stage's twiddle is needed.
-//   * `transposed_monomials` is unsupported (asserted host-side).
 template <int LOG_K, bool INVERSE = false>
 DEVICE_FORCEINLINE void monomials_to_evals_first_stages_in_block(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                                  const int log_n, const int coset_index_base, const int coset_factor_shift,
@@ -224,9 +220,8 @@ DEVICE_FORCEINLINE void monomials_to_evals_first_stages_in_block(bf_matrix_gette
 #define DEFINE_FIRST_K_KERNEL(LOG_K, MIN_BLOCKS_PER_SM)                                                                                                        \
   EXTERN __launch_bounds__(COMPACT_THREADS, MIN_BLOCKS_PER_SM)                                                                                                 \
   __global__ void ab_monomials_to_evals_first_##LOG_K##_stages_compact_kernel(                                                                                 \
-      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const bool transposed_monomials, const int log_n,                 \
-      const int coset_index_base, const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {                                  \
-    (void)transposed_monomials;                                                                                                                                \
+      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n, const int coset_index_base,                      \
+      const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {                                                              \
     monomials_to_evals_first_stages_in_block<LOG_K>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, log_cosets_in_tile);   \
   }
 
@@ -248,9 +243,8 @@ DEFINE_FIRST_K_KERNEL(12, 2)
 // log_n=20 uses first-12 compact stages followed by noninitial-8.
 EXTERN __launch_bounds__(COMPACT_THREADS, 2) __global__
     void ab_coset_to_monomials_first_12_stages_compact_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                              const bool transposed_monomials, const int log_n, const int coset_index_base,
-                                                              const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
-  (void)transposed_monomials;
+                                                              const int log_n, const int coset_index_base, const int coset_factor_shift,
+                                                              const int num_cols_per_coset, const int log_cosets_in_tile) {
   monomials_to_evals_first_stages_in_block<12, true>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, log_cosets_in_tile);
 }
 

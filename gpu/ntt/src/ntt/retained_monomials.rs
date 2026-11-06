@@ -1,4 +1,4 @@
-//! Monomial buffers use non-transposed, column-major storage.
+//! Monomial buffers use column-major storage.
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
@@ -165,7 +165,7 @@ unsafe fn initialize(
             .launch(&config, &args)?;
         } else {
             // The original full-LDE schedule is also unfused in this regime.
-            launch_hypercube_two_pass_column(input, m_const, m_mut, log_n, false, stream)?;
+            launch_hypercube_two_pass_column(input, m_const, m_mut, log_n, stream)?;
             generate_column(
                 &monomials[offset..offset + n],
                 &mut coset[offset..offset + n],
@@ -249,7 +249,6 @@ pub fn retained_monomials_to_coset(
                 columns,
                 1,
                 strategy.columns_per_launch,
-                false,
                 stream,
             );
         }
@@ -263,7 +262,6 @@ pub fn retained_monomials_to_coset(
             columns,
             1,
             strategy.columns_per_launch,
-            false,
             stream,
         );
     }
@@ -305,7 +303,6 @@ fn generate_column(
         let args = MonomialsToEvalsCompactArguments::new(
             input,
             output,
-            false,
             log_n as i32,
             coset_index as i32,
             shift as i32,
@@ -341,7 +338,6 @@ fn generate_column(
             1,
             1,
             1,
-            false,
             stream,
         )
     }

@@ -35,19 +35,6 @@ use gpu_core::primitives::field::BF;
 #[cfg(not(no_cuda))]
 use super::multivariate_hypercube_evals_into_coeffs;
 
-pub(super) fn transpose_monomials(vals: &mut [BF]) {
-    for chunk in vals.chunks_mut(1024) {
-        for row in 0..32 {
-            for col in 0..row {
-                let a = chunk[row * 32 + col];
-                let b = chunk[col * 32 + row];
-                chunk[row * 32 + col] = b;
-                chunk[col * 32 + row] = a;
-            }
-        }
-    }
-}
-
 /// Pure-CPU forward-NTT reference for a SINGLE coset: bitreversed monomials ->
 /// natural-order evaluations on coset `coset_index` of the size-2^(log_n +
 /// log_lde_factor) LDE domain.
@@ -95,12 +82,10 @@ pub(super) fn run_evals_to_monomials(
         &DeviceMatrixChunk<BF>,
         &mut DeviceMatrixChunkMut<BF>,
         usize,
-        bool,
         &CudaStream,
     ) -> CudaResult<()>,
     cpu_fn: fn(&mut [BF], &[BF], usize),
     in_or_out_of_place: InOrOutOfPlace,
-    transposed_monomials: bool,
 ) {
     let _ctx = DeviceContext::create(12).unwrap();
     let n_max = 1 << (log_n_range.end - 1);
@@ -157,7 +142,6 @@ pub(super) fn run_evals_to_monomials(
                     &inputs_device_matrix,
                     &mut outputs_device_matrix,
                     log_n,
-                    transposed_monomials,
                     &stream,
                 )
                 .unwrap();
@@ -195,7 +179,6 @@ pub(super) fn run_evals_to_monomials(
                     &inplace_input_view_matrix,
                     &mut inplace_output_view_matrix,
                     log_n,
-                    transposed_monomials,
                     &stream,
                 )
                 .unwrap();
@@ -212,11 +195,7 @@ pub(super) fn run_evals_to_monomials(
 
         for col in 0..num_bf_cols {
             let start = col * stride + OFFSET;
-            let range = start..start + n;
-            if transposed_monomials {
-                transpose_monomials(&mut outputs_host[range.clone()]);
-            }
-            bitreverse_enumeration_inplace(&mut outputs_host[range]);
+            bitreverse_enumeration_inplace(&mut outputs_host[start..start + n]);
         }
 
         // Parallelize the per-column CPU NTT comparison: each column is an
@@ -261,11 +240,9 @@ pub(super) fn run_monomials_to_evals(
         &mut DeviceMatrixChunkMut<BF>,
         usize,
         usize,
-        bool,
         &CudaStream,
     ) -> CudaResult<()>,
     in_or_out_of_place: InOrOutOfPlace,
-    transposed_monomials: bool,
 ) {
     let _ctx = DeviceContext::create(12).unwrap();
     let n_max = 1 << (log_n_range.end - 1);
@@ -303,13 +280,6 @@ pub(super) fn run_monomials_to_evals(
 
         inputs_host[0..memory_size].copy_from_slice(&inputs_orig_host[0..memory_size]);
 
-        for col in 0..num_bf_cols {
-            let start = col * stride + OFFSET;
-            let range = start..start + n;
-            if transposed_monomials {
-                transpose_monomials(&mut inputs_host[range]);
-            }
-        }
         memory_copy_async(
             &mut inputs_device[0..memory_size],
             &inputs_host[0..memory_size],
@@ -333,7 +303,6 @@ pub(super) fn run_monomials_to_evals(
                     &mut outputs_device_matrix,
                     log_n,
                     coset_factor_power,
-                    transposed_monomials,
                     &stream,
                 )
                 .unwrap();
@@ -365,7 +334,6 @@ pub(super) fn run_monomials_to_evals(
                     &mut inplace_output_view_matrix,
                     log_n,
                     coset_factor_power,
-                    transposed_monomials,
                     &stream,
                 )
                 .unwrap();
@@ -440,10 +408,9 @@ pub(super) fn wrap_hypercube_evals_to_monomials_2_pass(
     inputs: &DeviceMatrixChunk<BF>,
     outputs: &mut DeviceMatrixChunkMut<BF>,
     log_n: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    hypercube_evals_to_monomials_2_pass(inputs, outputs, log_n, transposed_monomials, stream)
+    hypercube_evals_to_monomials_2_pass(inputs, outputs, log_n, stream)
 }
 
 #[cfg(not(no_cuda))]
@@ -451,10 +418,9 @@ pub(super) fn wrap_hypercube_evals_to_monomials_3_pass(
     inputs: &DeviceMatrixChunk<BF>,
     outputs: &mut DeviceMatrixChunkMut<BF>,
     log_n: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    hypercube_evals_to_monomials_3_pass(inputs, outputs, log_n, transposed_monomials, stream)
+    hypercube_evals_to_monomials_3_pass(inputs, outputs, log_n, stream)
 }
 
 #[cfg(not(no_cuda))]
@@ -462,18 +428,10 @@ pub(super) fn wrap_evals_to_monomials_2_pass(
     inputs: &DeviceMatrixChunk<BF>,
     outputs: &mut DeviceMatrixChunkMut<BF>,
     log_n: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let columns_per_launch = outputs.cols();
-    evals_to_monomials_2_pass(
-        inputs,
-        outputs,
-        log_n,
-        columns_per_launch,
-        transposed_monomials,
-        stream,
-    )
+    evals_to_monomials_2_pass(inputs, outputs, log_n, columns_per_launch, stream)
 }
 
 #[cfg(not(no_cuda))]
@@ -481,18 +439,10 @@ pub(super) fn wrap_evals_to_monomials_3_pass(
     inputs: &DeviceMatrixChunk<BF>,
     outputs: &mut DeviceMatrixChunkMut<BF>,
     log_n: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let columns_per_launch = outputs.cols();
-    evals_to_monomials_3_pass(
-        inputs,
-        outputs,
-        log_n,
-        columns_per_launch,
-        transposed_monomials,
-        stream,
-    )
+    evals_to_monomials_3_pass(inputs, outputs, log_n, columns_per_launch, stream)
 }
 
 #[cfg(not(no_cuda))]
@@ -501,7 +451,6 @@ pub(super) fn wrap_monomials_to_evals_2_pass_smem(
     outputs: &mut DeviceMatrixChunkMut<BF>,
     log_n: usize,
     coset_factor_power: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     monomials_to_evals_2_pass_smem(
@@ -510,7 +459,6 @@ pub(super) fn wrap_monomials_to_evals_2_pass_smem(
         log_n,
         coset_factor_power,
         outputs.cols(),
-        transposed_monomials,
         stream,
     )
 }
@@ -521,7 +469,6 @@ pub(super) fn wrap_monomials_to_evals_3_pass(
     outputs: &mut DeviceMatrixChunkMut<BF>,
     log_n: usize,
     coset_factor_power: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     // Adapter for the multi-coset signature: passing `coset_factor_power` as
@@ -540,7 +487,6 @@ pub(super) fn wrap_monomials_to_evals_3_pass(
         outputs.cols(),
         1,
         columns_per_launch,
-        transposed_monomials,
         stream,
     )
 }

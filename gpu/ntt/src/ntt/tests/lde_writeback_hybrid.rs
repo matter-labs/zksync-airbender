@@ -36,7 +36,6 @@ fn test_log_n_20_hypercube_final4_natural_initial8_fusion_matches_unfused() {
         &d_in[..],
         &mut d_scratch_old[..],
         log_n,
-        false,
         stream,
         ctx.get_device_properties(),
     )
@@ -48,7 +47,6 @@ fn test_log_n_20_hypercube_final4_natural_initial8_fusion_matches_unfused() {
         log_n,
         log_lde_factor,
         1,
-        false,
         ctx.device_context(),
         None,
         stream,

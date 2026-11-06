@@ -1,4 +1,4 @@
-//! Monomial buffers use non-transposed, column-major storage.
+//! Monomial buffers use column-major storage.
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
@@ -102,7 +102,6 @@ fn monomials_to_coset_in_place_impl(
             &MonomialsToEvalsCompactArguments::new(
                 input,
                 output,
-                false,
                 log_n as i32,
                 coset_index as i32,
                 shift,
@@ -184,7 +183,7 @@ pub fn hypercube_to_coset_in_place(
                 super::hypercube::launch_nonfinal_passes(input, input, output, log_n, stream)?;
             } else {
                 super::hypercube::launch_hypercube_two_pass_column(
-                    input, input, output, log_n, false, stream,
+                    input, input, output, log_n, stream,
                 )?;
             }
         }
@@ -311,13 +310,7 @@ pub fn coset_to_monomials_in_place(
                     shared::set_max_dynamic_smem(&function, config.dynamic_smem_bytes)?;
                     function.launch(
                         &config,
-                        &MonomialsToEvalsInitialArguments::new(
-                            input,
-                            output,
-                            false,
-                            log_n as i32,
-                            0,
-                        ),
+                        &MonomialsToEvalsInitialArguments::new(input, output, log_n as i32, 0),
                     )?;
                 }
                 NttKernelKind::MonomialsToEvalsInitial { stages }
@@ -355,7 +348,6 @@ pub fn coset_to_monomials_in_place(
                         &MonomialsToEvalsCompactArguments::new(
                             input,
                             output,
-                            false,
                             log_n as i32,
                             0,
                             0,

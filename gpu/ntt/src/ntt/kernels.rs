@@ -156,7 +156,6 @@ cuda_kernel_signature_and_arguments!(
     pub(super) EvalsToMonomialsFinal,
     inputs_matrix: PtrAndStride<BF>,
     outputs_matrix: MutPtrAndStride<BF>,
-    transposed_monomials: bool,
     log_n: i32,
     num_cols_per_coset: i32,
     log_cosets_in_tile: i32,
@@ -173,7 +172,6 @@ macro_rules! evals_to_monomials_final {
         ::era_cudart::cuda_kernel_declaration!(pub(super) $kernel_name(
     inputs_matrix: PtrAndStride<BF>,
     outputs_matrix: MutPtrAndStride<BF>,
-    transposed_monomials: bool,
     log_n: i32,
     num_cols_per_coset: i32,
     log_cosets_in_tile: i32,
@@ -292,7 +290,6 @@ cuda_kernel_signature_and_arguments!(
     pub(super) MonomialsToEvalsInitial,
     inputs_matrix: PtrAndStride<BF>,
     outputs_matrix: MutPtrAndStride<BF>,
-    transposed_monomials: bool,
     log_n: i32,
     coset_factor_power: i32,
 );
@@ -308,7 +305,6 @@ macro_rules! monomials_to_evals_initial {
         ::era_cudart::cuda_kernel_declaration!(pub(super) $kernel_name(
     inputs_matrix: PtrAndStride<BF>,
     outputs_matrix: MutPtrAndStride<BF>,
-    transposed_monomials: bool,
     log_n: i32,
     coset_factor_power: i32,
         ));
@@ -331,7 +327,6 @@ cuda_kernel_signature_and_arguments!(
     pub(super) MonomialsToEvalsCompact,
     inputs_matrix: PtrAndStride<BF>,
     outputs_matrix: MutPtrAndStride<BF>,
-    transposed_monomials: bool,
     log_n: i32,
     coset_index_base: i32,
     coset_factor_shift: i32,
@@ -350,7 +345,6 @@ macro_rules! monomials_to_evals_compact {
         ::era_cudart::cuda_kernel_declaration!(pub(super) $kernel_name(
     inputs_matrix: PtrAndStride<BF>,
     outputs_matrix: MutPtrAndStride<BF>,
-    transposed_monomials: bool,
     log_n: i32,
     coset_index_base: i32,
     coset_factor_shift: i32,
@@ -469,8 +463,6 @@ lde_intermediate!(ab_lde_first_8_stages_kernel);
 lde_intermediate!(ab_lde_first_7_stages_kernel);
 lde_intermediate!(ab_lde_first_6_stages_kernel);
 
-// No `transposed_monomials` argument -- the bitreversed codeword is always
-// written in plain row order.
 cuda_kernel_signature_and_arguments!(
     pub(super) NaturalToBitrevFinal,
     inputs_matrix: PtrAndStride<BF>,

@@ -72,8 +72,7 @@ DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_last_stages_in_block(b
 }
 
 // Shares the NaturalToBitrevFinal signature: pass 2 needs no coset arguments
-// (it runs in place on a coset slab) and no `transposed_monomials` (the
-// bitreversed codeword is always written in plain row order).
+// (it runs in place on a coset slab).
 #define DEFINE_LAST_K_KERNEL(LOG_K, MIN_BLOCKS_PER_SM)                                                                                                         \
   EXTERN __launch_bounds__(LAST_COMPACT_THREADS, MIN_BLOCKS_PER_SM)                                                                                            \
   __global__ void ab_natural_monomials_to_bitrev_evals_last_##LOG_K##_stages_compact_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in,                         \

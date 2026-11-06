@@ -26,7 +26,6 @@ pub(super) fn dispatch_strategy(
     log_n: usize,
     log_lde_factor: usize,
     coset_index: usize,
-    transposed_monomials: bool,
     ntt_ctx: &crate::ntt_twiddles::DeviceContext,
     d_table_scratch: Option<&mut DeviceSlice<BF>>,
     stream: &CudaStream,
@@ -55,7 +54,6 @@ pub(super) fn dispatch_strategy(
                 coset_factor_shift,
                 1,
                 num_cols_per_coset,
-                transposed_monomials,
                 ntt_ctx,
                 d_table_scratch.expect(
                     "DIT range requires a d_table_scratch (len >= N); caller must \
@@ -67,71 +65,45 @@ pub(super) fn dispatch_strategy(
             super::NttKernelKind::MonomialsToEvalsSubwarp {
                 log_instances_per_block,
                 ..
-            } => {
-                // Precondition guard restored after the dead-param removal: this
-                // kernel only ever runs at log_n < 21, so transposed monomials
-                // (log_n >= 21) are unreachable by construction — panic loudly if
-                // a future strategy/caller change ever routes one here.
-                assert!(
-                    !transposed_monomials,
-                    "subwarp forward NTT kernel does not support transposed monomials",
-                );
-                monomials_to_evals_subwarp(
-                    inputs_matrix,
-                    outputs_matrix,
-                    log_n,
-                    coset_index,
-                    coset_factor_shift,
-                    1,
-                    num_cols_per_coset,
-                    log_instances_per_block,
-                    stream,
-                )
-            }
+            } => monomials_to_evals_subwarp(
+                inputs_matrix,
+                outputs_matrix,
+                log_n,
+                coset_index,
+                coset_factor_shift,
+                1,
+                num_cols_per_coset,
+                log_instances_per_block,
+                stream,
+            ),
             super::NttKernelKind::MonomialsToEvalsSmemPacked {
                 log_instances_per_block,
                 ..
-            } => {
-                assert!(
-                    !transposed_monomials,
-                    "smem-packed forward NTT kernel does not support transposed monomials",
-                );
-                monomials_to_evals_smem_packed(
-                    inputs_matrix,
-                    outputs_matrix,
-                    log_n,
-                    coset_index,
-                    coset_factor_shift,
-                    1,
-                    num_cols_per_coset,
-                    log_instances_per_block,
-                    stream,
-                )
-            }
-            _ => {
-                assert!(
-                    !transposed_monomials,
-                    "compact 1-pass forward NTT kernel does not support transposed monomials",
-                );
-                monomials_to_evals_compact_1_pass(
-                    inputs_matrix,
-                    outputs_matrix,
-                    log_n,
-                    coset_index,
-                    coset_factor_shift,
-                    1,
-                    num_cols_per_coset,
-                    strategy.columns_per_launch,
-                    stream,
-                )
-            }
+            } => monomials_to_evals_smem_packed(
+                inputs_matrix,
+                outputs_matrix,
+                log_n,
+                coset_index,
+                coset_factor_shift,
+                1,
+                num_cols_per_coset,
+                log_instances_per_block,
+                stream,
+            ),
+            _ => monomials_to_evals_compact_1_pass(
+                inputs_matrix,
+                outputs_matrix,
+                log_n,
+                coset_index,
+                coset_factor_shift,
+                1,
+                num_cols_per_coset,
+                strategy.columns_per_launch,
+                stream,
+            ),
         },
         2 => match strategy.passes[0].kernel {
             super::NttKernelKind::MonomialsToEvalsFirstCompact { .. } => {
-                assert!(
-                    !transposed_monomials,
-                    "2-pass compact-initial forward NTT kernel does not support transposed monomials",
-                );
                 monomials_to_evals_2_pass_compact_initial(
                     inputs_matrix,
                     outputs_matrix,
@@ -151,7 +123,6 @@ pub(super) fn dispatch_strategy(
                 log_n,
                 coset_factor_power,
                 strategy.columns_per_launch,
-                transposed_monomials,
                 stream,
             ),
         },
@@ -165,7 +136,6 @@ pub(super) fn dispatch_strategy(
             num_cols_per_coset,
             1,
             strategy.columns_per_launch,
-            transposed_monomials,
             stream,
         ),
         n => unreachable!("NTT strategy emits 1, 2, or 3 passes, got {n}"),
@@ -176,17 +146,12 @@ pub fn natural_evals_to_bitreversed_monomials(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
     device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
     assert!(log_n <= OMEGA_LOG_ORDER as usize);
     if log_n < MIN_LOG_N_FOR_MULTISTAGE_KERNELS {
         // Fallback (uses 1 stage at a time kernels)
-        assert!(
-            !transposed_monomials,
-            "fallback path does not support transposed monomials",
-        );
         let cols = inputs_matrix.cols();
         let rows = inputs_matrix.rows();
         assert_eq!(cols, outputs_matrix.cols());
@@ -236,7 +201,6 @@ pub fn natural_evals_to_bitreversed_monomials(
             outputs_matrix,
             log_n,
             strategy.columns_per_launch,
-            transposed_monomials,
             stream,
         )?,
         3 => evals_to_monomials_3_pass(
@@ -244,7 +208,6 @@ pub fn natural_evals_to_bitreversed_monomials(
             outputs_matrix,
             log_n,
             strategy.columns_per_launch,
-            transposed_monomials,
             stream,
         )?,
         n => unreachable!("inverse NTT strategy emits 2 or 3 passes, got {n}"),

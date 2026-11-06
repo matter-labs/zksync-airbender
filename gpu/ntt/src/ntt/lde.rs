@@ -416,7 +416,6 @@ pub fn lde_with_coset_range(
         num_cosets,
         coset_index_base,
         num_cols_per_coset_stride,
-        /*transposed_monomials=*/ false,
         ntt_ctx,
         d_table_scratch,
         stream,
@@ -434,7 +433,6 @@ fn dispatch_forward_multi_coset(
     num_cosets: usize,
     coset_index_base: usize,
     num_cols_per_coset_stride: usize,
-    transposed_monomials: bool,
     ntt_ctx: &crate::ntt_twiddles::DeviceContext,
     d_table_scratch: Option<&mut DeviceSlice<BF>>,
     stream: &CudaStream,
@@ -500,7 +498,6 @@ fn dispatch_forward_multi_coset(
                 coset_factor_shift,
                 num_cosets,
                 num_cols_per_coset_stride,
-                transposed_monomials,
                 ntt_ctx,
                 d_table_scratch.as_deref_mut().expect(
                     "DIT range requires a d_table_scratch (len >= N); caller must \
@@ -512,60 +509,42 @@ fn dispatch_forward_multi_coset(
             super::NttKernelKind::MonomialsToEvalsSubwarp {
                 log_instances_per_block,
                 ..
-            } => {
-                assert!(
-                    !transposed_monomials,
-                    "subwarp forward NTT kernel does not support transposed monomials",
-                );
-                monomials_to_evals_subwarp(
-                    inputs_matrix,
-                    &mut outputs_matrix,
-                    log_n,
-                    coset_index_base,
-                    coset_factor_shift,
-                    num_cosets,
-                    num_cols_per_coset_stride,
-                    log_instances_per_block,
-                    stream,
-                )
-            }
+            } => monomials_to_evals_subwarp(
+                inputs_matrix,
+                &mut outputs_matrix,
+                log_n,
+                coset_index_base,
+                coset_factor_shift,
+                num_cosets,
+                num_cols_per_coset_stride,
+                log_instances_per_block,
+                stream,
+            ),
             super::NttKernelKind::MonomialsToEvalsSmemPacked {
                 log_instances_per_block,
                 ..
-            } => {
-                assert!(
-                    !transposed_monomials,
-                    "smem-packed forward NTT kernel does not support transposed monomials",
-                );
-                monomials_to_evals_smem_packed(
-                    inputs_matrix,
-                    &mut outputs_matrix,
-                    log_n,
-                    coset_index_base,
-                    coset_factor_shift,
-                    num_cosets,
-                    num_cols_per_coset_stride,
-                    log_instances_per_block,
-                    stream,
-                )
-            }
-            _ => {
-                assert!(
-                    !transposed_monomials,
-                    "compact 1-pass forward NTT kernel does not support transposed monomials",
-                );
-                monomials_to_evals_compact_1_pass(
-                    inputs_matrix,
-                    &mut outputs_matrix,
-                    log_n,
-                    coset_index_base,
-                    coset_factor_shift,
-                    num_cosets,
-                    num_cols_per_coset_stride,
-                    strategy.columns_per_launch,
-                    stream,
-                )
-            }
+            } => monomials_to_evals_smem_packed(
+                inputs_matrix,
+                &mut outputs_matrix,
+                log_n,
+                coset_index_base,
+                coset_factor_shift,
+                num_cosets,
+                num_cols_per_coset_stride,
+                log_instances_per_block,
+                stream,
+            ),
+            _ => monomials_to_evals_compact_1_pass(
+                inputs_matrix,
+                &mut outputs_matrix,
+                log_n,
+                coset_index_base,
+                coset_factor_shift,
+                num_cosets,
+                num_cols_per_coset_stride,
+                strategy.columns_per_launch,
+                stream,
+            ),
         };
     }
     if strategy.passes.len() == 2
@@ -574,10 +553,6 @@ fn dispatch_forward_multi_coset(
             super::NttKernelKind::MonomialsToEvalsFirstCompact { .. }
         )
     {
-        assert!(
-            !transposed_monomials,
-            "2-pass compact-initial forward NTT kernel does not support transposed monomials",
-        );
         let mut outputs_matrix = DeviceMatrixMut::new(outputs, trace_len);
         return monomials_to_evals_2_pass_compact_initial(
             inputs_matrix,
@@ -604,7 +579,6 @@ fn dispatch_forward_multi_coset(
             num_cols_per_coset_stride,
             strategy.cosets_per_launch,
             strategy.columns_per_launch,
-            transposed_monomials,
             stream,
         );
     }
@@ -623,7 +597,6 @@ fn dispatch_forward_multi_coset(
             log_n,
             log_lde_factor,
             global_coset,
-            transposed_monomials,
             ntt_ctx,
             // DIT is always single-pass and handled above; this fallback is for
             // 2/3-pass-compact shapes that ignore the scratch. Reborrow anyway
@@ -659,7 +632,6 @@ pub fn natural_monomials_to_bitreversed_evals_multi_coset(
     log_n: usize,
     log_lde_factor: usize,
     num_cols_per_coset_stride: usize,
-    transposed_monomials: bool,
     ntt_ctx: &crate::ntt_twiddles::DeviceContext,
     d_table_scratch: Option<&mut DeviceSlice<BF>>,
     stream: &CudaStream,
@@ -674,7 +646,6 @@ pub fn natural_monomials_to_bitreversed_evals_multi_coset(
         num_cosets,
         0,
         num_cols_per_coset_stride,
-        transposed_monomials,
         ntt_ctx,
         d_table_scratch,
         stream,
@@ -697,7 +668,6 @@ pub fn natural_monomials_to_bitreversed_evals_coset_range(
     num_cosets: usize,
     coset_index_base: usize,
     num_cols_per_coset_stride: usize,
-    transposed_monomials: bool,
     ntt_ctx: &crate::ntt_twiddles::DeviceContext,
     d_table_scratch: Option<&mut DeviceSlice<BF>>,
     stream: &CudaStream,
@@ -767,7 +737,6 @@ pub fn natural_monomials_to_bitreversed_evals_coset_range(
                 num_cols_per_coset_stride,
                 strategy.cosets_per_launch,
                 strategy.columns_per_launch,
-                transposed_monomials,
                 device_properties,
                 stream,
             )
@@ -783,7 +752,6 @@ pub fn natural_monomials_to_bitreversed_evals_coset_range(
                 num_cols_per_coset_stride,
                 strategy.cosets_per_launch,
                 strategy.columns_per_launch,
-                transposed_monomials,
                 stream,
             )
         }
@@ -798,7 +766,6 @@ pub fn natural_monomials_to_bitreversed_evals_coset_range(
                 num_cols_per_coset_stride,
                 strategy.cosets_per_launch,
                 strategy.columns_per_launch,
-                transposed_monomials,
                 stream,
             )
         }

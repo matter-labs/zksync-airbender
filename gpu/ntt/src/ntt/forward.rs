@@ -174,7 +174,6 @@ pub(crate) fn monomials_to_evals_3_pass(
     num_cols_per_coset: usize,
     cosets_per_launch: usize,
     columns_per_launch: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     // Multi-coset flat-blockIdx.x layout: initial pass packs
@@ -262,7 +261,6 @@ pub(crate) fn monomials_to_evals_3_pass(
             let args_initial = MonomialsToEvalsCompactArguments::new(
                 input_matrix,
                 output_matrix_mut,
-                transposed_monomials,
                 log_n as i32,
                 shared::checked_i32(tile_coset_base, "tile_coset_base"),
                 shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
@@ -518,7 +516,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_3_pass(
     num_cols_per_coset: usize,
     cosets_per_launch: usize,
     columns_per_launch: usize,
-    transposed_monomials: bool,
     device_properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -586,7 +583,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_3_pass(
             let args_initial = MonomialsToEvalsCompactArguments::new(
                 input_matrix,
                 output_matrix_mut,
-                transposed_monomials,
                 log_n as i32,
                 shared::checked_i32(tile_coset_base, "tile_coset_base"),
                 shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
@@ -629,7 +625,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass(
     num_cols_per_coset: usize,
     cosets_per_launch: usize,
     columns_per_launch: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let n = 1 << log_n;
@@ -710,7 +705,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass(
             let args_first = MonomialsToEvalsCompactArguments::new(
                 input_matrix,
                 output_matrix_mut,
-                transposed_monomials,
                 log_n as i32,
                 shared::checked_i32(tile_coset_base, "tile_coset_base"),
                 shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
@@ -751,7 +745,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass_compact(
     num_cols_per_coset: usize,
     cosets_per_launch: usize,
     columns_per_launch: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let initial_function = MonomialsToEvalsCompactFunction(
@@ -767,7 +760,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass_compact(
         num_cols_per_coset,
         cosets_per_launch,
         columns_per_launch,
-        transposed_monomials,
         stream,
         initial_function,
     )
@@ -805,7 +797,6 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass_compact_from_hypercube_fi
         num_cols_per_coset,
         cosets_per_launch,
         columns_per_launch,
-        false,
         stream,
         initial_function,
     )
@@ -821,22 +812,12 @@ fn natural_monomials_to_bitrev_evals_2_pass_compact_with_initial(
     num_cols_per_coset: usize,
     cosets_per_launch: usize,
     columns_per_launch: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
     initial_function: MonomialsToEvalsCompactFunction,
 ) -> CudaResult<()> {
     assert!(
         (13..=20).contains(&log_n),
         "2-pass-compact natural->bitrev NTT only supports log_n in [13, 20]"
-    );
-    // Pass 1's finest butterfly distance is 2^(log_n - 8), below the 1024-row
-    // transposition chunk for log_n < 18, and pass 2 exchanges rows WITHIN a
-    // chunk at every log_n, so pass 1 would have to resolve the layout on rows
-    // its own butterflies still straddle. No caller can ask for it:
-    // `log_size_supports_transposed_monomials` is false below log_n = 21.
-    assert!(
-        !transposed_monomials,
-        "2-pass-compact natural->bitrev NTT (log_n in [13, 20]) has no transposed_monomials path"
     );
     let n = 1 << log_n;
     assert_eq!(inputs_matrix.rows(), n);
@@ -929,7 +910,6 @@ fn natural_monomials_to_bitrev_evals_2_pass_compact_with_initial(
             let args_initial = MonomialsToEvalsCompactArguments::new(
                 input_matrix,
                 output_matrix_mut,
-                transposed_monomials,
                 log_n as i32,
                 shared::checked_i32(tile_coset_base, "tile_coset_base"),
                 shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
@@ -1071,7 +1051,6 @@ pub(crate) fn natural_fused_multi_coset_3_pass(
         let args = MonomialsToEvalsCompactArguments::new(
             chunk_const(0),
             out_mut,
-            false,
             log_n as i32,
             shared::checked_i32(coset, "coset"),
             shift_arg,
@@ -1227,7 +1206,6 @@ pub(crate) fn monomials_to_evals_compact_1_pass(
         let args = MonomialsToEvalsCompactArguments::new(
             input_matrix,
             output_matrix_mut,
-            false,
             log_n as i32,
             shared::checked_i32(coset_index_base, "coset_index_base"),
             shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
@@ -1339,7 +1317,6 @@ pub(crate) fn monomials_to_evals_subwarp(
     let args = MonomialsToEvalsCompactArguments::new(
         input_matrix,
         output_matrix_mut,
-        false,
         log_n as i32,
         shared::checked_i32(coset_index_base, "coset_index_base"),
         shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
@@ -1447,7 +1424,6 @@ pub(crate) fn monomials_to_evals_smem_packed(
     let args = MonomialsToEvalsCompactArguments::new(
         input_matrix,
         output_matrix_mut,
-        false,
         log_n as i32,
         shared::checked_i32(coset_index_base, "coset_index_base"),
         shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
@@ -1570,7 +1546,6 @@ pub(crate) fn monomials_to_evals_2_pass_compact_initial(
             let args = MonomialsToEvalsCompactArguments::new(
                 input_matrix,
                 output_matrix_mut,
-                false,
                 log_n as i32,
                 shared::checked_i32(tile_coset_base, "tile_coset_base"),
                 shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
@@ -1619,7 +1594,6 @@ pub(crate) fn monomials_to_evals_2_pass_smem(
     log_n: usize,
     coset_factor_power: usize,
     columns_per_launch: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     // Legacy 2-pass forward NTT for log_n in [23, 24] when the column footprint
@@ -1671,7 +1645,6 @@ pub(crate) fn monomials_to_evals_2_pass_smem(
         let args = MonomialsToEvalsInitialArguments::new(
             input_matrix,
             output_matrix_mut,
-            transposed_monomials,
             log_n as i32,
             shared::checked_i32(coset_factor_power, "coset_factor_power"),
         );

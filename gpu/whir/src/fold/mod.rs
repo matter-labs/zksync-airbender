@@ -193,7 +193,6 @@ pub(super) fn initialize_batched_monomial_form(
         &vectorized_batched_evals_matrix,
         &mut state.sumchecked_poly_monomial_form,
         log_domain_size,
-        false, // transposed_monomials
         stream,
         context.get_device_properties(),
     )?;

@@ -224,10 +224,6 @@ pub(crate) fn natural_evals_to_bitreversed_coeffs(
 
 pub const MIN_LOG_N_FOR_MULTISTAGE_KERNELS: usize = 21;
 
-pub fn log_size_supports_transposed_monomials(log_n: usize) -> bool {
-    log_n >= MIN_LOG_N_FOR_MULTISTAGE_KERNELS
-}
-
 /// Smallest `log_n` [`natural_monomials_to_bitreversed_evals_multi_coset`] has a
 /// dispatch family for.
 pub const MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE: usize = strategy::TWO_PASS_COMPACT_MIN_LOG_N;

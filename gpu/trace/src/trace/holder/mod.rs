@@ -712,7 +712,6 @@ impl TraceHolder<BF> {
                         source_column,
                         &mut coeff_scratch[0..domain_size],
                         log_n,
-                        false,
                         stream,
                         context.get_device_properties(),
                     )?;
@@ -728,7 +727,6 @@ impl TraceHolder<BF> {
                         log_n,
                         self.log_lde_factor as usize,
                         columns_count,
-                        false,
                         ntt_ctx,
                         None,
                         stream,
@@ -779,7 +777,6 @@ impl TraceHolder<BF> {
                     log_domain_size as usize,
                     self.log_lde_factor as usize,
                     columns_count,
-                    false,
                     context.ntt_device_context(),
                     None,
                     context.get_exec_stream(),
