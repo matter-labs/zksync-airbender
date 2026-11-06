@@ -75,7 +75,7 @@ pub struct UnifiedProverOutput {
 /// = `security_bits - (123 - 40 - 2)`. `prover` cannot depend on `verifier_common` (it is the
 /// other way round), so this mirrors the derivation; the FSV test asserts the fixture's bits
 /// equal `MEMORY_DELEGATION_POW_BITS`, so drift fails loudly there.
-const fn memory_delegation_pow_bits(level: SecurityLevel) -> u32 {
+pub(super) const fn memory_delegation_pow_bits(level: SecurityLevel) -> u32 {
     level.security_bits().saturating_sub(123 - 40 - 2) as u32
 }
 
@@ -617,7 +617,7 @@ where
 /// Memory-transcript seed for the unified circuit. Must match
 /// `verify_full_statement_for_unified_circuit`'s absorb order exactly (and the
 /// `Blake2sBufferingTranscript::<true>` reduced-rounds setting it uses).
-fn fs_transform_for_unified_circuit(
+pub(super) fn fs_transform_for_unified_circuit(
     register_final_values: &[FinalRegisterValue],
     final_pc: u32,
     final_timestamp: TimestampScalar,
