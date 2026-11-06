@@ -106,3 +106,16 @@ include twelve original Sail executions and six state stutters, scoped separatel
 from a complete positive native 117-equation fixture. Numerical PC/wrap, normal
 preparation/retirement/fetched execution, other combined profiles and native
 setup/physical/protocol/terminal/init remain open.
+
+## Derived numerical PC successor
+
+[The short PC theorem](PC.lean) derives incoming canonical bounds/alignment and
+bounded native final-PC+4 with RV32 wrap from original public image/shift decoding
+and actual accepted constraints. [Trace assembly](../../../../Proofs/Trace/Families/ReducedMachine/PC.lean)
+discharges the local input bound/alignment from original query membership; native
+carries/output ranges are derived from actual polynomials. The modeled fixed table
+remains explicit; this table-independent PC theorem implies no physical setup
+fidelity. [Eight regressions](../../../../../Tests/NativeReducedPC.lean) retain
+carry/corruption/wrap/x0 behavior. Positive fixtures are the exact increment slice,
+not full117-equation accepted rows. Normal PC preparation/retirement/fetched
+execution, other profiles and protocol/padding/terminal/init remain open.

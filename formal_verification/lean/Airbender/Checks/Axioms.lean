@@ -1,3 +1,4 @@
+import Tests.NativeReducedPC
 import Tests.NativeReducedClauses
 import Tests.NativeReducedRegisters
 import Tests.NativeReducedResults
@@ -2815,3 +2816,17 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedClauses.discarded_native_clause
 #print axioms Tests.NativeReducedClauses.initialized_row_clause
 #print axioms Tests.NativeReducedClauses.illegal_immediates
+#print axioms Airbender.ReducedMachine.NativePCProofs.default_pc_successor
+#print axioms Airbender.ReducedMachine.NativePCProofs.query_pc_bound
+#print axioms Airbender.ReducedMachine.NativePCProofs.selected_pc_successor
+#print axioms Airbender.ReducedMachine.NativePCProofs.decoded_pc_successor
+#print axioms Airbender.ReducedMachine.NativePCProofs.trace_pc_successor
+#print axioms Airbender.ReducedMachine.Native.public_shift_pc_successor
+#print axioms Tests.NativeReducedPC.actual_increment_edges
+#print axioms Tests.NativeReducedPC.edge_values
+#print axioms Tests.NativeReducedPC.corrupt_low_rejected
+#print axioms Tests.NativeReducedPC.corrupt_high_rejected
+#print axioms Tests.NativeReducedPC.decoded_wrap
+#print axioms Tests.NativeReducedPC.oversized_successor_rejected
+#print axioms Tests.NativeReducedPC.original_query_successor
+#print axioms Tests.NativeReducedPC.discarded_pc_advances

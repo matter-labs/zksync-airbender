@@ -7693,6 +7693,55 @@
       "backport_reuse_revision": "79aeb85139d06829d73ae2b92e29f19694362e88",
       "backport_reuse_path": "Tests/ShiftHistoryFixture.lean",
       "backport_reuse_sha256": "589d3f257c7fb119d153ed3ee942a3d12cc06a2e91e48e4e7d7a7a62daff4197"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativePC.lean",
+      "change": "Reuse the unchanged v2 pure carry/inverse/select argument and Word.add_of_limbs endpoint after checking actual regenerated reduced Boolean18/19, increment34..39, inverse51/53 and candidate49/50 coordinates. Derive output bounds internally; no old split constraint or PC mapping is assumed.",
+      "backport_reuse_revision": "46521ef965cbc1bb11f1842dc3468ac68a25fab4",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/PC.lean",
+      "backport_reuse_sha256": "cfdb542bc1e48d34258ac66237d647310e9bc1de63f08ec3f3813a7b850899a8"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativePC.lean",
+      "change": "Compose the already checked actual final-PC13/14 selection with the new numerical increment proof; derive selected masks from original public instruction fields rather than assume a result.",
+      "backport_reuse_revision": "46521ef965cbc1bb11f1842dc3468ac68a25fab4",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftWrite.lean",
+      "backport_reuse_sha256": "4f5aeae6fec3445150e22ca1b20a0de3068061b0138d5166fd78e6cc9f97bce8"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativePC.lean",
+      "change": "Reuse actual query recovery and original public sparse byte/stateful decoding to derive incoming canonical PC bounds/alignment, not a supplied range or exclusion premise.",
+      "backport_reuse_revision": "46521ef965cbc1bb11f1842dc3468ac68a25fab4",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftDecoder.lean",
+      "backport_reuse_sha256": "68c12cfd37985cc94287e047c3b0a24aae06196f94fa715b311b8662bed9596d"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/PC.lean",
+      "change": "Add only canonical incoming/outgoing native PC observables and the numerical RV32 successor property, retaining actual checked0/1/13/14 coordinates and separating execution/setup fidelity.",
+      "backport_reuse_revision": "46521ef965cbc1bb11f1842dc3468ac68a25fab4",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/ShiftWrite.lean",
+      "backport_reuse_sha256": "fca12076f110ec06efd39b262d1b8243b560c3da874d242ed7ed60767fa7656d"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/PC.lean",
+      "change": "Reuse actual native registry row/query transport for accepted complete public decoder membership. PC equations are table-independent; the modeled fixed table remains explicit rather than assumed physically certified.",
+      "backport_reuse_revision": "46521ef965cbc1bb11f1842dc3468ac68a25fab4",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/Decoder.lean",
+      "backport_reuse_sha256": "7bcd5d921956fa4cb7f9ca206e7b8be02f2cf24b51838b53dde4426c3c9da6e2"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/PC.lean",
+      "change": "Retain the small public image/accepted/full-decoding interface and expose canonical/aligned incoming PC, derived outgoing range and RV32 PC+4 without per-row carry, range, successor or state answers.",
+      "backport_reuse_revision": "46521ef965cbc1bb11f1842dc3468ac68a25fab4",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/Decoder.lean",
+      "backport_reuse_sha256": "b256a93074d0f18b00ba52d1eb4604748ca0bf1c5546cf9da850af3b3c0cb9eb"
+    },
+    {
+      "path": "Tests/NativeReducedPC.lean",
+      "change": "Retain carry/wrap regression goals with newly constructed actual reduced increment-slice assignments. Eight roots check all eight actual imported increment assertions at four edges, corrupt outputs, original decoded wrap/query, oversized output rejection and x0 advancement. No old split accepted fixture or complete117-equation positivity is transferred.",
+      "backport_reuse_revision": "46521ef965cbc1bb11f1842dc3468ac68a25fab4",
+      "backport_reuse_path": "Tests/ShiftPC.lean",
+      "backport_reuse_sha256": "10e9361fd0bed1cf8772903baf97a4a716d15aeda2cdc89ba97a9ebc2643261c"
     }
   ],
   "setup_artifacts": [

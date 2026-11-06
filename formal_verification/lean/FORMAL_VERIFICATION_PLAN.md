@@ -60,8 +60,9 @@ Full combined row effects and execution remain pending. See the
    original Sail cell/GPR histories and decoder replay now follow for selected
    shifts. Original selected register/immediate operands and retained Sail shift
    clauses now follow from actual native routing/results and initialized GPR
-   history, including x0. Other profiles, numerical PC successor and fetched
-   execution remain open.
+   history, including x0. Canonical numerical PC+4 and RV32 rollover now follow
+   from original public decoding and actual native carry/inverse/select equations.
+   Other profiles and normal preparation/retirement/fetched execution remain open.
    The former projection allocation gap is closed by generic projections and separate proof units,
    without increasing limits or adding result/equivalence premises.
 3. Compose initialized combined histories, public decoding and original execution.
@@ -77,8 +78,9 @@ Full combined row effects and execution remain pending. See the
    canonical RV32 words and original Sail cell/GPR histories now follow, including
    actual readonly aliases, masked writes, code/misa frames and decoder replay in
    constructed pre-states. Original shift operand transport and clause execution
-   are now checked at the same derived after-states. Numerical PC preparation/
-   retirement and full fetched execution remain unfinished.
+   are now checked at the same derived after-states. Numerical PC+4/wrap and
+   incoming bounds/alignment are now derived without per-row PC answers. Normal
+   preparation/retirement and full fetched execution remain unfinished.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.
 

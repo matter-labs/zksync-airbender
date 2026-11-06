@@ -126,8 +126,10 @@ now close the selected profile's numerical candidate and actual masked-write
 connection. This is proof progress, not a native defect or fix. Selected-profile
 original Sail cell/GPR transport is now checked from actual mixed-port constraints and initialized
 history. Original selected shift operands and Sail clauses are now checked at
-the actual GPR after-states. Numerical PC, fetched execution and full protocol
-behavior remain open. No issue-handling assumption is introduced.
+the actual GPR after-states. [Actual native numerical PC+4/wrap](Airbender/Review/Trace/Families/ReducedMachine/PC.lean)
+now follows from original public decoding and native carry equations. Normal
+preparation/retirement, fetched execution and full protocol behavior remain open.
+No issue-handling assumption is introduced.
 Confirmed native-v2 defects remain zero.
 
 ## Open bindings

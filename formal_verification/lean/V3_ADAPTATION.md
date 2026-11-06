@@ -287,3 +287,20 @@ Review roots. Numerical PC/wrap, preparation/retirement/fetched execution, other
 combined profiles and worker/protocol/padding/terminal/init remain open. Native
 preprocessing/ROM/physical and general compiler/crypto/completeness boundaries
 remain unchanged; no native issue, circuit fix or new assumption is added.
+
+## Actual native reduced numerical PC
+
+[The public PC successor](Airbender/Review/Trace/Families/ReducedMachine/PC.lean)
+now derives incoming canonical bounds/alignment and bounded actual final-PC+4
+with complete RV32 wrap from original public decoding and accepted native rows.
+The prior v2 arithmetic argument is reused only after checking new native Boolean,
+carry, inverse, default candidate and selected final-PC coordinates; no split
+constraint or table-equivalence premise is transferred. The polynomial proof keeps
+generic modeled setup explicit and adds no physical/preprocessing/ROM claim.
+Eight regressions check exact native increment slices, corruption rejection,
+original decoded wrap/query agreement, oversized successors and x0 advancement.
+The positive slice fixtures are scoped below complete117-equation acceptance.
+All 2,621 standard-only axiom and 159 public Review roots pass at unchanged caps.
+Normal PC preparation/retirement/fetched execution, other combined profiles and
+worker/protocol/padding/terminal/init remain open; this is not parity or a native
+finding/fix. General compiler/physical/cryptographic/completeness boundaries remain.

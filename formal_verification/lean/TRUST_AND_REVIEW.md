@@ -198,6 +198,20 @@ zero-width ABI group stays absent rather than resolving to memory column zero.
 Unsupported request profiles and altered group extents reject. Retaining these
 coordinates does not close runtime CSR setup or issue/fulfillment semantics.
 
+[Native numerical PC advancement](Airbender/Review/Trace/Families/ReducedMachine/PC.lean)
+now derives incoming canonical bounds/alignment and bounded outgoing RV32 PC+4,
+including full rollover, from original public shift decoding and actual native
+acceptance. [Small observables](Airbender/Review/Circuits/ReducedMachine/PC.lean)
+supply no range, carry or successor answer. [Calculation proofs](Airbender/Proofs/ReducedMachine/NativePC.lean)
+use actual Boolean18/19 and increment34..39 equations, then the checked shift
+selection into final13/14. The generic modeled fixed table stays explicit because
+this polynomial PC proof needs no lookup-table interpretation; it does not certify
+physical setup or ROM fidelity. Positive regressions cover the exact eight-equation
+increment slice only, not complete native accepted execution rows. Original normal
+preparation/retirement and fetched initialized execution remain separate, as do
+other combined profiles and protocol/padding/terminal/init/cryptographic boundaries.
+
+
 ## Import and generation fidelity
 
 Mersenne31 coefficients are non-Montgomery residues in 0..=2147483647; the upper

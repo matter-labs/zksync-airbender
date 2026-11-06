@@ -593,11 +593,58 @@ and compiler/preprocessing/ROM/physical/cryptographic/completeness boundaries
 remain separate. No native defect, production fix or issue-handling assumption
 is introduced.
 
+## Native reduced numerical PC successor (6 November 2026)
+
+[The short public PC claim](Airbender/Review/Trace/Families/ReducedMachine/PC.lean)
+now derives canonical/aligned incoming PC, bounded outgoing PC and complete RV32
+PC+4 for every selected original shift row, including full top-word rollover.
+Original public byte/stateful decoder construction, full sparse/padded membership
+and actual native acceptance are the inputs. Incoming range/alignment, native
+carry bits, output ranges and the successor are conclusions, not per-row answers.
+The PC equations are independent of fixed-table meanings, so the generic native
+registry's modeled setup remains explicit; no setup equivalence or physical
+preprocessing claim is needed or inferred. The existing concrete fixed-pool
+fixture and its separate fidelity boundary are unchanged.
+
+[Small PC observables](Airbender/Review/Circuits/ReducedMachine/PC.lean) use actual
+native incoming0/1 and outgoing13/14 columns. [Native calculation](Airbender/Proofs/ReducedMachine/NativePC.lean)
+checks Boolean equations18/19, low/high carry gates/inverses/selects34..39,
+inverse columns51/53, carry columns52/54 and default candidate49/50. It adapts the
+prior checked v2 arithmetic argument only after those new native connections;
+actual selected final-PC equations110/111 complete the link. Original public
+query/decoder sources derive incoming canonical bounds/alignment and exclude
+padding. The internal bounded/aligned-input calculation is fully discharged by
+[trace assembly](Airbender/Proofs/Trace/Families/ReducedMachine/PC.lean). No old
+split constraint, table, metadata or expected successor is assumed equivalent.
+
+[Eight PC regression roots](Tests/NativeReducedPC.lean) check all eight actual
+imported increment assertions at zero, the last noncarrying low word, low carry
+and full RV32 wrap; independent numerical edges; corrupted low/high rejection;
+full-native conditional decoded wrap; public rejection of oversized
+successors; exact original decoded-PC agreement; and x0 PC advancement despite
+discarded GPR writes. The positive fixtures satisfy the exact eight-equation PC
+gadget, not all117native equations/lookups. Complete positive accepted execution
+fixtures remain open. Two deep closed mutation evaluations reached the default
+recursion limit; symbolic polynomial differences replaced them without raising
+proof/resource limits. All owned processes terminated, with no resource-limit hit.
+
+All affected bounded modules, 2,621 explicit standard-only axiom roots and 159
+public Review roots pass with exact provenance, four guide names, 2,560 guide
+links/anchors and layer gates. Full Review used 539.69 MiB footprint/3096.38 MiB
+resident in 14.06 seconds; independent pinned provenance used 16.17/33.31 MiB
+in 6.58 seconds. Both report no owned survivors at unchanged ceilings. Exact
+provenance checks 189 v3-origin and 829 prior-backport identities; production
+inputs and dependencies are unchanged. Original normal PC preparation/retirement and fetched initialized execution remain open;
+numerical PC+4 alone does not establish them. Other combined operations and native
+worker/accounting/protocol/padding/terminal/init and compiler/preprocessing/ROM/
+physical/cryptographic/completeness boundaries remain separate. No native defect,
+production fix or issue-handling assumption is introduced.
+
 ## Checked coverage
 
 | Circuit | Coverage |
 | --- | --- |
-| [Native combined reduced](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean) | Actual 117-equation artifact and complete native fixed pool. Selected original public shifts derive initialized ranges, canonical keys and [complete RV32 candidates/actual x0-masked writes](Airbender/Review/Trace/Families/ReducedMachine/Results.lean). [Original Sail register histories](Airbender/Review/Trace/Families/ReducedMachine/Registers.lean) now derive states/GPR transfers/code frames and decoder replay. [Original shift clause history](Airbender/Review/Trace/Families/ReducedMachine/Clauses.lean) now derives operand selection and original clause execution at the actual GPR after-state. Numerical PC/fetched execution, other profiles and protocol/terminal/init remain open. The historical shipped JSON is distinct. |
+| [Native combined reduced](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean) | Actual 117-equation artifact and complete native fixed pool. Selected original public shifts derive initialized ranges, canonical keys and [complete RV32 candidates/actual x0-masked writes](Airbender/Review/Trace/Families/ReducedMachine/Results.lean). [Original Sail register histories](Airbender/Review/Trace/Families/ReducedMachine/Registers.lean) now derive states/GPR transfers/code frames and decoder replay. [Original shift clause history](Airbender/Review/Trace/Families/ReducedMachine/Clauses.lean) now derives operand selection and original clause execution at the actual GPR after-state. [Numerical native PC+4/wrap](Airbender/Review/Trace/Families/ReducedMachine/PC.lean) now follows from original public decoding and actual native carry equations. Normal preparation/retirement/fetched execution, other profiles and protocol/terminal/init remain open. The historical shipped JSON is distinct. |
 | [ADD/SUB](Airbender/Review/Circuits/AddSub/Theorems.lean) | Conditional ADD/ADDI/SUB/LUI/AUIPC destination and original Sail PC/register effects. Packed native masks derive the eight selector bits. The actual masked destination write is observed. Aligned PC wraparound and discarded x0 writes are included. |
 
 | Integration | Coverage |

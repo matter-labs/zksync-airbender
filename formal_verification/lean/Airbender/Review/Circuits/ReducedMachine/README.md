@@ -209,3 +209,16 @@ to execute retained original Sail clauses at the same after-state, including x0.
 twelve original Sail forms; positive local execution is not complete native
 117-equation acceptance. Numerical PC/preparation/retirement/fetched execution,
 other profiles and physical/protocol boundaries remain separate.
+
+## Numerical PC advancement
+
+[Actual PC observables](PC.lean) retain native0/1 and13/14 columns.
+[The numerical proof](../../../Proofs/ReducedMachine/NativePC.lean) connects actual
+Boolean18/19 and carry/inverse/select34..39 equations to default49/50 and then the
+checked final-PC selection. [The public trace claim](../../Trace/Families/ReducedMachine/PC.lean)
+derives incoming range/alignment from original public decoding and outgoing bounds
+and RV32 PC+4/wrap from native acceptance. No per-row PC/range/carry/successor answer
+is supplied. [Eight regressions](../../../../Tests/NativeReducedPC.lean) include
+positive actual eight-equation PC slices, explicitly below full native acceptance.
+Normal preparation/retirement/fetched execution, other profiles and native
+setup/physical/protocol/padding/terminal/init stay separate.
