@@ -6,7 +6,6 @@ namespace Airbender.Keccak.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 set_option maxRecDepth 65536
-set_option maxHeartbeats 64000000
 
 theorem chi_lanes_18 (state : LaneState) :
     logicalLanes 19 (chiPhase (18 : Fin 24) state) = chi (logicalLanes 19 state) := by
