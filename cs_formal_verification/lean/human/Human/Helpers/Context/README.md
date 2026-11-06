@@ -21,6 +21,8 @@ results assumes the desired row reads or an independently chosen execution order
 
 [Model](Model.lean) defines imported row interpretation, native state/memory
 tokens and acceptance: actual constraints, active rows and logical permutations.
+[FamilyLayout](FamilyLayout.lean) registers the restricted ADD/SUB + word-memory scope's
+artifacts; it is kept apart so that only modules using those artifacts rebuild when they change.
 [Columns](Columns.lean), [Timestamps](Timestamps.lean) and [PCState](PCState/Model.lean)
 preserve the full native encodings and clock/state boundaries.
 
@@ -28,7 +30,8 @@ preserve the full native encodings and clock/state boundaries.
 artifact layouts. The other registry modules provide family-specific trace data
 and public inputs; they do not assert instruction execution.
 
-[Boundary](Boundary.lean) binds public state/program/domain and initial clocks.
+[Boundary](Boundary.lean) binds public state/program/domain and initial clocks;
+[ExecutionBoundary](ExecutionBoundary.lean) adds the restricted scope's physical image and tables.
 [Interfaces](Interfaces.lean) packages shared per-circuit history/table inputs.
 [PooledBoundary](PooledBoundary.lean) provides physical-image and native-boot
 boundaries for the integrated execution claim.
