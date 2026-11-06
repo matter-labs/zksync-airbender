@@ -304,3 +304,23 @@ All 2,621 standard-only axiom and 159 public Review roots pass at unchanged caps
 Normal PC preparation/retirement/fetched execution, other combined profiles and
 worker/protocol/padding/terminal/init remain open; this is not parity or a native
 finding/fix. General compiler/physical/cryptographic/completeness boundaries remain.
+
+## Selected native reduced original fetched execution
+
+[The public retired-history](Airbender/Review/Trace/Families/ReducedMachine/Execution.lean)
+and [fetched-execution claims](Airbender/Review/Trace/Families/ReducedMachine/FetchedExecution.lean)
+now derive original normal nextPC/clause/tick_pc execution and finite successful
+four-byte Sail stepping to actual native terminal PC/cell reads for initialized
+selected shifts. Actual native ports/clauses/numerical PC and derived ranges
+justify reuse of shared control-frame/chronological composition; original public
+stateful decoder replay and all intermediate states/order are conclusions.
+The fixedData/public initialization/full decoding/aligned-domain boundaries stay
+explicit; no source range/result/state/table-equivalence answer is added.
+All twelve original forms and x0/wrap retirement, initialized segment extraction,
+terminal-bound rejection and concrete empty actual-native execution pass. The
+positive fixtures are local Sail or zero-row native paths, not complete nonempty
+117-equation acceptance. All 2,634 standard-only axiom and 161 public Review roots
+pass. Other combined operations, workers/accounting/protocol/padding/terminal/init,
+native public/fixed-ROM/physical setup, general compiler/crypto/completeness and
+original interrupt/exception paths remain separate. Selected-profile execution
+is not full reduced-machine coverage or v3 parity. No native fix/issue/assumption.

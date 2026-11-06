@@ -127,9 +127,11 @@ connection. This is proof progress, not a native defect or fix. Selected-profile
 original Sail cell/GPR transport is now checked from actual mixed-port constraints and initialized
 history. Original selected shift operands and Sail clauses are now checked at
 the actual GPR after-states. [Actual native numerical PC+4/wrap](Airbender/Review/Trace/Families/ReducedMachine/PC.lean)
-now follows from original public decoding and native carry equations. Normal
-preparation/retirement, fetched execution and full protocol behavior remain open.
-No issue-handling assumption is introduced.
+now follows from original public decoding and native carry equations. [Initialized
+original normal/fetched selected-shift execution](Airbender/Review/Trace/Families/ReducedMachine/FetchedExecution.lean)
+now composes to actual native terminal PC/cell reads under explicit public
+interfaces. Other combined profiles, physical setup and full protocol behavior
+remain open. No issue-handling assumption is introduced.
 Confirmed native-v2 defects remain zero.
 
 ## Open bindings

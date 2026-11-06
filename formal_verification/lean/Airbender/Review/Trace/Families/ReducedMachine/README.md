@@ -119,3 +119,18 @@ fidelity. [Eight regressions](../../../../../Tests/NativeReducedPC.lean) retain
 carry/corruption/wrap/x0 behavior. Positive fixtures are the exact increment slice,
 not full117-equation accepted rows. Normal PC preparation/retirement/fetched
 execution, other profiles and protocol/padding/terminal/init remain open.
+
+## Initialized original retired and fetched execution
+
+[Original instruction history](Execution.lean) now derives actual row states and
+original nextPC preparation/clause/tick_pc retirement. [Finite fetched execution](FetchedExecution.lean)
+composes the derived native-clock/PC chain, original public byte/stateful decoder
+replay and local retired steps into actual native terminal PC/cell reads. [Proofs](../../../../Proofs/Trace/Families/ReducedMachine/Composition.lean)
+assemble every state/order/read/range/PC internally. Concrete fixedData acceptance,
+public initialization/full original shift decoding and aligned tracked cells stay
+explicit; no table identity or execution/state answer is a premise. [Six regression roots](../../../../../Tests/NativeReducedExecution.lean)
+across the retirement module and [empty-boundary module](../../../../../Tests/NativeReducedFetched.lean)
+retain x0/PC wrap, constructed initialized segments, terminal rejection and actual
+zero-row acceptance. A complete positive nonempty117-equation native fixture,
+other combined profiles and setup/physical/protocol/padding/terminal/init remain
+open. Successful ordinary four-byte Sail paths do not include interrupts/exceptions.

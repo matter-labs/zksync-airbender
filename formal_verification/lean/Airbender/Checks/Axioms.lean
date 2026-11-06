@@ -1,3 +1,5 @@
+import Tests.NativeReducedExecution
+import Tests.NativeReducedFetched
 import Tests.NativeReducedPC
 import Tests.NativeReducedClauses
 import Tests.NativeReducedRegisters
@@ -2830,3 +2832,16 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedPC.oversized_successor_rejected
 #print axioms Tests.NativeReducedPC.original_query_successor
 #print axioms Tests.NativeReducedPC.discarded_pc_advances
+#print axioms Airbender.ReducedMachine.NativeShiftExecutionProofs.local_row_execution
+#print axioms Airbender.ReducedMachine.NativeShiftExecutionProofs.image_instruction_history
+#print axioms Airbender.ReducedMachine.Native.public_shift_instruction_history
+#print axioms Airbender.ReducedMachine.NativeShiftExecutionProofs.image_fetched_step
+#print axioms Airbender.ReducedMachine.NativeShiftExecutionProofs.image_terminal_pc_bound
+#print axioms Airbender.ReducedMachine.NativeShiftExecutionProofs.image_execution_soundness
+#print axioms Airbender.ReducedMachine.Native.public_shift_execution
+#print axioms Tests.NativeReducedExecution.original_retirement
+#print axioms Tests.NativeReducedExecution.discarded_retirement
+#print axioms Tests.NativeReducedExecution.oversized_terminal_rejected
+#print axioms Tests.NativeReducedExecution.initialized_retirement
+#print axioms Tests.NativeReducedFetched.empty_execution
+#print axioms Tests.NativeReducedFetched.empty_top_endpoint

@@ -222,3 +222,17 @@ is supplied. [Eight regressions](../../../../Tests/NativeReducedPC.lean) include
 positive actual eight-equation PC slices, explicitly below full native acceptance.
 Normal preparation/retirement/fetched execution, other profiles and native
 setup/physical/protocol/padding/terminal/init stay separate.
+
+## Original initialized selected-shift execution
+
+[The public retired-history claim](../../Trace/Families/ReducedMachine/Execution.lean)
+and [finite fetched-execution claim](../../Trace/Families/ReducedMachine/FetchedExecution.lean)
+now derive original successful normal four-byte Sail steps from actual native
+matching and public initialization/full stateful shift decoding. [Local proof](../../../Proofs/ReducedMachine/NativeShiftExecution.lean)
+uses actual port/GPR/clause and PC facts; [trace composition](../../../Proofs/Trace/Families/ReducedMachine/Composition.lean)
+derives row order, all states, decoder replay and terminal PC/cell reads. No local
+range/result/state/successor answer is supplied. [Retirement regressions](../../../../Tests/NativeReducedExecution.lean)
+and [empty actual-native boundaries](../../../../Tests/NativeReducedFetched.lean)
+keep positive local Sail/zero-row scope below complete nonempty117-equation native
+acceptance. Other combined profiles and native setup/physical/protocol/terminal/init
+remain open; this is selected-profile coverage, not full machine/parity.

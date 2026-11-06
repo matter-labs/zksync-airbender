@@ -161,3 +161,11 @@ are derived; no per-row result or intermediate state is supplied. Readonly
 immediate/x0 aliases remain in matching. Numerical PC/preparation/retirement
 and fetched execution, other profiles and physical/setup/protocol closure remain
 separate from this original-clause result.
+
+[Selected native reduced fetched execution](../../Trace/Families/ReducedMachine/FetchedExecution.lean)
+now composes original preparation/clause/retirement over native-clock-ordered
+states and PC links derived by actual matching. Original public initialization,
+full stateful shift decoding and aligned tracked domain are the inputs; local
+states/ranges/reads/results/PC are conclusions. This selected successful four-byte
+profile does not certify other combined operations or general native setup/ROM/
+physical/protocol/padding/terminal/init/completeness boundaries.

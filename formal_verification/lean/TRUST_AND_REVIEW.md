@@ -8,8 +8,12 @@ For the active combined reduced machine, start with the
 and [short native row theorem](Airbender/Review/Circuits/ReducedMachine/Theorems.lean).
 The checked claims include sign/high-byte queries, selector domains, selected
 shift routing/filler, both contribution queries, actual masked port writes and
-default-PC selection. The decoded shift mask remains explicit; instruction and
-whole-execution soundness are open. Earlier standalone libraries retain their separate scope.
+default-PC selection. Local row theorems retain explicit decoded masks; the
+[initialized original shift execution](Airbender/Review/Trace/Families/ReducedMachine/FetchedExecution.lean)
+derives masks, reads, states and actual PC/terminal effects from native matching
+and the stated original public initialization/decoder interfaces. Other combined
+profiles and whole-machine protocol/physical enforcement remain open. Earlier
+standalone libraries retain their separate scope.
 
 Start with [Properties](Airbender/Review/Helpers/Properties.lean), then the short
 [ADD/SUB theorems](Airbender/Review/Circuits/AddSub/Theorems.lean) and their
@@ -211,6 +215,24 @@ increment slice only, not complete native accepted execution rows. Original norm
 preparation/retirement and fetched initialized execution remain separate, as do
 other combined profiles and protocol/padding/terminal/init/cryptographic boundaries.
 
+
+[Selected native reduced fetched execution](Airbender/Review/Trace/Families/ReducedMachine/FetchedExecution.lean)
+now derives finite original successful four-byte Sail stepping from the actual
+public initial state to native terminal PC and all terminal cell reads. [Retired
+instruction histories](Airbender/Review/Trace/Families/ReducedMachine/Execution.lean)
+construct original normal_base_next_pc/clause/tick_pc execution at actual row
+states. Public initialImage/PC construction, complete original sparse/stateful
+shift decoding, aligned tracked cells and acceptance at concrete fixedData are
+the inputs. Every local read/range/selector/result/successor and intermediate
+state/replay/row order is derived. [Small observables](Airbender/Review/Helpers/Memory/ReducedMachineExecution.lean)
+add no desired execution/state premise. FixedData selects the exact native pool;
+it supplies no equivalence with arbitrary setup, native Rust public decoder-export
+certificate or physical preprocessing/ROM enforcement. Other operation profiles,
+worker/caller/accounting/protocol spans, padding/terminal and physical init/teardown
+remain open. Original interrupt/exception paths, general compiler/Rust/JSON,
+cryptographic enforcement and completeness remain separately scoped. Positive
+local Sail and zero-row native fixtures do not establish a complete positive
+nonempty117-equation native execution witness. No new issue or assumption is added.
 
 ## Import and generation fidelity
 

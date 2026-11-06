@@ -7742,6 +7742,104 @@
       "backport_reuse_revision": "46521ef965cbc1bb11f1842dc3468ac68a25fab4",
       "backport_reuse_path": "Tests/ShiftPC.lean",
       "backport_reuse_sha256": "10e9361fd0bed1cf8772903baf97a4a716d15aeda2cdc89ba97a9ebc2643261c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftExecution.lean",
+      "change": "Reuse the original nextPC preparation/control-frame/retirement argument after actual reduced port, retained-clause and PC proofs. No old split native constraint, mask, table or source bound is transferred publicly.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/Execution.lean",
+      "backport_reuse_sha256": "c9d97b77d2c50fd3447cfc808658a3eaf9cc2337fe418342201dd352b7298b5d"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftExecution.lean",
+      "change": "Use checked actual mixed native source/destination addresses and readonly metadata to recover original reads/writes after control-state transport, including x0/immediate aliases.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftPorts.lean",
+      "backport_reuse_sha256": "ea9c1908ff633fed595c1cf3ff12dec95eaf9f6589a58813a91bcd1987e7a494"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftExecution.lean",
+      "change": "Instantiate the already checked retained original native shift clause with actual transformed GPR histories and internally derived numerical source/result connections.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftClause.lean",
+      "backport_reuse_sha256": "f4fca11190841c7abe7d397b85d725be3a2f8d0a919849998eebb8ca9f794b03"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftExecution.lean",
+      "change": "Use actual reduced bounded RV32 PC successor, not split PC metadata or an expected output premise. Internal input bound/alignment is discharged from original public decoding by trace assembly.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativePC.lean",
+      "backport_reuse_sha256": "126ecf34bca7b636e68ef121a90708e38482526f525c8edcab4544c6dde48eee"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ReducedMachineExecution.lean",
+      "change": "Retain small original normal-step and initialized history observables for actual NativeReducedFamily/selected original shifts; states and executions are conclusions, not per-row answers.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/ShiftBinopExecution.lean",
+      "backport_reuse_sha256": "352d2f11c2fc63bd11a6c5f9a08c8384e6ffc0f579f8c526a29079b6ea4a1964"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/Execution.lean",
+      "change": "Adapt original public initialized retired-history assembly to exact native fixedData acceptance, original shift membership, actual derived ranges and PC facts; no local bound/state/result supplied publicly.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ShiftBinop/Execution.lean",
+      "backport_reuse_sha256": "76a4457f650ec125a9adb6ab36adafbef51383b4de6f0982e7f09424c2ca55c4"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/Execution.lean",
+      "change": "Reuse short initialized original instruction-history interface at actual fixedData trace while restricting to selected original shift profile and retaining public domain/alignment/setup boundaries.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ShiftBinop/Execution.lean",
+      "backport_reuse_sha256": "440dfca7aa6ceb3c9ee4b2d18970296c70603cfa103497a70984a035c864f9f8"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/Composition.lean",
+      "change": "Reuse unchanged shared native chronological/PC-chain/fetched-step composition after new actual reduced local retired execution. Original stateful decoding is replayed in constructed pre-states and terminal PC bounds/reads are derived, including empty traces.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ShiftBinop/Composition.lean",
+      "backport_reuse_sha256": "32c17f7242aa5cbea0a73cdf674c972b2955a12b44d4245a3905d08a6d6e9a47"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/Composition.lean",
+      "change": "Use already proved native-clock-ordered original Sail realization and actual fixedData rows/events instead of a split-family registry or supplied intermediate states.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/RegisterHistory.lean",
+      "backport_reuse_sha256": "47c39523545b7be14d6b5d3af1f73be65680d5cd5c296956071ee85cad91b28f"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/Composition.lean",
+      "change": "Replay original byte/stateful decoder through actual native GPR history using derived register-space/code/misa frames. Decoder replay is not a per-state premise.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/CodeHistory.lean",
+      "backport_reuse_sha256": "af2103817e113525ef826226ac12dd85fcff1e9c4f0e0503bf45926b0c36d1d1"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/FetchedExecution.lean",
+      "change": "Expose one short selected native reduced finite fetched-execution statement with actual terminal bounds/reads and fixedData acceptance. Full combined operations/protocol/physical setup/completeness remain open.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ShiftBinop/FetchedExecution.lean",
+      "backport_reuse_sha256": "bacb7998c7d91f5549135e0302ad57e3b2954e01f5c504d708312c41effb7e8a"
+    },
+    {
+      "path": "Tests/NativeReducedExecution.lean",
+      "change": "Copy exact twelve original instruction/byte/native-data entries, tiny Sail GPR state, independent outputs and pure read/field helpers. Extend to original preparation/retirement at ordinary PCs and wrap; do not copy accepted split rows or claim complete117-equation native positivity.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Tests/NativeReducedClauses.lean",
+      "backport_reuse_sha256": "5c71cfd800559545bb22a4e4566d23cc434c6192f3cb95ec8d0828d3805ace1c"
+    },
+    {
+      "path": "Tests/NativeReducedExecution.lean",
+      "change": "Adapt x0 original retirement and initialized segment extraction checks to actual reduced history. Positive Sail cases, conditional accepted native state construction and terminal-bound rejection retain distinct scopes.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Tests/ShiftExecution.lean",
+      "backport_reuse_sha256": "01a4929452600d842bd6ee8008fd86aa56c3655eeaff6c1c712e0f82f5889fa9"
+    },
+    {
+      "path": "Tests/NativeReducedFetched.lean",
+      "change": "Adapt concrete empty-row public execution checks with newly constructed actual NativeReducedFamily/fixedData boundaries and top-word endpoint. This zero-row positive fixture is not a nonempty accepted117-equation execution witness.",
+      "backport_reuse_revision": "a9df685d5af9518202bd71a716f2ed97546c6cca",
+      "backport_reuse_path": "Tests/ShiftFetched.lean",
+      "backport_reuse_sha256": "d26490979e30679f38513defefa987929a7d40245a5d47dc4876953a2c53c522"
     }
   ],
   "setup_artifacts": [

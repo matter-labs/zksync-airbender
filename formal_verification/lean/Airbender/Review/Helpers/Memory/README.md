@@ -154,3 +154,14 @@ rs2/x0 participation is retained on immediate forms. [Eight regressions](../../.
 distinguish twelve concrete original Sail executions from full 117-equation
 native acceptance. Numerical PC and normal/fetched retirement, other profiles
 and setup/physical/protocol/terminal/init remain separate.
+
+## Native reduced original retired/fetched execution
+
+[Small execution observables](ReducedMachineExecution.lean) retain actual original
+normal nextPC/clause/tick_pc execution, while [the public fetched claim](../../Trace/Families/ReducedMachine/FetchedExecution.lean)
+now derives all states and terminal PC/cell reads from fixedData acceptance and
+original public initialization/full shift decoding. [Native proof](../../../Proofs/ReducedMachine/NativeShiftExecution.lean)
+transports proved original GPR histories through control-register updates; no
+expected reads, source ranges, successors or intermediate states are supplied.
+Aligned tracked cells remain meaningful input. Other combined operations and
+physical/setup/protocol/padding/terminal/init/completeness remain separate.

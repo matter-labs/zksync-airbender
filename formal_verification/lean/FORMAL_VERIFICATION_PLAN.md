@@ -18,7 +18,8 @@ false. Subword retirement is therefore not a prerequisite for this machine.
 This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
-**The reduced machine has no execution soundness theorem yet.** The active
+**The reduced machine now has conditional fetched-execution soundness for the
+selected original shift profile; full combined-operation coverage remains open.** The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 is independently reproducible from unchanged pinned Rust: 117 equations,
 142 variables and 14 fixed regions. The original [historical artifact](Airbender/Review/Circuits/ReducedMachine/Artifact.lean)
@@ -62,7 +63,9 @@ Full combined row effects and execution remain pending. See the
    clauses now follow from actual native routing/results and initialized GPR
    history, including x0. Canonical numerical PC+4 and RV32 rollover now follow
    from original public decoding and actual native carry/inverse/select equations.
-   Other profiles and normal preparation/retirement/fetched execution remain open.
+   Original normal preparation/retirement and finite fetched execution now follow
+   for initialized selected-shift traces from actual native matching and public
+   decoding. Other combined profiles remain open.
    The former projection allocation gap is closed by generic projections and separate proof units,
    without increasing limits or adding result/equivalence premises.
 3. Compose initialized combined histories, public decoding and original execution.
@@ -79,8 +82,11 @@ Full combined row effects and execution remain pending. See the
    actual readonly aliases, masked writes, code/misa frames and decoder replay in
    constructed pre-states. Original shift operand transport and clause execution
    are now checked at the same derived after-states. Numerical PC+4/wrap and
-   incoming bounds/alignment are now derived without per-row PC answers. Normal
-   preparation/retirement and full fetched execution remain unfinished.
+   incoming bounds/alignment are now derived without per-row PC answers. Original
+   preparation/retirement and finite fetched execution now compose for selected
+   shifts, including actual terminal PC bounds/reads and empty traces. A complete
+   positive nonempty117-equation execution fixture, other combined profiles and
+   physical setup/protocol/terminal/init correspondence remain unfinished.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.
 
