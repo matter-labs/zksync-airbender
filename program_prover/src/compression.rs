@@ -61,28 +61,6 @@ const L1_FEEDER_GUEST: FsvDescriptor = FsvDescriptor {
     )
 };
 
-/// Padded words for the BabyBear stages and unpadded words for the Proth120 stage.
-struct FeederGuest {
-    bin: Vec<u32>,
-    text: Vec<u32>,
-    unpadded_bin: Vec<u32>,
-    unpadded_text: Vec<u32>,
-}
-
-/// Decode the L1-feeder ELF from its registry path.
-fn load_feeder_guest(fsv_dir: &Path) -> FeederGuest {
-    let guest = load_fsv_exact(fsv_dir, &L1_FEEDER_GUEST);
-    let unpadded_bin = guest.unpadded_bin().to_vec();
-    let unpadded_text = guest.unpadded_text().to_vec();
-    let (bin, text) = guest.into_words();
-    FeederGuest {
-        bin,
-        text,
-        unpadded_bin,
-        unpadded_text,
-    }
-}
-
 /// Everything [`compress_fixed_point_to_l1`] produces: the L1 proof + its
 /// commitment-mode aux data (the fixture pair the EVM tooling consumes) and
 /// the per-stage timing breakdowns.
@@ -155,7 +133,8 @@ pub fn compress_fixed_point_to_l1(
         ),
     )
     .into_words();
-    let feeder = load_feeder_guest(fsv_dir);
+    // Padded words for the BabyBear stages, unpadded for the Proth120 stage.
+    let feeder = load_fsv_exact(fsv_dir, &L1_FEEDER_GUEST);
 
     let feeder_config = prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
     println!(
@@ -174,9 +153,9 @@ pub fn compress_fixed_point_to_l1(
 
     for (stage, stage_timing) in stage_timings.iter_mut().enumerate() {
         let (run_bin, run_text) = if stage == 0 {
-            (&std_bin, &std_text)
+            (std_bin.as_slice(), std_text.as_slice())
         } else {
-            (&feeder.bin, &feeder.text)
+            (feeder.bin(), feeder.text())
         };
         println!(
             "[l1-compression] stage {}: proving the {} verifier over the current proof",
@@ -265,8 +244,8 @@ pub fn compress_fixed_point_to_l1(
     );
     let stream = build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes);
     let (l1_proof, l1_operation_mode, l1_timings) = prove_l1_wrap_in_memory(
-        feeder.unpadded_bin,
-        feeder.unpadded_text,
+        feeder.unpadded_bin().to_vec(),
+        feeder.unpadded_text().to_vec(),
         &stream,
         L1_CYCLES_BOUND,
         RAM_BOUND,
@@ -315,137 +294,5 @@ pub fn compress_fixed_point_to_l1(
         l1_operation_mode,
         stage_timings,
         l1_timings,
-    }
-}
-
-#[cfg(test)]
-mod diagnostics {
-    use super::*;
-    use crate::unified::replay_unified_circuit;
-    use crate::unrolled::run_unrolled_machine_in_full;
-    use common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-    use riscv_transpiler::cycle::ReducedMachineWithDelegation;
-    use riscv_transpiler::vm::{Counters, DelegationsAndUnifiedCounters};
-
-    fn deserialize_compressed_from_file<T: serde::de::DeserializeOwned>(path: &str) -> T {
-        full_statement_verifier::host_utils::fixture_codec::decode(
-            &std::fs::read(path).unwrap_or_else(|error| panic!("read {path}: {error}")),
-        )
-    }
-
-    /// Diagnostic: replay the stage-1 (standard special-opcodes fsv over the
-    /// final_layer_0 stable point) tracer buffers and dump the rows around a
-    /// failing chunk row together with the instruction words at their PCs.
-    /// Row/chunk via `PROBE_ROW` / `PROBE_CHUNK` (defaults: the
-    /// `EnforceSingleMaxQuadraticConstraintGKRKernel` divergence at row
-    /// 7694852 of chunk 0). Run from the crate dir:
-    /// `cargo test -p program_prover --features l1 --release probe_failing_cycle -- --ignored --nocapture`
-    #[test]
-    #[ignore = "diagnostic replay of the stage-1 trace around a failing row"]
-    fn probe_failing_cycle() {
-        let row: usize = std::env::var("PROBE_ROW")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(7_694_852);
-        let chunk: usize = std::env::var("PROBE_CHUNK")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
-
-        let tags = "blake2_with_compression_blake2_with_compression_blake2_with_compression";
-        let proof: ProgramProof = deserialize_compressed_from_file(&format!(
-            "../circuit_defs/prover_examples/final_layer_0_proof_{tags}.json.zlib"
-        ));
-        let setups: Setups = deserialize_compressed_from_file(&format!(
-            "../circuit_defs/prover_examples/final_layer_0_setups_{tags}.json.zlib"
-        ));
-        let stream = build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes);
-        let (bin, text) = load_fsv_exact(
-            "../tools/gkr_verifier/full_statement_verifiers",
-            &FsvDescriptor::new(
-                SoundnessMode::PessimisticConjecture,
-                FsvProgram::UnifiedRecursionLayer,
-                BlakeMode::BlakeSpecialOpcodes,
-            ),
-        )
-        .into_words();
-
-        let (
-            (final_pc, final_timestamp),
-            snapshotter,
-            counters,
-            _ram,
-            _registers,
-            tape,
-            expected_final_state,
-        ) = run_unrolled_machine_in_full::<
-            ReducedMachineWithDelegation,
-            DelegationsAndUnifiedCounters,
-        >(
-            UNIFIED_CYCLES_BOUND,
-            &bin,
-            &text,
-            RAM_BOUND,
-            DelegationsAndUnifiedCounters::default(),
-            riscv_transpiler::abstractions::non_determinism::QuasiUARTSource::new_with_reads(
-                stream,
-            ),
-        );
-        println!("execution ended at PC = 0x{final_pc:08x}, timestamp {final_timestamp}");
-
-        let num_calls =
-            counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-        let buffers = replay_unified_circuit::<DelegationsAndUnifiedCounters>(
-            DelegationsAndUnifiedCounters::default(),
-            &snapshotter,
-            &tape,
-            UNIFIED_CYCLES_BOUND,
-            1 << 23,
-            &expected_final_state,
-            num_calls,
-        );
-        let buf = &buffers[chunk];
-        println!("chunk {chunk}: {} tracer rows", buf.len());
-
-        let lo = row.saturating_sub(4);
-        let hi = (row + 4).min(buf.len().saturating_sub(1));
-        for (r, el) in buf.iter().enumerate().take(hi + 1).skip(lo) {
-            let pc = el.initial_pc();
-            let word = text.get((pc / 4) as usize).copied().unwrap_or(u32::MAX);
-            let marker = if r == row { "  <<< FAILING ROW" } else { "" };
-            println!(
-                "row {r}: pc=0x{pc:08x} word=0x{word:08x} (opcode=0x{:02x} rd={} funct3={} rs1={} rs2={} funct7=0x{:02x}){marker}",
-                word & 0x7f,
-                (word >> 7) & 0x1f,
-                (word >> 12) & 0x7,
-                (word >> 15) & 0x1f,
-                (word >> 20) & 0x1f,
-                (word >> 25) & 0x7f,
-            );
-            println!("        {el:?}");
-        }
-    }
-}
-
-#[cfg(test)]
-mod feeder_guest_tests {
-    use super::*;
-    use full_statement_verifier::host_utils::{canonical_fsv_dir, load_program};
-    use riscv_transpiler::elf::ProgramSource;
-
-    fn feeder_path(fsv_dir: &Path) -> std::path::PathBuf {
-        fsv_dir.join(L1_FEEDER_GUEST.relative_path())
-    }
-
-    /// Each proving stage receives the padded or unpadded view of the same ELF.
-    #[test]
-    fn feeder_words_match_the_stage_loaders() {
-        let feeder = load_feeder_guest(&canonical_fsv_dir());
-        let path = feeder_path(&canonical_fsv_dir());
-        assert_eq!((feeder.bin, feeder.text), load_program(&path));
-        assert_eq!(
-            (feeder.unpadded_bin, feeder.unpadded_text),
-            ProgramSource::elf(&path).load_unpadded()
-        );
     }
 }
