@@ -455,6 +455,31 @@ def verify_freshness_batches(snapshot, modules, checked):
         raise ValueError('Incomplete final freshness module coverage')
 
 
+def current_project_sources(root):
+    """Independently discover every library, test, Sail and executable source."""
+    sources = {'Airbender': root / 'Airbender.lean'}
+    for directory, base in [('Airbender', root), ('Tests', root),
+                            ('generated/sail-rv32', root / 'generated/sail-rv32')]:
+        for source in (root / directory).rglob('*.lean'):
+            module = '.'.join(source.relative_to(base).with_suffix('').parts)
+            if module in sources:
+                raise ValueError('Duplicate current project module: ' + module)
+            sources[module] = source.resolve()
+    config = tomllib.loads((root / 'lakefile.toml').read_text())
+    # Runtime roots outside the library directories are part of the same
+    # complete source pass. Do not scan unconfigured tooling as a library.
+    for executable in config.get('lean_exe', []):
+        module = executable['root']
+        source = (root / executable.get('srcDir', '.') /
+                  Path(*module.split('.')).with_suffix('.lean')).resolve()
+        if module in sources and sources[module].resolve() != source:
+            raise ValueError('Conflicting current executable source: ' + module)
+        sources[module] = source
+    if not all(source.is_file() for source in sources.values()):
+        raise ValueError('Missing current project source')
+    return sources
+
+
 def verify_build_snapshot(path):
     """Require current normal Lake freshness and unchanged actual inputs.
 
@@ -483,14 +508,7 @@ def verify_build_snapshot(path):
     if (schema not in {'airbender-serial-build-v1', 'airbender-serial-build-v2'} or
             snapshot.get('root') != str(ROOT) or snapshot.get('complete_project') is not True):
         raise ValueError('Require a complete serial build snapshot for this Lean root')
-    sources = {'Airbender': ROOT / 'Airbender.lean'}
-    for directory, base in [('Airbender', ROOT), ('Tests', ROOT),
-                            ('generated/sail-rv32', ROOT / 'generated/sail-rv32')]:
-        for source in (ROOT / directory).rglob('*.lean'):
-            module = '.'.join(source.relative_to(base).with_suffix('').parts)
-            if module in sources:
-                raise ValueError('Duplicate current project module: ' + module)
-            sources[module] = source.resolve()
+    sources = current_project_sources(ROOT)
     fields = ('sources', 'objects', 'imports') + (('jobs',) if schema == 'airbender-serial-build-v1' else ())
     for field in fields:
         if set(snapshot[field]) != set(sources):

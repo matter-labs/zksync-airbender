@@ -107,6 +107,23 @@ other auxiliary values, absent/present padding, and other explicit null fields.
 Complete project runtime, generated/decoder, environment/axiom audit and final
 full assurance still require CI success on the repaired revision.
 
+Run [42168019177](https://github.com/matter-labs/zksync-airbender/actions/runs/42168019177)
+on `47cee2b649eec33d2570c015a74176e53291bf4e` passed the complete importer runtime,
+including both retained circuit round trips and the new timestamp-group controls.
+The runtime child exited 0 after 44.34 seconds at 486.59 MiB charged footprint,
+with no owned processes left. The frontend then failed after 380.37 seconds in
+the independent Review snapshot checker: it discovered 4,204 modules while the
+complete checked snapshot contains 4,205. The sole difference is the configured
+program-row oracle executable, outside the library/test/Sail directories. The
+repair independently reads executable roots and source directories from the
+current Lake configuration, retaining exact source/object/import inventory
+equality and all freshness, frozen-input, hash and receipt checks. All three
+inventories now match all 4,205 modules in the retained CI snapshot. All 46 focused
+controls pass, including configured source-directory handling, missing/conflicting
+runtime roots, and dropped/invented source/object/import inventory rejection.
+No Lean source, runtime assertion, Review statement/premise or resource gate
+changes. The complete Review/environment audit and final assurance remain pending.
+
 The 4 November specification review makes the existing one-instance
 initialization and submitted-pool premises explicit. Native corollaries certify
 CPU rows only; standard worker equations remain no-cache flat constraints and
