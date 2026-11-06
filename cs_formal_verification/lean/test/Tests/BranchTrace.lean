@@ -3,6 +3,8 @@ import Tests.Branch
 import Slop.JumpBranchSlt.Claims
 import Tests.JumpHistory
 import Slop.JumpBranchSlt.BranchExecution
+import Slop.Verification.StaticLookup
+import Mathlib.Tactic.IntervalCases
 
 namespace Tests.BranchTrace
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -58,18 +60,26 @@ private theorem constraints (tag : Fin 6) (wrap : Bool) : FlatOperation.Constrai
     (Verification.environment (assignment tag wrap)) JumpBranchSlt.clockConstraints := by
   apply Verification.holds_append (left := JumpBranchSlt.importedConstraints)
     (right := JumpBranchSlt.importedConstraintsTimestampLookups)
-  · have core := Branch.satisfies tag wrap
-    fin_cases tag <;> cases wrap <;>
-      simpa [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-        Lookup.Contains, Vector.map, Expression.eval, Verification.environment, assignment,
-        Branch.row, Verification.range16, Verification.pairLookup, Verification.jumpCleanup,
-        show (4 : ZMod babyBearModulus) + 4 + -8 = 0 by decide] using core
-  · fin_cases tag <;> cases wrap <;>
-      simp [JumpBranchSlt.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    all_goals repeat' apply And.intro
-    all_goals apply Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment, Branch.row]
-    all_goals decide
+  · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+    constructor
+    · fin_cases tag <;> cases wrap <;> decide
+    · rw [List.forall_mem_iff_forall_getElem]
+      intro i bound
+      have short : i < 8 := by simpa only [JumpBranchSlt.lookup_count] using bound
+      interval_cases i
+      all_goals first
+        | exact Verification.range16_contains (by fin_cases tag <;> cases wrap <;> decide)
+        | exact Verification.static_lookup_contains _ _ _
+            (by fin_cases tag <;> cases wrap <;> decide +kernel)
+            (by fin_cases tag <;> cases wrap <;> decide +kernel)
+  · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+    constructor
+    · simp [JumpBranchSlt.importedConstraintsTimestampLookups, FlatOperation.constraints]
+    · rw [List.forall_mem_iff_forall_getElem]
+      intro i bound
+      have short : i < 8 := by simpa only [JumpBranchSlt.timestamp_count] using bound
+      interval_cases i
+      all_goals exact Proofs.range_contains (by fin_cases tag <;> cases wrap <;> decide)
 
 private theorem accepted (tag : Fin 6) (wrap : Bool)
     (rom : Table (ZMod babyBearModulus) (fields 9)) : Accepted (trace tag wrap rom) := by
@@ -109,9 +119,10 @@ private theorem image (tag : Fin 6) (wrap : Bool) : initialImage (before tag wra
   simp only [initialImage, cells, seed, List.mapM_cons, List.mapM_nil, zero, one, two]
   rfl
 
-private theorem instruction_decoded (tag : Fin 6) (wrap : Bool) :
-    decodeOnReset (entry tag wrap).bits = some (entry tag wrap).instruction := by
-  fin_cases tag <;> cases wrap <;> decode_on_reset
+-- Only the in-ROM (`wrap = false`) encodings are fetched; each decode is a kernel run of Sail.
+private theorem instruction_decoded (tag : Fin 6) :
+    decodeOnReset (entry tag false).bits = some (entry tag false).instruction := by
+  fin_cases tag <;> decode_on_reset
 
 set_option maxHeartbeats 8000000 in
 private theorem program_image (tag : Fin 6) :
