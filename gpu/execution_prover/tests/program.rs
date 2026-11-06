@@ -310,8 +310,7 @@ fn test_program_prover_unified_base_layer_verify() {
     log::info!("unified base layer verified natively; output registers: {output:?}");
 }
 
-#[cfg(feature = "verifiers")]
-#[cfg_attr(no_cuda, allow(dead_code))]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 fn assert_program_commitments(
     cpu: &crate::upstream::ProgramProof,
     gpu: &crate::upstream::ProgramProof,
