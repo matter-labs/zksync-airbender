@@ -1,6 +1,7 @@
 import Slop.Keccak.Claims
 import Slop.BabyBear
 import Mathlib.Tactic.IntervalCases
+import Slop.Keccak.Completeness.Bytes
 
 namespace Tests.KeccakIota
 open Airbender
@@ -30,10 +31,8 @@ private def writes (case : Fin 3) : Vector Nat 6 :=
     (temps case)[2] ^^^ (reads case)[4]]
 private def aWords (case : Fin 3) : Vector Nat 5 :=
   #v[(reads case)[0], changed case, (temps case)[0], (temps case)[1], (temps case)[2]]
-private def cWords (case : Fin 3) : Vector Nat 5 :=
-  #v[changed case, (temps case)[0], (temps case)[1], (temps case)[2], (writes case)[5]]
 
-private def row (case : Fin 3) (v : Nat) : ZMod babyBearModulus :=
+private def base (case : Fin 3) (v : Nat) : ZMod babyBearModulus :=
   if v = 0 ∨ v = 63 ∨ v = 70 + (selectedColumn case).val then 1
   else if v = 3 then (stateControl case).packed
   else if v = 5 then (stateControl case).nextPacked
@@ -50,59 +49,52 @@ private def row (case : Fin 3) (v : Nat) : ZMod babyBearModulus :=
   else if h : 90 ≤ v ∧ v < 102 then
     let temporary : Fin 3 := ⟨(v - 90) / 4, by omega⟩
     ((temps case)[temporary] / 2 ^ (16 * ((v - 90) % 4)) % 65536 : Nat)
-  else if h : 102 ≤ v ∧ v < 222 then
-    let operation : Fin 5 := ⟨(v - 102) / 24, by omega⟩
-    let column := ((v - 102) % 24) / 8
-    let byte := (v - 102) % 8
-    if column = 1 ∧ operation.val = 0 then (effectiveRound case + 32 * byte : Nat)
-    else
-      let value := if column = 0 then (aWords case)[operation]
-        else if column = 1 then (reads case)[operation] else (cWords case)[operation]
-      (value / 2 ^ (8 * byte) % 256 : Nat)
   else 0
 
-private def byteIndex (case : Fin 3) (i : Fin 40) : Nat :=
+-- Byte query `i` (operation `i / 8`, byte `i % 8`): the Iota XOR of lane 0 with the round
+-- constant, then the running XOR of the column.
+private def bytes (case : Fin 3) (part : Fin 3) (i : Fin 40) : Nat :=
   let op : Fin 5 := ⟨i.val / 8, by omega⟩
-  let a := (aWords case)[op] / 2 ^ (8 * (i.val % 8)) % 256
-  let b := if op.val = 0 then effectiveRound case + 32 * (i.val % 8)
-    else (reads case)[op] / 2 ^ (8 * (i.val % 8)) % 256
-  if op.val = 0 then 69633 + a + 256 * b else 1 + 256 * a + b
+  if op.val = 0 then
+    if part.val = 0 then Keccak.Proofs.wordByte (reads case)[0] (i.val % 8)
+    else if part.val = 1 then effectiveRound case + 32 * (i.val % 8)
+    else Keccak.Proofs.wordByte ((reads case)[0] ^^^ Keccak.adjustedConstant (effectiveRound case)) (i.val % 8)
+  else Keccak.Proofs.wordByte (if part.val = 0 then (aWords case)[op]
+    else if part.val = 1 then (reads case)[op] else (aWords case)[op] ^^^ (reads case)[op]) (i.val % 8)
 
-private theorem byteIndexBound (case : Fin 3) (i : Fin 40) : byteIndex case i < 1249281 := by
-  fin_cases case <;> fin_cases i <;> decide
+private def row (case : Fin 3) : Nat → ZMod babyBearModulus :=
+  Keccak.Proofs.bytesRow (base case) (bytes case)
 
-private theorem byteValues (case : Fin 3) (i : Fin 40) :
-    (Keccak.Proofs.byteEntry setup i).map (Expression.eval (Verification.environment (row case))) =
-      (Keccak.setupRow control ⟨byteIndex case i, byteIndexBound case i⟩).map
-        (fun (n : Nat) => (n : ZMod babyBearModulus)) := by
-  fin_cases case <;> fin_cases i <;>
-    dsimp [Keccak.Proofs.byteEntry, Keccak.Proofs.byteQuery,
-      Keccak.importedConstraints, FlatOperation.lookups]
-  all_goals
-    apply Vector.ext
-    intro j hj
-    change j < 8 at hj
-    interval_cases j <;> decide +kernel +revert
+private theorem modes (case : Fin 3) (j : Fin 7) :
+    row case Keccak.Variables.modeColumns[j] = if j = 0 then 1 else 0 := by
+  fin_cases case <;> fin_cases j <;> decide
+
+private theorem round_bound (case : Fin 3) : effectiveRound case < 32 := by
+  fin_cases case <;> decide
 
 private theorem bytesHold (case : Fin 3) (i : Fin 40) :
     (Keccak.Proofs.byteQuery setup i).Contains (Verification.environment (row case)) := by
-  rw [Keccak.Proofs.byte_query_shape]
-  exact ⟨⟨byteIndex case i, byteIndexBound case i⟩, byteValues case i⟩
+  have tag := Keccak.Proofs.byte_tag_of_mode setup _ (modes case) i
+  have byte (part : Fin 3) : row case (Keccak.Proofs.byteColumn part i) = (bytes case part i : Nat) :=
+    Keccak.Proofs.bytes_row_byte _ _ part i
+  by_cases first : i.val / 8 = 0
+  · have op : (⟨i.val / 8, by omega⟩ : Fin 5) = 0 := Fin.ext first
+    rw [op, show Keccak.Proofs.operationTag 0 0 = 38 from rfl] at tag
+    refine Keccak.Proofs.iota_query i (reads case)[0] (round_bound case) ?_ ?_ ?_ tag
+    all_goals rw [byte]; simp only [bytes, first, ↓reduceIte, Fin.isValue]; rfl
+  · have op : (⟨i.val / 8, by omega⟩ : Fin 5) ≠ 0 := fun h => first (congrArg Fin.val h)
+    have xor : ∀ op : Fin 5, op ≠ 0 → Keccak.Proofs.operationTag 0 op = 4 := by decide
+    rw [xor _ op] at tag
+    refine Keccak.Proofs.xor_query i (aWords case)[(⟨i.val / 8, by omega⟩ : Fin 5)]
+      (reads case)[(⟨i.val / 8, by omega⟩ : Fin 5)] ?_ ?_ ?_ tag
+    all_goals rw [byte]; simp only [bytes, first, ↓reduceIte, Fin.isValue]; rfl
 
 private theorem controllerHolds (case : Fin 3) :
     ((FlatOperation.lookups (Keccak.importedConstraints setup)).get
       ⟨1, by rw [Keccak.lookup_count]; decide⟩).Contains (Verification.environment (row case)) := by
-  change ∃ index : Fin 1249281,
-    ((FlatOperation.lookups (Keccak.importedConstraints setup))[1]).entry.map
-      (Expression.eval (Verification.environment (row case))) =
-      (Keccak.setupRow control index).map (fun (n : Nat) => (n : ZMod babyBearModulus))
-  refine ⟨⟨65537 + 2048 + (stateControl case).packed, by fin_cases case <;> decide⟩, ?_⟩
-  fin_cases case <;> dsimp [Keccak.importedConstraints, FlatOperation.lookups]
-  all_goals
-    apply Vector.ext
-    intro j hj
-    change j < 8 at hj
-    interval_cases j <;> decide +kernel +revert
+  refine Keccak.Proofs.controller_query (key := 2048 + (stateControl case).packed) (by fin_cases case <;> decide) ?_ ?_
+  · fin_cases case <;> decide
+  · fin_cases case <;> decide
 
 theorem satisfies (case : Fin 3) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row case))

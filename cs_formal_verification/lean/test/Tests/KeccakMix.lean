@@ -1,6 +1,7 @@
 import Slop.Keccak.Claims
 import Slop.BabyBear
 import Mathlib.Tactic.IntervalCases
+import Slop.Keccak.Completeness.Bytes
 
 namespace Tests.KeccakMix
 open Airbender
@@ -30,16 +31,13 @@ private def aWords (second : Bool) : Vector Nat 5 :=
 private def bWords (second : Bool) : Vector Nat 5 :=
   if second then #v[0, rotated 1, 0, rotated 3, rotated 0]
   else #v[0, 0, rotated 2, 0, rotated 4]
-private def cWords (second : Bool) : Vector Nat 5 :=
-  if second then #v[rotated 1, (writes true)[4], rotated 3, (writes true)[1], (writes true)[3]]
-  else #v[rotated 0, rotated 2, firstWrites[0], rotated 4, firstWrites[2]]
 private def rotation (second : Bool) (op : Fin 5) : Bool :=
   if second then op.val = 0 || op.val = 2 else op.val = 0 || op.val = 1 || op.val = 3
 private def control (_ : Fin 4096) : Vector Nat 6 := #v[0, 5, 10, 15, 20, 25]
 private abbrev setup : Table (ZMod babyBearModulus) (fields 8) := Keccak.setupTable control
 private def stateControl (second : Bool) : Keccak.ControlState := ⟨if second then 2 else 1, 0, 24⟩
 
-private def row (second : Bool) (v : Nat) : ZMod babyBearModulus :=
+private def base (second : Bool) (v : Nat) : ZMod babyBearModulus :=
   if v = 0 ∨ v = 70 ∨ v = (if second then 65 else 64) then 1
   else if v = 3 then (stateControl second).packed
   else if v = 5 then (stateControl second).nextPacked
@@ -55,60 +53,59 @@ private def row (second : Bool) (v : Nat) : ZMod babyBearModulus :=
   else if h : 90 ≤ v ∧ v < 102 then
     let temporary : Fin 3 := ⟨(v - 90) / 4, by omega⟩
     ((temps second)[temporary] / 2 ^ (16 * ((v - 90) % 4)) % 65536 : Nat)
-  else if h : 102 ≤ v ∧ v < 222 then
-    let op : Fin 5 := ⟨(v - 102) / 24, by omega⟩
-    let column := ((v - 102) % 24) / 8
-    let slot := (v - 102) % 8
-    if rotation second op then
-      if slot < 4 then
-        let limb := (aWords second)[op] / 2 ^ (16 * slot) % 65536
-        if column = 0 then (limb + 65536 : Nat)
-        else if column = 1 then (limb / 32768 : Nat) else (2 * limb % 65536 : Nat)
-      else 0
-    else
-      let value := if column = 0 then (aWords second)[op]
-        else if column = 1 then (bWords second)[op] else (cWords second)[op]
-      (value / 2 ^ (8 * slot) % 256 : Nat)
   else 0
 
-private def byteIndex (second : Bool) (i : Fin 40) : Nat :=
+-- Byte query `i` (operation `i / 8`, byte `i % 8`): rotation by one of a word's 16-bit limbs,
+-- or the XOR bytes of two words.
+private def bytes (second : Bool) (part : Fin 3) (i : Fin 40) : Nat :=
   let op : Fin 5 := ⟨i.val / 8, by omega⟩
   if rotation second op then
-    200705 + if i.val % 8 < 4 then (aWords second)[op] / 2 ^ (16 * (i.val % 8)) % 65536 + 65536 else 0
-  else
-    1 + 256 * ((aWords second)[op] / 2 ^ (8 * (i.val % 8)) % 256) +
-      ((bWords second)[op] / 2 ^ (8 * (i.val % 8)) % 256)
-private theorem byteIndexBound (second : Bool) (i : Fin 40) : byteIndex second i < 1249281 := by
-  cases second <;> fin_cases i <;> decide
-private theorem byteValues (second : Bool) (i : Fin 40) :
-    (Keccak.Proofs.byteEntry setup i).map (Expression.eval (Verification.environment (row second))) =
-      (Keccak.setupRow control ⟨byteIndex second i, byteIndexBound second i⟩).map
-        (fun (n : Nat) => (n : ZMod babyBearModulus)) := by
-  cases second <;> fin_cases i <;>
-    dsimp [Keccak.Proofs.byteEntry, Keccak.Proofs.byteQuery, Keccak.importedConstraints, FlatOperation.lookups]
-  all_goals
-    apply Vector.ext
-    intro j hj
-    change j < 8 at hj
-    interval_cases j <;> decide +kernel +revert
+    if i.val % 8 < 4 then
+      let limb := (aWords second)[op] / 2 ^ (16 * (i.val % 8)) % 65536
+      if part.val = 0 then limb + 65536 * 1
+      else if part.val = 1 then limb / 2 ^ (16 - 1) else limb * 2 ^ 1 % 65536
+    else 0
+  else Keccak.Proofs.wordByte (if part.val = 0 then (aWords second)[op]
+    else if part.val = 1 then (bWords second)[op] else (aWords second)[op] ^^^ (bWords second)[op])
+    (i.val % 8)
+
+private def row (second : Bool) : Nat → ZMod babyBearModulus :=
+  Keccak.Proofs.bytesRow (base second) (bytes second)
+
+private theorem modes (second : Bool) (j : Fin 7) :
+    row second Keccak.Variables.modeColumns[j] = if j = (if second then 2 else 1) then 1 else 0 := by
+  cases second <;> fin_cases j <;> decide
+
+private theorem mix_tags (second : Bool) (op : Fin 5) :
+    Keccak.Proofs.operationTag (if second then 2 else 1) op = if rotation second op then 40 else 4 := by
+  cases second <;> revert op <;> decide
+
 private theorem bytesHold (second : Bool) (i : Fin 40) :
     (Keccak.Proofs.byteQuery setup i).Contains (Verification.environment (row second)) := by
-  rw [Keccak.Proofs.byte_query_shape]
-  exact ⟨⟨byteIndex second i, byteIndexBound second i⟩, byteValues second i⟩
+  have tag := Keccak.Proofs.byte_tag_of_mode setup _ (modes second) i
+  have byte (part : Fin 3) : row second (Keccak.Proofs.byteColumn part i) =
+      (bytes second part i : Nat) := Keccak.Proofs.bytes_row_byte _ _ part i
+  rw [mix_tags] at tag
+  by_cases rotated : rotation second ⟨i.val / 8, by omega⟩
+  · rw [ite_eq_left rotated] at tag
+    by_cases low : i.val % 8 < 4
+    · refine Keccak.Proofs.rotation_query i
+        (Nat.mod_lt ((aWords second)[(⟨i.val / 8, by omega⟩ : Fin 5)] / 2 ^ (16 * (i.val % 8))) (by decide))
+        (by decide : 1 < 16) ?_ ?_ ?_ tag
+      all_goals rw [byte]; simp only [bytes, rotated, low, ↓reduceIte, Fin.isValue]; rfl
+    · refine Keccak.Proofs.rotation_zero_query i ?_ ?_ ?_ tag
+      all_goals rw [byte]; simp only [bytes, rotated, low, ↓reduceIte, Nat.cast_zero]
+  · rw [ite_eq_right rotated] at tag
+    refine Keccak.Proofs.xor_query i (aWords second)[(⟨i.val / 8, by omega⟩ : Fin 5)]
+      (bWords second)[(⟨i.val / 8, by omega⟩ : Fin 5)] ?_ ?_ ?_ tag
+    all_goals rw [byte]; simp only [bytes, rotated, ↓reduceIte, Fin.isValue, Bool.false_eq_true]; rfl
+
 private theorem controllerHolds (second : Bool) :
     ((FlatOperation.lookups (Keccak.importedConstraints setup)).get
       ⟨1, by rw [Keccak.lookup_count]; decide⟩).Contains (Verification.environment (row second)) := by
-  change ∃ index : Fin 1249281,
-    ((FlatOperation.lookups (Keccak.importedConstraints setup))[1]).entry.map
-      (Expression.eval (Verification.environment (row second))) =
-      (Keccak.setupRow control index).map (fun (n : Nat) => (n : ZMod babyBearModulus))
-  refine ⟨⟨65537 + 2048 + (stateControl second).packed, by cases second <;> decide⟩, ?_⟩
-  cases second <;> dsimp [Keccak.importedConstraints, FlatOperation.lookups]
-  all_goals
-    apply Vector.ext
-    intro j hj
-    change j < 8 at hj
-    interval_cases j <;> decide +kernel +revert
+  refine Keccak.Proofs.controller_query (key := 2048 + (stateControl second).packed) (by cases second <;> decide) ?_ ?_
+  · cases second <;> decide
+  · cases second <;> decide
 
 theorem satisfies (second : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row second))
