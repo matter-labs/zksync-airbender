@@ -6722,7 +6722,7 @@
     },
     {
       "path": "Airbender/Proofs/ReducedMachine/NativePool.lean",
-      "change": "Adapt original region decomposition and exact tag proofs to all14actual native reduced regions; derive sign membership with no table-equivalence premise.",
+      "change": "Adapt exact14-region decomposition/tag proofs; general selected-region recovery derives sign and truncation membership from actual fourth columns, with no equivalence premise.",
       "backport_reuse_revision": "0cecce53098a474d300bf5c2398f1d456f8c8634",
       "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeRegions.lean",
       "backport_reuse_sha256": "9df97344b68bf0f1227df2fe70bd0fd58d270c7d3e6d37e47839dac3970b1513"
@@ -6758,11 +6758,11 @@
     },
     {
       "path": "Airbender/Review/Circuits/ReducedMachine/Tables/NativeTheorems.lean",
-      "change": "Independently regenerated native reduced target, complete literal public fixed fixture, original Clean query connection and strict separation from the historical shipped artifact; no circuit fix or execution theorem."
+      "change": "Short actual full-pool sign/high-byte and truncation claims, with calculations under Proofs."
     },
     {
       "path": "Airbender/Review/Circuits/ReducedMachine/Theorems.lean",
-      "change": "Independently regenerated native reduced target, complete literal public fixed fixture, original Clean query connection and strict separation from the historical shipped artifact; no circuit fix or execution theorem."
+      "change": "Short regenerated native claims for constant sign/high queries, all dynamic tag domains and selected shift routing/truncation; public decoded-mask and execution boundaries remain explicit."
     },
     {
       "path": "Airbender/Proofs/ReducedMachine/NativeArtifactChecks.lean",
@@ -6775,6 +6775,35 @@
     {
       "path": "Tests/NativeReducedImport.lean",
       "change": "Independently regenerated native reduced target, complete literal public fixed fixture, original Clean query connection and strict separation from the historical shipped artifact; no circuit fix or execution theorem."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Row.lean",
+      "change": "Native reduced shift-mask reference and actual source-two/amount/selector observables, with public original decoding explicitly separate."
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSelectors.lean",
+      "change": "Adapt original Boolean/canonical packed-mask recovery to all18actual reduced bits and six shift masks; split by mode at default heartbeat limits; derive operation flags rather than supplying selectors.",
+      "backport_reuse_revision": "0028b7e392a617b7f778eec41300fae0ab7db1ae",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/Selectors.lean",
+      "backport_reuse_sha256": "b69f7de563ab0bc770083a41ee0c06b187030a8c466de9a6e51b20e358a6c6d2"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeTruncation.lean",
+      "change": "Reuse unchanged truncate_rows after kernel-checked identity of actual reduced stored columns; native offsets stay different. Recover full-pool tag47 semantics without equivalence premises.",
+      "backport_reuse_revision": "0028b7e392a617b7f778eec41300fae0ab7db1ae",
+      "backport_reuse_path": "Airbender/Proofs/Tables/ShiftScalarColumns.lean",
+      "backport_reuse_sha256": "85f6fcf66e2f5f401813fbddf4622565ed5934e2db76c53e5945eb78830ff0b9"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftRouting.lean",
+      "change": "Adapt native constraint extraction to regenerated equations32/33,82..85,89,93,97. Derive actual register/immediate source route, all four tags and bounded modulo32 amount from original Clean acceptance plus decoded packed mask.",
+      "backport_reuse_revision": "0028b7e392a617b7f778eec41300fae0ab7db1ae",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/Routing.lean",
+      "backport_reuse_sha256": "32e239514ab7535c08e4fbfc08c0bb830e956519510bf37e298cc61af5e7db40"
+    },
+    {
+      "path": "Tests/NativeReducedShift.lean",
+      "change": "Native full-pool oversized/wrong/unused truncation rejection and conditional immediate/register/standalone-tag boundary regressions."
     }
   ],
   "setup_artifacts": [

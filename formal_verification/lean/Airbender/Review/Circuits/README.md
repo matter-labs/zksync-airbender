@@ -67,3 +67,9 @@ row equations/queries, the complete source bytes and validated state, decoder,
 initialization and request coordinates. [The guide](ReducedMachine/README.md)
 separates that intake from pending native fixed setup, execution and argument
 connections. Existing standalone family results do not establish this machine.
+
+The [active regenerated reduced target](ReducedMachine/NativeArtifact.lean)
+keeps the historical JSON separate. Its [local shift claim](ReducedMachine/Theorems.lean)
+derives selected tags, operand routing and five-bit truncation from native
+acceptance plus an explicit decoded packed mask. This is native combined-row
+coverage; public decoding, results/writes/PC and execution remain open.

@@ -91,3 +91,16 @@ The native Clean connection additionally derives all four dynamic selector
 domains from exact pooled membership. Each tag comes from its actual fourth
 expression and a certified stored region. The public theorem supplies no selector
 answer; operation-specific identity and effects remain pending.
+
+## Native selected shift connection
+
+The [regenerated row claim](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+now derives shift operation flags and tags from actual native equations, and
+routes the register/immediate operand into the literal tag-47 truncation query.
+The six explicit native packed-mask cases retain v2 encodings. Kernel equality
+of stored truncation columns permits reuse of the unchanged prior row lemma;
+no v3 or standalone table-equivalence premise is supplied. The selected IDs are
+47/37/37/20, distinct from the standalone split-shift tables and sign-fill ID 52.
+The original public-decoder connection, table-37/sign-fill meanings, shift
+results/writes/PC, combined history/execution and protocol boundaries remain
+pending. This is further native reduced coverage, not parity or a finding.

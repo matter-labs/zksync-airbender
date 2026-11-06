@@ -91,6 +91,12 @@ machine work targets the separately regenerated constraints and complete pool.
 No circuit fix or equivalence assumption is introduced. General compiler and
 runtime configuration correspondence remain B01/B03 boundaries below.
 
+The [native shift routing/truncation claim](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+adds local coverage under an explicit decoded packed mask. Recovering that mask
+from public decoding and proving the remaining shift effects are unfinished
+connections, not native findings or restrictions introduced to hide a defect.
+Confirmed native-v2 defects remain zero.
+
 ## Open bindings
 
 These are unresolved proof/implementation bindings, explicitly separated

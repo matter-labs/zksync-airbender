@@ -174,23 +174,35 @@ theorem accepted_selector (query : Vector (ZMod mersenne31Modulus) 4)
   rw [region_row_tag,ZMod.val_natCast,Nat.mod_eq_of_lt (tag_bound region)]
   cases region <;> simp [Region.tag,NativeFixed.tags]
 
+theorem tag_injective : Function.Injective Region.tag := by
+  intro left right same
+  cases left <;> cases right <;> simp_all [Region.tag]
+
+/-- The actual stored fourth column isolates any selected native region. -/
+theorem selected_region (query : Vector (ZMod mersenne31Modulus) 4)
+    (member : (table (p := mersenne31Modulus)).Contains #[] query)
+    (region : Region) (selected : query[3] = region.tag) :
+    ∃ i : Fin region.data.length, query = region.data.row i := by
+  obtain ⟨actual,i,same⟩ := member_region query member
+  have tag := congrArg (fun v : Vector (ZMod mersenne31Modulus) 4 => v[3]) same
+  rw [region_row_tag] at tag
+  have sameTag : (actual.tag : ZMod mersenne31Modulus) = region.tag :=
+    tag.symm.trans selected
+  have values := congrArg ZMod.val sameTag
+  have tags : actual.tag = region.tag := by
+    simpa only [ZMod.val_natCast,Nat.mod_eq_of_lt (tag_bound actual),
+      Nat.mod_eq_of_lt (tag_bound region)] using values
+  have identical := tag_injective tags
+  subst actual
+  exact ⟨i,same⟩
+
 theorem shared_sign_data : dataT16 = SignHigh.data := rfl
 
 /-- Native tag isolation recovers the previously certified literal sign region. -/
 theorem sign_member (query : Vector (ZMod mersenne31Modulus) 4)
     (member : (table (p := mersenne31Modulus)).Contains #[] query)
     (selected : query[3] = 16) : SignHigh.Contains query := by
-  obtain ⟨region,i,same⟩ := member_region query member
-  have tag := congrArg (fun v : Vector (ZMod mersenne31Modulus) 4 => v[3]) same
-  rw [region_row_tag] at tag
-  have sameTag : (region.tag : ZMod mersenne31Modulus) = Region.sign.tag :=
-    tag.symm.trans selected
-  have values := congrArg ZMod.val sameTag
-  have tags : region.tag = Region.sign.tag := by
-    simpa only [ZMod.val_natCast,Nat.mod_eq_of_lt (tag_bound region),
-      Nat.mod_eq_of_lt (tag_bound .sign)] using values
-  have actual : region = .sign := by cases region <;> simp_all [Region.tag]
-  subst region
+  obtain ⟨i,same⟩ := selected_region query member .sign selected
   exact ⟨i,by simpa only [Region.data,shared_sign_data] using same⟩
 
 end Airbender.ReducedMachine.NativePoolProofs

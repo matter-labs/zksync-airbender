@@ -59,6 +59,14 @@ are not implied. Stage-two descriptors remain source data without enforcement
 semantics. The current v3 unified importer supplies the ownership pattern, not
 its field, equations, tables or compiler certificates.
 
+The [native shift row claim](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+derives operation flags, all four selected tags, actual source-two routing and
+exact five-bit truncation under an explicit decoded packed mask. The actual
+truncation columns are kernel-identified with the certified scalar columns,
+without equating offsets or assuming tables equivalent. The public decoder
+connection must still derive that mask. Neither this row claim nor its operand
+boundaries establish initialized reads, shift results, writes, PC or execution.
+
 Production circuit and machine code must stay unchanged. Confirmed native issues
 are documented with their exact evidence and, where necessary, narrow explicit
 Review interface assumptions. Those premises neither fix an issue nor establish

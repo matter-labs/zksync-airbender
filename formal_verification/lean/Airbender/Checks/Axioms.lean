@@ -1,3 +1,4 @@
+import Tests.NativeReducedShift
 import Tests.NativeReducedPool
 import Tests.ReducedSignHigh
 import Airbender.Proofs.ReducedMachine.ArtifactChecks
@@ -2555,3 +2556,23 @@ import Tests.SubwordStoreData
 #print axioms Airbender.ReducedMachine.NativeQueryProofs.dynamic_selectors
 #print axioms Airbender.ReducedMachine.Native.lookup_selectors
 #print axioms Tests.NativeReducedPool.absent_selector_rejected
+#print axioms Airbender.ReducedMachine.NativeSelectorProofs.bit_bounds
+#print axioms Airbender.ReducedMachine.NativeSelectorProofs.packed
+#print axioms Airbender.ReducedMachine.NativeSelectorProofs.shift_bits
+#print axioms Airbender.ReducedMachine.NativePoolProofs.tag_injective
+#print axioms Airbender.ReducedMachine.NativePoolProofs.selected_region
+#print axioms Airbender.ReducedMachine.NativeTruncationProofs.shared_columns
+#print axioms Airbender.ReducedMachine.NativeTruncationProofs.rows
+#print axioms Airbender.ReducedMachine.NativeTruncationProofs.result
+#print axioms Airbender.ReducedMachine.NativeFixed.truncate_shift
+#print axioms Airbender.ReducedMachine.NativeShiftRoutingProofs.tags
+#print axioms Airbender.ReducedMachine.NativeShiftRoutingProofs.truncation_query
+#print axioms Airbender.ReducedMachine.NativeShiftRoutingProofs.source
+#print axioms Airbender.ReducedMachine.NativeShiftRoutingProofs.amount
+#print axioms Airbender.ReducedMachine.Native.shift_routing
+#print axioms Tests.NativeReducedShift.oversized_key_rejected
+#print axioms Tests.NativeReducedShift.wrong_remainder_rejected
+#print axioms Tests.NativeReducedShift.nonzero_unused_rejected
+#print axioms Tests.NativeReducedShift.immediate_last_limb
+#print axioms Tests.NativeReducedShift.register_zero_limb
+#print axioms Tests.NativeReducedShift.standalone_selector_rejected

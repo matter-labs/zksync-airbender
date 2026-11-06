@@ -8,7 +8,7 @@ and unresolved connections live in [Findings](FINDINGS.md).
 
 ## User priority: native reduced machine (2026-10-21)
 
-Work directly on the [actual combined reduced circuit](../../cs/reduced_machine_preprocessed_layout.json)
+Work directly on the [regenerated combined reduced circuit](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 and its original Sail execution connection now. The six standalone-family
 checkpoints are reusable components; they do not establish reduced-machine
 coverage. Do not complete remaining standalone/subword work first. The
@@ -35,7 +35,11 @@ All other combined row effects and execution remain pending. See the
 2. Derive operation-specific native selector identities and flags, operand routing,
    actual masked writes, PC/clock effects and original Sail clauses. The domains
    of all four dynamic table selectors and both sign/high-byte queries are now
-   derived from the regenerated constraints and complete pool.
+   derived from the regenerated constraints and complete pool. Shift masks now
+   recover the operation flags, all four selected tags, actual register/immediate
+   source-two routing and exact five-bit truncation. The explicit decoded mask
+   still needs the original public-decoder connection; shift results, actual
+   writes and PC effects remain open.
 3. Compose initialized combined histories, public decoding and original execution.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.

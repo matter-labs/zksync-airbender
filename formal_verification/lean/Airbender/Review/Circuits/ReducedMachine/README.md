@@ -71,3 +71,17 @@ expressions remain unchanged; no row selector values are supplied. The
 [absent-tag regression](../../../../Tests/NativeReducedPool.lean) rejects ID 32.
 Domains do not yet identify the operation-selected tag or prove its arithmetic,
 memory or CSR effect.
+
+[Selected shift routing](Theorems.lean) now covers all six native shift-mask
+cases. The [row model](Row.lean) retains the decoded-mask input and actual
+observables. [Mask recovery](../../../Proofs/ReducedMachine/NativeSelectors.lean)
+derives all eighteen bit bounds and the operation flags; the
+[routing proof](../../../Proofs/ReducedMachine/NativeShiftRouting.lean) derives
+all four tags, source-two routing and exact five-bit truncation. The
+[truncation certificate](../../../Proofs/ReducedMachine/NativeTruncation.lean)
+checks the actual reduced literal columns against the unchanged certified row
+lemma, with distinct offsets and no equivalence premise.
+[Boundary/rejection checks](../../../../Tests/NativeReducedShift.lean) include
+wrong/oversized/unused fields and the distinct standalone sign-fill selector.
+Public decoding still needs to supply the packed mask; initialized operands,
+shift results, writes, PC and original execution remain open.

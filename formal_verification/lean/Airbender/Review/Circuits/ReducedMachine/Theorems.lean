@@ -1,4 +1,4 @@
-import Airbender.Proofs.ReducedMachine.NativeQueries
+import Airbender.Proofs.ReducedMachine.NativeShiftRouting
 
 namespace Airbender.ReducedMachine.Native
 open Verification
@@ -20,5 +20,19 @@ theorem lookup_selectors {w : Nat → ZMod mersenne31Modulus}
       (importedConstraints NativeFixed.table)) (slot : Fin 4) :
     (w (103 + 4 * slot.val)).val ∈ NativeFixed.tags :=
   NativeQueryProofs.dynamic_selectors holds slot
+
+/-- Under the explicit decoded shift mask, native acceptance determines the
+    actual source route, all lookup tags and the bounded five-bit shift amount. -/
+theorem shift_routing {w : Nat → ZMod mersenne31Modulus}
+    (holds : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints NativeFixed.table))
+    (mode : ShiftMode) (useRegister : Bool)
+    (mask : w 12 = (mode.mask useRegister : ZMod mersenne31Modulus)) :
+    source2 w = (if useRegister then #v[w 37,w 38] else #v[w 9,w 10]) ∧
+      lookupSelectors w = #v[47,37,37,20] ∧
+      (source2 w)[0].val < 65536 ∧ (shiftAmount w).val = (source2 w)[0].val % 32 ∧
+      (shiftAmount w).val < 32 ∧ w 65 = 0 :=
+  ⟨NativeShiftRoutingProofs.source holds mode useRegister mask,
+    NativeShiftRoutingProofs.tags holds mode useRegister mask,
+    NativeShiftRoutingProofs.amount holds mode useRegister mask⟩
 
 end Airbender.ReducedMachine.Native

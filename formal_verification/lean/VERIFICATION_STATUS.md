@@ -150,6 +150,41 @@ public configuration and operation semantics are unchanged, so the preceding
 Operation-specific selector identities, flags, operand routing and results still
 need proofs against the actual native constraints.
 
+## Native reduced shift routing and truncation (6 November 2026)
+
+The [short native claim](Airbender/Review/Circuits/ReducedMachine/Theorems.lean)
+now covers all six SLL/SLLI/SRL/SRLI/SRA/SRAI packed-mask cases on the regenerated
+combined machine. All eighteen mask-bit bounds and the exact natural packed sum
+come from original native equations. A supplied decoded packed mask determines
+the twelve operation flags and rs2 routing; individual selector values are never
+premises. The actual equations derive tags 47/37/37/20, the source-two
+register/immediate route, its low-limb bound, exact modulo-32 shift amount and
+unused third-field zero. These are local row facts, not instruction soundness.
+
+[Tag isolation](Airbender/Proofs/ReducedMachine/NativePool.lean) now recovers any
+selected literal region. The [native truncation certificate](Airbender/Proofs/ReducedMachine/NativeTruncation.lean)
+checks definitional equality of actual stored columns with the previously
+certified truncation columns; offsets remain distinct. It reuses the unchanged
+symbolic row lemma with no table-equivalence premise. Calculations live under
+Proofs; the [Review row model](Airbender/Review/Circuits/ReducedMachine/Row.lean)
+contains only mask references and actual observables.
+
+[Six regressions](Tests/NativeReducedShift.lean) reject oversized keys, wrong
+remainders and nonzero unused fields, recover immediate-last/register-zero limb
+boundaries and exclude standalone sign-fill tag 52 from this machine's tag-20
+slot. The affected modules, all 2,378 axiom roots and all 143 public Review
+theorem roots pass with unchanged watchdog limits. The largest affected proof
+used 837.17 MiB footprint and 3055.92 MiB resident; the complete Review gate
+used 536.33/3077.67 MiB. Every guard finished without owned survivors. No production source, generated native input or
+public fixture changed; the preceding 592 importer/eight CLI/47 native controls
+remain applicable rather than being regenerated without changed inputs.
+
+The decoded mask is still an explicit input. Original public decoding must derive
+it before initialized execution can use this claim. Shift table-37/sign-fill
+semantics, results, actual masked writes, PC effects, other operations and the
+remaining machine/protocol boundaries remain open. No new native defect or
+issue-handling assumption is introduced.
+
 ## Checked coverage
 
 | Circuit | Coverage |
