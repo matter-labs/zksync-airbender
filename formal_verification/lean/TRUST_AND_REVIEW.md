@@ -89,6 +89,17 @@ initialized history must supply actual source reads. Table-37 numerical semantic
 complete shift results, numeric PC+4/wraparound and original execution are not
 established by these field equalities. No issue-handling assumption is added.
 
+[Complete native shift-column transport](Airbender/Proofs/ReducedMachine/NativeShiftColumns.lean)
+now identifies both actual tag-37 output getters at every one of its 4,194,304
+indices with the earlier certified native columns. Periodic block values,
+canonical block shapes, the exact native merged boundary and reversed right
+column order are kernel checked. This removes the prior literal identity gap
+without adding a table premise. The existing public row surface is unchanged:
+pooled canonical numerical row/query composition, source/key binding and complete
+shift/execution meaning are still separate obligations. The unverified combined
+second-output draft remains outside the source tree after allocation-limit
+failures; neither those failures nor the new identities establish a native defect.
+
 Production circuit and machine code must stay unchanged. Confirmed native issues
 are documented with their exact evidence and, where necessary, narrow explicit
 Review interface assumptions. Those premises neither fix an issue nor establish

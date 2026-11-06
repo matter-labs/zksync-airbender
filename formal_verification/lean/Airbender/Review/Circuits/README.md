@@ -80,3 +80,10 @@ logical/positive/zero-shift cases. Both actual table-37 queries, native field
 assembly, destination address/masked port write and default-PC candidate selection
 are also derived. Table-37 arithmetic, full numerical shift/PC results, public
 decoding and initialized execution remain separate obligations.
+
+[Both actual reduced shift columns](../../Proofs/ReducedMachine/NativeShiftColumns.lean)
+now have complete getter transport to prior certified native columns, including
+all periodic values, the merged native boundary and reversed right output order.
+The public row surface is unchanged. Canonical pooled numerical row/query
+composition, complete shift results and execution remain open; the unverified
+second-output assembly draft is excluded after allocation-limit failures.

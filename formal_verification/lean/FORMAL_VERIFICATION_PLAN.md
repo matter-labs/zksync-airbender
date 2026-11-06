@@ -43,8 +43,11 @@ Full combined row effects and execution remain pending. See the
    Both actual table-37 queries, contribution assembly, destination address, masked
    port write and default-PC candidate selection are now derived from native
    equations. Table-37 arithmetic, complete word results, architectural rd/x0
-   decoding and numerical PC successor remain open. Redesign the large literal
-   checks to fit existing caps; do not retry with higher limits.
+   decoding and numerical PC successor remain open. Both actual table-37 output
+   columns now have complete checked getter transport to certified split-table
+   columns, including the merged boundary and reversed right outputs. Compose
+   numerical rows/pooled-query meanings with a smaller proof assembly; its current
+   second-output draft still hits the unchanged allocation cap.
 3. Compose initialized combined histories, public decoding and original execution.
 4. Connect native delegation workers/callers and supported public use.
 5. Close combined protocol, terminal/padding and initialization/teardown boundaries.

@@ -133,3 +133,16 @@ a premise. Eight conditional native regressions and all 2,420 axiom/148 public
 Review roots pass. This advances the monolithic v2 target on the v3 Unified
 migration path; it does not establish table-37 arithmetic, public decoding,
 initialized source reads, original shift execution or coverage parity.
+
+## Complete actual shift-column connection
+
+[Native tag-37 output transport](Airbender/Proofs/ReducedMachine/NativeShiftColumns.lean)
+now covers all 4,194,304 indices in both actual output columns. Twenty small
+literal template certificates reuse exact prior size/read lemmas; block
+congruence and symbolic resegmentation preserve the merged zero boundary and
+reversed right-shift column order. No setup/circuit/importer change or table
+assumption is used. All 2,459 axiom roots and 148 public Review roots pass.
+Pooled canonical numerical query composition and actual shift/Sail execution
+remain open. The second-output composition draft still hits the allocation cap
+and stays outside committed coverage. This is native connection progress, not
+checked v3 parity.

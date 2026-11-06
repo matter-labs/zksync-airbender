@@ -257,6 +257,43 @@ reads, numerical PC+4/wraparound, combined Sail execution, workers and protocol
 boundaries remain open. The earlier failed large table-37 checks were not retried.
 No defect, circuit fix or new interface restriction is introduced.
 
+## Complete native reduced shift-column transport (6 November 2026)
+
+The [actual column certificate](Airbender/Proofs/ReducedMachine/NativeShiftColumns.lean)
+now checks both output columns for every index in the 4,194,304-row native tag-37
+region. It derives exact getter equality to the previously certified native
+SLL-low/SRL-high columns. The right half reverses the earlier split table's two
+output columns. A [symbolic boundary proof](Airbender/Proofs/ReducedMachine/ShiftBlocks.lean)
+retains the native merger of 1,048,576 left-half zeros with the first right-half
+zero and the remaining 65,535 ascending values. No table-equivalence premise,
+new setup fixture or native generation is introduced.
+
+Twenty independently emitted periodic blocks are identified with the existing
+certified templates. Literal structure is reduced before small, complete
+64-value kernel checks; geometry is handled symbolically. Eight bounded block
+assemblies cover all 148/291 actual output blocks. The
+[reference shapes](Airbender/Proofs/ReducedMachine/NativeShiftReferences.lean)
+retain exact prior source hashes, and all proof calculation stays under Proofs.
+The largest successful template used 530.09 MiB footprint/2867.55 MiB resident;
+full column composition used 499.67/2819.36 MiB. No proof limit was increased.
+
+The affected bounded modules and complete axiom/Review/provenance/guide gates
+pass: 2,459 explicit standard-only axiom roots and 148 public Review roots. The
+existing public row surface is unchanged. Native data, exporter/importer inputs,
+production circuit/Rust and dependencies remain unchanged; the prior 592
+importer, eight CLI and 47 native controls remain applicable.
+
+This closes the large literal-column identity gap, not the complete numerical
+row/query or instruction theorem. A combined second-output numerical assembly
+still exceeds Lean's allocation cap despite separately checked native transport,
+old arithmetic and small reference identities. Its draft is outside the source
+tree and excluded from coverage. Every failed/limited worker terminated without
+survivors; no ceiling was raised. Canonical pooled numerical query results,
+source/key binding, complete shift words, public decoding/rd/x0, numerical PC,
+initialized execution and machine/protocol boundaries remain open. Resource
+failures and unfinished composition are not native defects or new interface
+assumptions.
+
 ## Checked coverage
 
 | Circuit | Coverage |

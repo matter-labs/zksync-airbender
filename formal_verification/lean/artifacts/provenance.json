@@ -6870,6 +6870,273 @@
     {
       "path": "Tests/NativeReducedWrite.lean",
       "change": "Eight conditional native regressions for discarded write/query participation, nonzero masked-write rejection, logical cross-limb assembly, arithmetic zero-shift filler and outgoing PC mismatches. These do not assert a complete accepted execution fixture."
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateL6.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate6.lean",
+      "backport_reuse_sha256": "607ea3530264301c53e02a8e13e169607ca2f0cd466c21852c2d0f10351385ca"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateL7.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate7.lean",
+      "backport_reuse_sha256": "e693b03240856085fdc62fa591aa17fb618ae6bf26bb90228b8049a9425ba98d"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateL8.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate8.lean",
+      "backport_reuse_sha256": "9f94fa02214fe39808ea4943a16e6c45fc3f58df192824a9d94bb4f520219468"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateL9.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate9.lean",
+      "backport_reuse_sha256": "8f1cb8d9531cb1cc8838de6bbd3aea969902d3ef3149c95024c44adbd9dbdadf"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateL10.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate10.lean",
+      "backport_reuse_sha256": "e781a1cf37fa7c76148c767f7504b7b68ec277617fe7215da83cafc9002b03b0"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateL11.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate11.lean",
+      "backport_reuse_sha256": "c3d342e74972f2e5be4277647cb65913d780ed024e7a0e85930ba300b79bc649"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateL12.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate12.lean",
+      "backport_reuse_sha256": "0c382efa4cb789d491288da4eee24498ef8fe8b8a7f5bd26d7dc56235f3663c8"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateL13.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate13.lean",
+      "backport_reuse_sha256": "80ec84e783a933bab736071d90ecda378a69d005396ab0091c0fc58e5f9fc70b"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateL14.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate14.lean",
+      "backport_reuse_sha256": "be57efb29fb7addb16731553db80d65c0feadccec97ed0f9571c21965e586a0a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateL15.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighTemplate15.lean",
+      "backport_reuse_sha256": "eea228a3742677cb8619dbaa57ae282451ef7af4a85de43aba61040285140c0c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateR1.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighTemplate1.lean",
+      "backport_reuse_sha256": "37cd42c6f1fd51bb96b74d7edd9e2ab85b146551c9d84fe84e6663bd679f6601"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateR2.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighTemplate2.lean",
+      "backport_reuse_sha256": "99a96299b7f0e60a73e25d21e8253b01787c8b4767e548d1f8bb8532a1a282fc"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateR3.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighTemplate3.lean",
+      "backport_reuse_sha256": "c4df7e9570bec8137ce1be96dce679728bde0a650beecea1620ef1aff1e13c97"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateR4.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighTemplate4.lean",
+      "backport_reuse_sha256": "51e854b919e79c8d1578d7772974c86cb728bc2b694a2c3923bf9bb6dd76c84f"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateR5.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighTemplate5.lean",
+      "backport_reuse_sha256": "9160999fc5622659bae1a4cbcd4771831f55859c823302eed005964936976bc6"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateR6.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighTemplate6.lean",
+      "backport_reuse_sha256": "075b546a20f9e4812b1c2599b636a8c046b6f1d910f8dcafe23fad16e02fb3a5"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateR7.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighTemplate7.lean",
+      "backport_reuse_sha256": "cc668f936e2b3a07a7e92b9845337b83df18e777788285018f80d68b27e729a0"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateR8.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighTemplate8.lean",
+      "backport_reuse_sha256": "d8c2a57c854c7d4020a39f3b0110d3375e84ad44c8b4e8a96c2a81dd7d2fe7a3"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateR9.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighTemplate9.lean",
+      "backport_reuse_sha256": "7735f3a7bd8f933509f4844bfdb6c107de58f118eca5a8502e45772a91b200cc"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplateR10.lean",
+      "change": "Adapt the existing complete template certificate to one independently emitted actual reduced ID37 block. Cut literal array structure before 64-value kernel checks, prove geometry symbolically and use the unchanged prior size/read lemmas for exact array/block identity. Default recursion/heartbeat and memory settings remain unchanged.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighTemplate10.lean",
+      "backport_reuse_sha256": "ab818cbc1f8bc215078628be37352a9e75cd1a3fe7b1a978287179fb1118fe81"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftTemplates.lean",
+      "change": "Import-only aggregation of the twenty actual reduced periodic-block identities; no data generation or additional premise."
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBlocks1Part0.lean",
+      "change": "Retain this exact prior canonical block-description source. Compose individual actual emitted constants with kernel-checked template identities by list congruence; native merged boundary blocks remain explicit. Multiple provenance entries retain distinct origins of this proof unit.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighParts.lean",
+      "backport_reuse_sha256": "57e94f0768b6824368edc6a724f256a089ef506ecb5c50f2107a85cfcd2d2487"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBlocks1Part1.lean",
+      "change": "Retain this exact prior canonical block-description source. Compose individual actual emitted constants with kernel-checked template identities by list congruence; native merged boundary blocks remain explicit. Multiple provenance entries retain distinct origins of this proof unit.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighParts.lean",
+      "backport_reuse_sha256": "57e94f0768b6824368edc6a724f256a089ef506ecb5c50f2107a85cfcd2d2487"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBlocks1Part1.lean",
+      "change": "Retain this exact prior canonical block-description source. Compose individual actual emitted constants with kernel-checked template identities by list congruence; native merged boundary blocks remain explicit. Multiple provenance entries retain distinct origins of this proof unit.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowParts.lean",
+      "backport_reuse_sha256": "786673b46159fc8d3e6814ddce466653f714a012b55c6cb510b142425e994b02"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBlocks1Part2.lean",
+      "change": "Retain this exact prior canonical block-description source. Compose individual actual emitted constants with kernel-checked template identities by list congruence; native merged boundary blocks remain explicit. Multiple provenance entries retain distinct origins of this proof unit.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowParts.lean",
+      "backport_reuse_sha256": "786673b46159fc8d3e6814ddce466653f714a012b55c6cb510b142425e994b02"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBlocks2Part0.lean",
+      "change": "Retain this exact prior canonical block-description source. Compose individual actual emitted constants with kernel-checked template identities by list congruence; native merged boundary blocks remain explicit. Multiple provenance entries retain distinct origins of this proof unit.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLowParts.lean",
+      "backport_reuse_sha256": "dd9eacc584666cba45d9b0b07c69a7b9831fe8997ff662b186ebd543c548a31c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBlocks2Part1.lean",
+      "change": "Retain this exact prior canonical block-description source. Compose individual actual emitted constants with kernel-checked template identities by list congruence; native merged boundary blocks remain explicit. Multiple provenance entries retain distinct origins of this proof unit.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLowParts.lean",
+      "backport_reuse_sha256": "dd9eacc584666cba45d9b0b07c69a7b9831fe8997ff662b186ebd543c548a31c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBlocks2Part1.lean",
+      "change": "Retain this exact prior canonical block-description source. Compose individual actual emitted constants with kernel-checked template identities by list congruence; native merged boundary blocks remain explicit. Multiple provenance entries retain distinct origins of this proof unit.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighParts.lean",
+      "backport_reuse_sha256": "57e94f0768b6824368edc6a724f256a089ef506ecb5c50f2107a85cfcd2d2487"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBlocks2Part2.lean",
+      "change": "Retain this exact prior canonical block-description source. Compose individual actual emitted constants with kernel-checked template identities by list congruence; native merged boundary blocks remain explicit. Multiple provenance entries retain distinct origins of this proof unit.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighParts.lean",
+      "backport_reuse_sha256": "57e94f0768b6824368edc6a724f256a089ef506ecb5c50f2107a85cfcd2d2487"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBlocks2Part2.lean",
+      "change": "Retain this exact prior canonical block-description source. Compose individual actual emitted constants with kernel-checked template identities by list congruence; native merged boundary blocks remain explicit. Multiple provenance entries retain distinct origins of this proof unit.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighParts.lean",
+      "backport_reuse_sha256": "15338e74d1f0124cb3781afc6e26ff9ea4976366b004eca9b9b31d9dcf738836"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBlocks2Part3.lean",
+      "change": "Retain this exact prior canonical block-description source. Compose individual actual emitted constants with kernel-checked template identities by list congruence; native merged boundary blocks remain explicit. Multiple provenance entries retain distinct origins of this proof unit.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighParts.lean",
+      "backport_reuse_sha256": "15338e74d1f0124cb3781afc6e26ff9ea4976366b004eca9b9b31d9dcf738836"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBlocks2Part3.lean",
+      "change": "Retain this exact prior canonical block-description source. Compose individual actual emitted constants with kernel-checked template identities by list congruence; native merged boundary blocks remain explicit. Multiple provenance entries retain distinct origins of this proof unit.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowParts.lean",
+      "backport_reuse_sha256": "786673b46159fc8d3e6814ddce466653f714a012b55c6cb510b142425e994b02"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftBlocks2Part4.lean",
+      "change": "Retain this exact prior canonical block-description source. Compose individual actual emitted constants with kernel-checked template identities by list congruence; native merged boundary blocks remain explicit. Multiple provenance entries retain distinct origins of this proof unit.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowParts.lean",
+      "backport_reuse_sha256": "786673b46159fc8d3e6814ddce466653f714a012b55c6cb510b142425e994b02"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftReferences.lean",
+      "change": "Reuse the exact canonical block descriptions and existing shape lemmas for this prior native column. This is a proof descriptor, not an alternative accepted setup fixture or equivalence assumption; multiple entries retain all distinct source origins.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllHighParts.lean",
+      "backport_reuse_sha256": "57e94f0768b6824368edc6a724f256a089ef506ecb5c50f2107a85cfcd2d2487"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftReferences.lean",
+      "change": "Reuse the exact canonical block descriptions and existing shape lemmas for this prior native column. This is a proof descriptor, not an alternative accepted setup fixture or equivalence assumption; multiple entries retain all distinct source origins.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLowParts.lean",
+      "backport_reuse_sha256": "dd9eacc584666cba45d9b0b07c69a7b9831fe8997ff662b186ebd543c548a31c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftReferences.lean",
+      "change": "Reuse the exact canonical block descriptions and existing shape lemmas for this prior native column. This is a proof descriptor, not an alternative accepted setup fixture or equivalence assumption; multiple entries retain all distinct source origins.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlHighParts.lean",
+      "backport_reuse_sha256": "15338e74d1f0124cb3781afc6e26ff9ea4976366b004eca9b9b31d9dcf738836"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftReferences.lean",
+      "change": "Reuse the exact canonical block descriptions and existing shape lemmas for this prior native column. This is a proof descriptor, not an alternative accepted setup fixture or equivalence assumption; multiple entries retain all distinct source origins.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SrlLowParts.lean",
+      "backport_reuse_sha256": "786673b46159fc8d3e6814ddce466653f714a012b55c6cb510b142425e994b02"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/ShiftBlocks.lean",
+      "change": "New symbolic append/getter proof and exact zero-plus-ascending boundary resegmentation against original Setup.getFromBlocks/Block.get? definitions. No literal table-generation recipe, new field encoding or additional acceptance premise."
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftColumns.lean",
+      "change": "Assemble exact actual ID37 column getters from individual native constant identities and original certified reference shapes. Partition canonical lists to stay at default recursion/heartbeat settings. Prove merged left/right boundary and reversed right output order for all4194304indices. Pooled numerical row/query composition remains separate.",
+      "backport_reuse_revision": "2163ca3bc1222b0d59e2a366771b50e2b98391a5",
+      "backport_reuse_path": "Airbender/Proofs/Tables/SllLowParts.lean",
+      "backport_reuse_sha256": "dd9eacc584666cba45d9b0b07c69a7b9831fe8997ff662b186ebd543c548a31c"
     }
   ],
   "setup_artifacts": [

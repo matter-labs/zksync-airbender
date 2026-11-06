@@ -1,3 +1,4 @@
+import Airbender.Proofs.ReducedMachine.NativeShiftColumns
 import Tests.NativeReducedWrite
 import Tests.NativeReducedSignFill
 import Tests.NativeReducedShift
@@ -2620,3 +2621,42 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedWrite.discarded_queries_retained
 #print axioms Tests.NativeReducedWrite.pc_low_mismatch_rejected
 #print axioms Tests.NativeReducedWrite.pc_high_mismatch_rejected
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateL6Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateL7Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateL8Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateL9Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateL10Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateL11Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateL12Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateL13Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateL14Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateL15Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateR1Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateR2Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateR3Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateR4Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateR5Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateR6Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateR7Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateR8Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateR9Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftTemplateR10Proofs.block
+#print axioms Airbender.ReducedMachine.NativeShiftShapeProofs.blocks1Part0
+#print axioms Airbender.ReducedMachine.NativeShiftShapeProofs.blocks1Part1
+#print axioms Airbender.ReducedMachine.NativeShiftShapeProofs.blocks1Part2
+#print axioms Airbender.ReducedMachine.NativeShiftShapeProofs.blocks2Part0
+#print axioms Airbender.ReducedMachine.NativeShiftShapeProofs.blocks2Part1
+#print axioms Airbender.ReducedMachine.NativeShiftShapeProofs.blocks2Part2
+#print axioms Airbender.ReducedMachine.NativeShiftShapeProofs.blocks2Part3
+#print axioms Airbender.ReducedMachine.NativeShiftShapeProofs.blocks2Part4
+#print axioms Airbender.ReducedMachine.NativeShiftReferenceProofs.left_low_shape
+#print axioms Airbender.ReducedMachine.NativeShiftReferenceProofs.left_high_shape
+#print axioms Airbender.ReducedMachine.NativeShiftReferenceProofs.right_low_shape
+#print axioms Airbender.ReducedMachine.NativeShiftReferenceProofs.right_high_shape
+#print axioms Airbender.ReducedMachine.ShiftBlockProofs.get_append
+#print axioms Airbender.ReducedMachine.ShiftBlockProofs.native_boundary
+#print axioms Airbender.ReducedMachine.NativeShiftColumnProofs.column1_shape
+#print axioms Airbender.ReducedMachine.NativeShiftColumnProofs.column2_shape
+#print axioms Airbender.ReducedMachine.NativeShiftColumnProofs.first_reads
+#print axioms Airbender.ReducedMachine.NativeShiftColumnProofs.second_reads
+#print axioms Airbender.ReducedMachine.NativeShiftColumnProofs.output

@@ -114,3 +114,14 @@ zero-shift arithmetic filler and rejected PC mismatches. They do not assert a
 complete accepted witness. The decoded mask, architectural rd/x0 binding,
 initialized reads, table-37 arithmetic, numeric PC+4/wraparound and original Sail
 execution remain separate obligations. No new premise or circuit change bypasses them.
+
+[Complete output-column transport](../../../Proofs/ReducedMachine/NativeShiftColumns.lean)
+now covers every native ID-37 row index. Twenty small periodic-block certificates
+and bounded block congruence identify the exact earlier certified column getters,
+retaining swapped right outputs and the native merged zero/ascending boundary.
+[Symbolic boundary reasoning](../../../Proofs/ReducedMachine/ShiftBlocks.lean)
+adds no table premise. This closes the literal-column identity gap; canonical
+pooled numerical row/query composition and complete results remain separate.
+The combined second-output draft still exceeds the unchanged Lean allocation cap
+and is excluded from source/coverage. The public row surface and native inputs
+are unchanged. Decoder/source/PC/execution and protocol obligations remain open.

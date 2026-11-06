@@ -99,6 +99,11 @@ from public decoding and proving table arithmetic, numerical PC effects and
 initialized execution are unfinished connections. The actual field assembly,
 masked port write/address and default-PC selection are now checked. These are
 coverage milestones, not native findings or restrictions introduced to hide a defect.
+Both actual shift output columns now have complete checked getter transport to
+previous native certificates, including the native compression boundary and
+right-column order. The remaining combined numerical-row draft still hits the
+allocation cap and is excluded from coverage. Neither the successful transport
+nor that resource boundary is a native defect or new restriction.
 Confirmed native-v2 defects remain zero.
 
 ## Open bindings
