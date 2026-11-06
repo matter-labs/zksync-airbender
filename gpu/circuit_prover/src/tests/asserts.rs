@@ -319,6 +319,40 @@ pub(super) fn assert_gkr_proof_structure_for_test(
         whir_schedule.num_rounds(),
         "proof must contain one query-draw PoW nonce per WHIR round",
     );
+    let whir = &proof.whir_proof;
+    assert_eq!(
+        whir.base_folding_pow_nonces.len(),
+        if whir_schedule.base_round.folding_pow_bits > 0 {
+            whir_schedule.base_round.fold_log2
+        } else {
+            0
+        },
+        "base folding PoW nonce count",
+    );
+    assert_eq!(
+        whir.intermediate_whir_oracles.len(),
+        whir_schedule.internal_rounds.len()
+    );
+    for (oracle, round) in whir
+        .intermediate_whir_oracles
+        .iter()
+        .zip(&whir_schedule.internal_rounds)
+    {
+        assert_eq!(
+            oracle.folding_pow_nonces.len(),
+            if round.folding_pow_bits > 0 {
+                round.folding_log2
+            } else {
+                0
+            },
+            "internal folding PoW nonce count"
+        );
+        assert_eq!(
+            oracle.ood_pow_nonce.is_some(),
+            round.ood_pow_bits > 0,
+            "OOD PoW nonce presence"
+        );
+    }
 }
 
 fn canonical_serialized_bytes_for_test<T: serde::Serialize>(value: &T) -> Vec<u8> {

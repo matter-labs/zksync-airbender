@@ -1,116 +1,77 @@
 use super::*;
 use crate::proof::memory_policy::{GkrMemoryPolicy, WitnessMemoryPolicy, WitnessPostCommitStorage};
-use prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture as packed_config;
 
-fn check_policies(base: &BasicUnrolledFixture) {
+fn check_policies(circuit: CanonicalCircuit, mode: circuit_common::SoundnessMode) {
+    let fixture = prepare_canonical_proof_fixture(circuit, mode);
+    let base = &fixture.base;
+    let preparation_peak = base.context.get_used_mem_peak();
     let baseline = base.context.get_used_mem_current();
-    let (expected, _) = base
-        .schedule_prove_with_memory_policy(ProofMemoryPolicy::default())
-        .unwrap()
-        .finish()
-        .unwrap();
-    let expected_bytes = serde_json::to_vec(&expected).unwrap();
-    assert_eq!(base.context.get_used_mem_current(), baseline);
+    base.context.reset_used_mem_peak();
     let presets =
         [21usize << 30, 30usize << 30].map(|arena| presets::policy(base.circuit_type, arena));
-    let mut policies = ProofMemoryPolicy::candidates()
+    let mut policies = vec![ProofMemoryPolicy::default()];
+    for policy in ProofMemoryPolicy::candidates()
         .chain(GkrMemoryPolicy::candidates().map(|gkr| ProofMemoryPolicy {
             gkr,
             ..Default::default()
         }))
-        .chain(presets);
-    while let Some(first) = policies.next() {
-        let second = policies.next().unwrap_or(first);
-        let jobs =
-            [first, second].map(|policy| base.schedule_prove_with_memory_policy(policy).unwrap());
+        .chain(presets)
+    {
+        if !policies.contains(&policy) {
+            policies.push(policy);
+        }
+    }
+    let mut checked = 0;
+    for pair in policies.chunks(2) {
+        let jobs = [pair[0], *pair.get(1).unwrap_or(&pair[0])]
+            .map(|policy| base.schedule_prove_with_memory_policy(policy).unwrap());
         for job in jobs {
             let (proof, _) = job.finish().unwrap();
-            assert_gkr_proof_eq_for_test(&proof, &expected);
-            assert_eq!(serde_json::to_vec(&proof).unwrap(), expected_bytes);
+            fixture.assert_proof(&proof);
+            checked += 1;
+            assert_eq!(
+                base.context.get_used_mem_current(),
+                baseline,
+                "device memory must return to baseline after each policy finish"
+            );
         }
-        assert_eq!(base.context.get_used_mem_current(), baseline);
     }
+    assert!(checked >= policies.len());
+    record_test_resources(base, preparation_peak, checked);
 }
 
-#[test]
-#[ignore = "GPU policy candidates and presets against the default-policy proof"]
-fn policies_separate_with_setup() {
-    check_policies(&prepare_basic_unrolled_profiling_fixture());
+macro_rules! policy_tests {
+    ($(($p:ident, $e:ident, $circuit:ident)),* $(,)?) => { $(
+        #[test]
+        #[ignore = "production policy candidates and presets against committed proof bytes"]
+        fn $p() { check_policies(CanonicalCircuit::$circuit, circuit_common::SoundnessMode::PessimisticConjecture); }
+        #[test]
+        #[ignore = "production policy candidates and presets against committed proof bytes"]
+        fn $e() { check_policies(CanonicalCircuit::$circuit, circuit_common::SoundnessMode::EthproofsSoundnessCalc); }
+    )* };
 }
 
-#[test]
-#[ignore = "GPU policy candidates and presets against the default-policy proof"]
-fn policies_separate_without_setup() {
-    check_policies(
-        &prepare_canonical_proof_fixture(
-            CanonicalCircuit::InitsAndTeardowns,
-            circuit_common::SoundnessMode::DEFAULT,
-        )
-        .base,
-    );
-}
-
-#[test]
-#[ignore = "GPU policy candidates and presets against the default-policy proof"]
-fn policies_virtual_k0() {
-    let config = delegation_prover_config(DelegationCircuitType::KeccakSpecial5);
-    check_policies(&prepare_policy_fixture_for_config(
-        CanonicalCircuit::KeccakSpecial5,
-        config,
-    ));
-}
-
-#[test]
-#[ignore = "GPU policy candidates and presets against the default-policy proof"]
-fn policies_virtual_k2() {
-    let config = delegation_prover_config(DelegationCircuitType::Blake2WithCompression);
-    check_policies(&prepare_policy_fixture_for_config(
-        CanonicalCircuit::Blake2WithExtendedControl,
-        config,
-    ));
-}
-
-#[test]
-#[ignore = "GPU policy candidates and presets against the default-policy proof"]
-fn policies_physical_k4() {
-    let config = packed_config(20, 4, SecurityLevel::Sec100);
-    check_policies(&prepare_policy_fixture_for_config(
-        CanonicalCircuit::Blake2WithExtendedControl,
-        config,
-    ));
-}
-
-#[test]
-#[ignore = "GPU policy candidates and presets against the default-policy proof"]
-fn policies_merged_fold1() {
-    let mut config = packed_config(20, 4, SecurityLevel::Sec100);
-    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-    check_policies(&prepare_policy_fixture_for_config(
-        CanonicalCircuit::Blake2WithExtendedControl,
-        config,
-    ));
-}
-
-#[test]
-#[ignore = "GPU policy candidates and presets against the default-policy proof"]
-fn policies_merged_fold0() {
-    let mut config = delegation_prover_config(DelegationCircuitType::KeccakSpecial5);
-    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-    check_policies(&prepare_policy_fixture_for_config(
-        CanonicalCircuit::KeccakSpecial5,
-        config,
-    ));
+policy_tests! {
+    (policies_add_sub_pessimistic_conjecture, policies_add_sub_ethproofs_soundcalc, AddSubLuiAuipcMop),
+    (policies_inits_and_teardowns_pessimistic_conjecture, policies_inits_and_teardowns_ethproofs_soundcalc, InitsAndTeardowns),
+    (policies_keccak_special5_pessimistic_conjecture, policies_keccak_special5_ethproofs_soundcalc, KeccakSpecial5),
+    (policies_blake2_with_compression_pessimistic_conjecture, policies_blake2_with_compression_ethproofs_soundcalc, Blake2WithExtendedControl),
 }
 
 #[test]
 #[should_panic(expected = "invalid witness memory policy")]
 fn invalid_witness_policy_is_refused() {
-    let base = prepare_basic_unrolled_profiling_fixture();
-    let _ = base.schedule_prove_with_memory_policy(ProofMemoryPolicy {
-        witness: WitnessMemoryPolicy {
-            post_commitment: WitnessPostCommitStorage::RawEvaluations,
+    let fixture = prepare_canonical_proof_fixture(
+        CanonicalCircuit::AddSubLuiAuipcMop,
+        circuit_common::SoundnessMode::DEFAULT,
+    );
+    let _ = fixture
+        .base
+        .schedule_prove_with_memory_policy(ProofMemoryPolicy {
+            witness: WitnessMemoryPolicy {
+                post_commitment: WitnessPostCommitStorage::RawEvaluations,
+                ..Default::default()
+            },
             ..Default::default()
-        },
-        ..Default::default()
-    });
+        });
 }

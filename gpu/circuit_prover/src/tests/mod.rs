@@ -303,6 +303,13 @@ impl BasicUnrolledFixture {
 
 impl BasicUnrolledProofFixture {
     fn assert_proof(&self, proof: &GKRProof<BF, E4, DefaultTreeConstructor>) {
+        assert_gkr_proof_structure_for_test(proof, &self.base.prover_config.whir_schedule);
+        if self.base.circuit_type == CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) {
+            assert_eq!(self.base.compiled_circuit.witness_layout.total_width, 0);
+            assert_eq!(self.base.compiled_circuit.generic_lookup_tables_width, 0);
+            assert!(self.base.gpu_setup_host.is_none());
+            assert!(self.base.tracing_data_host.is_none());
+        }
         assert_gkr_proof_eq_for_test(proof, &self.committed_proof);
         assert_eq!(
             serde_json::to_vec_pretty(proof).unwrap(),
@@ -331,8 +338,20 @@ impl BasicUnrolledProofFixture {
     }
 }
 
+fn record_test_resources(base: &BasicUnrolledFixture, preparation_peak: usize, checked: usize) {
+    if let Some(path) = std::env::var_os("AB_GPU_TEST_RESOURCE_PATH") {
+        let proof_peak = base.context.get_used_mem_peak();
+        let data = serde_json::json!({
+            "circuit_type": format!("{:?}", base.circuit_type),
+            "proofs_checked": checked,
+            "device_baseline_bytes": base.context.get_used_mem_current(),
+            "preparation_device_peak_bytes": preparation_peak,
+            "proof_device_peak_bytes": proof_peak,
+            "device_peak_bytes": preparation_peak.max(proof_peak),
+        });
+        std::fs::write(path, serde_json::to_vec_pretty(&data).unwrap()).unwrap();
+    }
+}
+
 mod fixtures_helpers;
 use fixtures_helpers::*;
-
-mod unified_fixtures_helpers;
-use unified_fixtures_helpers::*;

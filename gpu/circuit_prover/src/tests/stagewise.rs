@@ -184,6 +184,9 @@ fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<Expecte
 }
 
 fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
+    let preparation_peak = fixture.base.context.get_used_mem_peak();
+    let baseline = fixture.base.context.get_used_mem_current();
+    fixture.base.context.reset_used_mem_peak();
     let mut transfers = fixture.base.create_transfers().unwrap();
     transfers.schedule(&fixture.base.context).unwrap();
     let job = crate::proof::prove_stagewise(
@@ -251,16 +254,42 @@ fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
         }
     }
     fixture.assert_proof(&gpu_proof);
+    assert_eq!(fixture.base.context.get_used_mem_current(), baseline);
+    record_test_resources(&fixture.base, preparation_peak, 1);
 }
 
 #[test]
 #[ignore]
-fn run_add_sub_stagewise_parity_test() {
-    run_stagewise_parity(&prepare_basic_unrolled_proof_fixture());
+fn add_sub_stagewise_pessimistic_conjecture() {
+    run_stagewise_parity(&prepare_canonical_proof_fixture(
+        CanonicalCircuit::AddSubLuiAuipcMop,
+        circuit_common::SoundnessMode::PessimisticConjecture,
+    ));
 }
 
 #[test]
 #[ignore]
-fn run_unified_stagewise_parity_test() {
-    run_stagewise_parity(&prepare_unified_proof_fixture());
+fn add_sub_stagewise_ethproofs_soundcalc() {
+    run_stagewise_parity(&prepare_canonical_proof_fixture(
+        CanonicalCircuit::AddSubLuiAuipcMop,
+        circuit_common::SoundnessMode::EthproofsSoundnessCalc,
+    ));
+}
+
+#[test]
+#[ignore]
+fn unified_stagewise_pessimistic_conjecture() {
+    run_stagewise_parity(&prepare_canonical_proof_fixture(
+        CanonicalCircuit::UnifiedReducedMachine,
+        circuit_common::SoundnessMode::PessimisticConjecture,
+    ));
+}
+
+#[test]
+#[ignore]
+fn unified_stagewise_ethproofs_soundcalc() {
+    run_stagewise_parity(&prepare_canonical_proof_fixture(
+        CanonicalCircuit::UnifiedReducedMachine,
+        circuit_common::SoundnessMode::EthproofsSoundnessCalc,
+    ));
 }

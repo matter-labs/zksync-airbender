@@ -60,11 +60,3 @@ pub(super) fn gpu_memory_caps(
     assert_eq!(context.get_used_mem_current(), baseline);
     caps
 }
-
-pub(super) fn geometry_proof(fixture: BasicUnrolledProofFixture) {
-    let base = &fixture.base;
-    let baseline = base.context.get_used_mem_current();
-    let (proof, _) = base.schedule_prove().unwrap().finish().unwrap();
-    fixture.assert_proof(&proof);
-    assert_eq!(base.context.get_used_mem_current(), baseline);
-}

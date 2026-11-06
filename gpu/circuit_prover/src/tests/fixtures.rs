@@ -42,10 +42,6 @@ pub(super) fn load_committed_proof(
     CommittedProof { proof, bytes }
 }
 
-pub(super) fn delegation_prover_config(circuit: DelegationCircuitType) -> ProverConfig {
-    CircuitType::Delegation(circuit).prover_config(SecurityLevel::Sec100)
-}
-
 #[test]
 fn cpu_loads_complete_committed_proof_set() {
     use prover::tests::gkr::orchestration::canonical_fixtures::CANONICAL_CIRCUITS;

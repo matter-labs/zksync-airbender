@@ -259,49 +259,15 @@ pub(super) fn prepare_canonical_proof_fixture(
     }
 }
 
-/// GPU policy tests may select another geometry over the same canonical rows.
-/// Their reference is another GPU policy, without creating a second golden proof.
-pub(super) fn prepare_policy_fixture_for_config(
-    circuit: CanonicalCircuit,
-    config: ProverConfig,
-) -> BasicUnrolledFixture {
-    let mode = circuit_common::SoundnessMode::DEFAULT;
-    let committed = load_committed_proof(circuit, mode);
-    let mut base = build_input_fixture(circuit, mode, config, &committed.proof);
-    let geometry = BaseCommitmentGeometry::from_config(
-        &base.prover_config,
-        BaseColumns::of(&base.compiled_circuit),
-    );
-    base.memory_tree_caps = geometry_proof::gpu_memory_caps(&base, geometry);
-    base
-}
-
-pub(super) fn prepare_canonical_proof_fixture_for_config(
-    circuit: CanonicalCircuit,
-    config: ProverConfig,
-) -> BasicUnrolledProofFixture {
-    let root = test_artifact_path("");
-    let mode = circuit_common::SoundnessMode::ALL
-        .iter()
-        .copied()
-        .find(|&mode| {
-            serde_json::to_vec(&config).unwrap()
-                == serde_json::to_vec(&circuit.prover_config(&root, mode)).unwrap()
-        })
-        .expect("proof parity requires a canonical mode config");
-    prepare_canonical_proof_fixture(circuit, mode)
-}
-
-pub(crate) fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixture {
-    prepare_basic_unrolled_proof_fixture_in_mode(circuit_common::SoundnessMode::DEFAULT)
-}
-
-pub(crate) fn prepare_basic_unrolled_proof_fixture_in_mode(
-    mode: circuit_common::SoundnessMode,
-) -> BasicUnrolledProofFixture {
-    prepare_canonical_proof_fixture(CanonicalCircuit::AddSubLuiAuipcMop, mode)
-}
-
-pub(super) fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture {
-    prepare_basic_unrolled_proof_fixture().base
+pub(super) fn make_delegation_tracing_host_for_test<W>(
+    circuit_type: DelegationCircuitType,
+    buffer: Vec<W>,
+) -> TracingDataHost<Global>
+where
+    W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
+{
+    let trace = gpu_trace::witness::trace_delegation::DelegationTraceHost::<W, Global> {
+        chunks: vec![Arc::new(buffer)],
+    };
+    TracingDataHost::Delegation(W::get(circuit_type, trace))
 }
