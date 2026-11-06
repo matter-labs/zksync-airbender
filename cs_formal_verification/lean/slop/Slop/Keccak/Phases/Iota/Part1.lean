@@ -1,24 +1,23 @@
 import Slop.Keccak.PhaseDefinitions
 import Slop.Keccak.SlotReduction
+import Slop.DeferredRfl
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 set_option maxRecDepth 65536
 set_option maxHeartbeats 64000000
-set_option cbv.maxSteps 2000000
-attribute [local cbv_opaque] rotLeft64 not64 Nat.xor Nat.land roundConstants
 
 local macro "solve_iota_lanes" : tactic => `(tactic| (
+  simp only [iotaPhase, Fin.foldl_succ_last, Fin.foldl_zero]
   apply Vector.ext
   intro i bound
   interval_cases i <;>
-    simp only [logicalLanes, Vector.getElem_ofFn, iotaPhase, Fin.foldl_succ_last,
-      Fin.foldl_zero, physical_cached, micro_normalized] <;> cbv))
+    simp only [logicalLanes, Vector.getElem_ofFn, physical_cached, micro_normalized] <;> deferred_rfl))
 local macro "solve_iota_parities" column:term : tactic => `(tactic| (
+  simp only [iotaPhase, Fin.foldl_succ_last, Fin.foldl_zero]
   fin_cases $column:term <;>
-    simp only [logicalLanes, Vector.getElem_ofFn, iotaPhase, Fin.foldl_succ_last, Fin.foldl_zero,
-      physical_cached, micro_normalized] <;> cbv))
+    simp only [logicalLanes, Vector.getElem_ofFn, physical_cached, micro_normalized] <;> deferred_rfl))
 
 theorem iota_lanes_6 (state : LaneState) :
     logicalLanes 6 (iotaPhase 6 state) =
