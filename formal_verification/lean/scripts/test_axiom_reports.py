@@ -1,13 +1,41 @@
 import json
 from pathlib import Path
+import re
 import tempfile
 import unittest
 
 from check_axioms import analyze
 from check_lean import direct_axioms
+import check_review
 
 
 class AxiomReportTests(unittest.TestCase):
+    def test_public_review_theorem_requires_an_explicit_unique_audit_request(self):
+        module = 'Airbender.Review.Trace.Workers.Keccak.SplitPermutation'
+        name = 'Airbender.Keccak.Split.Native.permutation_soundness'
+        source = check_review.ROOT.joinpath(*module.split('.')).with_suffix('.lean')
+        for number, line in enumerate(source.read_text().splitlines(), 1):
+            match = re.match(r'theorem permutation_soundness\b', line)
+            if match:
+                break
+        else:
+            self.fail('The public split permutation statement was not found')
+        # Match the compiled inventory's source range through the theorem name.
+        record = f'REVIEW_THEOREM {module} {name} {number} 0 {number} {match.end()}\n'
+        audit = check_review.ROOT / 'Airbender/Checks/Axioms.lean'
+        self.assertEqual(check_review.check_theorems(record, audit), 1)
+        request = f'#print axioms {name}\n'
+        original = audit.read_text()
+        self.assertEqual(original.count(request), 1)
+        with tempfile.TemporaryDirectory() as directory:
+            specimen = Path(directory) / 'Axioms.lean'
+            specimen.write_text(original.replace(request, ''))
+            with self.assertRaisesRegex(ValueError, 'Missing public theorem audit roots'):
+                check_review.check_theorems(record, specimen)
+            specimen.write_text(original + request)
+            with self.assertRaisesRegex(ValueError, 'Duplicate axiom audit roots'):
+                check_review.check_theorems(record, specimen)
+
     def test_public_baseline_retires_internal_roots_but_protects_review(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

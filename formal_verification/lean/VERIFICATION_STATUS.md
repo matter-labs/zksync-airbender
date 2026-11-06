@@ -178,6 +178,27 @@ changes; the compiled reference checker, theorem coverage, proof interfaces and
 all resource/trust gates remain unchanged. Actual compiled reference validation,
 complete Review/environment audit and final full assurance remain pending.
 
+Run [42176369285](https://github.com/matter-labs/zksync-airbender/actions/runs/42176369285)
+on `980baaa5511adccec9540b81e53bf7678171a197` passed fresh native qualification
+and the compiled guide-reference check, confirming the documentation repair.
+Complete importer runtime passed (44.24 seconds, 491.62 MiB charged, no owned
+children left), along with source/native freshness, all 4,205 snapshot identities
+and nine mutation controls. Review then found 167 source-declared public theorems
+missing from the explicit axiom-report requests. Its child exited 1 after 96.26
+seconds at 508.39 MiB charged footprint, with no owned processes left; the frontend
+failed after 358.04 seconds, without a resource or proof error.
+The lookup-binding generator had retained only the six target requests. It and
+the generated audit now retain those six unchanged and add the 167 missing
+explicit reports, for 173 unique requests. All 357 current Review modules were
+already imported, so the import closure does not grow. Only reporting commands
+are added; no theorem statement, proof, premise or axiom is introduced or changed.
+The regression uses the real split-permutation statement's source range and
+rejects an omitted or duplicate audit request. All 47 focused controls pass,
+including generator freshness. Expanded-inventory parser controls reject missing,
+extra, duplicate and forbidden synthetic reports; these are not actual theorem
+axiom results. Actual expanded Lean reports, complete Review/environment auditing
+and final full assurance remain pending.
+
 The 4 November specification review makes the existing one-instance
 initialization and submitted-pool premises explicit. Native corollaries certify
 CPU rows only; standard worker equations remain no-cache flat constraints and
