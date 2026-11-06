@@ -2,8 +2,8 @@ import Lean
 import Slop.Sail.Configured
 
 /-! `kernel_rfl`: close `a = b` with `Eq.refl a`, checked ONLY by the Lean kernel (the elaborator's
-definitional-equality check is skipped; it is far slower on the generated Sail model). The tactic is the circuit
-proofs' (`Slop/Sail/Configured.lean`); this file adds the helper the ISA proofs' own tactics use. -/
+definitional-equality check is skipped; it is far slower on the generated Sail model). The tactic is
+`Slop/KernelRfl.lean`; this file adds the helper the ISA proofs' own tactics use. -/
 
 open Lean Meta Elab Tactic
 

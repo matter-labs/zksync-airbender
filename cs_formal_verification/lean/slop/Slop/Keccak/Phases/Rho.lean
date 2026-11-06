@@ -1,6 +1,6 @@
 import Slop.Keccak.PhaseDefinitions
 import Slop.Keccak.SlotReduction
-import Slop.DeferredRfl
+import Slop.KernelRfl
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256
@@ -18,6 +18,6 @@ theorem rho_phase_lanes (round : Fin 24) (state : LaneState) :
   all_goals norm_num only [Specs.Keccak256.rhoPi, Fin.getElem_fin, Vector.getElem_mk,
     List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
   all_goals simp only [physical_cached, micro_normalized]
-  all_goals deferred_rfl
+  all_goals kernel_rfl
 
 end Airbender.Keccak.Proofs

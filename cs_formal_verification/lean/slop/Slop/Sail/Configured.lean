@@ -1,21 +1,9 @@
 import Human.Helpers.Core.Configuration
 import Human.Helpers.Memory.Platform
+import Slop.KernelRfl
 
 /-! Facts about the Airbender configuration (`Configured`) that the memory, jump and decoder proofs use:
-the reset values of the registers they read, checked by the kernel (`kernel_rfl`). -/
-
-open Lean Meta Elab Tactic in
-/-- `kernel_rfl`: close `a = b` with `Eq.refl a`, checked only by the kernel (the elaborator's definitional
-    check is far slower on the generated model); the auxiliary theorem is checked now. Proof search, re-checked
-    by the kernel. -/
-elab "kernel_rfl" : tactic => withMainContext do
-  let g ← getMainGoal
-  let ty ← instantiateMVars (← g.getType)
-  let some (α, lhs, _) := ty.eq? | throwError "kernel_rfl: goal is not an equality"
-  let u ← getLevel α
-  g.assign (← withOptions (fun o => Elab.async.set (maxRecDepth.set o 1000000) false)
-    (mkAuxTheorem ty (mkApp2 (mkConst ``Eq.refl [u]) α lhs)))
-  replaceMainGoal []
+the reset values of the registers they read, checked by the kernel (`kernel_rfl`, `Slop.KernelRfl`). -/
 
 namespace Airbender.Reference.RiscV.Sail
 open Configuration

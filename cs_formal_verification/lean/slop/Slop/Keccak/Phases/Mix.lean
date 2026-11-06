@@ -1,5 +1,5 @@
 import Slop.Keccak.PhaseDefinitions
-import Slop.DeferredRfl
+import Slop.KernelRfl
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256
@@ -11,7 +11,7 @@ theorem mix_phase_frame (round : Fin 24) (state : LaneState) (lane : Fin 25) :
   simp only [mixPhase, Fin.foldl_succ_last, Fin.foldl_zero]
   fin_cases round
   all_goals fin_cases lane
-  all_goals deferred_rfl
+  all_goals kernel_rfl
 
 theorem mix_phase_d (round : Fin 24) (state : LaneState) (column : Fin 5) :
     mixPhase round state ⟨25 + (column.val + 4) % 5, by have := Nat.mod_lt (column.val + 4) (by decide : 0 < 5); omega⟩ =
@@ -19,6 +19,6 @@ theorem mix_phase_d (round : Fin 24) (state : LaneState) (column : Fin 5) :
   simp only [mixPhase, Fin.foldl_succ_last, Fin.foldl_zero]
   fin_cases round
   all_goals fin_cases column
-  all_goals deferred_rfl
+  all_goals kernel_rfl
 
 end Airbender.Keccak.Proofs
