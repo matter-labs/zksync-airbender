@@ -182,3 +182,19 @@ not coverage transfer from the similarly named v3 reduced target. Derived word
 ranges still require decoded native write preservation and initialized induction;
 canonical source keys, original decoding/execution and machine/protocol/terminal
 boundaries remain open. No defect, new restriction or parity claim is introduced.
+
+## Original public shift decoding at the actual native reduced query
+
+[The selected native reduced projection](Airbender/Review/Circuits/ReducedMachine/Decoder.lean)
+adapts original RV32 shift constructors to checked reduced masks while retaining
+x0 operands, funct3 and SRAI's encoded immediate. [Native packing proofs](Airbender/Proofs/ReducedMachine/NativeShiftDecoder.lean)
+exclude holes/tail and recover every actual source/rd/x0/immediate field from
+complete original-byte/stateful Sail decoder membership. The short
+[public trace claim](Airbender/Review/Trace/Families/ReducedMachine/Decoder.lean)
+therefore derives the existing explicit mask without assuming a selector answer.
+Eight regressions include twelve ordinary/x0 forms and all 25 original public slots.
+All 2,513 standard-only axiom roots, 153 public Review roots and exact provenance/guide
+gates pass at unchanged limits. Only original public byte/decode lemmas are reused;
+no old native decoder table is equated. This is not a new Rust preprocessing/export
+certificate, universal fixed-ROM correspondence or execution/parity claim. Other
+combined profiles, write preservation and initialized word ranges remain open.

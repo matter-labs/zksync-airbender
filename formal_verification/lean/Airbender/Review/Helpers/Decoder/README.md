@@ -220,3 +220,15 @@ and [canonical packed source keys](../../Trace/Families/ShiftBinop/Sources.lean)
 now consume this membership and actual public construction. Native constraints
 exclude unsupported/sentinel rows and original decoding supplies operation masks
 and x0 flags; no local field/range or table-equivalence premise is added.
+
+## Actual native reduced shift profile
+
+[Complete selected-profile membership](ReducedMachine.lean) uses the regenerated
+reduced registry's actual ten-field query and the original Sail public sparse
+constructor. [The projection](../../Circuits/ReducedMachine/Decoder.lean) retains
+native masks, original rd/x0/source fields and encoded SRAI immediates.
+[Native packing proofs](../../../Proofs/ReducedMachine/NativeShiftDecoder.lean)
+exclude holes/tail; [the short trace claim](../../Trace/Families/ReducedMachine/Decoder.lean)
+derives the selected entry and actual fields without supplied selectors or
+source values. Native Rust preprocessing exports, general public fixed-ROM
+correspondence, other profiles and initialized execution remain separate.

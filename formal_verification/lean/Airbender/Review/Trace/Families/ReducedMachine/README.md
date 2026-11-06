@@ -30,3 +30,19 @@ execution remain open, as do workers/accounting/protocol/padding/terminal/init
 and physical enforcement boundaries. Terminal clock counting is not terminal
 machine-state soundness. See [current status](../../../../../VERIFICATION_STATUS.md)
 and [trust boundaries](../../../../../TRUST_AND_REVIEW.md).
+
+## Original public shift decoding
+
+[The short public decoder claim](Decoder.lean) now recovers the original public
+instruction entry and actual native mask/source/rd/x0/immediate/funct3 fields.
+[Complete sparse/padded membership](../../../Helpers/Decoder/ReducedMachine.lean)
+is checked at the imported native query; original public bytes and stateful Sail
+decoding construct its independent table. [Native packing](../../../../Proofs/ReducedMachine/NativeShiftDecoder.lean)
+excludes holes/tail, and [trace assembly](../../../../Proofs/Trace/Families/ReducedMachine/Decoder.lean)
+keeps calculations under Proofs. The current profile includes only original
+SLL/SRL/SRA/register/immediate forms. [Eight regressions](../../../../../Tests/NativeReducedDecoder.lean)
+retain all twelve ordinary/x0 forms and reuse only original byte/decode lemmas,
+not a split-family native table. This does not establish native Rust preprocessing
+exports, universal fixed-ROM binding, other combined operations or a full accepted
+execution fixture. Native write preservation, initialized source ranges and
+complete instruction/execution effects remain next.

@@ -374,6 +374,44 @@ original instruction execution and worker/protocol/padding/terminal/init boundar
 remain open. The four-tick clock conclusion is not terminal machine/protocol
 soundness. No native defect or issue-handling assumption is established.
 
+## Native reduced original public shift decoding (6 November 2026)
+
+The [selected decoder projection](Airbender/Review/Circuits/ReducedMachine/Decoder.lean)
+retains original SLL/SRL/SRA and immediate forms, native reduced masks, actual
+source/rd indices, raw funct3, x0 flags and SRAI's encoded 1024 immediate bits.
+Original stateful Sail decoding and public byte reads construct the independent
+sparse/padded table. The [membership boundary](Airbender/Review/Helpers/Decoder/ReducedMachine.lean)
+uses the actual imported native ten-field query; it supplies no expected mask,
+zero flag, operand, range or result.
+
+[Native proofs](Airbender/Proofs/ReducedMachine/NativeShiftDecoder.lean) derive a
+262,144 packed-mask bound from all eighteen actual Boolean bits and the original
+packed equation. Native acceptance therefore excludes sparse holes and the
+all-minus-one tail. The [short public trace claim](Airbender/Review/Trace/Families/ReducedMachine/Decoder.lean)
+recovers the original public entry, actual source/rd/x0/immediate fields and the
+previously explicit shift mask. [Trace assembly](Airbender/Proofs/Trace/Families/ReducedMachine/Decoder.lean)
+stays under Proofs. Local conditional shift theorems retain their small mask
+interface; clients can now derive that mask from this public decoder contract.
+
+[Eight regressions](Tests/NativeReducedDecoder.lean) check twelve ordinary/x0
+projections, reuse original public Sail decoding for their exact bytes, exercise
+all 25 original public slots including unsupported holes, preserve SRAI immediate
+1055 and the six actual x0 masks, reject RV32 amounts 32/63 and out-of-profile
+instructions, retain modeled padding membership while rejecting its native
+selection, and reject a corrupted destination-zero flag. Only original public
+byte/state/decode lemmas are reused; no old split-family decoder table or mask
+identity is transferred. These are not full positive 117-equation execution fixtures.
+
+This is a logical selected-profile decoder connection, not a new literal native
+Rust decoder-export certificate or universal public fixed-ROM/physical preprocessing
+binding. The existing eight-word fixed-pool fixture is unchanged. No equivalence
+with old decoder tables or unsupported-profile coverage is assumed. Native write
+preservation, initialized word ranges/source keys, full shift words, numerical PC,
+other combined families and original execution/protocol/terminal/init remain open.
+All affected bounded modules, 2,513 standard-only axiom roots, 153 public Review
+roots and exact provenance/guide/layer gates pass at unchanged limits. No native
+defect or new issue-handling assumption is established.
+
 ## Checked coverage
 
 | Circuit | Coverage |

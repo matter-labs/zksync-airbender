@@ -108,6 +108,11 @@ ranges are an explicit native history design; establishing write preservation
 and initialized range induction is still proof work. No accepted bad history or
 source defect is exhibited by that unfinished connection. Word/execution and
 physical/protocol boundaries remain separate.
+The [selected public shift decoder connection](Airbender/Review/Trace/Families/ReducedMachine/Decoder.lean)
+now derives actual native masks and rd/x0 fields, and native equations reject
+sparse holes/padding. Native Rust decoder-export/fixed-ROM fidelity is still an
+open correspondence boundary, not a confirmed defect. Other combined profiles,
+write preservation and initialized execution remain unfinished proof work.
 Confirmed native-v2 defects remain zero.
 
 ## Open bindings

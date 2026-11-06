@@ -7276,6 +7276,62 @@
       "backport_reuse_revision": "f975c6dfe3ea20f2619b63b89a161dbd4448d374",
       "backport_reuse_path": "Airbender/Review/Trace/Families/ShiftBinop/History.lean",
       "backport_reuse_sha256": "7a74fd7711f5e17457cfa578ba808cc44b000e006f6b7811e389878428005504"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Decoder.lean",
+      "change": "Adapt selected original SLL/SRL/SRA and immediate constructors to actual reduced eighteen-bit masks and raw funct3; retain original x0 forms and SRAI encoded immediate. Bind the actual imported ten-field query. This reference projection is not a new native Rust/preprocessing export certificate.",
+      "backport_reuse_revision": "00b6fff476d345eeccbcbe4355745336587dc46c",
+      "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/Decoder.lean",
+      "backport_reuse_sha256": "20edb2206394784ac2471bf8ce594d56ca8967d2fc713fc451317f01e923352f"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftDecoder.lean",
+      "change": "Reuse original stateful public source recovery, field-bound and padded membership proof structure at the actual regenerated native query. Derive masks, source/rd/x0/immediate/funct3 fields, not execution or native preprocessing equivalence.",
+      "backport_reuse_revision": "00b6fff476d345eeccbcbe4355745336587dc46c",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/Decoder.lean",
+      "backport_reuse_sha256": "9d639c6c7f86fbe80d14aa2176417538e08b7039baf52b35592d1cf47e7e0981"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeShiftDecoder.lean",
+      "change": "Reuse exact proved native Boolean bounds and packed-mask equality to derive an unconditional262144mask bound; exclude the all-minus-one sparse hole/tail without a supplied padding-exclusion premise.",
+      "backport_reuse_revision": "00b6fff476d345eeccbcbe4355745336587dc46c",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeSelectors.lean",
+      "backport_reuse_sha256": "f4758e82996a4a90e0f4d5f4fa5c770a050c63686396f0cd496f70f12e7acbb5"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachine.lean",
+      "change": "Adapt complete sparse/padded logical decoder membership to NativeReducedFamily and the selected shift projection, separate from actual fixed-ROM and physical preprocessing correspondence.",
+      "backport_reuse_revision": "00b6fff476d345eeccbcbe4355745336587dc46c",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ShiftBinop.lean",
+      "backport_reuse_sha256": "60575530c1f9f6fd7fa78a6733c53a3cfadf3c946f16fa014312f1c02649888b"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/Decoder.lean",
+      "change": "Reuse actual row-query recovery and accepted-constraint/public-entry assembly at the regenerated reduced registry; conclude original Sail source plus actual decoded mask/rd/x0 fields without per-row flag/source/range answers.",
+      "backport_reuse_revision": "00b6fff476d345eeccbcbe4355745336587dc46c",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ShiftBinop/Values.lean",
+      "backport_reuse_sha256": "b1b101b54def6b8efd98aff7b4f836243f2d094a3d15e6e48a79042c4ea02336"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/Decoder.lean",
+      "change": "Reuse small public original-source theorem shape with calculation and assembly under Proofs. The selected-profile claim derives masks and architectural rd/x0 bindings; other combined operations, write ranges, native preprocessing/ROM fidelity and execution remain separate.",
+      "backport_reuse_revision": "00b6fff476d345eeccbcbe4355745336587dc46c",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ShiftBinop/Sources.lean",
+      "backport_reuse_sha256": "96569e768ef2b3801bcf8ec2b1454c8bec4300d066fe5e047cace1caa32ceab2"
+    },
+    {
+      "path": "Tests/NativeReducedDecoder.lean",
+      "change": "Reuse unchanged original public byte-read and stateful Sail decode lemmas for the same25word state. No old split-family table, mask identity or native exported decoder coverage is transferred.",
+      "backport_reuse_revision": "00b6fff476d345eeccbcbe4355745336587dc46c",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeSetup.lean",
+      "backport_reuse_sha256": "71d05a92b73a1b7893ac6e9455aef94d2ef2b6b600b500b38f618f2ff75a3a53"
+    },
+    {
+      "path": "Tests/NativeReducedDecoder.lean",
+      "change": "Reuse twelve original ordinary/x0 public words and Sail constructors; independently check their new native reduced masks, encoded SRAI immediates, unsupported shifts, padding and zero-flag rejection.",
+      "backport_reuse_revision": "00b6fff476d345eeccbcbe4355745336587dc46c",
+      "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/NativeData.lean",
+      "backport_reuse_sha256": "871c1261bf58c6b610e73fcd41a8336dcb4b97f4faea02ca177ca19f19371c0a"
     }
   ],
   "setup_artifacts": [

@@ -1,3 +1,4 @@
+import Tests.NativeReducedDecoder
 import Tests.NativeReducedHistory
 import Tests.NativeReducedNumerics
 import Airbender.Proofs.ReducedMachine.NativeShiftColumns
@@ -2700,3 +2701,19 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedHistory.nonpreceding_read_rejected
 #print axioms Tests.NativeReducedHistory.wrong_terminal_steps_rejected
 #print axioms Airbender.Trace.Proofs.native_reduced_image_memory
+#print axioms Airbender.ReducedMachine.NativeShiftDecoderProofs.field_bounds
+#print axioms Airbender.ReducedMachine.NativeShiftDecoderProofs.packed_bound
+#print axioms Airbender.ReducedMachine.NativeShiftDecoderProofs.padding_excluded
+#print axioms Airbender.ReducedMachine.NativeShiftDecoderProofs.fetched_sources
+#print axioms Airbender.ReducedMachine.NativeShiftDecoderProofs.decoded_fields
+#print axioms Airbender.ReducedMachine.NativeShiftDecoderProofs.row_query
+#print axioms Airbender.ReducedMachine.NativeShiftDecoderProofs.trace_decoding
+#print axioms Airbender.ReducedMachine.Native.public_shift_decoding
+#print axioms Tests.NativeReducedDecoder.selected_fields
+#print axioms Tests.NativeReducedDecoder.original_public_bytes
+#print axioms Tests.NativeReducedDecoder.original_public_slots
+#print axioms Tests.NativeReducedDecoder.encoded_arithmetic_immediate
+#print axioms Tests.NativeReducedDecoder.original_x0_masks
+#print axioms Tests.NativeReducedDecoder.out_of_profile_rejected
+#print axioms Tests.NativeReducedDecoder.padding_cannot_be_selected
+#print axioms Tests.NativeReducedDecoder.corrupted_zero_flag_rejected

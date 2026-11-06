@@ -119,6 +119,17 @@ shared range induction must still derive the missing low source bound. Neither
 four-tick terminal row accounting nor memory consistency is original instruction,
 protocol or terminal-state soundness.
 
+[Selected original public shift decoding](Airbender/Review/Trace/Families/ReducedMachine/Decoder.lean)
+now derives the native packed mask and source/rd/x0/immediate/funct3 fields from
+original public Sail byte decoding and complete sparse/padded membership at the
+actual imported query. Native Boolean/packing equations exclude holes/tail;
+that exclusion is proved rather than supplied. This logical decoder boundary
+is explicit: it does not certify native Rust preprocessing exports, universal
+fixed-ROM configuration or physical argument enforcement. The original fixed-pool
+fixture stays unchanged. Other profiles, decoded write preservation, initialized
+word/source bounds, full PC/results and original execution remain separate.
+No expected mask, zero flag, source value or result is an added per-row premise.
+
 Production circuit and machine code must stay unchanged. Confirmed native issues
 are documented with their exact evidence and, where necessary, narrow explicit
 Review interface assumptions. Those premises neither fix an issue nor establish

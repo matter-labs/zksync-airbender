@@ -148,3 +148,14 @@ terminal row accounting follow without supplied local clocks/order or expected
 reads. Word-range preservation, source-key binding, decoding and original
 execution remain separate obligations; memory consistency alone is not a
 source-bound theorem. See the [native trace guide](../../Trace/Families/ReducedMachine/README.md).
+
+[Original public shift decoding](Decoder.lean) now projects six original RV32
+forms to native reduced masks, indices, x0 flags and encoded immediates. The
+[short trace claim](../../Trace/Families/ReducedMachine/Decoder.lean) recovers
+these from actual query membership and original public byte/stateful Sail
+construction; native equations exclude holes/tail. No old split-family decoder
+table is transferred. Native Rust preprocessing exports/fixed-ROM fidelity,
+other profiles, native write preservation, initialized word ranges and execution
+remain separate. [Regressions](../../../../Tests/NativeReducedDecoder.lean)
+retain twelve ordinary/x0 forms, original public slots, unsupported amounts,
+padding and corrupted-zero-flag rejection.

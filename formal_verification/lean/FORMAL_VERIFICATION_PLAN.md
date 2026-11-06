@@ -38,7 +38,11 @@ Full combined row effects and execution remain pending. See the
    derived from the regenerated constraints and complete pool. Shift masks now
    recover the operation flags, all four selected tags, actual register/immediate
    source-two routing and exact five-bit truncation. The explicit decoded mask
-   still needs the original public-decoder connection. Actual sign-fill outputs
+   now follows for the selected original shift profile from stateful public Sail
+   decoding and complete sparse/padded membership at the actual native query.
+   Native equations exclude holes/tail; source/rd/x0/immediate fields are recovered.
+   Native preprocessing/fixed-ROM fidelity and other profiles remain separate.
+   Actual sign-fill outputs
    are now derived, including minor flags and positive/logical/zero-shift cases.
    Both actual table-37 queries, contribution assembly, destination address, masked
    port write and default-PC candidate selection are now derived from native
