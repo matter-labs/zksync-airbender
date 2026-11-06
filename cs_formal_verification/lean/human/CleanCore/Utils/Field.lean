@@ -1,0 +1,20 @@
+module
+public import Mathlib.Tactic.NormNum
+
+/-! # Splitting a 16-bit value into two bytes (Clean `Clean.Utils.Field`, pinned 93c9d1e). -/
+
+@[expose] public section
+
+namespace Airbender
+
+namespace ByteUtils
+def splitTwoBytes (i : Fin (256 * 256)) : Fin 256 × Fin 256 :=
+  let x := i.val / 256
+  let y := i.val % 256
+  have x_lt : x < 256 := by simp [x, Nat.div_lt_iff_lt_mul]
+  have y_lt : y < 256 := Nat.mod_lt i.val (by norm_num)
+  (⟨ x, x_lt ⟩, ⟨ y, y_lt ⟩)
+
+end ByteUtils
+
+end Airbender

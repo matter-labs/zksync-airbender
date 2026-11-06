@@ -1,0 +1,151 @@
+module
+public import CleanCore.Utils.Bitwise
+
+/-! # Keccak-f[1600] (Clean `Clean.Specs.Keccak256`, pinned 93c9d1e)
+
+Clean's specification of the Keccak-f[1600] permutation over 25 lanes of 64-bit naturals, transcribed
+verbatim (θ, ρπ, χ, ι, round, permutation). Deviation: the sponge (`absorbBlock`, ...) and Clean's test
+vectors are omitted. `CleanEquivalence` proves each definition equal to Clean's. -/
+
+@[expose] public section
+
+namespace Airbender.Specs.Keccak256
+
+def roundConstants : Vector UInt64 24 := #v[
+  0x0000000000000001, 0x0000000000008082,
+  0x800000000000808a, 0x8000000080008000,
+  0x000000000000808b, 0x0000000080000001,
+  0x8000000080008081, 0x8000000000008009,
+  0x000000000000008a, 0x0000000000000088,
+  0x0000000080008009, 0x000000008000000a,
+  0x000000008000808b, 0x800000000000008b,
+  0x8000000000008089, 0x8000000000008003,
+  0x8000000000008002, 0x8000000000000080,
+  0x000000000000800a, 0x800000008000000a,
+  0x8000000080008081, 0x8000000000008080,
+  0x0000000080000001, 0x8000000080008008
+]
+
+def thetaC (state : Vector ℕ 25) : Vector ℕ 5 :=
+  #v[
+    state[0] ^^^ state[1] ^^^ state[2] ^^^ state[3] ^^^ state[4],
+    state[5] ^^^ state[6] ^^^ state[7] ^^^ state[8] ^^^ state[9],
+    state[10] ^^^ state[11] ^^^ state[12] ^^^ state[13] ^^^ state[14],
+    state[15] ^^^ state[16] ^^^ state[17] ^^^ state[18] ^^^ state[19],
+    state[20] ^^^ state[21] ^^^ state[22] ^^^ state[23] ^^^ state[24]
+  ]
+
+def thetaD (c : Vector ℕ 5) : Vector ℕ 5 :=
+  #v[
+    c[4] ^^^ (rotLeft64 c[1] 1),
+    c[0] ^^^ (rotLeft64 c[2] 1),
+    c[1] ^^^ (rotLeft64 c[3] 1),
+    c[2] ^^^ (rotLeft64 c[4] 1),
+    c[3] ^^^ (rotLeft64 c[0] 1)
+  ]
+
+def thetaXor (state : Vector ℕ 25) (d : Vector ℕ 5) : Vector ℕ 25 :=
+  #v[
+    state[0] ^^^ d[0],
+    state[1] ^^^ d[0],
+    state[2] ^^^ d[0],
+    state[3] ^^^ d[0],
+    state[4] ^^^ d[0],
+    state[5] ^^^ d[1],
+    state[6] ^^^ d[1],
+    state[7] ^^^ d[1],
+    state[8] ^^^ d[1],
+    state[9] ^^^ d[1],
+    state[10] ^^^ d[2],
+    state[11] ^^^ d[2],
+    state[12] ^^^ d[2],
+    state[13] ^^^ d[2],
+    state[14] ^^^ d[2],
+    state[15] ^^^ d[3],
+    state[16] ^^^ d[3],
+    state[17] ^^^ d[3],
+    state[18] ^^^ d[3],
+    state[19] ^^^ d[3],
+    state[20] ^^^ d[4],
+    state[21] ^^^ d[4],
+    state[22] ^^^ d[4],
+    state[23] ^^^ d[4],
+    state[24] ^^^ d[4]
+  ]
+
+def theta (state : Vector ℕ 25) : Vector ℕ 25 :=
+  let c := thetaC state
+  let d := thetaD c
+  thetaXor state d
+
+def rhoPi (state : Vector ℕ 25) : Vector ℕ 25 :=
+  #v[
+    rotLeft64 state[0] 0,
+    rotLeft64 state[15] 28,
+    rotLeft64 state[5] 1,
+    rotLeft64 state[20] 27,
+    rotLeft64 state[10] 62,
+    rotLeft64 state[6] 44,
+    rotLeft64 state[21] 20,
+    rotLeft64 state[11] 6,
+    rotLeft64 state[1] 36,
+    rotLeft64 state[16] 55,
+    rotLeft64 state[12] 43,
+    rotLeft64 state[2] 3,
+    rotLeft64 state[17] 25,
+    rotLeft64 state[7] 10,
+    rotLeft64 state[22] 39,
+    rotLeft64 state[18] 21,
+    rotLeft64 state[8] 45,
+    rotLeft64 state[23] 8,
+    rotLeft64 state[13] 15,
+    rotLeft64 state[3] 41,
+    rotLeft64 state[24] 14,
+    rotLeft64 state[14] 61,
+    rotLeft64 state[4] 18,
+    rotLeft64 state[19] 56,
+    rotLeft64 state[9] 2
+  ]
+
+def chi (b : Vector ℕ 25) : Vector ℕ 25 :=
+  #v[
+    b[0] ^^^ ((not64 b[5]) &&& b[10]),
+    b[1] ^^^ ((not64 b[6]) &&& b[11]),
+    b[2] ^^^ ((not64 b[7]) &&& b[12]),
+    b[3] ^^^ ((not64 b[8]) &&& b[13]),
+    b[4] ^^^ ((not64 b[9]) &&& b[14]),
+    b[5] ^^^ ((not64 b[10]) &&& b[15]),
+    b[6] ^^^ ((not64 b[11]) &&& b[16]),
+    b[7] ^^^ ((not64 b[12]) &&& b[17]),
+    b[8] ^^^ ((not64 b[13]) &&& b[18]),
+    b[9] ^^^ ((not64 b[14]) &&& b[19]),
+    b[10] ^^^ ((not64 b[15]) &&& b[20]),
+    b[11] ^^^ ((not64 b[16]) &&& b[21]),
+    b[12] ^^^ ((not64 b[17]) &&& b[22]),
+    b[13] ^^^ ((not64 b[18]) &&& b[23]),
+    b[14] ^^^ ((not64 b[19]) &&& b[24]),
+    b[15] ^^^ ((not64 b[20]) &&& b[0]),
+    b[16] ^^^ ((not64 b[21]) &&& b[1]),
+    b[17] ^^^ ((not64 b[22]) &&& b[2]),
+    b[18] ^^^ ((not64 b[23]) &&& b[3]),
+    b[19] ^^^ ((not64 b[24]) &&& b[4]),
+    b[20] ^^^ ((not64 b[0]) &&& b[5]),
+    b[21] ^^^ ((not64 b[1]) &&& b[6]),
+    b[22] ^^^ ((not64 b[2]) &&& b[7]),
+    b[23] ^^^ ((not64 b[3]) &&& b[8]),
+    b[24] ^^^ ((not64 b[4]) &&& b[9])
+  ]
+
+def iota (state : Vector ℕ 25) (rc : UInt64) : Vector ℕ 25 :=
+  state.set 0 ((state[0]) ^^^ rc.toFin)
+
+def keccakRound (state : Vector ℕ 25) (rc : UInt64) : Vector ℕ 25 :=
+  let theta_state := theta state
+  let rho_pi_state := rhoPi theta_state
+  let chi_state := chi rho_pi_state
+  iota chi_state rc
+
+def keccakPermutation (state : Vector ℕ 25): Vector ℕ 25 :=
+  roundConstants.foldl keccakRound state
+
+end Airbender.Specs.Keccak256
