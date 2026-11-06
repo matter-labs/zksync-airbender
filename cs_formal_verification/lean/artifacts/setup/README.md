@@ -29,3 +29,22 @@ Short blocks (<= 512 rows) are checked row by row by `decide +kernel` walks in
 are matched by shape and proved algebraically, never expanded. The padding rows
 cannot satisfy a query: `Circuit.blakeRoundQueries` (human/Human/Import/Parse.lean)
 requires every query's tag column to be a constant in {4, 19, 20, 55, 56, 57}.
+
+## Split Keccak workers
+
+`keccak-column-parity.json`, `keccak-theta-rho.json`, `keccak-chi5.json`: native setups of the
+three split Keccak-f[1600] workers (CSRs 0x7CD, 0x7CC, 0x7CE; 8/9/11 columns, trace length
+4194304). Source of truth for `Human.Circuits.KeccakSplit.Tables.Setup`.
+
+| file | sha256 |
+|---|---|
+| `keccak-column-parity.json` | `e3ceeb5372616a87cfacfe888a0847bad784bf94cad81e5c143a1ff77d47919d` |
+| `keccak-theta-rho.json` | `66d98adf0070f516b1b5c299ed5b5a2f935819a83bfe6191a3f3ed24033b04d1` |
+| `keccak-chi5.json` | `3908223fc7221242c3004e472d63950440cfbbec4ad9f88e1842d6a45fe92710` |
+
+All three are identical to Antonio's `formal_verification/lean/artifacts/setup/` files and
+manifest values (`origin/codex/lean-circuit-verification`), and each file's `circuit` equals
+the imported `cs/compiled_circuits/keccak_*_layout_no_caches_gkr.json` (checked with `==`).
+Command: `cargo run --release -p execution_prover --example export_setup_json -- keccak-column-parity - - keccak-column-parity.json`
+(likewise `keccak-theta-rho`, `keccak-chi5`). First exported from a `c1a662222` tree with
+Antonio's exporter.
