@@ -1,6 +1,7 @@
 import Human.Circuits.MulDiv.Model
 import Slop.Trace.RowContext
 import Slop.Trace.PooledExecution
+import Slop.Trace.PooledRowContext
 
 namespace Airbender.MulDiv.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs

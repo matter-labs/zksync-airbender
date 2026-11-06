@@ -2,6 +2,7 @@ import Slop.Sail.ResetState
 import Slop.AddSub.RowClaims
 import Tests.TraceMemory
 import Slop.Final.Circuits.AddSub.Theorems
+import Slop.Trace.PooledRowContext
 
 namespace Tests.TraceExecution
 open Airbender Trace Reference.RiscV.Sail

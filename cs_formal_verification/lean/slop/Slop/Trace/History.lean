@@ -1,8 +1,6 @@
 import Human.Helpers.Context.Model
-import Slop.WordMemory.ArtifactChecks
-import Slop.Trace.Rows
 import Slop.Trace.ClockHistory
-
+import Human.Helpers.Context.FamilyLayout
 namespace Airbender.Trace.Proofs
 
 variable {Kind : Type} [CircuitLayout Kind]
@@ -28,35 +26,6 @@ class ClockLaws (Kind : Type) [CircuitLayout Kind] (p : Nat) [Fact p.Prime] : Pr
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom) → ClockInputs row.columns row.assignment →
     ClockEffects row.columns row.assignment
-
-instance [Fact p.Prime] : ClockLaws Family p where
-  finalBound rom row h := by
-    cases row with
-    | mk family w =>
-      cases family with
-      | addSub => exact addSub_final_bound h
-      | wordMemory => exact wordMemory_final_bound rom h
-  advance hp inverse rom row h bound := by
-    cases row with
-    | mk family w =>
-      cases family with
-      | addSub => exact (addSub_step hp inverse h bound).2
-      | wordMemory => exact (wordMemory_step hp inverse rom h bound).2
-  portsClocks row := by
-    cases row with
-    | mk family w =>
-      cases family with
-      | addSub => exact AddSub.memory_clocks
-      | wordMemory => exact WordMemory.memory_clocks
-  offsets row := by
-    cases row with
-    | mk family w => cases family <;> rfl
-  effects hp inverse rom row h inputs := by
-    cases row with
-    | mk family w =>
-      cases family with
-      | addSub => exact addSub_clock hp inverse h inputs
-      | wordMemory => exact wordMemory_clock hp inverse rom h inputs
 
 private theorem row_final_bound [Fact p.Prime] [ClockLaws Kind p]
     (rom : CircuitLayout.Setup (Kind := Kind) p) (row : Row p Kind)

@@ -1,5 +1,6 @@
 import Slop.Trace.NonDeterminism
 import Slop.Trace.ExternalStream
+import Slop.Trace.Family.History
 
 namespace Airbender.Trace.NonDeterminism.Proofs
 open Trace.Proofs

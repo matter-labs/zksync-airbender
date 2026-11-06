@@ -4,6 +4,11 @@ import Slop.Trace.WordMemory
 import Human.Trace.Families.AddSub.Execution
 import Slop.Trace.Terminal
 import Mathlib.Data.List.Chain
+import Human.Helpers.Context.ExecutionBoundary
+import Human.Helpers.Decoder.Decoded
+import Slop.Trace.Family.CodeHistory
+import Slop.Trace.Family.RowHistory
+import Slop.Trace.Family.History
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail

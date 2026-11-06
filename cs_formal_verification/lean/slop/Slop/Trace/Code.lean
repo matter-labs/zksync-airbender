@@ -2,6 +2,8 @@ import Slop.Trace.Addresses
 import Slop.Trace.ROM
 import Slop.WordMemory
 import Slop.Sail.WordMemoryState
+import Human.Helpers.Context.FamilyLayout
+import Slop.Trace.Family.History
 
 namespace Airbender.Trace.Proofs
 open Arithmetic

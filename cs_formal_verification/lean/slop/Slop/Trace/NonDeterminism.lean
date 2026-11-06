@@ -1,6 +1,8 @@
 import Human.Trace.NonDeterminism
 import Slop.Trace.Program
 import Slop.Trace.ZeroRegister
+import Human.Helpers.Decoder.Decoded
+import Slop.Trace.Family.Program
 
 namespace Airbender.Trace.NonDeterminism.Proofs
 open Arithmetic

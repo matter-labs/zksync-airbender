@@ -4,6 +4,7 @@ import Slop.Trace.RowHistory
 import Slop.Trace.PortReads
 import Slop.Trace.Retirement
 import Slop.Trace.Arithmetic
+import Slop.Trace.Family.Timestamps
 
 namespace Tests.TraceMemory
 open Airbender

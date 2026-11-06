@@ -1,6 +1,7 @@
 import Slop.Trace.OracleExecution
 import Slop.Trace.ROMView
 import Slop.Trace.ExternalComposition
+import Slop.Trace.Family.RowHistory
 
 namespace Airbender.Trace.NonDeterminism.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace.Proofs

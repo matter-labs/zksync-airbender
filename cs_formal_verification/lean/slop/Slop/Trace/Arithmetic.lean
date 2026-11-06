@@ -6,6 +6,11 @@ import Slop.AddSub
 import Slop.AddSub.DecodedInterface
 import Human.Helpers.Context.Boundary
 import Human.Helpers.Decoder.Instruction
+import Human.Helpers.Context.FamilyLayout
+import Slop.Trace.Family.PortReads
+import Slop.Trace.Family.Program
+import Slop.Trace.Family.ROM
+import Slop.Trace.Family.Values
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail

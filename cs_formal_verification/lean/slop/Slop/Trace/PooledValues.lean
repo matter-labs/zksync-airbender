@@ -5,6 +5,7 @@ import Slop.JumpBranchSlt.Values
 import Slop.MulDiv.Values
 import Slop.ShiftBinop.Values
 import Slop.SubwordMemory.Values
+import Slop.Trace.Family.Values
 
 namespace Airbender.Trace.Proofs
 open Arithmetic

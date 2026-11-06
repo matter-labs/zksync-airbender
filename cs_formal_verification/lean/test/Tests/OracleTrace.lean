@@ -1,5 +1,6 @@
 import Slop.Sail.ResetState
 import Tests.TraceExecution
+import Slop.Trace.Family.Timestamps
 
 namespace Tests.OracleTrace
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail

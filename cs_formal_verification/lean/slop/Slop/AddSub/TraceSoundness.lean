@@ -1,6 +1,10 @@
 import Human.Circuits.AddSub.Model
 import Slop.Trace.RowContext
 import Slop.Trace.Arithmetic
+import Slop.Trace.Family.Program
+import Slop.Trace.PooledRowContext
+import Slop.Trace.PooledProgram
+import Slop.Trace.PooledValues
 
 namespace Airbender.AddSub.Proofs
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs

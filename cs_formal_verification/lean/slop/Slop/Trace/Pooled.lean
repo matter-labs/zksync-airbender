@@ -3,6 +3,7 @@ import Slop.JumpBranchSlt.Trace
 import Slop.MulDiv.Trace
 import Slop.ShiftBinop.Trace
 import Slop.SubwordMemory.Trace
+import Slop.Trace.Family.History
 
 namespace Airbender.Trace.Proofs
 
