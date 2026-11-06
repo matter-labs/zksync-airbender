@@ -1,0 +1,36 @@
+import Slop.KeccakSplit.Reference.SlotReduction
+import Slop.Keccak.LayoutReduction
+
+namespace Airbender.Keccak.Split.Call.Proofs
+open Specs.Keccak256
+set_option warningAsError true
+set_option maxRecDepth 65536
+set_option cbv.maxSteps 2000000
+attribute [local cbv_opaque] rotLeft64 not64 Nat.xor Nat.land roundConstants
+
+namespace Rounds
+
+/-- Parity calls 0–4 apply the delayed iota of round 0 and keep the other lanes. -/
+theorem parity_lanes_0 (state : LaneState) :
+    logicalLanes 0 (parityPhase 0 state) = iotaState (logicalLanes 0 state) 0 := by
+  apply Vector.ext
+  intro lane bound
+  interval_cases lane
+  all_goals simp only [logicalLanes, Vector.getElem_ofFn, parityPhase,
+      Fin.foldl_succ_last, Fin.foldl_zero, micro_normalized,
+      Airbender.Keccak.Proofs.physical_cached]
+  all_goals first | rfl' | (cbv; change state 0 ^^^ 0 = state 0; exact Nat.xor_zero _)
+
+/-- Parity call 0 writes Keccak's column parity C[0] (after the delayed iota). -/
+theorem parity_column_zero_0 (state : LaneState) :
+    parityPhase 0 state 25 = (thetaC (iotaState (logicalLanes 0 state) 0))[0] := by
+  simp only [logicalLanes, parityPhase,
+      Fin.foldl_succ_last, Fin.foldl_zero, micro_normalized,
+      Airbender.Keccak.Proofs.physical_cached]
+  cbv
+  change (((((state 0 ^^^ 0) ^^^ state 5) ^^^ state 10) ^^^ state 15) ^^^ state 20) =
+    ((((state 0 ^^^ state 5) ^^^ state 10) ^^^ state 15) ^^^ state 20)
+  rw [Nat.xor_zero]
+
+end Rounds
+end Airbender.Keccak.Split.Call.Proofs
