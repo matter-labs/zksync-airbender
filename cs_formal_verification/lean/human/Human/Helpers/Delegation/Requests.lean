@@ -1,5 +1,4 @@
 import Human.Helpers.Delegation.Memory
-import Human.Circuits.AddSub.Artifact
 
 namespace Airbender.Delegation.Requests
 open Trace
@@ -29,23 +28,6 @@ def csr : Family → Nat
   | .blakeG => 0x7C8
   | .blakeRound => 0x7C7
   | .keccak => 0x7CB
-
-/-- Caller token from the actual ADD/SUB rs2 port and starting clock.
-    This virtual port uses the imported in-cycle offset one. -/
-def callerPort : MemoryPort := AddSub.importedConstraintsMemoryPorts[1]
-
-/-- Native selector seven identifies a delegation caller. The descriptor
-    comes from the same imported decoder placement used by other instructions. -/
-def Selected (w : Nat → ZMod p) : Prop :=
-  w AddSub.importedConstraintsDecoderColumns.flags[7] = 1
-
-instance (w : Nat → ZMod p) : Decidable (Selected w) := inferInstanceAs
-  (Decidable (w AddSub.importedConstraintsDecoderColumns.flags[7] = 1))
-
-def caller (w : Nat → ZMod p) : Request p :=
-  let initial := rawPair w AddSub.importedConstraintsTraceColumns.initialTime
-  ⟨(w AddSub.importedConstraintsDecoderColumns.rs2).val,
-    (initial.1 + callerPort.clock.offset, initial.2)⟩
 
 /-- Fulfillment token from a family's native invocation columns. Activity
     selects participating rows separately; no caller is invented here. -/

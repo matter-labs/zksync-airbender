@@ -1,6 +1,8 @@
 import Human.Helpers.Core.BabyBearPrime
 import Human.Helpers.Memory.Native
 import Human.Trace.Families.AddSub.Execution
+import Human.Helpers.Context.ExecutionBoundary
+import Human.Helpers.Decoder.Decoded
 
 -- The statements proven in slop/Slop/Final/Trace/Families/AddSub/Theorems.lean (checked by verify.sh).
 

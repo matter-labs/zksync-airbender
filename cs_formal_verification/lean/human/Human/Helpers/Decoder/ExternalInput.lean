@@ -1,6 +1,7 @@
 import Human.Helpers.Context.Boundary
 import Human.Helpers.Decoder.Instruction
 import Human.Helpers.Core.ExternalStream
+import Human.Helpers.Context.FamilyLayout
 
 namespace Airbender.Trace.NonDeterminism
 
