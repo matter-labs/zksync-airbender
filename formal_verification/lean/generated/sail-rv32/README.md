@@ -111,12 +111,12 @@ removing the recorded header reproduces the original emitter hash. Every
 `execute_*` declaration body is byte-identical. No instruction body is rewritten
 and no terminal/reservation behavior is assumed. Generic public memory/compiler
 claims remain polymorphic in platform handlers/device configuration. The
-[explicit compiler platform entrypoints](../../Airbender/Proofs/Compatibility/Compiler/Theorems.lean)
-and native platform applications select the Airbender adapter. The new compiler
-wrappers compile and their public module passes selected-module replay with a
-32 MiB Lean thread stack. Upstream platform compatibility and the selected
-frontend regression/freshness scope pass; full project/runtime, environment,
-independent replay and Linux/cold-run assurance remain pending.
+[current compiler target corollaries](../../Airbender/Review/Compiler/Theorems.lean)
+quantify over the platform instance; the
+[native platform applications](../../Tests/AirbenderNative.lean) select the
+Airbender adapter. Complete source freshness and importer runtime checks have
+passed in warm CI. Complete Review/environment auditing and final independent
+replay remain pending.
 A constructed platform that omits the devices field uses
 the upstream-enabled devices by default, so applying native memory claims requires
 checking the intended platform instance and initialization profile.

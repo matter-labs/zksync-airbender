@@ -1808,7 +1808,7 @@ with reviewed deltas. A direct report is a smoke check, not that audit.
 3. Convert measured per-capture fact families to once-proved Boolean checkers,
    then qualify build and replay cost. Cryptographic soundness, universal Rust
    compiler correctness and completeness remain in the
-   [deferred milestone register](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
+   [current implementation plan](FORMAL_VERIFICATION_PLAN.md#implementation-order).
 
 [Reproduction](README.md#reproduce) gives commands and resource limits.
 [Findings](FINDINGS.md) distinguishes supported-use exclusions, conditional proof

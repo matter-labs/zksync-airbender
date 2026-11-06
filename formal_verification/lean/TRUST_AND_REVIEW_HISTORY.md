@@ -118,7 +118,7 @@ its formal correspondence to the selection contract remains external. AIH-336 no
 has a source correction for the untagged decoder tail and full-domain CPU/GPU
 cache preprocessing, with checked CPU forward regressions. Accelerated runtime
 validation, regenerated proof replay and the formal setup binding remain open;
-see the [validation scope](FINDINGS.md#aih-336-source-correction-and-validation). No temporary contract
+see the [current validation scope](FINDINGS.md#aih-336--base-sentinel-behavior-and-temporary-decoder-interface). No temporary contract
 is silently added to the existing general-acceptance theorems or their fixtures.
 
 ## Sources and pins
@@ -740,4 +740,4 @@ Checked surplus-worker, bigint-control and ROM-shadow counterexamples must stay
 visible at their actual logical scope; no whole-system exploit, circuit fix or
 assumed ABI validity follows. Use [Verification status](VERIFICATION_STATUS.md)
 for those fixtures and all unresolved coverage, and
-[the plan](FORMAL_VERIFICATION_PLAN.md#deferred-milestones) for downstream proofs.
+[the current plan](FORMAL_VERIFICATION_PLAN.md#implementation-order) for downstream proofs.

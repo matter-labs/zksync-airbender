@@ -124,6 +124,23 @@ runtime roots, and dropped/invented source/object/import inventory rejection.
 No Lean source, runtime assertion, Review statement/premise or resource gate
 changes. The complete Review/environment audit and final assurance remain pending.
 
+Run [42170297273](https://github.com/matter-labs/zksync-airbender/actions/runs/42170297273)
+on `8ac91061986fd4358fb009af006eccb130c9a284` passed fresh native qualification,
+complete source/native freshness and importer runtime. The runtime child exited
+0 after 45.71 seconds at 495.45 MiB charged footprint, with no owned processes
+left. Review then validated all 4,205 snapshot modules and nine actual snapshot
+mutation controls, confirming the executable-inventory repair. Its next compiled
+inventory failed because the generated Sail guide linked a removed compiler
+compatibility module. The Review child exited 1 after 47 seconds at 197.67 MiB
+charged footprint, with no owned processes left; no resource or proof error is
+claimed. The guide now links the current platform-polymorphic compiler target
+corollaries and an existing native platform application. Three stale historical
+anchors also point to their current sections. All current guide links,
+anchors pass (1,301 links), and all 453 compiled Review inventory imports occur
+in the checked CI module inventories. All 46 focused controls pass locally.
+No Lean source, statement, premise, checker or resource gate changes. Complete
+Review/environment audit and final full assurance remain pending.
+
 The 4 November specification review makes the existing one-instance
 initialization and submitted-pool premises explicit. Native corollaries certify
 CPU rows only; standard worker equations remain no-cache flat constraints and
