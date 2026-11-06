@@ -17,7 +17,7 @@ echo "== 1b. The circuit JSONs the spec imports: pinned sha256, no duplicate key
 python3 check_circuit_json.py
 
 echo "== 2. Lean build (spec + proofs + importer)"
-lake build Human Slop airbender_import 2>&1 | tail -1
+lake build CleanCore Human Slop airbender_import 2>&1 | tail -1
 
 echo "== 3. Regressions; final statements (each slop/Slop/Final theorem proves its human/ ...Claim, test/Checks/Claims.lean); axiom audits"
 lake build Test airbender_tests 2>&1 | tail -1
