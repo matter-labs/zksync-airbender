@@ -40,7 +40,7 @@ fn interpolate(a: E4, b: E4, at: E4) -> E4 {
 }
 
 fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<ExpectedStageSnapshot> {
-    let proof = &fixture.expected_cpu_proof;
+    let proof = &fixture.committed_proof;
     let mut transcript_input = proof.inits_and_teardowns_top_bits.clone();
     proof
         .external_challenges
@@ -200,17 +200,17 @@ fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
         (
             "setup",
             &gpu_proof.whir_proof.setup_commitment,
-            &fixture.expected_cpu_proof.whir_proof.setup_commitment,
+            &fixture.committed_proof.whir_proof.setup_commitment,
         ),
         (
             "memory",
             &gpu_proof.whir_proof.memory_commitment,
-            &fixture.expected_cpu_proof.whir_proof.memory_commitment,
+            &fixture.committed_proof.whir_proof.memory_commitment,
         ),
         (
             "witness",
             &gpu_proof.whir_proof.witness_commitment,
-            &fixture.expected_cpu_proof.whir_proof.witness_commitment,
+            &fixture.committed_proof.whir_proof.witness_commitment,
         ),
     ] {
         assert_eq!(
@@ -219,7 +219,7 @@ fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
         );
     }
     assert_eq!(
-        gpu_proof.final_explicit_evaluations, fixture.expected_cpu_proof.final_explicit_evaluations,
+        gpu_proof.final_explicit_evaluations, fixture.committed_proof.final_explicit_evaluations,
         "forward output evaluations diverged",
     );
 
@@ -250,7 +250,7 @@ fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
             ),
         }
     }
-    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+    fixture.assert_proof(&gpu_proof);
 }
 
 #[test]

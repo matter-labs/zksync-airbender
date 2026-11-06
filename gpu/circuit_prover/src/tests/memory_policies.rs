@@ -42,11 +42,11 @@ fn policies_separate_with_setup() {
 #[ignore = "GPU policy candidates and presets against the default-policy proof"]
 fn policies_separate_without_setup() {
     check_policies(
-        &inits_and_teardowns::prepare_inits_and_teardowns_proof_fixture(
-            false,
+        &prepare_canonical_proof_fixture(
+            CanonicalCircuit::InitsAndTeardowns,
             circuit_common::SoundnessMode::DEFAULT,
         )
-        .0,
+        .base,
     );
 }
 
@@ -54,25 +54,30 @@ fn policies_separate_without_setup() {
 #[ignore = "GPU policy candidates and presets against the default-policy proof"]
 fn policies_virtual_k0() {
     let config = delegation_prover_config(DelegationCircuitType::KeccakSpecial5);
-    check_policies(&proof_matrix::prepare_keccak_special5_fixture_for_config(config, false).0);
+    check_policies(&prepare_policy_fixture_for_config(
+        CanonicalCircuit::KeccakSpecial5,
+        config,
+    ));
 }
 
 #[test]
 #[ignore = "GPU policy candidates and presets against the default-policy proof"]
 fn policies_virtual_k2() {
     let config = delegation_prover_config(DelegationCircuitType::Blake2WithCompression);
-    check_policies(
-        &proof_matrix::prepare_blake2_with_compression_fixture_for_config(config, false).0,
-    );
+    check_policies(&prepare_policy_fixture_for_config(
+        CanonicalCircuit::Blake2WithExtendedControl,
+        config,
+    ));
 }
 
 #[test]
 #[ignore = "GPU policy candidates and presets against the default-policy proof"]
 fn policies_physical_k4() {
     let config = packed_config(20, 4, SecurityLevel::Sec100);
-    check_policies(
-        &proof_matrix::prepare_blake2_with_compression_fixture_for_config(config, false).0,
-    );
+    check_policies(&prepare_policy_fixture_for_config(
+        CanonicalCircuit::Blake2WithExtendedControl,
+        config,
+    ));
 }
 
 #[test]
@@ -80,9 +85,10 @@ fn policies_physical_k4() {
 fn policies_merged_fold1() {
     let mut config = packed_config(20, 4, SecurityLevel::Sec100);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-    check_policies(
-        &proof_matrix::prepare_blake2_with_compression_fixture_for_config(config, false).0,
-    );
+    check_policies(&prepare_policy_fixture_for_config(
+        CanonicalCircuit::Blake2WithExtendedControl,
+        config,
+    ));
 }
 
 #[test]
@@ -90,7 +96,10 @@ fn policies_merged_fold1() {
 fn policies_merged_fold0() {
     let mut config = delegation_prover_config(DelegationCircuitType::KeccakSpecial5);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-    check_policies(&proof_matrix::prepare_keccak_special5_fixture_for_config(config, false).0);
+    check_policies(&prepare_policy_fixture_for_config(
+        CanonicalCircuit::KeccakSpecial5,
+        config,
+    ));
 }
 
 #[test]

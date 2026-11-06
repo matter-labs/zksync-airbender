@@ -19,12 +19,14 @@ pub(super) fn gpu_memory_caps(
         )
         .unwrap()
     });
-    let trace = TracingDataTransfer::new(
-        base.tracing_data_host.clone(),
-        base.compiled_circuit.trace_len,
-        context,
-    )
-    .unwrap();
+    let trace = base
+        .tracing_data_host
+        .as_ref()
+        .map(|host| {
+            TracingDataTransfer::new(host.clone(), base.compiled_circuit.trace_len, context)
+        })
+        .transpose()
+        .unwrap();
     let job = if geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness {
         use gpu_gkr::stage1::merged_commitment::{
             commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
@@ -35,16 +37,13 @@ pub(super) fn gpu_memory_caps(
         )
         .unwrap();
         let mut inputs =
-            GpuGKRMergedCommitTransfer::new(setup, decoder, inits, Some(trace), context).unwrap();
+            GpuGKRMergedCommitTransfer::new(setup, decoder, inits, trace, context).unwrap();
         inputs.schedule(context).unwrap();
         commit_merged_from_transfers(&base.gkr_programs, &base.prover_config, inputs, context)
             .unwrap()
     } else {
         let mut inputs = gpu_trace::trace::memory::GpuGKRCommitMemoryTransfer::new(
-            decoder,
-            inits,
-            Some(trace),
-            context,
+            decoder, inits, trace, context,
         )
         .unwrap();
         inputs.schedule(context).unwrap();
@@ -62,19 +61,10 @@ pub(super) fn gpu_memory_caps(
     caps
 }
 
-pub(super) fn geometry_proof(mut fixture: BasicUnrolledProofFixture) {
-    let base = &mut fixture.base;
-    let geometry = BaseCommitmentGeometry::from_config(
-        &base.prover_config,
-        BaseColumns::of(&base.compiled_circuit),
-    );
-    base.memory_tree_caps = gpu_memory_caps(base, geometry);
+pub(super) fn geometry_proof(fixture: BasicUnrolledProofFixture) {
+    let base = &fixture.base;
     let baseline = base.context.get_used_mem_current();
     let (proof, _) = base.schedule_prove().unwrap().finish().unwrap();
-    assert_gkr_proof_eq_for_test(&proof, &fixture.expected_cpu_proof);
-    assert_eq!(
-        serde_json::to_vec(&proof).unwrap(),
-        serde_json::to_vec(&fixture.expected_cpu_proof).unwrap()
-    );
+    fixture.assert_proof(&proof);
     assert_eq!(base.context.get_used_mem_current(), baseline);
 }
