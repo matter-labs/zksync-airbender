@@ -4,8 +4,10 @@
 
 The current reference is [PR #585](https://github.com/matter-labs/zksync-airbender/pull/585)
 at b29277dd895499574e317a994fd89243a72f06cb, based on
-c1a662222cafcd96db4383dce737edb79fa62b09. GitHub head metadata and the read-only
-source checkout agree. Its status reports a successful parent warm run and
+c1a662222cafcd96db4383dce737edb79fa62b09. The proof reference remains deliberately
+pinned. The live source checkout advanced externally to 964db88d323d7f04a258f38bce28eca1c6d31652;
+its reviewed four-path delta contains only status/replay timing changes, no Lean
+statement/proof, native input or dependency change. Its status reports a successful parent warm run and
 explicitly leaves final full assurance pending. That is not a v2 test result.
 The native v2 target remains dev 67ee094449abaebc77e58435f130ce6ea27721e5.
 No Rust, dependency version or original Sail standard clause changes are imported.
@@ -392,3 +394,22 @@ is inferred; AUIPC's incoming architectural PC still needs explicit derived row
 state preparation. No native defect/fix/assumption or parity is claimed.
 All 2,717 standard-only axiom roots and 167 public Review roots pass, with exact
 189/892 origin identities and unchanged resource limits; every worker terminated.
+
+## Original arithmetic fetched-execution checkpoint
+
+[Arithmetic execution](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticFetchedExecution.lean)
+now composes actual reduced ADD/ADDI/SUB/LUI/AUIPC constraints, public original
+decoding, initialized GPR/range history, selected operands, numerical results and
+PC preparation/retirement into finite fetched Sail execution. AUIPC's architectural
+PC observation is derived from actual incoming native PC in constructed states.
+The two short public roots supply no per-row read/range/result/PC/state answer.
+Generic native modeled setup stays explicit; mixed shifts still require exact
+fixedData/NativeFixed.table semantics. [Retirement regressions](Tests/NativeReducedArithmeticExecution.lean)
+cover all ten ordinary/x0 forms, carry/borrow/sign/upper immediates, nonzero-PC
+AUIPC and RV32 wrap; [empty executions](Tests/NativeReducedArithmeticFetched.lean)
+cover every RV32 terminal PC. These do not certify positive nonempty arithmetic
+117-equation fixtures. Separate selected-shift and arithmetic execution does not
+prove mixed-profile execution, other combined operations, worker/protocol spans,
+padding/terminal/init, native public setup/compiler/physical fidelity or parity.
+No production/native/literal/dependency input changes or native findings are added.
+The continuation remains active every thirty minutes.

@@ -182,3 +182,14 @@ uses actual native arithmetic mixed-address/zero proofs before unchanged shared
 Sail realization. [Port proofs](../../../Proofs/ReducedMachine/NativeArithmeticPorts.lean)
 keep readonly aliases and immediate rs2/x0 participation. Numerical PC and retained
 clause execution remain separate, particularly AUIPC's incoming PC observation.
+
+## Original arithmetic preparation and retirement
+
+[Small arithmetic execution observables](ReducedMachineArithmeticExecution.lean)
+retain normal row execution and initialized instruction history. [Public execution](../../Trace/Families/ReducedMachine/ArithmeticFetchedExecution.lean)
+now derives original successful fetched steps and terminal PC/cell observations.
+[Native assembly](../../../Proofs/ReducedMachine/NativeArithmeticExecution.lean)
+proves AUIPC's prepared incoming PC read and derives original operands/results
+from actual GPR history and initialized ranges. No per-row state/range/read/result
+or PC answer is a public input. Generic modeled setup and tracked-cell alignment
+remain explicit; mixed profiles/native physical setup/protocol boundaries remain open.

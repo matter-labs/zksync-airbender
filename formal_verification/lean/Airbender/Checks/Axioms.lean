@@ -1,3 +1,5 @@
+import Tests.NativeReducedArithmeticExecution
+import Tests.NativeReducedArithmeticFetched
 import Tests.NativeReducedArithmeticRegisters
 import Tests.NativeReducedArithmeticValues
 import Tests.NativeReducedArithmeticDecoder
@@ -2933,3 +2935,24 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedArithmeticRegisters.discarded_state
 #print axioms Tests.NativeReducedArithmeticRegisters.initialized_nonzero_x0_rejected
 #print axioms Tests.NativeReducedArithmeticRegisters.positive_x0_group
+
+#print axioms Airbender.ReducedMachine.NativeArithmeticOperandProofs.entry_selected_operand
+#print axioms Airbender.ReducedMachine.NativeArithmeticClauseProofs.decoded_clause_of_reads
+#print axioms Airbender.ReducedMachine.NativeArithmeticClauseProofs.native_clause
+#print axioms Airbender.ReducedMachine.NativeArithmeticPCProofs.selected_pc_successor
+#print axioms Airbender.ReducedMachine.NativeArithmeticPCProofs.decoded_pc_successor
+#print axioms Airbender.ReducedMachine.NativeArithmeticExecutionProofs.local_row_execution
+#print axioms Airbender.ReducedMachine.NativeArithmeticExecutionProofs.image_instruction_history
+#print axioms Airbender.ReducedMachine.NativeArithmeticExecutionProofs.image_fetched_step
+#print axioms Airbender.ReducedMachine.NativeArithmeticExecutionProofs.image_terminal_pc_bound
+#print axioms Airbender.ReducedMachine.NativeArithmeticExecutionProofs.image_execution_soundness
+#print axioms Airbender.ReducedMachine.Native.public_arithmetic_instruction_history
+#print axioms Airbender.ReducedMachine.Native.public_arithmetic_execution
+#print axioms Tests.NativeReducedArithmeticExecution.selected_forms
+#print axioms Tests.NativeReducedArithmeticExecution.reference_outputs
+#print axioms Tests.NativeReducedArithmeticExecution.original_retirement
+#print axioms Tests.NativeReducedArithmeticExecution.discarded_retirement
+#print axioms Tests.NativeReducedArithmeticExecution.oversized_terminal_rejected
+#print axioms Tests.NativeReducedArithmeticExecution.initialized_retirement
+#print axioms Tests.NativeReducedArithmeticFetched.empty_execution
+#print axioms Tests.NativeReducedArithmeticFetched.empty_top_endpoint

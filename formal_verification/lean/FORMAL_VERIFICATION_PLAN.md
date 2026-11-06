@@ -18,8 +18,9 @@ false. Subword retirement is therefore not a prerequisite for this machine.
 This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
-**The reduced machine now has conditional fetched-execution soundness for the
-selected original shift profile; full combined-operation coverage remains open.** The active
+**The reduced machine now has conditional fetched-execution soundness separately
+for selected original shift and ADD/ADDI/SUB/LUI/AUIPC profiles; mixed-profile
+and full combined-operation coverage remain open.** The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 is independently reproducible from unchanged pinned Rust: 117 equations,
 142 variables and 14 fixed regions. The original [historical artifact](Airbender/Review/Circuits/ReducedMachine/Artifact.lean)
@@ -74,10 +75,16 @@ Full combined row effects and execution remain pending. See the
    candidates and actual masked writes now follow with every internal range
    premise discharged. Original arithmetic Sail GPR/cell histories now follow
    with all three reads in one pre-state, actual masked writes, code/misa frames
-   and original decoder replay. Next connect original selected operands/clauses
-   and PC preparation/retirement/fetched execution, then mix supported
-   shift/arithmetic rows. AUIPC must observe the actual incoming PC in the
-   constructed row state. Other combined profiles remain open.
+   and original decoder replay. Original selected arithmetic operands, retained
+   clauses, numerical PC+4/RV32 wrap, normal preparation/retirement and finite
+   fetched execution now follow for initialized arithmetic-profile traces.
+   AUIPC's original get_arch_pc is derived from the actual incoming native PC
+   placed into constructed row states before preparation. Both internal read
+   ranges, alignment and every state/control answer are discharged. Next mix
+   supported shift/arithmetic rows with one original public decoder, native
+   preservation/range induction and chronological execution. Keep exact fixedData
+   acceptance for shift lookup semantics; no arbitrary-table equivalence. Other
+   combined profiles and positive nonempty arithmetic fixtures remain open.
    The former projection allocation gap is closed by generic projections and separate proof units,
    without increasing limits or adding result/equivalence premises.
 3. Compose initialized combined histories, public decoding and original execution.

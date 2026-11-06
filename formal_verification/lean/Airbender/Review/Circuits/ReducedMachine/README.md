@@ -291,3 +291,18 @@ retain aliases, x0 and malformed mixed-port rejection. Selected original operand
 clause execution and PC preparation/retirement remain next; AUIPC needs its actual
 incoming architectural PC in the constructed row state. No full arithmetic
 execution/physical setup/parity follows from register history alone.
+
+## Original arithmetic execution
+
+[Actual selected operand](../../../Proofs/ReducedMachine/NativeArithmeticOperand.lean),
+[retained clauses](../../../Proofs/ReducedMachine/NativeArithmeticClause.lean),
+[native PC](../../../Proofs/ReducedMachine/NativeArithmeticPC.lean) and
+[normal execution](../../../Proofs/ReducedMachine/NativeArithmeticExecution.lean)
+now connect the five arithmetic profiles to original Sail preparation/retirement.
+AUIPC reads actual incoming native PC after internal control-state transport.
+[Public initialized fetched execution](../../Trace/Families/ReducedMachine/ArithmeticFetchedExecution.lean)
+discharges both source ranges and all state/PC/decoder replay inputs.
+[Regressions](../../../../Tests/NativeReducedArithmeticExecution.lean) retain x0,
+nonzero-PC AUIPC, sign/upper immediates and RV32 wrap. Generic modeled setup stays
+explicit; mixed shifts still require exact fixed-pool acceptance. Other profiles,
+positive nonempty arithmetic fixtures and physical/protocol boundaries remain open.

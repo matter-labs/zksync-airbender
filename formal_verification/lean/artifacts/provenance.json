@@ -8195,6 +8195,118 @@
       "backport_reuse_revision": "01b6ff775bad5714ab30f3fc8fa624d09441e29b",
       "backport_reuse_path": "Tests/NativeReducedRegisters.lean",
       "backport_reuse_sha256": "fa608af9b02fe9e3a6d0c4c7ec69f8e1ae6089d83eeb63efcf685863cd14a1ac"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticOperand.lean",
+      "change": "Adapt exact actual source-routing projection to the five native arithmetic profiles; canonically recover original sign/upper immediate. No old split constraints or operand answers.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftOperand.lean",
+      "backport_reuse_sha256": "9c35d374bc4da2aa426bb91de891553e9123323c2b1c752a0f76977afb71ed9c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticClauseReference.lean",
+      "change": "Adapt only pure retained original Sail sequencing to ADD/ADDI/SUB/LUI/AUIPC. Keep original x0/sign extension; AUIPC uses an original architectural PC observation discharged by native preparation.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftClauseReference.lean",
+      "backport_reuse_sha256": "8710e99880ec1b3fb5827deba8455098d4045ce6ddf3a593f387cf1ba48e68a2"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticClauseReference.lean",
+      "change": "Reuse unchanged original Sail read/write and successful-retirement primitives; no standalone native masks or constraints are transferred.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Proofs/Sail/RiscV.lean",
+      "backport_reuse_sha256": "ff07ef22e58c57cdb9e519139d699ee9af3381c8732ecdd9bdf13f7c44800986"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticClause.lean",
+      "change": "Compose new actual arithmetic routing/results/port transfers into retained original clauses. Internal two-read ranges and original PC observation are discharged by initialized history and native preparation.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftClause.lean",
+      "backport_reuse_sha256": "f4fca11190841c7abe7d397b85d725be3a2f8d0a919849998eebb8ca9f794b03"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticClause.lean",
+      "change": "Reuse exact checked native numerical arithmetic result, with both internal native read bounds discharged at initialized execution.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecodedResult.lean",
+      "backport_reuse_sha256": "75cb9d368a217aec524798e0dc9f39c71fccd276c0e4c855b106a749d0a50893"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPC.lean",
+      "change": "Reuse unchanged actual native increment theorem only after new arithmetic final-PC selection and original public decoding. Derive bounds, alignment and full RV32 rollover without PC/carry answers.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativePC.lean",
+      "backport_reuse_sha256": "126ecf34bca7b636e68ef121a90708e38482526f525c8edcab4544c6dde48eee"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPC.lean",
+      "change": "Use actual arithmetic final/default-PC equations and derived native mask; no old split PC metadata is assumed.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticFields.lean",
+      "backport_reuse_sha256": "0b1aea49ce917d89da3b93abf1443917e9c8d4934ccae474d60b5c7dafb2fd95"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticExecution.lean",
+      "change": "Adapt actual-native local preparation/retirement after new arithmetic port/operand/clause/PC proofs. Derive AUIPC get_arch_pc from rebased incoming PC through nextPC insertion; keep both source bounds internal.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeShiftExecution.lean",
+      "backport_reuse_sha256": "d7ce415f5a25c2f26afa4ac34391e8db534e51ece9fe9c7707dc4ae34807fff1"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeArithmeticExecution.lean",
+      "change": "Reuse unchanged pure Sail control-history transport, PC retirement and projection; native incoming/successor PC values are derived.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Retirement.lean",
+      "backport_reuse_sha256": "61553514a54434011a5b166dafefca4d996a056290ef25f8046de2de88b45e1d"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticExecution.lean",
+      "change": "Discharge both actual native readonly ranges and PC alignment from original public arithmetic decoding/initialized history; construct original normal arithmetic row execution. Generic modeled native setup remains explicit.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/Execution.lean",
+      "backport_reuse_sha256": "75b1477712a5cf042fed5527e12d91970568f9b867e1880e065b81a6ee890e44"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticComposition.lean",
+      "change": "Adapt chronological native-row composition to original arithmetic SourceWith replay and new local execution, deriving terminal PC bounds on nonempty and empty traces. No intermediate state, replay or table identity is supplied.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/Composition.lean",
+      "backport_reuse_sha256": "08eb99f956731b6ccd3a8d9ece0a878aad386b1709155e93a6ebee2595c040c4"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ReducedMachineArithmeticExecution.lean",
+      "change": "Keep only small original arithmetic row/instruction-history observables; include original normal PC preparation/retirement, not a clause at raw AUIPC GPR states.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/ReducedMachineExecution.lean",
+      "backport_reuse_sha256": "92f4477f95b4ecfb9e3c590ed6823a61e792cd17a7a143a0c41f12ab96dceb64"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticExecution.lean",
+      "change": "Expose one short initialized arithmetic instruction-history root without local read/range/result/PC/state answers.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/Execution.lean",
+      "backport_reuse_sha256": "49c53a9fc723c3b889673f326aac83cb9f60e15bcd2c2f95e8b3510060de95a2"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticFetchedExecution.lean",
+      "change": "Expose one short original fetched arithmetic execution root with terminal PC/all terminal cell reads. Generic modeled setup is explicit; no physical/native-ROM fidelity or mixed-profile execution is inferred.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/FetchedExecution.lean",
+      "backport_reuse_sha256": "d70118e61d9db4b433cad173ec7ab23087e03f5346474281416ccce2abaf6d59"
+    },
+    {
+      "path": "Tests/NativeReducedArithmeticExecution.lean",
+      "change": "Adapt original Sail retirement fixtures to all five ordinary/x0 arithmetic forms at ordinary and wrapped PCs. Check independent carry/borrow/negative immediate/U-type values and nonzero-PC AUIPC; conditional initialized consequences have no source/PC/state answers. No complete positive117-equation arithmetic witness is claimed.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Tests/NativeReducedExecution.lean",
+      "backport_reuse_sha256": "8acc7408d4f36d77055ff38610a14321911d85979355b7c0d9fea5e5f19398be"
+    },
+    {
+      "path": "Tests/NativeReducedArithmeticFetched.lean",
+      "change": "Adapt concrete zero-row modeled actual-native execution and top-word PC endpoint to the arithmetic public interface. This is not a nonempty native arithmetic row certificate.",
+      "backport_reuse_revision": "2b8278686f1dad3d83d24cd87d7e5d8592c92ef4",
+      "backport_reuse_path": "Tests/NativeReducedFetched.lean",
+      "backport_reuse_sha256": "3019c88db73c3bb3f02825b912d5226108fa6cf3b2eaa656691d18d43f7f3405"
     }
   ],
   "setup_artifacts": [

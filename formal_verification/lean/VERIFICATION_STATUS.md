@@ -17,18 +17,71 @@ false. Subword retirement is therefore not a prerequisite for this machine.
 This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
-**The reduced machine now has conditional fetched-execution soundness for the
-selected original shift profile; full combined-operation coverage remains open.** The active
+**The reduced machine now has conditional fetched-execution soundness separately
+for selected original shift and ADD/ADDI/SUB/LUI/AUIPC profiles; mixed-profile
+and full combined-operation coverage remain open.** The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 imports 117 native equations, 142 variables and a complete fourteen-region fixed
 pool. Original Clean acceptance derives its two actual sign/high-byte queries.
 The public fixture is explicit; general public configuration and other operation
-semantics and global/physical enforcement remain open. Selected-shift initialized
-original normal/fetched execution is now proved under the explicit public
-initialization/decoder interfaces; other combined profiles are unfinished.
+semantics and global/physical enforcement remain open. Selected-shift and arithmetic
+initialized original normal/fetched execution are now proved separately under the
+explicit public initialization/decoder interfaces; mixed and other profiles are unfinished.
 The historical 119-equation/141-variable/13-region artifact is preserved separately.
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
+
+## Original native arithmetic fetched execution (6 November 2026)
+
+[Two short public roots](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticExecution.lean)
+now derive original arithmetic instruction histories and [finite fetched execution](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticFetchedExecution.lean)
+from original public byte/stateful arithmetic image construction, actual public
+seed/PC inputs, accepted native matching, complete arithmetic sparse/padded
+membership and aligned tracked public cells. Every source/read/write/range,
+selected operand, result, PC/carry, row order, intermediate state and decoder
+replay is derived. Actual terminal PC bounds and all terminal cell reads follow.
+Successful ordinary four-byte execution excludes original interrupt/exception paths.
+
+[Native selected operands](Airbender/Proofs/ReducedMachine/NativeArithmeticOperand.lean)
+retain the readonly rs2/x0 access even on immediate forms. [Clause assembly](Airbender/Proofs/ReducedMachine/NativeArithmeticClause.lean)
+uses actual arithmetic numerical results and original GPR transfers. [Native PC proofs](Airbender/Proofs/ReducedMachine/NativeArithmeticPC.lean)
+connect new arithmetic final-PC selection to the already checked native increment,
+deriving canonical bounds/alignment and complete RV32 rollover. [Local execution](Airbender/Proofs/ReducedMachine/NativeArithmeticExecution.lean)
+places the actual incoming native PC into the constructed state and derives
+AUIPC's original get_arch_pc observation through nextPC preparation. It then
+executes retained clauses and original retirement. [Trace assembly](Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticComposition.lean)
+discharges both internal source ranges, alignment and all state/control inputs,
+replays the original stateful decoder and composes chronological native rows.
+No per-row range/read/result/PC/state or table identity is supplied publicly.
+
+[Six retirement/initialized regression roots](Tests/NativeReducedArithmeticExecution.lean)
+cover all ten ordinary/x0 forms at ordinary and wrapped PCs, independent ADD
+carry/SUB borrow/negative ADDI/LUI-above-M31 values, and AUIPC at nonzero incoming
+PC and wrap. They also derive actual initialized segment execution and reject
+oversized terminal PCs. [Two concrete empty-trace roots](Tests/NativeReducedArithmeticFetched.lean)
+check the full modeled public execution interface for every RV32 PC and the
+terminal reader at 0xffffffff. Positive local Sail and empty native tests do not
+certify a complete positive nonempty 117-equation arithmetic row.
+
+The generic native four-field setup remains explicit; arithmetic needs only
+scalar checks and polynomials. No arbitrary table is equated with NativeFixed.table.
+Future mixed shift/arithmetic execution must retain exact fixedData acceptance
+for shift numerical semantics. The native eight-word/CSR/nondeterminism fixture,
+compiler/Rust/JSON/native public decoder-export/preprocessing/ROM/physical setup,
+cryptography and completeness boundaries are unchanged. Mixed-profile execution,
+other combined operations, workers/accounting/protocol, padding/terminal and
+initialization/teardown remain open. No native defect, issue-handling assumption,
+production fix or parity claim is added. Native/importer/exporter/literal inputs,
+original Sail clauses and dependencies are unchanged.
+
+All affected bounded modules and final gates pass: 2,737 explicit standard-only
+axiom roots, 169 public Review roots, four guide names, 2,702 links/anchors and
+context/trace separation. Full Review used 542.58 MiB footprint / 3104.45 MiB
+resident in 13.95 seconds. Independent provenance passes 189 v3-origin and
+908 backport-origin identities, 80 unchanged reused modules, eight circuit
+artifacts, 63 native sources, 23 setup artifacts and four exporter files. It used
+30.70 / 47.31 MiB in 6.76 seconds. Every owned worker terminated under unchanged
+3072/4096 MiB ceilings and default Lean proof limits.
 
 ## Original native arithmetic Sail register history (6 November 2026)
 

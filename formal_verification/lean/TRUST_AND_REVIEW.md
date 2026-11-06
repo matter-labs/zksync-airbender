@@ -274,6 +274,32 @@ does not execute retained clauses or prepare/retire the PC; AUIPC specifically
 needs its actual incoming architectural PC in the constructed row state. Mixed
 execution and physical/protocol/padding/terminal/init remain open.
 
+## Original arithmetic execution boundary
+
+[Arithmetic instruction history](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticExecution.lean)
+and [fetched execution](Airbender/Review/Trace/Families/ReducedMachine/ArithmeticFetchedExecution.lean)
+now derive original normal preparation/clause/retirement, chronological states,
+original decoder replay, terminal PC bounds and terminal cell reads. Inputs are
+original public byte/stateful arithmetic image construction, public seed/PC
+boundary, actual accepted native matching, complete arithmetic sparse/padded
+membership and aligned tracked public cells. No local read/range/operand/result,
+PC/carry, order/replay or intermediate state is supplied. [Internal execution](Airbender/Proofs/ReducedMachine/NativeArithmeticExecution.lean)
+places actual native incoming PC into derived row states and proves AUIPC's
+get_arch_pc observation through nextPC updates. Both internal read bounds and
+alignment are discharged by initialized history and original public decoding.
+
+The generic modeled native four-field setup remains visible; no arbitrary/native
+table identity is needed for arithmetic scalar/polynomial semantics. Mixed
+shift/arithmetic execution is not yet claimed and must retain exact fixedData
+acceptance for shift lookup meanings. Original ordinary successful four-byte
+stepping does not include interrupt/exception paths. [Retirement tests](Tests/NativeReducedArithmeticExecution.lean)
+and [empty paths](Tests/NativeReducedArithmeticFetched.lean) do not certify a
+positive nonempty 117-equation arithmetic fixture. Native public decoder-export,
+compiler/preprocessing/ROM/physical setup, cryptographic enforcement, completeness,
+worker/protocol/padding/terminal/init and other combined operations remain separate.
+No native defect or issue-handling assumption is added; production circuit/Sail
+and native/exported/imported/literal/configuration/dependency inputs are unchanged.
+
 ## Import and generation fidelity
 
 Mersenne31 coefficients are non-Montgomery residues in 0..=2147483647; the upper

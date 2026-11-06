@@ -174,3 +174,19 @@ x0 group fixture remains scoped below complete arithmetic acceptance. Original
 selected operands/clauses and PC prepare/retire/fetched execution remain next,
 including AUIPC's actual incoming PC. Mixed shift/arithmetic and broader physical/
 protocol/padding/terminal/init boundaries remain open.
+
+## Original arithmetic initialized execution
+
+[Instruction histories](ArithmeticExecution.lean) and [fetched execution](ArithmeticFetchedExecution.lean)
+now derive original normal preparation/clause/retirement, row states and terminal
+PC/cell reads from public initialization/decoding and accepted actual native matching.
+[Assembly](../../../../Proofs/Trace/Families/ReducedMachine/ArithmeticComposition.lean)
+derives both read bounds, numerical PC+4/wrap and original stateful decoder replay.
+AUIPC's architectural PC is placed into constructed states and observed internally.
+[Six retirement/initialized roots](../../../../../Tests/NativeReducedArithmeticExecution.lean)
+and [two empty-execution roots](../../../../../Tests/NativeReducedArithmeticFetched.lean)
+retain x0, sign/upper immediates and nonzero-PC AUIPC. They do not certify a positive
+nonempty arithmetic 117-equation witness. Separate arithmetic/shift traces are
+checked; mixed traces and other combined operations remain next. Exact fixedData
+acceptance stays mandatory for shift numerical lookups; public/physical setup,
+workers/protocol/padding/terminal/init and completeness remain separate.
