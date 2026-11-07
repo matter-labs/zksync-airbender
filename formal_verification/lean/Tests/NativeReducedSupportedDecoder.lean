@@ -1,5 +1,6 @@
 import Airbender.Review.Trace.Families.ReducedMachine.SupportedDecoder
 import Airbender.Proofs.ShiftBinop.NativeSetup
+import Tests.NativeReducedComparison
 
 namespace Tests.NativeReducedSupportedDecoder
 open Airbender Arithmetic Trace ReducedMachine Native
@@ -113,5 +114,18 @@ theorem complete_original_image (i : Fin 25) : ∃ entry, setup.slots[i.val]? = 
   have member : some entry ∈ setup.slots := List.mem_of_getElem? found
   have present : entry ∈ setup.program := List.mem_filterMap.mpr ⟨some entry,member,rfl⟩
   exact ⟨entry,found,(Trace.Proofs.run_sparse_setup_sources mixed_public_image present).1⟩
+
+
+/-- Original SLTIU x0 public bytes now select the comparison profile in the
+    common projection, while all raw native query fields remain unchanged. -/
+theorem original_comparison_slot :
+    programSlotRunWith supportedDecoderFields JumpBranchSlt.NativeSetup.before 8 =
+      some (some (⟨8,0xfff0b013,.ITYPE (4095,.Regidx 1,.Regidx 0,.SLTIU),
+        ⟨.inr (.inr (.inr ⟨false,false⟩)),1,0,0,⟨65535,65535⟩,65,3⟩⟩ : SupportedProgramEntry)) := by
+  simp only [programSlotRunWith,
+    show (Cell.ram (8 : BitVec 32)).read JumpBranchSlt.NativeSetup.before =
+      .ok (0xfff0b013 : BitVec 32) JumpBranchSlt.NativeSetup.before from
+        JumpBranchSlt.Proofs.native_fixture_words ⟨2,by decide⟩,bind,Option.bind]
+  rfl
 
 end Tests.NativeReducedSupportedDecoder

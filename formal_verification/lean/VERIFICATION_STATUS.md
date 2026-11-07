@@ -18,7 +18,8 @@ This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
 **The reduced machine now has conditional fetched-execution soundness for mixed
-selected original shifts, ADD/ADDI/SUB/LUI/AUIPC and XOR/OR/AND register/immediate rows. Full combined-operation
+selected original shifts, ADD/ADDI/SUB/LUI/AUIPC, XOR/OR/AND register/immediate
+and SLT/SLTU/SLTI/SLTIU rows. Full combined-operation
 coverage remains open.** The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 imports 117 native equations, 142 variables and a complete fourteen-region fixed
@@ -30,6 +31,68 @@ initialization/decoder interfaces; other combined profiles remain unfinished.
 The historical 119-equation/141-variable/13-region artifact is preserved separately.
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
+
+## Native comparisons in initialized original execution (7 November 2026)
+
+[Actual port proofs](Airbender/Proofs/ReducedMachine/NativeComparisonPorts.lean)
+bind original rs1/rs2/rd to all three native ports before shared GPR history is
+used. Both sources and old destination observe one pre-state, including aliases;
+readonly rs2/x0 still participates for immediate forms. The small
+[transfer observable](Airbender/Review/Helpers/Memory/ReducedMachineComparison.lean)
+contains only these original observations and the actual masked write.
+[Original primitive correspondence](Airbender/Proofs/ReducedMachine/NativeComparisonClauseReference.lean)
+proves signed/unsigned Sail comparisons equal their RV32 references, then sequences
+the retained SLT/SLTU/SLTI/SLTIU clauses. [Native clause assembly](Airbender/Proofs/ReducedMachine/NativeComparisonClause.lean)
+uses actual selected operands and canonical numerical writes, with both readonly
+source bounds kept internal. [Native PC arithmetic](Airbender/Proofs/ReducedMachine/NativeComparisonPC.lean)
+uses the already proved actual no-jump/default selection and original query
+bounds/alignment to derive bounded PC+4 and complete RV32 rollover.
+[Normal execution](Airbender/Proofs/ReducedMachine/NativeComparisonExecution.lean)
+transports the constructed states through original PC preparation and retirement.
+
+[Common original support](Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean)
+now includes comparisons alongside shifts, arithmetic and bitwise. [Profile/query transport](Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean)
+derives the original instruction and exact ten-field query, without supplied
+per-row profile answers. [Actual local rules](Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean)
+justify common range/x0/native-clock Sail history and code/misa/decoder frames.
+[The same short public fetched-execution root](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+now derives original successful four-byte stepping, terminal PC bounds and every
+terminal cell read across interleaved supported rows. Public inputs remain the
+original public image/decoder construction, ImageBoundary(fixedData trace),
+Accepted(fixedData trace), full SupportedDecodedTrace and aligned tracked cells.
+Both actual read bounds, states, order, results, PC effects and decoder replay
+are conclusions or internally discharged prerequisites. AUIPC's prepared incoming
+architectural PC remains derived. Exact native fixedData acceptance is retained;
+no arbitrary-table equivalence or desired row/state/result premise is added.
+
+[Six original execution regressions](Tests/NativeReducedComparisonExecution.lean)
+check all eight ordinary/x0 forms, independent signed/unsigned/negative-immediate
+outputs, normal retirement at ordinary and wrapped PCs, discarded data stutters
+with PC advance, wrong tag rejection and actual decoded x0 masking.
+[Common decoder tests](Tests/NativeReducedSupportedDecoder.lean) additionally
+recover an original public SLTIU slot under the expanded projection. These are
+original Sail/source and conditional native regressions, not a new complete
+positive nonempty117-equation comparison/mixed witness. Existing full SLL/x0
+native fixtures are unchanged. The modeled public image is not equated with the
+native eight-word/CSR/nondeterminism fixture or physical ROM/setup.
+
+Other ordinary profiles, worker/caller accounting, protocol spans, padding/terminal
+machine enforcement and initialization/teardown remain open. General compiler/
+Rust/JSON/native public export/preprocessing/ROM/physical fidelity, cryptography,
+completeness and original interrupt/exception paths retain separate boundaries.
+No native defect, issue-handling assumption, production fix or parity claim.
+
+All affected bounded modules and regressions pass. Final gates check 2,898 explicit
+standard-only axiom roots, 181 public Review roots, four guide names, 2,891 local
+links/anchors and layer separation. Full Review used 545.13 MiB footprint and
+3,111.25 MiB resident in 14.48 s; independent pinned provenance used 18.83/34.92 MiB
+in 7.41 s. Provenance checks 189 v3-origin and 1,006 backport-origin identities,
+80 byte-identical reused modules, eight circuit artifacts, 65 native sources,
+23 setup artifacts and four exporter files. All workers terminated under unchanged
+3,072 MiB footprint/4,096 MiB resident caps, Lean -j1 -M3072 and finite budgets.
+No memory/time/heartbeat/recursion ceiling was reached or raised. Prior importer/
+CLI/native-export controls retain unchanged inputs and applicability; no unchanged
+heavy certificate or native data was regenerated. FINDINGS remains unchanged.
 
 ## Native comparisons: original decoding and initialized numerical results (7 November 2026)
 
@@ -76,7 +139,8 @@ Native conditional.rs is newly hash-pinned to the unchanged v2 base; branch tabl
 source was already pinned. No production/native/imported/exported/literal/Sail/
 public fixed configuration/dependency input changed.
 
-Next bind all actual comparison ports to original GPR/cell history, selected
+The numerical-only checkpoint below is superseded by the execution checkpoint
+above. Its next steps were to bind all actual comparison ports to original GPR/cell history, selected
 operands and retained original Sail clauses, derive numerical PC preparation/
 retirement/fetched execution and extend the common supported profile. Current
 public_supported_execution still admits shifts, arithmetic and bitwise only;

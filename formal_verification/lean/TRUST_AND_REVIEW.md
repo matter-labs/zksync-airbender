@@ -327,6 +327,31 @@ fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
 terminal/init boundaries remain open. No native defect or issue-handling assumption
 is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
 
+## Native comparison original execution boundary
+
+[New native GPR transport](Airbender/Proofs/ReducedMachine/NativeComparisonPorts.lean),
+[retained original clauses](Airbender/Proofs/ReducedMachine/NativeComparisonClause.lean)
+and [normal execution](Airbender/Proofs/ReducedMachine/NativeComparisonExecution.lean)
+now discharge the comparison execution connection. Signed/unsigned primitive
+correspondence is kernel proved; actual native operands, masked writes and
+no-jump/default PC selection supply the local contract. Both readonly bounds and
+alignment are internal and discharged in the common initialized trace.
+[Common supported fetched execution](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+now includes SLT/SLTU/SLTI/SLTIU as well as shifts/arithmetic/bitwise. Original
+public construction, exact fixedData acceptance, full sparse decoding and aligned
+tracked cells derive all states/read/write/result/PC/order/replay observations.
+Readonly immediate rs2/x0 and AUIPC's derived prepared PC remain intact. No desired
+local answer, supplied preservation rule or table-equivalence premise is public.
+
+[Original execution tests](Tests/NativeReducedComparisonExecution.lean) and the
+[common original comparison slot](Tests/NativeReducedSupportedDecoder.lean) are
+not full nonempty117-equation native comparison/mixed accepted fixtures. The native
+public fixed fixture and logical original decoder image remain distinct; native
+export/preprocessing/ROM/physical enforcement and other ordinary/protocol/terminal/
+init/cryptographic/completeness/interrupt scopes remain open. The following earlier
+numerical-only boundary is superseded by this execution connection. No finding,
+production/Sail/native-data/dependency change or parity claim is added.
+
 ## Native comparison numerical and decoder boundary
 
 [Actual tag22resolver semantics](Airbender/Review/Circuits/ReducedMachine/Tables/NativeConditionalTheorems.lean)

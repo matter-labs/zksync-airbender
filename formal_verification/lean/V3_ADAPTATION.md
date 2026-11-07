@@ -491,3 +491,27 @@ inconsistent-flag distinctions, original SLTIU bytes/stateful slot and initializ
 oversized-source rejection; no complete positive nonempty comparison witness is
 claimed. Native conditional.rs is newly pinned unchanged; no native/Sail/data/
 dependency change, finding/fix/issue assumption or parity claim is added.
+
+## Native comparisons in common original execution (7 November 2026)
+
+[New actual native ports](Airbender/Proofs/ReducedMachine/NativeComparisonPorts.lean)
+justify original GPR observations before shared history reuse. [Original signed/unsigned primitives](Airbender/Proofs/ReducedMachine/NativeComparisonClauseReference.lean),
+[retained clauses](Airbender/Proofs/ReducedMachine/NativeComparisonClause.lean),
+[actual bounded PC+4/wrap](Airbender/Proofs/ReducedMachine/NativeComparisonPC.lean)
+and [normal retirement](Airbender/Proofs/ReducedMachine/NativeComparisonExecution.lean)
+close the original comparison row connection. [Common initialized execution](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+now admits comparisons after derived original profile/query transport and new native
+range/x0/address/PC/execution rules. Both readonly source bounds and alignment,
+all states/order/code/misa/decoder replay and terminal observations are derived
+from the same explicit public interfaces and exact fixedData acceptance.
+Readonly rs2/x0 participation, original sign extension and AUIPC's prepared actual
+PC remain unchanged. No desired local answer or arbitrary-table identity is used.
+
+[Six regressions](Tests/NativeReducedComparisonExecution.lean) retain ordinary/x0,
+signed/unsigned/negative-immediate and RV32-wrap behavior; a common original public
+SLTIU slot is checked too. These are not new full nonempty native comparison/mixed
+witnesses or physical setup fidelity. Exact parent962 template hashes are recorded
+in [provenance](artifacts/provenance.json). Earlier numerical-only comparison scope
+is superseded here. Other ordinary/protocol/setup/terminal/init/completeness and
+original interrupt/exception boundaries remain open. No production/Sail/native/
+data/dependency change, defect, issue assumption or parity claim.

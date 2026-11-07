@@ -355,3 +355,18 @@ differ from split tag43. [Original public projection](ComparisonDecoder.lean)
 binds SLT/SLTU/SLTI/SLTIU/x0/sign extension. [Initialized numerical results](../../Trace/Families/ReducedMachine/ComparisonResults.lean)
 discharge both operand bounds from native history. Original Sail GPR/clause/PC/
 fetched execution and common supported comparison integration remain next.
+
+## Original comparisons in common execution
+
+[Actual comparison ports](../../../Proofs/ReducedMachine/NativeComparisonPorts.lean)
+bind original GPR reads/write before shared history transport. [Retained clauses](../../../Proofs/ReducedMachine/NativeComparisonClause.lean)
+use checked original signed/unsigned primitives and native numerical results.
+[Normal execution](../../../Proofs/ReducedMachine/NativeComparisonExecution.lean)
+derives actual bounded PC+4/full wrap and original preparation/retirement.
+[Common fetched execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+now includes comparisons; both internal read bounds and all states/order/replay
+follow from public initialization, full original decoding and exact fixedData
+acceptance. This supersedes the preceding numerical-only comparison snapshot.
+[Tests](../../../../Tests/NativeReducedComparisonExecution.lean) are original Sail/
+conditional native checks, not new full nonempty117-equation native witnesses.
+Other ordinary operations and native public/physical/protocol boundaries remain open.

@@ -8903,6 +8903,104 @@
       "backport_reuse_revision": "fb67d7bbfc64963cc41afd6792cc232b08d962c6",
       "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/NativeSetup.lean",
       "backport_reuse_sha256": "8e76871b5d658e6bdd0ae880dabd04d6ad8db8618faf136b1e64db4d81402e86"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonPorts.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBitwisePorts.lean",
+      "backport_reuse_sha256": "4d6a7fc43ac915e0065b5567ac76d00ead890f567c1e178c68c0dfd429866334"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonClauseReference.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBitwiseClauseReference.lean",
+      "backport_reuse_sha256": "4eba630d4854a810cd2f4a5fb9a1260fe89f90393719addf853505ca957f2694"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonClause.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBitwiseClause.lean",
+      "backport_reuse_sha256": "e4f027041952f45775a08a3a4900504e45ca07728c9b5239d3848203c1bcce97"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonPC.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBitwisePC.lean",
+      "backport_reuse_sha256": "a24671aa2a96037e08a8262978d7baae93ebc4480a9443267e7431b4ab929b4a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeComparisonExecution.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBitwiseExecution.lean",
+      "backport_reuse_sha256": "74ae65f003ef8cdae7dc40a6f35c00a2c4e65ca510ba5066364ca4d5365e8282"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ReducedMachineComparison.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/ReducedMachineBitwise.lean",
+      "backport_reuse_sha256": "b8010465f5fa65df32215d02df3e4b2ba5be6e5c76314dd88cb325d227f91ed8"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/ComparisonZeroRegister.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/BitwiseZeroRegister.lean",
+      "backport_reuse_sha256": "f39557369707edc0b4ed108b8de899b70efec8a73393913beecd89d9e2749844"
+    },
+    {
+      "path": "Tests/NativeReducedComparisonExecution.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Tests/NativeReducedBitwiseExecution.lean",
+      "backport_reuse_sha256": "6c08f10d41d5534cc1d2f5ec9793b4f4cfab0b6976fe490f23b43ef573c21417"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean",
+      "backport_reuse_sha256": "2cd8b155412f9c728302bcb44b50480d5ff7e0bba03cccb75a0c62395d1901f9"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean",
+      "backport_reuse_sha256": "a559fd3aaacbf693f72e35d450fd2937b48f32d2879d744456d1b2840b945846"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "backport_reuse_sha256": "896bda053f2cc4e7ff24fbca69ad569724dda9b563dc3f3d87f2bdbecbd68dfd"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean",
+      "backport_reuse_sha256": "532d737515366198314fae21e770a5c074059ded79e8af5fc6195ce5d7d1e8f9"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "backport_reuse_sha256": "50167c14fe66f16c213a73dd1e934a898c9b8e9a5ec43642260d862dbb37b4e1"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedDecoder.lean",
+      "change": "Adapt exact checked bitwise execution/history templates to original SLT/SLTU/SLTI/SLTIU only after new actual native comparison ports, resolver results, selected operands and no-jump PC bindings. Prove retained signed/unsigned Sail primitive correspondence and derive both source bounds in common initialized history. Widen only the original supported projection/profile transport; no split native mask/table identity or public state/result/range answer.",
+      "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
+      "backport_reuse_path": "Tests/NativeReducedSupportedDecoder.lean",
+      "backport_reuse_sha256": "8187da3f11373c42791468d17cc9b613f2b846de6ef0c400ee3537178b5d8aaa"
     }
   ],
   "setup_artifacts": [

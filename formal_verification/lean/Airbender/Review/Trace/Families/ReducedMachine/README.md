@@ -244,3 +244,23 @@ remain next. [Tests](../../../../../Tests/NativeReducedComparison.lean) are orig
 source/table/conditional native consequences, not full positive nonempty execution
 witnesses. Native public/export/preprocessing/ROM/physical/protocol/completeness
 boundaries remain separate.
+
+## Comparisons in common initialized execution (7 November 2026)
+
+[Common original support](../../../Circuits/ReducedMachine/SupportedDecoder.lean)
+now includes SLT/SLTU/SLTI/SLTIU. [New local execution](../../../../Proofs/ReducedMachine/NativeComparisonExecution.lean)
+binds actual GPR ports, selected operands, retained Sail clauses and bounded
+PC+4/full RV32 wrap. [Common local rules](../../../../Proofs/ReducedMachine/NativeSupportedLocal.lean)
+justify preservation/x0/register-space/PC transport before unchanged initialized
+range/history/code/misa/decoder replay and [fetched composition](SupportedExecution.lean).
+Both readonly source bounds and all intermediate states/order/replay are derived
+from public construction, exact fixedData acceptance, complete sparse membership
+and aligned tracked cells. No expected profile/read/result/PC/state or table
+identity is supplied. AUIPC's prepared native PC and immediate readonly rs2/x0
+participation remain derived. This supersedes the earlier numerical-only comparison scope.
+
+[Original comparison tests](../../../../../Tests/NativeReducedComparisonExecution.lean)
+cover ordinary/x0/sign/negative-immediate/retirement/wrap; [common decoder tests](../../../../../Tests/NativeReducedSupportedDecoder.lean)
+add original public SLTIU evidence. These are not complete positive nonempty native
+comparison/mixed witnesses. Other ordinary operations, native export/ROM/physical
+setup, worker/protocol/padding/terminal/init and completeness remain open.

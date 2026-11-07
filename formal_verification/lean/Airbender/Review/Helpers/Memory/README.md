@@ -222,3 +222,13 @@ induction. Both readonly refreshes and discarded writes remain in native matchin
 [Canonical comparison results](../../Trace/Families/ReducedMachine/ComparisonResults.lean)
 discharge every internal read bound from those initialized facts. These numerical
 read words are not yet original pre-row Sail GPR/clause/fetched execution.
+
+## Original comparison GPR transport
+
+[ComparisonRegisterTransfer](ReducedMachineComparison.lean) observes all three
+original reads in one pre-state and actual masked writes. [Native address proofs](../../../Proofs/ReducedMachine/NativeComparisonPorts.lean)
+justify shared read/write transport, retaining aliases and readonly immediate
+rs2/x0. [Common original execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+constructs every state/order and discharges both source bounds from initialized
+native history, including comparison rows. These observations are conclusions,
+not public row answers. Earlier numerical-only comparison scope is superseded.

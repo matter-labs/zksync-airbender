@@ -271,3 +271,10 @@ byte/stateful sparse/padded membership for SLT/SLTU/SLTI/SLTIU. [Source recovery
 derives actual65/67mask,2/3funct3,rs/rd/x0 and sign-extended immediate; native
 Boolean packing excludes holes/tail. This remains separate from native Rust
 decoder export, ROM/preprocessing/physical enforcement and mixed-profile execution.
+
+[Common supported membership](ReducedMachineSupported.lean) now admits comparisons
+as well as shifts/arithmetic/bitwise. [Profile recovery](../../../Proofs/ReducedMachine/NativeSupportedDecoder.lean)
+derives the original instruction and exact native query for each admitted profile.
+[Common fetched execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+uses that recovered evidence across interleaved rows. This supersedes the earlier
+comparison-only scope; native export/ROM/preprocessing/physical fidelity remains separate.

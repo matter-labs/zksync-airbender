@@ -19,7 +19,8 @@ This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
 **The reduced machine now has conditional fetched-execution soundness for mixed
-selected original shifts and ADD/ADDI/SUB/LUI/AUIPC rows. Full combined-operation
+selected original shifts, ADD/ADDI/SUB/LUI/AUIPC, XOR/OR/AND register/immediate
+and SLT/SLTU/SLTI/SLTIU rows. Full combined-operation
 coverage remains open.** The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 is independently reproducible from unchanged pinned Rust: 117 equations,
@@ -98,8 +99,14 @@ Full combined row effects and execution remain pending. See the
    subtraction/borrow/sign meaning, original SLT/SLTU/SLTI/SLTIU public decoding,
    write preservation and initialized all-word ranges/canonical numerical results
    are now checked separately. Internal source bounds are discharged by public
-   history. Next derive original comparison GPR/operand/clause/PC/fetched effects
-   and integrate comparisons into common supported execution. Other combined
+   history. Actual comparison GPR addresses/read/write transport, selected operands,
+   retained original signed/unsigned Sail clauses and bounded PC+4/full RV32 wrap
+   now derive normal preparation/retirement. Common initialized execution now
+   includes comparisons through derived profile/query transport, write/x0/address/
+   PC rules and both actual readonly bounds. All states/order/code/misa/replay and
+   terminal observations follow from public initialization and exact fixedData
+   acceptance. Next connect other ordinary native profiles, beginning with actual
+   conditional branch semantics and operation-specific PC effects. Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

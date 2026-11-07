@@ -1,3 +1,11 @@
+import Airbender.Proofs.ReducedMachine.NativeComparisonPorts
+import Airbender.Proofs.ReducedMachine.NativeComparisonClauseReference
+import Airbender.Proofs.ReducedMachine.NativeComparisonClause
+import Airbender.Proofs.ReducedMachine.NativeComparisonPC
+import Airbender.Proofs.ReducedMachine.NativeComparisonExecution
+import Airbender.Review.Helpers.Memory.ReducedMachineComparison
+import Airbender.Proofs.Trace.Families.ReducedMachine.ComparisonZeroRegister
+import Tests.NativeReducedComparisonExecution
 import Tests.NativeReducedComparison
 import Airbender.Review.Trace.Families.ReducedMachine.ComparisonDecoder
 import Tests.NativeReducedBitwiseExecution
@@ -3108,3 +3116,24 @@ import Tests.SubwordStoreData
 #print axioms Airbender.ReducedMachine.Native.public_comparison_value_bounds
 #print axioms Airbender.ReducedMachine.NativeComparisonRangeProofs.image_comparison_results
 #print axioms Airbender.ReducedMachine.Native.public_comparison_results
+#print axioms Airbender.ReducedMachine.NativeComparisonPortProofs.readonly_sources
+#print axioms Airbender.ReducedMachine.NativeComparisonPortProofs.source_addresses
+#print axioms Airbender.ReducedMachine.NativeComparisonPortProofs.source_two_fields
+#print axioms Airbender.ReducedMachine.NativeComparisonPortProofs.register_addresses
+#print axioms Airbender.ReducedMachine.NativeComparisonPortProofs.register_reads
+#print axioms Airbender.ReducedMachine.NativeComparisonPortProofs.register_write
+#print axioms Airbender.ReducedMachine.NativeComparisonClauseProofs.original_signed_result
+#print axioms Airbender.ReducedMachine.NativeComparisonClauseProofs.original_unsigned_result
+#print axioms Airbender.ReducedMachine.NativeComparisonClauseProofs.decoded_clause_of_reads
+#print axioms Airbender.ReducedMachine.NativeComparisonClauseProofs.native_clause
+#print axioms Airbender.ReducedMachine.NativeComparisonPCProofs.selected_pc_successor
+#print axioms Airbender.ReducedMachine.NativeComparisonPCProofs.decoded_pc_successor
+#print axioms Airbender.ReducedMachine.NativeComparisonExecutionProofs.local_row_execution
+#print axioms Airbender.ReducedMachine.NativeComparisonRegisterProofs.row_zero_preserving
+#print axioms Tests.NativeReducedComparisonExecution.selected_forms
+#print axioms Tests.NativeReducedComparisonExecution.reference_outputs
+#print axioms Tests.NativeReducedComparisonExecution.original_retirement
+#print axioms Tests.NativeReducedComparisonExecution.discarded_retirement
+#print axioms Tests.NativeReducedComparisonExecution.corrupted_tag_rejected
+#print axioms Tests.NativeReducedComparisonExecution.discarded_native_write
+#print axioms Tests.NativeReducedSupportedDecoder.original_comparison_slot
