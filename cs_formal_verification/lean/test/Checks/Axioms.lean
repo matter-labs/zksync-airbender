@@ -101,6 +101,7 @@ import Slop.ShiftBinop.Shifts
 import Slop.Sail.Runtime
 import Slop.Final.Circuits.WordMemory.Theorems
 import Slop.Final.Circuits.WordMemory.RVTheorems
+import Slop.Final.Circuits.SubwordMemory.RVTheorems
 import Tests.Comparison
 import Tests.NonDeterminism
 import Tests.Blake2G
@@ -2267,3 +2268,22 @@ import Human.Import.Coefficients
 #print axioms Airbender.WordMemory.Proofs.rv_query_facts
 #print axioms Airbender.Trace.RVValues.rv_rom_member_read
 #print axioms Airbender.Trace.RVValues.rv_rom_read
+#print axioms Airbender.SubwordMemory.rv_soundness
+#print axioms Airbender.SubwordMemory.babyBear_rv_soundness
+#print axioms Airbender.SubwordMemory.Proofs.rv_trace_soundness
+#print axioms Airbender.SubwordMemory.Proofs.babyBear_rv_trace_soundness
+#print axioms Airbender.SubwordMemory.Proofs.rv_pooled_fields
+#print axioms Airbender.SubwordMemory.Proofs.rv_query_facts
+#print axioms Airbender.SubwordMemory.Proofs.rv_ram_load_data
+#print axioms Airbender.SubwordMemory.Proofs.rv_rom_load_data
+#print axioms Airbender.Verification.rv_extend_subword_limbs
+#print axioms Airbender.Verification.rv_subword_load_extension
+#print axioms Airbender.Verification.rv_subword_packed_extension
+#print axioms Airbender.Verification.rv_subword_rom_result
+#print axioms Airbender.Trace.Proofs.rv_row_port_reads3
+#print axioms RV.write_byte
+#print axioms RV.read_byte
+#print axioms RV.read_subword
+#print axioms RV.write_subword
+#print axioms RV.exec_load_subword
+#print axioms RV.exec_store_subword

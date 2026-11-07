@@ -1,5 +1,6 @@
 import Human.Helpers.Decoder.Instruction
 import Human.Circuits.SubwordMemory.Artifact
+import Human.Circuits.SubwordMemory.Output
 import Human.Helpers.Context.Interfaces
 import Human.Helpers.Core.Sail
 import Human.Helpers.Properties
@@ -27,12 +28,6 @@ structure Input where
   rd : SailRV32.regidx
   encodedImmediate : BitVec 12
   before : Sail.State
-
-structure Output where
-  cell : Word
-  data : Word
-  pc : Word
-
 
 /-- Original Sail constructor used by both public-program binding and execution. -/
 def instruction (input : Input) : SailRV32.instruction :=
