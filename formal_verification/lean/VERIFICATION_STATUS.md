@@ -35,6 +35,45 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Actual native MOP local arithmetic (7 November 2026)
+
+[The short local MOP theorem](Airbender/Review/Circuits/ReducedMachine/MOPTheorems.lean)
+now derives ADDMOD, SUBMOD and MULMOD numerical results from the actual regenerated
+117-equation reduced artifact and its scalar lookups. [Its observables](Airbender/Review/Circuits/ReducedMachine/MOP.lean)
+refer to native source words, the readonly second GPR port, all four inactive
+dynamic tags, actual candidate/destination/masked write and default-PC selection.
+They do not assert original pre-state Sail reads or initialized execution.
+
+[Fresh native selectors and fields](Airbender/Proofs/ReducedMachine/NativeMOPFields.lean)
+check masks34819/133123/67587 for ADD/SUB/MUL and the actual ADD/MUL/SUB minor
+ordering. The actual multiplication relation uses65536 squared=2 modulo
+Mersenne31. [The result proof](Airbender/Proofs/ReducedMachine/NativeMOPResult.lean)
+uses the actual required final underflow, range-checked subtraction remainder,
+Boolean carries and unchanged PURE borrow_iff to derive output<p. Together with
+the field relation this identifies the unique canonical numerical result.
+No desired result/range or source<modulus premise is supplied; full RV32 source
+words may exceed the field modulus. Discarded destinations still retain the
+candidate arithmetic/canonical checks. This is custom field arithmetic, and the
+upstream Zimop zero-result fallback is not adopted as its reference semantics.
+
+Eleven [focused regressions](Tests/NativeReducedMOP.lean) check field boundaries,
+full-RV32 source reduction, canonical modulus/high-bit rejection, discarded
+writes, second-port GPR classification and three positive slices of seven actual
+native equations with bounded subtraction remainders. Conditional-native,
+pure-reference and partial-positive slices are not complete positive NONEMPTY
+117-equation/22-lookup accepted rows or original fetched execution. Six new
+modules/tests record ten exact parentb727 origins; the unchanged active mop.rs
+is independently pinned to the native v2 base. No production/native/Sail/literal/
+fixture/dependency input changed, native finding/issue assumption or new axiom.
+
+Original public MOP decoding, custom-spec input/output and retained execution,
+initialized/common MOP integration remain OPEN. Existing seven-profile original
+execution scopes remain unchanged and exclude MOP/CSR. NEXT certify actual native
+SpecialCSRProperties and CSR/delegation query/operand/return/request bindings,
+then custom/reference boundaries, caller/worker fulfillment/accounting and unified
+protocol spans. Padding/terminal/init/teardown/general Rust/public/physical/crypto/
+completeness and parity remain open; this local certificate is not parity.
+
 ## Common seven-profile original fetched execution (7 November 2026)
 
 [The new short public root](Airbender/Review/Trace/Families/ReducedMachine/UnifiedFetchedExecution.lean)

@@ -3398,3 +3398,31 @@ ROM/boot/terminal enforcement nor worker/protocol/init/teardown/completeness/par
 Eleven input-domain/conditional-native/complete-EMPTY regressions are not complete
 positive NONEMPTY117-equation/22-lookup memory/mixed accepted rows. FINDINGS stays
 unchanged: zero established native defects, no issue assumption/fix/new axiom.
+
+## Actual native MOP local boundary (7 November 2026)
+
+[The local native MOP root](Airbender/Review/Circuits/ReducedMachine/MOPTheorems.lean)
+accepts actual ConstraintsHoldFlat with an explicit selected native mask and a
+four-field modeled setup. No arbitrary/native table identity is needed: the four
+dynamic tags are derived zero, and actual scalar/remainder lookups and Boolean
+constraints derive canonical output. Actual field arithmetic plus output<p gives
+the unique numerical representative of the two native source words. No desired
+output/bound, per-row architectural read, initialization, worker result or custom
+reference execution is assumed or inferred. rdZeroFlag masking affects the
+actual destination write after candidate arithmetic; original x0 decoding and
+initialized source/architectural effects remain separate obligations.
+
+Fresh actual 117-equation bindings select ADD/SUB/MUL, preserve readonly second
+GPR routing, candidate/destination/masked write and default-PC selection. Ten
+exact parentb727 source origins document reused PURE proof patterns; the active
+unchanged native mop.rs is pinned independently to base67ee. No old standalone
+compiled mask/column/table/acceptance equivalence is transferred. Eleven focused
+conditional-native/reference/partial-positive tests are not complete accepted
+117-equation/22-lookup MOP rows or retained/fetched/common original execution.
+
+Custom Mersenne31 arithmetic requires its pinned project reference/input-output
+boundary; the upstream Zimop zero-result fallback is not adopted as that meaning.
+Original public MOP decoding and this retained execution connection remain open,
+as do CSR/delegation callers/workers/accounting/protocol/init/physical/general
+refinement/completeness/parity. Existing seven-profile execution scopes stay
+unchanged. No native defect, issue assumption, production fix or new axiom.

@@ -31,6 +31,31 @@ and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
+## Current native MOP local checkpoint (7 November 2026)
+
+[Actual reduced MOP arithmetic](Airbender/Review/Circuits/ReducedMachine/MOPTheorems.lean)
+now derives selected native field ADD/SUB/MUL, canonical output below Mersenne31,
+readonly second GPR routing, candidate/rdmask and default-PC selection. Actual
+subtraction underflow/remainder bounds and Boolean carries discharge output
+canonicality, rather than a desired result premise. Native words may span RV32;
+no source<modulus shortcut or original Sail source-read claim is made.
+
+Do not repeat these local selector/field/canonical/port checks. Original public
+MOP decoding, pinned custom-operation reference semantics/input-output, actual
+initialized source/history/PC and retained/normal/fetched/common integration are
+still open. The upstream Zimop zero-result fallback must not be treated as this
+custom field arithmetic. Eleven conditional-native/reference/partial-positive
+regressions are not full positive accepted MOP rows. The existing seven-profile
+original execution interfaces remain unchanged.
+
+NEXT derive exact native SpecialCSRProperties table semantics and actual CSR
+selectors/operands/returns/delegation requests, reviewing original custom/CSR/
+nondeterminism interfaces independently of v3. Continue caller/worker fulfillment/
+accounting and unified protocol spans, then machine padding/terminal/init/teardown.
+Keep general Rust/public export/preprocessing/physical ROM/cryptographic/
+completeness boundaries explicit. No production fixes or defect/parity inference
+from source inspection, coverage gaps or theorem counts.
+
 ## Current common fetched-execution checkpoint (7 November 2026)
 
 [Common seven-profile original fetched execution](Airbender/Review/Trace/Families/ReducedMachine/UnifiedFetchedExecution.lean)

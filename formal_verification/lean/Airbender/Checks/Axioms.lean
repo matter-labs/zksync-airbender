@@ -1,3 +1,9 @@
+import Airbender.Review.Circuits.ReducedMachine.MOP
+import Airbender.Proofs.ReducedMachine.NativeMOPSelectors
+import Airbender.Proofs.ReducedMachine.NativeMOPFields
+import Airbender.Proofs.ReducedMachine.NativeMOPResult
+import Airbender.Review.Circuits.ReducedMachine.MOPTheorems
+import Tests.NativeReducedMOP
 import Airbender.Review.Helpers.Memory.ReducedMachineUnifiedExecution
 import Airbender.Proofs.ReducedMachine.NativeUnifiedExecution
 import Airbender.Proofs.Trace.Families.ReducedMachine.UnifiedAddressDomains
@@ -3814,3 +3820,29 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedUnifiedExecution.supported_event_loss_rejected
 #print axioms Tests.NativeReducedUnifiedFetched.empty_execution
 #print axioms Tests.NativeReducedUnifiedFetched.top_terminal_readers
+
+#print axioms Airbender.ReducedMachine.NativeMOPSelectorProofs.flags
+#print axioms Airbender.ReducedMachine.NativeMOPFieldProofs.source
+#print axioms Airbender.ReducedMachine.NativeMOPFieldProofs.source_port
+#print axioms Airbender.ReducedMachine.NativeMOPFieldProofs.tags
+#print axioms Airbender.ReducedMachine.NativeMOPFieldProofs.candidate
+#print axioms Airbender.ReducedMachine.NativeMOPFieldProofs.write
+#print axioms Airbender.ReducedMachine.NativeMOPFieldProofs.pc
+#print axioms Airbender.ReducedMachine.NativeMOPFieldProofs.field_relation
+#print axioms Airbender.ReducedMachine.NativeMOPFieldProofs.modulus_subtraction
+#print axioms Airbender.ReducedMachine.NativeMOPResultProofs.word_bounds
+#print axioms Airbender.ReducedMachine.NativeMOPResultProofs.canonical
+#print axioms Airbender.ReducedMachine.NativeMOPResultProofs.result
+#print axioms Airbender.ReducedMachine.NativeMOPResultProofs.effects
+#print axioms Airbender.ReducedMachine.Native.mop_arithmetic
+#print axioms Tests.NativeReducedMOP.masks_and_minors
+#print axioms Tests.NativeReducedMOP.field_boundaries
+#print axioms Tests.NativeReducedMOP.add_modulus_wrap
+#print axioms Tests.NativeReducedMOP.sub_zero_borrow
+#print axioms Tests.NativeReducedMOP.mul_full_word
+#print axioms Tests.NativeReducedMOP.modulus_output_rejected
+#print axioms Tests.NativeReducedMOP.high_bit_rejected
+#print axioms Tests.NativeReducedMOP.discarded_write
+#print axioms Tests.NativeReducedMOP.ram_second_source_rejected
+#print axioms Tests.NativeReducedMOP.native_arithmetic_slices
+#print axioms Tests.NativeReducedMOP.slice_ranges

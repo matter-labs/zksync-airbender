@@ -529,3 +529,13 @@ ordinary public-code execution roots remain unchanged. Eleven [configuration/dom
 are not complete positive NONEMPTY117-equation/22-lookup memory/mixed witnesses.
 The earlier history-only checkpoint is superseded for this execution connection;
 remaining MOP/CSR/delegation/protocol/physical/init/completeness/parity stays open.
+
+## MOP remains outside the common execution scope
+
+[Local native MOP arithmetic](../../../Circuits/ReducedMachine/MOPTheorems.lean)
+now checks field ADD/SUB/MUL and canonical output, source-port/candidate/rdmask/
+default-PC bindings. Native words are not yet original pre-state reads. Original
+MOP public decoding, custom-operation reference and initialized/normal/fetched/
+common execution remain open, separately from the closed seven-profile roots.
+CSR/delegation requests, workers/accounting and protocol/init boundaries remain
+next; no upstream Zimop zero-result execution is silently substituted.

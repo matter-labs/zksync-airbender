@@ -578,3 +578,15 @@ memory ports derive initialized address origins before RAM-domain use. [Common f
 composes checked original normal execution and actual terminal observations.
 It retains exact NativeROM memory input scope and all older ordinary public-code
 interfaces. Other native operations/protocol/physical boundaries remain open.
+
+## Actual native MOP local arithmetic
+
+[The MOP reference observables](MOP.lean) and [short local theorem](MOPTheorems.lean)
+now derive native field ADD/SUB/MUL, canonical result below Mersenne31, readonly
+second GPR routing, candidate/rdmask and default-PC selection from actual native
+constraints. No source<modulus or desired output/range is assumed. [Fresh field
+and borrow proofs](../../../Proofs/ReducedMachine/NativeMOPResult.lean) reuse PURE
+lemmas only after actual native bindings. Eleven [regressions](../../../../Tests/NativeReducedMOP.lean)
+include three seven-equation positive slices, not complete accepted rows.
+Original public MOP decoding/custom reference/initialized/fetched/common execution
+and CSR/delegation remain open; existing seven-profile roots stay unchanged.

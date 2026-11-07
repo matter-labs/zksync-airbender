@@ -949,3 +949,26 @@ not imported or adopted. The independent audit records observed liveHEAD9bdf and
 its cumulative five-path delta separately from pinned b292 Git-object proofs,
 native inputs and dependencies. Original checkout is tracked-clean with the same
 five unrelated untracked paths; this task changed no original source/cache files.
+
+## Actual reduced MOP arithmetic adaptation (7 November 2026)
+
+[The new local root](Airbender/Review/Circuits/ReducedMachine/MOPTheorems.lean)
+checks actual native MOP masks34819/133123/67587 and ADD/MUL/SUB minor order,
+field relation including65536 squared=2 modulo Mersenne31, canonical output from
+native subtraction underflow/range-checked remainder/Boolean carries, second GPR
+routing and candidate/rdmask/default-PC bindings. Six new modules/tests record ten
+exact parentb727 origins, reusing PURE field/borrow/projection patterns only after
+fresh actual native bindings. Active mop.rs is byte-identical to nativebase67ee
+and independently hashed in provenance; production/native/Sail/literal/fixture/
+dependency inputs are unchanged.
+
+Eleven reference/conditional-native/partial-positive regressions include fullRV32
+source reduction and three seven-equation actual native slices, not full accepted
+MOP witnesses or original execution. Native source words are not yet architectural
+Sail pre-state reads. The upstream Zimop zero-result fallback is not adopted as
+custom field arithmetic semantics; original public MOP decoding/custom reference/
+initialized/common execution remain open. No defect/issue assumption/new axiom,
+physical/completeness or parity follows. Next certify native special-CSR table
+meaning and actual CSR/delegation bindings before fulfillment/accounting/protocol.
+The deliberate v3 proofpinb292 remains unchanged; observed original checkout
+9bdf/private Keccak proof activity is audited separately and not adopted.
