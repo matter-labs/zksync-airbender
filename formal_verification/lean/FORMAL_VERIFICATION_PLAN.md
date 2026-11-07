@@ -31,6 +31,27 @@ and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
+## Current CSR source/request observation checkpoint (7 November 2026)
+
+[Original-source request observations](Airbender/Review/Trace/Families/ReducedMachine/CSRRequests.lean)
+now strengthen the same initialized chronological GPR history. Actual native
+source35/36 is the canonical full RV32 original pre-state rs1 word; actual imported
+request multiplicity/kind/optional ABI-high follow the original unsigned CSR index
+and natural high half, with division before field cast. Full history/tokens/states/
+segments/order/source replay/byte-misa frames are retained, no local source/range/
+read/request/state answer is public. Eight boundary/reference/conditional-native
+regressions pass, not full positive nonempty accepted CSR witnesses or execution.
+This closes the source-to-request observation NEXT below; do not repeat it.
+
+NEXT inspect actual native compiler/protocol request-clock and caller projection
+boundaries. Main Trace.Accepted has row activity/constraints/state/memory matching,
+not a worker request ledger; metadata offset3 is not actual issuance/scheduling.
+Derive observations honestly and bind real request enforcement before calling them
+issued or composing workers. Original CSR/custom/nondeterminism/privilege/PC
+retirement, delegated RAM actions, actual Blake2 fulfillment/converse/accounting,
+protocol/terminal/init/general public/physical/refinement/crypto/completeness/parity
+remain open. Keep the existing runtime versus old-fixture and memory/shadow scopes.
+
 ## Current initialized CSR GPR history checkpoint (7 November 2026)
 
 [CSR value bounds](Airbender/Review/Trace/Families/ReducedMachine/CSRValues.lean)

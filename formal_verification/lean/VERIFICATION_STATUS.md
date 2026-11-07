@@ -35,6 +35,56 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Original CSR source and request ABI observations (7 November 2026)
+
+[The short runtime request root](Airbender/Review/Trace/Families/ReducedMachine/CSRRequests.lean)
+strengthens the checked chronological CSR GPR realization in the very same
+rowBefore states. Every native source35/36 is the canonical two-limb encoding of
+an original pre-state rs1 read, and its full RV32 numerical value is preserved,
+including values above the Mersenne31 modulus. [The local bridge](Airbender/Proofs/ReducedMachine/NativeCSRSource.lean)
+uses existing initialized bounds, original unsigned CSR index/query identities
+and actual runtime request equations to derive multiplicity, kind and optional
+ABI-high from that source. Division by 65,536 is natural-number division before
+the field cast; no field-reduced architectural source is substituted.
+
+[CSRRequestHistory](Airbender/Review/Helpers/Memory/ReducedMachineCSRRequests.lean)
+retains full native MemoryHistory, every token/segment state/order/permutation,
+same-prestate GPR transfer, original source replay, final matching and byte/misa
+frames. The new source/request observation is attached to that same constructed
+segment. Public inputs remain full original CSR setup/membership, ordinary logical
+ImageBoundary, Accepted(runtimeCSRData trace) and tracked alignment. No per-row
+source/read/value/range/request/state/worker/success answer is supplied.
+
+Eight [regressions](Tests/NativeReducedCSRRequests.lean) pass: arbitrary-source
+nondeterminism has no delegation request, delegation observes the natural high
+half, low-half changes preserve it, the 0xffff/0x10000 boundary differs, full RV32
+maximum and values above the field modulus retain their high half, and a wrong
+request contradicts actual local native constraints and real GPR history. These
+are pure-reference/conditional-native checks, not full positive nonempty accepted
+CSR witnesses or original CSR/custom/nondeterminism execution.
+
+Five new modules/tests record eleven exact parentbff728 source origins. No native,
+production, Sail, import/export, artifact, fixture or dependency input changes.
+No native defect, issue assumption, fix, new axiom or parity claim. Imported
+in-cycle offset3 remains metadata only. Main Trace.Accepted checks row constraints,
+activity and state/memory matching; it does not establish a caller/worker request
+ledger. NEXT inspect the actual native compiler/protocol request-clock connection
+and derive an honest caller projection before any issuance/accounting claim.
+Original CSR/PC retirement, delegated RAM/worker effects, fulfillment/converse,
+protocol/terminal/init/general public/physical/refinement/crypto/completeness stay
+open. Existing seven-profile execution still excludes CSR/MOP and remains unchanged.
+
+Final gates pass 3,564 explicit standard-only axiom roots, 235 public Review
+roots, four guide names and 3,478 links/anchors with context/trace separation.
+Full Review sampled footprint/resident peaks were 563.42/3,149.72 MiB over 15.35 s.
+Independent provenance passes 189 v3-origin/1,433 backport-origin identities,
+80 byte-identical modules, eight circuit artifacts, 75 native sources, 24 setup
+artifacts and four exporter files with unchanged pins/dependencies/original
+checkout (18.08/37.19 MiB, 10.38 s). Every guard leaves no owned survivor; default
+proof/resource ceilings remain unchanged. These are watchdog samples plus Lean
+allocation caps, not an OS hard physical-memory limit. No intake changed, so exact
+unchanged prior importer/native/heavy-certificate gates were not repeated.
+
 ## Initialized native CSR GPR history and word bounds (7 November 2026)
 
 [Fresh CSR port proofs](Airbender/Proofs/ReducedMachine/NativeCSRPorts.lean) bind all

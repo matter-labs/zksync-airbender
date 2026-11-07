@@ -351,3 +351,10 @@ masked write, chronological segment states, all byte/misa frames and source repl
 [Public roots](../../Trace/Families/ReducedMachine/CSRRegisters.lean) derive these
 from actual CSR laws/public seeds/matching. GPR realization does not execute original
 CSR or delegated RAM effects; its memory frame is not a worker-action frame.
+
+
+[CSR source/request history](ReducedMachineCSRRequests.lean) strengthens the same
+complete CSR GPR realization states with original rs1 full RV32 value/canonical
+native limbs and request ABI observations. Natural high-half division occurs
+before field cast. Every token/segment/order/byte-misa frame is retained; original
+CSR/delegated RAM effects, request issuance and worker accounting remain separate.

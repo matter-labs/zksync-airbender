@@ -1,3 +1,7 @@
+import Airbender.Proofs.ReducedMachine.NativeCSRSource
+import Airbender.Proofs.Trace.Families.ReducedMachine.CSRRequests
+import Airbender.Review.Trace.Families.ReducedMachine.CSRRequests
+import Tests.NativeReducedCSRRequests
 import Airbender.Proofs.ReducedMachine.NativeCSRPorts
 import Airbender.Proofs.ReducedMachine.NativeCSRPreservation
 import Airbender.Proofs.Trace.Families.ReducedMachine.CSRValues
@@ -4024,3 +4028,16 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedCSRInitialized.positive_csr_x0_group
 #print axioms Tests.NativeReducedCSRHistoryEmpty.empty_runtime_history
 #print axioms Tests.NativeReducedCSRHistoryEmpty.empty_terminal_bounds
+
+#print axioms Airbender.ReducedMachine.NativeCSRSourceProofs.source_word
+#print axioms Airbender.ReducedMachine.NativeCSRSourceProofs.request_from_source
+#print axioms Airbender.ReducedMachine.NativeCSRSourceProofs.image_request_history
+#print axioms Airbender.ReducedMachine.Native.public_runtime_csr_requests
+#print axioms Tests.NativeReducedCSRRequests.nondeterminism_reference
+#print axioms Tests.NativeReducedCSRRequests.delegation_reference
+#print axioms Tests.NativeReducedCSRRequests.abi_below_boundary
+#print axioms Tests.NativeReducedCSRRequests.abi_at_boundary
+#print axioms Tests.NativeReducedCSRRequests.abi_independent_low_half
+#print axioms Tests.NativeReducedCSRRequests.abi_full_rv32_max
+#print axioms Tests.NativeReducedCSRRequests.abi_above_field
+#print axioms Tests.NativeReducedCSRRequests.wrong_original_source_request_rejected

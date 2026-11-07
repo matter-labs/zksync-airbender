@@ -1105,3 +1105,19 @@ issuance, fulfillment/converse/accounting/protocol/terminal/init, independent RO
 shadow/general public/physical setup/refinement/crypto/completeness remain separate.
 No native source/artifact/import/export/Sail/fixture/dependency change, native defect,
 issue assumption, new axiom or parity. Existing mixed seven-profile scopes unchanged.
+
+
+## Original CSR source/request observations (7 November 2026)
+
+Five new modules/tests record eleven exact parentbff728 source origins. Checked
+pure Word canonicality and existing CSR initialized GPR history/ranges compose
+with actual native runtime request equations and original unsigned CSR query
+identities. [CSRRequestHistory](Airbender/Review/Helpers/Memory/ReducedMachineCSRRequests.lean)
+retains full native history and the same segment states while attaching original
+rs1 full RV32 value/limbs/request ABI observations. No new native input/artifact,
+whole-table equivalence, old accepted-circuit transfer or desired local answer.
+Natural high-half division precedes M31 cast. Eight boundary/reference/conditional
+native tests pass; no full positive nonempty CSR witness or original CSR execution.
+Imported offset3 is not issuance/accounting. Original CSR/reference/PC, actual
+caller/compiler/protocol clock binding and Blake2 workers remain separate. No v3
+finding/assumption/fix is copied; zero established native defects and no parity.

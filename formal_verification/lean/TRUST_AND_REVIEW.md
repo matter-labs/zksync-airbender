@@ -3581,3 +3581,25 @@ protocol/terminal/init/general refinement/physical/crypto/completeness remain op
 Metadata index3 alone remains separate from issuance. No production/native/Sail/
 import/export/artifact/fixture/dependency change, defect, issue assumption, new
 axiom or parity claim. All older mixed execution/shadow scopes stay unchanged.
+
+
+## CSR source-to-request observation boundary (7 November 2026)
+
+[The runtime request root](Airbender/Review/Trace/Families/ReducedMachine/CSRRequests.lean)
+derives original rs1 reads, canonical native source limbs and imported request
+observations at the same rowBefore as full chronological CSR GPR realization.
+Existing initialized range induction discharges local bounds; original unsigned
+CSR index/query identities and actual native request equations supply kind and
+optional ABI-high. The high half is a natural quotient before casting to M31,
+including full RV32 sources above the field modulus. No desired local source/read/
+range/request/state/result/worker answer enters the public interface.
+
+CSRRequestHistory retains every native token/state/segment/order/final match and
+original source replay. This CSR-only GPR realization does not execute original
+CSR/custom/nondeterminism/privilege or delegated RAM effects. Its byte frame cannot
+be transferred through an unproved worker. Logical public bytes remain independent
+of retained fixed ROM; ordinary ImageBoundary is not general physical boot/shadow
+seed coverage. Offset3 is imported metadata, not actual request issuance, clock
+binding, worker fulfillment, converse or accounting. Main Trace.Accepted has no
+worker request ledger. Those native compiler/protocol connections remain open;
+this gap is not a native defect or issue assumption. All previous scopes unchanged.

@@ -652,3 +652,11 @@ derive all native ranges, chronological states, original reads/write, byte/misa
 frames and decoder replay from public inputs/matching. CSR instruction/delegated
 RAM effects, PC retirement, caller issuance/worker accounting and physical setup
 remain separate; existing mixed execution scopes are unchanged.
+
+
+[Original CSR source/request observations](../../Trace/Families/ReducedMachine/CSRRequests.lean)
+now bind actual source35/36 to the original same-prestate rs1 word and imported
+request ABI-high/kind to its natural high half/original unsigned CSR index, under
+full initialized runtime history. Full RV32 words are retained before field cast.
+This is not original CSR execution or actual issuance/worker accounting; metadata
+index3 and main state/memory matching alone do not establish those connections.

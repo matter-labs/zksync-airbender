@@ -582,3 +582,12 @@ history assembly. Both readonly refreshes/OLDREADs/aliases remain; concrete runt
 roots retain every row/boundary/token. These GPR states do not execute original
 CSR or delegated RAM effects. Caller clock/issuance, original CSR/PC execution,
 workers/accounting/protocol and general native/physical setup remain open.
+
+
+[Runtime CSR request observations](CSRRequests.lean) derive original pre-state rs1
+words and actual imported request multiplicity/kind/optional ABI-high in the same
+complete chronological GPR history. Public inputs remain full original bytes/
+membership, ordinary logical seed boundary, runtime acceptance and alignment;
+no local value/request/state answer. Natural high half precedes field cast even
+above the field modulus. Original CSR execution, actual issuance and worker
+fulfillment/accounting remain open; common seven-profile execution is unchanged.
