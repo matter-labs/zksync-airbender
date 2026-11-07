@@ -1,3 +1,7 @@
+import Airbender.Proofs.ReducedMachine.NativeCSRPositiveWitness
+import Airbender.Proofs.ReducedMachine.NativeCSRBodyPadding
+import Airbender.Review.Circuits.ReducedMachine.BodyPaddingTheorems
+import Tests.NativeCSRPositive
 import Airbender.Review.Circuits.ReducedMachine.MainArguments
 import Airbender.Proofs.ReducedMachine.NativeMainArguments
 import Airbender.Review.Circuits.ReducedMachine.MainArgumentTheorems
@@ -6008,3 +6012,20 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeMainArguments.claims_not_identified
 #print axioms Airbender.Tests.NativeMainArguments.same_main_auxiliary_sum
 #print axioms Airbender.Tests.NativeMainArguments.complete_joint_components
+
+#print axioms Airbender.ReducedMachine.NativeCSRPositiveWitness.body
+#print axioms Airbender.ReducedMachine.NativeCSRBodyPaddingProofs.observations
+#print axioms Airbender.ReducedMachine.NativeCSRBodyPaddingProofs.complete_body
+#print axioms Airbender.ReducedMachine.NativeCSRBodyPaddingProofs.no_body_filter
+#print axioms Airbender.ReducedMachine.Native.native_csr_body_witness
+#print axioms Airbender.ReducedMachine.Native.inactive_request_filter_not_from_body
+#print axioms Airbender.Tests.NativeCSRPositive.accepted
+#print axioms Airbender.Tests.NativeCSRPositive.inactive_logical_trace_rejected
+#print axioms Airbender.Tests.NativeCSRPositive.program_image
+#print axioms Airbender.Tests.NativeCSRPositive.public_inputs
+#print axioms Airbender.Tests.NativeCSRPositive.decoded
+#print axioms Airbender.Tests.NativeCSRPositive.initialized_callers
+#print axioms Airbender.Tests.NativeCSRPositive.actual_request
+#print axioms Airbender.Tests.NativeCSRPositive.actual_caller_clock
+#print axioms Airbender.Tests.NativeCSRPositive.inactive_body_still_requests
+#print axioms Airbender.Tests.NativeCSRPositive.corrupted_request_rejected

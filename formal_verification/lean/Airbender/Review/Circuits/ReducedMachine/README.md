@@ -744,3 +744,11 @@ scalar/product/capacity conclusions from one shared body/auxiliary observation
 record and the same returned worker list. Distinct claims remain distinct; no
 active filter, desired stream or matching premise. Rust Option/physical-output
 refinement and full token matching/initialization remain separate.
+
+[Complete body witnesses and padding scope](BodyPaddingTheorems.lean) now check
+all117 equations/22 lookups for runtime CSR1991/x0 under both execute values.
+[The active nonempty fixture](../../../../Tests/NativeCSRPositive.lean) also checks
+all native memory aliases, original public decoding/initialization and derived
+caller clock7. Execute0 still requests in the BODY but rejects the active logical
+trace interface. This is no auxiliary/global/worker attack or native defect;
+faithful physical padding/filtering and full matching remain open.

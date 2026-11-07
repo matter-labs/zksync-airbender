@@ -236,3 +236,10 @@ refinement, actual matching, initialized reads, worker effects or accounting.
 feeds both checked global components from identical main body/auxiliary fields
 and the same configured worker batch/challenges. All worker rows remain. Scalar/
 product/capacity conclusions still do not establish matching or initialized reads.
+
+[The complete native CSR caller fixture](../../../../Tests/NativeCSRPositive.lean)
+now exercises initialized original-source/request observations and clock7 with
+all117 main equations/22 lookups and aliased GPR matching. It executes no worker.
+A separate execute0 BODY witness still requests; full-domain padding/global
+accounting must be checked before filtering. No F03 defect or worker acceptance
+is inferred from this weaker boundary.

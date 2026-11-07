@@ -34,6 +34,59 @@ initialization/decoder interfaces; other combined profiles remain unfinished.
 The historical 119-equation/141-variable/13-region artifact is preserved separately.
 It is not assumed to be the current source-generated machine. Main/worker stage-two descriptors now have separate typed auxiliary intakes; unmodeled protocol semantics remain open. These are coverage/fidelity results, not native defects.
 
+## Complete native CSR caller fixture and body-padding limit (7 November 2026)
+
+[The body-scope roots](Airbender/Review/Circuits/ReducedMachine/BodyPaddingTheorems.lean)
+now provide independently constructed CSR1991/x0 witnesses satisfying ALL117
+actual equations and ALL22 lookups on the complete constructed runtime pool.
+[The transparent witness certificate](Airbender/Proofs/ReducedMachine/NativeCSRPositiveWitness.lean)
+uses four small polynomial blocks and each individual lookup; no partial slice,
+old fixture acceptance or table equivalence is substituted. Both execute1 and
+execute0 observations pass this complete BODY, retaining request multiplicity1,
+kind1991, ABI-high0 and imported offset3. Consequently inactive-request filtering
+is NOT derivable from body acceptance alone. This is a precise proof-interface
+limit, not an accepted global attack, native defect or issue-handling assumption.
+Decoder/auxiliary/full-domain/global enforcement still require separate analysis.
+
+[The complete nonempty active fixture](Tests/NativeCSRPositive.lean) additionally
+checks original Clean active/state/memory acceptance with all three x0 aliases:
+OLDREAD clocks0/4/5 and readonly/write refreshes4/5/6, PC0-to4 and time4-to8.
+Independent original public bytes encode CSRRW x0,1991,x0. Full sparse/padded
+stateful decoding and actual Sail zero-x0/PC initialization feed the unchanged
+initialized caller theorem, deriving original source/GPR/request history and
+caller projection at clock7. No expected source, range, key, order, state or
+worker answer is a public theorem premise. The existing active logical trace
+interface rejects execute0; it is not substituted for the full physical domain.
+Changing the actual request multiplicity alone rejects native body acceptance.
+
+This is a complete positive native BODY and initialized logical caller example;
+it does NOT execute the original CSR clause, privilege/nondeterminism/custom
+semantics, delegated worker or full physical proof. Its one-word public program
+is independent of the retained eight-word native ROM fixture. The inactive
+example establishes ONLY the stated complete-body limitation, not decoder,
+auxiliary, global or worker acceptance. It supplies no F02/F03/F04 evidence or
+confirmed defect. FINDINGS and zero-established-native-defect status are unchanged.
+
+Final bounded gates pass5291 standard-only explicit axiom roots,270 public
+Review roots,4 guide names and4031 links/anchors with context/trace separation.
+Independent checks preserve189 v3 and1769 backport identities,80 byte-identical
+modules,8 historical plus2 regenerated circuits,98 native sources,25 setup
+artifacts and4 exporters. Full Review sampled aggregate footprint604.95MiB/
+resident3307.45MiB in18.18s; every started guard reports no owned survivors.
+A concrete rejection proof hit default recursion and was redesigned entirely
+over an abstract setup BEFORE runtime-pool instantiation; no limit was raised.
+
+Four modules record ten exact parent origins and16 explicit roots, including ten
+regression roots. All prior5275 audit roots/source bytes remain. No parser,
+exporter, artifact, old fixture, native source pin, dependency, production Rust/
+circuit or original Sail change; no native generation or closed heavy replay.
+Faithful full-domain padding/active filtering, actual main/43-worker token matching/
+extraction/public initialization, active bounds/raw clocks/stage2 refinement and
+issuance/accounting remain open. Never drop inactive auxiliary poles or factors,
+assume execute1 for every physical row, or replace these obligations with a desired
+ledger. Original CSR/MOP and worker execution, physical/general refinement,
+initialization/teardown, cryptography/completeness/parity remain separate.
+
 ## Same-main-proof argument coupling (7 November 2026)
 
 [The joint root](Airbender/Review/Circuits/ReducedMachine/MainArgumentTheorems.lean)

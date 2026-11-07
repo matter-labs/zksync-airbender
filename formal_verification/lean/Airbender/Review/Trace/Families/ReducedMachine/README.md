@@ -621,3 +621,11 @@ now share exact body/auxiliary observations across scalar/product conclusions.
 No active physical-row filter or global token permutation follows from this
 coupling. Existing initialized logical execution remains separate until faithful
 full-domain matching, padding and delegated-action histories are connected.
+
+[The nonempty runtime CSR1991/x0 fixture](../../../../../Tests/NativeCSRPositive.lean)
+now checks every native body equation/lookup, full active logical state/memory
+matching, original independent public program/decoder and actual initialization.
+The existing theorem derives GPR/source/request/caller history and clock7. This
+executes no original CSR clause or delegated action. A paired inactive BODY
+witness still requests and is rejected by the active logical interface; faithful
+full-domain padding/filtering and global matching remain open, not native defects.

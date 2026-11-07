@@ -1485,3 +1485,8 @@ initialized worker history remain open; scalar products do not supply them.
 now shares body rows, typed auxiliaries and both distinct claims across the checked
 scalar/product components and configured worker batch. Matching/extraction and
 initialized worker history remain open.
+
+[Complete CSR body and initialized caller checks](Airbender/Review/Circuits/ReducedMachine/BodyPaddingTheorems.lean)
+now include a nonempty runtime1991/x0 fixture. Both execute values satisfy the
+complete117-equation/22-lookup BODY while retaining a request; body-only inactive
+filtering is therefore unavailable. Full physical/global padding remains separate.

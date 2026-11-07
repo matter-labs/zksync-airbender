@@ -409,3 +409,10 @@ matching inference is added. Initialized worker bounds/history remain open.
 now couple both native scalar/product components without independent main traces.
 This preserves every original token/factor; matching/extraction, initialization
 and active-history transport remain open.
+
+[A complete initialized CSR caller](../../../../Tests/NativeCSRPositive.lean)
+now retains all three x0 OLDREAD/refresh tokens and derives original source/request
+history from public initialization and accepted native matching. Body-only
+execute0 does not force a zero request, while the active logical trace interface
+rejects that row. Full physical-domain filtering/global worker matching remain
+separate; no desired ledger or issue assumption is added.
