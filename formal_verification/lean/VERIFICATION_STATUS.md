@@ -32,6 +32,57 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Initialized original native jump fetched execution (7 November 2026)
+
+[One short public root](Airbender/Review/Trace/Families/ReducedMachine/JumpFetchedExecution.lean)
+now derives finite original successful four-byte JAL/JALR fetched execution from
+original jumpDecoderSetupImage, ImageBoundary(fixedData trace), Accepted(fixedData
+trace), FULL JumpDecodedTrace, aligned tracked cells and [initial reference CSR
+configuration](Airbender/Review/Helpers/Decoder/ReducedMachineJump.lean). Actual
+source bounds/incoming PC alignment follow original public membership and initialized
+native ranges. All original row states/reads/masked writes/code/misa/decoder replay,
+actual native clock order/PC chain and terminal PC/cell reads are derived internally.
+JAL's x0 source reads, readonly rs2/x0, old destination/aliases and discarded writes
+remain present. JAL x0 jumps while its data stutters; JALR clears target bit0 and
+reads its source before an aliased destination write. RV32 wrap is retained.
+
+[JumpComposition](Airbender/Proofs/Trace/Families/ReducedMachine/JumpComposition.lean)
+discharges EVERY source/alignment/CSR prerequisite of the checked local retirement
+proof. JumpISA requires readable misa, value unrestricted, only for a nonempty public
+jump program; original JALR additionally requires initial Machine privilege/readable
+mseccfg with MLPE=0. Every local CSR read derives through actual past history/control
+frames. Empty programs and GPR-only theorems require no CSR reads; direct-only JAL
+programs require no privilege/security read. This is an explicit original-reference
+configuration boundary, not a native defect/issue assumption or physical enforcement.
+Terminal bounds use actual selected jump output or the public initial PC for empty
+traces, not universal PC+4. No local source/range/read/target/return/result/PC/state/
+order/replay/CSR value or table-equivalence answer is public. Original interrupts/
+exceptions and general physical/compiler/cryptographic/completeness stay separate.
+
+[Seven regressions](Tests/NativeReducedJumpConfiguration.lean) and [empty runs](Tests/NativeReducedJumpFetched.lean)
+check original raw/x0/alias fields, arbitrary readable misa, JAL without security
+CSRs, missing misa/security rejection, concrete accepted zero-row execution for
+EVERY RV32 PC and top terminal reader0xffffffff with NO CSR reads. These are source/
+configuration/empty/conditional native consequences, NOT complete positive NONEMPTY
+117-equation/22lookup accepted native jumps. Native fixed eight-word/CSR/nondeterminism
+fixture is unchanged; modeled public images are not equated with physical setup.
+Common supported projection still excludes jumps; separate jump-only execution does
+not establish mixed histories. Next integrate actual jump profile/query transport,
+preservation/PC/CSR rules into common initialized execution. Eleven exact parent40
+origins record six affected modules/tests; no native/Rust/Sail/data/dependency change,
+finding, issue assumption, new axiom, whole-machine coverage or parity claim.
+Final gates pass3102explicit standard-only axiom roots,195public Review roots,
+4guide names,3125links/anchors/context-trace separation. Full Review550.59MiB
+footprint/3119.58MiB resident/14.98s; independent exact provenance19.13/56.12MiB/8.08s
+passes189v3-origin/1131backport-origin identities,80byte-identical modules,8circuit
+artifacts,66native sources,23setup,4exporters and unchanged dependencies. Composition
+483.80/2885.91MiB/2.18s,public479.39/2875.33/1.91,empty tests480.83/2887.89/2.18,
+configuration tests484.35/2891.48/9.64,Axioms545.20/3095.61/6.36. All owned workers
+terminated; ordinary fixture insert syntax/dependent map typing/unused simp corrections
+verified. No memory/time/heartbeat/recursion ceiling hit/raised. Shared lock,Lean-j1-M3072,
+3072MiB aggregate footprint/4096MiB resident,finite180second modules/120second audits
+unchanged. Sampled watchdog plus Lean allocation cap,not OS hard physical-memory limit.
+
 ## Local native jumps execute retained Sail clauses (7 November 2026)
 
 [NativeJumpExecution](Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean)

@@ -327,6 +327,26 @@ fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
 terminal/init boundaries remain open. No native defect or issue-handling assumption
 is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
 
+## Initialized original jump fetched boundary
+
+[Public jump execution](Airbender/Review/Trace/Families/ReducedMachine/JumpFetchedExecution.lean)
+derives original finite successful fetched JAL/JALR execution and actual terminal PC/
+cells from original public image, exact fixedData acceptance, FULL decoding, initialized
+public seeds and aligned tracked cells. [Assembly](Airbender/Proofs/Trace/Families/ReducedMachine/JumpComposition.lean)
+derives all source/range/alignment/state/order/replay/CSR answers before invoking local
+retirement; no local result or arbitrary-table identity is supplied publicly.
+[JumpISA](Airbender/Review/Helpers/Decoder/ReducedMachineJump.lean) is explicit initial
+reference configuration: unrestricted readable misa for nonempty public jump programs,
+Machine/readable mseccfg with MLPE=0 only when original JALR appears. Real past history
+and control frames derive each local read. Empty programs are CSR-free; JAL-only programs
+need no security/privilege read; GPR-only roots have no configuration premise.
+
+[Configuration tests](Tests/NativeReducedJumpConfiguration.lean) and [empty execution](Tests/NativeReducedJumpFetched.lean)
+are not complete positive nonempty117-equation accepted native jumps. Separate jump
+execution does not establish common mixed history. Native public fixed fixture/general
+ROM/export/preprocessing/physical/compiler/cryptographic/completeness and original
+interrupt/exception boundaries remain separate. No native defect/issue assumption/parity.
+
 ## Original initialized jump GPR boundary
 
 [Fresh native jump port proofs](Airbender/Proofs/ReducedMachine/NativeJumpPorts.lean)

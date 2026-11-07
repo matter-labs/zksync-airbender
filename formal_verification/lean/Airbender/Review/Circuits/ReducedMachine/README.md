@@ -467,3 +467,10 @@ include unchanged group mechanics, not full accepted native jump witnesses.
 now derives original normal retirement from actual native numerical/port bindings and
 prepared incoming PC. Its source/alignment/local CSR configuration obligations remain
 internal for initialized trace composition; public fetched/common jump support remains open.
+
+[Initialized original jump fetched execution](../../Trace/Families/ReducedMachine/JumpFetchedExecution.lean)
+now discharges every local source/alignment/CSR obligation through original public
+membership and actual history. It derives original replay/PC chain/terminal observations.
+Initial CSR configuration is conditional on nonempty/JALR public program; no local
+read/value/state answer is supplied. Common jump integration and full positive native
+jump witnesses remain separate.

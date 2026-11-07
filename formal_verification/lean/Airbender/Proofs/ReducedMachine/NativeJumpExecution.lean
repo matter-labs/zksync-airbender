@@ -23,6 +23,20 @@ theorem encoding {entry : JumpProgramEntry}
     exact ⟨.jalr imm,rs1,rd,same⟩
   · cases fields
 
+/-- A false public family tag recovers the retained original indirect constructor. -/
+theorem indirect_encoding {entry : JumpProgramEntry}
+    (fields : jumpDecoderFields entry.instruction = some entry.data)
+    (indirect : entry.data.family = false) : ∃ args, entry.instruction = .JALR args := by
+  obtain ⟨instruction,rs1,rd,encoded⟩ := encoding fields
+  cases instruction with
+  | jal imm =>
+    rw [encoded] at fields
+    have family := congrArg (fun data : DecoderData JumpMode => data.family) (Option.some.inj fields)
+    change true = entry.data.family at family
+    rw [indirect] at family
+    cases family
+  | jalr imm => exact ⟨_,encoded⟩
+
 /-- Actual native jump effects and original GPR history instantiate unchanged
     retained Sail retirement. Source bounds/alignment and local CSR reads are
     internal obligations for initialized trace composition, not public answers. -/

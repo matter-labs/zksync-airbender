@@ -9803,6 +9803,83 @@
       "backport_reuse_revision": "d80a4a013f2a3e156b02734741818bc8d150d95e",
       "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/JumpModel.lean",
       "backport_reuse_sha256": "e203b4a8e4807d4bb52c5451ff3e1ae33540324fd620017b3224c13b9ac48ad9"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachineJump.lean",
+      "change": "Derive initialized original JAL/JALR fetched execution from actual native constraints, original full public decoding, initialized all-word ranges and real native-clock GPR/cell history. Discharge source/alignment/local CSR obligations internally; derive original replay/PC chain/terminal observations through shared finite composition. JumpISA initial configuration is conditional: readable unrestricted misa for nonempty public jump program, Machine/readable mseccfg with MLPE=0 only when original JALR appears; no CSR premise for empty or GPR-only scopes. Every local CSR read follows real history/control frames. No desired local range/read/result/state/PC/replay/table identity or split native acceptance transfer. Empty/configuration regressions are not full nonempty117-equation accepted native jumps. No native/Sail/data/dependency change, defect, issue assumption or parity claim.",
+      "backport_reuse_revision": "40da98736c9aa9ca7d0b822b34232c6f823ea857",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ReducedMachineJump.lean",
+      "backport_reuse_sha256": "165946e906b44e46bcc837195bd171ef2a2857880275ee888efdf8b481ac7cda"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachineJump.lean",
+      "change": "Derive initialized original JAL/JALR fetched execution from actual native constraints, original full public decoding, initialized all-word ranges and real native-clock GPR/cell history. Discharge source/alignment/local CSR obligations internally; derive original replay/PC chain/terminal observations through shared finite composition. JumpISA initial configuration is conditional: readable unrestricted misa for nonempty public jump program, Machine/readable mseccfg with MLPE=0 only when original JALR appears; no CSR premise for empty or GPR-only scopes. Every local CSR read follows real history/control frames. No desired local range/read/result/state/PC/replay/table identity or split native acceptance transfer. Empty/configuration regressions are not full nonempty117-equation accepted native jumps. No native/Sail/data/dependency change, defect, issue assumption or parity claim.",
+      "backport_reuse_revision": "40da98736c9aa9ca7d0b822b34232c6f823ea857",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean",
+      "backport_reuse_sha256": "db6d0285c887833583394d58f3433f90d232b22b1da163b75b8a18cf6fdb5a2a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean",
+      "change": "Derive initialized original JAL/JALR fetched execution from actual native constraints, original full public decoding, initialized all-word ranges and real native-clock GPR/cell history. Discharge source/alignment/local CSR obligations internally; derive original replay/PC chain/terminal observations through shared finite composition. JumpISA initial configuration is conditional: readable unrestricted misa for nonempty public jump program, Machine/readable mseccfg with MLPE=0 only when original JALR appears; no CSR premise for empty or GPR-only scopes. Every local CSR read follows real history/control frames. No desired local range/read/result/state/PC/replay/table identity or split native acceptance transfer. Empty/configuration regressions are not full nonempty117-equation accepted native jumps. No native/Sail/data/dependency change, defect, issue assumption or parity claim.",
+      "backport_reuse_revision": "40da98736c9aa9ca7d0b822b34232c6f823ea857",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean",
+      "backport_reuse_sha256": "e7cb4d5fa843a08ee73f483ee8e6ef09fb34cb50d65a83582a303107b029a10b"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpComposition.lean",
+      "change": "Derive initialized original JAL/JALR fetched execution from actual native constraints, original full public decoding, initialized all-word ranges and real native-clock GPR/cell history. Discharge source/alignment/local CSR obligations internally; derive original replay/PC chain/terminal observations through shared finite composition. JumpISA initial configuration is conditional: readable unrestricted misa for nonempty public jump program, Machine/readable mseccfg with MLPE=0 only when original JALR appears; no CSR premise for empty or GPR-only scopes. Every local CSR read follows real history/control frames. No desired local range/read/result/state/PC/replay/table identity or split native acceptance transfer. Empty/configuration regressions are not full nonempty117-equation accepted native jumps. No native/Sail/data/dependency change, defect, issue assumption or parity claim.",
+      "backport_reuse_revision": "40da98736c9aa9ca7d0b822b34232c6f823ea857",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchComposition.lean",
+      "backport_reuse_sha256": "001d123836eee2e9090f58c15c51abc69a4c1632606fc9f0f1dc2697f1a990a6"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpComposition.lean",
+      "change": "Derive initialized original JAL/JALR fetched execution from actual native constraints, original full public decoding, initialized all-word ranges and real native-clock GPR/cell history. Discharge source/alignment/local CSR obligations internally; derive original replay/PC chain/terminal observations through shared finite composition. JumpISA initial configuration is conditional: readable unrestricted misa for nonempty public jump program, Machine/readable mseccfg with MLPE=0 only when original JALR appears; no CSR premise for empty or GPR-only scopes. Every local CSR read follows real history/control frames. No desired local range/read/result/state/PC/replay/table identity or split native acceptance transfer. Empty/configuration regressions are not full nonempty117-equation accepted native jumps. No native/Sail/data/dependency change, defect, issue assumption or parity claim.",
+      "backport_reuse_revision": "40da98736c9aa9ca7d0b822b34232c6f823ea857",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean",
+      "backport_reuse_sha256": "e7cb4d5fa843a08ee73f483ee8e6ef09fb34cb50d65a83582a303107b029a10b"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpComposition.lean",
+      "change": "Derive initialized original JAL/JALR fetched execution from actual native constraints, original full public decoding, initialized all-word ranges and real native-clock GPR/cell history. Discharge source/alignment/local CSR obligations internally; derive original replay/PC chain/terminal observations through shared finite composition. JumpISA initial configuration is conditional: readable unrestricted misa for nonempty public jump program, Machine/readable mseccfg with MLPE=0 only when original JALR appears; no CSR premise for empty or GPR-only scopes. Every local CSR read follows real history/control frames. No desired local range/read/result/state/PC/replay/table identity or split native acceptance transfer. Empty/configuration regressions are not full nonempty117-equation accepted native jumps. No native/Sail/data/dependency change, defect, issue assumption or parity claim.",
+      "backport_reuse_revision": "40da98736c9aa9ca7d0b822b34232c6f823ea857",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpValues.lean",
+      "backport_reuse_sha256": "c798e918700d4aee04b58f26c17d8c8050dc6e74f59440cab1f4da9aceaea2ee"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpComposition.lean",
+      "change": "Derive initialized original JAL/JALR fetched execution from actual native constraints, original full public decoding, initialized all-word ranges and real native-clock GPR/cell history. Discharge source/alignment/local CSR obligations internally; derive original replay/PC chain/terminal observations through shared finite composition. JumpISA initial configuration is conditional: readable unrestricted misa for nonempty public jump program, Machine/readable mseccfg with MLPE=0 only when original JALR appears; no CSR premise for empty or GPR-only scopes. Every local CSR read follows real history/control frames. No desired local range/read/result/state/PC/replay/table identity or split native acceptance transfer. Empty/configuration regressions are not full nonempty117-equation accepted native jumps. No native/Sail/data/dependency change, defect, issue assumption or parity claim.",
+      "backport_reuse_revision": "40da98736c9aa9ca7d0b822b34232c6f823ea857",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpCodeHistory.lean",
+      "backport_reuse_sha256": "2bce507fe39eaa564c164a00b6c1ee79ad2f87c66f37c5a6080bc1523790a243"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/JumpFetchedExecution.lean",
+      "change": "Derive initialized original JAL/JALR fetched execution from actual native constraints, original full public decoding, initialized all-word ranges and real native-clock GPR/cell history. Discharge source/alignment/local CSR obligations internally; derive original replay/PC chain/terminal observations through shared finite composition. JumpISA initial configuration is conditional: readable unrestricted misa for nonempty public jump program, Machine/readable mseccfg with MLPE=0 only when original JALR appears; no CSR premise for empty or GPR-only scopes. Every local CSR read follows real history/control frames. No desired local range/read/result/state/PC/replay/table identity or split native acceptance transfer. Empty/configuration regressions are not full nonempty117-equation accepted native jumps. No native/Sail/data/dependency change, defect, issue assumption or parity claim.",
+      "backport_reuse_revision": "40da98736c9aa9ca7d0b822b34232c6f823ea857",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/BranchFetchedExecution.lean",
+      "backport_reuse_sha256": "f8a4d5d113063a82d17bafd04011ad50ddb03831b46d9f5ae57a9a4bdab090ba"
+    },
+    {
+      "path": "Tests/NativeReducedJumpFetched.lean",
+      "change": "Derive initialized original JAL/JALR fetched execution from actual native constraints, original full public decoding, initialized all-word ranges and real native-clock GPR/cell history. Discharge source/alignment/local CSR obligations internally; derive original replay/PC chain/terminal observations through shared finite composition. JumpISA initial configuration is conditional: readable unrestricted misa for nonempty public jump program, Machine/readable mseccfg with MLPE=0 only when original JALR appears; no CSR premise for empty or GPR-only scopes. Every local CSR read follows real history/control frames. No desired local range/read/result/state/PC/replay/table identity or split native acceptance transfer. Empty/configuration regressions are not full nonempty117-equation accepted native jumps. No native/Sail/data/dependency change, defect, issue assumption or parity claim.",
+      "backport_reuse_revision": "40da98736c9aa9ca7d0b822b34232c6f823ea857",
+      "backport_reuse_path": "Tests/NativeReducedBranchFetched.lean",
+      "backport_reuse_sha256": "8cbb69c0e3a393cda47ee6365088940535cf4bcf9676f3481fb9e8e25694303c"
+    },
+    {
+      "path": "Tests/NativeReducedJumpConfiguration.lean",
+      "change": "Derive initialized original JAL/JALR fetched execution from actual native constraints, original full public decoding, initialized all-word ranges and real native-clock GPR/cell history. Discharge source/alignment/local CSR obligations internally; derive original replay/PC chain/terminal observations through shared finite composition. JumpISA initial configuration is conditional: readable unrestricted misa for nonempty public jump program, Machine/readable mseccfg with MLPE=0 only when original JALR appears; no CSR premise for empty or GPR-only scopes. Every local CSR read follows real history/control frames. No desired local range/read/result/state/PC/replay/table identity or split native acceptance transfer. Empty/configuration regressions are not full nonempty117-equation accepted native jumps. No native/Sail/data/dependency change, defect, issue assumption or parity claim.",
+      "backport_reuse_revision": "40da98736c9aa9ca7d0b822b34232c6f823ea857",
+      "backport_reuse_path": "Tests/NativeReducedSupportedBranches.lean",
+      "backport_reuse_sha256": "efe55fcabbdb95cbb819dbd800b92c745cd7373333966fd8ee0cac53ccfd092a"
+    },
+    {
+      "path": "Tests/NativeReducedJumpConfiguration.lean",
+      "change": "Derive initialized original JAL/JALR fetched execution from actual native constraints, original full public decoding, initialized all-word ranges and real native-clock GPR/cell history. Discharge source/alignment/local CSR obligations internally; derive original replay/PC chain/terminal observations through shared finite composition. JumpISA initial configuration is conditional: readable unrestricted misa for nonempty public jump program, Machine/readable mseccfg with MLPE=0 only when original JALR appears; no CSR premise for empty or GPR-only scopes. Every local CSR read follows real history/control frames. No desired local range/read/result/state/PC/replay/table identity or split native acceptance transfer. Empty/configuration regressions are not full nonempty117-equation accepted native jumps. No native/Sail/data/dependency change, defect, issue assumption or parity claim.",
+      "backport_reuse_revision": "40da98736c9aa9ca7d0b822b34232c6f823ea857",
+      "backport_reuse_path": "Tests/NativeReducedJumpDecoder.lean",
+      "backport_reuse_sha256": "976bbbb1de76d33afacb99d1b5733e64c622e37a5fb07e417080ba128340aae3"
     }
   ],
   "setup_artifacts": [

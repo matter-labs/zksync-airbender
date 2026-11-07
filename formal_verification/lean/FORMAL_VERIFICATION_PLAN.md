@@ -143,15 +143,19 @@ Full combined row effects and execution remain pending. See the
    return/masked-write preservation follows public PC bounds/alignment before
    initialized range induction. All actual read/write/terminal ranges then discharge
    raw base/immediate bounds, deriving canonical return/raw/selected target/full
-   RV32 wrap and JALR low-bit clearing without public local answers. Next bind
+   RV32 wrap and JALR low-bit clearing without public local answers.
    Original jump GPR/cell history is now derived after fresh all3port bindings:
    one pre-state for source/readonly/old-destination aliases, masked write/x0
    preservation, chronological Sail states/final matching/code/misa/decoder replay.
-   No initial CSR-read premise at this GPR-only boundary. Next bind original jump
+   No initial CSR-read premise at this GPR-only boundary.
    Local native jump execution now derives original source/architectural-PC observations,
    retained JAL/JALR clauses and normal retirement at the actual native after-state.
-   INTERNAL source range/alignment/CSR obligations still need initialized trace discharge;
-   derive initial configuration transport, replay/order/PC chain/fetched execution before common integration. Other combined
+   Initialized jump-only fetched execution now discharges all local source/alignment/
+   CSR reads through public ranges/original membership/past history, deriving replay,
+   native clock/PC chain and terminal observations. Initial misa is readable only for
+   nonempty jump programs; original JALR additionally uses Machine/readable mseccfg/
+   MLPE-clear configuration. Empty/direct-only CSR scopes remain narrow. Next extend
+   common supported projection/profile transport and mixed initialized execution. Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

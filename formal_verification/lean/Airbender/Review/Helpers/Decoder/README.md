@@ -333,3 +333,9 @@ is now derived in every constructed native GPR pre-state after actual event-spac
 proofs preserve code/misa. All3port reads/aliases/x0 participation remain. Replay
 and misa preservation do not supply initial misa readability or actual incoming
 PC preparation/retained-clause execution.
+
+[JumpISA](ReducedMachineJump.lean) now names initial reference configuration only:
+readable unrestricted misa for nonempty jump programs; Machine/readable mseccfg with
+MLPE=0 only when original JALR appears. [Fetched execution](../../Trace/Families/ReducedMachine/JumpFetchedExecution.lean)
+derives every local read through real past history/control frames, preserving empty/
+direct-only/GPR CSR scopes. Decoding alone does not assert CSR availability.

@@ -294,3 +294,9 @@ PC base; JALR aliases/readonly rs2/old destination/masked writes share one pre-s
 [Public history](../../Trace/Families/ReducedMachine/JumpRegisters.lean) derives
 zero preservation/code/misa/decoder replay without supplied state/read/result or
 initial CSR-read answers. Retained clauses/PC preparation/fetched support remain next.
+
+[Initialized jump fetched execution](../../Trace/Families/ReducedMachine/JumpFetchedExecution.lean)
+now derives all source bounds, states/reads/writes/replay and local CSR observations
+through actual history before retained normal retirement. Public initial configuration
+is narrow; GPR-only history still needs no CSR premise. Native output bounds and PC
+chain determine terminal observations, with no supplied state/read/target answers.

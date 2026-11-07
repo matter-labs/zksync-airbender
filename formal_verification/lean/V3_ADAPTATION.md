@@ -682,3 +682,17 @@ aliased writes, and retirement projects to actual native after-state. Source bou
 alignment and original CSR/landing-pad configuration remain internal initialized-trace
 obligations; no public answer or whole/mixed jump execution claim. Six exact parentd80
 origins preserve native/Sail/data/dependency pins, with no split native identity transfer.
+
+## Initialized original native jump execution (7 November 2026)
+
+[Public jump fetched execution](Airbender/Review/Trace/Families/ReducedMachine/JumpFetchedExecution.lean)
+now derives source/alignment/local CSR prerequisites from original public image and actual
+initialized history before the new native local retirement binding. Original replay,
+native clock/PC chain, terminal PC/cell reads and finite successful stepping are conclusions.
+[JumpISA](Airbender/Review/Helpers/Decoder/ReducedMachineJump.lean) restricts initial reads
+to nonempty program misa and original-JALR Machine/mseccfg/MLPE-clear configuration;
+every local CSR read is derived, empty/direct-only/GPR scopes stay narrow. [Regressions](Tests/NativeReducedJumpConfiguration.lean)
+plus [empty paths](Tests/NativeReducedJumpFetched.lean) do not add complete positive native
+jump acceptance. Eleven exact parent40 origins record six affected modules/tests. Common
+mixed jump integration and physical/general fidelity/completeness remain open; no production/
+Sail/data/dependency change, defect, issue assumption, axiom or parity claim.

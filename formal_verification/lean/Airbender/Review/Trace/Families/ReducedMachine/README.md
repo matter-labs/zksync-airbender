@@ -379,3 +379,15 @@ now binds actual native GPR/return/target words to original JAL/JALR, prepared a
 PC and normal retirement. Source range/alignment and local CSR/landing-pad reads remain
 internal obligations for initialized trace composition. No public initialized/fetched
 jump or common jump integration follows yet; no desired local answer is made public.
+
+## Initialized original jump fetched execution
+
+[Public jump execution](JumpFetchedExecution.lean) derives successful original JAL/JALR
+fetch/prepare/clause/retire and actual terminal PC/cells. [Composition](../../../../Proofs/Trace/Families/ReducedMachine/JumpComposition.lean)
+discharges source/alignment/local CSR reads from original public membership and actual
+initialized history, then derives every state/decoder replay/native-clock order/PC chain.
+[JumpISA](../../../Helpers/Decoder/ReducedMachineJump.lean) keeps initial reference
+configuration conditional on nonempty/JALR public program; empty/direct-only/GPR scopes
+stay narrow. [Tests](../../../../../Tests/NativeReducedJumpFetched.lean) cover complete
+empty execution at every RV32 PC with no CSR reads, not complete positive nonempty
+native jumps. Common mixed jump integration remains next.
