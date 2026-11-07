@@ -35,6 +35,75 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Native Blake2 complete lookup-effects checkpoint (7 November 2026)
+
+The [short concrete-pool theorem](Airbender/Review/Circuits/Blake2Worker/QueriesTheorems.lean)
+now derives all296 local lookup observations from complete352-equation/296-lookup
+original Clean acceptance on the actual344384-row worker pool. No expected query,
+tag/profile, input/read, bound, result, process flag, clock, state, schedule,
+request, worker answer or table identity is a premise.
+
+[Separate same-read query intake](Airbender/Import/Blake2Queries.lean) reuses the
+unchanged complete worker parser and copies the unchanged coefficient/expression
+emitters. [Query references](Airbender/Review/Circuits/Blake2Worker/QueryArtifact.lean)
+retain every actual2 scalar,86 timestamp and208 fixed expression plus the complete
+source bytes. A kernel equality binds those bytes to the original worker intake;
+all existing importers/artifacts/exporters/native sources and data are unchanged.
+[Projection calculations](Airbender/Proofs/Blake2Worker/NativeQueryProjection.lean)
+extract native sublists, and independent kernel syntax equalities bind the new
+observables to actual accepted operations. No previous accepted-worker semantics
+or arbitrary table equivalence is transferred.
+
+The [observable model](Airbender/Review/Circuits/Blake2Worker/Queries.lean) retains
+native fixed order: eight18-query groups,32 extended-control queries and32
+finalization queries. Actual tag binding derives80 byte XOR,16 XOR3,16 XOR4,
+40 XOR7 and56 XOR9 queries, with both canonical operand bounds, canonical output
+bounds and exact natural XOR results, using only already certified actual pool
+membership. These static compiled-query counts are not worker issuance counts.
+The2 scalar bounds apply to actual scaled-pointer expressions, and86 bounds
+apply to actual timestamp-difference expressions. They are not raw pointer/read
+or old/processing timestamp bounds; those require separate native relations.
+
+Thirteen [regression roots](Tests/NativeBlake2Queries.lean) check same source,
+complete geometry/static tag counts, original query/scalar/clock coordinates,
+wrong-result/oversized-query/unit-pointer rejection under complete local native
+acceptance, and positive scalar/difference slices. The difference slice explicitly
+retains raw time600000 with zero differences; it is not a complete accepted worker
+or native defect. Six [query-intake controls](Tests/NativeBlake2QueriesImport.lean)
+check same-read data, complete counts, physical/logical source mapping, changed
+canonical data retained without certifying semantics, missing queries and invalid
+columns. No full positive nonempty352-equation/296-lookup worker witness is claimed.
+
+NEXT derive actual ABI alignment/address/read ranges, processor multiplicity,
+all43 memory/clock read/write/readonly-refresh relations, initialized control/
+round schedules/reference/state/terminal, and accepted caller/worker/auxiliary/
+accumulator connections before fulfillment/converse/accounting/unified protocol.
+Main Trace.Accepted still has no global worker ledger, and main GPR byte/RAM
+frames cannot cross unproved worker actions. Original CSR/MOP execution and
+F02/F03/F04 broader-path retests remain open. Native Rust/compiler/JSON/physical/
+field/LDE refinement, cryptography, completeness, terminal/padding/init/teardown
+and parity remain separate. No new defect, issue assumption, axiom or production
+fix; FINDINGS and all earlier selected execution scopes remain unchanged.
+
+The final scoped gates pass4991 explicit standard-only axiom roots,245 public
+Review roots,4 guide declaration names and3618 links/anchors with context/trace
+separation. All13 theorem regressions and6 query-intake controls pass. Full
+Review used588.67MiB sampled aggregate footprint/3206.91MiB resident/16.57s;
+independent provenance19.11/38.23MiB/10.97s passes189 v3 and1649 backport origin
+identities,80 byte-identical modules,8 historical/2 regenerated circuit artifacts,
+86 native sources,25 setup artifacts and4 exporter files. Fourteen new modules
+record20 exact parent origins; no prior importer/native artifact/source/exporter,
+fixture, dependency or original-checkout file changed. Existing unchanged native
+and intake controls retain their earlier applicability without heavy replay.
+
+Every started failed/successful guard ended with no owned survivors. Large64,
+16 and one late8-query simplification draft reached the default200000 heartbeat
+limit; small commands and separate kernel syntax equalities solved that work
+at default limits. Abstract typed getter transport avoids dependent data
+normalization. No heartbeat, recursion, allocation, footprint, resident or wall
+ceiling was raised; sampled watchdog/allocation caps are not OS hard physical
+memory limits. Audit counts do not establish parity.
+
 ## Native Blake2 complete fixed-pool checkpoint (7 November 2026)
 
 The selected worker now has a separate [actual native fixed export](artifacts/setup/blake2-fixed-native.json),

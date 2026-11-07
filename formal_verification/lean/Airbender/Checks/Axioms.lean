@@ -1,3 +1,13 @@
+import Airbender.Proofs.Blake2Worker.NativeQueryFixed0
+import Airbender.Proofs.Blake2Worker.NativeQueryFixed1
+import Airbender.Proofs.Blake2Worker.NativeQueryFixed2
+import Airbender.Proofs.Blake2Worker.NativeQueryFixed3
+import Airbender.Proofs.Blake2Worker.NativeQueryFixed4
+import Airbender.Proofs.Blake2Worker.NativeQueryProjection
+import Airbender.Proofs.Blake2Worker.NativeQueryRanges
+import Airbender.Proofs.Blake2Worker.NativeQueryResults
+import Airbender.Review.Circuits.Blake2Worker.QueriesTheorems
+import Tests.NativeBlake2Queries
 import Airbender.Proofs.Blake2Worker.Xor9Dense1537
 import Airbender.Proofs.Blake2Worker.Xor9Dense512
 import Airbender.Proofs.Blake2Worker.BlockCertificates
@@ -5600,3 +5610,44 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Blake2Worker.Xor9Dense512.reads
 #print axioms Airbender.Blake2Worker.Xor9Dense1537.length
 #print axioms Airbender.Blake2Worker.Xor9Dense1537.reads
+
+#print axioms Airbender.Blake2Worker.QueryProofs.fixed0
+#print axioms Airbender.Blake2Worker.QueryProofs.tag0
+#print axioms Airbender.Blake2Worker.QueryProofs.fixed1
+#print axioms Airbender.Blake2Worker.QueryProofs.tag1
+#print axioms Airbender.Blake2Worker.QueryProofs.fixed2
+#print axioms Airbender.Blake2Worker.QueryProofs.tag2
+#print axioms Airbender.Blake2Worker.QueryProofs.fixed3
+#print axioms Airbender.Blake2Worker.QueryProofs.tag3
+#print axioms Airbender.Blake2Worker.QueryProofs.fixed4
+#print axioms Airbender.Blake2Worker.QueryProofs.tag4
+#print axioms Airbender.Blake2Worker.QueryProofs.same_source
+#print axioms Airbender.Blake2Worker.QueryProofs.typed_membership
+#print axioms Airbender.Blake2Worker.QueryProofs.block5
+#print axioms Airbender.Blake2Worker.QueryProofs.block6
+#print axioms Airbender.Blake2Worker.QueryProofs.block7
+#print axioms Airbender.Blake2Worker.QueryProofs.block8
+#print axioms Airbender.Blake2Worker.QueryProofs.block9
+#print axioms Airbender.Blake2Worker.QueryProofs.block10
+#print axioms Airbender.Blake2Worker.QueryProofs.scalars
+#print axioms Airbender.Blake2Worker.QueryProofs.clocks0
+#print axioms Airbender.Blake2Worker.QueryProofs.clocks1
+#print axioms Airbender.Blake2Worker.QueryProofs.fixed_membership
+#print axioms Airbender.Blake2Worker.QueryProofs.fixed_tags
+#print axioms Airbender.Blake2Worker.QueryProofs.pooled_result
+#print axioms Airbender.Blake2Worker.QueryProofs.clock_bounds
+#print axioms Airbender.Blake2Worker.QueryProofs.lookup_effects
+#print axioms Airbender.Blake2Worker.Native.lookup_effects
+#print axioms Airbender.Tests.NativeBlake2Queries.same_native_source
+#print axioms Airbender.Tests.NativeBlake2Queries.complete_geometry
+#print axioms Airbender.Tests.NativeBlake2Queries.tag_counts
+#print axioms Airbender.Tests.NativeBlake2Queries.first_query
+#print axioms Airbender.Tests.NativeBlake2Queries.first_scaled_pointer
+#print axioms Airbender.Tests.NativeBlake2Queries.second_scaled_pointer
+#print axioms Airbender.Tests.NativeBlake2Queries.first_clock_difference
+#print axioms Airbender.Tests.NativeBlake2Queries.first_clock_high_difference
+#print axioms Airbender.Tests.NativeBlake2Queries.wrong_actual_xor
+#print axioms Airbender.Tests.NativeBlake2Queries.oversized_first_query
+#print axioms Airbender.Tests.NativeBlake2Queries.rejects_unit_state_pointer
+#print axioms Airbender.Tests.NativeBlake2Queries.aligned_pointer_slices
+#print axioms Airbender.Tests.NativeBlake2Queries.difference_is_not_raw_time

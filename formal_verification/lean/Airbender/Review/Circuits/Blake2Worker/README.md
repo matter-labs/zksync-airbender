@@ -46,8 +46,33 @@ array-size proofs. This split is necessary for the unchanged resource limits.
 Native exporter/independent every-row/repeat-byte controls and Lean importer
 controls remain separate fidelity checks from kernel semantics.
 
-The208 actual compiled fixed queries still need projection and assembly with
-these table roots. No complete positive accepted worker row, initialized worker
+The208 actual compiled fixed queries now connect to these table roots through
+the separate complete lookup-effects theorem below. No complete positive accepted worker row, initialized worker
 memory/history, valid control schedule, native processing/auxiliary relation,
 request-worker fulfillment/converse/accounting or unified protocol is inferred.
 No main GPR/RAM frame is transported across unproved delegated actions.
+
+## Complete local lookup effects
+
+[Public lookup root](QueriesTheorems.lean), [Observables](Queries.lean), [Same-read query artifact](QueryArtifact.lean), [Separate intake](../../../Import/Blake2Queries.lean), [Native projection](../../../Proofs/Blake2Worker/NativeQueryProjection.lean), [Result assembly](../../../Proofs/Blake2Worker/NativeQueryResults.lean), [Regressions](../../../../Tests/NativeBlake2Queries.lean), [Intake controls](../../../../Tests/NativeBlake2QueriesImport.lean).
+
+Complete local native acceptance on the actual fixed pool derives the exact
+native tags, both operand/output domains and XOR results for every208 fixed
+query, plus the2 scaled-pointer and86 timestamp-difference expression bounds.
+The reference tag order is kernel-bound to the actual compiled source, never a
+per-row premise. Native scalar/timestamp modeled-table scopes are unchanged.
+
+The original worker importer is unchanged. A separate same-read observer uses
+its strict parser and unchanged expression emitters. Kernel source-byte equality
+and actual sublist/lookup syntax bindings connect both intakes. Pure syntax
+calculations and small query units avoid evaluating witness expressions while
+binding the source; generic typed getters handle assembly at default limits.
+No heartbeat, recursion, memory or wall ceiling is raised.
+
+Static native lookup counts do not measure worker issuance. Timestamp bounds
+apply to differences, not raw old or processing clocks; scaled-pointer bounds
+do not supply initialized read ranges. Raw ABI reads, alignment/addresses,
+processing multiplicity, all43 memory/clock histories, round/reference/state/
+terminal, accepted auxiliary/accumulator/caller-worker and fulfillment/converse/
+accounting/protocol connections remain open. Query/scalar/clock slices are not
+complete native worker witnesses, F02/F03/F04 reproductions or native defects.

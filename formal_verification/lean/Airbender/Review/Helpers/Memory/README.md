@@ -376,3 +376,5 @@ Rust/field/LDE/physical enforcement and worker accounting remain separate.
 The [native worker ABI](../../Circuits/Blake2Worker/ABI.lean) retains all43 register/indirect descriptors. It does not extend main-circuit memory history through delegated RAM actions or establish worker matching.
 
 The [worker fixed-pool certificate](../../Circuits/Blake2Worker/TablesTheorems.lean) supplies table semantics only. All43 worker ABI memory/clock descriptors still need an accepted matching/history connection; main GPR byte/RAM frames do not cross worker actions.
+
+The [worker lookup-effects root](../../Circuits/Blake2Worker/QueriesTheorems.lean) bounds actual scaled-pointer and timestamp-difference expressions. It does not bound raw pointers/old timestamps or establish worker memory history, processing flags or issuance. The difference-versus-raw regression preserves that distinction.

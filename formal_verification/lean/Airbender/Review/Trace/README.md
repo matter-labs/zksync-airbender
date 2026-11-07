@@ -496,3 +496,5 @@ Worker/protocol/padding/terminal/init/teardown and physical/completeness remain 
 The [fresh Blake2 worker checkpoint](../Circuits/Blake2Worker/README.md) checks local row intake/control only. Caller projection and argument references are not a worker stream or an enforced global ledger; no delegated RAM frame or whole execution is inferred.
 
 The [native worker fixed-pool checkpoint](../Circuits/Blake2Worker/README.md) checks all five stored XOR regions. This adds no worker ledger or request/worker fulfillment, converse, accounting or delegated execution claim.
+
+The [worker query connection](../Circuits/Blake2Worker/QueriesTheorems.lean) closes local compiled lookup projection only. Static query counts are not worker issuance/accounting, and no main byte/RAM frame crosses unproved worker actions.
