@@ -19,6 +19,13 @@ unresolved jump terminal-PC condition remain inputs; reads, ranges and order are
 agreement for the external-read/write-hint extension and the exact stream consumption.
 The stream and its port connection are explicit; authentication of the stream is not proved.
 
+[`no_zero_timestamp_writes`](../../../slop/Slop/Final/Trace/ZeroTimestamp.lean) (statements in
+[ZeroTimestamp](ZeroTimestamp.lean), one per pooled CPU trace, unified machine, delegation workers and split Keccak
+workers) proves that no row of these circuits writes a memory token at timestamp 0: CPU rows write at clock four or
+later after boot, delegation rows at their invocation clock plus two. So only the init circuits produce
+timestamp-0 values; those circuits and cross-chunk clock chaining are not formalised, and RAM starting at zero stays
+an initial-state condition.
+
 [Unified ordinary/custom retirement](UnifiedReduced/README.md#checked-results)
 has a separate registry. [Worker spans](Workers/README.md#checked-results) and
 [caller composition](Delegation/README.md#checked-results) establish their stated

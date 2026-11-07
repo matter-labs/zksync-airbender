@@ -1,0 +1,68 @@
+import Human.Helpers.Core.BabyBearPrime
+import Human.Helpers.Context.Registries.Pooled
+import Human.Helpers.UnifiedReduced.Registry
+import Human.Helpers.Delegation.Memory
+import Human.Circuits.KeccakSplit.Native
+
+/-! No row of a formalised circuit writes a memory-argument token at timestamp 0.
+
+    In Airbender, initial memory values (all RAM, including the ROM shadow, starts at zero) enter the memory
+    argument only through the init circuits, which write at timestamp 0. These claims show that no row of the
+    circuits formalised here (the six pooled CPU families, the unified reduced machine, the four delegation
+    workers and the split Keccak workers) writes at timestamp 0, so none of them can masquerade as an initial
+    value. What remains unformalised: the init circuits themselves (that they write zero at timestamp 0) and the
+    cross-chunk clock chaining, so "RAM starts at zero" stays an initial-state condition of the RV32 spec.
+    The statements mention no machine state. Proven in slop/Slop/Final/Trace/ZeroTimestamp.lean. -/
+
+namespace Airbender.Trace
+
+/-- Every write token of an accepted six-family pooled trace that boots at native clock four (the boot premise
+    `PooledBootInputs.initialBoundary`) has clock at least four: each row writes at its start clock plus a port
+    offset, and state matching chains every row start back to the initial clock. -/
+def NoZeroTimestampWritesClaim : Prop :=
+  ∀ {trace : PooledTrace babyBearModulus} (accepted : Accepted trace)
+    (boot : trace.initial = PCState.boundary 0 (4, 0)),
+    ∀ row ∈ trace.rows, ∀ token ∈ row.writes, 4 ≤ (timeOfPair token.time).value
+
+end Airbender.Trace
+
+namespace Airbender.UnifiedReduced
+open Trace
+
+/-- The same for the unified reduced machine, booting at native clock four (`BootInputsWith.initialPC`). -/
+def NoZeroTimestampWritesClaim : Prop :=
+  ∀ {trace : UnifiedTrace babyBearModulus} (accepted : Accepted trace)
+    (boot : trace.initial = PCState.boundary 0 (4, 0)),
+    ∀ row ∈ trace.rows, ∀ token ∈ row.writes, 4 ≤ (timeOfPair token.time).value
+
+end Airbender.UnifiedReduced
+
+namespace Airbender.Delegation
+open Trace
+
+/-- Every write of a delegation row (bigint, Blake2s G, Blake2s round, Keccak) has clock at least two: it is the
+    invocation clock plus the port offset two. `clockRoom` and `invocationHigh` are the clock fields of
+    `MemoryInputs`; no acceptance is needed. -/
+def NoZeroTimestampWritesClaim : Prop :=
+  ∀ {data : MemoryData babyBearModulus}
+    (clockRoom : ∀ row ∈ data.rows,
+      (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase)
+    (invocationHigh : ∀ row ∈ data.rows,
+      (decodeTimestamp row.assignment row.columns.invocation).hi < timestampBase),
+    ∀ row ∈ data.rows, ∀ port ∈ row.ports, 2 ≤ (timeOfPair (row.writeToken port).time).value
+
+end Airbender.Delegation
+
+namespace Airbender.Keccak.Split.Native
+open Trace
+
+/-- The same for the split Keccak workers (`MemoryInputs.clockRoom`, `MemoryInputs.invocationHigh`). -/
+def NoZeroTimestampWritesClaim : Prop :=
+  ∀ {data : MemoryData babyBearModulus}
+    (clockRoom : ∀ row ∈ data.rows,
+      (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase)
+    (invocationHigh : ∀ row ∈ data.rows,
+      (decodeTimestamp row.assignment row.columns.invocation).hi < timestampBase),
+    ∀ row ∈ data.rows, ∀ port ∈ row.ports, 2 ≤ (timeOfPair (row.writeToken port).time).value
+
+end Airbender.Keccak.Split.Native

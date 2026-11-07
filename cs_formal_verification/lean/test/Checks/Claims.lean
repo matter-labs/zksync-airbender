@@ -26,6 +26,7 @@ import Slop.Final.Trace.Families.MulDiv.Theorems
 import Slop.Final.Trace.Families.ShiftBinop.Theorems
 import Slop.Final.Trace.Families.SubwordMemory.Theorems
 import Slop.Final.Trace.Soundness
+import Slop.Final.Trace.ZeroTimestamp
 import Slop.Final.Trace.UnifiedReduced.Theorems
 import Slop.Final.Trace.Workers.Bigint.Theorems
 import Slop.Final.Trace.Workers.Blake2G.Theorems
@@ -53,6 +54,7 @@ import Human.Trace.Families.MulDiv.Theorems
 import Human.Trace.Families.ShiftBinop.Theorems
 import Human.Trace.Families.SubwordMemory.Theorems
 import Human.Trace.Soundness
+import Human.Trace.ZeroTimestamp
 import Human.Trace.UnifiedReduced.Theorems
 import Human.Trace.Workers.Bigint.Theorems
 import Human.Trace.Workers.Blake2G.Theorems
@@ -134,6 +136,10 @@ example : Airbender.ShiftBinop.TraceSoundnessClaim := @Airbender.ShiftBinop.trac
 example : Airbender.SubwordMemory.RamTraceSoundnessClaim := @Airbender.SubwordMemory.ram_trace_soundness
 example : Airbender.Trace.PooledNativeSoundnessClaim := @Airbender.Trace.pooled_native_soundness
 example : Airbender.Trace.NonDeterminism.Pooled.NativeSoundnessClaim := @Airbender.Trace.NonDeterminism.Pooled.native_soundness
+example : Airbender.Trace.NoZeroTimestampWritesClaim := @Airbender.Trace.no_zero_timestamp_writes
+example : Airbender.UnifiedReduced.NoZeroTimestampWritesClaim := @Airbender.UnifiedReduced.no_zero_timestamp_writes
+example : Airbender.Delegation.NoZeroTimestampWritesClaim := @Airbender.Delegation.no_zero_timestamp_writes
+example : Airbender.Keccak.Split.Native.NoZeroTimestampWritesClaim := @Airbender.Keccak.Split.Native.no_zero_timestamp_writes
 example : Airbender.UnifiedReduced.Mixed.ExecutionSoundnessClaim := @Airbender.UnifiedReduced.Mixed.execution_soundness
 example : Airbender.UnifiedReduced.ExecutionSoundnessClaim := @Airbender.UnifiedReduced.execution_soundness
 example : Airbender.UnifiedReduced.Caller.MixedMemorySoundnessClaim := @Airbender.UnifiedReduced.Caller.mixed_memory_soundness
@@ -250,6 +256,10 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.SubwordMemory.ram_trace_soundness
 #print axioms Airbender.Trace.pooled_native_soundness
 #print axioms Airbender.Trace.NonDeterminism.Pooled.native_soundness
+#print axioms Airbender.Trace.no_zero_timestamp_writes
+#print axioms Airbender.UnifiedReduced.no_zero_timestamp_writes
+#print axioms Airbender.Delegation.no_zero_timestamp_writes
+#print axioms Airbender.Keccak.Split.Native.no_zero_timestamp_writes
 #print axioms Airbender.UnifiedReduced.Mixed.execution_soundness
 #print axioms Airbender.UnifiedReduced.execution_soundness
 #print axioms Airbender.UnifiedReduced.Caller.mixed_memory_soundness

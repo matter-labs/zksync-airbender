@@ -24,6 +24,7 @@ import Human.Trace.Families.MulDiv.Theorems
 import Human.Trace.Families.ShiftBinop.Theorems
 import Human.Trace.Families.SubwordMemory.Theorems
 import Human.Trace.Soundness
+import Human.Trace.ZeroTimestamp
 import Human.Trace.UnifiedReduced.Theorems
 import Human.Trace.Workers.Bigint.Theorems
 import Human.Trace.Workers.Blake2G.Theorems
