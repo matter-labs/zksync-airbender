@@ -694,3 +694,12 @@ extra public chunk sequence. No stream/initialized-read/expected-result premise;
 no inactive-pole removal, multiset matching, fulfillment/converse/accounting or
 physical/global dispatch/capacity/sequence/refinement claim. Full matching and
 initialization/history/filtering and original CSR/MOP execution remain open.
+
+[Configured caller/worker composition](ConfiguredDelegationTheorems.lean) now
+uses the exact same selected worker outputs for native metadata/capacity checks
+and the existing full-row scalar claim fold. Derived Boolean multiplicities give
+an exact canonical count below the field modulus; at most2048 selected proofs.
+This is a source-reference normalized component, not a whole native verifier or
+issued/matched execution. No inactive auxiliary contribution is discarded. Native
+matching/initialization and faithful padding/filter/history remain necessary
+before active caller/worker streams, bounds or accounting can be established.

@@ -120,3 +120,12 @@ quartic92 and body92 roles remain explicit. Full body acceptance here does not
 require every row active; existing initialized logical trace/history roots remain
 unchanged. No inactive contribution is discarded, and padding/filter/matching,
 global sequence/capacity/dispatch/challenge boundaries and accounting stay open.
+
+The [configured caller/worker component](../Circuits/ReducedMachine/ConfiguredDelegationTheorems.lean) now retains the selected native
+sequence/type/setup/shared-challenge checks and configured-slot counter over the
+same returned proofs as the full-row scalar balance. Processing acceptance
+derives Boolean indicators and an exact canonical multiplicity count below the
+field modulus, with at most2048 selected proofs. No inactive auxiliary value is
+dropped; capacity is not an issued count or matching/accounting certificate.
+Initialized padding/filter/history, full43-token matching, active key/read/clock
+refinement and physical/global transcript/setup/dispatch enforcement remain open.

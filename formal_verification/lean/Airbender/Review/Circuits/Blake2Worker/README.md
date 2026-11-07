@@ -181,3 +181,31 @@ now replace opaque main claims with derived full main-row auxiliary sums under
 an explicit main-body/auxiliary/polynomial contract. This still supplies no
 initialized caller stream, inactive-row filtering, matching, fulfillment/converse/
 accounting or physical/global capacity/sequence/dispatch/challenge enforcement.
+
+## Configured worker capacity component
+
+[Capacity and exact multiplicity roots](CapacityTheorems.lean),
+[observations/native component](Capacity.lean),
+[calculations](../../../Proofs/Blake2Worker/NativeCapacity.lean),
+[configured caller composition](../ReducedMachine/ConfiguredDelegationTheorems.lean),
+[regressions](../../../../Tests/NativeBlake2Capacity.lean).
+
+The selected native source loop adds1048575 configured slots per returned
+Blake2 proof and checks the total below2147483647. Metadata retains sequence0,
+type1991, configured setup-cap equality and shared memory/delegation challenges;
+the public32-bit proof count is tied to the full returned list. Both security
+labels remain explicit source-reference dispatch observations, not Rust execution
+certificates. Existing normalized worker acceptance derives Boolean processing
+multiplicities; symbolic indicator arithmetic gives the actual multiplicity sum's
+canonical value equal to the active-row count, bounded by capacity, and at most2048
+selected proofs. Source bytes/constructor bindings are pinned separately from
+physical setup/dispatch/ProofOutput/transcript refinement.
+
+The same returned list participates in the existing full caller/worker scalar
+sum component. All ordinary auxiliary values and inactive poles remain. Bounds
+and scalar balance do not prove issued-stream matching, fulfillment, converse,
+accounting or active initialized reads/clocks/addresses. Full43-token matching,
+initialization and active key refinement are next; no main frame crosses an
+unproved delegated action. Fourteen pure/reference/conditional regressions are
+not full positive native witnesses or defect/F02-F04 evidence. No production,
+artifact, old intake, exporter, dependency or literal data changes.

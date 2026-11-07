@@ -1,3 +1,10 @@
+import Airbender.Review.Circuits.Blake2Worker.Capacity
+import Airbender.Proofs.Blake2Worker.NativeCapacity
+import Airbender.Review.Circuits.Blake2Worker.CapacityTheorems
+import Airbender.Review.Circuits.ReducedMachine.ConfiguredDelegation
+import Airbender.Proofs.ReducedMachine.NativeConfiguredDelegation
+import Airbender.Review.Circuits.ReducedMachine.ConfiguredDelegationTheorems
+import Tests.NativeBlake2Capacity
 import Airbender.Review.Circuits.ReducedMachine.AuxiliaryColumns
 import Airbender.Import.ReducedAuxiliary
 import Airbender.Review.Circuits.ReducedMachine.AuxiliaryArtifact
@@ -5838,3 +5845,39 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeCallerDelegation.actual_observation_equation
 #print axioms Airbender.Tests.NativeCallerDelegation.active_pole_excluded
 #print axioms Airbender.Tests.NativeCallerDelegation.complete_rows_balance
+
+#print axioms Airbender.Blake2Worker.CapacityProofs.geometry
+#print axioms Airbender.Blake2Worker.CapacityProofs.slot_fold
+#print axioms Airbender.Blake2Worker.CapacityProofs.capacity_counter
+#print axioms Airbender.Blake2Worker.CapacityProofs.counter_fits_u64
+#print axioms Airbender.Blake2Worker.CapacityProofs.active_bound
+#print axioms Airbender.Blake2Worker.CapacityProofs.indicator_sum
+#print axioms Airbender.Blake2Worker.CapacityProofs.multiplicity_count
+#print axioms Airbender.Blake2Worker.CapacityProofs.list_active_bound
+#print axioms Airbender.Blake2Worker.CapacityProofs.batch_bound
+#print axioms Airbender.Blake2Worker.CapacityProofs.shared_acceptance
+#print axioms Airbender.Blake2Worker.CapacityProofs.sum_count_cast
+#print axioms Airbender.Blake2Worker.CapacityProofs.batch_multiplicity_count
+#print axioms Airbender.Blake2Worker.CapacityProofs.configured_bounds
+#print axioms Airbender.Blake2Worker.CapacityProofs.active_count_no_wrap
+#print axioms Airbender.Blake2Worker.CapacityProofs.batch_multiplicity_no_wrap
+#print axioms Airbender.Blake2Worker.Native.configured_worker_capacity
+#print axioms Airbender.Blake2Worker.Native.worker_multiplicity_count
+#print axioms Airbender.Blake2Worker.Native.configured_worker_multiplicity
+#print axioms Airbender.ReducedMachine.NativeConfiguredDelegationProofs.claims_acceptance
+#print axioms Airbender.ReducedMachine.NativeConfiguredDelegationProofs.bounded_rows_balance
+#print axioms Airbender.ReducedMachine.Native.configured_caller_worker_rows
+#print axioms Airbender.Tests.NativeBlake2Capacity.actual_configuration
+#print axioms Airbender.Tests.NativeBlake2Capacity.exact_maximum_slots
+#print axioms Airbender.Tests.NativeBlake2Capacity.next_proof_exceeds_field
+#print axioms Airbender.Tests.NativeBlake2Capacity.security_dispatch_distinct
+#print axioms Airbender.Tests.NativeBlake2Capacity.u64_counter_headroom
+#print axioms Airbender.Tests.NativeBlake2Capacity.counter_empty
+#print axioms Airbender.Tests.NativeBlake2Capacity.generic_indicator_positive
+#print axioms Airbender.Tests.NativeBlake2Capacity.nonboolean_is_not_indicator
+#print axioms Airbender.Tests.NativeBlake2Capacity.rejected_sequence
+#print axioms Airbender.Tests.NativeBlake2Capacity.retained_setup_and_challenges
+#print axioms Airbender.Tests.NativeBlake2Capacity.complete_conditional_capacity
+#print axioms Airbender.Tests.NativeBlake2Capacity.complete_conditional_multiplicity
+#print axioms Airbender.Tests.NativeBlake2Capacity.count_word_counter
+#print axioms Airbender.Tests.NativeBlake2Capacity.complete_configured_caller_rows

@@ -1665,3 +1665,68 @@ effects and complete positive witnesses remain open. Original CSR/MOP execution,
 global padding/init/teardown, broader-path findings retests, physical/general
 refinement/cryptography/completeness/parity remain open. FINDINGS and zero-established-
 defect status are unchanged; no production fix, issue assumption or project axiom.
+
+## Configured native worker capacity and caller component (7 November 2026)
+
+[The selected capacity roots](Airbender/Review/Circuits/Blake2Worker/CapacityTheorems.lean)
+derive the actual number of multiplicity-one worker rows below Mersenne31's
+modulus, with at most2048 selected worker proofs. The native counter adds
+configured1048575-row slots for each returned proof. It is a capacity counter;
+no issued-request count or expected worker stream is supplied. The public32-bit
+stream count and actual output-list length also derive u64 counter headroom.
+
+[The explicit source-reference interface](Airbender/Review/Circuits/Blake2Worker/Capacity.lean)
+retains every returned worker observation: sequence0, type1991, equality to
+configured setup caps, shared memory/delegation challenges, and complete existing
+normalized worker acceptance. Both security dispatch labels remain explicit.
+[Unchanged native dispatch](../../full_statement_verifier/src/imports.rs),
+[its constants include](../../full_statement_verifier/src/constants.rs), and
+[the generated parameter bytes](../../circuit_defs/setups/generated/all_delegation_circuits_params.rs)
+are newly independently compared with exact nativebase Git objects and pinned.
+The first configured tuple has type1991/capacity1048575, matching the already
+pinned constructor's domain2^20 minus its last row. Setup caps remain opaque
+configured data checked for equality; no physical setup derivation, dispatch
+execution, ProofOutput serialization or Rust refinement is inferred.
+
+[The calculations](Airbender/Proofs/Blake2Worker/NativeCapacity.lean) first derive
+all Boolean multiplicities from the existing individual processing polynomials.
+An abstract finite-indicator proof then identifies the actual body multiplicity
+sum with the natural active count. The aggregate sum's canonical field value
+is exactly that count because the configured counter is below2147483647.
+The arithmetic is symbolic; no million-row evaluation or limit increase occurs.
+The capacity and count cover the selected one-family loop component. Other
+configured families and the full transcript/security/setup statement remain
+separate, as do active clock/initialized-read bounds and physical enforcement
+of the normalized worker acceptance contract.
+
+[The configured caller/worker interface](Airbender/Review/Circuits/ReducedMachine/ConfiguredDelegation.lean)
+uses the SAME returned worker list for these checks and the native additive
+claim fold. [The short composition root](Airbender/Review/Circuits/ReducedMachine/ConfiguredDelegationTheorems.lean)
+reuses the closed full caller-row/worker-row scalar-sum proof and combines it
+with the derived capacity and exact multiplicity count. Every ordinary auxiliary
+value remains, including inactive poles. There is no inactive-auxiliary filter,
+new ledger, table-equivalence premise or per-row read/value/range/result/key/
+clock/state/schedule/count/request/worker-success answer. A bounded scalar
+identity still does not establish multiset equality, issuance, fulfillment,
+converse or accounting. No main GPR byte/RAM frame crosses unproved worker actions.
+
+Fourteen [regressions](Tests/NativeBlake2Capacity.lean) check selected geometry,
+exact2048/2049 field boundaries, distinct security labels, u64 headroom, an empty
+counter, finite positive/nonboolean indicator boundaries, retained metadata and
+complete conditional capacity/multiplicity/caller-component roots. These are
+pure/reference/conditional checks, not complete positive nonempty native worker
+or main witnesses, physical attacks, v3F02/F03/F04 retests or defect evidence.
+Seven new modules record eleven exact parent origins; three unchanged native
+source pins bring the total to96. Prior intake/exporter/artifact/literal/fixture/
+production/dependency/original-checkout/cache bytes remain unchanged; no new
+intake gate, native generation or closed heavy-certificate replay is needed.
+
+NEXT connect initialized actual caller observations to the full-domain component
+through faithful padding/filter/history and establish full43-worker-token native
+matching/initialization. Derive active read/write/address/raw-clock ranges and
+stage2/quotient key refinement from that matching before issuance or accounting.
+Worker control/round/reference/state/terminal effects, full positive witnesses,
+original CSR/MOP execution, global padding/init/teardown and general physical/
+cryptographic refinement/completeness/parity remain open. The field bound does
+not make scalar compression injective. FINDINGS and zero-established-defect
+status are unchanged; no production fix, issue assumption or project axiom.
