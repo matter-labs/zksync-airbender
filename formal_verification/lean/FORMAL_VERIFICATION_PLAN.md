@@ -31,6 +31,50 @@ and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
+## Native Blake2 ABI-local memory laws (7 November 2026)
+
+The [short actual-pool root](Airbender/Review/Circuits/Blake2Worker/MemoryTheorems.lean)
+derives canonical pointer alignment and all43 ABI-bound Boolean borrow/difference
+laws from complete352-equation/296-lookup original Clean acceptance. There is no
+supplied raw read bound, pointer value, process flag, timestamp, order, state,
+schedule, request, worker answer or table identity.
+
+[Memory observables](Airbender/Review/Circuits/Blake2Worker/Memory.lean) flatten the
+actual imported descriptors in native order, retaining all43 old reads, both
+readonly register descriptors and25 written accesses. [Kernel bindings](Airbender/Proofs/Blake2Worker/NativeMemoryProjection.lean)
+identify every read-time pair and all43 Boolean borrows with actual equations125..167
+and the original86 compiled difference expressions. Each old timestamp is compared
+with the actual imported processor time740/741 and multiplicity0. These are field
+difference laws and bounds; raw-clock ranges, chronological matching and Boolean
+processing multiplicity are not inferred.
+
+[Canonical inverse arithmetic](Airbender/Proofs/Blake2Worker/NativeMemory.lean)
+derives actual state-pointer low2=128 times its scaled-query canonical value,
+and message-pointer low100=64 times its scaled-query canonical value. Thus the
+canonical lows are aligned by128/64 and below8388608/4194304 respectively. The
+native scaled-query bounds alone do not establish16bit initialized read ranges,
+16bit address-carry behavior, allowed architectural pointers or worker ROM/RAM
+semantics. The public theorem discharges all pure inverse/capacity calculations;
+no expected bound or architectural read value is an input.
+
+Twelve [regressions](Tests/NativeBlake2Memory.lean) preserve descriptor/read-only/
+old-read geometry, last-clock coordinates, reject misalignment, oversized pointers,
+non-Boolean borrows and oversized differences under full local native acceptance,
+and check maximum scalar slices. A positive scalar slice explicitly admits65536,
+above a16bit limb; it is not a complete accepted worker row or native defect.
+All earlier query/table/intake/source/native artifacts remain unchanged.
+
+NEXT establish initialized worker read/write/address ranges and full43-access
+memory matching, raw clocks/processing multiplicity, input/control/round schedules,
+reference/state/terminal and actual caller-worker auxiliary/accumulator acceptance
+before issuance, fulfillment/converse/accounting/unified protocol. Allreadonly
+refreshes/oldreads/tokens must survive that connection. Main Trace.Accepted has no
+worker ledger, and main GPR byte/RAM frames cannot cross unproved delegated actions.
+Full positive nonempty worker witnesses, original CSR/MOP execution, F02/F03/F04
+broader-path retests, padding/init/teardown and general Rust/compiler/JSON/physical/
+field/LDE/crypto/completeness/parity remain open. Zero established native defects;
+no production fix, issue assumption, axiom or whole-machine claim.
+
 ## Native Blake2 complete lookup-effects checkpoint (7 November 2026)
 
 The [short concrete-pool theorem](Airbender/Review/Circuits/Blake2Worker/QueriesTheorems.lean)

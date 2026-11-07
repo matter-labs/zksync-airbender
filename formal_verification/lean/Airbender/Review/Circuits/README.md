@@ -95,3 +95,9 @@ second-output assembly draft is excluded after allocation-limit failures.
 The [native worker fixed-pool roots](Blake2Worker/TablesTheorems.lean) now certify all344384 actual rows and five XOR regions. Actual compiled query/worker memory/protocol composition remains separate.
 
 The [native worker lookup-effects root](Blake2Worker/QueriesTheorems.lean) now connects every208 fixed query and88 range expression to complete local acceptance on the actual worker pool. ABI/memory/processing/round/reference/protocol execution remains separate.
+
+The [native worker ABI-local memory root](Blake2Worker/MemoryTheorems.lean) now derives canonical
+pointer alignment/scalar-implied bounds and all43 actual Boolean borrow and
+timestamp-difference laws from complete local acceptance. Initialized16bit reads,
+raw clocks/processing multiplicity, alltoken matching and issued worker/protocol
+accounting remain open. Main histories/frames do not cross unproved worker actions.

@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.Blake2Worker.Memory
+import Airbender.Proofs.Blake2Worker.NativeMemoryProjection
+import Airbender.Proofs.Blake2Worker.NativeMemory
+import Airbender.Review.Circuits.Blake2Worker.MemoryTheorems
+import Tests.NativeBlake2Memory
 import Airbender.Proofs.Blake2Worker.NativeQueryFixed0
 import Airbender.Proofs.Blake2Worker.NativeQueryFixed1
 import Airbender.Proofs.Blake2Worker.NativeQueryFixed2
@@ -5651,3 +5656,26 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeBlake2Queries.rejects_unit_state_pointer
 #print axioms Airbender.Tests.NativeBlake2Queries.aligned_pointer_slices
 #print axioms Airbender.Tests.NativeBlake2Queries.difference_is_not_raw_time
+
+#print axioms Airbender.Blake2Worker.MemoryProofs.access_geometry
+#print axioms Airbender.Blake2Worker.MemoryProofs.clock_columns
+#print axioms Airbender.Blake2Worker.MemoryProofs.low_expression
+#print axioms Airbender.Blake2Worker.MemoryProofs.high_expression
+#print axioms Airbender.Blake2Worker.MemoryProofs.borrow_boolean
+#print axioms Airbender.Blake2Worker.MemoryProofs.unscale
+#print axioms Airbender.Blake2Worker.MemoryProofs.state_quotient
+#print axioms Airbender.Blake2Worker.MemoryProofs.message_quotient
+#print axioms Airbender.Blake2Worker.MemoryProofs.local_effects
+#print axioms Airbender.Blake2Worker.Native.local_memory_effects
+#print axioms Airbender.Tests.NativeBlake2Memory.all_accesses_retained
+#print axioms Airbender.Tests.NativeBlake2Memory.readonly_and_oldreads_retained
+#print axioms Airbender.Tests.NativeBlake2Memory.last_clock_coordinates
+#print axioms Airbender.Tests.NativeBlake2Memory.state_misalignment_rejected
+#print axioms Airbender.Tests.NativeBlake2Memory.message_misalignment_rejected
+#print axioms Airbender.Tests.NativeBlake2Memory.state_canonical_limit_rejected
+#print axioms Airbender.Tests.NativeBlake2Memory.message_canonical_limit_rejected
+#print axioms Airbender.Tests.NativeBlake2Memory.corrupt_borrow_rejected
+#print axioms Airbender.Tests.NativeBlake2Memory.low_difference_limit_rejected
+#print axioms Airbender.Tests.NativeBlake2Memory.high_difference_limit_rejected
+#print axioms Airbender.Tests.NativeBlake2Memory.maximal_scalar_slices
+#print axioms Airbender.Tests.NativeBlake2Memory.scalar_slice_is_not_read_range

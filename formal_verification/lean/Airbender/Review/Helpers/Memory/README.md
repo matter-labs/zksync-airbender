@@ -378,3 +378,9 @@ The [native worker ABI](../../Circuits/Blake2Worker/ABI.lean) retains all43 regi
 The [worker fixed-pool certificate](../../Circuits/Blake2Worker/TablesTheorems.lean) supplies table semantics only. All43 worker ABI memory/clock descriptors still need an accepted matching/history connection; main GPR byte/RAM frames do not cross worker actions.
 
 The [worker lookup-effects root](../../Circuits/Blake2Worker/QueriesTheorems.lean) bounds actual scaled-pointer and timestamp-difference expressions. It does not bound raw pointers/old timestamps or establish worker memory history, processing flags or issuance. The difference-versus-raw regression preserves that distinction.
+
+The [native worker ABI-local memory root](../../Circuits/Blake2Worker/MemoryTheorems.lean) now derives canonical
+pointer alignment/scalar-implied bounds and all43 actual Boolean borrow and
+timestamp-difference laws from complete local acceptance. Initialized16bit reads,
+raw clocks/processing multiplicity, alltoken matching and issued worker/protocol
+accounting remain open. Main histories/frames do not cross unproved worker actions.

@@ -76,3 +76,19 @@ processing multiplicity, all43 memory/clock histories, round/reference/state/
 terminal, accepted auxiliary/accumulator/caller-worker and fulfillment/converse/
 accounting/protocol connections remain open. Query/scalar/clock slices are not
 complete native worker witnesses, F02/F03/F04 reproductions or native defects.
+
+## ABI-local memory laws
+
+[Public root](MemoryTheorems.lean), [Observables](Memory.lean), [Actual descriptor/equation/query bindings](../../../Proofs/Blake2Worker/NativeMemoryProjection.lean), [Canonical arithmetic and assembly](../../../Proofs/Blake2Worker/NativeMemory.lean), [Regressions](../../../../Tests/NativeBlake2Memory.lean).
+
+Complete local native acceptance derives canonical state/message low-pointer
+alignment128/64 and scalar-implied bounds8388608/4194304, without supplied raw
+read bounds. Every one of43 ABI old timestamps is bound to its actual compiled
+low/high difference expressions and Boolean borrow equation. Both readonly
+register descriptors, every old read and25 written accesses stay visible.
+These results do not supply16bit initialized reads, address-carry/ROM/RAM
+semantics, raw-clock ranges/order, processing multiplicity, native matching,
+worker execution/issuance or protocol accounting. Allscalar slices are explicitly
+partial; no complete positive worker witness, F03/F04 evidence or defect follows.
+The next connection must derive ranges/states/clocks from real initialized
+worker memory and accepted native/protocol matching, retaining every token.

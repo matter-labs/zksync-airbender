@@ -498,3 +498,9 @@ The [fresh Blake2 worker checkpoint](../Circuits/Blake2Worker/README.md) checks 
 The [native worker fixed-pool checkpoint](../Circuits/Blake2Worker/README.md) checks all five stored XOR regions. This adds no worker ledger or request/worker fulfillment, converse, accounting or delegated execution claim.
 
 The [worker query connection](../Circuits/Blake2Worker/QueriesTheorems.lean) closes local compiled lookup projection only. Static query counts are not worker issuance/accounting, and no main byte/RAM frame crosses unproved worker actions.
+
+The [native worker ABI-local memory root](../Circuits/Blake2Worker/MemoryTheorems.lean) now derives canonical
+pointer alignment/scalar-implied bounds and all43 actual Boolean borrow and
+timestamp-difference laws from complete local acceptance. Initialized16bit reads,
+raw clocks/processing multiplicity, alltoken matching and issued worker/protocol
+accounting remain open. Main histories/frames do not cross unproved worker actions.
