@@ -12,7 +12,7 @@ def RVWordsAt {n : Nat} (state : RV.State) (pointer : BitVec 32)
     (Trace.Cell.ram (pointer + BitVec.ofNat 32 (4 * (offset + i.val)))).readRV state = some words[i].toBitVec
 
 /-- RV sibling of `WordMapping`: the compression's public pointers, initial blocks and final RAM blocks, read from
-    `RV.State`s. A proved result: callers do not supply these reads or word bounds. -/
+    `RV.State`s. A proved result: callers do not supply these reads or word bounds. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 structure RVWordMapping (initial after : RV.State)
     (statePointer messagePointer : BitVec 32) (input output : State)
     (message : Vector Word 16) : Prop where

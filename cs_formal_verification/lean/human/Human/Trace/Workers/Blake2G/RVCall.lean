@@ -49,7 +49,7 @@ structure RVWindowInputs [Fact p.Prime] (data : Delegation.MemoryData p) (before
   calls : (data.windowRows lower upper).length = callCount reduced
 
 /-- RV sibling of `WorkVector.WordMapping`: actual public pointers, initialized input/message words, and result words
-    read (`Cell.readRV`) from the same final `RV.State` exposed by `Delegation.RVTraceMapping`. -/
+    read (`Cell.readRV`) from the same final `RV.State` exposed by `Delegation.RVTraceMapping`. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 structure WorkVector.RVWordMapping (initial after : RV.State) (statePointer messagePointer : BitVec 32)
     (input message output : Vector Arithmetic.Word 16) : Prop where
   pointers : (Cell.register 10).readRV initial = some statePointer ∧

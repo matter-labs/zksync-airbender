@@ -24,7 +24,7 @@ def RVOperationExecutionClaim : Prop :=
     output in actual RV RAM. `RVWordMapping` identifies successful initial/final block reads; `RVTraceMapping` binds
     the same final state to every native access and terminal token. The final state is the spec's run of the 7/10
     round delegation calls from `initial` (memory and registers; the PC advance is the spec's):
-    `RV.calls (rvCalls flags) initial`. -/
+    `RV.calls (rvCalls flags) initial`. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def RVCompressionSoundnessClaim : Prop :=
   ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Trace.Cell} {flags : Fin 8} (accepted : Delegation.MemoryAccepted data) (inputs : RVCallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned),
     ∃ (after : RV.State) (statePointer messagePointer : BitVec 32)
@@ -36,7 +36,7 @@ def RVCompressionSoundnessClaim : Prop :=
           RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * (rvCalls flags).length)))
 
 /-- RV sibling of `CompressionBoundarySoundnessClaim`: the complete extended-BLAKE reference binds actual boundary RV
-    reads and the final `RV.State` with retained seed timestamps, with the same delegate link. -/
+    reads and the final `RV.State` with retained seed timestamps, with the same delegate link. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def RVCompressionBoundarySoundnessClaim : Prop :=
   ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Trace.Cell} {flags : Fin 8} (accepted : Delegation.MemoryAccepted data) (inputs : RVNativeCallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned),
     ∃ (after : RV.State) (statePointer messagePointer : BitVec 32)
@@ -48,7 +48,7 @@ def RVCompressionBoundarySoundnessClaim : Prop :=
           RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * (rvCalls flags).length)))
 
 /-- RV sibling of `WindowSoundnessClaim`: the first complete compression reaches its reference (`RVSpanResult`,
-    delegate link included) on actual cut `RV.State`s from a retained native boundary. -/
+    delegate link included) on actual cut `RV.State`s from a retained native boundary. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def RVWindowSoundnessClaim : Prop :=
   ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {before : RV.State} {cells : List Trace.Cell} {flags : Fin 8} {lower upper : Nat} (accepted : Delegation.MemoryAccepted data) (inputs : RVWindowInputs data before cells flags lower upper) (aligned : ∀ cell ∈ cells, cell.Aligned),
     Delegation.Caller.RVWindowResult (RVSpanResult flags) data before cells lower upper

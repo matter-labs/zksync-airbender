@@ -150,17 +150,6 @@ theorem word_of_toBitVec {word : Word} (bound : word.Bounded) : Word.ofBitVec wo
 
 /-! ### RV boundary reads -/
 
-/-- RV `boundary_cell_source`: every tracked cell has a seed token, read from the starting RV state. -/
-theorem rv_boundary_cell_source {data : MemoryData p} {before : RV.State} {cells : List Cell}
-    (inputs : RVBoundaryInputs data before cells) {cell : Cell} (member : cell ∈ cells) :
-    ∃ token ∈ data.initial, cell.readRV before = some token.word.toBitVec ∧
-      token.address = cell.addressCode := by
-  obtain ⟨token, present, code⟩ := seed_cell_source inputs.toSeed member
-  obtain ⟨other, _, otherCode, read⟩ := inputs.reads token present
-  have same : other = cell := cell_address_injective (otherCode.trans code)
-  subst other
-  exact ⟨token, present, by simpa only [memoryWord, MemoryToken.word] using read, code⟩
-
 /-- A seed token's word, given the RV read of its cell. -/
 theorem rv_seed_word {data : MemoryData p} {before : RV.State} {cells : List Cell}
     (inputs : RVBoundaryInputs data before cells) {token : MemoryToken p} (present : token ∈ data.initial)

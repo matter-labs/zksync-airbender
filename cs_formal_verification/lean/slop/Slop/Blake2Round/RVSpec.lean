@@ -25,9 +25,6 @@ theorem controlAt_toBitVec : ∀ (flags : Fin 8) (r : Fin 11),
 theorem calls_eq_nR (flags : Fin 8) : (if flags.val % 2 = 1 then 7 else 10) = RV.nR (reducedOf flags) := by
   simp only [RV.nR, reducedOf, decide_eq_true_eq]
 
-private theorem bounded_value {word : Word} (bounded : word.Bounded) : word.toBitVec.toNat = word.value :=
-  Word.toBitVec_toNat bounded
-
 /-- The compression-mode working vector of round 0. -/
 theorem compression_v0 :
     ((Preparation.configuredIV ++ Preparation.compressionIV).map Word.toBitVec) =
