@@ -185,3 +185,13 @@ cancel only as duplicate-preserving multisets. Initialization/teardown, every wo
 access and caller requests remain. [Controls](../../../../Tests/NativeTokenLedger.lean) do not establish
 initialized worker history, active ranges/key refinement, fulfillment or physical
 cryptographic extraction. Original initialized execution interfaces are unchanged.
+
+## Native active main-state path
+
+[The main-state theorem](../../Circuits/ReducedMachine/MainStateHistoryTheorems.lean) derives actual active main chronology,
+clock bounds, four-tick counts and distinct0/1/2 write slots from complete native
+body acceptance and the same explicit full token matching. All ordinary main rows
+are considered before selecting execute1. Worker/init memory tokens and inactive
+caller requests remain in their original ledgers. This is no initialized worker
+memory history, CSR/MOP/Sail execution, issuance/accounting or physical extraction
+claim. Original initialized execution interfaces are unchanged.

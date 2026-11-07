@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.MainStateHistory
+import Airbender.Proofs.ReducedMachine.NativeMainStateHistory
+import Airbender.Review.Circuits.ReducedMachine.MainStateHistoryTheorems
+import Tests.NativeMainStateHistory
+
 import Airbender.Review.Circuits.ReducedMachine.TokenLedger
 import Airbender.Proofs.ReducedMachine.NativeTokenLedger
 import Airbender.Review.Circuits.ReducedMachine.TokenLedgerTheorems
@@ -6178,3 +6183,28 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeTokenLedger.identical_duplicates_cancel
 #print axioms Airbender.Tests.NativeTokenLedger.zero_factors_still_have_tokens
 #print axioms Airbender.Tests.NativeTokenLedger.complete_conditional_matching
+
+#print axioms Airbender.NativeMainStateHistoryProofs.port_states
+#print axioms Airbender.NativeMainStateHistoryProofs.row_states
+#print axioms Airbender.NativeMainStateHistoryProofs.ordinary_states
+#print axioms Airbender.NativeMainStateHistoryProofs.worker_states
+#print axioms Airbender.NativeMainStateHistoryProofs.public_states
+#print axioms Airbender.NativeMainStateHistoryProofs.active_states
+#print axioms Airbender.NativeMainStateHistoryProofs.row_state
+#print axioms Airbender.NativeMainStateHistoryProofs.state_matching
+#print axioms Airbender.NativeMainStateHistoryProofs.selected_body
+#print axioms Airbender.NativeMainStateHistoryProofs.initial_clock
+#print axioms Airbender.NativeMainStateHistoryProofs.history
+#print axioms Airbender.NativeMainStateHistory.native_main_state_history
+#print axioms Airbender.Tests.NativeMainStateHistory.select_actual_execute_only
+#print axioms Airbender.Tests.NativeMainStateHistory.inactive_csr_request_stays_observed
+#print axioms Airbender.Tests.NativeMainStateHistory.actual_pc_and_clock_observations
+#print axioms Airbender.Tests.NativeMainStateHistory.raw_state_limbs_retained
+#print axioms Airbender.Tests.NativeMainStateHistory.initialization_is_not_a_state
+#print axioms Airbender.Tests.NativeMainStateHistory.workers_are_not_pc_edges
+#print axioms Airbender.Tests.NativeMainStateHistory.empty_component
+#print axioms Airbender.Tests.NativeMainStateHistory.empty_full_logical_matching
+#print axioms Airbender.Tests.NativeMainStateHistory.empty_checked_history
+#print axioms Airbender.Tests.NativeMainStateHistory.empty_derived_clock_and_path
+#print axioms Airbender.Tests.NativeMainStateHistory.wrong_empty_terminal_rejected
+#print axioms Airbender.Tests.NativeMainStateHistory.complete_conditional_main_history

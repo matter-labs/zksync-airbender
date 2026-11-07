@@ -1,5 +1,45 @@
 # Verification status
 
+## Native full-domain main-state chronology (7 November 2026)
+
+[The actual main-state view](Airbender/Review/Circuits/ReducedMachine/MainStateHistory.lean)
+selects execute1 from ALL ordinary main observations across the proof list.
+[Its calculations](Airbender/Proofs/ReducedMachine/NativeMainStateHistory.lean)
+project the SAME full native logical ledger onto public initialPC0/time4,
+public terminal PC/time and actual active main PC/time edges. Initialization and
+worker memory tokens contribute no PC edges; they remain in memory matching.
+No expected order, intermediate state, row clock or active-row count is supplied.
+
+[The short theorem](Airbender/Review/Circuits/ReducedMachine/MainStateHistoryTheorems.lean)
+reuses unchanged native clock laws and finite graph proofs to derive incoming,
+outgoing and public terminal 19-bit clock ranges, alignment, four-tick increments,
+public endpoint intervals, unique row clocks, terminaltime4+4*actualactivecount,
+and a path containing exactly all active native state edges. The three actual
+main write clocks have offsets0/1/2, bounded limbs and distinct global slots,
+including readonly timestamp refreshes. No initialized old-read or worker-clock
+bound is assumed or concluded. The private state-only proof view never asserts
+an accepted memory trace using its empty placeholder fields.
+
+Exact logical matching remains an explicit extraction boundary. These are native
+PC/clock observations for all selected profiles, including CSR/MOP observations;
+no original Sail CSR/MOP instruction semantics, worker memory effect, request
+issuance/fulfillment or main frame across delegated actions is inferred.
+[Twelve controls](Tests/NativeMainStateHistory.lean) cover actual CSR state fields,
+inactive request retention, raw limbs, exact PC projections, a complete EMPTY
+selected normalized component/history and wrong-terminal rejection. They are not
+full positive NONEMPTY main/worker/physical verifier witnesses, attacks or defects.
+Four modules add24 explicit audit roots while preserving all5408 old roots/source
+bytes. Fourteen exact parent origins are recorded; all99 native pins, earlier
+acceptance/proof/parser/exporter/artifact/fixture/source/dependency bytes and
+findings remain unchanged. No native generation or unchanged heavy replay.
+
+Next: public initialization and chronological COMBINED memory history, active
+old-read/value/address/worker-clock bounds and stage2 key refinement, remaining
+decoder/padding/request enforcement and actual caller-worker accounting. Original
+CSR/MOP/worker execution, global init/teardown, physical/general refinement,
+cryptography, completeness and checked parity remain open.
+
+
 ## Full-domain native token observations and logical filtering (7 November 2026)
 
 [The native token ledger](Airbender/Review/Circuits/ReducedMachine/TokenLedger.lean)
