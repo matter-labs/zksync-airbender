@@ -1,3 +1,11 @@
+import Airbender.Review.Helpers.Memory.DelegationSum
+import Airbender.Proofs.Memory.DelegationSum
+import Airbender.Review.Helpers.Memory.DelegationSumTheorems
+import Airbender.Review.Circuits.Blake2Worker.Delegation
+import Airbender.Proofs.Blake2Worker.NativeDelegation
+import Airbender.Review.Circuits.Blake2Worker.DelegationTheorems
+import Tests.NativeDelegationSum
+import Tests.NativeBlake2Delegation
 import Airbender.Review.Circuits.Blake2Worker.AuxiliaryColumns
 import Airbender.Import.Blake2Auxiliary
 import Airbender.Review.Circuits.Blake2Worker.AuxiliaryArtifact
@@ -5768,3 +5776,36 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeBlake2Auxiliary.grand_terminal_preserves_claim
 #print axioms Airbender.Tests.NativeBlake2Auxiliary.chain_positive
 #print axioms Airbender.Tests.NativeBlake2Auxiliary.complete_row_balance
+
+#print axioms Airbender.Delegation.SumProofs.powers_sum
+#print axioms Airbender.Delegation.SumProofs.full_sum_zero
+#print axioms Airbender.Delegation.SumProofs.boundary_values
+#print axioms Airbender.Delegation.SumProofs.ordinary_sum
+#print axioms Airbender.Delegation.native_sum
+#print axioms Airbender.Blake2Worker.DelegationProofs.worker_sum
+#print axioms Airbender.Blake2Worker.DelegationProofs.active_auxiliary
+#print axioms Airbender.Blake2Worker.DelegationProofs.subtract_fold
+#print axioms Airbender.Blake2Worker.DelegationProofs.worker_fold
+#print axioms Airbender.Blake2Worker.DelegationProofs.add_fold
+#print axioms Airbender.Blake2Worker.DelegationProofs.accumulator_normal_form
+#print axioms Airbender.Blake2Worker.DelegationProofs.claims_balance
+#print axioms Airbender.Blake2Worker.Native.worker_delegation_sum
+#print axioms Airbender.Blake2Worker.Native.delegation_claims_balance
+#print axioms Airbender.Tests.NativeDelegationSum.positive_polynomial
+#print axioms Airbender.Tests.NativeDelegationSum.positive_sum
+#print axioms Airbender.Tests.NativeDelegationSum.zero_and_last
+#print axioms Airbender.Tests.NativeDelegationSum.high_degree_boundary
+#print axioms Airbender.Tests.NativeDelegationSum.high_degree_rejected
+#print axioms Airbender.Tests.NativeDelegationSum.endpoint_only_not_sum
+#print axioms Airbender.Tests.NativeDelegationSum.wrong_public_claim_rejected
+#print axioms Airbender.Tests.NativeDelegationSum.nonzero_constant_rejected
+#print axioms Airbender.Tests.NativeBlake2Delegation.actual_processing_slot
+#print axioms Airbender.Tests.NativeBlake2Delegation.actual_domain
+#print axioms Airbender.Tests.NativeBlake2Delegation.scalar_fold_positive
+#print axioms Airbender.Tests.NativeBlake2Delegation.scalar_fold_bad_claim
+#print axioms Airbender.Tests.NativeBlake2Delegation.scalar_cancellation_not_matching
+#print axioms Airbender.Tests.NativeBlake2Delegation.scalar_empty_workers
+#print axioms Airbender.Tests.NativeBlake2Delegation.complete_worker_sum
+#print axioms Airbender.Tests.NativeBlake2Delegation.active_pole_excluded
+#print axioms Airbender.Tests.NativeBlake2Delegation.inactive_pole_not_excluded
+#print axioms Airbender.Tests.NativeBlake2Delegation.statement_component

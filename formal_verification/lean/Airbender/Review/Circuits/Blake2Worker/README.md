@@ -157,3 +157,21 @@ Memory matching/initialization, active bounds/keys/raw clocks and delegation sum
 issuance/converse/accounting remain open. Full accepted positive worker witnesses
 and reference/round/state/terminal effects are still required; no main frames
 cross unproved worker actions. Zero-factor/reference slices are not defects.
+
+## Delegation sum and unified claim component
+
+[Acceptance and observables](Delegation.lean), [Short roots](DelegationTheorems.lean),
+[Worker calculations](../../../Proofs/Blake2Worker/NativeDelegation.lean),
+[Polynomial sum interface](../../Helpers/Memory/DelegationSum.lean),
+[Generic sum calculations](../../../Proofs/Memory/DelegationSum.lean),
+[Regressions](../../../../Tests/NativeBlake2Delegation.lean).
+
+The ordinary-row auxiliary sum is derived from the native zero/last-point divisor,
+actual slot1064 samples, primitive domain and degree bound; it is not supplied as
+an answer. Exact native unified add-main/subtract-worker claim folding connects
+returned main claims to derived worker sums. Main claims are still opaque, not
+identified caller rows or an issued ledger. Native multiplicity-one auxiliary
+relations derive nonzero denominators; inactive poles are not excluded. Physical
+FFT/M31Quartic/LDE/quotient and global dispatch/capacity/challenge boundaries remain
+separate. Scalar sums do not imply matching/converse/accounting. Pure degree-alias/
+scalar-collision tests are not complete worker witnesses or native defects.

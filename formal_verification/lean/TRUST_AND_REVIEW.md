@@ -4001,3 +4001,77 @@ broader-path retests, original CSR/MOP execution, padding/init/teardown, general
 Rust/compiler/JSON/publicexport/preprocessing/physicalROM/field/LDE/crypto/
 completeness/parity remain open. FINDINGS and zero-established-defect status are
 unchanged; no production fix, issue assumption or project axiom is introduced.
+
+## Native delegation sum and public claim component (7 November 2026)
+
+[The worker sum and statement-component roots](Airbender/Review/Circuits/Blake2Worker/DelegationTheorems.lean)
+now derive the selected worker's ordinary-row auxiliary sum from its native
+polynomial boundary relation, then connect it to the unified statement's additive
+claim component. Main proof claims remain opaque returned observables. No caller
+stream, issued ledger, fulfillment, converse or accounting claim follows yet.
+
+[The generic sum interface](Airbender/Review/Helpers/Memory/DelegationSum.lean)
+models the reviewed native zero/last-point divisor: the auxiliary polynomial plus
+claimed-sum times domain-generator times X is divisible by X times X-minus-last-point.
+The primitive domain, actual sampled auxiliary values and polynomial degree below
+the domain size remain explicit representation inputs. The ordinary-row sum is
+not an acceptance premise. [The calculation](Airbender/Proofs/Memory/DelegationSum.lean)
+derives value0 at zero, negative claimed sum at the last point, and zero total
+sum by exchanging the finite polynomial-support/domain sums and cancelling
+nonconstant geometric sums. It then derives the ordinary-row sum equals the
+claimed scalar. [The short helper root](Airbender/Review/Helpers/Memory/DelegationSumTheorems.lean)
+uses this calculation without evaluating a million domain points.
+
+[Worker proof observables and acceptance](Airbender/Review/Circuits/Blake2Worker/Delegation.lean)
+retain the complete previous body/processing/43-memory-auxiliary/full-domain
+acceptance. The sum polynomial samples the actual separate quartic processor
+slot1064 over the imported1048576-point domain. [Native worker proofs](Airbender/Proofs/Blake2Worker/NativeDelegation.lean)
+connect the derived sum to that proof's returned delegation claim. The native
+multiplicity-one auxiliary equation also derives a nonzero denominator and its
+inverse value; inactive poles are not excluded and no inactive auxiliary is
+silently dropped from the sum. Every old read, readonly refresh, write factor,
+alias and common worker clock remains in the unchanged underlying acceptance.
+
+Three unchanged nativebase sources were byte-compared and separately pinned:
+[Divisor construction](../../prover/src/quotient_evaluator.rs),
+[Verifier claim/quotient boundary](../../verifier/src/lib.rs), and
+[Unified statement](../../full_statement_verifier/src/unified_circuit_statement.rs).
+The already pinned global/unrolled quotient drivers use the same linear sum
+interpolant. The unified scalar component starts at0, adds each returned main
+claim, subtracts each returned worker claim and checks0. The explicit component
+interface retains that source fold plus accepted selected-worker proofs; generic
+fold normalization and derived worker sums yield equality of the main-claim sum
+and all worker-row auxiliary sums. It does not identify main claims with actual
+caller rows, enforce dispatch/setup/challenge correspondence physically, or
+model the separate configured-capacity bound. Bigint1994 remains outside this
+selected worker scope.
+
+These are reviewed source/polynomial and normalized logical-acceptance boundaries.
+FFT/interpolation, native M31Quartic/domain construction, degree/physical LDE,
+quotient/challenge separation and general Rust/compiler/verifier refinement remain
+separate. No physical evaluation is assumed unit-normalized, desired row sum,
+expected stream/per-row source/read/value/range/result/clock/state/schedule/count/
+request/worker answer, table identity or compression injectivity is supplied.
+Scalar equality alone is not multiset equality or a native defect.
+
+Eight [generic sum regressions](Tests/NativeDelegationSum.lean) include a positive
+two-slot polynomial, endpoint values, wrong-claim/constant/degree-bound rejection
+and an endpoint-only high-degree alias boundary. Ten [worker/component regressions](Tests/NativeBlake2Delegation.lean)
+retain actual slot/domain, exact scalar folding, a nonmatching scalar cancellation,
+inactive-pole limits and complete conditional worker/component roots. Pure/reference
+and conditional cases are not full positive nonempty accepted352-equation/296-lookup
+worker witnesses, physical attacks, v3F02/F03/F04 evidence or native defects.
+No intake/exporter/artifact/literal/fixture/dependency/production source changed;
+unchanged native/intake controls and heavy certificates are not replayed.
+
+NEXT bind the actual main caller auxiliary slot92 and native sum polynomial to
+complete caller-row acceptance, then connect initialized callers and native global
+capacity/dispatch/challenge/public boundaries before fulfillment/converse/accounting.
+Main auxiliary92 is a separate quartic slot, not body logical variable92. Full43-token
+matching/initialization, active read/write/address/raw-clock bounds and key refinement,
+worker control/round/reference/state/terminal effects and complete positive witnesses
+remain open. Main GPR byte/RAM frames cannot cross unproved delegated actions.
+Original CSR/MOP execution, global padding/init/teardown, broader-path findings
+retests, physical/general refinement/cryptography/completeness/parity remain open.
+FINDINGS and zero-established-defect status are unchanged; no production fix,
+issue-handling assumption or project axiom is introduced.

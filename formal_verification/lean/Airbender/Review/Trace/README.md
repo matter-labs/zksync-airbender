@@ -524,3 +524,10 @@ quartic slots, no division or terminal claim1. Product balance does not prove
 full token matching/initialization or a delegation ledger; active ranges/keys/raw
 clocks and issuance/converse/accounting remain open. No main frame crosses an
 unproved delegated action, and physical enforcement stays separately scoped.
+
+The [worker delegation sum roots](../Circuits/Blake2Worker/DelegationTheorems.lean) derive ordinary auxiliary sums from
+native polynomial divisibility/degree/domain/sample inputs and normalize the
+unified statement's returned-claim accumulator component. Main claims remain
+opaque until their actual caller auxiliaries are connected; scalar balance is
+not issuance/matching/converse/accounting. Physical/global capacity/dispatch/
+challenge boundaries and active initialized memory effects remain open.
