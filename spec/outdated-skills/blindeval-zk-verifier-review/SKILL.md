@@ -68,7 +68,7 @@ Claude. Accept explicit provider, model, effort, and timeout overrides.
 From the source repository, prepare the selected specialist case:
 
 ```bash
-python3 .agents/skills/blindeval-zk-verifier-review/scripts/blind_eval.py prepare \
+python3 spec/outdated-skills/blindeval-zk-verifier-review/scripts/blind_eval.py prepare \
   --domain transcript \
   --example 1
 ```
@@ -98,7 +98,7 @@ Preparation must complete automatically. The script:
 Read `case_dir` from the preparation JSON and immediately verify it:
 
 ```bash
-python3 .agents/skills/blindeval-zk-verifier-review/scripts/blind_eval.py verify \
+python3 spec/outdated-skills/blindeval-zk-verifier-review/scripts/blind_eval.py verify \
   --case-dir <case-dir>
 ```
 
@@ -110,7 +110,7 @@ hand-edit a fixture.
 Then launch the evaluator rather than stopping after fixture preparation:
 
 ```bash
-python3 .agents/skills/blindeval-zk-verifier-review/scripts/blind_eval.py run \
+python3 spec/outdated-skills/blindeval-zk-verifier-review/scripts/blind_eval.py run \
   --case-dir <case-dir> \
   --provider codex
 ```
@@ -170,7 +170,7 @@ vulnerability.
 Record the grade:
 
 ```bash
-python3 .agents/skills/blindeval-zk-verifier-review/scripts/blind_eval.py grade \
+python3 spec/outdated-skills/blindeval-zk-verifier-review/scripts/blind_eval.py grade \
   --case-dir <case-dir> \
   --outcome <catch|partial|miss|unscored> \
   --notes '<brief evidence-based rationale>'
@@ -185,7 +185,7 @@ campaign scoring.
 Keep the fixture through grading and miss analysis. Then run:
 
 ```bash
-python3 .agents/skills/blindeval-zk-verifier-review/scripts/blind_eval.py cleanup \
+python3 spec/outdated-skills/blindeval-zk-verifier-review/scripts/blind_eval.py cleanup \
   --case-dir <case-dir>
 ```
 

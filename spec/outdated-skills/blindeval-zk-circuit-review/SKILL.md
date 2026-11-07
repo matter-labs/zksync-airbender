@@ -81,7 +81,7 @@ its reasoning, classifications, titles, or selectors into the evaluator prompt.
 Run from the source repository:
 
 ```bash
-python3 .agents/skills/blindeval-zk-circuit-review/scripts/blind_eval.py prepare \
+python3 spec/outdated-skills/blindeval-zk-circuit-review/scripts/blind_eval.py prepare \
   --example '<number-or-name>' \
   --similarity-reviewed \
   --exclude-similar '<number-or-name>'
@@ -125,10 +125,10 @@ launcher instead.
 Read `case_dir` from the preparation JSON, then run:
 
 ```bash
-python3 .agents/skills/blindeval-zk-circuit-review/scripts/blind_eval.py verify \
+python3 spec/outdated-skills/blindeval-zk-circuit-review/scripts/blind_eval.py verify \
   --case-dir <case-dir>
 
-python3 .agents/skills/blindeval-zk-circuit-review/scripts/blind_eval.py run \
+python3 spec/outdated-skills/blindeval-zk-circuit-review/scripts/blind_eval.py run \
   --case-dir <case-dir> \
   --provider <codex-or-claude>
 ```
@@ -147,11 +147,11 @@ the exact sanitized source that produced the trace. Record the hidden-answer
 grade after any needed analysis, then reclaim the fixture's disk space:
 
 ```bash
-python3 .agents/skills/blindeval-zk-circuit-review/scripts/blind_eval.py grade \
+python3 spec/outdated-skills/blindeval-zk-circuit-review/scripts/blind_eval.py grade \
   --case-dir <case-dir> \
   --outcome <catch|partial|miss|unscored>
 
-python3 .agents/skills/blindeval-zk-circuit-review/scripts/blind_eval.py cleanup \
+python3 spec/outdated-skills/blindeval-zk-circuit-review/scripts/blind_eval.py cleanup \
   --case-dir <case-dir>
 ```
 

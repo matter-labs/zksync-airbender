@@ -1,12 +1,11 @@
 # security-skills
 
 
-Defensive, read-only ZK circuit and verifier review skills.
+Archived defensive, read-only ZK circuit and verifier review skills.
 
-## Setup
+## Archive location
 
-- Skills: [`.agents/skills`](.)
-- Claude link: [`.claude/skills`](../../.claude/skills) -> `../.agents/skills`
+- Skills: [`spec/outdated-skills`](.)
 
 ## Pick a skill
 
