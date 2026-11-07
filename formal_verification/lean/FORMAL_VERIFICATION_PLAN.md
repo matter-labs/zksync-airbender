@@ -204,8 +204,15 @@ Full combined row effects and execution remain pending. See the
    Public tracked-RAM ordinary domain plus actual initialized origins, or native ROM
    bounds, derives every local exclusion of pinned CLINT/signature windows. These
    are reference input boundaries, not native enforcement or per-row success answers.
-   NEXT actual PC preparation/normal retirement/fetched execution and common mixed
-   memory integration. General Rust/public/physical fidelity stays separate.
+   Original PC/nextPC transport now preserves every actual transfer/OLDREAD/alias,
+   unmasked x0 load and SW RAM write through prepared states. Retained original
+   normal_base_next_pc/clause/tick_pc execution reaches actual native final PC,
+   including RV32 wrap. Stateful projected composition derives finite original
+   fetched LW/SW execution and all architectural terminal readers, without pure
+   decoder or supplied replay/state/order/PC premises. Empty programs remain CSR-free.
+   NEXT common mixed projection/profile transport and memory-aware initialized
+   histories/configuration/frames/execution, preserving ordinary scopes/AUIPC PC.
+   General Rust/public/physical fidelity stays separate.
    Common supported execution excludes
    LW/SW; no all-events-GPR frame reuse.
    Other combined

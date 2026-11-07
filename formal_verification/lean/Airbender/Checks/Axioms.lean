@@ -1,3 +1,10 @@
+import Airbender.Proofs.ReducedMachine.NativeWordMemoryRetirement
+import Airbender.Proofs.Trace.ProjectedStatefulComposition
+import Airbender.Review.Trace.Families.ReducedMachine.WordMemoryExecution
+import Airbender.Proofs.Trace.Families.ReducedMachine.WordMemoryComposition
+import Airbender.Review.Trace.Families.ReducedMachine.WordMemoryFetchedExecution
+import Tests.NativeReducedWordMemoryRetirement
+import Tests.NativeReducedWordMemoryFetched
 import Airbender.Review.Helpers.Memory.ReducedMachineWordMemoryPlatform
 import Airbender.Proofs.ReducedMachine.NativeWordMemoryPlatform
 import Airbender.Proofs.Trace.Families.ReducedMachine.WordMemoryPlatform
@@ -3705,3 +3712,17 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedWordMemoryClauses.original_rom_load_x0
 #print axioms Tests.NativeReducedWordMemoryClauses.original_ram_store
 #print axioms Tests.NativeReducedWordMemoryClauses.empty_clauses_without_csrs
+
+#print axioms Airbender.ReducedMachine.NativeWordMemoryRetirementProofs.read_control
+#print axioms Airbender.ReducedMachine.NativeWordMemoryRetirementProofs.transfer_control
+#print axioms Airbender.ReducedMachine.NativeWordMemoryRetirementProofs.local_row_retirement
+#print axioms Airbender.Trace.Proofs.compose_projected_rows_run
+#print axioms Airbender.ReducedMachine.NativeWordMemoryExecutionProofs.image_fetched_step
+#print axioms Airbender.ReducedMachine.NativeWordMemoryExecutionProofs.image_terminal_pc_bound
+#print axioms Airbender.ReducedMachine.NativeWordMemoryExecutionProofs.image_execution_soundness
+#print axioms Airbender.ReducedMachine.Native.public_word_memory_execution
+#print axioms Tests.NativeReducedWordMemoryRetirement.original_load_x0_normal
+#print axioms Tests.NativeReducedWordMemoryRetirement.original_store_normal
+#print axioms Tests.NativeReducedWordMemoryRetirement.retirement_wrap_endpoints
+#print axioms Tests.NativeReducedWordMemoryFetched.empty_execution
+#print axioms Tests.NativeReducedWordMemoryFetched.top_terminal_readers

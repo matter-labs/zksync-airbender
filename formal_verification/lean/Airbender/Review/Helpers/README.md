@@ -90,3 +90,11 @@ matching/past history. [The clause root](../Trace/Families/ReducedMachine/WordMe
 retains original LOAD/STORE and unmasked x0 loads; no per-row desired answer.
 These reference inputs do not prove native/physical enforcement. Empty programs
 and the earlier transfer boundary remain CSR-free; normal/fetched memory is next.
+
+[Actual reduced LW/SW normal/fetched execution](../Trace/Families/ReducedMachine/WordMemoryFetchedExecution.lean)
+now discharges every local transfer/configuration/address/replay/state/order/PC
+obligation from the existing meaningful public memory interfaces. Original
+unmasked x0 loads and actual stores survive derived PC bookkeeping. Full native
+shadow matching remains; architectural terminal readers are filtered. Empty
+programs stay CSR-free. Common mixed memory/general physical enforcement remain
+separate; helper input meanings and original Sail semantics are unchanged.

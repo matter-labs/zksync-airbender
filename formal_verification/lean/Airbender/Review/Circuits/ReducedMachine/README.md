@@ -550,3 +550,12 @@ local address/CSR/permission/success. Empty/transfer-only scopes remain CSR-free
 These inputs are not native/physical enforcement. PC preparation/normal retirement,
 fetched/common memory remain next. [Nine regressions](../../../../Tests/NativeReducedWordMemoryClauses.lean)
 include positive ORIGINAL LW-to-x0/SW, not full nonempty native memory witnesses.
+
+[Separate original LW/SW normal/fetched execution](../../Trace/Families/ReducedMachine/WordMemoryFetchedExecution.lean)
+now derives actual PC preparation/retirement/stateful source replay/native clock
+order/PC chain and terminal architectural readers. Actual readonly aliases,
+OLDREADs/unmasked x0 loads/SW writes and full shadow matching remain. Existing
+initial platform/domain inputs stay explicit; empty programs remain CSR-free.
+[Normal](../../../../Tests/NativeReducedWordMemoryRetirement.lean) and [empty fetched](../../../../Tests/NativeReducedWordMemoryFetched.lean)
+regressions are not full nonempty native memory witnesses. Common mixed memory
+requires fresh projected histories/per-profile frames; no all-events-GPR reuse.

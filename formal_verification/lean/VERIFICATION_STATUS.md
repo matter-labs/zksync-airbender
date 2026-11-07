@@ -20,7 +20,9 @@ in the historical checkpoints below.
 **The reduced machine now has conditional fetched-execution soundness for mixed
 selected original shifts, ADD/ADDI/SUB/LUI/AUIPC, XOR/OR/AND register/immediate,
 SLT/SLTU/SLTI/SLTIU, all six conditional branches and JAL/JALR rows. Full combined-operation
-coverage remains open.** The active
+coverage remains open.** Separate original LW/SW normal/fetched execution is now
+checked under its explicit memory initialization/platform/domain interfaces.
+The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 imports 117 native equations, 142 variables and a complete fourteen-region fixed
 pool. Original Clean acceptance derives its two actual sign/high-byte queries.
@@ -31,6 +33,53 @@ initialization/decoder interfaces; other combined profiles remain unfinished.
 The historical 119-equation/141-variable/13-region artifact is preserved separately.
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
+
+## Original native LW/SW normal and fetched execution (7 November 2026)
+
+[The new short public execution root](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryFetchedExecution.lean)
+derives finite ORIGINAL successful four-byte fetched LW/SW stepping, actual
+canonical terminal PC and EVERY architectural terminal cell read. This is a
+separate word-memory trace; common mixed supported execution still excludes LW/SW.
+[The reference conclusion](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryExecution.lean)
+filters only architectural terminal observations. Complete accepted native matching
+retains EVERY independent shadow seed/read/write/timestamp.
+
+[Fresh normal retirement](Airbender/Proofs/ReducedMachine/NativeWordMemoryRetirement.lean)
+transports all checked actual same-pre-state reads/OLDREADs and final writes through
+original PC/nextPC updates. Readonly aliases/RAM refreshes, original unmasked LW-to-x0
+and actual unmasked SW writes remain. Initial reference configuration follows actual
+control frames; retained original clauses run in derived prepared states before
+normal_base_next_pc/tick_pc retirement reaches the actual native after-state/PC.
+Native PC+4/fullRV32 wrap is checked, never supplied as a desired answer.
+
+[Stateful projected composition](Airbender/Proofs/Trace/ProjectedStatefulComposition.lean)
+reuses unchanged PURE filtered grouping and stateful bookkeeping removal, without
+a pure-decoder certificate or supplied replay. [Initialized assembly](Airbender/Proofs/Trace/Families/ReducedMachine/WordMemoryComposition.lean)
+derives original byte fetch/stateful decoding in every pre-state, local source/
+range/address/CSR/permission/ordinary-address obligations, native clock order/PC
+chain and terminal observations. Inputs remain exact NativeROM byte construction,
+original full public setup, independent-shadow initialization, exact fixedData
+acceptance/FULL decoding, aligned tracked cells/code capacity, and the existing
+meaningful initial reference configuration/public ordinary-RAM domain. Empty
+programs remain CSR-free. No expected row result/state/PC/order/replay or native
+table equivalence is public. Physical setup/protocol terminal enforcement is separate.
+
+[Five new regressions](Tests/NativeReducedWordMemoryRetirement.lean) include positive
+ORIGINAL normal LW-to-x0 and RAM SW at EVERY RV32 PC with arbitrary readable misa,
+real constructed ROM21015 and actual RAM123 writes, plus independent wrap outputs.
+[Complete EMPTY native fetched checks](Tests/NativeReducedWordMemoryFetched.lean)
+derive terminal PC/x0 readers even at0xffffffff, retaining independent shadow123
+without CSR premises. These original-reference/empty tests are NOT full positive
+NONEMPTY117-equation/22-lookup accepted native memory witnesses.
+
+NEXT extend the common original projection and initialized memory-aware histories
+across all supported profiles, with derived per-profile port domains/preservation/
+frames/configuration/retirement. The all-events-GPR frame is inapplicable to mixed
+stores. Preserve prior ordinary/empty CSR scopes and AUIPC prepared PC. Other ordinary
+profiles, workers/callers/accounting, unified protocol, padding/terminal/init/teardown
+and general Rust/public preprocessing/physical ROM/compiler/crypto/completeness/
+interrupt/exception/MMIO remain separate. FINDINGS unchanged; no native defect,
+issue assumption, production fix, new axiom or parity claim.
 
 ## Retained original native LW/SW clauses (7 November 2026)
 
@@ -64,8 +113,8 @@ EMPTY actual-native clauses with independent shadow123/noCSR. These are conditio
 original-reference/empty evidence, NOT full positive NONEMPTY117-equation/22-lookup
 accepted native LW/SW witnesses.
 
-NEXT derive actual PC preparation/normal retirement and finite successful fetched
-execution, then common mixed memory histories. Current common six-profile support
+The subsequent normal/fetched milestone above now derives PC preparation/retirement
+and finite fetched stepping. Common mixed memory histories remain next. Current common six-profile support
 still EXCLUDES LW/SW. Original interrupts/exceptions/MMIO and general Rust/public
 preprocessing/physical ROM/compiler/crypto/completeness/global protocol/init/teardown
 remain separate. No native defect, issue assumption, production fix, new axiom or

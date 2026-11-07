@@ -464,3 +464,10 @@ origins, or native ROM bounds, derive local address restrictions. Real history
 transports every local CSR/permission. Original load-to-x0 reads remain and SW
 writes actual RAM. PC preparation/normal/fetched/common memory remains open;
 no native enforcement or full positive nonempty memory witness is claimed.
+
+[Separate actual reduced LW/SW fetched execution](Families/ReducedMachine/WordMemoryFetchedExecution.lean)
+now proves original byte fetch/stateful decoder/normal PC preparation/clause/
+retirement along the native PC chain, with exact terminal architectural readers.
+Source/read/write/range/address/configuration/state/order/replay are derived; all
+independent shadow tokens stay native-matched. Empty programs retain CSR freedom.
+Common mixed supported memory and physical/global boundaries remain separate.

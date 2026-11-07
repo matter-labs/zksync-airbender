@@ -869,3 +869,24 @@ ordinary domain are explicit inputs, not native enforcement/issue assumptions.
 PC preparation/normal/fetched/common memory and general Rust/public/physical/
 compiler/crypto/completeness remain separate. No native defect, production fix,
 new axiom, dependency change or parity claim.
+
+## Actual reduced original memory retirement and fetched execution (7 November 2026)
+
+[Fresh native normal retirement](Airbender/Proofs/ReducedMachine/NativeWordMemoryRetirement.lean)
+uses unchanged PURE cell read/write control frames on already checked actual
+transfers. Original unmasked LW-to-x0 reads and actual SW RAM writes survive
+preparation; original clause/normal_step_native/tick_pc reaches actual final state/
+PC. [New stateful projected induction](Airbender/Proofs/Trace/ProjectedStatefulComposition.lean)
+adapts unchanged PURE filtered composition and stateful first-step removal, with
+no pure-decoder/replay answer premise. [Actual initialized composition](Airbender/Proofs/Trace/Families/ReducedMachine/WordMemoryComposition.lean)
+derives all local obligations/order/PC chain/replay and architectural terminal
+readers from exact public construction/native matching. All shadow tokens remain.
+
+Twenty exact parent9306b53 origins record seven new modules/tests. Five regression
+roots cover positive original normal LW/SW at every RV32 PC and complete empty
+native fetched/terminal checks, not full positive nonempty117-equation memory
+acceptance. Concrete reference CSR/source/ROM calculations are split from abstract
+sequencing at default proof limits. No old standalone compiled native identity/
+acceptance/positive witness transfers. Common mixed memory and general Rust/public/
+physical/compiler/crypto/completeness/protocol/init/teardown remain separate.
+No native finding, issue assumption, production fix, new axiom or parity claim.

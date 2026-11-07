@@ -475,3 +475,15 @@ success/configuration answer or native enforcement claim. [Nine tests](../../../
 include positive ORIGINAL LW-to-x0/SW and a CSR-free complete empty clause scope,
 not full nonempty native memory witnesses. Actual PC preparation/normal retirement,
 fetched and common mixed memory remain next.
+
+[Original LW/SW normal/fetched execution](WordMemoryFetchedExecution.lean) now
+reaches the actual native terminal PC and every architectural terminal cell.
+Original stateful decoding replays in actual pre-states; derived PC preparation/
+retirement preserves all kept reads/OLDREADs/aliases/unmasked load-x0/SW effects.
+Full native matching keeps independent shadows. The [reference conclusion](WordMemoryExecution.lean)
+filters architectural terminal observations only. Existing public exact-ROM/
+initialization/platform/domain scopes remain; empty programs stay CSR-free.
+[Five regression roots](../../../../../Tests/NativeReducedWordMemoryRetirement.lean)
+and [empty terminal checks](../../../../../Tests/NativeReducedWordMemoryFetched.lean)
+are original-reference/complete-empty evidence, not full nonempty native memory
+witnesses. Common mixed memory-aware histories/profile transport remain next.

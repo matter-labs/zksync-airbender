@@ -3315,3 +3315,28 @@ are positive original-reference/configuration/domain/complete-empty evidence, no
 full nonempty native117-equation witnesses. PC preparation/normal retirement,
 fetched/common memory, exception/MMIO/physical/global protocol scopes remain open.
 No native finding, fix, new axiom or parity claim.
+
+## Actual native original word-memory fetched execution boundary
+
+[The public execution root](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryFetchedExecution.lean)
+now derives actual original LW/SW fetch/stateful decoding/PC preparation/retained
+clause/retirement and finite stepping to native terminal PC/architectural cells.
+[Normal transport](Airbender/Proofs/ReducedMachine/NativeWordMemoryRetirement.lean)
+preserves ALL actual kept reads/OLDREADs/aliases and unmasked load-x0/store effects
+through derived PC bookkeeping. [Stateful projected composition](Airbender/Proofs/Trace/ProjectedStatefulComposition.lean)
+requires no pure-decoder or supplied replay certificate. Full native matching
+retains every ignored shadow token; only Sail architectural transfers/terminal
+observations filter ROM shadows.
+
+Existing exact NativeROM/original public setup/independent initialization/native
+acceptance/FULL decoding/alignment/code capacity and initial reference platform/
+ordinary-RAM domain inputs remain explicit. Every row source/read/write/range/
+address/result/state/PC/CSR/permission/success/order/replay and terminal PC bound
+is derived. Empty programs need no initial CSR reads. These inputs do not establish
+physical/native public preprocessing/configuration or global termination. [Original
+normal regressions](Tests/NativeReducedWordMemoryRetirement.lean) and [empty native
+fetched/terminal checks](Tests/NativeReducedWordMemoryFetched.lean) are not full
+positive NONEMPTY117-equation accepted LW/SW. Common mixed memory, other ordinary/
+protocol/init/teardown and general physical/compiler/crypto/completeness/exception/
+MMIO scopes remain separate. No native finding, issue assumption, fix, new axiom
+or parity claim.
