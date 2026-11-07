@@ -27,6 +27,7 @@ import Human.Trace.Families.SubwordMemory.Theorems
 import Human.Trace.Soundness
 import Human.Trace.ZeroTimestamp
 import Human.Trace.UnifiedReduced.Theorems
+import Human.Trace.UnifiedReduced.RVTheorems
 import Human.Trace.Workers.Bigint.Theorems
 import Human.Trace.Workers.Blake2G.Theorems
 import Human.Trace.Workers.Blake2Round.Theorems

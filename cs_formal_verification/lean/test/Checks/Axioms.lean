@@ -106,6 +106,7 @@ import Slop.Sail.Runtime
 import Slop.Final.Circuits.WordMemory.Theorems
 import Slop.Final.Circuits.WordMemory.RVTheorems
 import Slop.Final.Circuits.SubwordMemory.RVTheorems
+import Slop.Final.Trace.UnifiedReduced.RVTheorems
 import Tests.Comparison
 import Tests.NonDeterminism
 import Tests.Blake2G
@@ -2307,3 +2308,6 @@ import Human.Import.Coefficients
 #print axioms RV.write_subword
 #print axioms RV.exec_load_subword
 #print axioms RV.exec_store_subword
+#print axioms Airbender.UnifiedReduced.rv_execution_soundness
+#print axioms Airbender.UnifiedReduced.Proofs.RV.rv_trace_execution
+#print axioms Airbender.Trace.Proofs.rv_realizes

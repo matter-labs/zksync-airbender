@@ -15,6 +15,7 @@ import Slop.Final.Circuits.SubwordMemory.Theorems
 import Slop.Final.Circuits.SubwordMemory.RVTheorems
 import Slop.Final.Circuits.WordMemory.Theorems
 import Slop.Final.Circuits.WordMemory.RVTheorems
+import Slop.Final.Trace.UnifiedReduced.RVTheorems
 import Slop.Final.Helpers.Context.PCState.Theorems
 import Slop.Final.ISA.Theorems
 import Slop.Final.ISA.DelegationRuns
@@ -146,6 +147,7 @@ example : Airbender.Delegation.NoZeroTimestampWritesClaim := @Airbender.Delegati
 example : Airbender.Keccak.Split.Native.NoZeroTimestampWritesClaim := @Airbender.Keccak.Split.Native.no_zero_timestamp_writes
 example : Airbender.UnifiedReduced.Mixed.ExecutionSoundnessClaim := @Airbender.UnifiedReduced.Mixed.execution_soundness
 example : Airbender.UnifiedReduced.ExecutionSoundnessClaim := @Airbender.UnifiedReduced.execution_soundness
+example : Airbender.UnifiedReduced.RVExecutionSoundnessClaim := @Airbender.UnifiedReduced.rv_execution_soundness
 example : Airbender.UnifiedReduced.Caller.MixedMemorySoundnessClaim := @Airbender.UnifiedReduced.Caller.mixed_memory_soundness
 example : Airbender.UnifiedReduced.Caller.SharedSpanSoundnessClaim := @Airbender.UnifiedReduced.Caller.shared_span_soundness
 example : Airbender.UnifiedReduced.Caller.RequestWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.request_window_soundness
@@ -268,6 +270,7 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.Keccak.Split.Native.no_zero_timestamp_writes
 #print axioms Airbender.UnifiedReduced.Mixed.execution_soundness
 #print axioms Airbender.UnifiedReduced.execution_soundness
+#print axioms Airbender.UnifiedReduced.rv_execution_soundness
 #print axioms Airbender.UnifiedReduced.Caller.mixed_memory_soundness
 #print axioms Airbender.UnifiedReduced.Caller.shared_span_soundness
 #print axioms Airbender.UnifiedReduced.Caller.request_window_soundness
