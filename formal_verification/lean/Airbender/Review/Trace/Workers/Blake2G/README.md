@@ -1,0 +1,52 @@
+# Complete G work-vector spans
+
+This directory states the complete 56/80-call G work-vector fold on actual
+initial/final RAM, using Clean's original G reference. Call and window contracts
+give the public protocol mode/count and native-boundary conditions. Shared history
+connects all calls and terminal tokens without supplied intermediate states.
+
+## Checked results
+
+[`Native.operation_execution`](Theorems.lean) connects each G row to actual
+port effects. [`Native.workvector_soundness`](Theorems.lean) additionally proves
+the complete reference fold on actual initial/final RAM and terminal tokens.
+[`Native.workvector_boundary_soundness` and `Native.window_soundness`](Theorems.lean)
+retain native seeds and derive boundary controls/intermediate states under the
+public mode/count, alignment/domain, modeled-table and matching conditions.
+
+Read [Theorems](Theorems.lean), then [Call](Call.lean) and
+[BoundaryCall](BoundaryCall.lean) for public initialization versus retained
+native-boundary timestamps. [WorkVector](WorkVector.lean) is the complete
+56/80-call fold using the original Clean G.
+
+[Windows](Windows.lean) selects spans after whole preceding spans.
+Check public mode/count, tracked alignment and modeled tables.
+Accepted initialized history derives the schedule, controls, pointers,
+intermediate states and actual initial/final RAM reads.
+
+[Local circuit review](../../../Circuits/Blake2G/README.md) covers one G operation.
+[Caller composition](../../Delegation/README.md) and
+[unified windows](../../UnifiedReduced/README.md) retain distinct shared-prefix
+and preparation/chaining scopes. Zero-clock surplus effects remain visible.
+
+[`Call.execution_soundness`](ReferenceCalls.lean) strengthens the worker side to
+a sequence of [complete independent reference micro-calls](../../../Circuits/Blake2G/Call.lean)
+in the actual full Sail states, including each exact write footprint and frame.
+The same initialized history reaches every terminal cell. Existing public span
+mode/count, modeled tables, aligned domain and RAM restriction remain explicit.
+The span derives valid controls and canonical aligned disjoint pointers; no new
+per-row ABI or desired result is assumed. [Full mixed execution](../../UnifiedReduced/FullExecution.lean)
+connects caller fetch/PC retirement with participation derived from native
+caller accounting and active-invocation timestamps. That entrypoint retains its
+straight-line ordinary registry. The newer
+[native-path entrypoint](../../UnifiedReduced/NativePathExecution.lean) supports
+branches, jumps and loops under the
+[F11 hash witness contracts](../../../../../FINDINGS.md#f11--hash-witness-contracts-remain-unenforced).
+[Complete spans](../../UnifiedReduced/PathSpanExecution.lean) retain a per-trace
+protocol plan, complete coverage and valid gaps. No external occurrence ledger
+is supplied to the native participation derivation.
+
+Standalone worker inputs retain both `clockRoom` and `invocationHigh`; integrated
+caller/request matching derives them. See the [shared worker boundary](../README.md)
+and [native memory inputs](../../../Helpers/Delegation/Memory.lean). Actual read
+values and pointer bounds are derived from initialized matching.

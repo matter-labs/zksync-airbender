@@ -1,0 +1,22 @@
+import Airbender.Proofs.GKRProtocol.FunctionalNative.UnifiedCachedFoundation
+import Airbender.Proofs.GKRProtocol.NumericFunctionalBaseChecks
+
+namespace Airbender.Compiler.FunctionalBaseChecks.UnifiedCached
+open Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+noncomputable def originalEntries := [
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseRecipe0 Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseOutput0 Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.bank Airbender.Compiler.FunctionalNative.UnifiedCached.native.isBase Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.gate0.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseRecipe1 Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseOutput1 Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.bank Airbender.Compiler.FunctionalNative.UnifiedCached.native.isBase Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.gate1.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseRecipe2 Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseOutput2 Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.bank Airbender.Compiler.FunctionalNative.UnifiedCached.native.isBase Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.gate2.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseRecipe3 Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseOutput3 Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.bank Airbender.Compiler.FunctionalNative.UnifiedCached.native.isBase Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.gate3.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseRecipe4 Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseOutput4 Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.bank Airbender.Compiler.FunctionalNative.UnifiedCached.native.isBase Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.gate4.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseRecipe5 Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseOutput5 Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.bank Airbender.Compiler.FunctionalNative.UnifiedCached.native.isBase Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.gate5.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseRecipe6 Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseOutput6 Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.bank Airbender.Compiler.FunctionalNative.UnifiedCached.native.isBase Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.gate6.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseRecipe7 Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseOutput7 Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.bank Airbender.Compiler.FunctionalNative.UnifiedCached.native.isBase Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.gate48.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseRecipe8 Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseOutput8 Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.bank Airbender.Compiler.FunctionalNative.UnifiedCached.native.isBase Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.gate49.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseRecipe9 Airbender.Compiler.FunctionalNative.UnifiedCached.native.baseOutput9 Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.bank Airbender.Compiler.FunctionalNative.UnifiedCached.native.isBase Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.gate129.inputResidual]
+
+end Airbender.Compiler.FunctionalBaseChecks.UnifiedCached

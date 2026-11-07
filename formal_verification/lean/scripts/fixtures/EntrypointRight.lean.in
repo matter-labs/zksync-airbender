@@ -1,0 +1,6 @@
+import Lean
+namespace Tests.AssuranceEntrypointRight
+ theorem right : True := True.intro
+ axiom unused : False
+end Tests.AssuranceEntrypointRight
+def main : IO UInt32 := pure 0

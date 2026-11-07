@@ -1,0 +1,168 @@
+{
+  "compiler_inputs": {
+    "Cargo.lock": "816e559e5b7e5f7d9be0cf3fbd56c016357ba6a98684b7f32a5c5c9627c8c62d",
+    "cs/examples/export_gkr_translation.rs": "8d9a39ecbd303e4c6d206f82380b28d919489e84cea18ec1b428ebe77d6ea474",
+    "formal_verification/lean/artifacts/setup/manifest.json": "20f680f0a08551ad3f1a3674686988f7fcac53ebec4117c8bdaea75bb53cad3e",
+    "formal_verification/lean/scripts/export_gkr_translations.py": "d5492ee9376d16d38b9b8321bdc560ede00896834c1bd442bd7c23745ee937a3",
+    "formal_verification/lean/scripts/gkr_arithmetic_certificate.py": "7e990516d9f8380b0b68cb85c3073f329b6c932beeac6ebb726020e956846f48"
+  },
+  "files": {
+    "add-sub-cached": {
+      "cached": true,
+      "certificate_sha256": "39f1351f783d54e310473742f7913429d2375f30bf747f728dc7fa8969bd8818",
+      "counts": {
+        "lower_variables": 50,
+        "native_arithmetic_relations": 34,
+        "selected_relations": 25,
+        "source_obligations": 25,
+        "source_variables": 42
+      },
+      "pair_sha256": "fb2b1cb3f5703df752944d4ec44411e3401586bec2bbad1a85d96199851eec81",
+      "source_sha256": "6e21913dd8f8a9d2645b19b0f26801f607692812cf72c586a8a56dc3c9d68c0a",
+      "trace_len": 16777216
+    },
+    "bigint-cached": {
+      "cached": true,
+      "certificate_sha256": "85f784b558c8638f957e590c4a174433f3d766b12cc1f118aa02ec414e2a627d",
+      "counts": {
+        "lower_variables": 241,
+        "native_arithmetic_relations": 141,
+        "selected_relations": 116,
+        "source_obligations": 116,
+        "source_variables": 216
+      },
+      "pair_sha256": "dfd94c41c84ade03488ac1bd7d439cf1362de17796317e54146a6593e28d8c1f",
+      "source_sha256": "12a5b84cfc4577d79e71fc76855037a9ab31334a4d4aab80bfbdd3693cebe7de",
+      "trace_len": 4194304
+    },
+    "blake-g-cached": {
+      "cached": true,
+      "certificate_sha256": "459d16b3d830b482016d8327cb4a48d4173d226d35b3c6090fd51449c19de913",
+      "counts": {
+        "lower_variables": 96,
+        "native_arithmetic_relations": 36,
+        "selected_relations": 23,
+        "source_obligations": 23,
+        "source_variables": 83
+      },
+      "pair_sha256": "318cf38ad0c42849b622dc1a87049e7743bb70fc54f38b93db4befb9b3e3bbcd",
+      "source_sha256": "29ca46e5d4ea971d63625cab83e418faa1f687849fb75763bc45b7345c95e252",
+      "trace_len": 4194304
+    },
+    "blake-round-cached": {
+      "cached": true,
+      "certificate_sha256": "a17441c36c07b08b8b43898805d3fc87a75890bc7540b38b03369bd6aa74d6c3",
+      "counts": {
+        "lower_variables": 681,
+        "native_arithmetic_relations": 226,
+        "selected_relations": 177,
+        "source_obligations": 177,
+        "source_variables": 632
+      },
+      "pair_sha256": "5d0f3e235bb350fb63eff089947e0256fbb3c46960ab388a0eb0e03dcce44564",
+      "source_sha256": "caee97d1319d326c11ce76e17891e1c11a4ce36a1418ca8f0c7dfaa719c027b8",
+      "trace_len": 1048576
+    },
+    "jump-branch-cached": {
+      "cached": true,
+      "certificate_sha256": "8aa61ba584c2582aa41f6c365a080df65b72eae1be2d2e5b52c1923362521a24",
+      "counts": {
+        "lower_variables": 57,
+        "native_arithmetic_relations": 30,
+        "selected_relations": 21,
+        "source_obligations": 21,
+        "source_variables": 49
+      },
+      "pair_sha256": "0c1a922bfc140b6b61edf550de2f87cb97a35f27888295758205ed2406e3351b",
+      "source_sha256": "a4055069db1f812953adb5590ce144812fa78d6bfcbe63d9daa8b314f2cb9af5",
+      "trace_len": 16777216
+    },
+    "keccak-cached": {
+      "cached": true,
+      "certificate_sha256": "38ee5a224a3a04261bd59ce7c8061105ef404db446067c5a67ad3d6f5c04166f",
+      "counts": {
+        "lower_variables": 242,
+        "native_arithmetic_relations": 192,
+        "selected_relations": 169,
+        "source_obligations": 173,
+        "source_variables": 222
+      },
+      "pair_sha256": "03d1bef0959d5de68aaeb13a5d00ca09194726286945fb9e3b9a8c2f1621319b",
+      "source_sha256": "5e4b970a83853367b7ed0ad76436bea9db4af9dbd7ca550c3a2dd8064ebfe64e",
+      "trace_len": 4194304
+    },
+    "mul-div-cached": {
+      "cached": true,
+      "certificate_sha256": "2ad93065cce7d9a2ed5239a6bb43c5ce3691c8e55f6d1b39afea30ff3120f48c",
+      "counts": {
+        "lower_variables": 73,
+        "native_arithmetic_relations": 47,
+        "selected_relations": 38,
+        "source_obligations": 38,
+        "source_variables": 65
+      },
+      "pair_sha256": "a594680bc01b7bf110ad8c1cd7f8a44c4bb8353039421d69ec32cf49373b95cf",
+      "source_sha256": "b829d6660ac752144f9ea92414e01d526cbdca0535ad579c0bfe54f6677fb154",
+      "trace_len": 8388608
+    },
+    "shift-binop-cached": {
+      "cached": true,
+      "certificate_sha256": "5acf0330b0d36c3b6ac3bd84cda9421488392f8b7517c638c1b7490abb9316a7",
+      "counts": {
+        "lower_variables": 100,
+        "native_arithmetic_relations": 56,
+        "selected_relations": 47,
+        "source_obligations": 47,
+        "source_variables": 92
+      },
+      "pair_sha256": "904ce5efd8c1a96f309c3679cd9d3e74eb17c870d0c13586c45f1b4a11faf10b",
+      "source_sha256": "dfd9cfe87c85fe354469a496e7a836c45f87dd1ca107fd1ded049c3d40053705",
+      "trace_len": 16777216
+    },
+    "subword-memory-cached": {
+      "cached": true,
+      "certificate_sha256": "00c0059f408c6668059f52653ee97e0ea0422990b0aa96007567575ceb7dc31a",
+      "counts": {
+        "lower_variables": 69,
+        "native_arithmetic_relations": 46,
+        "selected_relations": 38,
+        "source_obligations": 38,
+        "source_variables": 62
+      },
+      "pair_sha256": "51a55c1ca0b2b9c869d9888ee04870d4c9bddc7b73571e12ab9ec0a0c3f8c961",
+      "source_sha256": "06d731cad534a44b462bd9f24f3a5fa0ccf73f456fd72035e9307f53fd1b8aef",
+      "trace_len": 16777216
+    },
+    "unified-cached": {
+      "cached": true,
+      "certificate_sha256": "a165983499de1732797e994332a8a3dbc083fa6be47d346efc957ae51ed7a0f3",
+      "counts": {
+        "lower_variables": 131,
+        "native_arithmetic_relations": 124,
+        "selected_relations": 114,
+        "source_obligations": 115,
+        "source_variables": 123
+      },
+      "pair_sha256": "e0336bb56fc2fa42175be4274617a7a3c686d2d2cf808dda7301aa8303c65485",
+      "source_sha256": "36401e8a6bbb8cee17a9e39501ca11a418b0881436d126293fe25f28d449877f",
+      "trace_len": 8388608
+    },
+    "word-memory-cached": {
+      "cached": true,
+      "certificate_sha256": "39755c664bf7af2b8c4be32747cf77d3d45ebdfcb164813ac1b5336a29c2bf8c",
+      "counts": {
+        "lower_variables": 55,
+        "native_arithmetic_relations": 32,
+        "selected_relations": 22,
+        "source_obligations": 22,
+        "source_variables": 46
+      },
+      "pair_sha256": "bab844ef5fea2031cee0890651d78596959c62902a2dd0d05bc83d0e3c70f225",
+      "source_sha256": "1e4206eab1cbadeee6f6419261854118cfcda1b1d5f760bec72bd8471c58da8f",
+      "trace_len": 16777216
+    }
+  },
+  "format_version": 1,
+  "rustc": "rustc 1.99.0-nightly (771916f90 2026-08-08)",
+  "scope": "cached source arithmetic slice; lookup/memory/cache protocol lowering is not certified"
+}

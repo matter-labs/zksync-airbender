@@ -7,11 +7,34 @@ on:
       - dev
       - av_gkr_compiler
   pull_request:
+  workflow_dispatch:
+    inputs:
+      diagnose_modules:
+        description: "Partial Lean diagnosis only: space-separated project modules; no FV assurance"
+        type: string
+        default: ""
+      cold_build:
+        description: Build every project module without restored Lean objects
+        type: boolean
+        default: false
+      refresh_axiom_baseline:
+        description: Export a refreshed baseline after the passing environment audit
+        type: boolean
+        default: false
+      full_assurance:
+        description: Run the complete independent kernel replay and false-proof controls
+        type: boolean
+        default: false
+      requalify_setups:
+        description: Re-export unchanged setup payloads before promoting changed source receipts
+        type: boolean
+        default: false
 
 permissions: read-all
 
 jobs:
   tests:
+    if: github.event_name != 'workflow_dispatch'
     name: tests
     runs-on: [matterlabs-ci-runner-high-performance]
     # The non-ignored GKR e2e tests (prover tests::gkr::*) run for tens of
@@ -54,6 +77,7 @@ jobs:
         run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib --test cost_model_drift
 
   formatting:
+    if: github.event_name != 'workflow_dispatch'
     name: cargo fmt
     runs-on: ubuntu-latest
     steps:
@@ -77,6 +101,7 @@ jobs:
           fi
 
   warnings:
+    if: github.event_name != 'workflow_dispatch'
     name: warnings (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
@@ -111,6 +136,7 @@ jobs:
           cargo check -p gpu_core -p gpu_ntt --lib ${{ matrix.args }}
 
   circuits_generated:
+    if: github.event_name != 'workflow_dispatch'
     name: circuits_generated
     runs-on: [matterlabs-ci-runner-c3d]
     steps:
@@ -135,6 +161,7 @@ jobs:
           fi
 
   check_verifiers:
+    if: github.event_name != 'workflow_dispatch'
     name: check_verifiers
     runs-on: [matterlabs-ci-runner-c3d]
     steps:
@@ -162,6 +189,7 @@ jobs:
           fi
 
   evm_verifier:
+    if: github.event_name != 'workflow_dispatch'
     name: evm_verifier
     runs-on: [matterlabs-ci-runner-c3d]
     timeout-minutes: 30
@@ -186,6 +214,7 @@ jobs:
         run: git diff --exit-code -- verifier_evm/
 
   cli_smoke_verify:
+    if: github.event_name != 'workflow_dispatch'
     name: cli_smoke_verify
     runs-on: [matterlabs-ci-runner-high-performance]
     timeout-minutes: 180
@@ -226,7 +255,7 @@ jobs:
   pr-checks:
     name: pr-checks
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && github.event_name != 'workflow_dispatch'
     needs:
       - tests
       - formatting
@@ -240,3 +269,13 @@ jobs:
         uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
         with:
           jobs: ${{ toJSON(needs) }}
+
+  formal-verification:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/formal-verification.yml
+    with:
+      diagnose_modules: ${{ inputs.diagnose_modules }}
+      cold_build: ${{ inputs.cold_build }}
+      refresh_axiom_baseline: ${{ inputs.refresh_axiom_baseline }}
+      full_assurance: ${{ inputs.full_assurance }}
+      requalify_setups: ${{ inputs.requalify_setups }}
