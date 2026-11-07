@@ -204,3 +204,12 @@ remainder/borrow checks and unmasked padding. Only zero padding can repeat at
 adjacent comparison positions; the last two physical rows are excluded. This
 supplies no global uniqueness, address range, public seed image, initialized
 worker read or physical extraction. Original initialized execution is unchanged.
+
+## Native initialization-address pair oracles
+
+[The same-main pair roots](../../Circuits/ReducedMachine/InitializationRangeTheorems.lean) retain all ordinary native rows and
+the existing complete body, auxiliary chain, padding and adjacent ordering.
+Separate base4/quartic28 observations yield the source pair equation, including
+its duplicate-pole limit. Address ranges and logical lookup extraction are still
+open; these local relations do not establish initialized worker reads or change
+original execution.

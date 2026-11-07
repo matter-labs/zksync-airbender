@@ -1,0 +1,5 @@
+import Airbender.Import.ReducedInitializationRange
+
+namespace Airbender.ReducedMachine.Native
+import_native_reduced_initialization_range initializationRangeLayout from "artifacts/circuits/reduced-native-layout.json"
+end Airbender.ReducedMachine.Native

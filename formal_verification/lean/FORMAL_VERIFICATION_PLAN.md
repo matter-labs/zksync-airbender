@@ -1,5 +1,54 @@
 # Circuit formal verification plan
 
+## Native initialization-address pair oracles (7 November 2026)
+
+[The extra address-pair component](Airbender/Review/Circuits/ReducedMachine/InitializationRange.lean)
+retains the SAME complete native main proof and adjacent ordering component.
+It adds the two actual source equations on every one of the 8,388,607 ordinary
+rows, using raw initialization address columns 126/127. The separate base-field
+auxiliary is column 4 and the quartic auxiliary is column 28; these are not body
+variables 4/28. [The separate intake](Airbender/Import/ReducedInitializationRange.lean)
+reuses unchanged complete body and all eighteen stage2-field validation on the
+same 94,130 source bytes. No original parser or generated input changes.
+
+[The calculations](Airbender/Proofs/ReducedMachine/NativeInitializationRange.lean)
+preserve both product scalings and all rational-pair scalings before unit
+normalization. They derive the actual base product and a division-free factored
+pair equation. Distinct address limbs exclude poles; interpreting the pair as
+a sum of inverses requires the stated nonpole conditions. At a duplicated pole,
+this local relation permits an arbitrary pair accumulator. It must not be
+replaced by two individually enforced inverse equations. No native defect or
+accepted global witness follows from that local limit.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/InitializationRangeTheorems.lean)
+retain the pair equations and prior adjacent duplicate zero-padding exclusion
+on the SAME proof. Address ranges, scalar16 table multiplicities/zero-last sum,
+lookup extraction, public initialization image and chronological worker memory
+history remain open. Debug range assertions are not an enforcement proof.
+Source-reference normalization does not refine physical field/LDE/quotient/Rust
+execution or establish cryptographic extraction.
+
+[Twelve theorem controls](Tests/NativeInitializationRange.lean) include complete
+existing CSR BODY plus the individual pair, an arbitrary local double pole,
+base-versus-body separation, scaling and corruption controls, and a wide-address
+PURE pair slice. [Twelve executable intake controls](Tests/NativeInitializationRangeImport.lean)
+check strict geometry, unrelated group retention, historical rejection and
+changed-body-as-data behavior. These are source/local/conditional controls, not
+full positive nonempty auxiliary/global/worker/physical proof witnesses.
+Eight modules add 24 explicit audit roots, preserving all 5,449 previous roots
+and their source bytes. Twelve exact parent origins and one manual source
+reference are recorded. The already pinned native function was byte-compared
+against native67ee before adaptation; all 100 native source pins remain unchanged.
+Findings, original execution, production code, artifacts and dependencies remain
+unchanged. No native generation or unchanged heavy replay is needed.
+
+Next: complete scalar16 table/sum and faithful lookup extraction, actual address
+bounds, public first/one-before-last/chunk window and sorted initialization image,
+combined memory history, active worker bounds/key refinement and caller-worker
+accounting. Physical refinement, cryptography, completeness and checked parity
+remain open.
+
+
 ## Native adjacent initialization ordering (7 November 2026)
 
 [The ordering component](Airbender/Review/Circuits/ReducedMachine/InitializationOrdering.lean)

@@ -1,3 +1,11 @@
+import Airbender.Review.Circuits.ReducedMachine.InitializationRangeColumns
+import Airbender.Import.ReducedInitializationRange
+import Airbender.Review.Circuits.ReducedMachine.InitializationRangeArtifact
+import Airbender.Review.Circuits.ReducedMachine.InitializationRange
+import Airbender.Proofs.ReducedMachine.NativeInitializationRange
+import Airbender.Review.Circuits.ReducedMachine.InitializationRangeTheorems
+import Tests.NativeInitializationRange
+
 import Airbender.Review.Circuits.ReducedMachine.InitializationOrdering
 import Airbender.Proofs.ReducedMachine.NativeInitializationOrdering
 import Airbender.Review.Circuits.ReducedMachine.InitializationOrderingTheorems
@@ -6231,3 +6239,28 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeInitializationOrdering.raw_wide_slice_limit
 #print axioms Airbender.Tests.NativeInitializationOrdering.last_two_not_compared
 #print axioms Airbender.Tests.NativeInitializationOrdering.complete_conditional_token_exclusion
+
+#print axioms Airbender.NativeInitializationRangeProofs.same_source
+#print axioms Airbender.NativeInitializationRangeProofs.geometry
+#print axioms Airbender.NativeInitializationRangeProofs.scaled_factorization
+#print axioms Airbender.NativeInitializationRangeProofs.product
+#print axioms Airbender.NativeInitializationRangeProofs.factored
+#print axioms Airbender.NativeInitializationRangeProofs.pole_pair
+#print axioms Airbender.NativeInitializationRangeProofs.distinct_nonpoles
+#print axioms Airbender.NativeInitializationRangeProofs.inverse_sum
+#print axioms Airbender.NativeInitializationRangeProofs.double_pole
+#print axioms Airbender.NativeInitializationRangeProofs.full_domain
+#print axioms Airbender.NativeInitializationRange.native_initialization_address_pairs
+#print axioms Airbender.NativeInitializationRange.native_initialization_range_repeats
+#print axioms Airbender.Tests.NativeInitializationRange.actual_geometry
+#print axioms Airbender.Tests.NativeInitializationRange.both_product_scalings
+#print axioms Airbender.Tests.NativeInitializationRange.rational_scaling
+#print axioms Airbender.Tests.NativeInitializationRange.complete_body_pair
+#print axioms Airbender.Tests.NativeInitializationRange.base_four_not_execute
+#print axioms Airbender.Tests.NativeInitializationRange.complete_body_double_pole
+#print axioms Airbender.Tests.NativeInitializationRange.wide_pair_slice
+#print axioms Airbender.Tests.NativeInitializationRange.bad_product_rejected
+#print axioms Airbender.Tests.NativeInitializationRange.single_pole_rejected
+#print axioms Airbender.Tests.NativeInitializationRange.duplicate_nonpole_not_free
+#print axioms Airbender.Tests.NativeInitializationRange.actual_all_ordinary_rows
+#print axioms Airbender.Tests.NativeInitializationRange.complete_conditional_pair
