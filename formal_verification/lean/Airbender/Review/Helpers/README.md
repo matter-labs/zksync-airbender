@@ -70,3 +70,14 @@ connects it to actual v2 clearing/placement keys, complete literal table outputs
 and derived native selectors. SH alignment comes from the actual offset mask
 and original decoding. No native v3 table/field identity or desired write is
 assumed. Original architectural memory access/exception/retirement is separate.
+
+## Actual reduced memory transfers
+
+[The transfer observable](Memory/ReducedMachineWordMemoryTransfers.lean) records
+original same-pre-state GPR/RAM/ROM reads, retained OLDREADs and actual writes,
+plus chronological histories/numerical effects. [Its short public root](../Trace/Families/ReducedMachine/WordMemoryTransfers.lean)
+derives these from exact NativeROM input construction, independent public shadow
+seeds/full original decoding/native acceptance, aligned tracked cells and code
+capacity. No local desired read/state/result or initial CSR premise. Retained
+LOAD/STORE virtual-memory/platform/privilege clauses and instruction execution
+remain separate; shadow values never become architectural ROM reads.

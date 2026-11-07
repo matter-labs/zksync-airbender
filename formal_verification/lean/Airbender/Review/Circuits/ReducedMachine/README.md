@@ -531,3 +531,13 @@ Sail states/code-byte frames/stateful replay. Only ROM-prefix LW shadow Sail
 transfers are filtered; SW memory OLDREAD/write remains. Original same-pre-state
 GPR/RAM effects/retained clauses/common memory execution remain next. [Ten tests](../../../../Tests/NativeReducedWordMemoryHistory.lean)
 are not full positive nonempty accepted native LW/SW.
+
+[Original same-pre-state LW/SW transfers](../../Trace/Families/ReducedMachine/WordMemoryTransfers.lean)
+now derive all retained native reads/OLDREADs, original GPR/RAM observations and
+final writes. Exact constructed ROM bytes/past frames supply architectural ROM
+reads independently of ignored shadow values. Original unmasked load-to-x0 writes
+retain their read; SW copies rs2 to actual RAM without dummy-rd masking. Numerical
+source/range/address/PC/result obligations are discharged internally. Retained
+LOAD/STORE access/privilege/exception clauses and normal/fetched/common memory
+execution remain next; [eight regressions](../../../../Tests/NativeReducedWordMemoryTransfers.lean)
+are not complete positive nonempty accepted native memory witnesses.

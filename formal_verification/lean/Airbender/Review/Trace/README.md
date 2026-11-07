@@ -447,3 +447,12 @@ separately from historical JSON. Terminal clocks count four ticks per native
 row; terminal machine/protocol soundness is still separate. Source word bounds,
 public decoding and original instruction execution remain open. Review the
 [native trace guide](Families/ReducedMachine/README.md) for precise scope.
+
+[Actual reduced LW/SW transfers](Families/ReducedMachine/WordMemoryTransfers.lean)
+now derive original same-pre-state GPR/RAM/ROM reads and final writes throughout
+projected initialized history. Actual readonly aliases/OLDREADs remain; exact
+constructed ROM bytes supply loads independently of matched shadow values.
+Original unmasked x0-load writes and unmasked SW memory writes retain their
+separate semantics. No expected per-row answer is supplied. Retained LOAD/STORE
+virtual-memory/platform/access/privilege clauses, normal/fetched/common memory
+execution and physical/global enforcement remain open.

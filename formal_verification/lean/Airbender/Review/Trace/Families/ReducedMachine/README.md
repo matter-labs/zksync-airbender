@@ -451,3 +451,16 @@ and original public construction. ALL shadow events/timestamps remain native-mat
 SW OLDREAD/unmasked write is retained. Code capacity describes public setup, not
 per-row desired windows/frames. Next actual GPR/RAM/ROM transfer and retained original
 LOAD/STORE execution; current common six-profile execution excludes memory.
+
+[Original memory transfers](WordMemoryTransfers.lean) now derive all retained
+reads/OLDREADs at ONE original pre-state and actual final writes, including
+aliases and RAM refreshes. Exact NativeROM input bytes plus past frames derive
+ROM reads, independently of native shadow values. Original unmasked load-to-x0
+writes discard only after reading memory; SW writes actual RAM from original rs2.
+Every local source/range/address/result/PC/state/order/replay obligation is derived
+from full public initialization/decoding/native acceptance. No CSR premise at this
+transfer boundary. [Eight regressions](../../../../../Tests/NativeReducedWordMemoryTransfers.lean)
+are conditional-native/original-accessor/complete-empty evidence, not full positive
+nonempty accepted memory witnesses. Retained LOAD/STORE clauses/configuration and
+normal/fetched/common memory execution remain next; common six-profile support
+still excludes LW/SW.

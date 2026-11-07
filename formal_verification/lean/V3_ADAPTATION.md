@@ -826,3 +826,25 @@ RAM-write and actual-native empty regressions have their separate stated scopes.
 Retained LOAD/STORE/configuration/normal/fetched/common memory execution and general
 Rust/public/physical/compiler/crypto/completeness remain open. No native finding,
 issue assumption, production fix, new axiom, dependency change or parity claim.
+
+## Actual reduced original word-memory transfers (7 November 2026)
+
+[Fresh projected ports](Airbender/Proofs/ReducedMachine/NativeWordMemoryProjectedPorts.lean)
+instantiate unchanged PURE projected_native_read/write with NEWactual reduced
+addresses/domains/readonly metadata. All kept reads and final write share one
+original pre-state, including aliases/RAM refresh/OLDREAD. [Original transfers](Airbender/Proofs/ReducedMachine/NativeWordMemoryTransfers.lean)
+reuse pure original word-write/read and x0 accessors after these bindings. Actual
+ROM reads follow exact constructed native bytes transported through actual past
+history, independently of ignored shadow values. Unmasked original load-to-x0
+writes preserve the read; SW retains unmasked memory writes. No old standalone
+compiled masks/columns/tables/acceptance or accepted positive fixture is transferred.
+
+[Initialized assembly](Airbender/Proofs/Trace/Families/ReducedMachine/WordMemoryTransfers.lean)
+reuses closed actual projected history/ranges/numerical proofs and derives every
+local obligation from public construction. Fifteen exact parente6d4942 origins
+record six new modules/tests. Eight regressions are conditional-native/original
+accessor/complete-empty evidence, not full positive NONEMPTY117-equation accepted
+LW/SW or retained instruction execution. Original LOAD/STORE virtual-memory/platform/
+privilege/configuration/exception clauses, normal/fetched/common memory integration
+and general Rust/public/physical/compiler/crypto/completeness remain open. No native
+finding, issue assumption, production fix, new axiom, dependency change or parity.

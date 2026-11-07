@@ -32,6 +32,46 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Original native LW/SW same-pre-state transfers (7 November 2026)
+
+[Fresh projected-port proofs](Airbender/Proofs/ReducedMachine/NativeWordMemoryProjectedPorts.lean)
+bind all retained actual reads and the final write to ONE original pre-state.
+Actual readonly GPR/RAM refreshes stutter before the destination write, preserving
+source/destination aliases and every retained OLDREAD. ROM-prefix load shadows
+are filtered only from Sail transfers; all native tokens/timestamps remain matched.
+
+[Original transfer proofs](Airbender/Proofs/ReducedMachine/NativeWordMemoryTransfers.lean)
+derive original rs1/rs2 observations, architectural RAM reads and writes, and ROM
+reads from exact constructed fixture bytes transported through real past history.
+The ignored shadow value is independent. The ORIGINAL unmasked load write uses
+Sail's x0 accessor to discard its result AFTER the architectural memory read.
+SW copies original rs2 to actual RAM; decoded dummy rd0 never masks this write.
+
+[The short public root](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryTransfers.lean)
+derives [all chronological transfers and numerical effects](Airbender/Review/Helpers/Memory/ReducedMachineWordMemoryTransfers.lean)
+from original full public setup on the exact NativeROM input constructor,
+independent-shadow initialization, exact fixedData acceptance/full decoding,
+aligned tracked cells and public code capacity. [Assembly](Airbender/Proofs/Trace/Families/ReducedMachine/WordMemoryTransfers.lean)
+discharges every source/range/address/PC/result/state/read/write/order/replay
+obligation internally. No desired local answer or arbitrary/native table identity
+is supplied; no initial CSR availability is needed at this transfer boundary.
+
+[Eight regressions](Tests/NativeReducedWordMemoryTransfers.lean) check aliased load
+OLDREAD/source and SW sources, rejection of a changing-store stutter, load-to-x0
+stutter through the unmasked original accessor, retained architectural load reads,
+ROM/shadow independence, and a complete EMPTY actual-native public transfer scope
+with shadow123 and no CSR premise. These conditional-native/original-accessor/empty
+checks are NOT full positive NONEMPTY117-equation/22-lookup accepted LW/SW witnesses.
+
+NEXT derive retained original LOAD/STORE virtual-memory/platform/access/privilege/
+configuration and successful normal/fetched execution from meaningful initial
+inputs and the actual initialized address origins/transfers. Then extend common
+mixed histories. Common six-profile support still EXCLUDES LW/SW. No local desired
+success/configuration/read/state/frame answer may bypass retained clauses. General
+Rust/public preprocessing/physical ROM/compiler/crypto/completeness and global
+protocol/init/teardown remain separate. FINDINGS unchanged; no native defect,
+issue assumption, production fix, new axiom or parity claim.
+
 ## Projected native LW/SW memory history and code frames (7 November 2026)
 
 [Fresh actual x0 preservation](Airbender/Proofs/Trace/Families/ReducedMachine/WordMemoryZeroRegister.lean)
@@ -79,11 +119,9 @@ without CSR or architectural byte reads. These are conditional-native/original
 Sail-group/empty checks, NOT full positive NONEMPTY117-equation/22-lookup accepted
 native LW/SW or retained instruction execution.
 
-NEXT bind actual projected port groups to original same-pre-state GPR/architectural
-RAM reads/writes and native ROM candidates; then retain original LOAD/STORE access/
-platform/privilege/configuration and normal/fetched execution before common mixed
-integration. Numerical native words plus projected cell history are not yet those
-instruction effects. Common six-profile support still EXCLUDES LW/SW. General Rust/
+The subsequent transfer milestone above binds these groups to original same-pre-state
+GPR/RAM/ROM reads and writes. Retained LOAD/STORE access/platform/privilege/configuration
+and normal/fetched execution remain separate before common mixed integration. Common six-profile support still EXCLUDES LW/SW. General Rust/
 public preprocessing/physical ROM/crypto/compiler/completeness and global protocol/
 initialization/teardown remain separate. No native defect, issue assumption, axiom,
 production fix or parity claim; FINDINGS remains unchanged.

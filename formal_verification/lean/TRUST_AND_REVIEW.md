@@ -3269,3 +3269,26 @@ establish complete positive NONEMPTY117-equation accepted LW/SW, original retain
 LOAD/STORE clauses/access/privilege/exception behavior, normal/fetched/common memory
 execution or physical/global protocol enforcement. Those remain explicit next
 connections. No native defect, issue assumption, fix, new axiom or parity claim.
+
+## Actual native original word-memory transfer boundary
+
+[The public transfer root](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryTransfers.lean)
+now derives original same-pre-state rs1/rs2/GPR/RAM observations and actual final
+writes through fresh actual mixed-port/domain bindings and unchanged PURE projected
+read/write lemmas. Retained readonly refreshes stutter, preserving aliases and
+OLDREADs. ROM loads derive original reads from exact NativeROM input construction
+and real past byte frames; ignored native shadow values stay independent and matched.
+Original unmasked load-to-x0 writes discard only after the architectural read. SW
+copies original rs2 to actual RAM without dummy-rd masking.
+
+Meaningful inputs are exact constructed native ROM bytes, full original public
+setup, independent-shadow public seed construction, exact fixedData acceptance,
+full decoding, tracked-cell alignment and code capacity. Every row range/source/
+address/result/PC/state/read/write/order/replay is derived. This transfer root
+needs no initial CSR-read premise. [Eight regressions](Tests/NativeReducedWordMemoryTransfers.lean)
+are conditional native/original accessor/empty checks, not full positive NONEMPTY
+117-equation accepted memory witnesses. Retained LOAD/STORE virtual-memory/platform/
+access/privilege/exception clauses, normal/fetched/common memory execution and
+physical/global protocol enforcement remain open. No supplied local success or
+configuration answer, table equivalence, native finding/issue assumption/new axiom
+or parity claim.

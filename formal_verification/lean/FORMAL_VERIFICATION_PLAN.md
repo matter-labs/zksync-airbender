@@ -190,8 +190,15 @@ Full combined row effects and execution remain pending. See the
    realization/chronological segments/final matching while every native shadow
    token remains matched. Architectural public cell domains and meaningful public
    code capacity derive EVERYROMbyte frame/stateful decoder replay; no supplied
-   code/read/write/state/frame answer. NEXT original same-pre-state GPR/RAM transfer
-   and actual ROM candidate binding, retained LOAD/STORE clauses/configuration and
+   code/read/write/state/frame answer. Fresh projected native port proofs now derive
+   ALL retained reads/OLDREADs and final write at ONE original pre-state, including
+   aliases and RAM refreshes. Actual ROM candidates bind to constructed bytes through
+   past projected history; ignored shadow values stay independent. Original unmasked
+   load-to-x0 writes discard only after the memory read; SW writes actual RAM from
+   original rs2, never dummy rd masking. The public transfer root discharges every
+   source/range/address/PC/result/state/order/replay obligation from exact NativeROM
+   input construction and full original public initialization/decoding. NEXT retained
+   LOAD/STORE virtual-memory/platform/access/privilege/configuration and successful
    normal/fetched execution. General Rust/public/physical fidelity stays separate.
    Common supported execution excludes
    LW/SW; no all-events-GPR frame reuse.
