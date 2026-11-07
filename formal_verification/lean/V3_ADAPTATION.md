@@ -672,3 +672,13 @@ table/acceptance transfer. [Eight tests](Tests/NativeReducedJumpRegisters.lean)
 include unchanged exact three-port/x0 mechanics, not complete positive native jumps.
 Retained clauses/actual incoming PC preparation/fetched/common jump execution are next.
 Ten exact parent0aaa origins record seven modules/tests; no native/data/dependency change.
+
+## Local retained native jump retirement (7 November 2026)
+
+[New assembly](Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean) applies the
+unchanged pure original retire_jump after actual regenerated native numerical/port
+bindings. Incoming architectural PC is derived from preparation, source reads precede
+aliased writes, and retirement projects to actual native after-state. Source bounds,
+alignment and original CSR/landing-pad configuration remain internal initialized-trace
+obligations; no public answer or whole/mixed jump execution claim. Six exact parentd80
+origins preserve native/Sail/data/dependency pins, with no split native identity transfer.

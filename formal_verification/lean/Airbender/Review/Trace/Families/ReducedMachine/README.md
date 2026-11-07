@@ -373,3 +373,9 @@ No initial CSR readability premise is used at this GPR boundary; actual PC contr
 preparation/retained clauses/normal/fetched/common integration stay separate.
 [Eight regressions](../../../../../Tests/NativeReducedJumpRegisters.lean) include
 unchanged imported group mechanics, not complete positive native jump acceptance.
+
+[Local retained jump execution](../../../../Proofs/ReducedMachine/NativeJumpExecution.lean)
+now binds actual native GPR/return/target words to original JAL/JALR, prepared architectural
+PC and normal retirement. Source range/alignment and local CSR/landing-pad reads remain
+internal obligations for initialized trace composition. No public initialized/fetched
+jump or common jump integration follows yet; no desired local answer is made public.

@@ -462,3 +462,8 @@ from initialization/native matching/full original decoding. No CSR-read premise
 is needed for GPR history; incoming PC preparation/retained clauses/fetched/common
 execution remain separate. [Tests](../../../../Tests/NativeReducedJumpRegisters.lean)
 include unchanged group mechanics, not full accepted native jump witnesses.
+
+[Retained jump-clause assembly](../../../Proofs/ReducedMachine/NativeJumpExecution.lean)
+now derives original normal retirement from actual native numerical/port bindings and
+prepared incoming PC. Its source/alignment/local CSR configuration obligations remain
+internal for initialized trace composition; public fetched/common jump support remains open.

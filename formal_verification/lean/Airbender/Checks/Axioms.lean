@@ -1,3 +1,4 @@
+import Airbender.Proofs.ReducedMachine.NativeJumpExecution
 import Airbender.Proofs.ReducedMachine.NativeJumpPorts
 import Airbender.Proofs.Trace.Families.ReducedMachine.JumpZeroRegister
 import Airbender.Proofs.Trace.Families.ReducedMachine.JumpCodeHistory
@@ -3397,3 +3398,6 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedJumpRegisters.discarded_state
 #print axioms Tests.NativeReducedJumpRegisters.initialized_nonzero_x0_rejected
 #print axioms Tests.NativeReducedJumpRegisters.positive_x0_group
+
+#print axioms Airbender.ReducedMachine.NativeJumpExecutionProofs.encoding
+#print axioms Airbender.ReducedMachine.NativeJumpExecutionProofs.local_row_execution

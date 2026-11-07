@@ -148,7 +148,10 @@ Full combined row effects and execution remain pending. See the
    one pre-state for source/readonly/old-destination aliases, masked write/x0
    preservation, chronological Sail states/final matching/code/misa/decoder replay.
    No initial CSR-read premise at this GPR-only boundary. Next bind original jump
-   operands/actual incoming PC preparation/retained clauses/fetched execution before common integration. Other combined
+   Local native jump execution now derives original source/architectural-PC observations,
+   retained JAL/JALR clauses and normal retirement at the actual native after-state.
+   INTERNAL source range/alignment/CSR obligations still need initialized trace discharge;
+   derive initial configuration transport, replay/order/PC chain/fetched execution before common integration. Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

@@ -3087,3 +3087,16 @@ remain unfinished. General Rust/JSON/compiler refinement and physical verifier/
 cryptographic enforcement remain separate. FINDINGS and its exact historical
 archive are unchanged, with zero confirmed native defects. Resource ceilings
 are unchanged, the original checkout is preserved and nothing is pushed.
+
+## Local retained jump-clause boundary
+
+[NativeJumpExecution](Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean) binds
+actual native words/GPR history/prepared incoming PC to retained JAL/JALR and original
+normal retirement. Its source bound/alignment/local misa read and conditional JALR
+Machine/readable mseccfg/MLPE=0 obligations remain INTERNAL. No per-row CSR value,
+range/result/state answer is public. Initialized trace composition must derive all
+local observations from explicit initial reference configuration and real past history.
+No initialized fetched/common jump support or native defect/issue assumption is claimed.
+Only unchanged pure original retirement/model definitions cross from the old family;
+old native masks/columns/tables/acceptance do not. Physical/cryptographic/completeness
+boundaries and lack of complete positive nonempty native jump fixtures remain separate.

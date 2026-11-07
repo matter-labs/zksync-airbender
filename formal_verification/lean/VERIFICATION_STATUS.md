@@ -32,6 +32,40 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Local native jumps execute retained Sail clauses (7 November 2026)
+
+[NativeJumpExecution](Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean)
+recovers retained original JAL/JALR constructors from the new public projection and
+instantiates unchanged pure retire_jump only after new actual native return/target/
+rd-x0/GPR bindings. It derives get_arch_pc from actual incoming-PC preparation via
+retired_state_history, uses original source reads before aliased writes, and projects
+normal_base_next_pc/retained clause/tick_pc retirement to the actual native after-state.
+JAL x0 data stutters still jump; JALR uses the checked low-bit-cleared target.
+
+This is an INTERNAL local row theorem. Its actual source bound, incoming alignment,
+misa readability and conditional JALR Machine/readable mseccfg with MLPE=0 remain
+obligations for initialized trace composition. No such local answer is added to a
+public interface. The CSR boundary follows retained original Sail landing-pad/jump
+behavior, not a native defect/issue assumption. Next derive every local read/configuration
+from public initial configuration and actual past history, construct original replay/
+row order/PC chain, then expose initialized fetched execution and common integration.
+Neither public initialized jump execution nor mixed jump support is claimed here.
+Six exact parentd80 origins record the single assembly module, using only pure old
+reference/retirement definitions and fresh actual native bindings. No old split native
+mask/column/table/acceptance identity, production/Sail/data/dependency change, finding,
+new axiom, full-machine coverage or parity. No complete positive native jump fixture.
+Final gates pass3090explicit standard-only axiom roots,194public Review roots,
+4guide names,3104links/anchors/context-trace separation. Full Review549.37MiB
+footprint/3119.75MiB resident/14.65s; independent exact provenance19.44/35.50MiB/7.87s
+passes189v3-origin/1120backport-origin identities,80byte-identical modules,8circuit
+artifacts,66native sources,23setup,4exporters and unchanged dependencies. Local
+retirement489.78/2895.27MiB/6.60s,Axioms542.95/3092.91/4.59. Explicit zero/nonzero
+register cases corrected canonical roundtrip/dependent-decider rewrites; every
+failed/successful guard reports no survivors. No memory/time/heartbeat/recursion
+ceiling hit/raised. Shared lock,Lean-j1-M3072,3072MiB aggregate footprint/4096MiB
+resident,finite180second module/120second audit budgets remain unchanged. Guard is
+sampled watchdog plus Lean allocation cap,not OS hard physical-memory enforcement.
+
 ## Original native jump GPR/cell history (7 November 2026)
 
 [Fresh jump port bindings](Airbender/Proofs/ReducedMachine/NativeJumpPorts.lean)

@@ -9761,6 +9761,48 @@
       "backport_reuse_revision": "0aaae4a6c53817c8b1db6a02edf9647f9f446029",
       "backport_reuse_path": "Tests/NativeReducedRegisters.lean",
       "backport_reuse_sha256": "fa608af9b02fe9e3a6d0c4c7ec69f8e1ae6089d83eeb63efcf685863cd14a1ac"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean",
+      "change": "Recover retained original JAL/JALR constructors from new native public projection and instantiate unchanged PURE original retire_jump/Jump.Input only after actual regenerated native return/target/rd-x0 and all-port GPR bindings. Derive architectural PC read from retired-state preparation, preserve source/destination aliases, and project original normal retirement to actual native after-state. Source bound/alignment/local CSR readability and JALR Machine/MLPE-disabled configuration remain INTERNAL for future initialized trace discharge; no new public desired-answer premise, initialized jump execution or mixed integration claimed. Old split native masks/columns/tables/acceptance do not transfer. No native/Sail/data/dependency changes, issue assumption, defect or parity claim.",
+      "backport_reuse_revision": "d80a4a013f2a3e156b02734741818bc8d150d95e",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/JumpExecution.lean",
+      "backport_reuse_sha256": "25d556e0245bb84224c366002c0fbeb56fbd231287b5e802110071e9b13b1eb0"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean",
+      "change": "Recover retained original JAL/JALR constructors from new native public projection and instantiate unchanged PURE original retire_jump/Jump.Input only after actual regenerated native return/target/rd-x0 and all-port GPR bindings. Derive architectural PC read from retired-state preparation, preserve source/destination aliases, and project original normal retirement to actual native after-state. Source bound/alignment/local CSR readability and JALR Machine/MLPE-disabled configuration remain INTERNAL for future initialized trace discharge; no new public desired-answer premise, initialized jump execution or mixed integration claimed. Old split native masks/columns/tables/acceptance do not transfer. No native/Sail/data/dependency changes, issue assumption, defect or parity claim.",
+      "backport_reuse_revision": "d80a4a013f2a3e156b02734741818bc8d150d95e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBranchExecution.lean",
+      "backport_reuse_sha256": "cb735de94d464354d84a2ccc8b41cac3973f012ad37c5e789f0a244f53bf78dd"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean",
+      "change": "Recover retained original JAL/JALR constructors from new native public projection and instantiate unchanged PURE original retire_jump/Jump.Input only after actual regenerated native return/target/rd-x0 and all-port GPR bindings. Derive architectural PC read from retired-state preparation, preserve source/destination aliases, and project original normal retirement to actual native after-state. Source bound/alignment/local CSR readability and JALR Machine/MLPE-disabled configuration remain INTERNAL for future initialized trace discharge; no new public desired-answer premise, initialized jump execution or mixed integration claimed. Old split native masks/columns/tables/acceptance do not transfer. No native/Sail/data/dependency changes, issue assumption, defect or parity claim.",
+      "backport_reuse_revision": "d80a4a013f2a3e156b02734741818bc8d150d95e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpDecodedResult.lean",
+      "backport_reuse_sha256": "f5847b9a1cc07ab867f2ca3ddec35b7dab4f95c3b94a1590cc3ff5d2da13d153"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean",
+      "change": "Recover retained original JAL/JALR constructors from new native public projection and instantiate unchanged PURE original retire_jump/Jump.Input only after actual regenerated native return/target/rd-x0 and all-port GPR bindings. Derive architectural PC read from retired-state preparation, preserve source/destination aliases, and project original normal retirement to actual native after-state. Source bound/alignment/local CSR readability and JALR Machine/MLPE-disabled configuration remain INTERNAL for future initialized trace discharge; no new public desired-answer premise, initialized jump execution or mixed integration claimed. Old split native masks/columns/tables/acceptance do not transfer. No native/Sail/data/dependency changes, issue assumption, defect or parity claim.",
+      "backport_reuse_revision": "d80a4a013f2a3e156b02734741818bc8d150d95e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpPorts.lean",
+      "backport_reuse_sha256": "a3a275c25348d37696d67274f3babe6733cb99291805ceea090a9541eb802917"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean",
+      "change": "Recover retained original JAL/JALR constructors from new native public projection and instantiate unchanged PURE original retire_jump/Jump.Input only after actual regenerated native return/target/rd-x0 and all-port GPR bindings. Derive architectural PC read from retired-state preparation, preserve source/destination aliases, and project original normal retirement to actual native after-state. Source bound/alignment/local CSR readability and JALR Machine/MLPE-disabled configuration remain INTERNAL for future initialized trace discharge; no new public desired-answer premise, initialized jump execution or mixed integration claimed. Old split native masks/columns/tables/acceptance do not transfer. No native/Sail/data/dependency changes, issue assumption, defect or parity claim.",
+      "backport_reuse_revision": "d80a4a013f2a3e156b02734741818bc8d150d95e",
+      "backport_reuse_path": "Airbender/Proofs/Sail/JumpRetirement.lean",
+      "backport_reuse_sha256": "e371d095249267c70c185f57acd03cdd3e46cc46d24956edfbf8f574ebcadd34"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean",
+      "change": "Recover retained original JAL/JALR constructors from new native public projection and instantiate unchanged PURE original retire_jump/Jump.Input only after actual regenerated native return/target/rd-x0 and all-port GPR bindings. Derive architectural PC read from retired-state preparation, preserve source/destination aliases, and project original normal retirement to actual native after-state. Source bound/alignment/local CSR readability and JALR Machine/MLPE-disabled configuration remain INTERNAL for future initialized trace discharge; no new public desired-answer premise, initialized jump execution or mixed integration claimed. Old split native masks/columns/tables/acceptance do not transfer. No native/Sail/data/dependency changes, issue assumption, defect or parity claim.",
+      "backport_reuse_revision": "d80a4a013f2a3e156b02734741818bc8d150d95e",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/JumpModel.lean",
+      "backport_reuse_sha256": "e203b4a8e4807d4bb52c5451ff3e1ae33540324fd620017b3224c13b9ac48ad9"
     }
   ],
   "setup_artifacts": [
