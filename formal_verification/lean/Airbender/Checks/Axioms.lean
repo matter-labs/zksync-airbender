@@ -1,3 +1,9 @@
+import Airbender.Proofs.ReducedMachine.NativeConditionalEquality
+import Airbender.Proofs.ReducedMachine.NativeBranchSelectors
+import Airbender.Proofs.ReducedMachine.NativeBranchFields
+import Airbender.Review.Circuits.ReducedMachine.Branch
+import Airbender.Review.Circuits.ReducedMachine.BranchTheorems
+import Tests.NativeReducedBranchRouting
 import Airbender.Proofs.ReducedMachine.NativeComparisonPorts
 import Airbender.Proofs.ReducedMachine.NativeComparisonClauseReference
 import Airbender.Proofs.ReducedMachine.NativeComparisonClause
@@ -3137,3 +3143,22 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedComparisonExecution.corrupted_tag_rejected
 #print axioms Tests.NativeReducedComparisonExecution.discarded_native_write
 #print axioms Tests.NativeReducedSupportedDecoder.original_comparison_slot
+#print axioms Airbender.ReducedMachine.NativeConditionalEqualityProofs.remainder_zero
+#print axioms Airbender.ReducedMachine.NativeBranchSelectorProofs.flags
+#print axioms Airbender.ReducedMachine.NativeBranchFieldProofs.source
+#print axioms Airbender.ReducedMachine.NativeBranchFieldProofs.source_port
+#print axioms Airbender.ReducedMachine.NativeBranchFieldProofs.dummy_port
+#print axioms Airbender.ReducedMachine.NativeBranchFieldProofs.query_fields
+#print axioms Airbender.ReducedMachine.NativeBranchFieldProofs.limb_equations
+#print axioms Airbender.ReducedMachine.NativeBranchFieldProofs.pc_selection
+#print axioms Airbender.ReducedMachine.NativeBranchFieldProofs.query
+#print axioms Airbender.ReducedMachine.NativeBranchFieldProofs.equality_flag
+#print axioms Airbender.ReducedMachine.NativeBranchFieldProofs.routing
+#print axioms Airbender.ReducedMachine.Native.branch_routing
+#print axioms Tests.NativeReducedBranchRouting.exact_mask
+#print axioms Tests.NativeReducedBranchRouting.update_flag_rejected
+#print axioms Tests.NativeReducedBranchRouting.ram_source_rejected
+#print axioms Tests.NativeReducedBranchRouting.dummy_write_rejected
+#print axioms Tests.NativeReducedBranchRouting.zero_flag_rejected
+#print axioms Tests.NativeReducedBranchRouting.actual_zero_slices
+#print axioms Tests.NativeReducedBranchRouting.independent_zero_values

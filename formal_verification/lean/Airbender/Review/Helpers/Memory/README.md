@@ -232,3 +232,9 @@ rs2/x0. [Common original execution](../../Trace/Families/ReducedMachine/Supporte
 constructs every state/order and discharges both source bounds from initialized
 native history, including comparison rows. These observations are conclusions,
 not public row answers. Earlier numerical-only comparison scope is superseded.
+
+[Native branch fields](../../../Proofs/ReducedMachine/NativeBranchFields.lean)
+now derive readonly register-space source routing and the present third port at
+x0 with zero write. Its old read still participates in matching. Original branch
+GPR binding, initialized preservation/history and clause execution remain open;
+local address fields do not supply those observations.

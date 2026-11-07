@@ -9001,6 +9001,48 @@
       "backport_reuse_revision": "962715c8c9f28622baabf57a762adafd4c4b45ee",
       "backport_reuse_path": "Tests/NativeReducedSupportedDecoder.lean",
       "backport_reuse_sha256": "8187da3f11373c42791468d17cc9b613f2b846de6ef0c400ee3537178b5d8aaa"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeConditionalEquality.lean",
+      "change": "Adapt exact native conditional/comparison selector and field proof patterns to independently derived branch mask70. Prove actual readonly operands, present zero-write x0 dummy port, resolver/cleanup query fields and conditional PC field routing. New zero-test proof uses actual78..81 equations and scalar bounds; no source bound/zero answer/table-equivalence premise. Original branch condition, target, public decoding and execution remain separate.",
+      "backport_reuse_revision": "c6a992e0170013928cab5d9fcee391dec4bcc9d6",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeComparisonResult.lean",
+      "backport_reuse_sha256": "bb52a8c8f546a3078aeb6c3ecac9968301063003f48c351a3118b3ff88838cc7"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchSelectors.lean",
+      "change": "Adapt exact native conditional/comparison selector and field proof patterns to independently derived branch mask70. Prove actual readonly operands, present zero-write x0 dummy port, resolver/cleanup query fields and conditional PC field routing. New zero-test proof uses actual78..81 equations and scalar bounds; no source bound/zero answer/table-equivalence premise. Original branch condition, target, public decoding and execution remain separate.",
+      "backport_reuse_revision": "c6a992e0170013928cab5d9fcee391dec4bcc9d6",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeComparisonSelectors.lean",
+      "backport_reuse_sha256": "44050fc400bd03aa3bc6c2ede8310f98334b04029a867a955bd4b2fc2f5fa8e0"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchFields.lean",
+      "change": "Adapt exact native conditional/comparison selector and field proof patterns to independently derived branch mask70. Prove actual readonly operands, present zero-write x0 dummy port, resolver/cleanup query fields and conditional PC field routing. New zero-test proof uses actual78..81 equations and scalar bounds; no source bound/zero answer/table-equivalence premise. Original branch condition, target, public decoding and execution remain separate.",
+      "backport_reuse_revision": "c6a992e0170013928cab5d9fcee391dec4bcc9d6",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeComparisonFields.lean",
+      "backport_reuse_sha256": "af58292dd84546481f83bd169d5eb678053516829651b06fb4d7307a8ffa1fa7"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Branch.lean",
+      "change": "Adapt exact native conditional/comparison selector and field proof patterns to independently derived branch mask70. Prove actual readonly operands, present zero-write x0 dummy port, resolver/cleanup query fields and conditional PC field routing. New zero-test proof uses actual78..81 equations and scalar bounds; no source bound/zero answer/table-equivalence premise. Original branch condition, target, public decoding and execution remain separate.",
+      "backport_reuse_revision": "c6a992e0170013928cab5d9fcee391dec4bcc9d6",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Comparison.lean",
+      "backport_reuse_sha256": "e919c43c2dbdbf3f99edef4160f11309901a6d14d0be0350fed61ed52beefa3f"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/BranchTheorems.lean",
+      "change": "Adapt exact native conditional/comparison selector and field proof patterns to independently derived branch mask70. Prove actual readonly operands, present zero-write x0 dummy port, resolver/cleanup query fields and conditional PC field routing. New zero-test proof uses actual78..81 equations and scalar bounds; no source bound/zero answer/table-equivalence premise. Original branch condition, target, public decoding and execution remain separate.",
+      "backport_reuse_revision": "c6a992e0170013928cab5d9fcee391dec4bcc9d6",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/ComparisonTheorems.lean",
+      "backport_reuse_sha256": "112fdd8f637a1185d020f085919e06375aa4af6bed05c53eb28ad74578af4675"
+    },
+    {
+      "path": "Tests/NativeReducedBranchRouting.lean",
+      "change": "Adapt exact native conditional/comparison selector and field proof patterns to independently derived branch mask70. Prove actual readonly operands, present zero-write x0 dummy port, resolver/cleanup query fields and conditional PC field routing. New zero-test proof uses actual78..81 equations and scalar bounds; no source bound/zero answer/table-equivalence premise. Original branch condition, target, public decoding and execution remain separate.",
+      "backport_reuse_revision": "c6a992e0170013928cab5d9fcee391dec4bcc9d6",
+      "backport_reuse_path": "Tests/NativeReducedPC.lean",
+      "backport_reuse_sha256": "27b1afb2d4c45671695f7f9a5ad37b30ca5de37fced4cf0f9a8ab2c3d962a1e3"
     }
   ],
   "setup_artifacts": [

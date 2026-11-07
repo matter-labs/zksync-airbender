@@ -278,3 +278,8 @@ derives the original instruction and exact native query for each admitted profil
 [Common fetched execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
 uses that recovered evidence across interleaved rows. This supersedes the earlier
 comparison-only scope; native export/ROM/preprocessing/physical fidelity remains separate.
+
+[Native branch mask70 selector recovery](../../../Proofs/ReducedMachine/NativeBranchSelectors.lean)
+is now checked locally from actual Boolean assertions and packed112. Original
+branch public byte/stateful projection and complete sparse membership recovery
+remain open; branches are not yet admitted by the common supported projection.

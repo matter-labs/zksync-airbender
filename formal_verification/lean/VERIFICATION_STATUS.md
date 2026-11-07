@@ -32,6 +32,51 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Native branch selector/routing foundation (7 November 2026)
+
+[Actual branch model](Airbender/Review/Circuits/ReducedMachine/Branch.lean) retains
+mask70: rs2-use, branch and CONDITIONAL_COMMON_KEY bits. [Selector proofs](Airbender/Proofs/ReducedMachine/NativeBranchSelectors.lean)
+derive every one of eighteen bits from native Boolean assertions and packed112.
+[Actual fields](Airbender/Proofs/ReducedMachine/NativeBranchFields.lean) derive
+selected readonly rs2 operands, actual source address/register-space, shared
+subtraction equations, cleanup17/resolver22 query fields, and final-PC selection
+between actual conditional target69/70 and default49/50. The third native port
+remains present at register x0 with zero write; its old read still participates
+in matching. No original register/condition/target answer is inferred from these
+local fields. [One short routing root](Airbender/Review/Circuits/ReducedMachine/BranchTheorems.lean)
+keeps the decoded native mask explicit and the modeled setup generic.
+
+[Shared zero-test proof](Airbender/Proofs/ReducedMachine/NativeConditionalEquality.lean)
+uses actual assertions78..81 and scalar range checks to derive
+w68=1 exactly when both actual subtraction remainder limbs61/62 are zero, after
+the actual conditional major flag is derived. It needs no source-word bound,
+supplied zero flag, expected source equality or table identity. This is remainder
+zero semantics; its connection to original branch operand equality is still open.
+The already certified complete128-row native resolver is unchanged and not replayed.
+
+[Seven regressions](Tests/NativeReducedBranchRouting.lean) check the exact mask/bit
+list, update-rd and RAM-source rejection, actual zero dummy write, corrupt equality
+flag rejection and positive zero/nonzero five-assertion native zero-test slices.
+The slice checks Boolean21 and assertions78..81 only, not full117-equation native
+acceptance, original public decoding, branch condition/target or execution.
+Original branch conditions, target arithmetic/alignment, public fields/GPR/Sail
+clauses and initialized execution remain next. The common public fetched theorem
+still supports shifts/arithmetic/bitwise/comparisons only; branches are excluded.
+Native conditional.rs was already pinned unchanged. No production/Sail/imported/
+exported/literal/public fixed configuration/dependency change, native defect,
+issue-handling assumption, full-machine coverage or parity claim.
+
+All affected bounded modules and seven regressions pass. Final gates check 2,917
+explicit standard-only axiom roots, 182 public Review roots, four guide names,
+2,913 local links/anchors and layer separation. Full Review used 545.98 MiB
+footprint/3,110.70 MiB resident in 14.80 s. Independent provenance used 19.08/
+35.17 MiB in 7.52 s, checking 189 v3-origin/1,012 backport-origin identities,
+80 byte-identical modules, eight circuit artifacts, 65 native sources, 23 setup
+artifacts, four exporters and unchanged dependencies. Every worker terminated
+under unchanged 3,072 MiB footprint/4,096 MiB resident limits, Lean -j1 -M3072
+and finite budgets. No resource/proof ceiling was hit or raised. Prior importer/
+CLI/export controls retain unchanged inputs; FINDINGS remains unchanged.
+
 ## Native comparisons in initialized original execution (7 November 2026)
 
 [Actual port proofs](Airbender/Proofs/ReducedMachine/NativeComparisonPorts.lean)

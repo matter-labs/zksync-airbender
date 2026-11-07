@@ -105,8 +105,12 @@ Full combined row effects and execution remain pending. See the
    includes comparisons through derived profile/query transport, write/x0/address/
    PC rules and both actual readonly bounds. All states/order/code/misa/replay and
    terminal observations follow from public initialization and exact fixedData
-   acceptance. Next connect other ordinary native profiles, beginning with actual
-   conditional branch semantics and operation-specific PC effects. Other combined
+   acceptance. Native branch mask70/all18flags, actual readonly operands and
+   present x0 dummy port, subtraction/lookup routing and conditional PC field
+   selection now follow from accepted native constraints. Shared actual zero-test
+   equations78..81 plus scalar checks derive remainder-zero semantics without
+   source bounds. Original branch condition/target meaning, public decoding and
+   execution are next; branches are not yet in common support. Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

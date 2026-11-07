@@ -370,3 +370,13 @@ acceptance. This supersedes the preceding numerical-only comparison snapshot.
 [Tests](../../../../Tests/NativeReducedComparisonExecution.lean) are original Sail/
 conditional native checks, not new full nonempty117-equation native witnesses.
 Other ordinary operations and native public/physical/protocol boundaries remain open.
+
+## Native branch routing foundation
+
+[Local branch routing](BranchTheorems.lean) derives actual mask70 selector bits,
+readonly rs2/register-space, the present x0 zero-write third port, conditional
+lookup fields and target/default PC field selection. [Shared equality-flag proof](../../../Proofs/ReducedMachine/NativeConditionalEquality.lean)
+uses actual zero-test polynomials/scalar bounds, without source bounds or zero
+answers. Original branch condition/target/public decoding/GPR/Sail execution and
+common support remain open. [Tests](../../../../Tests/NativeReducedBranchRouting.lean)
+include only five-assertion positive slices, not full native branch acceptance.

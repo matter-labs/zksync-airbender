@@ -515,3 +515,22 @@ in [provenance](artifacts/provenance.json). Earlier numerical-only comparison sc
 is superseded here. Other ordinary/protocol/setup/terminal/init/completeness and
 original interrupt/exception boundaries remain open. No production/Sail/native/
 data/dependency change, defect, issue assumption or parity claim.
+
+## Native branch local routing foundation (7 November 2026)
+
+[Actual branch mask70](Airbender/Review/Circuits/ReducedMachine/Branch.lean) and
+[all18native flags](Airbender/Proofs/ReducedMachine/NativeBranchSelectors.lean) now
+justify [actual readonly/dummy/query/PC fields](Airbender/Proofs/ReducedMachine/NativeBranchFields.lean).
+[Shared remainder-zero semantics](Airbender/Proofs/ReducedMachine/NativeConditionalEquality.lean)
+follows from actual78..81 and scalar checks without source bounds/zero answers.
+[One short local root](Airbender/Review/Circuits/ReducedMachine/BranchTheorems.lean)
+retains the decoded mask and explicit generic modeled setup. Complete resolver128
+rows remain unchanged. No old split mask/constraint/table identity transfers.
+
+[Regressions](Tests/NativeReducedBranchRouting.lean) include exact five-assertion
+zero/nonzero slices; these are not complete accepted117-equation branches.
+Original public branch decoding, conditions/targets/alignment/GPR/Sail execution
+and common integration remain open. Current common support remains shifts/
+arithmetic/bitwise/comparisons. Six exact parentc6a992 template origins record
+this foundation; native/Sail/data/dependencies and physical/trust boundaries are
+unchanged. No defect, issue assumption, production fix or parity claim.

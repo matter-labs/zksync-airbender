@@ -327,6 +327,25 @@ fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
 terminal/init boundaries remain open. No native defect or issue-handling assumption
 is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
 
+## Native branch local foundation boundary
+
+[Branch routing](Airbender/Review/Circuits/ReducedMachine/BranchTheorems.lean) takes
+accepted actual native constraints and explicit mask70, deriving all selector/
+operand/address/dummy-write/query/conditional-PC field connections. Its generic
+modeled setup is explicit; no numerical table semantics or arbitrary/native table
+equivalence is assumed. The present third x0 port retains its old read in matching.
+[Shared native zero semantics](Airbender/Proofs/ReducedMachine/NativeConditionalEquality.lean)
+derives the equality flag from actual bounded remainder limbs and native78..81,
+with the operation's major flag discharged by branch selectors. This does not yet
+identify an original branch condition or target. [Tests](Tests/NativeReducedBranchRouting.lean)
+include exact five-assertion zero/nonzero slices, not full accepted native branches.
+
+Branches are not added to common supported execution. Original public decoding,
+operand equality/order meaning, target arithmetic/alignment, GPR/clause/PC effects
+and initialized branch execution remain open, alongside other ordinary/protocol/
+setup/terminal/init/completeness boundaries. No source/range/condition/result/state
+answer, native fix or finding is introduced.
+
 ## Native comparison original execution boundary
 
 [New native GPR transport](Airbender/Proofs/ReducedMachine/NativeComparisonPorts.lean),

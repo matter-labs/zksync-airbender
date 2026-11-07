@@ -264,3 +264,13 @@ cover ordinary/x0/sign/negative-immediate/retirement/wrap; [common decoder tests
 add original public SLTIU evidence. These are not complete positive nonempty native
 comparison/mixed witnesses. Other ordinary operations, native export/ROM/physical
 setup, worker/protocol/padding/terminal/init and completeness remain open.
+
+## Branch local prerequisite
+
+[Native branch routing](../../../Circuits/ReducedMachine/BranchTheorems.lean)
+derives actual mask70/all18bits, readonly and present x0 dummy ports, conditional
+queries/PC field selection and remainder-zero semantics. Original branch public
+decoding, condition/target arithmetic/alignment/GPR/Sail effects and initialized
+execution remain open. Current common supported execution still covers only
+shifts/arithmetic/bitwise/comparisons. [Five-assertion positive slices](../../../../../Tests/NativeReducedBranchRouting.lean)
+are not full117-equation branch acceptance or initialized execution witnesses.
