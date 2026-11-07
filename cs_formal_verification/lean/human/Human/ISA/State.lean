@@ -3,7 +3,19 @@
 Below `ROM_END` there are two different things. ROM proper: the immutable setup image; instruction fetch and every
 LOAD below `ROM_END` read it, and nothing writes it (a STORE there has no next state). Shadow RAM: the RAM cells at
 those same low addresses; only delegations (precompiles) reach them, and what they hold never changes what a LOAD
-returns. So the state has `rom` (the image) and `mem` (RAM at every address, the shadow region included). -/
+returns. So the state has `rom` (the image) and `mem` (RAM at every address, the shadow region included).
+
+Airbender's starting memory: all of RAM is 0, THE SHADOW RAM BELOW `ROM_END` INCLUDED; the ROM image (`rom`) holds the
+program. In Airbender the initial RAM values enter the memory argument only through the initialisation circuits (the
+standalone inits-and-teardowns circuit and UnifiedReduced's inline sets), whose `Init` tokens carry no value (address
+from setup, timestamp 0, value 0). The claims do not assume it: for the tracked RAM it is derived from those circuits,
+`Airbender.Trace.BootRamZeroClaim` (`Human/Trace/RVSoundness.lean`) and `Airbender.UnifiedReduced.BootRamZeroClaim`
+(`Human/Trace/UnifiedReduced/RVTheorems.lean`): every tracked RAM cell of the starting state reads 0 when the trace's
+RAM seeds are those circuits' `Init` tokens under the verifier's top-bits check. Residual items, not derived from a
+circuit: the register seeds (the chunk's public state, zero for the first chunk); RAM coverage (only the cells of
+initialised windows are tracked, so only they are reachable); cross-chunk clock chaining (that no other circuit writes
+at timestamp 0: delegation writes are at invocation + 2; CPU rows write at their start clock, which follows the clock
+chain from 4). -/
 
 namespace RV
 
@@ -43,18 +55,6 @@ def loadView (s : State) (addr : Word) : BitVec 8 := if addr.toNat < ROM_END the
 /-- The memory a delegation call reads and writes: RAM at every address, INCLUDING READ-WRITE ACCESS TO THE SHADOW
 RAM BELOW `ROM_END` (RAM cells that no LOAD or fetch reads; the ROM image `rom` is never touched). -/
 def delegationRAM (s : State) : Word → BitVec 8 := s.mem
-/-- Airbender's starting memory: all of RAM is 0, THE SHADOW RAM BELOW `ROM_END` INCLUDED; the ROM image (`rom`)
-holds the program. In Airbender the initial RAM values enter the memory argument only through the initialisation
-circuits (the standalone inits-and-teardowns circuit and UnifiedReduced's init part), whose `Init` tokens carry no
-value (address from setup, timestamp 0, value 0). For the six-family pooled claims the tracked part of this is derived
-from that circuit, not assumed: `Airbender.Trace.BootRamZeroClaim` (`Human/Trace/RVSoundness.lean`) proves that every
-tracked RAM cell of the starting state reads 0 when the trace's RAM seeds are the inits/teardowns circuit's `Init`
-tokens under the verifier's top-bits check. Residual items, not derived from a circuit: the register seeds (the chunk's
-public state, zero for the first chunk); RAM coverage (only the cells of initialised windows are tracked, so only they
-are reachable); cross-chunk clock chaining (that no other circuit writes at timestamp 0: delegation writes are at
-invocation + 2; CPU rows write at their start clock, which follows the clock chain from 4). Claims that still state
-this as an initial-state condition: UnifiedReduced's (`RVInitialProfile.ram`). -/
-def RamStartsZero (s : State) : Prop := ∀ addr, s.mem addr = 0
 /-- Jump to `target`; no next state unless it is 4-byte aligned (no compressed instructions). -/
 def jumpAligned (s : State) (target : Word) : Option State :=
   if target.toNat % 4 = 0 then some (s.setPC target) else none

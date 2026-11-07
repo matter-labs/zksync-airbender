@@ -21,8 +21,8 @@ def RVPooledNativeSoundnessClaim : Prop :=
   ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} (inputs : RVPooledBootInputs trace initial cells program inits) (accepted : Accepted trace) (decoded : RVPooledDecoded trace program),
     RVRealizes trace initial cells
 
-/-- How `RV.State.RamStartsZero` is justified by the inits/teardowns circuit: under the boot inputs, every tracked RAM
-    cell of the starting state reads 0, ROM shadow below 4 MiB included. It follows from `image` and `seeds` and the
+/-- How Airbender's zero starting RAM (`Human/ISA/State.lean`) is justified by the inits/teardowns circuit: under the
+    boot inputs, every tracked RAM cell of the starting state reads 0, ROM shadow below 4 MiB included. It follows from `image` and `seeds` and the
     inits/teardowns claim that the `Init` tokens of checked top bits are the zero boot image of their windows
     (`InitsTeardowns.Claims.bootImage`). Residual items, not derived from a circuit: the register seeds (the chunk's
     public state, zero for the first chunk), RAM coverage (only the cells of initialised windows are tracked, so only

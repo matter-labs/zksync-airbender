@@ -33,6 +33,8 @@ import Human.Trace.Families.SubwordMemory.RVTheorems
 import Human.Trace.Soundness
 import Human.Trace.RVSoundness
 import Human.Trace.ZeroTimestamp
+import Human.Trace.WritesRangeChecked
+import Human.Trace.TeardownBounds
 import Human.Trace.UnifiedReduced.Theorems
 import Human.Trace.UnifiedReduced.RVTheorems
 import Human.Trace.Workers.Bigint.Theorems

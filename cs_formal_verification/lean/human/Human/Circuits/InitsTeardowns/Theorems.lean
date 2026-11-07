@@ -73,11 +73,28 @@ def StandaloneClaim : Prop :=
       Cell.ram address ∈ windowCells importedLayout (List.range maxTopBit)
 
 /-- The unified reduced machine's inline sets (two sets of `2 ^ 23` rows, windows of `2 ^ 25` bytes):
-    the claims, and the windows of top bits `0, …, 63` cover every aligned RAM word below `2 ^ 31`
-    (the verifier's bound 64 is that of the standalone circuit's `2 ^ 26`-byte windows). -/
+    the claims, and the windows of top bits `0, …, 63` cover every aligned RAM word below `2 ^ 31`.
+    Bound only, recorded: the verifier's `MAX_TOP_BIT = 1 << (32 - 16 - ADDRESS_HIGH_BITS_SHIFT)` uses
+    `ADDRESS_HIGH_BITS_SHIFT = 10` (`unified_circuit_statement.rs:114-115`), the shift of the standalone
+    circuit's `2 ^ 26`-byte windows, while the unified sets shift the top bits by 9 (`topShift`), so the
+    unified machine initialises only addresses below `2 ^ 31`. Our spec allows RAM up to `2 ^ 32`; cells at
+    or above `2 ^ 31` are then never initialised, so not tracked. -/
 def UnifiedClaim : Prop :=
   Claims unifiedLayout ∧
     ∀ address : BitVec 32, (Cell.ram address).Aligned → address.toNat < 2 ^ 31 →
       Cell.ram address ∈ windowCells unifiedLayout (List.range maxTopBit)
+
+/-- Open item `MemoryArgumentReadsBounded`: every memory value read, teardowns included, is a value some
+    write produced; all writes are range-checked (see `WritesRangeCheckedClaim`,
+    `Human/Trace/WritesRangeChecked.lean`); the cross-circuit memory-argument protocol spec that turns this
+    into bounded reads is not formalised yet: this is an explicit premise / open item.
+
+    Stated for the teardown reads of `instances`, whose value and timestamp columns the circuit does not
+    range-check: each carries the value of an `Init` tuple of `instances` or of a token of `writes` (the write
+    tokens of the circuit rows that share the memory argument with them). -/
+def MemoryArgumentReadsBounded {p : Nat} {layout : Layout} (instances : List (Witness p layout))
+    (writes : List (MemoryToken p)) : Prop :=
+  ∀ w ∈ instances, ∀ token ∈ w.teardownTokens,
+    ∃ write ∈ instances.flatMap Witness.initTokens ++ writes, write.value = token.value
 
 end Airbender.InitsTeardowns

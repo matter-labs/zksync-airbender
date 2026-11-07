@@ -10,8 +10,10 @@ import Human.Circuits.KeccakSplit.Native
     argument only through the init circuits, which write at timestamp 0. These claims show that no row of the
     circuits formalised here (the six pooled CPU families, the unified reduced machine, the four delegation
     workers and the split Keccak workers) writes at timestamp 0, so none of them can masquerade as an initial
-    value. What remains unformalised: the init circuits themselves (that they write zero at timestamp 0) and the
-    cross-chunk clock chaining, so "RAM starts at zero" stays an initial-state condition of the RV32 spec.
+    value. The init circuits themselves (zero value, timestamp 0) are `InitsTeardowns.StandaloneClaim` and
+    `InitsTeardowns.UnifiedClaim`, from which the boot claims derive that the tracked RAM starts at zero
+    (`Trace.BootRamZeroClaim`, `UnifiedReduced.BootRamZeroClaim`). What remains unformalised: the cross-chunk clock
+    chaining.
     The statements mention no machine state. Proven in slop/Slop/Final/Trace/ZeroTimestamp.lean. -/
 
 namespace Airbender.Trace

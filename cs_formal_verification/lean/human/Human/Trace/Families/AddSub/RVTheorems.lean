@@ -1,6 +1,7 @@
 import Human.Helpers.Core.BabyBearPrime
 import Human.Helpers.Memory.Native
 import Human.Helpers.Context.RVBoundary
+import Human.Helpers.Context.RVPooledBoundary
 import Human.Helpers.Context.FamilyLayout
 import Human.Trace.RVExecution
 
@@ -28,20 +29,31 @@ structure RVExecutionBoundary {p : Nat} [Fact p.Prime] (trace : Data p) (initial
   /-- Bind the modeled word-ROM table to the ROM image. -/
   rom : trace.rom = ROM.table cells (romImageRV initial cells)
 
-/-- RV twin of `NativeBootBoundary` (as `UnifiedReduced.RVBootInputs`): native boot, PC zero, registers and all of
-    RAM zero (shadow RAM below `ROM_END` included, so the zero native seed is the RV image); the ROM image holds the
-    program. Sail-only and register-domain conditions are dropped as in `RVExecutionBoundary`. -/
+/-- RV twin of `NativeBootBoundary`, with the seeds of `RVPooledBootInputs`: native boot, PC zero, registers zero; the
+    RAM is seeded by the `Init` tokens of the inits/teardowns instances `inits`, whose public top bits pass the
+    verifier's check, so the tracked RAM is the union of their windows (ROM shadow below 4 MiB included) and `image`
+    ties the spec's starting state to those seeds (every tracked RAM cell then reads 0, as `BootRamZeroClaim` derives);
+    the ROM image holds the program. Sail-only and register-domain conditions are dropped as in
+    `RVExecutionBoundary`. -/
 structure RVNativeBootBoundary {p : Nat} [Fact p.Prime] (trace : Data p) (initial : RV.State)
-    (cells : List Cell) (program : List RVProgramEntry) : Prop where
+    (cells : List Cell) (program : List RVProgramEntry)
+    (inits : List (InitsTeardowns.Witness p InitsTeardowns.importedLayout)) : Prop where
   /-- Each tracked register or aligned RAM word occurs once. -/
   distinct : cells.Nodup
   aligned : ∀ cell ∈ cells, cell.Aligned
-  /-- Initial PC zero, registers zero, all of RAM zero; the ROM image holds the program. -/
-  profile : RVInitialProfile initial cells
-  /-- Every tracked cell is readable in the starting state. -/
-  image : ∃ image : List (MemoryToken p), initialImageRV initial cells = some image
-  /-- Native seed values are zero (the starting RAM and registers). -/
-  seed : trace.initialMemory = ROMView.nativeBootImage cells
+  /-- The spec starts at PC 0. -/
+  pc : initial.pc = 0
+  /-- The spec's registers start at 0. -/
+  registersZero : ∀ index, (Cell.register index).readRV initial = some 0
+  /-- The full statement verifier's check of the instances' public top bits. -/
+  topBits : InitsTeardowns.TopBitsChecked (inits.flatMap fun w => w.topBits.toList)
+  /-- The native seeds: the register seeds, then the instances' `Init` tokens. -/
+  seeds : trace.initialMemory = registerSeeds ++ inits.flatMap InitsTeardowns.Witness.initTokens
+  /-- The tracked domain: the registers, then the instances' RAM windows. -/
+  domain : cells = registerCells ++
+    InitsTeardowns.windowCells InitsTeardowns.importedLayout (inits.flatMap fun w => w.topBits.toList)
+  /-- Reading the tracked cells of the starting state gives the native seeds. -/
+  image : initialImageRV initial cells = some trace.initialMemory
   /-- Public starting PC zero and native timestamp four. Later clocks are proved. -/
   initialPC : trace.initial = PCState.boundary 0 (4, 0)
   /-- Public ROM bytes (`RV.read` of `rom`) and `RV.decode` construct the program table. -/
@@ -55,9 +67,10 @@ def RVAirbenderSoundnessClaim : Prop :=
   ∀ {trace : Data babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVProgramEntry} (inputs : RVExecutionBoundary trace initial cells program) (accepted : Accepted trace) (decoded : RVDecoded trace program),
     RVRealizes trace initial cells
 
-/-- The same rows from native boot. No ROM view: ROM-range RAM tokens are the shadow RAM, zero at boot. -/
+/-- The same rows from native boot (RAM seeded by the inits/teardowns instances `inits`). No ROM view: ROM-range RAM
+    tokens are the shadow RAM, zero at boot. -/
 def RVNativeBootSoundnessClaim : Prop :=
-  ∀ {trace : Data babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVProgramEntry} (inputs : RVNativeBootBoundary trace initial cells program) (accepted : Accepted trace) (decoded : RVDecoded trace program),
+  ∀ {trace : Data babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} (inputs : RVNativeBootBoundary trace initial cells program inits) (accepted : Accepted trace) (decoded : RVDecoded trace program),
     RVRealizes trace initial cells
 
 end Airbender.Trace
