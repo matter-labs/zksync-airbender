@@ -541,3 +541,12 @@ source/range/address/PC/result obligations are discharged internally. Retained
 LOAD/STORE access/privilege/exception clauses and normal/fetched/common memory
 execution remain next; [eight regressions](../../../../Tests/NativeReducedWordMemoryTransfers.lean)
 are not complete positive nonempty accepted native memory witnesses.
+
+[Retained original LW/SW clauses](../../Trace/Families/ReducedMachine/WordMemoryClauses.lean)
+now execute at actual projected row states through original virtual/physical access.
+Initial reference configuration and public ordinary RAM-cell domain describe
+meaningful inputs; actual ROM bounds/RAM address origins/past history derive every
+local address/CSR/permission/success. Empty/transfer-only scopes remain CSR-free.
+These inputs are not native/physical enforcement. PC preparation/normal retirement,
+fetched/common memory remain next. [Nine regressions](../../../../Tests/NativeReducedWordMemoryClauses.lean)
+include positive ORIGINAL LW-to-x0/SW, not full nonempty native memory witnesses.

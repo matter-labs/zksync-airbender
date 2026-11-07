@@ -81,3 +81,12 @@ seeds/full original decoding/native acceptance, aligned tracked cells and code
 capacity. No local desired read/state/result or initial CSR premise. Retained
 LOAD/STORE virtual-memory/platform/privilege clauses and instruction execution
 remain separate; shadow values never become architectural ROM reads.
+
+[Actual reduced memory platform inputs and clause observables](Memory/ReducedMachineWordMemoryPlatform.lean)
+keep initial Machine/PMP/PMA/environment/hart/HTIF configuration conditional on a
+nonempty original memory program. Public tracked RAM-cell domains exclude pinned
+special windows; all local addresses/CSR reads/success derive from actual bounds/
+matching/past history. [The clause root](../Trace/Families/ReducedMachine/WordMemoryClauses.lean)
+retains original LOAD/STORE and unmasked x0 loads; no per-row desired answer.
+These reference inputs do not prove native/physical enforcement. Empty programs
+and the earlier transfer boundary remain CSR-free; normal/fetched memory is next.

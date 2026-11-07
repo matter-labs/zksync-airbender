@@ -848,3 +848,24 @@ LW/SW or retained instruction execution. Original LOAD/STORE virtual-memory/plat
 privilege/configuration/exception clauses, normal/fetched/common memory integration
 and general Rust/public/physical/compiler/crypto/completeness remain open. No native
 finding, issue assumption, production fix, new axiom, dependency change or parity.
+
+## Actual reduced retained memory clauses (7 November 2026)
+
+[Fresh actual platform bindings](Airbender/Proofs/Trace/Families/ReducedMachine/WordMemoryPlatform.lean)
+combine actual native ROM bounds/initialized RAM address origins with meaningful
+public ordinary-cell domains. Initial original CSR/PMP/PMA/HTIF configuration is
+conditional on nonempty public memory programs; unchanged PURE history configuration
+transport derives every local read/permission. [Retained clauses](Airbender/Proofs/ReducedMachine/NativeWordMemoryClauses.lean)
+instantiate unchanged PURE virtual_word_read/virtual_memory_write/load_word/store_word
+with the new actual numerical/transfer bindings, preserving original unmasked
+load-to-x0 and unmasked SW. The reference-only dispatch retains original operands.
+No old standalone native masks/columns/tables/acceptance/positive witness transfers.
+
+Nineteen exact parent2c84a82 origins record seven new modules/tests. [Nine regressions](Tests/NativeReducedWordMemoryClauses.lean)
+cover configuration/domain rejection, positive original ROM LW-to-x0/RAM SW and
+complete empty native clauses without CSR inputs. They are not full positive
+NONEMPTY117-equation accepted memory witnesses. Reference initial configuration/
+ordinary domain are explicit inputs, not native enforcement/issue assumptions.
+PC preparation/normal/fetched/common memory and general Rust/public/physical/
+compiler/crypto/completeness remain separate. No native defect, production fix,
+new axiom, dependency change or parity claim.

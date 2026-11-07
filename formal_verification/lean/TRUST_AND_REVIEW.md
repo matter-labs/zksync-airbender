@@ -3292,3 +3292,26 @@ access/privilege/exception clauses, normal/fetched/common memory execution and
 physical/global protocol enforcement remain open. No supplied local success or
 configuration answer, table equivalence, native finding/issue assumption/new axiom
 or parity claim.
+
+## Actual native retained word-memory clause boundary
+
+[The public clause root](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryClauses.lean)
+now executes retained original LOAD/STORE at actual projected native row states.
+Every source/read/write/address/alignment/state/result follows closed actual
+transfers/numerics; pure original virtual/physical access and clause lemmas are
+reused after these bindings. No old standalone compiled native identity is used.
+
+[Initial reference configuration](Airbender/Review/Helpers/Memory/ReducedMachineWordMemoryPlatform.lean)
+is required ONLY for a nonempty original public memory program: Machine/zero
+mstatus/readable unrestricted misa/environment/PMP addresses/hart/PMP-off/HTIF-off/
+permissive RV32 PMA. Public tracked RAM cells exclude pinned CLINT/signature windows.
+Fresh actual ROM bounds or accepted initialized address origins derive each local
+ordinary address; real past history derives local CSR configuration/permissions.
+No desired per-row access, success, read/result/state/configuration value is supplied.
+The original memory-platform typeclass remains explicit. This is a selected
+reference input domain, not native enforcement, a defect or an issue assumption.
+Empty/transfer-only scopes remain CSR-free. [Nine tests](Tests/NativeReducedWordMemoryClauses.lean)
+are positive original-reference/configuration/domain/complete-empty evidence, not
+full nonempty native117-equation witnesses. PC preparation/normal retirement,
+fetched/common memory, exception/MMIO/physical/global protocol scopes remain open.
+No native finding, fix, new axiom or parity claim.

@@ -456,3 +456,11 @@ Original unmasked x0-load writes and unmasked SW memory writes retain their
 separate semantics. No expected per-row answer is supplied. Retained LOAD/STORE
 virtual-memory/platform/access/privilege clauses, normal/fetched/common memory
 execution and physical/global enforcement remain open.
+
+[Actual reduced retained LW/SW clauses](Families/ReducedMachine/WordMemoryClauses.lean)
+now execute at derived row states. Initial reference configuration applies only
+to nonempty memory programs; public ordinary RAM cells plus actual initialized
+origins, or native ROM bounds, derive local address restrictions. Real history
+transports every local CSR/permission. Original load-to-x0 reads remain and SW
+writes actual RAM. PC preparation/normal/fetched/common memory remains open;
+no native enforcement or full positive nonempty memory witness is claimed.

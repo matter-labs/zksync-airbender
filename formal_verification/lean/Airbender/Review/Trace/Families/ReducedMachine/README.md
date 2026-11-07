@@ -464,3 +464,14 @@ are conditional-native/original-accessor/complete-empty evidence, not full posit
 nonempty accepted memory witnesses. Retained LOAD/STORE clauses/configuration and
 normal/fetched/common memory execution remain next; common six-profile support
 still excludes LW/SW.
+
+[Retained original LW/SW clauses](WordMemoryClauses.lean) now execute at actual
+projected row states through original virtual/physical access. Every local source/
+address/range/read/write/state/result/CSR/permission is derived. Meaningful initial
+reference configuration is conditional on nonempty public programs; ordinary RAM
+cells exclude pinned CLINT/signature windows. Actual native bounds/matching derive
+local ordinary addresses; real history transports initial configuration. No per-row
+success/configuration answer or native enforcement claim. [Nine tests](../../../../../Tests/NativeReducedWordMemoryClauses.lean)
+include positive ORIGINAL LW-to-x0/SW and a CSR-free complete empty clause scope,
+not full nonempty native memory witnesses. Actual PC preparation/normal retirement,
+fetched and common mixed memory remain next.

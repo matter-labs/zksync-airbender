@@ -1,3 +1,10 @@
+import Airbender.Review.Helpers.Memory.ReducedMachineWordMemoryPlatform
+import Airbender.Proofs.ReducedMachine.NativeWordMemoryPlatform
+import Airbender.Proofs.Trace.Families.ReducedMachine.WordMemoryPlatform
+import Airbender.Proofs.ReducedMachine.NativeWordMemoryClauses
+import Airbender.Proofs.Trace.Families.ReducedMachine.WordMemoryClauses
+import Airbender.Review.Trace.Families.ReducedMachine.WordMemoryClauses
+import Tests.NativeReducedWordMemoryClauses
 import Airbender.Proofs.ReducedMachine.NativeWordMemoryProjectedPorts
 import Airbender.Review.Helpers.Memory.ReducedMachineWordMemoryTransfers
 import Airbender.Proofs.ReducedMachine.NativeWordMemoryTransfers
@@ -3679,3 +3686,22 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedWordMemoryTransfers.discarded_load_read_cannot_fail
 #print axioms Tests.NativeReducedWordMemoryTransfers.rom_read_ignores_shadow
 #print axioms Tests.NativeReducedWordMemoryTransfers.empty_transfers_without_csrs
+
+#print axioms Airbender.ReducedMachine.NativeWordMemoryPlatformProofs.rom_ordinary
+#print axioms Airbender.ReducedMachine.NativeWordMemoryPlatformProofs.initialized_ordinary
+#print axioms Airbender.ReducedMachine.NativeWordMemoryPlatformProofs.configuration_after_history
+#print axioms Airbender.ReducedMachine.NativeWordMemoryClauseProofs.address_and_alignment
+#print axioms Airbender.ReducedMachine.NativeWordMemoryClauseProofs.virtual_load
+#print axioms Airbender.ReducedMachine.NativeWordMemoryClauseProofs.virtual_store
+#print axioms Airbender.ReducedMachine.NativeWordMemoryClauseProofs.clause
+#print axioms Airbender.ReducedMachine.NativeWordMemoryClauseProofs.image_clause_history
+#print axioms Airbender.ReducedMachine.Native.public_word_memory_clauses
+#print axioms Tests.NativeReducedWordMemoryClauses.empty_program_no_csrs
+#print axioms Tests.NativeReducedWordMemoryClauses.missing_misa_rejected
+#print axioms Tests.NativeReducedWordMemoryClauses.wrong_privilege_rejected
+#print axioms Tests.NativeReducedWordMemoryClauses.clint_domain_rejected
+#print axioms Tests.NativeReducedWordMemoryClauses.signature_domain_rejected
+#print axioms Tests.NativeReducedWordMemoryClauses.ordinary_boundary_matrix
+#print axioms Tests.NativeReducedWordMemoryClauses.original_rom_load_x0
+#print axioms Tests.NativeReducedWordMemoryClauses.original_ram_store
+#print axioms Tests.NativeReducedWordMemoryClauses.empty_clauses_without_csrs

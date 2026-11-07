@@ -32,6 +32,45 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Retained original native LW/SW clauses (7 November 2026)
+
+[The new short public root](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryClauses.lean)
+derives successful ORIGINAL execute_LOAD/STORE clauses at the actual projected
+row states. [Fresh clause assembly](Airbender/Proofs/ReducedMachine/NativeWordMemoryClauses.lean)
+connects the already checked numerical RV32 address/alignment and original
+same-pre-state GPR/RAM/ROM transfers to unchanged PURE original virtual-memory,
+physical access and retained load/store lemmas. Original constructors, raw operands,
+sign extension and unmasked load-to-x0 behavior remain; SW copies rs2 to actual
+RAM without dummy-rd masking. All local reads/writes/states/results are derived.
+
+[Meaningful reference inputs](Airbender/Review/Helpers/Memory/ReducedMachineWordMemoryPlatform.lean)
+require initial Machine/zero-mstatus, readable unrestricted misa/environment/PMP
+addresses/hart, disabled PMP/HTIF and one permissive RV32 PMA region ONLY when the
+public memory program is nonempty. A public tracked-RAM domain excludes the pinned
+CLINT/signature windows. [Fresh native ROM bounds](Airbender/Proofs/ReducedMachine/NativeWordMemoryPlatform.lean)
+and [actual initialized address origins/configuration transport](Airbender/Proofs/Trace/Families/ReducedMachine/WordMemoryPlatform.lean)
+derive EVERY local ordinary address and CSR/permission from these inputs and real
+past history. No per-row desired address/configuration/permission/success answer is
+public. These describe reference inputs, not native/physical configuration or MMIO
+enforcement, and are not issue-handling assumptions. Empty/transfer-only scopes
+remain CSR-free. The retained original memory-platform typeclass remains explicit.
+
+[Initialized assembly](Airbender/Proofs/Trace/Families/ReducedMachine/WordMemoryClauses.lean)
+keeps complete native matching, independent shadows, all actual row states,
+original replay and numerical/architectural effects. [Nine regressions](Tests/NativeReducedWordMemoryClauses.lean)
+cover absent misa/wrong privilege and special-domain rejection, independent platform
+boundaries, positive ORIGINAL ROM LW-to-x0/RAM SW with arbitrary misa, and complete
+EMPTY actual-native clauses with independent shadow123/noCSR. These are conditional/
+original-reference/empty evidence, NOT full positive NONEMPTY117-equation/22-lookup
+accepted native LW/SW witnesses.
+
+NEXT derive actual PC preparation/normal retirement and finite successful fetched
+execution, then common mixed memory histories. Current common six-profile support
+still EXCLUDES LW/SW. Original interrupts/exceptions/MMIO and general Rust/public
+preprocessing/physical ROM/compiler/crypto/completeness/global protocol/init/teardown
+remain separate. No native defect, issue assumption, production fix, new axiom or
+parity claim; FINDINGS unchanged.
+
 ## Original native LW/SW same-pre-state transfers (7 November 2026)
 
 [Fresh projected-port proofs](Airbender/Proofs/ReducedMachine/NativeWordMemoryProjectedPorts.lean)
@@ -63,10 +102,9 @@ ROM/shadow independence, and a complete EMPTY actual-native public transfer scop
 with shadow123 and no CSR premise. These conditional-native/original-accessor/empty
 checks are NOT full positive NONEMPTY117-equation/22-lookup accepted LW/SW witnesses.
 
-NEXT derive retained original LOAD/STORE virtual-memory/platform/access/privilege/
-configuration and successful normal/fetched execution from meaningful initial
-inputs and the actual initialized address origins/transfers. Then extend common
-mixed histories. Common six-profile support still EXCLUDES LW/SW. No local desired
+The retained clause milestone above now discharges original memory access/configuration
+through initial public reference inputs and actual address origins/transfers. Actual
+PC preparation/normal/fetched execution and common mixed histories remain next. Common six-profile support still EXCLUDES LW/SW. No local desired
 success/configuration/read/state/frame answer may bypass retained clauses. General
 Rust/public preprocessing/physical ROM/compiler/crypto/completeness and global
 protocol/init/teardown remain separate. FINDINGS unchanged; no native defect,

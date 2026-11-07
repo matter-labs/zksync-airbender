@@ -197,9 +197,15 @@ Full combined row effects and execution remain pending. See the
    load-to-x0 writes discard only after the memory read; SW writes actual RAM from
    original rs2, never dummy rd masking. The public transfer root discharges every
    source/range/address/PC/result/state/order/replay obligation from exact NativeROM
-   input construction and full original public initialization/decoding. NEXT retained
-   LOAD/STORE virtual-memory/platform/access/privilege/configuration and successful
-   normal/fetched execution. General Rust/public/physical fidelity stays separate.
+   input construction and full original public initialization/decoding. Retained
+   original LOAD/STORE virtual/physical accesses and clauses now execute at actual
+   row states. Meaningful initial reference configuration applies only to nonempty
+   public memory programs; actual past history derives every local CSR/permission.
+   Public tracked-RAM ordinary domain plus actual initialized origins, or native ROM
+   bounds, derives every local exclusion of pinned CLINT/signature windows. These
+   are reference input boundaries, not native enforcement or per-row success answers.
+   NEXT actual PC preparation/normal retirement/fetched execution and common mixed
+   memory integration. General Rust/public/physical fidelity stays separate.
    Common supported execution excludes
    LW/SW; no all-events-GPR frame reuse.
    Other combined
