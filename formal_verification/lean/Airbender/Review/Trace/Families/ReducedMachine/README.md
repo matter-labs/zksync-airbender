@@ -607,3 +607,11 @@ argument identities. Selected constructor sequence0 contributes no extra high sh
 witness scaling preserves literal offsets/gamma. Unit specialization identifies
 keys before compression, without equating all protocol points with unit scaling.
 Actual auxiliary/accumulator enforcement and worker ledger/accounting stay open.
+
+[Native precompression/token coding](../../../Circuits/ReducedMachine/MemoryTokenTheorems.lean)
+now binds all three original main read/write tokens and retains all43 worker keys
+through a lossless field-complement/pair encoding. The bridge supplies no accepted
+permutation. These active logical trace histories remain separate from the full
+physical ordinary-row domain, inactive argument factors and unproved delegated
+actions. Actual global matching/extraction, initialized worker reads and faithful
+padding/filter/history are still needed before the trace machinery can apply.

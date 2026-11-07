@@ -34,6 +34,56 @@ initialization/decoder interfaces; other combined profiles remain unfinished.
 The historical 119-equation/141-variable/13-region artifact is preserved separately.
 It is not assumed to be the current source-generated machine. Main/worker stage-two descriptors now have separate typed auxiliary intakes; unmodeled protocol semantics remain open. These are coverage/fidelity results, not native defects.
 
+## Lossless native memory-key/token bridge (7 November 2026)
+
+[The short bridge roots](Airbender/Review/Circuits/ReducedMachine/MemoryTokenTheorems.lean)
+connect reviewed native precompression keys to the unchanged original Clean
+memory-token encoding. Native register indicator1/RAM0 becomes Clean space0/1
+through FIELD complement1-minus-indicator before canonical Nat pair coding.
+Separate raw address/value limbs and both timestamp fields remain. A decoder
+left inverse proves address/key injectivity without Boolean selectors,16-bit
+values/addresses or19-bit clock premises. Arbitrary Nat tokens need not lie in
+the encoder image. Pure two-way list-permutation transport preserves duplicates;
+it asserts no native matching relation and extracts none from a scalar identity.
+
+[The proof](Airbender/Proofs/ReducedMachine/NativeMemoryTokens.lean) binds ALL
+three actual imported main read/write tokens to these keys. Both readonly
+refreshes, third OLDREAD, raw mixed indicators and unmasked third write remain;
+there is no execute/CSR filter or per-row expected key/value/range/time premise.
+All43 worker raw quotient keys retain the same lossless representation and exact
+challenge-factor products, including inactive rows. Their stage2 u16-truncated
+addresses are still separate from raw quotient addresses. Main and worker
+factor transport introduces no cancellation or compression-injectivity premise.
+
+Seventeen [regressions](Tests/NativeMemoryTokens.lean) check raw nonboolean
+indicators, wide field limbs, the restricted encoded image, radix-packing aliases,
+duplicate multiplicity, actual main OLDREAD/readonly timestamps, all43 worker
+slots, public x0 timestamps and scalar collisions. These are pure/reference/
+metadata/conditional checks, not complete positive native witnesses, attacks,
+F02/F03/F04 evidence or defects. Four modules record eleven exact parent origins
+and37 explicit audit roots. All prior5227 audit roots and source bytes remain.
+No parser/exporter/artifact/literal/fixture/native pin or dependency changes;
+no native generation or closed heavy replay is needed.
+
+Final bounded gates pass5264 standard-only explicit axiom roots,267 public
+Review roots,4 guide declaration names and3988 links/anchors with context/trace
+separation. Independent checks preserve189 v3 and1749 backport identities,
+80 byte-identical modules,8 historical plus2 regenerated circuits,98 native
+sources,25 setup artifacts and4 exporters. Full Review sampled aggregate
+footprint606.13MiB/resident3302.73MiB in18.06s; every started guard reports no
+owned survivors. No resource ceiling was raised; this remains a sampled
+watchdog plus Lean allocation cap, not an OS hard physical-memory limit.
+
+The affine address-space coding gap is closed. Actual native precompression
+matching/extraction, initialized main/worker history, faithful full-domain padding/
+active filtering, active read/write/address/raw-clock ranges, stage2 refinement,
+same-main-proof additive/multiplicative coupling and issuance/accounting remain
+open. Single-challenge sums/products plus capacity still do not imply matching.
+No new accepted-matching or issue-handling assumption is introduced. Physical
+Rust/field/LDE/quotient/compiler/JSON/crypto refinement, worker reference/terminal
+effects, original CSR/MOP execution, initialization/teardown and parity remain
+separate. FINDINGS and zero-established-native-defect status are unchanged.
+
 ## Native main auxiliary chain and joint memory products (7 November 2026)
 
 [The main and joint product roots](Airbender/Review/Circuits/ReducedMachine/MainAuxiliaryTheorems.lean)

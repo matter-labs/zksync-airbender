@@ -224,3 +224,10 @@ before composing with all worker factors and public boundaries. Execute masking
 remains a field polynomial; initialization is unmasked and every ordinary row
 remains. No factor cancellation, token matching/initialized-read/active-clock/
 issuance/accounting or physical/refinement claim is inferred.
+
+[Lossless native token transport](../ReducedMachine/MemoryTokenTheorems.lean)
+retains all43 raw quotient keys on each side, including inactive rows, readonly
+refreshes and the common processor timestamp. Exact decode and challenge-factor
+transport preserve separate field limbs without16-bit/raw-clock premises. This
+closes the native indicator/Clean space encoding gap, not stage2 truncation
+refinement, actual matching, initialized reads, worker effects or accounting.

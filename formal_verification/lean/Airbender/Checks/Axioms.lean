@@ -1,3 +1,7 @@
+import Airbender.Review.Circuits.ReducedMachine.MemoryTokens
+import Airbender.Proofs.ReducedMachine.NativeMemoryTokens
+import Airbender.Review.Circuits.ReducedMachine.MemoryTokenTheorems
+import Tests.NativeMemoryTokens
 import Airbender.Review.Circuits.ReducedMachine.MainAuxiliary
 import Airbender.Proofs.ReducedMachine.NativeMainAuxiliary
 import Airbender.Review.Circuits.ReducedMachine.MainAuxiliaryTheorems
@@ -5950,3 +5954,41 @@ import Tests.SubwordStoreData
 #print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.mask_choice
 #print axioms Airbender.Tests.NativeMainAuxiliary.native_execute_domain
 #print axioms Airbender.Tests.NativeMainAuxiliary.native_mask_choice
+
+#print axioms Airbender.NativeMemoryTokenProofs.decode_encode
+#print axioms Airbender.NativeMemoryTokenProofs.encode_injective
+#print axioms Airbender.NativeMemoryTokenProofs.address_injective
+#print axioms Airbender.NativeMemoryTokenProofs.equal_tokens
+#print axioms Airbender.NativeMemoryTokenProofs.permutation_encoding
+#print axioms Airbender.NativeMemoryTokenProofs.matching_encoding
+#print axioms Airbender.NativeMemoryTokenProofs.mixed_address
+#print axioms Airbender.NativeMemoryTokenProofs.port_order
+#print axioms Airbender.NativeMemoryTokenProofs.main_token
+#print axioms Airbender.NativeMemoryTokenProofs.main_list
+#print axioms Airbender.NativeMemoryTokenProofs.worker_decoded
+#print axioms Airbender.NativeMemoryTokenProofs.worker_keys
+#print axioms Airbender.NativeMemoryTokenProofs.worker_count
+#print axioms Airbender.NativeMemoryTokenProofs.argument_encoding
+#print axioms Airbender.NativeMemoryTokenProofs.main_product
+#print axioms Airbender.NativeMemoryTokenProofs.worker_product
+#print axioms Airbender.NativeMemoryTokens.native_address_token_injective
+#print axioms Airbender.NativeMemoryTokens.native_key_token_injective
+#print axioms Airbender.NativeMemoryTokens.actual_main_memory_tokens
+#print axioms Airbender.NativeMemoryTokens.native_token_matching_iff
+#print axioms Airbender.Tests.NativeMemoryTokens.raw_indicator_complement
+#print axioms Airbender.Tests.NativeMemoryTokens.arbitrary_nat_token_not_roundtrip
+#print axioms Airbender.Tests.NativeMemoryTokens.wide_field_roundtrip
+#print axioms Airbender.Tests.NativeMemoryTokens.full_wide_limbs
+#print axioms Airbender.Tests.NativeMemoryTokens.radix_alias_tokens_distinct
+#print axioms Airbender.Tests.NativeMemoryTokens.mixed_polarity_preserves_raw
+#print axioms Airbender.Tests.NativeMemoryTokens.actual_main_both_sides
+#print axioms Airbender.Tests.NativeMemoryTokens.readonly_refresh_not_erased
+#print axioms Airbender.Tests.NativeMemoryTokens.third_oldread_and_unmasked_write
+#print axioms Airbender.Tests.NativeMemoryTokens.all_worker_keys
+#print axioms Airbender.Tests.NativeMemoryTokens.inactive_tokens_retained
+#print axioms Airbender.Tests.NativeMemoryTokens.public_all_register_initials
+#print axioms Airbender.Tests.NativeMemoryTokens.public_x0_time_retained
+#print axioms Airbender.Tests.NativeMemoryTokens.duplicate_multiplicity_retained
+#print axioms Airbender.Tests.NativeMemoryTokens.scalar_collision_is_not_token_identity
+#print axioms Airbender.Tests.NativeMemoryTokens.complete_main_factor_transport
+#print axioms Airbender.Tests.NativeMemoryTokens.complete_worker_factor_transport

@@ -396,3 +396,11 @@ sides and common processor clock, deriving stage2/quotient-unit reference key
 agreement and equal products before division under normalized processing
 acceptance. Active initialization/keys, native auxiliaries, full matching and
 issuance/accounting remain open; no main frames cross unproved worker actions.
+
+[The native precompression-key bridge](../../Circuits/ReducedMachine/MemoryTokenTheorems.lean)
+now proves injective compatibility with the unchanged original Clean token type.
+Native isRegister1/0 becomes Clean space0/1 through field complement; separate
+raw address/value limbs and timestamp fields remain. Actual main ports and all43
+worker keys retain their factors. Permutations transport losslessly in both
+directions, including duplicates; no native matching assumption or scalar-to-
+matching inference is added. Initialized worker bounds/history remain open.

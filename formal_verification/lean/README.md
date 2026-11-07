@@ -1474,3 +1474,9 @@ original decoding and native constraints. Exact clearing/placement keys, size,
 upper selection and SH alignment are derived. Architectural read/write and ROM
 binding, original access/exception behavior and full instruction execution remain
 next work; this byte-effect checkpoint adds no confirmed finding.
+
+[Lossless native memory-key/token transport](Airbender/Review/Circuits/ReducedMachine/MemoryTokenTheorems.lean)
+now proves the native indicator-to-Clean-space complement and raw-field tuple
+injectivity, binds all three main ports and retains all43 worker keys/factors.
+Pure permutation transport preserves duplicates. Native token matching and
+initialized worker history remain open; scalar products do not supply them.

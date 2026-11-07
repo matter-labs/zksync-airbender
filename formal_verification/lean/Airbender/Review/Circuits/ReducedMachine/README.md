@@ -729,3 +729,12 @@ range/sorting/window checks and physical/general refinement remain open.
 
 Original native equation31 additionally derives execute0-or1 and actual N-versus-D
 mask selection from full body acceptance, with no Boolean/activity premise.
+
+[The native key/token bridge](MemoryTokenTheorems.lean) now connects the unchanged
+original Clean port tokens to all three actual main precompression keys, without
+selector/range/activity premises. Field complement converts native register1/RAM0
+to Clean space0/1 losslessly; raw limbs, OLDREADs, readonly refreshes and actual
+third writes remain. [Observables](MemoryTokens.lean) retain all43 worker keys and
+challenge factors. Pure permutation equivalence does not assert native matching,
+initialized reads or issuance/accounting. Seventeen regressions include raw/wide
+fields, duplicate multiplicity, encoded-image limits and scalar collisions.
