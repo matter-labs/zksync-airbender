@@ -12,7 +12,7 @@ theorem rv_pooled_native_soundness : RVPooledNativeSoundnessClaim := by
   exact Proofs.rv_pooled_trace_execution Proofs.rvPooledLaws (by decide) (by decide) inputs
     (Proofs.rv_boot_seed inputs) accepted decoded
 
-/-- Under the boot inputs every tracked RAM cell of the starting state reads 0 (`RV.State.RamStartsZero` for the
+/-- Under the boot inputs every tracked RAM cell of the starting state reads 0 (Airbender's zero starting RAM for the
     tracked cells), from the inits/teardowns circuit's `Init` tokens. -/
 theorem boot_ram_zero : BootRamZeroClaim := by
   intro trace initial cells program inits projection inputs

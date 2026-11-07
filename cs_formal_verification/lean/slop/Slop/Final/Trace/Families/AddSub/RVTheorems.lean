@@ -10,10 +10,11 @@ theorem rv_airbender_soundness : RVAirbenderSoundnessClaim := by
   intro trace initial cells program inputs accepted decoded
   exact Proofs.rv_family_execution (by decide) (by decide) inputs accepted decoded
 
-/-- The same rows from native boot (no ROM view: ROM-range RAM tokens are the shadow RAM, zero at boot). -/
+/-- The same rows from native boot, RAM seeded by the inits/teardowns instances (no ROM view: ROM-range RAM tokens are
+    the shadow RAM, zero at boot). -/
 theorem rv_native_boot_soundness : RVNativeBootSoundnessClaim := by
-  intro trace initial cells program inputs accepted decoded
-  exact Proofs.rv_family_execution (by decide) (by decide) (Proofs.rv_family_boot_boundary (by decide) inputs)
+  intro trace initial cells program inits inputs accepted decoded
+  exact Proofs.rv_family_execution (by decide) (by decide) (Proofs.rv_family_boot_boundary inputs)
     accepted decoded
 
 end Airbender.Trace

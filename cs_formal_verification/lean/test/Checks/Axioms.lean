@@ -22,6 +22,8 @@ import Slop.Final.Trace.Families.SubwordMemory.Theorems
 import Slop.Final.Trace.Soundness
 import Slop.Final.Trace.RVSoundness
 import Slop.Final.Trace.ZeroTimestamp
+import Slop.Final.Trace.WritesRangeChecked
+import Slop.Final.Trace.TeardownBounds
 import Slop.Final.Circuits.InitsTeardowns.Theorems
 import Slop.Final.Trace.Workers.KeccakSplit.Theorems
 import Slop.AddSub.RowClaims
@@ -2146,6 +2148,13 @@ import Human.Import.Coefficients
 #print axioms Airbender.UnifiedReduced.no_zero_timestamp_writes
 #print axioms Airbender.Delegation.no_zero_timestamp_writes
 #print axioms Airbender.Keccak.Split.Native.no_zero_timestamp_writes
+#print axioms Airbender.Trace.writes_range_checked
+#print axioms Airbender.UnifiedReduced.writes_range_checked
+#print axioms Airbender.Delegation.writes_range_checked
+#print axioms Airbender.Keccak.Split.Native.writes_range_checked
+#print axioms Airbender.InitsTeardowns.writes_range_checked
+#print axioms Airbender.Trace.teardowns_bounded
+#print axioms Airbender.UnifiedReduced.teardowns_bounded
 #print axioms Airbender.Trace.WordColumns.code_u16
 #print axioms Airbender.Trace.WordColumns.evaluate_u16
 
@@ -2318,6 +2327,7 @@ import Human.Import.Coefficients
 #print axioms RV.exec_load_subword
 #print axioms RV.exec_store_subword
 #print axioms Airbender.UnifiedReduced.rv_execution_soundness
+#print axioms Airbender.UnifiedReduced.boot_ram_zero
 #print axioms Airbender.Trace.rv_pooled_native_soundness
 #print axioms Airbender.Trace.boot_ram_zero
 #print axioms Airbender.Trace.NonDeterminism.Pooled.rv_native_soundness

@@ -36,6 +36,8 @@ import Slop.Final.Trace.Families.SubwordMemory.Theorems
 import Slop.Final.Trace.Families.SubwordMemory.RVTheorems
 import Slop.Final.Trace.Soundness
 import Slop.Final.Trace.ZeroTimestamp
+import Slop.Final.Trace.WritesRangeChecked
+import Slop.Final.Trace.TeardownBounds
 import Slop.Final.Trace.UnifiedReduced.Theorems
 import Slop.Final.Trace.Workers.Bigint.Theorems
 import Slop.Final.Trace.Workers.Blake2G.Theorems
@@ -73,6 +75,8 @@ import Human.Trace.Families.SubwordMemory.Theorems
 import Human.Trace.Families.SubwordMemory.RVTheorems
 import Human.Trace.Soundness
 import Human.Trace.ZeroTimestamp
+import Human.Trace.WritesRangeChecked
+import Human.Trace.TeardownBounds
 import Human.Trace.UnifiedReduced.Theorems
 import Human.Trace.Workers.Bigint.Theorems
 import Human.Trace.Workers.Blake2G.Theorems
@@ -174,9 +178,17 @@ example : Airbender.Trace.NoZeroTimestampWritesClaim := @Airbender.Trace.no_zero
 example : Airbender.UnifiedReduced.NoZeroTimestampWritesClaim := @Airbender.UnifiedReduced.no_zero_timestamp_writes
 example : Airbender.Delegation.NoZeroTimestampWritesClaim := @Airbender.Delegation.no_zero_timestamp_writes
 example : Airbender.Keccak.Split.Native.NoZeroTimestampWritesClaim := @Airbender.Keccak.Split.Native.no_zero_timestamp_writes
+example : Airbender.Trace.WritesRangeCheckedClaim := @Airbender.Trace.writes_range_checked
+example : Airbender.UnifiedReduced.WritesRangeCheckedClaim := @Airbender.UnifiedReduced.writes_range_checked
+example : Airbender.Delegation.WritesRangeCheckedClaim := @Airbender.Delegation.writes_range_checked
+example : Airbender.Keccak.Split.Native.WritesRangeCheckedClaim := @Airbender.Keccak.Split.Native.writes_range_checked
+example : Airbender.InitsTeardowns.WritesRangeCheckedClaim := @Airbender.InitsTeardowns.writes_range_checked
+example : Airbender.Trace.TeardownsBoundedClaim := @Airbender.Trace.teardowns_bounded
+example : Airbender.UnifiedReduced.TeardownsBoundedClaim := @Airbender.UnifiedReduced.teardowns_bounded
 example : Airbender.UnifiedReduced.Mixed.ExecutionSoundnessClaim := @Airbender.UnifiedReduced.Mixed.execution_soundness
 example : Airbender.UnifiedReduced.ExecutionSoundnessClaim := @Airbender.UnifiedReduced.execution_soundness
 example : Airbender.UnifiedReduced.RVExecutionSoundnessClaim := @Airbender.UnifiedReduced.rv_execution_soundness
+example : Airbender.UnifiedReduced.BootRamZeroClaim := @Airbender.UnifiedReduced.boot_ram_zero
 example : Airbender.UnifiedReduced.Caller.MixedMemorySoundnessClaim := @Airbender.UnifiedReduced.Caller.mixed_memory_soundness
 example : Airbender.UnifiedReduced.Caller.SharedSpanSoundnessClaim := @Airbender.UnifiedReduced.Caller.shared_span_soundness
 example : Airbender.UnifiedReduced.Caller.RequestWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.request_window_soundness
@@ -317,9 +329,17 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.UnifiedReduced.no_zero_timestamp_writes
 #print axioms Airbender.Delegation.no_zero_timestamp_writes
 #print axioms Airbender.Keccak.Split.Native.no_zero_timestamp_writes
+#print axioms Airbender.Trace.writes_range_checked
+#print axioms Airbender.UnifiedReduced.writes_range_checked
+#print axioms Airbender.Delegation.writes_range_checked
+#print axioms Airbender.Keccak.Split.Native.writes_range_checked
+#print axioms Airbender.InitsTeardowns.writes_range_checked
+#print axioms Airbender.Trace.teardowns_bounded
+#print axioms Airbender.UnifiedReduced.teardowns_bounded
 #print axioms Airbender.UnifiedReduced.Mixed.execution_soundness
 #print axioms Airbender.UnifiedReduced.execution_soundness
 #print axioms Airbender.UnifiedReduced.rv_execution_soundness
+#print axioms Airbender.UnifiedReduced.boot_ram_zero
 #print axioms Airbender.UnifiedReduced.Caller.mixed_memory_soundness
 #print axioms Airbender.UnifiedReduced.Caller.shared_span_soundness
 #print axioms Airbender.UnifiedReduced.Caller.request_window_soundness

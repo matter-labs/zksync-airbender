@@ -7,14 +7,16 @@ import Slop.Trace.RVFamilySelectors
 import Slop.Trace.RVZeroRows
 import Slop.Trace.RVValues
 import Slop.Trace.ROMView
+import Slop.Trace.RVBootSeed
+import Slop.Final.Circuits.InitsTeardowns.Theorems
 import Slop.UnifiedReduced.RV.Execution
 
 /-! The ADD/SUB + word-memory trace claims on the RV route (`RVAirbenderSoundnessClaim`, `RVNativeBootSoundnessClaim`):
     no Sail state, interpreter, `Configured` or `OrdinaryWordAddress` fact. Rows step by family
     (`AddSub.Proofs.rv_row_step`, `WordMemory.Proofs.rv_row_step`); x0 is preserved (`row_zero_write_from_reads`);
     read values are bounded (`row_write_source` with the ROM-image word table); the composition is
-    `rv_family_realizes`. Native boot: the zero seed is the RV image of a zero-RAM state
-    (`UnifiedReduced.Proofs.RV.rv_zero_image`), and the boot clocks are `ROMView.native_clocks`. -/
+    `rv_family_realizes`. Native boot: the seeds are the inits/teardowns
+    circuit's zero boot image (`boot_seed_image`), and the boot clocks are `ROMView.native_clocks`. -/
 
 namespace Airbender.Trace.Proofs
 open Arithmetic
@@ -99,17 +101,18 @@ theorem rv_family_execution {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
     exact WordMemory.Proofs.rv_row_step hp inverse core active family query decodes fields sourceBound
       inputs.aligned trace.memoryEpoch pc romSame history
 
-/-- Native boot gives the public RV inputs: the zero seed is the RV image of the zero-RAM starting state, the boot
-    PC and clock form the native starting state, and the boot clocks are in range. -/
-theorem rv_family_boot_boundary {p : Nat} [Fact p.Prime] (hp : 4 < p)
-    {trace : Data p} {initial : RV.State} {cells : List Cell} {program : List RVProgramEntry}
-    (inputs : RVNativeBootBoundary trace initial cells program) :
-    RVExecutionBoundary trace initial cells program := by
-  obtain ⟨tokens, publicImage⟩ := inputs.image
-  refine ⟨⟨inputs.distinct, inputs.aligned, ?_, ⟨(4, 0), ?_⟩, inputs.programImage,
-    ROMView.native_clocks hp inputs.seed inputs.initialPC⟩, inputs.rom⟩
-  · rw [inputs.seed, ← UnifiedReduced.Proofs.RV.rv_zero_image inputs.profile publicImage]
-    exact publicImage
-  · rw [inputs.initialPC, initialStateRV, inputs.profile.pc]
+/-- Native boot gives the public RV inputs: the seeds are the zero boot image of the inits/teardowns windows and the
+    registers (`boot_seed_image`), the boot PC and clock form the native starting state, and the boot clocks are in
+    range. -/
+theorem rv_family_boot_boundary {trace : Data babyBearModulus} {initial : RV.State} {cells : List Cell}
+    {program : List RVProgramEntry}
+    {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)}
+    (inputs : RVNativeBootBoundary trace initial cells program inits) :
+    RVExecutionBoundary trace initial cells program :=
+  ⟨⟨inputs.distinct, inputs.aligned, inputs.image,
+    ⟨(4, 0), by rw [inputs.initialPC, initialStateRV, inputs.pc]⟩, inputs.programImage,
+    ROMView.native_clocks (by decide)
+      (boot_seed_image InitsTeardowns.standalone_claim.1 inputs.topBits inputs.seeds inputs.domain)
+      inputs.initialPC⟩, inputs.rom⟩
 
 end Airbender.Trace.Proofs
