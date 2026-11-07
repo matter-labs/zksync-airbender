@@ -3549,3 +3549,35 @@ not issuance. Exact narrow rewrites of retained original Zicsr clauses replace
 broad recursive decoder simplification at default limits. No generated Sail or
 production/native/import/export/artifact/fixture/dependency change, native defect,
 issue assumption, new axiom or parity claim follows.
+
+
+## Initialized CSR GPR realization boundary (7 November 2026)
+
+[Actual CSR addresses/write/x0 proofs](Airbender/Proofs/ReducedMachine/NativeCSRPorts.lean)
+precede shared initialized bounds and zero propagation. All three ports are bound
+to original rs1/readonly rs2=x0/rd from actual native field equations and full
+original source/query identities. Both readonly refreshes and destination OLDREAD,
+aliases and raw x0 remain. Scalar oracle bounds and source-derived rd masking
+prove local write preservation; no read/range/preservation answer is an input.
+
+[The public history roots](Airbender/Review/Trace/Families/ReducedMachine/CSRRegisters.lean)
+construct every native chronological state/segment, original same-prestate GPR
+read/write, full memory history/final cell match, byte/misa frame and stateful
+source replay. [Word bounds](Airbender/Review/Trace/Families/ReducedMachine/CSRValues.lean)
+include all actual reads/writes/terminal tokens via one unchanged time induction.
+Ordinary logical ImageBoundary seeds, full public CSR setup/membership and tracked
+alignment are meaningful public inputs. Explicit runtimeCSRData selects only the
+checked setup, retaining every native row/boundary/token; no table equivalence or
+old accepted-circuit transfer occurs. This is not universal boot, independent ROM-
+shadow initialization or original code/retained fixed-ROM physical equality.
+
+These states realize only native GPR transfers. They do not execute the original
+CSR instruction or model delegated worker RAM writes; the proved byte-memory frame
+must not be transferred through an unproved worker action. Seventeen conditional/
+partial-positive/complete-empty regressions do not establish full nonempty CSR
+acceptance or CSR privilege/custom/nondeterminism success. Original instruction/PC
+retirement, actual caller clock/issuance, worker fulfillment/converse/accounting/
+protocol/terminal/init/general refinement/physical/crypto/completeness remain open.
+Metadata index3 alone remains separate from issuance. No production/native/Sail/
+import/export/artifact/fixture/dependency change, defect, issue assumption, new
+axiom or parity claim. All older mixed execution/shadow scopes stay unchanged.

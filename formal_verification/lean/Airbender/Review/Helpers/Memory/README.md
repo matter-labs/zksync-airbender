@@ -343,3 +343,11 @@ security, and retain ordinary/empty CSR freedom. Original registerClause and
 wordMemoryClause stay unchanged. [Common execution](../../Trace/Families/ReducedMachine/UnifiedFetchedExecution.lean)
 derives every local CSR/permission/read/result/state/PC through actual mixed
 histories; these meaningful initial domains do not assert native enforcement.
+
+
+[CSR GPR transfer/history observables](ReducedMachineCSR.lean) retain all three
+native GPR reads in one pre-state, both readonly refreshes, destination OLDREAD/
+masked write, chronological segment states, all byte/misa frames and source replay.
+[Public roots](../../Trace/Families/ReducedMachine/CSRRegisters.lean) derive these
+from actual CSR laws/public seeds/matching. GPR realization does not execute original
+CSR or delegated RAM effects; its memory frame is not a worker-action frame.

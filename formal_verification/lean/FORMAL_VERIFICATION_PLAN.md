@@ -31,6 +31,31 @@ and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
+## Current initialized CSR GPR history checkpoint (7 November 2026)
+
+[CSR value bounds](Airbender/Review/Trace/Families/ReducedMachine/CSRValues.lean)
+and [chronological GPR history](Airbender/Review/Trace/Families/ReducedMachine/CSRRegisters.lean)
+are now derived from fresh actual CSR port/write/x0 laws, full original public
+CSR setup/membership, public Sail seed reads and native matching. One unchanged
+time induction bounds all actual reads/writes/terminal tokens. Both readonly
+refreshes/OLDREAD/aliases/raw x0 survive, and every original GPR read observes one
+derived pre-state. Actual selected CSR addresses establish GPR space before all
+byte/misa frames and original source replay at constructed rowBefore states.
+Generic modeled-setup and explicit runtime-pool roots retain every row/boundary/token.
+Seventeen regressions include complete empty runtime history with x0 and no CSR
+availability; no full nonempty accepted CSR witness or original CSR execution.
+
+This closes the port/x0/range/GPR-history NEXT item below. Do not repeat these
+proofs or earlier decoding/pool/local CSR/MOP/seven-profile milestones. NEXT combine
+the derived original pre-state GPR reads/ranges with actual CSR request fields to
+recover source-word/ABI observations, then check actual native caller clock/issuance
+before streams/workers. Metadata index3 is not issuance. GPR realization states do
+not execute original CSR/custom/nondeterminism/privilege effects or delegated RAM
+updates; their memory frame cannot be assumed through a worker action. Original
+CSR PC/retained/normal/fetched/common integration, actual Blake2 fulfillment/
+converse/accounting/protocol/terminal/init and general public/physical/refinement/
+crypto/completeness/parity remain open. Preserve all existing scopes and inputs.
+
 ## Current original CSR decoding connection (7 November 2026)
 
 [Original public CSR decoding](Airbender/Review/Trace/Families/ReducedMachine/CSRDecoder.lean)

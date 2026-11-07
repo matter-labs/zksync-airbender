@@ -1,3 +1,13 @@
+import Airbender.Proofs.ReducedMachine.NativeCSRPorts
+import Airbender.Proofs.ReducedMachine.NativeCSRPreservation
+import Airbender.Proofs.Trace.Families.ReducedMachine.CSRValues
+import Airbender.Proofs.Trace.Families.ReducedMachine.CSRZeroRegister
+import Airbender.Proofs.Trace.Families.ReducedMachine.CSRCodeHistory
+import Airbender.Proofs.Trace.Families.ReducedMachine.CSRRegisterHistory
+import Airbender.Review.Trace.Families.ReducedMachine.CSRValues
+import Airbender.Review.Trace.Families.ReducedMachine.CSRRegisters
+import Tests.NativeReducedCSRInitialized
+import Tests.NativeReducedCSRHistoryEmpty
 import Airbender.Proofs.ReducedMachine.NativeCSRDecoder
 import Airbender.Proofs.Trace.Families.ReducedMachine.CSRDecoder
 import Airbender.Review.Trace.Families.ReducedMachine.CSRDecoder
@@ -3974,3 +3984,43 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedCSRDecoder.no_decode_CSR_availability
 #print axioms Tests.NativeReducedCSRDecoder.original_source_runtime_domain
 #print axioms Tests.NativeReducedCSRDecoder.bigint_public_row_rejected
+
+#print axioms Airbender.ReducedMachine.NativeCSRPortProofs.readonly_sources
+#print axioms Airbender.ReducedMachine.NativeCSRPortProofs.source_addresses
+#print axioms Airbender.ReducedMachine.NativeCSRPortProofs.source_two_fields
+#print axioms Airbender.ReducedMachine.NativeCSRPortProofs.register_addresses
+#print axioms Airbender.ReducedMachine.NativeCSRPortProofs.register_reads
+#print axioms Airbender.ReducedMachine.NativeCSRPortProofs.register_write
+#print axioms Airbender.ReducedMachine.NativeCSRPreservationProofs.written_bounds
+#print axioms Airbender.ReducedMachine.NativeCSRPreservationProofs.row_write_rule
+#print axioms Airbender.ReducedMachine.NativeCSRRangeProofs.decoded_write_rules
+#print axioms Airbender.ReducedMachine.NativeCSRRangeProofs.image_value_bounds
+#print axioms Airbender.ReducedMachine.NativeCSRRegisterProofs.row_zero_preserving
+#print axioms Airbender.ReducedMachine.NativeCSRRegisterProofs.decoded_zero_preserving
+#print axioms Airbender.ReducedMachine.NativeCSRRegisterProofs.native_zero_writes
+#print axioms Airbender.ReducedMachine.NativeCSRRegisterProofs.image_row_history
+#print axioms Airbender.ReducedMachine.NativeCSRRegisterProofs.native_event_register_space
+#print axioms Airbender.ReducedMachine.NativeCSRRegisterProofs.native_history_memory
+#print axioms Airbender.ReducedMachine.NativeCSRRegisterProofs.entry_source_after_native_history
+#print axioms Airbender.ReducedMachine.NativeCSRRegisterProofs.image_register_history
+#print axioms Airbender.ReducedMachine.Native.public_csr_value_bounds
+#print axioms Airbender.ReducedMachine.Native.public_runtime_csr_value_bounds
+#print axioms Airbender.ReducedMachine.Native.public_csr_register_history
+#print axioms Airbender.ReducedMachine.Native.public_runtime_csr_register_history
+#print axioms Tests.NativeReducedCSRInitialized.wrong_source_index_rejected
+#print axioms Tests.NativeReducedCSRInitialized.high_source_address_rejected
+#print axioms Tests.NativeReducedCSRInitialized.ram_source_rejected
+#print axioms Tests.NativeReducedCSRInitialized.aliased_source_reads
+#print axioms Tests.NativeReducedCSRInitialized.aliased_destination_read
+#print axioms Tests.NativeReducedCSRInitialized.discarded_state
+#print axioms Tests.NativeReducedCSRInitialized.initialized_nonzero_x0_rejected
+#print axioms Tests.NativeReducedCSRInitialized.all_native_reads_bounded
+#print axioms Tests.NativeReducedCSRInitialized.oversized_source_rejected
+#print axioms Tests.NativeReducedCSRInitialized.oversized_second_read_rejected
+#print axioms Tests.NativeReducedCSRInitialized.oversized_written_rejected
+#print axioms Tests.NativeReducedCSRInitialized.readonly_x0_read_zero
+#print axioms Tests.NativeReducedCSRInitialized.oversized_terminal_rejected
+#print axioms Tests.NativeReducedCSRInitialized.partial_group_decoding
+#print axioms Tests.NativeReducedCSRInitialized.positive_csr_x0_group
+#print axioms Tests.NativeReducedCSRHistoryEmpty.empty_runtime_history
+#print axioms Tests.NativeReducedCSRHistoryEmpty.empty_terminal_bounds

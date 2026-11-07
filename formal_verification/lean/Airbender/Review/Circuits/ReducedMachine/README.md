@@ -640,3 +640,15 @@ derive the local mask before runtime CSR effects, preserving all rows/boundaries
 Fourteen [regressions](../../../../Tests/NativeReducedCSRDecoder.lean) retain an
 independent original byte image and unsigned fields. Initialized reads/CSR execution,
 request clock/issuance, workers/accounting and general native/physical setup remain open.
+
+
+## Initialized CSR GPR history
+
+[Fresh port laws](../../../Proofs/ReducedMachine/NativeCSRPorts.lean) retain original
+rs1/readonly x0/rd and both refreshes/OLDREAD/aliases. [Write preservation](../../../Proofs/ReducedMachine/NativeCSRPreservation.lean)
+uses actual oracle bounds and original rd masking before shared range/x0 induction.
+[Value roots](../../Trace/Families/ReducedMachine/CSRValues.lean) and [GPR history](../../Trace/Families/ReducedMachine/CSRRegisters.lean)
+derive all native ranges, chronological states, original reads/write, byte/misa
+frames and decoder replay from public inputs/matching. CSR instruction/delegated
+RAM effects, PC retirement, caller issuance/worker accounting and physical setup
+remain separate; existing mixed execution scopes are unchanged.

@@ -1077,3 +1077,31 @@ issuance, worker/converse/accounting/protocol or universal runtime public/physic
 setup. Arbitrary original public bytes are not identified with the retained ROM.
 No complete positive nonempty accepted CSR witness, native defect, issue assumption,
 new axiom, production/dependency change or parity is claimed.
+
+
+## Initialized native CSR GPR history (7 November 2026)
+
+[Fresh CSR port bindings](Airbender/Proofs/ReducedMachine/NativeCSRPorts.lean)
+derive all three original GPR cells from actual native CSR equations and full
+source/query identities before PURE read/write/history lemmas apply. Actual oracle
+scalar bounds, candidate/rdmask and original rd-zero flag derive write preservation;
+then unchanged single time induction bounds all actual reads/writes/terminal tokens.
+The actual x0 law retains both readonly refreshes and OLDREAD/alias participation.
+Fresh GPR event-space laws derive every byte/misa frame and source replay, followed
+by complete chronological GPR transfer states/segments/final matching. Public generic
+and concrete runtime-pool roots provide no desired per-row answers or table identity.
+
+Eleven modules/tests record eighteen exact parentde55 origins, copying unchanged
+PURE/template portions and using fresh actual bindings before reuse. Seventeen
+regressions retain port/alias/initialized/x0 bounds, CSR-shaped positive three-port
+mechanics and complete EMPTY native runtime history at every RV32 PC with terminal
+x0/empty original bytes/no CSR availability. They are not full positive nonempty
+117-equation/22-lookup accepted CSR witnesses, original CSR execution or worker
+composition. Runtime setup construction retains every row/token/public boundary.
+
+GPR realization memory frames do not describe unproved delegated worker RAM effects.
+Original CSR/custom/nondeterminism/privilege semantics, PC retirement, request clock/
+issuance, fulfillment/converse/accounting/protocol/terminal/init, independent ROM-
+shadow/general public/physical setup/refinement/crypto/completeness remain separate.
+No native source/artifact/import/export/Sail/fixture/dependency change, native defect,
+issue assumption, new axiom or parity. Existing mixed seven-profile scopes unchanged.

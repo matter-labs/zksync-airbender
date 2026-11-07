@@ -35,6 +35,72 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Initialized native CSR GPR history and word bounds (7 November 2026)
+
+[Fresh CSR port proofs](Airbender/Proofs/ReducedMachine/NativeCSRPorts.lean) bind all
+three actual native addresses to original rs1, readonly rs2=x0 and rd, using the
+actual CSR field equations and source-derived decoder identities. Both readonly
+refreshes, destination OLDREAD, aliases and raw x0 operands remain. [Write proofs](Airbender/Proofs/ReducedMachine/NativeCSRPreservation.lean)
+combine actual scalar oracle bounds, candidate/rdmask and original zero flag to
+establish bounded writes and local preservation, with no source/range answer.
+
+[Initialized word bounds](Airbender/Review/Trace/Families/ReducedMachine/CSRValues.lean)
+instantiate the unchanged single time induction on accepted native matching and
+public Sail seed reads. Every actual native read/write/terminal word is bounded,
+including previously unchecked source-low35, second read37 and destination OLDREAD.
+The proved actual rd-address/x0 rule precedes shared zero propagation; readonly
+x0 refreshes are retained and their actual values follow initialized history.
+
+[The short GPR-history roots](Airbender/Review/Trace/Families/ReducedMachine/CSRRegisters.lean)
+now construct the complete native memory history, row permutation/clock order,
+every rowBefore/rowAfter/past/current/future segment and final Sail cell matching.
+All three original GPR reads observe one pre-state before the actual masked write.
+[CSR event-space and code proofs](Airbender/Proofs/Trace/Families/ReducedMachine/CSRCodeHistory.lean)
+first derive GPR space from fresh actual selected-row address laws, then derive all
+byte/misa frames and original stateful source replay at each constructed rowBefore.
+No per-row source/read/value/range/state/order/replay/frame/preservation is supplied.
+
+Generic modeled-setup roots and explicit runtime-pool roots keep their public
+interfaces separate; runtimeCSRData retains every row, boundary and token. Inputs
+are full original CSR public setup/membership, ordinary logical ImageBoundary and
+tracked alignment for GPR history. No CSR availability, privilege, expected oracle/
+custom-operation success, table identity or worker answer is added. This public
+seed constructor is not universal physical boot or independent ROM-shadow setup.
+Existing seven-profile/memory/shadow execution scopes remain unchanged.
+
+Seventeen [initialized/alias/port regressions](Tests/NativeReducedCSRInitialized.lean)
+and [empty-history roots](Tests/NativeReducedCSRHistoryEmpty.lean) pass: fresh port
+rejections, same-prestate aliases/OLDREADs, discarded GPR update, oversized source/
+second-read/write/terminal and nonzero x0 rejection, actual readonly x0 read zero,
+CSR-shaped positive original query/three-port mechanics, and complete native EMPTY
+runtime history with a real terminal x0 token at every RV32 PC. Empty original
+bytes and no CSR/privilege premise are explicit. These conditional-native/partial-
+positive/complete-empty tests are not full positive nonempty117-equation/22-lookup
+accepted CSR witnesses or original CSR instruction execution.
+
+Eleven new modules/tests record eighteen exact parentde55 source origins. These
+Sail states realize native GPR transfers; they do not execute the original CSR
+clause or delegated RAM effects. Their byte-memory frame must not be transferred
+through an unproved worker action. CSR original/custom/nondeterminism/privilege
+semantics, PC retirement, request clock/issuance, fulfillment/converse/accounting,
+protocol/terminal/init/physical/general refinement/crypto/completeness remain open.
+Production/native/Sail/import/export/artifact/fixture/dependency inputs stay unchanged;
+no native defect, issue assumption, fix, new axiom or parity claim. NEXT connect
+original pre-state source words to request ABI observations and check actual native
+caller clock/issuance before worker streams; metadata index3 alone is not issuance.
+
+Final bounded gates pass 3,552 explicit standard-only axiom roots, 234 public
+Review roots, four guide declaration names and 3,468 local links/anchors with
+context/trace separation. Full Review sampled aggregate footprint/resident peaks
+were 565.17/3,148.92 MiB over 18.83 s. Independent provenance passes 189 v3-origin
+and 1,422 backport-origin identities, 80 byte-identical modules, eight circuit
+artifacts, 75 native sources, 24 setup artifacts and four exporter files; all pins,
+dependencies and the original checkout are preserved (18.25/34.62 MiB, 9.88 s).
+All started guards report no owned survivors. No resource or proof cap was raised;
+these are sampled watchdog measurements plus Lean's allocation cap, not an OS
+hard physical-memory limit. Unchanged intake/native/heavy certificate gates retain
+their exact prior code and inputs and were not repeated for this proof-only change.
+
 ## Original public CSR decoding and runtime effects (7 November 2026)
 
 [The original CSR projection](Airbender/Review/Circuits/ReducedMachine/CSRDecoder.lean)

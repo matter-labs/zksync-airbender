@@ -570,3 +570,15 @@ mask before existing native CSR effects. This is a CSR-only source/local connect
 not initialized original execution or request clock/issuance/worker accounting.
 The existing seven-profile execution and arbitrary ordinary public-code roots
 remain unchanged; original decoder bytes are not equated with the fixed ROM.
+
+
+## Initialized CSR GPR transfers
+
+[CSR ranges](CSRValues.lean) and [GPR history](CSRRegisters.lean) now derive every
+actual read/write/terminal bound, x0 propagation, chronological state/segment,
+original same-prestate read/write, byte/misa frame and stateful source replay.
+Fresh actual CSR address/write/x0 laws precede unchanged shared induction and
+history assembly. Both readonly refreshes/OLDREADs/aliases remain; concrete runtime
+roots retain every row/boundary/token. These GPR states do not execute original
+CSR or delegated RAM effects. Caller clock/issuance, original CSR/PC execution,
+workers/accounting/protocol and general native/physical setup remain open.
