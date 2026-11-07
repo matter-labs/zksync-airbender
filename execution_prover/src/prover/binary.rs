@@ -11,6 +11,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         cycles_bound: Option<u32>,
     ) -> Vec<BinaryHandle> {
         assert!(
+            self.host_pool_allocation.is_some(),
+            "cannot register binary variants after finalizing setup"
+        );
+        assert!(
             !variants.is_empty(),
             "at least one binary variant is required"
         );
@@ -69,17 +73,24 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 (circuit_type, precomp)
             }).collect();
             let start = Instant::now();
-            request_setup_initialization(
-                &self.backend,
+            // Common setup uses 0; each variant needs a distinct batch while
+            // earlier setup requests can still be running in the backend.
+            let setup_batch_id = u64::try_from(key)
+                .unwrap()
+                .checked_add(1)
+                .expect("setup batch id overflow");
+            let pending = request_setup_initialization(
+                self.backend.as_ref(),
+                setup_batch_id,
                 precomputations
                     .iter()
                     .map(|(circuit_type, precomp)| {
                         (CircuitType::Unrolled(*circuit_type), precomp.clone())
                     })
                     .collect(),
-            )
-            .wait();
-            info!("PROVER inserted binary with key {key:?}: CPU setup construction {setup_time:?}, backend preparation {preparation_time:?}, setup initialization {:?}", start.elapsed());
+            );
+            self.pending_setup_initializations.push(pending);
+            info!("PROVER inserted binary with key {key:?}: CPU setup construction {setup_time:?}, backend preparation {preparation_time:?}, setup initialization request {:?}", start.elapsed());
             let holder = BinaryHolder {
                 execution_kind,
                 machine_type,

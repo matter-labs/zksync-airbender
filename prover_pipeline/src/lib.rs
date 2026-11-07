@@ -195,6 +195,8 @@ pub trait ProveBackend {
         cycles_bound: Option<u32>,
     );
 
+    fn finalize_setup(&mut self);
+
     fn prove(&mut self, request: ProveRequest<'_>) -> (ProgramProof, Setups);
 
     /// `Setups` of a registered binary, from its precomputations.
@@ -283,6 +285,10 @@ impl<B: execution_prover::backend::ExecutionBackend> PipelineBackend<B> {
 }
 
 impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBackend<B> {
+    fn finalize_setup(&mut self) {
+        self.prover.finalize_setup();
+    }
+
     fn register_variants(
         &mut self,
         bin: &[u32],
@@ -700,6 +706,7 @@ impl ProgramProver {
             );
             count += 1;
         }
+        backend.finalize_setup();
         log::info!(
             "prepared {count} pipeline binaries in {} ms",
             elapsed_ms(start)

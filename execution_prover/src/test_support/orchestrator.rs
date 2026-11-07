@@ -17,6 +17,7 @@ fn concurrent_batches_wait_for_cached_resources() {
         &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
         Some(cycles),
     )[0];
+    prover.finalize_setup();
     let expected_final_timestamp =
         common_constants::INITIAL_TIMESTAMP + u64::from(cycles) * common_constants::TIMESTAMP_STEP;
     std::thread::scope(|scope| {

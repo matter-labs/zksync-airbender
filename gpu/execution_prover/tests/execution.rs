@@ -50,6 +50,7 @@ fn commit_and_prove_binary(
         &[(execution_kind, machine_type)],
         None,
     )[0];
+    prover.finalize_setup();
     let non_determinism_source = FlatResponsesSource::new_with_reads(non_determinism_reads);
     prover.commit_memory_and_prove(0, &handle, non_determinism_source)
 }
@@ -117,6 +118,7 @@ fn test_execution_prover_commit_then_prove() {
         &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
         None,
     )[0];
+    prover.finalize_setup();
     // FlatResponsesSource reads are deterministic — feed the same value sequence
     // to the commit phase and the prove phase. Equivalent results should
     // match `commit_memory_and_prove` on a single source.

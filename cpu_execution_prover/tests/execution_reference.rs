@@ -92,6 +92,7 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
             &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
             Some(CYCLES_BOUND as u32),
         )[0];
+        prover.finalize_setup();
         let result = prover.commit_memory_and_prove(1, &handle, non_determinism());
         let artifacts = prover.program_artifacts(&handle);
         program_prover::assemble_program_proof(&artifacts, result)

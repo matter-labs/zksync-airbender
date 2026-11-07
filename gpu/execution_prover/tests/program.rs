@@ -196,6 +196,7 @@ fn prove_on_gpu(
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
     let handle =
         prover.add_binary_variants(binary_image, text_section, &[(kind, machine)], None)[0];
+    prover.finalize_setup();
     prove_registered_on_gpu(prover, &handle, reads)
 }
 
@@ -768,14 +769,25 @@ fn test_program_prover_recursion_layer_verify() {
 
     // Stage 1: base layer (identical to test_program_prover_base_layer_verify).
     let (binary_image, text_section) = load_workload("hashed_fibonacci");
-    let (base_proof, base_setups) = prove_on_gpu(
-        &mut prover,
-        ExecutionKind::Unrolled,
-        MachineType::FullUnsigned,
+    let base = prover.add_binary_variants(
         binary_image,
         text_section,
-        vec![100, 5],
-    );
+        &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
+        None,
+    )[0];
+    let (fsv_binary, fsv_text) = ProgramSource::elf(
+        artifact_root()
+            .join("tools/gkr_verifier/full_statement_verifiers/fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf"),
+    )
+    .load_unpadded();
+    let verifier = prover.add_binary_variants(
+        fsv_binary,
+        fsv_text,
+        &[(ExecutionKind::Unrolled, MachineType::Reduced)],
+        None,
+    )[0];
+    prover.finalize_setup();
+    let (base_proof, base_setups) = prove_registered_on_gpu(&mut prover, &base, vec![100, 5]);
     native_verify_unrolled_in_mode(
         build_unrolled_stream(&base_setups, &base_proof, verifier_common::BLAKE_MODE),
         true,
@@ -791,24 +803,13 @@ fn test_program_prover_recursion_layer_verify() {
     let chain = FsvRecursionChain::begin(&base_end_params);
 
     // Stage 2: prove the fsv base-layer verifier over the base proof's stream.
-    let (fsv_binary, fsv_text) = ProgramSource::elf(
-        artifact_root()
-            .join("tools/gkr_verifier/full_statement_verifiers/fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf"),
-    )
-    .load_unpadded();
     let stream = build_unrolled_stream(
         &base_setups,
         &base_proof,
         crate::upstream::BlakeMode::Compression,
     );
-    let (mut recursion_proof, recursion_setups) = prove_on_gpu(
-        &mut prover,
-        ExecutionKind::Unrolled,
-        MachineType::Reduced,
-        fsv_binary,
-        fsv_text,
-        stream,
-    );
+    let (mut recursion_proof, recursion_setups) =
+        prove_registered_on_gpu(&mut prover, &verifier, stream);
     recursion_proof.set_recursion_chain(&chain);
     log::info!(
         "recursion layer proved on GPU ({} cycles)",
@@ -979,6 +980,7 @@ fn test_generate_sec100_cost_model_fixtures() {
     };
     let base_verifier = add_verifier(FsvProgram::UnrolledBaseLayer);
     let recursion_verifier = add_verifier(FsvProgram::UnrolledRecursionLayer);
+    prover.finalize_setup();
 
     let mut last_chain = None;
     for (i, (id, witness)) in inputs.into_iter().enumerate() {
@@ -1052,6 +1054,8 @@ fn test_generate_sec100_cost_model_fixtures() {
     let chain = last_chain.expect("at least one calibration input");
 
     let (base_alt_binary, base_alt_text) = load_workload("hashed_fibonacci");
+    drop(prover);
+    let mut prover = ExecutionProver::with_configuration(configuration);
     let (base_alt_proof, base_alt_setups) = prove_on_gpu(
         &mut prover,
         ExecutionKind::Unrolled,
@@ -1089,6 +1093,8 @@ fn test_generate_sec100_cost_model_fixtures() {
     );
     push_window_touches(&mut keccak_binary);
     keccak_binary.push(0x0000_006f); // jal x0, 0
+    drop(prover);
+    let mut prover = ExecutionProver::with_configuration(configuration);
     let (keccak_proof, keccak_setups) = prove_on_gpu(
         &mut prover,
         ExecutionKind::Unrolled,
@@ -1126,6 +1132,8 @@ fn test_generate_sec100_cost_model_fixtures() {
         0x0064_8223, // sb x6, 4(x9)
     ]);
     memory_binary.push(0x0000_006f); // jal x0, 0
+    drop(prover);
+    let mut prover = ExecutionProver::with_configuration(configuration);
     let (memory_proof, memory_setups) = prove_on_gpu(
         &mut prover,
         ExecutionKind::Unrolled,
@@ -1162,6 +1170,8 @@ fn test_generate_sec100_cost_model_fixtures() {
             .push(((word.wrapping_sub(upper) & 0xfff) << 20) | (reg << 15) | (reg << 7) | 0x13);
     }
     memory_binary.push(0x0000_006f);
+    drop(prover);
+    let mut prover = ExecutionProver::with_configuration(configuration);
     let (mut memory_proof, memory_setups) = prove_on_gpu(
         &mut prover,
         ExecutionKind::Unrolled,
@@ -1203,15 +1213,64 @@ fn run_gpu_recursive_pipeline(
     let configuration = ExecutionProverConfiguration::default();
     let mut prover = ExecutionProver::with_configuration(configuration);
 
-    // === Stage 1: base layer. ===
-    let (base_proof, base_setups) = prove_on_gpu(
-        &mut prover,
-        ExecutionKind::Unrolled,
-        MachineType::FullUnsigned,
+    let base_handle = prover.add_binary_variants(
         base_binary_image,
         base_text_section,
-        base_non_determinism,
+        &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
+        None,
+    )[0];
+    let fsv_dir = artifact_root().join("tools/gkr_verifier/full_statement_verifiers");
+    let unrolled_blake = unrolled_blake_mode();
+    let bridge_blake = bridge_blake_mode();
+    let final_blake = final_blake_mode();
+    log::info!(
+        "blake modes: unrolled={}, bridge={}, final={}",
+        unrolled_blake.tag(),
+        bridge_blake.tag(),
+        final_blake.tag()
     );
+    let mut register_verifier = |program, blake, kind| {
+        let guest = load_fsv_exact(
+            &fsv_dir,
+            &FsvDescriptor::new(SoundnessMode::PessimisticConjecture, program, blake),
+        );
+        prover.add_binary_variants(
+            guest.bin().to_vec(),
+            guest.text().to_vec(),
+            &[(kind, MachineType::Reduced)],
+            None,
+        )[0]
+    };
+    let unrolled_base = register_verifier(
+        FsvProgram::UnrolledBaseLayer,
+        unrolled_blake,
+        ExecutionKind::Unrolled,
+    );
+    let unrolled_recursion = register_verifier(
+        FsvProgram::UnrolledRecursionLayer,
+        unrolled_blake,
+        ExecutionKind::Unrolled,
+    );
+    let bridge_base = register_verifier(
+        FsvProgram::UnrolledBaseLayer,
+        bridge_blake,
+        ExecutionKind::Unified,
+    );
+    let bridge_recursion = register_verifier(
+        FsvProgram::UnrolledRecursionLayer,
+        bridge_blake,
+        ExecutionKind::Unified,
+    );
+    let final_handle = register_verifier(
+        FsvProgram::UnifiedRecursionLayer,
+        final_blake,
+        ExecutionKind::Unified,
+    );
+    prover.finalize_setup();
+
+    // === Stage 1: base layer. ===
+    let (base_proof, base_setups) =
+        prove_registered_on_gpu(&mut prover, &base_handle, base_non_determinism);
     native_verify_unrolled_in_mode(
         build_unrolled_stream(&base_setups, &base_proof, verifier_common::BLAKE_MODE),
         true,
@@ -1227,57 +1286,16 @@ fn run_gpu_recursive_pipeline(
     let mut chain = FsvRecursionChain::begin(&base_end_params);
 
     // === Stages 2-3: unrolled recursion loop. ===
-    // Blake modes are env-selectable exactly like the CPU pipeline
-    // (RECURSION_UNROLLED_BLAKE / RECURSION_BRIDGE_BLAKE /
-    // RECURSION_FINAL_BLAKE). Defaults are blake2_with_compression; the
-    // g-function variants can't run here (the JIT lacks that delegation).
-    let fsv_dir = artifact_root().join("tools/gkr_verifier/full_statement_verifiers");
-    let unrolled_blake = unrolled_blake_mode();
-    let bridge_blake = bridge_blake_mode();
-    let final_blake = final_blake_mode();
-    log::info!(
-        "blake modes: unrolled={}, bridge={}, final={}",
-        unrolled_blake.tag(),
-        bridge_blake.tag(),
-        final_blake.tag()
-    );
-    let (unrolled_base_bin, unrolled_base_text) = load_fsv_exact(
-        &fsv_dir,
-        &FsvDescriptor::new(
-            SoundnessMode::PessimisticConjecture,
-            FsvProgram::UnrolledBaseLayer,
-            unrolled_blake,
-        ),
-    )
-    .into_words();
-    let (unrolled_rec_bin, unrolled_rec_text) = load_fsv_exact(
-        &fsv_dir,
-        &FsvDescriptor::new(
-            SoundnessMode::PessimisticConjecture,
-            FsvProgram::UnrolledRecursionLayer,
-            unrolled_blake,
-        ),
-    )
-    .into_words();
-
     let mut proof = base_proof;
     let mut setups = base_setups;
     let mut input_is_base = true;
     let mut layer = 0u32;
 
     loop {
-        let (program, bin, text) = if input_is_base {
-            (
-                FsvProgram::UnrolledBaseLayer,
-                &unrolled_base_bin,
-                &unrolled_base_text,
-            )
+        let (program, handle) = if input_is_base {
+            (FsvProgram::UnrolledBaseLayer, &unrolled_base)
         } else {
-            (
-                FsvProgram::UnrolledRecursionLayer,
-                &unrolled_rec_bin,
-                &unrolled_rec_text,
-            )
+            (FsvProgram::UnrolledRecursionLayer, &unrolled_recursion)
         };
         let estimated = estimate_verifier_cycles_for(
             &proof,
@@ -1297,12 +1315,9 @@ fn run_gpu_recursive_pipeline(
             break;
         }
 
-        let (mut new_proof, new_setups) = prove_on_gpu(
+        let (mut new_proof, new_setups) = prove_registered_on_gpu(
             &mut prover,
-            ExecutionKind::Unrolled,
-            MachineType::Reduced,
-            bin.clone(),
-            text.clone(),
+            handle,
             build_unrolled_stream(&setups, &proof, unrolled_blake),
         );
         new_proof.set_recursion_chain(&chain);
@@ -1327,27 +1342,14 @@ fn run_gpu_recursive_pipeline(
 
     // === Stage 4: bridge — the unrolled verifier proved in unified mode
     //     (reloaded in the bridge-selected blake variant, like the CPU flow). ===
-    let bridge_program = if input_is_base {
-        FsvProgram::UnrolledBaseLayer
+    let bridge_handle = if input_is_base {
+        &bridge_base
     } else {
-        FsvProgram::UnrolledRecursionLayer
+        &bridge_recursion
     };
-    let (bridge_bin, bridge_text) = load_fsv_exact(
-        &fsv_dir,
-        &FsvDescriptor::new(
-            SoundnessMode::PessimisticConjecture,
-            bridge_program,
-            bridge_blake,
-        ),
-    )
-    .into_words();
-    let (bridge_bin, bridge_text) = (&bridge_bin, &bridge_text);
-    let (mut bridge_proof, bridge_setups) = prove_on_gpu(
+    let (mut bridge_proof, bridge_setups) = prove_registered_on_gpu(
         &mut prover,
-        ExecutionKind::Unified,
-        MachineType::Reduced,
-        bridge_bin.clone(),
-        bridge_text.clone(),
+        bridge_handle,
         build_unrolled_stream(&setups, &proof, bridge_blake),
     );
     bridge_proof.set_recursion_chain(&chain);
@@ -1366,21 +1368,9 @@ fn run_gpu_recursive_pipeline(
     chain.extend(&bridge_end_params);
 
     // === Stage 5: final — fsv_unified_recursion_layer in unified mode. ===
-    let (final_bin, final_text) = load_fsv_exact(
-        &fsv_dir,
-        &FsvDescriptor::new(
-            SoundnessMode::PessimisticConjecture,
-            FsvProgram::UnifiedRecursionLayer,
-            final_blake,
-        ),
-    )
-    .into_words();
-    let (mut final_proof, final_setups) = prove_on_gpu(
+    let (mut final_proof, final_setups) = prove_registered_on_gpu(
         &mut prover,
-        ExecutionKind::Unified,
-        MachineType::Reduced,
-        final_bin.clone(),
-        final_text.clone(),
+        &final_handle,
         build_unified_stream(&bridge_setups, &bridge_proof, final_blake),
     );
     final_proof.set_recursion_chain(&chain);
@@ -1407,12 +1397,9 @@ fn run_gpu_recursive_pipeline(
     for round in 0..extra_rounds {
         let end_params = compute_end_params(&setups, proof.final_pc);
         chain.extend(&end_params);
-        let (mut new_proof, new_setups) = prove_on_gpu(
+        let (mut new_proof, new_setups) = prove_registered_on_gpu(
             &mut prover,
-            ExecutionKind::Unified,
-            MachineType::Reduced,
-            final_bin.clone(),
-            final_text.clone(),
+            &final_handle,
             build_unified_stream(&setups, &proof, final_blake),
         );
         new_proof.set_recursion_chain(&chain);

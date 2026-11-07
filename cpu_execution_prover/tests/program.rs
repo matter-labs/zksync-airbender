@@ -31,6 +31,7 @@ fn prove(
     let (binary, text) = workload;
     let handle =
         prover.add_binary_variants(binary, text, &[(execution_kind, machine_type)], None)[0];
+    prover.finalize_setup();
     let result =
         prover.commit_memory_and_prove(1, &handle, QuasiUARTSource::new_with_reads(inputs));
     let artifacts = prover.program_artifacts(&handle);
