@@ -24,11 +24,24 @@ Provenance:
 Row meaning (slop/Slop/Blake2Round/Setup/): `Rows.setupRow_eq` proves that every
 one of the 2^20 decoded rows equals the region formula (`Spec.spec0`..`spec5`):
 rows 0..606207 are the six XOR regions, rows 606208.. are all zero (tag 0).
-Short blocks (<= 512 rows) are checked row by row by `decide +kernel` walks in
-`Col*Walk`/`Col*Part*` (12 modules, longest ~75 s); long affine/periodic blocks
-are matched by shape and proved algebraically, never expanded. The padding rows
-cannot satisfy a query: `Circuit.blakeRoundQueries` (human/Human/Import/Parse.lean)
+The padding rows cannot satisfy a query: `Circuit.blakeRoundQueries` (human/Human/Import/Parse.lean)
 requires every query's tag column to be a constant in {4, 19, 20, 55, 56, 57}.
+
+## How the import structures the columns (all four files)
+
+`import_setup_blocks` (human/Human/Import/SetupEmit.lean) cuts each column's JSON blocks at
+every table edge and replaces column `c < width` of every table whose id is in
+`gridCatalogue` (Xor 4, Xor7 19, Xor9 20, XorSpecialIota 38, Xor8WithCarry 55,
+Xor7WithCarry 56, Xor4x3 57, KeccakXorSplit 58, KeccakXor5Nibble 64, KeccakChi5 65) by one
+`grid` block: a named row formula (`GridFn`, human/Human/Import/SetupBlocks.lean). It emits a
+grid block only after comparing every row of the region with the JSON value; every other
+emitted block is the JSON block itself, a cut of an affine JSON block, or compared row by
+row too; any mismatch fails the import. **This comparison is an elaborator responsibility,
+trusted like the JSON transcription itself (`parseSetup`): it runs as elaborator code, and
+the kernel never sees the JSON values of a grid region.** The proofs then work by formula:
+each column is a handful of blocks; grid blocks and long affine runs are matched by shape
+(`Spec`/`Shapes`) and proved equal to the row formula algebraically (`digits_eq`), the few
+hundred controller rows are checked by the kernel (`Slop.Setup.Blocks.scan`).
 
 ## Split Keccak workers
 
@@ -61,6 +74,7 @@ column parity: iota 38 [0, 65536), slots 62 [65536, 65658), control 63 [65658, 6
 XOR5 64 [65780, 1114356); theta/rho: byte XOR 4 [0, 65536), XOR-and-split 58
 [65536, 589824), control 59 [589824, 589945), slots 60 [589945, 590066); chi5: chi 65
 [0, 1048576), control 66 [1048576, 1048697). The first row of each controller region is
-its zero key (zeros but the tag); all later rows are padding (tag 0). Short blocks are
-checked by `decide +kernel` walks (`Slop.Setup.Blocks.walkUpTo`, `Col*Walk`/`Col*Part*`,
-generated); listed long blocks are affine/periodic shapes proved in `ShapesOk`.
+its zero key (zeros but the tag); all later rows are padding (tag 0). The table regions
+are grid blocks (see above; the iota constants of `XorSpecialIota` are taken from the data
+and proved equal to `rcByte` in `ColumnParity.ShapesOk`); the controller regions keep their
+JSON blocks and are checked row by row in `Rows`.

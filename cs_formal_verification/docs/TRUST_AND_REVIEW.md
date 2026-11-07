@@ -97,6 +97,15 @@ faithful parsing/emission is not. Placement guards reject missing or ambiguous
 logical variables and check memory/witness banks. Named imported descriptors do
 not prove that Rust preprocessing or decoder-table contents match the model.
 
+Setup tables (`artifacts/setup/*.json`) are read by
+[SetupEmit](../lean/human/Human/Import/SetupEmit.lean) into the blocks of
+[SetupBlocks](../lean/human/Human/Import/SetupBlocks.lean). Besides transcribing the JSON,
+the import replaces each recognised table region (table ids in `gridCatalogue`) by a
+`grid` block, a named row formula, after comparing every row of the region with the JSON;
+any mismatch fails the import. This comparison is an elaborator responsibility with the same
+trust as the transcription: it is elaborator code, not kernel-checked, and the kernel proofs
+see only the formula. See [the setup README](../lean/artifacts/setup/README.md).
+
 The target remains the richer no-cache representation. Compiled-gate implication,
 witness extension and cached-layout equivalence are unproved. Generic prime-field
 claims retain their stated minimum moduli and inverse compatibility; they do not
