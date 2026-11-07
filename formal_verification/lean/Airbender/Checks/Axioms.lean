@@ -1,3 +1,7 @@
+import Airbender.Review.Circuits.ReducedMachine.MainAuxiliary
+import Airbender.Proofs.ReducedMachine.NativeMainAuxiliary
+import Airbender.Review.Circuits.ReducedMachine.MainAuxiliaryTheorems
+import Tests.NativeMainAuxiliary
 import Airbender.Review.Circuits.ReducedMachine.MemoryBoundary
 import Airbender.Proofs.ReducedMachine.NativeMemoryBoundary
 import Airbender.Review.Circuits.ReducedMachine.MemoryBoundaryTheorems
@@ -5913,3 +5917,36 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeMemoryBoundary.scalar_product_not_matching
 #print axioms Airbender.Tests.NativeMemoryBoundary.complete_conditional_worker_product
 #print axioms Airbender.Tests.NativeMemoryBoundary.complete_conditional_global_balance
+
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.port_geometry
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.initialization_geometry
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.chain_geometry
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.initialization_padding
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.product_binding
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.state_balance
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.masked_balance
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.row_balance
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.trace_balance
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.main_batch_balance
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.main_worker_balance
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliary.main_auxiliary_product
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliary.unified_main_worker_memory_balance
+#print axioms Airbender.Tests.NativeMainAuxiliary.actual_chain_slots
+#print axioms Airbender.Tests.NativeMainAuxiliary.actual_initialization_fields
+#print axioms Airbender.Tests.NativeMainAuxiliary.readonly_refresh_retained
+#print axioms Airbender.Tests.NativeMainAuxiliary.unmasked_third_write
+#print axioms Airbender.Tests.NativeMainAuxiliary.raw_register_indicator
+#print axioms Airbender.Tests.NativeMainAuxiliary.state_fields_retained
+#print axioms Airbender.Tests.NativeMainAuxiliary.initialization_unmasked
+#print axioms Airbender.Tests.NativeMainAuxiliary.active_mask_slice
+#print axioms Airbender.Tests.NativeMainAuxiliary.inactive_mask_slice
+#print axioms Airbender.Tests.NativeMainAuxiliary.nonboolean_mask_slice
+#print axioms Airbender.Tests.NativeMainAuxiliary.scaling_boundary
+#print axioms Airbender.Tests.NativeMainAuxiliary.complete_conditional_padding
+#print axioms Airbender.Tests.NativeMainAuxiliary.complete_conditional_main
+#print axioms Airbender.Tests.NativeMainAuxiliary.complete_conditional_global
+
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.execute_boolean
+#print axioms Airbender.ReducedMachine.NativeMainAuxiliaryProofs.mask_choice
+#print axioms Airbender.Tests.NativeMainAuxiliary.native_execute_domain
+#print axioms Airbender.Tests.NativeMainAuxiliary.native_mask_choice

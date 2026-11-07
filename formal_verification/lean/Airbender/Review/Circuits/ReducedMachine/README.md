@@ -715,3 +715,17 @@ protocol outputs, not main RAM-only ratios. Main auxiliary/state/mask/init claim
 bindings, full token matching/initialization, active ranges/keys and physical
 refinement remain open. Fourteen pure/reference/conditional regressions include
 a positive helper-only boundary, not a complete native witness or defect.
+
+[Main auxiliary and joint-product roots](MainAuxiliaryTheorems.lean) now bind
+actual returned main claims to the full8388607-row source chain: three memory
+slots96/100/104, state108, execute masking112, unmasked initialization116 and
+adjacent grand120, with actual first/last boundaries. Complete native body and
+six initialization-padding polynomials remain; no execute1/Boolean-execute or
+desired per-row read/range/clock/result premise. The actual masking polynomial
+and all factors remain, with no cancellation. Same-list composition with the
+worker/public boundary closes joint product balance at this stronger normalized
+interface. Token matching, initialized history/active ranges, initialization
+range/sorting/window checks and physical/general refinement remain open.
+
+Original native equation31 additionally derives execute0-or1 and actual N-versus-D
+mask selection from full body acceptance, with no Boolean/activity premise.

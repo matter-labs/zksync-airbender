@@ -138,3 +138,11 @@ clear only boundary denominators, retaining zero worker factors. Main grand
 claims still need actual main state/memory/masking/initialization auxiliary
 bindings; product balance does not establish token matching or initialized
 histories/active bounds/accounting. Existing logical execution scopes remain.
+
+The [actual main auxiliary component](../Circuits/ReducedMachine/MainAuxiliaryTheorems.lean) now derives returned main claims
+from full ordinary-row memory/state/masking/initialization products, preserving
+the actual execute polynomial and unmasked initialization. Same returned claims
+compose with full worker products and public register/PC contributions without
+factor cancellation or an execute-one premise. Token matching, initialization/
+active bounds and faithful caller padding/filter/history remain open; existing
+logical execution scopes and physical/general refinement boundaries are unchanged.

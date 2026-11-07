@@ -34,6 +34,98 @@ initialization/decoder interfaces; other combined profiles remain unfinished.
 The historical 119-equation/141-variable/13-region artifact is preserved separately.
 It is not assumed to be the current source-generated machine. Main/worker stage-two descriptors now have separate typed auxiliary intakes; unmodeled protocol semantics remain open. These are coverage/fidelity results, not native defects.
 
+## Native main auxiliary chain and joint memory products (7 November 2026)
+
+[The main and joint product roots](Airbender/Review/Circuits/ReducedMachine/MainAuxiliaryTheorems.lean)
+now derive returned main grand claims from the actual selected full-domain
+memory/state/masking/initialization chain. The stronger source-reference
+component consequently combines actual main and worker row products with the
+public32-register/PC boundary. The earlier boundary-only root remains unchanged;
+its main claims are opaque until this additional main contract is supplied.
+
+[The interface](Airbender/Review/Circuits/ReducedMachine/MainAuxiliary.lean) uses
+unchanged imported main port, state, initialization and typed auxiliary metadata.
+[Kernel bindings and calculations](Airbender/Proofs/ReducedMachine/NativeMainAuxiliary.lean)
+retain all three accesses, both readonly refreshes, third-port OLDREAD and actual
+write, register/RAM indicator polarity, address limbs and clock offsets0/1/2.
+The selected native chain is memory96/100/104, state108, masking112,
+initialization116, then adjacent-row grand120. Its per-row chain starts from
+literal1 at unit normalization, not the previous row's grand accumulator.
+Quartic slots remain separate from body logical variables; request quartic92 is
+not body92. No fallback port or dropped address is used.
+
+This order follows the already pinned [main driver](../../prover/src/prover_stages/unrolled_prover/stage3.rs)
+and [native helper functions](../../prover/src/prover_stages/unrolled_prover/quotient_parts/every_row_except_last.rs).
+The existing importer already validates and emits all required descriptors,
+including initialization address126/127, teardown value128/129, time130/131 and
+padding borrow125. No parser, exporter, artifact, literal, dependency or native
+source changes; all98 source pins remain. Generic polynomial helpers and product
+telescopes are reused unchanged. No worker acceptance or whole-table semantics
+are transferred to main rows by an equivalence assumption.
+
+The explicit accepted-row component checks complete original Clean117-equation/
+22-lookup body acceptance on the actual constructed runtime pool, all three
+memory auxiliary equations, PC-state equation, actual execute-masking equation,
+six native initialization-padding equations, unmasked initialization/teardown
+accumulation and the adjacent grand equation. The trace retains every8388607
+ordinary row and native first-grand1/last-public-claim equations. It supplies no
+execute-one/Boolean-execute premise, desired read/value/range/key/clock/state/
+schedule/count/request/result or expected product. Existing initialized active
+logical execution interfaces are not substituted for this physical row domain.
+
+Let D denote the three memory read factors times the incoming PC-state factor,
+and N the three writes times the outgoing PC-state factor. The source masking
+relation derives masked-accumulator times D equals e*N+(1-e)*D for the actual
+field execute e. The polynomial identity remains valid as pure field algebra, without
+cancelling factors or inserting an active-row filter. Original body equation31
+derives execute0-or1 from full native acceptance and gives actual N-versus-D
+mask selection; Booleanity is a conclusion, not a premise. Initialization and teardown
+remain unmasked, with zero initial RAM value/time and actual teardown value/time
+at the SAME imported address. The resulting row read factor is teardown*D;
+the write factor is initialization*(e*N+(1-e)*D). The observed zero padding-borrow
+branch derives all six initialization/teardown fields zero from its real native
+padding equations, not from supplied per-row field values.
+
+A symbolic full-domain telescope derives main-grand-claim times all row read
+factors equals all row write factors. The same returned main list now feeds the
+unchanged global worker/public-boundary component. Pure product transport gives
+joint main/worker/public product balance without dividing by or cancelling any
+worker/main factor and without inverse/nonzero/injectivity premises. Every
+inactive row and auxiliary contribution remains. This does not establish
+precompression token matching, initialized history, active-row history filtering,
+active bounds/clocks, stage2 key refinement, issuance or accounting.
+
+Sixteen [regressions](Tests/NativeMainAuxiliary.lean) check chain/initialization
+geometry, readonly timestamps, actual third write, raw indicator/state fields,
+unmasked initialization, active/inactive mask slices, a nonboolean MASK-ONLY
+slice, a nonunit scaling boundary, and complete conditional padding/main/joint
+roots. These are metadata/pure/reference/conditional checks, not complete positive
+native main/worker witnesses, physical attacks, F02/F03/F04 evidence or defects.
+Four modules record ten exact parent origins and31 explicit roots. No new
+importer gate, native generation or closed heavy-certificate replay is needed.
+
+Final bounded validation passes5227 standard-only explicit axiom roots,263 public
+Review roots,4 guide declaration names and3970 links/anchors with context/trace
+separation. Independent checks preserve189 v3 and1738 backport identities,
+80 byte-identical modules,8 historical plus2 regenerated circuit artifacts,
+98 native sources,25 setup artifacts and4 exporters. Full Review sampled
+aggregate footprint598.40MiB/resident3297.22MiB in19.66s; every started guard
+reports no owned survivors. No ceiling was raised. The watchdog is sampled,
+not an OS hard physical-memory limit.
+
+The new interface remains an explicit source-reference normalized polynomial
+component. Physical Rust/M31Quartic/FFT/LDE/quotient/challenge separation,
+ProofOutput/dispatch/setup fidelity and full initialization range/sorting/window
+checks remain separate. No physical point is assumed unit-scaled. Faithful
+full-domain caller padding/filter/history, coupling additive and multiplicative
+proof observations, full main/worker token matching and initialized active
+read/write/address/raw-clock bounds remain open. Original CSR/MOP execution,
+worker round/reference/terminal effects, complete positive witnesses, physical
+initialization/teardown, general refinement/cryptography/completeness/parity remain
+open. FINDINGS and zero-established-defect status are unchanged; no production
+fix, issue assumption or project axiom. Main GPR/RAM frames still cannot cross
+unproved delegated actions.
+
 ## Native public memory boundary and worker products (7 November 2026)
 
 [The public boundary root](Airbender/Review/Circuits/ReducedMachine/MemoryBoundaryTheorems.lean)

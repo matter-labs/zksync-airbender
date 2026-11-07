@@ -217,3 +217,10 @@ readonly refreshes, OLDREADs, writes and inactive rows remain; no worker factor
 is cancelled or assumed nonzero. Main grand claims remain full opaque protocol
 outputs. This is not token matching/initialized memory, active key/clock bounds,
 issuance/accounting or physical Rust/field/quotient/refinement evidence.
+
+The stronger [main auxiliary component](../ReducedMachine/MainAuxiliaryTheorems.lean)
+now identifies actual returned main claims with their full source chain products
+before composing with all worker factors and public boundaries. Execute masking
+remains a field polynomial; initialization is unmasked and every ordinary row
+remains. No factor cancellation, token matching/initialized-read/active-clock/
+issuance/accounting or physical/refinement claim is inferred.
