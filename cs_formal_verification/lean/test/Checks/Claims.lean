@@ -93,6 +93,11 @@ import Human.Trace.Workers.Keccak.Theorems
 import Human.Trace.Workers.Keccak.RVTheorems
 import Human.Trace.Workers.KeccakSplit.Theorems
 import Human.Trace.Workers.KeccakSplit.RVTheorems
+-- callers1: RV delegation caller claims
+import Slop.Final.Circuits.AddSub.RVCallerTheorems
+import Slop.Final.Trace.Delegation.RVCallerTheorems
+import Human.Circuits.AddSub.RVCallerTheorems
+import Human.Trace.Delegation.RVCallerTheorems
 
 example : Airbender.Delegation.Caller.SoundnessClaim := @Airbender.Delegation.Caller.soundness
 example : Airbender.Delegation.Caller.PcSoundnessClaim := @Airbender.Delegation.Caller.pc_soundness
@@ -252,6 +257,19 @@ example : Airbender.Keccak.Split.Native.OperationExecutionClaim := @Airbender.Ke
 example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.Keccak.Split.Native.permutation_soundness
 example : Airbender.Keccak.Split.Native.RVOperationExecutionClaim := @Airbender.Keccak.Split.Native.rv_operation_execution
 example : Airbender.Keccak.Split.Native.RVPermutationSoundnessClaim := @Airbender.Keccak.Split.Native.rv_permutation_soundness
+-- callers1: RV delegation caller claims
+example : Airbender.Delegation.Caller.RVSoundnessClaim := @Airbender.Delegation.Caller.rv_soundness
+example : Airbender.Delegation.Caller.RVPcSoundnessClaim := @Airbender.Delegation.Caller.rv_pc_soundness
+example : Airbender.Delegation.Caller.RVRequestsSoundnessClaim := @Airbender.Delegation.Caller.rv_requests_soundness
+example : Airbender.Delegation.Caller.RVRequestMemorySoundnessClaim := @Airbender.Delegation.Caller.rv_request_memory_soundness
+example : Airbender.Delegation.Caller.RVOperationSoundnessClaim := @Airbender.Delegation.Caller.rv_operation_soundness
+example : Airbender.Delegation.Caller.RVSharedMemorySoundnessClaim := @Airbender.Delegation.Caller.rv_shared_memory_soundness
+example : Airbender.Delegation.Caller.RVSharedOperationSoundnessClaim := @Airbender.Delegation.Caller.rv_shared_operation_soundness
+example : Airbender.Delegation.Caller.RVSharedSpanSoundnessClaim := @Airbender.Delegation.Caller.rv_shared_span_soundness
+example : Airbender.Delegation.Caller.RVMixedMemorySoundnessClaim := @Airbender.Delegation.Caller.rv_mixed_memory_soundness
+example : Airbender.Delegation.Caller.RVWorkerScheduleSoundnessClaim := @Airbender.Delegation.Caller.rv_worker_schedule_soundness
+example : Airbender.Delegation.Caller.RVRequestWindowSoundnessClaim := @Airbender.Delegation.Caller.rv_request_window_soundness
+example : Airbender.Delegation.Caller.RVRequestHashWindowSoundnessClaim := @Airbender.Delegation.Caller.rv_request_hash_window_soundness
 
 #print axioms Airbender.Delegation.Caller.soundness
 #print axioms Airbender.Delegation.Caller.pc_soundness
@@ -409,3 +427,16 @@ example : Airbender.Keccak.Split.Native.RVPermutationSoundnessClaim := @Airbende
 #print axioms Airbender.Keccak.Native.rv_window_soundness
 #print axioms Airbender.Keccak.Split.Native.rv_operation_execution
 #print axioms Airbender.Keccak.Split.Native.rv_permutation_soundness
+-- callers1: RV delegation caller claims
+#print axioms Airbender.Delegation.Caller.rv_soundness
+#print axioms Airbender.Delegation.Caller.rv_pc_soundness
+#print axioms Airbender.Delegation.Caller.rv_requests_soundness
+#print axioms Airbender.Delegation.Caller.rv_request_memory_soundness
+#print axioms Airbender.Delegation.Caller.rv_operation_soundness
+#print axioms Airbender.Delegation.Caller.rv_shared_memory_soundness
+#print axioms Airbender.Delegation.Caller.rv_shared_operation_soundness
+#print axioms Airbender.Delegation.Caller.rv_shared_span_soundness
+#print axioms Airbender.Delegation.Caller.rv_mixed_memory_soundness
+#print axioms Airbender.Delegation.Caller.rv_worker_schedule_soundness
+#print axioms Airbender.Delegation.Caller.rv_request_window_soundness
+#print axioms Airbender.Delegation.Caller.rv_request_hash_window_soundness

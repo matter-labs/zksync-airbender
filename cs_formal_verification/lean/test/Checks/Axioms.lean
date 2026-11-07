@@ -12,6 +12,8 @@ import Slop.Final.Trace.Workers.Keccak.RVTheorems
 import Slop.Final.Trace.Workers.KeccakSplit.RVTheorems
 import Slop.Final.Circuits.Bigint.RVTheorems
 import Slop.Final.Trace.Workers.Bigint.RVTheorems
+import Slop.Final.Circuits.AddSub.RVCallerTheorems
+import Slop.Final.Trace.Delegation.RVCallerTheorems
 import Human.ISA.Sail.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
 import Slop.Final.Trace.Families.JumpBranchSlt.Theorems
@@ -2394,3 +2396,70 @@ import Human.Import.Coefficients
 #print axioms Airbender.Bigint.Proofs.rv_bigint_call
 #print axioms Airbender.Bigint.Proofs.row_operation
 #print axioms Airbender.Delegation.Proofs.rv_row_call
+#print axioms Airbender.Delegation.Caller.Proofs.rv_fields_delegate
+#print axioms Airbender.Delegation.Caller.Proofs.rv_source_of_image
+#print axioms Airbender.Delegation.Caller.Proofs.rv_source_call
+#print axioms Airbender.Delegation.Caller.Proofs.rv_public_source
+#print axioms Airbender.Delegation.Caller.Proofs.rv_query_csr
+#print axioms Airbender.Delegation.Caller.Proofs.rv_query_selected
+#print axioms Airbender.Delegation.Caller.Proofs.rv_query_pc
+#print axioms Airbender.Delegation.Caller.Proofs.rv_caller_binding
+#print axioms Airbender.Delegation.Caller.Proofs.rv_pc_binding
+#print axioms Airbender.Delegation.Caller.Proofs.rv_caller_member
+#print axioms Airbender.Delegation.Caller.Proofs.rv_caller_clocks_unique
+#print axioms Airbender.Delegation.Caller.Proofs.rv_request_binding_checks
+#print axioms Airbender.Delegation.Caller.Proofs.rv_request_binding
+#print axioms Airbender.Delegation.Caller.Proofs.rv_unique_issued_worker
+#print axioms Airbender.Delegation.Caller.Proofs.rv_request_worker_inputs
+#print axioms Airbender.Delegation.Caller.Proofs.rv_request_memory_execution
+#print axioms Airbender.Delegation.Caller.Proofs.rv_issued_worker_slot
+#print axioms Airbender.Delegation.Caller.Proofs.rv_worker_schedule
+#print axioms Airbender.Delegation.Caller.Proofs.rv_request_windows
+#print axioms Airbender.Trace.Proofs.Transfer.rv_image_clocks
+#print axioms Airbender.Trace.Proofs.Transfer.rv_initial_zero
+#print axioms Airbender.Trace.Proofs.Transfer.rv_image_restriction
+#print axioms Airbender.Trace.Proofs.Transfer.rv_boundary_inputs
+#print axioms Airbender.Delegation.Caller.Proofs.rv_shared_write_clocks
+#print axioms Airbender.Delegation.Caller.Proofs.rv_shared_memory_clocks
+#print axioms Airbender.Delegation.Caller.Proofs.rv_shared_memory_order
+#print axioms Airbender.Delegation.Caller.Proofs.rv_shared_memory_facts
+#print axioms Airbender.Delegation.Caller.Proofs.rv_shared_zero_closed
+#print axioms Airbender.Delegation.Caller.Proofs.rv_shared_source_values
+#print axioms Airbender.Delegation.Caller.Proofs.rv_shared_memory_execution
+#print axioms Airbender.Delegation.Caller.Proofs.rv_transfer_bounds
+#print axioms Airbender.Delegation.Caller.Proofs.rv_shared_write_rules
+#print axioms Airbender.Delegation.Caller.Proofs.rv_shared_word_bounds
+#print axioms Airbender.Delegation.Caller.Proofs.rv_shared_operation_effects
+#print axioms Airbender.Delegation.Caller.Proofs.rv_request_operation_effects
+#print axioms Airbender.Delegation.Caller.Proofs.rv_worker_projection_accepted
+#print axioms Airbender.Delegation.Caller.Proofs.rv_worker_projection_inputs
+#print axioms Airbender.Delegation.Caller.Proofs.rv_span_keccak_control_cell
+#print axioms Airbender.Delegation.Caller.Proofs.rv_hash_span_binding
+#print axioms Airbender.Delegation.Caller.Proofs.rv_hash_span_result_mapping
+#print axioms Airbender.Delegation.Caller.Proofs.rv_projected_shared_terminal
+#print axioms Airbender.Delegation.Caller.Proofs.rv_shared_span_effects
+#print axioms Airbender.Delegation.Caller.Proofs.rv_machine_ports_caller
+#print axioms Airbender.Delegation.Caller.Proofs.rv_machine_ports_ordinary
+#print axioms Airbender.Delegation.Caller.Proofs.rv_mixed_write_clocks
+#print axioms Airbender.Delegation.Caller.Proofs.rv_mixed_memory_clocks
+#print axioms Airbender.Delegation.Caller.Proofs.rv_mixed_memory_facts
+#print axioms Airbender.Delegation.Caller.Proofs.rv_mixed_machine_member
+#print axioms Airbender.Delegation.Caller.Proofs.rv_mixed_worker_member
+#print axioms Airbender.Delegation.Caller.Proofs.rv_mixed_ordinary_source
+#print axioms Airbender.Delegation.Caller.Proofs.rv_mixed_machine_time
+#print axioms Airbender.Delegation.Caller.Proofs.rv_mixed_zero_rules
+#print axioms Airbender.Delegation.Caller.Proofs.rv_mixed_write_rules
+#print axioms Airbender.Delegation.Caller.Proofs.rv_mixed_memory_effects
+#print axioms Airbender.Delegation.Caller.Proofs.rv_bind_hash_window
+#print axioms Airbender.Delegation.Caller.rv_soundness
+#print axioms Airbender.Delegation.Caller.rv_pc_soundness
+#print axioms Airbender.Delegation.Caller.rv_requests_soundness
+#print axioms Airbender.Delegation.Caller.rv_request_memory_soundness
+#print axioms Airbender.Delegation.Caller.rv_operation_soundness
+#print axioms Airbender.Delegation.Caller.rv_shared_memory_soundness
+#print axioms Airbender.Delegation.Caller.rv_shared_operation_soundness
+#print axioms Airbender.Delegation.Caller.rv_shared_span_soundness
+#print axioms Airbender.Delegation.Caller.rv_mixed_memory_soundness
+#print axioms Airbender.Delegation.Caller.rv_worker_schedule_soundness
+#print axioms Airbender.Delegation.Caller.rv_request_window_soundness
+#print axioms Airbender.Delegation.Caller.rv_request_hash_window_soundness
