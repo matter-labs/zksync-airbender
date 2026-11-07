@@ -152,3 +152,9 @@ uses the unchanged ten-field query and separately typed quartic72. Its execute
 multiplicity is distinct from delegation request multiplicity. The full-domain
 source-reference component supplies no decoder membership, inactive request
 filter or extraction/matching result; those global boundaries remain explicit.
+
+[The decoder table component](../Circuits/ReducedMachine/DecoderTableArguments.lean)
+reuses the unchanged generic polynomial-sum theorem at literal zero claim. Its
+actual difference samples are quartic88-minus-quartic72; equality of ordinary
+sums is derived, not supplied. Physical witness9 has no logical body ID. Public
+setup authentication and lookup extraction remain separate fidelity boundaries.

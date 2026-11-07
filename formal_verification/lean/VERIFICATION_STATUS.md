@@ -1,5 +1,58 @@
 # Verification status
 
+## Native decoder table multiplicity and zero/last sum (7 November 2026)
+
+[The decoder-table interface](Airbender/Review/Circuits/ReducedMachine/DecoderTableArguments.lean)
+retains physical witness column9 separately from logical body variables: that
+column has NO logical body-variable ID in this native artifact. Actual physical
+setup columns6-through15 and quartic88 are separately typed; quartic72 remains
+the decoder-access observation. [The same-read intake](Airbender/Import/ReducedDecoderTable.lean)
+reuses unchanged complete body/stage2/access validation, checks exact multiplicity
+geometry and unmappedness, and preserves all94130 source bytes. No body index is
+invented for the physical multiplicity. Kernel geometry retains domain2^23,
+witness width107, setup width16 and decoder capacity1048576.
+
+The reviewed native per-row table relation is
+tau*(setup-denominator*aux88-physical-multiplicity9). Every8388607 ordinary row
+remains, with no assumed Boolean/count interpretation or zero-outside-capacity
+rule. The normalized difference polynomial has actual aux88-minus-aux72 samples,
+degree below the domain size, a primitive domain root and the native zero/last
+divisor. [Proof calculations](Airbender/Proofs/ReducedMachine/NativeDecoderTableArguments.lean)
+reuse the unchanged generic sum theorem with literal zero claim to DERIVE equality
+of the two full ordinary auxiliary sums. The actual last auxiliary values are
+equal; they are not each assumed zero. The sum is never an interface premise.
+
+[Short roots](Airbender/Review/Circuits/ReducedMachine/DecoderTableTheorems.lean)
+retain the existing decoder access and same-main scalar/product/capacity acceptance
+on the EXACT SAME main rows/auxiliaries and configured worker batch. Separately
+typed physical witness/setup values are observations; general body/physical codec,
+public-code setup authentication and native Rust/field/FFT/LDE/quotient/transcript
+refinement remain explicit open fidelity boundaries. Single-challenge auxiliary
+sum equality supplies no table membership, compression injectivity, multiset
+matching, initialized read, inactive request filter, issuance or accounting.
+The prior complete-body/individual-decoder inactive CSR example is NOT promoted
+to acceptance at this stronger table/global interface or a native defect.
+
+[Thirteen regressions](Tests/NativeDecoderTable.lean) check physical/logical column
+separation, actual setup/query/challenge roles, full domain retention, boundary
+controls, pole slices and complete conditional sum/last results.
+[Twelve executable intake controls](Tests/NativeDecoderTableImport.lean) check
+changed/missing/extra physical groups, setup/auxiliary geometry, historical
+rejection and canonical changed-body DATA without semantic transfer. Eight new
+modules record13 exact parent origins and26 added audit roots, preserving every
+prior5316 audit root/source byte. The unchanged native last-row/zero source was
+exactly compared to67ee and pinned BEFORE adaptation, raising native source pins
+to99. No old parser/proof/acceptance/exporter/artifact/fixture/dependency/production/
+Sail change, native generation or closed heavy replay; FINDINGS unchanged.
+
+Next: faithful public physical decoder setup/extraction and remaining native
+padding/global request enforcement; full-domain main/43-worker token matching and
+public initialization; active read/write/address/raw-clock ranges and stage2 key
+refinement; caller-worker issuance/fulfillment/converse/accounting. Original
+CSR/MOP and worker execution, global init/teardown, physical/general refinement,
+cryptography, completeness and checked parity remain open.
+
+
 ## Native decoder access and faithful inactive-request boundary (7 November 2026)
 
 [The decoder-access interface](Airbender/Review/Circuits/ReducedMachine/DecoderArguments.lean)

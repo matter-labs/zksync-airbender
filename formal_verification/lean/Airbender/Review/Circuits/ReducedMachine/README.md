@@ -763,3 +763,12 @@ claims no table-multiplicity/sum/last-row/global/worker/physical acceptance or
 native defect. [Regressions](../../../../Tests/NativeDecoderArguments.lean) and
 [intake controls](../../../../Tests/NativeDecoderAuxiliaryImport.lean) preserve
 that boundary. Global faithful inactive filtering and initialized matching remain open.
+
+[Decoder table sum](DecoderTableTheorems.lean) retains physical witness9 separately
+from logical body IDs, physical setup6-through15 and quartic88/72. The actual
+zero/last difference-polynomial boundary derives full ordinary auxiliary-sum
+and last-value equality; it does not assume either auxiliary last value zero.
+[Strict intake controls](../../../../Tests/NativeDecoderTableImport.lean) and
+[regressions](../../../../Tests/NativeDecoderTable.lean) preserve scope. Public
+physical setup/extraction, inactive request filtering and initialized global
+matching remain open; no prior local example becomes a native defect.

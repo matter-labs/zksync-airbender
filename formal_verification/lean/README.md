@@ -1,5 +1,11 @@
 # Circuit verification
 
+The [native decoder table sum](Airbender/Review/Circuits/ReducedMachine/DecoderTableTheorems.lean)
+now connects physical witness9, setup6-through15 and quartic88/72 on the same main
+observations. Full ordinary auxiliary-sum equality follows from the native
+zero/last polynomial boundary; matching/extraction, inactive request filtering
+and initialized worker execution remain open. See the [current status](VERIFICATION_STATUS.md).
+
 The [native decoder-access component](Airbender/Review/Circuits/ReducedMachine/DecoderArgumentTheorems.lean)
 now binds actual quartic72/execute and all ten decoder fields to the same full-domain
 main observations. Complete CSR body plus this individual decoder relation still

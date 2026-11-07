@@ -571,3 +571,9 @@ interface. Complete body plus individual decoder access admits execute0/request1
 it supplies no faithful caller filter or active logical execution trace. Existing
 initialized execution/history roots and their explicit scopes remain unchanged;
 no Sail frame crosses unproved delegated actions.
+
+[Decoder table auxiliary-sum equality](../Circuits/ReducedMachine/DecoderTableTheorems.lean)
+now shares the same full-domain main observations. It supplies no decoder
+membership, caller filter, initialized worker history or original execution.
+Existing active logical and public fetched-execution roots retain their scopes;
+no Sail memory frame crosses unproved delegated actions.

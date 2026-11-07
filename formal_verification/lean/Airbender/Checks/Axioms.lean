@@ -1,3 +1,10 @@
+import Airbender.Review.Circuits.ReducedMachine.DecoderTableColumns
+import Airbender.Import.ReducedDecoderTable
+import Airbender.Review.Circuits.ReducedMachine.DecoderTableArtifact
+import Airbender.Review.Circuits.ReducedMachine.DecoderTableArguments
+import Airbender.Proofs.ReducedMachine.NativeDecoderTableArguments
+import Airbender.Review.Circuits.ReducedMachine.DecoderTableTheorems
+import Tests.NativeDecoderTable
 import Airbender.Review.Circuits.ReducedMachine.DecoderAuxiliaryColumns
 import Airbender.Import.ReducedDecoderAuxiliary
 import Airbender.Review.Circuits.ReducedMachine.DecoderAuxiliaryArtifact
@@ -6063,3 +6070,30 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeDecoderArguments.pc_low_literal
 #print axioms Airbender.Tests.NativeDecoderArguments.nonunit_scaling
 #print axioms Airbender.Tests.NativeDecoderArguments.active_zero_auxiliary_rejected
+
+#print axioms Airbender.ReducedMachine.NativeDecoderTableArgumentProofs.same_source
+#print axioms Airbender.ReducedMachine.NativeDecoderTableArgumentProofs.geometry
+#print axioms Airbender.ReducedMachine.NativeDecoderTableArgumentProofs.setup_column_bound
+#print axioms Airbender.ReducedMachine.NativeDecoderTableArgumentProofs.access_argument
+#print axioms Airbender.ReducedMachine.NativeDecoderTableArgumentProofs.as_sum
+#print axioms Airbender.ReducedMachine.NativeDecoderTableArgumentProofs.table_row
+#print axioms Airbender.ReducedMachine.NativeDecoderTableArgumentProofs.multiplicity_nonpole
+#print axioms Airbender.ReducedMachine.NativeDecoderTableArgumentProofs.auxiliary_sum
+#print axioms Airbender.ReducedMachine.NativeDecoderTableArgumentProofs.polynomial_zero
+#print axioms Airbender.ReducedMachine.NativeDecoderTableArgumentProofs.last_auxiliaries
+#print axioms Airbender.ReducedMachine.NativeDecoderTableArgumentProofs.joint_effects
+#print axioms Airbender.ReducedMachine.NativeDecoderTableArguments.decoder_table_auxiliary_sum
+#print axioms Airbender.ReducedMachine.NativeDecoderTableArguments.same_main_decoder_table_arguments
+#print axioms Airbender.Tests.NativeDecoderTable.separate_physical_multiplicity
+#print axioms Airbender.Tests.NativeDecoderTable.actual_setup_query
+#print axioms Airbender.Tests.NativeDecoderTable.actual_quartic_difference
+#print axioms Airbender.Tests.NativeDecoderTable.all_setup_challenge_roles
+#print axioms Airbender.Tests.NativeDecoderTable.all_ordinary_rows_retained
+#print axioms Airbender.Tests.NativeDecoderTable.setup_bound
+#print axioms Airbender.Tests.NativeDecoderTable.wide_multiplicity_slice
+#print axioms Airbender.Tests.NativeDecoderTable.table_pole_slice
+#print axioms Airbender.Tests.NativeDecoderTable.difference_scaling
+#print axioms Airbender.Tests.NativeDecoderTable.nonzero_constant_rejected
+#print axioms Airbender.Tests.NativeDecoderTable.zero_difference_polynomial
+#print axioms Airbender.Tests.NativeDecoderTable.complete_table_component
+#print axioms Airbender.Tests.NativeDecoderTable.last_observations
