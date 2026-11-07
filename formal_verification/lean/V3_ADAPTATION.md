@@ -637,3 +637,23 @@ not complete117equation accepted native jumps. Ten exact parenta4a origins recor
 six new modules/tests; jump.rs is newly hash-pinned to unchanged v2 base,66native
 sources. No old split masks/tables/acceptance transferred, no heavy certificate
 replay/data regeneration, finding, production/Sail/dependency change or parity claim.
+
+## Original decoded/initialized native jump results (7 November 2026)
+
+[New original jump fields](Airbender/Review/Circuits/ReducedMachine/JumpDecoder.lean)
+retain raw operands/x0/sign extension/JALfunct3 at actual33025/257masks. [Full
+source recovery](Airbender/Proofs/ReducedMachine/NativeJumpDecoder.lean) derives
+native fields and original JAL parity. [Return preservation](Airbender/Proofs/ReducedMachine/NativeJumpReturn.lean)
+uses original public PC bounds/alignment before shared initialized ranges, avoiding
+a source-range cycle. [Numerical assembly](Airbender/Proofs/ReducedMachine/NativeJumpDecodedResult.lean)
+discharges every raw base/immediate prerequisite from actual initialized reads/
+public inputs, then proves canonical return/write/target, wrap and low-bit cleanup.
+[Short public results](Airbender/Review/Trace/Families/ReducedMachine/JumpResults.lean)
+keep no source/range/parity/PC/result/state/table identity answer premise.
+
+[Ten regressions](Tests/NativeReducedJumpDecoder.lean) reuse only old original
+byte/stateful decoder evidence, not old native masks/tables/acceptance. They do not
+certify complete nonempty117-equation accepted native jumps. Twenty-two exact
+parent56origins record fourteen modules/tests. Native GPR/clauses/fetched execution,
+common jump integration and physical/export/compiler/completeness stay open. No
+production/native/Sail/data/dependency change, finding, issue assumption or parity.

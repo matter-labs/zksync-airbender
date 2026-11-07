@@ -9537,6 +9537,160 @@
       "backport_reuse_revision": "a4a44816b6d074576405a5e54d7a97f326b8ed58",
       "backport_reuse_path": "Tests/NativeReducedBitwise.lean",
       "backport_reuse_sha256": "3778cf977abaa08acb56bdbde00c05e837e6311c0e3f6e2d9bbfb74113b77b4f"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/JumpDecoder.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Review/Circuits/JumpBranchSlt/Decoder.lean",
+      "backport_reuse_sha256": "0eca71e2e460a04741958aeca4322d56d283993eb8110a4164010cc21e43e0d6"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/JumpDecoder.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/ArithmeticDecoder.lean",
+      "backport_reuse_sha256": "1de9bbe630576d846f1dedc548416c1539f94597a4f50e250e56bbc834b93885"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpDecoder.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecoder.lean",
+      "backport_reuse_sha256": "0526a342d564270f5ef9e2e896854fe1ab45cd25b4fd2ce582e95214834a144a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpDecoder.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBranchDecoder.lean",
+      "backport_reuse_sha256": "1dfeae79c1128f7dbe57880adab89f769204803aff3cc8f41afb5186b637db39"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachineJump.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ReducedMachineBranch.lean",
+      "backport_reuse_sha256": "f5cb409c5d0c54cdde9fcdd446bb5b743ab744041e429d1c17134a07f5492b2e"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpDecoder.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchDecoder.lean",
+      "backport_reuse_sha256": "25c0d689d4b606487e4351d86b73df07c8b0eb14eed3f8c188b521d001aeb2d9"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/JumpDecoder.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/BranchDecoder.lean",
+      "backport_reuse_sha256": "895c838c4443d941ba94e63cb4e1e6e96fb68d226941266f6e8fd1cf396bf24e"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/JumpResult.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/ArithmeticResult.lean",
+      "backport_reuse_sha256": "c9ad114f1e9e8be0f4f8dcaa4099f9f2dbb0409c04f57a6a16b504b3495b7129"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpReturn.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativePC.lean",
+      "backport_reuse_sha256": "126ecf34bca7b636e68ef121a90708e38482526f525c8edcab4544c6dde48eee"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpReturn.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecodedResult.lean",
+      "backport_reuse_sha256": "75cb9d368a217aec524798e0dc9f39c71fccd276c0e4c855b106a749d0a50893"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpReturn.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPC.lean",
+      "backport_reuse_sha256": "2fabd82677a4e360925279dd0b4a5dcfdd4c77656f1b81d2a781a79f8365e40f"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpPreservation.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBranchPreservation.lean",
+      "backport_reuse_sha256": "a0e694667baafe8626c2ceb562d2217aacadc7df4568208f6230fd3b9c8607a6"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpValues.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchValues.lean",
+      "backport_reuse_sha256": "1d62467c6ff12a259ce095cd5ee4cb63a9f23b04c019a6dc4a42b5a78798a90e"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/JumpValues.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/BranchValues.lean",
+      "backport_reuse_sha256": "d0b9bb3e556b6de2ef1acebdec8440227f95150e1847f788c28ec7b736713792"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpDecodedResult.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Target.lean",
+      "backport_reuse_sha256": "eb240e5c7f306f48736fce3c5490c94b49da7df54a4d1a4c5809f1d7f3a0834e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpDecodedResult.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecodedResult.lean",
+      "backport_reuse_sha256": "75cb9d368a217aec524798e0dc9f39c71fccd276c0e4c855b106a749d0a50893"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpDecodedResult.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpNumerics.lean",
+      "backport_reuse_sha256": "296459c89ab3751a954a10fb9116631150e442205e62c13ed97e5680b6af1551"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpResults.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticResults.lean",
+      "backport_reuse_sha256": "852ddff7760febe3f73195e05fba362bd06160b2f5a76fb16de3a760c76ce421"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/JumpResults.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/BranchResults.lean",
+      "backport_reuse_sha256": "2f16ed75364850fd28d9d511dd679eeeda1abca24eb44eba07581778f09267d7"
+    },
+    {
+      "path": "Tests/NativeReducedJumpDecoder.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Tests/NativeReducedBranchDecoder.lean",
+      "backport_reuse_sha256": "d70b7af81f4f42f157caf145ec13d08eeae9699ff0ccf57ff1f89364c53b4aaf"
+    },
+    {
+      "path": "Tests/NativeReducedJumpDecoder.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Tests/JumpLink.lean",
+      "backport_reuse_sha256": "0edac91dc22af2910184aa5af914704535d1a2960a06ec33a948c70a7f73f2f1"
+    },
+    {
+      "path": "Tests/NativeReducedJumpDecoder.lean",
+      "change": "Recover original JAL/JALR raw operands/x0/sign extension/raw funct3 at actual reduced257/33025 masks from complete original byte/stateful sparse/padded membership. Derive original JAL parity without a filter. Native return49/50 PC+4/full RV32 wrap plus original rd/x0 derive candidate and writes BEFORE source-range induction; public original PC alignment discharges that internal prerequisite, avoiding a cycle. Proved readonly/masked preservation feeds unchanged initialized induction for ALLread/write/terminal ranges. Discharge raw base/immediate bounds from actual initialized source or publicPC and decoded offset; exact native cleanup/raw bit1 exclusion yields original JAL direct or JALR low-bit-cleared target. Public roots supply no per-row range/source/result/target/PC/parity/state or table-equivalence answer. Original Sail GPR/clauses/fetched execution remain separate. Reuse old fixture ONLY for original bytes/stateful decoding, never old native masks/constraints/tables/acceptance; no native/data/Sail/dependency change, finding or parity claim.",
+      "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
+      "backport_reuse_path": "Tests/NativeReducedBranchResults.lean",
+      "backport_reuse_sha256": "51840bc0ef711e83032ef2033a7b44f95c82ebd821e574964a0b5d280070b12e"
     }
   ],
   "setup_artifacts": [

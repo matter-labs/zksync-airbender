@@ -441,3 +441,15 @@ identity. Internal addition input bounds still need original initialization.
 [Tests](../../../../Tests/NativeReducedJump.lean) include partial six-assertion
 positives, not complete accepted jumps. Original public decoding/GPR/PC/Sail and
 common jump execution are open; current supported projection excludes jumps.
+
+## Original initialized jump numerical connection
+
+[Original jump projection](JumpDecoder.lean) now derives native33025/257masks,
+raw operands/rd-x0/sign extension/JALfunct3 through full original public membership.
+[Return preservation](../../../Proofs/ReducedMachine/NativeJumpReturn.lean) uses
+public PC bounds/alignment before initialized range induction. [Public numerical
+results](../../Trace/Families/ReducedMachine/JumpResults.lean) discharge raw input
+ranges/parity internally and derive canonical return/write/target, wrap and JALR
+bit0 cleanup. [Regressions](../../../../Tests/NativeReducedJumpDecoder.lean) are
+source/conditional initialized checks, not full native accepted jumps. Original
+GPR/retained clauses/fetched execution and common jump support remain next.

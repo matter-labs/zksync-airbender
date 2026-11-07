@@ -277,3 +277,11 @@ jump histories. Internal base/immediate bounds still need original public input
 and history discharge before architectural raw addition/Sail execution. Current
 common initialized support excludes jumps; local output PC bounds alone do not
 establish that connection.
+
+[Jump write preservation](../../../Proofs/ReducedMachine/NativeJumpPreservation.lean)
+now derives bounded PC+4 return writes from original public incoming PC, before
+any source-range induction. [All initialized jump ranges](../../Trace/Families/ReducedMachine/JumpValues.lean)
+then include both readonly ports, aliases, old-destination/discarded writes and
+terminal cells. [Numerical jump results](../../Trace/Families/ReducedMachine/JumpResults.lean)
+derive original return/target/cleanup without source-bound answers; original
+pre-row Sail GPR/cell observations and clause/fetched execution remain next.

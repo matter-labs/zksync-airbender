@@ -32,6 +32,66 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Original decoded and initialized jump numerics (7 November 2026)
+
+[Original JAL/JALR projection](Airbender/Review/Circuits/ReducedMachine/JumpDecoder.lean)
+retains x0/raw operands, original21/12bit Sail sign extension and raw JAL
+funct3=imm.toNat/4096%8 (JALR0). It uses actual native masks33025/257 and parser
+source fields JAL0/0,JALRrs1/0. [Complete source recovery](Airbender/Review/Trace/Families/ReducedMachine/JumpDecoder.lean)
+derives every actual ten-field binding from original public bytes/stateful full
+sparse/padded membership; native18bit packing excludes holes/tail. Direct offset
+parity follows from retained original Sail decoding, without a filter or public
+parity answer. Native parser inspection is not general Rust decoder-export fidelity.
+
+[Actual return proofs](Airbender/Proofs/ReducedMachine/NativeJumpReturn.lean)
+derive canonical default49/50 PC+4/full RV32 wrap, candidate116/117 and original
+rd/x0-masked writes before range induction. Incoming canonical PC/alignment follows
+public query/membership, requiring no source range. [Proved preservation](Airbender/Proofs/ReducedMachine/NativeJumpPreservation.lean)
+then feeds unchanged shared time induction; [all native read/write/terminal bounds](Airbender/Review/Trace/Families/ReducedMachine/JumpValues.lean)
+include actual source-low35, both readonly ports, aliases and discarded writes.
+There is no supplied source range or preservation rule and no induction cycle.
+
+[Decoded numerical assembly](Airbender/Proofs/ReducedMachine/NativeJumpDecodedResult.lean)
+discharges every raw_result base/immediate bound internally: JAL uses public PC,
+JALR uses initialized actual first-read range, and offset uses original sign extension.
+Exact native cleanup plus raw bit1 rejection implements full-width low-bit clearing.
+Original JAL parity/incoming alignment derive no direct-target change; JALR retains
+bit0 clearing. [One short public result](Airbender/Review/Trace/Families/ReducedMachine/JumpResults.lean)
+derives canonical return/candidate/original-rd write, raw/selected target and final
+PC bounds/alignment with full RV32 wrap. Inputs are original jumpDecoderSetupImage,
+ImageBoundary(fixedData trace), Accepted(fixedData trace), FULL JumpDecodedTrace and
+row membership. Every source/range/PC/offset/alignment/parity/carry/return/target/
+write result is derived; no intermediate state or table-equivalence answer is public.
+Exact fixedData constructs NativeFixed.table, retaining all rows/boundaries. Numerical
+words are not yet original pre-row Sail GPR observations or executed clauses.
+
+[Ten regressions](Tests/NativeReducedJumpDecoder.lean) check three original public
+JAL/JALR/x0 source entries, complete3slot+1padding image, negative offsets/raw JAL7,
+JALR aliases, direct parity, corrupt tag/zero rejection, native return wrap,
+independent target edges and initialized unchecked source bound. Only original
+bytes/stateful decoder evidence is reused from the old fixture, never native
+masks/tables/constraints/acceptance. These positives are not complete nonempty
+117-equation accepted native jumps. The logical three-word source image is not
+the unchanged native eight-word/CSR/nondeterminism fixture or physical ROM/export.
+
+Next bind original jump GPR/cell histories, selected operands/PC observations and
+retained clauses/normal/fetched execution before common integration. Current common
+five-profile execution still excludes jumps. Native public/physical/compiler/
+cryptographic/completeness and original interrupt/exception boundaries stay separate.
+Twenty-two exact parent56 origins record fourteen modules/tests; no native/Sail/data/
+dependency change, finding, issue assumption, new axiom or parity claim.
+Final bounded gates pass3065 explicit standard-only axiom roots,193 public Review
+roots,4guide names,3077links/anchors and context/trace separation. Full Review
+547.07MiB footprint/3118.36MiB resident/14.71s; independent exact provenance
+19.34/35.44MiB/8.09s passes189v3-origin/1104backport-origin identities,80byte-identical
+reused modules,8circuit artifacts,66native sources,23setup artifacts,4exporters and
+unchanged dependencies. Fourteen affected modules/tests and Axioms pass; numerical
+assembly491.84/2877.59MiB/2.39s,ten tests506.07/2910.06/2.65s,Axioms543.24/3093.06/4.43s.
+Every owned worker terminated. Shared lock,Lean-j1-M3072,3072MiB aggregate footprint/
+4096MiB resident and finite180second modules/120second audits remain unchanged.
+No memory/time/heartbeat/recursion ceiling hit or raised; guard is sampled watchdog
+plus Lean allocation cap,not an OS hard physical-memory limit.
+
 ## Native jump routing and output PC bounds (7 November 2026)
 
 [Actual reduced jump references](Airbender/Review/Circuits/ReducedMachine/Jump.lean)

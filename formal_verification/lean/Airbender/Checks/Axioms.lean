@@ -1,3 +1,17 @@
+import Airbender.Review.Circuits.ReducedMachine.JumpDecoder
+import Airbender.Proofs.ReducedMachine.NativeJumpDecoder
+import Airbender.Review.Helpers.Decoder.ReducedMachineJump
+import Airbender.Proofs.Trace.Families.ReducedMachine.JumpDecoder
+import Airbender.Review.Trace.Families.ReducedMachine.JumpDecoder
+import Airbender.Review.Circuits.ReducedMachine.JumpResult
+import Airbender.Proofs.ReducedMachine.NativeJumpReturn
+import Airbender.Proofs.ReducedMachine.NativeJumpPreservation
+import Airbender.Proofs.Trace.Families.ReducedMachine.JumpValues
+import Airbender.Review.Trace.Families.ReducedMachine.JumpValues
+import Airbender.Proofs.ReducedMachine.NativeJumpDecodedResult
+import Airbender.Proofs.Trace.Families.ReducedMachine.JumpResults
+import Airbender.Review.Trace.Families.ReducedMachine.JumpResults
+import Tests.NativeReducedJumpDecoder
 import Airbender.Review.Circuits.ReducedMachine.Jump
 import Airbender.Proofs.ReducedMachine.NativeJumpSelectors
 import Airbender.Proofs.ReducedMachine.NativeJumpFields
@@ -3321,3 +3335,34 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedJump.oversized_final_rejected
 #print axioms Tests.NativeReducedJump.actual_base_add_slices
 #print axioms Tests.NativeReducedJump.independent_slice_values
+
+#print axioms Airbender.ReducedMachine.NativeJumpDecoderProofs.field_bounds
+#print axioms Airbender.ReducedMachine.NativeJumpDecoderProofs.fetched_sources
+#print axioms Airbender.ReducedMachine.NativeJumpDecoderProofs.decoded_fields
+#print axioms Airbender.ReducedMachine.NativeJumpDecoderProofs.immediate_word
+#print axioms Airbender.ReducedMachine.NativeJumpDecoderProofs.offset_even
+#print axioms Airbender.ReducedMachine.NativeJumpDecoderProofs.trace_decoding
+#print axioms Airbender.ReducedMachine.Native.public_jump_decoding
+#print axioms Airbender.ReducedMachine.NativeJumpReturnProofs.link_successor
+#print axioms Airbender.ReducedMachine.NativeJumpReturnProofs.candidate_result
+#print axioms Airbender.ReducedMachine.NativeJumpPreservationProofs.written_bounds
+#print axioms Airbender.ReducedMachine.NativeJumpPreservationProofs.row_write_rule
+#print axioms Airbender.ReducedMachine.NativeJumpRangeProofs.decoded_write_rules
+#print axioms Airbender.ReducedMachine.NativeJumpRangeProofs.image_value_bounds
+#print axioms Airbender.ReducedMachine.Native.public_jump_value_bounds
+#print axioms Airbender.ReducedMachine.NativeJumpResultProofs.base_word
+#print axioms Airbender.ReducedMachine.NativeJumpResultProofs.raw_target_result
+#print axioms Airbender.ReducedMachine.NativeJumpResultProofs.cleared_target
+#print axioms Airbender.ReducedMachine.NativeJumpResultProofs.decoded_result
+#print axioms Airbender.ReducedMachine.NativeJumpRangeProofs.image_jump_results
+#print axioms Airbender.ReducedMachine.Native.public_jump_results
+#print axioms Tests.NativeReducedJumpDecoder.original_fields
+#print axioms Tests.NativeReducedJumpDecoder.original_sources
+#print axioms Tests.NativeReducedJumpDecoder.complete_original_image
+#print axioms Tests.NativeReducedJumpDecoder.negative_zero_operands
+#print axioms Tests.NativeReducedJumpDecoder.original_direct_parity
+#print axioms Tests.NativeReducedJumpDecoder.corrupt_raw_tag_rejected
+#print axioms Tests.NativeReducedJumpDecoder.corrupt_zero_flag_rejected
+#print axioms Tests.NativeReducedJumpDecoder.native_return_wrap
+#print axioms Tests.NativeReducedJumpDecoder.independent_reference_targets
+#print axioms Tests.NativeReducedJumpDecoder.initialized_source_rejected

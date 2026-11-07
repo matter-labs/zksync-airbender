@@ -327,6 +327,28 @@ fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
 terminal/init boundaries remain open. No native defect or issue-handling assumption
 is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
 
+## Original initialized jump numerical boundary
+
+[Public original jump decoding](Airbender/Review/Trace/Families/ReducedMachine/JumpDecoder.lean)
+derives actual native masks/rs/rd/x0/immediate/raw funct3 from complete original
+byte/stateful membership; retained Sail decoding derives direct offset parity.
+[Canonical PC+4 return preservation](Airbender/Proofs/ReducedMachine/NativeJumpReturn.lean)
+uses public incoming PC bounds/alignment before induction, so no source-range cycle.
+[All initialized native word ranges](Airbender/Review/Trace/Families/ReducedMachine/JumpValues.lean)
+then discharge every raw addition base/immediate prerequisite. [Public numerical
+results](Airbender/Review/Trace/Families/ReducedMachine/JumpResults.lean) derive full
+canonical return/actual rd-x0 write/raw/selected target and bounded aligned final
+PC, including wrap and JALR bit0 clearing. No source/range/parity/return/target/PC/
+state/table-identity answer is public. Exact fixedData acceptance remains explicit.
+
+[Source/conditional initialized regressions](Tests/NativeReducedJumpDecoder.lean)
+are not complete positive nonempty117-equation accepted native jumps. Only original
+bytes/stateful decoder evidence crosses from the old fixture; its native masks/
+tables/constraints/acceptance do not. Numerical native reads are not yet original
+pre-row GPR observations or retained Sail execution. Common support excludes jumps
+until those new bindings. Modeled public images are not the native fixed fixture,
+physical ROM/export/preprocessing or compiler/cryptographic/completeness certificates.
+
 ## Native jump local numerical boundary
 
 [Jump routing/output PC roots](Airbender/Review/Circuits/ReducedMachine/JumpTheorems.lean)

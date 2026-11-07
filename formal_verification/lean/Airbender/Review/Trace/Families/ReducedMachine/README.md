@@ -347,3 +347,17 @@ JAL/JALR decoding/input bounds/GPR/operands/PC return/target/retained clauses an
 initialized/fetched support remain next. [Six-assertion positives](../../../../../Tests/NativeReducedJump.lean)
 are not complete accepted native jumps. The current five-profile common public
 execution includes branches and excludes jumps.
+
+## Original initialized jump numerical results
+
+[Public jump sources](JumpDecoder.lean), [all-word ranges](JumpValues.lean) and
+[canonical numerical results](JumpResults.lean) now recover original JAL/JALR
+fields, direct parity, PC+4 return/rd-x0 writes and raw/selected targets with full
+RV32 wrap/JALR low-bit clearing. Return preservation uses public PC inputs before
+induction; actual initialized reads then discharge every raw addition range.
+No source/range/return/target/PC/parity/state/table-identity answer is public.
+[Ten regressions](../../../../../Tests/NativeReducedJumpDecoder.lean) cover original
+three-slot source construction and conditional initialized effects, not complete
+nonempty117-equation accepted native jumps. Original GPR/retained clauses/fetched
+execution and common jump integration remain next, with physical/setup/compiler/
+cryptographic/completeness and interrupt/exception scopes separate.

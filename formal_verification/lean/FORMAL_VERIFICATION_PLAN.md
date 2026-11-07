@@ -138,8 +138,13 @@ Full combined row effects and execution remain pending. See the
    are now checked locally. Exact native cleanup derives output PC bounds/alignment
    and raw bit1 rejection without source-range premises. Raw addition input bounds
    remain internal until original public decoding/initialization discharges them.
-   Next bind original JAL/JALR fields/GPR/operands, input ranges, PC+4 return and
-   cleaned target to retained clauses/fetched execution before common integration. Other combined
+   Original JAL/JALR full public decoding now derives all fields/zero flags,
+   canonical sign-extended offset/raw JALfunct3 and direct parity. Actual PC+4
+   return/masked-write preservation follows public PC bounds/alignment before
+   initialized range induction. All actual read/write/terminal ranges then discharge
+   raw base/immediate bounds, deriving canonical return/raw/selected target/full
+   RV32 wrap and JALR low-bit clearing without public local answers. Next bind
+   original jump GPR/operands/PC/retained clauses/fetched execution before common integration. Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

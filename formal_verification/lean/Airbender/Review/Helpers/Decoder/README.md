@@ -320,3 +320,10 @@ JAL/JALR public projection, raw funct3/sign extension/x0 binding and full sparse
 membership remain next. Current common supported projection still excludes jumps.
 A local decoded-mask premise does not supply a native public-export certificate
 or original decoder evidence.
+
+[JumpDecodedTrace](ReducedMachineJump.lean) now retains full original JAL/JALR
+sparse/padded membership at the actual query. [Public source recovery](../../Trace/Families/ReducedMachine/JumpDecoder.lean)
+derives masks/rs/rd/x0/immediate/raw JALfunct3 and original direct parity; holes/tail
+are excluded through accepted18bit packing. [Initialized results](../../Trace/Families/ReducedMachine/JumpResults.lean)
+derive all numerical inputs internally. Original GPR/clauses/common execution and
+native public export/ROM/preprocessing/physical enforcement remain separate.
