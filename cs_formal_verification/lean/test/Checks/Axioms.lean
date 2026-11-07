@@ -18,6 +18,7 @@ import Slop.Final.Circuits.SubwordMemory.Theorems
 import Slop.Final.Trace.Families.SubwordMemory.Theorems
 import Slop.Final.Trace.Soundness
 import Slop.Final.Trace.ZeroTimestamp
+import Slop.Final.Circuits.InitsTeardowns.Theorems
 import Slop.Final.Trace.Workers.KeccakSplit.Theorems
 import Slop.AddSub.RowClaims
 import Slop.AddSub.ArtifactChecks
@@ -2129,6 +2130,8 @@ import Human.Import.Coefficients
 #print axioms Airbender.SubwordMemory.ram_trace_soundness
 #print axioms Airbender.Trace.pooled_native_soundness
 #print axioms Airbender.Trace.NonDeterminism.Pooled.native_soundness
+#print axioms Airbender.InitsTeardowns.standalone_claim
+#print axioms Airbender.InitsTeardowns.unified_claim
 #print axioms Airbender.Trace.no_zero_timestamp_writes
 #print axioms Airbender.UnifiedReduced.no_zero_timestamp_writes
 #print axioms Airbender.Delegation.no_zero_timestamp_writes

@@ -76,6 +76,8 @@ globs = [
   "Human.Circuits.Blake2Round.Row",
   "Human.Circuits.Blake2Round.Schedule",
   "Human.Circuits.Blake2Round.Tables.+",
+  "Human.Circuits.InitsTeardowns.Model",
+  "Human.Circuits.InitsTeardowns.Theorems",
   "Human.Circuits.JumpBranchSlt.Branch",
   "Human.Circuits.JumpBranchSlt.Decoder",
   "Human.Circuits.JumpBranchSlt.Jump",

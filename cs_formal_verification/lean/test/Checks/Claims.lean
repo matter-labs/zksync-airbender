@@ -4,6 +4,7 @@ import Slop.Final.Circuits.AddSub.Theorems
 import Slop.Final.Circuits.AddSub.RVTheorems
 import Slop.Final.Circuits.Bigint.Theorems
 import Slop.Final.Circuits.Blake2G.Theorems
+import Slop.Final.Circuits.InitsTeardowns.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.RVTheorems
 import Slop.Final.Circuits.MulDiv.Theorems
@@ -38,6 +39,7 @@ import Human.Circuits.AddSub.Theorems
 import Human.Circuits.AddSub.RVTheorems
 import Human.Circuits.Bigint.Theorems
 import Human.Circuits.Blake2G.Theorems
+import Human.Circuits.InitsTeardowns.Theorems
 import Human.Circuits.JumpBranchSlt.Theorems
 import Human.Circuits.JumpBranchSlt.RVTheorems
 import Human.Circuits.MulDiv.Theorems
@@ -136,6 +138,8 @@ example : Airbender.ShiftBinop.TraceSoundnessClaim := @Airbender.ShiftBinop.trac
 example : Airbender.SubwordMemory.RamTraceSoundnessClaim := @Airbender.SubwordMemory.ram_trace_soundness
 example : Airbender.Trace.PooledNativeSoundnessClaim := @Airbender.Trace.pooled_native_soundness
 example : Airbender.Trace.NonDeterminism.Pooled.NativeSoundnessClaim := @Airbender.Trace.NonDeterminism.Pooled.native_soundness
+example : Airbender.InitsTeardowns.StandaloneClaim := @Airbender.InitsTeardowns.standalone_claim
+example : Airbender.InitsTeardowns.UnifiedClaim := @Airbender.InitsTeardowns.unified_claim
 example : Airbender.Trace.NoZeroTimestampWritesClaim := @Airbender.Trace.no_zero_timestamp_writes
 example : Airbender.UnifiedReduced.NoZeroTimestampWritesClaim := @Airbender.UnifiedReduced.no_zero_timestamp_writes
 example : Airbender.Delegation.NoZeroTimestampWritesClaim := @Airbender.Delegation.no_zero_timestamp_writes
@@ -256,6 +260,8 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.SubwordMemory.ram_trace_soundness
 #print axioms Airbender.Trace.pooled_native_soundness
 #print axioms Airbender.Trace.NonDeterminism.Pooled.native_soundness
+#print axioms Airbender.InitsTeardowns.standalone_claim
+#print axioms Airbender.InitsTeardowns.unified_claim
 #print axioms Airbender.Trace.no_zero_timestamp_writes
 #print axioms Airbender.UnifiedReduced.no_zero_timestamp_writes
 #print axioms Airbender.Delegation.no_zero_timestamp_writes
