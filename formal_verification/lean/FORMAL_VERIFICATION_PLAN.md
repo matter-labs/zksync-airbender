@@ -31,6 +31,30 @@ and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
+## Current CSR local caller projection checkpoint (7 November 2026)
+
+[Row-local caller projection](Airbender/Review/Trace/Families/ReducedMachine/CSRCallers.lean)
+is now checked from full original CSR source membership, public logical seeds,
+accepted runtime constraints/matching and tracked alignment. Exact request metadata
+and clock2/3 produce (w2+3,w3); initialized ranges/alignment derive bounded nonzero
+slot3 clocks, strictly after native GPR slots0/1/2 and before next machine clock.
+Actual multiplicity filters chronological rows; selected kind1991/ABI-high bounds
+and strict caller-clock order are derived. Full source/request/native history keeps
+ALL rows/tokens/segments. Eight new regressions plus complete EMPTY runtime caller
+projection pass, not nonempty accepted CSR witnesses or original CSR execution.
+This closes row-local tuple/order/projection work; do not repeat it.
+
+NEXT bind actual native protocol key/sequence normalization and request/worker
+acceptance before enforced issuance or worker-ledger claims. Pinned native stage2
+reads the intermediate-state clock plus metadata offset; quotient stage3 also has
+a circuit-sequence HIGH contribution. Its representation/normalization is not
+proved by this local model; neither blindly append it nor infer a defect from
+source-shape differences. Then actual Blake2 ABI/worker constraints/issued-unissued
+behavior/fulfillment/converse/accounting/unified protocol. Main Trace.Accepted has
+no worker ledger. Original CSR/custom/nondeterminism/privilege/PC retirement and
+common integration, delegated RAM/physical/general refinement/crypto/completeness/
+terminal/init/parity remain open. Bigint stays outside this selected runtime.
+
 ## Current CSR source/request observation checkpoint (7 November 2026)
 
 [Original-source request observations](Airbender/Review/Trace/Families/ReducedMachine/CSRRequests.lean)

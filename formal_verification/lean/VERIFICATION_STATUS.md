@@ -35,6 +35,66 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## CSR row-local caller clocks and chronological projection (7 November 2026)
+
+[The public caller root](Airbender/Review/Trace/Families/ReducedMachine/CSRCallers.lean)
+now retains full initialized original-source/request history and constructs a
+chronological projection selected by the actual imported multiplicity. All native
+rows/tokens, including zero-multiplicity rows and both readonly GPR refreshes,
+remain in the full history. No caller stream, per-row source/read/range/request/
+clock/state/order/count/worker answer is supplied.
+
+[Exact metadata and clock proofs](Airbender/Proofs/ReducedMachine/NativeCSRCallerClock.lean)
+bind the imported request to columns92/94/some93/index3 and row-local timestamp
+(w2+3,w3), using the actual intermediate-state clock2/3. Shared initialized native
+clock bounds/alignment and unchanged pure write_time establish canonical bounded
+timestamp limbs, numerical value=row.clock+3, residue3 modulo4 and nonzero value.
+The slot is strictly after every actual GPR access0/1/2 and before the next native
+machine clock. Strict row order yields strict caller-clock order, excluding
+repeated local caller clocks. Actual runtime request equations/source-derived mask
+identify every selected kind1991 and bounded optional ABI-high. The [projection](Airbender/Review/Helpers/Memory/ReducedMachineCSRCallers.lean)
+records each caller's actual row origin and these derived facts.
+
+Eight new [clock/filter/order regressions](Tests/NativeReducedCSRCallers.lean) and
+one [complete-empty public projection](Tests/NativeReducedCSRHistoryEmpty.lean)
+pass: initial slot7, last low-limb slot524287, next high-limb slot524291, four-tick
+boundary spacing, zero-multiplicity exclusion, selected participation, descending
+order and initialized zero-clock rejection. The complete accepted EMPTY runtime
+trace retains a real x0 terminal token, empty original bytes and no CSR privilege
+premise at every RV32 PC while projecting no caller. These pure/conditional/empty
+checks are not full positive nonempty accepted CSR witnesses or original execution.
+
+Five new modules and one extended test record eleven exact parent4baa origins.
+Five unchanged native compiler/prover files are newly byte-pinned to67ee: executor
+compilation, unrolled stage2/shared/stage3 and delegation quotient evaluation.
+Read-only source inspection confirms the stage-two caller tuple convention. The
+stage-three quotient separately includes a circuit-sequence HIGH contribution;
+its timestamp representation/normalization must be connected before physical or
+global caller-key claims. Do not append that contribution blindly to a witness
+representation that may already include it. This is an open refinement boundary,
+not a demonstrated discrepancy or native defect.
+
+The checked result is ROW-LOCAL caller projection, not enforced issuance, a worker
+request ledger, fulfillment, converse or global accounting. NEXT bind the actual
+protocol key/sequence normalization and native request/worker acceptance, then
+actual Blake2 ABI/constraints and accounting. Keep original CSR/custom/nondeterminism/
+privilege/PC retirement, delegated RAM actions, common execution integration and
+protocol/terminal/init/general public/physical/refinement/crypto/completeness open.
+Bigint1994 remains outside this runtime target. All production/native/Sail/input/
+fixture/dependency bytes and existing seven-profile/old-fixture/memory/shadow scopes
+are unchanged; no defect, issue assumption, fix, axiom or parity claim.
+
+Final gates pass 3,578 explicit standard-only axiom roots, 236 public Review
+roots, four guide names and 3,488 links/anchors with context/trace separation.
+Full Review sampled footprint/resident peaks were 562.51/3,151.08 MiB over 26.88 s.
+Independent provenance passes 189 v3-origin/1,444 backport-origin identities,
+80 byte-identical modules, eight circuit artifacts, 80 native source pins, 24 setup
+artifacts and four exporter files with unchanged pins/dependencies/original
+checkout (21.69/39.55 MiB, 10.07 s). Every started guard reports no owned survivors;
+default proof/resource ceilings remain unchanged. This is sampled watchdog plus
+Lean allocation cap, not an OS hard physical-memory limit. Unchanged intake/native
+and heavy-certificate gates retain exact prior code/inputs and were not repeated.
+
 ## Original CSR source and request ABI observations (7 November 2026)
 
 [The short runtime request root](Airbender/Review/Trace/Families/ReducedMachine/CSRRequests.lean)

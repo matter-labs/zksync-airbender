@@ -1,3 +1,7 @@
+import Airbender.Proofs.ReducedMachine.NativeCSRCallerClock
+import Airbender.Proofs.Trace.Families.ReducedMachine.CSRCallers
+import Airbender.Review.Trace.Families.ReducedMachine.CSRCallers
+import Tests.NativeReducedCSRCallers
 import Airbender.Proofs.ReducedMachine.NativeCSRSource
 import Airbender.Proofs.Trace.Families.ReducedMachine.CSRRequests
 import Airbender.Review.Trace.Families.ReducedMachine.CSRRequests
@@ -4041,3 +4045,18 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedCSRRequests.abi_full_rv32_max
 #print axioms Tests.NativeReducedCSRRequests.abi_above_field
 #print axioms Tests.NativeReducedCSRRequests.wrong_original_source_request_rejected
+
+#print axioms Airbender.ReducedMachine.NativeCSRCallerProofs.observation_columns
+#print axioms Airbender.ReducedMachine.NativeCSRCallerProofs.clock
+#print axioms Airbender.ReducedMachine.NativeCSRCallerProofs.selected_request
+#print axioms Airbender.ReducedMachine.NativeCSRCallerProofs.image_callers
+#print axioms Airbender.ReducedMachine.Native.public_runtime_csr_callers
+#print axioms Tests.NativeReducedCSRCallers.first_slot
+#print axioms Tests.NativeReducedCSRCallers.last_low_limb_slot
+#print axioms Tests.NativeReducedCSRCallers.next_high_limb_slot
+#print axioms Tests.NativeReducedCSRCallers.across_low_limb_boundary
+#print axioms Tests.NativeReducedCSRCallers.zero_multiplicity_filtered
+#print axioms Tests.NativeReducedCSRCallers.selected_multiplicity_retained
+#print axioms Tests.NativeReducedCSRCallers.adjacent_caller_order
+#print axioms Tests.NativeReducedCSRCallers.zero_caller_clock_rejected
+#print axioms Tests.NativeReducedCSRHistoryEmpty.empty_runtime_callers

@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.Families.ReducedMachine.CSRCallers
 import Airbender.Review.Trace.Families.ReducedMachine.CSRRegisters
 import Airbender.Review.Trace.Families.ReducedMachine.CSRValues
 
@@ -54,4 +55,22 @@ theorem empty_terminal_bounds (pc : BitVec 32) :
     ∀ token ∈ (trace pc).terminalMemory, token.word.Bounded :=
   (public_runtime_csr_value_bounds (count := 0) (logCapacity := 0) rfl
     (inputs pc) (accepted pc) (decoded pc)).2.2
+/-- The complete native empty runtime trace projects no caller while retaining
+    its real x0 terminal token and original-source/request history at every PC. -/
+theorem empty_runtime_callers (pc : BitVec 32) :
+    CSRRequestHistory (runtimeCSRData (trace pc)) setup (initial pc) cells ∧
+      CSRCallerProjection (runtimeCSRData (trace pc)) [] := by
+  obtain ⟨history,callers,projection⟩ := public_runtime_csr_callers
+    (count := 0) (logCapacity := 0) rfl (inputs pc) (accepted pc) (decoded pc) (by
+      intro cell member
+      have same : cell = .register 0 := by simpa [cells] using member
+      subst cell
+      trivial)
+  obtain ⟨rows,permutation,ordered,same,rest⟩ := projection
+  have noRows : rows = [] := by simpa [runtimeCSRData,trace] using permutation
+  have noCallers : callers = [] := by simpa [noRows,csrCallers,csrCallerRows] using same
+  refine ⟨history,?_⟩
+  rw [← noCallers]
+  exact ⟨rows,permutation,ordered,same,rest⟩
+
 end Tests.NativeReducedCSRHistoryEmpty

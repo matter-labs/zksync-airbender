@@ -3603,3 +3603,25 @@ seed coverage. Offset3 is imported metadata, not actual request issuance, clock
 binding, worker fulfillment, converse or accounting. Main Trace.Accepted has no
 worker request ledger. Those native compiler/protocol connections remain open;
 this gap is not a native defect or issue assumption. All previous scopes unchanged.
+
+
+## CSR local caller-clock projection boundary (7 November 2026)
+
+[The caller root](Airbender/Review/Trace/Families/ReducedMachine/CSRCallers.lean)
+keeps complete source/request/native history and derives a chronological projection
+filtered by actual multiplicity. Exact imported request/clock coordinates produce
+(w2+3,w3). Initialized native clocks/alignment, unchanged pure write_time and native
+four-tick advancement derive bounded/nonzero/residue3 clocks, actual row origin,
+strict order and placement after all GPR slots/before next native clock. Selected
+requests have kind1991 and bounded optional ABI-high. There is no supplied caller
+stream or desired per-row clock/range/source/request/state/order/worker answer.
+
+This is a row-local logical projection. Native stage2/shared source tuple evidence
+is pinned separately; the quotient also has a circuit-sequence HIGH contribution.
+Binding timestamp representations/normalization and protocol/cryptographic caller
+argument enforcement remains separate. Do not count the sequence contribution
+twice or infer a defect from unproved representation correspondence. The main
+Trace.Accepted relation has no worker ledger, and strict local caller clocks do
+not establish worker-to-caller converse, unissued-worker exclusion, fulfillment or
+accounting. No v3 F03 retest/fix or native defect is established here. Original CSR/
+delegated RAM/PC/physical/reference scopes and all previous boundaries remain open.

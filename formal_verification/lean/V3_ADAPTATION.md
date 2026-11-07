@@ -1121,3 +1121,23 @@ native tests pass; no full positive nonempty CSR witness or original CSR executi
 Imported offset3 is not issuance/accounting. Original CSR/reference/PC, actual
 caller/compiler/protocol clock binding and Blake2 workers remain separate. No v3
 finding/assumption/fix is copied; zero established native defects and no parity.
+
+
+## CSR row-local caller projection (7 November 2026)
+
+Five new modules/one extended test record eleven exact parent4baa source origins.
+Actual imported request92/94/some93/offset3 and clock2/3 bind row-local caller tuple
+(w2+3,w3); unchanged pure write_time is reused only after actual initialized native
+bounds/alignment. Native advancement/port metadata and real chronological history
+derive bounded nonzero strict local clocks and the multiplicity-selected projection
+with original row origin/request kind1991/ABI bounds. No caller stream, desired
+per-row answer, whole-table equivalence or old accepted-circuit transfer.
+
+Five unchanged compiler/prover files newly byte-pinned67ee document actual native
+stage2 tuple and stage3 sequence-HIGH contribution. General Rust/protocol timestamp
+normalization/enforcement remains unproved, distinct from logical local projection.
+Eight boundary/filter/order/zero-clock tests and one complete accepted EMPTY runtime
+projection retain all tokens/no CSR premise; no full positive NONEMPTYCSR witness,
+original CSR execution, worker converse/fulfillment/accounting or v3 F03 finding.
+No production/native/Sail/artifact/import/export/fixture/dependency modification,
+native defect/issue assumption/fix/new axiom/whole-machine/parity claim.

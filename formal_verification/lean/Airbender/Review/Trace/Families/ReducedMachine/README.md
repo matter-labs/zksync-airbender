@@ -591,3 +591,11 @@ membership, ordinary logical seed boundary, runtime acceptance and alignment;
 no local value/request/state answer. Natural high half precedes field cast even
 above the field modulus. Original CSR execution, actual issuance and worker
 fulfillment/accounting remain open; common seven-profile execution is unchanged.
+
+
+[Runtime CSR local caller projection](CSRCallers.lean) retains full source/request
+history and constructs strictly ordered multiplicity-selected caller observations.
+The exact imported slot3 timestamp is bounded/nonzero, after every native GPR
+access and before next machine clock; request kind1991/ABI bounds and actual row
+origins follow constraints/initialization. No caller-stream premise is supplied.
+This does not close sequence normalization, actual issuance or worker accounting.

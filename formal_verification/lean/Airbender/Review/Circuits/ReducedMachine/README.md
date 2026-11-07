@@ -660,3 +660,11 @@ request ABI-high/kind to its natural high half/original unsigned CSR index, unde
 full initialized runtime history. Full RV32 words are retained before field cast.
 This is not original CSR execution or actual issuance/worker accounting; metadata
 index3 and main state/memory matching alone do not establish those connections.
+
+
+[CSR local caller clocks](../../Trace/Families/ReducedMachine/CSRCallers.lean)
+now derive the exact imported (w2+3,w3) tuple, bounded/nonzero slot3 value and
+chronological multiplicity-selected projection from accepted initialized history.
+All GPR slots precede it; next native clock follows. This is row-local observation;
+sequence-HIGH normalization, actual issuance and global worker accounting remain
+separate. No v3 F03 conclusion follows from unique local caller clocks.

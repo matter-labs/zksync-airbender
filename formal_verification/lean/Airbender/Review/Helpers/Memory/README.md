@@ -358,3 +358,10 @@ complete CSR GPR realization states with original rs1 full RV32 value/canonical
 native limbs and request ABI observations. Natural high-half division occurs
 before field cast. Every token/segment/order/byte-misa frame is retained; original
 CSR/delegated RAM effects, request issuance and worker accounting remain separate.
+
+
+[CSR local caller projection](ReducedMachineCSRCallers.lean) observes imported
+request fields and the raw initial-clock pair plus in-cycle offset. Actual
+multiplicity filters original rows; full source/native history retains zero rows
+and every token. Bounded/nonzero/order/row origins are derived, not premises.
+Sequence-HIGH normalization and protocol worker matching remain separate.
