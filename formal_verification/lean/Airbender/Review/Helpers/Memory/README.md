@@ -372,3 +372,5 @@ selected unrolled sequence0 constructor, pre-compression key and native affine/
 quotient scaling formulas. Source/caller origins and identities are derived by
 the public trace root; arbitrary challenge compression is not assumed injective.
 Rust/field/LDE/physical enforcement and worker accounting remain separate.
+
+The [native worker ABI](../../Circuits/Blake2Worker/ABI.lean) retains all43 register/indirect descriptors. It does not extend main-circuit memory history through delegated RAM actions or establish worker matching.

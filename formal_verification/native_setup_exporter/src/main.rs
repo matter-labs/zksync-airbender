@@ -774,6 +774,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::write(&args[4], [bytes, vec![b'\n']].concat())?;
         return Ok(());
     }
+    if args.len() == 3 && args[1] == "--blake2-layout" {
+        use cs::cs::circuit::Circuit;
+        use cs::cs::cs_reference::BasicAssembly;
+        use cs::delegation::blake2_round_with_extended_control::define_blake2_with_extended_control_delegation_circuit;
+        use cs::one_row_compiler::OneRowCompiler;
+        let mut cs = BasicAssembly::<Mersenne31Field>::new();
+        define_blake2_with_extended_control_delegation_circuit(&mut cs);
+        let (circuit_output, _) = cs.finalize();
+        let compiler = OneRowCompiler::default();
+        let compiled = compiler.compile_to_evaluate_delegations(circuit_output, 20);
+        std::fs::write(&args[2], serde_json::to_vec_pretty(&compiled)?)?;
+        return Ok(());
+    }
     if args.len() == 3 && args[1] == "--reduced-layout" {
         use cs::cs::circuit::Circuit;
         use cs::machine::ops::unrolled::compile_unified_circuit_state_transition;

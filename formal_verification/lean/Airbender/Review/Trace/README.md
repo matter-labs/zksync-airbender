@@ -492,3 +492,5 @@ matched. Exact NativeROM mixed-memory input scope is explicit; existing arbitrar
 ordinary-code roots stay unchanged. Local source/profile/configuration/domain/
 read/result/order/replay/PC obligations are derived, not public desired answers.
 Worker/protocol/padding/terminal/init/teardown and physical/completeness remain open.
+
+The [fresh Blake2 worker checkpoint](../Circuits/Blake2Worker/README.md) checks local row intake/control only. Caller projection and argument references are not a worker stream or an enforced global ledger; no delegated RAM frame or whole execution is inferred.

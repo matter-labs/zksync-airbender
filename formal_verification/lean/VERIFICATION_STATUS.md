@@ -35,6 +35,57 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Native Blake2 worker intake and local control checkpoint (7 November 2026)
+
+The [fresh native worker](Airbender/Review/Circuits/Blake2Worker/NativeArtifact.lean)
+is now independently generated from the unchanged selected extended-control
+constructor at trace2^20, runtime CSR1991. Its352 equations/871 variables and296
+lookups (2 scalar,86 timestamp,208 fixed queries) are all emitted into original
+Clean, in small blocks. The [reproduction gate](scripts/check_native_blake2.py)
+checks source/configuration, all old exporter branches, repeat bytes and the
+separately preserved historical worker JSON: parsed layouts are exactly equal.
+No historical worker acceptance or arbitrary table equivalence is transferred.
+
+[Same-read ABI intake](Airbender/Import/Blake2Worker.lean) retains processing
+multiplicity/ABIhigh/write timestamp, registers10/11/12,24 state writes and16
+message reads, all43 old reads/timestamps, and the full raw stage2/indirect-clock
+source. Existing main-circuit intake still rejects active workers. Complete local
+Clean constraints use an explicit four-field modeled setup; native worker fixed
+pool semantics and memory/protocol acceptance are separate obligations.
+
+[The control root](Airbender/Review/Circuits/Blake2Worker/ControlTheorems.lean)
+derives all13 actualBoolean flags, input/output high-half bounds<8192 and x12
+written low-half zero from accepted local constraints, without a desired result,
+range, read, processing flag, schedule or worker-success premise. Exact native
+linear packing equations and imported coordinates are kernel checked. Twelve
+[regression roots](Tests/NativeBlake2Worker.lean) include five positive16-equation
+control slices;24 [intake controls](Tests/NativeBlake2WorkerImport.lean) preserve
+native redundant Mersenne31 modulus-as-zero encoding and reject residues above it.
+These are not complete positive352-equation/296-lookup worker witnesses. In
+particular, zero/multiple round flags in a partial slice are not v2 defect evidence.
+
+NEXT certify actual worker fixed tables and native memory/processor constraints,
+ABI alignment/address/ranges, processing multiplicity, clock/control schedules,
+state/terminal and issued/unissued acceptance, then connect caller/worker
+auxiliary/accumulators, fulfillment/converse/accounting and unified protocol.
+Do not repeat closed caller argument/source/history or worker intake/control
+results. Valid round masks, original/delegated reference effects, F02/F03/F04
+retests, original CSR/MOP/common execution, physical/general Rust/compiler/JSON/
+field/LDE refinement, cryptography/completeness and parity remain open. Bigint1994
+is outside this selected runtime. Zero established native defects; no production
+fix, new issue assumption, axiom or whole-machine claim.
+
+The final worker gates pass: complete local emission counts, native ABI/control
+proofs and12 regression roots,24 executable intake controls, scoped native source/
+constructor/byte reproduction and2 malformed CLI checks. Full Review checks3618
+standard-only axiom roots,238 public Review roots,4 guide names and3535 links/
+anchors/layers. Independent exact Git-object provenance checks include86 native
+sources; original checkout/pins/dependencies and all prior fixtures stay unchanged.
+All owned workers terminated. Checks use the shared single-worker lock, Lean-j1-
+M3072 and sampled3072MiB-footprint/4096MiB-resident finite-time watchdog; this is
+not an OS hard physical-memory limit. Default heartbeat/recursion failures were
+resolved by pure arithmetic and small block-count facts, without raising caps.
+
 ## Selected unrolled caller argument reference and normalization (7 November 2026)
 
 The [selected native unrolled prover](../../prover/src/prover_stages/unrolled_prover/mod.rs)

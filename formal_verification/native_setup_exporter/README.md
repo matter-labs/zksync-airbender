@@ -173,3 +173,13 @@ The separate strict Lean importer and regional kernel certificate retain exact
 public/configuration/literal boundaries. A runtime full-pool/selected CSR trace,
 original CSR/custom reference, caller/worker accounting and physical/general Rust
 refinement certificate is not inferred from this export.
+
+## Selected native Blake2 worker layout
+
+`--blake2-layout OUTPUT.json` calls the unchanged extended-control delegation
+constructor, native finalization and delegation compiler at trace log20. It
+writes a separate FV layout without touching production generated files. The
+scoped lean/scripts/check_native_blake2.py gate checks nativebase source/config,
+unchanged previous exporter branches, repeat bytes,43-access geometry and parsed
+identity with the retained historical worker. This exports constraints and
+metadata, not a witness, worker ledger or physical/refinement proof.

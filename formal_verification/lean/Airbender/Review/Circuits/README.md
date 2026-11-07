@@ -87,3 +87,7 @@ all periodic values, the merged native boundary and reversed right output order.
 The public row surface is unchanged. Canonical pooled numerical row/query
 composition, complete shift results and execution remain open; the unverified
 second-output assembly draft is excluded after allocation-limit failures.
+
+### Native Blake2 worker
+
+[Worker guide](Blake2Worker/README.md) describes fresh native row intake, actual43-access ABI metadata and checked local control bounds. Worker tables/memory/protocol acceptance and accounting remain separate; no historical acceptance is transferred.

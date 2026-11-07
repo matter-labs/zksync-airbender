@@ -1,3 +1,6 @@
+import Airbender.Proofs.Blake2Worker.NativeControl
+import Airbender.Review.Circuits.Blake2Worker.ControlTheorems
+import Tests.NativeBlake2Worker
 import Airbender.Proofs.ReducedMachine.NativeCSRArgument
 import Airbender.Proofs.Trace.Families.ReducedMachine.CSRArgument
 import Airbender.Review.Trace.Families.ReducedMachine.CSRArgument
@@ -4082,3 +4085,27 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedCSRArgument.zero_scaling
 #print axioms Tests.NativeReducedCSRArgument.no_double_sequence_shift
 #print axioms Tests.NativeReducedCSRArgument.compression_can_collide
+
+#print axioms Airbender.Blake2Worker.NativeProofs.equations
+#print axioms Airbender.Blake2Worker.NativeProofs.lookups
+#print axioms Airbender.Blake2Worker.NativeProofs.geometry
+#print axioms Airbender.Blake2Worker.NativeProofs.processor_columns
+#print axioms Airbender.Blake2Worker.NativeProofs.register_columns
+#print axioms Airbender.Blake2Worker.NativeProofs.bit_bounds
+#print axioms Airbender.Blake2Worker.NativeProofs.input_packed
+#print axioms Airbender.Blake2Worker.NativeProofs.output_packed
+#print axioms Airbender.Blake2Worker.NativeProofs.low_cleared
+#print axioms Airbender.Blake2Worker.NativeProofs.effects
+#print axioms Airbender.Blake2Worker.Native.control_effects
+#print axioms Tests.NativeBlake2Worker.native_geometry
+#print axioms Tests.NativeBlake2Worker.processor_distinct_from_caller
+#print axioms Tests.NativeBlake2Worker.readonly_registers_retained
+#print axioms Tests.NativeBlake2Worker.last_state_write
+#print axioms Tests.NativeBlake2Worker.last_message_read
+#print axioms Tests.NativeBlake2Worker.high_control_rejected
+#print axioms Tests.NativeBlake2Worker.uncleared_low_rejected
+#print axioms Tests.NativeBlake2Worker.zero_control_slice
+#print axioms Tests.NativeBlake2Worker.first_round_slice
+#print axioms Tests.NativeBlake2Worker.final_round_slice
+#print axioms Tests.NativeBlake2Worker.multiple_round_slice
+#print axioms Tests.NativeBlake2Worker.mode_flags_slice
