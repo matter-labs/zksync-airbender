@@ -595,6 +595,10 @@
     {
       "path": "../../cs/src/machine/ops/conditional.rs",
       "sha256": "c860bb963332b9776141947a3565a5484ba4323622947b2d2be2f6f1e2a2cc19"
+    },
+    {
+      "path": "../../cs/src/machine/ops/jump.rs",
+      "sha256": "295b6ad8d74cb0bc51ed98ae3e70c4907bb4977743415fc798ed70438725aac1"
     }
   ],
   "adaptations": [
@@ -9463,6 +9467,76 @@
       "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
       "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchComposition.lean",
       "backport_reuse_sha256": "001d123836eee2e9090f58c15c51abc69a4c1632606fc9f0f1dc2697f1a990a6"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Jump.lean",
+      "change": "Derive actual regenerated native jump masks257/33025 and all18bits before source/base/limb/query/candidate/destination/final-PC connections. Actual46/47 select PC or rs1;74/75 add immediate with native95/63carry/wrap. Actual slot0 binds exactnative tag17cleanup;48rejectsbit1; candidate116/117 uses native default49/50;actual final13/14 uses cleaned65/rawhigh62. Reuse only exact shared native scalar/carry proofs and already certified actual cleanup17 region after these new bindings, not a split-table equality or regenerated data. Derive final canonicalPC bounds/alignment without public inputbound/result answers. Raw RV32addition keeps base/immediate bounds INTERNAL pending original public decoding/initialized discharge. Explicit masks/mode and fieldzero flag remain local, not original rd/x0/GPR/clause/fetched execution. Actual6assertion positive slices are not full117equation/lookups/accepted native jumps. Production/Sail/data/deps unchanged; no defect/issue assumption/parity claim.",
+      "backport_reuse_revision": "a4a44816b6d074576405a5e54d7a97f326b8ed58",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Branch.lean",
+      "backport_reuse_sha256": "d6bd9b7c1757cc43c887a7cfbffbf21ed0038d393917d18dc3129af565def66c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpSelectors.lean",
+      "change": "Derive actual regenerated native jump masks257/33025 and all18bits before source/base/limb/query/candidate/destination/final-PC connections. Actual46/47 select PC or rs1;74/75 add immediate with native95/63carry/wrap. Actual slot0 binds exactnative tag17cleanup;48rejectsbit1; candidate116/117 uses native default49/50;actual final13/14 uses cleaned65/rawhigh62. Reuse only exact shared native scalar/carry proofs and already certified actual cleanup17 region after these new bindings, not a split-table equality or regenerated data. Derive final canonicalPC bounds/alignment without public inputbound/result answers. Raw RV32addition keeps base/immediate bounds INTERNAL pending original public decoding/initialized discharge. Explicit masks/mode and fieldzero flag remain local, not original rd/x0/GPR/clause/fetched execution. Actual6assertion positive slices are not full117equation/lookups/accepted native jumps. Production/Sail/data/deps unchanged; no defect/issue assumption/parity claim.",
+      "backport_reuse_revision": "a4a44816b6d074576405a5e54d7a97f326b8ed58",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBranchSelectors.lean",
+      "backport_reuse_sha256": "39356a67ef6e46b7ecb329224f3f7009bae5ffe78c784329c223b98c8ccc3ebb"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpFields.lean",
+      "change": "Derive actual regenerated native jump masks257/33025 and all18bits before source/base/limb/query/candidate/destination/final-PC connections. Actual46/47 select PC or rs1;74/75 add immediate with native95/63carry/wrap. Actual slot0 binds exactnative tag17cleanup;48rejectsbit1; candidate116/117 uses native default49/50;actual final13/14 uses cleaned65/rawhigh62. Reuse only exact shared native scalar/carry proofs and already certified actual cleanup17 region after these new bindings, not a split-table equality or regenerated data. Derive final canonicalPC bounds/alignment without public inputbound/result answers. Raw RV32addition keeps base/immediate bounds INTERNAL pending original public decoding/initialized discharge. Explicit masks/mode and fieldzero flag remain local, not original rd/x0/GPR/clause/fetched execution. Actual6assertion positive slices are not full117equation/lookups/accepted native jumps. Production/Sail/data/deps unchanged; no defect/issue assumption/parity claim.",
+      "backport_reuse_revision": "a4a44816b6d074576405a5e54d7a97f326b8ed58",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBranchFields.lean",
+      "backport_reuse_sha256": "3c621f86b9ddf6c31c6f19df4b47ac02d725305b3782eb5c8a9e97815f5156b9"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpFields.lean",
+      "change": "Derive actual regenerated native jump masks257/33025 and all18bits before source/base/limb/query/candidate/destination/final-PC connections. Actual46/47 select PC or rs1;74/75 add immediate with native95/63carry/wrap. Actual slot0 binds exactnative tag17cleanup;48rejectsbit1; candidate116/117 uses native default49/50;actual final13/14 uses cleaned65/rawhigh62. Reuse only exact shared native scalar/carry proofs and already certified actual cleanup17 region after these new bindings, not a split-table equality or regenerated data. Derive final canonicalPC bounds/alignment without public inputbound/result answers. Raw RV32addition keeps base/immediate bounds INTERNAL pending original public decoding/initialized discharge. Explicit masks/mode and fieldzero flag remain local, not original rd/x0/GPR/clause/fetched execution. Actual6assertion positive slices are not full117equation/lookups/accepted native jumps. Production/Sail/data/deps unchanged; no defect/issue assumption/parity claim.",
+      "backport_reuse_revision": "a4a44816b6d074576405a5e54d7a97f326b8ed58",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticFields.lean",
+      "backport_reuse_sha256": "0b1aea49ce917d89da3b93abf1443917e9c8d4934ccae474d60b5c7dafb2fd95"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpNumerics.lean",
+      "change": "Derive actual regenerated native jump masks257/33025 and all18bits before source/base/limb/query/candidate/destination/final-PC connections. Actual46/47 select PC or rs1;74/75 add immediate with native95/63carry/wrap. Actual slot0 binds exactnative tag17cleanup;48rejectsbit1; candidate116/117 uses native default49/50;actual final13/14 uses cleaned65/rawhigh62. Reuse only exact shared native scalar/carry proofs and already certified actual cleanup17 region after these new bindings, not a split-table equality or regenerated data. Derive final canonicalPC bounds/alignment without public inputbound/result answers. Raw RV32addition keeps base/immediate bounds INTERNAL pending original public decoding/initialized discharge. Explicit masks/mode and fieldzero flag remain local, not original rd/x0/GPR/clause/fetched execution. Actual6assertion positive slices are not full117equation/lookups/accepted native jumps. Production/Sail/data/deps unchanged; no defect/issue assumption/parity claim.",
+      "backport_reuse_revision": "a4a44816b6d074576405a5e54d7a97f326b8ed58",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBranchPC.lean",
+      "backport_reuse_sha256": "e2feda717c006e62f37fd11478a148e846d9ad03bc24ee40e30d5a15448b29f8"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpNumerics.lean",
+      "change": "Derive actual regenerated native jump masks257/33025 and all18bits before source/base/limb/query/candidate/destination/final-PC connections. Actual46/47 select PC or rs1;74/75 add immediate with native95/63carry/wrap. Actual slot0 binds exactnative tag17cleanup;48rejectsbit1; candidate116/117 uses native default49/50;actual final13/14 uses cleaned65/rawhigh62. Reuse only exact shared native scalar/carry proofs and already certified actual cleanup17 region after these new bindings, not a split-table equality or regenerated data. Derive final canonicalPC bounds/alignment without public inputbound/result answers. Raw RV32addition keeps base/immediate bounds INTERNAL pending original public decoding/initialized discharge. Explicit masks/mode and fieldzero flag remain local, not original rd/x0/GPR/clause/fetched execution. Actual6assertion positive slices are not full117equation/lookups/accepted native jumps. Production/Sail/data/deps unchanged; no defect/issue assumption/parity claim.",
+      "backport_reuse_revision": "a4a44816b6d074576405a5e54d7a97f326b8ed58",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticResult.lean",
+      "backport_reuse_sha256": "56a3bbdd812911b1f5036bb63ae7a2ccb1dc0a644301a52c1bc13950ff5fe81a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpNumerics.lean",
+      "change": "Derive actual regenerated native jump masks257/33025 and all18bits before source/base/limb/query/candidate/destination/final-PC connections. Actual46/47 select PC or rs1;74/75 add immediate with native95/63carry/wrap. Actual slot0 binds exactnative tag17cleanup;48rejectsbit1; candidate116/117 uses native default49/50;actual final13/14 uses cleaned65/rawhigh62. Reuse only exact shared native scalar/carry proofs and already certified actual cleanup17 region after these new bindings, not a split-table equality or regenerated data. Derive final canonicalPC bounds/alignment without public inputbound/result answers. Raw RV32addition keeps base/immediate bounds INTERNAL pending original public decoding/initialized discharge. Explicit masks/mode and fieldzero flag remain local, not original rd/x0/GPR/clause/fetched execution. Actual6assertion positive slices are not full117equation/lookups/accepted native jumps. Production/Sail/data/deps unchanged; no defect/issue assumption/parity claim.",
+      "backport_reuse_revision": "a4a44816b6d074576405a5e54d7a97f326b8ed58",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBranchCleanup.lean",
+      "backport_reuse_sha256": "fc0c28748e52f2bd26228ea3bd9c4ad853f434c508988385e1fab10f80ace8e6"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/JumpTheorems.lean",
+      "change": "Derive actual regenerated native jump masks257/33025 and all18bits before source/base/limb/query/candidate/destination/final-PC connections. Actual46/47 select PC or rs1;74/75 add immediate with native95/63carry/wrap. Actual slot0 binds exactnative tag17cleanup;48rejectsbit1; candidate116/117 uses native default49/50;actual final13/14 uses cleaned65/rawhigh62. Reuse only exact shared native scalar/carry proofs and already certified actual cleanup17 region after these new bindings, not a split-table equality or regenerated data. Derive final canonicalPC bounds/alignment without public inputbound/result answers. Raw RV32addition keeps base/immediate bounds INTERNAL pending original public decoding/initialized discharge. Explicit masks/mode and fieldzero flag remain local, not original rd/x0/GPR/clause/fetched execution. Actual6assertion positive slices are not full117equation/lookups/accepted native jumps. Production/Sail/data/deps unchanged; no defect/issue assumption/parity claim.",
+      "backport_reuse_revision": "a4a44816b6d074576405a5e54d7a97f326b8ed58",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/BranchTheorems.lean",
+      "backport_reuse_sha256": "41fced814950305e86ee8271e12cbd1c3ece840681a5a0240e9bae0dd94350cc"
+    },
+    {
+      "path": "Tests/NativeReducedJump.lean",
+      "change": "Derive actual regenerated native jump masks257/33025 and all18bits before source/base/limb/query/candidate/destination/final-PC connections. Actual46/47 select PC or rs1;74/75 add immediate with native95/63carry/wrap. Actual slot0 binds exactnative tag17cleanup;48rejectsbit1; candidate116/117 uses native default49/50;actual final13/14 uses cleaned65/rawhigh62. Reuse only exact shared native scalar/carry proofs and already certified actual cleanup17 region after these new bindings, not a split-table equality or regenerated data. Derive final canonicalPC bounds/alignment without public inputbound/result answers. Raw RV32addition keeps base/immediate bounds INTERNAL pending original public decoding/initialized discharge. Explicit masks/mode and fieldzero flag remain local, not original rd/x0/GPR/clause/fetched execution. Actual6assertion positive slices are not full117equation/lookups/accepted native jumps. Production/Sail/data/deps unchanged; no defect/issue assumption/parity claim.",
+      "backport_reuse_revision": "a4a44816b6d074576405a5e54d7a97f326b8ed58",
+      "backport_reuse_path": "Tests/NativeReducedBranchResults.lean",
+      "backport_reuse_sha256": "51840bc0ef711e83032ef2033a7b44f95c82ebd821e574964a0b5d280070b12e"
+    },
+    {
+      "path": "Tests/NativeReducedJump.lean",
+      "change": "Derive actual regenerated native jump masks257/33025 and all18bits before source/base/limb/query/candidate/destination/final-PC connections. Actual46/47 select PC or rs1;74/75 add immediate with native95/63carry/wrap. Actual slot0 binds exactnative tag17cleanup;48rejectsbit1; candidate116/117 uses native default49/50;actual final13/14 uses cleaned65/rawhigh62. Reuse only exact shared native scalar/carry proofs and already certified actual cleanup17 region after these new bindings, not a split-table equality or regenerated data. Derive final canonicalPC bounds/alignment without public inputbound/result answers. Raw RV32addition keeps base/immediate bounds INTERNAL pending original public decoding/initialized discharge. Explicit masks/mode and fieldzero flag remain local, not original rd/x0/GPR/clause/fetched execution. Actual6assertion positive slices are not full117equation/lookups/accepted native jumps. Production/Sail/data/deps unchanged; no defect/issue assumption/parity claim.",
+      "backport_reuse_revision": "a4a44816b6d074576405a5e54d7a97f326b8ed58",
+      "backport_reuse_path": "Tests/NativeReducedBitwise.lean",
+      "backport_reuse_sha256": "3778cf977abaa08acb56bdbde00c05e837e6311c0e3f6e2d9bbfb74113b77b4f"
     }
   ],
   "setup_artifacts": [

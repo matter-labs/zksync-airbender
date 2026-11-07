@@ -269,3 +269,11 @@ state/read/result/PC/control and decoder replay are derived. Public initial misa
 readability is required only for branch-containing programs; its unrestricted
 value is transported to every local read. [Regressions](../../../../Tests/NativeReducedSupportedBranches.lean)
 are public source/configuration checks, not full nonempty native mixed witnesses.
+
+[Native jump routing](../../Circuits/ReducedMachine/JumpTheorems.lean) derives
+readonly rs2/register-space and masked rd fields, retaining every actual port.
+These are not yet original Sail GPR/old-destination observations or initialized
+jump histories. Internal base/immediate bounds still need original public input
+and history discharge before architectural raw addition/Sail execution. Current
+common initialized support excludes jumps; local output PC bounds alone do not
+establish that connection.

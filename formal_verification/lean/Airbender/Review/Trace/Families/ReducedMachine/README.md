@@ -336,3 +336,14 @@ These do not certify full positive nonempty117-equation native mixed acceptance.
 Remaining ordinary/protocol/padding/terminal/init/public/physical/completeness and
 interrupt/exception boundaries stay separate. This supersedes the earlier open
 common branch integration notes above.
+
+## Jump local prerequisite
+
+[Actual jump routing/output bounds](../../../Circuits/ReducedMachine/JumpTheorems.lean)
+now connects native masks257/33025, PC/rs1 base/immediate addition, exact cleanup
+query/bit1 exclusion, return candidate, masked destination and final-PC fields.
+Output bounds/alignment derive without supplied source ranges. Original public
+JAL/JALR decoding/input bounds/GPR/operands/PC return/target/retained clauses and
+initialized/fetched support remain next. [Six-assertion positives](../../../../../Tests/NativeReducedJump.lean)
+are not complete accepted native jumps. The current five-profile common public
+execution includes branches and excludes jumps.

@@ -327,6 +327,24 @@ fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
 terminal/init boundaries remain open. No native defect or issue-handling assumption
 is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
 
+## Native jump local numerical boundary
+
+[Jump routing/output PC roots](Airbender/Review/Circuits/ReducedMachine/JumpTheorems.lean)
+derive exact local source/base/addition/cleanup/candidate/masked-write/final-PC
+connections under explicit native masks257/33025. Exact native scalar/carry checks
+and actual tag17 cleanup semantics yield raw bit1 rejection and canonical aligned
+output bounds with no public source/target-range answer. Internal raw addition
+requires base/immediate bounds that original public decoding/initialized history
+must derive; no public original execution claim supplies them as answers.
+
+Original JAL/JALR fields/GPR/rd-x0/operands/sign extension/raw funct3, original PC+4
+return/cleaned target and retained Sail execution remain open. Current common
+SupportedMode excludes jumps. [Six-assertion positives and local regressions](Tests/NativeReducedJump.lean)
+are not complete native accepted jumps or original execution. The pinned unchanged
+Rust source is evidence, not universal Rust/JSON/public export/ROM/physical fidelity.
+The already certified actual cleanup table is reused after new native bindings;
+no split-table identity, regenerated data, native defect or issue assumption.
+
 ## Mixed supported branch configuration and control flow
 
 [Common public execution](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)

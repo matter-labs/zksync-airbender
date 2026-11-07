@@ -132,8 +132,14 @@ Full combined row effects and execution remain pending. See the
    ordinary per-profile PC+4 proofs remain unchanged. Common initialization derives
    both branch source bounds/parity and every state/control/replay answer. Initial
    misa readability is required only if the public program contains BTYPE, value
-   unrestricted; ordinary/empty CSR-free scopes remain. Next extend actual JAL/JALR
-   and the remaining combined profiles. Other combined
+   unrestricted; ordinary/empty CSR-free scopes remain. Actual JALR257/JAL33025
+   masks/all18bits, immediate/readonly routing, PC-vs-rs1 base selection, shared
+   addition/cleanup query, return candidate/masked destination and final-PC fields
+   are now checked locally. Exact native cleanup derives output PC bounds/alignment
+   and raw bit1 rejection without source-range premises. Raw addition input bounds
+   remain internal until original public decoding/initialization discharges them.
+   Next bind original JAL/JALR fields/GPR/operands, input ranges, PC+4 return and
+   cleaned target to retained clauses/fetched execution before common integration. Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

@@ -313,3 +313,10 @@ derives branch parity/operand bounds/stateful replay internally. [Independent mi
 source tests](../../../../Tests/NativeReducedSupportedBranches.lean) construct all slots
 of a three-word branch/arithmetic public image plus padding; physical ROM/export
 and full nonempty native accepted witnesses remain separate.
+
+[Actual local jump routing](../../Circuits/ReducedMachine/JumpTheorems.lean) now
+derives masks257/33025 and native immediate/base/cleanup/return/PC fields. Original
+JAL/JALR public projection, raw funct3/sign extension/x0 binding and full sparse
+membership remain next. Current common supported projection still excludes jumps.
+A local decoded-mask premise does not supply a native public-export certificate
+or original decoder evidence.

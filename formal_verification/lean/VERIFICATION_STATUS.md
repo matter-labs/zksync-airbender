@@ -32,6 +32,63 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Native jump routing and output PC bounds (7 November 2026)
+
+[Actual reduced jump references](Airbender/Review/Circuits/ReducedMachine/Jump.lean)
+use masks257 (JALR) and33025 (JAL), update-rd bit0/JUMP major bit8/JAL minor bit15.
+[Native Boolean/packed recovery](Airbender/Proofs/ReducedMachine/NativeJumpSelectors.lean)
+derives every18bit under the explicit local mask. [Actual field equations](Airbender/Proofs/ReducedMachine/NativeJumpFields.lean)
+derive selected immediate9/10, readonly rs2 address/register space, base81/82
+selected from incoming PC0/1 or source35/36 through46/47, shared addition74/75 into
+raw target61/62 with carry95/wrap63, cleanup query61/64/65/tag17 and actual48 bit1
+rejection. Candidate116/117 is default49/50; actual rd address/field-zero-masked
+write and final13/14=cleaned65/raw-high62 are derived. All ports remain present.
+[One short local root](Airbender/Review/Circuits/ReducedMachine/JumpTheorems.lean)
+keeps decoded mask/mode explicit. Original rd=x0 has not yet been bound to the
+field zero flag, and default return fields are not yet original Sail observations.
+
+[Numerical proofs](Airbender/Proofs/ReducedMachine/NativeJumpNumerics.lean) reuse
+only exact unchanged native scalar/carry checks and the already certified actual
+tag17 cleanup region after new jump query bindings. There is no split-table
+identity or data regeneration. Raw addition is kernel-checked with internal
+base/immediate bounds pending original public decoding/initialized discharge.
+The second short root derives raw bit1 rejection and canonical four-byte final
+PC bounds/alignment with no source/input/target-bound or expected-result premise.
+This is a local native consequence, not original decoded/initialized jump or
+whole-machine execution. JALR bit0 clearing, JAL decoded offset parity and full
+original architectural target/return behavior remain connections to prove.
+
+[Eight regressions](Tests/NativeReducedJump.lean) check exact masks/all-bit lists,
+RAM-source rejection, immediate selection with readonly rs2 retained, discarded
+write with return candidate retained, raw bit1/oversized-final rejection and
+independent native base/addition slices. Six-assertion positives cover only native
+20/23/46/47/74/75; they are not full117equations/22lookups/accepted jumps or Sail
+execution. [Unchanged native jump source](../../cs/src/machine/ops/jump.rs) is now
+hash-pinned to the exact v2 base; active reduced dispatch calls it. Source parsing
+inspection is not a general Rust decoder-export certificate.
+
+Common supported execution still has the five checked shift/arithmetic/bitwise/
+comparison/branch profiles; jumps are excluded pending original public fields,
+initialized ranges/GPR/operand/PC/retained-clause/fetched connections. Next derive
+original JAL/JALR raw fields, x0, sign extension/raw funct3, canonical inputs and
+PC+4 return/cleaned target, then extend common history and any meaningful initial
+CSR configuration after those prerequisites. Other ordinary/protocol/padding/
+terminal/init, native public/physical/compiler/cryptographic/completeness and
+original interrupt/exception scopes remain open. No native defect, issue assumption,
+fix, new axiom, production/Sail/data/dependency change or parity claim. Ten exact
+parenta4a origins record six new modules/tests and66 native sources are pinned.
+All six new modules and eight regressions pass. Full Review checks 3,035 explicit
+standard-only axiom roots, 190 public Review roots, four guide names, 3,047 links/
+anchors and layer separation, using 548.76 MiB footprint/3,116.81 MiB resident in
+14.73 s. Independent exact provenance used 16.92/32.94 MiB in 7.79 s, checking189
+v3-origin/1,082backport-origin identities,80byte-identical modules,eight circuit
+artifacts,66native sources,23setup artifacts,four exporters and unchanged dependencies.
+Every failed/successful guard returned no live owned survivors. No memory/wall-time/
+heartbeat/recursion ceiling was hit or raised; ordinary unused-simp, vector equality
+and imported trace-column projection corrections were verified. Prior importer/
+CLI/native-export controls keep exact unchanged inputs/applicability. FINDINGS is
+unchanged with zero established native defects.
+
 ## Mixed native conditional branch execution (7 November 2026)
 
 [The original common projection](Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean)

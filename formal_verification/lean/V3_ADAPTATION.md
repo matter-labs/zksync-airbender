@@ -618,3 +618,22 @@ do not imply full nonempty117-equation native acceptance. Fifteen exact parentc8
 origins record nine changed/new modules/tests, preserving older provenance. Remaining
 ordinary/protocol/setup/terminal/init/completeness boundaries and zero findings remain;
 no production/native/Sail/data/dependency change, issue assumption or parity claim.
+
+## Actual native jump routing/output bounds (7 November 2026)
+
+[Native jump masks257/33025](Airbender/Review/Circuits/ReducedMachine/Jump.lean) and
+[all18actual bits](Airbender/Proofs/ReducedMachine/NativeJumpSelectors.lean) precede
+[new exact field connections](Airbender/Proofs/ReducedMachine/NativeJumpFields.lean):
+base81/82 from PC/rs1, actual shared addition74/75, tag17 query, rejected bit1,
+default return candidate, masked rd and cleaned final PC. [Numerical proof](Airbender/Proofs/ReducedMachine/NativeJumpNumerics.lean)
+reuses unchanged actual scalar/carry helpers and certified actual cleanup region
+only after those bindings. Output bounds/alignment require no source-range answer;
+raw addition input bounds remain internal pending original initialization.
+[Local roots](Airbender/Review/Circuits/ReducedMachine/JumpTheorems.lean) keep masks
+explicit. Original decoded GPR/operands/PC return/target/clauses/execution remain next.
+
+[Eight regressions](Tests/NativeReducedJump.lean) include six-assertion positives,
+not complete117equation accepted native jumps. Ten exact parenta4a origins record
+six new modules/tests; jump.rs is newly hash-pinned to unchanged v2 base,66native
+sources. No old split masks/tables/acceptance transferred, no heavy certificate
+replay/data regeneration, finding, production/Sail/dependency change or parity claim.

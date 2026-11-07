@@ -428,3 +428,16 @@ requires initial readable misa only when the public program contains a branch,
 value unrestricted and local reads derived through history. [Source/configuration tests](../../../../Tests/NativeReducedSupportedBranches.lean)
 are not full positive nonempty117-equation native mixed witnesses. Other combined/
 physical/protocol/terminal/init/completeness boundaries stay open.
+
+## Actual native jump local connection
+
+[Jump references](Jump.lean), [all18selector bits](../../../Proofs/ReducedMachine/NativeJumpSelectors.lean)
+and [exact native fields](../../../Proofs/ReducedMachine/NativeJumpFields.lean) now
+derive masks257/33025, immediate/readonly routing, PC/rs1 base, shared addition,
+actual cleanup query, default return/masked rd and final-PC selection.
+[Local roots](JumpTheorems.lean) derive output bounds/alignment/raw bit1 rejection
+using the certified actual cleanup region, without source-range answers or table
+identity. Internal addition input bounds still need original initialization.
+[Tests](../../../../Tests/NativeReducedJump.lean) include partial six-assertion
+positives, not complete accepted jumps. Original public decoding/GPR/PC/Sail and
+common jump execution are open; current supported projection excludes jumps.
