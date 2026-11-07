@@ -183,3 +183,14 @@ scoped lean/scripts/check_native_blake2.py gate checks nativebase source/config,
 unchanged previous exporter branches, repeat bytes,43-access geometry and parsed
 identity with the retained historical worker. This exports constraints and
 metadata, not a witness, worker ledger or physical/refinement proof.
+
+## Selected native Blake2 fixed pool
+
+`--blake2-fixed LAYOUT.json OUTPUT.json` calls the unchanged extended-control
+worker table driver, dumps its actual tagged rows and checks all selected native
+offsets/total344384. The FV artifact is separate from all existing main pools.
+The scoped lean/scripts/check_blake2_fixed.py gate checks native source bytes,
+every exported row independently, repeated byte reproduction and malformed
+CLI/layout rejection after package/binary-scoped offline locked-j1 check/build.
+Prior exporter code is compared byte-for-byte with its pinned parent after
+removing only this function and mode. No native worker witness or ledger is exported.

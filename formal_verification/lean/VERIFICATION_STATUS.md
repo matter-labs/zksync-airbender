@@ -35,6 +35,65 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Native Blake2 complete fixed-pool checkpoint (7 November 2026)
+
+The selected worker now has a separate [actual native fixed export](artifacts/setup/blake2-fixed-native.json),
+with all344384 stored rows and native offsets0/65536/65600/65856/82240 for tags4/26/27/28/29.
+The [scoped reproduction gate](scripts/check_blake2_fixed.py) calls the unchanged native driver,
+checks every row independently, repeats exact bytes, preserves all prior exporter branches
+and rejects five malformed CLI/layout inputs. Production code, previous artifacts/fixtures,
+dependencies and the original checkout remain unchanged.
+
+[Strict literal intake](Airbender/Import/Blake2Fixed.lean) validates the complete selected profile,
+geometry and canonical blocks, emitting same-read bytes and five separate literal units.
+The [constructed native-shaped pool](Airbender/Review/Circuits/Blake2Worker/Tables.lean)
+retains actual region order. [Short public roots](Airbender/Review/Circuits/Blake2Worker/TablesTheorems.lean)
+derive tag/operand domains and XOR semantics for all five regions from actual membership.
+Byte semantics reuse existing proofs only after exact newly exported literal-column binding;
+the worker byte offset0 is distinct from the old main pool offset1. No whole-table equivalence
+or old accepted-worker semantics is supplied.
+
+All64 XOR3,256 XOR4,16384 XOR7 and262144 XOR9 outputs are kernel checked against actual literals.
+The [generic window checker](Airbender/Proofs/Blake2Worker/BlockCertificates.lean) is proved sound
+for the unchanged finite block checker. Calculations use small units, symbolic dense-array
+geometry and transparent data; allocation failures led to splitting calculations, with no
+raised heartbeat, recursion, memory or watchdog limits. [Theorem regressions](Tests/NativeBlake2Fixed.lean)
+cover every actual row's participation, native geometry, positive small regions, absent tags,
+operand bounds and forged outputs. Nineteen [import controls](Tests/NativeBlake2FixedImport.lean)
+check complete same-read bytes and malformed geometry/canonical literals; altered valid data
+is accepted as data, without certifying its semantics.
+
+This closes the worker's fixed-pool foundation. It does not yet project the208 compiled fixed
+queries into those roots or establish full352-equation/296-lookup positive worker witnesses.
+NEXT derive actual compiled query, ABI address/alignment/range, processing multiplicity,
+all43 memory/clock, initialized control/schedule/state/terminal and request-worker acceptance
+connections, then auxiliary/accumulator, fulfillment/converse/accounting and unified protocol.
+Main Trace.Accepted still has no global worker ledger. Caller observations and reference
+argument algebra are not enforcement; derived main GPR frames cannot cross unproved worker actions.
+F02/F03/F04 require complete accepted native evidence, and no defect follows from these gaps.
+Original CSR/MOP execution, general Rust/compiler/JSON/physical/field/LDE refinement,
+cryptography, completeness, padding/terminal/init/teardown and parity remain open.
+Bigint1994 remains outside this selected runtime. Zero established native defects;
+no production fix, issue assumption, new axiom or whole-machine claim.
+
+The final scoped gates pass4951 explicit standard-only axiom roots,244 public
+Review roots,4 guide declaration names and3579 local links/anchors with context/
+trace separation. The native gate reproduces both exports and all344384 rows,
+with five bad CLI/layout controls;19 new importer controls and12 table regression
+roots pass. Full Review used586.03MiB sampled aggregate physical footprint,
+3201.69MiB resident memory and18.10s. Independent provenance passes189 v3 and1629
+backport origin identities,80 byte-identical modules,8 historical/2 regenerated
+circuit artifacts,86 native sources,25 setup artifacts and4 exporter files;
+pins, dependencies and the original checkout are preserved.
+
+Every started failed/successful guard ended with no owned survivors. Combined
+literal import, coarse XOR9 and dense-array reduction drafts hit Lean's allocation
+cap below the watchdog ceilings. Five separate imports, smaller native-block
+units, symbolic dense geometry,32by16 finite read cases and generic singleton
+assembly pass at default proof limits. No memory, wall-time, recursion or heartbeat
+ceiling was raised. These are sampled watchdog/allocation caps, not OS hard
+physical-memory enforcement. Audit counts are qualification evidence, not parity.
+
 ## Native Blake2 worker intake and local control checkpoint (7 November 2026)
 
 The [fresh native worker](Airbender/Review/Circuits/Blake2Worker/NativeArtifact.lean)

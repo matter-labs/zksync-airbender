@@ -1,0 +1,74 @@
+import Airbender.Proofs.Blake2Worker.BlockCertificates
+import Airbender.Review.Circuits.Blake2Worker.FixedData28
+
+namespace Airbender.Blake2Worker.Xor7Certificate
+open Setup Setup.Proofs Fixed
+set_option warningAsError true
+set_option Elab.async false
+set_option autoImplicit false
+
+def group8 : List Block := [dataT28Column2Block176,dataT28Column2Block177,dataT28Column2Block178,dataT28Column2Block179,dataT28Column2Block180,dataT28Column2Block181,dataT28Column2Block182,dataT28Column2Block183,dataT28Column2Block184,dataT28Column2Block185,dataT28Column2Block186,dataT28Column2Block187,dataT28Column2Block188,dataT28Column2Block189,dataT28Column2Block190,dataT28Column2Block191,dataT28Column2Block192]
+
+theorem length8 : (group8.map Block.length).sum = 1088 := by
+  simp [group8,dataT28Column2Block176,dataT28Column2Block177,dataT28Column2Block178,dataT28Column2Block179,dataT28Column2Block180,dataT28Column2Block181,dataT28Column2Block182,dataT28Column2Block183,dataT28Column2Block184,dataT28Column2Block185,dataT28Column2Block186,dataT28Column2Block187,dataT28Column2Block188,dataT28Column2Block189,dataT28Column2Block190,dataT28Column2Block191,dataT28Column2Block192,Block.length]
+
+theorem checked8 : checkBlocks (fun n => n/128 ^^^ n%128) 7104 group8 = true :=
+  checkWindowBlocks_sound _ _ _ (by decide +kernel)
+
+def group9 : List Block := [dataT28Column2Block193,dataT28Column2Block194,dataT28Column2Block195,dataT28Column2Block196,dataT28Column2Block197,dataT28Column2Block198,dataT28Column2Block199,dataT28Column2Block200,dataT28Column2Block201,dataT28Column2Block202,dataT28Column2Block203,dataT28Column2Block204,dataT28Column2Block205,dataT28Column2Block206,dataT28Column2Block207,dataT28Column2Block208,dataT28Column2Block209,dataT28Column2Block210,dataT28Column2Block211,dataT28Column2Block212,dataT28Column2Block213,dataT28Column2Block214,dataT28Column2Block215,dataT28Column2Block216,dataT28Column2Block217,dataT28Column2Block218,dataT28Column2Block219,dataT28Column2Block220,dataT28Column2Block221,dataT28Column2Block222,dataT28Column2Block223,dataT28Column2Block224]
+
+theorem length9 : (group9.map Block.length).sum = 2048 := by
+  simp [group9,dataT28Column2Block193,dataT28Column2Block194,dataT28Column2Block195,dataT28Column2Block196,dataT28Column2Block197,dataT28Column2Block198,dataT28Column2Block199,dataT28Column2Block200,dataT28Column2Block201,dataT28Column2Block202,dataT28Column2Block203,dataT28Column2Block204,dataT28Column2Block205,dataT28Column2Block206,dataT28Column2Block207,dataT28Column2Block208,dataT28Column2Block209,dataT28Column2Block210,dataT28Column2Block211,dataT28Column2Block212,dataT28Column2Block213,dataT28Column2Block214,dataT28Column2Block215,dataT28Column2Block216,dataT28Column2Block217,dataT28Column2Block218,dataT28Column2Block219,dataT28Column2Block220,dataT28Column2Block221,dataT28Column2Block222,dataT28Column2Block223,dataT28Column2Block224,Block.length]
+
+theorem checked9 : checkBlocks (fun n => n/128 ^^^ n%128) 8192 group9 = true :=
+  checkWindowBlocks_sound _ _ _ (by decide +kernel)
+
+def group10 : List Block := [dataT28Column2Block225,dataT28Column2Block226,dataT28Column2Block227,dataT28Column2Block228,dataT28Column2Block229,dataT28Column2Block230,dataT28Column2Block231,dataT28Column2Block232,dataT28Column2Block233,dataT28Column2Block234,dataT28Column2Block235,dataT28Column2Block236,dataT28Column2Block237,dataT28Column2Block238,dataT28Column2Block239,dataT28Column2Block240]
+
+theorem length10 : (group10.map Block.length).sum = 256 := by
+  simp [group10,dataT28Column2Block225,dataT28Column2Block226,dataT28Column2Block227,dataT28Column2Block228,dataT28Column2Block229,dataT28Column2Block230,dataT28Column2Block231,dataT28Column2Block232,dataT28Column2Block233,dataT28Column2Block234,dataT28Column2Block235,dataT28Column2Block236,dataT28Column2Block237,dataT28Column2Block238,dataT28Column2Block239,dataT28Column2Block240,Block.length]
+
+theorem checked10 : checkBlocks (fun n => n/128 ^^^ n%128) 10240 group10 = true :=
+  checkWindowBlocks_sound _ _ _ (by decide +kernel)
+
+def group11 : List Block := [dataT28Column2Block241,dataT28Column2Block242,dataT28Column2Block243,dataT28Column2Block244,dataT28Column2Block245,dataT28Column2Block246,dataT28Column2Block247,dataT28Column2Block248,dataT28Column2Block249,dataT28Column2Block250,dataT28Column2Block251,dataT28Column2Block252,dataT28Column2Block253,dataT28Column2Block254,dataT28Column2Block255,dataT28Column2Block256,dataT28Column2Block257,dataT28Column2Block258,dataT28Column2Block259,dataT28Column2Block260,dataT28Column2Block261,dataT28Column2Block262,dataT28Column2Block263,dataT28Column2Block264,dataT28Column2Block265,dataT28Column2Block266,dataT28Column2Block267,dataT28Column2Block268,dataT28Column2Block269,dataT28Column2Block270,dataT28Column2Block271,dataT28Column2Block272]
+
+theorem length11 : (group11.map Block.length).sum = 320 := by
+  simp [group11,dataT28Column2Block241,dataT28Column2Block242,dataT28Column2Block243,dataT28Column2Block244,dataT28Column2Block245,dataT28Column2Block246,dataT28Column2Block247,dataT28Column2Block248,dataT28Column2Block249,dataT28Column2Block250,dataT28Column2Block251,dataT28Column2Block252,dataT28Column2Block253,dataT28Column2Block254,dataT28Column2Block255,dataT28Column2Block256,dataT28Column2Block257,dataT28Column2Block258,dataT28Column2Block259,dataT28Column2Block260,dataT28Column2Block261,dataT28Column2Block262,dataT28Column2Block263,dataT28Column2Block264,dataT28Column2Block265,dataT28Column2Block266,dataT28Column2Block267,dataT28Column2Block268,dataT28Column2Block269,dataT28Column2Block270,dataT28Column2Block271,dataT28Column2Block272,Block.length]
+
+theorem checked11 : checkBlocks (fun n => n/128 ^^^ n%128) 10496 group11 = true :=
+  checkWindowBlocks_sound _ _ _ (by decide +kernel)
+
+def group12 : List Block := [dataT28Column2Block273,dataT28Column2Block274,dataT28Column2Block275,dataT28Column2Block276,dataT28Column2Block277,dataT28Column2Block278,dataT28Column2Block279,dataT28Column2Block280,dataT28Column2Block281,dataT28Column2Block282,dataT28Column2Block283,dataT28Column2Block284,dataT28Column2Block285,dataT28Column2Block286,dataT28Column2Block287,dataT28Column2Block288]
+
+theorem length12 : (group12.map Block.length).sum = 64 := by
+  simp [group12,dataT28Column2Block273,dataT28Column2Block274,dataT28Column2Block275,dataT28Column2Block276,dataT28Column2Block277,dataT28Column2Block278,dataT28Column2Block279,dataT28Column2Block280,dataT28Column2Block281,dataT28Column2Block282,dataT28Column2Block283,dataT28Column2Block284,dataT28Column2Block285,dataT28Column2Block286,dataT28Column2Block287,dataT28Column2Block288,Block.length]
+
+theorem checked12 : checkBlocks (fun n => n/128 ^^^ n%128) 10816 group12 = true :=
+  checkWindowBlocks_sound _ _ _ (by decide +kernel)
+
+def group13 : List Block := [dataT28Column2Block289,dataT28Column2Block290,dataT28Column2Block291,dataT28Column2Block292,dataT28Column2Block293,dataT28Column2Block294,dataT28Column2Block295,dataT28Column2Block296,dataT28Column2Block297,dataT28Column2Block298,dataT28Column2Block299,dataT28Column2Block300,dataT28Column2Block301,dataT28Column2Block302,dataT28Column2Block303,dataT28Column2Block304,dataT28Column2Block305,dataT28Column2Block306,dataT28Column2Block307,dataT28Column2Block308,dataT28Column2Block309,dataT28Column2Block310,dataT28Column2Block311,dataT28Column2Block312,dataT28Column2Block313,dataT28Column2Block314,dataT28Column2Block315,dataT28Column2Block316,dataT28Column2Block317,dataT28Column2Block318,dataT28Column2Block319,dataT28Column2Block320]
+
+theorem length13 : (group13.map Block.length).sum = 376 := by
+  simp [group13,dataT28Column2Block289,dataT28Column2Block290,dataT28Column2Block291,dataT28Column2Block292,dataT28Column2Block293,dataT28Column2Block294,dataT28Column2Block295,dataT28Column2Block296,dataT28Column2Block297,dataT28Column2Block298,dataT28Column2Block299,dataT28Column2Block300,dataT28Column2Block301,dataT28Column2Block302,dataT28Column2Block303,dataT28Column2Block304,dataT28Column2Block305,dataT28Column2Block306,dataT28Column2Block307,dataT28Column2Block308,dataT28Column2Block309,dataT28Column2Block310,dataT28Column2Block311,dataT28Column2Block312,dataT28Column2Block313,dataT28Column2Block314,dataT28Column2Block315,dataT28Column2Block316,dataT28Column2Block317,dataT28Column2Block318,dataT28Column2Block319,dataT28Column2Block320,Block.length]
+
+theorem checked13 : checkBlocks (fun n => n/128 ^^^ n%128) 10880 group13 = true :=
+  checkWindowBlocks_sound _ _ _ (by decide +kernel)
+
+def group14 : List Block := [dataT28Column2Block321,dataT28Column2Block322,dataT28Column2Block323,dataT28Column2Block324,dataT28Column2Block325,dataT28Column2Block326,dataT28Column2Block327,dataT28Column2Block328,dataT28Column2Block329,dataT28Column2Block330,dataT28Column2Block331,dataT28Column2Block332,dataT28Column2Block333,dataT28Column2Block334,dataT28Column2Block335,dataT28Column2Block336]
+
+theorem length14 : (group14.map Block.length).sum = 488 := by
+  simp [group14,dataT28Column2Block321,dataT28Column2Block322,dataT28Column2Block323,dataT28Column2Block324,dataT28Column2Block325,dataT28Column2Block326,dataT28Column2Block327,dataT28Column2Block328,dataT28Column2Block329,dataT28Column2Block330,dataT28Column2Block331,dataT28Column2Block332,dataT28Column2Block333,dataT28Column2Block334,dataT28Column2Block335,dataT28Column2Block336,Block.length]
+
+theorem checked14 : checkBlocks (fun n => n/128 ^^^ n%128) 11256 group14 = true :=
+  checkWindowBlocks_sound _ _ _ (by decide +kernel)
+
+def group15 : List Block := [dataT28Column2Block337,dataT28Column2Block338,dataT28Column2Block339,dataT28Column2Block340,dataT28Column2Block341,dataT28Column2Block342,dataT28Column2Block343,dataT28Column2Block344,dataT28Column2Block345,dataT28Column2Block346,dataT28Column2Block347,dataT28Column2Block348,dataT28Column2Block349,dataT28Column2Block350,dataT28Column2Block351,dataT28Column2Block352,dataT28Column2Block353,dataT28Column2Block354,dataT28Column2Block355,dataT28Column2Block356,dataT28Column2Block357,dataT28Column2Block358,dataT28Column2Block359,dataT28Column2Block360,dataT28Column2Block361,dataT28Column2Block362,dataT28Column2Block363,dataT28Column2Block364]
+
+theorem length15 : (group15.map Block.length).sum = 1952 := by
+  simp [group15,dataT28Column2Block337,dataT28Column2Block338,dataT28Column2Block339,dataT28Column2Block340,dataT28Column2Block341,dataT28Column2Block342,dataT28Column2Block343,dataT28Column2Block344,dataT28Column2Block345,dataT28Column2Block346,dataT28Column2Block347,dataT28Column2Block348,dataT28Column2Block349,dataT28Column2Block350,dataT28Column2Block351,dataT28Column2Block352,dataT28Column2Block353,dataT28Column2Block354,dataT28Column2Block355,dataT28Column2Block356,dataT28Column2Block357,dataT28Column2Block358,dataT28Column2Block359,dataT28Column2Block360,dataT28Column2Block361,dataT28Column2Block362,dataT28Column2Block363,dataT28Column2Block364,Block.length]
+
+theorem checked15 : checkBlocks (fun n => n/128 ^^^ n%128) 11744 group15 = true :=
+  checkWindowBlocks_sound _ _ _ (by decide +kernel)
+
+end Airbender.Blake2Worker.Xor7Certificate

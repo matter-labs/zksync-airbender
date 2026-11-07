@@ -161,6 +161,30 @@ fn export_reduced_csr(layout_path: &Path, delegation_csrs: Vec<u32>) -> ReducedC
     }
 }
 
+fn export_blake2_fixed(layout_path: &Path) -> ControlTables {
+    // Export only the selected worker driver, independently of the main pools.
+    use cs::delegation::blake2_round_with_extended_control::blake2_with_extended_control_delegation_circuit_create_table_driver;
+    let driver = blake2_with_extended_control_delegation_circuit_create_table_driver::<Mersenne31Field>();
+    let layout: serde_json::Value = serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
+    assert_eq!(layout["trace_len"], 1048576);
+    assert_eq!(layout["total_tables_size"], 344384);
+    let rows = driver.dump_tables();
+    let mut tables = Vec::new();
+    let mut offset = 0;
+    for table in driver.tables.iter().filter(|table| table.get_size() != 0) {
+        let id = table.get_table_id();
+        assert_eq!(layout["table_offsets"][id as usize], offset);
+        let length = table.get_size();
+        tables.push(Region { id, offset, data: matrix(&rows[offset..offset + length]) });
+        offset += length;
+    }
+    assert_eq!(offset, rows.len());
+    assert_eq!(offset, 344384);
+    assert_eq!(tables.iter().map(|table| table.id).collect::<Vec<_>>(), vec![4, 26, 27, 28, 29]);
+    ControlTables { version: 1, field_modulus: MODULUS,
+        profile: "blake2_extended_control_fixed".into(), generic_rows: offset, tables }
+}
+
 /// Materialize each native region once, in ID order. Avoid the driver cache and
 /// a simultaneous flattened copy of the four-million-row shift table.
 fn export_reduced_fixed(layout_path: &Path, image: Vec<u32>, delegation_csrs: Vec<u32>) -> ReducedFixed {
@@ -762,6 +786,14 @@ fn export(mut image: Vec<u32>, text: Vec<u32>) -> Artifact {
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().collect();
+    if args.len() == 4 && args[1] == "--blake2-fixed" {
+        let artifact = export_blake2_fixed(Path::new(&args[2]));
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: ControlTables = serde_json::from_slice(&bytes)?;
+        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        std::fs::write(&args[3], [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
     if args.len() == 5 && args[1] == "--reduced-csr" {
         let delegation_csrs: Vec<u32> = serde_json::from_slice(&std::fs::read(&args[3])?)?;
         if delegation_csrs.iter().any(|csr| *csr >= 4096) {

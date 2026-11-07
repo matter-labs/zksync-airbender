@@ -91,3 +91,5 @@ second-output assembly draft is excluded after allocation-limit failures.
 ### Native Blake2 worker
 
 [Worker guide](Blake2Worker/README.md) describes fresh native row intake, actual43-access ABI metadata and checked local control bounds. Worker tables/memory/protocol acceptance and accounting remain separate; no historical acceptance is transferred.
+
+The [native worker fixed-pool roots](Blake2Worker/TablesTheorems.lean) now certify all344384 actual rows and five XOR regions. Actual compiled query/worker memory/protocol composition remains separate.

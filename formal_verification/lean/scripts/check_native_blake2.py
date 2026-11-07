@@ -8,7 +8,7 @@ MANIFEST = ROOT.parent / "native_setup_exporter/Cargo.toml"
 TARGET = ROOT / ".lake/native-setup-target"
 ARTIFACT = ROOT / "artifacts/circuits/blake2-native-layout.json"
 BASE = "67ee094449abaebc77e58435f130ce6ea27721e5"
-PARENT = "bcb41c6c9a9eedd24875377e00b57826b5504dfc"
+PARENT = "a873bb0f7ca6cacd3ff4641dc8c85970c970184e"
 
 
 def native_sources():
@@ -51,7 +51,13 @@ def native_sources():
     assert ".compile_to_evaluate_delegations(circuit_output, DOMAIN_SIZE.trailing_zeros() as usize)" in worker
     assert "compiler.compile_to_evaluate_delegations(circuit_output, 20)" in branch
     previous = subprocess.check_output(["git", "show", PARENT + ":formal_verification/native_setup_exporter/src/main.rs"], cwd=REPO).decode()
-    assert source[:start] + source[end:] == previous, "unrelated exporter branches changed"
+    function_start = source.index("fn export_blake2_fixed(")
+    function_end = source.index("/// Materialize each native region once", function_start)
+    stripped = source[:function_start] + source[function_end:]
+    mode_start = stripped.index('    if args.len() == 4 && args[1] == "--blake2-fixed" {')
+    mode_end = stripped.index('    if args.len() == 5 && args[1] == "--reduced-csr" {', mode_start)
+    stripped = stripped[:mode_start] + stripped[mode_end:]
+    assert stripped == previous, "unrelated exporter branches changed"
 
 
 def inspect(data):
