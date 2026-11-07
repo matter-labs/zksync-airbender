@@ -10,7 +10,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 4000000
 
-private theorem operation_cases [Fact p.Prime] {w : Nat → ZMod p}
+theorem operation_cases [Fact p.Prime] {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable)) :
     (∀ i : Fin 7, w Variables.operations[i] = 0) ∨ ∃ i : Fin 7, w Variables.operations[i] = 1 := by
   by_cases selected : ∃ i : Fin 7, w Variables.operations[i] = 1
@@ -26,7 +26,7 @@ private theorem operation_cases [Fact p.Prime] {w : Nat → ZMod p}
         | exact Control.Proofs.control_bits h 7
     exact bit.resolve_right (fun one => selected ⟨i, one⟩)
 
-private theorem empty_writes [Fact p.Prime] {w : Nat → ZMod p}
+theorem empty_writes [Fact p.Prime] {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable))
     (empty : ∀ i : Fin 7, w Variables.operations[i] = 0) :
     (∀ i : Fin 16, w Variables.writtenLimbs[i] = 0) ∧ w 57 = 0 ∧ w 58 = 0 := by

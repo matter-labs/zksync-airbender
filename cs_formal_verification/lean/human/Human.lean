@@ -4,6 +4,7 @@ import Human.Circuits.AddSub.CallerTheorems
 import Human.Circuits.AddSub.Theorems
 import Human.Circuits.AddSub.RVTheorems
 import Human.Circuits.Bigint.Theorems
+import Human.Circuits.Bigint.RVTheorems
 import Human.Circuits.Blake2G.Theorems
 import Human.Circuits.InitsTeardowns.Theorems
 import Human.Circuits.JumpBranchSlt.Theorems
@@ -38,6 +39,7 @@ import Human.Trace.TeardownBounds
 import Human.Trace.UnifiedReduced.Theorems
 import Human.Trace.UnifiedReduced.RVTheorems
 import Human.Trace.Workers.Bigint.Theorems
+import Human.Trace.Workers.Bigint.RVTheorems
 import Human.Trace.Workers.Blake2G.Theorems
 import Human.Trace.Workers.Blake2G.RVTheorems
 import Human.Trace.Workers.Blake2Round.Theorems

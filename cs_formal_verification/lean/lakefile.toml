@@ -52,6 +52,8 @@ globs = [
   "Human.Circuits.Bigint.Memory",
   "Human.Circuits.Bigint.Multiplication",
   "Human.Circuits.Bigint.PointerABI",
+  "Human.Circuits.Bigint.RVMemory",
+  "Human.Circuits.Bigint.RVTheorems",
   "Human.Circuits.Bigint.Tables.+",
   "Human.Circuits.Bigint.Theorems",
   "Human.Circuits.Bigint.Word",
