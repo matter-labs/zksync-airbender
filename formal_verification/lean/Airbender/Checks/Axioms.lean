@@ -1,3 +1,7 @@
+import Airbender.Review.Circuits.ReducedMachine.MainArguments
+import Airbender.Proofs.ReducedMachine.NativeMainArguments
+import Airbender.Review.Circuits.ReducedMachine.MainArgumentTheorems
+import Tests.NativeMainArguments
 import Airbender.Review.Circuits.ReducedMachine.MemoryTokens
 import Airbender.Proofs.ReducedMachine.NativeMemoryTokens
 import Airbender.Review.Circuits.ReducedMachine.MemoryTokenTheorems
@@ -5992,3 +5996,15 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeMemoryTokens.scalar_collision_is_not_token_identity
 #print axioms Airbender.Tests.NativeMemoryTokens.complete_main_factor_transport
 #print axioms Airbender.Tests.NativeMemoryTokens.complete_worker_factor_transport
+
+#print axioms Airbender.ReducedMachine.NativeMainArgumentProofs.memory_acceptance
+#print axioms Airbender.ReducedMachine.NativeMainArgumentProofs.delegation_acceptance
+#print axioms Airbender.ReducedMachine.NativeMainArgumentProofs.joint_effects
+#print axioms Airbender.ReducedMachine.NativeMainArguments.same_main_arguments
+#print axioms Airbender.Tests.NativeMainArguments.shared_body
+#print axioms Airbender.Tests.NativeMainArguments.shared_auxiliary
+#print axioms Airbender.Tests.NativeMainArguments.shared_claim
+#print axioms Airbender.Tests.NativeMainArguments.full_domain
+#print axioms Airbender.Tests.NativeMainArguments.claims_not_identified
+#print axioms Airbender.Tests.NativeMainArguments.same_main_auxiliary_sum
+#print axioms Airbender.Tests.NativeMainArguments.complete_joint_components

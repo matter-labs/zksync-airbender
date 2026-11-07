@@ -738,3 +738,9 @@ third writes remain. [Observables](MemoryTokens.lean) retain all43 worker keys a
 challenge factors. Pure permutation equivalence does not assert native matching,
 initialized reads or issuance/accounting. Seventeen regressions include raw/wide
 fields, duplicate multiplicity, encoded-image limits and scalar collisions.
+
+[The joint main-argument root](MainArgumentTheorems.lean) now derives existing
+scalar/product/capacity conclusions from one shared body/auxiliary observation
+record and the same returned worker list. Distinct claims remain distinct; no
+active filter, desired stream or matching premise. Rust Option/physical-output
+refinement and full token matching/initialization remain separate.

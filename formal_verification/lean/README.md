@@ -1480,3 +1480,8 @@ now proves the native indicator-to-Clean-space complement and raw-field tuple
 injectivity, binds all three main ports and retains all43 worker keys/factors.
 Pure permutation transport preserves duplicates. Native token matching and
 initialized worker history remain open; scalar products do not supply them.
+
+[Same-main-proof argument composition](Airbender/Review/Circuits/ReducedMachine/MainArgumentTheorems.lean)
+now shares body rows, typed auxiliaries and both distinct claims across the checked
+scalar/product components and configured worker batch. Matching/extraction and
+initialized worker history remain open.

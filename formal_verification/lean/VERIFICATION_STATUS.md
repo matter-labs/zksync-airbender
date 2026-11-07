@@ -34,6 +34,54 @@ initialization/decoder interfaces; other combined profiles remain unfinished.
 The historical 119-equation/141-variable/13-region artifact is preserved separately.
 It is not assumed to be the current source-generated machine. Main/worker stage-two descriptors now have separate typed auxiliary intakes; unmodeled protocol semantics remain open. These are coverage/fidelity results, not native defects.
 
+## Same-main-proof argument coupling (7 November 2026)
+
+[The joint root](Airbender/Review/Circuits/ReducedMachine/MainArgumentTheorems.lean)
+now derives delegation scalar balance, full main/worker/public memory-product
+balance and worker capacity/no-wrap conclusions from the SAME main observations
+and configured worker list. [One observation record](Airbender/Review/Circuits/ReducedMachine/MainArguments.lean)
+holds one actual body-row function, one typed auxiliary trace and distinct returned
+grand/delegation claims. Its caller view reuses those exact functions by definition;
+there is no supplied equality between independently chosen row traces or claims.
+Every ordinary main/worker row and inactive factor/auxiliary contribution remains.
+
+[Projection proofs](Airbender/Proofs/ReducedMachine/NativeMainArguments.lean)
+derive the two unchanged complete parent accepted components and reuse their
+checked conclusions. Shared memory/delegation challenges, native global accumulator
+checks, configured metadata/capacity and public boundary remain explicit. No
+expected read/key/range/clock/state/result, issued stream, active filter or token
+matching premise is added. The already pinned [selected main driver](../../prover/src/prover_stages/unrolled_prover/mod.rs)
+returns both fields from the same stage-two output; its native67ee bytes were
+freshly compared. No new native source pin or production change is required.
+
+Seven [regressions](Tests/NativeMainArguments.lean) check identical body/auxiliary
+projections, retained claim/full-domain fields, distinct observed accumulator
+values, the actual shared auxiliary sum and complete conditional joint effects.
+The distinct-claim record is observation data only, not an accepted main/worker
+witness. Four modules record ten exact parent origins and eleven explicit roots.
+No old acceptance interface or proof is weakened; no intake/artifact/exporter/
+literal/dependency change, native generation or heavy replay.
+
+Final bounded gates pass5275 standard-only explicit axiom roots,268 public
+Review roots,4 guide names and4013 links/anchors with context/trace separation.
+Independent checks preserve189 v3 and1759 backport identities,80 byte-identical
+modules,8 historical plus2 regenerated circuits,98 native sources,25 setup
+artifacts and4 exporters. Full Review sampled aggregate footprint605.07MiB/
+resident3302.69MiB in18.23s; all started guards report no owned survivors,
+with unchanged ceilings and default Lean limits.
+
+This closes observation coupling at the selected delegation-present normalized
+source-reference interface. Rust Option/ProofOutput parsing, physical commitments/
+transcript extraction, dispatch and quotient/refinement remain separate. Concurrent
+scalar/product balances and capacity still do not imply precompression matching,
+initialized reads, issuance, fulfillment or accounting. Next: faithful full-domain
+main/43-worker key/token matching/extraction and public initialization, then
+padding/active history filtering, active ranges/raw clocks and stage2 key agreement.
+Original CSR/MOP and worker reference execution, initialization/teardown, physical/
+general refinement/crypto/completeness/parity remain open. No findings, issue
+assumptions, production fixes or project axioms; main frames cannot cross unproved
+delegated actions.
+
 ## Lossless native memory-key/token bridge (7 November 2026)
 
 [The short bridge roots](Airbender/Review/Circuits/ReducedMachine/MemoryTokenTheorems.lean)

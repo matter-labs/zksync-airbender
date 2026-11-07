@@ -404,3 +404,8 @@ raw address/value limbs and timestamp fields remain. Actual main ports and all43
 worker keys retain their factors. Permutations transport losslessly in both
 directions, including duplicates; no native matching assumption or scalar-to-
 matching inference is added. Initialized worker bounds/history remain open.
+
+[Shared-main argument observations](../../Circuits/ReducedMachine/MainArgumentTheorems.lean)
+now couple both native scalar/product components without independent main traces.
+This preserves every original token/factor; matching/extraction, initialization
+and active-history transport remain open.

@@ -231,3 +231,8 @@ refreshes and the common processor timestamp. Exact decode and challenge-factor
 transport preserve separate field limbs without16-bit/raw-clock premises. This
 closes the native indicator/Clean space encoding gap, not stage2 truncation
 refinement, actual matching, initialized reads, worker effects or accounting.
+
+[Same-main-proof composition](../ReducedMachine/MainArgumentTheorems.lean) now
+feeds both checked global components from identical main body/auxiliary fields
+and the same configured worker batch/challenges. All worker rows remain. Scalar/
+product/capacity conclusions still do not establish matching or initialized reads.

@@ -615,3 +615,9 @@ permutation. These active logical trace histories remain separate from the full
 physical ordinary-row domain, inactive argument factors and unproved delegated
 actions. Actual global matching/extraction, initialized worker reads and faithful
 padding/filter/history are still needed before the trace machinery can apply.
+
+[Joint main arguments](../../../Circuits/ReducedMachine/MainArgumentTheorems.lean)
+now share exact body/auxiliary observations across scalar/product conclusions.
+No active physical-row filter or global token permutation follows from this
+coupling. Existing initialized logical execution remains separate until faithful
+full-domain matching, padding and delegated-action histories are connected.
