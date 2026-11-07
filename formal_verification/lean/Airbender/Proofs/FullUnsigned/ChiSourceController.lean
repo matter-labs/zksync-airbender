@@ -154,11 +154,132 @@ private theorem source_covered {artifact : Artifact} (parsed : parse SourceCaptu
     simp
   exact source_column_lengths SourceCaptureChiProofs.parsed trace_len_decoded columns_decoded parsed _ member
 
+-- Keep each closed computation within one controller column during kernel replay.
+
+private def controllerValueCorrect (index : Fin 121) (column : Fin 11) : Prop :=
+    signedValue ((getFromBlocks (controllerBlocks column)
+      (1048576 + index.val - (4194304 - controllerLength column))).getD 0) =
+      signedValue ((Airbender.Keccak.Split.Native.Fixed.chi5Control.columns[column.val].get? index.val).getD 0)
+
+private theorem controllerValues0 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨0, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues1 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨1, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues2 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨2, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues3 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨3, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues4 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨4, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues5 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨5, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues6 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨6, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues7 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨7, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues8 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨8, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues9 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨9, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues10 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨10, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
 private theorem controller_values : ∀ index : Fin 121, ∀ column : Fin 11,
     signedValue ((getFromBlocks (controllerBlocks column)
       (1048576 + index.val - (4194304 - controllerLength column))).getD 0) =
       signedValue ((Airbender.Keccak.Split.Native.Fixed.chi5Control.columns[column.val].get? index.val).getD 0) := by
-  decide +kernel
+  intro index column
+  change controllerValueCorrect index column
+
+  by_cases h0 : column.val = 0
+  · have same : column = ⟨0, by decide⟩ := Fin.ext h0
+    subst column
+    exact controllerValues0 index
+
+  by_cases h1 : column.val = 1
+  · have same : column = ⟨1, by decide⟩ := Fin.ext h1
+    subst column
+    exact controllerValues1 index
+
+  by_cases h2 : column.val = 2
+  · have same : column = ⟨2, by decide⟩ := Fin.ext h2
+    subst column
+    exact controllerValues2 index
+
+  by_cases h3 : column.val = 3
+  · have same : column = ⟨3, by decide⟩ := Fin.ext h3
+    subst column
+    exact controllerValues3 index
+
+  by_cases h4 : column.val = 4
+  · have same : column = ⟨4, by decide⟩ := Fin.ext h4
+    subst column
+    exact controllerValues4 index
+
+  by_cases h5 : column.val = 5
+  · have same : column = ⟨5, by decide⟩ := Fin.ext h5
+    subst column
+    exact controllerValues5 index
+
+  by_cases h6 : column.val = 6
+  · have same : column = ⟨6, by decide⟩ := Fin.ext h6
+    subst column
+    exact controllerValues6 index
+
+  by_cases h7 : column.val = 7
+  · have same : column = ⟨7, by decide⟩ := Fin.ext h7
+    subst column
+    exact controllerValues7 index
+
+  by_cases h8 : column.val = 8
+  · have same : column = ⟨8, by decide⟩ := Fin.ext h8
+    subst column
+    exact controllerValues8 index
+
+  by_cases h9 : column.val = 9
+  · have same : column = ⟨9, by decide⟩ := Fin.ext h9
+    subst column
+    exact controllerValues9 index
+
+  have same : column = ⟨10, by decide⟩ := by
+    apply Fin.ext
+    change column.val = 10
+    have bound := column.isLt
+    omega
+  subst column
+  exact controllerValues10 index
 
 /-- Every parsed source controller field equals its original native reference. -/
 theorem source_controller_get {artifact : Artifact}

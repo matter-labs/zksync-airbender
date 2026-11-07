@@ -44,6 +44,54 @@ redundant branch-only repair is removed; see [FINDINGS.md](FINDINGS.md).
 
 ## Current checkpoint
 
+Full run [42350890242](https://github.com/matter-labs/zksync-airbender/actions/runs/42350890242)
+on signed head 9bdfb988e0dd2ab83bf629d1e5c47f032f69030e failed independent
+kernel replay at 22:31:43 UTC on 7 November. The ChiSourceController module
+exceeded the unchanged 2,560 MiB charged-memory cap: exit 125 after 13.10
+seconds, 2,571.87 MiB charged, 2,048 MiB replay stack, no owned processes left.
+The log contains no kernel rejection. There are 7,386 successful replay guards
+before this leaf in the 8,381-module compiled DAG. The repaired split slot
+cache now passes actual project replay in 13.80 seconds at 844.55 MiB charged;
+ChiCharacters passes in 942.69 seconds at 920.25 MiB charged. Complete replay
+has not passed, and direct/transitive false-proof controls were skipped.
+
+The repair divides the private 121-row, eleven-column controller calculation
+into eleven closed 121-row proofs and an exhaustive column assembly. The
+original whole-controller theorem statement, preceding definitions and proofs,
+and complete public theorem tail are byte-identical. Review statements and
+premises, production behavior, replay/checker policy, resource limits and the
+retained axiom baseline remain unchanged. All 923 captured native fingerprint
+inputs are byte-identical.
+
+A bounded isolated CORE fixture imports only the pinned Lean 4.31 toolchain.
+It copies 807 actual source data definitions and the finite predicate and repair,
+retains the certified suffix indices, and compares all 1,331 source controller
+values with the corresponding region sliced from the retained native JSON.
+All cases compile in 19.95 seconds at 1,033.46 MiB charged, with only propext
+and Quot.sound reported. The unchanged replay adapter checks the fixture's
+1,013 safe declarations in 6.49 seconds at 1,091.55 MiB charged; two compiler
+implementation declarations are skipped, and the fixture declares no axioms.
+Changing the final row's final column is rejected by the eleventh column proof
+(exit 1, 20.86 seconds, 1,028.69 MiB charged). These Darwin controls use
+1,536/3,072 MiB memory limits, a 60-second deadline, the existing process-stack
+policy and a 2,048 MiB replay thread stack. Nineteen focused Python controls
+and 1,302 guide links/anchors pass. This is isolated evidence, not complete
+project validation or Linux replay under the 2,048 MiB process stack.
+
+The failed run's exact diagnostic receipt is inspected: schema 1, commit
+9bdfb988e0dd2ab83bf629d1e5c47f032f69030e, run/attempt 42350890242/1, native
+fingerprint 93bf55f548def02ee3d55793f6c679d601a089d3028ffb82a90e19016d9ce519,
+all 12/16/33/11 checks. Both native stages actually ran. Complete source,
+importer runtime, Review, generated freshness, all 126 exact decoder comparisons
+across eleven inputs, and the retained-baseline environment audit passed. The
+audit retains 5,164 protected roots and covers 229,364 dependencies, with no
+missing roots, changed reports, forbidden axioms, unsafe dependencies or
+undispositioned changes. These are pre-repair results. A new exact-head full
+assurance run with baseline refresh disabled remains required; no final
+assurance is claimed.
+
+### Prior split slot cache repair
+
 Full run [42265036454](https://github.com/matter-labs/zksync-airbender/actions/runs/42265036454)
 on signed head 964db88d323d7f04a258f38bce28eca1c6d31652 failed independent
 kernel replay at 07:06:10 UTC on 7 November. The split slot-reduction module
