@@ -1,5 +1,6 @@
 import Human.Trace.RVSoundness
 import Slop.Trace.RVPooled.Soundness
+import Slop.Trace.RVPooled.OracleSoundness
 import Slop.Trace.RVPooledLawsProof
 
 namespace Airbender.Trace
@@ -16,5 +17,12 @@ theorem rv_pooled_native_soundness : RVPooledNativeSoundnessClaim := by
 theorem boot_ram_zero : BootRamZeroClaim := by
   intro trace initial cells program inits projection inputs
   exact Proofs.boot_ram_zero inputs
+
+/-- The six families plus the CSR 0x7C0 read/write forms: the input stream is `initial.input`, the read rows' values
+    are its words in clock order (`StreamPorts`), and the run consumes exactly the trace's reads. -/
+theorem NonDeterminism.Pooled.rv_native_soundness : NonDeterminism.Pooled.RVNativeSoundnessClaim := by
+  intro trace initial cells program inits inputs accepted decoded ports
+  exact Proofs.rv_oracle_trace_execution Proofs.rvPooledLaws.clockLaws (by decide) (by decide) inputs
+    (Proofs.rv_boot_seed inputs) accepted decoded ports
 
 end Airbender.Trace

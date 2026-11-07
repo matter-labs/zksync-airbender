@@ -46,14 +46,19 @@ theorem rv_pooled_row_facts {p : Nat} [Fact p.Prime] (hp : limbBase < p) {trace 
     (position : RVRowPosition trace initial cells row before)
     (history : RVHistory cells (rowEvents trace.memoryEpoch row).reverse before after) :
     ∃ entry : RVPooledProgramEntry, ∃ i, RV.decode entry.bits = some i ∧ projection i = some entry.data ∧
-      RV.step before = RV.exec before i ∧ RVPooledRowFacts trace initial cells row before after entry := by
+      (∀ s : RV.State, s.pc = before.pc → s.rom = before.rom → RV.step s = RV.exec s i) ∧
+      RVPooledRowFacts trace initial cells row before after entry := by
   obtain ⟨entry, present, family, query⟩ := rv_decoder_member (decoded row member)
   obtain ⟨guard, bits, i, decodes, fields⟩ := rvProgram_entry_fetch programImage entry present
-  obtain ⟨beforePC, step⟩ := rv_step_of_position position (rv_query_pc hp query) guard (bits ▸ decodes)
+  obtain ⟨beforePC, _⟩ := rv_step_of_position position (rv_query_pc hp query) guard (bits ▸ decodes)
   have rom : before.rom = initial.rom := by
     obtain ⟨_, _, middle, _, _, writes, atState⟩ := position
     rw [atState]
     exact (rvWriteHistory_rom writes : middle.rom = initial.rom)
+  have step (s : RV.State) (atPC : s.pc = before.pc) (atROM : s.rom = before.rom) :
+      RV.step s = RV.exec s i := by
+    have fetched := (rv_step_fetch s initial (atROM.trans rom) entry.pc (atPC.trans beforePC) guard).2
+    rw [fetched, ← bits, decodes, Option.bind_some]
   exact ⟨entry, i, decodes, fields, step,
     { constraints := accepted.constraints row member
       active := accepted.active row member

@@ -29,7 +29,7 @@ theorem rv_pooled_row_steps (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp :
   obtain ⟨entry, i, decodes, fields, step, facts⟩ := rv_pooled_row_facts limbSize programImage accepted decoded
     bounds finishBounds native.aligned wordTable subwordTable member position history
   obtain ⟨next, exec, same⟩ := rv_pooled_row_step hp inverse facts fields decodes
-  exact ⟨next, step.trans exec, same⟩
+  exact ⟨next, (step before rfl rfl).trans exec, same⟩
 
 /-- `RVPooledNativeSoundnessClaim` for any field, given the zero seed of the tracked cells. -/
 theorem rv_pooled_trace_execution (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
@@ -40,7 +40,7 @@ theorem rv_pooled_trace_execution (laws : RVPooledLaws) {p : Nat} [Fact p.Prime]
     (seed : trace.initialMemory = ROMView.nativeBootImage cells)
     (accepted : Accepted trace) (decoded : RVPooledDecoded trace program) :
     RVRealizes trace initial cells := by
-  haveI : ClockLaws PooledFamily p := laws.clockLaws
+  have : ClockLaws PooledFamily p := laws.clockLaws
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   have native := inputs.native (by omega) seed
   obtain ⟨addresses, programImage⟩ := inputs.programImage

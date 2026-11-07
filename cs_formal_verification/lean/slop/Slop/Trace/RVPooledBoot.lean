@@ -11,10 +11,6 @@ import Slop.Final.Circuits.InitsTeardowns.Theorems
 namespace Airbender.Trace.Proofs
 open Arithmetic
 
-theorem registerCells_mem (index : BitVec 5) : Cell.register index ∈ registerCells := by
-  unfold registerCells
-  exact List.mem_map.mpr ⟨index.toNat, List.mem_range.mpr index.isLt, by simp⟩
-
 theorem initialToken_injective {p : Nat} {cell : Cell} {a b : BitVec 32}
     (same : cell.initialToken (p := p) a = cell.initialToken b) : a = b := by
   have pair := (Nat.pair_eq_pair.mp (congrArg MemoryToken.value same))

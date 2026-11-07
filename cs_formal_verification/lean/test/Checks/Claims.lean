@@ -163,6 +163,7 @@ example : Airbender.Trace.PooledNativeSoundnessClaim := @Airbender.Trace.pooled_
 example : Airbender.Trace.NonDeterminism.Pooled.NativeSoundnessClaim := @Airbender.Trace.NonDeterminism.Pooled.native_soundness
 example : Airbender.Trace.RVPooledNativeSoundnessClaim := @Airbender.Trace.rv_pooled_native_soundness
 example : Airbender.Trace.BootRamZeroClaim := @Airbender.Trace.boot_ram_zero
+example : Airbender.Trace.NonDeterminism.Pooled.RVNativeSoundnessClaim := @Airbender.Trace.NonDeterminism.Pooled.rv_native_soundness
 example : Airbender.InitsTeardowns.StandaloneClaim := @Airbender.InitsTeardowns.standalone_claim
 example : Airbender.InitsTeardowns.UnifiedClaim := @Airbender.InitsTeardowns.unified_claim
 example : Airbender.Trace.NoZeroTimestampWritesClaim := @Airbender.Trace.no_zero_timestamp_writes
@@ -297,6 +298,7 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.Trace.NonDeterminism.Pooled.native_soundness
 #print axioms Airbender.Trace.rv_pooled_native_soundness
 #print axioms Airbender.Trace.boot_ram_zero
+#print axioms Airbender.Trace.NonDeterminism.Pooled.rv_native_soundness
 #print axioms Airbender.InitsTeardowns.standalone_claim
 #print axioms Airbender.InitsTeardowns.unified_claim
 #print axioms Airbender.Trace.no_zero_timestamp_writes
