@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Decoder.ReducedMachineSupported
 import Airbender.Proofs.ReducedMachine.NativeSupportedDecoder
 import Airbender.Proofs.ReducedMachine.NativeShiftPreservation
 import Airbender.Proofs.ReducedMachine.NativeArithmeticPreservation
@@ -15,6 +16,10 @@ import Airbender.Proofs.ReducedMachine.NativeBranchExecution
 import Airbender.Proofs.ReducedMachine.NativeBranchPreservation
 import Airbender.Proofs.Trace.Families.ReducedMachine.BranchZeroRegister
 
+import Airbender.Proofs.ReducedMachine.NativeJumpExecution
+import Airbender.Proofs.ReducedMachine.NativeJumpPreservation
+import Airbender.Proofs.Trace.Families.ReducedMachine.JumpZeroRegister
+
 namespace Airbender.ReducedMachine.NativeSupportedLocalProofs
 open Native Arithmetic Trace Reference.RiscV.Sail Reference.Sail Verification
 open Airbender.Trace.Proofs
@@ -27,14 +32,15 @@ set_option autoImplicit false
 theorem row_write_rule (row : Row mersenne31Modulus NativeReducedFamily) {entry : SupportedProgramEntry}
     (native : FlatOperation.ConstraintsHoldFlat (environment row.assignment) (importedConstraints NativeFixed.table))
     (fields : supportedDecoderFields entry.instruction = some entry.data)
-    (query : row.decoderQuery = entry.query) : RowWriteBoundsFromReads row := by
+    (query : row.decoderQuery = entry.query) (aligned : row.start.word.lo % 4 = 0) : RowWriteBoundsFromReads row := by
   rcases NativeSupportedDecoderProofs.entry_profile fields with
-    ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩
+    ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,pc,bits,instruction,selectedFields,same⟩
   · exact NativeShiftPreservationProofs.row_write_rule row native selectedFields (query.trans same.symm)
   · exact NativeArithmeticPreservationProofs.row_write_rule row native selectedFields (query.trans same.symm)
   · exact NativeBitwisePreservationProofs.row_write_rule row native selectedFields (query.trans same.symm)
   · exact NativeComparisonPreservationProofs.row_write_rule row native selectedFields (query.trans same.symm)
   · exact NativeBranchPreservationProofs.row_write_rule row native selectedFields (query.trans same.symm)
+  · exact NativeJumpPreservationProofs.row_write_rule row native selectedFields (query.trans same.symm) aligned
 
 /-- Original x0 decoding and actual masked writes preserve zero across every
     supported native profile. Readonly refreshes and aliases remain in the relation. -/
@@ -43,12 +49,13 @@ theorem row_zero_preserving (row : Row mersenne31Modulus NativeReducedFamily) {e
     (fields : supportedDecoderFields entry.instruction = some entry.data)
     (query : row.decoderQuery = entry.query) : RowZeroPreserving row := by
   rcases NativeSupportedDecoderProofs.entry_profile fields with
-    ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩
+    ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,pc,bits,instruction,selectedFields,same⟩
   · exact NativeShiftRegisterProofs.row_zero_preserving row native selectedFields (query.trans same.symm)
   · exact NativeArithmeticRegisterProofs.row_zero_preserving row native selectedFields (query.trans same.symm)
   · exact NativeBitwiseRegisterProofs.row_zero_preserving row native selectedFields (query.trans same.symm)
   · exact NativeComparisonRegisterProofs.row_zero_preserving row native selectedFields (query.trans same.symm)
   · exact NativeBranchRegisterProofs.row_zero_preserving row native selectedFields (query.trans same.symm)
+  · exact NativeJumpRegisterProofs.row_zero_preserving row native selectedFields (query.trans same.symm)
 
 /-- All actual native accesses are register-space accesses for all supported
     profiles; mixed address metadata alone would not establish this. -/
@@ -62,7 +69,7 @@ theorem row_register_space (row : Row mersenne31Modulus NativeReducedFamily) {en
     cases family
     change port ∈ importedConstraintsMemoryPorts at member
     rcases NativeSupportedDecoderProofs.entry_profile fields with
-      ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩
+      ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,pc,bits,instruction,selectedFields,same⟩
     · have addresses := NativeShiftPortProofs.register_addresses native selectedFields (query.trans same.symm)
       simp [importedConstraintsMemoryPorts] at member
       rcases member with rfl | rfl | rfl
@@ -80,6 +87,10 @@ theorem row_register_space (row : Row mersenne31Modulus NativeReducedFamily) {en
       rcases member with rfl | rfl | rfl
       all_goals first | exact ⟨_,addresses 0⟩ | exact ⟨_,addresses 1⟩ | exact ⟨_,addresses 2⟩
     · have addresses := NativeBranchPortProofs.register_addresses native selectedFields (query.trans same.symm)
+      simp [importedConstraintsMemoryPorts] at member
+      rcases member with rfl | rfl | rfl
+      all_goals first | exact ⟨_,addresses 0⟩ | exact ⟨_,addresses 1⟩ | exact ⟨_,addresses 2⟩
+    · have addresses := NativeJumpPortProofs.register_addresses native selectedFields (query.trans same.symm)
       simp [importedConstraintsMemoryPorts] at member
       rcases member with rfl | rfl | rfl
       all_goals first | exact ⟨_,addresses 0⟩ | exact ⟨_,addresses 1⟩ | exact ⟨_,addresses 2⟩
@@ -108,8 +119,8 @@ theorem selected_pc_bound {w : Nat → ZMod mersenne31Modulus} {entry : Supporte
     (right : (registerOperandWord w).Bounded) (aligned : (initialPCWord w).lo % 4 = 0) :
     (finalPCWord w).Bounded := by
   rcases NativeSupportedDecoderProofs.entry_profile source.fields with
-    ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩ | ⟨selected,_,selectedFields,same⟩ |
-    ⟨selected,_,selectedFields,same⟩ | ⟨selected,instruction,selectedFields,same⟩
+    ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,_,selectedFields,same⟩ |
+    ⟨selected,_,_,_,selectedFields,same⟩ | ⟨selected,_,_,instruction,selectedFields,same⟩ | ⟨selected,pc,bits,instruction,selectedFields,same⟩
   · exact (NativePCProofs.selected_pc_successor native selectedFields (query.trans same.symm) aligned).1
   · exact (NativeArithmeticPCProofs.selected_pc_successor native selectedFields (query.trans same.symm) aligned).1
   · exact (NativeBitwisePCProofs.selected_pc_successor native selectedFields (query.trans same.symm) aligned).1
@@ -137,6 +148,8 @@ theorem selected_pc_bound {w : Nat → ZMod mersenne31Modulus} {entry : Supporte
     have selectedBound : (operandWord w).Bounded := by rw [operand]; exact right
     exact (NativeBranchPCProofs.effects native decoded.mask tags left selectedBound pc offset aligned
       (branch_offset_even source instruction selectedFields branchQuery)).1
+  · have decoded := NativeJumpDecoderProofs.decoded_fields selectedFields (query.trans same.symm)
+    exact (NativeJumpNumericalProofs.final_bounds native selected.data.family decoded.mask).1
 
 /-- Complete original public membership supplies canonical incoming bounds and
     alignment. It does not assert a universal PC+4 for conditional control flow. -/
@@ -162,12 +175,15 @@ theorem local_row_execution {w : Nat → ZMod mersenne31Modulus} {entry : Suppor
     (right : (registerOperandWord w).Bounded) (aligned : (w 0).val % 4 = 0)
     {cells : List Cell} (epoch : Nat) {before after : State}
     (history : SailHistory cells (rowEvents epoch (⟨.reduced,w⟩ : Row mersenne31Modulus NativeReducedFamily)).reverse before after)
-    (isa : (∃ args, entry.instruction = .BTYPE args) → ∃ value, before.regs.get? .misa = some value) :
+    (isa : InstructionUsesMisa entry.instruction → ∃ value, before.regs.get? .misa = some value)
+    (configuration : (∃ args, entry.instruction = .JALR args) →
+      before.regs.get? .cur_privilege = some .Machine ∧ ∃ security,
+        before.regs.get? .mseccfg = some security ∧ SailRV32.Functions._get_Seccfg_MLPE security = 0) :
     ∃ clause, registerClause entry.instruction = some clause ∧
       run (normalStep clause) (retiredState before (initialPCWord w).toBitVec) =
         .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (finalPCWord w).toBitVec) := by
   rcases NativeSupportedDecoderProofs.entry_profile source.fields with
-    ⟨selected,instruction,selectedFields,same⟩ | ⟨selected,instruction,selectedFields,same⟩ | ⟨selected,instruction,selectedFields,same⟩ | ⟨selected,instruction,selectedFields,same⟩ | ⟨selected,instruction,selectedFields,same⟩
+    ⟨selected,_,_,instruction,selectedFields,same⟩ | ⟨selected,_,_,instruction,selectedFields,same⟩ | ⟨selected,_,_,instruction,selectedFields,same⟩ | ⟨selected,_,_,instruction,selectedFields,same⟩ | ⟨selected,_,_,instruction,selectedFields,same⟩ | ⟨selected,pc,bits,instruction,selectedFields,same⟩
   · obtain ⟨clause,dispatch,execute⟩ := NativeShiftExecutionProofs.local_row_execution native selectedFields
       (query.trans same.symm) left aligned epoch history
     exact ⟨clause,by simpa only [instruction] using dispatch,execute⟩
@@ -184,9 +200,23 @@ theorem local_row_execution {w : Nat → ZMod mersenne31Modulus} {entry : Suppor
 
   · have even := branch_offset_even source instruction selectedFields (query.trans same.symm)
     obtain ⟨opcode,imm,rs1,rs2,shape⟩ := NativeBranchClauseProofs.encoding selectedFields
-    have readable := isa ⟨(imm,.Regidx rs2,.Regidx rs1,opcode),instruction.symm.trans shape⟩
+    have readable := isa (by rw [← instruction,shape]; trivial)
     obtain ⟨clause,dispatch,execute⟩ := NativeBranchExecutionProofs.local_row_execution native selectedFields
       (query.trans same.symm) left right aligned even epoch history readable
+    exact ⟨clause,by simpa only [instruction] using dispatch,execute⟩
+
+  · have fetched : selected.SourceWith initial jumpDecoderFields :=
+      ⟨by simpa only [pc,bits] using source.bytes,
+        by simpa only [bits,instruction] using source.decoded,selectedFields⟩
+    obtain ⟨operation,rs1,rd,encoded⟩ := NativeJumpExecutionProofs.encoding selectedFields
+    have readable := isa (by rw [← instruction,encoded]; cases operation <;> trivial)
+    have configured : selected.data.family = false → before.regs.get? .cur_privilege = some .Machine ∧
+        ∃ security, before.regs.get? .mseccfg = some security ∧ SailRV32.Functions._get_Seccfg_MLPE security = 0 := by
+      intro indirect
+      obtain ⟨args,shape⟩ := NativeJumpExecutionProofs.indirect_encoding selectedFields indirect
+      exact configuration ⟨args,instruction.symm.trans shape⟩
+    obtain ⟨clause,dispatch,execute⟩ := NativeJumpExecutionProofs.local_row_execution native fetched
+      (query.trans same.symm) left aligned epoch history readable configured
     exact ⟨clause,by simpa only [instruction] using dispatch,execute⟩
 
 end Airbender.ReducedMachine.NativeSupportedLocalProofs

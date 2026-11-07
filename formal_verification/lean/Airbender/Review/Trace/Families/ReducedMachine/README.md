@@ -391,3 +391,15 @@ configuration conditional on nonempty/JALR public program; empty/direct-only/GPR
 stay narrow. [Tests](../../../../../Tests/NativeReducedJumpFetched.lean) cover complete
 empty execution at every RV32 PC with no CSR reads, not complete positive nonempty
 native jumps. Common mixed jump integration remains next.
+
+## Mixed original jump execution
+
+[public_supported_execution](SupportedExecution.lean) now includes JAL/JALR interleaved
+with shifts/arithmetic/bitwise/comparisons/branches. Original PC/byte/query identities
+and actual native write/x0/address/PC/clause rules precede common initialized induction.
+Jump return alignment derives from original public membership before range induction.
+All states/read/write/CSR/replay/order/terminal observations remain derived. [SupportedISA](../../../Helpers/Decoder/ReducedMachineSupported.lean)
+restricts initial misa to BTYPE/JAL/JALR and security configuration to JALR, preserving
+empty/ordinary/branch-only scopes. [Six tests](../../../../../Tests/NativeReducedSupportedJumps.lean)
+check logical original JAL/ADD/JALR image/sources/configuration, not full nonempty
+117-equation native mixed acceptance. Remaining ordinary/protocol/physical scopes stay open.

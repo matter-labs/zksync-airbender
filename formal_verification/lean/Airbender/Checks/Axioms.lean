@@ -1,3 +1,4 @@
+import Tests.NativeReducedSupportedJumps
 import Airbender.Proofs.Trace.Families.ReducedMachine.JumpComposition
 import Airbender.Review.Trace.Families.ReducedMachine.JumpFetchedExecution
 import Tests.NativeReducedJumpFetched
@@ -3418,3 +3419,10 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedJumpConfiguration.direct_without_security
 #print axioms Tests.NativeReducedJumpConfiguration.missing_misa_rejected
 #print axioms Tests.NativeReducedJumpConfiguration.missing_security_rejected
+
+#print axioms Tests.NativeReducedSupportedJumps.mixed_public_image
+#print axioms Tests.NativeReducedSupportedJumps.original_mixed_sources
+#print axioms Tests.NativeReducedSupportedJumps.original_jump_fields
+#print axioms Tests.NativeReducedSupportedJumps.unrestricted_initial_configuration
+#print axioms Tests.NativeReducedSupportedJumps.missing_misa_rejected
+#print axioms Tests.NativeReducedSupportedJumps.missing_security_rejected

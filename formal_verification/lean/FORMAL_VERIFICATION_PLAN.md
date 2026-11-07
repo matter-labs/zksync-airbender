@@ -20,7 +20,7 @@ in the historical checkpoints below.
 
 **The reduced machine now has conditional fetched-execution soundness for mixed
 selected original shifts, ADD/ADDI/SUB/LUI/AUIPC, XOR/OR/AND register/immediate,
-SLT/SLTU/SLTI/SLTIU and all six conditional branch rows. Full combined-operation
+SLT/SLTU/SLTI/SLTIU, all six conditional branches and JAL/JALR rows. Full combined-operation
 coverage remains open.** The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 is independently reproducible from unchanged pinned Rust: 117 equations,
@@ -155,7 +155,13 @@ Full combined row effects and execution remain pending. See the
    native clock/PC chain and terminal observations. Initial misa is readable only for
    nonempty jump programs; original JALR additionally uses Machine/readable mseccfg/
    MLPE-clear configuration. Empty/direct-only CSR scopes remain narrow. Next extend
-   common supported projection/profile transport and mixed initialized execution. Other combined
+   Common original projection/profile transport and mixed initialized execution now
+   include JAL/JALR. Six original profiles derive exact PC/byte/query identities,
+   common jump return-alignment before range induction, x0/register-space/PC/CSR
+   rules and all states/replay/terminal observations. Initial misa applies only to
+   original branch/jump constructors, security configuration only to original JALR;
+   ordinary/empty and branch-only scopes stay narrow. Next inspect remaining actual
+   ordinary combined operations before delegation/protocol/padding/terminal/init. Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

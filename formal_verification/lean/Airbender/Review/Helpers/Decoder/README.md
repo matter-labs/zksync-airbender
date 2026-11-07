@@ -339,3 +339,10 @@ readable unrestricted misa for nonempty jump programs; Machine/readable mseccfg 
 MLPE=0 only when original JALR appears. [Fetched execution](../../Trace/Families/ReducedMachine/JumpFetchedExecution.lean)
 derives every local read through real past history/control frames, preserving empty/
 direct-only/GPR CSR scopes. Decoding alone does not assert CSR availability.
+
+[SupportedISA](ReducedMachineSupported.lean) now tracks retained BTYPE/JAL/JALR misa
+reads and JALR-only privilege/security configuration. Its values are initial reference
+configuration; [mixed fetched execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+derives every local read from actual history. Common profile transport derives original
+PC/byte/instruction/query identities before native jump use. Empty/ordinary and branch-only
+configuration scopes remain narrow; no original decoding implies CSR availability.

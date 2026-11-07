@@ -71,14 +71,19 @@ theorem original_mixed_sources (misa : BitVec 32) (i : Fin 3) :
     projection with the exact native dummy destination/zero flag conventions. -/
 theorem original_branch_fields (op : BranchMode) :
     supportedDecoderFields (.BTYPE (8190,.Regidx 0,.Regidx 0,op)) =
-      some ⟨.inr (.inr (.inr (.inr op))),0,0,0,⟨65534,65535⟩,70,branchFunct3 op⟩ := by
+      some ⟨.inr (.inr (.inr (.inr (.inl op)))),0,0,0,⟨65534,65535⟩,70,branchFunct3 op⟩ := by
   cases op <;> rfl
 
 /-- A program with branches accepts any readable initial misa value. Each
     actual row's read is later derived through the common history. -/
 theorem unrestricted_initial_isa (misa : BitVec 32) : SupportedISA setup (before misa) := by
-  intro _
-  exact ⟨misa,by simp [before,Std.ExtDHashMap.get?_insert]⟩
+  constructor
+  · intro _
+    exact ⟨misa,by simp [before,Std.ExtDHashMap.get?_insert]⟩
+  · rintro ⟨entry,member,args,shape⟩
+    change entry ∈ [_,_,_] at member
+    simp only [List.mem_cons,List.mem_nil_iff,or_false] at member
+    rcases member with rfl | rfl | rfl <;> cases shape
 
 /-- This is a meaningful public configuration condition: a branch-containing
     program cannot silently assume an absent initial CSR becomes readable. -/
@@ -86,10 +91,10 @@ theorem missing_isa_rejected :
     ¬ SupportedISA setup { (before 0) with regs := Std.ExtDHashMap.emptyWithCapacity } := by
   intro ready
   let branch : SupportedProgramEntry := ⟨0,words[0],instructions[0],
-      ⟨.inr (.inr (.inr (.inr .BEQ))),1,2,0,⟨8,0⟩,70,0⟩⟩
+      ⟨.inr (.inr (.inr (.inr (.inl .BEQ)))),1,2,0,⟨8,0⟩,70,0⟩⟩
   have slot : some branch ∈ setup.slots := List.getElem_mem (l := setup.slots) (n := 0) (by decide)
   have member : branch ∈ setup.program := List.mem_filterMap.mpr ⟨some branch,slot,rfl⟩
-  obtain ⟨value,read⟩ := ready ⟨_,member,_,rfl⟩
+  obtain ⟨value,read⟩ := ready.1 ⟨_,member,by change True; trivial⟩
   simp at read
 
 /-- CSR-free ordinary programs keep their previous scope. The condition is
@@ -97,11 +102,18 @@ theorem missing_isa_rejected :
 theorem ordinary_no_isa (initial : State) :
     SupportedISA (⟨[some ⟨0,0x002081b3,instructions[2],
       ⟨.inr (.inl .add),1,2,3,⟨0,0⟩,11,0⟩⟩],1⟩ : SparseDecoderSetup SupportedMode) initial := by
-  rintro ⟨entry,member,args,shape⟩
-  have same : entry = (⟨0,0x002081b3,instructions[2],
-      ⟨.inr (.inl .add),1,2,3,⟨0,0⟩,11,0⟩⟩ : SupportedProgramEntry) := by
-    simpa [SparseDecoderSetup.program] using member
-  subst entry
-  cases shape
+  constructor
+  · rintro ⟨entry,member,uses⟩
+    have same : entry = (⟨0,0x002081b3,instructions[2],
+        ⟨.inr (.inl .add),1,2,3,⟨0,0⟩,11,0⟩⟩ : SupportedProgramEntry) := by
+      simpa [SparseDecoderSetup.program] using member
+    subst entry
+    cases uses
+  · rintro ⟨entry,member,args,shape⟩
+    have same : entry = (⟨0,0x002081b3,instructions[2],
+        ⟨.inr (.inl .add),1,2,3,⟨0,0⟩,11,0⟩⟩ : SupportedProgramEntry) := by
+      simpa [SparseDecoderSetup.program] using member
+    subst entry
+    cases shape
 
 end Tests.NativeReducedSupportedBranches

@@ -16,11 +16,16 @@ theorem decoded_write_rules {trace : Data mersenne31Modulus NativeReducedFamily}
     (accepted : Accepted (fixedData trace)) (decoded : SupportedDecodedTrace (fixedData trace) setup) :
     WriteBoundsFromReads (fixedData trace) := by
   intro row present
-  obtain ⟨entry,_,source,query⟩ := NativeSupportedDecoderProofs.trace_decoding image accepted decoded row present
+  obtain ⟨entry,member,source,query⟩ := NativeSupportedDecoderProofs.trace_decoding image accepted decoded row present
   cases row with
   | mk family w =>
     cases family
-    exact NativeSupportedLocalProofs.row_write_rule _ (accepted.constraints _ present) source.fields query
+    have canonical := native_query_pc_word (by decide : Arithmetic.limbBase < mersenne31Modulus) query
+    change initialPCWord w = Arithmetic.Word.ofBitVec entry.pc at canonical
+    have aligned : (initialPCWord w).lo % 4 = 0 := by
+      rw [canonical]
+      exact (run_sparse_setup_sources image member).2
+    exact NativeSupportedLocalProofs.row_write_rule _ (accepted.constraints _ present) source.fields query aligned
 
 /-- Shared time induction derives every native read/write/terminal bound from
     public seeds and proved native write rules, never from a supplied source range. -/

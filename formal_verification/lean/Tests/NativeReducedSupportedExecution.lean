@@ -51,8 +51,8 @@ theorem empty_execution (pc : BitVec 32) :
       (fixedData (emptyTrace pc)) (before pc) [] := by
   exact public_supported_execution (count := 0) (logCapacity := 0) rfl
     (public_inputs pc) (accepted pc) (decoded pc) (by
-      rintro ⟨entry,member,_⟩
-      simp [SparseDecoderSetup.program] at member) (by simp)
+      constructor <;> rintro ⟨entry,member,_⟩ <;>
+        simp [SparseDecoderSetup.program] at member) (by simp)
 
 /-- The actual terminal PC reader is recovered even at the top RV32 word; an
     empty path does not fabricate PC+4 or require an instruction alignment input. -/

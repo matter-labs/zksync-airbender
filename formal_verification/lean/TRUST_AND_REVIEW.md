@@ -327,6 +327,25 @@ fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
 terminal/init boundaries remain open. No native defect or issue-handling assumption
 is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
 
+## Mixed original jump integration boundary
+
+[Common supported execution](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+now includes JAL/JALR interleaved with the five previously checked profiles. Exact
+[PC/byte/instruction/query transport](Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean)
+precedes actual per-profile source/port/write/PC/Sail use. Jump return alignment is
+derived from original public membership before common initialized induction; every
+source/range/state/order/decoder replay/terminal answer is derived across mixed rows.
+[SupportedISA](Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean) requires
+initial readable unrestricted misa only for BTYPE/JAL/JALR, and initial Machine/
+readable mseccfg with MLPE clear only for original JALR. Actual history derives every
+local CSR read. Ordinary/empty scopes remain CSR-free; branch-only needs no security
+configuration. No table equivalence or per-row desired read/result/state/PC/CSR value.
+
+[Mixed original source/configuration regressions](Tests/NativeReducedSupportedJumps.lean)
+are not full positive nonempty117-equation native mixed acceptance or general native
+public setup/ROM/export/physical/compiler/cryptographic/completeness. Remaining ordinary
+profiles and workers/protocol/padding/terminal/init remain open. No defect/issue assumption/parity.
+
 ## Initialized original jump fetched boundary
 
 [Public jump execution](Airbender/Review/Trace/Families/ReducedMachine/JumpFetchedExecution.lean)

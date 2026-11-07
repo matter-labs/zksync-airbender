@@ -9880,6 +9880,160 @@
       "backport_reuse_revision": "40da98736c9aa9ca7d0b822b34232c6f823ea857",
       "backport_reuse_path": "Tests/NativeReducedJumpDecoder.lean",
       "backport_reuse_sha256": "976bbbb1de76d33afacb99d1b5733e64c622e37a5fb07e417080ba128340aae3"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean",
+      "backport_reuse_sha256": "1d1bf963dacfc44d0010f54554d290fa612159a75c47e88f5e50d9ff233f5952"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/JumpDecoder.lean",
+      "backport_reuse_sha256": "b4a56409f76652c95a109a31e220364e9c4ff1e3188b51158d236c3ca7269b34"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean",
+      "backport_reuse_sha256": "23096e27d3672d0fc70aff489e95ab71d642a8473056818097d1a8af7b3298d8"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpDecoder.lean",
+      "backport_reuse_sha256": "206ef01ec3a7d50a2a19b67e9bd033af38b87436f90724720f574580738b9165"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean",
+      "backport_reuse_sha256": "db6d0285c887833583394d58f3433f90d232b22b1da163b75b8a18cf6fdb5a2a"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ReducedMachineJump.lean",
+      "backport_reuse_sha256": "ed983660d4f6c2c791b90960be3f156ec72002433c5c7196e94a27e4155f5d48"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "backport_reuse_sha256": "e3af40ff2903c67a254c9626281be2a63fe5d2ccb0762150e3dda6aa80c0e2e4"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpPreservation.lean",
+      "backport_reuse_sha256": "9c0d5384626197b3346b60047319bb1e2354a351935e371edfde27a78b2bb1a8"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpZeroRegister.lean",
+      "backport_reuse_sha256": "84e519b86d91d69e578fbb8de96ac575ed55fdcec7e912648d7844df4ae962d8"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpExecution.lean",
+      "backport_reuse_sha256": "8c9b8f4b80304ca2273a10ad5f2d715a9395acead62332560c8908c66aa62750"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpPorts.lean",
+      "backport_reuse_sha256": "a3a275c25348d37696d67274f3babe6733cb99291805ceea090a9541eb802917"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpNumerics.lean",
+      "backport_reuse_sha256": "296459c89ab3751a954a10fb9116631150e442205e62c13ed97e5680b6af1551"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedValues.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedValues.lean",
+      "backport_reuse_sha256": "644b968657fc9adced59ccf61b031422d5d0d083f75fe99befa15812bd68f94c"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedValues.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpValues.lean",
+      "backport_reuse_sha256": "c798e918700d4aee04b58f26c17d8c8050dc6e74f59440cab1f4da9aceaea2ee"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "backport_reuse_sha256": "0d6422232dd5bc2d02020e1e85f1e395c987d044f4043e53a6653e005b11f7a6"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpComposition.lean",
+      "backport_reuse_sha256": "99c7eb85a5fefb59edd19b8d95a79764acffd5a618d5efbfc580871c9c2f467c"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "backport_reuse_sha256": "39970a182b4601975d0924c27f987d60499b877c8baaec104c8f81fc7a5e5287"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedBranches.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Tests/NativeReducedSupportedBranches.lean",
+      "backport_reuse_sha256": "efe55fcabbdb95cbb819dbd800b92c745cd7373333966fd8ee0cac53ccfd092a"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedExecution.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Tests/NativeReducedSupportedExecution.lean",
+      "backport_reuse_sha256": "09152324ccea8ae6db945a7d473dbb52fc12e1469d25e55ce0744a071c2523ed"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedJumps.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Tests/NativeReducedSupportedBranches.lean",
+      "backport_reuse_sha256": "efe55fcabbdb95cbb819dbd800b92c745cd7373333966fd8ee0cac53ccfd092a"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedJumps.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Tests/NativeReducedJumpDecoder.lean",
+      "backport_reuse_sha256": "976bbbb1de76d33afacb99d1b5733e64c622e37a5fb07e417080ba128340aae3"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedJumps.lean",
+      "change": "Extend original common supported projection to native JAL/JALR using unchanged per-profile fields/masks and family-only mapping. Derive six exact profiles with PC/byte/instruction/query identities before local source transport. NEW jump write preservation receives incoming PC alignment derived from original common public membership BEFORE common range induction, avoiding a source-range cycle. Common zero/GPR/code/CSR/replay/PC/order/fetched history derives all local answers across interleaved profiles. SupportedISA initial misa availability only for original BTYPE/JAL/JALR, conditional Machine/readable mseccfg/MLPE-clear only for original JALR; derive every local read through actual past history, preserving ordinary/empty and branch-only scopes. No desired profile/source/range/result/target/state/order/replay/local CSR/table-equivalence answers. Source/configuration/empty regressions are not complete positive nonempty native mixed witnesses. No production/native/Sail/data/dependency change, finding, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
+      "backport_reuse_path": "Tests/NativeReducedJumpConfiguration.lean",
+      "backport_reuse_sha256": "8268917e9293e88b0a6e5ed26b785941a07645e5dd752bd63e100bc8f0d90c1e"
     }
   ],
   "setup_artifacts": [

@@ -45,13 +45,20 @@ theorem image_fetched_step {trace : Data mersenne31Modulus NativeReducedFamily}
         change _ ∈ importedConstraintsMemoryPorts
         simp [importedConstraintsMemoryPorts])
       rw [Trace.Proofs.read_word] at bound rightBound
-      have readable : (∃ args, entry.instruction = .BTYPE args) →
+      have csrs := Trace.Proofs.sail_history_control_flow_csrs past
+      have readable : InstructionUsesMisa entry.instruction →
           ∃ value, before.regs.get? .misa = some value := by
         intro shape
-        obtain ⟨value,read⟩ := isa ⟨entry,member,shape⟩
-        exact ⟨value,(Trace.Proofs.sail_history_control_flow_csrs past).1.trans read⟩
+        obtain ⟨value,read⟩ := isa.1 ⟨entry,member,shape⟩
+        exact ⟨value,csrs.1.trans read⟩
+      have configuration : (∃ args, entry.instruction = .JALR args) →
+          before.regs.get? .cur_privilege = some .Machine ∧ ∃ security,
+            before.regs.get? .mseccfg = some security ∧ SailRV32.Functions._get_Seccfg_MLPE security = 0 := by
+        intro shape
+        obtain ⟨privilege,security,read,disabled⟩ := isa.2 ⟨entry,member,shape⟩
+        exact ⟨csrs.2.1.trans privilege,security,csrs.2.2.trans read,disabled⟩
       exact NativeSupportedLocalProofs.local_row_execution nativeRow source query bound rightBound pcInputs.2
-        (fixedData trace).memoryEpoch history readable
+        (fixedData trace).memoryEpoch history readable configuration
 
 /-- Accepted state matching derives the actual terminal PC range from a native
     successor or the public initial PC, including an empty execution. -/

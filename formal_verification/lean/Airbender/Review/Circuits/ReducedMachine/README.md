@@ -474,3 +474,11 @@ membership and actual history. It derives original replay/PC chain/terminal obse
 Initial CSR configuration is conditional on nonempty/JALR public program; no local
 read/value/state answer is supplied. Common jump integration and full positive native
 jump witnesses remain separate.
+
+[Common initialized execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+now includes original JAL/JALR across all six supported profiles. PC/byte/query identities
+are derived before per-profile native use. Original public incoming alignment feeds
+jump return preservation before common range induction; no source-range cycle or
+local expected value/state/PC is public. Conditional initial CSR configuration preserves
+ordinary/empty and branch-only scopes. [Mixed regressions](../../../../Tests/NativeReducedSupportedJumps.lean)
+are public source/configuration evidence, not complete positive native mixed witnesses.

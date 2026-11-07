@@ -4,9 +4,10 @@ namespace Airbender.ReducedMachine.Native
 set_option autoImplicit false
 open Trace Reference.RiscV.Sail
 
-/-- Original fetched mixed selected native reduced shift/arithmetic/bitwise/comparison/branch instructions form a finite Sail execution
+/-- Original fetched mixed selected native reduced shift/arithmetic/bitwise/comparison/branch/jump instructions form a finite Sail execution
     from actual public initialization to native terminal PC and register values.
-    Initial misa readability is required only if the public program contains a branch.
+    Initial misa is readable only for branch/jump programs; original JALR additionally
+    uses initial Machine/readable mseccfg with MLPE clear. Local reads are derived.
     Other combined profiles, native physical setup/protocol/terminal enforcement
     and compiler/cryptographic/completeness boundaries remain separate. -/
 theorem public_supported_execution {trace : Data mersenne31Modulus NativeReducedFamily}

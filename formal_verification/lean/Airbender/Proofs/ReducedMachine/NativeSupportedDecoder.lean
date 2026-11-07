@@ -3,6 +3,7 @@ import Airbender.Proofs.ReducedMachine.NativeArithmeticDecoder
 import Airbender.Proofs.ReducedMachine.NativeBitwiseDecoder
 import Airbender.Proofs.ReducedMachine.NativeComparisonDecoder
 import Airbender.Proofs.ReducedMachine.NativeBranchDecoder
+import Airbender.Proofs.ReducedMachine.NativeJumpDecoder
 
 namespace Airbender.ReducedMachine.NativeSupportedDecoderProofs
 open Native Trace Arithmetic
@@ -15,27 +16,30 @@ set_option autoImplicit false
     previously checked native local interfaces. Mapping changes no query field. -/
 theorem entry_profile {entry : SupportedProgramEntry}
     (fields : supportedDecoderFields entry.instruction = some entry.data) :
-    (∃ selected : ShiftProgramEntry, selected.instruction = entry.instruction ∧
+    (∃ selected : ShiftProgramEntry, selected.pc = entry.pc ∧ selected.bits = entry.bits ∧ selected.instruction = entry.instruction ∧
       shiftDecoderFields selected.instruction = some selected.data ∧
       selected.query (p := mersenne31Modulus) = entry.query) ∨
-    (∃ selected : ArithmeticProgramEntry, selected.instruction = entry.instruction ∧
+    (∃ selected : ArithmeticProgramEntry, selected.pc = entry.pc ∧ selected.bits = entry.bits ∧ selected.instruction = entry.instruction ∧
       arithmeticDecoderFields selected.instruction = some selected.data ∧
       selected.query (p := mersenne31Modulus) = entry.query) ∨
-    (∃ selected : BitwiseProgramEntry, selected.instruction = entry.instruction ∧
+    (∃ selected : BitwiseProgramEntry, selected.pc = entry.pc ∧ selected.bits = entry.bits ∧ selected.instruction = entry.instruction ∧
       bitwiseDecoderFields selected.instruction = some selected.data ∧
       selected.query (p := mersenne31Modulus) = entry.query) ∨
-    (∃ selected : ComparisonProgramEntry, selected.instruction = entry.instruction ∧
+    (∃ selected : ComparisonProgramEntry, selected.pc = entry.pc ∧ selected.bits = entry.bits ∧ selected.instruction = entry.instruction ∧
       comparisonDecoderFields selected.instruction = some selected.data ∧
       selected.query (p := mersenne31Modulus) = entry.query) ∨
-    (∃ selected : BranchProgramEntry, selected.instruction = entry.instruction ∧
+    (∃ selected : BranchProgramEntry, selected.pc = entry.pc ∧ selected.bits = entry.bits ∧ selected.instruction = entry.instruction ∧
       branchDecoderFields selected.instruction = some selected.data ∧
+      selected.query (p := mersenne31Modulus) = entry.query) ∨
+    (∃ selected : JumpProgramEntry, selected.pc = entry.pc ∧ selected.bits = entry.bits ∧
+      selected.instruction = entry.instruction ∧ jumpDecoderFields selected.instruction = some selected.data ∧
       selected.query (p := mersenne31Modulus) = entry.query) := by
   unfold supportedDecoderFields at fields
   cases shift : shiftDecoderFields entry.instruction with
   | some data =>
     simp only [shift] at fields
     have same := Option.some.inj fields
-    refine Or.inl ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,shift,?_⟩
+    refine Or.inl ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,rfl,rfl,shift,?_⟩
     unfold ProgramEntry.query
     rw [← same]
     rfl
@@ -51,32 +55,42 @@ theorem entry_profile {entry : SupportedProgramEntry}
         | none =>
           simp only [comparison] at fields
           cases branch : branchDecoderFields entry.instruction with
-          | none => simp [branch] at fields
+          | none =>
+            simp only [branch] at fields
+            cases jump : jumpDecoderFields entry.instruction with
+            | none => simp [jump] at fields
+            | some data =>
+              simp only [jump,Option.map_some] at fields
+              have same := Option.some.inj fields
+              refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,rfl,rfl,jump,?_⟩))))
+              unfold ProgramEntry.query
+              rw [← same]
+              rfl
           | some data =>
-            simp only [branch,Option.map_some] at fields
+            simp only [branch] at fields
             have same := Option.some.inj fields
-            refine Or.inr (Or.inr (Or.inr (Or.inr ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,branch,?_⟩)))
+            refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,rfl,rfl,branch,?_⟩))))
             unfold ProgramEntry.query
             rw [← same]
             rfl
         | some data =>
           simp only [comparison] at fields
           have same := Option.some.inj fields
-          refine Or.inr (Or.inr (Or.inr (Or.inl ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,comparison,?_⟩)))
+          refine Or.inr (Or.inr (Or.inr (Or.inl ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,rfl,rfl,comparison,?_⟩)))
           unfold ProgramEntry.query
           rw [← same]
           rfl
       | some data =>
         simp only [bitwise] at fields
         have same := Option.some.inj fields
-        refine Or.inr (Or.inr (Or.inl ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,bitwise,?_⟩))
+        refine Or.inr (Or.inr (Or.inl ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,rfl,rfl,bitwise,?_⟩))
         unfold ProgramEntry.query
         rw [← same]
         rfl
     | some data =>
       simp only [arithmetic] at fields
       have same := Option.some.inj fields
-      refine Or.inr (Or.inl ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,arithmetic,?_⟩)
+      refine Or.inr (Or.inl ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,rfl,rfl,arithmetic,?_⟩)
       unfold ProgramEntry.query
       rw [← same]
       rfl

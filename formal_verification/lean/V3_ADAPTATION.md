@@ -696,3 +696,17 @@ plus [empty paths](Tests/NativeReducedJumpFetched.lean) do not add complete posi
 jump acceptance. Eleven exact parent40 origins record six affected modules/tests. Common
 mixed jump integration and physical/general fidelity/completeness remain open; no production/
 Sail/data/dependency change, defect, issue assumption, axiom or parity claim.
+
+## Mixed native JAL/JALR integration (7 November 2026)
+
+[Supported original projection](Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean)
+now admits six profiles including jumps. [Exact profile PC/byte/query transport](Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean)
+precedes new actual jump preservation/addresses/PC/clause reuse. Original common public
+membership derives return alignment before shared range induction, then common x0/
+native-clock Sail/code/CSR/replay history derives all states and [fetched execution](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean).
+Initial misa applies only to BTYPE/JAL/JALR; initial Machine/mseccfg/MLPE-clear only to
+JALR. All local reads follow history; ordinary/empty and branch-only scopes preserved.
+[Six regressions](Tests/NativeReducedSupportedJumps.lean) add logical original JAL/ADD/
+JALR sources/configuration, not full positive native mixed witnesses. Twenty-two exact
+parent127 origins record ten affected Lean paths. No production/Sail/native/data/dependency
+change, native defect, issue assumption, axiom or whole-machine/parity claim.

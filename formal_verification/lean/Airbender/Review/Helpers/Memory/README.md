@@ -300,3 +300,9 @@ now derives all source bounds, states/reads/writes/replay and local CSR observat
 through actual history before retained normal retirement. Public initial configuration
 is narrow; GPR-only history still needs no CSR premise. Native output bounds and PC
 chain determine terminal observations, with no supplied state/read/target answers.
+
+[Common mixed jump execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+now uses one initialized range/x0/native-clock GPR/code/CSR/replay history across all
+six profiles. Jump return preservation first gets alignment from original public
+membership, not a source-range answer. Every source/read/write/state/control/replay/
+terminal observation is derived; JAL x0 and readonly inputs/JALR aliases remain present.

@@ -19,7 +19,7 @@ in the historical checkpoints below.
 
 **The reduced machine now has conditional fetched-execution soundness for mixed
 selected original shifts, ADD/ADDI/SUB/LUI/AUIPC, XOR/OR/AND register/immediate,
-SLT/SLTU/SLTI/SLTIU and all six conditional branch rows. Full combined-operation
+SLT/SLTU/SLTI/SLTIU, all six conditional branches and JAL/JALR rows. Full combined-operation
 coverage remains open.** The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 imports 117 native equations, 142 variables and a complete fourteen-region fixed
@@ -31,6 +31,66 @@ initialization/decoder interfaces; other combined profiles remain unfinished.
 The historical 119-equation/141-variable/13-region artifact is preserved separately.
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
+
+## Mixed original native jumps and supported execution (7 November 2026)
+
+The [common original projection](Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean)
+now admits JAL/JALR interleaved with selected shifts, five arithmetic forms, bitwise,
+comparisons and all six branches. SupportedMode is Sum ShiftMode (Sum ArithmeticMode
+(Sum BitwiseMode (Sum ComparisonMode (Sum BranchMode JumpMode)))). Original constructors,
+raw/x0/alias operands, sign extension, raw JAL/U-type funct3 and actual native masks
+are retained. [Derived profile transport](Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean)
+recovers one of SIX exact original entries plus PC/byte/instruction/query identities.
+Family mapping changes no actual ten-field query. No per-row expected profile is public.
+
+[Common native local rules](Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean)
+now include fresh actual jump write/x0/register-space/selected-PC/retained-clause
+bindings. Jump return preservation needs incoming PC alignment; [common public
+membership](Airbender/Proofs/Trace/Families/ReducedMachine/SupportedValues.lean)
+derives it BEFORE unchanged common initialized range induction, avoiding a source-range
+cycle. One range/x0/native-clock Clean-to-Sail/code/misa/replay history covers every
+interleaved profile. JAL's x0 reads, immediate readonly rs2/x0, old destination,
+JALR source-before-aliased-write and actual masked writes stay present. AUIPC's
+prepared architectural PC remains derived. Operation-specific final bounds replace
+any universal PC+4 assertion; original RV32 wrap and jump bit0 clearing remain checked.
+
+The SAME short [public_supported_execution](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+now derives finite original successful four-byte fetched execution, actual terminal
+PC bounds and ALL terminal cell reads across all SIX profiles. Inputs are original
+supportedDecoderSetupImage, ImageBoundary(fixedData trace), Accepted(fixedData trace),
+FULL SupportedDecodedTrace, aligned tracked cells and [SupportedISA](Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean).
+Initial misa readability is required only when the original public program contains
+BTYPE/JAL/JALR; value unrestricted. Only original JALR requires initial Machine/readable
+mseccfg with MLPE clear. Actual past history/control frames derive every local read;
+ordinary/empty CSR-free and branch-only security-free scopes remain. No desired local
+source/range/read/return/target/result/PC/state/order/replay/CSR value or table-identity
+answer is public. Exact fixedData constructs the checked native pool retaining all
+rows/boundaries. This configuration is an original-reference boundary, not a native
+finding/issue assumption or physical enforcement.
+
+[Six new mixed regressions](Tests/NativeReducedSupportedJumps.lean) check independent
+JAL/ADD/JALR original public bytes/all sources/complete3slot+1padding image, negative
+jump/x0/raw fields, arbitrary readable misa and missing misa/security rejection.
+Updated branch/ordinary/CSR-free empty tests and affected bitwise/comparison tests
+pass. These are public source/configuration/conditional native/empty evidence, NOT
+complete positive NONEMPTY117-equation mixed native witnesses. Native8word fixed
+fixture remains unchanged; logical images are not equated with ROM/export/physical
+setup. Next assess remaining actual ordinary profiles, then delegation accounting,
+unified protocol, padding/terminal/init. No production/native/Sail/data/dependency
+change, native defect, issue assumption, new axiom, whole-machine coverage or parity.
+Twenty-two exact parent127 origins record ten affected Lean paths.
+Final gates pass3108explicit standard-only axiom roots,195public Review roots,
+4guide names,3147links/anchors/context-trace separation. Full Review550.81MiB
+footprint/3121.23MiB resident/16.02s; independent exact provenance19.38/35.47MiB/8.06s
+passes189v3-origin/1153backport-origin identities,80byte-identical modules,8circuit
+artifacts,66native sources,23setup,4exporters and unchanged dependencies. Every affected
+common layer and dependent regression is rebuilt; local507.45/2941.06MiB/7.93s,common
+ranges491.90/2922.12/2.04,composition490.02/2933.84/2.60,new tests509.15/2953.48/2.62,
+Axioms544.34/3095.41/4.22. A missing explicit declarative helper import was corrected;
+all remaining proofs/tests pass first check. All owned workers terminated, no memory/
+time/heartbeat/recursion ceiling hit/raised. Shared lock,Lean-j1-M3072,3072MiB aggregate
+footprint/4096MiB resident,finite180second modules/120second audits unchanged. Guard is
+sampled watchdog plus Lean allocation cap,not OS hard physical-memory enforcement.
 
 ## Initialized original native jump fetched execution (7 November 2026)
 
