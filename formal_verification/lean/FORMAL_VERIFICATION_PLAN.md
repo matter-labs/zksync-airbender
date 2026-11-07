@@ -115,9 +115,13 @@ Full combined row effects and execution remain pending. See the
    now have exact meanings. Native target bounds/carries/addition, PC+offset/full
    RV32 wrap, taken-only bit1 exclusion and bounded/aligned final PC selection are
    checked internally. Source/PC/offset bounds, initial alignment and offset parity
-   still require public decoding/history discharge; they are not public answers.
-   Original public branch decoding and initialized GPR/Sail execution are next;
-   branches are not yet in common support. Other combined
+   now follow from original public BTYPE decoding and initialized native history.
+   Full sparse/padded membership derives all ten fields, canonical sign-extended
+   offset and parity from the retained Sail decoder. Proved readonly/dummy-zero
+   preservation feeds shared time induction; both actual read bounds, PC/offset
+   bounds/alignment/parity are discharged before the short public numerical result.
+   Original branch GPR/Sail clause/normal/fetched execution and common integration
+   are next; branches are not yet in common execution support. Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

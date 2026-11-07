@@ -244,3 +244,9 @@ now identify operand equality/order with both source bounds kept internal. Commo
 initialized ranges/GPR state construction has not yet been extended to branch
 rows. Public decoding and native zero-write/readonly preservation must justify
 that extension before any initialized branch numerical/Sail execution claim.
+
+[Initialized branch ranges](../../Trace/Families/ReducedMachine/BranchValues.lean)
+now follow from proved actual zero dummy-write/readonly preservation and shared
+public-seed time induction. [Numerical branch assembly](../../Trace/Families/ReducedMachine/BranchResults.lean)
+discharges both source bounds internally. Original GPR/cell observations, retained
+Sail branch clauses and common mixed execution remain separate next connections.

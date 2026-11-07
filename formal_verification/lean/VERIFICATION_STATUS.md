@@ -32,6 +32,66 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Original decoded and initialized branch numerics (7 November 2026)
+
+[Original BTYPE projection](Airbender/Review/Circuits/ReducedMachine/BranchDecoder.lean)
+retains all six constructors, raw rs1/rs2 (including x0), unfiltered original
+offset and Sail sign extension. Actual native fields use mask70, dummy rd0/x0 and
+raw funct3=0/1/4/5/6/7, matching the pinned reduced parser. [Source recovery](Airbender/Proofs/ReducedMachine/NativeBranchDecoder.lean)
+derives every actual ten-field query binding from original public byte/stateful
+full sparse/padded membership. Accepted native18bit packing excludes holes/tail.
+Offset parity follows from the retained original Sail decoder and sign-extension
+lemma; no even-offset premise or constructor filter is introduced. [The short
+public source root](Airbender/Review/Trace/Families/ReducedMachine/BranchDecoder.lean)
+keeps logical membership separate from native Rust export/ROM/physical enforcement.
+
+[Proved native preservation](Airbender/Proofs/ReducedMachine/NativeBranchPreservation.lean)
+uses the actual zero-write third port, with both readonly refreshes retained in
+matching. [Initialized time induction](Airbender/Review/Trace/Families/ReducedMachine/BranchValues.lean)
+derives every actual read/write/terminal Word range, including source-loww35.
+No local source bound or supplied write-preservation rule is public.
+[Initialized numerical assembly](Airbender/Proofs/Trace/Families/ReducedMachine/BranchResults.lean)
+derives both actual readonly ranges, selected operand transport, canonical incoming
+PC/offset, public incoming alignment and original decoded offset parity. It then
+instantiates the checked native condition/target/PC proofs with every internal
+prerequisite discharged. [One short result](Airbender/Review/Trace/Families/ReducedMachine/BranchResults.lean)
+derives actual six-way branch condition, canonical PC+offset/full RV32 target,
+actual selected final PC bounds/alignment and target/default choice. No source,
+range, condition, target, carry, PC, alignment/parity or intermediate-state answer
+is supplied. Numerical words remain actual native reads, not yet original Sail
+GPR observations or retained branch clause/fetched execution.
+
+Public premises are original branchDecoderSetupImage, ImageBoundary(fixedData trace),
+Accepted(fixedData trace), full BranchDecodedTrace and row membership. Exact
+fixedData selects NativeFixed.table, retaining all rows/state/memory boundaries;
+no arbitrary-table identity is used. The native eight-word/CSR1988,1989/enabled-
+nondeterminism fixture is unchanged. The six-word modeled public source image
+plus two padding rows is not equated with that native fixed configuration.
+
+[Eight regressions](Tests/NativeReducedBranchDecoder.lean) check all six original
+public byte/stateful sources, complete six-slot/eight-row public setup, original
+offset parity, negative offset with x0 source aliases, corrupt raw funct3 rejection,
+initialized unchecked-low-source bound and final PC bounds/alignment. Only original
+bytes/decoder evidence is reused from the old standalone fixture; no old native
+mask/table/constraints/acceptance is transferred. These are source/conditional
+initialized checks, not full positive nonempty117-equation accepted native branch
+witnesses. Branches remain outside mixed common execution. Next bind actual GPR/
+cell history, retained Sail BTYPE clauses and normal/fetched execution, then extend
+common support with operation-specific PC effects. Other ordinary/protocol/setup/
+terminal/init/completeness boundaries remain open. No native defect, issue assumption,
+production fix or parity claim; native/Sail/data/dependency inputs are unchanged.
+
+All affected bounded modules and eight regressions pass. Full Review checks 2,965
+explicit standard-only axiom roots, 186 public Review roots, four guide names,
+2,963 links/anchors and layer separation, using 547.63 MiB footprint/3,113.02 MiB
+resident in 20.52 s. Independent provenance used 19.19/35.28 MiB in 7.63 s,
+checking 189 v3-origin/1,038 backport-origin identities, 80 byte-identical modules,
+eight circuit artifacts, 65 native sources, 23 setup artifacts, four exporters
+and unchanged dependencies. All owned workers terminated under unchanged ceilings
+and finite budgets. No resource/proof ceiling was hit or raised in this public
+milestone. Prior importer/CLI/native-export controls retain unchanged inputs and
+applicability; FINDINGS remains unchanged with zero established native defects.
+
 ## Native branch conditions and numerical PC effects (7 November 2026)
 
 [New actual branch calculations](Airbender/Proofs/ReducedMachine/NativeBranchCondition.lean)

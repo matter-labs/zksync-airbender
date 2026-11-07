@@ -1,3 +1,15 @@
+import Airbender.Review.Circuits.ReducedMachine.BranchDecoder
+import Airbender.Proofs.ReducedMachine.NativeBranchDecoder
+import Airbender.Review.Helpers.Decoder.ReducedMachineBranch
+import Airbender.Proofs.Trace.Families.ReducedMachine.BranchDecoder
+import Airbender.Review.Trace.Families.ReducedMachine.BranchDecoder
+import Airbender.Proofs.ReducedMachine.NativeBranchPreservation
+import Airbender.Proofs.Trace.Families.ReducedMachine.BranchValues
+import Airbender.Review.Trace.Families.ReducedMachine.BranchValues
+import Airbender.Review.Circuits.ReducedMachine.BranchResult
+import Airbender.Proofs.Trace.Families.ReducedMachine.BranchResults
+import Airbender.Review.Trace.Families.ReducedMachine.BranchResults
+import Tests.NativeReducedBranchDecoder
 import Airbender.Proofs.ReducedMachine.NativeBranchTable
 import Airbender.Proofs.ReducedMachine.NativeBranchCondition
 import Airbender.Proofs.ReducedMachine.NativeBranchCleanup
@@ -3193,3 +3205,26 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedBranchResults.oversized_cleanup_rejected
 #print axioms Tests.NativeReducedBranchResults.actual_target_edges
 #print axioms Tests.NativeReducedBranchResults.independent_target_values
+#print axioms Airbender.ReducedMachine.NativeBranchDecoderProofs.tags
+#print axioms Airbender.ReducedMachine.NativeBranchDecoderProofs.field_bounds
+#print axioms Airbender.ReducedMachine.NativeBranchDecoderProofs.fetched_sources
+#print axioms Airbender.ReducedMachine.NativeBranchDecoderProofs.decoded_fields
+#print axioms Airbender.ReducedMachine.NativeBranchDecoderProofs.immediate_word
+#print axioms Airbender.ReducedMachine.NativeBranchDecoderProofs.offset_even
+#print axioms Airbender.ReducedMachine.NativeBranchDecoderProofs.trace_decoding
+#print axioms Airbender.ReducedMachine.NativeBranchPreservationProofs.written_bounds
+#print axioms Airbender.ReducedMachine.NativeBranchPreservationProofs.row_write_rule
+#print axioms Airbender.ReducedMachine.NativeBranchRangeProofs.decoded_write_rules
+#print axioms Airbender.ReducedMachine.NativeBranchRangeProofs.image_value_bounds
+#print axioms Airbender.ReducedMachine.NativeBranchRangeProofs.image_branch_results
+#print axioms Airbender.ReducedMachine.Native.public_branch_decoding
+#print axioms Airbender.ReducedMachine.Native.public_branch_value_bounds
+#print axioms Airbender.ReducedMachine.Native.public_branch_results
+#print axioms Tests.NativeReducedBranchDecoder.all_original_fields
+#print axioms Tests.NativeReducedBranchDecoder.original_sources
+#print axioms Tests.NativeReducedBranchDecoder.complete_original_image
+#print axioms Tests.NativeReducedBranchDecoder.original_offset_even
+#print axioms Tests.NativeReducedBranchDecoder.raw_zero_operands
+#print axioms Tests.NativeReducedBranchDecoder.corrupt_funct3_rejected
+#print axioms Tests.NativeReducedBranchDecoder.initialized_source_bound
+#print axioms Tests.NativeReducedBranchDecoder.initialized_final_bound

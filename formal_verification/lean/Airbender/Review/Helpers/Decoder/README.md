@@ -288,3 +288,9 @@ remain open; branches are not yet admitted by the common supported projection.
 now derive numerical effects internally; original branch fields, PC/offset bounds,
 alignment and offset parity still require full public byte/stateful sparse decoder
 recovery. The common supported projection continues to exclude branches.
+
+[BranchDecodedTrace](ReducedMachineBranch.lean) now supplies full original branch
+sparse/padded membership. [Public recovery](../../Trace/Families/ReducedMachine/BranchDecoder.lean)
+derives all ten actual native fields; original stateful Sail decoding derives
+offset parity without a public parity answer or constructor filter. Logical
+membership remains separate from native Rust export/ROM/physical fidelity.

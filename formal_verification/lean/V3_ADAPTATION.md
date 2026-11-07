@@ -555,3 +555,24 @@ normal/fetched branch effects and common support remain next. Ten exact parent85
 origins record unchanged pure condition/column/arithmetic and adapted proof patterns.
 Native/Sail/data/dependencies, physical/trust boundaries and zero findings remain
 unchanged; no issue assumption or parity claim.
+
+## Original public branch numerics (7 November 2026)
+
+[Original BTYPE fields](Airbender/Review/Circuits/ReducedMachine/BranchDecoder.lean)
+now recover actual native70mask/operands/dummy-rd/x0/offset/raw funct3 from complete
+public byte/stateful sparse membership. Original Sail decoding derives offset
+parity; constructors remain unfiltered. [Initialized ranges](Airbender/Review/Trace/Families/ReducedMachine/BranchValues.lean)
+use proved actual readonly/dummy-zero preservation and unchanged time induction.
+[Short public numerical result](Airbender/Review/Trace/Families/ReducedMachine/BranchResults.lean)
+discharges every source/PC/offset/range/alignment/parity input internally, deriving
+actual branch condition/target/final PC bounds/RV32 wrap/alignment from exact
+fixedData acceptance. No local answer or arbitrary-table identity is public.
+
+[Eight regressions](Tests/NativeReducedBranchDecoder.lean) retain all six original
+sources/full six-slot setup/parity/negative x0 aliases and initialized bounds.
+Only original bytes/stateful decoding are reused from the old fixture, not native
+masks/tables/constraints/acceptance. Six modeled words plus two padding are not the
+native fixed configuration or physical ROM/export enforcement. Original GPR/Sail
+branch clauses/normal/fetched execution and common operation-specific PC integration
+remain next. Sixteen exact parent0f1188 origins record twelve new modules/tests.
+No native/Sail/data/dependency change, defect, issue assumption or parity claim.

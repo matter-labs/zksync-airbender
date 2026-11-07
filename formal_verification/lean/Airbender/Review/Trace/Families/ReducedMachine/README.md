@@ -284,3 +284,15 @@ constraints and exact table semantics. Both source bounds and original PC/offset
 bounds/alignment/parity remain internal obligations for public history/decoding.
 Branches are still outside common initialized fetched execution. [Target slices](../../../../../Tests/NativeReducedBranchResults.lean)
 cover only four actual assertions, not full accepted native branch instructions.
+
+## Original public initialized branch numerics
+
+[Public branch decoding](BranchDecoder.lean), [all-word ranges](BranchValues.lean)
+and [short numerical result](BranchResults.lean) now derive actual native condition,
+target/final PC bounds, RV32 wrap and successor alignment from original public
+construction, exact fixedData acceptance, full sparse membership and native history.
+Both source ranges and original PC/offset bounds/alignment/parity are discharged
+internally. [Eight source/initialized checks](../../../../../Tests/NativeReducedBranchDecoder.lean)
+include a complete six-word/two-padding original image; these are not full accepted
+native branch witnesses. Numerical words are not yet original Sail GPR/branch
+clause/fetched execution. Common supported execution still excludes branches.

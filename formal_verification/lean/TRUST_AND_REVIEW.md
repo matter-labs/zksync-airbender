@@ -327,6 +327,29 @@ fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
 terminal/init boundaries remain open. No native defect or issue-handling assumption
 is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
 
+## Initialized original branch numerical boundary
+
+[Original public branch decoding](Airbender/Review/Trace/Families/ReducedMachine/BranchDecoder.lean)
+derives native mask/rs/rd/x0/offset/raw funct3 fields; original Sail decoding derives
+even offset without filtering BTYPE constructors. [Actual zero-write/readonly rules](Airbender/Proofs/ReducedMachine/NativeBranchPreservation.lean)
+feed initialized induction and derive every source/write/terminal range.
+[The public numerical root](Airbender/Review/Trace/Families/ReducedMachine/BranchResults.lean)
+discharges both read bounds, native selected operand, incoming PC/offset bounds,
+incoming alignment and decoded parity internally. Actual condition, target, final
+PC bounds/RV32 wrap/alignment are derived from exact fixedData acceptance and full
+public sparse membership. No desired per-row read/range/condition/target/PC/state
+answer, supplied preservation rule or table-equivalence premise is public.
+
+[Source/initialized regressions](Tests/NativeReducedBranchDecoder.lean) are not full
+nonempty accepted native branches or retained original Sail execution. Only original
+byte/stateful decoder evidence crosses from the old fixture. Logical six-word/two-
+padding public image is not the native eight-word/CSR/nondeterminism configuration.
+Original GPR/clause/normal/fetched branch execution and mixed integration remain
+next; native export/ROM/preprocessing/physical enforcement and other ordinary/
+protocol/terminal/init/cryptographic/completeness/interrupt scopes stay separate.
+The earlier internal-only numerical boundary is superseded here. No finding,
+production/data/Sail/dependency change, issue assumption or parity claim.
+
 ## Native branch numerical boundary
 
 [Actual condition proofs](Airbender/Proofs/ReducedMachine/NativeBranchCondition.lean)

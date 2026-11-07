@@ -392,3 +392,13 @@ successor alignment. Source/PC/offset bounds, initial alignment and offset parit
 remain internal until original public decoding/history discharges them. [Tests](../../../../Tests/NativeReducedBranchResults.lean)
 include four-assertion target slices, not complete native accepted branches or
 original Sail execution. Common support still excludes branches.
+
+## Original initialized branch numerical connection
+
+[Original BTYPE projection](BranchDecoder.lean) retains raw operands/x0/offset/sign
+extension and actual70mask/dummy-rd/raw funct3. [Public numerical result](../../Trace/Families/ReducedMachine/BranchResults.lean)
+derives all local ranges/PC/offset/alignment/parity internally from native initialized
+history and full original decoding, then actual condition/target/final PC effects.
+[Observables](BranchResult.lean) concern native numerical words; original Sail GPR/
+clause/fetched execution and mixed branch support remain next. [Source tests](../../../../Tests/NativeReducedBranchDecoder.lean)
+are not full nonempty117-equation accepted branches or physical setup certificates.

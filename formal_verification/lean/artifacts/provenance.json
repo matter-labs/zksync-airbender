@@ -9113,6 +9113,118 @@
       "backport_reuse_revision": "8563b26c63c99f74feb0b32a20af4cf41be0d4ad",
       "backport_reuse_path": "Tests/NativeReducedComparison.lean",
       "backport_reuse_sha256": "dc5bc3ac95ac7346d1ba217f08fe747b7ee11835dff6bf5187f7a95507667fa0"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/BranchDecoder.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/ComparisonDecoder.lean",
+      "backport_reuse_sha256": "80f22a0b0eff4aee6e8a4c70eff881fdbcfd23ac217220399e367559b0b7fffb"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchDecoder.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeComparisonDecoder.lean",
+      "backport_reuse_sha256": "1f903cee47dc9e62fbf29101974cfb039a2b30909ea23b3b36901d9d96a45ecb"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachineBranch.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ReducedMachineComparison.lean",
+      "backport_reuse_sha256": "2cf8e9f5b1ba35e042a97f0941ed5807d8b3f3bc6c876ef79eb3f37f9f6932e0"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchDecoder.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ComparisonDecoder.lean",
+      "backport_reuse_sha256": "6e063d511c1741a2f5793b6ee04fbd89f4c56197f06158f3c935a4581cc51eb9"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/BranchDecoder.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ComparisonDecoder.lean",
+      "backport_reuse_sha256": "6beeefacfb5e94f18d741aa5154c23956170e1f44a38627c741805c71f8fbb1c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchPreservation.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeComparisonPreservation.lean",
+      "backport_reuse_sha256": "b066a01148842c9c9b37b625111977bcdf195a96ad463e6f511d79bd2e2ce804"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchValues.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ComparisonValues.lean",
+      "backport_reuse_sha256": "ae441a43727bb08881d008f2e1d0f08a7a6e5b64ff2473db7b8b487493a3a730"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/BranchValues.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ComparisonValues.lean",
+      "backport_reuse_sha256": "deb0549f5419cbc4c311877f56e3b5552e8c5d2f856660de9b9d8a8583d381f6"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/BranchResult.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/PC.lean",
+      "backport_reuse_sha256": "3f2be8e4db76efa2cb79007f237af6dac672c2a1549d7b5f688405648778af30"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchResults.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ComparisonResults.lean",
+      "backport_reuse_sha256": "4b818569e3c1b0b0b2db2f6b0dad8e244f61dd70906a5799a2bda3b0845afbf2"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/BranchResults.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ComparisonResults.lean",
+      "backport_reuse_sha256": "a28bdac57aefa62422f725f41b9601f535071b62f9894a10b3e5062692d561c0"
+    },
+    {
+      "path": "Tests/NativeReducedBranchDecoder.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Tests/NativeReducedSupportedDecoder.lean",
+      "backport_reuse_sha256": "32fe119c28a6a04a0622b49be136c0469b17fd9e663aa80ee61ac20620179b0d"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/BranchDecoder.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Review/Circuits/JumpBranchSlt/Decoder.lean",
+      "backport_reuse_sha256": "0eca71e2e460a04741958aeca4322d56d283993eb8110a4164010cc21e43e0d6"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchDecoder.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Decoder.lean",
+      "backport_reuse_sha256": "4c1f16aedb63e19870f1c28625f317947ef05cc69254a7fee018fa5cc3594f38"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchResults.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBranchPC.lean",
+      "backport_reuse_sha256": "e2feda717c006e62f37fd11478a148e846d9ad03bc24ee40e30d5a15448b29f8"
+    },
+    {
+      "path": "Tests/NativeReducedBranchDecoder.lean",
+      "change": "Retain original unfiltered BTYPE operands/Sail sign extension, with actual reduced mask70 and dummy rd0. Recover all ten native fields and original decoder parity from full sparse/padded public membership. Prove actual zero-write/readonly preservation before unchanged initialized range induction; discharge BOTH read bounds, PC/offset bounds/alignment/parity internally for native branch numerical effects. Reuse only original bytes/stateful decoding from old fixtures, not old masks/tables/constraints/acceptance. Common mixed branch Sail execution remains separate.",
+      "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
+      "backport_reuse_path": "Tests/Branches.lean",
+      "backport_reuse_sha256": "7bafa20761972f41e7056a8f734cb6cf0bda696677dda026dc8de6004cc2c5ce"
     }
   ],
   "setup_artifacts": [
