@@ -32,6 +32,62 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Projected native LW/SW memory history and code frames (7 November 2026)
+
+[Fresh actual x0 preservation](Airbender/Proofs/Trace/Families/ReducedMachine/WordMemoryZeroRegister.lean)
+binds original public LW rd/x0 to the actual masked write. SW's actual memory
+third port cannot be x0; its OLDREAD/unmasked write remains present. Both readonly
+refreshes use their actual initialized reads. [Full native matching and shadow
+projection](Airbender/Proofs/Trace/Families/ReducedMachine/ShadowHistory.lean) derive
+x0 propagation, every retained event's architectural seed origin and all projected
+chronological Sail states/final cell matching. The complete native history and
+ALL independent shadow seeds/reads/writes/timestamps remain accepted and matched;
+only Sail transfers at ROM-shadow addresses are filtered.
+
+[Exact port domains](Airbender/Proofs/ReducedMachine/NativeWordMemoryDomains.lean)
+derive source0 retention, LW port1 filtering ONLY below4MiB, retained RAM-load
+refreshes and retained SW memory port2 from fresh actual mixed-port/canonical
+address bindings. [Initialized address origins](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryAddressDomains.lean)
+root effective RAM addresses in actual public architectural cells and effective
+ROM-shadow addresses in independent public shadow seeds. No expected per-row
+address/domain/value or architectural ROM identity is supplied.
+
+[Memory-aware code frames](Airbender/Proofs/Trace/Families/ReducedMachine/WordMemoryCodeHistory.lean)
+derive preservation of EVERY ROM byte from actual architectural Sail transfers,
+including missing bytes and code outside tracked word cells. Original indexed
+public construction with count at most1,048,576 derives every complete four-byte
+instruction window in ROM. The actual byte frame/control-CSR frame then replays
+the retained stateful decoder in every constructed pre-state. No per-row code read,
+no-code-write, frame or CSR value answer is public. The exact native ROM constructor's
+all-word reads now transport through these actual projected histories internally.
+
+[Short public history root](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryHistory.lean)
+derives the [history observable](Airbender/Review/Helpers/Memory/ReducedMachineWordMemoryHistory.lean):
+complete native matching, row permutation/clock order, every projected Sail segment
+state, final cell matching, ROM-byte/misa frames and original decoder replay.
+Inputs are original full word-memory setup, independent-shadow public initialization,
+exact fixedData acceptance/full decoding, aligned tracked cells and the meaningful
+public code capacity. No read/write/state/order/frame/preservation/result answer
+is supplied. The all-events-GPR frame is not used for LW/SW.
+
+[Ten regressions](Tests/NativeReducedWordMemoryHistory.lean) check exact source/ROM/
+RAM/store port filtering, missing ignored-shadow seed and architectural RAM cell
+rejection, initialized nonzero x0-event rejection and public code-window bounds.
+A positive ORIGINAL Sail RAM write changes data to123 while preserving a real
+ROM code byte; a complete actual-native EMPTY history uses independent shadow123
+without CSR or architectural byte reads. These are conditional-native/original
+Sail-group/empty checks, NOT full positive NONEMPTY117-equation/22-lookup accepted
+native LW/SW or retained instruction execution.
+
+NEXT bind actual projected port groups to original same-pre-state GPR/architectural
+RAM reads/writes and native ROM candidates; then retain original LOAD/STORE access/
+platform/privilege/configuration and normal/fetched execution before common mixed
+integration. Numerical native words plus projected cell history are not yet those
+instruction effects. Common six-profile support still EXCLUDES LW/SW. General Rust/
+public preprocessing/physical ROM/crypto/compiler/completeness and global protocol/
+initialization/teardown remain separate. No native defect, issue assumption, axiom,
+production fix or parity claim; FINDINGS remains unchanged.
+
 ## Exact native ROM to original Sail bytes (7 November 2026)
 
 [Native ROM input construction](Airbender/Review/Helpers/Memory/ReducedMachineROMImage.lean)
@@ -67,9 +123,9 @@ versus ROM21015, a still-missing byte above ROM, and corrupt native ROM output
 rejection. These constructor/reference/conditional-native checks are NOT complete
 positive NONEMPTY117-equation/22-lookup accepted LW/SW or original memory execution.
 
-NEXT derive actual architectural-versus-shadow event domains, projected initialized
-native/Sail memory states and byte-code frames, retained LW/SW clauses and common
-integration. The all-events-GPR frame remains inapplicable. Meaningful constructed
+Actual event domains, projected initialized native/Sail memory states and byte-code
+frames are now checked above. NEXT original port/read/write and retained LW/SW
+clauses/common integration. The all-events-GPR frame remains inapplicable. Meaningful constructed
 reference input is not Rust loader/public preprocessing/physical-ROM refinement,
 boot/zero enforcement, a native defect/issue assumption or whole-machine parity.
 Production Rust/Sail/native data/dependencies remain unchanged; FINDINGS stays at

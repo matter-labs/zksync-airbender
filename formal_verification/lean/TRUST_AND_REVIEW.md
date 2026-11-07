@@ -3246,3 +3246,26 @@ Native SW word-cell nonoverlap alone is not the missing byte-code frame.
 [Nine regressions](Tests/NativeReducedROMImage.lean) are constructor/reference and
 conditional-native rejections, not full positive NONEMPTY117-equation memory
 acceptance. No native defect, issue assumption, axiom or parity claim.
+
+## Actual native projected word-memory history boundary
+
+[Public memory history](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryHistory.lean)
+now constructs projected chronological Sail states/segments/final architectural
+matching from FULL accepted native matching, original public setup, independent
+shadow initialization and aligned tracked cells. Fresh actual LW rd/x0/SW memory
+bindings derive x0 preservation; [port-domain proofs](Airbender/Proofs/ReducedMachine/NativeWordMemoryDomains.lean)
+filter ONLY ROM-prefix LW shadows from Sail. Every shadow seed/read/write/timestamp
+stays in the complete native history. [Address origins](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryAddressDomains.lean)
+are derived from matching, not expected local domain/value inputs.
+
+Meaningful original public code capacity at most1,048,576 words and the actual
+architectural cell predicate derive EVERYROMbyte preservation/control-CSR frames
+and stateful decoder replay. No supplied no-code-write/read/state/frame/zero rule
+or arbitrary-table identity. Code frames cover missing/untracked bytes as well as
+code; exact NativeROM construction reads survive these actual histories internally.
+[Ten regressions](Tests/NativeReducedWordMemoryHistory.lean) include an original
+Sail RAM write preserving code and a complete empty native boundary. They do NOT
+establish complete positive NONEMPTY117-equation accepted LW/SW, original retained
+LOAD/STORE clauses/access/privilege/exception behavior, normal/fetched/common memory
+execution or physical/global protocol enforcement. Those remain explicit next
+connections. No native defect, issue assumption, fix, new axiom or parity claim.

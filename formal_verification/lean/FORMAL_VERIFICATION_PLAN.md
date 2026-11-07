@@ -184,9 +184,15 @@ Full combined row effects and execution remain pending. See the
    tail construct all4MiB original Sail bytes, derive every aligned ROM read/full
    public extraction and preserve registers/outside bytes. Actual accepted LW ROM
    output now gives that byte read in the constructed state, independently of
-   ignored shadow values. NEXT actual architectural/shadow event domains,
-   projected initialized memory/Sail states and byte-code transport, then retained
-   clauses. General Rust/public/physical-ROM fidelity stays separate.
+   ignored shadow values. Actual architectural/shadow port domains and effective
+   address origins now derive from fresh native bindings/accepted matching. Actual
+   LW x0 preservation and SW memory-port exclusion feed full projected Sail state
+   realization/chronological segments/final matching while every native shadow
+   token remains matched. Architectural public cell domains and meaningful public
+   code capacity derive EVERYROMbyte frame/stateful decoder replay; no supplied
+   code/read/write/state/frame answer. NEXT original same-pre-state GPR/RAM transfer
+   and actual ROM candidate binding, retained LOAD/STORE clauses/configuration and
+   normal/fetched execution. General Rust/public/physical fidelity stays separate.
    Common supported execution excludes
    LW/SW; no all-events-GPR frame reuse.
    Other combined

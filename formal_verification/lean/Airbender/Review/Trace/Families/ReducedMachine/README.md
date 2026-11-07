@@ -443,3 +443,11 @@ reference state. Shadow values stay independent. Next derive actual event-domain
 projection/chronological memory-Sail states/code-byte frames/retained LW/SW/common
 execution. No physical public preprocessing/ROM fidelity or full nonempty native
 memory witness is claimed.
+
+[Projected LW/SW history](WordMemoryHistory.lean) and [initialized address origins](WordMemoryAddressDomains.lean)
+now derive every chronological architectural Sail state/segment, final matching,
+ROM-byte/misa frames and stateful source replay from full actual native acceptance
+and original public construction. ALL shadow events/timestamps remain native-matched;
+SW OLDREAD/unmasked write is retained. Code capacity describes public setup, not
+per-row desired windows/frames. Next actual GPR/RAM/ROM transfer and retained original
+LOAD/STORE execution; current common six-profile execution excludes memory.

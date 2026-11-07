@@ -804,3 +804,25 @@ positive NONEMPTY117-equation accepted memory witness or retained LOAD/STORE/com
 execution is claimed. Projected initialized memory/Sail states/byte-code frames and
 general Rust/public-export/physical-ROM fidelity remain separate. No native finding,
 issue assumption, production fix, new axiom, dependency change or parity claim.
+
+## Actual reduced projected word-memory history (7 November 2026)
+
+[Fresh native x0 law](Airbender/Proofs/Trace/Families/ReducedMachine/WordMemoryZeroRegister.lean)
+uses actual mixed-port bindings and canonical native masked LW writes, retaining
+SW memory writes. [Shadow projection](Airbender/Proofs/Trace/Families/ReducedMachine/ShadowHistory.lean)
+copies unchanged PURE initial-zero/event-seed-origin arguments and instantiates
+unchanged shared accepted matching/time induction/projected realization/row order
+only AFTER this new actual law. [Actual port domains](Airbender/Proofs/ReducedMachine/NativeWordMemoryDomains.lean)
+and effective-address roots follow new native canonical addresses, not old masks/
+columns/tables/acceptance. ALLnative shadow events remain matched.
+
+[Code frames/replay](Airbender/Proofs/Trace/Families/ReducedMachine/WordMemoryCodeHistory.lean)
+reuse pure byte-frame/control-CSR/stateful indexed-construction lemmas after the
+architectural public cell domain and code capacity derive full original windows.
+Every projected state/segment/order/final matching/code frame/decoder replay is
+constructed, never supplied. Twenty-one exact parent2917 origins record ten new
+modules/tests. No old positive accepted native fixture is copied; original pure
+RAM-write and actual-native empty regressions have their separate stated scopes.
+Retained LOAD/STORE/configuration/normal/fetched/common memory execution and general
+Rust/public/physical/compiler/crypto/completeness remain open. No native finding,
+issue assumption, production fix, new axiom, dependency change or parity claim.

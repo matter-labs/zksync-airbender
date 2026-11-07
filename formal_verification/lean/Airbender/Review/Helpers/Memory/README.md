@@ -316,3 +316,10 @@ extraction/every aligned read and register/outside-byte preservation. Actual
 native LW ROM output is connected separately; ignored shadow values remain
 independent. This does not establish Rust/public/physical setup refinement,
 projected initialized row/Sail memory states or retained LOAD/STORE execution.
+
+[Projected word-memory observable](ReducedMachineWordMemoryHistory.lean) now names
+actual port domains, complete native matching and derived chronological Sail
+segment states/final matching/ROM-byte/misa frames/decoder replay. [Public root](../../Trace/Families/ReducedMachine/WordMemoryHistory.lean)
+uses independent public shadow seeds, full original decoding/native acceptance,
+aligned cells and meaningful code capacity; no desired reads/states/frames supplied.
+Retained LOAD/STORE/normal/fetched/common execution and physical enforcement remain open.

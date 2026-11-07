@@ -523,3 +523,11 @@ shadow values stay independent. Projected chronological memory/Sail states,
 byte-code frames/retained clauses/common memory execution and physical fidelity
 remain open. [Nine tests](../../../../Tests/NativeReducedROMImage.lean) are not full
 positive accepted native memory witnesses.
+
+[Actual word-memory domains](../../../Proofs/ReducedMachine/NativeWordMemoryDomains.lean)
+and [projected initialized history](../../Trace/Families/ReducedMachine/WordMemoryHistory.lean)
+now retain full native shadow matching while deriving chronological architectural
+Sail states/code-byte frames/stateful replay. Only ROM-prefix LW shadow Sail
+transfers are filtered; SW memory OLDREAD/write remains. Original same-pre-state
+GPR/RAM effects/retained clauses/common memory execution remain next. [Ten tests](../../../../Tests/NativeReducedWordMemoryHistory.lean)
+are not full positive nonempty accepted native LW/SW.
