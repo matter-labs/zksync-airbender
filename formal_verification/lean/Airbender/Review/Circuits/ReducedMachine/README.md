@@ -569,3 +569,12 @@ local laws](../../../Proofs/ReducedMachine/NativeUnifiedLocal.lean) select actua
 write/x0/three-port domains before common initialized induction. SW memory writes
 remain unmasked; only LW ROM shadows filter from Sail. This local/history
 foundation does not yet prove common mixed retained instruction execution.
+
+## Common original execution connection
+
+[Fresh original dispatch and supported-row filter identity](../../../Proofs/ReducedMachine/NativeUnifiedExecution.lean)
+now connect actual selected GPR rows to common projected states; actual selected
+memory ports derive initialized address origins before RAM-domain use. [Common fetched execution](../../Trace/Families/ReducedMachine/UnifiedFetchedExecution.lean)
+composes checked original normal execution and actual terminal observations.
+It retains exact NativeROM memory input scope and all older ordinary public-code
+interfaces. Other native operations/protocol/physical boundaries remain open.

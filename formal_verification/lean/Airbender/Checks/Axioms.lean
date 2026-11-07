@@ -1,3 +1,11 @@
+import Airbender.Review.Helpers.Memory.ReducedMachineUnifiedExecution
+import Airbender.Proofs.ReducedMachine.NativeUnifiedExecution
+import Airbender.Proofs.Trace.Families.ReducedMachine.UnifiedAddressDomains
+import Airbender.Review.Trace.Families.ReducedMachine.UnifiedExecution
+import Airbender.Proofs.Trace.Families.ReducedMachine.UnifiedComposition
+import Airbender.Review.Trace.Families.ReducedMachine.UnifiedFetchedExecution
+import Tests.NativeReducedUnifiedExecution
+import Tests.NativeReducedUnifiedFetched
 import Airbender.Review.Circuits.ReducedMachine.UnifiedDecoder
 import Airbender.Review.Helpers.Decoder.ReducedMachineUnified
 import Airbender.Proofs.ReducedMachine.NativeUnifiedDecoder
@@ -3782,3 +3790,27 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedUnifiedHistory.public_code_window
 #print axioms Tests.NativeReducedUnifiedHistory.empty_public_history
 #print axioms Tests.NativeReducedUnifiedHistory.empty_shadow_terminal_bound
+
+#print axioms Airbender.ReducedMachine.NativeUnifiedExecutionProofs.supported_events
+#print axioms Airbender.ReducedMachine.NativeUnifiedExecutionProofs.supported_dispatch
+#print axioms Airbender.ReducedMachine.NativeUnifiedExecutionProofs.memory_instruction
+#print axioms Airbender.ReducedMachine.NativeUnifiedExecutionProofs.memory_dispatch
+#print axioms Airbender.ReducedMachine.NativeUnifiedAddressProofs.effective_public_cell
+#print axioms Airbender.ReducedMachine.NativeUnifiedAddressProofs.initialized_address_domains
+#print axioms Airbender.ReducedMachine.NativeUnifiedAddressProofs.initialized_ordinary
+#print axioms Airbender.ReducedMachine.NativeUnifiedExecutionProofs.image_row_pc_bound
+#print axioms Airbender.ReducedMachine.NativeUnifiedExecutionProofs.image_fetched_step
+#print axioms Airbender.ReducedMachine.NativeUnifiedExecutionProofs.image_terminal_pc_bound
+#print axioms Airbender.ReducedMachine.NativeUnifiedExecutionProofs.image_execution_soundness
+#print axioms Airbender.ReducedMachine.Native.public_unified_execution
+#print axioms Tests.NativeReducedUnifiedExecution.ordinary_program_no_csrs
+#print axioms Tests.NativeReducedUnifiedExecution.ordinary_program_no_ram_domain
+#print axioms Tests.NativeReducedUnifiedExecution.branch_only_configuration
+#print axioms Tests.NativeReducedUnifiedExecution.jal_only_configuration
+#print axioms Tests.NativeReducedUnifiedExecution.jalr_missing_security_rejected
+#print axioms Tests.NativeReducedUnifiedExecution.memory_missing_misa_rejected
+#print axioms Tests.NativeReducedUnifiedExecution.memory_wrong_privilege_rejected
+#print axioms Tests.NativeReducedUnifiedExecution.memory_clint_domain_rejected
+#print axioms Tests.NativeReducedUnifiedExecution.supported_event_loss_rejected
+#print axioms Tests.NativeReducedUnifiedFetched.empty_execution
+#print axioms Tests.NativeReducedUnifiedFetched.top_terminal_readers

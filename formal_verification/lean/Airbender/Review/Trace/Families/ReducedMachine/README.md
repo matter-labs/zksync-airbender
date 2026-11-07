@@ -509,3 +509,23 @@ NEXT after actual local transfers/retirement/configuration bindings. Eighteen
 are not full positive NONEMPTY117-equation/22-lookup accepted memory/mixed rows
 or physical fidelity/completeness/parity. Earlier six-profile-only snapshots
 above retain their historical scope.
+
+## Common seven-profile original fetched execution
+
+[Unified fetched execution](UnifiedFetchedExecution.lean) now closes retained
+normal/fetched instruction execution at the common states above, yielding actual
+terminal PC and EVERY architectural terminal cell read. [The reference result](UnifiedExecution.lean)
+filters only Sail terminal observations; full native matching retains ALL
+independent shadow seeds/events/timestamps. Actual supported GPR-row filter
+identity and selected memory address origins precede local execution; public
+constructor-sensitive initial memory/control configuration and ordinary RAM
+domains derive every local CSR/permission through real past/control frames.
+
+Ordinary/empty CSR freedom, branch/JAL unrestricted misa/JALR security, AUIPC PC,
+x0/aliases/both readonly refreshes/OLDREAD/unmasked SW and native RV32 wrap remain.
+The root explicitly uses exact NativeROM input construction; older arbitrary
+ordinary public-code execution roots remain unchanged. Eleven [configuration/domain/native-filter](../../../../../Tests/NativeReducedUnifiedExecution.lean) and
+[complete EMPTY fetched tests](../../../../../Tests/NativeReducedUnifiedFetched.lean)
+are not complete positive NONEMPTY117-equation/22-lookup memory/mixed witnesses.
+The earlier history-only checkpoint is superseded for this execution connection;
+remaining MOP/CSR/delegation/protocol/physical/init/completeness/parity stays open.

@@ -333,3 +333,13 @@ derive these from original public setup, independent shadow initialization and
 full native matching. Every shadow event remains native-matched; RAM refreshes
 and SW OLDREAD/write remain architectural. No CSR premise or desired per-row
 profile/read/state/frame answer is public. Retained mixed execution is separate.
+
+## Common original execution inputs and reference dispatch
+
+[Unified initial reference interfaces](ReducedMachineUnifiedExecution.lean)
+activate memory configuration/ordinary RAM domains only for original public
+memory constructors, preserve branch/JAL unrestricted misa and JALR-only
+security, and retain ordinary/empty CSR freedom. Original registerClause and
+wordMemoryClause stay unchanged. [Common execution](../../Trace/Families/ReducedMachine/UnifiedFetchedExecution.lean)
+derives every local CSR/permission/read/result/state/PC through actual mixed
+histories; these meaningful initial domains do not assert native enforcement.

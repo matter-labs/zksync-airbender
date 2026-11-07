@@ -20,8 +20,9 @@ in the historical checkpoints below.
 **The reduced machine now has conditional fetched-execution soundness for mixed
 selected original shifts, ADD/ADDI/SUB/LUI/AUIPC, XOR/OR/AND register/immediate,
 SLT/SLTU/SLTI/SLTIU, all six conditional branches and JAL/JALR rows. Full combined-operation
-coverage remains open.** Separate original LW/SW normal/fetched execution is now
-checked under its explicit memory initialization/platform/domain interfaces.
+coverage remains open.** Common seven-profile original fetched execution now
+includes LW/SW under an explicit exact-ROM memory/platform/domain scope; existing
+six-profile arbitrary ordinary public-code execution remains unchanged.
 The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 imports 117 native equations, 142 variables and a complete fourteen-region fixed
@@ -33,6 +34,64 @@ initialization/decoder interfaces; other combined profiles remain unfinished.
 The historical 119-equation/141-variable/13-region artifact is preserved separately.
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
+
+## Common seven-profile original fetched execution (7 November 2026)
+
+[The new short public root](Airbender/Review/Trace/Families/ReducedMachine/UnifiedFetchedExecution.lean)
+now derives finite successful original four-byte fetched execution interleaving
+all checked shifts, arithmetic, bitwise, comparison, branch, jump and LW/SW
+profiles, actual canonical terminal PC and EVERY architectural terminal cell.
+This common memory execution scope uses the explicit exact NativeROM input
+constructor. Existing six-profile arbitrary ordinary public-code execution and
+separate word-memory roots stay UNCHANGED; arbitrary public images are not
+identified with the fixed native eight-word ROM.
+
+[Original constructor-sensitive input interfaces](Airbender/Review/Helpers/Memory/ReducedMachineUnifiedExecution.lean)
+activate memory configuration and ordinary tracked RAM-domain requirements ONLY
+when the original public program contains memory constructors. Ordinary/empty
+programs acquire no CSR availability; branches/JAL require only unrestricted
+readable misa, and only JALR activates Machine/security configuration. Every local
+CSR/permission comes from meaningful initial reference inputs through REAL mixed
+past/control frames. The original MemoryPlatform typeclass remains explicit.
+These reference input domains are not native/physical enforcement or findings.
+
+[Fresh local connections](Airbender/Proofs/ReducedMachine/NativeUnifiedExecution.lean)
+prove every actual supported GPR-row event survives filtering BEFORE reusing its
+checked original execution. [Selected native memory address origins](Airbender/Proofs/Trace/Families/ReducedMachine/UnifiedAddressDomains.lean)
+root actual LW-shadow/SW-destination addresses in public architectural/shadow
+seeds through full native matching, without assuming all trace rows are memory.
+Actual RAM membership/public ordinary domains or bounded ROM exclusion discharge
+local special-window access obligations. No per-row profile/domain/CSR/permission
+or desired success answer is supplied.
+
+[Common composition](Airbender/Proofs/Trace/Families/ReducedMachine/UnifiedComposition.lean)
+derives original source replay, all source/read/range/address/result and actual
+transfer/normal retirement inputs at the already checked common projected states.
+AUIPC prepared PC, branch/JAL/JALR distinctions, x0/aliases/both readonly refreshes,
+OLDREADs, unmasked SW and native RV32 wrap remain. LW-to-x0 reads architectural
+memory before its original accessor discards the unmasked value. ROM candidates
+come from exact constructed bytes/past frames, independently of ignored shadows;
+RAM loads retain actual refreshes. Operation-specific native final bounds, actual
+clock/PC chain and unchanged PURE stateful projected composition/terminal lemmas
+produce the finite execution and readers. Full native matching retains EVERY
+independent shadow token/timestamp. No desired local source/read/write/result/
+state/PC/order/replay/preservation/profile/table-equivalence answer is public.
+
+Eleven [configuration/domain/native-filter](Tests/NativeReducedUnifiedExecution.lean)
+and [complete EMPTY common fetched](Tests/NativeReducedUnifiedFetched.lean)
+regressions pass. They retain ordinary/branch/JAL/empty CSR scopes, reject missing
+memory misa/wrong privilege/JALR security/CLINT access/filter loss, and derive
+actual terminal PC/x0 readers for every RV32 PC with independent shadow123.
+These are input-domain/conditional-native/complete-EMPTY checks, not full positive
+NONEMPTY117-equation/22-lookup accepted memory/mixed witnesses. Eight new modules/
+tests record17 exact parentf8df origins; production/native/Sail/fixture/dependency
+inputs and prior roots are unchanged. No established native defect or new axiom.
+
+NEXT assess actual remaining MOP and CSR/delegation paths against the unchanged
+native117-equation artifact, then exact special-CSR table meaning, request/caller/
+worker constraints and accounting. Unified protocol spans, padding/terminal/init/
+teardown and universal public/physical setup/general refinement/completeness
+remain open. This selected common execution does not establish parity.
 
 ## Common seven-profile initialized projected history (7 November 2026)
 
@@ -73,7 +132,8 @@ They are not full positive NONEMPTY117-equation/22-lookup memory/mixed witnesses
 Fifteen new modules/tests record26 exact parent2cc4535 helper/template origins.
 No production/Sail/native/literal/dependency change or established native defect.
 
-**Common retained-instruction/normal/fetched execution with LW/SW remains open.**
+**Historical prerequisite checkpoint:** common retained/normal/fetched execution
+with LW/SW was open here; it is now checked by the public root above.
 Next connect all profile transfers and retirement to THESE common states, with
 memory configuration activated only by original public memory constructors and
 local CSR/ordinary-address obligations derived through actual past histories.

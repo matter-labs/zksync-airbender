@@ -31,31 +31,34 @@ and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
-## Current common memory integration checkpoint (7 November 2026)
+## Current common fetched-execution checkpoint (7 November 2026)
 
-[Seven-profile original decoding](Airbender/Review/Trace/Families/ReducedMachine/UnifiedDecoder.lean),
-[all initialized native word ranges](Airbender/Review/Trace/Families/ReducedMachine/UnifiedValues.lean)
-and [ONE common projected Sail history](Airbender/Review/Trace/Families/ReducedMachine/UnifiedHistory.lean)
-are now checked. The wrapper preserves existing six-profile source/execution
-interfaces. Exact original entry/query transport selects actual per-profile
-write/x0/domain laws before shared induction; ALL independent shadow tokens stay
-native-matched. Code/misa frames and stateful source replay follow from actual
-mixed GPR/RAM histories, rather than the old all-events-GPR frame. This closes
-common initialization/history prerequisites, not mixed instruction execution.
+[Common seven-profile original fetched execution](Airbender/Review/Trace/Families/ReducedMachine/UnifiedFetchedExecution.lean)
+is now checked at the actual initialized projected states, with actual terminal
+PC/architectural-cell readers. The explicit exact NativeROM mixed-memory scope
+preserves all older arbitrary ordinary public-code and separate memory roots.
+Original constructor-sensitive initial reference configuration/RAM-domain inputs
+activate only on the public operations that need them. Actual mixed past/control
+frames derive every local CSR/permission; selected accepted memory port origins
+root RAM addresses in public cells. Supported GPR-row filtering is proved locally
+before old execution is reused. No all-events-GPR memory frame is assumed.
+AUIPC preparation, x0/aliases/readonly/OLDREADs/unmasked SW and native PC wrap remain.
 
-NEXT derive supported-row filter identity and original transfers/retirement at
-these common projected row states, plus memory source/address/ROM candidate and
-retained clause transport. Activate initial memory configuration only for ORIGINAL
-public LW/SW constructors; derive every local CSR/permission/ordinary address from
-meaningful initial reference inputs, tracked RAM domains and actual history.
-Preserve branch/JAL/JALR distinctions, AUIPC prepared PC, x0/aliases/OLDREAD and
-native RV32 wrap. Compose actual stateful projected rows only after those local
-connections. Keep arbitrary ordinary public code scopes distinct from explicit
-exact NativeROM mixed-memory scope. Do not repeat closed native tables, separate
-memory normal/fetched execution or this common range/history checkpoint.
+Do not repeat closed seven-profile decoding/profile/query transport/shared ranges/
+x0/projected histories/code/misa frames/source replay/local normal retirement/
+stateful finite composition/terminal observations. Eleven input-domain/conditional-
+native/complete-EMPTY regressions are not full positive NONEMPTY memory/mixed
+native witnesses or physical/completeness certificates.
 
-No full positive NONEMPTY memory/mixed native witness, universal public/physical
-setup, worker/protocol/padding/terminal/init/teardown or parity is claimed.
+NEXT inspect actual remaining MOP and CSR/delegation selector/operand/write/PC/
+request paths against the unchanged native117-equation artifact. Derive exact
+special-CSR table semantics and meaningful original input/output interfaces
+before native callers/workers/accounting and unified protocol spans. Retest v3
+findings against actual v2 enforcement; no defect follows from an unfinished
+connection. Then address padding/terminal machine boundaries and initialization/
+teardown, preserving explicit general Rust/public preprocessing/physical ROM/
+cryptographic/completeness scopes. No standalone/subword expansion or parity
+inference from counts.
 
 1. Generalize the actual native pool beyond its explicit public image/CSR fixture,
    prove the remaining regions' operation semantics and connect physical setup.

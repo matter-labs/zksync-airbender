@@ -5,10 +5,13 @@
 The current reference is [PR #585](https://github.com/matter-labs/zksync-airbender/pull/585)
 at b29277dd895499574e317a994fd89243a72f06cb, based on
 c1a662222cafcd96db4383dce737edb79fa62b09. The proof reference remains deliberately
-pinned. The live source checkout advanced externally to 964db88d323d7f04a258f38bce28eca1c6d31652;
-its reviewed four-path delta contains only status/replay timing changes, no Lean
-statement/proof, native input or dependency change. Its status reports a successful parent warm run and
-explicitly leaves final full assurance pending. That is not a v2 test result.
+pinned. The live source checkout advanced externally to 9bdfb988e0dd2ab83bf629d1e5c47f032f69030e,
+parent964db88d3. Its reviewed cumulative five-path delta contains status/replay
+timing changes plus a private Keccak slot-cache computation split into25 finite
+blocks; original cache data, whole-cache statement and public normalization tail
+are unchanged. Native/dependency inputs and public Review statements are unchanged.
+Its status still leaves final full assurance pending. Those source-checkout
+results are not v2 qualification or adoption of the newer proof implementation.
 The native v2 target remains dev 67ee094449abaebc77e58435f130ce6ea27721e5.
 No Rust, dependency version or original Sail standard clause changes are imported.
 
@@ -915,3 +918,34 @@ logical public images remain distinct from exact NativeROM input construction.
 No native/Sail/fixture/dependency change, defect/new axiom or parity is claimed;
 worker/protocol/padding/terminal/init/teardown and physical/general refinement
 boundaries remain open.
+
+## Common original seven-profile execution (7 November 2026)
+
+[The new common fetched root](Airbender/Review/Trace/Families/ReducedMachine/UnifiedFetchedExecution.lean)
+closes original normal/fetched execution at the shared initialized projected
+states, with actual terminal PC/architectural-cell readers. Fresh supported-row
+filter identity and actual selected memory address origins precede reuse of
+unchanged per-profile native execution/transfer/retirement laws. Constructor-
+conditional initial reference configuration preserves ordinary/empty CSR freedom,
+branch/JAL unrestricted misa and JALR-only security distinctions; actual mixed
+past/control frames derive every local CSR/permission. Explicit exact NativeROM
+mixed-memory input scope leaves older arbitrary ordinary public-code roots
+unchanged; no arbitrary/native ROM identity is assumed.
+
+Eight new modules/tests record17 exact parentf8df source origins. Eleven
+configuration/domain/native-filter/complete-EMPTY regressions are not NONEMPTY
+native memory/mixed witnesses. No production/native/Sail/fixture/dependency change,
+native finding/issue assumption/new axiom or parity. Next inspect actual remaining
+MOP/CSR/delegation paths and exact native special-CSR semantics before workers/
+callers/accounting/protocol and padding/terminal/init/teardown. General Rust/public/
+physical/cryptographic/completeness boundaries remain explicit.
+
+The original checkout advanced externally to9bdfb988e0dd2ab83bf629d1e5c47f032f69030e
+(parent964db88d3) during this checkpoint. Its exact two-path commit changes only
+status and the private Keccak SplitSlotReduction cache proof (361-case computation
+split into25 finite blocks, public whole-cache/slots contract unchanged). Exact
+parent/path/blob/prefix/public-tail checks were read-only; the change is preserved,
+not imported or adopted. The independent audit records observed liveHEAD9bdf and
+its cumulative five-path delta separately from pinned b292 Git-object proofs,
+native inputs and dependencies. Original checkout is tracked-clean with the same
+five unrelated untracked paths; this task changed no original source/cache files.

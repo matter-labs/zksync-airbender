@@ -482,3 +482,13 @@ native shadow tokens remain; only architectural Sail transfers are filtered.
 Chronological states, code/misa frames and stateful source replay are derived.
 Common retained/normal/fetched instruction execution remains next; arbitrary
 logical public source images are not identified with exact native ROM.
+
+## Common original fetched memory execution
+
+[The seven-profile original fetched root](Families/ReducedMachine/UnifiedFetchedExecution.lean)
+now connects common initialized projected states to finite normal/fetched
+execution and actual terminal PC/architectural readers. All native shadows remain
+matched. Exact NativeROM mixed-memory input scope is explicit; existing arbitrary
+ordinary-code roots stay unchanged. Local source/profile/configuration/domain/
+read/result/order/replay/PC obligations are derived, not public desired answers.
+Worker/protocol/padding/terminal/init/teardown and physical/completeness remain open.

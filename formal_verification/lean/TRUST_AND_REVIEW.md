@@ -3367,3 +3367,34 @@ arbitrary-code and separate exact-ROM memory execution roots stay unchanged.
 Eighteen conditional-native/original-source/complete-EMPTY regressions are not
 positive NONEMPTY117-equation/22-lookup accepted memory/mixed witnesses. No native
 defect, issue assumption, production fix or new axiom is introduced.
+
+## Common seven-profile original execution boundary (7 November 2026)
+
+[The short common fetched-execution root](Airbender/Review/Trace/Families/ReducedMachine/UnifiedFetchedExecution.lean)
+now binds the checked common projected states to retained original normal/fetched
+execution and actual terminal PC/architectural readers. Original dispatch uses
+unchanged registerClause or wordMemoryClause; no x0 opcode/operand rewrite.
+[Initial reference inputs](Airbender/Review/Helpers/Memory/ReducedMachineUnifiedExecution.lean)
+activate FlatMemoryConfiguration/ordinary tracked RAM domains ONLY on ORIGINAL
+public memory constructors, unrestricted readable misa on branch/JAL/JALR, and
+Machine/security configuration only on JALR. Ordinary/empty programs remain CSR-
+free. Every local configuration/permission follows actual mixed past/control
+frames. MemoryPlatform stays explicit; native/physical enforcement is not claimed.
+
+Fresh actual supported GPR addresses prove ALL selected-row events survive Sail
+filtering before local execution. Actual selected memory ports/full accepted
+matching root effective addresses in architectural/shadow public seeds before
+ordinary RAM-domain use; bounded ROM exclusion is derived. All source/read/range/
+result/address/state/order/replay/PC/transfer/normal-retirement inputs are internal.
+No desired local answer, expected profile, supplied preservation, arbitrary ROM/
+table identity or pure-decoder premise is public. LW ignored full-address shadow
+values stay independent of constructed architectural ROM bytes; all native shadow
+tokens/timestamps and both readonly refreshes/OLDREADs remain in native acceptance.
+
+This common memory root explicitly uses exact NativeROM input construction.
+Existing arbitrary ordinary public-code execution and separate LW/SW roots remain
+unchanged. It proves neither general Rust/public export/preprocessing/physical
+ROM/boot/terminal enforcement nor worker/protocol/init/teardown/completeness/parity.
+Eleven input-domain/conditional-native/complete-EMPTY regressions are not complete
+positive NONEMPTY117-equation/22-lookup memory/mixed accepted rows. FINDINGS stays
+unchanged: zero established native defects, no issue assumption/fix/new axiom.
