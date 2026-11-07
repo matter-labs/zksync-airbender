@@ -1,3 +1,7 @@
+import Airbender.Proofs.ReducedMachine.NativeCSRDecoder
+import Airbender.Proofs.Trace.Families.ReducedMachine.CSRDecoder
+import Airbender.Review.Trace.Families.ReducedMachine.CSRDecoder
+import Tests.NativeReducedCSRDecoder
 import Airbender.Proofs.ReducedMachine.NativeRuntimePool
 import Airbender.Review.Circuits.ReducedMachine.Tables.RuntimePoolTheorems
 import Airbender.Proofs.ReducedMachine.NativeRuntimeQueries
@@ -3946,3 +3950,27 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeRuntimePool.oversized_abi_high_rejected
 #print axioms Tests.NativeRuntimePool.oversized_source_high_rejected
 #print axioms Tests.NativeRuntimePool.absent_dynamic_tag_rejected
+
+#print axioms Airbender.ReducedMachine.NativeCSRDecoderProofs.original_fields
+#print axioms Airbender.ReducedMachine.NativeCSRDecoderProofs.field_bounds
+#print axioms Airbender.ReducedMachine.NativeCSRDecoderProofs.fetched_sources
+#print axioms Airbender.ReducedMachine.NativeCSRDecoderProofs.decoded_fields
+#print axioms Airbender.ReducedMachine.NativeCSRDecoderProofs.key_bounds
+#print axioms Airbender.ReducedMachine.NativeCSRDecoderProofs.trace_decoding
+#print axioms Airbender.ReducedMachine.NativeCSRDecoderProofs.runtime_trace_effects
+#print axioms Airbender.ReducedMachine.Native.public_csr_decoding
+#print axioms Airbender.ReducedMachine.Native.public_runtime_csr_effects
+#print axioms Tests.NativeReducedCSRDecoder.complete_original_image
+#print axioms Tests.NativeReducedCSRDecoder.original_sources
+#print axioms Tests.NativeReducedCSRDecoder.raw_fields
+#print axioms Tests.NativeReducedCSRDecoder.unsigned_high_index
+#print axioms Tests.NativeReducedCSRDecoder.unsupported_forms
+#print axioms Tests.NativeReducedCSRDecoder.complete_hole_and_tail
+#print axioms Tests.NativeReducedCSRDecoder.native_sentinel_rejected
+#print axioms Tests.NativeReducedCSRDecoder.corrupt_tag_rejected
+#print axioms Tests.NativeReducedCSRDecoder.corrupt_zero_rejected
+#print axioms Tests.NativeReducedCSRDecoder.nonzero_rs2_rejected
+#print axioms Tests.NativeReducedCSRDecoder.canonical_unsigned_key
+#print axioms Tests.NativeReducedCSRDecoder.no_decode_CSR_availability
+#print axioms Tests.NativeReducedCSRDecoder.original_source_runtime_domain
+#print axioms Tests.NativeReducedCSRDecoder.bigint_public_row_rejected

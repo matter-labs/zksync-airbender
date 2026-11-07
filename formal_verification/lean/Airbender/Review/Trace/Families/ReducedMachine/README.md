@@ -558,3 +558,15 @@ fixture1988/1989. Bigint1994 is outside this selected runtime target. The region
 certificate does not supply a runtime pool/selected-query/public caller stream or
 worker/accounting/original execution connection. Existing execution roots stay
 on their unchanged explicit pools. Those native composition obligations remain next.
+
+
+## Original CSR source and runtime local effects
+
+[CSR source roots](CSRDecoder.lean) derive original public bytes/instruction and
+all native mask/operand/rd/x0/unsigned-index fields through full sparse/padded
+membership. [The setup-only runtime trace constructor](RuntimeCSRData.lean)
+retains every row/boundary/token; public decoding discharges the explicit local
+mask before existing native CSR effects. This is a CSR-only source/local connection,
+not initialized original execution or request clock/issuance/worker accounting.
+The existing seven-profile execution and arbitrary ordinary public-code roots
+remain unchanged; original decoder bytes are not equated with the fixed ROM.

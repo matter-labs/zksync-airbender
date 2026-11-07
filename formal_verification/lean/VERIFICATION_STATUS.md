@@ -35,6 +35,66 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Original public CSR decoding and runtime effects (7 November 2026)
+
+[The original CSR projection](Airbender/Review/Circuits/ReducedMachine/CSRDecoder.lean)
+now retains register CSRRW with raw rs1/rd, readonly rs2=x0, unsigned 12-bit CSR
+index, native mask129 and funct3=1. CSRRS/CSRRC/immediate CSR and other operations
+remain outside this projection. No x0 opcode rewrite, standalone operand restriction,
+CSR allow-list or privileged-execution answer is added. The pinned native reduced
+decoder separately zero-extends this index and preserves raw operands; source
+inspection is not general Rust decoder/export refinement.
+
+[Native source/field proofs](Airbender/Proofs/ReducedMachine/NativeCSRDecoder.lean)
+recover the original constructor, every native operand/rd/x0/index field, canonical
+12-bit key and zero high limb from original public construction and all ten query
+fields. Full sparse/padded membership plus accepted native packing rejects holes
+and the all-minus-one tail. [The short public decoder root](Airbender/Review/Trace/Families/ReducedMachine/CSRDecoder.lean)
+requires no per-row source/profile/mask/rd/index answer. Its generic modeled setup
+scope remains separate from fixed ROM or physical preprocessing.
+
+[The explicit runtime trace constructor](Airbender/Review/Trace/Families/ReducedMachine/RuntimeCSRData.lean)
+selects the checked runtime CSR pool, retaining every row, state/memory boundary
+and matching token. The new public runtime-effect root composes original decoding
+with accepted constraints on this construction: it derives the local CSR mask and
+all previously checked native support/delegation/return/request/ABI-bound effects.
+No local mask, desired request/read/value/range/PC/state/worker success or table
+identity premise is supplied. This is a CSR-only decoded profile; existing mixed
+seven-profile and original-fixture roots remain unchanged. Arbitrary logical public
+code is not identified with the constructed pool's retained eight-word ROM.
+
+Fourteen [regression roots](Tests/NativeReducedCSRDecoder.lean) include a complete
+independent three-slot original byte image plus one padding row, genuine CSRRW
+sources1984/rs1=1/rd=3 and1991/rs1=2/rd=0, a retained unsupported CSRRS hole,
+unsigned4095/raw/x0 fields, corrupt funct3/zero/rs2 and native sentinel rejection.
+The original decoder succeeds with empty registers, without a CSR-availability or
+privileged-execution premise. Conditional accepted-runtime tests derive original
+source/runtime key domain and exclude bigint1994 without a supplied mask.
+These are original-source/conditional-native tests, not full positive nonempty
+117-equation/22-lookup accepted CSR witnesses or original CSR execution.
+
+Seven new modules/tests record eleven exact parent3d25 origins. The unchanged
+native CSR operation definition is newly byte-pinned to base67ee. Original CSR
+architectural semantics, initialized rs1/read/x0/history, PC retirement, request
+clock/issuance, worker fulfillment/converse/accounting and unified protocol remain
+open, alongside MOP/reference/physical/general refinement/cryptography/completeness.
+Production Rust/circuits/Sail/importers/exporters/artifacts/literals/fixtures and
+dependencies remain unchanged; no native defect, issue assumption, fix, new axiom
+or parity claim. NEXT derive actual CSR GPR port/write/x0 laws, initialized bounds/
+history/source values and native caller clock/issuance before worker composition.
+
+Milestone gates pass 3,513 explicit standard-only axiom roots, 230 public Review
+roots, four guide declaration names and 3,447 local links/anchors with context/trace
+separation. Full Review used 564.36 MiB sampled aggregate footprint / 3,148.09 MiB
+resident / 15.36 s; independent exact provenance used 18.03 / 36.77 MiB / 9.69 s
+and passed 189 v3-origin / 1,404 backport-origin identities, 80 byte-identical modules,
+eight circuit artifacts, 75 native sources, 24 setup artifacts and four exporter
+files. All owned workers terminated under unchanged fixed watchdog/allocation/wall
+caps. Two broad decoder simplification drafts reached default recursion depth;
+small exact Zicsr rewrites pass at default limits. No cap was raised or foreign
+data made opaque. Import/export/native controls retain unchanged inputs and code;
+no heavy unchanged data/certificate replay or physical-memory hard-limit claim.
+
 ## Runtime CSR full-pool lookup and local effects (7 November 2026)
 
 [The explicit complete pool](Airbender/Review/Circuits/ReducedMachine/Tables/RuntimePool.lean)

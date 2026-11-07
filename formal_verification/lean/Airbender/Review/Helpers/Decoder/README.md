@@ -356,3 +356,11 @@ six-profile and LW/SW public decoding through a separate wrapper. [Public source
 recovery](../../Trace/Families/ReducedMachine/UnifiedDecoder.lean) derives exact
 original entries/queries; actual native packing excludes holes/padding. This is
 logical original public setup, not general Rust export or fixed-ROM equivalence.
+
+
+[Reduced CSR full membership](ReducedMachineCSR.lean) covers original register
+CSRRW in a complete stateful sparse/padded public image. Original fields retain
+raw operands/x0 and unsigned 12-bit index; accepted native packing excludes holes
+and tail. The [short source/runtime roots](../../Trace/Families/ReducedMachine/CSRDecoder.lean)
+derive the local mask without a per-row answer. CSR availability/privileged success,
+initialized reads, request issuance and worker accounting remain separate.

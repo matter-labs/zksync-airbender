@@ -1050,3 +1050,30 @@ The retained ROM scope is a logical construction, not universal runtime program/
 Rust/public/physical setup refinement. Bigint1994 remains a separate target. Existing
 seven-profile roots and all prior native/Sail/import/export/artifact/fixture/dependency
 inputs remain unchanged. No native defect/issue assumption/new axiom or parity.
+
+
+## Original CSR public decoding and runtime composition (7 November 2026)
+
+[The native CSR projection](Airbender/Review/Circuits/ReducedMachine/CSRDecoder.lean)
+retains original CSRReg CSRRW with raw rs1/rd, readonly rs2=x0, unsigned 12-bit
+index/mask129/funct3=1. Fresh source/field proofs use complete stateful sparse/padded
+public construction and actual native packing to recover all ten fields, original
+constructor and canonical index/high-zero. No standalone shift/CSR operand restriction
+is transferred to the reduced target. The unchanged CSR operation definition is
+byte-pinned to base67ee; general Rust decoder-export refinement stays open.
+
+[The short source/runtime roots](Airbender/Review/Trace/Families/ReducedMachine/CSRDecoder.lean)
+derive the local mask from original public decoding, then apply the checked runtime
+CSR effect theorem through an explicit setup-only trace constructor. All rows,
+public boundaries and tokens remain. No desired mask/source/read/range/result/
+request/state/PC/worker answer or table equivalence is supplied. Seven modules/tests
+record eleven exact parent3d25 origins. Fourteen original-byte/conditional-native
+regressions include both nonzero raw operands, unsigned4095 and a CSRRS hole; narrow
+original Zicsr rewrites keep all default limits and original generated code unchanged.
+
+This CSR-only source connection does not add initialized/common seven-profile CSR
+execution, original privilege/custom/nondeterminism semantics, native request clock/
+issuance, worker/converse/accounting/protocol or universal runtime public/physical
+setup. Arbitrary original public bytes are not identified with the retained ROM.
+No complete positive nonempty accepted CSR witness, native defect, issue assumption,
+new axiom, production/dependency change or parity is claimed.

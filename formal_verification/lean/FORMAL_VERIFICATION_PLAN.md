@@ -31,6 +31,30 @@ and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
+## Current original CSR decoding connection (7 November 2026)
+
+[Original public CSR decoding](Airbender/Review/Trace/Families/ReducedMachine/CSRDecoder.lean)
+now recovers original register CSRRW, all ten query fields, raw operands/rd/x0,
+unsigned 12-bit CSR index/mask129/funct3=1 and canonical key/high-zero facts from
+full sparse/padded membership and accepted native constraints. A separate explicit
+runtime trace constructor selects the checked pool while retaining all rows and
+boundaries; the public runtime-effect root derives its local mask from original
+sources before applying the existing local native CSR certificate. No per-row mask,
+profile/read/result/request/PC/state/worker answer or table identity is supplied.
+Fourteen original-byte/conditional-native regressions retain scope. Generic original
+public code is not equated with the retained native ROM; no CSR execution is proved.
+
+This supersedes the public CSR decoding NEXT item below. Do not repeat closed
+source/field/pool/local CSR proofs, MOP arithmetic or seven-profile execution.
+NEXT derive actual CSR GPR port/write/x0 laws and initialized history/ranges/rs1
+values; derive request clock/issuance from the actual native relation before caller
+streams. Metadata index3 alone is not issuance/schedule. Establish meaningful
+original CSR/custom/nondeterminism/privilege reference semantics before normal/
+fetched/common execution, then actual Blake2 worker ABI/constraints/fulfillment/
+converse/accounting/protocol. Bigint remains outside this target. Keep ordinary/
+empty and existing execution scopes unchanged; physical setup, terminal/padding/
+init/teardown/general refinement/crypto/completeness/parity remain open.
+
 ## Current runtime CSR full-pool connection (7 November 2026)
 
 [The complete constructed runtime-CSR pool](Airbender/Review/Circuits/ReducedMachine/Tables/RuntimePool.lean)

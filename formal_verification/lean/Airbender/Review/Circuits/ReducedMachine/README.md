@@ -628,3 +628,15 @@ fixture separation and conditional-native scope. Original public CSR source/
 initialized execution/request clock/issuance, workers/accounting/protocol and
 general runtime public/physical setup remain open; no equivalence transfers old
 execution coverage and no parity is inferred.
+
+
+## Original public CSR decoding
+
+[The CSR projection](CSRDecoder.lean) retains original register CSRRW/raw operands/
+x0 and unsigned 12-bit index. [Source/field calculations](../../../Proofs/ReducedMachine/NativeCSRDecoder.lean)
+recover every actual native query field from full original public membership;
+accepted packing rejects holes/tail. [Short trace roots](../../Trace/Families/ReducedMachine/CSRDecoder.lean)
+derive the local mask before runtime CSR effects, preserving all rows/boundaries.
+Fourteen [regressions](../../../../Tests/NativeReducedCSRDecoder.lean) retain an
+independent original byte image and unsigned fields. Initialized reads/CSR execution,
+request clock/issuance, workers/accounting and general native/physical setup remain open.

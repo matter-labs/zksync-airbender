@@ -3520,3 +3520,32 @@ issuance, native worker ABI/fulfillment/converse/accounting/protocol/terminal/in
 and general refinement/cryptography/completeness remain open. Bigint1994 is outside
 this selected runtime target. No production/native/Sail/artifact/importer/exporter/
 fixture/dependency changes, native defect, issue assumption, new axiom or parity.
+
+
+## Original public CSR source boundary (7 November 2026)
+
+[The CSR-only original source root](Airbender/Review/Trace/Families/ReducedMachine/CSRDecoder.lean)
+now derives register CSRRW and actual mask/raw rs1/readonly rs2=x0/rd/x0/unsigned
+CSR index/funct3 fields from full public sparse/padded image membership and native
+packing. Original constructor/data identity supplies canonical 12-bit bounds and
+zero upper immediate limb. No CSR allow-list, source/read/range/profile/rd-zero
+answer, privileged configuration or instruction-success premise is supplied.
+The fourteen regressions include complete original byte construction with empty
+registers, not successful architectural CSR execution or full accepted CSR rows.
+
+The public runtime-effect composition uses an explicit trace constructor selecting
+the checked runtime CSR pool and retaining all rows, state/memory boundaries and
+native tokens. It derives the local mask before existing actual CSR effects apply;
+there is no arbitrary-table identity or old accepted-circuit transfer. The logical
+public decoder image is not equated with the retained eight-word fixed ROM. This
+closes a logical source/decoding connection, not general Rust/native preprocessing/
+public/physical setup refinement. Existing seven-profile scopes remain unchanged.
+
+Original CSR architectural effects, privilege/CSR availability and identified
+custom/nondeterminism reference values, initialized Sail reads/x0/history, actual
+PC retirement, request clock/issuance, worker ABI/fulfillment/converse/accounting/
+protocol/terminal/init/crypto/completeness remain separate. Metadata index3 is still
+not issuance. Exact narrow rewrites of retained original Zicsr clauses replace
+broad recursive decoder simplification at default limits. No generated Sail or
+production/native/import/export/artifact/fixture/dependency change, native defect,
+issue assumption, new axiom or parity claim follows.
