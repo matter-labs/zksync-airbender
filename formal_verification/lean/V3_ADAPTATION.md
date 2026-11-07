@@ -710,3 +710,13 @@ JALR. All local reads follow history; ordinary/empty and branch-only scopes pres
 JALR sources/configuration, not full positive native mixed witnesses. Twenty-two exact
 parent127 origins record ten affected Lean paths. No production/Sail/native/data/dependency
 change, native defect, issue assumption, axiom or whole-machine/parity claim.
+
+## Actual native word-only memory foundation (7 November 2026)
+
+[New native references](Airbender/Review/Circuits/ReducedMachine/WordMemory.lean) keep
+LW1025/SW16386 explicit. [All18native flags](Airbender/Proofs/ReducedMachine/NativeWordMemorySelectors.lean)
+and actual32/33/113/114operand/port spaces are checked without standalone mask/table/
+constraint transfer. Native base load.rs/store.rs are newly pinned unchanged. [Regressions](Tests/NativeReducedWordMemoryRouting.lean)
+are conditional routing consequences, not complete native memory witnesses. Original
+decoding/addresses/values/ROM/shadow/code-frame/initialized Sail/common support remain
+open; no defect/issue assumption/new axiom/general fidelity or parity claim.

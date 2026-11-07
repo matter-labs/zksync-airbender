@@ -346,3 +346,5 @@ configuration; [mixed fetched execution](../../Trace/Families/ReducedMachine/Sup
 derives every local read from actual history. Common profile transport derives original
 PC/byte/instruction/query identities before native jump use. Empty/ordinary and branch-only
 configuration scopes remain narrow; no original decoding implies CSR availability.
+
+[Native LW/SW routing](../../Circuits/ReducedMachine/WordMemoryTheorems.lean) keeps1025/16386masks explicit. Original full public memory decoding and source/rd/x0/immediate fields remain next; no mask answer is transferred from standalone families.

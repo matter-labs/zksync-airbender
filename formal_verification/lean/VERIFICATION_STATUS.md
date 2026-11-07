@@ -32,6 +32,45 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Native word-only memory routing foundation (7 November 2026)
+
+[Word-memory references](Airbender/Review/Circuits/ReducedMachine/WordMemory.lean)
+name explicit LW1025/SW16386 masks. [NativeWordMemorySelectors](Airbender/Proofs/ReducedMachine/NativeWordMemorySelectors.lean)
+derives ALL18header/major/minor bits from actual Boolean assertions0..17/packed112:
+LW update-rd0/load-major10; SW rs2-use1/store-major14. [Actual fields](Airbender/Proofs/ReducedMachine/NativeWordMemoryFields.lean)
+use equations32/33/113/114 to derive selected operand47/48 from immediate9/10 for
+LW or second-port37/38 for SW. LW second-port space88=0/third89=1; SW second88=1/
+third89=0. These are actual memory-space events, not all GPR accesses or a discarded
+x0 write. [One short local root](Airbender/Review/Circuits/ReducedMachine/WordMemoryTheorems.lean)
+keeps decoded mask explicit and generic modeled setup; no numerical table premise.
+
+Unchanged native base load.rs/store.rs are newly hash-pinned. Active reduced machine
+uses LoadOp<false,false,true>/StoreOp<false>, so only LW/SW; third load flag is
+AVOID_MASKING_ROM_ACCESS_ADDRESS. Native IType/SType headers and sorted decoder keys
+are inspected, not a general Rust decoder-export certificate. [Six regressions](Tests/NativeReducedWordMemoryRouting.lean)
+check exact masks/all18lists, rejection of wrong load/store port spaces and actual
+selected vectors. These conditional native consequences are NOT full positive native
+117-equation/22lookup memory fixtures, original GPR/Sail execution or address bounds.
+
+Effective address/addition/scalar/carry/alignment/ROM-space/query/value/masked-write/
+public decoding/initialized preservation/original memory/code frame remain OPEN.
+Do not drop ROM/RAM shadow reads or memory oldreads; do not reuse all-events-GPR code
+preservation for stores. Current common six-profile execution still excludes LW/SW.
+No native defect, issue assumption, production/Sail/data/dependency change, axiom or
+whole-machine/parity claim. Five exact parent287 origins record five new modules/tests;
+native source pins now68. Full memory/physical/general fidelity remain separate.
+Final gates pass3117explicit standard-only axiom roots,196public Review roots,
+4guide names,3161links/anchors/context-trace separation. Full Review548.71MiB
+footprint/3119.94MiB resident/14.67s; independent exact provenance17.00/33.05MiB/8.17s
+passes189v3-origin/1158backport-origin identities,80byte-identical modules,8circuit
+artifacts,68native sources,23setup,4exporters and unchanged dependencies. Selectors
+629.05/2978.31MiB/6.88s,fields491.08/2854.34/2.74,root471.83/2817.23/1.97,tests471.09/2825.00/4.53,
+Axioms543.82/3095.42/4.65. Concrete Boolean-choice reduction before field arithmetic
+and a public namespace were corrected; all failed/successful workers terminated. No
+memory/time/heartbeat/recursion ceiling hit/raised. Shared lock,Lean-j1-M3072,3072MiB
+aggregate footprint/4096MiB resident,finite180second modules/120second audits unchanged.
+Guard sampled watchdog plus Lean allocation cap,not OS hard physical-memory enforcement.
+
 ## Mixed original native jumps and supported execution (7 November 2026)
 
 The [common original projection](Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean)

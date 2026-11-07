@@ -403,3 +403,5 @@ restricts initial misa to BTYPE/JAL/JALR and security configuration to JALR, pre
 empty/ordinary/branch-only scopes. [Six tests](../../../../../Tests/NativeReducedSupportedJumps.lean)
 check logical original JAL/ADD/JALR image/sources/configuration, not full nonempty
 117-equation native mixed acceptance. Remaining ordinary/protocol/physical scopes stay open.
+
+[Word-only memory local foundation](../../../Circuits/ReducedMachine/WordMemoryTheorems.lean) checks explicit1025/16386masks/all18flags/selected operands/port spaces. Current common six-profile execution excludes LW/SW until fresh address/value/ROM/shadow/initialized/code-frame/Sail bindings.

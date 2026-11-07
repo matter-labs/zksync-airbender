@@ -3139,3 +3139,14 @@ No initialized fetched/common jump support or native defect/issue assumption is 
 Only unchanged pure original retirement/model definitions cross from the old family;
 old native masks/columns/tables/acceptance do not. Physical/cryptographic/completeness
 boundaries and lack of complete positive nonempty native jump fixtures remain separate.
+
+## Actual native word-memory routing boundary
+
+[Local routing root](Airbender/Review/Circuits/ReducedMachine/WordMemoryTheorems.lean)
+derives all18flags/selected fields/actual port spaces under explicit LW1025/SW16386
+masks, using exact117-equation assertions. It supplies no address/value/range or
+numerical table meaning. Original public fields/effective addresses/memory/ROM/shadow/
+initialized preservation/code frame/retained Sail execution remain separate. [Tests](Tests/NativeReducedWordMemoryRouting.lean)
+are conditional consequences, not full positive accepted native word memory. Common
+six-profile fetched execution excludes LW/SW. Newly pinned base load.rs/store.rs are
+unchanged; no native defect, issue assumption, production fix or parity claim.

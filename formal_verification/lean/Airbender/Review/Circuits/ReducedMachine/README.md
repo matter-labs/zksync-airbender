@@ -482,3 +482,5 @@ jump return preservation before common range induction; no source-range cycle or
 local expected value/state/PC is public. Conditional initial CSR configuration preserves
 ordinary/empty and branch-only scopes. [Mixed regressions](../../../../Tests/NativeReducedSupportedJumps.lean)
 are public source/configuration evidence, not complete positive native mixed witnesses.
+
+[Word-only memory routing](WordMemoryTheorems.lean) now checks explicit LW1025/SW16386/all18flags and actual operand/port spaces. Original addresses/values/ROM/shadow/initialized Sail/common integration stay open. Memory ports are not all GPR events.

@@ -161,7 +161,11 @@ Full combined row effects and execution remain pending. See the
    rules and all states/replay/terminal observations. Initial misa applies only to
    original branch/jump constructors, security configuration only to original JALR;
    ordinary/empty and branch-only scopes stay narrow. Next inspect remaining actual
-   ordinary combined operations before delegation/protocol/padding/terminal/init. Other combined
+   ordinary combined operations before delegation/protocol/padding/terminal/init.
+   Word-only LW1025/SW16386 now derive all18flags and actual32/33operand/113/114port
+   spaces under explicit masks; unchanged load.rs/store.rs are hash-pinned. Address/
+   value/ROM/shadow/initialized memory/code-frame/Sail/public-decoding connections
+   remain open; common supported execution excludes LW/SW. Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

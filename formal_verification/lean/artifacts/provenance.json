@@ -599,6 +599,14 @@
     {
       "path": "../../cs/src/machine/ops/jump.rs",
       "sha256": "295b6ad8d74cb0bc51ed98ae3e70c4907bb4977743415fc798ed70438725aac1"
+    },
+    {
+      "path": "../../cs/src/machine/ops/load.rs",
+      "sha256": "70ca63d7eb7fc34c3eb889563e873054b2bd9826cc4939a53794d8d9b78619c8"
+    },
+    {
+      "path": "../../cs/src/machine/ops/store.rs",
+      "sha256": "f9ee0e708fe092a06c60b8f5d373c9e60ef939f261447a6740ba1acd99ad87f7"
     }
   ],
   "adaptations": [
@@ -10034,6 +10042,41 @@
       "backport_reuse_revision": "1277017640d12a11b327df4db48ba9213af90a16",
       "backport_reuse_path": "Tests/NativeReducedJumpConfiguration.lean",
       "backport_reuse_sha256": "8268917e9293e88b0a6e5ed26b785941a07645e5dd752bd63e100bc8f0d90c1e"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/WordMemory.lean",
+      "change": "Begin actual monolithic native word-only LW/SW with explicit masks1025/16386. Prove ALL18header/major/minor bits from actual Boolean0..17/packed112 using two small profiles. Exact actual equations32/33/113/114 derive selected immediate/second-port input and second/third register-vs-memory spaces. No address/value/result/range/table-equivalence answer or standalone compiled mask/constraint/table identity transfer. Explicit decoded mask remains pending original full public decoding. Original addresses/effective memory values/ROM shadow/initialized preservation/code frame/Sail execution remain OPEN; common supported projection still excludes LW/SW. Generic modeled setup suffices, no numerical table premise. Pin unchanged native base load.rs/store.rs; source inspection is not general Rust decoder-export fidelity. Conditional routing regressions are not complete positive native word-memory acceptance. No production/Sail/data/dependency change, defect, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "28776b70733c997eb9cb31cab95738f2e57c88b5",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Jump.lean",
+      "backport_reuse_sha256": "f32b26908166d8da9ba72049bdf922bc6f6610119d8443c57f09f72588345d83"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeWordMemorySelectors.lean",
+      "change": "Begin actual monolithic native word-only LW/SW with explicit masks1025/16386. Prove ALL18header/major/minor bits from actual Boolean0..17/packed112 using two small profiles. Exact actual equations32/33/113/114 derive selected immediate/second-port input and second/third register-vs-memory spaces. No address/value/result/range/table-equivalence answer or standalone compiled mask/constraint/table identity transfer. Explicit decoded mask remains pending original full public decoding. Original addresses/effective memory values/ROM shadow/initialized preservation/code frame/Sail execution remain OPEN; common supported projection still excludes LW/SW. Generic modeled setup suffices, no numerical table premise. Pin unchanged native base load.rs/store.rs; source inspection is not general Rust decoder-export fidelity. Conditional routing regressions are not complete positive native word-memory acceptance. No production/Sail/data/dependency change, defect, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "28776b70733c997eb9cb31cab95738f2e57c88b5",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpSelectors.lean",
+      "backport_reuse_sha256": "265697bb7b7ea1c616e69a786747aaf9d4508e23a54a3f257b2924b3b9e35e20"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeWordMemoryFields.lean",
+      "change": "Begin actual monolithic native word-only LW/SW with explicit masks1025/16386. Prove ALL18header/major/minor bits from actual Boolean0..17/packed112 using two small profiles. Exact actual equations32/33/113/114 derive selected immediate/second-port input and second/third register-vs-memory spaces. No address/value/result/range/table-equivalence answer or standalone compiled mask/constraint/table identity transfer. Explicit decoded mask remains pending original full public decoding. Original addresses/effective memory values/ROM shadow/initialized preservation/code frame/Sail execution remain OPEN; common supported projection still excludes LW/SW. Generic modeled setup suffices, no numerical table premise. Pin unchanged native base load.rs/store.rs; source inspection is not general Rust decoder-export fidelity. Conditional routing regressions are not complete positive native word-memory acceptance. No production/Sail/data/dependency change, defect, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "28776b70733c997eb9cb31cab95738f2e57c88b5",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpFields.lean",
+      "backport_reuse_sha256": "a971ab05fba33bef8e06f66c3826fe679109d788a7241a160c5e357a257c36c1"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/WordMemoryTheorems.lean",
+      "change": "Begin actual monolithic native word-only LW/SW with explicit masks1025/16386. Prove ALL18header/major/minor bits from actual Boolean0..17/packed112 using two small profiles. Exact actual equations32/33/113/114 derive selected immediate/second-port input and second/third register-vs-memory spaces. No address/value/result/range/table-equivalence answer or standalone compiled mask/constraint/table identity transfer. Explicit decoded mask remains pending original full public decoding. Original addresses/effective memory values/ROM shadow/initialized preservation/code frame/Sail execution remain OPEN; common supported projection still excludes LW/SW. Generic modeled setup suffices, no numerical table premise. Pin unchanged native base load.rs/store.rs; source inspection is not general Rust decoder-export fidelity. Conditional routing regressions are not complete positive native word-memory acceptance. No production/Sail/data/dependency change, defect, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "28776b70733c997eb9cb31cab95738f2e57c88b5",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/JumpTheorems.lean",
+      "backport_reuse_sha256": "b234e79f160141f8bec963a0139dfa43557386b75c415f94fd21b56fb225455c"
+    },
+    {
+      "path": "Tests/NativeReducedWordMemoryRouting.lean",
+      "change": "Begin actual monolithic native word-only LW/SW with explicit masks1025/16386. Prove ALL18header/major/minor bits from actual Boolean0..17/packed112 using two small profiles. Exact actual equations32/33/113/114 derive selected immediate/second-port input and second/third register-vs-memory spaces. No address/value/result/range/table-equivalence answer or standalone compiled mask/constraint/table identity transfer. Explicit decoded mask remains pending original full public decoding. Original addresses/effective memory values/ROM shadow/initialized preservation/code frame/Sail execution remain OPEN; common supported projection still excludes LW/SW. Generic modeled setup suffices, no numerical table premise. Pin unchanged native base load.rs/store.rs; source inspection is not general Rust decoder-export fidelity. Conditional routing regressions are not complete positive native word-memory acceptance. No production/Sail/data/dependency change, defect, issue assumption, axiom or parity claim.",
+      "backport_reuse_revision": "28776b70733c997eb9cb31cab95738f2e57c88b5",
+      "backport_reuse_path": "Tests/NativeReducedJump.lean",
+      "backport_reuse_sha256": "12c78b18dd5ee40de194c498abfc0b3fb96ee682a486c8f01277878197a3d7a6"
     }
   ],
   "setup_artifacts": [

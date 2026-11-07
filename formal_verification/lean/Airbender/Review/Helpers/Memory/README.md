@@ -306,3 +306,5 @@ now uses one initialized range/x0/native-clock GPR/code/CSR/replay history acros
 six profiles. Jump return preservation first gets alignment from original public
 membership, not a source-range answer. Every source/read/write/state/control/replay/
 terminal observation is derived; JAL x0 and readonly inputs/JALR aliases remain present.
+
+[Actual native LW/SW port spaces](../../Circuits/ReducedMachine/WordMemoryTheorems.lean) now show load second port and store third port are memory events. Values/addresses/shadow reads/oldreads and code preservation need new proofs; do not reuse all-events-GPR framing.

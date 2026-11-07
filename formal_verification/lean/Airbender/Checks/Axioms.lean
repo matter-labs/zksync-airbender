@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.WordMemory
+import Airbender.Proofs.ReducedMachine.NativeWordMemorySelectors
+import Airbender.Proofs.ReducedMachine.NativeWordMemoryFields
+import Airbender.Review.Circuits.ReducedMachine.WordMemoryTheorems
+import Tests.NativeReducedWordMemoryRouting
 import Tests.NativeReducedSupportedJumps
 import Airbender.Proofs.Trace.Families.ReducedMachine.JumpComposition
 import Airbender.Review.Trace.Families.ReducedMachine.JumpFetchedExecution
@@ -3426,3 +3431,13 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedSupportedJumps.unrestricted_initial_configuration
 #print axioms Tests.NativeReducedSupportedJumps.missing_misa_rejected
 #print axioms Tests.NativeReducedSupportedJumps.missing_security_rejected
+
+#print axioms Airbender.ReducedMachine.NativeWordMemorySelectorProofs.flags
+#print axioms Airbender.ReducedMachine.NativeWordMemoryFieldProofs.routing
+#print axioms Airbender.ReducedMachine.Native.word_memory_routing
+#print axioms Tests.NativeReducedWordMemoryRouting.masks
+#print axioms Tests.NativeReducedWordMemoryRouting.bit_positions
+#print axioms Tests.NativeReducedWordMemoryRouting.load_register_space_rejected
+#print axioms Tests.NativeReducedWordMemoryRouting.store_register_space_rejected
+#print axioms Tests.NativeReducedWordMemoryRouting.load_operand
+#print axioms Tests.NativeReducedWordMemoryRouting.store_operand
