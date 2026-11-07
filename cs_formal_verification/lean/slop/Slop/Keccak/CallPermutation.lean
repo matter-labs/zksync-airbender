@@ -8,7 +8,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-private theorem permutation_of_chain (states : Fin 650 → LaneState)
+theorem permutation_of_chain (states : Fin 650 → LaneState)
     (transitions : ∀ i : Fin 649, states ⟨i.val, by omega⟩ =
       microStep ⟨648 - i.val, by omega⟩ (states ⟨i.val + 1, by omega⟩)) :
     logicalLanes 0 (states 0) = keccakPermutation (logicalLanes 0 (states 649)) := by

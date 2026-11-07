@@ -10,7 +10,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-private theorem control_edges [Fact p.Prime] {data : Delegation.MemoryData p}
+theorem control_edges [Fact p.Prime] {data : Delegation.MemoryData p}
     (family : ∀ row ∈ data.rows, row.family = .keccak) :
     (data.steps.filter fun edge => edge.1.address = (Cell.register 10).addressCode) =
       data.rows.map (fun row => (readToken row.assignment importedConstraintsMemoryPorts[0],
@@ -28,7 +28,7 @@ private theorem control_edges [Fact p.Prime] {data : Delegation.MemoryData p}
     simp [Delegation.Row.memorySteps, Delegation.Row.ports, importedConstraintsMemoryPorts,
       readToken, MemoryAddress.code, Cell.addressCode, pairCode, Nat.pair_eq_pair]
 
-private theorem forced_path [Fact p.Prime] (hp : 4096 ≤ p)
+theorem forced_path [Fact p.Prime] (hp : 4096 ≤ p)
     {setup : Table (ZMod p) (fields 8)} {path : List (MemoryToken p)} {source : MemoryToken p}
     (size : path.length = 650) (start : path.head? = some source) (startWord : source.word = ⟨0, 0⟩)
     (steps : ∀ edge ∈ path.zip path.tail, ∃ w : Nat → ZMod p,

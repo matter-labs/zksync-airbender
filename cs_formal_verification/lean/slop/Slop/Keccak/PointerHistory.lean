@@ -6,7 +6,7 @@ namespace Airbender.Keccak.Proofs
 open Trace Arithmetic Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 
-private theorem pointer_copies {data : Delegation.MemoryData p}
+theorem pointer_copies {data : Delegation.MemoryData p}
     (family : ∀ row ∈ data.rows, row.family = .keccak) :
     ∀ edge ∈ data.steps, edge.1.address = (Cell.register 11).addressCode → edge.1.word = edge.2.word := by
   intro edge member address
