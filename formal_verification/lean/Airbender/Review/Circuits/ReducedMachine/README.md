@@ -513,3 +513,13 @@ now have derived architectural projection/uniqueness/clocks/ranges and
 [actual numerical results](../../Trace/Families/ReducedMachine/WordMemoryShadowResults.lean).
 The fixed ROM/original byte-image, projected row states/code-byte frames and retained
 Sail/common execution remain separate; every ignored shadow token stays in matching.
+
+[Exact native ROM bytes](../../Trace/Families/ReducedMachine/ROMImage.lean) now come
+from an explicit original Sail byte constructor for the actual8wordfixture/full
+UNIMP tail. Full public extraction/every aligned read and outside/register frames
+are derived, without arbitrary image/table identity. [Native LW ROM read](WordMemoryROMTheorems.lean)
+connects actual accepted address/ROMoutput to those constructed bytes; ignored
+shadow values stay independent. Projected chronological memory/Sail states,
+byte-code frames/retained clauses/common memory execution and physical fidelity
+remain open. [Nine tests](../../../../Tests/NativeReducedROMImage.lean) are not full
+positive accepted native memory witnesses.

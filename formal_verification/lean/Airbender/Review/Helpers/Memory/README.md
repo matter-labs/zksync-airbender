@@ -308,3 +308,11 @@ membership, not a source-range answer. Every source/read/write/state/control/rep
 terminal observation is derived; JAL x0 and readonly inputs/JALR aliases remain present.
 
 [Actual native LW/SW port spaces](../../Circuits/ReducedMachine/WordMemoryTheorems.lean) now show load second port and store third port are memory events. Values/addresses/shadow reads/oldreads and code preservation need new proofs; do not reuse all-events-GPR framing.
+
+[Actual reduced ROM input](ReducedMachineROMImage.lean) now constructs every
+original little-endian byte of the native8wordfixture/fullUNIMPtail. [Derived
+public facts](../../Trace/Families/ReducedMachine/ROMImage.lean) include full
+extraction/every aligned read and register/outside-byte preservation. Actual
+native LW ROM output is connected separately; ignored shadow values remain
+independent. This does not establish Rust/public/physical setup refinement,
+projected initialized row/Sail memory states or retained LOAD/STORE execution.

@@ -3224,3 +3224,25 @@ realization, memory/code-byte frames and retained LOAD/STORE/common execution re
 open. [Tests](Tests/NativeReducedShadowInputs.lean) include a valid shadow seed with
 missing Sail bytes; it is not an accepted nonempty native memory instruction or a
 Sail execution claim. No native defect, issue assumption, fix, axiom or parity.
+
+## Actual native fixed-ROM original byte construction
+
+[Constructed reference input](Airbender/Review/Helpers/Memory/ReducedMachineROMImage.lean)
+extracts the unchanged native eight-word public column and explicitly inserts its
+full UNIMP-padded four-MiB little-endian ROM into original Sail memory. [Public
+constructor consequences](Airbender/Review/Trace/Families/ReducedMachine/ROMImage.lean)
+derive full original extraction/every aligned read/register and outside-byte
+preservation. No expected read, missing-byte default, arbitrary public-image or
+native-table equivalence is assumed. This is a computed logical reference input,
+not physical loader/public preprocessing/boot/zero enforcement or general Rust
+refinement. Existing zero-padding constructors retain their separate scopes.
+
+[Actual accepted LW ROM reads](Airbender/Review/Circuits/ReducedMachine/WordMemoryROMTheorems.lean)
+now connect native effective-address alignment/bounds/fixed-ROM outputs to those
+constructed original bytes. The ignored shadow ledger retains every token and
+independent value. This does not yet establish projected chronological row/Sail
+memory states, original byte-code frames, retained LOAD/STORE or mixed execution.
+Native SW word-cell nonoverlap alone is not the missing byte-code frame.
+[Nine regressions](Tests/NativeReducedROMImage.lean) are constructor/reference and
+conditional-native rejections, not full positive NONEMPTY117-equation memory
+acceptance. No native defect, issue assumption, axiom or parity claim.

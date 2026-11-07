@@ -32,6 +32,49 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Exact native ROM to original Sail bytes (7 November 2026)
+
+[Native ROM input construction](Airbender/Review/Helpers/Memory/ReducedMachineROMImage.lean)
+extracts the actual eight public words from the unchanged native dataImage column,
+retains the unchanged UNIMP fallback and explicitly inserts all four MiB of
+little-endian bytes into original Sail memory. Registers and every outside byte
+are preserved. The constructor overwrites that ROM interval; it does not infer
+missing bytes or identify arbitrary logical decoder images with the fixed fixture.
+[Symbolic proofs](Airbender/Proofs/ReducedMachine/NativeROMImage.lean) derive EVERY
+aligned original ROM word read, including the complete repeated0xc0001073 tail,
+and the full original public wordROMImage extraction into a computed descriptor.
+An eight-slot exact kernel certificate and symbolic tail bridge connect these
+words to the ALREADY certified native ROM reference. The million-word vector and
+four-MiB map are not evaluated during the proof; no table-equivalence or desired
+per-row read premise is supplied. Unchanged PURE extraction/byte-read/insertion
+lemmas are reused after fresh actual fixture binding, without old standalone
+native constraints/masks/tables/acceptance transfer.
+
+[Short constructor root](Airbender/Review/Trace/Families/ReducedMachine/ROMImage.lean)
+exposes complete extraction/reads and register/outside-byte frames. [Actual native
+LW ROM read](Airbender/Review/Circuits/ReducedMachine/WordMemoryROMTheorems.lean)
+uses accepted native fixed-pool constraints, explicit LW mask and actual ROM-region
+restriction to derive the same original byte read at its native effective address.
+Alignment/bounds/lookup output derive from actual constraints. The ignored native
+shadow read and its independent public seed value are neither dropped nor equated
+with the original ROM bytes. This local result uses the constructed input state,
+not yet projected chronological native/Sail row states or retained LOAD execution.
+
+[Nine regressions](Tests/NativeReducedROMImage.lean) check all eight independent
+word values, first/last UNIMP padding, complete public extraction, register and
+RAM-byte preservation, an explicitly overwritten ROM byte, independent shadow123
+versus ROM21015, a still-missing byte above ROM, and corrupt native ROM output
+rejection. These constructor/reference/conditional-native checks are NOT complete
+positive NONEMPTY117-equation/22-lookup accepted LW/SW or original memory execution.
+
+NEXT derive actual architectural-versus-shadow event domains, projected initialized
+native/Sail memory states and byte-code frames, retained LW/SW clauses and common
+integration. The all-events-GPR frame remains inapplicable. Meaningful constructed
+reference input is not Rust loader/public preprocessing/physical-ROM refinement,
+boot/zero enforcement, a native defect/issue assumption or whole-machine parity.
+Production Rust/Sail/native data/dependencies remain unchanged; FINDINGS stays at
+zero established native defects.
+
 ## Independent native ROM-shadow initialization (7 November 2026)
 
 [Actual reduced shadow inputs](Airbender/Review/Helpers/Memory/ReducedMachineShadowImage.lean)
@@ -64,10 +107,10 @@ numerical/empty checks, NOT full positive NONEMPTY117-equation native memory row
 or original LOAD/STORE execution. Physical native boot/zero initialization is not
 asserted by this meaningful logical public input construction.
 
-NEXT bind exact native fixed8wordROM/padding to an original Sail byte-image constructor,
-then derive initialized architectural versus shadow event domains, projected native
+The exact fixed8wordROM/padding byte constructor is now checked above. NEXT derive
+initialized architectural versus shadow event domains, projected native
 memory/Sail states and code-byte frames, retained LOAD/STORE clauses and common
-mixed integration. Full fixed-ROM/original bytes, physical/Rust public export and
+mixed integration. General physical/Rust public export and projected
 Sail memory/execution remain OPEN. Do not equate independent shadow values with
 architectural ROM words or supply desired local reads/states/frames. Common six-profile
 execution still excludes LW/SW. No defect, issue assumption, production/Sail/data/

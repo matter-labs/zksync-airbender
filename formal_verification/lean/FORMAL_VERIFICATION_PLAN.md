@@ -179,9 +179,14 @@ Full combined row effects and execution remain pending. See the
    not yet an original byte-code frame. Independent public ROM-shadow initializer
    now constructs native seeds separately from original architectural byte reads;
    uniqueness/clocks/ranges/architectural seed projection and all native numerical
-   bounds/results derive under that boundary. NEXT exact native fixed-ROM/original
-   byte-image construction, actual projected memory/Sail event states and code-byte
-   transport, then retained clauses. Shadow seed values stay independent of ROM.
+   bounds/results derive under that boundary. Exact native fixed-ROM/original
+   byte-image construction is now checked: actual8publicwords plus complete UNIMP
+   tail construct all4MiB original Sail bytes, derive every aligned ROM read/full
+   public extraction and preserve registers/outside bytes. Actual accepted LW ROM
+   output now gives that byte read in the constructed state, independently of
+   ignored shadow values. NEXT actual architectural/shadow event domains,
+   projected initialized memory/Sail states and byte-code transport, then retained
+   clauses. General Rust/public/physical-ROM fidelity stays separate.
    Common supported execution excludes
    LW/SW; no all-events-GPR frame reuse.
    Other combined

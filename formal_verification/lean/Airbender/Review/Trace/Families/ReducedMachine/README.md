@@ -434,3 +434,12 @@ and [native numerical effects](WordMemoryShadowResults.lean) follow actual reduc
 write preservation/time induction. Missing architectural ROM bytes do not fabricate
 shadow reads. Fixed ROM/original bytes, filtered row/Sail states/code-byte frames/
 retained execution/common support remain open; this is not physical boot enforcement.
+
+[Exact native ROM construction](ROMImage.lean) now derives the complete original
+public extractor, every aligned fixture/padding word read and register/outside-byte
+frames. [Actual accepted LW ROM bytes](../../../Circuits/ReducedMachine/WordMemoryROMTheorems.lean)
+follow from the freshly checked address/lookup semantics in this constructed
+reference state. Shadow values stay independent. Next derive actual event-domain
+projection/chronological memory-Sail states/code-byte frames/retained LW/SW/common
+execution. No physical public preprocessing/ROM fidelity or full nonempty native
+memory witness is claimed.

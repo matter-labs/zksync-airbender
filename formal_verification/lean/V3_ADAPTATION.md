@@ -783,3 +783,24 @@ projected row/Sail states/code-byte frames/retained clauses/common integration r
 open; logical public shadow seeds are not physical boot enforcement. Missing-byte/
 independent-value/empty-boundary regressions are not nonempty native execution. No
 native finding, issue assumption, axiom, production fix or parity is claimed.
+
+## Actual native fixed-ROM byte construction (7 November 2026)
+
+[New reduced ROM constructor](Airbender/Review/Helpers/Memory/ReducedMachineROMImage.lean)
+extracts actual dataImage entries into unchanged PURE WordROM/UNIMP semantics and
+constructs every original little-endian byte in four MiB. [Symbolic proofs](Airbender/Proofs/ReducedMachine/NativeROMImage.lean)
+copy unchanged PURE read_rom_words_of_reads recursion and adapt the pure finite
+insertion pattern; original read_word_of_bytes is reused after fresh native
+fixture/padding binding. Eight-slot exact kernel and symbolic tail bridges avoid
+native-table equivalence and broad definitional evaluation. Full original public
+extraction/every aligned byte read/register/outside-byte preservation are derived.
+[New actual LW connection](Airbender/Proofs/ReducedMachine/NativeWordMemoryROMRead.lean)
+uses only freshly checked native address/lookup meanings, not old standalone masks,
+columns/tables/acceptance. Ignored shadow values stay independent. Thirteen exact
+parent0fe origins record six new modules/tests; no literal/native data is regenerated.
+[Nine tests](Tests/NativeReducedROMImage.lean) cover original fixture/padding/frames,
+independent shadow values/missing RAM bytes/corrupt native output. No complete
+positive NONEMPTY117-equation accepted memory witness or retained LOAD/STORE/common
+execution is claimed. Projected initialized memory/Sail states/byte-code frames and
+general Rust/public-export/physical-ROM fidelity remain separate. No native finding,
+issue assumption, production fix, new axiom, dependency change or parity claim.

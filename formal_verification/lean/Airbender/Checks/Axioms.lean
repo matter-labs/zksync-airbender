@@ -1,3 +1,9 @@
+import Airbender.Review.Helpers.Memory.ReducedMachineROMImage
+import Airbender.Proofs.ReducedMachine.NativeROMImage
+import Airbender.Proofs.ReducedMachine.NativeWordMemoryROMRead
+import Airbender.Review.Trace.Families.ReducedMachine.ROMImage
+import Airbender.Review.Circuits.ReducedMachine.WordMemoryROMTheorems
+import Tests.NativeReducedROMImage
 import Airbender.Review.Helpers.Memory.ReducedMachineShadowImage
 import Airbender.Proofs.Trace.Families.ReducedMachine.ShadowImage
 import Airbender.Proofs.Trace.Families.ReducedMachine.ShadowValues
@@ -3582,3 +3588,28 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedShadowInputs.initialized_shadow_ranges
 #print axioms Tests.NativeReducedShadowInputs.duplicate_shadow_rejected
 #print axioms Tests.NativeReducedShadowInputs.nonshadow_seed_rejected
+
+#print axioms Airbender.ReducedMachine.NativeROMProofs.fixture_words
+#print axioms Airbender.ReducedMachine.NativeROMProofs.fixture_prefix
+#print axioms Airbender.ReducedMachine.NativeROMProofs.fixture_word
+#print axioms Airbender.ReducedMachine.NativeROMProofs.byte_lookup
+#print axioms Airbender.ReducedMachine.NativeROMProofs.state_byte
+#print axioms Airbender.ReducedMachine.NativeROMProofs.word_read
+#print axioms Airbender.ReducedMachine.NativeROMProofs.read_rom_words_of_reads
+#print axioms Airbender.ReducedMachine.NativeROMProofs.complete_image
+#print axioms Airbender.ReducedMachine.NativeROMProofs.memory_update_registers
+#print axioms Airbender.ReducedMachine.NativeROMProofs.registers
+#print axioms Airbender.ReducedMachine.NativeROMProofs.outside_byte
+#print axioms Airbender.ReducedMachine.NativeROMProofs.numerical_read
+#print axioms Airbender.ReducedMachine.NativeWordMemoryROMProofs.rom_read
+#print axioms Airbender.ReducedMachine.Native.public_rom_image
+#print axioms Airbender.ReducedMachine.Native.word_load_rom_read
+#print axioms Tests.NativeReducedROMImage.all_fixture_reads
+#print axioms Tests.NativeReducedROMImage.padding_reads
+#print axioms Tests.NativeReducedROMImage.complete_public_extraction
+#print axioms Tests.NativeReducedROMImage.original_registers_preserved
+#print axioms Tests.NativeReducedROMImage.architectural_ram_bytes_preserved
+#print axioms Tests.NativeReducedROMImage.first_byte_constructed
+#print axioms Tests.NativeReducedROMImage.shadow_value_independent
+#print axioms Tests.NativeReducedROMImage.missing_ram_byte_remains_missing
+#print axioms Tests.NativeReducedROMImage.corrupt_native_rom_value_rejected
