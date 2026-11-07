@@ -9,7 +9,7 @@ import Slop.KeccakSplit.Chi5.Execution
 namespace Airbender.Keccak.Split.Native.Proofs
 set_option warningAsError true
 
-theorem row_contract : RowContract where
+theorem row_facts : RowFacts where
   writes := by
     intro row h active reads
     cases row with
@@ -42,6 +42,8 @@ theorem row_contract : RowContract where
       · exact ColumnParity.Proofs.addresses w index h active control pointerBound
       · exact ThetaRho.Proofs.addresses w index h active control pointerBound
       · exact Chi5.Proofs.addresses w index h active control pointerBound
+theorem row_contract : RowContract where
+  toRowFacts := row_facts
   executes := by
     intro row index before after cells events h active arguments reads history permutation observed
     cases row with

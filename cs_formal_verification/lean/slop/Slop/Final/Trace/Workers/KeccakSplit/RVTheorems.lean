@@ -15,7 +15,7 @@ theorem rv_operation_execution [Fact p.Prime] (inverse : 256 * (-7864320 : ZMod 
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     RVMemoryExecution data before cells ∧ ∀ row ∈ data.rows, RowEffects row := by
   obtain rfl := scale256_field inverse
-  exact Proofs.rv_operation_execution row_contract Split.Proofs.control_facts accepted inputs aligned
+  exact Proofs.rv_operation_execution row_facts Split.Proofs.control_facts accepted inputs aligned
 
 /-- RV sibling of `permutation_soundness`, with the delegate link to `RV.calls RV.f1600Calls`. -/
 theorem rv_permutation_soundness [Fact p.Prime] (inverse : 256 * (-7864320 : ZMod p) = 1)
@@ -30,7 +30,7 @@ theorem rv_permutation_soundness [Fact p.Prime] (inverse : 256 * (-7864320 : ZMo
         RV.Same s' ((states 361).setPC (initial.pc + BitVec.ofNat 32 (4 * RV.f1600Calls.length))) := by
   obtain rfl := scale256_field inverse
   obtain ⟨states, pointer, start, executes, pointerRead, laneReads, trace⟩ :=
-    rv_call_chain row_contract Split.Proofs.control_facts accepted inputs aligned
+    rv_call_chain row_facts Split.Proofs.control_facts accepted inputs aligned
   obtain ⟨input, output, mapping, result⟩ :=
     Call.Proofs.rv_permutation_of_executions states pointer executes pointerRead laneReads
   let chron : Nat → RV.State := fun m => states ⟨min m 361, by omega⟩

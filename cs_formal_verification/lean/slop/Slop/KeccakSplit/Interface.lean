@@ -10,8 +10,9 @@ import Human.Helpers.Memory.SailHistory
 namespace Airbender.Keccak.Split.Native.Proofs
 open Trace Reference.RiscV.Sail
 
-/-- Native facts of one active split row whose imported constraints hold. -/
-structure RowContract : Prop where
+/-- Native facts of one active split row whose imported constraints hold (the state-free part, used by the RV
+    proofs). -/
+structure RowFacts : Prop where
   /-- Every write is a canonical word, given canonical reads. -/
   writes : ∀ row : Row babyBearModulus,
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) row.constraints →
@@ -38,6 +39,8 @@ structure RowContract : Prop where
     ∀ lane : Fin 7, lane.val < Call.slotCount (kindAt index.val) → ∀ high : Bool,
       ∃ port ∈ row.ports, port.address.code row.assignment =
         (Call.laneCell (row.readWord 1).toBitVec (Call.slots index)[lane] high).addressCode
+/-- `RowFacts` plus the row's Sail execution. -/
+structure RowContract : Prop extends RowFacts where
   /-- In a Sail history of exactly the row's accesses, from a state where every
       port reads its native value and call `index`'s arguments hold, the row
       executes call `index`. -/

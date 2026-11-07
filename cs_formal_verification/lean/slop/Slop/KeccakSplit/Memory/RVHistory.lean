@@ -167,7 +167,7 @@ theorem rv_native_memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < 
     exact untouched edge present
 
 /-- Seed twin of `Operation.read_bounds`: matching transports canonical words to every read. -/
-theorem seed_read_bounds (contract : RowContract) (control : Split.Proofs.ControlFacts babyBearModulus)
+theorem seed_read_bounds (contract : RowFacts) (control : Split.Proofs.ControlFacts babyBearModulus)
     {data : MemoryData babyBearModulus} (accepted : MemoryAccepted data)
     (active : ∀ row ∈ data.rows, row.assignment row.columns.execute = 1)
     {cells : List Cell} (inputs : SeedInputs data cells) :
@@ -194,7 +194,7 @@ theorem seed_read_bounds (contract : RowContract) (control : Split.Proofs.Contro
   exact produced edge.1 (facts.matching.mem_iff.mpr
     (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨edge, present, rfl⟩))))
 
-theorem seed_row_reads_bounded (contract : RowContract) (control : Split.Proofs.ControlFacts babyBearModulus)
+theorem seed_row_reads_bounded (contract : RowFacts) (control : Split.Proofs.ControlFacts babyBearModulus)
     {data : MemoryData babyBearModulus} (accepted : MemoryAccepted data)
     (active : ∀ row ∈ data.rows, row.assignment row.columns.execute = 1)
     {cells : List Cell} (inputs : SeedInputs data cells)
@@ -205,7 +205,7 @@ theorem seed_row_reads_bounded (contract : RowContract) (control : Split.Proofs.
     (List.mem_flatMap.mpr ⟨row, member, List.mem_map.mpr ⟨port, by simpa using present, rfl⟩⟩)
 
 /-- RV twin of `Operation.operation_execution`. -/
-theorem rv_operation_execution (contract : RowContract) (control : Split.Proofs.ControlFacts babyBearModulus)
+theorem rv_operation_execution (contract : RowFacts) (control : Split.Proofs.ControlFacts babyBearModulus)
     {data : MemoryData babyBearModulus} {before : RV.State} {cells : List Cell}
     (accepted : MemoryAccepted data) (inputs : RVOperationInputs data before cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :

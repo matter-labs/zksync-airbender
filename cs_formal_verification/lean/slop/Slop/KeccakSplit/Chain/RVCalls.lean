@@ -115,7 +115,7 @@ theorem rv_cell_source {data : MemoryData p} {before : RV.State} {cells : List C
 
 /-- RV twin of `call_chain`: the call chain of a complete request on `RV.State`s, with its pointer, initial lane
     reads and final memory agreement. -/
-theorem rv_call_chain (contract : RowContract) (control : Split.Proofs.ControlFacts babyBearModulus)
+theorem rv_call_chain (contract : RowFacts) (control : Split.Proofs.ControlFacts babyBearModulus)
     {data : MemoryData babyBearModulus} {initial : RV.State} {cells : List Cell}
     (accepted : MemoryAccepted data) (inputs : RVCallInputs data initial cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :

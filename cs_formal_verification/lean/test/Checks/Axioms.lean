@@ -1311,6 +1311,7 @@ import Human.Import.Coefficients
 #print axioms Airbender.Keccak.Split.ThetaRho.SetupProofs.setupRow_eq
 #print axioms Airbender.Keccak.Split.Chi5.SetupProofs.setupRow_eq
 #print axioms Airbender.Keccak.Split.Proofs.control_facts
+#print axioms Airbender.Keccak.Split.Native.Proofs.row_facts
 #print axioms Airbender.Keccak.Split.Native.Proofs.row_contract
 #print axioms Airbender.Keccak.Split.Native.Proofs.memory_order
 #print axioms Airbender.Keccak.Split.Native.Proofs.native_memory_execution

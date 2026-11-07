@@ -50,11 +50,11 @@ end Airbender.Delegation
 namespace Airbender.Keccak.Split.Native
 open Trace
 
-/-- The split Keccak workers: every active row's writes are range-checked (`RowContract.writes`). -/
+/-- The split Keccak workers: every active row's writes are range-checked (`RowFacts.writes`). -/
 theorem writes_range_checked : WritesRangeCheckedClaim := by
   intro data accepted active row member
   exact Trace.Proofs.writesRangeChecked_of_ports
-    (Proofs.row_contract.writes row (accepted.constraints row member) (active row member))
+    (Proofs.row_facts.writes row (accepted.constraints row member) (active row member))
 
 end Airbender.Keccak.Split.Native
 
