@@ -122,6 +122,45 @@ struct ReducedFixed {
     tables: Vec<Region>,
 }
 
+/// A separately configured native reduced CSR region. Other pool regions and
+/// the original complete fixed fixture are deliberately not regenerated here.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReducedCSR {
+    version: u32,
+    field_modulus: u64,
+    profile: String,
+    delegation_csrs: Vec<u32>,
+    allow_non_determinism: bool,
+    generic_rows: usize,
+    tables: Vec<Region>,
+}
+
+fn export_reduced_csr(layout_path: &Path, delegation_csrs: Vec<u32>) -> ReducedCSR {
+    let id = TableType::SpecialCSRProperties as u32;
+    let table = cs::machine::machine_configurations::create_csr_table_for_delegation::<
+        Mersenne31Field,
+    >(true, &delegation_csrs, id);
+    let table = cs::tables::LookupWrapper::Dimensional3(table);
+    let mut rows = Vec::with_capacity(table.get_size());
+    table.dump_into::<4>(&mut rows, Some(id));
+    assert_eq!(rows.len(), 4096);
+    let layout: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
+    let offset = layout["table_offsets"][id as usize].as_u64().unwrap() as usize;
+    assert_eq!(offset, 1507585);
+    assert_eq!(layout["total_tables_size"], 5771521);
+    ReducedCSR {
+        version: 1,
+        field_modulus: MODULUS,
+        profile: "reduced_machine_csr_properties".into(),
+        delegation_csrs,
+        allow_non_determinism: true,
+        generic_rows: rows.len(),
+        tables: vec![Region { id, offset, data: matrix(&rows) }],
+    }
+}
+
 /// Materialize each native region once, in ID order. Avoid the driver cache and
 /// a simultaneous flattened copy of the four-million-row shift table.
 fn export_reduced_fixed(layout_path: &Path, image: Vec<u32>, delegation_csrs: Vec<u32>) -> ReducedFixed {
@@ -723,6 +762,18 @@ fn export(mut image: Vec<u32>, text: Vec<u32>) -> Artifact {
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().collect();
+    if args.len() == 5 && args[1] == "--reduced-csr" {
+        let delegation_csrs: Vec<u32> = serde_json::from_slice(&std::fs::read(&args[3])?)?;
+        if delegation_csrs.iter().any(|csr| *csr >= 4096) {
+            return Err(Error::new(ErrorKind::InvalidData, "expected 12-bit delegation CSR indices").into());
+        }
+        let artifact = export_reduced_csr(Path::new(&args[2]), delegation_csrs);
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: ReducedCSR = serde_json::from_slice(&bytes)?;
+        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        std::fs::write(&args[4], [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
     if args.len() == 3 && args[1] == "--reduced-layout" {
         use cs::cs::circuit::Circuit;
         use cs::machine::ops::unrolled::compile_unified_circuit_state_transition;

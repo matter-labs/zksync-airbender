@@ -151,3 +151,25 @@ The standard gate reproduces the pinned JSON byte for byte. Lean checks SB low-b
 placement, SH retention of the whole limb and SW/unused zero outputs. Full native
 acceptance, original instruction execution and physical argument binding remain
 separate. Shared codec, dependencies, limits and other exporter modes are unchanged.
+
+## Separate reduced runtime CSR region
+
+`--reduced-csr LAYOUT.json CSRS.json OUTPUT.json` calls the unchanged native
+`create_csr_table_for_delegation` API with nondeterminism enabled, materializing
+only4,096 CSR rows at actual reduced offset1507585. It preserves supplied public
+CSR values and validates12bit indices/compiled placement; it does not regenerate
+the complete fixed pool or alter existing fixture modes. No production code,
+codec, manifest or dependency changes are needed.
+
+Run `scripts/check_runtime_csr.py` from lean under bounded_fv.py with the existing
+3072MiB footprint/4096MiB resident/finite180second budget. It performs offline locked
+single-job cargo check/build, reads the exact pinned runtime u32/u16 allow-lists
+and native ABI constants, compares all4,096 rows to independent expected values,
+checks repeat/byte export and six invalid input/layout cases. `--write` is only
+for deliberate initial artifact generation. The runtime allow-list is1984/1991,
+not the old complete fixture's1988/1989, and does not include bigint1994.
+
+The separate strict Lean importer and regional kernel certificate retain exact
+public/configuration/literal boundaries. A runtime full-pool/selected CSR trace,
+original CSR/custom reference, caller/worker accounting and physical/general Rust
+refinement certificate is not inferred from this export.

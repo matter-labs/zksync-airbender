@@ -549,3 +549,12 @@ does not establish issuance, worker fulfillment or accounting. Native source
 words are not yet initialized original CSR reads; original public decoding/
 custom/nondeterminism/privilege/normal/fetched/common execution remains open.
 The existing seven-profile execution roots are unchanged and exclude CSR/MOP.
+
+## Runtime CSR setup prerequisite
+
+[A separately exported runtime CSR region](../../../Circuits/ReducedMachine/Tables/RuntimeCSRTheorems.lean)
+now has exact native row meaning for1984/1991, distinct from the old full-pool
+fixture1988/1989. Bigint1994 is outside this selected runtime target. The regional
+certificate does not supply a runtime pool/selected-query/public caller stream or
+worker/accounting/original execution connection. Existing execution roots stay
+on their unchanged explicit pools. Those native composition obligations remain next.

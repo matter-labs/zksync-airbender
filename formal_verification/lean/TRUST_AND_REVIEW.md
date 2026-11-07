@@ -3463,3 +3463,29 @@ use nondeterminism CSR+7=1991 and [bigint constants](../../common_constants/src/
 use +10=1994. These are not fixture keys1988/1989. No worker identity/composition
 or native defect follows. Actual runtime setup/ABI selection must be assessed
 before caller/worker accounting; no production or imported fixture is changed.
+
+## Separate actual runtime CSR regional boundary (7 November 2026)
+
+[The runtime CSR regional root](Airbender/Review/Circuits/ReducedMachine/Tables/RuntimeCSRTheorems.lean)
+uses separately exported native literal rows for source-pinned runtime allow-list
+1984/1991, not the original pool's fixture1988/1989. Native unified reduced u32/u16
+configuration and constant files are byte-checked against base67ee; the FV exporter
+calls unchanged native CSR construction with those explicit inputs. Bigint1994
+is excluded by this selected runtime configuration. This checks a concrete native
+constructor/configuration instance, not arbitrary Rust or runtime preprocessing.
+
+The importer validates profile/configuration/geometry/literal canonicality and
+emits same-read bytes; kernel row calculations establish ALL4,096 support and
+delegation meanings. Intake is not a semantic recipe. Scoped native export controls,
+strict importer controls and eight theorem regressions keep the distinction.
+No source/row output/state/worker answer or table-equivalence premise is assumed.
+The actual 117-equation circuit and old complete pool/artifacts remain unchanged.
+
+Only the runtime CSR REGION is certified here. Full runtime pool construction,
+native selected-query/trace/public decoder/source/issuance/worker accounting and
+original CSR/custom reference execution remain open. Existing local CSR and seven-
+profile roots are not silently transferred to another pool. B03/general public
+and physical setup binding remains open beyond this specific exported region;
+old shift/binop fixture identity is not inferred. Production Rust/Sail/dependencies,
+old fixtures and prior claims are preserved; no native defect, issue assumption,
+production fix, new axiom, cryptographic/completeness or parity claim follows.

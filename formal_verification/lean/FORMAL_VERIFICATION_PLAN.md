@@ -31,6 +31,30 @@ and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
+## Current separate runtime CSR-region checkpoint (7 November 2026)
+
+[Actual unified reduced runtime CSR data](Airbender/Review/Circuits/ReducedMachine/Tables/RuntimeCSRTheorems.lean)
+is now independently exported and kernel-certified for every4,096 rows:
+nondeterminism1984 and Blake2 CSR1991 supported, only1991 delegated. Pinned native
+runtime u32/u16 allow-lists contain these two values; bigint1994 is outside this
+selected target. The original full pool/1988-1989/eight-word fixture is preserved.
+A new FV-only CSR exporter mode, separate strict importer, eight theorem regressions,
+scoped native row/reproduction/negative controls and importer controls retain
+explicit source/configuration/geometry/literal/semantics boundaries. No production
+Rust, dependencies, original Sail or existing artifacts change.
+
+Do not repeat closed regional row/configuration checks or old local CSR/MOP/seven-
+profile certificates. The new regional root is NOT a complete runtime pool,
+accepted-trace query connection, original CSR decoding/execution or worker link.
+NEXT certify a runtime pool using actual stored regions and this independently
+exported CSR region, deriving selected native CSR membership/requests without
+an arbitrary-table equivalence premise; also derive original public CSR source/
+clock issuance before caller streams. Then assess native Blake2 worker ABI,
+constraints, fulfillment/converse/accounting and protocol boundaries. Preserve
+bigint's separate target/configuration, all native tokens and public inputs.
+General Rust/public/physical/cryptographic/completeness and machine terminal/init/
+teardown remain open. No defect/parity inference from scope gaps or counts.
+
 ## Current native CSR local checkpoint (7 November 2026)
 
 [The exact native special-CSR table](Airbender/Review/Circuits/ReducedMachine/Tables/CSRTheorems.lean)

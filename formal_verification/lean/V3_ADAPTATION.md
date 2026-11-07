@@ -1002,3 +1002,27 @@ native source ABI constants Blake2=1991 and bigint=1994. Read-only byte comparis
 of the three delegation-constant source files against base67ee passed. This is
 source planning, not a Lean worker/runtime setup certificate or a finding; preserve
 the imported fixture and assess actual native configuration before composition.
+
+## Separate native runtime CSR regional certificate (7 November 2026)
+
+Pinned unified reduced runtime allow-lists contain nondeterminism1984/Blake2CSR1991;
+bigint1994 is a separate target. A new FV-only exporter mode calls unchanged native
+CSR construction, materializes ONLY the4,096-row region and retains actual tag25/
+offset1507585/public configuration. The existing5,771,521-row pool/8word/1988-1989
+fixture and native circuit artifacts remain unchanged. No dependency/production
+Rust/Sail/codec change or heavy unchanged region regeneration.
+
+[Separate intake](Airbender/Import/RuntimeCSRSetup.lean) checks exact JSON/profile/
+configuration/geometry/canonical literals and emits same-read bytes. [The regional
+kernel certificate](Airbender/Proofs/ReducedMachine/NativeRuntimeCSR.lean) checks
+all rows symbolically, and the short root derives exact key/support/delegate
+meaning without any table equivalence or desired row output premise. Eight theorem
+regressions, strict importer controls and the scoped native reproduction/negative
+gate retain separate fidelity and semantics boundaries. Twelve exact parent-e05
+origins and four pinned native ABI/runtime sources record the adaptation.
+
+Runtime pool/query/accepted-trace/public original CSR/MOP decoding/reference/
+issuance/worker fulfillment/accounting and physical/general refinement/completeness/
+parity remain open. No old local CSR/seven-profile claim is transferred to the new
+region. No native defect/issue assumption/new axiom. Deliberate v3pinb292 and the
+separate originalcheckout9bdf/private Keccak audit remain unchanged.

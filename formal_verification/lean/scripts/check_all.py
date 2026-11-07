@@ -100,6 +100,8 @@ def main():
     if args.build_only:
         return
     bounded([sys.executable, "scripts/check_native_setup.py"], "native-setup-export")
+    bounded([sys.executable, "scripts/check_runtime_csr.py"], "runtime-csr-export", seconds=180)
+    bounded([*LEAN, "--run", "Tests/NativeRuntimeCSRImport.lean"], "runtime-csr-importer-tests", seconds=120)
     bounded([*LEAN, "--run", "Tests/ArtifactImport.lean"], "importer-tests")
     bounded([*LEAN, "--run", "Tests/ReducedMachineImport.lean"], "reduced-importer-tests")
     bounded([*LEAN, "--run", "Tests/ReducedSignHighImport.lean"], "reduced-sign-high-importer-tests")

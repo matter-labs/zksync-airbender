@@ -602,3 +602,13 @@ Thirteen [regressions](../../../../Tests/NativeReducedCSR.lean) include positive
 full-pool table membership and native six-equation slices, not complete accepted
 CSR rows. Original public CSR/custom/nondeterminism/privilege execution and
 initialized/common/caller/worker/accounting/protocol boundaries remain open.
+
+## Separate actual runtime CSR region
+
+[The runtime CSR root](Tables/RuntimeCSRTheorems.lean) checks all4,096 native
+regional rows for runtime allow-list1984/1991, only1991 delegated. It is separate
+from the preserved complete pool's fixture1988/1989 and excludes bigint1994.
+The scoped native exporter and strict importer preserve concrete data/source/
+configuration boundaries; eight [theorem regressions](../../../../Tests/NativeRuntimeCSR.lean)
+and importer controls check the distinction. Full runtime pool/query/trace/worker/
+reference/physical connections remain open; no equivalence transfers prior claims.

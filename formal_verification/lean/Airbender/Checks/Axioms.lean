@@ -1,3 +1,6 @@
+import Airbender.Proofs.ReducedMachine.NativeRuntimeCSR
+import Airbender.Review.Circuits.ReducedMachine.Tables.RuntimeCSRTheorems
+import Tests.NativeRuntimeCSR
 import Airbender.Review.Circuits.ReducedMachine.Tables.CSR
 import Airbender.Proofs.ReducedMachine.NativeCSRTable
 import Airbender.Review.Circuits.ReducedMachine.Tables.CSRTheorems
@@ -3889,3 +3892,15 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedCSR.oversized_abi_high_rejected
 #print axioms Tests.NativeReducedCSR.native_request_slices
 #print axioms Tests.NativeReducedCSR.partial_fixture_oracles
+
+#print axioms Airbender.ReducedMachine.NativeRuntimeCSRProofs.rows
+#print axioms Airbender.ReducedMachine.NativeRuntimeCSRProofs.values
+#print axioms Airbender.ReducedMachine.NativeRuntimeCSR.implementation
+#print axioms Tests.NativeRuntimeCSR.runtime_configuration
+#print axioms Tests.NativeRuntimeCSR.all_actual_rows
+#print axioms Tests.NativeRuntimeCSR.blake_and_nondeterminism
+#print axioms Tests.NativeRuntimeCSR.profiles_differ
+#print axioms Tests.NativeRuntimeCSR.fixture_key_rejected
+#print axioms Tests.NativeRuntimeCSR.bigint_key_rejected
+#print axioms Tests.NativeRuntimeCSR.nondeterminism_delegation_rejected
+#print axioms Tests.NativeRuntimeCSR.outside_domain_rejected

@@ -35,6 +35,55 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Separate actual runtime CSR region (7 November 2026)
+
+The pinned [unified reduced runtime constructor](../../circuit_defs/unrolled_circuits/unified_reduced_machine/src/lib.rs)
+uses an allow-list containing nondeterminism1984 and Blake2 CSR1991. Bigint1994
+is outside this selected target. A new FV-only exporter mode calls the unchanged
+native CSR generator on that source-derived configuration and exports only the
+4,096-row tag25 region at native offset1507585. The original complete 5,771,521-row
+pool, its eight-word image and delegation fixture1988/1989 remain unchanged.
+
+[The new short regional root](Airbender/Review/Circuits/ReducedMachine/Tables/RuntimeCSRTheorems.lean)
+now derives every key's exact support/delegation flags from the separately
+[exported actual literal data](artifacts/setup/reduced-runtime-csr-native.json).
+[The kernel certificate](Airbender/Proofs/ReducedMachine/NativeRuntimeCSR.lean)
+covers all4,096 rows using symbolic zero intervals and finite exceptional slots:
+only1984/1991 are supported and only1991 delegates. No foreign data is opaque,
+no table-equivalence premise is used and no expected row output is supplied.
+A separate pure interval lemma keeps calculation outside imported-record proofs
+at default limits.
+
+[The strict importer](Airbender/Import/RuntimeCSRSetup.lean) checks the selected
+public configuration, profile, exact geometry, JSON fields and canonical literal
+encoding, and emits the same-read data/source bytes. Row semantics are kernel
+obligations. Eight [theorem regressions](Tests/NativeRuntimeCSR.lean) preserve
+metadata/all-row participation/positive Blake2 and nondeterminism, distinguish
+fixture and runtime relations, and reject fixture1988/bigint1994/nondeterminism
+as delegation/outside12bit keys. [Importer controls](Tests/NativeRuntimeCSRImport.lean)
+reject crossed profiles/configurations, malformed geometry/encoding and extra
+fields while retaining the distinction between literal intake and semantics.
+The scoped [native reproduction gate](scripts/check_runtime_csr.py) checks the
+pinned u32/u16 runtime allow-lists, every native exported row, repeat/byte export
+and six malformed CLI/layout cases. New gates join the serial standard workflow.
+
+This certificate covers the actual runtime CSR REGION, not a complete runtime
+fixed pool or its placement in accepted native traces. Existing local CSR request
+and seven-profile execution roots continue to use the unchanged original pool;
+no coverage is transferred to the new region through an equivalence assumption.
+Runtime pool/source/decoder/row/worker connections, original CSR/MOP reference
+execution, issuance/fulfillment/accounting, physical setup and general refinement/
+cryptography/completeness remain open. Twelve exact parent-e05 source origins and
+four newly pinned native runtime/ABI source files record the adaptation. Production
+Rust/circuits/Sail, existing artifacts/fixture/dependencies are unchanged; no native
+defect, issue assumption, production fix, new axiom or parity claim.
+
+NEXT construct and certify the runtime pool/selected CSR query connection from
+these actual regional values and existing native regions, or derive the public
+CSR source/decoder/clock caller stream, before worker composition. Preserve the
+runtime target's Blake2-only delegation scope; do not silently add bigint or
+relabel old fixture keys. Other worker targets require their own checked setup.
+
 ## Actual native CSR table and local requests (7 November 2026)
 
 [The special-CSR certificate](Airbender/Review/Circuits/ReducedMachine/Tables/CSRTheorems.lean)
