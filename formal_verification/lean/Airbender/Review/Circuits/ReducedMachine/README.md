@@ -780,3 +780,13 @@ ordinary-table membership; membership/extraction remains explicit. Acceptance is
 checked on constructed setup observations, with no equality transfer from arbitrary
 tables or identification with fixed native ROM. [Split controls](../../../../Tests/NativePhysicalDecoderSetup.lean)
 retain a small hole fixture and a separate exact-capacity empty-image/tail test.
+
+## Native full-domain logical token boundary
+
+[The native ledger roots](TokenLedgerTheorems.lean) bind all ordinary main/worker/public
+tokens to the checked scalar product and retain exact precompression matching as
+an explicit logical trust boundary. Identical inactive incoming port/state tokens
+cancel only as duplicate-preserving multisets. Initialization/teardown, every worker
+access and caller requests remain. [Controls](../../../../Tests/NativeTokenLedger.lean) do not establish
+initialized worker history, active ranges/key refinement, fulfillment or physical
+cryptographic extraction. Original initialized execution interfaces are unchanged.

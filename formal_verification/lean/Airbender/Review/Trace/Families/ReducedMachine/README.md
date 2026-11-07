@@ -629,3 +629,13 @@ The existing theorem derives GPR/source/request/caller history and clock7. This
 executes no original CSR clause or delegated action. A paired inactive BODY
 witness still requests and is rejected by the active logical interface; faithful
 full-domain padding/filtering and global matching remain open, not native defects.
+
+## Native full-domain logical token boundary
+
+[The native ledger roots](../../../Circuits/ReducedMachine/TokenLedgerTheorems.lean) bind all ordinary main/worker/public
+tokens to the checked scalar product and retain exact precompression matching as
+an explicit logical trust boundary. Identical inactive incoming port/state tokens
+cancel only as duplicate-preserving multisets. Initialization/teardown, every worker
+access and caller requests remain. [Controls](../../../../../Tests/NativeTokenLedger.lean) do not establish
+initialized worker history, active ranges/key refinement, fulfillment or physical
+cryptographic extraction. Original initialized execution interfaces are unchanged.

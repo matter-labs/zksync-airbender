@@ -1,5 +1,51 @@
 # Verification status
 
+## Full-domain native token observations and logical filtering (7 November 2026)
+
+[The native token ledger](Airbender/Review/Circuits/ReducedMachine/TokenLedger.lean)
+constructs every ordinary main/worker contribution before compression: all32 public
+registers including x0 timestamps, public PC, unmasked initialization/teardown,
+three actual main ports and PC state, and all43 worker accesses. Native accepted
+body Booleanity justifies the actual execute choice: inactive main port/state
+contributions are the incoming tokens on BOTH sides. All8388607 ordinary main
+rows and1048575 ordinary rows per selected worker proof remain represented.
+
+[The calculations](Airbender/Proofs/ReducedMachine/NativeTokenLedger.lean) bind this
+exact ledger to the unchanged full auxiliary/global product balance. Exact tagged
+logical permutation is a separately named acceptance boundary, following pinned
+v3 Clean's explicit state/RAM matching boundary. It is NOT inferred from a
+single-challenge product, auxiliary sum, capacity bound or injective compression.
+No expected read/value/range/clock or issued/fulfilled worker stream is supplied.
+
+[Short public roots](Airbender/Review/Circuits/ReducedMachine/TokenLedgerTheorems.lean)
+derive scalar product balance from native accepted components, and prove that
+full logical matching is equivalent to matching after removing identical
+incoming inactive port/state token MULTISETS. This preserves duplicates and uses
+no division or nonzero-factor premise. Initialization/teardown and EVERY worker
+access remain; no caller request is filtered. Memory and PC projections follow
+from that same explicit logical relation. No initialized worker read, raw-clock
+bound, chronological history, active stage2-key refinement or accounting follows
+yet. Cryptographic extraction/physical codec/setup authentication remain separate.
+
+[Twelve focused controls](Tests/NativeTokenLedger.lean) check actual domains,
+port/public/worker token counts, active/inactive selection, unmasked init tokens,
+retained inactive CSR request1, duplicate cancellation and retained zero compressed
+factors. They are metadata/pure/reference/conditional controls; the CSR control
+reuses complete BODY evidence only. They are not full positive nonempty global,
+worker or physical proof witnesses, attacks, F02-F04 evidence or native defects.
+Four modules add27 explicit roots, preserving all5381 old roots/source bytes.
+Ten exact parent origins and one pinned-v3 boundary origin are recorded; all99
+native pins and prior intake/exporter/artifact/fixture/source bytes remain unchanged.
+No native generation or unchanged heavy replay was needed. Findings stay unchanged.
+
+Next: public initialization and chronological history on the actual combined
+logical ledger; active read/value/address/raw-clock bounds and worker key
+refinement, remaining decoder/request/padding enforcement and actual caller-worker
+issuance/fulfillment/accounting. Original CSR/MOP/worker execution, global
+init/teardown, general physical/refinement/cryptography/completeness and checked
+parity remain open.
+
+
 ## Constructed native physical decoder setup (7 November 2026)
 
 [The source-reference construction](Airbender/Review/Circuits/ReducedMachine/PhysicalDecoderSetup.lean)

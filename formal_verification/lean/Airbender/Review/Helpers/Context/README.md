@@ -175,3 +175,13 @@ now exercise actual117-equation/22-lookup acceptance,activity,state/memory match
 and original public seed/PC/decoder construction before fetched execution. Native
 clock/order/state/read/results remain derived. This concrete SLL/x0 evidence does
 not certify other combined profiles or universal physical/public/setup bindings.
+
+## Native full-domain logical token boundary
+
+[The native ledger roots](../../Circuits/ReducedMachine/TokenLedgerTheorems.lean) bind all ordinary main/worker/public
+tokens to the checked scalar product and retain exact precompression matching as
+an explicit logical trust boundary. Identical inactive incoming port/state tokens
+cancel only as duplicate-preserving multisets. Initialization/teardown, every worker
+access and caller requests remain. [Controls](../../../../Tests/NativeTokenLedger.lean) do not establish
+initialized worker history, active ranges/key refinement, fulfillment or physical
+cryptographic extraction. Original initialized execution interfaces are unchanged.

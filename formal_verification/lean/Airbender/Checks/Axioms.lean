@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.TokenLedger
+import Airbender.Proofs.ReducedMachine.NativeTokenLedger
+import Airbender.Review.Circuits.ReducedMachine.TokenLedgerTheorems
+import Tests.NativeTokenLedger
+
 import Airbender.Review.Helpers.Tables.NormalizeLast
 import Airbender.Proofs.Tables.NormalizeLast
 import Airbender.Review.Circuits.ReducedMachine.PhysicalDecoderSetup
@@ -6145,3 +6150,31 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativePhysicalDecoderSetup.normalized_last_is_not_padding
 #print axioms Airbender.Tests.NativePhysicalDecoderSetup.every_column_sum_zero
 #print axioms Airbender.Tests.NativePhysicalDecoderSetup.small_normalizer_control
+
+#print axioms Airbender.NativeTokenLedgerProofs.port_product
+#print axioms Airbender.NativeTokenLedgerProofs.row_product
+#print axioms Airbender.NativeTokenLedgerProofs.worker_product
+#print axioms Airbender.NativeTokenLedgerProofs.public_product
+#print axioms Airbender.NativeTokenLedgerProofs.main_product
+#print axioms Airbender.NativeTokenLedgerProofs.workers_product
+#print axioms Airbender.NativeTokenLedgerProofs.full_product
+#print axioms Airbender.NativeTokenLedgerProofs.accepted_product_balance
+#print axioms Airbender.NativeTokenLedgerProofs.row_partition
+#print axioms Airbender.NativeTokenLedgerProofs.full_partition
+#print axioms Airbender.NativeTokenLedgerProofs.matching_iff
+#print axioms Airbender.NativeTokenLedgerProofs.projected_matching
+#print axioms Airbender.NativeTokenLedger.native_full_token_products
+#print axioms Airbender.NativeTokenLedger.native_logical_active_matching
+#print axioms Airbender.NativeTokenLedger.native_memory_state_matching
+#print axioms Airbender.Tests.NativeTokenLedger.complete_native_domains
+#print axioms Airbender.Tests.NativeTokenLedger.four_port_state_tokens
+#print axioms Airbender.Tests.NativeTokenLedger.five_row_tokens
+#print axioms Airbender.Tests.NativeTokenLedger.all_worker_accesses
+#print axioms Airbender.Tests.NativeTokenLedger.public_registers_and_pc
+#print axioms Airbender.Tests.NativeTokenLedger.inactive_uses_incoming
+#print axioms Airbender.Tests.NativeTokenLedger.active_uses_outgoing
+#print axioms Airbender.Tests.NativeTokenLedger.inactive_initialization_not_filtered
+#print axioms Airbender.Tests.NativeTokenLedger.inactive_csr_request_retained
+#print axioms Airbender.Tests.NativeTokenLedger.identical_duplicates_cancel
+#print axioms Airbender.Tests.NativeTokenLedger.zero_factors_still_have_tokens
+#print axioms Airbender.Tests.NativeTokenLedger.complete_conditional_matching

@@ -1509,3 +1509,13 @@ initialized worker history remain open.
 now include a nonempty runtime1991/x0 fixture. Both execute values satisfy the
 complete117-equation/22-lookup BODY while retaining a request; body-only inactive
 filtering is therefore unavailable. Full physical/global padding remains separate.
+
+## Native full-domain logical token boundary
+
+[The native ledger roots](Airbender/Review/Circuits/ReducedMachine/TokenLedgerTheorems.lean) bind all ordinary main/worker/public
+tokens to the checked scalar product and retain exact precompression matching as
+an explicit logical trust boundary. Identical inactive incoming port/state tokens
+cancel only as duplicate-preserving multisets. Initialization/teardown, every worker
+access and caller requests remain. [Controls](Tests/NativeTokenLedger.lean) do not establish
+initialized worker history, active ranges/key refinement, fulfillment or physical
+cryptographic extraction. Original initialized execution interfaces are unchanged.
