@@ -1,6 +1,6 @@
 import Slop.UnifiedReduced.Binary
 import Slop.Arithmetic.WordBytes
-import Slop.Sail.Bytes
+import Slop.Arithmetic.SignExtend
 import Slop.Trace.BytePorts
 
 namespace Airbender.UnifiedReduced.Proofs
@@ -96,7 +96,7 @@ theorem binary_immediate_bytes [Fact p.Prime] (hp : 65536 < p)
   have upper (i : Fin 2) : w 57 = ((x.extractLsb' (16 + 8 * i.val) 8).toNat : ZMod p) := by
     apply ZMod.val_injective
     rw [ZMod.val_natCast, Nat.mod_eq_of_lt (by have := (x.extractLsb' (16 + 8 * i.val) 8).isLt; omega)]
-    exact signValue.trans (Reference.Sail.sign_extend_high_bytes imm i).symm
+    exact signValue.trans (sign_extend_high_bytes imm i).symm
   have low := Trace.Proofs.packed_bytes_unique (by omega) (small 0) (small 1) (targetSmall 0) (targetSmall 1)
     (show byte 0 + 256 * byte 1 = target 0 + 256 * target 1 by
       rw [show target 0 = w 8 from immediate.1.symm, show target 1 = w 9 from immediate.2.symm]

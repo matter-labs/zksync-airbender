@@ -5,9 +5,8 @@ import Slop.ShiftBinop.RVQuery
 /-! Row-level XOR/OR/AND, SLL/SRL/SRA and REV8 result in RV32 terms: the imported constraints with the decoder's
     selectors, tag and immediate columns force the destination word to be `RV.alu` (or `RV.rev8`) of the two read
     ports' words, or of the first and the immediate. Statements are Sail-free; the proofs reuse the row calculation
-    lemmas of `Soundness.lean`, `Shifts.lean` and `Ports.lean` (whose BitVec helpers are `shiftOperation`, built on the
-    Sail library's `rev8`, and the Sail library's `sign_extend`, both pure `BitVec` functions; see `shift_rev8` and
-    `rv_binary_immediate`). -/
+    lemmas of `Soundness.lean`, `Shifts.lean` and `Ports.lean` (whose BitVec helpers are `shiftOperation`, built on
+    `RV.rev8`, and `BitVec.signExtend`). -/
 
 namespace Airbender.ShiftBinop
 
@@ -167,21 +166,6 @@ theorem rv_shift_value {p : Nat} [Fact p.Prime] (hp : 262144 < p) {w : Nat → Z
   rw [code, amount] at result
   exact result
 
-/-- `shiftOperation`'s REV8 (the Sail library's byte loop) is `RV.rev8` (text of `rev8_eq`,
-    `ISA/Equiv/StepMop.lean`). -/
-theorem shift_rev8 (x : BitVec 32) : Verification.shiftOperation 5 x 0 = RV.rev8 x := by
-  simp only [Verification.shiftOperation, show (5 : Nat) ≠ 1 by decide, show (5 : Nat) ≠ 2 by decide,
-    show (5 : Nat) ≠ 3 by decide, ite_false]
-  simp only [SailRV32.Functions.rev8, Id.run, Sail.BitVec.length]
-  rw [forIn_eq_forIn']
-  simp only [ForIn'.forIn', IntRange.forIn']
-  repeat (rw [IntRange.forIn'.loop]; simp [Membership.mem])
-  dsimp only [pure]
-  apply BitVec.eq_of_getLsbD_eq; intro j hj
-  simp only [RV.rev8, BitVec.getLsbD_append, BitVec.getLsbD_extractLsb']
-  simp only [Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange']
-  interval_cases j <;> simp [Sail.BitVec.extractLsb]
-
 /-- One row with the decoder's selectors, tag and immediate columns: the destination word is the RV result of the
     two read ports' words (`rvValue`). For immediate forms and REV8 the second port reads x0, as zero. -/
 theorem rv_row_value {p : Nat} [Fact p.Prime] (hp : 262144 < p) {w : Nat → ZMod p}
@@ -225,7 +209,7 @@ theorem rv_row_value {p : Nat} [Fact p.Prime] (hp : 262144 < p) {w : Nat → ZMo
   all_goals
     rw [rv_shift_value hp h selected _ (by decide) funct3
       (rv_shift_immediate_amount (by omega) h selected (zeroRead (by decide)) (by decide : 0 < 32)
-        (by simpa using immediateLo)) (fun _ => rfl), shift_rev8]
-    simp [rvValue]
+        (by simpa using immediateLo)) (fun _ => rfl)]
+    simp [rvValue, Verification.shiftOperation]
 
 end Airbender.ShiftBinop.Proofs

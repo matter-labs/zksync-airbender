@@ -1,5 +1,6 @@
 import Slop.Sail.Binop
 import Slop.Arithmetic.ShiftAssembly
+import Slop.Sail.Bytes
 
 namespace Airbender.Reference.RiscV.Sail
 open Airbender.Reference.Sail
@@ -46,7 +47,7 @@ theorem retire_shift (input : Airbender.ShiftBinop.Input) (output : Output)
       | (rw [result]
          simp [Verification.shiftOperation, shiftCount, operation, form,
            Airbender.ShiftBinop.Operation.tag, prepared, sail_shift_left, sail_shift_right,
-           sail_shift_arithmetic, _root_.Sail.BitVec.extractLsb, SailRV32.Functions.log2_xlen, BitVec.extractLsb])
+           sail_shift_arithmetic, _root_.Sail.BitVec.extractLsb, SailRV32.Functions.log2_xlen, BitVec.extractLsb, rev8_eq])
   obtain ⟨after, write⟩ := write_success input.rd output.destination.toBitVec prepared
   have projected : run (writeResult input.rd output.destination) prepared = .ok SailRV32.Functions.RETIRE_SUCCESS after := by
     unfold writeResult

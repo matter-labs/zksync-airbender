@@ -1,13 +1,34 @@
 import Slop.ShiftBinop.Lookups
-import Slop.Sail.Bytes
+import Human.ISA.RV32
+import Mathlib.Tactic.IntervalCases
 
 namespace Airbender.Verification
 open Airbender.Arithmetic
 
--- Algebraic helpers for combining lookup outputs; Sail remains the ISA spec.
+-- Algebraic helpers for combining lookup outputs; the REV8 branch is our spec's `RV.rev8`.
 def shiftOperation (tag : Nat) (x : BitVec 32) (amount : Nat) : BitVec 32 :=
   if tag = 1 then x.shiftLeft amount else if tag = 2 then x.ushiftRight amount
-  else if tag = 3 then x.sshiftRight amount else SailRV32.Functions.rev8 x
+  else if tag = 3 then x.sshiftRight amount else RV.rev8 x
+
+set_option maxRecDepth 16384 in
+theorem rev8_bytes (x : BitVec 32) : RV.rev8 x =
+    ((x.extractLsb' 0 8) ++ (x.extractLsb' 8 8)) ++ ((x.extractLsb' 16 8) ++ (x.extractLsb' 24 8)) := by
+  apply BitVec.eq_of_getLsbD_eq
+  intro k hk
+  simp only [RV.rev8, BitVec.getLsbD_append, BitVec.getLsbD_extractLsb']
+  interval_cases k <;> simp
+
+/-- Numerical form used to assemble the circuit's four byte contributions. -/
+theorem rev8_value (x : BitVec 32) :
+    (RV.rev8 x).toNat =
+      16777216 * (x.extractLsb' 0 8).toNat + 65536 * (x.extractLsb' 8 8).toNat +
+      256 * (x.extractLsb' 16 8).toNat + (x.extractLsb' 24 8).toNat := by
+  have append_value {m n : Nat} (a : BitVec m) (b : BitVec n) :
+      (a ++ b).toNat = a.toNat * 2 ^ n + b.toNat := by
+    rw [BitVec.toNat_append, ← Nat.shiftLeft_add_eq_or_of_lt b.isLt, Nat.shiftLeft_eq]
+  rw [rev8_bytes, append_value, append_value, append_value]
+  norm_num
+  ring
 
 private theorem contribution_eq (tag : Nat) (valid : tag = 1 ∨ tag = 2 ∨ tag = 3 ∨ tag = 5)
     (x : BitVec 32) (amount : Nat) (reverse : tag = 5 → amount = 0) (i : Fin 4) :
@@ -33,8 +54,8 @@ private theorem contribution_eq (tag : Nat) (valid : tag = 1 ∨ tag = 2 ∨ tag
     rfl
   · rw [reverse rfl]
     change (BitVec.ofNat 32 (x.extractLsb' (8 * i.val) 8).toNat).shiftLeft (8 * (3 - i.val)) =
-      SailRV32.Functions.rev8 (byteChunk x i)
-    rw [widen, Reference.Sail.rev8_bytes]
+      RV.rev8 (byteChunk x i)
+    rw [widen, rev8_bytes]
     fin_cases i <;> simp only [byteChunk]
     all_goals
       apply BitVec.eq_of_getLsbD_eq
@@ -55,14 +76,14 @@ theorem shift_contribution_halves (tag : Nat) (valid : tag = 1 ∨ tag = 2 ∨ t
   let f := fun y : BitVec 32 => ((shiftOperation tag y amount).extractLsb' (16 * half.val) 16).setWidth 32
   have zero : f 0 = 0 := by
     rcases valid with rfl | rfl | rfl | rfl <;>
-      simp [f, shiftOperation, Reference.Sail.rev8_bytes]
+      simp [f, shiftOperation, rev8_bytes]
   have intersection : ∀ a b, f (a &&& b) = f a &&& f b := by
     intro a b
     rcases valid with rfl | rfl | rfl | rfl
     · simp [f, shiftOperation, BitVec.shiftLeft_and_distrib, BitVec.extractLsb'_and]
     · simp [f, shiftOperation, BitVec.ushiftRight_and_distrib, BitVec.extractLsb'_and]
     · simp [f, shiftOperation, BitVec.sshiftRight_and_distrib, BitVec.extractLsb'_and]
-    · simp only [f, shiftOperation, Nat.reduceEqDiff, ite_false, Reference.Sail.rev8_bytes]
+    · simp only [f, shiftOperation, Nat.reduceEqDiff, ite_false, rev8_bytes]
       fin_cases half
       all_goals
         apply BitVec.eq_of_getLsbD_eq
@@ -78,7 +99,7 @@ theorem shift_contribution_halves (tag : Nat) (valid : tag = 1 ∨ tag = 2 ∨ t
     · simp [f, shiftOperation, BitVec.shiftLeft_or_distrib, BitVec.extractLsb'_or]
     · simp [f, shiftOperation, BitVec.ushiftRight_or_distrib, BitVec.extractLsb'_or]
     · simp [f, shiftOperation, BitVec.sshiftRight_or_distrib, BitVec.extractLsb'_or]
-    · simp only [f, shiftOperation, Nat.reduceEqDiff, ite_false, Reference.Sail.rev8_bytes]
+    · simp only [f, shiftOperation, Nat.reduceEqDiff, ite_false, rev8_bytes]
       fin_cases half
       all_goals
         apply BitVec.eq_of_getLsbD_eq
@@ -117,12 +138,12 @@ theorem shift_contributions_value (tag : Nat) (valid : tag = 1 ∨ tag = 2 ∨ t
     have b1 := (x.extractLsb' 8 8).isLt
     have b2 := (x.extractLsb' 16 8).isLt
     have b3 := (x.extractLsb' 24 8).isLt
-    change (SailRV32.Functions.rev8 x).toNat =
+    change (RV.rev8 x).toNat =
       ((BitVec.ofNat 32 (x.extractLsb' 0 8).toNat) <<< 24).toNat +
       ((BitVec.ofNat 32 (x.extractLsb' 8 8).toNat) <<< 16).toNat +
       ((BitVec.ofNat 32 (x.extractLsb' 16 8).toNat) <<< 8).toNat +
       ((BitVec.ofNat 32 (x.extractLsb' 24 8).toNat) <<< 0).toNat
-    rw [Airbender.Reference.Sail.rev8_value]
+    rw [rev8_value]
     simp only [BitVec.toNat_shiftLeft, BitVec.toNat_ofNat, Nat.shiftLeft_eq]
     norm_num only [Nat.reducePow] at *
     omega

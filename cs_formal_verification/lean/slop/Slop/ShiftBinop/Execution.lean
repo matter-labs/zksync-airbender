@@ -152,7 +152,8 @@ theorem local_row_execution {p : Nat} [Fact p.Prime]
             w 9 = ((SailRV32.Functions.sign_extend (m := 32) imm).extractLsb' 8 8).toNat := by
           simpa [data, rowImmediate, form, binary, binaryImmediate, BitVec.extractLsb'_toNat,
             Nat.shiftRight_eq_div_pow, show operation ≠ .rev8 by intro e; simp [e, Operation.isShift] at binary] using immediate
-        simpa [input, form, binary] using binary_immediate_right_bytes (by omega) h
+        have extension : SailRV32.Functions.sign_extend (m := 32) imm = imm.signExtend 32 := rfl
+        simpa [input, form, binary, extension] using binary_immediate_right_bytes (by omega) h
           (by simpa [binary] using selected) operation.tag (binaryTags binary) funct3 imm packed
           (by simpa only [show Nat.pair 0 0 = 0 by decide] using zeroRead (by simp [form]))
     · intro shift

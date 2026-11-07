@@ -1,5 +1,6 @@
 import Slop.ShiftBinop.Soundness
 import Slop.Trace.BytePorts
+import Slop.Arithmetic.SignExtend
 
 namespace Airbender.ShiftBinop.Proofs
 open Arithmetic
@@ -108,13 +109,13 @@ theorem binary_immediate_right_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (selected : w 11 = 0 ∧ w 12 = 1) (tag : Nat)
     (validTag : tag = 4 ∨ tag = 6 ∨ tag = 7) (funct3 : w 10 = (tag : ZMod p))
     (imm : BitVec 12)
-    (immediate : w 8 = ((SailRV32.Functions.sign_extend (m := 32) imm).extractLsb' 0 8).toNat ∧
-      w 9 = ((SailRV32.Functions.sign_extend (m := 32) imm).extractLsb' 8 8).toNat)
+    (immediate : w 8 = ((imm.signExtend 32).extractLsb' 0 8).toNat ∧
+      w 9 = ((imm.signExtend 32).extractLsb' 8 8).toNat)
     (zeroRead : importedConstraintsMemoryPorts[1].readCode w = Nat.pair 0 0) :
     ∀ i : Fin 4, w (25 + i.val) +
       (if i.val = 0 then w 8 else if i.val = 1 then w 9 else w 35) =
-      ((SailRV32.Functions.sign_extend (m := 32) imm).extractLsb' (8 * i.val) 8).toNat := by
-  let x := SailRV32.Functions.sign_extend (m := 32) imm
+      ((imm.signExtend 32).extractLsb' (8 * i.val) 8).toNat := by
+  let x := imm.signExtend 32
   let byte (i : Fin 4) := w (25 + i.val) +
     (if i.val = 0 then w 8 else if i.val = 1 then w 9 else w 35)
   let target (i : Fin 4) : ZMod p := (x.extractLsb' (8 * i.val) 8).toNat
@@ -132,7 +133,7 @@ theorem binary_immediate_right_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   have upper (i : Fin 2) : w 35 = ((x.extractLsb' (16 + 8 * i.val) 8).toNat : ZMod p) := by
     apply ZMod.val_injective
     rw [ZMod.val_natCast, Nat.mod_eq_of_lt (by have := (x.extractLsb' (16 + 8 * i.val) 8).isLt; omega)]
-    exact signValue.trans (Reference.Sail.sign_extend_high_bytes imm i).symm
+    exact signValue.trans (sign_extend_high_bytes imm i).symm
   change Nat.pair (w 25 + 256 * w 26).val (w 27 + 256 * w 28).val = Nat.pair 0 0 at zeroRead
   have raw := Nat.pair_eq_pair.mp zeroRead
   have rawLow : w 25 + 256 * w 26 = 0 := by

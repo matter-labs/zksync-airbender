@@ -1,7 +1,6 @@
 import Slop.UnifiedReduced.RV.Binary
 import Slop.Arithmetic.WordBytes
 import Slop.Arithmetic.ShiftAssembly
-import Slop.UnifiedReduced.RV.ShiftArithmetic
 
 namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic
@@ -110,7 +109,7 @@ theorem shift_destination [Fact p.Prime] (hp : 262144 < p)
     (x : BitVec 32) (operand : ∀ i : Fin 4, leftByte w i = ((x.extractLsb' (8 * i.val) 8).toNat : ZMod p))
     (operation : (w 10).val = 1 ∨ (w 10).val = 2 ∨ (w 10).val = 3 ∨ (w 10).val = 5)
     (reverse : (w 10).val = 5 → (w 57 + w 8).val = 0) :
-    (Word.mk (w 50).val (w 51).val).toBitVec = Verification.RVShift.shiftOperation (w 10).val x (w 57 + w 8).val := by
+    (Word.mk (w 50).val (w 51).val).toBitVec = Verification.shiftOperation (w 10).val x (w 57 + w 8).val := by
   have queries := shift_query_values (by omega) holds selected other
   have bytes := queries.2.2.2
   have small (i j : Fin 4) : (w (58 + 4 * i.val + j.val)).val < 256 := by
@@ -126,7 +125,7 @@ theorem shift_destination [Fact p.Prime] (hp : 262144 < p)
   have hi := Verification.sum_byte_pairs hp (fun i j => w (60 + 4 * i.val + j.val)) (w 51)
     (by intro i j; simpa only [show 58 + 4 * i.val + (2 + j.val) = 60 + 4 * i.val + j.val by omega]
           using small i ⟨2 + j.val, by have := j.isLt; omega⟩) (by linear_combination high)
-  apply Verification.RVShift.shift_assembly (w 10).val operation x (w 57 + w 8).val reverse
+  apply Verification.shift_assembly (w 10).val operation x (w 57 + w 8).val reverse
     (fun i j => (w (58 + 4 * i.val + j.val)).val) (Word.mk (w 50).val (w 51).val)
   · intro i j
     rw [bytes i j, operand i, ZMod.val_natCast, Nat.mod_eq_of_lt (by have := (x.extractLsb' (8 * i.val) 8).isLt; omega)]

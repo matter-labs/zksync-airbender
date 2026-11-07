@@ -737,8 +737,9 @@ import Human.Import.Coefficients
 #print axioms SailRV32.Functions.execute_RTYPE
 #print axioms SailRV32.Functions.execute_ITYPE
 
-#print axioms Airbender.Reference.Sail.rev8_bytes
-#print axioms Airbender.Reference.Sail.rev8_value
+#print axioms Airbender.Verification.rev8_bytes
+#print axioms Airbender.Verification.rev8_value
+#print axioms Airbender.Reference.Sail.rev8_eq
 #print axioms SailRV32.Functions.execute_REV8
 
 #print axioms Airbender.WordMemory.Proofs.local_flags
@@ -774,7 +775,7 @@ import Human.Import.Coefficients
 #print axioms Airbender.Verification.subword_ram_values
 #print axioms Airbender.Verification.extend_subword_limbs
 #print axioms Airbender.Verification.subword_load_extension
-#print axioms Airbender.Verification.subword_ram_extension
+#print axioms Airbender.Verification.subword_ram_bounds
 #print axioms Airbender.SubwordMemory.Proofs.ram_output_bounds
 #print axioms Airbender.Verification.subword_packed_extension
 #print axioms Airbender.Verification.subword_extract
@@ -2296,7 +2297,6 @@ import Human.Import.Coefficients
 #print axioms Airbender.ShiftBinop.Proofs.rv_shift_register_amount
 #print axioms Airbender.ShiftBinop.Proofs.rv_shift_immediate_amount
 #print axioms Airbender.ShiftBinop.Proofs.rv_shift_value
-#print axioms Airbender.ShiftBinop.Proofs.shift_rev8
 #print axioms Airbender.ShiftBinop.Proofs.rv_row_value
 #print axioms Airbender.ShiftBinop.Proofs.rv_shift_row_operands
 #print axioms Airbender.ShiftBinop.Proofs.rv_shift_zero_read

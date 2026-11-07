@@ -356,7 +356,6 @@ theorem ram_output_bounds {p : Nat} [Fact p.Prime] (hp : 262144 < p)
   have query := ram_load_query h active load ram
   have tag : ((1 - w 11) * 42 + w 11 * 43) = ((if byte then 43 else 42 : Nat) : ZMod p) := by
     cases byte <;> simp [selected]
-  have extended := Verification.subword_ram_extension hp byte query tag
-  exact extended.1
+  exact Verification.subword_ram_bounds hp byte query tag
 
 end Airbender.SubwordMemory.Proofs

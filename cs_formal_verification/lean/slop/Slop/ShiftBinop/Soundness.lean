@@ -4,6 +4,7 @@ import Slop.ShiftBinop.Shifts
 import Slop.ByteTables
 import Slop.Arithmetic.Bytes
 import Slop.Sail.PC
+import Slop.Sail.Bytes
 
 namespace Airbender.ShiftBinop.Proofs
 open Airbender.Arithmetic
@@ -233,7 +234,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
       | (have reverse : input.operation = .rev8 := by rw [operation]
          have dest := shifted_destination hp h interface mapping (by rw [operation]; rfl)
          rw [dest]
-         simp [Verification.shiftOperation, reverse, Operation.tag, prepared])
+         simp [Verification.shiftOperation, reverse, Operation.tag, prepared, Airbender.Reference.Sail.rev8_eq])
       | (have right := Sail.rX_nextPC (pc := output.pc.toBitVec) input.rs2
            (interface.rightRead immediate (by rw [operation]; decide))
          rw [run_bind_of_ok _ _ _ _ _ right]

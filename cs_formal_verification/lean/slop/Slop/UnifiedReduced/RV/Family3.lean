@@ -141,7 +141,7 @@ private theorem shift_value {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     (valid : tag = 1 ∨ tag = 2 ∨ tag = 3 ∨ tag = 5) (funct3 : w 10 = (tag : ZMod p)) {n : Nat}
     (amount : (w 57 + w 8).val = n) (reverse : tag = 5 → n = 0) :
     (Word.mk (w 50).val (w 51).val).toBitVec =
-      Verification.RVShift.shiftOperation tag (Word.mk (w 36).val (w 37).val).toBitVec n := by
+      Verification.shiftOperation tag (Word.mk (w 36).val (w 37).val).toBitVec n := by
   have code : (w 10).val = tag := by
     rw [funct3, ZMod.val_natCast, Nat.mod_eq_of_lt (by omega)]
   have leftBytes := shift_left_bytes (by omega) byteInverse facts.core ⟨s26, s27⟩ other
@@ -159,7 +159,7 @@ theorem shift_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInverse : 
     (form : (rs2 = 0 ∧ imm.hi = 0 ∧ imm.lo < 32) ∨ (imm = ⟨0, 0⟩)) (reverse : tag = 5 → rs2 = 0 ∧ imm = ⟨0, 0⟩)
     (exec : ∀ n, (rs2 = 0 → n = imm.lo) → (rs2 ≠ 0 ∨ imm = ⟨0, 0⟩ → n = (s.getReg rs2 |>.extractLsb' 0 5).toNat) →
       ∃ next, RV.exec s i = some next ∧
-        RV.Same next (s.setReg rd (Verification.RVShift.shiftOperation tag (s.getReg rs1) n)).nextInstr) :
+        RV.Same next (s.setReg rd (Verification.shiftOperation tag (s.getReg rs1) n)).nextInstr) :
     RowStep w s after i := by
   obtain ⟨s26, s27, other, load, left, right, _, write, pc⟩ := family_three hp facts (by rw [data]) (Or.inl rfl)
   simp only [ite_true] at s26 s27

@@ -72,7 +72,7 @@ theorem subword_rom_bounds {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
   obtain ⟨i, _, _, low, high⟩ := rom_values hp byte h selected
   have canonical : (Word.mk (romData program byte i).1 (romData program byte i).2).Bounded := by
     dsimp only [romData]
-    exact (subword_load_extension byte _).1
+    exact (rv_subword_load_extension byte _).1
   have loSmall : (romData program byte i).1 < p := by
     have bound := canonical.1
     dsimp [limbBase] at bound

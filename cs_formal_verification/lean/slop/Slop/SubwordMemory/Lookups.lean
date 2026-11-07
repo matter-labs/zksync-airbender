@@ -1,6 +1,7 @@
 import Human.Helpers.Tables.Subword
 import Slop.Arithmetic.Word
 import Slop.Sail.Memory
+import Slop.ISA.RV.MemSubword
 
 namespace Airbender.Verification
 open Airbender.Arithmetic
@@ -224,35 +225,65 @@ theorem subword_load_extension (byte : Bool) (key : Nat) :
   have result := extend_subword_limbs byte (decide (key / 65536 % 2 = 1)) value bound
   simpa [subwordLoadLimbs, value] using result
 
-/-- RAM-load membership forces bounded output limbs and Sail's byte/halfword
-    extension. The key is read canonically from the imported lookup. -/
-theorem subword_ram_extension {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+/-- The table's extended-limb encoding is `RV.extendLoad` (twin of `extend_subword_limbs`). -/
+theorem rv_extend_subword_limbs (byte signed : Bool) (value : Nat)
+    (bound : value < (if byte then 256 else 65536)) :
+    let negative := signed = true ∧ (if byte then 128 else 32768) ≤ value
+    let result := Word.mk (value + if byte && negative then 65280 else 0)
+      (if negative then 65535 else 0)
+    result.Bounded ∧ result.toBitVec =
+      if byte then RV.extendLoad signed (BitVec.ofNat 8 value) else RV.extendLoad signed (BitVec.ofNat 16 value) := by
+  dsimp only
+  cases byte <;> cases signed
+  all_goals
+    simp at bound ⊢
+    constructor
+    · simp [Word.Bounded, limbBase]
+      first | omega | (split_ifs <;> omega)
+    · apply BitVec.eq_of_toNat_eq
+      simp only [Word.toBitVec, Word.value, limbBase, RV.extendLoad, Bool.false_eq_true, ite_false, ite_true,
+        BitVec.toNat_signExtend, BitVec.msb_eq_decide, BitVec.toNat_setWidth, BitVec.toNat_ofNat]
+      norm_num only [Nat.reducePow, Nat.reduceSub, Nat.reduceMul, Nat.reduceAdd, Bool.false_and,
+        Bool.true_and, Bool.and_true, Bool.and_false, Bool.decide_coe]
+      have canonical : value % 65536 = value := Nat.mod_eq_of_lt (by omega)
+      try rw [canonical]
+      first | omega | (split_ifs <;> norm_num at * <;> omega)
+
+/-- Twin of `subword_load_extension`. -/
+theorem rv_subword_load_extension (byte : Bool) (key : Nat) :
+    let value := if byte then (key % 65536) / (if key / 131072 % 2 = 1 then 256 else 1) % 256
+      else key % 65536
+    let data := subwordLoadLimbs byte key
+    (Word.mk data.1 data.2).Bounded ∧ (Word.mk data.1 data.2).toBitVec =
+      if byte then RV.extendLoad (decide (key / 65536 % 2 = 1)) (BitVec.ofNat 8 value)
+      else RV.extendLoad (decide (key / 65536 % 2 = 1)) (BitVec.ofNat 16 value) := by
+  let value := if byte then (key % 65536) / (if key / 131072 % 2 = 1 then 256 else 1) % 256
+    else key % 65536
+  have bound : value < (if byte then 256 else 65536) := by
+    cases byte <;> dsimp [value] <;> exact Nat.mod_lt _ (by decide)
+  have result := rv_extend_subword_limbs byte (decide (key / 65536 % 2 = 1)) value bound
+  simpa [subwordLoadLimbs, value] using result
+
+/-- RAM-load membership forces bounded output limbs. The key is read canonically from the imported lookup. -/
+theorem subword_ram_bounds {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)
     (h : (subwordTable program).Contains #[] entry)
     (selected : entry[8] = ((if byte then 43 else 42 : Nat) : ZMod p)) :
-    let key := entry[0].val
-    let value := if byte then (key % 65536) / (if key / 131072 % 2 = 1 then 256 else 1) % 256
-      else key % 65536
-    let output := Word.mk entry[1].val entry[2].val
-    output.Bounded ∧ output.toBitVec =
-      if byte then SailRV32.Functions.extend_value (!(decide (key / 65536 % 2 = 1))) (BitVec.ofNat 8 value)
-      else SailRV32.Functions.extend_value (!(decide (key / 65536 % 2 = 1))) (BitVec.ofNat 16 value) := by
-  obtain ⟨key, keyBound, keyEq, lo, hi⟩ := subword_ram_values hp byte h selected
-  have bound : key < p := by cases byte <;> simp at keyBound <;> omega
-  have keyVal : entry[0].val = key := by rw [keyEq, ZMod.val_natCast, Nat.mod_eq_of_lt bound]
-  have extended := subword_load_extension byte key
+    (Word.mk entry[1].val entry[2].val).Bounded := by
+  obtain ⟨key, _, _, lo, hi⟩ := subword_ram_values hp byte h selected
+  have bounded := (rv_subword_load_extension byte key).1
   have lowBound : (subwordLoadLimbs byte key).1 < p := by
-    have low := extended.1.1
+    have low := bounded.1
     change (subwordLoadLimbs byte key).1 < limbBase at low
     unfold limbBase at low
     omega
   have highBound : (subwordLoadLimbs byte key).2 < p := by
-    have high := extended.1.2
+    have high := bounded.2
     change (subwordLoadLimbs byte key).2 < limbBase at high
     unfold limbBase at high
     omega
-  simp only [lo, hi, keyVal, ZMod.val_natCast, Nat.mod_eq_of_lt lowBound, Nat.mod_eq_of_lt highBound]
-  exact extended
+  simp only [lo, hi, ZMod.val_natCast, Nat.mod_eq_of_lt lowBound, Nat.mod_eq_of_lt highBound]
+  exact bounded
 
 theorem subword_packed_extension (byte signed highByte : Bool) (half : Nat) (bound : half < 65536) :
     let key := half + 65536 * (if signed then 1 else 0) + 131072 * (if highByte then 1 else 0)

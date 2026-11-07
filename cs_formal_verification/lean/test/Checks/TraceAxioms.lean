@@ -838,7 +838,7 @@ import Slop.SubwordMemory.MemoryAccess
 #print axioms Tests.ShiftBinopPorts.unused_high_bytes
 #print axioms Airbender.Verification.binary_sign_lookup
 #print axioms Airbender.Trace.Proofs.packed_bytes_unique
-#print axioms Airbender.Reference.Sail.sign_extend_high_bytes
+#print axioms Airbender.Arithmetic.sign_extend_high_bytes
 #print axioms Airbender.ShiftBinop.Proofs.binary_sign_byte
 #print axioms Airbender.ShiftBinop.Proofs.binary_register_right_bytes
 #print axioms Airbender.ShiftBinop.Proofs.binary_immediate_right_bytes
