@@ -1,3 +1,7 @@
+import Airbender.Review.Circuits.Blake2Worker.MemoryKeys
+import Airbender.Proofs.Blake2Worker.NativeMemoryKeys
+import Airbender.Review.Circuits.Blake2Worker.MemoryKeysTheorems
+import Tests.NativeBlake2MemoryKeys
 import Airbender.Import.Blake2Processing
 import Airbender.Review.Circuits.Blake2Worker.ProcessingArtifact
 import Airbender.Review.Circuits.Blake2Worker.Processing
@@ -5710,3 +5714,26 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeBlake2Processing.active_conventions
 #print axioms Airbender.Tests.NativeBlake2Processing.mask_scaling
 #print axioms Airbender.Tests.NativeBlake2Processing.scaled_bit_boundary
+
+#print axioms Airbender.Blake2Worker.MemoryKeyProofs.descriptors
+#print axioms Airbender.Blake2Worker.MemoryKeyProofs.location_columns
+#print axioms Airbender.Blake2Worker.MemoryKeyProofs.zero_indirect
+#print axioms Airbender.Blake2Worker.MemoryKeyProofs.padding_address
+#print axioms Airbender.Blake2Worker.MemoryKeyProofs.padding_value
+#print axioms Airbender.Blake2Worker.MemoryKeyProofs.padding_time
+#print axioms Airbender.Blake2Worker.MemoryKeyProofs.padding_keys
+#print axioms Airbender.Blake2Worker.MemoryKeyProofs.padding_products
+#print axioms Airbender.Blake2Worker.Native.padding_memory_keys
+#print axioms Airbender.Blake2Worker.Native.padding_memory_products
+#print axioms Airbender.Tests.NativeBlake2MemoryKeys.complete_descriptor_order
+#print axioms Airbender.Tests.NativeBlake2MemoryKeys.state_and_message_bases
+#print axioms Airbender.Tests.NativeBlake2MemoryKeys.every_access_is_original
+#print axioms Airbender.Tests.NativeBlake2MemoryKeys.readonly_register_refresh
+#print axioms Airbender.Tests.NativeBlake2MemoryKeys.control_oldread_write
+#print axioms Airbender.Tests.NativeBlake2MemoryKeys.uninitialized_wide_pointer_boundary
+#print axioms Airbender.Tests.NativeBlake2MemoryKeys.stage_two_carry_boundary
+#print axioms Airbender.Tests.NativeBlake2MemoryKeys.stage_two_high_overflow
+#print axioms Airbender.Tests.NativeBlake2MemoryKeys.unused_keys_agree
+#print axioms Airbender.Tests.NativeBlake2MemoryKeys.wrong_unused_key_rejected
+#print axioms Airbender.Tests.NativeBlake2MemoryKeys.zero_factor_boundary
+#print axioms Airbender.Tests.NativeBlake2MemoryKeys.all_factors_retained

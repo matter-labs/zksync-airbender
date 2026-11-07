@@ -115,3 +115,26 @@ auxiliary/accumulator/accounting/converse and complete reference execution remai
 open. In particular this does not exclude multiplicity-one zero-clock workers.
 Convention-only positive/scaling slices are not full accepted worker witnesses,
 F03 evidence or native defects. No production fix or issue assumption is added.
+
+## Unused memory keys and products
+
+[Native key references](MemoryKeys.lean), [Short roots](MemoryKeysTheorems.lean), [Kernel bindings/calculations](../../../Proofs/Blake2Worker/NativeMemoryKeys.lean), [Regressions](../../../../Tests/NativeBlake2MemoryKeys.lean).
+
+All43 descriptors keep actual register/indirect order and every read/write side,
+including18 readonly timestamp refreshes and25 explicit writes/OLDREADs. Worker
+write time is the same imported processor740/741 for all43 accesses; no invented
+in-cycle offsets/order or alias deduplication. Native register indicator1/RAM0
+is distinct from main history address-space coding and needs a separate bridge.
+
+Stage-two references explicitly truncate base limbs to16bits, carry low offset
+overflow and return failure on high overflow. Quotient unit references use
+rawfield low+offset/high with the actual empty-carry metadata. Source pins cover
+unchanged helpers/driver/walk. These reviewed definitions are not general Rust/
+field representation/LDE/physical verifier refinement. Active keys are not equated
+without initialized bounds/alignment/no-carry. The stronger normalized processing
+contract derives memory zeros for unused rows, hence every address/key succeeds
+and both reference read/write keys agree. All43 affine factor products equal in
+arbitrary rings/challenges before division. No inverse/nonzero/compression
+injectivity, native auxiliary, global matching/issuance/converse/accounting or
+multiplicity-one zero-clock exclusion follows. Reference carry/wide-pointer/zero
+factor slices are not full accepted worker witnesses or native defects.

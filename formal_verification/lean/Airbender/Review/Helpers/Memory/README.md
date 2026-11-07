@@ -390,3 +390,9 @@ and allinactive memory-field zeroing under an explicit additional native
 individual-convention relation. This relation is separate from the352 local JSON
 equations and physical quotient/LDE/last-row enforcement. Worker keys/tokens,
 initialized active ranges/clocks, cancellation and issuance/accounting remain open.
+
+The [unused worker memory-key roots](../../Circuits/Blake2Worker/MemoryKeysTheorems.lean) retain all43 access/read/write
+sides and common processor clock, deriving stage2/quotient-unit reference key
+agreement and equal products before division under normalized processing
+acceptance. Active initialization/keys, native auxiliaries, full matching and
+issuance/accounting remain open; no main frames cross unproved worker actions.

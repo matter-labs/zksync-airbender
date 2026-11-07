@@ -3879,3 +3879,62 @@ JSON/publicexport/preprocessing/physicalROM/field/LDE/crypto/completeness/parity
 remain open. This is a new logical native-convention acceptance boundary, not an
 issue-handling restriction, fix, new axiom or whole-machine claim; FINDINGS and
 zero-established-defect status are unchanged.
+
+## Native Blake2 unused memory-key agreement (7 November 2026)
+
+[Short key/product roots](Airbender/Review/Circuits/Blake2Worker/MemoryKeysTheorems.lean)
+now derive unused-row reference-key agreement and equality of every memory factor
+from the existing stronger normalized processing contract. No expected address,
+key/read/value/bound/result/clock/order/state/schedule/request/worker answer,
+table identity, inverse, nonzero denominator or compression injectivity is supplied.
+This is not full logical memory matching or physical permutation enforcement.
+
+[Key observables](Airbender/Review/Circuits/Blake2Worker/MemoryKeys.lean) construct
+all43 actual register/indirect descriptors. Kernel [source bindings and proofs](Airbender/Proofs/Blake2Worker/NativeMemoryKeys.lean)
+retain native descriptor order, every old read and25 explicit written values.
+Both readonly register accesses and16 readonly message accesses still have write-side
+timestamp refreshes. ALL43 write sides use the same imported processor clock740/741;
+no per-port offset, temporal order, deduplication or alias rewrite is invented.
+The native key register indicator is literal1 for registers and0 for indirect RAM,
+with six challenge roles address low/high,time low/high,value low/high. Its conversion
+to the existing main history's different address-space coding remains separate.
+
+Reviewed stage-two address references preserve canonical-to-u16 truncation,
+offset carry into high and explicit high-overflow failure. Selected quotient
+unit references retain raw field low+offset/high for actual empty-carry metadata.
+They are not silently equated on active rows. The three unchanged native source
+files [stage2 helpers](../../prover/src/prover_stages/stage2_utils.rs),
+[43-access walk](../../prover/src/prover_stages/unrolled_prover/stage_2_ram_shared.rs)
+and [worker timestamp driver](../../prover/src/prover_stages/stage2.rs) were byte-compared
+to nativebase67ee and separately pinned. Existing quotient/constants pins are unchanged.
+These are reviewed source references, not general Rust/M31 representation/compiler/
+LDE/physical verifier refinement; no physical point is assumed unit-normalized.
+
+Derived inactive memory zeros imply actual base/time/read/write fields zero.
+Every selected offset is kernel-bound below128. Thus all43 stage-two address
+references succeed and agree with the quotient unit addresses; their read/write
+precompression tuples are equal. The complete43-factor write/read products are
+equal in any target ring/embedding/challenges, before division. Zero factors are
+allowed; this alone proves no accumulator transition, ratio1, global matching,
+worker issuance/converse/accounting or multiplicity-one zero-clock exclusion.
+
+Twelve [regressions](Tests/NativeBlake2MemoryKeys.lean) retain actual register/base/
+offset/OLDREAD/readonly clock coordinates, check all43 keys and products, source
+u16 carry/high-overflow boundaries and a wide-pointer reference mismatch. The
+wide-pointer65536 case and unaligned carry case are not complete accepted worker
+witnesses or native defects; active agreement still needs initialized16bit reads
+and source-derived alignment/no-carry. A zero-factor check prevents treating
+product equality as an invertible ratio. No importer/exporter/native artifact,
+literal, fixture, dependency, production or original-checkout source changed.
+
+NEXT derive actual worker auxiliary/accumulator acceptance and full43-access
+memory matching/initialization, active read/write/address ranges/raw clocks,
+active key normalization, reference/control/round/state/terminal effects and
+caller-worker issuance/fulfillment/converse/accounting/unified protocol. Preserve
+every readonly refresh/OLDREAD/alias/token and the actual common worker clock.
+Do not carry main GPR byte/RAM frames across unproved delegated actions. Full
+positive accepted worker witnesses, original CSR/MOP execution, v3F02/F03/F04
+broader-path retests, global padding/init/teardown/general Rust/compiler/JSON/
+publicexport/preprocessing/physicalROM/field/LDE/crypto/completeness/parity remain
+open. FINDINGS and zero-established-defect status are unchanged; no issue
+assumption, production fix, new axiom or whole-machine claim.
