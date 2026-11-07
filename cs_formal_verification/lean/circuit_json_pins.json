@@ -3,6 +3,7 @@
   "cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json": "0d02d11e855d79b0147c7d61f6e286ae497dc0373078a99ca8db960ec3a39795",
   "cs/compiled_circuits/blake2_g_function_layout_no_caches_gkr.json": "f1690703b14b47f3e32f24f11f392ebf92ba4d4c25c9d512b002965f813157e1",
   "cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json": "deef507de8726c5340bf0c55d3050dfef760f9090736bc42260d2ef76affec62",
+  "cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json": "de0f06874a6fe27c3f80e566f70062cce3627dad7879e8169998fca49ce9f4ab",
   "cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json": "b928a6a9f13821d6d630f00809211c174ae8e9dbfa06dc5f370d872d69ed9508",
   "cs/compiled_circuits/keccak_chi5_layout_no_caches_gkr.json": "bbabdba91f6056801d1572bcd9b046a0902fa9891e4a373c0315c7f5edb1b315",
   "cs/compiled_circuits/keccak_column_parity_layout_no_caches_gkr.json": "ce44bb685c7dcf5358d9fb455f5298ede747e3235bcc6f1f1245ab43ec522910",

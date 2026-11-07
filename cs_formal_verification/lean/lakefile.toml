@@ -208,6 +208,22 @@ roots = ["Human.Circuits.Blake2Round.Artifact"]
 globs = ["Human.Circuits.Blake2Round.Artifact"]
 needs = ["blakeRoundJson"]
 
+# InitsTeardowns: rebuilt when inits_and_teardowns_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "InitsTeardownsArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.InitsTeardowns.Artifact"]
+globs = ["Human.Circuits.InitsTeardowns.Artifact"]
+needs = ["initsTeardownsJson"]
+
+# UnifiedReduced inline inits/teardowns sets: rebuilt when unified_reduced_machine_layout_no_caches_gkr.json changes
+[[lean_lib]]
+name = "InitsTeardownsUnifiedArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.InitsTeardowns.UnifiedArtifact"]
+globs = ["Human.Circuits.InitsTeardowns.UnifiedArtifact"]
+needs = ["unifiedReducedJson"]
+
 # JumpBranchSlt: rebuilt when jump_branch_slt_layout_no_caches_gkr.json changes
 [[lean_lib]]
 name = "JumpBranchSltArtifact"
@@ -326,6 +342,11 @@ text = true
 [[input_file]]
 name = "blakeRoundJson"
 path = "../../cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "initsTeardownsJson"
+path = "../../cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json"
 text = true
 
 [[input_file]]
