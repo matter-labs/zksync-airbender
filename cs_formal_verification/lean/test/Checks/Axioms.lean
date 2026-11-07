@@ -5,6 +5,7 @@ import Slop.Final.Circuits.JumpBranchSlt.RVTheorems
 import Slop.Final.ISA.Theorems
 import Slop.Final.ISA.DelegationRuns
 import Slop.Final.ISA.Vectors
+import Slop.Final.Trace.Delegation.RVTheorems
 import Human.ISA.Sail.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
 import Slop.Final.Trace.Families.JumpBranchSlt.Theorems
@@ -2311,3 +2312,15 @@ import Human.Import.Coefficients
 #print axioms Airbender.UnifiedReduced.rv_execution_soundness
 #print axioms Airbender.UnifiedReduced.Proofs.RV.rv_trace_execution
 #print axioms Airbender.Trace.Proofs.rv_realizes
+#print axioms Airbender.Delegation.rv_native_memory_execution
+#print axioms Airbender.Delegation.rv_operation_memory_soundness
+#print axioms Airbender.Delegation.rv_memory_soundness
+#print axioms Airbender.Delegation.Proofs.rv_native_memory_execution
+#print axioms Airbender.Delegation.Proofs.rv_native_memory_execution_at_boundary
+#print axioms Airbender.Delegation.Proofs.rv_native_history
+#print axioms Airbender.Delegation.SeedProofs.memory_soundness
+#print axioms Airbender.Delegation.SeedProofs.operation_word_bounds
+#print axioms Airbender.Trace.Proofs.Transfer.rv_native_history_at_boundary
+#print axioms Airbender.Trace.Proofs.Transfer.rv_terminal_reads_at_boundary
+#print axioms Airbender.Trace.Proofs.rv_history_cell_frame
+#print axioms Airbender.Trace.Proofs.rv_history_access_execution

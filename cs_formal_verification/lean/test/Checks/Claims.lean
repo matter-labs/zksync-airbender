@@ -22,6 +22,7 @@ import Slop.Final.ISA.DelegationRuns
 import Slop.Final.ISA.Vectors
 import Slop.Final.Trace.Delegation.CallerTheorems
 import Slop.Final.Trace.Delegation.Theorems
+import Slop.Final.Trace.Delegation.RVTheorems
 import Slop.Final.Trace.Families.AddSub.Theorems
 import Slop.Final.Trace.Families.JumpBranchSlt.Theorems
 import Slop.Final.Trace.Families.MulDiv.Theorems
@@ -51,6 +52,7 @@ import Human.Helpers.Context.PCState.Theorems
 import Human.ISA.Sail.Theorems
 import Human.Trace.Delegation.CallerTheorems
 import Human.Trace.Delegation.Theorems
+import Human.Trace.Delegation.RVTheorems
 import Human.Trace.Families.AddSub.Theorems
 import Human.Trace.Families.JumpBranchSlt.Theorems
 import Human.Trace.Families.MulDiv.Theorems
@@ -130,6 +132,9 @@ example : Airbender.Delegation.Caller.RequestHashWindowSoundnessClaim := @Airben
 example : Airbender.Delegation.NativeMemoryExecutionClaim := @Airbender.Delegation.native_memory_execution
 example : Airbender.Delegation.OperationMemorySoundnessClaim := @Airbender.Delegation.operation_memory_soundness
 example : Airbender.Delegation.MemorySoundnessClaim := @Airbender.Delegation.memory_soundness
+example : Airbender.Delegation.RVNativeMemoryExecutionClaim := @Airbender.Delegation.rv_native_memory_execution
+example : Airbender.Delegation.RVOperationMemorySoundnessClaim := @Airbender.Delegation.rv_operation_memory_soundness
+example : Airbender.Delegation.RVMemorySoundnessClaim := @Airbender.Delegation.rv_memory_soundness
 example : Airbender.Trace.SailSoundnessClaim := @Airbender.Trace.sail_soundness
 example : Airbender.Trace.AirbenderSoundnessClaim := @Airbender.Trace.airbender_soundness
 example : Airbender.Trace.NativeBootSoundnessClaim := @Airbender.Trace.native_boot_soundness
@@ -253,6 +258,9 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.Delegation.native_memory_execution
 #print axioms Airbender.Delegation.operation_memory_soundness
 #print axioms Airbender.Delegation.memory_soundness
+#print axioms Airbender.Delegation.rv_native_memory_execution
+#print axioms Airbender.Delegation.rv_operation_memory_soundness
+#print axioms Airbender.Delegation.rv_memory_soundness
 #print axioms Airbender.Trace.sail_soundness
 #print axioms Airbender.Trace.airbender_soundness
 #print axioms Airbender.Trace.native_boot_soundness
