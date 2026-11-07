@@ -1,5 +1,52 @@
 # Circuit formal verification plan
 
+## Native decoder access and faithful inactive-request boundary (7 November 2026)
+
+[The decoder-access interface](Airbender/Review/Circuits/ReducedMachine/DecoderArguments.lean)
+now retains the actual typed quartic slot72 and all ten original decoder fields.
+[Its separate intake](Airbender/Import/ReducedDecoderAuxiliary.lean) reuses unchanged
+complete body/stage2 validation on the same94130 source bytes; it transfers no
+historical acceptance. The reviewed native denominator has PC-low coefficient1,
+nine linearization challenges, witness scaling before gamma, and the source term
+tau*(denominator*auxiliary-execute). The unit-normalized relation subtracts actual
+execute, independently of the delegation request multiplicity. Physical field/
+LDE/quotient extraction remains a separate fidelity boundary; unit normalization
+is not a claim that all physical evaluation points have tau1.
+
+[Short roots](Airbender/Review/Circuits/ReducedMachine/DecoderArgumentTheorems.lean)
+extend the existing same-main scalar/product/capacity interface on the EXACT SAME
+body rows and typed auxiliaries, preserving all8388607 ordinary rows and the same
+configured worker batch/public observations. They derive the decoder row equation
+and active pole exclusion, without table membership, expected query, active flag,
+caller filter, initialized read, worker stream or result premises. Inactive poles
+and auxiliary values are retained; no compression injectivity or matching follows.
+
+[The local padding certificate](Airbender/Proofs/ReducedMachine/NativeDecoderPadding.lean)
+checks the existing complete117-equation/22-lookup CSR1991/x0 body with execute0,
+request1 and decoder auxiliary0 for EVERY decoder challenge. Thus this individual
+decoder-access check also cannot justify inactive request filtering. This is a
+precise LOCAL interface limit, not table-multiplicity/sum/last-row/global/worker/
+physical acceptance, an accepted attack, F03 evidence, native defect or issue
+assumption. FINDINGS and zero-established-native-defect status remain unchanged.
+
+[Thirteen regressions](Tests/NativeDecoderArguments.lean) check complete local
+active/inactive acceptance, all nine roles, PC-low scaling, inactive poles and
+active-zero-auxiliary rejection. [Eight intake controls](Tests/NativeDecoderAuxiliaryImport.lean)
+check actual source binding and changed/absent/overlapping slots, width and
+historical-artifact rejection. Nine modules record13 exact parent origins and25
+added explicit audit roots; all5291 previous audit roots/source bytes remain.
+Already pinned aggregation/decoder native sources were byte-compared to67ee;
+no new native pin, old parser/acceptance/proof/exporter/artifact/fixture/dependency/
+production/Sail change, native generation or unchanged heavy replay was required.
+
+Next: actual decoder table multiplicities/sum/last-row and remaining native
+padding/global request enforcement, then faithful full-domain main/43-worker token
+matching/extraction/public initialization and initialized active ranges/raw clocks/
+stage2-key refinement and caller-worker accounting. The decoder-local result does
+not settle any of these global obligations. Original CSR/MOP and worker execution,
+physical/general refinement, cryptography, completeness and parity remain open.
+
+
 Backport the current formalization to Airbender v2 on dev while preserving its
 small review surface, directory roles, pinned references and explicit trust
 boundaries. This document is a snapshot of pending work; checked coverage lives

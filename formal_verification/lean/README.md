@@ -1,5 +1,12 @@
 # Circuit verification
 
+The [native decoder-access component](Airbender/Review/Circuits/ReducedMachine/DecoderArgumentTheorems.lean)
+now binds actual quartic72/execute and all ten decoder fields to the same full-domain
+main observations. Complete CSR body plus this individual decoder relation still
+admits execute0/request1 for every decoder challenge. This is a local interface
+limit; decoder table/global enforcement, initialized worker matching and parity
+remain open. See the [current status](VERIFICATION_STATUS.md).
+
 ## What is checked
 
 [Verification status](VERIFICATION_STATUS.md) lists v2 coverage and open tasks.

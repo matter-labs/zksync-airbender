@@ -752,3 +752,14 @@ all native memory aliases, original public decoding/initialization and derived
 caller clock7. Execute0 still requests in the BODY but rejects the active logical
 trace interface. This is no auxiliary/global/worker attack or native defect;
 faithful physical padding/filtering and full matching remain open.
+
+[Decoder access](DecoderArgumentTheorems.lean) now retains actual quartic72 and
+all ten original decoder fields on the SAME full-domain main rows/auxiliaries.
+[Proof calculations](../../../Proofs/ReducedMachine/NativeDecoderArguments.lean)
+derive the execute-weighted relation and active pole exclusion. The complete
+CSR body plus this individual relation admits execute0/request1 for every decoder
+challenge; [the local certificate](../../../Proofs/ReducedMachine/NativeDecoderPadding.lean)
+claims no table-multiplicity/sum/last-row/global/worker/physical acceptance or
+native defect. [Regressions](../../../../Tests/NativeDecoderArguments.lean) and
+[intake controls](../../../../Tests/NativeDecoderAuxiliaryImport.lean) preserve
+that boundary. Global faithful inactive filtering and initialized matching remain open.

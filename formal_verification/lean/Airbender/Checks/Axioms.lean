@@ -1,3 +1,11 @@
+import Airbender.Review.Circuits.ReducedMachine.DecoderAuxiliaryColumns
+import Airbender.Import.ReducedDecoderAuxiliary
+import Airbender.Review.Circuits.ReducedMachine.DecoderAuxiliaryArtifact
+import Airbender.Review.Circuits.ReducedMachine.DecoderArguments
+import Airbender.Proofs.ReducedMachine.NativeDecoderArguments
+import Airbender.Proofs.ReducedMachine.NativeDecoderPadding
+import Airbender.Review.Circuits.ReducedMachine.DecoderArgumentTheorems
+import Tests.NativeDecoderArguments
 import Airbender.Proofs.ReducedMachine.NativeCSRPositiveWitness
 import Airbender.Proofs.ReducedMachine.NativeCSRBodyPadding
 import Airbender.Review.Circuits.ReducedMachine.BodyPaddingTheorems
@@ -6029,3 +6037,29 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeCSRPositive.actual_caller_clock
 #print axioms Airbender.Tests.NativeCSRPositive.inactive_body_still_requests
 #print axioms Airbender.Tests.NativeCSRPositive.corrupted_request_rejected
+
+#print axioms Airbender.ReducedMachine.NativeDecoderArgumentProofs.same_source
+#print axioms Airbender.ReducedMachine.NativeDecoderArgumentProofs.geometry
+#print axioms Airbender.ReducedMachine.NativeDecoderArgumentProofs.query_fields
+#print axioms Airbender.ReducedMachine.NativeDecoderArgumentProofs.row_equation
+#print axioms Airbender.ReducedMachine.NativeDecoderArgumentProofs.active_denominator
+#print axioms Airbender.ReducedMachine.NativeDecoderArgumentProofs.inactive_product
+#print axioms Airbender.ReducedMachine.NativeDecoderArgumentProofs.joint_effects
+#print axioms Airbender.ReducedMachine.NativeDecoderPaddingProofs.inactive_local
+#print axioms Airbender.ReducedMachine.NativeDecoderPaddingProofs.inactive_observations
+#print axioms Airbender.ReducedMachine.NativeDecoderArguments.decoder_access
+#print axioms Airbender.ReducedMachine.NativeDecoderArguments.same_main_decoder_arguments
+#print axioms Airbender.ReducedMachine.NativeDecoderArguments.inactive_request_local_decoder
+#print axioms Airbender.Tests.NativeDecoderArguments.unit_argument
+#print axioms Airbender.Tests.NativeDecoderArguments.actual_geometry
+#print axioms Airbender.Tests.NativeDecoderArguments.actual_query
+#print axioms Airbender.Tests.NativeDecoderArguments.complete_local
+#print axioms Airbender.Tests.NativeDecoderArguments.inactive_all_challenges
+#print axioms Airbender.Tests.NativeDecoderArguments.inactive_request_retained
+#print axioms Airbender.Tests.NativeDecoderArguments.active_denominator_nonzero
+#print axioms Airbender.Tests.NativeDecoderArguments.inactive_decoder_product
+#print axioms Airbender.Tests.NativeDecoderArguments.inactive_pole
+#print axioms Airbender.Tests.NativeDecoderArguments.all_nine_roles
+#print axioms Airbender.Tests.NativeDecoderArguments.pc_low_literal
+#print axioms Airbender.Tests.NativeDecoderArguments.nonunit_scaling
+#print axioms Airbender.Tests.NativeDecoderArguments.active_zero_auxiliary_rejected

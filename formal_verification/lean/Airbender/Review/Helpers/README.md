@@ -146,3 +146,9 @@ compose with full worker products and public register/PC contributions without
 factor cancellation or an execute-one premise. Token matching, initialization/
 active bounds and faithful caller padding/filter/history remain open; existing
 logical execution scopes and physical/general refinement boundaries are unchanged.
+
+The [native decoder argument](../Circuits/ReducedMachine/DecoderArguments.lean)
+uses the unchanged ten-field query and separately typed quartic72. Its execute
+multiplicity is distinct from delegation request multiplicity. The full-domain
+source-reference component supplies no decoder membership, inactive request
+filter or extraction/matching result; those global boundaries remain explicit.

@@ -1,0 +1,5 @@
+import Airbender.Import.ReducedDecoderAuxiliary
+
+namespace Airbender.ReducedMachine.Native
+import_native_reduced_decoder_auxiliary decoderAuxiliaryLayout from "artifacts/circuits/reduced-native-layout.json"
+end Airbender.ReducedMachine.Native

@@ -564,3 +564,10 @@ compose with full worker products and public register/PC contributions without
 factor cancellation or an execute-one premise. Token matching, initialization/
 active bounds and faithful caller padding/filter/history remain open; existing
 logical execution scopes and physical/general refinement boundaries are unchanged.
+
+The [native decoder-access extension](../Circuits/ReducedMachine/DecoderArgumentTheorems.lean)
+retains every ordinary physical-domain observation in its normalized source
+interface. Complete body plus individual decoder access admits execute0/request1;
+it supplies no faithful caller filter or active logical execution trace. Existing
+initialized execution/history roots and their explicit scopes remain unchanged;
+no Sail frame crosses unproved delegated actions.
