@@ -41,4 +41,12 @@ def initialStateRV (before : RV.State) (timestamp : ZMod p × ZMod p) :
     PCState.State p :=
   PCState.boundary before.pc timestamp
 
+/-- RV sibling of `InitialProfile` (`Helpers/Memory/Initialization.lean`): PC 0, all registers 0, all tracked RAM 0
+    (shadow RAM below `ROM_END` included, as the native seed). The ROM image (`rom`) holds the public program. -/
+structure RVInitialProfile (initial : RV.State) (cells : List Cell) : Prop where
+  pc : initial.pc = 0
+  registers : ∀ index, (Cell.register index).readRV initial = some 0
+  /-- All of RAM starts at 0, the shadow RAM below `ROM_END` included (`RV.State.RamStartsZero`). -/
+  ram : initial.RamStartsZero
+
 end Airbender.Trace

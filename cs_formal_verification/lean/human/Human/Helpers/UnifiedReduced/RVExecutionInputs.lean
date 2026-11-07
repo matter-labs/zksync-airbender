@@ -1,6 +1,6 @@
 import Human.Helpers.UnifiedReduced.RVProgram
 import Human.Circuits.UnifiedReduced.Tables.SetupRV
-import Human.Trace.RVExecution
+import Human.Helpers.Memory.InitialImageRV
 import Human.Helpers.Memory.Native
 
 /-! RV siblings of `BootInputsWith`/`ExecutionInputsWith` (`NativeROM.lean`, `ExecutionInputs.lean`): the public
