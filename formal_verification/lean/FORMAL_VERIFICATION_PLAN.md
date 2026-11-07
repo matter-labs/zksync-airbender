@@ -31,6 +31,79 @@ and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Selected main/worker auxiliary geometry is separately typed and checked; unmodeled protocol semantics remain open.
 
+## Native public memory boundary and worker products (7 November 2026)
+
+[The public boundary root](Airbender/Review/Circuits/ReducedMachine/MemoryBoundaryTheorems.lean)
+connects every returned selected worker's complete ordinary-row memory products
+to the native unified statement's returned main grand claims and public register/
+PC contributions. This is a reviewed source-reference multiplicative component;
+it does not establish full token matching or initialized worker reads.
+
+[The interface](Airbender/Review/Circuits/ReducedMachine/MemoryBoundary.lean)
+retains all32 initial and final register keys, including x0. The native register
+helper uses initial value0/time0 for every register and literal register-indicator
+coefficient1; all six shared memory-challenge roles remain. Public final values
+and PC are full32-bit words split by natural16-bit limbs before casting to the
+field. Public timestamps remain observed base-field limbs: no19-bit range or
+raw-u32/native Mersenne31 representation refinement is assumed. The public x0
+check concerns its value; its timestamp is retained and is not forced zero.
+
+The separate PC-state factor uses PC low with coefficient1, PC high and both
+timestamp challenges, plus gamma. The pinned native initial PC is0 and its
+initial timestamp is4, split at19bits. This source boundary is distinct from
+arbitrary initial-PC logical execution roots and does not change their scope.
+
+[The native helpers](../../prover/src/definitions/mod.rs) compute initial-product
+multiplied by the successful inverse of each final boundary product. The explicit
+accepted-operation relations retain both inverse results; their equations derive
+boundary denominator nonzeroness. Individual worker factors are not assumed
+nonzero. [The unchanged constants re-export](../../common_constants/src/lib.rs)
+and the helper source are newly compared with exact nativebase Git objects and
+pinned, bringing native-source pins to98. Existing register-count, challenge-index,
+initial-PC/timestamp and unified-statement pins remain unchanged. These source
+pins are not a general Rust/M31Quartic/raw-word codec proof.
+
+[Calculations](Airbender/Proofs/ReducedMachine/NativeMemoryBoundary.lean) normalize
+the actual native fold of main grand claims, worker grand claims, register
+contribution and PC contribution, checked equal to1. Successful inverse equations
+clear the two boundary denominators. The unchanged worker43-chain/full-domain
+proof then derives each worker claim times all read factors equals all write
+factors. Pure list transport combines every returned proof and all43 accesses on
+all1048575 ordinary rows without evaluating that domain, dividing by worker
+factors, cancelling zero factors or assuming compression injectivity.
+
+Main claims remain opaque FULL returned grand-product observables, including the
+state/masking/initialization families; they are not relabeled RAM-only ratios or
+identified with actual main-row memory constraints. Configured worker metadata,
+shared challenges, complete normalized worker acceptance and all readonly/OLDREAD/
+write factors remain. The accepted global component supplies no desired worker
+stream, token matching or per-row read/value/range/key/clock/state/schedule/count/
+request/result answer. Scalar product balance remains weaker than precompression
+multiset equality, initialization, active ranges, issuance or accounting. Native
+Rust/ProofOutput/FFT/LDE/quotient/transcript/cryptographic extraction and other
+statement configurations/checks remain separate. No main GPR/RAM frame crosses
+an unproved delegated action.
+
+Fourteen [regressions](Tests/NativeMemoryBoundary.lean) cover all32 factors,
+full-RV32 splitting before field reduction, initial PC time4, retained x0 time7,
+a positive BOUNDARY-HELPER-only case, both pole rejections, factor roles, a scalar
+product collision, and complete conditional worker/global product roots. They are
+pure/reference/conditional checks, not complete positive native main/worker
+witnesses, physical attacks, v3F02/F03/F04 retests or defects. Four new modules
+record nine exact parent origins and27 new explicit roots. All prior intake,
+exporter, artifact, literal, fixture, dependency and production bytes remain;
+no new importer gate, native generation or closed heavy-certificate replay.
+
+NEXT bind actual main memory/state/masking/initialization auxiliary relations and
+public grand boundaries to these returned main claims before full main/worker
+token matching and initialized histories. Faithful full-domain caller padding/
+filter/history, full43-token worker matching, active read/write/address/raw-clock
+bounds and stage2/quotient key refinement remain open. Worker round/reference/
+terminal effects, complete positive witnesses, original CSR/MOP execution,
+global initialization/teardown, physical/general refinement/cryptography/
+completeness/parity remain open. FINDINGS and zero-established-defect status
+are unchanged; no production fix, issue assumption or project axiom.
+
 ## Configured native worker capacity and caller component (7 November 2026)
 
 [The selected capacity roots](Airbender/Review/Circuits/Blake2Worker/CapacityTheorems.lean)

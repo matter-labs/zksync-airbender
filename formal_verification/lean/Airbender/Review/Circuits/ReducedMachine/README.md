@@ -703,3 +703,15 @@ This is a source-reference normalized component, not a whole native verifier or
 issued/matched execution. No inactive auxiliary contribution is discarded. Native
 matching/initialization and faithful padding/filter/history remain necessary
 before active caller/worker streams, bounds or accounting can be established.
+
+[Native public memory-boundary composition](MemoryBoundaryTheorems.lean) now
+connects every selected worker's full43-by-1048575 read/write factor products to
+the statement's main grand claims and32-register/PC boundary contributions.
+[Observables/accepted component](MemoryBoundary.lean) retain x0's timestamp,
+full32-bit public value/PC splitting before field cast and native initial PC0/time4.
+Successful boundary inverse relations derive their denominator checks; no worker
+nonzero/injectivity/cancellation premise. Main grand claims remain full opaque
+protocol outputs, not main RAM-only ratios. Main auxiliary/state/mask/init claim
+bindings, full token matching/initialization, active ranges/keys and physical
+refinement remain open. Fourteen pure/reference/conditional regressions include
+a positive helper-only boundary, not a complete native witness or defect.

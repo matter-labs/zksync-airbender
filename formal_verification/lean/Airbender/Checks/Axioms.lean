@@ -1,3 +1,7 @@
+import Airbender.Review.Circuits.ReducedMachine.MemoryBoundary
+import Airbender.Proofs.ReducedMachine.NativeMemoryBoundary
+import Airbender.Review.Circuits.ReducedMachine.MemoryBoundaryTheorems
+import Tests.NativeMemoryBoundary
 import Airbender.Review.Circuits.Blake2Worker.Capacity
 import Airbender.Proofs.Blake2Worker.NativeCapacity
 import Airbender.Review.Circuits.Blake2Worker.CapacityTheorems
@@ -5881,3 +5885,31 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeBlake2Capacity.complete_conditional_multiplicity
 #print axioms Airbender.Tests.NativeBlake2Capacity.count_word_counter
 #print axioms Airbender.Tests.NativeBlake2Capacity.complete_configured_caller_rows
+
+#print axioms Airbender.ReducedMachine.NativeMemoryBoundaryProofs.word_bounds
+#print axioms Airbender.ReducedMachine.NativeMemoryBoundaryProofs.initial_pc
+#print axioms Airbender.ReducedMachine.NativeMemoryBoundaryProofs.initial_register_factor
+#print axioms Airbender.ReducedMachine.NativeMemoryBoundaryProofs.final_register_factor
+#print axioms Airbender.ReducedMachine.NativeMemoryBoundaryProofs.multiply_fold
+#print axioms Airbender.ReducedMachine.NativeMemoryBoundaryProofs.worker_fold
+#print axioms Airbender.ReducedMachine.NativeMemoryBoundaryProofs.clear_boundary_inverses
+#print axioms Airbender.ReducedMachine.NativeMemoryBoundaryProofs.boundary_nonzero
+#print axioms Airbender.ReducedMachine.NativeMemoryBoundaryProofs.public_claim_balance
+#print axioms Airbender.ReducedMachine.NativeMemoryBoundaryProofs.list_product_balance
+#print axioms Airbender.ReducedMachine.NativeMemoryBoundaryProofs.worker_products
+#print axioms Airbender.ReducedMachine.NativeMemoryBoundaryProofs.complete_worker_balance
+#print axioms Airbender.ReducedMachine.NativeMemoryBoundary.unified_worker_memory_balance
+#print axioms Airbender.Tests.NativeMemoryBoundary.all_registers_retained
+#print axioms Airbender.Tests.NativeMemoryBoundary.full_rv32_value_split
+#print axioms Airbender.Tests.NativeMemoryBoundary.word_split_before_field_reduction
+#print axioms Airbender.Tests.NativeMemoryBoundary.initial_pc_timestamp_four
+#print axioms Airbender.Tests.NativeMemoryBoundary.register_initial_time_zero
+#print axioms Airbender.Tests.NativeMemoryBoundary.x0_refresh_time_retained
+#print axioms Airbender.Tests.NativeMemoryBoundary.readonly_x0_value_check_only
+#print axioms Airbender.Tests.NativeMemoryBoundary.native_register_factor_roles
+#print axioms Airbender.Tests.NativeMemoryBoundary.native_pc_low_unscaled
+#print axioms Airbender.Tests.NativeMemoryBoundary.register_pole_rejected
+#print axioms Airbender.Tests.NativeMemoryBoundary.pc_pole_rejected
+#print axioms Airbender.Tests.NativeMemoryBoundary.scalar_product_not_matching
+#print axioms Airbender.Tests.NativeMemoryBoundary.complete_conditional_worker_product
+#print axioms Airbender.Tests.NativeMemoryBoundary.complete_conditional_global_balance

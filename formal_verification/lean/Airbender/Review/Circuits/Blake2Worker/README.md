@@ -209,3 +209,11 @@ initialization and active key refinement are next; no main frame crosses an
 unproved delegated action. Fourteen pure/reference/conditional regressions are
 not full positive native witnesses or defect/F02-F04 evidence. No production,
 artifact, old intake, exporter, dependency or literal data changes.
+
+The [native public memory-boundary component](../ReducedMachine/MemoryBoundaryTheorems.lean)
+now combines the unchanged full43-chain/full-domain worker products with actual
+returned-claim and32-register/PC source boundary factors. All returned workers,
+readonly refreshes, OLDREADs, writes and inactive rows remain; no worker factor
+is cancelled or assumed nonzero. Main grand claims remain full opaque protocol
+outputs. This is not token matching/initialized memory, active key/clock bounds,
+issuance/accounting or physical Rust/field/quotient/refinement evidence.

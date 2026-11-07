@@ -129,3 +129,12 @@ field modulus, with at most2048 selected proofs. No inactive auxiliary value is
 dropped; capacity is not an issued count or matching/accounting certificate.
 Initialized padding/filter/history, full43-token matching, active key/read/clock
 refinement and physical/global transcript/setup/dispatch enforcement remain open.
+
+The [native public memory-boundary component](../Circuits/ReducedMachine/MemoryBoundaryTheorems.lean) combines all selected worker
+read/write products with the actual returned-main-claim fold and32-register/PC
+source contributions. Public full32-bit values split before field casting;
+x0 timestamps and PC initial time4 remain. Successful inverse-operation relations
+clear only boundary denominators, retaining zero worker factors. Main grand
+claims still need actual main state/memory/masking/initialization auxiliary
+bindings; product balance does not establish token matching or initialized
+histories/active bounds/accounting. Existing logical execution scopes remain.
