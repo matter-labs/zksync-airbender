@@ -57,41 +57,69 @@ def spec5 (n : Nat) : Nat :=
   else if n < 606208 then 57
   else 0
 
-open Airbender.Import.Setup.Proofs
+open Airbender.Import.Setup Airbender.Import.Setup.Proofs
 
 abbrev col0Spec (n : Nat) : Int := Int.ofNat (spec0 n)
-
-def col0Longs : List (Nat × Shape) :=
-  [(0, .periodic 256 1 256), (65536, .periodic 128 1 128), (81920, .periodic 512 1 512), (344064, .periodic 256 1 256), (409600, .periodic 256 1 256), (475136, .periodic 256 1 256), (540672, .periodic 128 1 128), (557056, .periodic 128 1 128), (573440, .periodic 128 1 128), (589824, .periodic 16 1 1024), (606208, .affine 442368 0 0)]
-
-
 abbrev col1Spec (n : Nat) : Int := Int.ofNat (spec1 n)
-
-def col1Longs : List (Nat × Shape) :=
-  [(0, .periodic 256 0 256), (65536, .periodic 129 0 128), (82048, .periodic 512 0 512), (344192, .periodic 768 0 256), (540800, .periodic 383 0 128), (589824, .periodic 16 0 1024), (606208, .affine 442368 0 0)]
-
-
 abbrev col2Spec (n : Nat) : Int := Int.ofNat (spec2 n)
-
-def col2Longs : List (Nat × Shape) :=
-  [(344064, .affine 65536 0 0), (409600, .affine 65536 1 0), (475136, .affine 65536 2 0), (540672, .affine 16384 0 0), (557056, .affine 16384 1 0), (573440, .affine 16384 2 0), (589824, .periodic 128 0 128), (606208, .affine 442368 0 0)]
-
-
 abbrev col3Spec (n : Nat) : Int := Int.ofNat (spec3 n)
-
-def col3Longs : List (Nat × Shape) :=
-  [(0, .affine 344065 0 0), (589824, .periodic 2048 0 8), (606208, .affine 442368 0 0)]
-
-
 abbrev col4Spec (n : Nat) : Int := Int.ofNat (spec4 n)
-
-def col4Longs : List (Nat × Shape) :=
-  [(0, .affine 589825 0 0), (606208, .affine 442368 0 0)]
-
-
 abbrev col5Spec (n : Nat) : Int := Int.ofNat (spec5 n)
 
+/- Long blocks of each imported column, matched by shape: the import's grid blocks and the
+   affine runs (every block of these columns). -/
+def col0Longs : List (Nat × Shape) :=
+  [(0, .grid 65536 (.digit 256 256)),
+    (65536, .grid 16384 (.digit 128 128)),
+    (81920, .grid 262144 (.digit 512 512)),
+    (344064, .grid 196608 (.digit 256 256)),
+    (540672, .grid 49152 (.digit 128 128)),
+    (589824, .grid 16384 (.digit 1024 16)),
+    (606208, .affine 442368 0 0)]
+
+def col1Longs : List (Nat × Shape) :=
+  [(0, .grid 65536 (.digit 1 256)),
+    (65536, .grid 16384 (.digit 1 128)),
+    (81920, .grid 262144 (.digit 1 512)),
+    (344064, .grid 196608 (.digit 1 256)),
+    (540672, .grid 49152 (.digit 1 128)),
+    (589824, .grid 16384 (.digit 128 8)),
+    (606208, .affine 442368 0 0)]
+
+def col2Longs : List (Nat × Shape) :=
+  [(0, .grid 65536 (.xorDigits 256 1 256)),
+    (65536, .grid 16384 (.xorDigits 128 1 128)),
+    (81920, .grid 262144 (.xorDigits 512 1 512)),
+    (344064, .grid 196608 (.digit 65536 3)),
+    (540672, .grid 49152 (.digit 16384 3)),
+    (589824, .grid 16384 (.digit 8 16)),
+    (606208, .affine 442368 0 0)]
+
+def col3Longs : List (Nat × Shape) :=
+  [(0, .affine 65536 0 0),
+    (65536, .affine 16384 0 0),
+    (81920, .affine 262144 0 0),
+    (344064, .grid 196608 (.xorDigits 256 1 256)),
+    (540672, .grid 49152 (.xorDigits 128 1 128)),
+    (589824, .grid 16384 (.digit 1 8)),
+    (606208, .affine 442368 0 0)]
+
+def col4Longs : List (Nat × Shape) :=
+  [(0, .affine 65536 0 0),
+    (65536, .affine 16384 0 0),
+    (81920, .affine 262144 0 0),
+    (344064, .affine 196608 0 0),
+    (540672, .affine 49152 0 0),
+    (589824, .grid 16384 .xor4x3),
+    (606208, .affine 442368 0 0)]
+
 def col5Longs : List (Nat × Shape) :=
-  [(0, .affine 65536 4 0), (65536, .affine 16384 19 0), (81920, .affine 262144 20 0), (344064, .affine 196608 55 0), (540672, .affine 49152 56 0), (589824, .affine 16384 57 0), (606208, .affine 442368 0 0)]
+  [(0, .affine 65536 4 0),
+    (65536, .affine 16384 19 0),
+    (81920, .affine 262144 20 0),
+    (344064, .affine 196608 55 0),
+    (540672, .affine 49152 56 0),
+    (589824, .affine 16384 57 0),
+    (606208, .affine 442368 0 0)]
 
 end Airbender.Blake2Round.SetupProofs

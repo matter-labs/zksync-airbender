@@ -1,10 +1,10 @@
 import Human.Import.SetupBlocks
 import Mathlib.Tactic.Ring
 
-/- Row meaning of compressed setup columns without expanding them.
-   Short blocks are checked row by row by a Boolean walk (run by the kernel in
-   separate modules); long blocks are matched against an affine or periodic shape
-   whose agreement with the row formula is proved algebraically. -/
+/- Row meaning of compressed setup columns without expanding them. A Boolean scan (run by
+   the kernel) checks short blocks row by row; long blocks (the import's grid blocks, long
+   affine runs) are matched against a listed shape whose agreement with the row formula is
+   proved algebraically. -/
 
 namespace Airbender.Import.Setup.Proofs
 
@@ -14,19 +14,6 @@ open Airbender.Import.Setup
 def total : List Block → Nat
   | [] => 0
   | b :: bs => b.len + total bs
-
-theorem decode_append (xs ys : List Block) (n : Nat) :
-    decode (xs ++ ys) n = if n < total xs then decode xs n else decode ys (n - total xs) := by
-  induction xs generalizing n with
-  | nil => simp [total]
-  | cons b bs ih =>
-    simp only [List.cons_append, decode, total]
-    by_cases h : n < b.len
-    · simp [h, show n < b.len + total bs by omega]
-    · simp only [h, ite_false]; rw [ih]
-      by_cases h' : n - b.len < total bs
-      · simp [h', show n < b.len + total bs by omega]
-      · simp [h', show ¬ n < b.len + total bs by omega, Nat.sub_sub]
 
 /-- A block agrees with `spec` on the rows it covers, starting at row `s`. -/
 def BlockOk (spec : Nat → Int) (s : Nat) (b : Block) : Prop :=
@@ -82,10 +69,12 @@ def checkPeriodic (spec : Nat → Int) (stride : Int) (vs : List Int) : Nat → 
   | 0, _, _ => true
   | n + 1, s, off => checkVals spec s off vs && checkPeriodic spec stride vs n (s + vs.length) (off + stride)
 
+/-- Row-by-row check of a short block; grid blocks are only matched by shape. -/
 def checkBlock (spec : Nat → Int) (s : Nat) : Block → Bool
   | .affine n first step => checkAffine spec step n s first
   | .dense vs => checkVals spec s 0 vs.toList
   | .periodic r stride vs => checkPeriodic spec stride vs.toList r s 0
+  | .grid _ _ => false
 
 theorem checkVals_sound {spec : Nat → Int} {s : Nat} {off : Int} {vs : List Int}
     (h : checkVals spec s off vs = true) : ∀ j (hj : j < vs.length), vs[j] + off = spec (s + j) := by
@@ -168,40 +157,36 @@ theorem checkBlock_sound {spec : Nat → Int} {s : Nat} {b : Block}
     apply periodic_ok
     intro q hq j hj
     simpa using checkPeriodic_sound h q hq j hj
+  | grid n f => simp [checkBlock] at h
 
-/-! Long blocks: a shape checked syntactically, plus an algebraic agreement proof. -/
+/-! Long blocks: a shape compared as data, plus an algebraic agreement proof. -/
 
 inductive Shape where
   | affine (n : Nat) (first step : Int)
-  | periodic (r : Nat) (stride : Int) (size : Nat)
+  | grid (n : Nat) (f : GridFn)
   deriving DecidableEq
 
-/-- The block has this shape; for a periodic block, its first period matches `spec`. -/
-def Shape.check (spec : Nat → Int) (s : Nat) : Shape → Block → Bool
+/-- The block has this shape. -/
+def Shape.check : Shape → Block → Bool
   | .affine n first step, .affine n' first' step' => n == n' && first == first' && step == step'
-  | .periodic r stride size, .periodic r' stride' vs =>
-      r == r' && stride == stride' && vs.size == size && checkVals spec s 0 vs.toList
+  | .grid n f, .grid n' f' => n == n' && f == f'
   | _, _ => false
 
 /-- Algebraic agreement of a shape with `spec`, without reference to the data. -/
 def Shape.Ok (spec : Nat → Int) (s : Nat) : Shape → Prop
   | .affine n first step => ∀ i < n, first + step * i = spec (s + i)
-  | .periodic r stride size =>
-      ∀ q < r, ∀ j < size, spec (s + q * size + j) = spec (s + j) + stride * q
+  | .grid n f => ∀ i < n, (f.eval i : Int) = spec (s + i)
 
 theorem Shape.sound {spec : Nat → Int} {s : Nat} {sh : Shape} {b : Block}
-    (hc : sh.check spec s b = true) (ho : sh.Ok spec s) : BlockOk spec s b := by
+    (hc : sh.check b = true) (ho : sh.Ok spec s) : BlockOk spec s b := by
   cases sh <;> cases b <;> simp only [Shape.check, Bool.and_eq_true, beq_iff_eq,
     Bool.false_eq_true] at hc
   · obtain ⟨⟨rfl, rfl⟩, rfl⟩ := hc
     intro i hi
     exact ho i hi
-  · obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, hv⟩ := hc
-    apply periodic_ok
-    intro q hq j hj
-    have first := checkVals_sound hv j hj
-    simp only [add_zero, Array.length_toList] at first ⊢
-    rw [ho q hq j (by simpa using hj), ← first]
+  · obtain ⟨rfl, rfl⟩ := hc
+    intro i hi
+    exact ho i hi
 
 theorem lookup_mem {k : Nat} {v : Shape} :
     ∀ {l : List (Nat × Shape)}, l.lookup k = some v → (k, v) ∈ l
@@ -214,41 +199,6 @@ theorem lookup_mem {k : Nat} {v : Shape} :
       cases h; subst hk; simp
     · exact List.mem_cons_of_mem _ (lookup_mem h)
 
-/-- Rows `[lo, hi)`: short blocks starting there are checked row by row; a long
-    block starting there must be listed in `longs` with a matching shape. -/
-def walk (spec : Nat → Int) (lo hi : Nat) (longs : List (Nat × Shape)) : Nat → List Block → Bool
-  | _, [] => true
-  | s, b :: bs =>
-    (if lo ≤ s && s < hi then
-      (if b.len ≤ 512 then checkBlock spec s b
-       else match longs.lookup s with
-         | some sh => sh.check spec s b
-         | none => false)
-     else true) && walk spec lo hi longs (s + b.len) bs
-
-theorem walk_sound {spec : Nat → Int} {lo hi : Nat} {longs : List (Nat × Shape)}
-    (ok : ∀ p ∈ longs, p.2.Ok spec p.1) {s : Nat} {bs : List Block}
-    (h : walk spec lo hi longs s bs = true) :
-    ∀ p ∈ placed s bs, lo ≤ p.1 → p.1 < hi → BlockOk spec p.1 p.2 := by
-  induction bs generalizing s with
-  | nil => intro p hp; simp [placed] at hp
-  | cons b bs ih =>
-    simp only [walk, Bool.and_eq_true] at h
-    intro p hp hlo hhi
-    simp only [placed, List.mem_cons] at hp
-    rcases hp with rfl | hp
-    · have h1 := h.1
-      split at h1
-      swap
-      · rename_i hn; simp [hlo, hhi] at hn
-      split at h1
-      · exact checkBlock_sound h1
-      · split at h1
-        · rename_i sh hsh
-          exact Shape.sound h1 (ok (s, sh) (lookup_mem hsh))
-        · simp at h1
-    · exact ih h.2 p hp hlo hhi
-
 /-- A column agrees with `spec` on all its rows. -/
 theorem decode_eq {spec : Nat → Int} {bs : List Block}
     (h : ∀ p ∈ placed 0 bs, BlockOk spec p.1 p.2) :
@@ -260,70 +210,52 @@ end Airbender.Import.Setup.Proofs
 
 namespace Airbender.Import.Setup.Proofs
 
-theorem placed_le {s : Nat} {bs : List Block} :
-    ∀ p ∈ placed s bs, p.1 ≤ s + total bs := by
-  induction bs generalizing s with
-  | nil => intro p hp; simp [placed] at hp
-  | cons b bs ih =>
-    intro p hp
-    simp only [placed, List.mem_cons] at hp
-    rcases hp with rfl | hp
-    · simp
-    · have := ih p hp; simp only [total]; omega
-
-end Airbender.Import.Setup.Proofs
-
-namespace Airbender.Import.Setup.Proofs
-
-theorem placed_ge {s : Nat} {bs : List Block} : ∀ p ∈ placed s bs, s ≤ p.1 := by
-  induction bs generalizing s with
-  | nil => intro p hp; simp [placed] at hp
-  | cons b bs ih =>
-    intro p hp
-    simp only [placed, List.mem_cons] at hp
-    rcases hp with rfl | hp
-    · exact le_refl _
-    · have := ih p hp; omega
-
-/-- A walk with a chosen size limit that stops at row `hi`: a block whose start is
-    listed in `longs` is matched by its shape, any other block of at most `limit` rows
-    is checked row by row. -/
-def walkUpTo (limit : Nat) (spec : Nat → Int) (lo hi : Nat) (longs : List (Nat × Shape)) :
-    Nat → List Block → Bool
+/-- Every block of the list (placed from row `s`): one listed in `longs` at its first row is
+    matched by its shape, any other is checked row by row. -/
+def scan (spec : Nat → Int) (longs : List (Nat × Shape)) : Nat → List Block → Bool
   | _, [] => true
   | s, b :: bs =>
-    if hi ≤ s then true
-    else
-      (if lo ≤ s then
-        (match longs.lookup s with
-         | some sh => sh.check spec s b
-         | none => decide (b.len ≤ limit) && checkBlock spec s b)
-       else true) && walkUpTo limit spec lo hi longs (s + b.len) bs
+    (match longs.lookup s with
+     | some sh => sh.check b
+     | none => checkBlock spec s b) && scan spec longs (s + b.len) bs
 
-theorem walkUpTo_sound {limit : Nat} {spec : Nat → Int} {lo hi : Nat}
-    {longs : List (Nat × Shape)} (ok : ∀ p ∈ longs, p.2.Ok spec p.1) {s : Nat} {bs : List Block}
-    (h : walkUpTo limit spec lo hi longs s bs = true) :
-    ∀ p ∈ placed s bs, lo ≤ p.1 → p.1 < hi → BlockOk spec p.1 p.2 := by
+theorem scan_sound {spec : Nat → Int} {longs : List (Nat × Shape)}
+    (ok : ∀ p ∈ longs, p.2.Ok spec p.1) {s : Nat} {bs : List Block}
+    (h : scan spec longs s bs = true) : ∀ p ∈ placed s bs, BlockOk spec p.1 p.2 := by
   induction bs generalizing s with
   | nil => intro p hp; simp [placed] at hp
   | cons b bs ih =>
-    intro p hp hlo hhi
-    have ge := placed_ge p hp
-    simp only [walkUpTo] at h
-    split at h
-    · exfalso; omega
-    simp only [Bool.and_eq_true] at h
+    intro p hp
+    simp only [scan, Bool.and_eq_true] at h
     simp only [placed, List.mem_cons] at hp
     rcases hp with rfl | hp
     · have h1 := h.1
       split at h1
-      swap
-      · rename_i hn; exact absurd hlo hn
-      split at h1
       · rename_i sh hsh
         exact Shape.sound h1 (ok (s, sh) (lookup_mem hsh))
-      · simp only [Bool.and_eq_true] at h1
-        exact checkBlock_sound h1.2
-    · exact ih h.2 p hp hlo hhi
+      · exact checkBlock_sound h1
+    · exact ih h.2 p hp
+
+/-- A column of `N` rows agrees with `spec` on all its rows, by a scan. -/
+theorem rows_of_scan {spec : Nat → Int} {longs : List (Nat × Shape)} {N : Nat} (bs : List Block)
+    (ok : ∀ p ∈ longs, p.2.Ok spec p.1) (h : scan spec longs 0 bs = true) (ht : total bs = N) :
+    ∀ n < N, decode bs n = spec n :=
+  ht ▸ decode_eq (scan_sound ok h)
 
 end Airbender.Import.Setup.Proofs
+
+/-- Closes `lhs = rhs` where both sides apply the same operations to digits of the row
+    index: `omega` on the digits, congruence through the operations both sides share
+    (`omega` treats xor/and/or/shift terms as atoms). -/
+syntax "digits_eq" : tactic
+macro_rules
+  | `(tactic| digits_eq) => `(tactic| first
+      | omega
+      | (refine congrArg₂ (· ^^^ ·) ?_ ?_ <;> digits_eq)
+      | (refine congrArg₂ (· &&& ·) ?_ ?_ <;> digits_eq)
+      | (refine congrArg₂ (· ||| ·) ?_ ?_ <;> digits_eq)
+      | (refine congrArg₂ (· <<< ·) ?_ ?_ <;> digits_eq)
+      | (refine congrArg₂ (· % ·) ?_ ?_ <;> digits_eq)
+      | (refine congrArg₂ (· * ·) ?_ ?_ <;> digits_eq)
+      | (refine congrArg₂ (· / ·) ?_ ?_ <;> digits_eq)
+      | (refine congrArg₂ (· ^ ·) ?_ ?_ <;> digits_eq))
