@@ -47,6 +47,7 @@ import Slop.Final.Trace.Workers.Blake2Round.RVTheorems
 import Slop.Final.Trace.Workers.Keccak.Theorems
 import Slop.Final.Trace.Workers.Keccak.RVTheorems
 import Slop.Final.Trace.Workers.KeccakSplit.Theorems
+import Slop.Final.Trace.Workers.KeccakSplit.RVTheorems
 import Human.Circuits.AddSub.CallerTheorems
 import Human.Circuits.AddSub.Theorems
 import Human.Circuits.AddSub.RVTheorems
@@ -87,6 +88,7 @@ import Human.Trace.Workers.Blake2Round.RVTheorems
 import Human.Trace.Workers.Keccak.Theorems
 import Human.Trace.Workers.Keccak.RVTheorems
 import Human.Trace.Workers.KeccakSplit.Theorems
+import Human.Trace.Workers.KeccakSplit.RVTheorems
 
 example : Airbender.Delegation.Caller.SoundnessClaim := @Airbender.Delegation.Caller.soundness
 example : Airbender.Delegation.Caller.PcSoundnessClaim := @Airbender.Delegation.Caller.pc_soundness
@@ -242,6 +244,8 @@ example : Airbender.Keccak.Native.RVOperationExecutionClaim := @Airbender.Keccak
 example : Airbender.Keccak.Native.RVWindowSoundnessClaim := @Airbender.Keccak.Native.rv_window_soundness
 example : Airbender.Keccak.Split.Native.OperationExecutionClaim := @Airbender.Keccak.Split.Native.operation_execution
 example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.Keccak.Split.Native.permutation_soundness
+example : Airbender.Keccak.Split.Native.RVOperationExecutionClaim := @Airbender.Keccak.Split.Native.rv_operation_execution
+example : Airbender.Keccak.Split.Native.RVPermutationSoundnessClaim := @Airbender.Keccak.Split.Native.rv_permutation_soundness
 
 #print axioms Airbender.Delegation.Caller.soundness
 #print axioms Airbender.Delegation.Caller.pc_soundness
@@ -395,3 +399,5 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.Keccak.Native.rv_permutation_soundness
 #print axioms Airbender.Keccak.Native.rv_operation_execution
 #print axioms Airbender.Keccak.Native.rv_window_soundness
+#print axioms Airbender.Keccak.Split.Native.rv_operation_execution
+#print axioms Airbender.Keccak.Split.Native.rv_permutation_soundness
