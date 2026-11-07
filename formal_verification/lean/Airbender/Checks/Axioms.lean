@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.InitializationOrdering
+import Airbender.Proofs.ReducedMachine.NativeInitializationOrdering
+import Airbender.Review.Circuits.ReducedMachine.InitializationOrderingTheorems
+import Tests.NativeInitializationOrdering
+
 import Airbender.Review.Circuits.ReducedMachine.MainStateHistory
 import Airbender.Proofs.ReducedMachine.NativeMainStateHistory
 import Airbender.Review.Circuits.ReducedMachine.MainStateHistoryTheorems
@@ -6208,3 +6213,21 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeMainStateHistory.empty_derived_clock_and_path
 #print axioms Airbender.Tests.NativeMainStateHistory.wrong_empty_terminal_rejected
 #print axioms Airbender.Tests.NativeMainStateHistory.complete_conditional_main_history
+
+#print axioms Airbender.NativeInitializationOrderingProofs.geometry
+#print axioms Airbender.NativeInitializationOrderingProofs.body_controls
+#print axioms Airbender.NativeInitializationOrderingProofs.repeated_controls
+#print axioms Airbender.NativeInitializationOrderingProofs.repeated_padding
+#print axioms Airbender.NativeInitializationOrderingProofs.token_address_binding
+#print axioms Airbender.NativeInitializationOrderingProofs.full_domain_repeats
+#print axioms Airbender.NativeInitializationOrdering.native_initialization_adjacent_repeats
+#print axioms Airbender.NativeInitializationOrdering.native_initialization_token_duplicates
+#print axioms Airbender.Tests.NativeInitializationOrdering.actual_geometry
+#print axioms Airbender.Tests.NativeInitializationOrdering.one_outer_scaling
+#print axioms Airbender.Tests.NativeInitializationOrdering.complete_body_controls
+#print axioms Airbender.Tests.NativeInitializationOrdering.complete_body_adjacent_observations
+#print axioms Airbender.Tests.NativeInitializationOrdering.ordering_slice_repeat
+#print axioms Airbender.Tests.NativeInitializationOrdering.native_padding_rejects_slice_repeat
+#print axioms Airbender.Tests.NativeInitializationOrdering.raw_wide_slice_limit
+#print axioms Airbender.Tests.NativeInitializationOrdering.last_two_not_compared
+#print axioms Airbender.Tests.NativeInitializationOrdering.complete_conditional_token_exclusion

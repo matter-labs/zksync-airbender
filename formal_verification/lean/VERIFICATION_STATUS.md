@@ -1,5 +1,47 @@
 # Verification status
 
+## Native adjacent initialization ordering (7 November 2026)
+
+[The ordering component](Airbender/Review/Circuits/ReducedMachine/InitializationOrdering.lean)
+adds the actual low/high adjacent-row polynomials to the SAME existing complete
+main acceptance. The comparison domain is8388606 positions: every physical row
+except the last TWO. Actual address126/127, remainder122/123 and borrow124/125
+metadata come from the unchanged strict native intake. Each linear polynomial
+has one outer half-domain scaling and literal65536.
+
+[The calculations](Airbender/Proofs/ReducedMachine/NativeInitializationOrdering.lean)
+derive BOTH remainder16-bit bounds from actual full-body queries6/7 and borrow
+Booleanity from equations25/26. No address bounds or expected comparison bit are
+supplied. Repeated RAW field addresses force both borrows/remainders zero, so the
+unchanged six padding polynomials force ALL address/teardown value/time fields
+zero. [Short roots](Airbender/Review/Circuits/ReducedMachine/InitializationOrderingTheorems.lean)
+retain this exclusion on actual losslessly encoded initialization token addresses.
+
+This proves adjacent repeated-record exclusion, not global sorted uniqueness,
+natural-number comparison, address range, public seed/image binding or initialized
+worker reads. Init-address lookup extraction, first/one-before-last public
+boundaries and chunk/window rules remain separate. Source-reference unit
+normalization is not physical quotient/LDE/Rust-field/codec refinement.
+
+[Nine controls](Tests/NativeInitializationOrdering.lean) cover native geometry,
+scaling, complete existing CSR body controls/adjacent observations, sort-only
+repeated17 accepted while the native padding slice rejects it, a wide-address
+ordering SLICE with bounded remainders, the last-two boundary and conditional
+actual-token exclusion. Slices are not complete accepted witnesses or defects.
+No full positive NONEMPTY main/worker/global/physical verifier proof is added.
+Four modules add17 audit roots, preserving all5432 old roots/source bytes.
+Eleven exact parent origins plus one manual source-reference record are recorded.
+The newly adopted4307-byte native ordering source was exact67ee byte-compared and
+pinned BEFORE adaptation; native pins become100 with all previous99 unchanged.
+No parser/exporter/artifact/fixture/production/Sail/dependency change, native
+generation or unchanged heavy replay; findings and original execution stay unchanged.
+
+Next: actual init-address lookup/range extraction, public boundaries/window/sorted
+image, combined memory history and active old-read/value/address/worker-clock/key
+bounds, decoder/request/padding enforcement and caller-worker accounting. General
+physical/refinement/cryptography/completeness and checked parity remain open.
+
+
 ## Native full-domain main-state chronology (7 November 2026)
 
 [The actual main-state view](Airbender/Review/Circuits/ReducedMachine/MainStateHistory.lean)

@@ -195,3 +195,12 @@ are considered before selecting execute1. Worker/init memory tokens and inactive
 caller requests remain in their original ledgers. This is no initialized worker
 memory history, CSR/MOP/Sail execution, issuance/accounting or physical extraction
 claim. Original initialized execution interfaces are unchanged.
+
+## Native adjacent initialization records
+
+[The initialization ordering roots](../../Circuits/ReducedMachine/InitializationOrderingTheorems.lean) derive repeated adjacent
+actual token-address exclusion from native ordering polynomials, complete body
+remainder/borrow checks and unmasked padding. Only zero padding can repeat at
+adjacent comparison positions; the last two physical rows are excluded. This
+supplies no global uniqueness, address range, public seed image, initialized
+worker read or physical extraction. Original initialized execution is unchanged.
