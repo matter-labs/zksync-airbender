@@ -9225,6 +9225,139 @@
       "backport_reuse_revision": "0f1188a4e5d2caf3c09f3a4c34d5a5b114b421dd",
       "backport_reuse_path": "Tests/Branches.lean",
       "backport_reuse_sha256": "7bafa20761972f41e7056a8f734cb6cf0bda696677dda026dc8de6004cc2c5ce"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchPorts.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeComparisonPorts.lean",
+      "backport_reuse_sha256": "fe3d124cb209f3dd0ec8fa30197c455b316d6a1b4649389191a664e40cdaf690"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ReducedMachineBranch.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/ReducedMachineArithmetic.lean",
+      "backport_reuse_sha256": "32c9d33a316230675c5fa8b16912c2a32a87337a4a9cbcb9e73d1979b9bb548f"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchZeroRegister.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticZeroRegister.lean",
+      "backport_reuse_sha256": "cf02af51888dadeef9387ee005c3c66b8fc2ecc70c294439d8441aa38cc2f983"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchCodeHistory.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticCodeHistory.lean",
+      "backport_reuse_sha256": "100691cb67a8e6e733d1fc2299c901724e8417f70e5944b94feb44e6d7fc99d2"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchRegisterHistory.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticRegisterHistory.lean",
+      "backport_reuse_sha256": "995c0fd73cb3286a682bf82c1038b259d26c2157e420c127709b279741b53d3a"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/BranchRegisters.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticRegisters.lean",
+      "backport_reuse_sha256": "5f373847e176b19d8a858f9f69a84bc8efffa9aed54d951a3ce328a9021139cb"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchClauseReference.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchExecution.lean",
+      "backport_reuse_sha256": "e439b43ad3d6e158e0ab826a562226d9bfac51785c46c40a7b8a7e6535e4463d"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchExecution.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticExecution.lean",
+      "backport_reuse_sha256": "b1d80c0da529b13dd6d17601c6d362eff51be001034f63653f68ec485d34bfdb"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchComposition.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "backport_reuse_sha256": "92e230a662c800a14c893838838e6907af04b7015281eaf29de4e6b0892428f8"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/BranchFetchedExecution.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticFetchedExecution.lean",
+      "backport_reuse_sha256": "eef81e93de709b83addea3c5da089caf33fcd622a79a624ac26026d70e4434a7"
+    },
+    {
+      "path": "Tests/NativeReducedBranchRegisters.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Tests/NativeReducedArithmeticRegisters.lean",
+      "backport_reuse_sha256": "8f0991e47a1f391f627f0c3ab5d91d9100bb16112c202a18372d6d3424de7c25"
+    },
+    {
+      "path": "Tests/NativeReducedBranchExecution.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Tests/NativeReducedComparisonExecution.lean",
+      "backport_reuse_sha256": "d94168550f8d3a1990af44ff4a4e847cb887584c090da88687bd0872b9801678"
+    },
+    {
+      "path": "Tests/NativeReducedBranchFetched.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Tests/NativeReducedArithmeticFetched.lean",
+      "backport_reuse_sha256": "8069959392000ed53ed0217c284233429888c5c0f909982470f3aa25d2ae3e95"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchExecution.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/JumpBranchSlt/BranchExecution.lean",
+      "backport_reuse_sha256": "e439b43ad3d6e158e0ab826a562226d9bfac51785c46c40a7b8a7e6535e4463d"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchClauseReference.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Proofs/Sail/ControlFlow.lean",
+      "backport_reuse_sha256": "d220d575bc0af1558f3b06d16b7d618e5b3af930c704e8903955a42007920b33"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchExecution.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Retirement.lean",
+      "backport_reuse_sha256": "61553514a54434011a5b166dafefca4d996a056290ef25f8046de2de88b45e1d"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchExecution.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/ShiftOperand.lean",
+      "backport_reuse_sha256": "e773c99e5c68f322322af5b528ce18c19177c2e2f6c18d05c460b5edce549c8f"
+    },
+    {
+      "path": "Tests/NativeReducedBranchRegisters.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Tests/NativeReducedRegisters.lean",
+      "backport_reuse_sha256": "fa608af9b02fe9e3a6d0c4c7ec69f8e1ae6089d83eeb63efcf685863cd14a1ac"
+    },
+    {
+      "path": "Tests/NativeReducedBranchFetched.lean",
+      "change": "Derive NEW original branch rs1/rs2 and present x0 dummy-read/zero-write bindings before shared native Sail history. Construct chronological initialized states, all three pre-state reads, whole-data stutters, code/misa frames and original decoder replay. Reuse pure retained BTYPE predicates/clauses and normal retirement only after actual reduced condition/PC effects and derived prepared incoming PC. Discharge both source bounds, alignment and decoded offset parity internally. Public fetched execution retains meaningful initial misa readability (value unrestricted); each local CSR read is derived through native history. Exact fixedData acceptance supplies numerical table semantics. No old native mask/constraint/table/acceptance identity, per-row read/result/state/PC answer, native defect or physical/setup/completeness claim. Common mixed branch integration and full positive nonempty117-equation branch witnesses remain separate.",
+      "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
+      "backport_reuse_path": "Tests/NativeReducedSupportedExecution.lean",
+      "backport_reuse_sha256": "2438cb0710f796d46fa39d69be9f2c4fefc07b1db231a54901bb3368eda593e7"
     }
   ],
   "setup_artifacts": [

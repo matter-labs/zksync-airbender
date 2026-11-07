@@ -576,3 +576,25 @@ native fixed configuration or physical ROM/export enforcement. Original GPR/Sail
 branch clauses/normal/fetched execution and common operation-specific PC integration
 remain next. Sixteen exact parent0f1188 origins record twelve new modules/tests.
 No native/Sail/data/dependency change, defect, issue assumption or parity claim.
+
+## Native branch original fetched execution (7 November 2026)
+
+[New actual port bindings](Airbender/Proofs/ReducedMachine/NativeBranchPorts.lean)
+justify shared history transport for original rs1/rs2 and the present x0 dummy
+read/zero write. [Public original history](Airbender/Review/Trace/Families/ReducedMachine/BranchRegisters.lean)
+constructs all states/reads/writes/stutters/code/misa/replay. [Local execution](Airbender/Proofs/ReducedMachine/NativeBranchExecution.lean)
+uses retained BTYPE clauses only after new native condition/PC effects and actual
+incoming-PC preparation; pure retirement and control-CSR lemmas are reused unchanged.
+[Public fetched execution](Airbender/Review/Trace/Families/ReducedMachine/BranchFetchedExecution.lean)
+discharges both source bounds/alignment/decoder parity internally. Initial public
+misa readability is explicit, its value unrestricted; each local read is derived.
+No standalone native mask/table/constraint identity or desired state/read/result/PC
+answer is transferred. Nineteen exact parent889 origins cover thirteen modules/tests,
+including unchanged pure clause/control/retirement/group/reference reuse.
+
+[Port/history](Tests/NativeReducedBranchRegisters.lean), [retained-clause](Tests/NativeReducedBranchExecution.lean)
+and [empty native](Tests/NativeReducedBranchFetched.lean) regressions do not certify
+full nonempty117-equation branch acceptance. Branch-only execution is checked;
+common mixed branch integration and other ordinary/protocol/setup/terminal/init
+boundaries remain open. Native/Sail/data/dependencies are unchanged; no native
+defect, issue assumption, production fix, axiom or parity claim.

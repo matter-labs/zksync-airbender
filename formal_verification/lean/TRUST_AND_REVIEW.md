@@ -327,6 +327,30 @@ fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
 terminal/init boundaries remain open. No native defect or issue-handling assumption
 is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
 
+## Original branch Sail execution boundary
+
+[Actual branch GPR/cell history](Airbender/Review/Trace/Families/ReducedMachine/BranchRegisters.lean)
+derives chronological row states, three reads in one pre-state, the present x0
+dummy old-read/zero-write stutter, final matching, code/misa frames and original
+decoder replay. [Original fetched execution](Airbender/Review/Trace/Families/ReducedMachine/BranchFetchedExecution.lean)
+adds retained BTYPE clauses, actual prepared native PC and condition-selected
+successor before original normal retirement. Both source bounds, PC/offset inputs,
+alignment/parity and all intermediate states/reads/replay are derived internally
+from original public construction, full membership and exact fixedData acceptance.
+No desired local answer or arbitrary/native table identity is public.
+
+The fetched theorem explicitly requires readable misa in the public initial Sail
+state, with unrestricted value. Retained jump_to reads it; unchanged control-CSR
+frames derive each local read through actual history and PC preparation. This is
+a meaningful reference-state configuration interface, not a native defect, issue
+assumption or supplied per-row ISA value. The GPR-only theorem needs no CSR-read
+premise. [Retained clause edge tests](Tests/NativeReducedBranchExecution.lean),
+[port tests](Tests/NativeReducedBranchRegisters.lean) and [empty traces](Tests/NativeReducedBranchFetched.lean)
+are not complete positive nonempty117-equation accepted branches. Mixed branch
+integration, native public/physical setup, other operations/protocol/terminal/init,
+compiler/cryptography/completeness and original interrupt/exception paths stay
+separate. The numerical boundary below is now composed into branch-only execution.
+
 ## Initialized original branch numerical boundary
 
 [Original public branch decoding](Airbender/Review/Trace/Families/ReducedMachine/BranchDecoder.lean)

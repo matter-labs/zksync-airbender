@@ -32,6 +32,67 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Original initialized branch fetched execution (7 November 2026)
+
+[Actual branch ports](Airbender/Proofs/ReducedMachine/NativeBranchPorts.lean)
+now bind original rs1/rs2 and the present x0 dummy port before shared Sail read/
+write transport. All three reads observe one pre-state, including aliases; the
+actual zero dummy write is a whole-data-state stutter. [One public history root](Airbender/Review/Trace/Families/ReducedMachine/BranchRegisters.lean)
+derives chronological row states, native matching, all reads/writes, final cells,
+code/misa frames and original stateful decoder replay. No state/order/read/write
+or replay answer is supplied.
+
+[Retained BTYPE predicates and clauses](Airbender/Proofs/ReducedMachine/NativeBranchClauseReference.lean)
+execute all six original branches. [Actual local execution](Airbender/Proofs/ReducedMachine/NativeBranchExecution.lean)
+prepares the actual incoming native PC, derives its original architectural read,
+and uses previously checked native condition/target/final-PC effects before
+normal preparation/clause/tick retirement. [Fetched composition](Airbender/Proofs/Trace/Families/ReducedMachine/BranchComposition.lean)
+discharges both actual readonly ranges, incoming alignment and original decoder
+offset parity internally. Native-clock matching constructs every row state and
+PC chain; source decoding is replayed in those states. [One short public root](Airbender/Review/Trace/Families/ReducedMachine/BranchFetchedExecution.lean)
+derives finite original successful four-byte fetched execution, actual terminal
+PC bounds and all terminal cell reads. No source/range/condition/target/PC/state/
+order/replay answer or arbitrary-table equivalence is a public premise.
+
+The fetched interface additionally requires that the public initial Sail state
+has a readable misa register. Its value is unrestricted. Original jump_to reads
+that CSR even for aligned targets; code/history and PC-control frames derive
+each local read. This is a reference-state configuration boundary, not a native
+defect or issue-handling assumption. Original public branch image construction,
+ImageBoundary(fixedData trace), Accepted(fixedData trace), complete BranchDecodedTrace
+and aligned tracked public cells are the other inputs. Exact fixedData preserves
+every row/boundary and selects NativeFixed.table. The native eight-word/CSR1988,
+1989/enabled-nondeterminism fixture and all production/native/Sail/dependency
+inputs remain unchanged; modeled source images are not physical ROM/export
+certificates. Original interrupt/exception paths stay separate.
+
+[Eight port/history regressions](Tests/NativeReducedBranchRegisters.lean) check
+wrong source index/high address/RAM selector rejection, aliases, dummy x0 old
+read and data stutter, initialized x0 rejection and the exact three-port group.
+[Four retained-clause regressions](Tests/NativeReducedBranchExecution.lean) check
+independent outcomes for all six predicates, equal/sign-crossing operands,
+ordinary/wrapped retirement with arbitrary misa, taken negative wrap and untaken
+halfword offsets. [Two empty native fixtures](Tests/NativeReducedBranchFetched.lean)
+check public execution at every RV32 PC and the top endpoint. These do not add a
+complete positive nonempty117-equation native branch witness. Existing complete
+SLL/x0 witnesses are unchanged. Branch-only original fetched execution is now
+checked; common mixed branch integration remains next, with operation-specific
+PC effects replacing universal PC+4. Other ordinary/protocol/padding/terminal/
+init and public/physical/compiler/cryptographic/completeness boundaries remain
+open. No native defect, new axiom, issue assumption, production fix or parity claim.
+
+All affected bounded modules and fourteen new regression roots pass. Full Review
+checks 3,003 explicit standard-only axiom roots, 188 public Review roots, four
+guide names, 2,997 links/anchors and layer separation, using 546.95 MiB footprint/
+3,114.52 MiB resident in 14.34 s. Independent exact provenance used 19.02/35.09 MiB
+in 7.65 s, checking 189 v3-origin/1,057 backport-origin identities, 80 byte-identical
+modules, eight circuit artifacts, 65 native sources, 23 setup artifacts, four
+exporters and unchanged dependencies. Every owned worker terminated; no memory,
+wall-time, heartbeat or recursion ceiling was hit or raised. Ordinary draft
+name/import/state/Word endpoint corrections passed subsequent bounded checks.
+Prior importer/CLI/native-export controls retain exact unchanged inputs and
+applicability. FINDINGS remains unchanged with zero established native defects.
+
 ## Original decoded and initialized branch numerics (7 November 2026)
 
 [Original BTYPE projection](Airbender/Review/Circuits/ReducedMachine/BranchDecoder.lean)

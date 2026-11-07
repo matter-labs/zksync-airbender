@@ -250,3 +250,13 @@ now follow from proved actual zero dummy-write/readonly preservation and shared
 public-seed time induction. [Numerical branch assembly](../../Trace/Families/ReducedMachine/BranchResults.lean)
 discharges both source bounds internally. Original GPR/cell observations, retained
 Sail branch clauses and common mixed execution remain separate next connections.
+
+[Branch register observables](ReducedMachineBranch.lean) now describe all three
+original reads in one pre-state, actual zero dummy write and whole-data-state
+stutter. [Public history](../../Trace/Families/ReducedMachine/BranchRegisters.lean)
+derives every state/order/read/write/final match/code/misa frame and decoder replay.
+[Branch fetched execution](../../Trace/Families/ReducedMachine/BranchFetchedExecution.lean)
+adds original clauses and actual conditional PC effects; initial misa readability
+is explicit, each local read derived. This closes the separate branch GPR/Sail
+connection above. Common mixed branch integration and complete positive nonempty
+native branch witnesses remain open; port-group fixtures alone do not close them.

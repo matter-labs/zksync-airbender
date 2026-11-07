@@ -294,3 +294,12 @@ sparse/padded membership. [Public recovery](../../Trace/Families/ReducedMachine/
 derives all ten actual native fields; original stateful Sail decoding derives
 offset parity without a public parity answer or constructor filter. Logical
 membership remains separate from native Rust export/ROM/physical fidelity.
+
+[Branch original fetched execution](../../Trace/Families/ReducedMachine/BranchFetchedExecution.lean)
+now derives original stateful decoder replay in actual native-clock row states,
+then retained BTYPE execution at the actual prepared PC. Full source membership
+and initialized history discharge both source bounds, alignment and decoded parity.
+The public initial Sail state makes misa readable, with unrestricted value; every
+local CSR read is derived. Common mixed support still excludes branches pending
+operation-specific PC integration. Logical decoding is not native ROM/export or
+physical setup certification.

@@ -296,3 +296,23 @@ internally. [Eight source/initialized checks](../../../../../Tests/NativeReduced
 include a complete six-word/two-padding original image; these are not full accepted
 native branch witnesses. Numerical words are not yet original Sail GPR/branch
 clause/fetched execution. Common supported execution still excludes branches.
+
+## Original branch initialized fetched execution
+
+[Public branch register history](BranchRegisters.lean) derives native-clock row
+states, all three pre-state reads, present x0 dummy write/data stutter, final
+matching, code/misa frames and original decoder replay. [Fetched execution](BranchFetchedExecution.lean)
+derives retained BTYPE preparation/clause/tick retirement at the actual incoming
+and condition-selected outgoing PC. Both actual source bounds, incoming alignment
+and original decoder offset parity are discharged internally. Initial public misa
+readability is explicit and its value unrestricted; every row CSR read is derived
+through history/control frames. No read/result/target/PC/state/order/replay answer
+or arbitrary-table equivalence is public. Exact fixedData acceptance is required.
+
+[Port/history regressions](../../../../../Tests/NativeReducedBranchRegisters.lean),
+[retained clause/PC edge regressions](../../../../../Tests/NativeReducedBranchExecution.lean)
+and [empty native fixtures](../../../../../Tests/NativeReducedBranchFetched.lean)
+are not full positive nonempty117-equation native branches. This closes separate
+branch original execution above; common supported execution still excludes branches
+until operation-specific PC integration. Native public/physical setup and other
+ordinary/protocol/padding/terminal/init/completeness/interrupt scopes stay separate.

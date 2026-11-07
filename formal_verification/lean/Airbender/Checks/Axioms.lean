@@ -1,3 +1,16 @@
+import Airbender.Proofs.ReducedMachine.NativeBranchPorts
+import Airbender.Review.Helpers.Memory.ReducedMachineBranch
+import Airbender.Proofs.Trace.Families.ReducedMachine.BranchZeroRegister
+import Airbender.Proofs.Trace.Families.ReducedMachine.BranchCodeHistory
+import Airbender.Proofs.Trace.Families.ReducedMachine.BranchRegisterHistory
+import Airbender.Review.Trace.Families.ReducedMachine.BranchRegisters
+import Airbender.Proofs.ReducedMachine.NativeBranchClauseReference
+import Airbender.Proofs.ReducedMachine.NativeBranchExecution
+import Airbender.Proofs.Trace.Families.ReducedMachine.BranchComposition
+import Airbender.Review.Trace.Families.ReducedMachine.BranchFetchedExecution
+import Tests.NativeReducedBranchRegisters
+import Tests.NativeReducedBranchExecution
+import Tests.NativeReducedBranchFetched
 import Airbender.Review.Circuits.ReducedMachine.BranchDecoder
 import Airbender.Proofs.ReducedMachine.NativeBranchDecoder
 import Airbender.Review.Helpers.Decoder.ReducedMachineBranch
@@ -3228,3 +3241,42 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedBranchDecoder.corrupt_funct3_rejected
 #print axioms Tests.NativeReducedBranchDecoder.initialized_source_bound
 #print axioms Tests.NativeReducedBranchDecoder.initialized_final_bound
+
+#print axioms Airbender.ReducedMachine.NativeBranchPortProofs.readonly_sources
+#print axioms Airbender.ReducedMachine.NativeBranchPortProofs.source_addresses
+#print axioms Airbender.ReducedMachine.NativeBranchPortProofs.source_two_fields
+#print axioms Airbender.ReducedMachine.NativeBranchPortProofs.register_addresses
+#print axioms Airbender.ReducedMachine.NativeBranchPortProofs.register_reads
+#print axioms Airbender.ReducedMachine.NativeBranchPortProofs.register_write
+#print axioms Airbender.ReducedMachine.NativeBranchPortProofs.register_stutter
+#print axioms Airbender.ReducedMachine.NativeBranchRegisterProofs.row_zero_preserving
+#print axioms Airbender.ReducedMachine.NativeBranchRegisterProofs.decoded_zero_preserving
+#print axioms Airbender.ReducedMachine.NativeBranchRegisterProofs.native_zero_writes
+#print axioms Airbender.ReducedMachine.NativeBranchRegisterProofs.image_row_history
+#print axioms Airbender.ReducedMachine.NativeBranchRegisterProofs.native_event_register_space
+#print axioms Airbender.ReducedMachine.NativeBranchRegisterProofs.native_history_memory
+#print axioms Airbender.ReducedMachine.NativeBranchRegisterProofs.entry_source_after_native_history
+#print axioms Airbender.ReducedMachine.NativeBranchRegisterProofs.image_register_history
+#print axioms Airbender.ReducedMachine.Native.public_branch_register_history
+#print axioms Airbender.ReducedMachine.NativeBranchClauseProofs.branch_condition_native
+#print axioms Airbender.ReducedMachine.NativeBranchClauseProofs.encoding
+#print axioms Airbender.ReducedMachine.NativeBranchClauseProofs.clause_of_reads
+#print axioms Airbender.ReducedMachine.NativeBranchExecutionProofs.local_row_execution
+#print axioms Airbender.ReducedMachine.NativeBranchExecutionProofs.image_fetched_step
+#print axioms Airbender.ReducedMachine.NativeBranchExecutionProofs.image_terminal_pc_bound
+#print axioms Airbender.ReducedMachine.NativeBranchExecutionProofs.image_execution_soundness
+#print axioms Airbender.ReducedMachine.Native.public_branch_execution
+#print axioms Tests.NativeReducedBranchRegisters.wrong_source_index_rejected
+#print axioms Tests.NativeReducedBranchRegisters.high_source_address_rejected
+#print axioms Tests.NativeReducedBranchRegisters.ram_source_rejected
+#print axioms Tests.NativeReducedBranchRegisters.aliased_source_reads
+#print axioms Tests.NativeReducedBranchRegisters.dummy_read_zero
+#print axioms Tests.NativeReducedBranchRegisters.dummy_state
+#print axioms Tests.NativeReducedBranchRegisters.initialized_nonzero_x0_rejected
+#print axioms Tests.NativeReducedBranchRegisters.positive_x0_group
+#print axioms Tests.NativeReducedBranchExecution.original_conditions
+#print axioms Tests.NativeReducedBranchExecution.original_retirement
+#print axioms Tests.NativeReducedBranchExecution.untaken_halfword_offset
+#print axioms Tests.NativeReducedBranchExecution.taken_negative_wrap
+#print axioms Tests.NativeReducedBranchFetched.empty_execution
+#print axioms Tests.NativeReducedBranchFetched.empty_top_endpoint

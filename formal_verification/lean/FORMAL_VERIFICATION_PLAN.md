@@ -120,8 +120,14 @@ Full combined row effects and execution remain pending. See the
    offset and parity from the retained Sail decoder. Proved readonly/dummy-zero
    preservation feeds shared time induction; both actual read bounds, PC/offset
    bounds/alignment/parity are discharged before the short public numerical result.
-   Original branch GPR/Sail clause/normal/fetched execution and common integration
-   are next; branches are not yet in common execution support. Other combined
+   Original branch GPR/cell history now binds both readonly sources and present
+   x0 dummy old-read/zero-write in one pre-state, deriving whole-data stutters.
+   Retained original BTYPE clauses, actual incoming PC preparation and numerical
+   conditional PC effects now derive normal/fetched branch-only execution. Both
+   source bounds/alignment/parity and every local CSR read are derived internally;
+   the public initial Sail state explicitly makes misa readable, value unrestricted.
+   Common mixed integration is next: its PC interface must allow operation-specific
+   successors rather than universal PC+4. Branches are not yet in common support. Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

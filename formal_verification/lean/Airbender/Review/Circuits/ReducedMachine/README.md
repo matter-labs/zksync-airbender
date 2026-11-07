@@ -402,3 +402,17 @@ history and full original decoding, then actual condition/target/final PC effect
 [Observables](BranchResult.lean) concern native numerical words; original Sail GPR/
 clause/fetched execution and mixed branch support remain next. [Source tests](../../../../Tests/NativeReducedBranchDecoder.lean)
 are not full nonempty117-equation accepted branches or physical setup certificates.
+
+## Original branch execution connection
+
+[Actual branch port proofs](../../../Proofs/ReducedMachine/NativeBranchPorts.lean)
+bind both original sources and present x0 dummy old-read/zero-write before shared
+Sail history. [Local retained BTYPE execution](../../../Proofs/ReducedMachine/NativeBranchExecution.lean)
+uses actual native condition/PC effects after derived incoming-PC preparation.
+[Public fetched execution](../../Trace/Families/ReducedMachine/BranchFetchedExecution.lean)
+discharges every source/range/alignment/parity/state/read obligation internally.
+Initial public misa readability is explicit, value unrestricted; local CSR reads
+follow from history. [Tests](../../../../Tests/NativeReducedBranchExecution.lean)
+cover all six original clauses/PC wrap/untaken halfword/taken negative offsets,
+not complete positive nonempty117-equation native branches. Common mixed branch
+integration and public/physical/protocol/terminal/init/completeness stay separate.
