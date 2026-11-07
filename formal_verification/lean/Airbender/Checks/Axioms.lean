@@ -1,3 +1,4 @@
+import Tests.NativeReducedSupportedBranches
 import Airbender.Proofs.ReducedMachine.NativeBranchPorts
 import Airbender.Review.Helpers.Memory.ReducedMachineBranch
 import Airbender.Proofs.Trace.Families.ReducedMachine.BranchZeroRegister
@@ -3015,8 +3016,8 @@ import Tests.SubwordStoreData
 #print axioms Airbender.ReducedMachine.NativeSupportedLocalProofs.row_write_rule
 #print axioms Airbender.ReducedMachine.NativeSupportedLocalProofs.row_zero_preserving
 #print axioms Airbender.ReducedMachine.NativeSupportedLocalProofs.row_register_space
-#print axioms Airbender.ReducedMachine.NativeSupportedLocalProofs.selected_pc_successor
-#print axioms Airbender.ReducedMachine.NativeSupportedLocalProofs.decoded_pc_successor
+#print axioms Airbender.ReducedMachine.NativeSupportedLocalProofs.selected_pc_bound
+#print axioms Airbender.ReducedMachine.NativeSupportedLocalProofs.decoded_pc_inputs
 #print axioms Airbender.ReducedMachine.NativeSupportedLocalProofs.local_row_execution
 #print axioms Airbender.ReducedMachine.NativeSupportedDecoderProofs.trace_decoding
 #print axioms Airbender.ReducedMachine.NativeSupportedRangeProofs.decoded_write_rules
@@ -3280,3 +3281,11 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedBranchExecution.taken_negative_wrap
 #print axioms Tests.NativeReducedBranchFetched.empty_execution
 #print axioms Tests.NativeReducedBranchFetched.empty_top_endpoint
+
+#print axioms Airbender.ReducedMachine.NativeSupportedLocalProofs.branch_offset_even
+#print axioms Tests.NativeReducedSupportedBranches.mixed_public_image
+#print axioms Tests.NativeReducedSupportedBranches.original_mixed_sources
+#print axioms Tests.NativeReducedSupportedBranches.original_branch_fields
+#print axioms Tests.NativeReducedSupportedBranches.unrestricted_initial_isa
+#print axioms Tests.NativeReducedSupportedBranches.missing_isa_rejected
+#print axioms Tests.NativeReducedSupportedBranches.ordinary_no_isa

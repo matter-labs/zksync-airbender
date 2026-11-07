@@ -50,7 +50,9 @@ theorem empty_execution (pc : BitVec 32) :
     Realizes (StepWith supportedDecoderFields registerClause emptySetup.program)
       (fixedData (emptyTrace pc)) (before pc) [] := by
   exact public_supported_execution (count := 0) (logCapacity := 0) rfl
-    (public_inputs pc) (accepted pc) (decoded pc) (by simp)
+    (public_inputs pc) (accepted pc) (decoded pc) (by
+      rintro ⟨entry,member,_⟩
+      simp [SparseDecoderSetup.program] at member) (by simp)
 
 /-- The actual terminal PC reader is recovered even at the top RV32 word; an
     empty path does not fabricate PC+4 or require an instruction alignment input. -/
@@ -102,9 +104,10 @@ theorem oversized_terminal_rejected {trace : Data mersenne31Modulus NativeReduce
     {setup : SparseDecoderSetup SupportedMode} {initial : State} {cells : List Cell} {count logCapacity : Nat}
     (image : supportedDecoderSetupImage initial count logCapacity = some setup)
     (inputs : ImageBoundary (fixedData trace) initial cells) (decoded : SupportedDecodedTrace (fixedData trace) setup)
+    (isa : SupportedISA setup initial)
     (aligned : ∀ cell ∈ cells, cell.Aligned) (oversized : limbBase ≤ trace.terminal.word.hi) :
     ¬ Accepted (fixedData trace) := by
   intro accepted
-  exact Nat.not_le_of_gt (public_supported_execution image inputs accepted decoded aligned).1.2 oversized
+  exact Nat.not_le_of_gt (public_supported_execution image inputs accepted decoded isa aligned).1.2 oversized
 
 end Tests.NativeReducedSupportedExecution

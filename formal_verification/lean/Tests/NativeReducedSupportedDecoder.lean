@@ -121,7 +121,7 @@ theorem complete_original_image (i : Fin 25) : ∃ entry, setup.slots[i.val]? = 
 theorem original_comparison_slot :
     programSlotRunWith supportedDecoderFields JumpBranchSlt.NativeSetup.before 8 =
       some (some (⟨8,0xfff0b013,.ITYPE (4095,.Regidx 1,.Regidx 0,.SLTIU),
-        ⟨.inr (.inr (.inr ⟨false,false⟩)),1,0,0,⟨65535,65535⟩,65,3⟩⟩ : SupportedProgramEntry)) := by
+        ⟨.inr (.inr (.inr (.inl ⟨false,false⟩))),1,0,0,⟨65535,65535⟩,65,3⟩⟩ : SupportedProgramEntry)) := by
   simp only [programSlotRunWith,
     show (Cell.ram (8 : BitVec 32)).read JumpBranchSlt.NativeSetup.before =
       .ok (0xfff0b013 : BitVec 32) JumpBranchSlt.NativeSetup.before from

@@ -2,6 +2,7 @@ import Airbender.Review.Circuits.ReducedMachine.SupportedDecoder
 import Airbender.Proofs.ReducedMachine.NativeArithmeticDecoder
 import Airbender.Proofs.ReducedMachine.NativeBitwiseDecoder
 import Airbender.Proofs.ReducedMachine.NativeComparisonDecoder
+import Airbender.Proofs.ReducedMachine.NativeBranchDecoder
 
 namespace Airbender.ReducedMachine.NativeSupportedDecoderProofs
 open Native Trace Arithmetic
@@ -25,6 +26,9 @@ theorem entry_profile {entry : SupportedProgramEntry}
       selected.query (p := mersenne31Modulus) = entry.query) ∨
     (∃ selected : ComparisonProgramEntry, selected.instruction = entry.instruction ∧
       comparisonDecoderFields selected.instruction = some selected.data ∧
+      selected.query (p := mersenne31Modulus) = entry.query) ∨
+    (∃ selected : BranchProgramEntry, selected.instruction = entry.instruction ∧
+      branchDecoderFields selected.instruction = some selected.data ∧
       selected.query (p := mersenne31Modulus) = entry.query) := by
   unfold supportedDecoderFields at fields
   cases shift : shiftDecoderFields entry.instruction with
@@ -44,11 +48,21 @@ theorem entry_profile {entry : SupportedProgramEntry}
       | none =>
         simp only [bitwise] at fields
         cases comparison : comparisonDecoderFields entry.instruction with
-        | none => simp [comparison] at fields
+        | none =>
+          simp only [comparison] at fields
+          cases branch : branchDecoderFields entry.instruction with
+          | none => simp [branch] at fields
+          | some data =>
+            simp only [branch,Option.map_some] at fields
+            have same := Option.some.inj fields
+            refine Or.inr (Or.inr (Or.inr (Or.inr ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,branch,?_⟩)))
+            unfold ProgramEntry.query
+            rw [← same]
+            rfl
         | some data =>
-          simp only [comparison,Option.map_some] at fields
+          simp only [comparison] at fields
           have same := Option.some.inj fields
-          refine Or.inr (Or.inr (Or.inr ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,comparison,?_⟩))
+          refine Or.inr (Or.inr (Or.inr (Or.inl ⟨⟨entry.pc,entry.bits,entry.instruction,data⟩,rfl,comparison,?_⟩)))
           unfold ProgramEntry.query
           rw [← same]
           rfl

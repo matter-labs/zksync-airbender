@@ -303,3 +303,13 @@ The public initial Sail state makes misa readable, with unrestricted value; ever
 local CSR read is derived. Common mixed support still excludes branches pending
 operation-specific PC integration. Logical decoding is not native ROM/export or
 physical setup certification.
+
+[Common supported membership](ReducedMachineSupported.lean) now admits branches
+with exact original fields/query transport. SupportedISA is a public program-level
+configuration: initial readable misa only when BTYPE is present, value unrestricted.
+Actual history derives every local read; CSR-free ordinary/empty scopes remain.
+[Common fetched execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+derives branch parity/operand bounds/stateful replay internally. [Independent mixed
+source tests](../../../../Tests/NativeReducedSupportedBranches.lean) construct all slots
+of a three-word branch/arithmetic public image plus padding; physical ROM/export
+and full nonempty native accepted witnesses remain separate.

@@ -416,3 +416,15 @@ follow from history. [Tests](../../../../Tests/NativeReducedBranchExecution.lean
 cover all six original clauses/PC wrap/untaken halfword/taken negative offsets,
 not complete positive nonempty117-equation native branches. Common mixed branch
 integration and public/physical/protocol/terminal/init/completeness stay separate.
+
+## Mixed branch support
+
+[The common original projection](SupportedDecoder.lean) now includes all six BTYPE
+branches. [Actual profile/PC/local rules](../../../Proofs/ReducedMachine/NativeSupportedLocal.lean)
+connect branch preservation/addresses/x0 and derived source ranges/parity to its
+checked original execution. Incoming PC inputs and operation-specific final bounds
+replace universal common PC+4; ordinary proofs remain unchanged. [Public mixed execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+requires initial readable misa only when the public program contains a branch,
+value unrestricted and local reads derived through history. [Source/configuration tests](../../../../Tests/NativeReducedSupportedBranches.lean)
+are not full positive nonempty117-equation native mixed witnesses. Other combined/
+physical/protocol/terminal/init/completeness boundaries stay open.

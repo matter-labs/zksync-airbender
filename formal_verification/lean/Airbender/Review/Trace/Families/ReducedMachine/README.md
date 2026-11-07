@@ -316,3 +316,23 @@ are not full positive nonempty117-equation native branches. This closes separate
 branch original execution above; common supported execution still excludes branches
 until operation-specific PC integration. Native public/physical setup and other
 ordinary/protocol/padding/terminal/init/completeness/interrupt scopes stay separate.
+
+## Mixed initialized branch execution
+
+[The common source](SupportedDecoder.lean), [common ranges](SupportedValues.lean)
+and [fetched execution](SupportedExecution.lean) now cover branches interleaved
+with the four prior profiles. Exact original entry/query transport derives new
+branch preservation/x0/register-space prerequisites before shared initialized
+Sail states/code/misa/replay. Both source bounds/alignment/original offset parity
+are discharged internally. Common PC inputs/final bounds are operation-specific;
+ordinary per-profile PC+4/full RV32 wrap proofs remain unchanged. Initial readable
+misa is required only if the public program contains BTYPE, value unrestricted;
+every local read follows from history. CSR-free empty/ordinary scopes remain.
+
+[Independent mixed public source/configuration tests](../../../../../Tests/NativeReducedSupportedBranches.lean)
+construct three original words plus padding, all-slot SourceWith and exact branch
+fields, and check unrestricted/missing/unnecessary initial CSR availability.
+These do not certify full positive nonempty117-equation native mixed acceptance.
+Remaining ordinary/protocol/padding/terminal/init/public/physical/completeness and
+interrupt/exception boundaries stay separate. This supersedes the earlier open
+common branch integration notes above.

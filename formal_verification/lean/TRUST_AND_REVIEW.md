@@ -327,6 +327,27 @@ fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
 terminal/init boundaries remain open. No native defect or issue-handling assumption
 is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
 
+## Mixed supported branch configuration and control flow
+
+[Common public execution](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+now includes all six retained branches interleaved with shifts/arithmetic/bitwise/
+comparisons. New native branch preservation/x0/register-space/profile/query transport
+feeds one common initialized history and decoder replay. Both source bounds, original
+offset parity/alignment and all local state/read/result/control answers are derived
+internally. Incoming canonical PC inputs and operation-specific final bounds replace
+a universal common PC+4 claim; ordinary per-profile PC+4 proofs are unchanged.
+
+[SupportedISA](Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean) requires
+initial misa readability only if the public program contains BTYPE. Value is unrestricted;
+each local read follows through actual history/control-CSR frames. CSR-free ordinary/
+empty programs retain their previous scope. This initial reference-state configuration
+is distinct from a supplied per-row desired observation, native defect or issue assumption.
+[Regressions](Tests/NativeReducedSupportedBranches.lean) check independent original
+mixed public bytes/stateful decoding and this conditional configuration boundary.
+They do not add a full positive nonempty117-equation native mixed witness. Exact
+fixedData, original public membership and all physical/export/protocol/terminal/init/
+compiler/cryptographic/completeness/interrupt boundaries remain explicit.
+
 ## Original branch Sail execution boundary
 
 [Actual branch GPR/cell history](Airbender/Review/Trace/Families/ReducedMachine/BranchRegisters.lean)

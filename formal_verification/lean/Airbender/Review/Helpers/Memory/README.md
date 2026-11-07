@@ -260,3 +260,12 @@ adds original clauses and actual conditional PC effects; initial misa readabilit
 is explicit, each local read derived. This closes the separate branch GPR/Sail
 connection above. Common mixed branch integration and complete positive nonempty
 native branch witnesses remain open; port-group fixtures alone do not close them.
+
+[Common mixed history/execution](../../Trace/Families/ReducedMachine/SupportedExecution.lean)
+now includes branches after new actual preservation/x0/register-space/profile
+transport. All three ports, aliases and dummy x0 old-read/zero-write remain in
+one initialized induction/history. Both source bounds, original parity, every row
+state/read/result/PC/control and decoder replay are derived. Public initial misa
+readability is required only for branch-containing programs; its unrestricted
+value is transported to every local read. [Regressions](../../../../Tests/NativeReducedSupportedBranches.lean)
+are public source/configuration checks, not full nonempty native mixed witnesses.

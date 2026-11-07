@@ -9358,6 +9358,111 @@
       "backport_reuse_revision": "889f9ba373cad3412fc07c5e9f481d3c3bffe42b",
       "backport_reuse_path": "Tests/NativeReducedSupportedExecution.lean",
       "backport_reuse_sha256": "2438cb0710f796d46fa39d69be9f2c4fefc07b1db231a54901bb3368eda593e7"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean",
+      "backport_reuse_sha256": "1feca5671a6b541f83f5bd5ad0ebed18f753c8dee275e95d3c4175b9d48d66e5"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean",
+      "backport_reuse_sha256": "7742625e223644642d486f67f7ebdbd54c4dd36a7cb4a5bd4722b210c0070556"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean",
+      "backport_reuse_sha256": "0cdd060af30953fffc773d77894508345f7a65985987431b743583639cb11bfd"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "backport_reuse_sha256": "aa7de3897df84933bb4b79468d3c4cf3cc165daef05fa31670c8ae50a362c95c"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "backport_reuse_sha256": "92e230a662c800a14c893838838e6907af04b7015281eaf29de4e6b0892428f8"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "backport_reuse_sha256": "5956f66dde8af74cc0425814e5645466e1b4b9dbd448ff01ed6dca913b283cda"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedDecoder.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Tests/NativeReducedSupportedDecoder.lean",
+      "backport_reuse_sha256": "32fe119c28a6a04a0622b49be136c0469b17fd9e663aa80ee61ac20620179b0d"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedExecution.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Tests/NativeReducedSupportedExecution.lean",
+      "backport_reuse_sha256": "2438cb0710f796d46fa39d69be9f2c4fefc07b1db231a54901bb3368eda593e7"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedBranches.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Tests/NativeReducedSupportedDecoder.lean",
+      "backport_reuse_sha256": "32fe119c28a6a04a0622b49be136c0469b17fd9e663aa80ee61ac20620179b0d"
+    },
+    {
+      "path": "Tests/NativeReducedSupportedBranches.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Tests/NativeReducedBranchDecoder.lean",
+      "backport_reuse_sha256": "d70b7af81f4f42f157caf145ec13d08eeae9699ff0ccf57ff1f89364c53b4aaf"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBranchExecution.lean",
+      "backport_reuse_sha256": "cb735de94d464354d84a2ccc8b41cac3973f012ad37c5e789f0a244f53bf78dd"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBranchPC.lean",
+      "backport_reuse_sha256": "e2feda717c006e62f37fd11478a148e846d9ad03bc24ee40e30d5a15448b29f8"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeBranchPreservation.lean",
+      "backport_reuse_sha256": "a0e694667baafe8626c2ceb562d2217aacadc7df4568208f6230fd3b9c8607a6"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchZeroRegister.lean",
+      "backport_reuse_sha256": "060c9cf25e516885341b8fae1376107221d0843d303bff31c66dca7615da254f"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/SupportedExecution.lean",
+      "change": "Extend the original common projection to all six retained BTYPE branches, preserving every actual ten-field query. Derive five-profile transport and native branch preservation/x0/register-space before common initialized range/history/code/misa/replay. Replace universal common PC+4 with derived incoming bounds/alignment and operation-specific final bounds; ordinary per-profile PC+4 proofs unchanged. Derive original branch parity, both source bounds and each local CSR read internally before checked NativeBranchExecution. SupportedISA is an explicit initial configuration requirement only if the public program contains BTYPE, with unrestricted misa value; ordinary/empty CSR-free scopes remain. No desired local read/result/state/PC/profile, table equivalence, native data/production/Sail/dependency change, finding or parity claim. Independent mixed public-byte/decoder and configuration regressions are not full nonempty117-equation native accepted witnesses.",
+      "backport_reuse_revision": "c814e6f7ac77386618814a3a48e85ab6b143ff5b",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/BranchComposition.lean",
+      "backport_reuse_sha256": "001d123836eee2e9090f58c15c51abc69a4c1632606fc9f0f1dc2697f1a990a6"
     }
   ],
   "setup_artifacts": [

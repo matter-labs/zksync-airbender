@@ -19,8 +19,8 @@ This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
 **The reduced machine now has conditional fetched-execution soundness for mixed
-selected original shifts, ADD/ADDI/SUB/LUI/AUIPC, XOR/OR/AND register/immediate
-and SLT/SLTU/SLTI/SLTIU rows. Full combined-operation
+selected original shifts, ADD/ADDI/SUB/LUI/AUIPC, XOR/OR/AND register/immediate,
+SLT/SLTU/SLTI/SLTIU and all six conditional branch rows. Full combined-operation
 coverage remains open.** The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 is independently reproducible from unchanged pinned Rust: 117 equations,
@@ -126,8 +126,14 @@ Full combined row effects and execution remain pending. See the
    conditional PC effects now derive normal/fetched branch-only execution. Both
    source bounds/alignment/parity and every local CSR read are derived internally;
    the public initial Sail state explicitly makes misa readable, value unrestricted.
-   Common mixed integration is next: its PC interface must allow operation-specific
-   successors rather than universal PC+4. Branches are not yet in common support. Other combined
+   Common mixed integration now includes branches after deriving exact profile/query
+   transport and local preservation/x0/register-space prerequisites. The common PC
+   interface derives incoming bounds/alignment and operation-specific final bounds;
+   ordinary per-profile PC+4 proofs remain unchanged. Common initialization derives
+   both branch source bounds/parity and every state/control/replay answer. Initial
+   misa readability is required only if the public program contains BTYPE, value
+   unrestricted; ordinary/empty CSR-free scopes remain. Next extend actual JAL/JALR
+   and the remaining combined profiles. Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

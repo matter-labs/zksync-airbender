@@ -598,3 +598,23 @@ full nonempty117-equation branch acceptance. Branch-only execution is checked;
 common mixed branch integration and other ordinary/protocol/setup/terminal/init
 boundaries remain open. Native/Sail/data/dependencies are unchanged; no native
 defect, issue assumption, production fix, axiom or parity claim.
+
+## Mixed native branch integration (7 November 2026)
+
+[Common original projection](Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean)
+now admits branches without changing any actual query field. [Five-way original
+entry transport](Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean) supplies
+checked branch preservation/x0/addresses before one common initialized range/Sail/
+code/misa/replay chain. [Common local execution](Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean)
+discharges branch source bounds/parity/PC inputs and invokes the previously checked
+actual retained branch interface. Operation-specific final bounds replace universal
+common PC+4; unchanged ordinary per-profile PC proofs remain available.
+[Public execution](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+requires initial readable misa only for public programs containing BTYPE. Value is
+unrestricted and every local read is derived; empty/ordinary CSR-free scopes remain.
+
+[Independent mixed source/configuration regressions](Tests/NativeReducedSupportedBranches.lean)
+do not imply full nonempty117-equation native acceptance. Fifteen exact parentc814
+origins record nine changed/new modules/tests, preserving older provenance. Remaining
+ordinary/protocol/setup/terminal/init/completeness boundaries and zero findings remain;
+no production/native/Sail/data/dependency change, issue assumption or parity claim.

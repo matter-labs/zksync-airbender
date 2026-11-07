@@ -18,8 +18,8 @@ This explicit user priority supersedes the older ordinary-family-first order
 in the historical checkpoints below.
 
 **The reduced machine now has conditional fetched-execution soundness for mixed
-selected original shifts, ADD/ADDI/SUB/LUI/AUIPC, XOR/OR/AND register/immediate
-and SLT/SLTU/SLTI/SLTIU rows. Full combined-operation
+selected original shifts, ADD/ADDI/SUB/LUI/AUIPC, XOR/OR/AND register/immediate,
+SLT/SLTU/SLTI/SLTIU and all six conditional branch rows. Full combined-operation
 coverage remains open.** The active
 [regenerated native target](Airbender/Review/Circuits/ReducedMachine/NativeArtifact.lean)
 imports 117 native equations, 142 variables and a complete fourteen-region fixed
@@ -31,6 +31,73 @@ initialization/decoder interfaces; other combined profiles remain unfinished.
 The historical 119-equation/141-variable/13-region artifact is preserved separately.
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
+
+## Mixed native conditional branch execution (7 November 2026)
+
+[The original common projection](Airbender/Review/Circuits/ReducedMachine/SupportedDecoder.lean)
+now admits selected shifts, five arithmetic forms, bitwise register/immediate,
+comparisons and all six retained BTYPE branches. Original raw operands/x0/sign
+extension/SRAI1055/U-type raw funct3 and every actual ten-field query are preserved.
+[Derived five-profile transport](Airbender/Proofs/ReducedMachine/NativeSupportedDecoder.lean)
+selects exact original entries and query equality, without a supplied row profile.
+[Common local proofs](Airbender/Proofs/ReducedMachine/NativeSupportedLocal.lean)
+add actual branch readonly/dummy-zero preservation, x0 and register-space rules
+before the shared initialized range/history/code/misa/replay proofs. All three
+branch ports remain present, including the dummy old read and zero write.
+
+The common PC interface now derives canonical incoming bounds/alignment and
+operation-specific final bounds. It no longer asserts universal PC+4. Existing
+ordinary per-profile PC+4/full RV32 wrap proofs remain unchanged. Actual branch
+condition/target/PC effects justify its final bound; original decoded parity and
+both actual readonly source ranges are discharged internally from the common
+public construction/history. [Fetched composition](Airbender/Proofs/Trace/Families/ReducedMachine/SupportedExecution.lean)
+then invokes checked per-profile original normal retirement and constructs one
+native-clock PC chain/finite run. AUIPC's prepared architectural PC and each
+branch's actual incoming PC stay derived, as do all states/reads/results/replay.
+
+[The public execution root](Airbender/Review/Trace/Families/ReducedMachine/SupportedExecution.lean)
+now explicitly takes [SupportedISA](Airbender/Review/Helpers/Decoder/ReducedMachineSupported.lean):
+if the public program contains a retained BTYPE, initial Sail misa must be readable,
+with unrestricted value. This program-level reference configuration derives each
+local CSR read through actual history; it supplies no per-row ISA value. Programs
+without branches, including the existing CSR-free empty fixture, need no readable
+misa. The other inputs remain original public supportedDecoderSetupImage,
+ImageBoundary(fixedData trace), Accepted(fixedData trace), full SupportedDecodedTrace
+and aligned tracked cells. Exact fixedData selects the unchanged native pool while
+preserving all rows/boundaries. Conclusions remain successful original four-byte
+fetched execution, actual bounded terminal PC and all terminal cell reads. There
+is no source/range/result/condition/target/PC/state/order/replay/table-identity answer
+premise. Original interrupt/exception and native physical/setup boundaries remain
+separate; initial CSR availability is not a native defect or issue assumption.
+
+[Six new regressions](Tests/NativeReducedSupportedBranches.lean) construct an
+independent original branch/arithmetic three-word public image plus one padding
+row, derive byte/stateful sources for every slot, check all six negative-offset
+x0 projections, unrestricted readable misa, rejected absent misa for a branch
+program and vacuous CSR availability for an ordinary program. Existing 25-slot
+shift/bitwise/ADD and original comparison source tests pass with the widened
+projection; common source/x0/terminal rejections and CSR-free empty execution still
+pass. These are public source/configuration/conditional native checks, not a
+complete positive nonempty117-equation branch/mixed accepted native witness.
+Logical public images are not equated with the unchanged native eight-word/CSR/
+nondeterminism fixture, physical ROM/export or general preprocessing fidelity.
+
+Mixed branch integration is now checked. Remaining jumps/load-store/ordinary
+profiles, workers/callers/accounting/protocol/padding/terminal/init and general
+compiler/cryptographic/completeness boundaries remain open. Fifteen exact parent
+c814 origins record nine changed/new Lean modules/tests. No production/native/
+Sail/data/dependency change, finding, new axiom, issue assumption or parity claim.
+All affected bounded modules and the six new regression roots pass. Full Review
+checks 3,010 explicit standard-only axiom roots, 188 public Review roots, four guide
+names, 3,023 links/anchors and layer separation, using 547.70 MiB footprint/
+3,116.36 MiB resident in 14.59 s. Independent exact provenance used 16.45/33.03 MiB
+in 7.76 s, checking 189 v3-origin/1,072 backport-origin identities, 80 byte-identical
+modules, eight circuit artifacts, 65 native sources, 23 setup artifacts, four
+exporters and unchanged dependencies. Every failed/successful worker terminated;
+no memory/wall-time/heartbeat/recursion ceiling was hit or raised. Small explicit
+entry typing, finite fixture token spacing and unused-simp corrections were verified.
+Prior importer/CLI/native-export controls keep unchanged inputs/applicability.
+FINDINGS remains unchanged with zero established native defects.
 
 ## Original initialized branch fetched execution (7 November 2026)
 
