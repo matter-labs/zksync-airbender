@@ -16,6 +16,8 @@ import Slop.Final.Circuits.WordMemory.Theorems
 import Slop.Final.Circuits.WordMemory.RVTheorems
 import Slop.Final.Helpers.Context.PCState.Theorems
 import Slop.Final.ISA.Theorems
+import Slop.Final.ISA.DelegationRuns
+import Slop.Final.ISA.Vectors
 import Slop.Final.Trace.Delegation.CallerTheorems
 import Slop.Final.Trace.Delegation.Theorems
 import Slop.Final.Trace.Families.AddSub.Theorems
@@ -100,6 +102,16 @@ example : Airbender.DecodeIsSailClaim := @Airbender.decode_is_sail
 example : Airbender.StepIsAirbenderClaim := @Airbender.step_is_airbender
 example : Airbender.ConfiguredBridgeClaim := @Airbender.configured_bridge
 example : Airbender.MachineChecksClaim := @Airbender.machine_checks_claim
+example : RV.CallsRun := @RV.calls_run
+example : RV.BlakeCompressRun := @RV.blake_compress_run
+example : RV.BlakeHashRun := @RV.blake_hash_run
+example : RV.BlakeCompressRun10 := @RV.blake_compress_run10
+example : RV.BlakeHashRun10 := @RV.blake_hash_run10
+example : RV.BlakeGRun := @RV.blake_g_run
+example : RV.BlakeGRun10 := @RV.blake_g_run10
+example : RV.KeccakSpecial5Run := @RV.keccak_special5_run
+example : RV.KeccakF1600Run := @RV.keccak_f1600_run
+example : RV.StandardVectors := @RV.standard_vectors
 example : Airbender.Delegation.Caller.RequestsSoundnessClaim := @Airbender.Delegation.Caller.requests_soundness
 example : Airbender.Delegation.Caller.RequestMemorySoundnessClaim := @Airbender.Delegation.Caller.request_memory_soundness
 example : Airbender.Delegation.Caller.OperationSoundnessClaim := @Airbender.Delegation.Caller.operation_soundness
@@ -206,6 +218,16 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.step_is_airbender
 #print axioms Airbender.configured_bridge
 #print axioms Airbender.machine_checks_claim
+#print axioms RV.calls_run
+#print axioms RV.blake_compress_run
+#print axioms RV.blake_hash_run
+#print axioms RV.blake_compress_run10
+#print axioms RV.blake_hash_run10
+#print axioms RV.blake_g_run
+#print axioms RV.blake_g_run10
+#print axioms RV.keccak_special5_run
+#print axioms RV.keccak_f1600_run
+#print axioms RV.standard_vectors
 #print axioms Airbender.Delegation.Caller.requests_soundness
 #print axioms Airbender.Delegation.Caller.request_memory_soundness
 #print axioms Airbender.Delegation.Caller.operation_soundness

@@ -3,6 +3,8 @@ import Slop.AddSub.RVTraceSoundness
 import Slop.Final.Circuits.AddSub.RVTheorems
 import Slop.Final.Circuits.JumpBranchSlt.RVTheorems
 import Slop.Final.ISA.Theorems
+import Slop.Final.ISA.DelegationRuns
+import Slop.Final.ISA.Vectors
 import Human.ISA.Sail.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
 import Slop.Final.Trace.Families.JumpBranchSlt.Theorems
@@ -2230,6 +2232,16 @@ import Human.Import.Coefficients
 #print axioms Airbender.step_is_airbender
 #print axioms Airbender.configured_bridge
 #print axioms Airbender.machine_checks_claim
+#print axioms RV.calls_run
+#print axioms RV.blake_compress_run
+#print axioms RV.blake_hash_run
+#print axioms RV.blake_compress_run10
+#print axioms RV.blake_hash_run10
+#print axioms RV.blake_g_run
+#print axioms RV.blake_g_run10
+#print axioms RV.keccak_special5_run
+#print axioms RV.keccak_f1600_run
+#print axioms RV.standard_vectors
 #print axioms Airbender.sail_extensions_off
 #print axioms Airbender.sail_zimop_on
 #print axioms RV.RINV_spec

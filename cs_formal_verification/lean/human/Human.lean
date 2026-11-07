@@ -31,3 +31,5 @@ import Human.Trace.Workers.Blake2Round.Theorems
 import Human.Trace.Workers.Keccak.Theorems
 import Human.Trace.Workers.KeccakSplit.Theorems
 import Human.ISA.Sail.Theorems
+import Human.ISA.DelegationRuns
+import Human.ISA.Vectors
