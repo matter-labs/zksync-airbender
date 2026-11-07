@@ -16,6 +16,7 @@ import Slop.Final.Circuits.SubwordMemory.RVTheorems
 import Slop.Final.Circuits.WordMemory.Theorems
 import Slop.Final.Circuits.WordMemory.RVTheorems
 import Slop.Final.Trace.UnifiedReduced.RVTheorems
+import Slop.Final.Trace.RVSoundness
 import Slop.Final.Helpers.Context.PCState.Theorems
 import Slop.Final.ISA.Theorems
 import Slop.Final.ISA.DelegationRuns
@@ -160,6 +161,8 @@ example : Airbender.ShiftBinop.RVTraceSoundnessClaim := @Airbender.ShiftBinop.rv
 example : Airbender.SubwordMemory.RVRamTraceSoundnessClaim := @Airbender.SubwordMemory.rv_ram_trace_soundness
 example : Airbender.Trace.PooledNativeSoundnessClaim := @Airbender.Trace.pooled_native_soundness
 example : Airbender.Trace.NonDeterminism.Pooled.NativeSoundnessClaim := @Airbender.Trace.NonDeterminism.Pooled.native_soundness
+example : Airbender.Trace.RVPooledNativeSoundnessClaim := @Airbender.Trace.rv_pooled_native_soundness
+example : Airbender.Trace.BootRamZeroClaim := @Airbender.Trace.boot_ram_zero
 example : Airbender.InitsTeardowns.StandaloneClaim := @Airbender.InitsTeardowns.standalone_claim
 example : Airbender.InitsTeardowns.UnifiedClaim := @Airbender.InitsTeardowns.unified_claim
 example : Airbender.Trace.NoZeroTimestampWritesClaim := @Airbender.Trace.no_zero_timestamp_writes
@@ -292,6 +295,8 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.SubwordMemory.rv_ram_trace_soundness
 #print axioms Airbender.Trace.pooled_native_soundness
 #print axioms Airbender.Trace.NonDeterminism.Pooled.native_soundness
+#print axioms Airbender.Trace.rv_pooled_native_soundness
+#print axioms Airbender.Trace.boot_ram_zero
 #print axioms Airbender.InitsTeardowns.standalone_claim
 #print axioms Airbender.InitsTeardowns.unified_claim
 #print axioms Airbender.Trace.no_zero_timestamp_writes

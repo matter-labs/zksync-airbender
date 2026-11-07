@@ -18,6 +18,7 @@ import Slop.Final.Trace.Families.ShiftBinop.Theorems
 import Slop.Final.Circuits.SubwordMemory.Theorems
 import Slop.Final.Trace.Families.SubwordMemory.Theorems
 import Slop.Final.Trace.Soundness
+import Slop.Final.Trace.RVSoundness
 import Slop.Final.Trace.ZeroTimestamp
 import Slop.Final.Circuits.InitsTeardowns.Theorems
 import Slop.Final.Trace.Workers.KeccakSplit.Theorems
@@ -2315,6 +2316,8 @@ import Human.Import.Coefficients
 #print axioms RV.exec_load_subword
 #print axioms RV.exec_store_subword
 #print axioms Airbender.UnifiedReduced.rv_execution_soundness
+#print axioms Airbender.Trace.rv_pooled_native_soundness
+#print axioms Airbender.Trace.boot_ram_zero
 #print axioms Airbender.UnifiedReduced.Proofs.RV.rv_trace_execution
 #print axioms Airbender.Trace.Proofs.rv_realizes
 #print axioms Airbender.Delegation.rv_native_memory_execution
