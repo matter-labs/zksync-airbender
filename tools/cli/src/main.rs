@@ -190,6 +190,22 @@ enum Commands {
         elf: Option<String>,
         #[clap(flatten)]
         soundness: SoundnessArgs,
+        /// Trusted parameters produced for this program and soundness mode.
+        #[arg(long)]
+        trusted_params: Option<String>,
+    },
+    /// Compute trusted verification parameters for a program and soundness mode.
+    TrustedParams {
+        #[arg(short, long, required_unless_present = "elf", conflicts_with = "elf")]
+        bin: Option<String>,
+        #[arg(long, conflicts_with = "elf")]
+        text: Option<String>,
+        #[arg(long)]
+        elf: Option<String>,
+        #[clap(flatten)]
+        soundness: SoundnessArgs,
+        #[arg(short, long)]
+        output: String,
     },
     /// Run binary via the transpiler VM.
     Run {
@@ -445,13 +461,33 @@ fn run_cli() {
             text,
             elf,
             soundness: SoundnessArgs { soundness_mode },
+            trusted_params,
         } => {
             let artifact: ProofArtifact = deserialize_from_file(&proof);
             let source = program_source(bin, text, elf);
-            let output =
-                prover_pipeline::verify_artifact_in_mode(&artifact, &source, soundness_mode)
-                    .unwrap_or_else(|e| panic!("Verification failed: {}", e));
+            let trusted: Option<prover_pipeline::TrustedParams> = trusted_params
+                .as_ref()
+                .map(|path| deserialize_from_file(path));
+            let output = prover_pipeline::verify_artifact_with_trusted_params_in_mode(
+                &artifact,
+                &source,
+                soundness_mode,
+                trusted.as_ref(),
+            )
+            .unwrap_or_else(|e| panic!("Verification failed: {}", e));
             println!("PROOF IS VALID. output={:?}", output);
+        }
+        Commands::TrustedParams {
+            bin,
+            text,
+            elf,
+            soundness: SoundnessArgs { soundness_mode },
+            output,
+        } => {
+            let source = program_source(bin, text, elf);
+            let params = prover_pipeline::compute_trusted_params(&source, soundness_mode)
+                .unwrap_or_else(|error| panic!("Trusted parameter construction failed: {error}"));
+            prover_pipeline::serialize_to_file(&params, &output);
         }
         Commands::Run {
             bin,

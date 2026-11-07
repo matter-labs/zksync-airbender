@@ -712,10 +712,7 @@ impl ProgramProver {
     pub fn verify(&mut self, artifact: &ProofArtifact) -> Result<[u32; 16], String> {
         artifact.validate_expected_mode(self.config.soundness_mode)?;
         if artifact.target != self.config.target {
-            return Err(format!(
-                "artifact target {:?} differs from this prover's target {:?}",
-                artifact.target, self.config.target
-            ));
+            validate_continuation_request(artifact, self.config.target)?;
         }
         let loaded = load_and_validate_program(&self.source, artifact)?;
         validate_artifact_chain(artifact)?;
@@ -747,7 +744,7 @@ impl ProgramProver {
                 Ok(compute_end_params(&setups, find_binary_exit_point(bin)?))
             },
         )?;
-        verify_against_chain(artifact, &expected, self.config.soundness_mode)
+        verify_against_chain(artifact, &expected, self.config.soundness_mode, None)
     }
 
     /// Prove `input_words` from the base layer to the configured target.
@@ -810,7 +807,7 @@ impl ProgramProver {
         validate_continuation_request(&artifact, self.config.target)?;
         let loaded = load_and_validate_program(&self.source, &artifact)?;
         // A serialized checkpoint is untrusted even when its mode label matches.
-        verify_accepted_artifact(&artifact, &loaded, self.config.soundness_mode)?;
+        self.verify(&artifact)?;
 
         let batch_id = artifact.batch_id;
         // A single chain entry (just the base end-params) means no recursion
@@ -920,15 +917,162 @@ pub fn unified_verification_chain_hashes_in_mode(
     Ok(hashes)
 }
 
+/// Complete caller-trusted verification records for one program and mode.
+/// Like the binary itself, this file is a trusted input.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TrustedParams {
+    schema_version: u32,
+    program_hash: [u8; 32],
+    soundness_mode: SoundnessMode,
+    programs: Vec<TrustedProgramParams>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct TrustedProgramParams {
+    program_hash: [u8; 32],
+    machine: SetupMachine,
+    setups: Setups,
+    exit_pc: u32,
+    end_params: [u32; 8],
+}
+
+fn compute_trusted_program_params(
+    bin: &[u32],
+    text: &[u32],
+    machine: SetupMachine,
+    mode: SoundnessMode,
+    worker: &worker::Worker,
+) -> Result<TrustedProgramParams, String> {
+    let start = Instant::now();
+    let setups = recompute_program_setups(bin, text, machine, mode, worker);
+    let exit_pc = find_binary_exit_point(bin)?;
+    let end_params = compute_end_params(&setups, exit_pc);
+    log::info!(
+        "computed trusted {machine:?} params in {} ms",
+        elapsed_ms(start)
+    );
+    Ok(TrustedProgramParams {
+        program_hash: fsv_digest(bin, text).0,
+        machine,
+        setups,
+        exit_pc,
+        end_params,
+    })
+}
+
+/// Compute complete records for every standard chain program the pipeline can select.
+pub fn compute_trusted_params(
+    source: &ProgramSource,
+    soundness_mode: SoundnessMode,
+) -> Result<TrustedParams, String> {
+    use verifier_common::fsv_binaries::{FsvProfile, FSV_REGISTRY};
+    let loaded = load_program(source)?;
+    let worker = worker::Worker::new();
+    let mut programs = vec![compute_trusted_program_params(
+        &loaded.bin_u32,
+        &loaded.text_u32,
+        SetupMachine::UnrolledFullUnsigned,
+        soundness_mode,
+        &worker,
+    )?];
+    for entry in FSV_REGISTRY {
+        let descriptor = &entry.descriptor;
+        if descriptor.soundness_mode != soundness_mode
+            || descriptor.profile != FsvProfile::Standard
+            || descriptor.program == FsvProgram::UnifiedBaseLayer
+        {
+            continue;
+        }
+        let guest = load_fsv_exact(fsv_dir(), descriptor);
+        let machines: &[SetupMachine] = match descriptor.program {
+            FsvProgram::UnrolledBaseLayer | FsvProgram::UnrolledRecursionLayer => {
+                &[SetupMachine::UnrolledReduced, SetupMachine::Unified]
+            }
+            FsvProgram::UnifiedRecursionLayer => &[SetupMachine::Unified],
+            FsvProgram::UnifiedBaseLayer => unreachable!(),
+        };
+        let program_hash = fsv_digest(guest.bin(), guest.text()).0;
+        for &machine in machines {
+            if programs
+                .iter()
+                .any(|record| record.program_hash == program_hash && record.machine == machine)
+            {
+                continue;
+            }
+            programs.push(compute_trusted_program_params(
+                guest.bin(),
+                guest.text(),
+                machine,
+                soundness_mode,
+                &worker,
+            )?);
+        }
+    }
+    Ok(TrustedParams {
+        schema_version: 1,
+        program_hash: fsv_digest(&loaded.bin_u32, &loaded.text_u32).0,
+        soundness_mode,
+        programs,
+    })
+}
+
+impl TrustedParams {
+    fn validate(&self, loaded: &LoadedProgram, expected_mode: SoundnessMode) {
+        assert_eq!(self.schema_version, 1, "unsupported trusted params schema");
+        assert_eq!(
+            self.program_hash,
+            fsv_digest(&loaded.bin_u32, &loaded.text_u32).0,
+            "trusted params program hash does not match the supplied program"
+        );
+        assert_eq!(
+            self.soundness_mode, expected_mode,
+            "trusted params soundness mode does not match the requested mode"
+        );
+    }
+
+    fn resolve(&self, program: ChainProgram) -> &TrustedProgramParams {
+        let (hash, machine) = match program {
+            ChainProgram::User => (self.program_hash, SetupMachine::UnrolledFullUnsigned),
+            ChainProgram::Fsv(program, blake, machine) => {
+                let guest = load_fsv_exact(
+                    fsv_dir(),
+                    &FsvDescriptor::new(self.soundness_mode, program, blake),
+                );
+                (fsv_digest(guest.bin(), guest.text()).0, machine)
+            }
+        };
+        let mut entries = self
+            .programs
+            .iter()
+            .filter(|record| record.machine == machine && record.program_hash == hash);
+        let record = entries
+            .next()
+            .expect("trusted params have no record for this program hash and machine");
+        assert!(entries.next().is_none(), "duplicate trusted program params");
+        record
+    }
+}
+
 /// Verify with a caller-supplied acceptance mode, before loading the source or setups.
 pub fn verify_artifact_in_mode(
     artifact: &ProofArtifact,
     source: &ProgramSource,
     expected_mode: SoundnessMode,
 ) -> Result<[u32; 16], String> {
+    verify_artifact_with_trusted_params_in_mode(artifact, source, expected_mode, None)
+}
+
+/// Verify using an optional caller-trusted parameter file. Without it, derive
+/// the trusted parameters from the supplied binary and checked-in FSVs.
+pub fn verify_artifact_with_trusted_params_in_mode(
+    artifact: &ProofArtifact,
+    source: &ProgramSource,
+    expected_mode: SoundnessMode,
+    trusted: Option<&TrustedParams>,
+) -> Result<[u32; 16], String> {
     artifact.validate_expected_mode(expected_mode)?;
     let loaded = load_and_validate_program(source, artifact)?;
-    verify_accepted_artifact(artifact, &loaded, expected_mode)
+    verify_accepted_artifact(artifact, &loaded, expected_mode, trusted)
 }
 
 /// [`verify_artifact_in_mode`] after the acceptance check, with the artifact's program already
@@ -937,6 +1081,7 @@ fn verify_accepted_artifact(
     artifact: &ProofArtifact,
     loaded: &LoadedProgram,
     expected_mode: SoundnessMode,
+    trusted: Option<&TrustedParams>,
 ) -> Result<[u32; 16], String> {
     validate_artifact_chain(artifact)?;
 
@@ -945,26 +1090,47 @@ fn verify_accepted_artifact(
     // below). Cross-check the artifact's claimed history entry by entry
     // (stronger than internal consistency), then bind the verifier's
     // authenticated output chain to the trusted chain.
-    let worker = worker::Worker::new();
+    let worker = trusted.is_none().then(worker::Worker::new);
+    if let Some(trusted) = trusted {
+        trusted.validate(loaded, expected_mode);
+    }
+    let mut recompute = worker
+        .as_ref()
+        .map(|worker| recomputed_end_params(loaded, worker, expected_mode));
+    let mut trusted_setups = None;
     let expected = expected_chain_end_params(
         artifact.target,
         artifact.chain_end_params.len(),
         &artifact.blake_unrolled,
         &artifact.blake_bridge,
         &artifact.blake_final,
-        &mut recomputed_end_params(loaded, &worker, expected_mode),
+        &mut |program| match trusted {
+            Some(trusted) => {
+                let record = trusted.resolve(program);
+                trusted_setups = Some(&record.setups);
+                Ok(record.end_params)
+            }
+            None => recompute.as_mut().unwrap()(program),
+        },
     )?;
-    verify_against_chain(artifact, &expected, expected_mode)
+    verify_against_chain(artifact, &expected, expected_mode, trusted_setups)
 }
 
 fn verify_against_chain(
     artifact: &ProofArtifact,
     expected: &[[u32; 8]],
     expected_mode: SoundnessMode,
+    trusted_setups: Option<&Setups>,
 ) -> Result<[u32; 16], String> {
     if expected != artifact.chain_end_params {
         return Err(
             "artifact chain_end_params do not match the trusted per-layer end-params".to_string(),
+        );
+    }
+    if let Some(trusted_setups) = trusted_setups {
+        assert_eq!(
+            &artifact.setups, trusted_setups,
+            "artifact final-layer setups do not match trusted params"
         );
     }
     let expected_chain = rebuild_chain(expected)?;
@@ -1023,7 +1189,7 @@ fn find_binary_exit_point(binary: &[u32]) -> Result<u32, String> {
 }
 
 /// Which setup family a layer's program is proven under.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 enum SetupMachine {
     /// Unrolled machine, full-unsigned ISA (base user programs).
     UnrolledFullUnsigned,

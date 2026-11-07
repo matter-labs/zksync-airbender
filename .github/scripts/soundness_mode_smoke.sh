@@ -19,6 +19,11 @@ if [[ -n "${INPUT_FILE:-}" ]]; then
 fi
 modes=(pessimistic-conjecture ethproofs-soundcalc)
 out=output/soundness-mode-smoke
+mkdir -p "$out"
+for mode in "${modes[@]}"; do
+  "$cli" trusted-params --bin "$bin" --soundness-mode "$mode" \
+    --output "$out/$mode-trusted-params.json"
+done
 
 # The artifact's JSON name of a CLI soundness mode.
 label() {
@@ -42,12 +47,14 @@ fails() {
 # its label is rejected, and with the label rewritten verification fails with <relabel error>.
 check_modes() {
   local proof=$1 mode=$2 relabel_error=$3 other log relabeled
-  "$cli" verify --proof "$proof" --bin "$bin" --soundness-mode "$mode"
+  "$cli" verify --proof "$proof" --bin "$bin" --soundness-mode "$mode" \
+    --trusted-params "$out/$mode-trusted-params.json"
   for other in "${modes[@]}"; do
     [[ "$other" == "$mode" ]] && continue
     echo "== $proof verified as $other must fail"
     log="$proof.as-$other.log"
-    fails "$log" "$cli" verify --proof "$proof" --bin "$bin" --soundness-mode "$other"
+    fails "$log" "$cli" verify --proof "$proof" --bin "$bin" --soundness-mode "$other" \
+      --trusted-params "$out/$other-trusted-params.json"
     if ! grep -q SoundnessModeMismatch "$log"; then
       cat "$log" >&2
       echo "$proof failed as $other without SoundnessModeMismatch" >&2
@@ -62,7 +69,8 @@ check_modes() {
       exit 1
     fi
     log="$relabeled.log"
-    fails "$log" "$cli" verify --proof "$relabeled" --bin "$bin" --soundness-mode "$other"
+    fails "$log" "$cli" verify --proof "$relabeled" --bin "$bin" --soundness-mode "$other" \
+      --trusted-params "$out/$other-trusted-params.json"
     if ! grep -q "$relabel_error" "$log"; then
       cat "$log" >&2
       echo "$relabeled failed without $relabel_error" >&2
