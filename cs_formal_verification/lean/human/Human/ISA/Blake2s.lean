@@ -1,16 +1,17 @@
 import Human.ISA.State
 import Mathlib.Data.Fin.VecNotation
+import Clean.Specs.BLAKE3
 
-/-! # The Blake2s building blocks (RFC 7693): constants, `G`, one round. Used by `SpecBlake` (what the program
-should compute) and by Airbender's Blake2s delegation (`Delegations`). -/
+/-! # The Blake2s building blocks (RFC 7693): constants, `G`, one round, used by Airbender's Blake2s delegations
+(`Delegations`). The external reference is Clean's `Specs.BLAKE3` (pinned in `lakefile.toml`): BLAKE3 shares
+Blake2s's `IV`, `G` (rotations 16, 12, 8, 7) and column/diagonal round, on natural-number words; it has no `SIGMA`
+(its message schedule is a fixed permutation), so a Blake2s round is Clean's round on the `SIGMA`-permuted block. -/
 
 namespace Spec
 open RV (Word)
 
-/-- The initialisation vector. -/
-def IV : Fin 8 → Word :=
-  ![0x6A09E667#32, 0xBB67AE85#32, 0x3C6EF372#32, 0xA54FF53A#32, 0x510E527F#32, 0x9B05688C#32, 0x1F83D9AB#32,
-    0x5BE0CD19#32]
+/-- The initialisation vector: Clean's `iv`. -/
+def IV (i : Fin 8) : Word := BitVec.ofNat 32 (Specs.BLAKE3.iv[i]).toNat
 
 /-- The message schedule of the 10 rounds. -/
 def SIGMA : Fin 10 → Fin 16 → Fin 16 :=
@@ -28,27 +29,13 @@ def SIGMA : Fin 10 → Fin 16 → Fin 16 :=
 /-- The initial state of an unkeyed Blake2s with a 32-byte digest: `IV`, parameter word `0x01010020` in word 0. -/
 def configuredIV : Fin 8 → Word := fun i => IV i ^^^ (if i = 0 then 0x01010020#32 else 0#32)
 
-/-- The mixing function `G` on words `a b c d` of the working vector, with message words `x y`. -/
+/-- The mixing function `G` on words `a b c d` of the working vector, with message words `x y`: Clean's `g`. -/
 def G (v : Vector Word 16) (a b c d : Fin 16) (x y : Word) : Vector Word 16 :=
-  let a₁ := v[a] + v[b] + x
-  let d₁ := (v[d] ^^^ a₁).rotateRight 16
-  let c₁ := v[c] + d₁
-  let b₁ := (v[b] ^^^ c₁).rotateRight 12
-  let a₂ := a₁ + b₁ + y
-  let d₂ := (d₁ ^^^ a₂).rotateRight 8
-  let c₂ := c₁ + d₂
-  let b₂ := (b₁ ^^^ c₂).rotateRight 7
-  ((((v.set a a₂).set b b₂).set c c₂).set d d₂)
+  (Specs.BLAKE3.g (v.map BitVec.toNat) a b c d x.toNat y.toNat).map (BitVec.ofNat 32)
 
-/-- One round: `G` on the four columns, then on the four diagonals. -/
+/-- One round: `G` on the four columns, then on the four diagonals, message words in schedule `s`: Clean's `round`
+on the block permuted by `s`. -/
 def round (m : Vector Word 16) (s : Fin 16 → Fin 16) (v : Vector Word 16) : Vector Word 16 :=
-  let v := G v 0 4 8 12 m[s 0] m[s 1]
-  let v := G v 1 5 9 13 m[s 2] m[s 3]
-  let v := G v 2 6 10 14 m[s 4] m[s 5]
-  let v := G v 3 7 11 15 m[s 6] m[s 7]
-  let v := G v 0 5 10 15 m[s 8] m[s 9]
-  let v := G v 1 6 11 12 m[s 10] m[s 11]
-  let v := G v 2 7 8 13 m[s 12] m[s 13]
-  G v 3 4 9 14 m[s 14] m[s 15]
+  (Specs.BLAKE3.round (v.map BitVec.toNat) (Vector.ofFn fun i => m[s i].toNat)).map (BitVec.ofNat 32)
 
 end Spec
