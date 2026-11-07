@@ -612,3 +612,19 @@ The scoped native exporter and strict importer preserve concrete data/source/
 configuration boundaries; eight [theorem regressions](../../../../Tests/NativeRuntimeCSR.lean)
 and importer controls check the distinction. Full runtime pool/query/trace/worker/
 reference/physical connections remain open; no equivalence transfers prior claims.
+
+
+## Runtime CSR pool and actual selected-query effects
+
+[The complete constructed pool](Tables/RuntimePool.lean) shares all thirteen
+non-CSR regions and the retained eight-word ROM, selecting the separately exported
+runtime CSR data. [Fresh partition/tag proofs](../../../Proofs/ReducedMachine/NativeRuntimePool.lean)
+isolate actual members; [native query projection](../../../Proofs/ReducedMachine/NativeRuntimeQueries.lean)
+derives both sign queries/all four dynamic domains on this table. [The local root](RuntimeCSRTheorems.lean)
+derives1984/1991 support, only1991 delegation, bounded oracle/zero return and all
+imported masked request fields/ABI bound from actual constraints and explicit local
+mask. Sixteen [regressions](../../../../Tests/NativeRuntimePool.lean) preserve old
+fixture separation and conditional-native scope. Original public CSR source/
+initialized execution/request clock/issuance, workers/accounting/protocol and
+general runtime public/physical setup remain open; no equivalence transfers old
+execution coverage and no parity is inferred.

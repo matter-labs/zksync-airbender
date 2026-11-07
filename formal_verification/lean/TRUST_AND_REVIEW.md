@@ -3489,3 +3489,34 @@ and physical setup binding remains open beyond this specific exported region;
 old shift/binop fixture identity is not inferred. Production Rust/Sail/dependencies,
 old fixtures and prior claims are preserved; no native defect, issue assumption,
 production fix, new axiom, cryptographic/completeness or parity claim follows.
+
+
+## Runtime CSR pooled acceptance boundary (7 November 2026)
+
+[The constructed complete table](Airbender/Review/Circuits/ReducedMachine/Tables/RuntimePool.lean)
+uses the actual thirteen unchanged literal regions and separately exported runtime
+CSR data in exact native offset order, retaining the old eight-word ROM/UNIMP
+padding. Its explicit logical setup scope does not prove general Rust/public ROM/
+physical setup refinement. Original NativeFixed table/fixture and earlier execution
+interfaces remain unchanged. Data-level regional sharing and fresh full-pool tag
+isolation precede reuse of certified sign/CSR contents; no table equality premise
+or old accepted-circuit semantics is transferred.
+
+[Fresh native lookup projection](Airbender/Proofs/ReducedMachine/NativeRuntimeQueries.lean)
+and [short local CSR effects](Airbender/Review/Circuits/ReducedMachine/RuntimeCSRTheorems.lean)
+derive both constant queries/all four dynamic domains, only1984/1991 support,
+only1991 delegation, actual bounded oracle/zero return/rdmask/default-PC and imported
+masked request coordinates including ABI-high bound. The explicit local CSR mask
+is not original public decoding; actual source-high lookup is not initialized
+Sail rs1. Metadata index3 is not issuance, request clock, worker schedule or global
+accounting. Nondeterminism output is bounded native data, not an identified original
+value/stream. No desired local source/read/range/result/query/request/worker/state/
+PC/success or table-equivalence input is used.
+
+Sixteen table/conditional-native regressions are not full positive nonempty native
+CSR witnesses. Original public CSR/custom/nondeterminism/privilege semantics,
+initialized source/x0/history/normal/fetched/common execution, actual caller clock/
+issuance, native worker ABI/fulfillment/converse/accounting/protocol/terminal/init
+and general refinement/cryptography/completeness remain open. Bigint1994 is outside
+this selected runtime target. No production/native/Sail/artifact/importer/exporter/
+fixture/dependency changes, native defect, issue assumption, new axiom or parity.

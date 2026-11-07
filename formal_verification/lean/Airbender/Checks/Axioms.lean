@@ -1,3 +1,9 @@
+import Airbender.Proofs.ReducedMachine.NativeRuntimePool
+import Airbender.Review.Circuits.ReducedMachine.Tables.RuntimePoolTheorems
+import Airbender.Proofs.ReducedMachine.NativeRuntimeQueries
+import Airbender.Proofs.ReducedMachine.NativeRuntimeCSRResult
+import Airbender.Review.Circuits.ReducedMachine.RuntimeCSRTheorems
+import Tests.NativeRuntimePool
 import Airbender.Proofs.ReducedMachine.NativeRuntimeCSR
 import Airbender.Review.Circuits.ReducedMachine.Tables.RuntimeCSRTheorems
 import Tests.NativeRuntimeCSR
@@ -3904,3 +3910,39 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeRuntimeCSR.bigint_key_rejected
 #print axioms Tests.NativeRuntimeCSR.nondeterminism_delegation_rejected
 #print axioms Tests.NativeRuntimeCSR.outside_domain_rejected
+
+#print axioms Airbender.ReducedMachine.NativeRuntimePoolProofs.unchanged_region
+#print axioms Airbender.ReducedMachine.NativeRuntimePoolProofs.member_region
+#print axioms Airbender.ReducedMachine.NativeRuntimePoolProofs.region_row_tag
+#print axioms Airbender.ReducedMachine.NativeRuntimePoolProofs.accepted_selector
+#print axioms Airbender.ReducedMachine.NativeRuntimePoolProofs.selected_region
+#print axioms Airbender.ReducedMachine.NativeRuntimePoolProofs.sign_member
+#print axioms Airbender.ReducedMachine.NativeRuntimePoolProofs.csr_member
+#print axioms Airbender.ReducedMachine.NativeRuntimePool.csr_properties
+#print axioms Airbender.ReducedMachine.NativeRuntimePool.sign_high
+#print axioms Airbender.ReducedMachine.NativeRuntimeQueryProofs.queries
+#print axioms Airbender.ReducedMachine.NativeRuntimeQueryProofs.results
+#print axioms Airbender.ReducedMachine.NativeRuntimeQueryProofs.dynamic_queries
+#print axioms Airbender.ReducedMachine.NativeRuntimeQueryProofs.dynamic_selectors
+#print axioms Airbender.ReducedMachine.NativeRuntimeCSRResultProofs.properties
+#print axioms Airbender.ReducedMachine.NativeRuntimeCSRResultProofs.request
+#print axioms Airbender.ReducedMachine.NativeRuntimeCSRResultProofs.delegation_zero
+#print axioms Airbender.ReducedMachine.NativeRuntimeCSRResultProofs.offset_bound
+#print axioms Airbender.ReducedMachine.NativeRuntimeCSRResultProofs.effects
+#print axioms Airbender.ReducedMachine.Native.runtime_csr_native_effects
+#print axioms Tests.NativeRuntimePool.unchanged_regions
+#print axioms Tests.NativeRuntimePool.all_csr_pool_rows
+#print axioms Tests.NativeRuntimePool.runtime_pool_positive
+#print axioms Tests.NativeRuntimePool.fixture_pool_row_rejected
+#print axioms Tests.NativeRuntimePool.bigint_pool_row_rejected
+#print axioms Tests.NativeRuntimePool.original_fixture_stays_distinct
+#print axioms Tests.NativeRuntimePool.unsupported_native_csr_rejected
+#print axioms Tests.NativeRuntimePool.fixture_native_csr_rejected
+#print axioms Tests.NativeRuntimePool.bigint_native_csr_rejected
+#print axioms Tests.NativeRuntimePool.nondeterminism_request_zero
+#print axioms Tests.NativeRuntimePool.nonzero_blake_oracle_rejected
+#print axioms Tests.NativeRuntimePool.blake_request
+#print axioms Tests.NativeRuntimePool.discarded_destination_keeps_request
+#print axioms Tests.NativeRuntimePool.oversized_abi_high_rejected
+#print axioms Tests.NativeRuntimePool.oversized_source_high_rejected
+#print axioms Tests.NativeRuntimePool.absent_dynamic_tag_rejected

@@ -35,6 +35,69 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Runtime CSR full-pool lookup and local effects (7 November 2026)
+
+[The explicit complete pool](Airbender/Review/Circuits/ReducedMachine/Tables/RuntimePool.lean)
+now assembles5,771,521 rows in native offset order from the thirteen unchanged
+stored regions and the separately exported runtime CSR region. It retains the
+eight-word ROM and its complete UNIMP tail. This is a native-shaped logical setup
+construction with source-pinned CSR inputs1984/1991, not a universal runtime ROM,
+Rust/public export or physical setup certificate. The original complete pool and
+its1988/1989 fixture remain unchanged; the earlier regional-only checkpoint below
+is retained as history.
+
+[Fresh partition and tag proofs](Airbender/Proofs/ReducedMachine/NativeRuntimePool.lean)
+recover every stored region from this pool's membership and isolate tag25 to the
+new actual CSR data. The [short pooled CSR/sign roots](Airbender/Review/Circuits/ReducedMachine/Tables/RuntimePoolTheorems.lean)
+reuse existing literal certificates only after those data bindings. Thirteen
+regional identities follow by construction, without a table-equivalence premise.
+[Actual lookup projection](Airbender/Proofs/ReducedMachine/NativeRuntimeQueries.lean)
+extracts both tag16 sign/high-byte queries and all four dynamic query/selector
+domains from original Clean acceptance of the same117-equation native artifact
+on this table. No old full-circuit acceptance is transferred.
+
+[The new local runtime CSR root](Airbender/Review/Circuits/ReducedMachine/RuntimeCSRTheorems.lean)
+combines the actual selected query/support equation with the new pooled certificate:
+only1984/1991 are supported and only1991 delegates. It derives both oracle bounds,
+delegation zero before destination masking, actual readonly GPR routing/candidate/
+rdmask/default-PC and every imported masked request field. Actual source-high
+slot16 supplies the ABI high-offset bound. The public premise is the explicit
+local CSR mask, not original public decoding; there is no desired source/read/
+range/output/query/request/state/PC/worker/success or table-identity premise.
+In-cycle index3 remains imported metadata, not request clock/issuance/accounting.
+
+Sixteen [regression roots](Tests/NativeRuntimePool.lean) cover all thirteen shared
+regions, positive participation of every runtime CSR row in the full pool,
+positive1991/1984, old-fixture separation, fixture/bigint exclusion through actual
+selected native constraints, nondeterminism zero request/bounded return, delegated
+zero return, exact request fields, discarded-rd request retention and oversized
+source-high/ABI/absent-selector rejection. They are table/conditional-native checks,
+not complete positive nonempty117-equation/22-lookup accepted CSR witnesses.
+Eleven exact parent195 source origins record eight new modules/tests. Importers,
+exporters, literal/native artifacts, production Rust/circuits/Sail, all old roots,
+public fixtures, dependencies and original checkout/caches remain unchanged.
+No native defect, issue assumption, fix, new axiom or parity claim.
+
+Milestone gates pass3,490 explicit standard-only axiom roots,228 public Review
+roots,four guide declaration names and3,430 local links/anchors with context/trace
+separation. Full Review used562.46MiB sampled aggregate footprint/3,143.11MiB
+resident/15.18s; independent exact provenance used21.81/37.91MiB/9.59s and passed
+189 v3-origin/1,393 backport-origin identities,80 byte-identical modules,eight
+circuit artifacts,74 native sources,24 setup artifacts and four exporter files.
+Every owned worker terminated. Fixed3072MiB sampled footprint/4096MiB resident,
+Lean-j1-M3072 and finite180s module/120s audit caps stayed unchanged; no memory,
+wall-time or proof limit was hit or raised. This watchdog plus allocation cap is
+not an OS hard physical-memory ceiling. Prior importer/exporter/native controls
+retain unchanged code and inputs; no heavy unchanged data/certificate replay.
+
+NEXT derive original public CSR entry/query/source/rd-x0 and request clock/issuance
+from accepted native constraints, initialized history and public inputs before
+caller streams or Blake2 worker composition. Original CSR/nondeterminism/privilege
+and custom MOP reference/initialized/retained/fetched/common execution, actual worker
+ABI/constraints/fulfillment/converse/accounting and protocol/terminal/init/physical/
+general refinement/cryptography/completeness remain open. Bigint1994 stays outside
+this selected runtime target. Earlier seven-profile execution scopes are unchanged.
+
 ## Separate actual runtime CSR region (7 November 2026)
 
 The pinned [unified reduced runtime constructor](../../circuit_defs/unrolled_circuits/unified_reduced_machine/src/lib.rs)

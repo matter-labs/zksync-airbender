@@ -31,6 +31,30 @@ and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
+## Current runtime CSR full-pool connection (7 November 2026)
+
+[The complete constructed runtime-CSR pool](Airbender/Review/Circuits/ReducedMachine/Tables/RuntimePool.lean)
+now shares thirteen actual stored regions and the retained eight-word ROM with
+the old fixture, selecting the independently exported1984/1991 CSR region.
+Fresh tag isolation and actual native lookup projection derive both sign queries,
+all four dynamic selector domains and [selected local CSR return/request effects](Airbender/Review/Circuits/ReducedMachine/RuntimeCSRTheorems.lean).
+Every request field, delegated zero and ABI-high bound follows from this pool's
+accepted constraints; no table equivalence, desired per-row answer or old accepted-
+circuit transfer is used. The explicit local mask remains separate from original
+public decoding. Sixteen regressions and exact parent provenance retain input scope.
+
+Do not repeat the closed regional/pool/query/local CSR/MOP or seven-profile
+certificates. This checkpoint supersedes the pool-construction NEXT item in the
+earlier regional snapshot below. NEXT derive original public CSR decoding/source/
+rd-x0 plus actual native request clock/issuance and initialized reads before caller
+streams. Establish meaningful original/custom/nondeterminism reference inputs,
+then native Blake2 worker ABI/constraints/fulfillment/converse/accounting/protocol.
+Keep the constructed pool's retained ROM scope explicit; general runtime public/
+Rust/physical setup refinement is open. Preserve the original1988/1989 fixture and
+bigint's separate target, all tokens and initial/reference domains. Other operation/
+execution, terminal/padding/init/teardown/cryptographic/completeness obligations
+remain open; zero established native defects and no parity claim.
+
 ## Current separate runtime CSR-region checkpoint (7 November 2026)
 
 [Actual unified reduced runtime CSR data](Airbender/Review/Circuits/ReducedMachine/Tables/RuntimeCSRTheorems.lean)

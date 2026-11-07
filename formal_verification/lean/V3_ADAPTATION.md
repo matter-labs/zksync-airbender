@@ -1026,3 +1026,27 @@ issuance/worker fulfillment/accounting and physical/general refinement/completen
 parity remain open. No old local CSR/seven-profile claim is transferred to the new
 region. No native defect/issue assumption/new axiom. Deliberate v3pinb292 and the
 separate originalcheckout9bdf/private Keccak audit remain unchanged.
+
+
+## Runtime CSR full-pool and local query connection (7 November 2026)
+
+[The explicit complete pool](Airbender/Review/Circuits/ReducedMachine/Tables/RuntimePool.lean)
+keeps native5,771,521-row geometry, all thirteen original non-CSR literal regions
+and the eight-word ROM/UNIMP tail, inserting separately exported runtime1984/1991
+CSR data. The original1988/1989 pool remains unchanged. Fresh partition/tag proofs
+recover this table's actual membership; unchanged regional identities reuse only
+literal data results, never an old accepted-circuit or arbitrary-table equivalence.
+Both native sign queries, all four dynamic queries/domains and [selected CSR effects](Airbender/Review/Circuits/ReducedMachine/RuntimeCSRTheorems.lean)
+are now derived on this construction. Generic117-equation field proofs are reused
+after fresh actual pooled query/support binding. Source-high lookup derives ABI
+bounds; oracle/zero/rdmask/default-PC and all imported request fields stay explicit.
+
+Eight new modules/tests record eleven exact parent195 origins. Sixteen regressions
+include all CSR pool rows and narrow actual selected-constraint exclusions; they
+are not full positive nonempty native CSR witnesses. There is no original public
+CSR source/decoder/rd-x0, initialized Sail read/retirement, request clock/issuance,
+nondeterminism stream/custom reference, worker/converse/accounting/protocol claim.
+The retained ROM scope is a logical construction, not universal runtime program/
+Rust/public/physical setup refinement. Bigint1994 remains a separate target. Existing
+seven-profile roots and all prior native/Sail/import/export/artifact/fixture/dependency
+inputs remain unchanged. No native defect/issue assumption/new axiom or parity.
