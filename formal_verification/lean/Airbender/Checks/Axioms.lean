@@ -1,3 +1,10 @@
+import Airbender.Review.Helpers.Memory.ReducedMachineShadowImage
+import Airbender.Proofs.Trace.Families.ReducedMachine.ShadowImage
+import Airbender.Proofs.Trace.Families.ReducedMachine.ShadowValues
+import Airbender.Review.Trace.Families.ReducedMachine.ShadowInputs
+import Airbender.Review.Trace.Families.ReducedMachine.WordMemoryShadowValues
+import Airbender.Review.Trace.Families.ReducedMachine.WordMemoryShadowResults
+import Tests.NativeReducedShadowInputs
 import Airbender.Review.Helpers.Memory.ReducedMachineWordMemory
 import Airbender.Proofs.ReducedMachine.NativeWordMemoryPorts
 import Airbender.Proofs.ReducedMachine.NativeWordMemoryPreservation
@@ -3553,3 +3560,25 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedWordMemoryValues.load_x0_write_zero
 #print axioms Tests.NativeReducedWordMemoryValues.independent_rom_ram_references
 #print axioms Tests.NativeReducedWordMemoryValues.original_pc_wrap
+
+#print axioms Airbender.ReducedMachine.NativeShadowProofs.architectural_register
+#print axioms Airbender.ReducedMachine.NativeShadowProofs.architectural_ram
+#print axioms Airbender.ReducedMachine.NativeShadowProofs.shadow_image_parts
+#print axioms Airbender.ReducedMachine.NativeShadowProofs.shadow_image_unique
+#print axioms Airbender.ReducedMachine.NativeShadowProofs.shadow_clock_boundary
+#print axioms Airbender.ReducedMachine.NativeShadowProofs.shadow_image_projection
+#print axioms Airbender.ReducedMachine.NativeShadowProofs.shadow_image_bounds
+#print axioms Airbender.ReducedMachine.NativeShadowProofs.seed_initialization
+#print axioms Airbender.ReducedMachine.NativeShadowRangeProofs.image_value_bounds
+#print axioms Airbender.ReducedMachine.NativeShadowRangeProofs.image_word_memory_results
+#print axioms Airbender.ReducedMachine.Native.public_shadow_initialization
+#print axioms Airbender.ReducedMachine.Native.public_word_memory_shadow_value_bounds
+#print axioms Airbender.ReducedMachine.Native.public_word_memory_shadow_results
+#print axioms Tests.NativeReducedShadowInputs.independent_public_inputs
+#print axioms Tests.NativeReducedShadowInputs.missing_shadow_byte
+#print axioms Tests.NativeReducedShadowInputs.independent_shadow_value
+#print axioms Tests.NativeReducedShadowInputs.public_projection
+#print axioms Tests.NativeReducedShadowInputs.public_seed_ranges
+#print axioms Tests.NativeReducedShadowInputs.initialized_shadow_ranges
+#print axioms Tests.NativeReducedShadowInputs.duplicate_shadow_rejected
+#print axioms Tests.NativeReducedShadowInputs.nonshadow_seed_rejected

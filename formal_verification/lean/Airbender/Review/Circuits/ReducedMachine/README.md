@@ -507,3 +507,9 @@ writes and PC+4/wrap, with every source/read/range answer discharged by public
 initialization and proved write preservation. [Native port nonoverlap](../../../Proofs/ReducedMachine/NativeWordMemoryPorts.lean)
 excludes SW from ROM-prefix WORD CELLS. Original independent shadow/ROM-byte input
 construction, memory-aware states/code-byte frames/Sail/common execution remain open.
+
+[Independent public shadow seeds](../../Helpers/Memory/ReducedMachineShadowImage.lean)
+now have derived architectural projection/uniqueness/clocks/ranges and
+[actual numerical results](../../Trace/Families/ReducedMachine/WordMemoryShadowResults.lean).
+The fixed ROM/original byte-image, projected row states/code-byte frames and retained
+Sail/common execution remain separate; every ignored shadow token stays in matching.

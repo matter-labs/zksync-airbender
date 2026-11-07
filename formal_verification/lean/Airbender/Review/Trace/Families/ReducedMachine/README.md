@@ -426,3 +426,11 @@ image and exact native acceptance. No per-row source/range/read/result/state ans
 This is not yet original Sail memory/history or common support. Independent native
 ROM-shadow seed ledger, exact fixed-ROM/original bytes and memory-aware code frames
 must be constructed before retained LW/SW execution is claimed.
+
+[Independent-shadow initialization](ShadowInputs.lean) now derives native seed clocks,
+ranges/uniqueness and exact architectural projection from original cell reads plus
+independent public ROM-shadow values. [All word ranges](WordMemoryShadowValues.lean)
+and [native numerical effects](WordMemoryShadowResults.lean) follow actual reduced
+write preservation/time induction. Missing architectural ROM bytes do not fabricate
+shadow reads. Fixed ROM/original bytes, filtered row/Sail states/code-byte frames/
+retained execution/common support remain open; this is not physical boot enforcement.

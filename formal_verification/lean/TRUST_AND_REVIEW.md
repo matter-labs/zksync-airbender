@@ -3206,3 +3206,21 @@ code-byte frames/retained clauses/common execution remain open. No arbitrary tab
 public-image identity, desired per-row read/state/frame or native finding is supplied.
 [Regressions](Tests/NativeReducedWordMemoryValues.lean) are conditional initialized/
 reference checks, not full positive NONEMPTY117-equation native memory acceptance.
+
+## Actual reduced independent-shadow input boundary
+
+[Public shadow construction](Airbender/Review/Helpers/Memory/ReducedMachineShadowImage.lean)
+reads real architectural cells from Sail and appends independent typed public native
+ROM-shadow seeds. Domain uniqueness/separation and initial PC are meaningful public
+initialization inputs. [Derived constructor facts](Airbender/Review/Trace/Families/ReducedMachine/ShadowInputs.lean)
+include exact architectural seed projection, native clocks and every seed range;
+no local read/state/value/frame answer or shadow-to-ROM identity is assumed.
+All shadow tokens/timestamps remain in native acceptance. [Numerical results](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryShadowResults.lean)
+now derive using actual reduced preservation/shared induction under this boundary.
+
+This logical initializer does not establish physical boot/zero enforcement or
+fixed native ROM-to-original Sail byte construction. Filtered native row/Sail state
+realization, memory/code-byte frames and retained LOAD/STORE/common execution remain
+open. [Tests](Tests/NativeReducedShadowInputs.lean) include a valid shadow seed with
+missing Sail bytes; it is not an accepted nonempty native memory instruction or a
+Sail execution claim. No native defect, issue assumption, fix, axiom or parity.

@@ -769,3 +769,17 @@ unchanged value induction/cell-address injection/Word arithmetic patterns; no ol
 standalone compiled masks/tables/acceptance is transferred. Independent shadow/
 fixed-ROM byte construction, code-byte frames/Sail/common execution remain open.
 No defect, issue assumption, new axiom, production fix or parity claim.
+
+## Actual reduced independent-shadow initialization (7 November 2026)
+
+[New actual reduced initializer](Airbender/Review/Helpers/Memory/ReducedMachineShadowImage.lean)
+reuses unchanged PURE shadow classification/typed public seed/token/image definitions
+from old word-memory helpers in NativeReducedFamily. [Pure seed proofs](Airbender/Proofs/Trace/Families/ReducedMachine/ShadowImage.lean)
+derive projection/uniqueness/clocks/ranges. No old compiled masks/constraints/table/
+acceptance is reused. Actual reduced preservation and shared time induction derive
+all native numerical bounds/effects with independent shadow seeds. Ten exact parenteecb
+origins record seven new modules/tests. Fixed native ROM/original byte construction,
+projected row/Sail states/code-byte frames/retained clauses/common integration remain
+open; logical public shadow seeds are not physical boot enforcement. Missing-byte/
+independent-value/empty-boundary regressions are not nonempty native execution. No
+native finding, issue assumption, axiom, production fix or parity is claimed.

@@ -32,7 +32,64 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
-## Initialized native LW/SW numerical values (7 November 2026)
+## Independent native ROM-shadow initialization (7 November 2026)
+
+[Actual reduced shadow inputs](Airbender/Review/Helpers/Memory/ReducedMachineShadowImage.lean)
+construct zero-clock native seeds from original Sail reads of architectural GPR/RAM
+cells plus independent public32bit shadow-address/value pairs in the4MiBROM prefix.
+The public domain is unique and separates architectural cells from shadow addresses.
+Every shadow token remains in native matching; its value is independent of Sail ROM
+bytes. [Constructor proofs](Airbender/Proofs/Trace/Families/ReducedMachine/ShadowImage.lean)
+derive seed uniqueness, initial/native seed clocks, ALLcanonical seed ranges and
+exact architectural seed-image projection. No per-row native read, state, clock or
+shadow-to-ROM value answer is supplied. These reuse unchanged PURE public input/
+cell-address/filter lemmas, with fresh actual NativeReducedFamily context; no old
+standalone masks/constraints/tables/acceptance is transferred.
+
+The [short initialization root](Airbender/Review/Trace/Families/ReducedMachine/ShadowInputs.lean)
+exposes those constructor consequences. [Independent-shadow range](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryShadowValues.lean)
+and [numerical effect roots](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryShadowResults.lean)
+reuse newly proved actual reduced write preservation and unchanged time induction/
+assembly to derive EVERY actual read/write/terminal bound and LW/SW numerical
+address/write/PC result under this boundary. The ordinary initialImage roots remain
+unchanged. Architectural memory/GPR state realization and retained Sail execution
+are still separate from these numerical native words.
+
+[Eight regressions](Tests/NativeReducedShadowInputs.lean) construct independent shadow
+value123 at address16 without ANY Sail byte there, prove the actual read failure,
+compare the distinct native ROM reference, derive architectural projection and
+seed bounds, check a concrete complete empty native accepted/range boundary, and
+reject duplicate/outside-shadow seed domains. These are public input/conditional
+numerical/empty checks, NOT full positive NONEMPTY117-equation native memory rows
+or original LOAD/STORE execution. Physical native boot/zero initialization is not
+asserted by this meaningful logical public input construction.
+
+NEXT bind exact native fixed8wordROM/padding to an original Sail byte-image constructor,
+then derive initialized architectural versus shadow event domains, projected native
+memory/Sail states and code-byte frames, retained LOAD/STORE clauses and common
+mixed integration. Full fixed-ROM/original bytes, physical/Rust public export and
+Sail memory/execution remain OPEN. Do not equate independent shadow values with
+architectural ROM words or supply desired local reads/states/frames. Common six-profile
+execution still excludes LW/SW. No defect, issue assumption, production/Sail/data/
+dependency change, new axiom or parity claim. Ten exact parenteecbtemplate/helper
+origins record seven new modules/tests.
+
+Final gates pass3220explicit standard-only axiom roots,209public Review roots,
+4guide names,3223links/anchors and context/trace separation. Full Review551.87MiB
+footprint/3126.52MiB resident/14.72s; independent provenance19.63/35.69MiB/8.53s
+passes189v3-origin/1211backport-origin identities,80byte-identical modules,8circuit
+artifacts,68native sources,23setup,4exporters,unchanged dependencies/originalcheckout.
+Pure seedproofs474.05/2845.92MiB/2.22s;independent range/results480.92/2876.34/2.12;
+eight tests482.58/2885.09/2.23;Axioms546.56/3101.59/4.56. All failed/successful
+owned workers terminated; no memory/wall-time/heartbeat/recursion ceiling hit/raised.
+Arithmetic/M31 imports and explicit fixture state/register/error/lint corrections
+verified. A small reference-function evaluation draft did not reduce and was
+replaced by original Sail lemmas; no invalid draft or new opacity was accepted.
+Same shared lock,Lean-j1-M3072,3072MiB aggregate footprint/4096MiB resident and finite
+180second module/120second audit budgets. Sampled watchdog plus Lean allocation cap,
+not an OS hard physical-memory limit.
+
+## Earlier initialized native LW/SW numerical values (7 November 2026)
 
 [Fresh mixed-port bindings](Airbender/Proofs/ReducedMachine/NativeWordMemoryPorts.lean)
 identify ALL3actual register/memory cells after original public decoding. LW uses

@@ -176,10 +176,13 @@ Full combined row effects and execution remain pending. See the
    feed unchanged shared initialized induction. ALLactualread/write/terminal bounds,
    canonical effective address/write/PC+4/fullRV32wrap derive publicly; no local
    range/read/result/PC answer supplied. SW excludes native ROM-prefix WORD CELLS,
-   not yet an original byte-code frame. NEXT independent ROM-shadow/public-ROM
-   initializer, original memory-aware state/history/code-byte transport and retained
-   Sail clauses. Numerical current initialImage scope does not supply the separate
-   shadow-ledger/architectural-ROM connection. Common supported execution excludes
+   not yet an original byte-code frame. Independent public ROM-shadow initializer
+   now constructs native seeds separately from original architectural byte reads;
+   uniqueness/clocks/ranges/architectural seed projection and all native numerical
+   bounds/results derive under that boundary. NEXT exact native fixed-ROM/original
+   byte-image construction, actual projected memory/Sail event states and code-byte
+   transport, then retained clauses. Shadow seed values stay independent of ROM.
+   Common supported execution excludes
    LW/SW; no all-events-GPR frame reuse.
    Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
