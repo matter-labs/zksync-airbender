@@ -667,3 +667,12 @@ Separate base4/quartic28 observations yield the source pair equation, including
 its duplicate-pole limit. Address ranges and logical lookup extraction are still
 open; these local relations do not establish initialized worker reads or change
 original execution.
+
+## Complete native scalar16 family
+
+[The same-main scalar16 roots](../../../Circuits/ReducedMachine/Scalar16Theorems.lean) derive ordinary auxiliary-sum
+equality and reserved-last consistency from the native polynomial divisor.
+All four body pairs and the initialization-address pair remain, including every
+ordinary row and pole auxiliary. Physical multiplicity/setup observations do not
+yet authenticate the public scalar table or extract lookup membership. Address
+bounds, combined initialized worker history and accounting remain open.

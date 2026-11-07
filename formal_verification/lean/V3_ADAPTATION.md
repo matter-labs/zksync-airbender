@@ -1,5 +1,58 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Complete native scalar16 family consistency (7 November 2026)
+
+[The scalar16 component](Airbender/Review/Circuits/ReducedMachine/Scalar16Arguments.lean)
+retains the SAME complete native main, initialization-address and adjacent-ordering
+proof. It checks the four original body pairs and the extra initialization pair
+on every ordinary row. The actual body columns are 61/62, 69/70, 90/91 and 122/123;
+their base auxiliaries are 0..3 and quartic auxiliaries are 12/16/20/24. The extra
+pair keeps base4/quartic28. Physical multiplicity witness7, setup0 and quartic76
+have separate types; witness7 is not body variable7.
+
+[The strict intake](Airbender/Import/ReducedScalar16.lean) reuses the complete
+unchanged body/all-stage2/init-pair parsing on the same 94,130 source bytes. It
+binds all eight scalar query columns in native physical order and checks the
+unmapped physical multiplicity and setup/auxiliary geometry. Existing parsers,
+artifacts and native sources remain unchanged.
+
+[The calculations](Airbender/Proofs/ReducedMachine/NativeScalar16Arguments.lean)
+retain the exact table relation and all five terms of native sequential
+subtraction. Actual difference-polynomial samples, degree, primitive domain and
+zero/last divisibility derive equality of the ordinary table-auxiliary sum with
+the sum of ALL five pair auxiliaries. The sum is not a premise. At the reserved
+last row, table76 equals the sum of all five pair auxiliaries; none is assumed
+individually zero. The reused generic zero-claim polynomial proof transfers no
+decoder table semantics. [Two short roots](Airbender/Review/Circuits/ReducedMachine/Scalar16Theorems.lean)
+expose these consequences on the same complete accepted component.
+
+No multiplicity bit/count interpretation, zero-outside-capacity rule, expected
+query/range/public seed, inverse or nonzero factor is supplied. Nonzero physical
+multiplicity derives a nonpole; zero-multiplicity poles remain. Actual physical
+setup observations have not been authenticated as the public scalar table.
+Fixed-challenge equations and sums do not establish logical lookup extraction,
+address bounds, initialized worker reads, chronological history or accounting.
+Physical Rust/field/LDE/quotient/codec and cryptographic refinement remain separate.
+
+[Fifteen theorem controls](Tests/NativeScalar16Arguments.lean) cover native
+geometry, all five difference terms, source scaling, complete existing CSR BODY
+plus original individual pairs, pure wide-multiplicity/pole/nonzero-last slices,
+rejections and conditional sum/last roots. [Fifteen executable intake controls](Tests/NativeScalar16Import.lean)
+retain strict query order, unrelated initialization validation and the changed
+body-as-data distinction. They are not full positive nonempty auxiliary/global/
+worker/physical proof witnesses or defects. Eight modules add 27 explicit audit
+roots while preserving all 5,473 old roots and source bytes. Fourteen exact parent
+origins and one manual source reference are recorded; all 100 native pins remain.
+Findings and original execution are unchanged; no native generation or closed
+heavy replay is needed.
+
+Next: constructed native scalar16 setup and faithful logical lookup extraction,
+then actual initialization-address bounds, public first/one-before-last/chunk
+window and sorted initialization image, combined memory history, active worker
+bounds/key refinement and real caller-worker accounting. General physical
+refinement, cryptography, completeness and checked parity remain open.
+
+
 ## Native initialization-address pair oracles (7 November 2026)
 
 [The extra address-pair component](Airbender/Review/Circuits/ReducedMachine/InitializationRange.lean)

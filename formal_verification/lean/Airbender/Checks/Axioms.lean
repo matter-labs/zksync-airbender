@@ -1,3 +1,11 @@
+import Airbender.Review.Circuits.ReducedMachine.Scalar16Columns
+import Airbender.Import.ReducedScalar16
+import Airbender.Review.Circuits.ReducedMachine.Scalar16Artifact
+import Airbender.Review.Circuits.ReducedMachine.Scalar16Arguments
+import Airbender.Proofs.ReducedMachine.NativeScalar16Arguments
+import Airbender.Review.Circuits.ReducedMachine.Scalar16Theorems
+import Tests.NativeScalar16Arguments
+
 import Airbender.Review.Circuits.ReducedMachine.InitializationRangeColumns
 import Airbender.Import.ReducedInitializationRange
 import Airbender.Review.Circuits.ReducedMachine.InitializationRangeArtifact
@@ -6264,3 +6272,31 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeInitializationRange.duplicate_nonpole_not_free
 #print axioms Airbender.Tests.NativeInitializationRange.actual_all_ordinary_rows
 #print axioms Airbender.Tests.NativeInitializationRange.complete_conditional_pair
+
+#print axioms Airbender.NativeScalar16ArgumentProofs.same_source
+#print axioms Airbender.NativeScalar16ArgumentProofs.geometry
+#print axioms Airbender.NativeScalar16ArgumentProofs.difference_source
+#print axioms Airbender.NativeScalar16ArgumentProofs.table_row
+#print axioms Airbender.NativeScalar16ArgumentProofs.table_nonpole
+#print axioms Airbender.NativeScalar16ArgumentProofs.body_pair_product
+#print axioms Airbender.NativeScalar16ArgumentProofs.body_pair_factored
+#print axioms Airbender.NativeScalar16ArgumentProofs.auxiliary_sum
+#print axioms Airbender.NativeScalar16ArgumentProofs.polynomial_zero
+#print axioms Airbender.NativeScalar16ArgumentProofs.last_auxiliaries
+#print axioms Airbender.NativeScalar16Arguments.native_scalar16_auxiliary_sum
+#print axioms Airbender.NativeScalar16Arguments.native_scalar16_last
+#print axioms Airbender.Tests.NativeScalar16Arguments.separate_physical_multiplicity
+#print axioms Airbender.Tests.NativeScalar16Arguments.actual_four_body_pairs
+#print axioms Airbender.Tests.NativeScalar16Arguments.actual_pair_slots
+#print axioms Airbender.Tests.NativeScalar16Arguments.five_pairs_in_difference
+#print axioms Airbender.Tests.NativeScalar16Arguments.all_ordinary_rows
+#print axioms Airbender.Tests.NativeScalar16Arguments.complete_body_original_pairs
+#print axioms Airbender.Tests.NativeScalar16Arguments.table_scaling
+#print axioms Airbender.Tests.NativeScalar16Arguments.all_five_difference_scaling
+#print axioms Airbender.Tests.NativeScalar16Arguments.nonzero_last_slice
+#print axioms Airbender.Tests.NativeScalar16Arguments.wide_multiplicity_slice
+#print axioms Airbender.Tests.NativeScalar16Arguments.inactive_table_pole_slice
+#print axioms Airbender.Tests.NativeScalar16Arguments.nonpole_wrong_aux_rejected
+#print axioms Airbender.Tests.NativeScalar16Arguments.constant_one_difference_rejected
+#print axioms Airbender.Tests.NativeScalar16Arguments.complete_conditional_sum
+#print axioms Airbender.Tests.NativeScalar16Arguments.complete_conditional_last
