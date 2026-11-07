@@ -32,7 +32,72 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
-## Original native LW/SW public decoding (7 November 2026)
+## Initialized native LW/SW numerical values (7 November 2026)
+
+[Fresh mixed-port bindings](Airbender/Proofs/ReducedMachine/NativeWordMemoryPorts.lean)
+identify ALL3actual register/memory cells after original public decoding. LW uses
+rs1, the full effective-address memory shadow, and original rd; SW uses rs1, readonly
+rs2 and the actual effective-address memory destination. Native scalar bounds
+justify canonical address encoding. Both readonly refreshes and destination OLDREAD
+remain events, retaining aliases/x0. Actual RAM-only SW routing proves disjointness
+from EVERY native ROM-prefix WORD CELL; this is not yet a Sail byte-code frame.
+[Small memory observables](Airbender/Review/Helpers/Memory/ReducedMachineWordMemory.lean)
+record only these derived cells, without supplied memory reads or states.
+
+[Write preservation](Airbender/Proofs/ReducedMachine/NativeWordMemoryPreservation.lean)
+derives bounded LW candidates from exact certified ROM outputs or the earlier actual
+second-port memory read, then applies original decoded rd/x0 masking. SW copies the
+full earlier second-port register read to memory WITHOUT dummy-rd masking. These
+proved rules feed ONE unchanged shared initialized time induction. The short
+[public range root](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryValues.lean)
+derives EVERY actual read/write/terminal bound, including formerly unchecked low
+source35 and ignored ROM-shadow read37, from public seed-image construction and
+accepted native matching/full original decoding. No source/read/range/preservation
+answer is supplied publicly.
+
+[Initialized numerical results](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryResults.lean)
+derive canonical effective source+original-immediate address/fullRV32wrap, alignment,
+RAM-only stores, all3port cells, exact ROM-versus-RAM load writes and unmasked store
+writes, original load rd/x0 effects and bounded PC+4/fullRV32rollover. Original public
+query/source membership discharges immediate/incomingPC/alignment; initialized history
+discharges ALL source bounds. Native final-PC selection precedes unchanged increment
+lemmas. [References/effects](Airbender/Review/Circuits/ReducedMachine/WordMemoryResult.lean)
+are numerical actual words, NOT supplied desired answers or original pre-row Sail
+GPR/architectural memory observations. Calculations/assembly remain under Proofs.
+
+[Eleven regressions](Tests/NativeReducedWordMemoryValues.lean) reject oversized actual
+source/secondread/write/terminal words under the full public range interface, reject
+corrupt mixed-port cells, exclude stores from ROM-prefix cells, retain unmasked SW
+writes despite dummy rd0, derive load-x0 zero writes, compare independent ROM/RAM/
+shadow references and check native PCwrap. These conditional initialized/reference
+checks do NOT add complete positive NONEMPTY117-equation/22lookup native LW/SW rows.
+
+This numerical scope uses the explicit ordinary initialImage/ImageBoundary construction.
+Independent ROM-shadow seeds/ledger, original fixed-ROM byte construction, memory-aware
+Sail state/history/code-byte frames and retained LOAD/STORE execution remain OPEN.
+The exact native8wordROM is not equated with arbitrary original public decoder images;
+shadow values are not asserted to be architectural ROM words. Common supported
+execution still excludes LW/SW. NEXT construct that independent-shadow/public-ROM
+initializer and derive actual original memory transport; do not use all-events-GPR
+frames or supplied per-row read/state/code-frame answers. No native defect, issue
+assumption, production/Sail/native-data/dependency change, new axiom or parity claim.
+Eighteen exact parent648template/pure-helper origins record eleven new modules/tests.
+
+Final gates pass3199explicit standard-only axiom roots,206public Review roots,
+4guide names,3206links/anchors and context/trace separation. Full Review553.74MiB
+footprint/3124.97MiB resident/15.00s; independent provenance19.25/35.36MiB/8.37s
+passes189v3-origin/1201backport-origin identities,80byte-identical modules,8circuit
+artifacts,68native sources,23setup,4exporters,unchanged dependencies/originalcheckout.
+Ports506.31/2893.16MiB/10.77s;preservation497.94/2883.11/2.54;ranges479.77/2871.91/2.04;
+numericalresults498.58/2883.97/2.38;traceassembly481.60/2876.08/2.05;elevenregressions
+491.58/2884.41/2.37;Axioms547.15/3101.38/13.00. Every failed/successful owned worker
+terminated; no memory/wall-time/heartbeat/recursion ceiling hit/raised. Ordinary
+canonical/vector/zero-branch/import/wrapped-entry proof corrections verified.
+Unchanged shared lock,Lean-j1-M3072,3072MiB aggregate footprint/4096MiB resident,
+finite180second module/120second audit budgets. Sampled watchdog plus Lean allocation
+cap, not an OS hard physical-memory limit.
+
+## Earlier original native LW/SW public decoding (7 November 2026)
 
 [Original word-memory projection](Airbender/Review/Circuits/ReducedMachine/WordMemoryDecoder.lean)
 preserves LOAD(false,4)/STORE(4), raw rs1/rs2/rd/x0, original12bit Sail sign extension,

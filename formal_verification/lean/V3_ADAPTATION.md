@@ -752,3 +752,20 @@ word-memory constructor reference and independent public-byte fixture template.
 No old standalone native masks/constraints/tables/acceptance is transferred. Public
 logical image/decoder scope remains separate from native8word ROM/physical export,
 initialized memory/code frames/Sail/common execution. No defect/issue/axiom/parity.
+
+## Initialized actual native LW/SW numerical adaptation (7 November 2026)
+
+[Fresh port bindings](Airbender/Proofs/ReducedMachine/NativeWordMemoryPorts.lean) derive
+all3register/memory cell identities and native ROM-prefix word-cell store exclusion.
+[Preservation](Airbender/Proofs/ReducedMachine/NativeWordMemoryPreservation.lean) reuses
+only unchanged readonly metadata/shared time induction AFTER actual new LW ROM/RAM
+and SW unmasked source-copy bindings. Original decoded rd/x0 masks only LW. Native
+initialized read/write/terminal ranges now discharge all address addition/source/
+immediate inputs. Fresh actual final-PC selection precedes unchanged PC+4/wrap proof.
+[Public numerical effects](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryResults.lean)
+remain separate from original pre-row Sail memory/GPR state realization. Eighteen
+exact parent648template/pure-helper origins record eleven new modules/tests, including
+unchanged value induction/cell-address injection/Word arithmetic patterns; no old
+standalone compiled masks/tables/acceptance is transferred. Independent shadow/
+fixed-ROM byte construction, code-byte frames/Sail/common execution remain open.
+No defect, issue assumption, new axiom, production fix or parity claim.

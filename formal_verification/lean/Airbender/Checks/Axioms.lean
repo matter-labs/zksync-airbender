@@ -1,3 +1,14 @@
+import Airbender.Review.Helpers.Memory.ReducedMachineWordMemory
+import Airbender.Proofs.ReducedMachine.NativeWordMemoryPorts
+import Airbender.Proofs.ReducedMachine.NativeWordMemoryPreservation
+import Airbender.Proofs.Trace.Families.ReducedMachine.WordMemoryValues
+import Airbender.Review.Trace.Families.ReducedMachine.WordMemoryValues
+import Airbender.Review.Circuits.ReducedMachine.WordMemoryResult
+import Airbender.Proofs.ReducedMachine.NativeWordMemoryPC
+import Airbender.Proofs.ReducedMachine.NativeWordMemoryDecodedResult
+import Airbender.Proofs.Trace.Families.ReducedMachine.WordMemoryResults
+import Airbender.Review.Trace.Families.ReducedMachine.WordMemoryResults
+import Tests.NativeReducedWordMemoryValues
 import Airbender.Review.Circuits.ReducedMachine.WordMemoryDecoder
 import Airbender.Proofs.ReducedMachine.NativeWordMemoryDecoder
 import Airbender.Review.Helpers.Decoder.ReducedMachineWordMemory
@@ -3510,3 +3521,35 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedWordMemoryDecoder.corrupt_tag_rejected
 #print axioms Tests.NativeReducedWordMemoryDecoder.corrupt_zero_rejected
 #print axioms Tests.NativeReducedWordMemoryDecoder.canonical_negative_immediate
+
+#print axioms Airbender.ReducedMachine.NativeWordMemoryPortProofs.readonly_sources
+#print axioms Airbender.ReducedMachine.NativeWordMemoryPortProofs.address_roundtrip
+#print axioms Airbender.ReducedMachine.NativeWordMemoryPortProofs.addresses
+#print axioms Airbender.ReducedMachine.NativeWordMemoryPortProofs.store_excludes_rom_cell
+#print axioms Airbender.ReducedMachine.NativeWordMemoryPreservationProofs.rom_bounds
+#print axioms Airbender.ReducedMachine.NativeWordMemoryPreservationProofs.load_candidate_bounds
+#print axioms Airbender.ReducedMachine.NativeWordMemoryPreservationProofs.written_bounds
+#print axioms Airbender.ReducedMachine.NativeWordMemoryPreservationProofs.row_write_rule
+#print axioms Airbender.ReducedMachine.NativeWordMemoryRangeProofs.decoded_write_rules
+#print axioms Airbender.ReducedMachine.NativeWordMemoryRangeProofs.image_value_bounds
+#print axioms Airbender.ReducedMachine.Native.public_word_memory_value_bounds
+#print axioms Airbender.ReducedMachine.NativeWordMemoryPCProofs.selected_pc_successor
+#print axioms Airbender.ReducedMachine.NativeWordMemoryPCProofs.decoded_pc_successor
+#print axioms Airbender.ReducedMachine.NativeWordMemoryResultProofs.effective_address
+#print axioms Airbender.ReducedMachine.NativeWordMemoryResultProofs.rom_word
+#print axioms Airbender.ReducedMachine.NativeWordMemoryResultProofs.load_candidate
+#print axioms Airbender.ReducedMachine.NativeWordMemoryResultProofs.written_result
+#print axioms Airbender.ReducedMachine.NativeWordMemoryResultProofs.decoded_result
+#print axioms Airbender.ReducedMachine.NativeWordMemoryRangeProofs.image_word_memory_results
+#print axioms Airbender.ReducedMachine.Native.public_word_memory_results
+#print axioms Tests.NativeReducedWordMemoryValues.oversized_source_rejected
+#print axioms Tests.NativeReducedWordMemoryValues.oversized_second_read_rejected
+#print axioms Tests.NativeReducedWordMemoryValues.oversized_destination_rejected
+#print axioms Tests.NativeReducedWordMemoryValues.oversized_terminal_rejected
+#print axioms Tests.NativeReducedWordMemoryValues.corrupt_load_shadow_cell_rejected
+#print axioms Tests.NativeReducedWordMemoryValues.corrupt_store_memory_cell_rejected
+#print axioms Tests.NativeReducedWordMemoryValues.store_cannot_write_rom_prefix
+#print axioms Tests.NativeReducedWordMemoryValues.store_dummy_rd_preserves_write
+#print axioms Tests.NativeReducedWordMemoryValues.load_x0_write_zero
+#print axioms Tests.NativeReducedWordMemoryValues.independent_rom_ram_references
+#print axioms Tests.NativeReducedWordMemoryValues.original_pc_wrap

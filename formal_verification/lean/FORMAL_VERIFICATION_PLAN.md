@@ -171,10 +171,16 @@ Full combined row effects and execution remain pending. See the
    still awaits initialized source bounds. Original full public LW/SW decoding is
    now checked: retained constructors/x0/sign extension/unused indices and allten
    actual query fields derive from complete original sparse/padded membership;
-   native packing excludes holes/tail. NEXT derive fresh native memory/register
-   port bindings and initialized values/write preservation, original byte/ROM
-   construction and code nonoverlap before Sail/common execution.
-   Common supported execution excludes LW/SW; no all-events-GPR frame reuse.
+   native packing excludes holes/tail. Fresh ALL3mixed register/memory port cells,
+   load ROM/earlier-memory-read and unmasked store-source write preservation now
+   feed unchanged shared initialized induction. ALLactualread/write/terminal bounds,
+   canonical effective address/write/PC+4/fullRV32wrap derive publicly; no local
+   range/read/result/PC answer supplied. SW excludes native ROM-prefix WORD CELLS,
+   not yet an original byte-code frame. NEXT independent ROM-shadow/public-ROM
+   initializer, original memory-aware state/history/code-byte transport and retained
+   Sail clauses. Numerical current initialImage scope does not supply the separate
+   shadow-ledger/architectural-ROM connection. Common supported execution excludes
+   LW/SW; no all-events-GPR frame reuse.
    Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.

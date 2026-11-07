@@ -418,3 +418,11 @@ sources and allten actual fields from full sparse/padded membership, with native
 packing excluding holes/tail. It does not yet extend this common execution profile:
 initialized actual RAM/ROM/shadow values, write preservation and memory-aware code
 frames must be derived first. Generic decoder setup is not a fixed-ROM identity.
+
+[Word-memory value bounds](WordMemoryValues.lean) and [numerical effects](WordMemoryResults.lean)
+now derive ALL actual reads/writes/terminal ranges, effective addresses, actual mixed
+port cells, ROM/RAM/store writes and PC+4/wrap from the explicit ordinary public seed
+image and exact native acceptance. No per-row source/range/read/result/state answer.
+This is not yet original Sail memory/history or common support. Independent native
+ROM-shadow seed ledger, exact fixed-ROM/original bytes and memory-aware code frames
+must be constructed before retained LW/SW execution is claimed.

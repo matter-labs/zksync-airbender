@@ -500,3 +500,10 @@ allten actual native query fields from original byte/stateful sparse/padded
 membership, retaining x0/sign extension and native unused indices. Holes/tail are
 excluded by accepted packing. Original initialized memory/preservation/code frames/
 Sail/common execution still remain open; logical decoder image is not the native ROM.
+
+[Initialized LW/SW numerical results](../../Trace/Families/ReducedMachine/WordMemoryResults.lean)
+now derive fresh ALL3mixed-port cells, effective addresses/ROM-RAM or unmasked store
+writes and PC+4/wrap, with every source/read/range answer discharged by public
+initialization and proved write preservation. [Native port nonoverlap](../../../Proofs/ReducedMachine/NativeWordMemoryPorts.lean)
+excludes SW from ROM-prefix WORD CELLS. Original independent shadow/ROM-byte input
+construction, memory-aware states/code-byte frames/Sail/common execution remain open.

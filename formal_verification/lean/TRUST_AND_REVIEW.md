@@ -3185,3 +3185,24 @@ an unsupported ADD hole and padding. This logical image is not the fixed native8
 ROM or universal Rust/public-export/physical setup fidelity. Initialized native
 memory reads/writes/preservation/code frames/Sail/common execution remain open.
 No native finding, issue assumption, fix, new axiom or parity is claimed.
+
+## Initialized actual native word-memory numerical boundary
+
+[Public range/result roots](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryResults.lean)
+now derive all actual port cells, numerical addresses/writes/PCs and ALLread/write/
+terminal bounds from original public image, ordinary initialImage boundary, exact
+native fixed-pool acceptance and complete decoding. Proved LW ROM/RAM selection
+and SW unmasked source-copy rules feed unchanged time induction; no supplied read/
+range/value/state/preservation answer. SWdummy rd0 never masks the memory write.
+[Native port proof](Airbender/Proofs/ReducedMachine/NativeWordMemoryPorts.lean) excludes
+SW from every ROM-prefix WORD CELL, without asserting an original byte-code frame.
+
+These numerical native words are NOT yet original pre-row Sail GPR/memory observations.
+Independent ROM-shadow seed/ledger construction and actual fixed-ROM/original byte
+mapping remain separate: ignored native shadow values need not be architecturalROM
+words. Current ordinary initialImage scope is explicit; future independent-shadow
+initialization must be constructed from real public inputs. Memory-aware Sail states/
+code-byte frames/retained clauses/common execution remain open. No arbitrary table/
+public-image identity, desired per-row read/state/frame or native finding is supplied.
+[Regressions](Tests/NativeReducedWordMemoryValues.lean) are conditional initialized/
+reference checks, not full positive NONEMPTY117-equation native memory acceptance.
