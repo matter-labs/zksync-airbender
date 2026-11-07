@@ -369,8 +369,216 @@ private def slotCache : Vector (Vector (Fin 31) 7) 361 := #v[
 #v[23, 24, 20, 21, 22, 30, 30],
 #v[0, 5, 10, 15, 20, 25, 30]]
 
-private theorem slot_cache_correct : ∀ index : Fin 361, slots index = slotCache[index] := by
+-- Each closed kernel computation covers at most one fifteen-call round.
+-- Keep the original whole-cache contract; assemble all 361 cases below.
+private def cacheEntryCorrect (index : Fin 361) : Prop :=
+  slots index = slotCache[index]
+
+private def cachePart (base width : Nat) (fits : base + width ≤ 361)
+    (i : Fin width) : Fin 361 := ⟨base + i.val, by omega⟩
+
+private theorem cacheCorrect0 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 0 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
   decide +kernel
+
+private theorem cacheCorrect1 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 15 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect2 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 30 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect3 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 45 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect4 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 60 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect5 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 75 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect6 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 90 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect7 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 105 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect8 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 120 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect9 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 135 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect10 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 150 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect11 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 165 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect12 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 180 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect13 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 195 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect14 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 210 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect15 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 225 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect16 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 240 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect17 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 255 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect18 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 270 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect19 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 285 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect20 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 300 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect21 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 315 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect22 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 330 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect23 : ∀ i : Fin 15,
+    cacheEntryCorrect (cachePart 345 15 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem cacheCorrect24 : ∀ i : Fin 1,
+    cacheEntryCorrect (cachePart 360 1 (by decide) i) := by
+  simp only [cacheEntryCorrect, cachePart]
+  decide +kernel
+
+private theorem slot_cache_correct : ∀ index : Fin 361, slots index = slotCache[index] := by
+  intro index
+  have bound := index.isLt
+  change cacheEntryCorrect index
+  by_cases h0 : index.val < 15
+  · simpa only [cachePart, Nat.zero_add] using cacheCorrect0 ⟨index.val, h0⟩
+  by_cases h1 : index.val < 30
+  · simpa only [cachePart, show 15 + (index.val - 15) = index.val by omega] using
+      cacheCorrect1 ⟨index.val - 15, by omega⟩
+  by_cases h2 : index.val < 45
+  · simpa only [cachePart, show 30 + (index.val - 30) = index.val by omega] using
+      cacheCorrect2 ⟨index.val - 30, by omega⟩
+  by_cases h3 : index.val < 60
+  · simpa only [cachePart, show 45 + (index.val - 45) = index.val by omega] using
+      cacheCorrect3 ⟨index.val - 45, by omega⟩
+  by_cases h4 : index.val < 75
+  · simpa only [cachePart, show 60 + (index.val - 60) = index.val by omega] using
+      cacheCorrect4 ⟨index.val - 60, by omega⟩
+  by_cases h5 : index.val < 90
+  · simpa only [cachePart, show 75 + (index.val - 75) = index.val by omega] using
+      cacheCorrect5 ⟨index.val - 75, by omega⟩
+  by_cases h6 : index.val < 105
+  · simpa only [cachePart, show 90 + (index.val - 90) = index.val by omega] using
+      cacheCorrect6 ⟨index.val - 90, by omega⟩
+  by_cases h7 : index.val < 120
+  · simpa only [cachePart, show 105 + (index.val - 105) = index.val by omega] using
+      cacheCorrect7 ⟨index.val - 105, by omega⟩
+  by_cases h8 : index.val < 135
+  · simpa only [cachePart, show 120 + (index.val - 120) = index.val by omega] using
+      cacheCorrect8 ⟨index.val - 120, by omega⟩
+  by_cases h9 : index.val < 150
+  · simpa only [cachePart, show 135 + (index.val - 135) = index.val by omega] using
+      cacheCorrect9 ⟨index.val - 135, by omega⟩
+  by_cases h10 : index.val < 165
+  · simpa only [cachePart, show 150 + (index.val - 150) = index.val by omega] using
+      cacheCorrect10 ⟨index.val - 150, by omega⟩
+  by_cases h11 : index.val < 180
+  · simpa only [cachePart, show 165 + (index.val - 165) = index.val by omega] using
+      cacheCorrect11 ⟨index.val - 165, by omega⟩
+  by_cases h12 : index.val < 195
+  · simpa only [cachePart, show 180 + (index.val - 180) = index.val by omega] using
+      cacheCorrect12 ⟨index.val - 180, by omega⟩
+  by_cases h13 : index.val < 210
+  · simpa only [cachePart, show 195 + (index.val - 195) = index.val by omega] using
+      cacheCorrect13 ⟨index.val - 195, by omega⟩
+  by_cases h14 : index.val < 225
+  · simpa only [cachePart, show 210 + (index.val - 210) = index.val by omega] using
+      cacheCorrect14 ⟨index.val - 210, by omega⟩
+  by_cases h15 : index.val < 240
+  · simpa only [cachePart, show 225 + (index.val - 225) = index.val by omega] using
+      cacheCorrect15 ⟨index.val - 225, by omega⟩
+  by_cases h16 : index.val < 255
+  · simpa only [cachePart, show 240 + (index.val - 240) = index.val by omega] using
+      cacheCorrect16 ⟨index.val - 240, by omega⟩
+  by_cases h17 : index.val < 270
+  · simpa only [cachePart, show 255 + (index.val - 255) = index.val by omega] using
+      cacheCorrect17 ⟨index.val - 255, by omega⟩
+  by_cases h18 : index.val < 285
+  · simpa only [cachePart, show 270 + (index.val - 270) = index.val by omega] using
+      cacheCorrect18 ⟨index.val - 270, by omega⟩
+  by_cases h19 : index.val < 300
+  · simpa only [cachePart, show 285 + (index.val - 285) = index.val by omega] using
+      cacheCorrect19 ⟨index.val - 285, by omega⟩
+  by_cases h20 : index.val < 315
+  · simpa only [cachePart, show 300 + (index.val - 300) = index.val by omega] using
+      cacheCorrect20 ⟨index.val - 300, by omega⟩
+  by_cases h21 : index.val < 330
+  · simpa only [cachePart, show 315 + (index.val - 315) = index.val by omega] using
+      cacheCorrect21 ⟨index.val - 315, by omega⟩
+  by_cases h22 : index.val < 345
+  · simpa only [cachePart, show 330 + (index.val - 330) = index.val by omega] using
+      cacheCorrect22 ⟨index.val - 330, by omega⟩
+  by_cases h23 : index.val < 360
+  · simpa only [cachePart, show 345 + (index.val - 345) = index.val by omega] using
+      cacheCorrect23 ⟨index.val - 345, by omega⟩
+  · simpa only [cachePart, show 360 + (index.val - 360) = index.val by omega] using
+      cacheCorrect24 ⟨index.val - 360, by omega⟩
 
 /-- Reuse the kernel-checked physical slot cache in native layout bindings. -/
 theorem slots_normalized (index : Fin 361) : slots index = slotCache[index] :=

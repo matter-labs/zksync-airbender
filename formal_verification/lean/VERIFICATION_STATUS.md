@@ -44,6 +44,50 @@ redundant branch-only repair is removed; see [FINDINGS.md](FINDINGS.md).
 
 ## Current checkpoint
 
+Full run [42265036454](https://github.com/matter-labs/zksync-airbender/actions/runs/42265036454)
+on signed head 964db88d323d7f04a258f38bce28eca1c6d31652 failed independent
+kernel replay at 07:06:10 UTC on 7 November. The split slot-reduction module
+exceeded the unchanged 2,560 MiB charged-memory cap: exit 125 after 10.50
+seconds, 2,560.42 MiB charged, 2,048 MiB replay stack, no owned processes left.
+Its log contains no kernel rejection. There are 6,526 successful replay guards
+before this leaf in the 8,381-module DAG. The earlier ChiCharacters replay now
+passes in 940.05 seconds at 920.14 MiB charged. Complete replay has not passed;
+direct/transitive false-proof controls were skipped.
+
+The repair decomposes the private whole-cache calculation into twenty-four
+fifteen-entry proofs and one final-entry proof, then proves the original
+361-entry theorem from all twenty-five blocks. The literal slot cache, original
+whole-cache theorem statement and complete public theorem/normalization tail
+are byte-identical. Review statements and premises, production behavior,
+replay/checker policy, resource limits and the retained axiom baseline remain
+unchanged. All 923 captured native fingerprint inputs are byte-identical.
+
+A bounded isolated CORE fixture with the pinned Lean 4.31 toolchain checks the
+exact finite slot definitions, cache and repaired proof in 7.09 seconds at
+427.10 MiB charged, with only propext and Quot.sound reported. The unchanged
+replay adapter checks that compiled fixture's 520 safe declarations in 5.42
+seconds at 821.05 MiB charged, with no owned processes left. These local Darwin
+controls use 1,024/2,048 MiB memory limits and a 60-second deadline; the replay
+thread stack is 2,048 MiB and the process stack follows the existing Darwin
+policy. A changed final cache row is rejected in the final one-entry block
+(exit 1, 7.05 seconds). Nineteen replay, axiom-report and proof-boundary Python
+controls pass. This is isolated evidence, not a full project replay; Linux
+replay under the unchanged 2,048 MiB process stack remains required in CI.
+
+The failed run's exact diagnostic receipt is inspected: schema 1, commit
+964db88d323d7f04a258f38bce28eca1c6d31652, run/attempt 42265036454/1, native
+fingerprint 93bf55f548def02ee3d55793f6c679d601a089d3028ffb82a90e19016d9ce519,
+all 12/16/33/11 checks. Native generation and compiler capture actually ran.
+Complete source/runtime/Review, generated freshness, all 126 exact decoder
+comparisons across eleven inputs and the retained-baseline environment audit
+passed. The audit retains 5,164 protected roots and covers 229,263 dependencies,
+with no missing roots, changed reports, forbidden axioms, unsafe dependencies
+or undispositioned changes. These are pre-repair results; a new exact-head full
+assurance run with baseline refresh disabled is required. No final assurance
+is claimed.
+
+### Prior replay repair and retained baseline
+
 Final full run [42194460969](https://github.com/matter-labs/zksync-airbender/actions/runs/42194460969)
 on signed head b29277dd895499574e317a994fd89243a72f06cb passed fresh native
 qualification, complete source/runtime/Review, generated freshness, decoder
