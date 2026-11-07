@@ -31,6 +31,7 @@ import Human.Trace.Families.ShiftBinop.RVTheorems
 import Human.Trace.Families.SubwordMemory.Theorems
 import Human.Trace.Families.SubwordMemory.RVTheorems
 import Human.Trace.Soundness
+import Human.Trace.RVSoundness
 import Human.Trace.ZeroTimestamp
 import Human.Trace.UnifiedReduced.Theorems
 import Human.Trace.UnifiedReduced.RVTheorems
