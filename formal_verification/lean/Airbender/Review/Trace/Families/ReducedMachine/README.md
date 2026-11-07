@@ -405,3 +405,10 @@ check logical original JAL/ADD/JALR image/sources/configuration, not full nonemp
 117-equation native mixed acceptance. Remaining ordinary/protocol/physical scopes stay open.
 
 [Word-only memory local foundation](../../../Circuits/ReducedMachine/WordMemoryTheorems.lean) checks explicit1025/16386masks/all18flags/selected operands/port spaces. Current common six-profile execution excludes LW/SW until fresh address/value/ROM/shadow/initialized/code-frame/Sail bindings.
+
+[Word-memory local address/access](../../../Circuits/ReducedMachine/WordMemoryAddressTheorems.lean)
+and [exact fixed-table semantics](../../../Circuits/ReducedMachine/Tables/WordMemoryTheorems.lean)
+are now checked separately. They do not extend this common trace to LW/SW. Original
+public decoding, initialized RAM/ROM reads and write preservation, code nonoverlap,
+Sail clauses and mixed history remain open. Preserve actual shadow/OLDREAD events;
+current all-events-register-space code frames do not apply to memory stores.

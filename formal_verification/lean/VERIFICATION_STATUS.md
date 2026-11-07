@@ -32,7 +32,63 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
-## Native word-only memory routing foundation (7 November 2026)
+## Native word-memory addresses and exact fixed tables (7 November 2026)
+
+[Actual access proofs](Airbender/Proofs/ReducedMachine/NativeWordMemoryAccess.lean)
+derive LW's shadow address39/40=effective address61/62 on BOTH ROM and RAM paths,
+ROM/RAM selectors86/87, candidate116/117, original-field destination7/0 and field
+zero-mask8. They derive SW's readonly source address6/0, actual memory address45/46=
+61/62 and unmasked memory write43/44=37/38. Store writes never use architectural
+rd-zero masking. Both readonly refreshes, load shadow reads and store OLDREAD stay
+in native matching. [Short access roots](Airbender/Review/Circuits/ReducedMachine/WordMemoryTheorems.lean)
+keep native masks explicit with generic modeled setup. Actual74/75 effective-address
+limb equations and default/final PC selection are checked. [Internal RV32 addition](Airbender/Proofs/ReducedMachine/NativeWordMemoryNumerics.lean)
+reuses unchanged shared scalar/carry and pure addition lemmas AFTER fresh memory
+bindings. Its source/immediate bounds remain internal, awaiting public decoding/history.
+
+[Complete symbolic certificates](Airbender/Proofs/ReducedMachine/NativeWordMemoryTables.lean)
+check all65,536actual tag18offset rows, all65,536tag23separator rows and ALL1,048,576
+tag24ROM rows including the full repeated tail. [Exact full-pool meanings](Airbender/Review/Circuits/ReducedMachine/Tables/WordMemoryTheorems.lean)
+follow tag isolation at native offsets327681/393473/459009: offset bits0/1; high-limb
+RAM predicate64≤high and shadow high%64; aligned ROM keys below4MiB with the exact
+retained eight-word fixture/padding. No standalone/native table identity is inherited.
+No arbitrary-table equality/equivalence, input bound, sampled comparison, native_decide,
+foreign-data opacity or regenerated literal is used.
+
+[Native address roots](Airbender/Review/Circuits/ReducedMachine/WordMemoryAddressTheorems.lean)
+derive canonical aligned LW addresses and its mandatory modulo-address ROM query,
+INCLUDING RAM loads, plus canonical aligned SW addresses at or above4MiB. These
+local conclusions have NO source/address/range/result input answers. [Twelve regressions](Tests/NativeReducedWordMemoryAccess.lean)
+lift EVERY row of all three regions at its actual full-pool offset, connect all8public
+ROM words to the reference, check independent edge values/corruption/oversized or
+misaligned ROM rejection and actual four-assertion addition slices at carry/negative/
+fullRV32wrap edges. Positive slices are NOT full117-equation/22lookup accepted LW/SW.
+
+Original full public LW/SW decoding, initialized source/memory correspondence,
+canonical selected values/rd-x0 bindings, write preservation, mixed range/history,
+code preservation/nonoverlap, retained Sail memory clauses and common fetched execution
+remain OPEN. In particular the exact native eight-word ROM is NOT an arbitrary original
+public program image; general Rust/public decoder-export/preprocessing/physical ROM
+fidelity remains separate. Common six-profile execution still excludes LW/SW. No native
+defect, issue assumption, production/Sail/native-data/dependency change, new axiom or
+whole-machine/parity claim. Seventeen exact parenta117template/helper origins record
+twelve affected Lean paths. FINDINGS and prior importer/native-export inputs are unchanged.
+
+Final gates pass3152explicit standard-only axiom roots,203public Review roots,
+4guide declaration names,3178links/anchors and context/trace separation. Full Review
+552.54MiB footprint/3123.36MiB resident/17.06s. Independent exact provenance
+19.44/35.53MiB/8.25s passes189v3-origin/1175backport-origin identities,80byte-identical
+modules,8circuit artifacts,68native sources,23setup artifacts,4exporters and unchanged
+dependencies/original checkout. Access551.86/2907.77MiB/6.64s,queries517.11/2881.42/3.63,
+internal addition481.00/2847.19/2.09,complete table certificates508.83/2850.30/4.03,
+full-pool values491.34/2829.38/2.53,native address consequences481.44/2859.72/2.23,
+twelve regressions512.67/2887.20/2.84,Axioms544.49/3097.45/4.61. All failed/successful
+owned workers terminated; no memory/wall-time/heartbeat/recursion limit hit/raised.
+Shared lock,Lean-j1-M3072,3072MiB aggregate footprint/4096MiB resident and finite
+180second module/120second audit budgets are unchanged. This remains a sampled
+watchdog plus Lean allocation cap, not an OS hard physical-memory limit.
+
+## Earlier native word-only memory routing foundation (7 November 2026)
 
 [Word-memory references](Airbender/Review/Circuits/ReducedMachine/WordMemory.lean)
 name explicit LW1025/SW16386 masks. [NativeWordMemorySelectors](Airbender/Proofs/ReducedMachine/NativeWordMemorySelectors.lean)

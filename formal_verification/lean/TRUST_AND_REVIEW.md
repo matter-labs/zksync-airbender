@@ -3150,3 +3150,23 @@ initialized preservation/code frame/retained Sail execution remain separate. [Te
 are conditional consequences, not full positive accepted native word memory. Common
 six-profile fetched execution excludes LW/SW. Newly pinned base load.rs/store.rs are
 unchanged; no native defect, issue assumption, production fix or parity claim.
+
+## Actual native word-memory access and fixed-ROM boundary
+
+[Native load/store accesses](Airbender/Review/Circuits/ReducedMachine/WordMemoryTheorems.lean)
+now derive effective shadow/store addresses, selected native values, load field
+masking and unmasked store memory writes under explicit masks. [Exact native tables](Airbender/Review/Circuits/ReducedMachine/Tables/WordMemoryTheorems.lean)
+certify ALL offset/separator/ROM rows and the complete padding tail, then isolate
+actual tags18/23/24 from the complete pool. The ROM reference matches all eight
+retained public fixture words. This is a checked fixture connection, NOT a universal
+public-image/Rust-export/physical preprocessing certificate or arbitrary-table identity.
+
+[Address consequences](Airbender/Review/Circuits/ReducedMachine/WordMemoryAddressTheorems.lean)
+derive alignment, RAM-only stores and the active modulo-address ROM shadow lookup
+on RAM loads without desired range/source/address answers. Internal addition source/
+immediate bounds must still derive from original public decoding/initialized history.
+Original effective reads/rd-x0 bindings, initialized preservation/memory realization,
+code nonoverlap and retained Sail/common execution remain open. Store OLDREAD and
+load shadow reads remain events; store writes are not discarded rd-x0 writes. Native
+RAM bounds alone do not assert preservation of arbitrary original public code images.
+No native defect, issue assumption, production fix, new axiom or parity is claimed.

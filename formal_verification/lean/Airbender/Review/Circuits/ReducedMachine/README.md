@@ -483,4 +483,13 @@ local expected value/state/PC is public. Conditional initial CSR configuration p
 ordinary/empty and branch-only scopes. [Mixed regressions](../../../../Tests/NativeReducedSupportedJumps.lean)
 are public source/configuration evidence, not complete positive native mixed witnesses.
 
-[Word-only memory routing](WordMemoryTheorems.lean) now checks explicit LW1025/SW16386/all18flags and actual operand/port spaces. Original addresses/values/ROM/shadow/initialized Sail/common integration stay open. Memory ports are not all GPR events.
+[Word-only memory access](WordMemoryTheorems.lean) now checks explicit LW1025/SW16386,
+all18flags, exact port spaces, load shadow/ROM-RAM candidate/masked destination and
+unmasked store memory address/write. [Complete actual tables](Tables/WordMemoryTheorems.lean)
+certify every offset/separator/ROM row and full padding tail. [Native address roots](WordMemoryAddressTheorems.lean)
+derive aligned bounded loads/ROM shadow and RAM-only aligned stores without supplied
+source/address bounds. Internal RV32 addition still needs initialized source/decoded
+immediate bounds. Original full public decoding/values/initialized memory/code frames/
+Sail/common integration stay open; memory ports are not all GPR events. The fixed8word
+ROM is not an arbitrary original public image. Positive address slices are not full
+accepted117-equation native LW/SW witnesses.

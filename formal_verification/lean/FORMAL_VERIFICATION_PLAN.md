@@ -162,10 +162,17 @@ Full combined row effects and execution remain pending. See the
    original branch/jump constructors, security configuration only to original JALR;
    ordinary/empty and branch-only scopes stay narrow. Next inspect remaining actual
    ordinary combined operations before delegation/protocol/padding/terminal/init.
-   Word-only LW1025/SW16386 now derive all18flags and actual32/33operand/113/114port
-   spaces under explicit masks; unchanged load.rs/store.rs are hash-pinned. Address/
-   value/ROM/shadow/initialized memory/code-frame/Sail/public-decoding connections
-   remain open; common supported execution excludes LW/SW. Other combined
+   Word-only LW1025/SW16386 now derive all18flags, operand/port spaces, actual
+   effective-address/addition/default-PC equations, load shadow/selection/masked
+   destination and unmasked store memory address/write. Complete native18/23/24
+   table certificates cover all offset/separator/ROM rows and padding, with no
+   standalone table identity. Canonical aligned load addresses/ROM shadow and
+   RAM-only aligned stores need no supplied address bounds. Internal RV32 addition
+   still awaits initialized source/decoded-immediate bounds. NEXT derive original
+   full public LW/SW decoding and initialized native memory values/preservation,
+   original byte/ROM construction and code nonoverlap before Sail/common execution.
+   Common supported execution excludes LW/SW; no all-events-GPR frame reuse.
+   Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

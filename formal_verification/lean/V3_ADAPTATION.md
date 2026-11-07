@@ -720,3 +720,22 @@ constraint transfer. Native base load.rs/store.rs are newly pinned unchanged. [R
 are conditional routing consequences, not complete native memory witnesses. Original
 decoding/addresses/values/ROM/shadow/code-frame/initialized Sail/common support remain
 open; no defect/issue assumption/new axiom/general fidelity or parity claim.
+
+## Actual native word-memory address/table adaptation (7 November 2026)
+
+[Fresh native access equations](Airbender/Proofs/ReducedMachine/NativeWordMemoryAccess.lean)
+bind effective LW shadow/SW memory addresses, candidate/field mask versus unmasked
+store write, actual queries18/23/24 and default/final PC selection. Unchanged pure
+addition/shared native scalar/carry facts are reused only AFTER new74/75 memory
+bindings; source/immediate bounds stay internal pending original public history.
+[Complete new table certificates](Airbender/Proofs/ReducedMachine/NativeWordMemoryTables.lean)
+prove every actual18/23/24row, including all1,048,576ROM rows and padding, using
+symbolic stored blocks. No standalone masks/constraints/table identity is transferred.
+Exact full-pool meanings derive native alignment, RAM-only stores and LW's active
+ROM shadow even on RAM loads. All8retained public ROM words match the reference;
+arbitrary original image/physical/Rust-public-export fidelity is still separate.
+Seventeen exact parenta117origins record twelve affected Lean modules/tests, with
+unchanged Word/periodic/pool helpers. [Regressions](Tests/NativeReducedWordMemoryAccess.lean)
+are complete-region members, fixture/corruption checks and four-assertion positive
+address slices, NOT full accepted native LW/SW. Original public decoding/initialized
+memory/code-frame/Sail/common execution remain open; no defect/issue/new axiom/parity.
