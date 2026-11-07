@@ -327,3 +327,9 @@ derives masks/rs/rd/x0/immediate/raw JALfunct3 and original direct parity; holes
 are excluded through accepted18bit packing. [Initialized results](../../Trace/Families/ReducedMachine/JumpResults.lean)
 derive all numerical inputs internally. Original GPR/clauses/common execution and
 native public export/ROM/preprocessing/physical enforcement remain separate.
+
+[Original jump stateful replay](../../Trace/Families/ReducedMachine/JumpRegisters.lean)
+is now derived in every constructed native GPR pre-state after actual event-space
+proofs preserve code/misa. All3port reads/aliases/x0 participation remain. Replay
+and misa preservation do not supply initial misa readability or actual incoming
+PC preparation/retained-clause execution.

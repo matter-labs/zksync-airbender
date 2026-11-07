@@ -361,3 +361,15 @@ three-slot source construction and conditional initialized effects, not complete
 nonempty117-equation accepted native jumps. Original GPR/retained clauses/fetched
 execution and common jump integration remain next, with physical/setup/compiler/
 cryptographic/completeness and interrupt/exception scopes separate.
+
+## Original jump GPR/cell history
+
+[One short root](JumpRegisters.lean) derives all3actual original GPR reads in one
+pre-state, masked writes, every chronological native-clock Sail segment/final match,
+code/misa frames and original stateful decoder replay. [New port proofs](../../../../Proofs/ReducedMachine/NativeJumpPorts.lean)
+use actual jump source/destination equations and original decoded fields before
+shared history. JAL x0 reads and JALR aliases/old destination/discarded writes remain.
+No initial CSR readability premise is used at this GPR boundary; actual PC control
+preparation/retained clauses/normal/fetched/common integration stay separate.
+[Eight regressions](../../../../../Tests/NativeReducedJumpRegisters.lean) include
+unchanged imported group mechanics, not complete positive native jump acceptance.

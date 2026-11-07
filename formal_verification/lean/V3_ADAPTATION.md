@@ -657,3 +657,18 @@ certify complete nonempty117-equation accepted native jumps. Twenty-two exact
 parent56origins record fourteen modules/tests. Native GPR/clauses/fetched execution,
 common jump integration and physical/export/compiler/completeness stay open. No
 production/native/Sail/data/dependency change, finding, issue assumption or parity.
+
+## Original initialized native jump GPR history (7 November 2026)
+
+[New jump port bindings](Airbender/Proofs/ReducedMachine/NativeJumpPorts.lean)
+prove every original rs1/rs2/rd address from actual jump equations/decoded fields
+before unchanged native history lemmas. JAL x0 inputs and JALR aliases remain.
+[Initialized zero/code/register history](Airbender/Proofs/Trace/Families/ReducedMachine/JumpRegisterHistory.lean)
+derives every Sail segment/read/write/final match/code/misa/decoder replay;
+[one short root](Airbender/Review/Trace/Families/ReducedMachine/JumpRegisters.lean)
+keeps public image/native acceptance/full decoding/aligned cells explicit with no
+state/read/result/replay or initial CSR-read answer. No old split mask/constraint/
+table/acceptance transfer. [Eight tests](Tests/NativeReducedJumpRegisters.lean)
+include unchanged exact three-port/x0 mechanics, not complete positive native jumps.
+Retained clauses/actual incoming PC preparation/fetched/common jump execution are next.
+Ten exact parent0aaa origins record seven modules/tests; no native/data/dependency change.

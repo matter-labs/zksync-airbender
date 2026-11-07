@@ -9691,6 +9691,76 @@
       "backport_reuse_revision": "56d75f6a2ff263053d6106aa5547a833b866278a",
       "backport_reuse_path": "Tests/NativeReducedBranchResults.lean",
       "backport_reuse_sha256": "51840bc0ef711e83032ef2033a7b44f95c82ebd821e574964a0b5d280070b12e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpPorts.lean",
+      "change": "Bind original JAL/JALR rs1/rs2/rd/x0 to ALL three actual native ports using newly checked JumpFields.source_port/write and original decoded fields before reusing shared native_history_read/write. Retain JAL x0 source reads despite PC base, immediate readonly rs2/x0, source/destination aliases, old destination reads and masked writes. Derive initialized zero preservation, chronological original Sail cell/GPR states, final matching, code/misa frames and stateful original decoder replay. No desired read/state/result/order/replay answer or CSR readability premise is public. Retained jump clauses/PC preparation/fetched execution/common support remain separate. Positive imported group fixture is unchanged port mechanics only, not full117-equation jump acceptance. No native/Sail/data/dependency change, finding, issue assumption or parity claim.",
+      "backport_reuse_revision": "0aaae4a6c53817c8b1db6a02edf9647f9f446029",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPorts.lean",
+      "backport_reuse_sha256": "acc43411c595d3fca570e81ec3ebd28ba2f8dfb478d52201ede8d128bf2dad4a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpPorts.lean",
+      "change": "Bind original JAL/JALR rs1/rs2/rd/x0 to ALL three actual native ports using newly checked JumpFields.source_port/write and original decoded fields before reusing shared native_history_read/write. Retain JAL x0 source reads despite PC base, immediate readonly rs2/x0, source/destination aliases, old destination reads and masked writes. Derive initialized zero preservation, chronological original Sail cell/GPR states, final matching, code/misa frames and stateful original decoder replay. No desired read/state/result/order/replay answer or CSR readability premise is public. Retained jump clauses/PC preparation/fetched execution/common support remain separate. Positive imported group fixture is unchanged port mechanics only, not full117-equation jump acceptance. No native/Sail/data/dependency change, finding, issue assumption or parity claim.",
+      "backport_reuse_revision": "0aaae4a6c53817c8b1db6a02edf9647f9f446029",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpFields.lean",
+      "backport_reuse_sha256": "a971ab05fba33bef8e06f66c3826fe679109d788a7241a160c5e357a257c36c1"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeJumpPorts.lean",
+      "change": "Bind original JAL/JALR rs1/rs2/rd/x0 to ALL three actual native ports using newly checked JumpFields.source_port/write and original decoded fields before reusing shared native_history_read/write. Retain JAL x0 source reads despite PC base, immediate readonly rs2/x0, source/destination aliases, old destination reads and masked writes. Derive initialized zero preservation, chronological original Sail cell/GPR states, final matching, code/misa frames and stateful original decoder replay. No desired read/state/result/order/replay answer or CSR readability premise is public. Retained jump clauses/PC preparation/fetched execution/common support remain separate. Positive imported group fixture is unchanged port mechanics only, not full117-equation jump acceptance. No native/Sail/data/dependency change, finding, issue assumption or parity claim.",
+      "backport_reuse_revision": "0aaae4a6c53817c8b1db6a02edf9647f9f446029",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeJumpDecoder.lean",
+      "backport_reuse_sha256": "206ef01ec3a7d50a2a19b67e9bd033af38b87436f90724720f574580738b9165"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpZeroRegister.lean",
+      "change": "Bind original JAL/JALR rs1/rs2/rd/x0 to ALL three actual native ports using newly checked JumpFields.source_port/write and original decoded fields before reusing shared native_history_read/write. Retain JAL x0 source reads despite PC base, immediate readonly rs2/x0, source/destination aliases, old destination reads and masked writes. Derive initialized zero preservation, chronological original Sail cell/GPR states, final matching, code/misa frames and stateful original decoder replay. No desired read/state/result/order/replay answer or CSR readability premise is public. Retained jump clauses/PC preparation/fetched execution/common support remain separate. Positive imported group fixture is unchanged port mechanics only, not full117-equation jump acceptance. No native/Sail/data/dependency change, finding, issue assumption or parity claim.",
+      "backport_reuse_revision": "0aaae4a6c53817c8b1db6a02edf9647f9f446029",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticZeroRegister.lean",
+      "backport_reuse_sha256": "cf02af51888dadeef9387ee005c3c66b8fc2ecc70c294439d8441aa38cc2f983"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpCodeHistory.lean",
+      "change": "Bind original JAL/JALR rs1/rs2/rd/x0 to ALL three actual native ports using newly checked JumpFields.source_port/write and original decoded fields before reusing shared native_history_read/write. Retain JAL x0 source reads despite PC base, immediate readonly rs2/x0, source/destination aliases, old destination reads and masked writes. Derive initialized zero preservation, chronological original Sail cell/GPR states, final matching, code/misa frames and stateful original decoder replay. No desired read/state/result/order/replay answer or CSR readability premise is public. Retained jump clauses/PC preparation/fetched execution/common support remain separate. Positive imported group fixture is unchanged port mechanics only, not full117-equation jump acceptance. No native/Sail/data/dependency change, finding, issue assumption or parity claim.",
+      "backport_reuse_revision": "0aaae4a6c53817c8b1db6a02edf9647f9f446029",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticCodeHistory.lean",
+      "backport_reuse_sha256": "100691cb67a8e6e733d1fc2299c901724e8417f70e5944b94feb44e6d7fc99d2"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ReducedMachineJump.lean",
+      "change": "Bind original JAL/JALR rs1/rs2/rd/x0 to ALL three actual native ports using newly checked JumpFields.source_port/write and original decoded fields before reusing shared native_history_read/write. Retain JAL x0 source reads despite PC base, immediate readonly rs2/x0, source/destination aliases, old destination reads and masked writes. Derive initialized zero preservation, chronological original Sail cell/GPR states, final matching, code/misa frames and stateful original decoder replay. No desired read/state/result/order/replay answer or CSR readability premise is public. Retained jump clauses/PC preparation/fetched execution/common support remain separate. Positive imported group fixture is unchanged port mechanics only, not full117-equation jump acceptance. No native/Sail/data/dependency change, finding, issue assumption or parity claim.",
+      "backport_reuse_revision": "0aaae4a6c53817c8b1db6a02edf9647f9f446029",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/ReducedMachineArithmetic.lean",
+      "backport_reuse_sha256": "32c9d33a316230675c5fa8b16912c2a32a87337a4a9cbcb9e73d1979b9bb548f"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ReducedMachine/JumpRegisterHistory.lean",
+      "change": "Bind original JAL/JALR rs1/rs2/rd/x0 to ALL three actual native ports using newly checked JumpFields.source_port/write and original decoded fields before reusing shared native_history_read/write. Retain JAL x0 source reads despite PC base, immediate readonly rs2/x0, source/destination aliases, old destination reads and masked writes. Derive initialized zero preservation, chronological original Sail cell/GPR states, final matching, code/misa frames and stateful original decoder replay. No desired read/state/result/order/replay answer or CSR readability premise is public. Retained jump clauses/PC preparation/fetched execution/common support remain separate. Positive imported group fixture is unchanged port mechanics only, not full117-equation jump acceptance. No native/Sail/data/dependency change, finding, issue assumption or parity claim.",
+      "backport_reuse_revision": "0aaae4a6c53817c8b1db6a02edf9647f9f446029",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ReducedMachine/ArithmeticRegisterHistory.lean",
+      "backport_reuse_sha256": "995c0fd73cb3286a682bf82c1038b259d26c2157e420c127709b279741b53d3a"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/JumpRegisters.lean",
+      "change": "Bind original JAL/JALR rs1/rs2/rd/x0 to ALL three actual native ports using newly checked JumpFields.source_port/write and original decoded fields before reusing shared native_history_read/write. Retain JAL x0 source reads despite PC base, immediate readonly rs2/x0, source/destination aliases, old destination reads and masked writes. Derive initialized zero preservation, chronological original Sail cell/GPR states, final matching, code/misa frames and stateful original decoder replay. No desired read/state/result/order/replay answer or CSR readability premise is public. Retained jump clauses/PC preparation/fetched execution/common support remain separate. Positive imported group fixture is unchanged port mechanics only, not full117-equation jump acceptance. No native/Sail/data/dependency change, finding, issue assumption or parity claim.",
+      "backport_reuse_revision": "0aaae4a6c53817c8b1db6a02edf9647f9f446029",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ArithmeticRegisters.lean",
+      "backport_reuse_sha256": "5f373847e176b19d8a858f9f69a84bc8efffa9aed54d951a3ce328a9021139cb"
+    },
+    {
+      "path": "Tests/NativeReducedJumpRegisters.lean",
+      "change": "Bind original JAL/JALR rs1/rs2/rd/x0 to ALL three actual native ports using newly checked JumpFields.source_port/write and original decoded fields before reusing shared native_history_read/write. Retain JAL x0 source reads despite PC base, immediate readonly rs2/x0, source/destination aliases, old destination reads and masked writes. Derive initialized zero preservation, chronological original Sail cell/GPR states, final matching, code/misa frames and stateful original decoder replay. No desired read/state/result/order/replay answer or CSR readability premise is public. Retained jump clauses/PC preparation/fetched execution/common support remain separate. Positive imported group fixture is unchanged port mechanics only, not full117-equation jump acceptance. No native/Sail/data/dependency change, finding, issue assumption or parity claim.",
+      "backport_reuse_revision": "0aaae4a6c53817c8b1db6a02edf9647f9f446029",
+      "backport_reuse_path": "Tests/NativeReducedArithmeticRegisters.lean",
+      "backport_reuse_sha256": "8f0991e47a1f391f627f0c3ab5d91d9100bb16112c202a18372d6d3424de7c25"
+    },
+    {
+      "path": "Tests/NativeReducedJumpRegisters.lean",
+      "change": "Bind original JAL/JALR rs1/rs2/rd/x0 to ALL three actual native ports using newly checked JumpFields.source_port/write and original decoded fields before reusing shared native_history_read/write. Retain JAL x0 source reads despite PC base, immediate readonly rs2/x0, source/destination aliases, old destination reads and masked writes. Derive initialized zero preservation, chronological original Sail cell/GPR states, final matching, code/misa frames and stateful original decoder replay. No desired read/state/result/order/replay answer or CSR readability premise is public. Retained jump clauses/PC preparation/fetched execution/common support remain separate. Positive imported group fixture is unchanged port mechanics only, not full117-equation jump acceptance. No native/Sail/data/dependency change, finding, issue assumption or parity claim.",
+      "backport_reuse_revision": "0aaae4a6c53817c8b1db6a02edf9647f9f446029",
+      "backport_reuse_path": "Tests/NativeReducedRegisters.lean",
+      "backport_reuse_sha256": "fa608af9b02fe9e3a6d0c4c7ec69f8e1ae6089d83eeb63efcf685863cd14a1ac"
     }
   ],
   "setup_artifacts": [

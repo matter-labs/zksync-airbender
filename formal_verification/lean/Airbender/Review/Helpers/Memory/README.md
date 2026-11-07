@@ -285,3 +285,12 @@ then include both readonly ports, aliases, old-destination/discarded writes and
 terminal cells. [Numerical jump results](../../Trace/Families/ReducedMachine/JumpResults.lean)
 derive original return/target/cleanup without source-bound answers; original
 pre-row Sail GPR/cell observations and clause/fetched execution remain next.
+
+[Jump transfer/history observables](ReducedMachineJump.lean) now name actual
+all3port GPR reads/write and chronological initialized states/final matching.
+[Fresh port proofs](../../../Proofs/ReducedMachine/NativeJumpPorts.lean) establish
+original register cells before shared history lemmas. JAL x0 reads remain despite
+PC base; JALR aliases/readonly rs2/old destination/masked writes share one pre-state.
+[Public history](../../Trace/Families/ReducedMachine/JumpRegisters.lean) derives
+zero preservation/code/misa/decoder replay without supplied state/read/result or
+initial CSR-read answers. Retained clauses/PC preparation/fetched support remain next.

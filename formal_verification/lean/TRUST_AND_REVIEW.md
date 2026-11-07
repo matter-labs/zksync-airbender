@@ -327,6 +327,25 @@ fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
 terminal/init boundaries remain open. No native defect or issue-handling assumption
 is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
 
+## Original initialized jump GPR boundary
+
+[Fresh native jump port proofs](Airbender/Proofs/ReducedMachine/NativeJumpPorts.lean)
+bind original rs1/rs2/rd/x0 using new jump source/destination equations before shared
+history reads/writes. JAL's x0 reads remain present despite its PC base; JALR aliases,
+readonly rs2/x0, old destination and masked writes remain in one pre-state.
+[Public GPR history](Airbender/Review/Trace/Families/ReducedMachine/JumpRegisters.lean)
+derives all states/order/read/write/final matching/code/misa/decoder replay from
+public image/seeds, native acceptance/full decoding and aligned tracked cells.
+No desired local answer or initial misa readability premise is supplied. The modeled
+setup stays explicit; no numerical table meaning or table-equivalence premise is
+needed. Preserved misa does not assert that misa is initially readable.
+
+[Regressions](Tests/NativeReducedJumpRegisters.lean) include exact unchanged
+imported-port/x0 group mechanics, not full117-equation accepted jumps. GPR states
+still retain their raw control state; actual incoming-PC preparation, retained
+jump clauses/normal/fetched execution and common support are separate next work.
+No physical setup, production defect, issue assumption or parity claim follows.
+
 ## Original initialized jump numerical boundary
 
 [Public original jump decoding](Airbender/Review/Trace/Families/ReducedMachine/JumpDecoder.lean)

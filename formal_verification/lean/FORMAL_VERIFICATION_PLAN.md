@@ -144,7 +144,11 @@ Full combined row effects and execution remain pending. See the
    initialized range induction. All actual read/write/terminal ranges then discharge
    raw base/immediate bounds, deriving canonical return/raw/selected target/full
    RV32 wrap and JALR low-bit clearing without public local answers. Next bind
-   original jump GPR/operands/PC/retained clauses/fetched execution before common integration. Other combined
+   Original jump GPR/cell history is now derived after fresh all3port bindings:
+   one pre-state for source/readonly/old-destination aliases, masked write/x0
+   preservation, chronological Sail states/final matching/code/misa/decoder replay.
+   No initial CSR-read premise at this GPR-only boundary. Next bind original jump
+   operands/actual incoming PC preparation/retained clauses/fetched execution before common integration. Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

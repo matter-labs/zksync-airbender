@@ -32,6 +32,53 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Original native jump GPR/cell history (7 November 2026)
+
+[Fresh jump port bindings](Airbender/Proofs/ReducedMachine/NativeJumpPorts.lean)
+use actual source60/61/113/destination100..107/114 equations and original decoded
+rs1/rs2/rd/x0 before unchanged shared native_history_read/write. JAL's original
+source1/x0 still participates although its actual numerical base is PC; readonly
+rs2/x0 remains on both immediate forms. All three source/old-destination reads
+observe one original Sail pre-state, retaining JALR aliases and masked writes.
+[Initialized zero preservation](Airbender/Proofs/Trace/Families/ReducedMachine/JumpZeroRegister.lean)
+derives every actual x0 event from public seeds/native matching; no zero-read/write
+answer is supplied. [Register-space/event and code proofs](Airbender/Proofs/Trace/Families/ReducedMachine/JumpCodeHistory.lean)
+derive preserved code/misa and original stateful decoder replay.
+
+[One short public root](Airbender/Review/Trace/Families/ReducedMachine/JumpRegisters.lean)
+derives native-clock chronological row segments, every original GPR/cell state,
+all3reads, actual masked writes, final matching and decoder replay from original
+jumpDecoderSetupImage, ImageBoundary trace, Accepted trace, full JumpDecodedTrace
+and aligned tracked public cells. No state/order/read/write/result/replay answer or
+initial CSR readability premise is supplied. The four-field modeled setup remains
+explicit; these port/history proofs need no numerical table semantics. Calculations
+stay under Proofs; [public memory helpers](Airbender/Review/Helpers/Memory/ReducedMachineJump.lean)
+contain only small transfer/history observables. Raw GPR states retain their control
+state; actual incoming PC preparation, retained JAL/JALR clauses/normal/fetched
+execution and common jump integration remain next. Numerical jump results are
+separately checked at exact fixedData; no arbitrary/native table identity is used.
+
+[Eight regressions](Tests/NativeReducedJumpRegisters.lean) reject wrong rs2/high
+address/RAM selector, retain aliased sources/old destination, derive discarded x0
+whole-data stutter and reject initialized nonzero x0 events. The exact imported
+three-port/x0 positive group is unchanged mechanics evidence, not a full117-equation
+jump acceptance or an original decoder fixture. No new complete positive nonempty
+native jump, physical setup/export/ROM, native defect, issue assumption, axiom,
+whole-machine coverage or parity is claimed. Ten exact parent0aaa origins record
+seven modules/tests; native/Rust/Sail/data/dependencies remain unchanged.
+Final gates pass3088explicit standard-only axiom roots,194public Review roots,
+4guide names,3099links/anchors and context/trace separation. Full Review550.40MiB
+footprint/3113.30MiB resident/26.73s; independent exact provenance19.31/35.42MiB/8.18s
+passes189v3-origin/1114backport-origin identities,80byte-identical modules,8circuit
+artifacts,66native sources,23setup artifacts,4exporters and unchanged dependencies.
+All seven modules/tests pass on their first proof check; ports489.61/2876.36MiB/12.31s,
+zero preservation495.13/2878.23/2.46,register history480.22/2874.52/2.11,tests488.85/2872.28/2.18,
+Axioms542.20/3092.42/4.44. A runner path typo stopped on a missing file and was
+corrected; all owned workers terminated. Shared lock,Lean-j1-M3072,3072MiB aggregate
+footprint/4096MiB resident and finite180second modules/120second audits unchanged.
+No memory/time/heartbeat/recursion ceiling hit/raised; guard is sampled watchdog
+plus Lean allocation cap,not OS hard physical-memory enforcement.
+
 ## Original decoded and initialized jump numerics (7 November 2026)
 
 [Original JAL/JALR projection](Airbender/Review/Circuits/ReducedMachine/JumpDecoder.lean)

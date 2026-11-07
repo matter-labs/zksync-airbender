@@ -453,3 +453,12 @@ ranges/parity internally and derive canonical return/write/target, wrap and JALR
 bit0 cleanup. [Regressions](../../../../Tests/NativeReducedJumpDecoder.lean) are
 source/conditional initialized checks, not full native accepted jumps. Original
 GPR/retained clauses/fetched execution and common jump support remain next.
+
+[Actual original jump GPR history](../../Trace/Families/ReducedMachine/JumpRegisters.lean)
+now follows fresh native source/destination address bindings for all3ports. JAL's
+x0 reads remain despite PC base; JALR aliases/old destination/discarded writes remain
+in one pre-state. All states/order/final matching/code/misa/decoder replay derive
+from initialization/native matching/full original decoding. No CSR-read premise
+is needed for GPR history; incoming PC preparation/retained clauses/fetched/common
+execution remain separate. [Tests](../../../../Tests/NativeReducedJumpRegisters.lean)
+include unchanged group mechanics, not full accepted native jump witnesses.

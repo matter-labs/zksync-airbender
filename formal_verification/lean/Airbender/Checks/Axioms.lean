@@ -1,3 +1,10 @@
+import Airbender.Proofs.ReducedMachine.NativeJumpPorts
+import Airbender.Proofs.Trace.Families.ReducedMachine.JumpZeroRegister
+import Airbender.Proofs.Trace.Families.ReducedMachine.JumpCodeHistory
+import Airbender.Review.Helpers.Memory.ReducedMachineJump
+import Airbender.Proofs.Trace.Families.ReducedMachine.JumpRegisterHistory
+import Airbender.Review.Trace.Families.ReducedMachine.JumpRegisters
+import Tests.NativeReducedJumpRegisters
 import Airbender.Review.Circuits.ReducedMachine.JumpDecoder
 import Airbender.Proofs.ReducedMachine.NativeJumpDecoder
 import Airbender.Review.Helpers.Decoder.ReducedMachineJump
@@ -3366,3 +3373,27 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedJumpDecoder.native_return_wrap
 #print axioms Tests.NativeReducedJumpDecoder.independent_reference_targets
 #print axioms Tests.NativeReducedJumpDecoder.initialized_source_rejected
+
+#print axioms Airbender.ReducedMachine.NativeJumpPortProofs.readonly_sources
+#print axioms Airbender.ReducedMachine.NativeJumpPortProofs.source_addresses
+#print axioms Airbender.ReducedMachine.NativeJumpPortProofs.source_two_fields
+#print axioms Airbender.ReducedMachine.NativeJumpPortProofs.register_addresses
+#print axioms Airbender.ReducedMachine.NativeJumpPortProofs.register_reads
+#print axioms Airbender.ReducedMachine.NativeJumpPortProofs.register_write
+#print axioms Airbender.ReducedMachine.NativeJumpRegisterProofs.row_zero_preserving
+#print axioms Airbender.ReducedMachine.NativeJumpRegisterProofs.decoded_zero_preserving
+#print axioms Airbender.ReducedMachine.NativeJumpRegisterProofs.native_zero_writes
+#print axioms Airbender.ReducedMachine.NativeJumpRegisterProofs.image_row_history
+#print axioms Airbender.ReducedMachine.NativeJumpRegisterProofs.native_event_register_space
+#print axioms Airbender.ReducedMachine.NativeJumpRegisterProofs.native_history_memory
+#print axioms Airbender.ReducedMachine.NativeJumpRegisterProofs.entry_source_after_native_history
+#print axioms Airbender.ReducedMachine.NativeJumpRegisterProofs.image_register_history
+#print axioms Airbender.ReducedMachine.Native.public_jump_register_history
+#print axioms Tests.NativeReducedJumpRegisters.wrong_source_index_rejected
+#print axioms Tests.NativeReducedJumpRegisters.high_source_address_rejected
+#print axioms Tests.NativeReducedJumpRegisters.ram_source_rejected
+#print axioms Tests.NativeReducedJumpRegisters.aliased_source_reads
+#print axioms Tests.NativeReducedJumpRegisters.aliased_destination_read
+#print axioms Tests.NativeReducedJumpRegisters.discarded_state
+#print axioms Tests.NativeReducedJumpRegisters.initialized_nonzero_x0_rejected
+#print axioms Tests.NativeReducedJumpRegisters.positive_x0_group
