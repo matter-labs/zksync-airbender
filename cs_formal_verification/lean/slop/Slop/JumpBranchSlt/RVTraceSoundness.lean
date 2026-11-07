@@ -74,10 +74,11 @@ theorem rv_row_facts (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 536870
     (decoded : RVPooledDecoded trace program) {w : Nat → ZMod p}
     (member : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows) {before : RV.State}
     (position : RVRowPosition trace initial cells ⟨.jumpBranchSlt, w⟩ before)
-    {entry : RVPooledProgramEntry} (present : entry ∈ program)
+    {entry : RVPooledProgramEntry} (present : entry ∈ program) (family : entry.data.family = .jumpBranchSlt)
     (query : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).decoderQuery = entry.query)
     {i : RV.Instr} (decodes : RV.decode entry.bits = some i) {data : DecoderData Unit}
-    (fields : ∀ d, rvPooledDecoderFields i = some d → d = data.mapFamily (fun _ => .jumpBranchSlt))
+    (fields : ∀ d, rvPooledDecoderFields i = some d → d.family = .jumpBranchSlt →
+      d = data.mapFamily (fun _ => .jumpBranchSlt))
     (small : data.mask < 32) :
     RVRowFacts w before data ∧ RV.step before = RV.exec before i := by
   have h := Verification.holds_of_sublist (accepted.constraints _ member)
@@ -88,7 +89,7 @@ theorem rv_row_facts (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 536870
   obtain ⟨guard, bits, i', decodedI, projection⟩ := rvProgram_entry_fetch programImage entry present
   have hi : i' = i := Option.some.inj (decodedI.symm.trans decodes)
   subst hi
-  have dataEq := fields _ projection
+  have dataEq := fields _ projection family
   obtain ⟨pc, entryBits, entryData⟩ := entry
   change entryData = data.mapFamily (fun _ => .jumpBranchSlt) at dataEq
   subst dataEq
@@ -138,9 +139,9 @@ theorem rv_row_facts (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 536870
 theorem rv_comparison_trace_soundness (laws : RVPooledLaws) : Comparison.RVSoundnessClaim := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
-  obtain ⟨entry, present, _, query, decodes⟩ := mapping.instruction
-  obtain ⟨facts, step⟩ := rv_row_facts laws hp inverse assumptions accepted decoded member mapping.state present
-    query decodes (fun _ fields => comparison_pooled_fields fields)
+  obtain ⟨entry, present, family, query, decodes⟩ := mapping.instruction
+  obtain ⟨facts, step⟩ := rv_row_facts laws hp inverse assumptions accepted decoded member mapping.state present family
+    query decodes (fun _ fields family => comparison_pooled_fields fields family)
     (by unfold comparisonData; split <;> simp)
   obtain ⟨s', exec, same⟩ := rv_comparison_exec (by omega) facts mapping.words.outputLo mapping.words.outputHi
     mapping.words.finalPCLo mapping.words.finalPCHi
@@ -149,9 +150,9 @@ theorem rv_comparison_trace_soundness (laws : RVPooledLaws) : Comparison.RVSound
 theorem rv_branch_trace_soundness (laws : RVPooledLaws) : Branch.RVSoundnessClaim := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
-  obtain ⟨entry, present, _, query, decodes⟩ := mapping.instruction
-  obtain ⟨facts, step⟩ := rv_row_facts laws hp inverse assumptions accepted decoded member mapping.state present
-    query decodes (fun _ fields => branch_pooled_fields fields) (by simp [branchData])
+  obtain ⟨entry, present, family, query, decodes⟩ := mapping.instruction
+  obtain ⟨facts, step⟩ := rv_row_facts laws hp inverse assumptions accepted decoded member mapping.state present family
+    query decodes (fun _ fields family => branch_pooled_fields fields family) (by simp [branchData])
   obtain ⟨s', exec, same⟩ := rv_branch_exec (by omega) facts (decode_branch_even decodes)
     mapping.words.finalPCLo mapping.words.finalPCHi
   exact ⟨s', step.trans exec, same⟩
@@ -159,9 +160,9 @@ theorem rv_branch_trace_soundness (laws : RVPooledLaws) : Branch.RVSoundnessClai
 theorem rv_jump_trace_soundness (laws : RVPooledLaws) : Jump.RVSoundnessClaim := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
-  obtain ⟨entry, present, _, query, decodes⟩ := mapping.instruction
-  obtain ⟨facts, step⟩ := rv_row_facts laws hp inverse assumptions accepted decoded member mapping.state present
-    query decodes (fun _ fields => jump_pooled_fields fields)
+  obtain ⟨entry, present, family, query, decodes⟩ := mapping.instruction
+  obtain ⟨facts, step⟩ := rv_row_facts laws hp inverse assumptions accepted decoded member mapping.state present family
+    query decodes (fun _ fields family => jump_pooled_fields fields family)
     (by unfold jumpData; split <;> split <;> simp)
   have even : ∀ offset, input.instruction = .jal offset → (offset.signExtend 32).toNat % 2 = 0 := by
     intro offset jal

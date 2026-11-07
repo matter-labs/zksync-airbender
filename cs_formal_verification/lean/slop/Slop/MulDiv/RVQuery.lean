@@ -15,16 +15,15 @@ def rvData (input : RVInput) : DecoderData Unit :=
   ⟨(), input.rs1, input.rs2, input.rd, ⟨0, 0⟩, 2 ^ input.operation.selector.val, 0⟩
 
 /-- The pooled registry routes the four RV MUL/DIV instructions to this family only when `rd ≠ x0`
-    (x0 destinations go to ADD/SUB NOPs, which are not the `.op .mul…` instructions: they have no entry here). -/
+    (x0 destinations are ADD/SUB-family NOP rows, excluded by the family tag). -/
 theorem rv_pooled_fields {input : RVInput} {data : DecoderData PooledFamily}
-    (fields : rvPooledDecoderFields (rvInstruction input) = some data) :
+    (fields : rvPooledDecoderFields (rvInstruction input) = some data) (family : data.family = .mulDiv) :
     input.rd ≠ 0 ∧ data = (rvData input).mapFamily (fun _ => .mulDiv) := by
   obtain ⟨operation, left, right, pc, rs1, rs2, rd, before⟩ := input
   by_cases hz : rd = 0
   · subst hz
-    cases operation <;>
-      simp [rvPooledDecoderFields, rvInstruction, Trace.rvDecoderFields, JumpBranchSlt.rvDecoderFields,
-        MulDiv.rvDecoderFields, ShiftBinop.rvDecoderFields, SubwordMemory.rvDecoderFields] at fields
+    cases operation <;> simp [rvPooledDecoderFields, rvInstruction, Trace.rvDecoderFields] at fields <;>
+      (subst fields; simp [DecoderData.mapFamily, pooledArithmeticFamily, arithmeticFields] at family)
   · refine ⟨hz, ?_⟩
     have nz : rd ≠ 0#5 := hz
     cases operation <;>

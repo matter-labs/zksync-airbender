@@ -28,29 +28,26 @@ def jumpData (input : Jump.RVInput) : DecoderData Unit :=
     ⟨(), input.rs1, 0, input.rd, Word.ofBitVec (offset.signExtend 32), if input.rd = 0 then 18 else 2, 0⟩
 
 theorem comparison_pooled_fields {input : Comparison.RVInput} {data : DecoderData PooledFamily}
-    (fields : rvPooledDecoderFields (Comparison.rvInstruction input) = some data) :
+    (fields : rvPooledDecoderFields (Comparison.rvInstruction input) = some data) (family : data.family = .jumpBranchSlt) :
     data = (comparisonData input).mapFamily (fun _ => .jumpBranchSlt) := by
   obtain ⟨opcode, _, _, _, rs1, rs2, rd, imm, _⟩ := input
   by_cases zero : rd = 0
   · subst zero
+    cases opcode <;> simp [rvPooledDecoderFields, Comparison.rvInstruction, Trace.rvDecoderFields] at fields <;>
+      (subst fields; simp [DecoderData.mapFamily, pooledArithmeticFamily, arithmeticFields] at family)
+  · have nz : rd ≠ 0#5 := zero
     cases opcode <;> simp [rvPooledDecoderFields, Comparison.rvInstruction, Trace.rvDecoderFields,
-      JumpBranchSlt.rvDecoderFields, MulDiv.rvDecoderFields, ShiftBinop.rvDecoderFields,
-      SubwordMemory.rvDecoderFields] at fields
-  · cases opcode <;> simp [rvPooledDecoderFields, Comparison.rvInstruction, Trace.rvDecoderFields,
-      JumpBranchSlt.rvDecoderFields] at fields <;>
-      (rcases fields with ⟨_, rfl⟩ | ⟨hz, _⟩
-       · rfl
-       · exact absurd hz zero)
+      JumpBranchSlt.rvDecoderFields, nz] at fields <;> (subst fields; rfl)
 
 theorem branch_pooled_fields {input : Branch.RVInput} {data : DecoderData PooledFamily}
-    (fields : rvPooledDecoderFields (Branch.rvInstruction input) = some data) :
+    (fields : rvPooledDecoderFields (Branch.rvInstruction input) = some data) (family : data.family = .jumpBranchSlt) :
     data = (branchData input).mapFamily (fun _ => .jumpBranchSlt) := by
   simp [rvPooledDecoderFields, Branch.rvInstruction, Trace.rvDecoderFields,
     JumpBranchSlt.rvDecoderFields] at fields
   simp [← fields, branchData, DecoderData.mapFamily]
 
 theorem jump_pooled_fields {input : Jump.RVInput} {data : DecoderData PooledFamily}
-    (fields : rvPooledDecoderFields (Jump.rvInstruction input) = some data) :
+    (fields : rvPooledDecoderFields (Jump.rvInstruction input) = some data) (family : data.family = .jumpBranchSlt) :
     data = (jumpData input).mapFamily (fun _ => .jumpBranchSlt) := by
   obtain ⟨instruction, _, _, _, rs1, rd, _⟩ := input
   cases instruction <;> simp [rvPooledDecoderFields, Jump.rvInstruction, Trace.rvDecoderFields,

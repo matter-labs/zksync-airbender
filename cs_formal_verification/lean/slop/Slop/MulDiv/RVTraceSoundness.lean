@@ -63,11 +63,11 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
       _ = 1 := inverse
   obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage
   -- The row's program entry: its bytes decode to the row's instruction, and its data is `rvData input`.
-  obtain ⟨entry, present, _, query, decodes⟩ := mapping.instruction
+  obtain ⟨entry, present, family, query, decodes⟩ := mapping.instruction
   obtain ⟨guard, bits, i, decodedI, projection⟩ := rvProgram_entry_fetch programImage entry present
   have hi : i = rvInstruction input := Option.some.inj (decodedI.symm.trans decodes)
   subst hi
-  obtain ⟨_, data⟩ := rv_pooled_fields projection
+  obtain ⟨_, data⟩ := rv_pooled_fields projection family
   obtain ⟨selected, pcWord, rs1Query, rs2Query, _⟩ := rv_query_facts hp core data query
   -- Fetch/step: the row's pre-state is at the entry's PC and executes the entry's instruction.
   obtain ⟨beforePC, step⟩ := rv_step_of_position mapping.state (rv_query_pc limbSize query) guard

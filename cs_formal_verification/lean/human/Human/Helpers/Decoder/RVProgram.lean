@@ -71,8 +71,9 @@ noncomputable abbrev rvProgramImageWith {Kind : Type}
     Option (List (RVProgramEntry Kind)) := addresses.mapM (rvProgramEntryWith projection before)
 
 /-- Native metadata of ADD/SUB/ADDI/LUI/AUIPC and LW/SW (`add_sub_family/decoder.rs`, `mem_word_only/decoder.rs`),
-    as `decoderFields`. Immediates are `RV.decode`'s (already sign-extended or shifted). Arithmetic writes to x0 and
-    LW to x0 become native NOP rows. -/
+    as `decoderFields`. Immediates are `RV.decode`'s (already sign-extended or shifted). Every pure instruction
+    (ALU, M, `rev8`, load) writing x0 becomes a native NOP row, as Rust's preprocessing does (`pure_from_imm` in
+    `riscv_transpiler/src/ir/simple_instruction_set.rs`; the family decoders reject rd = x0). -/
 def rvDecoderFields : RV.Instr → Option DecoderData
   | .op .add rd rs1 rs2 => some (arithmeticFields rs1 rs2 rd 0 1)
   | .op .sub rd rs1 rs2 => some (arithmeticFields rs1 rs2 rd 0 2)
@@ -83,6 +84,8 @@ def rvDecoderFields : RV.Instr → Option DecoderData
     if rd = 0 then some (arithmeticFields 0 0 0 0 1)
     else some ⟨.wordMemory, rs1, 0, rd, Word.ofBitVec imm, 0, 0⟩
   | .store 4 rs2 rs1 imm => some ⟨.wordMemory, rs1, rs2, 0, Word.ofBitVec imm, 1, 0⟩
+  | .op _ rd _ _ | .opImm _ rd _ _ | .rev8 rd _ | .load _ _ rd _ _ =>
+    if rd = 0 then some (arithmeticFields 0 0 0 0 1) else none
   | _ => none
 
 end Airbender.Trace
