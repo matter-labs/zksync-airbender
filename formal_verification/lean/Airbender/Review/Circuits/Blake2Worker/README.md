@@ -138,3 +138,22 @@ arbitrary rings/challenges before division. No inverse/nonzero/compression
 injectivity, native auxiliary, global matching/issuance/converse/accounting or
 multiplicity-one zero-clock exclusion follows. Reference carry/wide-pointer/zero
 factor slices are not full accepted worker witnesses or native defects.
+
+## Auxiliary acceptance and complete-domain memory balance
+
+[Typed slots](AuxiliaryColumns.lean), [Same-read intake](AuxiliaryArtifact.lean),
+[Logical source-reference interface](Auxiliary.lean), [Short roots](AuxiliaryTheorems.lean),
+[Calculations](../../../Proofs/Blake2Worker/NativeAuxiliary.lean),
+[Regressions](../../../../Tests/NativeBlake2Auxiliary.lean),
+[Intake controls](../../../../Tests/NativeBlake2AuxiliaryImport.lean).
+
+Separate quartic slots1064/1068..1236/1240 never become body logical variables.
+The explicit normalized source polynomials retain all43 factors, literal initial
+chain1, actual adjacent grand values, first boundary1 and terminal public claim.
+A division-free telescope derives row and1048575-row memory product balance;
+no terminal claim1 or nonzero/injective compression assumption. Source normalization
+is not a physical quotient/LDE/challenge-separation or general Rust refinement.
+Memory matching/initialization, active bounds/keys/raw clocks and delegation sum/
+issuance/converse/accounting remain open. Full accepted positive worker witnesses
+and reference/round/state/terminal effects are still required; no main frames
+cross unproved worker actions. Zero-factor/reference slices are not defects.

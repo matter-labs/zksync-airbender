@@ -1,3 +1,10 @@
+import Airbender.Review.Circuits.Blake2Worker.AuxiliaryColumns
+import Airbender.Import.Blake2Auxiliary
+import Airbender.Review.Circuits.Blake2Worker.AuxiliaryArtifact
+import Airbender.Review.Circuits.Blake2Worker.Auxiliary
+import Airbender.Proofs.Blake2Worker.NativeAuxiliary
+import Airbender.Review.Circuits.Blake2Worker.AuxiliaryTheorems
+import Tests.NativeBlake2Auxiliary
 import Airbender.Review.Circuits.Blake2Worker.MemoryKeys
 import Airbender.Proofs.Blake2Worker.NativeMemoryKeys
 import Airbender.Review.Circuits.Blake2Worker.MemoryKeysTheorems
@@ -5737,3 +5744,27 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeBlake2MemoryKeys.wrong_unused_key_rejected
 #print axioms Airbender.Tests.NativeBlake2MemoryKeys.zero_factor_boundary
 #print axioms Airbender.Tests.NativeBlake2MemoryKeys.all_factors_retained
+
+#print axioms Airbender.Blake2Worker.AuxiliaryProofs.same_source
+#print axioms Airbender.Blake2Worker.AuxiliaryProofs.geometry
+#print axioms Airbender.Blake2Worker.AuxiliaryProofs.memory_columns
+#print axioms Airbender.Blake2Worker.AuxiliaryProofs.chain_balance
+#print axioms Airbender.Blake2Worker.AuxiliaryProofs.product_binding
+#print axioms Airbender.Blake2Worker.AuxiliaryProofs.row_balance
+#print axioms Airbender.Blake2Worker.AuxiliaryProofs.trace_balance
+#print axioms Airbender.Blake2Worker.Native.auxiliary_row_balance
+#print axioms Airbender.Blake2Worker.Native.auxiliary_trace_balance
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.full_source
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.separate_geometry
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.last_memory_slot
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.all_quartic_slots
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.ordinary_domain
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.literal_worker_kind_outside_scaling
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.inactive_denominator_not_unit
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.zero_scaling_is_weaker
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.bad_active_processor_aux
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.memory_step_zero_factor_boundary
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.grand_initial_boundary
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.grand_terminal_preserves_claim
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.chain_positive
+#print axioms Airbender.Tests.NativeBlake2Auxiliary.complete_row_balance

@@ -98,3 +98,11 @@ unmasked x0 loads and actual stores survive derived PC bookkeeping. Full native
 shadow matching remains; architectural terminal readers are filtered. Empty
 programs stay CSR-free. Common mixed memory/general physical enforcement remain
 separate; helper input meanings and original Sail semantics are unchanged.
+
+The [worker auxiliary roots](../Circuits/Blake2Worker/AuxiliaryTheorems.lean) now telescope all43 native memory factors
+across the selected full domain under an explicit individual normalized auxiliary
+acceptance contract and actual first/last public-claim boundaries. Separate typed
+quartic slots, no division or terminal claim1. Product balance does not prove
+full token matching/initialization or a delegation ledger; active ranges/keys/raw
+clocks and issuance/converse/accounting remain open. No main frame crosses an
+unproved delegated action, and physical enforcement stays separately scoped.

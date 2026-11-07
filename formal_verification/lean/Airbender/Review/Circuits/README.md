@@ -113,3 +113,11 @@ sides and common processor clock, deriving stage2/quotient-unit reference key
 agreement and equal products before division under normalized processing
 acceptance. Active initialization/keys, native auxiliaries, full matching and
 issuance/accounting remain open; no main frames cross unproved worker actions.
+
+The [worker auxiliary roots](Blake2Worker/AuxiliaryTheorems.lean) now telescope all43 native memory factors
+across the selected full domain under an explicit individual normalized auxiliary
+acceptance contract and actual first/last public-claim boundaries. Separate typed
+quartic slots, no division or terminal claim1. Product balance does not prove
+full token matching/initialization or a delegation ledger; active ranges/keys/raw
+clocks and issuance/converse/accounting remain open. No main frame crosses an
+unproved delegated action, and physical enforcement stays separately scoped.

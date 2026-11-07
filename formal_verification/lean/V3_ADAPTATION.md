@@ -1453,3 +1453,66 @@ broader-path retests, global padding/init/teardown/general Rust/compiler/JSON/
 publicexport/preprocessing/physicalROM/field/LDE/crypto/completeness/parity remain
 open. FINDINGS and zero-established-defect status are unchanged; no issue
 assumption, production fix, new axiom or whole-machine claim.
+
+## Native Blake2 auxiliary acceptance and memory balance (7 November 2026)
+
+[Short row and trace roots](Airbender/Review/Circuits/Blake2Worker/AuxiliaryTheorems.lean)
+now derive a division-free memory product balance from explicitly modeled native
+auxiliary polynomials. This closes the selected worker's normalized auxiliary
+relations and domain boundaries; it does not establish full memory matching or
+a caller-worker ledger. The old body-only and processing-only interfaces remain
+unchanged.
+
+A [separate strict intake](Airbender/Import/Blake2Auxiliary.lean) validates every
+selected stage2 key, group, pair count, inactive family and width after the unchanged
+complete worker parser. [Typed quartic columns](Airbender/Review/Circuits/Blake2Worker/AuxiliaryColumns.lean)
+keep these slots separate from the871 body logical variables. The complete
+same-read artifact binds processor1064, all43 memory slots1068..1236 at stride4,
+grand-product1240, extension offset44 and width1244. Kernel [bindings and calculations](Airbender/Proofs/Blake2Worker/NativeAuxiliary.lean)
+retain complete source-byte identity and every memory slot. No auxiliary column
+is silently mapped to a body variable; existing artifacts/literals/intakes are unchanged.
+
+The newly byte-pinned unchanged [global worker quotient](../../prover/src/prover_stages/stage3.rs)
+provides reviewed source references for the processor relation, all43 memory steps,
+adjacent-row grand-product update and first/last boundaries. Worker literal1991
+and gamma remain outside witness scaling. The source initializes the within-row
+chain from the inverse half-domain factor; its unit-normalized value is literal1,
+not a supplied previous-row accumulator. Every old read, readonly refresh,
+explicit write, alias and the common worker write clock remains in the43 factors.
+
+[The explicit logical acceptance](Airbender/Review/Circuits/Blake2Worker/Auxiliary.lean)
+contains complete body/processing acceptance plus individual unit-normalized
+native auxiliary polynomials. The full domain has1048575 ordinary rows and a last
+row carrying the claimed grand product. Adjacent grand values come from the same
+auxiliary trace; initial value1 and terminal equality to the public proof claim
+are separate native boundary polynomials. The already pinned prover driver commits
+that claim and returns it in the proof. No terminal claim1, expected worker stream,
+per-row source/read/value/bound/key/result/state/clock/order/schedule/count/request/
+worker answer, inverse, nonzero factor or compression injectivity is supplied.
+
+A pure telescope derives the actual processor denominator equation, the complete
+43-factor row balance and the complete-domain product balance against the claimed
+terminal accumulator. Zero factors are allowed: these equations alone do not imply
+multiset equality, invertible ratios, initialized reads, active key refinement,
+raw-clock bounds, zero-clock exclusion, issuance, fulfillment, converse or accounting.
+This is a reviewed source/algebra and normalized logical-acceptance boundary,
+not general Rust/M31Quartic/compiler/LDE/physical verifier/challenge-separation
+refinement or a claim that physical points have unit normalization.
+
+Fourteen [theorem regressions](Tests/NativeBlake2Auxiliary.lean) preserve all43 slots,
+full source/domain, worker literal scaling, public boundary and zero-factor limits.
+Fourteen [executable controls](Tests/NativeBlake2AuxiliaryImport.lean) reject changed,
+overlapping, incomplete or unsupported auxiliary geometry; canonical changed body
+equations remain data without proof transfer. Pure/reference/conditional cases
+are not complete positive nonempty accepted worker witnesses or native defects.
+The new intake gate is serial and bounded; unchanged heavy certificates are not replayed.
+
+NEXT connect the actual delegation sum/public accumulator and global caller-worker
+acceptance, full43-token matching/initialization and active read/write/address/raw-clock
+bounds before active stage2/quotient key refinement, worker reference/round/state/terminal
+execution or accounting/unified protocol. Do not carry main GPR byte/RAM frames
+across unproved delegated actions. Full positive worker witnesses, v3F02/F03/F04
+broader-path retests, original CSR/MOP execution, padding/init/teardown, general
+Rust/compiler/JSON/publicexport/preprocessing/physicalROM/field/LDE/crypto/
+completeness/parity remain open. FINDINGS and zero-established-defect status are
+unchanged; no production fix, issue assumption or project axiom is introduced.
