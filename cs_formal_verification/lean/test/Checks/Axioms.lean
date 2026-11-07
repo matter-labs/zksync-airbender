@@ -6,6 +6,7 @@ import Slop.Final.ISA.Theorems
 import Slop.Final.ISA.DelegationRuns
 import Slop.Final.ISA.Vectors
 import Slop.Final.Trace.Delegation.RVTheorems
+import Slop.Final.Trace.Workers.Blake2G.RVTheorems
 import Human.ISA.Sail.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
 import Slop.Final.Trace.Families.JumpBranchSlt.Theorems
@@ -2341,3 +2342,12 @@ import Human.Import.Coefficients
 #print axioms Airbender.SubwordMemory.rv_ram_trace_soundness
 #print axioms Airbender.Trace.Proofs.rv_family_realizes
 #print axioms Airbender.Trace.Proofs.rv_family_row_steps
+#print axioms Airbender.Blake2G.Native.rv_workvector_soundness
+#print axioms Airbender.Blake2G.Native.rv_workvector_boundary_soundness
+#print axioms Airbender.Blake2G.Native.rv_window_soundness
+#print axioms Airbender.Blake2G.Native.rv_operation_execution
+#print axioms Airbender.Blake2G.Proofs.rv_workvector_binding_at_boundary
+#print axioms Airbender.Blake2G.Proofs.rv_window_binding
+#print axioms Airbender.Blake2G.Proofs.g_call_link
+#print axioms Airbender.Delegation.Proofs.calls_replicate_link
+#print axioms Airbender.Delegation.Proofs.rv_trace_mapping_same

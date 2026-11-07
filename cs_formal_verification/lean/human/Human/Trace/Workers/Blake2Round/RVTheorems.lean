@@ -1,0 +1,56 @@
+import Human.Trace.Workers.Blake2Round.RVCall
+import Human.Trace.Delegation.RVHashWindows
+import Human.Helpers.Delegation.RVOperations
+
+-- The statements proven in slop/Slop/Final/Trace/Workers/Blake2Round/RVTheorems.lean (checked by verify.sh). RV
+-- siblings of `Theorems.lean`: the public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING
+-- READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`): no pointer is required to be at or
+-- above `ROM_END`. The complete-span claims also state the delegate link: the circuit's final state IS the spec's run
+-- of the span's round delegations (`RV.calls`, `RV.Delegation.blakeRound`), up to the spec's PC advance.
+
+namespace Airbender.Blake2Round.Native
+
+/-- RV sibling of `OperationExecutionClaim`: the complete extended row matches its existing preparation, Clean
+    eight-G round, chaining, control and address references on actual RV port values (`RVMemoryExecution`; RAM cells
+    include the shadow RAM below `ROM_END`). The exclusive round mask remains the visible caller condition in
+    `RVOperationInputs`. -/
+def RVOperationExecutionClaim : Prop :=
+  ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {before : RV.State} {cells : List Trace.Cell} {control : Fin 4096 → Vector Nat 6} (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.RVOperationInputs data before cells control) (aligned : ∀ cell ∈ cells, cell.Aligned),
+    Delegation.RVMemoryExecution data before cells ∧
+      ∀ row ∈ data.rows, row.family = .blakeRound →
+        ∃ round, Memory.RoundMask row.assignment round ∧ Row.spec (input round row.assignment) (output row.assignment)
+
+/-- RV sibling of `CompressionSoundnessClaim`: the complete seven or ten round compression reaches its reference
+    output in actual RV RAM. `RVWordMapping` identifies successful initial/final block reads; `RVTraceMapping` binds
+    the same final state to every native access and terminal token. The final state is the spec's run of the 7/10
+    round delegation calls from `initial` (memory and registers; the PC advance is the spec's):
+    `RV.calls (rvCalls flags) initial`. -/
+def RVCompressionSoundnessClaim : Prop :=
+  ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Trace.Cell} {flags : Fin 8} (accepted : Delegation.MemoryAccepted data) (inputs : RVCallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned),
+    ∃ (after : RV.State) (statePointer messagePointer : BitVec 32)
+      (input : Compression.State) (message : Vector Arithmetic.Word 16) (output : Compression.State),
+      Compression.RVWordMapping initial after statePointer messagePointer input output message ∧
+        Delegation.RVTraceMapping data initial after cells ∧
+        output = Compression.run flags input message ∧
+        ∃ s', RV.calls (rvCalls flags) initial = some s' ∧
+          RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * (rvCalls flags).length)))
+
+/-- RV sibling of `CompressionBoundarySoundnessClaim`: the complete extended-BLAKE reference binds actual boundary RV
+    reads and the final `RV.State` with retained seed timestamps, with the same delegate link. -/
+def RVCompressionBoundarySoundnessClaim : Prop :=
+  ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Trace.Cell} {flags : Fin 8} (accepted : Delegation.MemoryAccepted data) (inputs : RVNativeCallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned),
+    ∃ (after : RV.State) (statePointer messagePointer : BitVec 32)
+      (input : Compression.State) (message : Vector Arithmetic.Word 16) (output : Compression.State),
+      Compression.RVWordMapping initial after statePointer messagePointer input output message ∧
+        Delegation.RVTraceMapping data initial after cells ∧
+        output = Compression.run flags input message ∧
+        ∃ s', RV.calls (rvCalls flags) initial = some s' ∧
+          RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * (rvCalls flags).length)))
+
+/-- RV sibling of `WindowSoundnessClaim`: the first complete compression reaches its reference (`RVSpanResult`,
+    delegate link included) on actual cut `RV.State`s from a retained native boundary. -/
+def RVWindowSoundnessClaim : Prop :=
+  ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {before : RV.State} {cells : List Trace.Cell} {flags : Fin 8} {lower upper : Nat} (accepted : Delegation.MemoryAccepted data) (inputs : RVWindowInputs data before cells flags lower upper) (aligned : ∀ cell ∈ cells, cell.Aligned),
+    Delegation.Caller.RVWindowResult (RVSpanResult flags) data before cells lower upper
+
+end Airbender.Blake2Round.Native
