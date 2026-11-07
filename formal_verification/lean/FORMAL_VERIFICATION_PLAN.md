@@ -31,6 +31,63 @@ and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
+## Native Blake2 normalized processing conventions (7 November 2026)
+
+The [short processing root](Airbender/Review/Circuits/Blake2Worker/ProcessingTheorems.lean)
+now derives Boolean multiplicity and inactive memory zeroing at a separate,
+explicit logical acceptance boundary. [The contract](Airbender/Review/Circuits/Blake2Worker/Processing.lean)
+requires the complete unchanged352-equation/296-lookup native body on the actual
+pool AND the individual normalized processing-convention polynomials. It supplies
+no active flag, expected read/value/bound/result/clock/state/order/schedule/request,
+worker success or issued stream. These extra polynomials are not claimed to follow
+from the352 JSON equations alone.
+
+The [pinned native quotient function](../../prover/src/prover_stages/unrolled_prover/quotient_parts/every_row_except_last.rs)
+uses half-domain factor tau: Boolean term(tau*m)*(tau*m-1), and mask term
+(tau*m-1)*tau*value. [Source references](Airbender/Review/Circuits/Blake2Worker/Processing.lean)
+retain both scale factors. [Proof calculations](Airbender/Proofs/Blake2Worker/NativeProcessing.lean)
+bind original Clean acceptance exactly to the individual source-reference terms
+at unit normalization. This is a reviewed source/algebra contract for ordinary
+rows, not formal Rust/M31Complex/LDE refinement, challenge separation, physical
+quotient acceptance or last-row enforcement. No physical evaluation point is
+assumed to have unit scaling.
+
+[A separate descriptor intake](Airbender/Import/Blake2Processing.lean) reuses the
+unchanged strict worker parser. [Same-read observables](Airbender/Review/Circuits/Blake2Worker/ProcessingArtifact.lean)
+retain all source bytes, actual processor multiplicity,225 masked columns and
+all226 physical-memory logical variables. The walk follows native register/
+indirect order: ABIhigh, processing time, every oldtime/readvalue and actual
+written value. Selected geometry has no nontrivial address-carry fields. Kernel
+source equality, unique coverage and an exact memory-column permutation prove
+that no selected memory field is omitted. All43 oldreads, both readonly register
+refreshes and25 written accesses remain; multiplicity zero derives all226 memory
+columns zero. Processing multiplicity is now derived at this stronger logical
+interface, while its physical enforcement remains open.
+
+Twelve [regression roots](Tests/NativeBlake2Processing.lean) cover exact source/
+geometry/partition, normalized-contract rejection of non-Boolean multiplicity and
+nonzero inactive clocks/reads/oldtimes/writes, positive convention-only slices
+and scaling boundaries. Multiplicity one permits arbitrary convention-masked
+values; non-unit scaled coordinates need not themselves be Boolean. Neither
+slice asserts complete accepted worker/body matching or a native defect.
+Six [intake controls](Tests/NativeBlake2ProcessingImport.lean) check identical
+source, complete unique mask/physical maps, changed canonical ABI data retained
+without its coverage certificate, and invalid memory columns. The new intake
+gate is serial; unchanged native/importer/heavy certificates are not replayed.
+
+NEXT bind actual worker memory keys/tokens and full43-access matching, initialized
+active read/write/address ranges, raw clocks, padding-token cancellation and real
+caller-worker auxiliary/accumulator acceptance before issuance/fulfillment/
+converse/accounting/unified protocol. Multiplicity-one zero-clock exclusion is
+not proved. Main Trace.Accepted still has no worker ledger; main GPR byte/RAM
+frames cannot cross unproved delegated actions. Control/round/reference/state/
+terminal, full positive worker witnesses, F02/F03/F04 broader-path retests,
+original CSR/MOP execution, global padding/init/teardown/general Rust/compiler/
+JSON/publicexport/preprocessing/physicalROM/field/LDE/crypto/completeness/parity
+remain open. This is a new logical native-convention acceptance boundary, not an
+issue-handling restriction, fix, new axiom or whole-machine claim; FINDINGS and
+zero-established-defect status are unchanged.
+
 ## Native Blake2 ABI-local memory laws (7 November 2026)
 
 The [short actual-pool root](Airbender/Review/Circuits/Blake2Worker/MemoryTheorems.lean)

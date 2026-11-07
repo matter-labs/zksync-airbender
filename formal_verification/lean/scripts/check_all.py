@@ -105,6 +105,7 @@ def main():
     bounded([sys.executable, "scripts/check_blake2_fixed.py"], "native-blake2-fixed-export", seconds=180)
     bounded([*LEAN, "--run", "Tests/NativeBlake2FixedImport.lean"], "native-blake2-fixed-importer-tests", seconds=120)
     bounded([*LEAN, "--run", "Tests/NativeBlake2QueriesImport.lean"], "native-blake2-query-importer-tests", seconds=120)
+    bounded([*LEAN, "--run", "Tests/NativeBlake2ProcessingImport.lean"], "native-blake2-processing-importer-tests", seconds=120)
     bounded([*LEAN, "--run", "Tests/NativeBlake2WorkerImport.lean"], "native-blake2-importer-tests", seconds=120)
     bounded([*LEAN, "--run", "Tests/NativeRuntimeCSRImport.lean"], "runtime-csr-importer-tests", seconds=120)
     bounded([*LEAN, "--run", "Tests/ArtifactImport.lean"], "importer-tests")

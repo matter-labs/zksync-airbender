@@ -92,3 +92,26 @@ worker execution/issuance or protocol accounting. Allscalar slices are explicitl
 partial; no complete positive worker witness, F03/F04 evidence or defect follows.
 The next connection must derive ranges/states/clocks from real initialized
 worker memory and accepted native/protocol matching, retaining every token.
+
+## Normalized native processing conventions
+
+[Logical contract](Processing.lean), [Short root](ProcessingTheorems.lean), [Descriptor artifact](ProcessingArtifact.lean), [Separate intake](../../../Import/Blake2Processing.lean), [Proof calculations](../../../Proofs/Blake2Worker/NativeProcessing.lean), [Regressions](../../../../Tests/NativeBlake2Processing.lean), [Intake controls](../../../../Tests/NativeBlake2ProcessingImport.lean), [Pinned native quotient](../../../../../../prover/src/prover_stages/unrolled_prover/quotient_parts/every_row_except_last.rs).
+
+The native quotient's processing conventions are separate from the352 JSON body
+equations. Their reviewed source references retain half-domain scaling:
+(tau*m)*(tau*m-1) and(tau*m-1)*tau*value. Individual unit-normalized polynomials
+form an explicit logical acceptance input alongside the complete original body.
+Kernel calculations bind those polynomials to the reference terms; no physical
+point is assumed unit-normalized, and LDE/quotient/challenge/last-row enforcement
+remains separate. The parser/old artifact stay unchanged.
+
+The same-read descriptor walk retains225 masked columns, unique and exactly
+covering all226 physical memory fields together with multiplicity. Under this
+stronger logical interface, multiplicity is Boolean; when zero, ABI/time/all43
+oldread/readonly-refresh/all25 written fields are zero. No active flag or desired
+read/result/clock/state/request/worker answer is supplied. Active raw clocks,
+memory keys/matching/initialized ranges, unused-token cancellation, issuance/
+auxiliary/accumulator/accounting/converse and complete reference execution remain
+open. In particular this does not exclude multiplicity-one zero-clock workers.
+Convention-only positive/scaling slices are not full accepted worker witnesses,
+F03 evidence or native defects. No production fix or issue assumption is added.

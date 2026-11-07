@@ -504,3 +504,9 @@ pointer alignment/scalar-implied bounds and all43 actual Boolean borrow and
 timestamp-difference laws from complete local acceptance. Initialized16bit reads,
 raw clocks/processing multiplicity, alltoken matching and issued worker/protocol
 accounting remain open. Main histories/frames do not cross unproved worker actions.
+
+The [normalized worker processing root](../Circuits/Blake2Worker/ProcessingTheorems.lean) derives Boolean multiplicity
+and allinactive memory-field zeroing under an explicit additional native
+individual-convention relation. This relation is separate from the352 local JSON
+equations and physical quotient/LDE/last-row enforcement. Worker keys/tokens,
+initialized active ranges/clocks, cancellation and issuance/accounting remain open.
