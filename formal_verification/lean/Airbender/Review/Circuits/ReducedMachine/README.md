@@ -675,3 +675,22 @@ now binds actual caller origins to reviewed stage2/quotient reference formulas.
 The native unrolled constructor passes sequence0; its extra high contribution is
 zero. Witness terms scale before gamma/literal additions. Exact key agreement at
 unit scaling precedes compression; no injectivity, LDE or worker-ledger claim.
+
+## Main delegation auxiliary and scalar row component
+
+[Typed geometry](AuxiliaryColumns.lean), [Same-read main artifact](AuxiliaryArtifact.lean),
+[Caller/component interface](Delegation.lean), [Short roots](DelegationTheorems.lean),
+[Kernel bindings/calculations](../../../Proofs/ReducedMachine/NativeCallerDelegation.lean),
+[Regressions](../../../../Tests/NativeCallerDelegation.lean),
+[Intake controls](../../../../Tests/NativeReducedAuxiliaryImport.lean).
+
+Auxiliary quartic92 is distinct from body logical92. All18 native stage2 fields
+and active initialization/state/masking families remain retained. The full domain
+checks every ordinary body row and keeps every auxiliary contribution; the active
+logical Trace.Accepted interface is not substituted for padding. Native polynomial
+sum derivation and the actual claim fold connect full caller and worker row sums.
+The denominator keeps the checked selected-constructor sequence0 scope, with no
+extra public chunk sequence. No stream/initialized-read/expected-result premise;
+no inactive-pole removal, multiset matching, fulfillment/converse/accounting or
+physical/global dispatch/capacity/sequence/refinement claim. Full matching and
+initialization/history/filtering and original CSR/MOP execution remain open.

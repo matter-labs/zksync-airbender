@@ -1,3 +1,10 @@
+import Airbender.Review.Circuits.ReducedMachine.AuxiliaryColumns
+import Airbender.Import.ReducedAuxiliary
+import Airbender.Review.Circuits.ReducedMachine.AuxiliaryArtifact
+import Airbender.Review.Circuits.ReducedMachine.Delegation
+import Airbender.Proofs.ReducedMachine.NativeCallerDelegation
+import Airbender.Review.Circuits.ReducedMachine.DelegationTheorems
+import Tests.NativeCallerDelegation
 import Airbender.Review.Helpers.Memory.DelegationSum
 import Airbender.Proofs.Memory.DelegationSum
 import Airbender.Review.Helpers.Memory.DelegationSumTheorems
@@ -5809,3 +5816,25 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeBlake2Delegation.active_pole_excluded
 #print axioms Airbender.Tests.NativeBlake2Delegation.inactive_pole_not_excluded
 #print axioms Airbender.Tests.NativeBlake2Delegation.statement_component
+
+#print axioms Airbender.ReducedMachine.NativeCallerDelegationProofs.same_source
+#print axioms Airbender.ReducedMachine.NativeCallerDelegationProofs.geometry
+#print axioms Airbender.ReducedMachine.NativeCallerDelegationProofs.memory_columns
+#print axioms Airbender.ReducedMachine.NativeCallerDelegationProofs.caller_sum
+#print axioms Airbender.ReducedMachine.NativeCallerDelegationProofs.row_equation
+#print axioms Airbender.ReducedMachine.NativeCallerDelegationProofs.active_auxiliary
+#print axioms Airbender.ReducedMachine.NativeCallerDelegationProofs.rows_balance
+#print axioms Airbender.ReducedMachine.Native.caller_delegation_sum
+#print axioms Airbender.ReducedMachine.Native.caller_worker_rows_balance
+#print axioms Airbender.Tests.NativeCallerDelegation.full_source
+#print axioms Airbender.Tests.NativeCallerDelegation.exact_geometry
+#print axioms Airbender.Tests.NativeCallerDelegation.all_memory_slots
+#print axioms Airbender.Tests.NativeCallerDelegation.other_families_retained
+#print axioms Airbender.Tests.NativeCallerDelegation.separate_body_and_auxiliary_roles
+#print axioms Airbender.Tests.NativeCallerDelegation.bad_active_auxiliary
+#print axioms Airbender.Tests.NativeCallerDelegation.inactive_pole_not_excluded
+#print axioms Airbender.Tests.NativeCallerDelegation.shared_challenge_roles
+#print axioms Airbender.Tests.NativeCallerDelegation.complete_caller_sum
+#print axioms Airbender.Tests.NativeCallerDelegation.actual_observation_equation
+#print axioms Airbender.Tests.NativeCallerDelegation.active_pole_excluded
+#print axioms Airbender.Tests.NativeCallerDelegation.complete_rows_balance

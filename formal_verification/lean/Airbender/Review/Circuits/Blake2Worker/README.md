@@ -175,3 +175,9 @@ relations derive nonzero denominators; inactive poles are not excluded. Physical
 FFT/M31Quartic/LDE/quotient and global dispatch/capacity/challenge boundaries remain
 separate. Scalar sums do not imply matching/converse/accounting. Pure degree-alias/
 scalar-collision tests are not complete worker witnesses or native defects.
+
+The stronger [main caller/component roots](../ReducedMachine/DelegationTheorems.lean)
+now replace opaque main claims with derived full main-row auxiliary sums under
+an explicit main-body/auxiliary/polynomial contract. This still supplies no
+initialized caller stream, inactive-row filtering, matching, fulfillment/converse/
+accounting or physical/global capacity/sequence/dispatch/challenge enforcement.

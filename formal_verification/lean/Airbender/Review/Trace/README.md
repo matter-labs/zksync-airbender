@@ -531,3 +531,10 @@ unified statement's returned-claim accumulator component. Main claims remain
 opaque until their actual caller auxiliaries are connected; scalar balance is
 not issuance/matching/converse/accounting. Physical/global capacity/dispatch/
 challenge boundaries and active initialized memory effects remain open.
+
+The [main caller auxiliary roots](../Circuits/ReducedMachine/DelegationTheorems.lean) now derive main claims from all native
+ordinary-row auxiliary values and connect them to worker-row scalar sums. Separate
+quartic92 and body92 roles remain explicit. Full body acceptance here does not
+require every row active; existing initialized logical trace/history roots remain
+unchanged. No inactive contribution is discarded, and padding/filter/matching,
+global sequence/capacity/dispatch/challenge boundaries and accounting stay open.

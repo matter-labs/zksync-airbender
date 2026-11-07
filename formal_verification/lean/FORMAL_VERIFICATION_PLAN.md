@@ -29,7 +29,82 @@ retains 119 equations, 141 variables and 13 regions; no equivalence is assumed.
 The complete current native fixed pool and explicit public fixture are imported,
 and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
-[current adaptation snapshot](V3_ADAPTATION.md). Main stage-two JSON remains opaque; selected worker auxiliary geometry is separately typed and checked.
+[current adaptation snapshot](V3_ADAPTATION.md). Selected main/worker auxiliary geometry is separately typed and checked; unmodeled protocol semantics remain open.
+
+## Native caller auxiliary sums and row balance (7 November 2026)
+
+[The main caller sum and caller-worker row roots](Airbender/Review/Circuits/ReducedMachine/DelegationTheorems.lean)
+now connect the native main proof's returned delegation claim to all ordinary
+caller-row auxiliary values. The stronger normalized scalar component consequently
+equates actual full main-row and selected worker-row auxiliary sums. It is not a
+caller/worker matching, issued-stream, fulfillment, converse or accounting result.
+
+[The separate selected main intake](Airbender/Import/ReducedAuxiliary.lean) reuses
+unchanged full main parsing and validates all18 stage2 keys, every group/pair,
+active initialization/state/masking families, fresh117-equation/142-variable body
+geometry, extension offset12 and width124. Historical119-equation intake rejects
+without any equivalence or coverage transfer. [Typed main columns](Airbender/Review/Circuits/ReducedMachine/AuxiliaryColumns.lean)
+retain request92, memory96/100/104, state108, masking112, initialization116 and
+grand-product120. Reusing the unchanged quartic-column type transfers no worker
+acceptance or semantics. Request auxiliary92 is a different type and row space
+from body logical variable92, the actual request multiplicity.
+
+[The same-read artifact](Airbender/Review/Circuits/ReducedMachine/AuxiliaryArtifact.lean)
+and [kernel bindings/calculations](Airbender/Proofs/ReducedMachine/NativeCallerDelegation.lean)
+identify the complete unchanged main source bytes, all selected geometry and the
+native8388608-point domain. No native artifact, literal, fixture, old intake,
+exporter, dependency or production source changed. All native source pins remain
+unchanged; no native generation or closed heavy certificate is replayed.
+
+[The explicit caller interface](Airbender/Review/Circuits/ReducedMachine/Delegation.lean)
+checks the complete original Clean body on the actual constructed runtime-CSR pool
+for every8388607 ordinary row, the individual normalized native caller auxiliary
+relation and the native sum-polynomial divisor with actual slot92 samples. It does
+not supply execute-one flags, a CSR profile, initialized reads, desired sum or
+per-row source/value/range/result/key/state/clock/order/schedule/count/request/worker
+answers. The existing logical execution trace requires every listed row active;
+it is deliberately not substituted for this full native domain. Active history,
+padding and filtering connections remain separate. Every ordinary auxiliary
+value stays in the sum, including multiplicity-zero rows.
+
+The denominator reuses the already checked selected-constructor sequence-zero
+caller normal form and actual precompression request/time observations. No public
+chunk sequence is added again, and no other constructor/chunk is assumed zero.
+Source-reference auxiliary equations derive the actual observation-key denominator
+relation and exclude poles when the observed multiplicity is one. Inactive poles
+are not excluded and their auxiliary contributions are not silently discarded.
+The unchanged polynomial calculation derives the main claim from all row values;
+the sum is not a premise. Shared gamma/ABI/low-time/high-time roles map directly
+to the selected worker challenge structure. The exact native add-main/subtract-worker
+claim component then derives full caller-row sum equals full worker-row sum.
+
+This is an additional reviewed normalized polynomial/logical component interface.
+Physical Rust/FFT/M31Quartic/domain/LDE/quotient/challenge-separation and global
+sequence/dispatch/setup/capacity/public-proof correspondence remain open. The full
+native state/memory permutation and initialization auxiliaries are retained as
+geometry, not newly interpreted as enforced matching. Scalar equality is not
+multiset equality or a cardinality bound. No physical point is assumed unit-scaled,
+no desired worker stream or table-equivalence premise is introduced, and no main
+GPR byte/RAM frame crosses an unproved delegated action.
+
+Twelve [theorem regressions](Tests/NativeCallerDelegation.lean) retain complete source,
+all auxiliary families/roles, shared challenge positions, active/inactive pole
+limits and complete conditional row/sum/component roots. Eighteen [executable intake controls](Tests/NativeReducedAuxiliaryImport.lean)
+check native source/geometry, historical rejection, changed/overlapping/missing
+active groups, width/offset/unknown/remainder failure, and canonical changed-body
+data without semantic proof transfer. These are conditional/reference checks,
+not full positive nonempty accepted main/worker witnesses, physical attacks,
+v3F02/F03/F04 evidence or native defects. The new intake gate is serial and bounded.
+
+NEXT connect initialized actual caller observations to this full-domain auxiliary
+component with faithful padding/filter/history and native global capacity/dispatch/
+sequence/challenge/public boundaries before stream matching, fulfillment, converse
+or accounting. Full43-token worker matching/initialization, active read/write/address/
+raw-clock ranges and key refinement, worker control/round/reference/state/terminal
+effects and complete positive witnesses remain open. Original CSR/MOP execution,
+global padding/init/teardown, broader-path findings retests, physical/general
+refinement/cryptography/completeness/parity remain open. FINDINGS and zero-established-
+defect status are unchanged; no production fix, issue assumption or project axiom.
 
 ## Native delegation sum and public claim component (7 November 2026)
 
