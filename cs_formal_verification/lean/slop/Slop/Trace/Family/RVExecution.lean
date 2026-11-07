@@ -9,7 +9,6 @@ import Slop.Trace.RVValues
 import Slop.Trace.ROMView
 import Slop.Trace.RVBootSeed
 import Slop.Final.Circuits.InitsTeardowns.Theorems
-import Slop.UnifiedReduced.RV.Execution
 
 /-! The ADD/SUB + word-memory trace claims on the RV route (`RVAirbenderSoundnessClaim`, `RVNativeBootSoundnessClaim`):
     no Sail state, interpreter, `Configured` or `OrdinaryWordAddress` fact. Rows step by family
