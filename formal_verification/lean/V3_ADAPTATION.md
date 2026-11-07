@@ -972,3 +972,33 @@ physical/completeness or parity follows. Next certify native special-CSR table
 meaning and actual CSR/delegation bindings before fulfillment/accounting/protocol.
 The deliberate v3 proofpinb292 remains unchanged; observed original checkout
 9bdf/private Keccak proof activity is audited separately and not adopted.
+
+## Actual reduced CSR fixture/request adaptation (7 November 2026)
+
+[Complete actual special-CSR meaning](Airbender/Review/Circuits/ReducedMachine/Tables/CSRTheorems.lean)
+now derives from stored affine intervals and six/two exceptional slots, followed
+by full native-pool tag isolation. [Actual local CSR effects](Airbender/Review/Circuits/ReducedMachine/CSRTheorems.lean)
+derive mask129/query/flags, supported keys, readonly GPR routing, bounded oracle/
+candidate/rdmask/default-PC and imported request multiplicity/kind/ABI high offset.
+Delegation returns zero; nondeterminism remains a bounded native oracle without
+an identified original value/stream. Actual source-high lookup derives the masked
+ABI bound, with no supplied source/read/result/request answer. In-cycle index3
+is metadata, not fulfillment or global accounting.
+
+Nine modules/tests record 18 exact parent-9bc PURE/helper/template origins. Fresh
+actual bindings precede reuse; no old standalone compiled/acceptance identity or
+arbitrary/native table equality is transferred. Active csr_with_delegation.rs is
+byte-identical to base67ee and independently hashed. Thirteen fixture/table/
+conditional-native/partial-positive tests are not full nonempty accepted CSR rows
+or original public CSR/MOP decoding/custom/nondeterminism/privilege execution.
+Those reference/initialized/common connections and workers/callers/accounting/
+protocol/init/physical/completeness/parity remain open. Production/native/Sail/
+artifact/public fixture/dependencies and prior seven-profile roots stay unchanged;
+no native finding/issue assumption/new axiom. Deliberate v3 proofpinb292 stays
+separate from observed original checkout9bdf/private Keccak proof activity.
+
+The next worker adaptation must distinguish explicit fixture keys1988/1989 from
+native source ABI constants Blake2=1991 and bigint=1994. Read-only byte comparison
+of the three delegation-constant source files against base67ee passed. This is
+source planning, not a Lean worker/runtime setup certificate or a finding; preserve
+the imported fixture and assess actual native configuration before composition.

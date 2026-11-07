@@ -35,6 +35,63 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Actual native CSR table and local requests (7 November 2026)
+
+[The special-CSR certificate](Airbender/Review/Circuits/ReducedMachine/Tables/CSRTheorems.lean)
+now covers all 4,096 actual tag-25 rows in the complete native pool. Symbolic zero
+intervals and six/two stored exceptional slots prove the exact explicit fixture:
+1984, 1988 and 1989 are supported; only 1988/1989 delegate. Full-pool tag isolation
+recovers the canonical 12-bit key and both output flags. This does not generalize
+the configured allow-list to other runtime/public setups.
+
+[The short local CSR root](Airbender/Review/Circuits/ReducedMachine/CSRTheorems.lean)
+derives the actual selected mask 129 flags, first dynamic query and remaining
+inactive tags, then excludes every unsupported key using the actual support
+assertion. [Native local observables](Airbender/Review/Circuits/ReducedMachine/CSR.lean)
+retain selected immediate routing, the readonly second GPR port, actual oracle/
+candidate, GPR destination/masked write and default-PC selection. Actual scalar
+slots 4/5 bound the oracle limbs. Delegation forces the actual oracle to zero;
+nondeterminism uses a bounded native oracle whose reference value/stream is not
+identified here. No source/read/output/range or worker answer is supplied.
+
+[Fresh request bindings](Airbender/Proofs/ReducedMachine/NativeCSRResult.lean)
+use actual polynomials 68–73 and exact imported coordinates: multiplicity 92,
+kind 94, ABI high offset 93, in-cycle metadata index 3. Delegating rows derive
+multiplicity one, their actual key as kind and actual source-high word 36 as ABI
+offset. Nondeterminism derives a zero request. The masked ABI offset inherits
+its bound from the actual source-high lookup, not an assumed per-row source or
+expected offset. An absent ABI group stays absent in the observer; the actual
+imported group is proved present. Metadata index 3 is not a global scheduling,
+caller issuance, worker fulfillment or accounting theorem.
+
+Thirteen [focused regressions](Tests/NativeReducedCSR.lean) include every fixture
+row at its actual native-pool offset, forged support/delegation/outside-key
+rejection, conditional unsupported-CSR and nonzero-delegation-oracle rejection,
+nondeterminism zero request, discarded destination retaining a delegation request,
+ABI-group/bound checks and three independent positive slices of the six actual
+CSR request equations. These table/reference/conditional-native/partial-positive
+checks are not complete accepted nonempty 117-equation/22-lookup CSR rows,
+initialized architectural effects or original execution. Nine new modules/tests
+record 18 exact parent-9bc origins; the unchanged active CSR/delegation Rust file
+is independently pinned to native base 67ee. No production/native/Sail/artifact/
+fixture/dependency changes, native defect/issue assumption or new axiom.
+
+Read-only comparison against native base 67ee also distinguishes this fixture
+from worker ABI configuration: [native delegation constants](../../common_constants/src/delegation_types/mod.rs)
+assign Blake2 CSR 1991 and bigint CSR 1994 through their respective +7/+10
+constants. The fixed imported allow-list is 1988/1989. This is a setup/reference
+binding to assess before worker composition, not an established defect or an
+identity between fixture requests and those workers. General setup coverage stays
+open; neither the existing fixture nor production Rust is changed here.
+
+Original public CSR/MOP decoding, custom-operation/nondeterminism/privilege
+reference semantics, initialized source/x0/history and normal/fetched/common
+execution remain OPEN. Existing seven-profile execution scopes stay unchanged.
+NEXT connect actual caller requests to native worker constraints, fulfillment and
+accounting, while assessing the retained custom/reference boundary independently
+of v3. Protocol spans, padding/terminal/init/teardown/general Rust/public/physical/
+cryptographic/completeness and parity remain open.
+
 ## Actual native MOP local arithmetic (7 November 2026)
 
 [The short local MOP theorem](Airbender/Review/Circuits/ReducedMachine/MOPTheorems.lean)

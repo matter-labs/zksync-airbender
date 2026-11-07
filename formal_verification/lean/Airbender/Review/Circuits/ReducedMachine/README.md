@@ -590,3 +590,15 @@ lemmas only after actual native bindings. Eleven [regressions](../../../../Tests
 include three seven-equation positive slices, not complete accepted rows.
 Original public MOP decoding/custom reference/initialized/fetched/common execution
 and CSR/delegation remain open; existing seven-profile roots stay unchanged.
+
+## Actual native CSR table and local request observables
+
+[The complete special-CSR certificate](Tables/CSRTheorems.lean) checks all4,096
+native rows from stored blocks: support1984/1988/1989, delegation1988/1989.
+[The local CSR root](CSRTheorems.lean) derives actual query/flags/ports, bounded
+oracle, delegation zero, candidate/rdmask/default-PC and imported masked request
+fields. The source-high lookup bounds ABI offsets; in-cycle index3 is metadata.
+Thirteen [regressions](../../../../Tests/NativeReducedCSR.lean) include positive
+full-pool table membership and native six-equation slices, not complete accepted
+CSR rows. Original public CSR/custom/nondeterminism/privilege execution and
+initialized/common/caller/worker/accounting/protocol boundaries remain open.

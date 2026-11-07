@@ -31,6 +31,39 @@ and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
+## Current native CSR local checkpoint (7 November 2026)
+
+[The exact native special-CSR table](Airbender/Review/Circuits/ReducedMachine/Tables/CSRTheorems.lean)
+and [local CSR request/return root](Airbender/Review/Circuits/ReducedMachine/CSRTheorems.lean)
+now derive the configured supported/delegated keys, actual mask/query/ports,
+bounded oracle, delegation zero and masked native request fields. The source-high
+lookup derives the ABI high-offset bound. No desired request, source/read/output/
+range or worker result is a public premise. All 4,096 table rows are checked
+symbolically from stored blocks; no native table equivalence is assumed.
+
+Do not repeat these local table/selector/query/return/request checks, closed MOP
+field/canonical/port proofs or the seven-profile common execution. Thirteen table/
+conditional-native/partial-positive CSR tests are not complete nonempty accepted
+CSR rows. Exact imported request coordinates/in-cycle index identify observables,
+not global issuance/fulfillment/accounting. Original public CSR/MOP decoding,
+custom/nondeterminism/privilege reference semantics, initialized reads/x0/history/
+PC and retained/normal/fetched/common integration remain open.
+
+First assess the explicit setup difference: imported fixture keys1988/1989 are
+not the native Blake2/bigint ABI constants1991/1994 (read-only source comparison,
+not a checked worker composition). Review the actual runtime generator/configuration
+and native artifacts before selecting a worker target or adding a separate pinned
+setup scope. Preserve the existing fixture; do not relabel its keys, assume table
+equivalence or treat this unfinished binding as a defect.
+
+NEXT inspect and connect actual native delegation callers/workers, fulfillment
+and accounting, retaining exact v2 ABI/source/reference boundaries and independently
+retesting v3 findings. Derive worker/request/schedule/state/terminal relations from
+accepted native constraints/public inputs; do not supply desired answers. Continue
+unified protocol spans, padding/terminal/init/teardown and the explicit general
+Rust/public preprocessing/physical/cryptographic/completeness checklist. No
+production fixes, standalone/subword expansion or parity inference from counts.
+
 ## Current native MOP local checkpoint (7 November 2026)
 
 [Actual reduced MOP arithmetic](Airbender/Review/Circuits/ReducedMachine/MOPTheorems.lean)

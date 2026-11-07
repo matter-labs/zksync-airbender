@@ -539,3 +539,13 @@ MOP public decoding, custom-operation reference and initialized/normal/fetched/
 common execution remain open, separately from the closed seven-profile roots.
 CSR/delegation requests, workers/accounting and protocol/init boundaries remain
 next; no upstream Zimop zero-result execution is silently substituted.
+
+## CSR local request scope
+
+[Exact native CSR fixture and request observables](../../../Circuits/ReducedMachine/CSRTheorems.lean)
+now derive supported/delegated keys, bounded native oracle, zero delegation return
+and masked multiplicity/kind/ABI-high request fields. Imported in-cycle index3
+does not establish issuance, worker fulfillment or accounting. Native source
+words are not yet initialized original CSR reads; original public decoding/
+custom/nondeterminism/privilege/normal/fetched/common execution remains open.
+The existing seven-profile execution roots are unchanged and exclude CSR/MOP.

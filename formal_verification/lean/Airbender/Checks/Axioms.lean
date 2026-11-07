@@ -1,3 +1,12 @@
+import Airbender.Review.Circuits.ReducedMachine.Tables.CSR
+import Airbender.Proofs.ReducedMachine.NativeCSRTable
+import Airbender.Review.Circuits.ReducedMachine.Tables.CSRTheorems
+import Airbender.Review.Circuits.ReducedMachine.CSR
+import Airbender.Proofs.ReducedMachine.NativeCSRSelectors
+import Airbender.Proofs.ReducedMachine.NativeCSRFields
+import Airbender.Proofs.ReducedMachine.NativeCSRResult
+import Airbender.Review.Circuits.ReducedMachine.CSRTheorems
+import Tests.NativeReducedCSR
 import Airbender.Review.Circuits.ReducedMachine.MOP
 import Airbender.Proofs.ReducedMachine.NativeMOPSelectors
 import Airbender.Proofs.ReducedMachine.NativeMOPFields
@@ -3846,3 +3855,37 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedMOP.ram_second_source_rejected
 #print axioms Tests.NativeReducedMOP.native_arithmetic_slices
 #print axioms Tests.NativeReducedMOP.slice_ranges
+
+#print axioms Airbender.ReducedMachine.NativeCSRTableProofs.rows
+#print axioms Airbender.ReducedMachine.NativeCSRTableProofs.values
+#print axioms Airbender.ReducedMachine.NativeFixed.csr_properties_implementation
+#print axioms Airbender.ReducedMachine.NativeCSRSelectorProofs.flags
+#print axioms Airbender.ReducedMachine.NativeCSRFieldProofs.request_columns
+#print axioms Airbender.ReducedMachine.NativeCSRFieldProofs.source_port
+#print axioms Airbender.ReducedMachine.NativeCSRFieldProofs.tags
+#print axioms Airbender.ReducedMachine.NativeCSRFieldProofs.candidate
+#print axioms Airbender.ReducedMachine.NativeCSRFieldProofs.write
+#print axioms Airbender.ReducedMachine.NativeCSRFieldProofs.pc
+#print axioms Airbender.ReducedMachine.NativeCSRFieldProofs.source
+#print axioms Airbender.ReducedMachine.NativeCSRFieldProofs.query
+#print axioms Airbender.ReducedMachine.NativeCSRFieldProofs.request_equations
+#print axioms Airbender.ReducedMachine.NativeCSRResultProofs.properties
+#print axioms Airbender.ReducedMachine.NativeCSRResultProofs.oracle_bounds
+#print axioms Airbender.ReducedMachine.NativeCSRResultProofs.request
+#print axioms Airbender.ReducedMachine.NativeCSRResultProofs.delegation_zero
+#print axioms Airbender.ReducedMachine.NativeCSRResultProofs.offset_bound
+#print axioms Airbender.ReducedMachine.NativeCSRResultProofs.effects
+#print axioms Airbender.ReducedMachine.Native.csr_native_effects
+#print axioms Tests.NativeReducedCSR.fixture_matrix
+#print axioms Tests.NativeReducedCSR.native_pool_rows
+#print axioms Tests.NativeReducedCSR.forged_support_rejected
+#print axioms Tests.NativeReducedCSR.nondeterminism_cannot_delegate
+#print axioms Tests.NativeReducedCSR.outside_key_rejected
+#print axioms Tests.NativeReducedCSR.unsupported_csr_rejected
+#print axioms Tests.NativeReducedCSR.nondeterminism_request_zero
+#print axioms Tests.NativeReducedCSR.nonzero_delegation_oracle_rejected
+#print axioms Tests.NativeReducedCSR.discarded_destination_keeps_request
+#print axioms Tests.NativeReducedCSR.abi_group_retained
+#print axioms Tests.NativeReducedCSR.oversized_abi_high_rejected
+#print axioms Tests.NativeReducedCSR.native_request_slices
+#print axioms Tests.NativeReducedCSR.partial_fixture_oracles

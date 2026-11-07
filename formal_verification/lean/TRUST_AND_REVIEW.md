@@ -3426,3 +3426,40 @@ Original public MOP decoding and this retained execution connection remain open,
 as do CSR/delegation callers/workers/accounting/protocol/init/physical/general
 refinement/completeness/parity. Existing seven-profile execution scopes stay
 unchanged. No native defect, issue assumption, production fix or new axiom.
+
+## Actual native CSR fixture/request boundary (7 November 2026)
+
+[The table root](Airbender/Review/Circuits/ReducedMachine/Tables/CSRTheorems.lean)
+proves exact tag-25 meaning over all 4,096 rows of the actual native fixture:
+supported 1984/1988/1989, delegated 1988/1989. Symbolic stored-block calculations
+and actual full-pool tag isolation replace any equivalence or supplied allow-list.
+[The local root](Airbender/Review/Circuits/ReducedMachine/CSRTheorems.lean) takes
+actual native ConstraintsHoldFlat with the exact NativeFixed pool and explicit
+mask 129. Actual support/query/selector constraints derive the key domain and
+flags. Scalar slots 4/5 bound the native oracle; delegation forces it zero.
+The nondeterminism value/stream is not identified with an original reference.
+
+Fresh actual candidate/port/destination/rdmask/default-PC bindings retain the
+readonly second GPR query and candidate participation for discarded destinations.
+Actual request equations and imported coordinates derive multiplicity/kind/ABI
+high offset, whose bound follows the actual source-high lookup. The observer
+retains Option for ABI presence; actual coordinates 92/94/some93 and in-cycle
+index 3 are checked. No desired local request/read/output/range/state/success,
+worker answer or table-equivalence premise is introduced. Metadata timing is not
+an issuance, global scheduling, fulfillment or converse-accounting certificate.
+
+Nine new modules/tests record 18 exact parent-9bc origins and the unchanged active
+csr_with_delegation.rs is pinned to native base67ee. Thirteen table/conditional-
+native/partial-positive regressions are not full positive nonempty 117-equation/
+22-lookup CSR witnesses or original/initialized/fetched/common execution. Original
+public CSR/MOP decoding, custom/nondeterminism/privilege reference semantics and
+worker/caller/accounting/protocol/init/physical/general refinement/completeness/
+parity remain open. Existing seven-profile roots are unchanged. This is neither
+a native defect/issue assumption nor a production fix/new axiom.
+
+Read-only pinned native ABI inspection keeps fixture and runtime scopes separate:
+[Blake2 constants](../../common_constants/src/delegation_types/blake2s_with_control.rs)
+use nondeterminism CSR+7=1991 and [bigint constants](../../common_constants/src/delegation_types/bigint_with_control.rs)
+use +10=1994. These are not fixture keys1988/1989. No worker identity/composition
+or native defect follows. Actual runtime setup/ABI selection must be assessed
+before caller/worker accounting; no production or imported fixture is changed.
