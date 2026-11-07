@@ -8,6 +8,7 @@ import Slop.Final.ISA.Vectors
 import Slop.Final.Trace.Delegation.RVTheorems
 import Slop.Final.Trace.Workers.Blake2G.RVTheorems
 import Slop.Final.Trace.Workers.Blake2Round.RVTheorems
+import Slop.Final.Trace.Workers.Keccak.RVTheorems
 import Human.ISA.Sail.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
 import Slop.Final.Trace.Families.JumpBranchSlt.Theorems
@@ -2370,3 +2371,11 @@ import Human.Import.Coefficients
 #print axioms Airbender.Blake2Round.Proofs.rv_window_binding
 #print axioms Airbender.Blake2Round.Proofs.round_call_link
 #print axioms Airbender.Blake2Round.Proofs.step_effect
+#print axioms Airbender.Keccak.Native.rv_permutation_boundary_soundness
+#print axioms Airbender.Keccak.Native.rv_permutation_soundness
+#print axioms Airbender.Keccak.Native.rv_operation_execution
+#print axioms Airbender.Keccak.Native.rv_window_soundness
+#print axioms Airbender.Keccak.Proofs.rv_permutation_binding_at_boundary
+#print axioms Airbender.Keccak.Proofs.rv_window_binding
+#print axioms Airbender.Keccak.Proofs.keccak_call_link
+#print axioms Airbender.Keccak.Proofs.special5_step_nat

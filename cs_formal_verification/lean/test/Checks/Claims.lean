@@ -45,6 +45,7 @@ import Slop.Final.Trace.Workers.Blake2G.RVTheorems
 import Slop.Final.Trace.Workers.Blake2Round.Theorems
 import Slop.Final.Trace.Workers.Blake2Round.RVTheorems
 import Slop.Final.Trace.Workers.Keccak.Theorems
+import Slop.Final.Trace.Workers.Keccak.RVTheorems
 import Slop.Final.Trace.Workers.KeccakSplit.Theorems
 import Human.Circuits.AddSub.CallerTheorems
 import Human.Circuits.AddSub.Theorems
@@ -84,6 +85,7 @@ import Human.Trace.Workers.Blake2G.RVTheorems
 import Human.Trace.Workers.Blake2Round.Theorems
 import Human.Trace.Workers.Blake2Round.RVTheorems
 import Human.Trace.Workers.Keccak.Theorems
+import Human.Trace.Workers.Keccak.RVTheorems
 import Human.Trace.Workers.KeccakSplit.Theorems
 
 example : Airbender.Delegation.Caller.SoundnessClaim := @Airbender.Delegation.Caller.soundness
@@ -234,6 +236,10 @@ example : Airbender.Keccak.Native.PermutationBoundarySoundnessClaim := @Airbende
 example : Airbender.Keccak.Native.PermutationSoundnessClaim := @Airbender.Keccak.Native.permutation_soundness
 example : Airbender.Keccak.Native.OperationExecutionClaim := @Airbender.Keccak.Native.operation_execution
 example : Airbender.Keccak.Native.WindowSoundnessClaim := @Airbender.Keccak.Native.window_soundness
+example : Airbender.Keccak.Native.RVPermutationBoundarySoundnessClaim := @Airbender.Keccak.Native.rv_permutation_boundary_soundness
+example : Airbender.Keccak.Native.RVPermutationSoundnessClaim := @Airbender.Keccak.Native.rv_permutation_soundness
+example : Airbender.Keccak.Native.RVOperationExecutionClaim := @Airbender.Keccak.Native.rv_operation_execution
+example : Airbender.Keccak.Native.RVWindowSoundnessClaim := @Airbender.Keccak.Native.rv_window_soundness
 example : Airbender.Keccak.Split.Native.OperationExecutionClaim := @Airbender.Keccak.Split.Native.operation_execution
 example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.Keccak.Split.Native.permutation_soundness
 
@@ -385,3 +391,7 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.Keccak.Native.permutation_soundness
 #print axioms Airbender.Keccak.Native.operation_execution
 #print axioms Airbender.Keccak.Native.window_soundness
+#print axioms Airbender.Keccak.Native.rv_permutation_boundary_soundness
+#print axioms Airbender.Keccak.Native.rv_permutation_soundness
+#print axioms Airbender.Keccak.Native.rv_operation_execution
+#print axioms Airbender.Keccak.Native.rv_window_soundness
