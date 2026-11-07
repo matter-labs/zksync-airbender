@@ -3,6 +3,7 @@ import Slop.Final.Circuits.AddSub.CallerTheorems
 import Slop.Final.Circuits.AddSub.Theorems
 import Slop.Final.Circuits.AddSub.RVTheorems
 import Slop.Final.Circuits.Bigint.Theorems
+import Slop.Final.Circuits.Bigint.RVTheorems
 import Slop.Final.Circuits.Blake2G.Theorems
 import Slop.Final.Circuits.InitsTeardowns.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
@@ -40,6 +41,7 @@ import Slop.Final.Trace.WritesRangeChecked
 import Slop.Final.Trace.TeardownBounds
 import Slop.Final.Trace.UnifiedReduced.Theorems
 import Slop.Final.Trace.Workers.Bigint.Theorems
+import Slop.Final.Trace.Workers.Bigint.RVTheorems
 import Slop.Final.Trace.Workers.Blake2G.Theorems
 import Slop.Final.Trace.Workers.Blake2G.RVTheorems
 import Slop.Final.Trace.Workers.Blake2Round.Theorems
@@ -52,6 +54,7 @@ import Human.Circuits.AddSub.CallerTheorems
 import Human.Circuits.AddSub.Theorems
 import Human.Circuits.AddSub.RVTheorems
 import Human.Circuits.Bigint.Theorems
+import Human.Circuits.Bigint.RVTheorems
 import Human.Circuits.Blake2G.Theorems
 import Human.Circuits.InitsTeardowns.Theorems
 import Human.Circuits.JumpBranchSlt.Theorems
@@ -81,6 +84,7 @@ import Human.Trace.WritesRangeChecked
 import Human.Trace.TeardownBounds
 import Human.Trace.UnifiedReduced.Theorems
 import Human.Trace.Workers.Bigint.Theorems
+import Human.Trace.Workers.Bigint.RVTheorems
 import Human.Trace.Workers.Blake2G.Theorems
 import Human.Trace.Workers.Blake2G.RVTheorems
 import Human.Trace.Workers.Blake2Round.Theorems
@@ -97,6 +101,7 @@ example : Airbender.AddSub.BabyBearSoundnessClaim := @Airbender.AddSub.babyBear_
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.AddSub.BabyBearRVSoundnessClaim := @Airbender.AddSub.babyBear_rv_soundness
 example : Airbender.Bigint.Memory.AddressesSoundnessClaim := @Airbender.Bigint.Memory.addresses_soundness
+example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
 example : Airbender.Blake2G.SoundnessClaim := @Airbender.Blake2G.soundness
 example : Airbender.Blake2G.BabyBearSoundnessClaim := @Airbender.Blake2G.babyBear_soundness
 example : Airbender.JumpBranchSlt.Comparison.SoundnessClaim := @Airbender.JumpBranchSlt.Comparison.soundness
@@ -218,6 +223,7 @@ example : Airbender.UnifiedReduced.Caller.PreparedRoundCyclesSoundnessClaim := @
 example : Airbender.UnifiedReduced.Caller.ProgramWindowScheduleSoundnessClaim := @Airbender.UnifiedReduced.Caller.program_window_schedule_soundness
 example : Airbender.UnifiedReduced.Caller.ProgramPreparedProtocolSequenceSoundnessClaim := @Airbender.UnifiedReduced.Caller.program_prepared_protocol_sequence_soundness
 example : Airbender.Bigint.Native.OperationExecutionClaim := @Airbender.Bigint.Native.operation_execution
+example : Airbender.Bigint.Native.RVOperationExecutionClaim := @Airbender.Bigint.Native.rv_operation_execution
 example : Airbender.Blake2G.Native.WorkvectorSoundnessClaim := @Airbender.Blake2G.Native.workvector_soundness
 example : Airbender.Blake2G.Native.WorkvectorBoundarySoundnessClaim := @Airbender.Blake2G.Native.workvector_boundary_soundness
 example : Airbender.Blake2G.Native.WindowSoundnessClaim := @Airbender.Blake2G.Native.window_soundness
@@ -254,6 +260,7 @@ example : Airbender.Keccak.Split.Native.RVPermutationSoundnessClaim := @Airbende
 #print axioms Airbender.AddSub.rv_soundness
 #print axioms Airbender.AddSub.babyBear_rv_soundness
 #print axioms Airbender.Bigint.Memory.addresses_soundness
+#print axioms Airbender.Bigint.Memory.rv_addresses_soundness
 #print axioms Airbender.Blake2G.soundness
 #print axioms Airbender.Blake2G.babyBear_soundness
 #print axioms Airbender.JumpBranchSlt.Comparison.soundness
@@ -375,6 +382,7 @@ example : Airbender.Keccak.Split.Native.RVPermutationSoundnessClaim := @Airbende
 #print axioms Airbender.UnifiedReduced.Caller.program_window_schedule_soundness
 #print axioms Airbender.UnifiedReduced.Caller.program_prepared_protocol_sequence_soundness
 #print axioms Airbender.Bigint.Native.operation_execution
+#print axioms Airbender.Bigint.Native.rv_operation_execution
 #print axioms Airbender.Blake2G.Native.workvector_soundness
 #print axioms Airbender.Blake2G.Native.workvector_boundary_soundness
 #print axioms Airbender.Blake2G.Native.window_soundness

@@ -10,6 +10,8 @@ import Slop.Final.Trace.Workers.Blake2G.RVTheorems
 import Slop.Final.Trace.Workers.Blake2Round.RVTheorems
 import Slop.Final.Trace.Workers.Keccak.RVTheorems
 import Slop.Final.Trace.Workers.KeccakSplit.RVTheorems
+import Slop.Final.Circuits.Bigint.RVTheorems
+import Slop.Final.Trace.Workers.Bigint.RVTheorems
 import Human.ISA.Sail.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.Theorems
 import Slop.Final.Trace.Families.JumpBranchSlt.Theorems
@@ -2386,3 +2388,8 @@ import Human.Import.Coefficients
 #print axioms Airbender.Keccak.Split.Call.Proofs.split_call_link
 #print axioms Airbender.Keccak.Split.Call.Proofs.f1600_step_nat
 #print axioms Airbender.Delegation.Proofs.calls_list_link
+#print axioms Airbender.Bigint.Memory.rv_addresses_soundness
+#print axioms Airbender.Bigint.Native.rv_operation_execution
+#print axioms Airbender.Bigint.Proofs.rv_bigint_call
+#print axioms Airbender.Bigint.Proofs.row_operation
+#print axioms Airbender.Delegation.Proofs.rv_row_call
