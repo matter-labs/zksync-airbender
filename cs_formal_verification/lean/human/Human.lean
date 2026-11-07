@@ -3,6 +3,7 @@
 import Human.Circuits.AddSub.CallerTheorems
 import Human.Circuits.AddSub.Theorems
 import Human.Circuits.AddSub.RVTheorems
+import Human.Circuits.AddSub.RVCallerTheorems
 import Human.Circuits.Bigint.Theorems
 import Human.Circuits.Bigint.RVTheorems
 import Human.Circuits.Blake2G.Theorems
@@ -21,6 +22,7 @@ import Human.Helpers.Context.PCState.Theorems
 import Human.Trace.Delegation.CallerTheorems
 import Human.Trace.Delegation.Theorems
 import Human.Trace.Delegation.RVTheorems
+import Human.Trace.Delegation.RVCallerTheorems
 import Human.Trace.Families.AddSub.Theorems
 import Human.Trace.Families.AddSub.RVTheorems
 import Human.Trace.Families.JumpBranchSlt.Theorems

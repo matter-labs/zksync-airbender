@@ -39,6 +39,7 @@ globs = [
   "Human.Circuits.AddSub.Model",
   "Human.Circuits.AddSub.Modular",
   "Human.Circuits.AddSub.NonDeterminism",
+  "Human.Circuits.AddSub.RVCallerTheorems",
   "Human.Circuits.AddSub.RVModel",
   "Human.Circuits.AddSub.RVTheorems",
   "Human.Circuits.AddSub.Reference",

@@ -9,7 +9,7 @@ import Human.Helpers.Delegation.CallerRequests
     `slop/Slop/Final/Circuits/AddSub/RVTheorems.lean` (checked in `test/Checks/Claims.lean`).
     Resolved: PC in ROM and 4-byte aligned is the decoder table's guard (`rvProgramEntryWith`); the word at the row's PC is
     the table's encoding (`RVTraceMapping.instruction`).
-    The Delegation.Caller claims (second block) are still Sail-typed; they are not part of the AddSub pilot. -/
+    The delegation caller rows' RV claims are in `RVCallerTheorems.lean`. -/
 
 namespace Airbender.AddSub
 open Reference.RiscV Trace
@@ -32,20 +32,3 @@ def BabyBearRVSoundnessClaim : Prop :=
         RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
 
 end Airbender.AddSub
-
-namespace Airbender.Delegation.Caller
-
-/-- An accepted delegation caller is a public instruction that our spec decodes as that delegation call
-(`csrrw x0, <csr>, x0`), whose CSR is the row's request. (Its effect is the delegation circuits' claim.) -/
-def RVDecodeClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 65536 < p) {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry} {w : Nat → ZMod p} (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints) (image : programImage before addresses = some program) (member : (decoderTable program).Contains #[] (nativeQuery w)),
-    ∃ entry ∈ program, initialPC w = Arithmetic.Word.ofBitVec entry.pc ∧
-      ∃ k, RV.decode entry.bits = some (.delegate k) ∧ k.csr.toNat = Requests.csr entry.data.family ∧
-        (Requests.caller w).csr = Requests.csr entry.data.family
-
-/-- The caller's PC moves to the next instruction (`RV.State.nextInstr`, as `RV.State.applyEffect` does). -/
-def RVPcSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry} {w : Nat → ZMod p} (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints) (image : programImage before addresses = some program) (member : (decoderTable program).Contains #[] (nativeQuery w)),
-    (finalPC w).Bounded ∧ (finalPC w).toBitVec = (initialPC w).toBitVec + 4
-
-end Airbender.Delegation.Caller
