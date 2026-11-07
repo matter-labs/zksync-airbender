@@ -149,6 +149,7 @@ import Tests.DelegationMemory
 import Clean.Specs.Keccak256
 import Human.Import.BabyBear
 import Human.Import.Coefficients
+import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -2463,3 +2464,4 @@ import Human.Import.Coefficients
 #print axioms Airbender.Delegation.Caller.rv_worker_schedule_soundness
 #print axioms Airbender.Delegation.Caller.rv_request_window_soundness
 #print axioms Airbender.Delegation.Caller.rv_request_hash_window_soundness
+#print axioms Airbender.UnifiedReduced.Caller.rv_request_window_soundness

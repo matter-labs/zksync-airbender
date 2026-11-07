@@ -98,6 +98,8 @@ import Slop.Final.Circuits.AddSub.RVCallerTheorems
 import Slop.Final.Trace.Delegation.RVCallerTheorems
 import Human.Circuits.AddSub.RVCallerTheorems
 import Human.Trace.Delegation.RVCallerTheorems
+import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
+import Human.Trace.UnifiedReduced.RVCallerTheorems
 
 example : Airbender.Delegation.Caller.SoundnessClaim := @Airbender.Delegation.Caller.soundness
 example : Airbender.Delegation.Caller.PcSoundnessClaim := @Airbender.Delegation.Caller.pc_soundness
@@ -270,6 +272,7 @@ example : Airbender.Delegation.Caller.RVMixedMemorySoundnessClaim := @Airbender.
 example : Airbender.Delegation.Caller.RVWorkerScheduleSoundnessClaim := @Airbender.Delegation.Caller.rv_worker_schedule_soundness
 example : Airbender.Delegation.Caller.RVRequestWindowSoundnessClaim := @Airbender.Delegation.Caller.rv_request_window_soundness
 example : Airbender.Delegation.Caller.RVRequestHashWindowSoundnessClaim := @Airbender.Delegation.Caller.rv_request_hash_window_soundness
+example : Airbender.UnifiedReduced.Caller.RVRequestWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_request_window_soundness
 
 #print axioms Airbender.Delegation.Caller.soundness
 #print axioms Airbender.Delegation.Caller.pc_soundness
@@ -440,3 +443,4 @@ example : Airbender.Delegation.Caller.RVRequestHashWindowSoundnessClaim := @Airb
 #print axioms Airbender.Delegation.Caller.rv_worker_schedule_soundness
 #print axioms Airbender.Delegation.Caller.rv_request_window_soundness
 #print axioms Airbender.Delegation.Caller.rv_request_hash_window_soundness
+#print axioms Airbender.UnifiedReduced.Caller.rv_request_window_soundness
