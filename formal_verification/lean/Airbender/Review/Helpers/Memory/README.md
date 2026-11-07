@@ -238,3 +238,9 @@ now derive readonly register-space source routing and the present third port at
 x0 with zero write. Its old read still participates in matching. Original branch
 GPR binding, initialized preservation/history and clause execution remain open;
 local address fields do not supply those observations.
+
+[Actual branch condition numerics](../../../Proofs/ReducedMachine/NativeBranchCondition.lean)
+now identify operand equality/order with both source bounds kept internal. Common
+initialized ranges/GPR state construction has not yet been extended to branch
+rows. Public decoding and native zero-write/readonly preservation must justify
+that extension before any initialized branch numerical/Sail execution claim.

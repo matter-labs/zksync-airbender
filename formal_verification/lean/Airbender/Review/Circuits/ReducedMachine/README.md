@@ -380,3 +380,15 @@ uses actual zero-test polynomials/scalar bounds, without source bounds or zero
 answers. Original branch condition/target/public decoding/GPR/Sail execution and
 common support remain open. [Tests](../../../../Tests/NativeReducedBranchRouting.lean)
 include only five-assertion positive slices, not full native branch acceptance.
+
+## Branch numerical connection
+
+[Actual branch conditions](../../../Proofs/ReducedMachine/NativeBranchCondition.lean)
+now derive all six equality/signed/unsigned outcomes from native constraints and
+the packed resolver. [Complete actual cleanup semantics](Tables/NativeBranchTheorems.lean)
+and [native numerical PC effects](../../../Proofs/ReducedMachine/NativeBranchPC.lean)
+derive target/final bounds, RV32 wrap, taken-only bit1 exclusion and conditional
+successor alignment. Source/PC/offset bounds, initial alignment and offset parity
+remain internal until original public decoding/history discharges them. [Tests](../../../../Tests/NativeReducedBranchResults.lean)
+include four-assertion target slices, not complete native accepted branches or
+original Sail execution. Common support still excludes branches.

@@ -327,6 +327,27 @@ fidelity, cryptographic enforcement, completeness and worker/protocol/padding/
 terminal/init boundaries remain open. No native defect or issue-handling assumption
 is added; production circuit/Sail and all native/literal/dependency inputs stay unchanged.
 
+## Native branch numerical boundary
+
+[Actual condition proofs](Airbender/Proofs/ReducedMachine/NativeBranchCondition.lean)
+derive zero/equality, unsigned borrow, sign adjustment and all six branch outcomes
+from new native bindings and exact packed resolver membership. Both operand bounds
+are internal obligations, not public initialized inputs. [Actual cleanup semantics](Airbender/Review/Circuits/ReducedMachine/Tables/NativeBranchTheorems.lean)
+cover every65,536native tag17row through symbolic columns and full-pool isolation.
+No old split table identity is assumed. [Numerical PC effects](Airbender/Proofs/ReducedMachine/NativeBranchPC.lean)
+derive target/carry/wrap bounds, actual RV32 PC+offset, taken-only bit1 exclusion
+and conditional target/default successor. Original incoming alignment/offset parity
+and canonical inputs remain internal prerequisites for public decoding/history;
+chosen condition/target/output bounds are conclusions.
+
+[Positive target slices and conditional/table regressions](Tests/NativeReducedBranchResults.lean)
+are not complete native accepted branches or original Sail execution. Branches are
+still outside common supported execution. Original public fields/GPR/Sail clauses,
+normal preparation/retirement/fetched execution and other protocol/setup/terminal/
+init/completeness boundaries remain open. No desired public local answer, table
+equivalence, production fix or finding is added. The following earlier branch
+routing-only snapshot is superseded by this internal numerical connection.
+
 ## Native branch local foundation boundary
 
 [Branch routing](Airbender/Review/Circuits/ReducedMachine/BranchTheorems.lean) takes

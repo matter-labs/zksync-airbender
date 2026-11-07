@@ -274,3 +274,13 @@ decoding, condition/target arithmetic/alignment/GPR/Sail effects and initialized
 execution remain open. Current common supported execution still covers only
 shifts/arithmetic/bitwise/comparisons. [Five-assertion positive slices](../../../../../Tests/NativeReducedBranchRouting.lean)
 are not full117-equation branch acceptance or initialized execution witnesses.
+
+## Branch internal numerical effects
+
+[Actual branch conditions](../../../../Proofs/ReducedMachine/NativeBranchCondition.lean)
+and [native target/final PC](../../../../Proofs/ReducedMachine/NativeBranchPC.lean)
+now derive full RV32 outcomes, wrap and taken-only alignment from accepted native
+constraints and exact table semantics. Both source bounds and original PC/offset
+bounds/alignment/parity remain internal obligations for public history/decoding.
+Branches are still outside common initialized fetched execution. [Target slices](../../../../../Tests/NativeReducedBranchResults.lean)
+cover only four actual assertions, not full accepted native branch instructions.

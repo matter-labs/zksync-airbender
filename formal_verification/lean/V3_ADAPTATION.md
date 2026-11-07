@@ -534,3 +534,24 @@ and common integration remain open. Current common support remains shifts/
 arithmetic/bitwise/comparisons. Six exact parentc6a992 template origins record
 this foundation; native/Sail/data/dependencies and physical/trust boundaries are
 unchanged. No defect, issue assumption, production fix or parity claim.
+
+## Native branch conditions and PC numerics (7 November 2026)
+
+[New actual branch conditions](Airbender/Proofs/ReducedMachine/NativeBranchCondition.lean)
+derive full RV32 equality/order from actual bounded subtraction/signs and packed
+resolver membership; native inconsistent-flag behavior is not copied from split
+control tables. [Actual tag17 semantics](Airbender/Review/Circuits/ReducedMachine/Tables/NativeBranchTheorems.lean)
+now cover all65,536native rows with symbolic column proofs and complete-pool
+isolation. [Numerical PC effects](Airbender/Proofs/ReducedMachine/NativeBranchPC.lean)
+derive canonical target/final bounds, actual PC+offset/full wrap, taken-only bit1
+exclusion and selected aligned target/default successor. Canonical source/PC/
+offset inputs, incoming alignment and offset parity remain internal obligations
+for original public decoding/history; chosen condition/target is never supplied.
+
+[Eight regressions](Tests/NativeReducedBranchResults.lean) include complete cleanup
+membership and four-assertion target edge slices. They do not certify full native
+accepted branches or original Sail execution. Original public decoder/GPR/clause/
+normal/fetched branch effects and common support remain next. Ten exact parent8563
+origins record unchanged pure condition/column/arithmetic and adapted proof patterns.
+Native/Sail/data/dependencies, physical/trust boundaries and zero findings remain
+unchanged; no issue assumption or parity claim.

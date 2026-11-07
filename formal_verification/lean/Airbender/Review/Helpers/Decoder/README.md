@@ -283,3 +283,8 @@ comparison-only scope; native export/ROM/preprocessing/physical fidelity remains
 is now checked locally from actual Boolean assertions and packed112. Original
 branch public byte/stateful projection and complete sparse membership recovery
 remain open; branches are not yet admitted by the common supported projection.
+
+[Actual branch condition/PC calculations](../../../Proofs/ReducedMachine/NativeBranchPC.lean)
+now derive numerical effects internally; original branch fields, PC/offset bounds,
+alignment and offset parity still require full public byte/stateful sparse decoder
+recovery. The common supported projection continues to exclude branches.

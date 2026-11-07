@@ -109,8 +109,15 @@ Full combined row effects and execution remain pending. See the
    present x0 dummy port, subtraction/lookup routing and conditional PC field
    selection now follow from accepted native constraints. Shared actual zero-test
    equations78..81 plus scalar checks derive remainder-zero semantics without
-   source bounds. Original branch condition/target meaning, public decoding and
-   execution are next; branches are not yet in common support. Other combined
+   source bounds. Actual bounded subtraction now proves operand equality and
+   unsigned borrow; native sign queries and the actual packed resolver derive all
+   six branch conditions. All65,536actual tag17cleanup rows and full-pool membership
+   now have exact meanings. Native target bounds/carries/addition, PC+offset/full
+   RV32 wrap, taken-only bit1 exclusion and bounded/aligned final PC selection are
+   checked internally. Source/PC/offset bounds, initial alignment and offset parity
+   still require public decoding/history discharge; they are not public answers.
+   Original public branch decoding and initialized GPR/Sail execution are next;
+   branches are not yet in common support. Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/
    mixed/bitwise/comparison fixtures remain distinct open coverage.
    The former projection allocation gap is closed by generic projections and separate proof units,

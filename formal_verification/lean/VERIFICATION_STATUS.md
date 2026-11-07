@@ -32,6 +32,62 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Native branch conditions and numerical PC effects (7 November 2026)
+
+[New actual branch calculations](Airbender/Proofs/ReducedMachine/NativeBranchCondition.lean)
+connect the checked native subtraction remainder to full RV32 source equality,
+unsigned borrow and operand signs. The actual packed tag22 resolver then derives
+all six BEQ/BNE/BLT/BGE/BLTU/BGEU conditions and zero comparison output. Natural
+packing is proved from actual Boolean/sign bounds. The native resolver flips
+borrow on differing signs; its validity follows from bounded actual operands,
+without transferring the old split resolver on inconsistent tuples. Source
+bounds remain internal prerequisites for later initialized history discharge.
+The unchanged [pure condition reference](Airbender/Review/Circuits/ReducedMachine/Branch.lean)
+retains all six original tags and full-width equality/signed/unsigned ordering.
+
+[Every actual tag17 cleanup row](Airbender/Proofs/ReducedMachine/NativeBranchCleanup.lean)
+is proved symbolically from native dataT17: key, bit1 and four-byte-cleared word.
+[One short full-pool claim](Airbender/Review/Circuits/ReducedMachine/Tables/NativeBranchTheorems.lean)
+derives canonical key/both outputs from actual complete-pool membership. All65,536
+rows are covered; no table-equivalence premise, regenerated data or sample-only
+inference is used. This new region certificate reuses exact pure column proofs;
+the complete128-row resolver certificate is unchanged.
+
+[Actual native PC calculations](Airbender/Proofs/ReducedMachine/NativeBranchPC.lean)
+use scalar lookups2/3 to derive both target bounds, Boolean22/24 to derive high
+wrap71/low carry96, and actual76/77 to derive PC+offset with full RV32 rollover.
+Actual40/41 plus the recovered cleanup query reject a taken target with bit1 set.
+Together with original incoming alignment and even offset, internal effects
+assembly derives canonical final PC, the actual conditional target/default choice
+and four-byte successor alignment. Untaken offset misalignment is not excluded.
+The selected condition/target/output bounds are derived, not supplied. Both source
+bounds, PC/offset bounds, incoming alignment and offset parity remain internal;
+public decoding and initialized history must discharge them before an initialized
+branch execution theorem. No new public numerical theorem exposes those answers.
+
+[Eight regressions](Tests/NativeReducedBranchResults.lean) lift every actual cleanup
+row at native pool offset262145, check independent signed/unsigned/equality edges,
+reject wrong zero/comparison outputs, taken misalignment and oversized cleanup keys,
+and check actual target Boolean22/24+76/77 slices at ordinary, low-carry, negative
+offset and full-wrap values. These four-assertion positive slices are not complete
+117-equation accepted native branches, original public decoding or Sail execution.
+Branches remain outside common supported initialized execution. Original public
+branch fields/GPR/retained clauses and preparation/retirement/fetched execution are
+next. Native data/public fixture, Rust/circuit, original Sail and dependencies are
+unchanged. No native defect, issue assumption, production fix or parity claim.
+
+All affected bounded modules and eight regressions pass. Full Review checks 2,942
+explicit standard-only axiom roots, 183 public Review roots, four guide names,
+2,936 links/anchors and layer separation, using 546.54 MiB footprint/3,112.73 MiB
+resident in 14.66 s. Independent pinned provenance used 16.66/32.70 MiB in 7.39 s,
+checking 189 v3-origin/1,022 backport-origin identities, 80 byte-identical modules,
+eight circuit artifacts, 65 native sources, 23 setup artifacts, four exporters
+and unchanged dependencies. Every owned worker terminated under unchanged limits.
+A direct fixed-pool equation extraction reached the default recursion limit;
+generic equation extraction replaced it without raising any limit or making
+foreign data opaque. No memory/wall-time cap was reached. Prior importer/CLI/
+native-export controls retain unchanged inputs and applicability; FINDINGS unchanged.
+
 ## Native branch selector/routing foundation (7 November 2026)
 
 [Actual branch model](Airbender/Review/Circuits/ReducedMachine/Branch.lean) retains

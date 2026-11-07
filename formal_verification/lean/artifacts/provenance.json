@@ -9043,6 +9043,76 @@
       "backport_reuse_revision": "c6a992e0170013928cab5d9fcee391dec4bcc9d6",
       "backport_reuse_path": "Tests/NativeReducedPC.lean",
       "backport_reuse_sha256": "27b1afb2d4c45671695f7f9a5ad37b30ca5de37fced4cf0f9a8ab2c3d962a1e3"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Branch.lean",
+      "change": "Reuse unchanged pure branchCondition and Word subtraction/borrow/signed-order/addition proof patterns only after independently checked actual native branch equations/queries. Certify all65536actual tag17rows symbolically from native dataT17, isolate full-pool membership, and derive all six packed-key tag22branch conditions and numerical target/final PC effects. Input bounds/parity remain internal pending public initialization/decoding; no old split native mask/table/constraint equivalence.",
+      "backport_reuse_revision": "8563b26c63c99f74feb0b32a20af4cf41be0d4ad",
+      "backport_reuse_path": "Airbender/Review/Circuits/JumpBranchSlt/Branch.lean",
+      "backport_reuse_sha256": "539ef98e2468073166bc718f81aff4e8b9c2c004a34077557708efdfe7c060fb"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchTable.lean",
+      "change": "Reuse unchanged pure branchCondition and Word subtraction/borrow/signed-order/addition proof patterns only after independently checked actual native branch equations/queries. Certify all65536actual tag17rows symbolically from native dataT17, isolate full-pool membership, and derive all six packed-key tag22branch conditions and numerical target/final PC effects. Input bounds/parity remain internal pending public initialization/decoding; no old split native mask/table/constraint equivalence.",
+      "backport_reuse_revision": "8563b26c63c99f74feb0b32a20af4cf41be0d4ad",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeConditionalTable.lean",
+      "backport_reuse_sha256": "79ef8a86d085a1a63642d89a7ccd2e24f51dbb85cf437f902c46dac856b10241"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchCondition.lean",
+      "change": "Reuse unchanged pure branchCondition and Word subtraction/borrow/signed-order/addition proof patterns only after independently checked actual native branch equations/queries. Certify all65536actual tag17rows symbolically from native dataT17, isolate full-pool membership, and derive all six packed-key tag22branch conditions and numerical target/final PC effects. Input bounds/parity remain internal pending public initialization/decoding; no old split native mask/table/constraint equivalence.",
+      "backport_reuse_revision": "8563b26c63c99f74feb0b32a20af4cf41be0d4ad",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeComparisonResult.lean",
+      "backport_reuse_sha256": "bb52a8c8f546a3078aeb6c3ecac9968301063003f48c351a3118b3ff88838cc7"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchCondition.lean",
+      "change": "Reuse unchanged pure branchCondition and Word subtraction/borrow/signed-order/addition proof patterns only after independently checked actual native branch equations/queries. Certify all65536actual tag17rows symbolically from native dataT17, isolate full-pool membership, and derive all six packed-key tag22branch conditions and numerical target/final PC effects. Input bounds/parity remain internal pending public initialization/decoding; no old split native mask/table/constraint equivalence.",
+      "backport_reuse_revision": "8563b26c63c99f74feb0b32a20af4cf41be0d4ad",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/Branch.lean",
+      "backport_reuse_sha256": "50b0ffe868834622342310f771c17d1ff96aa82bb9eb9823cfde97484e478f04"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchCleanup.lean",
+      "change": "Reuse unchanged pure branchCondition and Word subtraction/borrow/signed-order/addition proof patterns only after independently checked actual native branch equations/queries. Certify all65536actual tag17rows symbolically from native dataT17, isolate full-pool membership, and derive all six packed-key tag22branch conditions and numerical target/final PC effects. Input bounds/parity remain internal pending public initialization/decoding; no old split native mask/table/constraint equivalence.",
+      "backport_reuse_revision": "8563b26c63c99f74feb0b32a20af4cf41be0d4ad",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/ControlTables.lean",
+      "backport_reuse_sha256": "b183f814449652bfd5d646a1f7033a698b0b2209ccc777508d60ab8861a86682"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchPC.lean",
+      "change": "Reuse unchanged pure branchCondition and Word subtraction/borrow/signed-order/addition proof patterns only after independently checked actual native branch equations/queries. Certify all65536actual tag17rows symbolically from native dataT17, isolate full-pool membership, and derive all six packed-key tag22branch conditions and numerical target/final PC effects. Input bounds/parity remain internal pending public initialization/decoding; no old split native mask/table/constraint equivalence.",
+      "backport_reuse_revision": "8563b26c63c99f74feb0b32a20af4cf41be0d4ad",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativePC.lean",
+      "backport_reuse_sha256": "126ecf34bca7b636e68ef121a90708e38482526f525c8edcab4544c6dde48eee"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeBranchPC.lean",
+      "change": "Reuse unchanged pure branchCondition and Word subtraction/borrow/signed-order/addition proof patterns only after independently checked actual native branch equations/queries. Certify all65536actual tag17rows symbolically from native dataT17, isolate full-pool membership, and derive all six packed-key tag22branch conditions and numerical target/final PC effects. Input bounds/parity remain internal pending public initialization/decoding; no old split native mask/table/constraint equivalence.",
+      "backport_reuse_revision": "8563b26c63c99f74feb0b32a20af4cf41be0d4ad",
+      "backport_reuse_path": "Airbender/Proofs/JumpBranchSlt/BranchPC.lean",
+      "backport_reuse_sha256": "0c2d2a52334178aa1ba879a7599195dcc88e0d280ae6fa3ac4efd1d1d54cbc34"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ReducedMachine/Tables/NativeBranchTheorems.lean",
+      "change": "Reuse unchanged pure branchCondition and Word subtraction/borrow/signed-order/addition proof patterns only after independently checked actual native branch equations/queries. Certify all65536actual tag17rows symbolically from native dataT17, isolate full-pool membership, and derive all six packed-key tag22branch conditions and numerical target/final PC effects. Input bounds/parity remain internal pending public initialization/decoding; no old split native mask/table/constraint equivalence.",
+      "backport_reuse_revision": "8563b26c63c99f74feb0b32a20af4cf41be0d4ad",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Tables/NativeConditionalTheorems.lean",
+      "backport_reuse_sha256": "2f5a278f4b818079ef61a984ff39323417484823c2a790319e13f9a04634a9ee"
+    },
+    {
+      "path": "Tests/NativeReducedBranchResults.lean",
+      "change": "Reuse unchanged pure branchCondition and Word subtraction/borrow/signed-order/addition proof patterns only after independently checked actual native branch equations/queries. Certify all65536actual tag17rows symbolically from native dataT17, isolate full-pool membership, and derive all six packed-key tag22branch conditions and numerical target/final PC effects. Input bounds/parity remain internal pending public initialization/decoding; no old split native mask/table/constraint equivalence.",
+      "backport_reuse_revision": "8563b26c63c99f74feb0b32a20af4cf41be0d4ad",
+      "backport_reuse_path": "Tests/NativeReducedPC.lean",
+      "backport_reuse_sha256": "27b1afb2d4c45671695f7f9a5ad37b30ca5de37fced4cf0f9a8ab2c3d962a1e3"
+    },
+    {
+      "path": "Tests/NativeReducedBranchResults.lean",
+      "change": "Reuse unchanged pure branchCondition and Word subtraction/borrow/signed-order/addition proof patterns only after independently checked actual native branch equations/queries. Certify all65536actual tag17rows symbolically from native dataT17, isolate full-pool membership, and derive all six packed-key tag22branch conditions and numerical target/final PC effects. Input bounds/parity remain internal pending public initialization/decoding; no old split native mask/table/constraint equivalence.",
+      "backport_reuse_revision": "8563b26c63c99f74feb0b32a20af4cf41be0d4ad",
+      "backport_reuse_path": "Tests/NativeReducedComparison.lean",
+      "backport_reuse_sha256": "dc5bc3ac95ac7346d1ba217f08fe747b7ee11835dff6bf5187f7a95507667fa0"
     }
   ],
   "setup_artifacts": [

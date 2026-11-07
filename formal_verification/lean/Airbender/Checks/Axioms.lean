@@ -1,3 +1,9 @@
+import Airbender.Proofs.ReducedMachine.NativeBranchTable
+import Airbender.Proofs.ReducedMachine.NativeBranchCondition
+import Airbender.Proofs.ReducedMachine.NativeBranchCleanup
+import Airbender.Proofs.ReducedMachine.NativeBranchPC
+import Airbender.Review.Circuits.ReducedMachine.Tables.NativeBranchTheorems
+import Tests.NativeReducedBranchResults
 import Airbender.Proofs.ReducedMachine.NativeConditionalEquality
 import Airbender.Proofs.ReducedMachine.NativeBranchSelectors
 import Airbender.Proofs.ReducedMachine.NativeBranchFields
@@ -3162,3 +3168,28 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedBranchRouting.zero_flag_rejected
 #print axioms Tests.NativeReducedBranchRouting.actual_zero_slices
 #print axioms Tests.NativeReducedBranchRouting.independent_zero_values
+#print axioms Airbender.ReducedMachine.NativeBranchTableProofs.branch
+#print axioms Airbender.ReducedMachine.NativeBranchConditionProofs.unsigned_borrow
+#print axioms Airbender.ReducedMachine.NativeBranchConditionProofs.equality
+#print axioms Airbender.ReducedMachine.NativeBranchConditionProofs.key_value
+#print axioms Airbender.ReducedMachine.NativeBranchConditionProofs.control
+#print axioms Airbender.ReducedMachine.NativeBranchConditionProofs.resolution
+#print axioms Airbender.ReducedMachine.NativeBranchCleanupProofs.rows
+#print axioms Airbender.ReducedMachine.NativeBranchCleanupProofs.values
+#print axioms Airbender.ReducedMachine.NativeBranchPCProofs.target_bounds
+#print axioms Airbender.ReducedMachine.NativeBranchPCProofs.carries
+#print axioms Airbender.ReducedMachine.NativeBranchPCProofs.target_equations
+#print axioms Airbender.ReducedMachine.NativeBranchPCProofs.target_result
+#print axioms Airbender.ReducedMachine.NativeBranchPCProofs.cleanup
+#print axioms Airbender.ReducedMachine.NativeBranchPCProofs.taken_product
+#print axioms Airbender.ReducedMachine.NativeBranchPCProofs.taken_bit
+#print axioms Airbender.ReducedMachine.NativeBranchPCProofs.effects
+#print axioms Airbender.ReducedMachine.NativeFixed.cleanup_implementation
+#print axioms Tests.NativeReducedBranchResults.actual_cleanup_rows
+#print axioms Tests.NativeReducedBranchResults.reference_conditions
+#print axioms Tests.NativeReducedBranchResults.wrong_equality_rejected
+#print axioms Tests.NativeReducedBranchResults.wrong_branch_output_rejected
+#print axioms Tests.NativeReducedBranchResults.taken_misalignment_rejected
+#print axioms Tests.NativeReducedBranchResults.oversized_cleanup_rejected
+#print axioms Tests.NativeReducedBranchResults.actual_target_edges
+#print axioms Tests.NativeReducedBranchResults.independent_target_values
