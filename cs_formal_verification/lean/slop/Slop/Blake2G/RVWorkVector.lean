@@ -2,6 +2,7 @@ import Slop.Blake2G.RVCallSteps
 import Slop.Blake2G.RVSpec
 import Slop.Blake2G.CallWorkVector
 import Slop.Delegation.ReverseFold
+import Slop.Blake2Round.RVWords
 
 /-! RV twins of `CallWorkVector.lean` and `WorkVectorBinding.lean`, plus the delegate link: the complete G span on
     `RV.State`s reaches the 56/80-call reference, and its final state is the spec's run of the span's `G` delegation
@@ -9,6 +10,7 @@ import Slop.Delegation.ReverseFold
 
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic
+open Blake2Round.Proofs (rv_block_at rv_block_words)
 set_option warningAsError true
 set_option maxRecDepth 16384
 attribute [local irreducible] Specs.BLAKE3.g
@@ -42,24 +44,6 @@ theorem rv_physical_reference_step (reduced : Bool) (call : Nat) {before after :
   apply congrArg₂
   · exact congrArg Word.value (messageIndex 0).symm
   · exact congrArg Word.value (messageIndex 1).symm
-
-/-- RV `block_at`: aligned RAM words read their encodings. -/
-theorem rv_block_at {state : RV.State} {pointer : BitVec 32} {n offset : Nat}
-    (pointerAligned : pointer.toNat % 4 = 0) :
-    Blake2Round.Compression.RVWordsAt state pointer offset (rvBlockWords state pointer n offset) := by
-  intro i
-  simp only [rvBlockWords, Fin.getElem_fin, Vector.getElem_ofFn]
-  refine ⟨Word.ofBitVec_bound _, rv_encoded_read ?_⟩
-  change (pointer + BitVec.ofNat 32 (4 * (offset + i.val))).toNat % 4 = 0
-  simp only [BitVec.toNat_add, BitVec.toNat_ofNat]
-  omega
-
-theorem rv_block_words {state : RV.State} {pointer : BitVec 32} {n : Nat} :
-    (rvBlockWords state pointer n 0).map Word.toBitVec = RV.readWords state.mem pointer n := by
-  apply Vector.ext
-  intro i bound
-  simp only [rvBlockWords, rvRamEncoding, RV.readWords, Vector.getElem_map, Vector.getElem_ofFn,
-    Word.ofBitVec_roundtrip, Nat.zero_add]
 
 theorem controlAt_mod_toBitVec (reduced : Bool) (k : Nat) :
     (controlAt reduced k).toBitVec = RV.gCtl reduced (k % RV.nG reduced) := by

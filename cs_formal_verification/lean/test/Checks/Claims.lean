@@ -41,6 +41,7 @@ import Slop.Final.Trace.Workers.Bigint.Theorems
 import Slop.Final.Trace.Workers.Blake2G.Theorems
 import Slop.Final.Trace.Workers.Blake2G.RVTheorems
 import Slop.Final.Trace.Workers.Blake2Round.Theorems
+import Slop.Final.Trace.Workers.Blake2Round.RVTheorems
 import Slop.Final.Trace.Workers.Keccak.Theorems
 import Slop.Final.Trace.Workers.KeccakSplit.Theorems
 import Human.Circuits.AddSub.CallerTheorems
@@ -77,6 +78,7 @@ import Human.Trace.Workers.Bigint.Theorems
 import Human.Trace.Workers.Blake2G.Theorems
 import Human.Trace.Workers.Blake2G.RVTheorems
 import Human.Trace.Workers.Blake2Round.Theorems
+import Human.Trace.Workers.Blake2Round.RVTheorems
 import Human.Trace.Workers.Keccak.Theorems
 import Human.Trace.Workers.KeccakSplit.Theorems
 
@@ -212,6 +214,10 @@ example : Airbender.Blake2Round.Native.OperationExecutionClaim := @Airbender.Bla
 example : Airbender.Blake2Round.Native.CompressionSoundnessClaim := @Airbender.Blake2Round.Native.compression_soundness
 example : Airbender.Blake2Round.Native.CompressionBoundarySoundnessClaim := @Airbender.Blake2Round.Native.compression_boundary_soundness
 example : Airbender.Blake2Round.Native.WindowSoundnessClaim := @Airbender.Blake2Round.Native.window_soundness
+example : Airbender.Blake2Round.Native.RVOperationExecutionClaim := @Airbender.Blake2Round.Native.rv_operation_execution
+example : Airbender.Blake2Round.Native.RVCompressionSoundnessClaim := @Airbender.Blake2Round.Native.rv_compression_soundness
+example : Airbender.Blake2Round.Native.RVCompressionBoundarySoundnessClaim := @Airbender.Blake2Round.Native.rv_compression_boundary_soundness
+example : Airbender.Blake2Round.Native.RVWindowSoundnessClaim := @Airbender.Blake2Round.Native.rv_window_soundness
 example : Airbender.Keccak.Native.PermutationBoundarySoundnessClaim := @Airbender.Keccak.Native.permutation_boundary_soundness
 example : Airbender.Keccak.Native.PermutationSoundnessClaim := @Airbender.Keccak.Native.permutation_soundness
 example : Airbender.Keccak.Native.OperationExecutionClaim := @Airbender.Keccak.Native.operation_execution
@@ -351,6 +357,10 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.Blake2Round.Native.compression_soundness
 #print axioms Airbender.Blake2Round.Native.compression_boundary_soundness
 #print axioms Airbender.Blake2Round.Native.window_soundness
+#print axioms Airbender.Blake2Round.Native.rv_operation_execution
+#print axioms Airbender.Blake2Round.Native.rv_compression_soundness
+#print axioms Airbender.Blake2Round.Native.rv_compression_boundary_soundness
+#print axioms Airbender.Blake2Round.Native.rv_window_soundness
 #print axioms Airbender.Keccak.Native.permutation_boundary_soundness
 #print axioms Airbender.Keccak.Native.permutation_soundness
 #print axioms Airbender.Keccak.Native.operation_execution

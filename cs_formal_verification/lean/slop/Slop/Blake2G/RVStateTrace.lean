@@ -30,20 +30,6 @@ theorem RVBoundaryCallInputs.toSeed [Fact p.Prime] {data : Delegation.MemoryData
   rw [rv_seed_word inputs.memory present code inputs.controlStart]
   cases reduced <;> rfl
 
-/-- The seed facts' pointer characterization, read from the starting RV state. -/
-theorem rv_seed_register {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Cell}
-    (inputs : Delegation.Proofs.RVBoundaryInputs data initial cells) {index : BitVec 5} {pointer : BitVec 32}
-    (source : ∃ token ∈ data.initial, token.address = (Cell.register index).addressCode ∧
-      token.word = Word.ofBitVec pointer) :
-    (Cell.register index).readRV initial = some pointer := by
-  obtain ⟨token, present, code, word⟩ := source
-  obtain ⟨cell, _, cellCode, read⟩ := inputs.reads token present
-  have same : cell = .register index := cell_address_injective (cellCode.trans code)
-  subst cell
-  rw [read]
-  show some token.word.toBitVec = some pointer
-  rw [word, Word.ofBitVec_roundtrip]
-
 theorem rv_call_scheduled_history [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Cell} {reduced : Bool}

@@ -9,16 +9,9 @@ import Human.Trace.Delegation.RVHashWindows
 
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Arithmetic Delegation.Proofs
+open Blake2Round.Proofs (rv_words_at_same)
 set_option warningAsError true
 set_option maxRecDepth 16384
-
-/-- Transport an RV block read along `RV.Same`. -/
-theorem rv_words_at_same {n : Nat} {left right : RV.State} (same : RV.Same left right) {pointer : BitVec 32}
-    {offset : Nat} {words : Vector Word n}
-    (reads : Blake2Round.Compression.RVWordsAt left pointer offset words) :
-    Blake2Round.Compression.RVWordsAt right pointer offset words := by
-  intro i
-  exact ⟨(reads i).1, (readRV_congr_same same).symm.trans (reads i).2⟩
 
 /-- The RV boundary of a G span (`RVBoundaryCallInputs`) from the human `RVCallInputs`. -/
 theorem RVCallInputs.toRVBoundary [Fact p.Prime] {data : Delegation.MemoryData p} {initial : RV.State}

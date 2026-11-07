@@ -177,6 +177,20 @@ theorem rv_seed_word {data : MemoryData p} {before : RV.State} {cells : List Cel
   apply Word.eq_of_value bound (Word.ofBitVec_bound _)
   rw [Word.ofBitVec_value, Word.toBitVec_toNat bound]
 
+/-- The seed facts' pointer characterization, read from the starting RV state. -/
+theorem rv_seed_register {data : MemoryData p} {initial : RV.State} {cells : List Cell}
+    (inputs : RVBoundaryInputs data initial cells) {index : BitVec 5} {pointer : BitVec 32}
+    (source : ∃ token ∈ data.initial, token.address = (Cell.register index).addressCode ∧
+      token.word = Word.ofBitVec pointer) :
+    (Cell.register index).readRV initial = some pointer := by
+  obtain ⟨token, present, code, word⟩ := source
+  obtain ⟨cell, _, cellCode, read⟩ := inputs.reads token present
+  have same : cell = .register index := cell_address_injective (cellCode.trans code)
+  subst cell
+  rw [read]
+  show some token.word.toBitVec = some pointer
+  rw [word, Word.ofBitVec_roundtrip]
+
 /-- RV `boundary_image`: a boundary `RV.State` image is the proof-level `RVBoundaryInputs`. -/
 theorem RVBoundaryMemoryInputs.toRVBoundaryInputs {data : MemoryData p} {before : RV.State} {cells : List Cell}
     (inputs : RVBoundaryMemoryInputs data before cells) : RVBoundaryInputs data before cells := by
