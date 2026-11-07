@@ -772,3 +772,11 @@ and last-value equality; it does not assume either auxiliary last value zero.
 [regressions](../../../../Tests/NativeDecoderTable.lean) preserve scope. Public
 physical setup/extraction, inactive request filtering and initialized global
 matching remain open; no prior local example becomes a native defect.
+
+[Constructed physical decoder setup](PhysicalDecoderSetupTheorems.lean) retains
+the whole public indexed slice and ordinary native tail, then normalizes only the
+reserved last row. Original Sail source evidence follows from actual body plus
+ordinary-table membership; membership/extraction remains explicit. Acceptance is
+checked on constructed setup observations, with no equality transfer from arbitrary
+tables or identification with fixed native ROM. [Split controls](../../../../Tests/NativePhysicalDecoderSetup.lean)
+retain a small hole fixture and a separate exact-capacity empty-image/tail test.

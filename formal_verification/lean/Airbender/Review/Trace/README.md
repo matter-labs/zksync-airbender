@@ -577,3 +577,9 @@ now shares the same full-domain main observations. It supplies no decoder
 membership, caller filter, initialized worker history or original execution.
 Existing active logical and public fetched-execution roots retain their scopes;
 no Sail memory frame crosses unproved delegated actions.
+
+[The physical decoder setup source root](../Circuits/ReducedMachine/PhysicalDecoderSetupTheorems.lean)
+recovers original public seven-profile Sail decoding from the constructed ordinary
+table, including holes and its full physical tail. Membership/extraction remains
+an explicit boundary; no active execution, inactive caller filter or initialized
+worker history follows. Existing fetched-execution and ROM scopes remain unchanged.

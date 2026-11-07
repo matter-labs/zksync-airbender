@@ -1,5 +1,11 @@
 # Circuit verification
 
+The [constructed native decoder setup](Airbender/Review/Circuits/ReducedMachine/PhysicalDecoderSetupTheorems.lean)
+now retains the public slice, holes, full ordinary physical tail and separate
+normalized last row on the same main observations. Ordinary-table membership
+recovers original Sail source evidence; lookup extraction and initialized worker
+matching remain open. See the [current status](VERIFICATION_STATUS.md).
+
 The [native decoder table sum](Airbender/Review/Circuits/ReducedMachine/DecoderTableTheorems.lean)
 now connects physical witness9, setup6-through15 and quartic88/72 on the same main
 observations. Full ordinary auxiliary-sum equality follows from the native

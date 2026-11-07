@@ -1,3 +1,11 @@
+import Airbender.Review.Helpers.Tables.NormalizeLast
+import Airbender.Proofs.Tables.NormalizeLast
+import Airbender.Review.Circuits.ReducedMachine.PhysicalDecoderSetup
+import Airbender.Proofs.ReducedMachine.NativePhysicalDecoderSetup
+import Airbender.Review.Circuits.ReducedMachine.PhysicalDecoderSetupTheorems
+import Tests.NativePhysicalDecoderSetupBase
+import Tests.NativePhysicalDecoderSetup
+import Tests.NativePhysicalDecoderNormalization
 import Airbender.Review.Circuits.ReducedMachine.DecoderTableColumns
 import Airbender.Import.ReducedDecoderTable
 import Airbender.Review.Circuits.ReducedMachine.DecoderTableArtifact
@@ -6097,3 +6105,43 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeDecoderTable.zero_difference_polynomial
 #print axioms Airbender.Tests.NativeDecoderTable.complete_table_component
 #print axioms Airbender.Tests.NativeDecoderTable.last_observations
+
+#print axioms Airbender.Verification.NormalizeLastProofs.ordinary
+#print axioms Airbender.Verification.NormalizeLastProofs.terminal
+#print axioms Airbender.Verification.NormalizeLastProofs.domain_sum
+#print axioms Airbender.Verification.NormalizeLastProofs.vector_column
+#print axioms Airbender.Verification.NormalizeLastProofs.vector_terminal
+#print axioms Airbender.Verification.NormalizeLastProofs.vector_sum
+#print axioms Airbender.Verification.NormalizeLastProofs.vector_constant_terminal
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.physical_geometry
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.slice_row
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.tail_row
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.normalized_ordinary
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.normalized_terminal
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.normalized_sum
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.bound_main
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.bound_decoder_query
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.bound_other_columns
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.public_member
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.public_extent
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.unified_source
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.public_tail
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetupProofs.constructed_arguments
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetup.constructed_decoder_setup
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetup.public_physical_decoder_source
+#print axioms Airbender.ReducedMachine.NativePhysicalDecoderSetup.same_main_constructed_decoder_setup
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.public_empty_image
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.empty_ordinary
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.entire_physical_tail
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.holes_and_original_slot
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.hole_slice_tail
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.physical_entry_member
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.physical_outer_tail
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.constructed_queries
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.retain_nondecoder_columns
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.retain_body_and_auxiliary
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.empty_table_rejected
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.empty_normalized_last
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.normalized_last_is_not_padding
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.every_column_sum_zero
+#print axioms Airbender.Tests.NativePhysicalDecoderSetup.small_normalizer_control

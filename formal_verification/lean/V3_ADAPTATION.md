@@ -1,5 +1,52 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Constructed native physical decoder setup (7 November 2026)
+
+[The source-reference construction](Airbender/Review/Circuits/ReducedMachine/PhysicalDecoderSetup.lean)
+copies the full indexed public sparse decoder slice, including holes and its
+configured tail, then pads every remaining ordinary physical row with minus-one.
+Only the reserved last row becomes a negative column sum. The ordinary lookup
+view has8388607 rows and excludes that normalized row. A complete original
+stateful public image at log-capacity20 derives the exact1048576-row input slice.
+Physical decoder columns6-through15 are constructed on the same proof; all other
+observed setup fields, body rows, auxiliaries and claims are retained.
+
+[The pure normalization proof](Airbender/Proofs/Tables/NormalizeLast.lean) proves
+column sums zero symbolically over abstract groups/rows/width/domain BEFORE native
+instantiation. [Native calculations](Airbender/Proofs/ReducedMachine/NativePhysicalDecoderSetup.lean)
+derive exact prefix/tail/last observations and recover original seven-profile
+Sail source evidence from membership in the constructed ordinary table. Actual
+native mask equations exclude holes/tail; no expected per-row query or table-
+equivalence premise is supplied. [Short roots](Airbender/Review/Circuits/ReducedMachine/PhysicalDecoderSetupTheorems.lean)
+retain the existing complete same-main scalar/product/capacity/table-sum interface
+when acceptance is checked ON these constructed setup observations.
+
+Lookup membership/extraction is still an explicit trust boundary; it is NOT
+inferred from single-challenge auxiliary sums. This explicit public construction
+is not Rust execution, physical commitment/setup authentication, FFT/field/codec
+refinement or identification of arbitrary public code with the fixed native
+eight-word ROM. Original initialized execution interfaces and findings are unchanged.
+
+Fifteen controls are split into [three base controls](Tests/NativePhysicalDecoderSetupBase.lean),
+[eight slot/observation controls](Tests/NativePhysicalDecoderSetup.lean) and
+[four normalization controls](Tests/NativePhysicalDecoderNormalization.lean).
+A small two-slot hole fixture checks indexed holes; a separate exact-million-
+capacity empty image checks the whole native physical tail. Its actual normalized
+last value8388607 differs from padding and is excluded from lookup membership.
+These are source/reference/metadata/conditional controls, not complete positive
+nonempty table/global/worker/physical accepted witnesses or defect evidence.
+Eight modules add39 explicit audit roots, preserving all5342 prior roots/source
+bytes. Eleven exact parent origins plus two new manual native-source-reference
+records retain99 unchanged native pins; no new intake, exporter/artifact/fixture/
+production/Sail/dependency change, native generation or closed heavy replay.
+
+Next: native decoder lookup extraction and remaining padding/global request
+enforcement; full-domain main/43-worker token matching/public initialization;
+active ranges/raw clocks/stage2-key refinement and real caller-worker accounting.
+Original CSR/MOP and worker execution, global init/teardown, physical/general
+refinement, cryptography, completeness and checked parity remain open.
+
+
 ## Native decoder table multiplicity and zero/last sum (7 November 2026)
 
 [The decoder-table interface](Airbender/Review/Circuits/ReducedMachine/DecoderTableArguments.lean)

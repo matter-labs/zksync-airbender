@@ -158,3 +158,9 @@ reuses the unchanged generic polynomial-sum theorem at literal zero claim. Its
 actual difference samples are quartic88-minus-quartic72; equality of ordinary
 sums is derived, not supplied. Physical witness9 has no logical body ID. Public
 setup authentication and lookup extraction remain separate fidelity boundaries.
+
+[Native last-row normalization](Tables/NormalizeLast.lean) is now a pure scalar/
+vector finite-group construction; its proof is checked before concrete native
+instantiation and evaluates no million-row sum. The constructed decoder setup
+retains every ordinary tail row and excludes the separate normalization row from
+lookup membership. Rust/FFT/physical setup fidelity and extraction remain open.
