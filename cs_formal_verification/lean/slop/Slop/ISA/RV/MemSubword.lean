@@ -119,7 +119,7 @@ theorem exec_load_subword (s : State) (n : Nat) (hn : n = 1 ∨ n = 2) (signed :
     (offset a : Word) (k : Nat) (hrd : rd ≠ 0) (addr : s.getReg rs1 + offset = a + BitVec.ofNat 32 k)
     (ha : a.toNat % 4 = 0) (hk : k + n ≤ 4) (hkn : k % n = 0) :
     exec s (.load n signed rd rs1 offset) =
-      some ((s.setReg rd (extendLoad signed ((read s.mem a 4 >>> (8 * k)).setWidth (8 * n)))).nextInstr) := by
+      some ((s.setReg rd (extendLoad signed ((read s.loadView a 4 >>> (8 * k)).setWidth (8 * n)))).nextInstr) := by
   have small := a.isLt
   have sum : (a + BitVec.ofNat 32 k).toNat = a.toNat + k := by
     rw [BitVec.toNat_add, BitVec.toNat_ofNat]
@@ -128,7 +128,7 @@ theorem exec_load_subword (s : State) (n : Nat) (hn : n = 1 ∨ n = 2) (signed :
     simp only [aligned, readable, RAM_END, sum]
     rcases hn with rfl | rfl <;> omega
   simp only [exec, addr]
-  rw [ite_eq_right hrd, ite_eq_left guard, read_subword s.mem a n k hn hk]
+  rw [ite_eq_right hrd, ite_eq_left guard, read_subword s.loadView a n k hn hk]
   rcases hn with rfl | rfl <;> cases signed <;>
     simp [extendLoad, BitVec.setWidth_setWidth_of_le]
 

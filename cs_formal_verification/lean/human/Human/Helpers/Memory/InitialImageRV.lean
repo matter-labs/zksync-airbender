@@ -29,6 +29,13 @@ def initialImageRV (before : RV.State) (cells : List Cell) :
   cells.mapM fun cell =>
     (cell.readRV before).map (cell.initialToken ·)
 
+/-- The ROM image's words at the public cells, as seed-format tokens (registers 0): what the modeled word-ROM table
+    holds (`ROM.table`). Read from `rom`, not from RAM. -/
+def romImageRV (before : RV.State) (cells : List Cell) : List (MemoryToken p) :=
+  cells.map fun cell => cell.initialToken (match cell with
+    | .register _ => 0
+    | .ram address => RV.read before.rom address 4)
+
 /-- Bind the initial PC of an RV state; the initial timestamp is public input. -/
 def initialStateRV (before : RV.State) (timestamp : ZMod p × ZMod p) :
     PCState.State p :=

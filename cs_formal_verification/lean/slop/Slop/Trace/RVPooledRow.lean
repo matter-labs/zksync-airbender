@@ -8,10 +8,10 @@ import Slop.Trace.RVPooledLaws
 /-! Shared RV facts for one row of an accepted pooled trace, for every family:
 
     - `rv_pooled_row_entry`: the row's public program entry (family and query match, an aligned ROM word of the
-      starting memory that `RV.decode`s to `i` with `rvPooledDecoderFields i = some entry.data`), and the row's start
+      starting ROM image that `RV.decode`s to `i` with `rvPooledDecoderFields i = some entry.data`), and the row's start
       PC is the entry's PC. `rv_pooled_fields_family` turns the pooled projection into the row family's own.
     - `rv_pooled_row_history`: the row's native events are an RV history from the row's pre-state (up to its PC),
-      together with the x0 and writable-store laws of the whole trace (from the `RVPooledLaws` contract). Each family derives its operand reads from it
+      together with the x0 law of the whole trace (from the `RVPooledLaws` contract). Each family derives its operand reads from it
       (`rv_row_operand_reads`).
     - `rv_step_of_position` / `rv_step_of_row`: `RV.step` of the row's pre-state executes the entry's instruction. -/
 
@@ -56,7 +56,7 @@ theorem rv_pooled_row_entry {p : Nat} [Fact p.Prime] (hp : limbBase < p)
       entry.data.family = row.family ∧ row.decoderQuery = entry.query ∧
       RV.decode entry.bits = some i ∧ rvPooledDecoderFields i = some entry.data ∧
       (entry.pc.toNat < RV.ROM_END ∧ entry.pc.toNat % 4 = 0) ∧
-      entry.bits = RV.read initial.mem entry.pc 4 ∧
+      entry.bits = RV.read initial.rom entry.pc 4 ∧
       row.start.word.toBitVec = entry.pc := by
   obtain ⟨entry, present, family, query⟩ := rv_decoder_member (decoded row member)
   obtain ⟨guard, bits, i, decodes, fields⟩ := rvProgram_entry_fetch image entry present
@@ -83,14 +83,8 @@ theorem applyRV_with_pc {cell : Cell} {value : BitVec 32} {s t : RV.State} (pc :
       obtain rfl := Option.some.inj write
       rfl
     | ram address =>
-      simp only [Cell.writeRV] at write ⊢
-      by_cases w : RV.writable address 4
-      · rw [if_pos w] at write
-        rw [if_pos w]
-        obtain rfl := Option.some.inj write
-        rfl
-      · rw [if_neg w] at write
-        cases write
+      obtain rfl := Option.some.inj write
+      rfl
 
 /-- RV histories do not read or write the PC. -/
 theorem rv_history_with_pc {cells : List Cell} {events : List MemoryAccess} {before after : RV.State}
@@ -105,7 +99,7 @@ theorem rv_history_with_pc {cells : List Cell} {events : List MemoryAccess} {bef
 /-- (b) Family-agnostic row history: for any pooled row at RV pre-state `before`, the earlier rows' events are an RV
     history from the starting state to `middle`, the row's own events (`rowEvents`, reversed: first port first) are an
     RV history from `middle` (equivalently from `before`, which is `middle` at the row's start PC), and every native
-    write to x0 carries zero and every changing RAM write is RV-writable. -/
+    write to x0 carries zero. -/
 theorem rv_pooled_row_history (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : PooledTrace p} (accepted : Accepted trace)
     {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry}
@@ -120,48 +114,44 @@ theorem rv_pooled_row_history (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp
       before = { middle with pc := row.start.word.toBitVec } ∧
       RVHistory cells (rowEvents trace.memoryEpoch row).reverse before { rawAfter with pc := before.pc } ∧
       (∀ event ∈ trace.nativeEvents, event.2.1 = (Cell.register 0).addressCode →
-        memoryWord event.2.2.2 = 0) ∧
-      (∀ event ∈ trace.nativeEvents, event.2.2.1 ≠ event.2.2.2 → ∀ cell ∈ cells,
-        cell.addressCode = event.2.1 → ∀ index, cell = .ram index → RV.writable index 4) := by
+        memoryWord event.2.2.2 = 0) := by
   haveI : ClockLaws PooledFamily p := laws.clockLaws
   have clocks := inputs.initialization.clocks
   obtain ⟨addresses, programImage⟩ := inputs.initialization.programImage
   have zero := Airbender.Trace.RVZero.rv_zero_writes_of_preserving hp inverse accepted clocks
     inputs.initialization.image
     (laws.zeroPreserving (by dsimp [timestampBase] at hp; omega) accepted programImage decoded)
-  have writable := laws.writable hp accepted inputs.initialization.aligned
   obtain ⟨history, rows, after, _, rowsPermutation, rowsOrdered, native, _⟩ :=
     rv_native_row_history hp inverse accepted clocks inputs.initialization.image
-      inputs.initialization.distinct inputs.initialization.aligned zero writable
+      inputs.initialization.distinct inputs.initialization.aligned zero
   have projection :
       (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse).Perm trace.nativeEvents := by
     rw [native_events_projection (by dsimp [timestampBase] at hp; omega) inverse accepted clocks]
     exact rowsPermutation.flatMap (fun row _ => List.reverse_perm _)
   obtain ⟨middle, events, rawAfter, present, past, current, atState⟩ :=
     rv_row_context_of_history rowsPermutation rowsOrdered native projection position
-  refine ⟨middle, events, rawAfter, present, past, current, atState, ?_, zero, writable⟩
+  refine ⟨middle, events, rawAfter, present, past, current, atState, ?_, zero⟩
   subst atState
   exact rv_history_with_pc current _
 
 /-! ### (c) The step of the row's pre-state -/
 
 /-- (c) For a row at RV pre-state `before` whose start PC is an aligned ROM address `pc` whose starting bytes decode
-    to `i`, `RV.step before` executes `i` (the earlier rows' writes never change ROM). -/
+    to `i`, `RV.step before` executes `i` (the earlier rows' writes never change the ROM image). -/
 theorem rv_step_of_position {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime]
     {trace : Data p Kind} {initial : RV.State} {cells : List Cell} {row : Row p Kind} {before : RV.State}
     (position : RVRowPosition trace initial cells row before)
     {pc : BitVec 32} (start : row.start.word.toBitVec = pc)
     (guard : pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0)
-    {i : RV.Instr} (decodes : RV.decode (RV.read initial.mem pc 4) = some i) :
+    {i : RV.Instr} (decodes : RV.decode (RV.read initial.rom pc 4) = some i) :
     before.pc = pc ∧ RV.step before = RV.exec before i := by
   obtain ⟨_, _, middle, _, _, writes, atState⟩ := position
   have beforePC : before.pc = pc := by
     rw [atState]
     exact start
-  have agree : ∀ a : RV.Word, a.toNat < RV.ROM_END → before.mem a = initial.mem a := by
-    intro a rom
+  have agree : before.rom = initial.rom := by
     rw [atState]
-    exact rvWriteHistory_rom writes a rom
+    exact (rvWriteHistory_rom writes : middle.rom = initial.rom)
   obtain ⟨_, step⟩ := rv_step_fetch before initial agree pc beforePC guard
   rw [decodes] at step
   exact ⟨beforePC, step⟩
@@ -179,7 +169,7 @@ theorem rv_step_of_row {p : Nat} [Fact p.Prime] (hp : limbBase < p)
       before.pc = entry.pc ∧ RV.step before = RV.exec before i := by
   obtain ⟨entry, present, i, family, query, decodes, fields, guard, bits, start⟩ :=
     rv_pooled_row_entry hp image decoded member
-  have fetched : RV.decode (RV.read initial.mem entry.pc 4) = some i := bits ▸ decodes
+  have fetched : RV.decode (RV.read initial.rom entry.pc 4) = some i := bits ▸ decodes
   obtain ⟨beforePC, step⟩ := rv_step_of_position position start guard fetched
   exact ⟨entry, present, i, family, query, decodes, fields, beforePC, step⟩
 

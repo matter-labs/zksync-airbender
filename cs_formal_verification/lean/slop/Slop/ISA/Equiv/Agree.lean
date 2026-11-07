@@ -1,7 +1,7 @@
 import Slop.ISA.Equiv.Bridge
 
 /-! Bookkeeping for `Airbender.Agree` across one step: what `set`/`xset` leave unchanged, and the core lemma
-`step_agree` (one Airbender step whose result matches our step on PC, registers and memory). -/
+`step_agree` (one Airbender step whose result matches our step on PC, registers and what LOADs see). -/
 
 open Sail SailRV32 SailRV32.Functions Human
 
@@ -42,7 +42,7 @@ theorem step_agree {s t : RV.State} {σ : SailState} (h : Airbender.AgreeSail s 
     (hdec : RV.decode (readBytes σ.mem (σ.regs .PC).toNat 4) = some i) (σ2 : SailState)
     (hexec : runSail (Airbender.execute next (Airbender.toSail i)) (σ.set .nextPC (σ.regs .PC + 4)) = .ok RETIRE_SUCCESS σ2)
     (hs2 : Airbender.Configured σ2) (hpc : σ2.regs .nextPC = t.pc) (hal : t.pc.toNat % 4 = 0)
-    (hr : ∀ j, xget σ2 j = t.getReg j) (hm : ∀ a : RV.Word, σ2.mem a.toNat = t.mem a) :
+    (hr : ∀ j, xget σ2 j = t.getReg j) (hm : ∀ a : RV.Word, σ2.mem a.toNat = t.loadView a) :
     ∃ σ', stepSail next σ = some (σ', RV.Instr.readsInput i) ∧ Airbender.AgreeSail t σ' := by
   refine ⟨_, step_of_exec σ h.1 ha h2 i hdec σ2 hexec (hpc ▸ hal), ?_, ?_, ?_, ?_⟩
   · exact sys_set hs2 .PC _ rfl

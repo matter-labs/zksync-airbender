@@ -15,7 +15,7 @@ open Arithmetic
 theorem rv_same_of_write (s : RV.State) (rd : RV.Reg) (x out pc : BitVec 32)
     (value : rd ≠ 0 → x = out) (hpc : s.pc + 4 = pc) :
     RV.Same (s.setReg rd x).nextInstr ((s.setReg rd out).setPC pc) := by
-  refine ⟨?_, ?_, rfl, rfl⟩
+  refine ⟨?_, ?_, rfl, rfl, rfl⟩
   · simpa [RV.State.nextInstr, RV.State.setPC, RV.State.setReg] using hpc
   · intro i
     simp only [RV.State.getReg, RV.State.nextInstr, RV.State.setPC, RV.State.setReg]
@@ -32,7 +32,7 @@ theorem rv_same_of_store (s : RV.State) (a x out pc : BitVec 32)
     RV.Same (s.store a x 4).nextInstr ((s.store a out 4).setPC pc) := by
   subst value
   subst hpc
-  exact ⟨rfl, fun _ => rfl, rfl, rfl⟩
+  exact ⟨rfl, fun _ => rfl, rfl, rfl, rfl⟩
 
 /-- A register-column port whose column holds `i` addresses register `i`. -/
 theorem register_address_code {p : Nat} (hp : 32 ≤ p) {w : Nat → ZMod p} {column : Nat} {i : BitVec 5}

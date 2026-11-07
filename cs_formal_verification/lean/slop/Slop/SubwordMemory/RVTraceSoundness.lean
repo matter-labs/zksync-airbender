@@ -10,16 +10,16 @@ import Slop.Trace.RVRowReads
 /-! RV32 LB/LBU/LH/LHU/SB/SH soundness (`RVSoundnessClaim`), on the RV route: no Sail state, interpreter,
     `Configured` or `OrdinaryWordAddress` fact.
 
-    - Fetch/step: the row's program entry is an aligned ROM word of the starting memory (`rvProgram_entry_fetch`);
-      the row's pre-state has the entry's PC and the starting ROM bytes, so `RV.step` executes `rvInstruction input`.
+    - Fetch/step: the row's program entry is an aligned word of the ROM image (`rvProgram_entry_fetch`);
+      the row's pre-state has the entry's PC and the same ROM image, so `RV.step` executes `rvInstruction input`.
     - Decoder: the entry's data is `rvData input` (`rv_pooled_fields`, which also gives `rd ≠ x0` for loads); the
       query fixes the store/byte/sign selectors, PC limbs, immediate limbs and register indices (`rv_query_facts`).
     - Ports: all three ports read the pre-state (`rv_row_port_reads3`): rs1, then the aligned RAM cell (loads) or rs2
       (stores), then rd (loads) or the cell's old word (stores). Every port address is a public cell, so a RAM
       address is canonical and aligned (`RVNativeInputs.aligned`).
     - Address: `effective_address` (cell plus byte offset); halfwords have an even offset (`halfword_aligned`).
-    - Loads: RAM loads extend the read word's slice (`rv_ram_load_data`), ROM loads the public subword ROM table's
-      word, the starting bytes (`rv_rom_load_data`, `ROM.wordsRV`, unchanged below `ROM_END` by the row history);
+    - Loads (`RV.State.loadView`): RAM loads extend the read word's slice (`rv_ram_load_data`), ROM loads the public
+      subword ROM table's word, the ROM image (`rv_rom_load_data`, `ROM.wordsRV`; the row history never changes it);
       `RV.exec_load_subword` reads the same slice. Stores: the circuit keeps the store in RAM
       (`subword_store_ram_writable`) and merges rs2's low bytes into the old word (`store_byte_encoding`), which is
       the RV byte store (`RV.exec_store_subword`). PC: `pc_successor`. -/
@@ -99,7 +99,7 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
   have oldBound : (Word.mk (w 31).val (w 32).val).Bounded := by
     simpa [read_word, importedConstraintsMemoryPorts] using portBound 2
   -- The row's port reads in the pre-state.
-  obtain ⟨_, _, _, _, _, _, _, current, _, _⟩ :=
+  obtain ⟨_, _, _, _, _, _, _, current, _⟩ :=
     rv_pooled_row_history laws clockSize inverse accepted assumptions decoded mapping.state
   have shape : (⟨.subwordMemory, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
@@ -221,14 +221,14 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
       (address := Word.mk (w 21).val (w 22).val) (ZMod.natCast_zmod_val _).symm cellBound
     -- The loaded value: the extension of the cell word's slice at `offset`.
     have value : (Word.mk (w 33).val (w 34).val).toBitVec = RV.extendLoad input.signed
-        ((RV.read input.before.mem a 4 >>> (8 * offset)).setWidth (8 * (if input.byte then 1 else 2))) := by
+        ((RV.read input.before.loadView a 4 >>> (8 * offset)).setWidth (8 * (if input.byte then 1 else 2))) := by
       by_cases inROM : (w 22).val < 64
       · have rom : w 41 = 1 := by simpa [inROM] using classified.1
         have loaded := rv_rom_load_data (by omega) input.byte input.signed highByte highHalf core active load rom
           byteSelected signs bit0 bit1 ⟨rfl, (ZMod.natCast_zmod_val _).symm⟩ cellBound inROM halfAligned
         rw [loaded.2]
         congr 3
-        -- The public ROM word of the cell is its starting bytes, unchanged below `ROM_END` by the row history.
+        -- The public ROM word of the cell is the ROM image's, which the row history never changes.
         have cellValue : (Word.mk (w 21).val (w 22).val).value = a.toNat := by
           rw [cellIs, ← Word.toBitVec_toNat (Word.ofBitVec_bound a), Word.ofBitVec_roundtrip]
         have below : a.toNat < RV.ROM_END := by
@@ -238,11 +238,10 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
           dsimp [Word.value, limbBase] at low ⊢
           omega
         obtain ⟨_, _, middle, _, _, writes, atState⟩ := mapping.state
-        have agree : ∀ b : RV.Word, b.toNat < RV.ROM_END → input.before.mem b = initial.mem b := by
-          intro b low
+        have agree : input.before.rom = initial.rom := by
           rw [atState]
-          exact rvWriteHistory_rom writes b low
-        rw [rv_read_fetch input.before initial agree a ⟨below, aligned⟩, cellValue]
+          exact (rvWriteHistory_rom writes : middle.rom = initial.rom)
+        rw [RV.read_loadView_rom _ _ _ (by unfold RV.ROM_END at below ⊢; omega), agree, cellValue]
         have quarter : 4 * (a.toNat / 4) = a.toNat := by omega
         have inRAM : a.toNat + 4 ≤ RV.RAM_END := by
           unfold RV.ROM_END at below
@@ -253,7 +252,8 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
         have loaded := rv_ram_load_data (by omega) input.byte input.signed highByte highHalf core active load ram
           byteSelected signs bit0 bit1 ⟨(ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm⟩
           readBound halfAligned
-        rw [loaded.2, ramRead]
+        have high : RV.ROM_END ≤ a.toNat := RVWritable.ram_index_rom_bound a (by rw [← hiEq]; omega)
+        rw [loaded.2, RV.read_loadView_ram _ _ _ high (by have := a.isLt; omega), ramRead]
     have exec := RV.exec_load_subword input.before _ width input.signed input.rd input.rs1 _ a offset rd0 target
       aligned offsetWidth offsetAligned
     refine ⟨addressFor, ?_⟩

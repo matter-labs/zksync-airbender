@@ -8,15 +8,14 @@ namespace Airbender.Trace.RVValues
 open Arithmetic Trace.Proofs
 
 /-- RV twin of `pooled_row_write_rule`: the RV projection equation replaces `PooledSource`, and the word ROM is
-    built from `initialImageRV`. -/
+    built from the ROM image (`romImageRV`). -/
 theorem rv_pooled_row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     {trace : PooledTrace p} {row : Row p PooledFamily}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints trace.rom))
     (active : row.assignment row.columns.execute = 1)
     {before : RV.State} {cells : List Cell}
-    (image : initialImageRV before cells = some trace.initialMemory)
-    (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
+    (wordSetup : trace.rom.wordMemory = ROM.table cells (romImageRV before cells))
     {values : Nat → BitVec 32}
     (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {entry : RVPooledProgramEntry} {i : RV.Instr} (fields : rvPooledDecoderFields i = some entry.data)
@@ -34,13 +33,13 @@ theorem rv_pooled_row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
       all_goals subst kind
       all_goals apply row_write_rule_of_sources
       · exact row_write_source ⟨.addSub, w⟩ trace.rom.wordMemory constraints
-          (fun query h inactive => rv_rom_disabled (by omega) image
+          (fun query h inactive => rv_rom_disabled (by omega)
             (by rwa [wordSetup] at h) inactive)
-          (fun query h => rv_rom_bounds limbField image (by rwa [wordSetup] at h))
+          (fun query h => rv_rom_bounds limbField (by rwa [wordSetup] at h))
       · exact row_write_source ⟨.wordMemory, w⟩ trace.rom.wordMemory constraints
-          (fun query h inactive => rv_rom_disabled (by omega) image
+          (fun query h inactive => rv_rom_disabled (by omega)
             (by rwa [wordSetup] at h) inactive)
-          (fun query h => rv_rom_bounds limbField image (by rwa [wordSetup] at h))
+          (fun query h => rv_rom_bounds limbField (by rwa [wordSetup] at h))
   · obtain ⟨d, fd, equal⟩ := h
     subst equal
     cases row with
@@ -94,8 +93,7 @@ theorem rv_pooled_row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
 theorem rv_pooled_write_rules {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     {trace : PooledTrace p} (accepted : Accepted trace)
     {initial : RV.State} {cells : List Cell}
-    (image : initialImageRV initial cells = some trace.initialMemory)
-    (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
+    (wordSetup : trace.rom.wordMemory = ROM.table cells (romImageRV initial cells))
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List RVPooledProgramEntry}
     (programImage : rvProgramImageWith rvPooledDecoderFields initial addresses = some program)
@@ -104,7 +102,7 @@ theorem rv_pooled_write_rules {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
   obtain ⟨entry, present, family, query⟩ := rv_decoder_member (decoded row member)
   obtain ⟨_, _, _, _, fields⟩ := rvProgram_entry_fetch programImage entry present
   exact rv_pooled_row_write_rule hp (accepted.constraints row member) (accepted.active row member)
-    image wordSetup subwordSetup fields family query
+    wordSetup subwordSetup fields family query
 
 /-- RV twin of `pooled_value_bounds`: one RV public image and program table bound every native read, write and
     terminal word. -/
@@ -113,7 +111,7 @@ theorem rv_pooled_value_bounds {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : RV.State} {cells : List Cell}
     (image : initialImageRV initial cells = some trace.initialMemory)
-    (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
+    (wordSetup : trace.rom.wordMemory = ROM.table cells (romImageRV initial cells))
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List RVPooledProgramEntry}
     (programImage : rvProgramImageWith rvPooledDecoderFields initial addresses = some program)
@@ -122,7 +120,7 @@ theorem rv_pooled_value_bounds {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     (∀ row ∈ trace.rows, ∀ port ∈ row.ports,
       (writeToken row.columns row.assignment port).word.Bounded) ∧
     (∀ token ∈ trace.terminalMemory, token.word.Bounded) := by
-  have rules := rv_pooled_write_rules hp accepted image wordSetup subwordSetup programImage decoded
+  have rules := rv_pooled_write_rules hp accepted wordSetup subwordSetup programImage decoded
   have clockField : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   have seed := rv_image_bounds image
   exact ⟨read_bounds_of_rules clockField inverse accepted clocks seed rules,

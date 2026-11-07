@@ -36,8 +36,8 @@ theorem blakeG_call (mem : Word → BitVec 8) (p q : Word) (hp : Buffer p 64 64)
     Delegation.blakeG p q (gCtl red k) mem = some
       { writes := writesAt p (gStep (readWords mem q 16) k (readWords mem p 16)), reg := 12,
         val := gCtl red ((k + 1) % nG red) } := by
-  obtain ⟨hp1, hp2, -⟩ := hp
-  obtain ⟨hq1, hq2, hq3⟩ := hq
+  obtain ⟨hp2, -⟩ := hp
+  obtain ⟨hq2, hq3⟩ := hq
   have hk80 : k < 80 := by unfold nG at hk; split at hk <;> omega
   have hn : (gCtl red k).toNat = (if red then 128 else 0) + k := by
     simp only [gCtl, BitVec.toNat_ofNat]; split <;> omega
@@ -45,7 +45,7 @@ theorem blakeG_call (mem : Word → BitVec 8) (p q : Word) (hp : Buffer p 64 64)
     rw [BitVec.getLsbD, hn, Nat.testBit_eq_decide_div_mod_eq]; cases red <;> simp <;> omega
   have hk' : (gCtl red k).toNat % 128 = k := by rw [hn]; split <;> omega
   have hnG : (if red = true then 56 else 80) = nG red := rfl
-  simp only [Delegation.blakeG, hk', h7, hp1, hp2, hq1, hq2, hq3, ne_eq, hpq, not_false_eq_true, true_and,
+  simp only [Delegation.blakeG, hk', h7, hp2, hq2, hq3, ne_eq, hpq, not_false_eq_true, true_and,
     show (gCtl red k).toNat < 256 by rw [hn]; split <;> omega, hnG, ite_eq_left hk, ite_true, Option.some.injEq,
     Effect.mk.injEq, and_true]
   refine ⟨by simp only [gStep], ?_⟩
@@ -94,9 +94,9 @@ theorem blake_g_gen (red : Bool) (s : State) (p q : Word) (hp : Buffer p 64 64) 
   have key : ∀ k ≤ nG red, ∃ t, calls (.replicate k .blakeG) s = some t ∧ ChangesOnly s t p 64 12 ∧
       t.getReg 12 = gCtl red (k % nG red) ∧
       readWords t.mem p 16 = gs (readWords s.mem q 16) (readWords s.mem p 16) k := by
-    obtain ⟨hp1, hp2, hp3⟩ := hp
-    obtain ⟨hq1, hq2, hq3⟩ := hq
-    simp only [ROM_END, RAM_END] at hp1 hp3 hq1 hq3
+    obtain ⟨hp2, hp3⟩ := hp
+    obtain ⟨hq2, hq3⟩ := hq
+    simp only [RAM_END] at hp3 hq3
     have hap : p.toNat + 64 ≤ q.toNat ∨ q.toNat + 64 ≤ p.toNat := by
       have : p.toNat ≠ q.toNat := fun e => hpq (BitVec.eq_of_toNat_eq e)
       omega
@@ -108,14 +108,14 @@ theorem blake_g_gen (red : Bool) (s : State) (p q : Word) (hp : Buffer p 64 64) 
       have t10 : t.getReg 10 = p := (hch.2 10 (by decide)).trans h10
       have t11 : t.getReg 11 = q := (hch.2 11 (by decide)).trans h11
       have tq : readWords t.mem q 16 = readWords s.mem q 16 := hch.readWords q 16 (by omega) (by omega)
-      have hcall := blakeG_call t.mem p q ⟨by simp only [ROM_END]; omega, hp2, by simp only [RAM_END]; omega⟩
-        ⟨by simp only [ROM_END]; omega, hq2, by simp only [RAM_END]; omega⟩ hpq red k (by omega)
+      have hcall := blakeG_call t.mem p q ⟨hp2, by simp only [RAM_END]; omega⟩
+        ⟨hq2, by simp only [RAM_END]; omega⟩ hpq red k (by omega)
       rw [tq, hv] at hcall
       rw [Nat.mod_eq_of_lt (show k < nG red by omega)] at r12
       obtain ⟨t', h1, m', ch', r'⟩ := calls_one (k := .blakeG) (s := t)
         (by simp only [Delegation.effect, t10, t11, r12]; exact hcall) p 64
         (show (12 : Reg) ≠ 0 by decide)
-        (writesAt_in (n := 16) p _ (by simp only [ROM_END]; omega) (by omega) (by simp only [RAM_END]; omega))
+        (writesAt_in (n := 16) p _ (by omega) (by simp only [RAM_END]; omega))
       refine ⟨t', by rw [calls_replicate_succ, hrun, Option.bind_some, h1], hch.trans ch',
         by rw [r'], ?_⟩
       rw [m']

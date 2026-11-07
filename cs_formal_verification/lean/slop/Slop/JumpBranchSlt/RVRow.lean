@@ -36,12 +36,12 @@ structure RVRowFacts {p : Nat} [Fact p.Prime] (w : Nat → ZMod p) (s : RV.State
   rightBound : (Word.mk (w 26).val (w 27).val).Bounded
   finalHi : (w 17).val < limbBase
 
-private theorem same_refl (s : RV.State) : RV.Same s s := ⟨rfl, fun _ => rfl, rfl, rfl⟩
+private theorem same_refl (s : RV.State) : RV.Same s s := ⟨rfl, fun _ => rfl, rfl, rfl, rfl⟩
 
 /-- A jump's post-state (`RV.exec`: set PC, then link) agrees with the claimed one (link, then set PC). -/
 private theorem same_link (s : RV.State) (rd : RV.Reg) (t v d : RV.Word) (hv : rd ≠ 0 → d = v) :
     RV.Same ((s.setPC t).setReg rd v) ((s.setReg rd d).setPC t) := by
-  refine ⟨rfl, ?_, rfl, rfl⟩
+  refine ⟨rfl, ?_, rfl, rfl, rfl⟩
   intro i
   simp only [RV.State.getReg, RV.State.setPC, RV.State.setReg]
   by_cases hi : i = 0

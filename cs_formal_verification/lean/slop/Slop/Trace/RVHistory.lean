@@ -181,15 +181,13 @@ theorem rv_initial_history_matches {p : Nat} {before : RV.State} {cells : List C
 
 /-- One actual RV update advances the representation of Clean's last-write function and preserves every other aligned
     cell. A port equal to the cell's current value leaves the state unchanged (`Cell.applyRV`); otherwise it is a
-    `writeRV`, whose RAM range is the `writable` hypothesis, and whose x0 value is the `zero` hypothesis. -/
+    `writeRV` (a RAM write always succeeds), whose x0 value is the `zero` hypothesis. -/
 theorem rv_matches_after_write {cells : List Cell} {history : TimestampSortedMemoryAccessList}
     {before : RV.State} (boundState : RVStateMatches cells history before)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (event : MemoryAccess) (sorted : MemoryAccessList.isTimestampSorted (event :: history.val))
     (cell : Cell) (member : cell ∈ cells) (address : cell.addressCode = event.2.1)
-    (zero : cell = .register 0 → memoryWord event.2.2.2 = 0)
-    (writable : cell.readRV before ≠ some (memoryWord event.2.2.2) →
-      ∀ index, cell = .ram index → RV.writable index 4) :
+    (zero : cell = .register 0 → memoryWord event.2.2.2 = 0) :
     ∃ after, cell.applyRV (memoryWord event.2.2.2) before = some after ∧
       RVStateMatches cells ⟨event :: history.val, sorted⟩ after := by
   obtain ⟨time, key, old, value⟩ := event
@@ -206,7 +204,7 @@ theorem rv_matches_after_write {cells : List Cell} {history : TimestampSortedMem
       simp only [MemoryAccessList.lastWriteValue, ite_eq_right distinctCode]
       exact boundState other otherMember
   · obtain ⟨after, written, readback⟩ :=
-      writeRV_readback cell (memoryWord value) before zero (fun index same => writable unchanged index same)
+      writeRV_readback cell (memoryWord value) before zero (aligned cell member)
     refine ⟨after, ?_, ?_⟩
     · simp [Cell.applyRV, unchanged, written]
     intro other otherMember
@@ -228,8 +226,6 @@ theorem rv_realize_history {cells : List Cell} (events : List MemoryAccess)
     (addresses : ∀ event ∈ events, ∃ cell ∈ cells, cell.addressCode = event.2.1)
     (zero : ∀ event ∈ events, event.2.1 = (Cell.register 0).addressCode →
       memoryWord event.2.2.2 = 0)
-    (writable : ∀ event ∈ events, event.2.2.1 ≠ event.2.2.2 → ∀ cell ∈ cells, cell.addressCode = event.2.1 →
-      ∀ index, cell = .ram index → RV.writable index 4)
     (sorted : MemoryAccessList.isTimestampSorted (List.append (α := MemoryAccess) events seed.val))
     (consistent : MemoryAccessList.isConsistentOnline (List.append (α := MemoryAccess) events seed.val) sorted) :
     ∃ after, RVHistory cells events before after ∧
@@ -242,15 +238,12 @@ theorem rv_realize_history {cells : List Cell} (events : List MemoryAccess)
       MemoryAccessList.isConsistentOnline (List.append (α := MemoryAccess) rest seed.val) ordered at consistent
     obtain ⟨middle, past, bound⟩ := ih (fun e m => addresses e (List.mem_cons_of_mem _ m))
       (fun e m => zero e (List.mem_cons_of_mem _ m))
-      (fun e m ne c cm ca a h => writable e (List.mem_cons_of_mem _ m) ne c cm ca a h)
       ordered consistent.2
     obtain ⟨cell, member, address⟩ := addresses event (List.mem_cons_self)
     have read := bound cell member
     rw [address, ← consistent.1] at read
     obtain ⟨after, written, last⟩ := rv_matches_after_write bound aligned event sorted cell member address
       (fun same => zero event (List.mem_cons_self) (by rw [← address, same]))
-      (fun notRead index same => writable event (List.mem_cons_self)
-        (fun eq => notRead (by rw [read, eq])) cell member address index same)
     exact ⟨after, .cons past cell member address read written, last⟩
 
 
@@ -285,17 +278,15 @@ theorem rv_native_event_cells {Kind : Type} [CircuitLayout Kind] [Fact p.Prime] 
     port (by simpa using portMember)
   exact ⟨cell, present, address.symm⟩
 
-/-- Realize the accepted native transfers as an RV history. The x0 law and the writable-store law are explicit
-    hypotheses (discharged elsewhere: the decoder for x0, the store trap for ROM). No read value is assumed. -/
+/-- Realize the accepted native transfers as an RV history. The x0 law is an explicit hypothesis (discharged
+    elsewhere, by the decoder). No read value is assumed. -/
 theorem rv_native_history {Kind : Type} [CircuitLayout Kind] [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : RV.State} {cells : List Cell} (image : initialImageRV before cells = some trace.initialMemory)
     (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
     (zero : ∀ event ∈ trace.nativeEvents, event.2.1 = (Cell.register 0).addressCode →
-      memoryWord event.2.2.2 = 0)
-    (writable : ∀ event ∈ trace.nativeEvents, event.2.2.1 ≠ event.2.2.2 → ∀ cell ∈ cells,
-      cell.addressCode = event.2.1 → ∀ index, cell = .ram index → RV.writable index 4) :
+      memoryWord event.2.2.2 = 0) :
     ∃ (history : TimestampSortedMemoryAccessList) (events : List MemoryAccess)
       (seed : TimestampSortedMemoryAccessList) (after : RV.State),
       MemoryHistory trace history ∧ List.append (α := MemoryAccess) events seed.val = history.val ∧
@@ -312,9 +303,7 @@ theorem rv_native_history {Kind : Type} [CircuitLayout Kind] [Fact p.Prime] (hp 
     (rv_initial_history_matches image domain seed initial) aligned
     (fun event member => rv_native_event_cells hp inverse accepted boundary image event
       (permutation.mem_iff.mp member))
-    (fun event member => zero event (permutation.mem_iff.mp member))
-    (fun event member ne cell cm ca index same =>
-      writable event (permutation.mem_iff.mp member) ne cell cm ca index same) ordered consistent
+    (fun event member => zero event (permutation.mem_iff.mp member)) ordered consistent
   refine ⟨history, events, seed, after, checked, combined, permutation, actual, ?_⟩
   intro cell member
   simpa only [combined] using final cell member
@@ -328,16 +317,14 @@ theorem rv_native_row_history {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
     (image : initialImageRV before cells = some trace.initialMemory)
     (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
     (zero : ∀ event ∈ trace.nativeEvents, event.2.1 = (Cell.register 0).addressCode →
-      memoryWord event.2.2.2 = 0)
-    (writable : ∀ event ∈ trace.nativeEvents, event.2.2.1 ≠ event.2.2.2 → ∀ cell ∈ cells,
-      cell.addressCode = event.2.1 → ∀ index, cell = .ram index → RV.writable index 4) :
+      memoryWord event.2.2.2 = 0) :
     ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row p Kind)) (after : RV.State),
       MemoryHistory trace history ∧ rows.Perm trace.rows ∧
       rows.Pairwise (fun a b => rowClock b < rowClock a) ∧
       RVHistory cells (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse) before after ∧
       RVStateMatches cells history after := by
   obtain ⟨history, events, seed, after, consistent, combined, permutation, execution, final⟩ :=
-    rv_native_history hp inverse accepted boundary image domain aligned zero writable
+    rv_native_history hp inverse accepted boundary image domain aligned zero
   obtain ⟨rows, rowPermutation, rowSorted, sorted, eventPermutation⟩ :=
     native_row_order hp inverse accepted boundary
   have eventsSorted : MemoryAccessList.isTimestampSorted events := by

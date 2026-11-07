@@ -1,5 +1,6 @@
 import Slop.ISA.Equiv.StepJump
 import Slop.ISA.Equiv.ExecLoad
+import Slop.ISA.RV.Mem
 
 /-! Our step = an Airbender step, for loads and stores. -/
 
@@ -43,7 +44,7 @@ theorem kind_load (h : Airbender.AgreeSail s σ) (ha : (σ.regs .PC).toNat % 4 =
       (by rw [hx]; exact hal) (by rw [hx]; exact hrd)
     rw [hx] at e
     have hv : extend_value (!sg) (readBytes (σ.set .nextPC (σ.regs .PC + 4)).mem (s.getReg rs1 + x.signExtend 32).toNat n)
-        = _ := load_val σ.mem s.mem h.2.2.2 _ n hn (by have := ram_end_le; simp only [RV.readable] at hrd; omega) sg
+        = _ := load_val σ.mem s.loadView h.2.2.2 _ n hn (by have := ram_end_le; simp only [RV.readable] at hrd; omega) sg
     rw [hv] at e
     exact step_write h ha h2 _ hdec rd _ e
 
@@ -73,12 +74,13 @@ theorem kind_store (h : Airbender.AgreeSail s σ) (ha : (σ.regs .PC).toNat % 4 
     change xget (σ.set .nextPC (σ.regs .PC + 4)) j = s.getReg j
     rw [xget_set_nextPC, agree_xget h]
   · intro a
-    show writeBytes σ.mem _ n _ a.toNat = RV.write s.mem _ (s.getReg rs2) n a
+    show writeBytes σ.mem _ n _ a.toNat = (s.store (s.getReg rs1 + x.signExtend 32) (s.getReg rs2) n).loadView a
     have := ram_end_le
     simp only [RV.RAM_END] at hw2 this
+    rw [RV.loadView_store _ _ _ _ hw1 (by omega)]
     rcases hn with rfl | rfl | rfl
-    · exact write_eq1 σ.mem s.mem h.2.2.2 _ _ (by omega) a
-    · exact write_eq2 σ.mem s.mem h.2.2.2 _ _ (by omega) a
-    · exact write_eq4 σ.mem s.mem h.2.2.2 _ _ (by omega) a
+    · exact write_eq1 σ.mem s.loadView h.2.2.2 _ _ (by omega) a
+    · exact write_eq2 σ.mem s.loadView h.2.2.2 _ _ (by omega) a
+    · exact write_eq4 σ.mem s.loadView h.2.2.2 _ _ (by omega) a
 
 end Slop.Equiv

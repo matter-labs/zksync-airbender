@@ -15,10 +15,10 @@ def words (before : Reference.RiscV.Sail.State) (index : Nat) : BitVec 32 :=
   | .ok value _ => value
   | .error _ _ => 0
 
-/-- RV sibling of `words`: the word at byte address `4 * index` of the RV starting memory, read little-endian. Zero
+/-- RV sibling of `words`: the word at byte address `4 * index` of the RV ROM image, read little-endian. Zero
     when the word lies past the RAM address range (`RV.RAM_END`), the same fallback as `words`. -/
 def wordsRV (before : RV.State) (index : Nat) : BitVec 32 :=
-  if 4 * index + 4 ≤ RV.RAM_END then RV.read before.mem (BitVec.ofNat 32 (4 * index)) 4 else 0
+  if 4 * index + 4 ≤ RV.RAM_END then RV.read before.rom (BitVec.ofNat 32 (4 * index)) 4 else 0
 
 def row {p : Nat} (address : BitVec 32) (word : Word) : Vector (ZMod p) 9 :=
   #v[address.toNat, word.lo, word.hi, 0, 0, 0, 0, 0, 34]

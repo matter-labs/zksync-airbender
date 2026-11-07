@@ -149,37 +149,45 @@ noncomputable def execute (next : BitVec 32) (instr : instruction) : SailM Execu
 noncomputable def getReg (σ : SailState) (i : RV.Reg) : BitVec 32 :=
   match runSail (rX_bits (.Regidx i)) σ with | .ok v _ => v | .error _ _ => 0
 
-/-- Memory after writing the words of `ws` (address, value), little-endian (as `RV.State.storeAll`). -/
-def writeAll (mem : Nat → BitVec 8) : List (RV.Word × BitVec 32) → (Nat → BitVec 8)
-  | []           => mem
-  | (a, w) :: ws => writeAll (writeBytes mem a.toNat 4 w) ws
+/-- Airbender: shadow RAM. The RAM cells below `ROM_END` (where Sail's memory holds the ROM image) are a separate
+store that only delegations reach (`Human/ISA/State.lean`). -/
+abbrev Shadow := RV.Word → BitVec 8
 
-/-- A delegation call's effect on Sail's state (as `RV.State.applyEffect`). -/
-noncomputable def applyEffect (σ : SailState) (e : RV.Effect) : Option SailState :=
-  if e.writes.all fun aw => decide (RV.writable aw.1 4 ∧ RV.aligned aw.1 4) then
-    let σ₁ : SailState := { σ with mem := writeAll σ.mem e.writes }
+/-- RAM as a delegation sees it: shadow RAM below `ROM_END`, Sail's memory above. -/
+noncomputable def ramView (σ : SailState) (shadow : Shadow) : RV.Word → BitVec 8 :=
+  fun a => if a.toNat < RV.ROM_END then shadow a else σ.mem a.toNat
+
+/-- A delegation call's effect (as `RV.State.applyEffect`): the words written to RAM (shadow RAM below `ROM_END`,
+Sail's memory above), the register, the next PC; no next state unless every write is an aligned word. -/
+noncomputable def applyEffect (σ : SailState) (shadow : Shadow) (e : RV.Effect) : Option (SailState × Shadow) :=
+  if e.writes.all fun aw => decide (RV.aligned aw.1 4) then
+    let ram := (({ pc := 0, regFile := fun _ => 0, rom := fun _ => 0, mem := ramView σ shadow } : RV.State).storeAll
+      e.writes).mem
+    let σ₁ : SailState := { σ with mem := fun n => if RV.ROM_END ≤ n ∧ n < 2 ^ 32 then ram (BitVec.ofNat 32 n) else σ.mem n }
     let σ₂ := match runSail (wX_bits (.Regidx e.reg) e.val) σ₁ with | .ok _ σ' => σ' | .error _ σ' => σ'
     let pc' := σ.regs .PC + 4
-    some ((σ₂.set .PC pc').set .nextPC pc')
+    some (((σ₂.set .PC pc').set .nextPC pc'), fun a => if a.toNat < RV.ROM_END then ram a else shadow a)
   else none
 
 /-- Airbender's delegations are custom circuits with nothing in Sail to compare against (there `csrrw x0, <csr>, x0`
-is an illegal instruction), so the machine runs our definition (`RV.Delegation`, `Human/ISA/Delegations.lean`) on Sail's
-state. `none`: the instruction at the PC is not a delegation call. -/
-noncomputable def delegation (σ : SailState) : Option (Option SailState) :=
+is an illegal instruction), so the machine runs our definition (`RV.Delegation`, `Human/ISA/Delegations.lean`) on RAM
+(`ramView`). `none`: the instruction at the PC is not a delegation call. -/
+noncomputable def delegation (σ : SailState) (shadow : Shadow) : Option (Option (SailState × Shadow)) :=
   let pc := σ.regs .PC
   let mem : RV.Word → BitVec 8 := fun a => σ.mem a.toNat
   if pc.toNat % 4 = 0 ∧ pc.toNat + 4 ≤ RAM_START then
     match RV.decode (RV.read mem pc 4) with
     | some (.delegate k) =>
-        some ((RV.Delegation.effect k (getReg σ 10) (getReg σ 11) (getReg σ 12) mem).bind (applyEffect σ))
+        some ((RV.Delegation.effect k (getReg σ 10) (getReg σ 11) (getReg σ 12) (ramView σ shadow)).bind
+          (applyEffect σ shadow))
     | _ => none
   else none
 
-/-- The Airbender machine: Sail's state, plus the input (CSR 0x7c0): the words not yet read. -/
+/-- The Airbender machine: Sail's state, the shadow RAM, plus the input (CSR 0x7c0): the words not yet read. -/
 structure Machine where
-  sail  : SailState
-  input : List (BitVec 32)
+  sail   : SailState
+  shadow : Shadow
+  input  : List (BitVec 32)
 
 /-- One instruction, the way Sail's own `run_hart_active` + `try_step` run a 32-bit instruction: fetch, decode,
 `nextPC := PC + 4`, execute, `PC := nextPC`. Gives whether it read an input word; `none`: no step (a fetch fault,
@@ -197,12 +205,12 @@ noncomputable def sailStep (next : BitVec 32) : SailM (Option Bool) := do
 /-- One step of the machine: a delegation call, or one Sail instruction (no next state for an input read once the
 input is used up). -/
 noncomputable def step (m : Machine) : Option Machine :=
-  match delegation m.sail with
-  | some r => r.map fun σ' => ⟨σ', m.input⟩
+  match delegation m.sail m.shadow with
+  | some r => r.map fun (σ', shadow') => ⟨σ', shadow', m.input⟩
   | none =>
     match runSail (sailStep (m.input.headD 0)) m.sail, m.input with
-    | .ok (some false) σ', input     => some ⟨σ', input⟩
-    | .ok (some true)  σ', _ :: rest => some ⟨σ', rest⟩
+    | .ok (some false) σ', input     => some ⟨σ', m.shadow, input⟩
+    | .ok (some true)  σ', _ :: rest => some ⟨σ', m.shadow, rest⟩
     | _, _ => none
 
 end Airbender

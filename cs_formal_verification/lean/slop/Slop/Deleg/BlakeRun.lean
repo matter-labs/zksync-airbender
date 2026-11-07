@@ -17,9 +17,9 @@ theorem blake_mode_run (s : State) (p q : Word) (hp : Buffer p 96 128) (hq : Buf
       t.getReg 12 = bCtl red right comp k ∧ (0 < k → readWords t.mem (p + 32#32) 16 = blakeVs M V k) ∧
       readWords t.mem p 8 = (if k = nR red then blakeFinal (bH0 comp h) (blakeVs M V (nR red)) else h) := by
   intro h M V k hk
-  obtain ⟨hp1, hp2, hp3⟩ := hp
-  obtain ⟨hq1, hq2, hq3⟩ := hq
-  simp only [Apart, ROM_END, RAM_END] at hp1 hp3 hq1 hq3 hpq
+  obtain ⟨hp2, hp3⟩ := hp
+  obtain ⟨hq2, hq3⟩ := hq
+  simp only [Apart, RAM_END] at hp3 hq3 hpq
   have hne : p ≠ q := fun e => by subst e; omega
   have hn10 : nR red ≤ 10 := by unfold nR; split <;> omega
   have hn0 : 0 < nR red := by unfold nR; split <;> omega
@@ -37,8 +37,8 @@ theorem blake_mode_run (s : State) (p q : Word) (hp : Buffer p 96 128) (hq : Buf
       rcases Nat.eq_zero_or_pos k with rfl | hk0
       · simp only [List.replicate, calls, Option.some.injEq] at hrun; subst hrun; rfl
       · rw [ite_eq_right (by omega), hv hk0]
-    have hcall := blakeRound_mode_call t.mem p q ⟨by simp only [ROM_END]; omega, hp2, by simp only [RAM_END]; omega⟩
-      ⟨by simp only [ROM_END]; omega, hq2, by simp only [RAM_END]; omega⟩ hne red right comp k hk7
+    have hcall := blakeRound_mode_call t.mem p q ⟨hp2, by simp only [RAM_END]; omega⟩
+      ⟨hq2, by simp only [RAM_END]; omega⟩ hne red right comp k hk7
     dsimp only at hcall
     rw [te, th, tq] at hcall
     set v' := round M (SIGMA ⟨k, by omega⟩) (blakeVs M V k) with hv'
@@ -51,10 +51,9 @@ theorem blake_mode_run (s : State) (p q : Word) (hp : Buffer p 96 128) (hq : Buf
       (by simp only [Delegation.effect, t10, t11, r12]; exact hcall) p 96 (show (12 : Reg) ≠ 0 by decide)
       (fun aw haw => by
         rcases List.mem_append.mp haw with h1 | h1
-        · have := writesAt_in p h' (by simp only [ROM_END]; omega) (by omega) (by simp only [RAM_END]; omega) aw h1
+        · have := writesAt_in p h' (by omega) (by simp only [RAM_END]; omega) aw h1
           omega
-        · have := writesAt_in (p + 32#32) v' (by simp only [ROM_END]; omega) (by omega)
-            (by simp only [RAM_END]; omega) aw h1
+        · have := writesAt_in (p + 32#32) v' (by omega) (by simp only [RAM_END]; omega) aw h1
           omega)
     refine ⟨t', by rw [calls_replicate_succ, hrun, Option.bind_some, h1], hch.trans ch', r', fun _ => ?_, ?_⟩
     · rw [m', hvs, ← List.nil_append (writesAt p h'),

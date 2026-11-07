@@ -10,6 +10,7 @@ def State.withInput (s : State) (t : List Word) : State := { s with input := t }
 
 @[simp] theorem withInput_pc (s : State) (t : List Word) : (s.withInput t).pc = s.pc := Eq.trans rfl rfl
 @[simp] theorem withInput_mem (s : State) (t : List Word) : (s.withInput t).mem = s.mem := Eq.trans rfl rfl
+@[simp] theorem withInput_rom (s : State) (t : List Word) : (s.withInput t).rom = s.rom := Eq.trans rfl rfl
 @[simp] theorem withInput_input (s : State) (t : List Word) : (s.withInput t).input = t := Eq.trans rfl rfl
 @[simp] theorem withInput_getReg (s : State) (t : List Word) (r : Reg) :
     (s.withInput t).getReg r = s.getReg r := Eq.trans rfl rfl
@@ -50,18 +51,35 @@ theorem exec_keeps_input {s t : State} {i : Instr} (hex : exec s i = some t) (hi
   all_goals (repeat' split at hex) <;> simp_all [Option.map, State.setReg, State.nextInstr, State.setPC,
       State.store] <;> (subst_vars; simp)
 
+/-- Only a delegation call writes RAM below `ROM_END` (the shadow RAM): a STORE there has no next state. -/
+theorem exec_keeps_shadow {s t : State} {i : Instr} (hex : exec s i = some t) (hi : ∀ k, i ≠ .delegate k)
+    (a : Word) (ha : a.toNat < ROM_END) : t.mem a = s.mem a := by
+  cases i
+  case delegate k => exact absurd rfl (hi k)
+  case store n rs2 rs1 off =>
+    simp only [exec] at hex
+    split at hex
+    · rename_i hw
+      cases hex
+      simp only [writable, ROM_END, RAM_END] at hw ha
+      exact write_outside _ _ _ _ _ (Or.inl (by omega)) (by omega)
+    · cases hex
+  all_goals simp only [exec, State.jumpAligned] at hex
+  all_goals (repeat' split at hex) <;> simp_all [Option.map, State.setReg, State.nextInstr, State.setPC] <;>
+    (subst_vars; simp)
+
 /-- … and the other instructions do not look at it. -/
 theorem exec_input_irrel (s : State) (i : Instr) (hi : i.readsInput = false) (t : List Word) :
     exec (s.withInput t) i = (exec s i).map (·.withInput t) := by
   cases i
   case delegate k =>
-    simp only [exec, withInput_getReg, withInput_mem]
+    simp only [exec, withInput_getReg, State.delegationRAM, withInput_mem]
     cases Delegation.effect k (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem with
     | none => rfl
     | some e => exact applyEffect_withInput s e t
   all_goals simp only [Instr.readsInput, reduceCtorEq] at hi
   all_goals simp only [exec, State.withInput, State.jumpAligned, State.getReg, State.setReg, State.nextInstr,
-      State.setPC, State.store]
+      State.setPC, State.store, loadView_fun]
   all_goals (repeat' split) <;> simp_all
 
 /-- One step with the input empty: no input read, and the same step with any input. -/
@@ -75,7 +93,7 @@ theorem step_lift {s s' : State} (h : step s = some s') (he : s.input = []) :
   cases hr : i.readsInput
   · refine ⟨(exec_keeps_input hex hr).trans he, fun t => ?_⟩
     show (if s.pc.toNat % 4 = 0 ∧ s.pc.toNat + 4 ≤ ROM_END then
-      (decode (read s.mem s.pc 4)).bind (exec (s.withInput t)) else none) = _
+      (decode (read s.rom s.pc 4)).bind (exec (s.withInput t)) else none) = _
     rw [if_pos hc, hdec, Option.bind_some, exec_input_irrel s i hr t, hex]; rfl
   · obtain ⟨rd, rfl⟩ : ∃ rd, i = .inputRead rd := by cases i <;> simp_all [Instr.readsInput]
     simp [exec, he] at hex
@@ -100,7 +118,7 @@ namespace RV
 
 /-- The input read `csrrw rd, 0x7c0, x0` at the PC: `rd` gets the next input word. -/
 theorem step_read (s : State) (w : Word) (rd : Reg) (v : Word) (rest : List Word)
-    (hpc : s.pc.toNat % 4 = 0) (hrom : s.pc.toNat + 4 ≤ ROM_END) (hw : read s.mem s.pc 4 = w)
+    (hpc : s.pc.toNat % 4 = 0) (hrom : s.pc.toNat + 4 ≤ ROM_END) (hw : read s.rom s.pc 4 = w)
     (hd : decode w = some (.inputRead rd)) (hin : s.input = v :: rest) :
     step s = some ((s.setReg rd v).nextInstr.withInput rest) := by
   rw [step_fetch s w hpc hrom hw, hd, Option.bind_some]
@@ -129,7 +147,7 @@ theorem readsTo_withInput_comm : ∀ (ps : List (Reg × Word)) (R : State) (t : 
 theorem run_reads : ∀ (ps : List (Reg × Word)) (R : State) (rest : List Word),
     R.input = ps.map (·.2) ++ rest → R.pc.toNat % 4 = 0 → R.pc.toNat + 4 * ps.length ≤ ROM_END →
     (∀ i (h : i < ps.length),
-      decode (read R.mem (R.pc + BitVec.ofNat 32 (4 * i)) 4) = some (.inputRead (ps[i]'h).1)) →
+      decode (read R.rom (R.pc + BitVec.ofNat 32 (4 * i)) 4) = some (.inputRead (ps[i]'h).1)) →
     run ps.length R = some ((readsTo R ps).withInput rest)
   | [], R, rest, hin, _, _, _ => by
     simp only [List.map_nil, List.nil_append] at hin

@@ -4,7 +4,8 @@ namespace Airbender.Delegation
 open Trace
 
 /-- RV sibling of `MemoryExecution`: every imported delegation access executes once, in native timestamp order, as
-    RV cell reads/writes from the public initial state; untouched aligned cells keep their reads; every declared
+    RV cell reads/writes from the public initial state (RAM cells are `mem`, INCLUDING READ-WRITE ACCESS TO THE
+    SHADOW RAM BELOW `ROM_END`, `RV.State.delegationRAM`); untouched aligned cells keep their reads; every declared
     terminal token is read from the resulting state. -/
 def RVMemoryExecution (data : MemoryData p) (before : RV.State) (cells : List Cell) : Prop :=
   ∃ (events : List MemoryAccess) (after : RV.State),

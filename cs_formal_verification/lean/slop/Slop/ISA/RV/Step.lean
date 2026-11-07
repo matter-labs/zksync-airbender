@@ -22,6 +22,10 @@ theorem r_zero5 (s : State) : s.getReg 0#5 = 0#32 := Eq.trans rfl rfl
 @[simp] theorem jump_r (s : State) t i : (s.setPC t).getReg i = s.getReg i := Eq.trans rfl rfl
 @[simp] theorem jump_pc (s : State) t : (s.setPC t).pc = t := Eq.trans rfl rfl
 @[simp] theorem jump_mem (s : State) t : (s.setPC t).mem = s.mem := Eq.trans rfl rfl
+@[simp] theorem set_rom (s : State) rd v : (s.setReg rd v).rom = s.rom := Eq.trans rfl rfl
+@[simp] theorem next_rom (s : State) : s.nextInstr.rom = s.rom := Eq.trans rfl rfl
+@[simp] theorem store_rom (s : State) a v n : (s.store a v n).rom = s.rom := Eq.trans rfl rfl
+@[simp] theorem jump_rom (s : State) t : (s.setPC t).rom = s.rom := Eq.trans rfl rfl
 
 @[simp] theorem r_set (s : State) (rd : Reg) (v : Word) (i : Reg) :
     (s.setReg rd v).getReg i = if i = 0 then 0 else if i = rd then v else s.getReg i := by
@@ -65,11 +69,11 @@ theorem goto_ok (s : State) (t : Word) (h : t.toNat % 4 = 0) : s.jumpAligned t =
 theorem run_succ (n : Nat) (s : State) : run (n + 1) s = (step s).bind (run n) := rfl
 
 theorem step_fetch (s : State) (w : Word) (hpc : s.pc.toNat % 4 = 0) (hrom : s.pc.toNat + 4 ≤ ROM_END)
-    (hw : read s.mem s.pc 4 = w) : step s = (decode w).bind (exec s) := by
+    (hw : read s.rom s.pc 4 = w) : step s = (decode w).bind (exec s) := by
   simp [step, hpc, hrom, hw]
 
 theorem step_ok (s : State) (hpc : s.pc.toNat % 4 = 0) (hrom : s.pc.toNat + 4 ≤ ROM_END) :
-    step s = (decode (read s.mem s.pc 4)).bind (exec s) := by
+    step s = (decode (read s.rom s.pc 4)).bind (exec s) := by
   simp [step, hpc, hrom]
 
 /-! Goal-directed running: the goal is `∃ m s', run m S = some s' ∧ P s'`. -/
@@ -140,7 +144,8 @@ theorem exec_branch_f (s : State) c rs1 rs2 off (h : c.holds (s.getReg rs1) (s.g
 theorem exec_load (s : State) n sg rd rs1 off (hrd : ¬ rd = 0) (ha : aligned (s.getReg rs1 + off) n)
     (hr : readable (s.getReg rs1 + off) n) :
     exec s (.load n sg rd rs1 off) = some (s.setReg rd
-      (if sg then ((read s.mem (s.getReg rs1 + off) n).setWidth (8 * n)).signExtend 32 else read s.mem (s.getReg rs1 + off) n)).nextInstr := by
+      (if sg then ((read s.loadView (s.getReg rs1 + off) n).setWidth (8 * n)).signExtend 32
+        else read s.loadView (s.getReg rs1 + off) n)).nextInstr := by
   simp only [exec, hrd, ↓reduceIte]; split
   · rfl
   · rename_i h; exact absurd ⟨ha, hr⟩ h
@@ -171,6 +176,7 @@ theorem store_input (s : State) (a v : Word) (n : Nat) : (s.store a v n).input =
 
 attribute [rv_state] setReg_input nextInstr_input setPC_input store_input
 attribute [rv_state] r_zero5 next_pc set_pc store_pc jump_pc set_mem next_mem store_mem jump_mem next_r store_r jump_r
+  set_rom next_rom store_rom jump_rom
   ite_true ite_false BitVec.ofNat_eq_ofNat BitVec.add_assoc BitVec.add_zero Bool.false_eq_true
 attribute [rv_side] ROM_END RAM_END aligned writable readable and_not_one_of_aligned Cond.holds bne_iff_ne
   bne_eq_false_iff_eq beq_iff_eq beq_eq_false_iff_ne ne_eq

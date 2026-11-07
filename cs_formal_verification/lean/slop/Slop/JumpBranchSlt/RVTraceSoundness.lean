@@ -93,7 +93,7 @@ theorem rv_row_facts (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 536870
   obtain ⟨pc, entryBits, entryData⟩ := entry
   change entryData = data.mapFamily (fun _ => .jumpBranchSlt) at dataEq
   subst dataEq
-  change entryBits = RV.read initial.mem pc 4 at bits
+  change entryBits = RV.read initial.rom pc 4 at bits
   change pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0 at guard
   change RV.decode entryBits = some i' at decodedI
   have query0 : decoderQuery w = (⟨pc, entryBits, data⟩ : JumpBranchSlt.RVProgramEntry).query := query

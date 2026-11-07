@@ -2283,7 +2283,7 @@ import Human.Import.Coefficients
 #print axioms Airbender.WordMemory.Proofs.rv_row_port_reads
 #print axioms Airbender.WordMemory.Proofs.rv_word_fields
 #print axioms Airbender.WordMemory.Proofs.rv_query_facts
-#print axioms Airbender.Trace.RVValues.rv_rom_member_read
+#print axioms Airbender.Trace.RVValues.rv_rom_member
 #print axioms Airbender.Trace.RVValues.rv_rom_read
 #print axioms Airbender.SubwordMemory.rv_soundness
 #print axioms Airbender.SubwordMemory.babyBear_rv_soundness

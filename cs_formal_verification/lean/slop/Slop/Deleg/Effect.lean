@@ -6,12 +6,12 @@ as (`readWords_storeAll`) and that other bytes keep their value (`storeAll_mem_o
 namespace RV
 
 theorem step_delegate (s t : State) (w : Word) (k : DelegationKind) (e : Effect)
-    (hpc : s.pc.toNat % 4 = 0) (hrom : s.pc.toNat + 4 ≤ ROM_END) (hw : read s.mem s.pc 4 = w)
+    (hpc : s.pc.toNat % 4 = 0) (hrom : s.pc.toNat + 4 ≤ ROM_END) (hw : read s.rom s.pc 4 = w)
     (hd : decode w = some (.delegate k))
     (he : Delegation.effect k (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem = some e)
     (ht : s.applyEffect e = some t) : step s = some t := by
   rw [step_fetch s w hpc hrom hw, hd, Option.bind_some]
-  simp only [exec, he, Option.bind_some, ht]
+  simp only [exec, State.delegationRAM, he, Option.bind_some, ht]
 
 theorem storeAll_append (s : State) (ws ws' : List (Word × Word)) :
     s.storeAll (ws ++ ws') = (s.storeAll ws).storeAll ws' := by
@@ -91,6 +91,19 @@ theorem storeAll_pc_regs (s : State) (ws : List (Word × Word)) :
   induction ws generalizing s with
   | nil => exact ⟨rfl, rfl⟩
   | cons w ws ih => exact ih _
+
+theorem storeAll_rom (s : State) (ws : List (Word × Word)) : (s.storeAll ws).rom = s.rom := by
+  induction ws generalizing s with
+  | nil => rfl
+  | cons w ws ih => exact ih _
+
+/-- A delegation call never changes the ROM image. -/
+theorem applyEffect_rom {s t : State} {e : Effect} (h : s.applyEffect e = some t) : t.rom = s.rom := by
+  unfold State.applyEffect at h
+  split_ifs at h
+  rw [Option.some.injEq] at h
+  subst h
+  exact storeAll_rom s e.writes
 
 /-- The machine state after an effect. -/
 theorem applyEffect_some {s t : State} {e : Effect} (h : s.applyEffect e = some t) :

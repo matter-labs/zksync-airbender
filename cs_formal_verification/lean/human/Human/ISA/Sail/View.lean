@@ -14,6 +14,7 @@ open Reference.RiscV.Sail.Configuration
 noncomputable def view (state : Reference.RiscV.Sail.State) (input : List RV.Word) : RV.State where
   pc      := (SailState.ofState state).regs .PC
   regFile := fun i => getReg (SailState.ofState state) i
+  rom     := fun a => (SailState.ofState state).mem a.toNat
   mem     := fun a => (SailState.ofState state).mem a.toNat
   input   := input
 

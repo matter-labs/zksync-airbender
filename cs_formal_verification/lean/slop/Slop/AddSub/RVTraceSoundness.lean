@@ -38,7 +38,7 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
   obtain ⟨pc, entryBits, data⟩ := entry
   have dataEq : data = (rvData input).mapFamily pooledArithmeticFamily := (Option.some.inj projection).symm
   subst dataEq
-  change entryBits = RV.read initial.mem pc 4 at bits
+  change entryBits = RV.read initial.rom pc 4 at bits
   change pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0 at guard
   change RV.decode entryBits = some (rvInstruction input) at decodes
   have fieldBounds := rv_decoder_field_bounds (rv_decoder_fields input)

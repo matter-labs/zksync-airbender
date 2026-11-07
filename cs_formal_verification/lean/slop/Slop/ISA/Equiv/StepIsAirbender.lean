@@ -13,7 +13,7 @@ set_option maxHeartbeats 400000
 
 /-- On Sail's state: our step is a step of the machine fed the next input word. -/
 theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s σ) (ht : RV.step s = some t)
-    (hnd : ∀ k, RV.decode (RV.read s.mem s.pc 4) ≠ some (.delegate k)) :
+    (hnd : ∀ k, RV.decode (RV.read s.rom s.pc 4) ≠ some (.delegate k)) :
     ∃ σ' r, stepSail (s.input.headD 0) σ = some (σ', r) ∧ Airbender.AgreeSail t σ' ∧
       if r then ∃ w, s.input = w :: t.input else t.input = s.input := by
   unfold RV.step at ht
@@ -22,8 +22,9 @@ theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s �
   have hpcs : σ.regs .PC = s.pc := h.2.1
   have h2 : (σ.regs .PC).toNat + 4 ≤ Airbender.RAM_START := by rw [hpcs]; exact hrom
   have ha' : (σ.regs .PC).toNat % 4 = 0 := by rw [hpcs]; exact ha
-  have hrd : RV.read s.mem s.pc 4 = readBytes σ.mem (σ.regs .PC).toNat 4 := by
-    rw [hpcs, read_eq4 σ.mem s.mem h.2.2.2 _ (by simp only [RV.ROM_END] at hrom; omega), BitVec.setWidth_eq]
+  have hrd : RV.read s.rom s.pc 4 = readBytes σ.mem (σ.regs .PC).toNat 4 := by
+    rw [← RV.read_loadView_rom s s.pc 4 hrom, hpcs,
+      read_eq4 σ.mem s.loadView h.2.2.2 _ (by simp only [RV.ROM_END] at hrom; omega), BitVec.setWidth_eq]
   rw [hrd] at ht hnd
   obtain ⟨i, hdec, hex⟩ := Option.bind_eq_some_iff.mp ht
   cases hr : RV.Instr.readsInput i
@@ -60,7 +61,7 @@ theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s �
     exact ⟨σ', true, e, a, w, rfl⟩
 
 theorem step_is_airbender : Airbender.StepIsAirbenderClaim := by
-  intro s t m ⟨hA, hin⟩ ht
+  intro s t m ⟨hA, hsh, hin⟩ ht
   have ht' := ht
   unfold RV.step at ht'
   split_ifs at ht' with hc
@@ -68,21 +69,23 @@ theorem step_is_airbender : Airbender.StepIsAirbenderClaim := by
   by_cases hd : ∃ k, i = .delegate k
   · -- a delegation call: our definition on both sides
     obtain ⟨k, rfl⟩ := hd
-    obtain ⟨σ', e, a⟩ := kind_delegate hA k hc hdec hex
-    refine ⟨⟨σ', m.input⟩, ?_, a, ?_⟩
+    obtain ⟨σ', shadow', e, a, hs'⟩ := kind_delegate hA hsh k hc hdec hex
+    refine ⟨⟨σ', shadow', m.input⟩, ?_, a, hs', ?_⟩
     · unfold Airbender.step; rw [e]; rfl
     · show m.input = t.input; rw [hin]; exact (RV.exec_keeps_input hex rfl).symm
-  have hnd : ∀ k, RV.decode (RV.read s.mem s.pc 4) ≠ some (.delegate k) := fun k h =>
+  have hnd : ∀ k, RV.decode (RV.read s.rom s.pc 4) ≠ some (.delegate k) := fun k h =>
     hd ⟨k, Option.some.inj (hdec.symm.trans h)⟩
-  have hnone := delegation_none hA hdec (fun k h => hd ⟨k, h⟩)
-  rw [show m.sail = m.sail from rfl] at hnone
+  have hnone := delegation_none hA m.shadow hdec (fun k h => hd ⟨k, h⟩)
   obtain ⟨σ', r, e, a, hr⟩ := step_sail s t m.sail hA ht hnd
+  -- only a delegation call writes the shadow RAM
+  have hsh' : ∀ addr : RV.Word, addr.toNat < RV.ROM_END → m.shadow addr = t.mem addr := fun addr ha =>
+    (hsh addr ha).trans (RV.exec_keeps_shadow hex (fun k h => hd ⟨k, h⟩) addr ha).symm
   rw [← hin] at e hr
   rw [step_eq m σ' r hnone e]
   cases r
-  · exact ⟨_, rfl, a, by simp only at hr ⊢; rw [hr, hin]⟩
+  · exact ⟨_, rfl, a, hsh', by simp only at hr ⊢; rw [hr, hin]⟩
   · obtain ⟨w, hw⟩ := hr
     simp only [hw]
-    exact ⟨_, rfl, a, rfl⟩
+    exact ⟨_, rfl, a, hsh', rfl⟩
 
 end Slop.Equiv

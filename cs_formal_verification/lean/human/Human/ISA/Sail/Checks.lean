@@ -18,12 +18,12 @@ noncomputable def testState (w : BitVec 32) : SailState :=
 
 /-- The PC after one step of the machine on `w` (input `[0x1234]`). -/
 noncomputable def nextPC (w : BitVec 32) : Option (BitVec 32) :=
-  (step ⟨testState w, [0x1234]⟩).map (·.sail.regs .PC)
+  (step ⟨testState w, fun _ => 0, [0x1234]⟩).map (·.sail.regs .PC)
 
 /-- An input read: the PC, `a0` and the input left. -/
 noncomputable def readNext (w : BitVec 32) (input : List (BitVec 32)) :
     Option (BitVec 32 × BitVec 32 × List (BitVec 32)) :=
-  (step ⟨testState w, input⟩).map fun m => (m.sail.regs .PC, m.sail.regs .x10, m.input)
+  (step ⟨testState w, fun _ => 0, input⟩).map fun m => (m.sail.regs .PC, m.sail.regs .x10, m.input)
 
 /-- Sail's own `execute` of `i` from the reset state is an illegal instruction. -/
 noncomputable def sailRejects (i : instruction) : Bool :=
@@ -75,6 +75,6 @@ def MachineChecks : Prop :=
   -- delegation calls: run by `RV.Delegation`, rejected on bad arguments
   nextPC 0x7c701073 = none ∧           -- Blake2s round with x12 = 0
   nextPC 0x7c801073 = none ∧           -- Blake2s G with x10 not 64-aligned
-  (step ⟨(testState 0x7c701073).set .x12 0x90000#32, []⟩).isNone = true  -- x10 not 128-aligned, x11 in ROM
+  (step ⟨(testState 0x7c701073).set .x12 0x90000#32, fun _ => 0, []⟩).isNone = true  -- x10 not 128-aligned
 
 end Airbender

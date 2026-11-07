@@ -2,23 +2,23 @@ import Human.Helpers.Context.RowContext
 import Human.Helpers.Memory.InitialImageRV
 
 /-! RV-typed siblings of `WriteHistory` and `RowPosition` (`RowContext.lean`): the row's pre-state is an `RV.State`.
-    Native writes use the RV memory map: a register write sets the register (x0 reads 0 through `getReg`); a RAM write
-    stores four bytes only where `RV.writable` allows (RAM, not ROM), the same failure as Sail's write in the configured
-    memory map. -/
+    Native writes: a register write sets the register (x0 reads 0 through `getReg`); a RAM write stores four bytes in
+    RAM (`mem`) at any address (below `ROM_END`: shadow RAM) and never changes the ROM image (`rom`). -/
 
 namespace Airbender.Trace
 open Arithmetic
 
-/-- RV sibling of `Cell.write`: the state after writing `value` to `cell`, or `none` when the write is not allowed. -/
+/-- RV sibling of `Cell.write`: the state after writing `value` to `cell`. A RAM cell is RAM at any address (below
+    `ROM_END`: shadow RAM, which no LOAD reads); STORE's rejection below `ROM_END` is `RV.step`'s, not the memory
+    argument's. Never `none`. -/
 def Cell.writeRV (cell : Cell) (value : BitVec 32) (before : RV.State) : Option RV.State :=
   match cell with
   | .register index => some (before.setReg index value)
-  | .ram address => if RV.writable address 4 then some (before.store address value 4) else none
+  | .ram address => some (before.store address value 4)
 
 /-- RV update for one native port. A port whose value equals the cell's current RV value leaves the state unchanged
     (reads are not replayed: a read-only port has `writeCode = readCode`, so it changes nothing). Otherwise the
-    update is `Cell.writeRV`, which fails for a RAM write outside the writable range. ROM-store rejection is therefore
-    RV.step's store rule together with the circuit's store check, not this history's. -/
+    update is `Cell.writeRV`. ROM-store rejection is RV.step's store rule together with the circuit's store check. -/
 def Cell.applyRV (cell : Cell) (value : BitVec 32) (before : RV.State) : Option RV.State :=
   if cell.readRV before = some value then some before else cell.writeRV value before
 

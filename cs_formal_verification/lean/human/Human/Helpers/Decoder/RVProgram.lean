@@ -52,14 +52,14 @@ def rvDecoderTable {Kind : Type} [DecidableEq Kind] {p : Nat} [Fact p.Prime]
       exact ⟨i, equal.trans (congrArg RVProgramEntry.query index).symm⟩
 }
 
-/-- The public encoding is read from our spec's byte memory (`RV.read`), decoded by `RV.decode`, then projected to
+/-- The public encoding is read from our spec's ROM image (`RV.read` of `rom`), decoded by `RV.decode`, then projected to
     native metadata. The fetch guard is the ROM bound and alignment of `RV.step` (`RV.ROM_END`). -/
 noncomputable abbrev rvProgramEntryWith {Kind : Type}
     (projection : RV.Instr → Option (DecoderData Kind))
     (before : RV.State) (pc : BitVec 32) :
     Option (RVProgramEntry Kind) := do
   if ¬(pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0) then none else
-  let bits := RV.read before.mem pc 4
+  let bits := RV.read before.rom pc 4
   let i ← RV.decode bits
   let data ← projection i
   pure ⟨pc, bits, data⟩

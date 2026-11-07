@@ -4,15 +4,15 @@ import Slop.ISA.Equiv.Run
 /-! `sailOf s`: the total Sail state (`SailState`, memory a total function) that an `RV.State` stands for on the Sail
 side. PC, x1..x31 and the byte memory are `s`'s; every other register is at its reset value. `Configured` holds by
 construction, and `AgreeSail s (sailOf s)` holds for every `s`: no support or zero-outside premise is needed, since
-the total memory is `s.mem` itself. -/
+the total memory is `s.loadView` itself. -/
 
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
 
-/-- Reset registers, `s`'s memory (addresses are 32-bit). -/
+/-- Reset registers, `s`'s memory as a LOAD sees it (`loadView`; addresses are 32-bit). -/
 noncomputable def sailBase (s : RV.State) : SailState :=
-  { regs := Airbender.resetState.regs, mem := fun a => s.mem (BitVec.ofNat 32 a) }
+  { regs := Airbender.resetState.regs, mem := fun a => s.loadView (BitVec.ofNat 32 a) }
 
 /-- Set x_n from `s` for each `n` in `ns` (in order; later writes of the same register carry the same value). -/
 noncomputable def sailRegs (s : RV.State) (ns : List Nat) (σ : SailState) : SailState :=
@@ -90,7 +90,7 @@ theorem sailOf_pc (s : RV.State) : (sailOf s).regs .PC = s.pc := by
   rw [sailRegs_pc]
   exact set_regs_self _ _ _
 
-theorem sailOf_mem (s : RV.State) (a : RV.Word) : (sailOf s).mem a.toNat = s.mem a := by
+theorem sailOf_mem (s : RV.State) (a : RV.Word) : (sailOf s).mem a.toNat = s.loadView a := by
   unfold sailOf
   rw [sailRegs_mem]
   simp [sailBase, set_mem', BitVec.ofNat_toNat]

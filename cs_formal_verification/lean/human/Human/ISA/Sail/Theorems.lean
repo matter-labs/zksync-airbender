@@ -15,14 +15,16 @@ open Sail SailRV32 SailRV32.Functions Human
 
 namespace Airbender
 
-/-- Our state `s` and Sail's state `σ` agree on everything a program can see: PC, registers, memory. -/
+/-- Our state `s` and Sail's state `σ` agree on everything a program can see: PC, registers, memory (Sail's memory is
+what a LOAD sees: the ROM image below `ROM_END`, RAM above). -/
 def AgreeSail (s : RV.State) (σ : SailState) : Prop :=
   Configured σ ∧ σ.regs .PC = s.pc ∧ (∀ i, getReg σ i = s.getReg i) ∧
-  (∀ addr : RV.Word, σ.mem addr.toNat = s.mem addr)
+  (∀ addr : RV.Word, σ.mem addr.toNat = s.loadView addr)
 
-/-- … and on the input. -/
+/-- … on the shadow RAM (RAM below `ROM_END`, which only delegations reach) and on the input. -/
 def Agree (s : RV.State) (m : Machine) : Prop :=
-  AgreeSail s m.sail ∧ m.input = s.input
+  AgreeSail s m.sail ∧ (∀ addr : RV.Word, addr.toNat < RV.ROM_END → m.shadow addr = s.mem addr) ∧
+    m.input = s.input
 
 /-- 1. Sail decodes every word of our table to the same instruction (on any Airbender state). -/
 def DecodeIsSailClaim : Prop :=

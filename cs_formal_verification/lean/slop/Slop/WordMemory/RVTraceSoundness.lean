@@ -10,16 +10,16 @@ import Slop.WordMemory.RVWritable
 /-! RV32 LW/SW soundness (`RVSoundnessClaim`), on the RV route: no Sail state, interpreter, `Configured` or
     `OrdinaryWordAddress` fact.
 
-    - Fetch/step: the row's program entry is an aligned ROM word of the starting memory (`rvProgram_entry_fetch`);
-      the row's pre-state has the entry's PC and the starting ROM bytes, so `RV.step` executes `rvInstruction input`.
+    - Fetch/step: the row's program entry is an aligned word of the ROM image (`rvProgram_entry_fetch`);
+      the row's pre-state has the entry's PC and the same ROM image, so `RV.step` executes `rvInstruction input`.
     - Decoder: the entry's data is `rvData input` (`rv_word_fields`, which also gives `rd ≠ x0` for LW); the query
       fixes the store selector, PC limbs, immediate limbs and register indices (`rv_query_facts`).
     - Ports: the row's first two ports read the pre-state (`rv_row_port_reads`): rs1, then the RAM word (LW) or rs2
       (SW). Every port address is a public cell (`rv_initialized_cells`), so a RAM address is canonical and aligned
       (`RVNativeInputs.aligned`).
-    - Address: `effective_address`. LW data: RAM (`ram_data`: the read word) or ROM (`rom_data`: the public ROM
-      table, which reads the starting bytes, `rv_rom_read`, unchanged below `ROM_END` by the row history,
-      `rvWriteHistory_rom`). SW: the circuit keeps the store in RAM (`word_store_ram_writable`) and stores the rs2
+    - Address: `effective_address`. LW data (`RV.State.loadView`): RAM (`ram_data`: the read word) or ROM
+      (`rom_data`: the public ROM table, which holds the ROM image, `rv_rom_read`; the row history never changes
+      the ROM image, `rvWriteHistory_rom`). SW: the circuit keeps the store in RAM (`word_store_ram_writable`) and stores the rs2
       word (`ram_data`). PC: `pc_successor`. -/
 
 namespace Airbender.WordMemory.Proofs
@@ -122,7 +122,7 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
           simp [importedConstraintsMemoryPorts])
     simpa [read_word, importedConstraintsMemoryPorts] using source
   -- The row's port reads in the pre-state.
-  obtain ⟨_, _, _, _, _, _, _, current, _, _⟩ :=
+  obtain ⟨_, _, _, _, _, _, _, current, _⟩ :=
     rv_pooled_row_history laws clockSize inverse accepted assumptions decoded mapping.state
   have shape : (⟨.wordMemory, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
@@ -152,7 +152,7 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
   have disabled : ∀ query, trace.rom.wordMemory.Contains #[] query → query[8] = 0 →
       query[1] = 0 ∧ query[2] = 0 := by
     intro query contains inactive
-    exact Trace.RVValues.rv_rom_disabled (by omega) image (by rwa [assumptions.wordTable] at contains) inactive
+    exact Trace.RVValues.rv_rom_disabled (by omega) (by rwa [assumptions.wordTable] at contains) inactive
   have oneValue : (1 : ZMod p).val = 1 := by
     simpa only [Nat.cast_one] using ZMod.val_natCast_of_lt (by omega : 1 < p)
   cases hs : input.store
@@ -183,31 +183,31 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
     have classified := rom_selection (by omega) false core (by simpa using selected)
       (address := Word.mk (w 19).val (w 20).val) (ZMod.natCast_zmod_val _).symm addressBound
     -- The loaded word: RAM copies the read word; ROM reads the public starting bytes.
-    have value : RV.read input.before.mem a 4 = (Word.mk (w 31).val (w 32).val).toBitVec := by
+    have value : RV.read input.before.loadView a 4 = (Word.mk (w 31).val (w 32).val).toBitVec := by
       by_cases inROM : (w 20).val < 64
       · have flag : w 35 = 1 := by simpa [inROM] using classified.1
         have lookup := rom_data core selected (accepted.active _ member) flag
         rw [assumptions.wordTable] at lookup
-        have rom := Trace.RVValues.rv_rom_read (by dsimp [ROM.limit]; omega) image
+        have rom := Trace.RVValues.rv_rom_read (by dsimp [ROM.limit]; omega)
           ⟨(w 19).val, (w 20).val⟩ (w 31) (w 32) addressBound inROM
           (by simpa only [ZMod.natCast_zmod_val] using lookup)
         rw [cellWord, Word.ofBitVec_roundtrip] at rom
         obtain ⟨_, _, middle, _, _, writes, atState⟩ := mapping.state
-        have agree : ∀ b : RV.Word, b.toNat < RV.ROM_END → input.before.mem b = initial.mem b := by
-          intro b low
+        have agree : input.before.rom = initial.rom := by
           rw [atState]
-          exact rvWriteHistory_rom writes b low
+          exact (rvWriteHistory_rom writes : middle.rom = initial.rom)
         have below : a.toNat < RV.ROM_END := rom_address a (by rw [← hiEq]; exact inROM)
-        rw [rv_read_fetch input.before initial agree a ⟨below, aligned⟩]
+        rw [RV.read_loadView_rom _ _ _ (by unfold RV.ROM_END at below ⊢; omega), agree]
         exact rom.2
       · have flag : w 35 = 0 := by simpa [inROM] using classified.1
         have copied := ram_data disabled false core (by simpa using selected) flag
         change w 31 = w 23 ∧ w 32 = w 24 at copied
-        rw [ramRead, copied.1, copied.2]
+        have high : RV.ROM_END ≤ a.toNat := RVWritable.ram_index_rom_bound a (by rw [← hiEq]; omega)
+        rw [RV.read_loadView_ram _ _ _ high (by have := a.isLt; omega), ramRead, copied.1, copied.2]
     refine ⟨by rw [addressWord, sourceWord, immediateIs, cellWord, Word.ofBitVec_roundtrip, address], ?_⟩
     have target : input.before.getReg input.rs1 + input.encodedImmediate.signExtend 32 = a := by
       rw [sourceRead, sourceWord, offset, address]
-    refine ⟨(input.before.setReg input.rd (RV.read input.before.mem a 4)).nextInstr, ?_, ?_⟩
+    refine ⟨(input.before.setReg input.rd (RV.read input.before.loadView a 4)).nextInstr, ?_, ?_⟩
     · rw [step]
       simp only [rvInstruction, hs, Bool.false_eq_true, ite_false, RV.exec, target, rd0]
       rw [if_pos ⟨aligned, readable⟩]

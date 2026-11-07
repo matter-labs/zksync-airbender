@@ -3,7 +3,9 @@ import Human.Helpers.Memory.RVHistory
 
 /-! RV-typed siblings of the delegation memory inputs and execution relations (`Memory.lean`, `WorkerContext.lean`):
     the public starting point is an `RV.State`, cells are read by `Cell.readRV` and updated by `Cell.applyRV`
-    (`RVHistory`). Same fields otherwise; no `Configured`. -/
+    (`RVHistory`). Same fields otherwise; no `Configured`. A RAM cell is RAM at any address, INCLUDING THE SHADOW RAM
+    BELOW `ROM_END` (read-write for delegations, `RV.State.delegationRAM`); no pointer is required to be at or above
+    `ROM_END`. -/
 
 namespace Airbender.Delegation
 open Trace

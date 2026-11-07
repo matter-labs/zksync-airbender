@@ -74,7 +74,7 @@ theorem checks7 :
 theorem checks8 :
     nextPC 0x7c701073 = none ∧           -- Blake2s round with x12 = 0
     nextPC 0x7c801073 = none ∧           -- Blake2s G with x10 not 64-aligned
-    (step ⟨(testState 0x7c701073).set .x12 0x90000#32, []⟩).isNone = true  -- x10 not 128-aligned, x11 in ROM
+    (step ⟨(testState 0x7c701073).set .x12 0x90000#32, fun _ => 0, []⟩).isNone = true  -- x10 not 128-aligned
     := by decide +kernel
 
 theorem machine_checks : MachineChecks := by

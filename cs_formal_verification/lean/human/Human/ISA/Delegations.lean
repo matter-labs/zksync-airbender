@@ -4,7 +4,8 @@ import Human.ISA.Keccak
 /-! # Airbender's delegations (precompiles) — our own spec
 
 A delegation call is `csrrw x0, <csr>, x0`; its arguments are pointers and a control word in registers, its data in
-RAM. Each instruction is one step of the precompile (one round, one `G`, one micro-operation, …) and updates the
+RAM (`State.delegationRAM`): a delegation reads and writes RAM at any address, INCLUDING THE SHADOW RAM BELOW
+`ROM_END`, and never the ROM image. Each instruction is one step of the precompile (one round, one `G`, one micro-operation, …) and updates the
 control register; a complete run (the decoder accepts these words only in runs of the listed lengths: `Accepted` at the
 end) performs the whole operation. Each call is described as an `Effect` (words written, one
 register); anything the precompile rejects has no next state.
@@ -15,8 +16,12 @@ bit layouts of the control words, which the table does not give, are from the so
 
 Direction of trust: a model that rejects what a circuit accepts would make "no run reaches X" claims vacuous, so where
 a circuit is known to accept more than the VM (bigint, `G`, Keccak special5 controls: see each definition) the
-model follows the circuit. Assumed, not audited against the circuits: the pointer conditions (in RAM, aligned,
-different) and the Blake2s round mask being one-hot (the round circuit does not constrain it: "TODO" in
+model follows the circuit: pointers may point anywhere in RAM, including the shadow RAM below `ROM_END`
+(`State.lean`): no delegation circuit checks a pointer against `ROM_END`, and a delegation never reads or writes the
+ROM image, so what it does there cannot change what a LOAD returns. (Upstream note: an in-circuit check
+`pointer ≥ ROM_END` would remove shadow-RAM access altogether; a possible circuit improvement, not needed for
+soundness.) Alignment and distinct pointers are checked by the circuits. Assumed, not audited against the circuits:
+the Blake2s round mask being one-hot (the round circuit does not constrain it: "TODO" in
 `cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs`). -/
 
 namespace RV
@@ -61,7 +66,7 @@ From source (`riscv_transpiler/src/vm/delegations/blake2_round_function.rs`, the
 `blake2_round_function_impl`; the per-call control as `replayer/delegations/blake2_round_function.rs` advances it):
 `x12` bit 16 = 7 rounds, bit 17 = the input is the right node, bit 18 = compression (two-to-one) mode, bits 19 … 28
 = the round, one-hot. Round 0 sets up `v`, the last round folds `v` into `h`; in compression mode the block is
-`h ∥ m[0..7]` (or `m[0..7] ∥ h`) and `h` starts from the configured IV. Pointers: in RAM, 128- and 64-aligned,
+`h ∥ m[0..7]` (or `m[0..7] ∥ h`) and `h` starts from the configured IV. Pointers: 128- and 64-aligned,
 different. -/
 def blakeRound (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Option Effect :=
   let mask := x12 >>> 19
@@ -70,7 +75,7 @@ def blakeRound (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Option Effect :=
   let right := x12.getLsbD 17
   let compression := x12.getLsbD 18
   let n := if reduced then 7 else 10
-  if ROM_END ≤ x10.toNat ∧ x10.toNat % 128 = 0 ∧ ROM_END ≤ x11.toNat ∧ x11.toNat + 64 ≤ RAM_END ∧
+  if x10.toNat % 128 = 0 ∧ x11.toNat + 64 ≤ RAM_END ∧
       x11.toNat % 64 = 0 ∧ x10 ≠ x11 ∧ mask = 1#32 <<< r ∧ r < n then
     let h := readWords mem x10 8          -- the state
     let e := readWords mem (x10 + 32) 16  -- the work vector (words 12, 14: counter and last-block flag)
@@ -103,12 +108,12 @@ instruction performs one G; runs of 56 or 80").
 From source (`riscv_transpiler/src/replayer/delegations/blake2_g_function.rs`): `x12 < 256`, bits 0 … 6 = the counter
 `k` (`G` number `k % 8` of round `k / 8`), bit 7 = 7 rounds (else 10, `n` = 56 / 80 calls); the counter then
 advances, wrapping to 0 after the last `G`. The circuit's table (`cs/src/tables/blake_g_function_precompile_related.rs`)
-also takes `k ≥ n`: `G` 0 of round 0, counter back to 0. Pointers: in RAM, 64-aligned, different. -/
+also takes `k ≥ n`: `G` 0 of round 0, counter back to 0. Pointers: 64-aligned, different. -/
 def blakeG (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Option Effect :=
   let k := x12.toNat % 128
   let n := if x12.getLsbD 7 then 56 else 80
   let i := if k < n then k else 0
-  if ROM_END ≤ x10.toNat ∧ x10.toNat % 64 = 0 ∧ ROM_END ≤ x11.toNat ∧ x11.toNat + 64 ≤ RAM_END ∧
+  if x10.toNat % 64 = 0 ∧ x11.toNat + 64 ≤ RAM_END ∧
       x11.toNat % 64 = 0 ∧ x10 ≠ x11 ∧ x12.toNat < 256 then
     let v := readWords mem x10 16
     let m := readWords mem x11 16
@@ -144,10 +149,10 @@ SUB_NEGATE, MUL_LOW, MUL_HIGH, EQ, MEMCOPY; the result overwrites a; x12 returns
 From source (`riscv_transpiler/src/vm/delegations/bigint.rs`; the circuit
 `cs/src/gkr_circuits/delegation/bigint_with_control`): the low byte of `x12` holds the bits ADD 0, SUB 1, SUB_NEGATE
 2, MUL_LOW 3, MUL_HIGH 4, EQ 5, κ 6, MEMCOPY 7, at most one besides κ (`bigintOp`); bits 8 … 15 zero, bits 16 … 31
-ignored by the circuit (the VM wants `x12 < 256` and exactly one operation). Pointers: in RAM, 32-aligned,
+ignored by the circuit (the VM wants `x12 < 256` and exactly one operation). Pointers: 32-aligned,
 different. -/
 def bigint (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Option Effect :=
-  if ROM_END ≤ x10.toNat ∧ x10.toNat % 32 = 0 ∧ ROM_END ≤ x11.toNat ∧ x11.toNat + 32 ≤ RAM_END ∧
+  if x10.toNat % 32 = 0 ∧ x11.toNat + 32 ≤ RAM_END ∧
       x11.toNat % 32 = 0 ∧ x10 ≠ x11 ∧ x12.toNat % 2 ^ 16 < 256 then
     (bigintOp (x12 &&& 0xbf#32) (x12.getLsbD 6) (toU256 (readWords mem x10 8)) (toU256 (readWords mem x11 8))).map
       fun (r, f) => { writes := writesAt x10 (ofU256 r), reg := 12, val := if f then 1 else 0 }
@@ -155,7 +160,7 @@ def bigint (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Option Effect :=
 
 /-! ## Keccak
 
-Airbender's Keccak circuits work on 31 lanes at `x11` (256-aligned, in RAM): the 25 lanes of the Keccak state and 6
+Airbender's Keccak circuits work on 31 lanes at `x11` (256-aligned): the 25 lanes of the Keccak state and 6
 scratch lanes. They do not move lanes for π: lane `p` of the state at the start of round `r` is in slot
 `laneSlot r p` (`π^r` in the circuits' comments). One instruction does one piece of a round, picked by the control
 word `x10 = op + 8 * x + 64 * r` (op, `x` < 5 the column or row, round `r`), and advances `x10` to the next piece.
@@ -242,8 +247,8 @@ def keccakCall (valid : Nat → Nat → Nat → Prop) [∀ op x r, Decidable (va
   let op := x10.toNat % 8
   let x := x10.toNat / 8 % 8
   let r := x10.toNat / 64
-  if h : ROM_END ≤ x11.toNat ∧ x11.toNat % 256 = 0 ∧ x10.toNat < 2 ^ 11 ∧ x < 5 ∧ valid op x r then
-    let S' := step op ⟨x, h.2.2.2.1⟩ r (readLanes mem x11 31)
+  if h : x11.toNat % 256 = 0 ∧ x10.toNat < 2 ^ 11 ∧ x < 5 ∧ valid op x r then
+    let S' := step op ⟨x, h.2.2.1⟩ r (readLanes mem x11 31)
     let (op', x', r') := next op x r
     some { writes := writesAt x11 (laneWords S'), reg := 10, val := control op' x' r' }
   else none

@@ -112,7 +112,7 @@ def exec (s : State) : Instr → Option State
       if cond.holds (s.getReg rs1) (s.getReg rs2) then s.jumpAligned (s.pc + offset) else some s.nextInstr
   | .load numBytes signed rd rs1 offset =>
       let addr := s.getReg rs1 + offset
-      let bytes := read s.mem addr numBytes
+      let bytes := read s.loadView addr numBytes
       let value := if signed then (bytes.setWidth (8 * numBytes)).signExtend 32 else bytes
       if rd = 0 then some s.nextInstr                 -- Airbender: a load into x0 only advances the PC
       else if aligned addr numBytes ∧ readable addr numBytes then some (s.setReg rd value).nextInstr else none
@@ -131,7 +131,7 @@ def exec (s : State) : Instr → Option State
       | []        => none
   | .inputWrite _          => some s.nextInstr
   | .delegate k            =>                       -- Airbender: `Human/ISA/Delegations.lean`
-      (Delegation.effect k (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem).bind s.applyEffect
+      (Delegation.effect k (s.getReg 10) (s.getReg 11) (s.getReg 12) s.delegationRAM).bind s.applyEffect
 
 /-- Airbender: `csrrw rd, csr, rs1`: the non-determinism read (`0x7c0`, rs1 = x0, rd ≠ x0) or write (`0x7c0`,
 rd = x0, rs1 ≠ x0), or a delegation call (rs1 = rd = x0). -/
@@ -217,9 +217,9 @@ def decode (word : Word) : Option Instr :=
   | 0x73, 1, _    => decodeCsr csr rs1 rd               -- Zicsr: csrrw
   | _, _, _       => none
 
-/-- One step: fetch from ROM at an aligned PC, decode, execute. -/
+/-- One step: fetch from the ROM image at an aligned PC, decode, execute. -/
 def step (s : State) : Option State :=
-  if s.pc.toNat % 4 = 0 ∧ s.pc.toNat + 4 ≤ ROM_END then (decode (read s.mem s.pc 4)).bind (exec s) else none
+  if s.pc.toNat % 4 = 0 ∧ s.pc.toNat + 4 ≤ ROM_END then (decode (read s.rom s.pc 4)).bind (exec s) else none
 
 /-- `numSteps` steps (`none` if any step has no next state). -/
 def run : (numSteps : Nat) → State → Option State

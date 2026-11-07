@@ -46,17 +46,17 @@ open Spec
 /-- The delegation calls `ks`, one after another from `s`: each call's effect applied. -/
 def calls : List DelegationKind → State → Option State
   | [], s => some s
-  | k :: ks, s => ((Delegation.effect k (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem).bind s.applyEffect).bind
+  | k :: ks, s => ((Delegation.effect k (s.getReg 10) (s.getReg 11) (s.getReg 12) s.delegationRAM).bind s.applyEffect).bind
       (calls ks)
 
 /-- Delegation instructions of the kinds `ks`, in ROM from the pc, run as the calls `ks`. -/
 def CallsRun : Prop :=
   ∀ (ks : List DelegationKind) (s t : State), s.pc.toNat % 4 = 0 → s.pc.toNat + 4 * ks.length ≤ ROM_END →
-    (∀ i (h : i < ks.length), decode (read s.mem (s.pc + BitVec.ofNat 32 (4 * i)) 4) = some (.delegate ks[i])) →
+    (∀ i (h : i < ks.length), decode (read s.rom (s.pc + BitVec.ofNat 32 (4 * i)) 4) = some (.delegate ks[i])) →
     calls ks s = some t → run ks.length s = some t
 
-/-- `n` bytes at `a`, `al`-aligned, in RAM. -/
-def Buffer (a : Word) (n al : Nat) : Prop := ROM_END ≤ a.toNat ∧ a.toNat % al = 0 ∧ a.toNat + n ≤ RAM_END
+/-- `n` bytes at `a`, `al`-aligned, within the address space (RAM; below `ROM_END` shadow RAM). -/
+def Buffer (a : Word) (n al : Nat) : Prop := a.toNat % al = 0 ∧ a.toNat + n ≤ RAM_END
 
 /-- `[a, a + n)` and `[b, b + m)` do not overlap. -/
 def Apart (a : Word) (n : Nat) (b : Word) (m : Nat) : Prop := a.toNat + n ≤ b.toNat ∨ b.toNat + m ≤ a.toNat

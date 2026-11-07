@@ -102,4 +102,53 @@ theorem read_write_same4 (m : Word → BitVec 8) (a v : Word) : read (write m a 
     simp [h, show ¬ i < 8 by omega, show ¬ i - 8 < 8 by omega, show ¬ i - 8 - 8 < 8 by omega,
       show i - 8 - 8 - 8 < 8 by omega, e, BitVec.getLsbD_eq_getElem hi]
 
+/-! ROM image and RAM (`State.loadView`): a LOAD reads `rom` below `ROM_END`, `mem` from `ROM_END` on. -/
+
+/-- One byte of `write m a v n` depends on `m` only at that byte. -/
+theorem write_congr_at (m m' : Word → BitVec 8) (a v : Word) (n : Nat) (b : Word) (h : m b = m' b) :
+    write m a v n b = write m' a v n b := by
+  induction n generalizing m m' a v with
+  | zero => exact h
+  | succ n ih =>
+    simp only [write]
+    apply ih
+    split <;> simp_all
+
+/-- `loadView` as a function (for rewriting under a partial application). -/
+theorem loadView_fun (s : State) : s.loadView = fun a => if a.toNat < ROM_END then s.rom a else s.mem a := rfl
+
+theorem loadView_low (s : State) (a : Word) (h : a.toNat < ROM_END) : s.loadView a = s.rom a := by
+  simp [State.loadView, h]
+
+theorem loadView_high (s : State) (a : Word) (h : ROM_END ≤ a.toNat) : s.loadView a = s.mem a := by
+  simp [State.loadView, Nat.not_lt.mpr h]
+
+/-- A read inside ROM through `loadView` reads the ROM image. -/
+theorem read_loadView_rom (s : State) (a : Word) (n : Nat) (h : a.toNat + n ≤ ROM_END) :
+    read s.loadView a n = read s.rom a n := by
+  apply read_congr
+  intro j hj
+  apply loadView_low
+  simp only [ROM_END] at h ⊢
+  bv_omega
+
+/-- A read inside RAM (from `ROM_END` on) through `loadView` reads RAM. -/
+theorem read_loadView_ram (s : State) (a : Word) (n : Nat) (lo : ROM_END ≤ a.toNat) (hi : a.toNat + n ≤ 2 ^ 32) :
+    read s.loadView a n = read s.mem a n := by
+  apply read_congr
+  intro j hj
+  apply loadView_high
+  simp only [ROM_END] at lo ⊢
+  bv_omega
+
+/-- A store from `ROM_END` on is a write to what LOADs see. -/
+theorem loadView_store (s : State) (a v : Word) (n : Nat) (lo : ROM_END ≤ a.toNat) (hi : a.toNat + n ≤ 2 ^ 32) :
+    (s.store a v n).loadView = write s.loadView a v n := by
+  funext b
+  by_cases hb : b.toNat < ROM_END
+  · rw [loadView_low _ _ hb, write_outside _ _ _ _ _ (by omega) hi, loadView_low _ _ hb]
+    rfl
+  · rw [loadView_high _ _ (by omega)]
+    exact write_congr_at _ _ _ _ _ _ (loadView_high _ _ (by omega)).symm
+
 end RV

@@ -57,12 +57,12 @@ theorem blakeRound_mode_call (mem : Word → BitVec 8) (p q : Word) (hp : Buffer
       { writes := writesAt p (if r + 1 = nR red then blakeFinal (bH0 comp h) v' else h) ++ writesAt (p + 32#32) v',
         reg := 12, val := bCtl red right comp (r + 1) } := by
   intro h e v'
-  obtain ⟨hp1, hp2, -⟩ := hp
-  obtain ⟨hq1, hq2, hq3⟩ := hq
+  obtain ⟨hp2, -⟩ := hp
+  obtain ⟨hq2, hq3⟩ := hq
   cases red <;> simp only [nR, Bool.false_eq_true, ↓reduceIte] at h7 ⊢ <;> cases right <;> cases comp <;>
     interval_cases r
   all_goals
-    simp only [Delegation.blakeRound, bCtl, hp1, hp2, hq1, hq2, hq3, ne_eq, hpq, not_false_eq_true, true_and]
+    simp only [Delegation.blakeRound, bCtl, hp2, hq2, hq3, ne_eq, hpq, not_false_eq_true, true_and]
     simp (config := { decide := true }) only [ite_true, ite_false]
   all_goals
     simp only [v', h, e, bV0, bMsg, bH0, blakeV0, blakeFinal, Option.some.injEq, Effect.mk.injEq, ite_true,

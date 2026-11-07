@@ -16,14 +16,14 @@ theorem keccakCall_ctl (valid : Nat → Nat → Nat → Prop) [∀ op x r, Decid
     (hn : next op x r = (op', x', r')) (p : Word) (hp : Buffer p 248 256) (mem : Word → BitVec 8) :
     keccakCall valid step next (control op x r) p mem = some
       { writes := writesAt p (laneWords (step op ⟨x, hx⟩ r (readLanes mem p 31))), reg := 10, val := control op' x' r' } := by
-  obtain ⟨hp1, hp2, -⟩ := hp
+  obtain ⟨hp2, -⟩ := hp
   have ht := control_toNat op x r (by omega)
   have e1 : (control op x r).toNat % 8 = op := by rw [ht]; omega
   have e2 : (control op x r).toNat / 8 % 8 = x := by rw [ht]; omega
   have e3 : (control op x r).toNat / 64 = r := by rw [ht]; omega
   unfold keccakCall
   simp only [e1, e2, e3]
-  rw [dite_eq_left ⟨hp1, hp2, by rw [ht]; omega, hx, hv⟩, hn]
+  rw [dite_eq_left ⟨hp2, by rw [ht]; omega, hx, hv⟩, hn]
 
 theorem lane_split (l : Lane) : l.extractLsb' 32 32 ++ l.extractLsb' 0 32 = l := by
   ext i hi
@@ -61,11 +61,11 @@ theorem oneCall (valid : Nat → Nat → Nat → Prop) [∀ op x r, Decidable (v
     (op : Nat) (x : Fin 5) (r : Nat) (hop : op < 8) (hr : op + 8 * x.val + 64 * r < 2 ^ 11) (hv : valid op x r) :
     OneCall step next k op x r := by
   intro s p hp h10 h11
-  obtain ⟨hp1, hp2, hp3⟩ := hp
-  have he := keccakCall_ctl valid step next op x r _ _ _ hop x.isLt hr hv rfl p ⟨hp1, hp2, hp3⟩ s.mem
+  obtain ⟨hp2, hp3⟩ := hp
+  have he := keccakCall_ctl valid step next op x r _ _ _ hop x.isLt hr hv rfl p ⟨hp2, hp3⟩ s.mem
   obtain ⟨t, h1, m', ch', r'⟩ := calls_one (k := k) (s := s) (by rw [hk, h10, h11]; exact he) p 248
     (show (10 : Reg) ≠ 0 by decide)
-    (writesAt_in (n := 2 * 31) p _ hp1 (by omega) (by simp only [RAM_END] at hp3 ⊢; omega))
+    (writesAt_in (n := 2 * 31) p _ (by omega) (by simp only [RAM_END] at hp3 ⊢; omega))
   refine ⟨t, h1, ?_, r', ch'⟩
   apply readLanes_of_words
   rw [m']
