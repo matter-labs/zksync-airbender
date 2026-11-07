@@ -3170,3 +3170,18 @@ code nonoverlap and retained Sail/common execution remain open. Store OLDREAD an
 load shadow reads remain events; store writes are not discarded rd-x0 writes. Native
 RAM bounds alone do not assert preservation of arbitrary original public code images.
 No native defect, issue assumption, production fix, new axiom or parity is claimed.
+
+## Original native LW/SW decoder boundary
+
+[Public word-memory decoding](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryDecoder.lean)
+now derives original byte/stateful sources and allten actual query fields from full
+sparse/padded membership. Native18bit packing rejects holes/tail. Retained original
+LW/SW/raw/x0/sign extension and actual1025/16386/tag2 are bound; unused LWrs2/SWdummy
+rd follow constructors. Generic modeled setup suffices; no numerical table identity
+or desired field/source/range/result is supplied. SWdummy rd does not mask RAM writes.
+
+[Independent image tests](Tests/NativeReducedWordMemoryDecoder.lean) cover LW/SW plus
+an unsupported ADD hole and padding. This logical image is not the fixed native8word
+ROM or universal Rust/public-export/physical setup fidelity. Initialized native
+memory reads/writes/preservation/code frames/Sail/common execution remain open.
+No native finding, issue assumption, fix, new axiom or parity is claimed.

@@ -1,3 +1,9 @@
+import Airbender.Review.Circuits.ReducedMachine.WordMemoryDecoder
+import Airbender.Proofs.ReducedMachine.NativeWordMemoryDecoder
+import Airbender.Review.Helpers.Decoder.ReducedMachineWordMemory
+import Airbender.Proofs.Trace.Families.ReducedMachine.WordMemoryDecoder
+import Airbender.Review.Trace.Families.ReducedMachine.WordMemoryDecoder
+import Tests.NativeReducedWordMemoryDecoder
 import Airbender.Proofs.ReducedMachine.NativeWordMemoryAccess
 import Airbender.Proofs.ReducedMachine.NativeWordMemoryQueries
 import Airbender.Proofs.ReducedMachine.NativeWordMemoryNumerics
@@ -3487,3 +3493,20 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedWordMemoryAccess.rom_oversized_key_rejected
 #print axioms Tests.NativeReducedWordMemoryAccess.actual_address_edges
 #print axioms Tests.NativeReducedWordMemoryAccess.independent_address_values
+
+#print axioms Airbender.ReducedMachine.NativeWordMemoryDecoderProofs.field_bounds
+#print axioms Airbender.ReducedMachine.NativeWordMemoryDecoderProofs.unused_registers
+#print axioms Airbender.ReducedMachine.NativeWordMemoryDecoderProofs.fetched_sources
+#print axioms Airbender.ReducedMachine.NativeWordMemoryDecoderProofs.decoded_fields
+#print axioms Airbender.ReducedMachine.NativeWordMemoryDecoderProofs.immediate_word
+#print axioms Airbender.ReducedMachine.NativeWordMemoryDecoderProofs.trace_decoding
+#print axioms Airbender.ReducedMachine.Native.public_word_memory_decoding
+#print axioms Tests.NativeReducedWordMemoryDecoder.complete_original_image
+#print axioms Tests.NativeReducedWordMemoryDecoder.original_sources
+#print axioms Tests.NativeReducedWordMemoryDecoder.negative_zero_fields
+#print axioms Tests.NativeReducedWordMemoryDecoder.unsupported_forms
+#print axioms Tests.NativeReducedWordMemoryDecoder.complete_hole_and_tail
+#print axioms Tests.NativeReducedWordMemoryDecoder.native_sentinel_rejected
+#print axioms Tests.NativeReducedWordMemoryDecoder.corrupt_tag_rejected
+#print axioms Tests.NativeReducedWordMemoryDecoder.corrupt_zero_rejected
+#print axioms Tests.NativeReducedWordMemoryDecoder.canonical_negative_immediate

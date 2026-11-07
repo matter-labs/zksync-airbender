@@ -32,7 +32,56 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
-## Native word-memory addresses and exact fixed tables (7 November 2026)
+## Original native LW/SW public decoding (7 November 2026)
+
+[Original word-memory projection](Airbender/Review/Circuits/ReducedMachine/WordMemoryDecoder.lean)
+preserves LOAD(false,4)/STORE(4), raw rs1/rs2/rd/x0, original12bit Sail sign extension,
+actual reduced LW1025/SW16386 and rawfunct3=2. Native IType clears only LW's unused
+readonly rs2 index; SType clears SW's dummy decoded rd, without discarding its actual
+memory write. [Constructor/query proofs](Airbender/Proofs/ReducedMachine/NativeWordMemoryDecoder.lean)
+derive those unused indices, immediate bounds/mask/tag and all actual ten-query fields.
+Canonical native immediate words derive from original decoded bounds. No native
+source range, expected profile/result/state or field answer is supplied.
+
+[One short public root](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryDecoder.lean)
+uses original public byte/stateful image construction, accepted native constraints
+and FULL sparse/padded decoder membership to recover original sources and actual
+mask/source/destination/x0/immediate/tag fields. Accepted18bit native packing excludes
+holes and allminus1tail; no supplied exclusion or filtered original constructors.
+Generic explicit four-field modeled setup suffices for this decoder-only scope.
+No numerical fixed-table meaning or arbitrary/native table identity is assumed.
+
+[Nine regressions](Tests/NativeReducedWordMemoryDecoder.lean) construct independent
+original LW/SW/ADD bytes into complete3slots+1padding, derive BOTH word-memory
+SourceWith entries, retain negative immediate/x0 fields, reject unsupported subword
+constructors, check hole/sentinel membership/native exclusion and reject corrupt
+actual tag/zero fields. No old standalone compiled mask/table/accepted row is reused.
+The logical public image is NOT the exact native eight-word ROM fixture or a general
+Rust decoder-export/preprocessing/physical certificate. These are NOT complete
+positive NONEMPTY117-equation/22lookup native memory witnesses.
+
+Initialized native source/memory values and write preservation, code nonoverlap,
+original byte/ROM/shadow correspondence, retained Sail clauses and common mixed
+execution remain OPEN. Common six-profile execution still excludes LW/SW. NEXT derive
+fresh native register-versus-memory port bindings and proved RAM/ROM write rules,
+then initialized ranges/history; do not reuse current all-events-GPR code frames.
+No native defect, issue assumption, production/Sail/data/dependency change, axiom or
+parity claim. Eight exact parent5360template/pure-helper origins record six new modules/tests.
+
+Final gates pass3168explicit standard-only axiom roots,204public Review roots,
+4guide declaration names,3189links/anchors and context/trace separation. Full Review
+552.95MiB footprint/3122.53MiB resident/20.60s; independent provenance19.42/35.52MiB/
+8.17s passes189v3-origin/1183backport-origin identities,80byte-identical modules,
+8circuit artifacts,68native sources,23setup,4exporters and unchanged dependencies/
+original checkout. Decoder479.55/2860.97MiB/2.18s;trace470.72/2844.20/2.03;
+nine regressions497.61/2874.64/2.48;Axioms544.88/3098.20/4.67. All workers terminated;
+no memory/time/heartbeat/recursion ceiling hit/raised. Exact raw-tag coercion and
+fixture arithmetic spacing corrections are checked; no invalid draft accepted.
+Unchanged shared lock,Lean-j1-M3072,3072MiB aggregate footprint/4096MiB resident and
+finite180second module/120second audit budgets. Sampled watchdog plus Lean allocation
+cap, not an OS hard physical-memory limit.
+
+## Earlier native word-memory addresses and exact fixed tables (7 November 2026)
 
 [Actual access proofs](Airbender/Proofs/ReducedMachine/NativeWordMemoryAccess.lean)
 derive LW's shadow address39/40=effective address61/62 on BOTH ROM and RAM paths,

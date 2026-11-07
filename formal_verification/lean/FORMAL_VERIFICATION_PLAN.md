@@ -168,9 +168,12 @@ Full combined row effects and execution remain pending. See the
    table certificates cover all offset/separator/ROM rows and padding, with no
    standalone table identity. Canonical aligned load addresses/ROM shadow and
    RAM-only aligned stores need no supplied address bounds. Internal RV32 addition
-   still awaits initialized source/decoded-immediate bounds. NEXT derive original
-   full public LW/SW decoding and initialized native memory values/preservation,
-   original byte/ROM construction and code nonoverlap before Sail/common execution.
+   still awaits initialized source bounds. Original full public LW/SW decoding is
+   now checked: retained constructors/x0/sign extension/unused indices and allten
+   actual query fields derive from complete original sparse/padded membership;
+   native packing excludes holes/tail. NEXT derive fresh native memory/register
+   port bindings and initialized values/write preservation, original byte/ROM
+   construction and code nonoverlap before Sail/common execution.
    Common supported execution excludes LW/SW; no all-events-GPR frame reuse.
    Other combined
    profiles, workers/protocol/padding/terminal/init and positive nonempty arithmetic/

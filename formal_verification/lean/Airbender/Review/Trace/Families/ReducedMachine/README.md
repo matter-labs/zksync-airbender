@@ -412,3 +412,9 @@ are now checked separately. They do not extend this common trace to LW/SW. Origi
 public decoding, initialized RAM/ROM reads and write preservation, code nonoverlap,
 Sail clauses and mixed history remain open. Preserve actual shadow/OLDREAD events;
 current all-events-register-space code frames do not apply to memory stores.
+
+[Word-memory public decoding](WordMemoryDecoder.lean) now recovers original LW/SW
+sources and allten actual fields from full sparse/padded membership, with native
+packing excluding holes/tail. It does not yet extend this common execution profile:
+initialized actual RAM/ROM/shadow values, write preservation and memory-aware code
+frames must be derived first. Generic decoder setup is not a fixed-ROM identity.

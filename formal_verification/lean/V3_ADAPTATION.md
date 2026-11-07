@@ -739,3 +739,16 @@ unchanged Word/periodic/pool helpers. [Regressions](Tests/NativeReducedWordMemor
 are complete-region members, fixture/corruption checks and four-assertion positive
 address slices, NOT full accepted native LW/SW. Original public decoding/initialized
 memory/code-frame/Sail/common execution remain open; no defect/issue/new axiom/parity.
+
+## Original native LW/SW public decoder adaptation (7 November 2026)
+
+[New reduced projection](Airbender/Review/Circuits/ReducedMachine/WordMemoryDecoder.lean)
+retains original LOAD(false,4)/STORE(4), raw/x0/negative immediates, actual reduced
+1025/16386/tag2 and constructor-derived unused indices. [Native recovery](Airbender/Proofs/ReducedMachine/NativeWordMemoryDecoder.lean)
+adapts checked original comparison full-sparse decoder machinery only after these
+fresh query bindings; unchanged accepted18bit mask packing excludes holes/tail.
+Eight exact parent5360origins record six new modules/tests, including original pure
+word-memory constructor reference and independent public-byte fixture template.
+No old standalone native masks/constraints/tables/acceptance is transferred. Public
+logical image/decoder scope remains separate from native8word ROM/physical export,
+initialized memory/code frames/Sail/common execution. No defect/issue/axiom/parity.

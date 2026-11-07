@@ -489,7 +489,14 @@ unmasked store memory address/write. [Complete actual tables](Tables/WordMemoryT
 certify every offset/separator/ROM row and full padding tail. [Native address roots](WordMemoryAddressTheorems.lean)
 derive aligned bounded loads/ROM shadow and RAM-only aligned stores without supplied
 source/address bounds. Internal RV32 addition still needs initialized source/decoded
-immediate bounds. Original full public decoding/values/initialized memory/code frames/
+immediate bounds. Original values/initialized memory/code frames/
 Sail/common integration stay open; memory ports are not all GPR events. The fixed8word
 ROM is not an arbitrary original public image. Positive address slices are not full
 accepted117-equation native LW/SW witnesses.
+
+[Original LW/SW decoding](WordMemoryDecoder.lean) and its
+[public root](../../Trace/Families/ReducedMachine/WordMemoryDecoder.lean) now bind
+allten actual native query fields from original byte/stateful sparse/padded
+membership, retaining x0/sign extension and native unused indices. Holes/tail are
+excluded by accepted packing. Original initialized memory/preservation/code frames/
+Sail/common execution still remain open; logical decoder image is not the native ROM.
