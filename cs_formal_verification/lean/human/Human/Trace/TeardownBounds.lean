@@ -9,7 +9,9 @@ import Human.Helpers.UnifiedReduced.RVExecutionInputs
     is a value some write produced (the open item: the cross-circuit memory-argument protocol is not formalised); these
     claims derive the bound from that premise and the circuits' proven write bounds (`WritesRangeCheckedClaim` and the
     trace's history from its boot seeds): the `Init` tuples write zero, and every write of an accepted, booted trace is a
-    bounded word. Proven in slop/Slop/Final/Trace/TeardownBounds.lean. -/
+    bounded word. Scope: `writes` are the rows of the pooled or unified trace model, which carries no delegation rows;
+    a teardown whose last writer is a delegation is outside these claims (the delegation writes are range-checked too,
+    `Delegation.WritesRangeCheckedClaim`). Proven in slop/Slop/Final/Trace/TeardownBounds.lean. -/
 
 namespace Airbender.Trace
 
