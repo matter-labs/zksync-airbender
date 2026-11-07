@@ -35,6 +35,65 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Selected unrolled caller argument reference and normalization (7 November 2026)
+
+The [selected native unrolled prover](../../prover/src/prover_stages/unrolled_prover/mod.rs)
+passes literal circuit_sequence0 to ProverCachedData::new. The [cache calculation](../../prover/src/prover_stages/cached_data.rs)
+therefore contributes zero additional sequence-high shift for this constructor.
+[Kernel checks](Airbender/Proofs/ReducedMachine/NativeCSRArgument.lean) retain the
+actual imported trace2^23/three-access geometry and shift23+2-19=6. The earlier
+sequence-high question is resolved for this selected constructor; generic cache
+calls with nonzero sequence and general Rust refinement remain separate.
+
+[Reviewed source-reference definitions](Airbender/Review/Helpers/Memory/ReducedMachineCSRArgument.lean)
+retain native stage2 key aggregation and quotient homogenization: all witness-
+linear terms scale by tau, while gamma, literal in-cycle offset3 and sequence-high
+terms are added outside that scaling. Symbolic ring proofs identify the quotient
+denominator with aggregation of the normalized four-part key for every tau. At
+unit scaling, that key equals the actual imported caller key BEFORE compression,
+and stage2/quotient denominators agree. This is not a claim that all protocol
+points have tau=1 or that arbitrary challenge compression is injective.
+
+[The short public argument root](Airbender/Review/Trace/Families/ReducedMachine/CSRArgument.lean)
+constructs the actual initialized caller projection with exact native row origins
+and all per-row key/argument identities, retaining full original-source/request/
+GPR/native history. Inputs remain full original CSR setup/membership, ordinary
+logical seeds, accepted runtime constraints/matching and tracked alignment. Any
+commutative target ring, base-field homomorphism and challenges are explicit;
+no caller stream or per-row source/read/range/request/result/clock/state/worker
+answer, inverse, nonzero denominator or compression-injectivity premise is added.
+
+Nine [independent scalar/reference regressions](Tests/NativeReducedCSRArgument.lean)
+check sequence0, exact tuple, stage2/quotient values, gamma and literal offset
+outside witness scaling, zero scaling, no double sequence shift and distinct keys
+colliding under arbitrary challenge compression. These are reference/algebra
+checks, not full positive nonempty accepted CSR witnesses or cryptographic attacks.
+Five new modules/tests record six exact parent76847 origins; constructor/cache
+sources are newly byte-pinned to67ee, while aggregation/constants were already
+pinned and rechecked. All production/native/Sail/input/fixture/dependency bytes
+remain unchanged; no defect, assumption/fix, axiom, whole-machine or parity claim.
+
+This closes the selected constructor-zero calculation and reviewed per-row argument
+normal form. General Rust/field-encoding/LDE correspondence and physical verifier
+argument enforcement remain scoped separately. Main Trace.Accepted still has no
+stage2 auxiliary/global worker ledger, so issuance, fulfillment, converse and
+accounting are not inferred. NEXT prioritize actual native Blake2 worker artifact/
+ABI/constraints and request-worker acceptance/accounting, including stage2 auxiliary
+and accumulator connections; do not redo this algebra or earlier caller/source
+history. Original CSR/custom/nondeterminism/privilege/PC retirement/common integration,
+delegated RAM effects, protocol/terminal/init/physical/crypto/completeness stay open.
+
+Final gates pass 3,595 explicit standard-only axiom roots, 237 public Review
+roots, four guide names and 3,500 links/anchors with context/trace separation.
+Full Review sampled footprint/resident peaks were 562.37/3,150.08 MiB over 26.57 s.
+Independent provenance passes 189 v3-origin/1,450 backport-origin identities,
+80 byte-identical modules, eight circuit artifacts, 82 native source pins, 24 setup
+artifacts and four exporter files with unchanged pins/dependencies/original
+checkout (18.53/36.44 MiB, 9.85 s). Every started guard leaves no owned survivor;
+no resource or proof ceiling changed. This is sampled watchdog plus Lean allocation
+cap, not an OS hard physical-memory limit. Exact unchanged intake/native/heavy
+certificate gates retain their prior applicability and were not repeated.
+
 ## CSR row-local caller clocks and chronological projection (7 November 2026)
 
 [The public caller root](Airbender/Review/Trace/Families/ReducedMachine/CSRCallers.lean)

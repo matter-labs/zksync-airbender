@@ -31,6 +31,29 @@ and original Clean acceptance now derives both actual sign/high-byte queries.
 Full combined row effects and execution remain pending. See the
 [current adaptation snapshot](V3_ADAPTATION.md). Stage-two JSON remains opaque.
 
+## Current selected-unrolled caller argument checkpoint (7 November 2026)
+
+[The argument root](Airbender/Review/Trace/Families/ReducedMachine/CSRArgument.lean)
+now preserves initialized caller/source history while connecting actual row origins
+to reviewed native stage2 and quotient key/denominator formulas. The selected
+unrolled prover passes literal sequence0; actual trace2^23/three-port cache shift6
+is checked and its sequence-high contribution is zero. Quotient witness terms
+scale by tau; gamma/literal offset stay outside. Polynomial normal form holds for
+all tau; unit specialization gives exact pre-compression caller-key agreement,
+not an assertion that all physical protocol points have tau=1. Nine reference/
+scalar regressions include non-injective arbitrary challenge compression.
+
+This closes the selected constructor-sequence calculation and per-row algebra NEXT
+below. General Rust/field/LDE/physical enforcement remains separately scoped;
+do not repeat closed caller/source/clock/key algebra. NEXT actual native Blake2
+worker artifact/configuration/ABI/constraints, request-worker acceptance, stage2
+auxiliary/accumulator connections and fulfillment/converse/accounting/unified
+protocol. Main Trace.Accepted has no worker ledger; do not invent issued-request/
+worker-success/count/schedule/state premises. Bigint remains outside this selected
+runtime. Original CSR/custom/nondeterminism/privilege/PC/common execution, delegated
+RAM/terminal/padding/init/physical/general refinement/crypto/completeness/parity
+remain open; all existing fixtures/execution/input scopes stay unchanged.
+
 ## Current CSR local caller projection checkpoint (7 November 2026)
 
 [Row-local caller projection](Airbender/Review/Trace/Families/ReducedMachine/CSRCallers.lean)

@@ -668,3 +668,10 @@ chronological multiplicity-selected projection from accepted initialized history
 All GPR slots precede it; next native clock follows. This is row-local observation;
 sequence-HIGH normalization, actual issuance and global worker accounting remain
 separate. No v3 F03 conclusion follows from unique local caller clocks.
+
+
+[Selected-unrolled caller argument normalization](../../Trace/Families/ReducedMachine/CSRArgument.lean)
+now binds actual caller origins to reviewed stage2/quotient reference formulas.
+The native unrolled constructor passes sequence0; its extra high contribution is
+zero. Witness terms scale before gamma/literal additions. Exact key agreement at
+unit scaling precedes compression; no injectivity, LDE or worker-ledger claim.

@@ -3625,3 +3625,25 @@ Trace.Accepted relation has no worker ledger, and strict local caller clocks do
 not establish worker-to-caller converse, unissued-worker exclusion, fulfillment or
 accounting. No v3 F03 retest/fix or native defect is established here. Original CSR/
 delegated RAM/PC/physical/reference scopes and all previous boundaries remain open.
+
+
+## Selected-unrolled caller argument reference boundary (7 November 2026)
+
+[The caller argument root](Airbender/Review/Trace/Families/ReducedMachine/CSRArgument.lean)
+retains full initialized source/request/native history and derives exact actual
+row origins plus per-row argument identities. Native unrolled constructor/cache
+source inspection establishes its literal sequence0 configuration; kernel checks
+retain imported trace2^23/three-port geometry and modeled zero sequence-high value.
+This does not cover generic nonzero-sequence callers or formally refine Rust.
+
+Reference functions transcribe native aggregation/quotient formulas faithfully:
+witness-linear terms scale by tau; gamma/literal offset/sequence additions do not.
+Ring proofs hold for every scaling and arbitrary challenges/base-field embedding.
+At unit scaling the normalized key equals the imported caller tuple BEFORE
+compression. No claim equates all protocol evaluation points with unit scaling,
+assumes compression injectivity or derives a worker ledger from scalar equality.
+A regression explicitly shows collisions for arbitrary challenges; this is not
+a native attack/defect. Actual M31 extension-field implementation, Rust/LDE/physical
+verifier correspondence, stage2 auxiliary/global accumulator enforcement, issuance,
+worker fulfillment/converse/accounting and original CSR/delegated RAM execution
+remain separate. No desired local answer or issue-handling assumption is added.

@@ -1141,3 +1141,24 @@ projection retain all tokens/no CSR premise; no full positive NONEMPTYCSR witnes
 original CSR execution, worker converse/fulfillment/accounting or v3 F03 finding.
 No production/native/Sail/artifact/import/export/fixture/dependency modification,
 native defect/issue assumption/fix/new axiom/whole-machine/parity claim.
+
+
+## Selected unrolled caller argument normalization (7 November 2026)
+
+Five modules/tests record six exact parent76847 origins, using prior actual caller
+interfaces/tuple metadata and regression patterns. Fresh source review found the
+unrolled prover passes literal sequence0 to the generic cache; both constructor
+and cache are newly byte-pinned67ee. Aggregation/constants already pinned/rechecked.
+Imported geometry and zero contribution are kernel-checked as reviewed references,
+not general Rust refinement or a change to production behavior.
+
+[Argument identities](Airbender/Proofs/ReducedMachine/NativeCSRArgument.lean) preserve
+native witness scaling versus gamma/literal additions for every tau in any
+commutative target ring/base-field embedding. Unit specialization identifies exact
+pre-compression keys; public trace assembly retains actual caller row origins/full
+original source/native history and no desired per-row answers. Nine independent
+scalar/reference tests include arbitrary-challenge collisions; no injectivity or
+physical evaluation assumption. Stage2 auxiliary/global worker ledger, native
+worker artifacts/constraints/fulfillment/converse/accounting, original CSR execution,
+Rust/field/LDE/physical/crypto/completeness/parity remain open. No native defect,
+issue assumption/fix/new axiom/production/artifact/import/export/dependency change.

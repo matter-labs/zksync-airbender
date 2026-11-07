@@ -1,3 +1,7 @@
+import Airbender.Proofs.ReducedMachine.NativeCSRArgument
+import Airbender.Proofs.Trace.Families.ReducedMachine.CSRArgument
+import Airbender.Review.Trace.Families.ReducedMachine.CSRArgument
+import Tests.NativeReducedCSRArgument
 import Airbender.Proofs.ReducedMachine.NativeCSRCallerClock
 import Airbender.Proofs.Trace.Families.ReducedMachine.CSRCallers
 import Airbender.Review.Trace.Families.ReducedMachine.CSRCallers
@@ -4060,3 +4064,21 @@ import Tests.SubwordStoreData
 #print axioms Tests.NativeReducedCSRCallers.adjacent_caller_order
 #print axioms Tests.NativeReducedCSRCallers.zero_caller_clock_rejected
 #print axioms Tests.NativeReducedCSRHistoryEmpty.empty_runtime_callers
+
+#print axioms Airbender.ReducedMachine.NativeCSRArgumentProofs.geometry
+#print axioms Airbender.ReducedMachine.NativeCSRArgumentProofs.sequence_high_zero
+#print axioms Airbender.ReducedMachine.NativeCSRArgumentProofs.caller_key
+#print axioms Airbender.ReducedMachine.NativeCSRArgumentProofs.stage_two
+#print axioms Airbender.ReducedMachine.NativeCSRArgumentProofs.stage_three
+#print axioms Airbender.ReducedMachine.NativeCSRArgumentProofs.unit_scaling
+#print axioms Airbender.ReducedMachine.NativeCSRArgumentProofs.image_argument
+#print axioms Airbender.ReducedMachine.Native.public_runtime_csr_argument
+#print axioms Tests.NativeReducedCSRArgument.selected_sequence_zero
+#print axioms Tests.NativeReducedCSRArgument.actual_caller_key
+#print axioms Tests.NativeReducedCSRArgument.stage_two_numeric
+#print axioms Tests.NativeReducedCSRArgument.stage_three_numeric
+#print axioms Tests.NativeReducedCSRArgument.gamma_unscaled
+#print axioms Tests.NativeReducedCSRArgument.literal_offset_unscaled
+#print axioms Tests.NativeReducedCSRArgument.zero_scaling
+#print axioms Tests.NativeReducedCSRArgument.no_double_sequence_shift
+#print axioms Tests.NativeReducedCSRArgument.compression_can_collide

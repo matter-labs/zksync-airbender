@@ -365,3 +365,10 @@ request fields and the raw initial-clock pair plus in-cycle offset. Actual
 multiplicity filters original rows; full source/native history retains zero rows
 and every token. Bounded/nonzero/order/row origins are derived, not premises.
 Sequence-HIGH normalization and protocol worker matching remain separate.
+
+
+[CSR caller argument references](ReducedMachineCSRArgument.lean) retain the
+selected unrolled sequence0 constructor, pre-compression key and native affine/
+quotient scaling formulas. Source/caller origins and identities are derived by
+the public trace root; arbitrary challenge compression is not assumed injective.
+Rust/field/LDE/physical enforcement and worker accounting remain separate.

@@ -599,3 +599,11 @@ The exact imported slot3 timestamp is bounded/nonzero, after every native GPR
 access and before next machine clock; request kind1991/ABI bounds and actual row
 origins follow constraints/initialization. No caller-stream premise is supplied.
 This does not close sequence normalization, actual issuance or worker accounting.
+
+
+[Runtime CSR caller argument](CSRArgument.lean) retains full initialized source/
+request/caller history and derives actual row origins with reviewed stage2/quotient
+argument identities. Selected constructor sequence0 contributes no extra high shift;
+witness scaling preserves literal offsets/gamma. Unit specialization identifies
+keys before compression, without equating all protocol points with unit scaling.
+Actual auxiliary/accumulator enforcement and worker ledger/accounting stay open.
