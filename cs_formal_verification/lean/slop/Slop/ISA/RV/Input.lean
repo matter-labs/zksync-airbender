@@ -20,6 +20,11 @@ theorem storeAll_input (s : State) (ws : List (Word × Word)) : (s.storeAll ws).
   | nil => rfl
   | cons w ws ih => exact (ih _).trans rfl
 
+theorem storeAll_rom (s : State) (ws : List (Word × Word)) : (s.storeAll ws).rom = s.rom := by
+  induction ws generalizing s with
+  | nil => rfl
+  | cons w ws ih => exact (ih _).trans rfl
+
 theorem storeAll_withInput (s : State) (ws : List (Word × Word)) (t : List Word) :
     (s.withInput t).storeAll ws = (s.storeAll ws).withInput t := by
   induction ws generalizing s with

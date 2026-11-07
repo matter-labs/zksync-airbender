@@ -23,11 +23,6 @@ theorem storeAll_pc (s : RV.State) (ws : List (RV.Word × RV.Word)) : (s.storeAl
   | nil => rfl
   | cons w ws ih => exact (ih _).trans rfl
 
-theorem storeAll_rom (s : RV.State) (ws : List (RV.Word × RV.Word)) : (s.storeAll ws).rom = s.rom := by
-  induction ws generalizing s with
-  | nil => rfl
-  | cons w ws ih => exact (ih _).trans rfl
-
 /-- `storeAll`'s RAM depends only on the RAM it starts from. -/
 theorem storeAll_mem_congr (s s' : RV.State) (ws : List (RV.Word × RV.Word)) (h : s.mem = s'.mem) :
     (s.storeAll ws).mem = (s'.storeAll ws).mem := by
@@ -79,7 +74,7 @@ theorem applyEffect_agree (h : Airbender.AgreeSail s σ) {shadow : Airbender.Sha
   obtain ⟨ram, hramdef⟩ : ∃ ram, ram = (s.storeAll e.writes).mem := ⟨_, rfl⟩
   have tmem : (((s.storeAll e.writes).setReg e.reg e.val).nextInstr).mem = ram := by
     rw [hramdef]; rfl
-  have trom : (((s.storeAll e.writes).setReg e.reg e.val).nextInstr).rom = s.rom := storeAll_rom s e.writes
+  have trom : (((s.storeAll e.writes).setReg e.reg e.val).nextInstr).rom = s.rom := RV.storeAll_rom s e.writes
   let pc' := σ.regs .PC + 4
   let σ₁ : SailState :=
     { σ with mem := fun n => if RV.ROM_END ≤ n ∧ n < 2 ^ 32 then ram (BitVec.ofNat 32 n) else σ.mem n }

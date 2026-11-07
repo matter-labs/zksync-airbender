@@ -92,11 +92,6 @@ theorem storeAll_pc_regs (s : State) (ws : List (Word × Word)) :
   | nil => exact ⟨rfl, rfl⟩
   | cons w ws ih => exact ih _
 
-theorem storeAll_rom (s : State) (ws : List (Word × Word)) : (s.storeAll ws).rom = s.rom := by
-  induction ws generalizing s with
-  | nil => rfl
-  | cons w ws ih => exact ih _
-
 /-- A delegation call never changes the ROM image. -/
 theorem applyEffect_rom {s t : State} {e : Effect} (h : s.applyEffect e = some t) : t.rom = s.rom := by
   unfold State.applyEffect at h
