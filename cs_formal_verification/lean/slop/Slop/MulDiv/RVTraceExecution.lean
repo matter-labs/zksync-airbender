@@ -14,10 +14,10 @@ import Slop.Trace.RVZeroRows
 namespace Airbender.MulDiv.Proofs
 open Arithmetic Trace Trace.Proofs
 
-/-- A successful projection is the data of an RV input of this family (destination not x0). -/
+/-- A successful projection is the data of an RV input of this family. -/
 theorem rv_fields_input {i : RV.Instr} {d : DecoderData Unit} (fields : rvDecoderFields i = some d)
     (s : RV.State) :
-    ∃ input : RVInput, input.before = s ∧ i = rvInstruction input ∧ d = rvData input ∧ input.rd ≠ 0 := by
+    ∃ input : RVInput, input.before = s ∧ i = rvInstruction input ∧ d = rvData input := by
   unfold rvDecoderFields at fields
   split at fields
   all_goals rename_i rd rs1 rs2
@@ -28,16 +28,16 @@ theorem rv_fields_input {i : RV.Instr} {d : DecoderData Unit} (fields : rvDecode
   all_goals simp only [hz, ite_true, ite_false, reduceCtorEq] at fields
   case neg =>
     obtain rfl := Option.some.inj fields
-    exact ⟨⟨.mul, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩, rs1, rs2, rd, s⟩, rfl, rfl, rfl, hz⟩
+    exact ⟨⟨.mul, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩, rs1, rs2, rd, s⟩, rfl, rfl, rfl⟩
   case neg =>
     obtain rfl := Option.some.inj fields
-    exact ⟨⟨.mulhu, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩, rs1, rs2, rd, s⟩, rfl, rfl, rfl, hz⟩
+    exact ⟨⟨.mulhu, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩, rs1, rs2, rd, s⟩, rfl, rfl, rfl⟩
   case neg =>
     obtain rfl := Option.some.inj fields
-    exact ⟨⟨.divu, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩, rs1, rs2, rd, s⟩, rfl, rfl, rfl, hz⟩
+    exact ⟨⟨.divu, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩, rs1, rs2, rd, s⟩, rfl, rfl, rfl⟩
   case neg =>
     obtain rfl := Option.some.inj fields
-    exact ⟨⟨.remu, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩, rs1, rs2, rd, s⟩, rfl, rfl, rfl, hz⟩
+    exact ⟨⟨.remu, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩, rs1, rs2, rd, s⟩, rfl, rfl, rfl⟩
 
 /-- Read, write and terminal values of an accepted trace seeded by an RV image are bounded words. -/
 theorem rv_value_bounds {p : Nat} [Fact p.Prime]
@@ -70,7 +70,7 @@ theorem rv_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (
     ∃ next, RV.exec before i = some next ∧
       RV.Same next { after with pc := (⟨.mulDiv, w⟩ : Row p TraceKind).finish.word.toBitVec } := by
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
-  obtain ⟨input, rfl, rfl, data, _⟩ := rv_fields_input fields before
+  obtain ⟨input, rfl, rfl, data⟩ := rv_fields_input fields before
   let pooled : RVPooledProgramEntry := entry.mapFamily (fun _ => .mulDiv)
   have pooledData : pooled.data = (rvData input).mapFamily (fun _ => .mulDiv) := by
     simp only [pooled, RVProgramEntry.mapFamily, data]

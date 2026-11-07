@@ -108,6 +108,11 @@ import Slop.Final.Circuits.WordMemory.Theorems
 import Slop.Final.Circuits.WordMemory.RVTheorems
 import Slop.Final.Circuits.SubwordMemory.RVTheorems
 import Slop.Final.Trace.UnifiedReduced.RVTheorems
+import Slop.Final.Trace.Families.AddSub.RVTheorems
+import Slop.Final.Trace.Families.JumpBranchSlt.RVTheorems
+import Slop.Final.Trace.Families.MulDiv.RVTheorems
+import Slop.Final.Trace.Families.ShiftBinop.RVTheorems
+import Slop.Final.Trace.Families.SubwordMemory.RVTheorems
 import Tests.Comparison
 import Tests.NonDeterminism
 import Tests.Blake2G
@@ -2324,3 +2329,11 @@ import Human.Import.Coefficients
 #print axioms Airbender.Trace.Proofs.Transfer.rv_terminal_reads_at_boundary
 #print axioms Airbender.Trace.Proofs.rv_history_cell_frame
 #print axioms Airbender.Trace.Proofs.rv_history_access_execution
+#print axioms Airbender.Trace.rv_airbender_soundness
+#print axioms Airbender.Trace.rv_native_boot_soundness
+#print axioms Airbender.JumpBranchSlt.rv_trace_soundness
+#print axioms Airbender.MulDiv.rv_trace_soundness
+#print axioms Airbender.ShiftBinop.rv_trace_soundness
+#print axioms Airbender.SubwordMemory.rv_ram_trace_soundness
+#print axioms Airbender.Trace.Proofs.rv_family_realizes
+#print axioms Airbender.Trace.Proofs.rv_family_row_steps

@@ -24,10 +24,15 @@ import Slop.Final.Trace.Delegation.CallerTheorems
 import Slop.Final.Trace.Delegation.Theorems
 import Slop.Final.Trace.Delegation.RVTheorems
 import Slop.Final.Trace.Families.AddSub.Theorems
+import Slop.Final.Trace.Families.AddSub.RVTheorems
 import Slop.Final.Trace.Families.JumpBranchSlt.Theorems
+import Slop.Final.Trace.Families.JumpBranchSlt.RVTheorems
 import Slop.Final.Trace.Families.MulDiv.Theorems
+import Slop.Final.Trace.Families.MulDiv.RVTheorems
 import Slop.Final.Trace.Families.ShiftBinop.Theorems
+import Slop.Final.Trace.Families.ShiftBinop.RVTheorems
 import Slop.Final.Trace.Families.SubwordMemory.Theorems
+import Slop.Final.Trace.Families.SubwordMemory.RVTheorems
 import Slop.Final.Trace.Soundness
 import Slop.Final.Trace.ZeroTimestamp
 import Slop.Final.Trace.UnifiedReduced.Theorems
@@ -54,10 +59,15 @@ import Human.Trace.Delegation.CallerTheorems
 import Human.Trace.Delegation.Theorems
 import Human.Trace.Delegation.RVTheorems
 import Human.Trace.Families.AddSub.Theorems
+import Human.Trace.Families.AddSub.RVTheorems
 import Human.Trace.Families.JumpBranchSlt.Theorems
+import Human.Trace.Families.JumpBranchSlt.RVTheorems
 import Human.Trace.Families.MulDiv.Theorems
+import Human.Trace.Families.MulDiv.RVTheorems
 import Human.Trace.Families.ShiftBinop.Theorems
+import Human.Trace.Families.ShiftBinop.RVTheorems
 import Human.Trace.Families.SubwordMemory.Theorems
+import Human.Trace.Families.SubwordMemory.RVTheorems
 import Human.Trace.Soundness
 import Human.Trace.ZeroTimestamp
 import Human.Trace.UnifiedReduced.Theorems
@@ -142,6 +152,12 @@ example : Airbender.JumpBranchSlt.TraceSoundnessClaim := @Airbender.JumpBranchSl
 example : Airbender.MulDiv.TraceSoundnessClaim := @Airbender.MulDiv.trace_soundness
 example : Airbender.ShiftBinop.TraceSoundnessClaim := @Airbender.ShiftBinop.trace_soundness
 example : Airbender.SubwordMemory.RamTraceSoundnessClaim := @Airbender.SubwordMemory.ram_trace_soundness
+example : Airbender.Trace.RVAirbenderSoundnessClaim := @Airbender.Trace.rv_airbender_soundness
+example : Airbender.Trace.RVNativeBootSoundnessClaim := @Airbender.Trace.rv_native_boot_soundness
+example : Airbender.JumpBranchSlt.RVTraceSoundnessClaim := @Airbender.JumpBranchSlt.rv_trace_soundness
+example : Airbender.MulDiv.RVTraceSoundnessClaim := @Airbender.MulDiv.rv_trace_soundness
+example : Airbender.ShiftBinop.RVTraceSoundnessClaim := @Airbender.ShiftBinop.rv_trace_soundness
+example : Airbender.SubwordMemory.RVRamTraceSoundnessClaim := @Airbender.SubwordMemory.rv_ram_trace_soundness
 example : Airbender.Trace.PooledNativeSoundnessClaim := @Airbender.Trace.pooled_native_soundness
 example : Airbender.Trace.NonDeterminism.Pooled.NativeSoundnessClaim := @Airbender.Trace.NonDeterminism.Pooled.native_soundness
 example : Airbender.InitsTeardowns.StandaloneClaim := @Airbender.InitsTeardowns.standalone_claim
@@ -268,6 +284,12 @@ example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.
 #print axioms Airbender.MulDiv.trace_soundness
 #print axioms Airbender.ShiftBinop.trace_soundness
 #print axioms Airbender.SubwordMemory.ram_trace_soundness
+#print axioms Airbender.Trace.rv_airbender_soundness
+#print axioms Airbender.Trace.rv_native_boot_soundness
+#print axioms Airbender.JumpBranchSlt.rv_trace_soundness
+#print axioms Airbender.MulDiv.rv_trace_soundness
+#print axioms Airbender.ShiftBinop.rv_trace_soundness
+#print axioms Airbender.SubwordMemory.rv_ram_trace_soundness
 #print axioms Airbender.Trace.pooled_native_soundness
 #print axioms Airbender.Trace.NonDeterminism.Pooled.native_soundness
 #print axioms Airbender.InitsTeardowns.standalone_claim
