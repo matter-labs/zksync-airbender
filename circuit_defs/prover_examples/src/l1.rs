@@ -115,7 +115,13 @@ pub fn prove_l1_wrap_in_recompute_mode(
     //    depends on the PROGRAM (its decoder table is built from the binary),
     //    so recomputation also removes the stale-cache hazard an on-disk setup
     //    shared between programs would have.
-    let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &unified_circuit);
+    let setup = GKRSetup::construct(
+        &table_driver,
+        &decoder_table,
+        trace_len,
+        &unified_circuit,
+        worker,
+    );
 
     let lde_factor = prover_config.lde_factor();
     let values_per_leaf = prover_config.base_oracles_values_per_leaf();

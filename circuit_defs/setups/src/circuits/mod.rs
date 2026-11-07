@@ -62,10 +62,17 @@ impl DelegationCircuitSetup {
 
 pub fn make_setup_for_delegation_circuit<C: circuit_common::DelegationCircuit<BabyBearField>>(
     use_caches: bool,
+    worker: &Worker,
 ) -> DelegationCircuitSetup {
     let circuit = C::get_circuit(use_caches);
     let table_driver = C::get_table_driver();
-    let setup = GKRSetup::construct(&table_driver, &[], 1 << C::trace_len_log2(), &circuit);
+    let setup = GKRSetup::construct(
+        &table_driver,
+        &[],
+        1 << C::trace_len_log2(),
+        &circuit,
+        worker,
+    );
 
     DelegationCircuitSetup {
         delegation_type: C::DELEGATION_TYPE_ID,
@@ -86,39 +93,41 @@ pub fn produce_verifier_setup_for_all_delegations(
     let mut result = vec![];
     {
         let setup = make_setup_for_delegation_circuit::<Blake2sWithCompressionDelegationCircuit>(
-            use_caches,
+            use_caches, &worker,
         );
         let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, mode, &worker);
         result.push(setup_data);
     }
     {
-        let setup = make_setup_for_delegation_circuit::<BigIntDelegationCircuit>(use_caches);
+        let setup =
+            make_setup_for_delegation_circuit::<BigIntDelegationCircuit>(use_caches, &worker);
         let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, mode, &worker);
         result.push(setup_data);
     }
     {
-        let setup =
-            make_setup_for_delegation_circuit::<KeccakSpecial5DelegationCircuit>(use_caches);
+        let setup = make_setup_for_delegation_circuit::<KeccakSpecial5DelegationCircuit>(
+            use_caches, &worker,
+        );
         let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, mode, &worker);
         result.push(setup_data);
     }
     {
         let setup = make_setup_for_delegation_circuit::<
             ::keccak_theta_rho::KeccakThetaRhoDelegationCircuit,
-        >(use_caches);
+        >(use_caches, &worker);
         let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, mode, &worker);
         result.push(setup_data);
     }
     {
         let setup = make_setup_for_delegation_circuit::<
             ::keccak_column_parity::KeccakColumnParityDelegationCircuit,
-        >(use_caches);
+        >(use_caches, &worker);
         let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, mode, &worker);
         result.push(setup_data);
     }
     {
         let setup = make_setup_for_delegation_circuit::<::keccak_chi5::KeccakChi5DelegationCircuit>(
-            use_caches,
+            use_caches, &worker,
         );
         let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, mode, &worker);
         result.push(setup_data);

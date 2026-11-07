@@ -365,7 +365,13 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     use crate::merkle_trees::on_disk::{top_tree_file_path, OnDiskTreeLayout};
     use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, RSQueryable};
 
-    let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &unified_circuit);
+    let setup = GKRSetup::construct(
+        &table_driver,
+        &decoder_table,
+        trace_len,
+        &unified_circuit,
+        &worker,
+    );
 
     let lde_factor = prover_config.lde_factor();
     let values_per_leaf = prover_config.base_oracles_values_per_leaf();

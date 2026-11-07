@@ -29,7 +29,8 @@ fn prove(
     let mut prover =
         CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration::default());
     let (binary, text) = workload;
-    let handle = prover.add_binary(execution_kind, machine_type, binary, text, None);
+    let handle =
+        prover.add_binary_variants(binary, text, &[(execution_kind, machine_type)], None)[0];
     let result =
         prover.commit_memory_and_prove(1, &handle, QuasiUARTSource::new_with_reads(inputs));
     let artifacts = prover.program_artifacts(&handle);

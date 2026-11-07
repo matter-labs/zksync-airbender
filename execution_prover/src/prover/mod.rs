@@ -19,7 +19,7 @@ pub use config::ExecutionKind;
 pub use result::{CommitMemoryResult, ProveResult};
 
 /// Opaque handle to a binary registered with the `ExecutionProver`. Returned by
-/// [`ExecutionProver::add_binary`]; required to identify the binary in
+/// [`ExecutionProver::add_binary_variants`]; required to identify the binary in
 /// `commit_memory` / `commit_memory_and_prove`. Cannot be fabricated by
 /// callers, which converts what was previously a runtime
 /// "binary key not found" panic into a compile-time guarantee.
@@ -38,7 +38,9 @@ use crate::messages::{
     InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
     ProofResult, SimulationResult, TracingData, WorkBatch, WorkRequest, WorkResult, WorkerResult,
 };
-use crate::setup::{build_common_setups, build_unrolled_setup};
+use crate::setup::{
+    build_common_setups, build_unrolled_setup_with_preprocessing, preprocess_binary,
+};
 use crate::tracing::{SplitTracingType, UnifiedTracingType};
 use crate::upstream::{BF, E4};
 use crate::workers::simulation::{run_replayer, run_simulator};
@@ -57,10 +59,6 @@ use log::{debug, info, trace};
 
 use crate::upstream::{
     Blake2sTranscript, FinalRegisterValue, GKRExternalChallenges, MerkleTreeCapVarLength,
-};
-use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
-use riscv_transpiler::ir::{
-    FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
 use riscv_transpiler::vm::{NonDeterminismCSRSource, SimpleTape};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};

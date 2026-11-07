@@ -194,7 +194,8 @@ fn prove_on_gpu(
     text_section: Vec<u32>,
     reads: Vec<u32>,
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
-    let handle = prover.add_binary(kind, machine, binary_image, text_section, None);
+    let handle =
+        prover.add_binary_variants(binary_image, text_section, &[(kind, machine)], None)[0];
     prove_registered_on_gpu(prover, &handle, reads)
 }
 
@@ -958,25 +959,23 @@ fn test_generate_sec100_cost_model_fixtures() {
     let mut prover = ExecutionProver::with_configuration(configuration);
     // Register each common binary once: add_binary retains precomputations,
     // so registering them anew for every block would grow resident RAM.
-    let guest = prover.add_binary(
-        ExecutionKind::Unrolled,
-        MachineType::FullUnsigned,
+    let guest = prover.add_binary_variants(
         base_binary,
         base_text,
+        &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
         None,
-    );
+    )[0];
     let mut add_verifier = |program| {
         let guest = load_fsv_exact(
             canonical_fsv_dir(),
             &FsvDescriptor::new(soundness_mode, program, BlakeMode::Compression),
         );
-        prover.add_binary(
-            ExecutionKind::Unrolled,
-            MachineType::Reduced,
+        prover.add_binary_variants(
             guest.bin().to_vec(),
             guest.text().to_vec(),
+            &[(ExecutionKind::Unrolled, MachineType::Reduced)],
             None,
-        )
+        )[0]
     };
     let base_verifier = add_verifier(FsvProgram::UnrolledBaseLayer);
     let recursion_verifier = add_verifier(FsvProgram::UnrolledRecursionLayer);

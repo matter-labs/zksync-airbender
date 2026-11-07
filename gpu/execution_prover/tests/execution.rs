@@ -44,13 +44,12 @@ fn commit_and_prove_binary(
     let (binary_image, text_section) =
         ProgramSource::legacy_binaries(test_artifact(binary_path), test_artifact(text_path))
             .load_unpadded();
-    let handle = prover.add_binary(
-        execution_kind,
-        machine_type,
+    let handle = prover.add_binary_variants(
         binary_image,
         text_section,
+        &[(execution_kind, machine_type)],
         None,
-    );
+    )[0];
     let non_determinism_source = FlatResponsesSource::new_with_reads(non_determinism_reads);
     prover.commit_memory_and_prove(0, &handle, non_determinism_source)
 }
@@ -112,13 +111,12 @@ fn test_execution_prover_commit_then_prove() {
         test_artifact("examples/hashed_fibonacci/app.text"),
     )
     .load_unpadded();
-    let handle = prover.add_binary(
-        ExecutionKind::Unrolled,
-        MachineType::FullUnsigned,
+    let handle = prover.add_binary_variants(
         binary_image,
         text_section,
+        &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
         None,
-    );
+    )[0];
     // FlatResponsesSource reads are deterministic — feed the same value sequence
     // to the commit phase and the prove phase. Equivalent results should
     // match `commit_memory_and_prove` on a single source.

@@ -14,11 +14,8 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static>(
     binary_image: &[u32],
     text_section: &[u32],
     use_caches: bool,
-    _worker: &Worker,
+    worker: &Worker,
 ) -> CircuitSetup<A> {
-    let compiled_circuit = ::unified_reduced_machine::get_circuit(use_caches);
-    let table_driver = ::unified_reduced_machine::get_table_driver(binary_image);
-
     use common_constants::*;
     use cs::gkr_circuits::*;
     use riscv_transpiler::ir::ReducedMachineDecoderConfig;
@@ -46,12 +43,36 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static>(
         .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
         .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");
 
+    unified_reduced_machine_circuit_setup_from_decoder(
+        binary_image,
+        decoder_table,
+        use_caches,
+        worker,
+    )
+}
+
+/// Construct unified setup from a decoder shared with other execution variants.
+pub fn unified_reduced_machine_circuit_setup_from_decoder<A: GoodAllocator + 'static>(
+    binary_image: &[u32],
+    decoder_table: Vec<Option<ExecutorFamilyDecoderData>, A>,
+    use_caches: bool,
+    worker: &Worker,
+) -> CircuitSetup<A> {
+    let compiled_circuit = ::unified_reduced_machine::get_circuit(use_caches);
+    let table_driver = ::unified_reduced_machine::get_table_driver(binary_image);
+
     let trace_len = 1
         << <::unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<
             BabyBearField,
             true,
         >>::trace_len_log2();
-    let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &compiled_circuit);
+    let setup = GKRSetup::construct(
+        &table_driver,
+        &decoder_table,
+        trace_len,
+        &compiled_circuit,
+        worker,
+    );
 
     #[cfg(not(feature = "witness_eval_fn"))]
     let witness_eval_fn = None;

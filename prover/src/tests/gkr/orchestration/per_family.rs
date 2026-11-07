@@ -145,7 +145,7 @@ pub fn prove_built_family_trace_with_prover_config_and_gkr_backend<
         &backend, trace_len, worker,
     );
     let t_setup = std::time::Instant::now();
-    let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
+    let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit, worker);
     let setup_commitment = setup
         .commit_for_config_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
             &backend,
@@ -217,7 +217,7 @@ pub fn prove_built_family_trace_on_disk_setup(
         level,
     );
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
-    let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
+    let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit, worker);
 
     // 1) Commit the setup in memory (RS codewords + tree), the standard way. Unwrap the
     //    owned `SetupCommitment::InMemory` to reach the oracle for on-disk serialization.
@@ -333,7 +333,7 @@ pub fn prove_built_family_trace_with_rs_source(
         level,
     );
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
-    let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
+    let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit, worker);
     let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, worker);
 
     prove_configured_with_gkr_with_storage::<
@@ -665,7 +665,7 @@ pub fn prove_inits_and_teardowns(
     let twiddles = <DefaultBabyBearBackend as Backend<BabyBearField, BabyBearExt4>>::make_twiddles(
         &backend, trace_len, worker,
     );
-    let setup = GKRSetup::construct(&table_driver, &[], trace_len, &circuit);
+    let setup = GKRSetup::construct(&table_driver, &[], trace_len, &circuit, worker);
     let setup_commitment = setup.commit_for_config(twiddles.plain(), &prover_config, worker);
 
     let inits_and_teardowns_top_bits: Vec<u32> = (0..circuit.memory_layout.teardown_sets.len())

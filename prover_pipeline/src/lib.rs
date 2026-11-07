@@ -187,12 +187,11 @@ pub use execution_prover::{ExecutionKind, MachineType};
 /// stream, returning the assembled `(ProgramProof, Setups)` pair.
 pub trait ProveBackend {
     /// Backend precomputations run here, before any timed prove.
-    fn register(
+    fn register_variants(
         &mut self,
-        kind: ExecutionKind,
-        machine: MachineType,
         bin: &[u32],
         text: &[u32],
+        variants: &[(ExecutionKind, MachineType, &str)],
         cycles_bound: Option<u32>,
     );
 
@@ -218,6 +217,27 @@ pub struct ProveRequest<'a> {
     pub nd_words: Vec<u32>,
 }
 
+fn fsv_role(program: FsvProgram, machine: SetupMachine) -> &'static str {
+    match (program, machine) {
+        (FsvProgram::UnrolledBaseLayer, SetupMachine::UnrolledReduced) => {
+            "FSV unrolled base verifier (unrolled, reduced)"
+        }
+        (FsvProgram::UnrolledRecursionLayer, SetupMachine::UnrolledReduced) => {
+            "FSV unrolled recursion verifier (unrolled, reduced)"
+        }
+        (FsvProgram::UnrolledBaseLayer, SetupMachine::Unified) => {
+            "FSV unrolled base verifier (unified machine)"
+        }
+        (FsvProgram::UnrolledRecursionLayer, SetupMachine::Unified) => {
+            "FSV unrolled recursion verifier (unified machine)"
+        }
+        (FsvProgram::UnifiedRecursionLayer, SetupMachine::Unified) => {
+            "FSV unified recursion verifier (unified machine)"
+        }
+        other => unreachable!("unsupported pipeline role {other:?}"),
+    }
+}
+
 type HandleKey = (u8, u8, [u8; 32]);
 
 fn handle_key(kind: ExecutionKind, machine: MachineType, bin: &[u32], text: &[u32]) -> HandleKey {
@@ -231,7 +251,7 @@ fn handle_key(kind: ExecutionKind, machine: MachineType, bin: &[u32], text: &[u3
 
 struct PipelineBackend<B: execution_prover::backend::ExecutionBackend> {
     prover: execution_prover::ExecutionProver<B>,
-    handles: std::collections::BTreeMap<HandleKey, BinaryHandle>,
+    handles: std::collections::BTreeMap<HandleKey, (BinaryHandle, String)>,
 }
 
 impl<B: execution_prover::backend::ExecutionBackend> PipelineBackend<B> {
@@ -263,21 +283,44 @@ impl<B: execution_prover::backend::ExecutionBackend> PipelineBackend<B> {
 }
 
 impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBackend<B> {
-    fn register(
+    fn register_variants(
         &mut self,
-        kind: ExecutionKind,
-        machine: MachineType,
         bin: &[u32],
         text: &[u32],
+        variants: &[(ExecutionKind, MachineType, &str)],
         cycles_bound: Option<u32>,
     ) {
-        if let std::collections::btree_map::Entry::Vacant(entry) =
-            self.handles.entry(handle_key(kind, machine, bin, text))
-        {
-            let handle =
-                self.prover
-                    .add_binary(kind, machine, bin.to_vec(), text.to_vec(), cycles_bound);
-            entry.insert(handle);
+        let missing: Vec<_> = variants
+            .iter()
+            .copied()
+            .filter(|&(kind, machine, _)| {
+                !self
+                    .handles
+                    .contains_key(&handle_key(kind, machine, bin, text))
+            })
+            .collect();
+        if missing.is_empty() {
+            return;
+        }
+        for &(_, _, role) in &missing {
+            log::info!("registering {role}");
+        }
+        let kinds: Vec<_> = missing
+            .iter()
+            .map(|&(kind, machine, _)| (kind, machine))
+            .collect();
+        let handles =
+            self.prover
+                .add_binary_variants(bin.to_vec(), text.to_vec(), &kinds, cycles_bound);
+        for ((kind, machine, role), handle) in missing.into_iter().zip(handles) {
+            log::info!("registered {role} with key {handle:?}");
+            assert!(self
+                .handles
+                .insert(
+                    handle_key(kind, machine, bin, text),
+                    (handle, role.to_owned())
+                )
+                .is_none());
         }
     }
 
@@ -290,7 +333,9 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
             machine,
             nd_words,
         } = request;
-        let handle = self.handles[&handle_key(kind, machine, bin, text)];
+        let (handle, role) = &self.handles[&handle_key(kind, machine, bin, text)];
+        log::info!("producing proof for {role} with key {handle:?}");
+        let handle = *handle;
         let result = self.prover.commit_memory_and_prove(
             batch_id,
             &handle,
@@ -307,7 +352,7 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
         bin: &[u32],
         text: &[u32],
     ) -> Setups {
-        let handle = self.handles[&handle_key(kind, machine, bin, text)];
+        let handle = self.handles[&handle_key(kind, machine, bin, text)].0;
         program_prover::program_setups(&self.prover.program_artifacts(&handle))
     }
 }
@@ -591,11 +636,14 @@ impl ProgramProver {
         let fsv = &self.fsv;
         let target = self.config.target;
         let backend = self.backend.as_dyn();
-        backend.register(
-            ExecutionKind::Unrolled,
-            MachineType::FullUnsigned,
+        backend.register_variants(
             &loaded.bin_u32,
             &loaded.text_u32,
+            &[(
+                ExecutionKind::Unrolled,
+                MachineType::FullUnsigned,
+                "user program (unrolled, full-unsigned)",
+            )],
             cycles_bound,
         );
         let mut count = 1;
@@ -605,32 +653,52 @@ impl ProgramProver {
                 FsvProgram::UnrolledRecursionLayer,
             ] {
                 let guest = fsv.get(program, SetupMachine::UnrolledReduced);
-                backend.register(
+                let mut variants = vec![(
                     ExecutionKind::Unrolled,
                     MachineType::Reduced,
-                    guest.bin(),
-                    guest.text(),
-                    None,
-                );
-                count += 1;
+                    fsv_role(program, SetupMachine::UnrolledReduced),
+                )];
+                if target == ProofTarget::RecursionUnified {
+                    let bridge = fsv.get(program, SetupMachine::Unified);
+                    // Different Blake selections can select different binaries for
+                    // these roles; share only when the actual program is identical.
+                    if guest.bin() == bridge.bin() && guest.text() == bridge.text() {
+                        variants.push((
+                            ExecutionKind::Unified,
+                            MachineType::Reduced,
+                            fsv_role(program, SetupMachine::Unified),
+                        ));
+                    } else {
+                        backend.register_variants(
+                            bridge.bin(),
+                            bridge.text(),
+                            &[(
+                                ExecutionKind::Unified,
+                                MachineType::Reduced,
+                                fsv_role(program, SetupMachine::Unified),
+                            )],
+                            None,
+                        );
+                        count += 1;
+                    }
+                }
+                backend.register_variants(guest.bin(), guest.text(), &variants, None);
+                count += variants.len();
             }
         }
         if target == ProofTarget::RecursionUnified {
-            for program in [
-                FsvProgram::UnrolledBaseLayer,
-                FsvProgram::UnrolledRecursionLayer,
-                FsvProgram::UnifiedRecursionLayer,
-            ] {
-                let guest = fsv.get(program, SetupMachine::Unified);
-                backend.register(
+            let guest = fsv.get(FsvProgram::UnifiedRecursionLayer, SetupMachine::Unified);
+            backend.register_variants(
+                guest.bin(),
+                guest.text(),
+                &[(
                     ExecutionKind::Unified,
                     MachineType::Reduced,
-                    guest.bin(),
-                    guest.text(),
-                    None,
-                );
-                count += 1;
-            }
+                    fsv_role(FsvProgram::UnifiedRecursionLayer, SetupMachine::Unified),
+                )],
+                None,
+            );
+            count += 1;
         }
         log::info!(
             "prepared {count} pipeline binaries in {} ms",

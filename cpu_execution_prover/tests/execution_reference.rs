@@ -86,13 +86,12 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
     let (mine, my_setups) = {
         let mut prover =
             CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration::default());
-        let handle = prover.add_binary(
-            ExecutionKind::Unrolled,
-            MachineType::FullUnsigned,
+        let handle = prover.add_binary_variants(
             binary.clone(),
             text.clone(),
+            &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
             Some(CYCLES_BOUND as u32),
-        );
+        )[0];
         let result = prover.commit_memory_and_prove(1, &handle, non_determinism());
         let artifacts = prover.program_artifacts(&handle);
         program_prover::assemble_program_proof(&artifacts, result)

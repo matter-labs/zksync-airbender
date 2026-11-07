@@ -124,14 +124,24 @@ pub fn make_setup_for_non_mem_circuit<
     default_pc_value_in_padding: u32,
     decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
     use_caches: bool,
+    worker: &Worker,
 ) -> CircuitSetup<A> {
-    let circuit = circuit_common::risc_v_non_mem_get_circuit::<BabyBearField, C>(use_caches);
-    let table_driver = circuit_common::risc_v_non_mem_get_table_driver::<BabyBearField, C>();
+    let (circuit, table_driver) = worker.pool.install(|| {
+        cs::gkr_compiler::compile_unrolled_circuit_with_table_driver::<BabyBearField>(
+            &|cs| C::table_addition_fn(cs, &[]),
+            &|cs| C::circuit_fn(cs, &[]),
+            common_constants::ROM_WORD_SIZE,
+            C::trace_len_log2() as usize,
+            0,
+            use_caches,
+        )
+    });
     let setup = GKRSetup::construct(
         &table_driver,
         decoder_table_data,
         1 << C::trace_len_log2(),
         &circuit,
+        worker,
     );
 
     let mut witness_gen_data = Vec::new_in(A::default());
@@ -167,16 +177,32 @@ pub fn make_setup_for_with_mem_circuit<
     bytecode: &[u32],
     decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
     use_caches: bool,
+    worker: &Worker,
 ) -> CircuitSetup<A> {
-    let circuit =
-        circuit_common::risc_v_with_mem_get_circuit::<BabyBearField, C>(use_caches, bytecode);
-    let table_driver =
-        circuit_common::risc_v_with_mem_get_table_driver::<BabyBearField, C>(bytecode);
+    assert!(bytecode.is_empty() || bytecode.len() == common_constants::ROM_WORD_SIZE);
+    let (circuit, table_driver) = worker.pool.install(|| {
+        cs::gkr_compiler::compile_unrolled_circuit_with_table_driver::<BabyBearField>(
+            &|cs| C::table_addition_fn(cs, if use_caches { bytecode } else { &[] }),
+            &|cs| C::circuit_fn(cs, if use_caches { bytecode } else { &[] }),
+            common_constants::ROM_WORD_SIZE,
+            C::trace_len_log2() as usize,
+            C::NUM_INIT_AND_TEARDOWN_PAIRS,
+            use_caches,
+        )
+    });
+    // Without caches the compiled shape uses dummy ROM contents, while setup
+    // columns still bind the actual binary.
+    let table_driver = if use_caches {
+        table_driver
+    } else {
+        circuit_common::risc_v_with_mem_get_table_driver::<BabyBearField, C>(bytecode)
+    };
     let setup = GKRSetup::construct(
         &table_driver,
         decoder_table_data,
         1 << C::trace_len_log2(),
         &circuit,
+        worker,
     );
 
     let mut witness_gen_data = Vec::new_in(A::default());

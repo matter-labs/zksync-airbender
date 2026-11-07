@@ -152,7 +152,34 @@ pub fn preprocess_bytecode<
 >(
     bytecode: &[u32],
 ) -> Vec<Instruction> {
+    preprocess_bytecode_with_delegation_ranges::<OPT, PROTECT_AGAINST_MID_DELEGATION_JUMPS>(
+        bytecode,
+    )
+    .0
+}
+
+/// Decode once for setup tables and the simulator. Setup tables expose every
+/// delegation call; the simulator rejects entry into a delegation's interior.
+pub fn preprocess_bytecode_for_setup_and_execution<OPT: DecodingOptions>(
+    bytecode: &[u32],
+) -> (Vec<Instruction>, Vec<Instruction>) {
+    let (setup, continuations) = preprocess_bytecode_with_delegation_ranges::<OPT, false>(bytecode);
+    let mut execution = setup.clone();
+    let illegal = Instruction::from_imm(InstructionName::Illegal, 0, 0, 0, 0);
+    for continuation in continuations {
+        execution[continuation].fill(illegal);
+    }
+    (setup, execution)
+}
+
+fn preprocess_bytecode_with_delegation_ranges<
+    OPT: DecodingOptions,
+    const PROTECT_AGAINST_MID_DELEGATION_JUMPS: bool,
+>(
+    bytecode: &[u32],
+) -> (Vec<Instruction>, Vec<core::ops::Range<usize>>) {
     let mut i = 0;
+    let mut delegation_continuations = Vec::new();
 
     let illegal_instr = Instruction::from_imm(InstructionName::Illegal, 0, 0, 0, 0);
 
@@ -837,6 +864,7 @@ pub fn preprocess_bytecode<
                                     instructions[i + j] = instr;
                                 }
                             }
+                            delegation_continuations.push(i + 1..i + num_calls);
                             i += num_calls;
                             // short-cut
                             continue;
@@ -884,6 +912,7 @@ pub fn preprocess_bytecode<
                                     instructions[i + j] = instr;
                                 }
                             }
+                            delegation_continuations.push(i + 1..i + num_calls);
                             i += num_calls;
                             // short-cut
                             continue;
@@ -912,6 +941,7 @@ pub fn preprocess_bytecode<
                                     );
                                 }
                             }
+                            delegation_continuations.push(i + 1..i + NUM_KECCAK_F1600_CALLS);
                             i += NUM_KECCAK_F1600_CALLS;
                             continue;
                         }
@@ -960,6 +990,7 @@ pub fn preprocess_bytecode<
                                     instructions[i + j] = instr;
                                 }
                             }
+                            delegation_continuations.push(i + 1..i + num_calls);
                             i += num_calls;
                             // short-cut
                             continue;
@@ -1010,7 +1041,7 @@ pub fn preprocess_bytecode<
         i += 1;
     }
 
-    instructions
+    (instructions, delegation_continuations)
 }
 
 #[cfg(test)]

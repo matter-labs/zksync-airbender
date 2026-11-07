@@ -238,7 +238,7 @@ fn prepare(circuit: CanonicalCircuit, mode: SoundnessMode, worker: &Worker) -> P
     {
         assert!(super::check_satisfied(&compiled, &witness));
     }
-    let setup = GKRSetup::construct(&table_driver, &decoder_table, rows, &compiled);
+    let setup = GKRSetup::construct(&table_driver, &decoder_table, rows, &compiled, worker);
     // The witness and setup own their data. Do not retain lookup maps during
     // commitments and GKR/WHIR proving, especially the subword ROM tables.
     drop(table_driver);

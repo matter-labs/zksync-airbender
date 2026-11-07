@@ -321,6 +321,7 @@ pub fn prove_built_unified_trace(
         decoder_table,
         trace_len,
         unified_circuit,
+        worker,
     );
     let unified_setup_commitment =
         unified_setup.commit_for_config(&unified_twiddles, &prover_config, worker);

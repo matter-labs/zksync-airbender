@@ -352,7 +352,13 @@ mod imp {
                 trace_len,
                 setup_worker,
             );
-        let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
+        let setup = GKRSetup::construct(
+            table_driver,
+            decoder_table_data,
+            trace_len,
+            circuit,
+            setup_worker,
+        );
         let setup_commitment =
             setup.commit_for_config(twiddles.plain(), prover_config, setup_worker);
         println!(

@@ -125,6 +125,7 @@ fn build_input_fixture(
             &decoder_table,
             compiled_circuit.trace_len,
             &compiled_circuit,
+            &worker,
         )
     });
     drop(table_driver);

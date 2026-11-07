@@ -7,8 +7,8 @@ use execution_prover_model::circuit_type::CircuitType;
 use fft::GoodAllocator;
 
 /// Collision with caller-chosen batch ids is structurally impossible: setup
-/// batches are fully drained before the constructor / `add_binary` returns
-/// (`add_binary` is `&mut self`), and user batches are retired from the
+/// batches are fully drained before the constructor / `add_binary_variants` returns
+/// (`add_binary_variants` is `&mut self`), and user batches are retired from the
 /// backend before `commit_memory`/`prove` return.
 pub(super) const SETUP_BATCH_ID: u64 = 0;
 
