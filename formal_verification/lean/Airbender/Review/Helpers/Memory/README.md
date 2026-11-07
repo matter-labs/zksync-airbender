@@ -323,3 +323,13 @@ segment states/final matching/ROM-byte/misa frames/decoder replay. [Public root]
 uses independent public shadow seeds, full original decoding/native acceptance,
 aligned cells and meaningful code capacity; no desired reads/states/frames supplied.
 Retained LOAD/STORE/normal/fetched/common execution and physical enforcement remain open.
+
+## Common native mixed memory-history observations
+
+[Unified port domains and projected history](ReducedMachineUnified.lean) describe
+actual chronological Sail states/segments, final cell matching and code/misa
+frames. [The short public roots](../../Trace/Families/ReducedMachine/UnifiedHistory.lean)
+derive these from original public setup, independent shadow initialization and
+full native matching. Every shadow event remains native-matched; RAM refreshes
+and SW OLDREAD/write remain architectural. No CSR premise or desired per-row
+profile/read/state/frame answer is public. Retained mixed execution is separate.

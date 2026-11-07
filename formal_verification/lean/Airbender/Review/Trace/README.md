@@ -471,3 +471,14 @@ retirement along the native PC chain, with exact terminal architectural readers.
 Source/read/write/range/address/configuration/state/order/replay are derived; all
 independent shadow tokens stay native-matched. Empty programs retain CSR freedom.
 Common mixed supported memory and physical/global boundaries remain separate.
+
+## Common seven-profile native projected history
+
+[Unified original decoding](Families/ReducedMachine/UnifiedDecoder.lean),
+[initialized word ranges](Families/ReducedMachine/UnifiedValues.lean) and
+[common history/domain roots](Families/ReducedMachine/UnifiedHistory.lean) now
+cover six-profile support plus LW/SW through ONE actual initialized chain. All
+native shadow tokens remain; only architectural Sail transfers are filtered.
+Chronological states, code/misa frames and stateful source replay are derived.
+Common retained/normal/fetched instruction execution remains next; arbitrary
+logical public source images are not identified with exact native ROM.

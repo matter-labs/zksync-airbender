@@ -3340,3 +3340,30 @@ positive NONEMPTY117-equation accepted LW/SW. Common mixed memory, other ordinar
 protocol/init/teardown and general physical/compiler/crypto/completeness/exception/
 MMIO scopes remain separate. No native finding, issue assumption, fix, new axiom
 or parity claim.
+
+## Common seven-profile projected-history boundary (7 November 2026)
+
+[Unified original decoding](Airbender/Review/Trace/Families/ReducedMachine/UnifiedDecoder.lean)
+wraps unchanged six-profile support plus LW/SW. Original complete public membership
+and actual native packing derive exact entry/query/profile identities. [The native
+local rules](Airbender/Proofs/ReducedMachine/NativeUnifiedLocal.lean) select actual
+per-profile write/x0/domain results before ONE shared initialized range/zero/
+projected-memory history. Public incoming JAL alignment precedes range induction.
+The [short common history/domain roots](Airbender/Review/Trace/Families/ReducedMachine/UnifiedHistory.lean)
+keep all native shadow tokens and timestamps. Only whole ROM-shadow addresses
+filter from Sail; RAM load refreshes and SW OLDREAD/unmasked writes remain. All
+row states/segments, native chronological order/final cell matching, ROM-byte/misa
+frames and original stateful source replay are derived. There is no public desired
+source/read/write/range/result/state/PC/order/replay/profile/domain/preservation
+answer or table equivalence premise.
+
+The input boundary is original full unified logical public construction,
+independent ShadowImageBoundary and fixedData native acceptance/FULL decoding,
+tracked alignment/code capacity. No CSR availability is required at this scope.
+It does not equate arbitrary logical public code with fixed native8wordROM, prove
+retained/normal/fetched mixed instruction execution, physical seed/setup/ROM/boot
+fidelity, protocol terminal enforcement or completeness. Existing six-profile
+arbitrary-code and separate exact-ROM memory execution roots stay unchanged.
+Eighteen conditional-native/original-source/complete-EMPTY regressions are not
+positive NONEMPTY117-equation/22-lookup accepted memory/mixed witnesses. No native
+defect, issue assumption, production fix or new axiom is introduced.

@@ -890,3 +890,28 @@ sequencing at default proof limits. No old standalone compiled native identity/
 acceptance/positive witness transfers. Common mixed memory and general Rust/public/
 physical/compiler/crypto/completeness/protocol/init/teardown remain separate.
 No native finding, issue assumption, production fix, new axiom or parity claim.
+
+## Seven-profile native initialized history (7 November 2026)
+
+[UnifiedMode](Airbender/Review/Circuits/ReducedMachine/UnifiedDecoder.lean) wraps
+unchanged SupportedMode plus LW/SW without narrowing existing ordinary public
+source/execution scopes. Exact original entry/instruction/PC/data/ten-query
+transport derives the selected checked native profile. New actual common
+write/x0/domain rules feed ONE unchanged range induction and common initialized
+projected Sail history; no old all-events-GPR memory frame is transferred.
+The [public roots](Airbender/Review/Trace/Families/ReducedMachine/UnifiedHistory.lean)
+derive every row state/segment, chronological order/final architectural matching,
+ROM-byte/misa frames and stateful source replay while full native matching retains
+all independent shadow tokens. No CSR or desired local answer is required.
+
+Fifteen modules/tests record26 exact parent2cc4535 origins in
+[provenance](artifacts/provenance.json), reusing PURE mapping/shadow/clock/history/
+code helpers and checked actual native per-profile laws. Eighteen independent
+original-source/conditional-native/complete-EMPTY regressions do not establish
+NONEMPTY native memory/mixed acceptance. Common retained/normal/fetched execution
+is NEXT, with narrowly constructor-activated memory reference configuration and
+local CSR/ordinary-address/ROM bindings derived at actual common states. Arbitrary
+logical public images remain distinct from exact NativeROM input construction.
+No native/Sail/fixture/dependency change, defect/new axiom or parity is claimed;
+worker/protocol/padding/terminal/init/teardown and physical/general refinement
+boundaries remain open.

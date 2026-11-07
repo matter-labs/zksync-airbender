@@ -487,3 +487,25 @@ initialization/platform/domain scopes remain; empty programs stay CSR-free.
 and [empty terminal checks](../../../../../Tests/NativeReducedWordMemoryFetched.lean)
 are original-reference/complete-empty evidence, not full nonempty native memory
 witnesses. Common mixed memory-aware histories/profile transport remain next.
+
+## Common seven-profile initialized memory-aware history
+
+[Unified decoding](UnifiedDecoder.lean) wraps unchanged SupportedMode plus LW/SW.
+[All native read/write/terminal ranges](UnifiedValues.lean) use one shared time
+induction after original public decoding selects actual per-profile write laws;
+JAL alignment is derived first. [Common history and actual port domains](UnifiedHistory.lean)
+derive all projected chronological states/segments/final architectural matching,
+ROM-byte/misa frames and original stateful decoder replay. All independent shadow
+tokens/timestamps stay native-matched. LW ROM shadow alone filters from Sail;
+RAM refreshes and SW OLDREAD/unmasked memory write stay architectural.
+
+No CSR premise, per-row profile/read/range/result/state/PC/order/frame/preservation
+answer or table-equivalence premise is added. Existing six-profile arbitrary
+source/execution scopes remain unchanged; new arbitrary unified logical images
+are not equated with native8wordROM. Common retained/normal/fetched execution is
+NEXT after actual local transfers/retirement/configuration bindings. Eighteen
+[original-source](../../../../../Tests/NativeReducedUnifiedDecoder.lean)/
+[conditional-native and complete-EMPTY tests](../../../../../Tests/NativeReducedUnifiedHistory.lean)
+are not full positive NONEMPTY117-equation/22-lookup accepted memory/mixed rows
+or physical fidelity/completeness/parity. Earlier six-profile-only snapshots
+above retain their historical scope.

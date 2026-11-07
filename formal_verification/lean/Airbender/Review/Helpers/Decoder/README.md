@@ -348,3 +348,11 @@ PC/byte/instruction/query identities before native jump use. Empty/ordinary and 
 configuration scopes remain narrow; no original decoding implies CSR availability.
 
 [Native LW/SW routing](../../Circuits/ReducedMachine/WordMemoryTheorems.lean) keeps1025/16386masks explicit. Original full public memory decoding and source/rd/x0/immediate fields remain next; no mask answer is transferred from standalone families.
+
+## Native reduced unified membership
+
+[The full-membership interface](ReducedMachineUnified.lean) combines original
+six-profile and LW/SW public decoding through a separate wrapper. [Public source
+recovery](../../Trace/Families/ReducedMachine/UnifiedDecoder.lean) derives exact
+original entries/queries; actual native packing excludes holes/padding. This is
+logical original public setup, not general Rust export or fixed-ROM equivalence.

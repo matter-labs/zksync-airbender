@@ -559,3 +559,13 @@ initial platform/domain inputs stay explicit; empty programs remain CSR-free.
 [Normal](../../../../Tests/NativeReducedWordMemoryRetirement.lean) and [empty fetched](../../../../Tests/NativeReducedWordMemoryFetched.lean)
 regressions are not full nonempty native memory witnesses. Common mixed memory
 requires fresh projected histories/per-profile frames; no all-events-GPR reuse.
+
+## Common seven-profile projection and native laws
+
+[Unified original projection](UnifiedDecoder.lean) wraps unchanged six-profile
+support plus LW/SW. [Exact native profile transport](../../../Proofs/ReducedMachine/NativeUnifiedDecoder.lean)
+retains original instructions/PC/bytes and all ten query fields. [Fresh common
+local laws](../../../Proofs/ReducedMachine/NativeUnifiedLocal.lean) select actual
+write/x0/three-port domains before common initialized induction. SW memory writes
+remain unmasked; only LW ROM shadows filter from Sail. This local/history
+foundation does not yet prove common mixed retained instruction execution.

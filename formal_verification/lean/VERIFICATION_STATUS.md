@@ -34,6 +34,54 @@ The historical 119-equation/141-variable/13-region artifact is preserved separat
 It is not assumed to be the current source-generated machine. Stage-two source
 descriptors remain opaque. These are coverage/fidelity results, not native defects.
 
+## Common seven-profile initialized projected history (7 November 2026)
+
+[The new original projection](Airbender/Review/Circuits/ReducedMachine/UnifiedDecoder.lean)
+wraps the unchanged six-profile SupportedMode with LW/SW. Existing supported
+source-image and execution interfaces retain their scope. [Public decoding](Airbender/Review/Trace/Families/ReducedMachine/UnifiedDecoder.lean)
+recovers original bytes, stateful Sail instructions and exact ten-field queries
+from complete sparse/padded membership. Native eighteen-bit packing excludes
+holes and the minus-one tail. [Profile transport](Airbender/Proofs/ReducedMachine/NativeUnifiedDecoder.lean)
+derives each selected original entry; callers supply no per-row profile answer.
+
+[Actual local laws](Airbender/Proofs/ReducedMachine/NativeUnifiedLocal.lean)
+select the already checked native write-preservation, x0 and three-port domain
+rules. Incoming JAL alignment is derived from public decoding before the range
+induction. [The common range root](Airbender/Review/Trace/Families/ReducedMachine/UnifiedValues.lean)
+then derives EVERY actual native read/write/terminal range through ONE unchanged
+initialized time induction and independent public shadow seeds. LW full-address
+ROM shadows remain in native matching and filter only from Sail transfers; RAM
+load refreshes and SW OLDREAD/unmasked memory writes remain architectural. All
+readonly refreshes, aliases and raw x0 events remain.
+
+[The common projected history and port-domain roots](Airbender/Review/Trace/Families/ReducedMachine/UnifiedHistory.lean)
+derive actual chronological projected Sail states, clock order/final matching,
+EVERY ROM-byte/misa frame, all row segments and original stateful source replay.
+Inputs are original FULL unified public construction, independent shadow image
+initialization, exact fixedData native acceptance/FULL decoding, tracked alignment
+and public code capacity. No desired read/write/range/result/state/PC/order/replay,
+preservation, expected profile/domain or table-equivalence answer is supplied.
+These decoder/range/history roots require no CSR availability. Arbitrary logical
+public source images are NOT identified with the fixed eight-word native ROM.
+
+Eighteen [decoder](Tests/NativeReducedUnifiedDecoder.lean) and
+[history regressions](Tests/NativeReducedUnifiedHistory.lean) check independent
+original LW/SW/ADD bytes, all seven masks, negative-immediate/x0 fields, actual
+port/range/x0 corruption rejection, code windows and complete actual-native EMPTY
+history with architectural x0 plus independent shadow123 and no byte/CSR premise.
+They are not full positive NONEMPTY117-equation/22-lookup memory/mixed witnesses.
+Fifteen new modules/tests record26 exact parent2cc4535 helper/template origins.
+No production/Sail/native/literal/dependency change or established native defect.
+
+**Common retained-instruction/normal/fetched execution with LW/SW remains open.**
+Next connect all profile transfers and retirement to THESE common states, with
+memory configuration activated only by original public memory constructors and
+local CSR/ordinary-address obligations derived through actual past histories.
+Preserve branch/JAL/JALR configuration distinctions and the older arbitrary
+ordinary public source-image scopes. Exact NativeROM memory execution remains an
+explicit separate scope; general Rust/public preprocessing/physical ROM,
+workers/protocol/padding/terminal/init/teardown and completeness remain open.
+
 ## Original native LW/SW normal and fetched execution (7 November 2026)
 
 [The new short public execution root](Airbender/Review/Trace/Families/ReducedMachine/WordMemoryFetchedExecution.lean)
