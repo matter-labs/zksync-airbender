@@ -1,5 +1,51 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Partial actual worker write-word closure (8 November 2026)
+
+[WorkerWriteSlices](Airbender/Review/Circuits/ReducedMachine/WorkerWriteSlices.lean)
+records bounded-or-copy writes at35 actual worker ports. WordBound means both
+canonical field limbs are below65536; a copy preserves both old value fields.
+The eight arithmetic state ports9..12 and17..20 remain explicitly open. Covered
+is conclusion scope only: every port, timestamp and source equation stays in
+acceptance and the complete memory ledger.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeWorkerWriteSlices.lean)
+binds actual lookup syntax before witness evaluation. Generic radix128/256/512
+reconstruction precedes native data. Exact lookup-piece bounds and native linear
+equations derive eight direct state words with bounded limbs. Native product
+and OR equations derive the finalization selector as Boolean from actual flags;
+this assumes no one-hot mask or round schedule. The first eight state words
+select bounded lookup results when enabled and copy both prior values otherwise.
+Both readonly GPRs and all16 message ports copy values while retaining actual
+refresh timestamps. The control GPR12 write is bounded using unchanged native
+control equations. Full352-equation/296-query BODY acceptance supplies all facts,
+with no prior read bound, expected write, worker result or new Accepted relation.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/WorkerWriteSlicesTheorems.lean)
+expose the local BODY result and a same-source counted joint result. Every actual
+ordinary worker gets these effects, including inactive rows. Positive main count,
+every prefix guard, all prior exact latest-read/key/path results and the old
+explicit SourceIdentity remain on the same observations. Inactive AUX/m0 poles,
+inactiveD, all43 ports, caller/decoder equations, OLDREAD, unmasked writes and
+x0 times stay; no caller request is filtered. Raw clocks are never recoded.
+
+[Sixteen controls](Tests/NativeWorkerWriteSlices.lean) check the35 covered and
+eight open slots, all43 retained positions, readonly GPR/message values, all
+three radix maxima, a wide-limb rejection, the unchanged complete positive LOCAL
+worker BODY, the derived selector, actual observations and full conditional roots.
+The old local fixture still has zero-pointer aliases. It is not a compatible
+nonempty global/source/worker/physical witness, attack or native defect.
+
+Four modules add26 roots/11 exact parent references. All6,244 prior ordered roots
+and exact audit bytes remain addition-only; native107 pins, dependencies, v3
+reference, prior proofs/acceptance/artifacts and FINDINGS remain unchanged. No
+native adoption/pin/intake, production/importer/exporter/fixture change, generation,
+heavy replay, issue assumption, fix or project axiom. The remaining eight worker
+arithmetic writes, general initialized read/write word bounds, Clean online
+history, worker rounds/results, original CSR/MOP/worker Sail, caller activity
+and converse accounting, physical cryptography, completeness and parity stay open.
+
+
 ## Conditional exact latest reads in the derived order (8 November 2026)
 
 [LatestReads](Airbender/Review/Circuits/ReducedMachine/LatestReads.lean) records

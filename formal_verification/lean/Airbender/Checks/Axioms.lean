@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.WorkerWriteSlices
+import Airbender.Proofs.ReducedMachine.NativeWorkerWriteSlices
+import Airbender.Review.Circuits.ReducedMachine.WorkerWriteSlicesTheorems
+import Tests.NativeWorkerWriteSlices
+
 import Airbender.Review.Circuits.ReducedMachine.LatestReads
 import Airbender.Proofs.ReducedMachine.NativeLatestReads
 import Airbender.Review.Circuits.ReducedMachine.LatestReadsTheorems
@@ -7218,3 +7223,30 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeLatestReads.all32_register_seeds
 #print axioms Airbender.Tests.NativeLatestReads.complete_conditional
 #print axioms Airbender.Tests.NativeLatestReads.complete_conditional_counted
+
+#print axioms Airbender.NativeWorkerWriteSliceProofs.reconstruct
+#print axioms Airbender.NativeWorkerWriteSliceProofs.finalization_bit
+#print axioms Airbender.NativeWorkerWriteSliceProofs.direct_words
+#print axioms Airbender.NativeWorkerWriteSliceProofs.finish_written
+#print axioms Airbender.NativeWorkerWriteSliceProofs.readonly_values
+#print axioms Airbender.NativeWorkerWriteSliceProofs.local_effects
+#print axioms Airbender.NativeWorkerWriteSliceProofs.effects
+#print axioms Airbender.NativeWorkerWriteSliceProofs.counted
+#print axioms Airbender.NativeWorkerWriteSlices.native_worker_write_slices
+#print axioms Airbender.NativeWorkerWriteSlices.native_counted_worker_write_slices
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.covered_count
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.uncovered_exact
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.all43_retained
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.readonly_gpr
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.readonly_messages
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.radix128_max
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.radix512_max
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.radix256_max
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.wide_limb_not_word
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.complete_positive_body
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.derived_finalization_bit
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.covered_write_observation
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.all_actual_workers
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.inactive_read_retained
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.complete_conditional
+#print axioms Airbender.Tests.NativeWorkerWriteSlices.complete_conditional_counted

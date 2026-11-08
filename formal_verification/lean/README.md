@@ -1759,3 +1759,10 @@ and prior extraction remain. Word values, online history and execution stay open
 same-address write in proof rank, and full raw-token equality at the old-read
 rank. Prior boundaries and all ports remain. General word bounds, Clean online
 history, worker reference execution and accounting stay open.
+
+## Partial actual worker word writes
+
+[Bounded-or-copy worker writes](Airbender/Review/Circuits/ReducedMachine/WorkerWriteSlicesTheorems.lean) derives effects at35 actual ports
+from full BODY/queries, without input word bounds. Eight arithmetic state ports
+remain open; all43 ports/timestamps and prior source boundaries stay. General
+initialized word bounds and worker execution are not yet established.
