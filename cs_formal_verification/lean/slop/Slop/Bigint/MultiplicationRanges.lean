@@ -7,21 +7,16 @@ public import Slop.Bigint.AdditiveFields
 namespace Airbender.Bigint.Multiplication.Proofs
 open Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 4000000
 
 def rangeLimit (tag : Nat) : Nat := 2 ^ (tag - 13)
 
 private theorem range_rows (index : Fin 1390592) {tag : Nat}
     (selected : (setupRow index).2.2 = tag) (tags : 22 ≤ tag ∧ tag ≤ 26) :
     (setupRow index).1 < rangeLimit tag ∧ (setupRow index).2.1 < rangeLimit tag := by
-  have size := index.isLt
-  have cases : tag = 22 ∨ tag = 23 ∨ tag = 24 ∨ tag = 25 ∨ tag = 26 := by omega
-  rcases cases with rfl | rfl | rfl | rfl | rfl
-  all_goals unfold setupRow at selected ⊢
-  all_goals dsimp only at selected ⊢
-  all_goals split_ifs at selected ⊢ <;> simp [rangeLimit] at selected ⊢
-  all_goals omega
+  rcases Bigint.Proofs.row_cases index with ⟨_, _, first, second⟩ | low
+  · rw [selected] at first second
+    exact ⟨first, second⟩
+  · omega
 
 /-- Interpret the five carry-range tags using actual Clean membership witnesses. -/
 theorem range_values {p tag : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
@@ -47,21 +42,7 @@ theorem source_low_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat �
       w (99 + i.val) = (((w Variables.leftLimbs[i]).val % 256 : Nat) : ZMod p) ∧
       w (115 + i.val) = (((w Variables.rightLimbs[i]).val % 256 : Nat) : ZMod p) := by
   intro i
-  have left := Verification.lookup_of_holds h ⟨34 + i.val,
-    by rw [lookup_count]; have := i.isLt; omega⟩
-  have right := Verification.lookup_of_holds h ⟨50 + i.val,
-    by rw [lookup_count]; have := i.isLt; omega⟩
-  fin_cases i
-  all_goals have leftPair := Bigint.Proofs.low_byte_value hp left (by
-    simp [Expression.eval, Verification.environment])
-  all_goals have rightPair := Bigint.Proofs.low_byte_value hp right (by
-    simp [Expression.eval, Verification.environment])
-  all_goals constructor
-  all_goals first
-    | simpa [importedConstraints, FlatOperation.lookups, Expression.eval,
-        Verification.environment, Variables.leftLimbs] using leftPair.2
-    | simpa [importedConstraints, FlatOperation.lookups, Expression.eval,
-        Verification.environment, Variables.rightLimbs] using rightPair.2
+  exact ⟨(Bigint.Proofs.low_byte_pairs hp h i).1.2, (Bigint.Proofs.low_byte_pairs hp h i).2.2⟩
 
 /-- No inverse assumption is needed to recover a source limb's two bytes. -/
 theorem limb_bytes {p : Nat} [NeZero p] {source low : ZMod p}
@@ -96,6 +77,36 @@ def carryTag (i : Fin 31) : Nat :=
   else if i.val ≤ 3 ∨ 27 ≤ i.val then 24
   else if i.val ≤ 7 ∨ 23 ≤ i.val then 25 else 26
 
+/-- A carry as a query entry: `0 + 0 + 30720 * w (131 + i) + (-30720) * w (163 + i)`. -/
+abbrev carryEntry {p : Nat} (i : Nat) : Expression (ZMod p) :=
+  (((Shapes.constant (Int.ofNat 0)).add (Shapes.constant (Int.ofNat 0))).add
+    (Shapes.product (Shapes.constant (Int.ofNat 30720)) (Shapes.cell (131 + i)))).add
+    (Shapes.product (Shapes.constant (Int.negSucc 30719)) (Shapes.cell (163 + i)))
+
+theorem carry_entry_eval {p : Nat} [Fact p.Prime] (w : Nat → ZMod p) (i : Fin 31) :
+    (carryEntry i.val : Expression (ZMod p)).eval (Verification.environment w) = carry w i := by
+  simp only [Expression.eval, Verification.environment, carry]
+  push_cast
+  ring
+
+private theorem carry_query_lt (i : Fin 31) : carryQuery i < 95 := by
+  unfold carryQuery
+  split_ifs <;> omega
+
+/-- Lookup `carryQuery i` ranges carry `i` (in its first or second entry) under tag `carryTag i`. -/
+private theorem carry_shape {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 3)) (i : Fin 31) :
+    ∃ other : Expression (ZMod p),
+      (FlatOperation.lookups (importedConstraints setup)).get
+          ⟨carryQuery i, by rw [lookup_count]; exact carry_query_lt i⟩ =
+        Lookup.mk setup.toRaw #v[carryEntry i.val, other, Shapes.tagEntry (carryTag i)] ∨
+      (FlatOperation.lookups (importedConstraints setup)).get
+          ⟨carryQuery i, by rw [lookup_count]; exact carry_query_lt i⟩ =
+        Lookup.mk setup.toRaw #v[other, carryEntry i.val, Shapes.tagEntry (carryTag i)] := by
+  fin_cases i <;>
+    simp (config := { decide := true }) only [carryQuery, carryTag, ↓reduceIte] <;>
+    op_index <;>
+    first | exact ⟨_, Or.inl rfl⟩ | exact ⟨_, Or.inr rfl⟩
+
 /-- Every multiplication carry is below 8192, derived from all 29 native
     carry queries (two queries range two carries each). -/
 theorem carry_ranges {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
@@ -104,19 +115,17 @@ theorem carry_ranges {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZM
     ∀ i : Fin 31, (carry w i).val < rangeLimit (carryTag i) := by
   intro i
   have member := Verification.lookup_of_holds h ⟨carryQuery i,
-    by rw [lookup_count]; fin_cases i <;> decide⟩
+    by rw [lookup_count]; exact carry_query_lt i⟩
   have tags : 22 ≤ carryTag i ∧ carryTag i ≤ 26 := by
     unfold carryTag
     split_ifs <;> decide
-  fin_cases i
-  all_goals have ranges := range_values hp tags member (by
-    simp [carryTag, Expression.eval, Verification.environment])
-  all_goals simp [carryTag, Expression.eval,
-    Verification.environment] at ranges
-  all_goals norm_num [carry, carryTag]
-  all_goals solve
-    | (convert ranges.1 using 1; congr 1; ring)
-    | (convert ranges.2 using 1; congr 1; ring)
+  obtain ⟨other, shape | shape⟩ := carry_shape (p := p) setupTable i
+  all_goals rw [shape] at member
+  all_goals have ranges := range_values hp tags member (Shapes.tag_eval w _)
+  all_goals simp only [Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_zero,
+    List.getElem_cons_succ, carry_entry_eval] at ranges
+  · exact ranges.1
+  · exact ranges.2
 
 theorem carry_bounded {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)

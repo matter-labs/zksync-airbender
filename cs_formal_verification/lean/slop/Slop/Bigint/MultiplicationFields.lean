@@ -7,8 +7,6 @@ public import Slop.Bigint.OpIndex
 namespace Airbender.Bigint.Multiplication.Proofs
 open Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 4000000
 
 theorem merged_product {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
@@ -28,13 +26,8 @@ theorem merged_product {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   all_goals have f6 := flags 6
   all_goals norm_num [Variables.operations] at f0 f1 f2 f3 f4 f5 f6
   all_goals intro i
-  all_goals have gate := Verification.assertion_of_holds h ⟨51 + i.val,
-    by rw [constraint_count]; have := i.isLt; omega⟩
-  all_goals fin_cases i
-  all_goals op_index at gate
-  all_goals simp only [Expression.eval, Verification.environment, f0, f1, f2, f3, f4, f5, f6] at gate
-  all_goals push_cast at gate
-  all_goals linear_combination gate
+  all_goals rw [Shapes.definition_holds h i, f0, f1, f2, f3, f4, f5, f6]
+  all_goals ring
 
 /-- Selected multiplication ranges all 32 product limbs, including the low half
     that shares its range query with the additive branches. -/
@@ -52,12 +45,8 @@ theorem product_ranges {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     intro i
     have member := Verification.lookup_of_holds h ⟨i.val,
       by rw [lookup_count]; have := i.isLt; omega⟩
-    fin_cases i
-    all_goals op_index at member
-    all_goals have bound := Verification.range16_bound member
-    all_goals push_cast at bound
-    all_goals simpa only [Expression.eval, Verification.environment, zero_add, add_zero, one_mul, mul_one,
-      Nat.reduceAdd] using bound
+    rw [(Shapes.range_shape setup i).1] at member
+    simpa only [Shapes.entry_eval] using Verification.range16_bound member
   intro i
   by_cases lower : i.val < 16
   · exact low ⟨i.val, lower⟩

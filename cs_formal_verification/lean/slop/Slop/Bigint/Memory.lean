@@ -4,14 +4,13 @@ public import Slop.Bigint.Lookups
 public import Slop.Bigint.AdditiveGates
 public import Slop.Bigint.MultiplicationFields
 public import Slop.Bigint.MultiplicationWriteback
+public import Mathlib.Tactic.IntervalCases
 
 @[expose] public section
 
 namespace Airbender.Bigint.Proofs
 open Arithmetic Trace
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 4000000
 
 theorem operation_cases [Fact p.Prime] {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable)) :
@@ -43,17 +42,14 @@ theorem empty_writes [Fact p.Prime] {w : Nat → ZMod p}
   norm_num [Variables.operations] at f0 f1 f2 f3 f4 f5 f6
   constructor
   · intro i
-    have gate := Verification.assertion_of_holds h ⟨67 + i.val,
-      by rw [constraint_count]; have := i.isLt; omega⟩
-    fin_cases i
-    all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, f0, f1, f2, f3, f4, f5, f6] at gate
-    all_goals simpa [Variables.writtenLimbs] using gate
+    rw [Shapes.write_holds h i, f0, f1, f2, f3, f4, f5, f6]
+    ring
   · have low := Verification.assertion_of_holds h ⟨89, by rw [constraint_count]; decide⟩
     have high := Verification.assertion_of_holds h ⟨90, by rw [constraint_count]; decide⟩
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, f0, f1, f2, f3, f5, f6] at low high
-    exact ⟨low, high⟩
+    op_index at low high
+    simp only [Expression.eval, Verification.environment, f0, f1, f2, f3, f5, f6] at low high
+    push_cast at low high
+    exact ⟨by linear_combination -low, by linear_combination high⟩
 
 theorem written_limb_bounds [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable)) :
@@ -129,6 +125,19 @@ private theorem native_write_word (w : Nat → ZMod p) (port : MemoryPort) :
         ((port.writeValue.getD port.readValue).evaluate w)[1].val⟩ := by
   simp [Delegation.Row.writeToken, MemoryToken.word, MemoryPort.writeCode, WordColumns.code]
 
+/-- The written columns of port `k`: words of the result (ports 1 to 8), x12 (port 18), or none. -/
+private def portWrite (k : Nat) : Option WordColumns :=
+  if 1 ≤ k ∧ k ≤ 8 then
+    some (.u16 #v[Shapes.writtenColumn (2 * (k - 1)), Shapes.writtenColumn (2 * (k - 1) + 1)])
+  else if k = 18 then some (.u16 #v[57, 58]) else none
+
+private theorem ports_size : importedConstraintsMemoryPorts.size = 19 := rfl
+
+private theorem port_writes (k : Nat) (hk : k < importedConstraintsMemoryPorts.size) :
+    importedConstraintsMemoryPorts[k].writeValue = portWrite k := by
+  rw [ports_size] at hk
+  interval_cases k <;> rfl
+
 theorem memory_write_rule [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (clockConstraints setupTable))
     (reads : ∀ port ∈ importedConstraintsMemoryPorts, (readToken w port).word.Bounded) :
@@ -143,56 +152,18 @@ theorem memory_write_rule [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
     · simp [zero, control.2, Word.Bounded, limbBase]
     · simp [one, control.2, Word.Bounded, limbBase, ZMod.val_one'' (by omega : p ≠ 1)]
   intro port member
-  simp [importedConstraintsMemoryPorts] at member
-  rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-  · simpa [native_write_word, Trace.Proofs.read_word, WordColumns.evaluate,
-      importedConstraintsMemoryPorts] using
-      reads importedConstraintsMemoryPorts[0] (by simp [importedConstraintsMemoryPorts])
-  · simpa [native_write_word, WordColumns.evaluate, importedConstraintsMemoryPorts,
-      Word.Bounded, Variables.writtenLimbs] using And.intro (written 0) (written 1)
-  · simpa [native_write_word, WordColumns.evaluate, importedConstraintsMemoryPorts,
-      Word.Bounded, Variables.writtenLimbs] using And.intro (written 2) (written 3)
-  · simpa [native_write_word, WordColumns.evaluate, importedConstraintsMemoryPorts,
-      Word.Bounded, Variables.writtenLimbs] using And.intro (written 4) (written 5)
-  · simpa [native_write_word, WordColumns.evaluate, importedConstraintsMemoryPorts,
-      Word.Bounded, Variables.writtenLimbs] using And.intro (written 6) (written 7)
-  · simpa [native_write_word, WordColumns.evaluate, importedConstraintsMemoryPorts,
-      Word.Bounded, Variables.writtenLimbs] using And.intro (written 8) (written 9)
-  · simpa [native_write_word, WordColumns.evaluate, importedConstraintsMemoryPorts,
-      Word.Bounded, Variables.writtenLimbs] using And.intro (written 10) (written 11)
-  · simpa [native_write_word, WordColumns.evaluate, importedConstraintsMemoryPorts,
-      Word.Bounded, Variables.writtenLimbs] using And.intro (written 12) (written 13)
-  · simpa [native_write_word, WordColumns.evaluate, importedConstraintsMemoryPorts,
-      Word.Bounded, Variables.writtenLimbs] using And.intro (written 14) (written 15)
-  · simpa [native_write_word, Trace.Proofs.read_word, WordColumns.evaluate,
-      importedConstraintsMemoryPorts] using
-      reads importedConstraintsMemoryPorts[9] (by simp [importedConstraintsMemoryPorts])
-  · simpa [native_write_word, Trace.Proofs.read_word, WordColumns.evaluate,
-      importedConstraintsMemoryPorts] using
-      reads importedConstraintsMemoryPorts[10] (by simp [importedConstraintsMemoryPorts])
-  · simpa [native_write_word, Trace.Proofs.read_word, WordColumns.evaluate,
-      importedConstraintsMemoryPorts] using
-      reads importedConstraintsMemoryPorts[11] (by simp [importedConstraintsMemoryPorts])
-  · simpa [native_write_word, Trace.Proofs.read_word, WordColumns.evaluate,
-      importedConstraintsMemoryPorts] using
-      reads importedConstraintsMemoryPorts[12] (by simp [importedConstraintsMemoryPorts])
-  · simpa [native_write_word, Trace.Proofs.read_word, WordColumns.evaluate,
-      importedConstraintsMemoryPorts] using
-      reads importedConstraintsMemoryPorts[13] (by simp [importedConstraintsMemoryPorts])
-  · simpa [native_write_word, Trace.Proofs.read_word, WordColumns.evaluate,
-      importedConstraintsMemoryPorts] using
-      reads importedConstraintsMemoryPorts[14] (by simp [importedConstraintsMemoryPorts])
-  · simpa [native_write_word, Trace.Proofs.read_word, WordColumns.evaluate,
-      importedConstraintsMemoryPorts] using
-      reads importedConstraintsMemoryPorts[15] (by simp [importedConstraintsMemoryPorts])
-  · simpa [native_write_word, Trace.Proofs.read_word, WordColumns.evaluate,
-      importedConstraintsMemoryPorts] using
-      reads importedConstraintsMemoryPorts[16] (by simp [importedConstraintsMemoryPorts])
-  · simpa [native_write_word, Trace.Proofs.read_word, WordColumns.evaluate,
-      importedConstraintsMemoryPorts] using
-      reads importedConstraintsMemoryPorts[17] (by simp [importedConstraintsMemoryPorts])
-  · simpa [native_write_word, WordColumns.evaluate, importedConstraintsMemoryPorts] using cb
+  have bound := reads port member
+  obtain ⟨k, size, rfl⟩ := Array.mem_iff_getElem.mp member
+  have index : k < 19 := by rwa [ports_size] at size
+  rw [native_write_word, port_writes k size]
+  unfold portWrite
+  split_ifs with result register
+  · have low := written ⟨2 * (k - 1), by omega⟩
+    have high := written ⟨2 * (k - 1) + 1, by omega⟩
+    rw [Shapes.written_column] at low high
+    exact ⟨low, high⟩
+  · exact cb
+  · simpa only [Trace.Proofs.read_word, Option.getD_none] using bound
 
 theorem memory_rules [Fact p.Prime] (hp : 65536 ≤ p) {data : Delegation.MemoryData p}
     (accepted : Delegation.MemoryAccepted data)

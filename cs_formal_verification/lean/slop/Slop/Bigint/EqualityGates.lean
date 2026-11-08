@@ -9,8 +9,6 @@ namespace Airbender.Bigint.Equality.Proofs
 open Arithmetic
 open scoped BigOperators
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 4000000
 
 def carryColumn (i : Nat) : Nat := 82 + i
 
@@ -28,14 +26,12 @@ theorem native_steps {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   have f6 := flags 6
   norm_num [Variables.operations] at f0 f1 f2 f5 f6
   intro i
-  have gate := Verification.assertion_of_holds h ⟨3 + i.val,
-    by rw [constraint_count]; have := i.isLt; omega⟩
-  fin_cases i
-  all_goals op_index at gate
-  all_goals simp only [Expression.eval, Verification.environment, f0, f1, f2, f5, f6] at gate
-  all_goals push_cast at gate
-  all_goals norm_num [Variables.leftLimbs, Variables.rightLimbs, carryColumn]
-  all_goals linear_combination gate
+  have gate := Shapes.step_holds h i
+  rw [Shapes.step_eval, f0, f1, f2, f5, f6] at gate
+  rw [Shapes.left_column, Shapes.right_column]
+  unfold carryColumn
+  by_cases first : i.val = 0 <;> simp only [first, ↓reduceIte] at gate ⊢ <;>
+    linear_combination gate
 
 theorem native_results {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
@@ -52,17 +48,8 @@ theorem native_results {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   have f6 := flags 6
   norm_num [Variables.operations] at f0 f1 f2 f3 f4 f5 f6
   intro i
-  have definition := Verification.assertion_of_holds h ⟨51 + i.val,
-    by rw [constraint_count]; have := i.isLt; omega⟩
-  have write := Verification.assertion_of_holds h ⟨67 + i.val,
-    by rw [constraint_count]; have := i.isLt; omega⟩
-  fin_cases i
-  all_goals op_index at definition write
-  all_goals simp only [Expression.eval, Verification.environment, f0, f1, f2, f3, f4, f5, f6] at definition write
-  all_goals push_cast at definition write
-  all_goals norm_num [Variables.leftLimbs, Variables.writtenLimbs]
-  all_goals constructor
-  all_goals first | linear_combination definition | linear_combination -write
+  rw [Shapes.definition_holds h i, Shapes.write_holds h i, f0, f1, f2, f3, f4, f5, f6]
+  constructor <;> ring
 
 theorem native_sum {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}

@@ -1,5 +1,5 @@
 module
-public import Slop.Bigint.ArtifactChecks
+public import Slop.Bigint.Shapes
 public import Human.Circuits.Bigint.Tables.Setup
 public import Human.Circuits.Bigint.Artifact
 public import Slop.Lookups
@@ -14,13 +14,23 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
+/-- Every setup row, by region: a carry range (tags 22 to 26) or a low byte (tag 41). -/
+theorem row_cases (index : Fin 1390592) :
+    (22 ≤ (setupRow index).2.2 ∧ (setupRow index).2.2 ≤ 26 ∧
+      (setupRow index).1 < 2 ^ ((setupRow index).2.2 - 13) ∧
+      (setupRow index).2.1 < 2 ^ ((setupRow index).2.2 - 13)) ∨
+    ((setupRow index).2.2 = 41 ∧ (setupRow index).1 < 65536 ∧
+      (setupRow index).2.1 = (setupRow index).1 % 256) := by
+  have size := index.isLt
+  unfold setupRow
+  dsimp only
+  split_ifs <;> dsimp only <;> simp only [Nat.reduceSub, Nat.reducePow, true_and, and_true] <;> omega
+
 private theorem low_byte_rows (index : Fin 1390592) (selected : (setupRow index).2.2 = 41) :
     (setupRow index).1 < 65536 ∧ (setupRow index).2.1 = (setupRow index).1 % 256 := by
-  have size := index.isLt
-  unfold setupRow at selected ⊢
-  dsimp only at selected ⊢
-  split_ifs at selected ⊢ <;> simp at selected ⊢
-  omega
+  rcases row_cases index with range | low
+  · omega
+  · exact low.2
 
 /-- Decode a native membership witness into its natural setup row. -/
 theorem fixed_row_values {p tag : Nat} [Fact p.Prime] (hp : 65536 ≤ p) (tagBound : tag < p)
@@ -45,9 +55,7 @@ theorem fixed_row_values {p tag : Nat} [Fact p.Prime] (hp : 65536 ≤ p) (tagBou
     simpa only [Vector.getElem_map, Vector.getElem_mk, List.getElem_toArray,
       List.getElem_cons_succ, List.getElem_cons_zero] using eq
   have rowTagBound : (setupRow i).2.2 < p := by
-    unfold setupRow
-    dsimp only
-    split_ifs <;> simp <;> omega
+    rcases row_cases i with range | low <;> omega
   have tagEq : (setupRow i).2.2 = tag := by
     have eq := congrArg ZMod.val (tagField.symm.trans selected)
     have literal : (tag : ZMod p).val = tag := by
@@ -70,28 +78,35 @@ theorem low_byte_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   refine ⟨⟨(setupRow i).1, keyBound⟩, Prod.ext key ?_⟩
   simpa only [lowValue] using low
 
-theorem source_ranges {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+/-- Both low-byte queries of source limb `i` (lookups `34 + i` and `50 + i`), read once for every limb. -/
+theorem low_byte_pairs {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints setupTable)) :
-    ∀ i : Fin 16, (w Variables.leftLimbs[i]).val < Arithmetic.limbBase ∧
-      (w Variables.rightLimbs[i]).val < Arithmetic.limbBase := by
-  intro i
+      (importedConstraints setupTable)) (i : Fin 16) :
+    ((w Variables.leftLimbs[i]).val < 65536 ∧
+      w (99 + i.val) = (((w Variables.leftLimbs[i]).val % 256 : Nat) : ZMod p)) ∧
+    ((w Variables.rightLimbs[i]).val < 65536 ∧
+      w (115 + i.val) = (((w Variables.rightLimbs[i]).val % 256 : Nat) : ZMod p)) := by
+  obtain ⟨leftShape, rightShape⟩ := Shapes.low_byte_shape (p := p) setupTable i
   have left := Verification.lookup_of_holds h ⟨34 + i.val,
     by rw [lookup_count]; have := i.isLt; omega⟩
   have right := Verification.lookup_of_holds h ⟨50 + i.val,
     by rw [lookup_count]; have := i.isLt; omega⟩
-  fin_cases i
-  all_goals have leftPair := low_byte_value hp left (by
-    simp [Expression.eval, Verification.environment])
-  all_goals have rightPair := low_byte_value hp right (by
-    simp [Expression.eval, Verification.environment])
-  all_goals have leftRange := leftPair.1
-  all_goals have rightRange := rightPair.1
-  all_goals constructor
-  all_goals first
-    | simpa [importedConstraints, FlatOperation.lookups, Expression.eval,
-        Verification.environment, Variables.leftLimbs, Arithmetic.limbBase] using leftRange
-    | simpa [importedConstraints, FlatOperation.lookups, Expression.eval,
-        Verification.environment, Variables.rightLimbs, Arithmetic.limbBase] using rightRange
+  rw [leftShape] at left
+  rw [rightShape] at right
+  have tag := Shapes.tag_eval w 41
+  rw [Nat.cast_ofNat] at tag
+  have leftPair := low_byte_value hp left tag
+  have rightPair := low_byte_value hp right tag
+  simp only [Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_zero,
+    List.getElem_cons_succ, Shapes.entry_eval] at leftPair rightPair
+  rw [Shapes.left_column, Shapes.right_column]
+  exact ⟨leftPair, rightPair⟩
+
+theorem source_ranges {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints setupTable)) :
+    ∀ i : Fin 16, (w Variables.leftLimbs[i]).val < Arithmetic.limbBase ∧
+      (w Variables.rightLimbs[i]).val < Arithmetic.limbBase :=
+  fun i => ⟨(low_byte_pairs hp h i).1.1, (low_byte_pairs hp h i).2.1⟩
 
 end Airbender.Bigint.Proofs

@@ -9,8 +9,6 @@ namespace Airbender.Bigint.Multiplication.Proofs
 open Arithmetic
 open scoped BigOperators
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 4000000
 
 theorem native_writes {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p} (operation : Operation)
@@ -27,15 +25,9 @@ theorem native_writes {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   have f5 := flags 5
   have f6 := flags 6
   intro i
-  have gate := Verification.assertion_of_holds h ⟨67 + i.val,
-    by rw [constraint_count]; have := i.isLt; omega⟩
-  cases operation <;> norm_num [Operation.index, Variables.operations] at f0 f1 f2 f3 f4 f5 f6
-  all_goals fin_cases i
-  all_goals op_index at gate
-  all_goals simp only [Expression.eval, Verification.environment, f0, f1, f2, f3, f4, f5, f6] at gate
-  all_goals push_cast at gate
-  all_goals norm_num [Variables.writtenLimbs]
-  all_goals linear_combination -gate
+  rw [Shapes.write_holds h i]
+  cases operation <;> norm_num [Operation.index, Variables.operations] at f0 f1 f2 f3 f4 f5 f6 <;>
+    rw [f0, f1, f2, f3, f4, f5, f6] <;> ring
 
 theorem native_high_sum {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}

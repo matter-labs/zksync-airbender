@@ -1,7 +1,7 @@
 module
-public import Slop.Bigint.ArtifactChecks
+public import Slop.Bigint.Shapes
+public import Slop.Eval
 public import Human.Circuits.Bigint.Control
-public import Slop.Constraints
 public import Slop.Arithmetic.Lemmas
 
 @[expose] public section
@@ -10,27 +10,25 @@ namespace Airbender.Bigint.Control.Proofs
 open Arithmetic
 open scoped BigOperators
 
-set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
+set_option warningAsError true
 
 theorem control_bits {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 3)}
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     ∀ i : Fin 8, w Variables.controlBits[i] = 0 ∨ w Variables.controlBits[i] = 1 := by
   intro i
-  have flag := Verification.assertion_of_holds h ⟨91 + i.val,
-    by rw [constraint_count]; have := i.isLt; omega⟩
-  fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, Variables.controlBits,
-    mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] at flag ⊢
-  all_goals exact flag
+  have column : Variables.controlBits[i] = 59 + i.val := by revert i; decide
+  rw [column]
+  exact Shapes.flag_bit h (Shapes.control_shape setup i)
 
 theorem opcode_exclusivity {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (∑ i : Fin 7, (w Variables.operations[i]).val) ≤ 1 := by
   have flag := Verification.assertion_of_holds h ⟨2, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment] at flag
+  op_index at flag
+  eval_entry at flag
+  replace flag := mul_eq_zero.mp flag
   let total : ZMod p := ∑ i : Fin 7, w Variables.operations[i]
   have bit : total = 0 ∨ total = 1 := by
     rcases flag with zero | one
@@ -75,8 +73,8 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 256 ≤ p)
       (show output.bits[i].toNat ≤ 1 by cases output.bits[i] <;> decide) (by omega))
   have read := Verification.assertion_of_holds h ⟨1, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h ⟨90, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at read high
+  op_index at read high
+  eval_entry at read high
   have field : (mask output.bits : ZMod p) = w 55 := by
     simp only [mask, Nat.cast_sum, Nat.cast_mul, bitCast]
     norm_num [Fin.sum_univ_succ, Variables.controlBits]
