@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.Blake2Worker.ExtendedOutput
+import Airbender.Proofs.ReducedMachine.NativeWorkerExtendedOutput
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerExtendedOutputTheorems
+import Tests.NativeWorkerExtendedOutput
+
 import Airbender.Review.Circuits.Blake2Worker.DiagonalG
 import Airbender.Proofs.ReducedMachine.NativeWorkerDiagonalG
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerDiagonalGTheorems
@@ -7773,3 +7778,35 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerDiagonalG.corrupt_b_output_rejected
 #print axioms Airbender.Tests.NativeWorkerDiagonalG.inactive_requests_retained
 #print axioms Airbender.Tests.NativeWorkerDiagonalG.complete_counted
+
+#print axioms Airbender.NativeWorkerExtendedOutputProofs.write_value
+#print axioms Airbender.NativeWorkerExtendedOutputProofs.destination_inverse
+#print axioms Airbender.NativeWorkerExtendedOutputProofs.component0
+#print axioms Airbender.NativeWorkerExtendedOutputProofs.component1
+#print axioms Airbender.NativeWorkerExtendedOutputProofs.component2
+#print axioms Airbender.NativeWorkerExtendedOutputProofs.component3
+#print axioms Airbender.NativeWorkerExtendedOutputProofs.limbs
+#print axioms Airbender.NativeWorkerExtendedOutputProofs.b_halves
+#print axioms Airbender.NativeWorkerExtendedOutputProofs.packed
+#print axioms Airbender.NativeWorkerExtendedOutputProofs.written
+#print axioms Airbender.NativeWorkerExtendedOutputProofs.row
+#print axioms Airbender.NativeWorkerExtendedOutputProofs.counted
+#print axioms Airbender.NativeWorkerExtendedOutput.native_worker_extended_writes
+#print axioms Airbender.NativeWorkerExtendedOutput.native_worker_extended_output
+#print axioms Airbender.NativeWorkerExtendedOutput.native_counted_worker_extended_output
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.diagonal_destinations
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.all_output_positions
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.actual_write_columns
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.b_canonical_maximum
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.full_local_output
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.zero_written_words
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.all_actual_limbs
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.all_actual_words
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.prior_g_retained
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.weighted_messages_retained
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.corrupt_a_write_rejected
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.corrupt_b_write_rejected
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.corrupt_c_write_rejected
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.corrupt_d_write_rejected
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.inactive_requests_retained
+#print axioms Airbender.Tests.NativeWorkerExtendedOutput.complete_counted

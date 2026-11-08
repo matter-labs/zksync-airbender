@@ -1006,3 +1006,10 @@ Second C/B, finalization/write-result/full hash and physical schedules remain op
 results, retaining all four column G and initialized replay effects from the SAME
 counted source. These are intermediate results; native final writes, full worker
 reference round/hash and physical schedules remain open.
+
+## Actual native extended-state write results
+
+[Extended outputs](WorkerExtendedOutputTheorems.lean) binds all32 actual write limbs and16 words to the
+checked diagonal G results, retaining all eight G calls and initialized replay on
+the SAME counted source. First8-state finalization, full worker reference hash
+and physical round schedules remain open.

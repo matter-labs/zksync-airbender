@@ -1,5 +1,55 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Actual native extended-state write results (8 November 2026)
+
+[Output observables](Airbender/Review/Circuits/Blake2Worker/ExtendedOutput.lean)
+retain the actual32 memory-write limbs and16 packed words in A/B/C/D order.
+FULL unchanged352-equation/296-query BODY on the actual344384-row fixed pool
+now derives every write limb from the checked diagonal G output, with destination
+4*c+(d+c)%4. The inverse permutation covers all16 actual words. A/C carried
+polynomials and B/D reconstructed chunks stay explicit.
+
+[Short TRACE roots](Airbender/Review/Trace/Families/ReducedMachine/WorkerExtendedOutputTheorems.lean)
+identify all16 actual write words with diagonalResult and the unchanged pure G
+reference on DERIVED routed column outputs and canonical ten-weight messages.
+The SAME counted source, original public image/log20, OLD LogicalLookups and OLD
+explicit SourceIdentity retain all four column and four diagonal G results plus
+full initialized exact raw-token replay, word bounds, capacity, dependencies,
+controls and messages for EVERY ordinary worker, including inactive. No expected
+read/value/range/result, one-hot mask, round, schedule, history or fulfilled ledger
+is supplied. Zero/multiple masks and wide message low carry remain.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeWorkerExtendedOutput.lean)
+binds exact ABI ports9..24 and all32 linear write ASTs BEFORE witness sampling.
+Physical-to-logical mapping is explicit. Four independent8-limb source units
+connect actual source equations to the previous derived arithmetic. Exact16 final
+B-output query ASTs derive canonical7/9 chunk bounds; existing pair97, field
+reconstruction and D byte packing are reused unchanged. The existing full extended
+CS Git67ee hash was rechecked and600..661 read before this prototype. Specific
+bindings are not general Rust/JSON/compiler/physical refinement. No new native pin,
+artifact, importer, generation or heavy certificate replay.
+
+[Controls](Tests/NativeWorkerExtendedOutput.lean) check all diagonal destinations,
+inverse coverage, actual write coordinates, maximal9/7 packing, old complete LOCAL
+BODY/zero writes, all limb/word consequences and prior arithmetic/message retention.
+Four separate corrupt A/B/C/D writes reject the FULL BODY. Inactive caller requests
+and full counted acceptance remain. Pure/reference/oldLOCAL/conditional only, not
+new nonempty source-global/whole-worker/physical witnesses, attacks, defects or
+absent-enforcement evidence. Zero-pointer aliases remain visible; no compatible
+global history is fabricated.
+
+All43 ports, BOTH raw times, aliases, readonly refreshes, OLDREADs, AUX/m0 poles,
+inactiveD, caller equations, unmasked SW and public x0 times stay. Caller requests
+are never filtered. Public ordinary7-or-CSR excludes MOP; original seven-profile
+Sail excludes CSR/MOP. Logical crypto boundaries remain explicit. Four modules
+add31 roots and8 exact parent references, preserving all6,692 prior ordered roots
+and exact audit bytes addition-only. Native107 pins, v3 reference, dependencies,
+production, original Sail, old acceptance and FINDINGS stay. First8-state conditional
+finalization, full worker reference round/hash, physical schedules, inactive caller
+activity/converse accounting, MOP public custom execution, original CSR/MOP/worker
+Sail, physical cryptography, completeness and parity remain open.
+
+
 ## Complete native diagonal G arithmetic (8 November 2026)
 
 [Diagonal G observables](Airbender/Review/Circuits/Blake2Worker/DiagonalG.lean)
