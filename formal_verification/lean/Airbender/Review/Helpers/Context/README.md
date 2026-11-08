@@ -338,3 +338,10 @@ zero clocks require such sources, without claiming global bounds or seeded histo
 [Main-loop count and capacity](../../Circuits/ReducedMachine/MainBatchTheorems.lean) tie the source u32 count to the SAME proof
 list and derive1..8192 proofs plus actual ordinary-slot and u64 bounds. This counts
 physical capacity, not issued requests; caller matching and worker rooting remain open.
+
+## Counted main and public decoder
+
+[Same-main decoder effects and public sources](../../Circuits/ReducedMachine/MainDecoderTheorems.lean) preserve the counted
+initialization/caller/worker components and all ordinary decoder equations. Active
+public fetched sources follow under explicit logical lookup extraction; request
+activity, worker rooting and delegated execution remain open.

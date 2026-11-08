@@ -1,5 +1,64 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Counted main and public decoder connection (8 November 2026)
+
+[The counted decoder view](Airbender/Review/Circuits/ReducedMachine/MainDecoder.lean)
+adds typed decoder observations to each existing initialization/main proof. The
+actual u32 count indexes its vector. Main and decoder projections share the SAME
+main rows, auxiliaries and claims by construction; no desired row/list/setup or
+stream equality is supplied. Separate typed physical observations still require
+Rust/JSON extraction refinement. The stronger source interface retains unchanged
+complete counted initialization/main/caller/worker/global acceptance, decoder
+access constraints on ALL ordinary rows, and the complete decoder table argument
+checked ON the constructed public setup. Old acceptance is unchanged. Inactive
+rows, auxiliary poles, physical holes/tails and all positional duplicates remain.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeMainDecoder.lean) derives the
+original complete decoder argument on the constructed view and its exact main-list
+identity. Joint effects retain main count/capacity and worker progress on SAME
+inputs, together with all ordinary decoder access equations, table/access sums,
+polynomial value zero, terminal table/access equality and ordinary setup-query
+bindings. Generic list composition and public source extraction precede native
+count/data/domain instantiation; no millions of rows are evaluated.
+
+A separately named LogicalLookups boundary supplies faithful membership for each
+actual execute-one query in the full constructed ordinary physical table. This
+remains EXPLICIT cryptographic extraction, never a consequence of fixed-challenge
+equations, sums, capacity or compression injectivity. From an original public
+stateful Sail decoding image and this boundary, full native BODY derives EVERY
+active physical query's original public byte read, Sail decoder execution,
+projection and all ten fields. Actual packed-mask bounds exclude holes and the
+minus-one physical tail. The projection is general, including the existing CSR
+projection; this does not identify seven-profile Unified execution with CSR.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/MainDecoderTheorems.lean)
+expose the joint component and conditional public-source conclusions. They assert
+no delegated execution, retirement, all-request activity, worker anchoring, clock
+bounds/rooting, initialized reads, STAGE2 key agreement or request matching.
+All inactiveD/m0 poles, worker ports, readonly refreshes, OLDREAD, unmasked writes
+and public x0 times remain. No expected read/value/range/key/clock/state/history/
+fulfilled ledger/result, fake Trace.Accepted, ClockInputs.previous, deduplication,
+OOB proof object or table-equivalence premise is introduced. Physical public-image
+refinement/setup authentication, FFT/LDE/quotient/transcript and general compiler/
+Rust/JSON refinement remain separate from the logical extraction boundary.
+
+[Fourteen controls](Tests/NativeMainDecoder.lean) cover shared rows/auxiliaries,
+witness and other-setup preservation, ordinary setup binding, exact same main list,
+counts/duplicates, empty logical lookups with positive-counter rejection, complete
+conditional joint effects and the CSR public-source projection. These are
+structural/pure/conditional controls, not a new accepted NONEMPTY source/global/
+whole-worker/physical witness, attack, native defect or absent-enforcement claim.
+Four modules add26 roots/12 exact parent origins. All5,930 prior ordered roots and
+exact audit bytes remain addition-only. Native107 pins, dependencies and deliberate
+v3 reference remain exact; no native adoption, production/Sail/old proof/acceptance/
+importer/exporter/artifact/fixture change, generation/heavy replay, finding, issue
+assumption, project axiom or fix. Next: actual request validity/activity, caller
+anchoring and worker unbounded-source exclusion/seed rooting, initialized OLDREAD
+values/addresses, raw bounds, STAGE2 keys and issuance/fulfillment/converse
+accounting. Original CSR/MOP/worker Sail execution, general public/physical
+refinement, cryptography, completeness and parity remain open.
+
+
 ## Counted native main loop and actual ordinary capacity (8 November 2026)
 
 [The source batch](Airbender/Review/Circuits/ReducedMachine/MainBatch.lean) uses the

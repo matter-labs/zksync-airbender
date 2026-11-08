@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.MainDecoder
+import Airbender.Proofs.ReducedMachine.NativeMainDecoder
+import Airbender.Review.Circuits.ReducedMachine.MainDecoderTheorems
+import Tests.NativeMainDecoder
+
 import Airbender.Review.Circuits.ReducedMachine.MainBatch
 import Airbender.Proofs.ReducedMachine.NativeMainBatch
 import Airbender.Review.Circuits.ReducedMachine.MainBatchTheorems
@@ -6832,3 +6837,30 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeMainBatch.duplicate_proofs_counted
 #print axioms Airbender.Tests.NativeMainBatch.actual_all_ordinary_count
 #print axioms Airbender.Tests.NativeMainBatch.complete_conditional_joint
+
+#print axioms Airbender.NativeMainDecoderProofs.mapped_views
+#print axioms Airbender.NativeMainDecoderProofs.main_list
+#print axioms Airbender.NativeMainDecoderProofs.count_binding
+#print axioms Airbender.NativeMainDecoderProofs.decoder_main
+#print axioms Airbender.NativeMainDecoderProofs.same_main_list
+#print axioms Airbender.NativeMainDecoderProofs.decoder_accepted
+#print axioms Airbender.NativeMainDecoderProofs.decoder_effects
+#print axioms Airbender.NativeMainDecoderProofs.public_source
+#print axioms Airbender.NativeMainDecoderProofs.public_sources
+#print axioms Airbender.NativeMainDecoderProofs.joint
+#print axioms Airbender.NativeMainDecoder.native_counted_main_decoder
+#print axioms Airbender.NativeMainDecoder.native_counted_public_sources
+#print axioms Airbender.Tests.NativeMainDecoder.count_binding
+#print axioms Airbender.Tests.NativeMainDecoder.same_main
+#print axioms Airbender.Tests.NativeMainDecoder.same_rows
+#print axioms Airbender.Tests.NativeMainDecoder.same_auxiliary
+#print axioms Airbender.Tests.NativeMainDecoder.witness_preserved
+#print axioms Airbender.Tests.NativeMainDecoder.other_setup_preserved
+#print axioms Airbender.Tests.NativeMainDecoder.ordinary_setup_binding
+#print axioms Airbender.Tests.NativeMainDecoder.same_actual_list
+#print axioms Airbender.Tests.NativeMainDecoder.decoder_positions_preserved
+#print axioms Airbender.Tests.NativeMainDecoder.duplicate_views_preserved
+#print axioms Airbender.Tests.NativeMainDecoder.empty_lookups
+#print axioms Airbender.Tests.NativeMainDecoder.empty_counter_rejected
+#print axioms Airbender.Tests.NativeMainDecoder.complete_conditional_joint
+#print axioms Airbender.Tests.NativeMainDecoder.complete_conditional_csr_source
