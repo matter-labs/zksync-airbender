@@ -1,5 +1,54 @@
 # Verification status
 
+## Actual native worker message schedules (8 November 2026)
+
+[Schedule](Airbender/Review/Circuits/Blake2Worker/Schedule.lean) records the exact
+native ten message permutations and compression input choices. FULL352-equation/
+296-query BODY acceptance derives all13 flags from canonical bits of the actual
+x12 READ-high limb, all32 masked message limbs from original state/message reads,
+all32 selected limbs from the Boolean-weighted ten-round schedule, and exact next
+x12 low0/high n%8+16*(n/8%512). The old x12 low read is retained and not assumed zero.
+Zero and multiple round bits remain visible; no one-hot/nonzero round is assumed.
+
+[Short TRACE roots](Airbender/Review/Trace/Families/ReducedMachine/WorkerScheduleTheorems.lean)
+expose the full local consequence and SAME counted public source/log20/original
+stateful image/OLD LogicalLookups/OLD explicit SourceIdentity joint result. Every
+ordinary worker, INCLUDING inactive rows, receives the pointwise effects. Prior
+initialized exact raw-token replay, word bounds, capacity and dependencies remain.
+The public ordinary7-or-CSR scope excludes MOP; original7 Sail excludes CSR/MOP.
+Logical boundaries remain explicit, not fixed-challenge or physical crypto proofs.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeWorkerSchedule.lean) reuses
+unchanged old control packing and proves generic finite digit-window arithmetic
+before native data. Four independent eight-limb units bind actual Q221..252 mask
+and Q253..284 permutation equations; both limbs and all ten round selectors remain.
+Compression and left/right modes derive from the same control word. The selected
+schedule is an unconditional field-weighted reference, not a claimed standard hash
+round for arbitrary masks. No expected read, mode, schedule or result is supplied.
+
+Already-pinned unchanged native CS, control constants and SIGMAS source hashes were
+rechecked against Git67ee before adapting these source slices. No new native file,
+pin, importer, artifact, literal fixed table, exporter or generation was needed.
+Specific kernel equation bindings do not prove general Rust/JSON/compiler fidelity.
+All43 ports, raw timestamps, aliases, readonly refreshes, OLDREADs, auxiliary values,
+m0 poles, inactiveD, caller equations, unmasked writes and public x0 times remain.
+Caller requests are never filtered. No fake Trace.Accepted or Sail frame is used.
+
+[Fourteen controls](Tests/NativeWorkerSchedule.lean) check all sigma permutations,
+control shifts, pure single/multiple round bits, both compression choices, the old
+complete LOCAL zero-control BODY, exact zero-mask selection, all derived flags/
+operands/selected limbs, retained inactive requests and the full counted interface.
+They are pure/LOCAL/conditional controls, not new nonempty source-global/whole-worker/
+physical witnesses, attacks or findings; old zero-pointer aliases stay visible.
+
+Four modules add24 roots and11 exact parent references, preserving all6,383 prior
+ordered roots and exact audit bytes addition-only. Native107 pins, v3 reference,
+dependencies, production, original Sail, old proofs/acceptance and FINDINGS remain
+unchanged. Actual G mixing, initial extended-state/finalization/hash results,
+physical round schedules, inactive caller validity/activity and converse accounting,
+original CSR/MOP/worker Sail, cryptography, completeness and parity remain open.
+
+
 ## Exact mixed native token replay (8 November 2026)
 
 [MixedReplay](Airbender/Review/Trace/Families/ReducedMachine/MixedReplay.lean)

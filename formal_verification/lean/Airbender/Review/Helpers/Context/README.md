@@ -475,3 +475,11 @@ MAIN/WORKER port from actual seeds to teardown, allowing equal ranks at differen
 addresses and retaining BOTH raw timestamps. Prior word bounds and old logical
 boundaries remain. Worker rounds/hash results, physical schedules, converse
 accounting and original CSR/MOP/worker Sail remain open.
+
+## Native worker message schedule
+
+[Worker schedule](../../Trace/Families/ReducedMachine/WorkerScheduleTheorems.lean) derives all13 control bits, compression inputs,
+all32 selected-message limbs and exact x12 update from FULL native BODY. The same
+counted source retains initialized replay/word bounds and covers every ordinary
+worker including inactive rows. Zero/multiple round bits stay visible. Standard
+hash results, physical round schedules, converse accounting and worker Sail remain open.

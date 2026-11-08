@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.Blake2Worker.Schedule
+import Airbender.Proofs.ReducedMachine.NativeWorkerSchedule
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerScheduleTheorems
+import Tests.NativeWorkerSchedule
+
 import Airbender.Review.Trace.Families.ReducedMachine.MixedReplay
 import Airbender.Proofs.ReducedMachine.NativeMixedReplay
 import Airbender.Review.Trace.Families.ReducedMachine.MixedReplayTheorems
@@ -7398,3 +7403,28 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeMixedReplay.inactive_requests_retained
 #print axioms Airbender.Tests.NativeMixedReplay.complete_source
 #print axioms Airbender.Tests.NativeMixedReplay.complete_counted
+
+#print axioms Airbender.NativeWorkerScheduleProofs.unpack13
+#print axioms Airbender.NativeWorkerScheduleProofs.next13
+#print axioms Airbender.NativeWorkerScheduleProofs.flags
+#print axioms Airbender.NativeWorkerScheduleProofs.next_control
+#print axioms Airbender.NativeWorkerScheduleProofs.masked_inputs
+#print axioms Airbender.NativeWorkerScheduleProofs.permutation
+#print axioms Airbender.NativeWorkerScheduleProofs.row
+#print axioms Airbender.NativeWorkerScheduleProofs.counted
+#print axioms Airbender.NativeWorkerSchedule.native_worker_message_schedule
+#print axioms Airbender.NativeWorkerSchedule.native_counted_worker_message_schedule
+#print axioms Airbender.Tests.NativeWorkerSchedule.sigma_rows_permute
+#print axioms Airbender.Tests.NativeWorkerSchedule.next_control_examples
+#print axioms Airbender.Tests.NativeWorkerSchedule.pure_round_zero_bits
+#print axioms Airbender.Tests.NativeWorkerSchedule.pure_multiple_round_bits
+#print axioms Airbender.Tests.NativeWorkerSchedule.left_compression_reference
+#print axioms Airbender.Tests.NativeWorkerSchedule.right_compression_reference
+#print axioms Airbender.Tests.NativeWorkerSchedule.full_local_zero_body
+#print axioms Airbender.Tests.NativeWorkerSchedule.zero_round_mask
+#print axioms Airbender.Tests.NativeWorkerSchedule.actual_zero_selection
+#print axioms Airbender.Tests.NativeWorkerSchedule.all_control_bits
+#print axioms Airbender.Tests.NativeWorkerSchedule.compression_operands
+#print axioms Airbender.Tests.NativeWorkerSchedule.actual_message_schedule
+#print axioms Airbender.Tests.NativeWorkerSchedule.inactive_requests_retained
+#print axioms Airbender.Tests.NativeWorkerSchedule.complete_counted

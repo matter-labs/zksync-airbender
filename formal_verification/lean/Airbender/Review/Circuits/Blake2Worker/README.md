@@ -251,3 +251,11 @@ is inferred from this weaker boundary.
 all ports and aliases. This local fixture supplies no source/global/worker-trace
 acceptance, initialized memory history, issued request or Sail effects; those
 combined obligations and parity remain open.
+
+## Native worker message schedule
+
+[Worker schedule](../../Trace/Families/ReducedMachine/WorkerScheduleTheorems.lean) derives all13 control bits, compression inputs,
+all32 selected-message limbs and exact x12 update from FULL native BODY. The same
+counted source retains initialized replay/word bounds and covers every ordinary
+worker including inactive rows. Zero/multiple round bits stay visible. Standard
+hash results, physical round schedules, converse accounting and worker Sail remain open.
