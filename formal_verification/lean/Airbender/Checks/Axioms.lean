@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.CallerMixedQueries
+import Airbender.Proofs.ReducedMachine.NativeCallerMixedQueries
+import Airbender.Review.Trace.Families.ReducedMachine.CallerMixedQueriesTheorems
+import Tests.NativeCallerMixedQueries
+
 import Airbender.Review.Trace.Families.ReducedMachine.DelegationKeyAccounting
 import Airbender.Proofs.ReducedMachine.NativeDelegationKeyAccounting
 import Airbender.Review.Trace.Families.ReducedMachine.DelegationKeyAccountingTheorems
@@ -8040,3 +8045,29 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeDelegationKeyAccounting.main_partial_dependencies_retained
 #print axioms Airbender.Tests.NativeDelegationKeyAccounting.inactive_requests_retained
 #print axioms Airbender.Tests.NativeDelegationKeyAccounting.full_counted_source
+
+#print axioms Airbender.NativeCallerMixedQueryProofs.exact_queries
+#print axioms Airbender.NativeCallerMixedQueryProofs.body
+#print axioms Airbender.NativeCallerMixedQueryProofs.membership
+#print axioms Airbender.NativeCallerMixedQueryProofs.runtime
+#print axioms Airbender.NativeCallerMixedQueryProofs.all_rows
+#print axioms Airbender.NativeCallerMixedQueryProofs.counted
+#print axioms Airbender.NativeCallerMixedQueries.native_caller_mixed_queries
+#print axioms Airbender.NativeCallerMixedQueries.native_counted_caller_mixed_queries
+#print axioms Airbender.Tests.NativeCallerMixedQueries.mixed_first_payload
+#print axioms Airbender.Tests.NativeCallerMixedQueries.mixed_second_payload
+#print axioms Airbender.Tests.NativeCallerMixedQueries.mixed_third_payload
+#print axioms Airbender.Tests.NativeCallerMixedQueries.mixed_fourth_payload
+#print axioms Airbender.Tests.NativeCallerMixedQueries.mixed_raw_flag_nonboolean
+#print axioms Airbender.Tests.NativeCallerMixedQueries.shift_last_tags
+#print axioms Airbender.Tests.NativeCallerMixedQueries.complete_local_body
+#print axioms Airbender.Tests.NativeCallerMixedQueries.local_first_tuple
+#print axioms Airbender.Tests.NativeCallerMixedQueries.local_other_tuples
+#print axioms Airbender.Tests.NativeCallerMixedQueries.local_all_exact
+#print axioms Airbender.Tests.NativeCallerMixedQueries.local_all_membership
+#print axioms Airbender.Tests.NativeCallerMixedQueries.all_query_inputs_retained
+#print axioms Airbender.Tests.NativeCallerMixedQueries.present_second_is_mixed
+#print axioms Airbender.Tests.NativeCallerMixedQueries.present_third_is_mixed
+#print axioms Airbender.Tests.NativeCallerMixedQueries.last_selector_difference
+#print axioms Airbender.Tests.NativeCallerMixedQueries.inactive_requests_retained
+#print axioms Airbender.Tests.NativeCallerMixedQueries.full_counted_source

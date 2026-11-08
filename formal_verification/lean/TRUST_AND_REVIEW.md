@@ -1,5 +1,53 @@
 # Trust and review boundaries
 
+## Complete native mixed caller queries (8 November 2026)
+
+[Mixed query model](Airbender/Review/Circuits/ReducedMachine/CallerMixedQueries.lean)
+and [short roots](Airbender/Review/Trace/Families/ReducedMachine/CallerMixedQueriesTheorems.lean)
+expose all four actual dynamic tuples, including every mixed opcode contribution.
+[Proof](Airbender/Proofs/ReducedMachine/NativeCallerMixedQueries.lean) kernel-binds
+all sixteen Q82..97 ASTs before witness evaluation, preserving the exact importer
+fold syntax and reverse physical-to-logical variable mapping. Original Clean
+acceptance derives every normalized tuple and its actual runtime-pool membership
+on EVERY ordinary caller row, including execute0. No valid mask, activity,
+orthogonality or expected query is supplied.
+
+When a request is nonzero, the derived second and third fields of query zero
+still include other opcode contributions. They are not silently identified with
+the CSR support/delegation outputs. The last two tags differ by17*shift. These
+are exact necessary consequences; individual caller Booleanity, activity,
+validity and a per-call issuance/fulfillment bijection remain open. The SAME old
+counted source/public image/log20/OLD LogicalLookups/OLD explicit SourceIdentity
+retain prior exact aggregate key accounting and joint initialized block execution.
+No new acceptance or logical/cryptographic boundary is introduced.
+
+[17 controls](Tests/NativeCallerMixedQueries.lean) retain all four pure mixed
+payloads, a non-Boolean raw flag and distinct shift tags; reuse the complete old
+LOCAL CSR BODY for both active/inactive flags; check exact tuples and memberships,
+nonzero-request formulas, selector difference, inactive requests and the full
+counted source. The pure mixed payload's first tuple is CSR-shaped while its
+second tuple has a nonzero output at tag0. It is NOT an accepted BODY or a native
+global/physical witness, attack, defect or absence-of-other-enforcement evidence.
+The existing complete LOCAL CSR fixtures are not new global positive witnesses.
+
+Before implementation, full pinned native bytes were checked and three source
+files were added to provenance: OptimizationContext lookup append/grouping,
+Circuit selector forwarding and spec_selection weighted-sum construction. The
+existing CSR helper was reread. Targeted source review and exact AST bindings are
+not general Rust/compiler/JSON/physical refinement. No production, Sail,
+dependency, v3-reference, parser/importer/exporter, artifact, fixture, generation,
+heavy replay, old acceptance or FINDINGS change. All inactive caller rows/requests,
+AUX/m0 poles,43worker ports, both raw times, aliases, OLDREADs, readonly refreshes,
+unmasked SW and public x0 timestamps remain.
+
+Next derive or assess all-row caller validity/activity and per-call accounting
+using these FULL mixed tuples and the actual pool, without assuming a valid CSR
+mask. Physical scheduling/standard hash, public MOP custom execution, original
+CSR/MOP/worker Sail, protocol spans, padding/terminal and initialization/teardown,
+physical cryptography, completeness and parity remain open. No native defect or
+issue-handling assumption is established. Counts are audit counters, not parity.
+
+
 ## Exact aggregate delegation-key accounting (8 November 2026)
 
 [Accounting model](Airbender/Review/Trace/Families/ReducedMachine/DelegationKeyAccounting.lean)

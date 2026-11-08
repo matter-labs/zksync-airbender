@@ -381,3 +381,11 @@ from actual x12 writes and proves every raw-key caller aggregate is the exact
 0/1 worker indicator, retaining all caller rows. This is aggregate accounting;
 individual caller Booleanity/activity and per-call issuance bijection remain
 open alongside physical scheduling/Sail/cryptographic boundaries.
+
+## Complete mixed caller queries
+
+[Mixed queries](../../Trace/Families/ReducedMachine/CallerMixedQueriesTheorems.lean) derive all four actual tuples and runtime-pool
+memberships on every ordinary caller row, including inactive rows, without a
+valid-mask or activity premise. All sixteen query equations are kernel-bound
+before evaluation. Individual caller Booleanity/activity and per-call accounting
+remain open; prior aggregate accounting and joint execution are retained.
