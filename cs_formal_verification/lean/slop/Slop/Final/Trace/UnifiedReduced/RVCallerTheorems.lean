@@ -4,6 +4,8 @@ import Slop.UnifiedReduced.RVCaller.MixedMemory
 import Slop.UnifiedReduced.RVCaller.SharedSpans
 import Slop.UnifiedReduced.RVCaller.RequestHashWindows
 import Slop.UnifiedReduced.RVCaller.WindowProjection
+import Slop.UnifiedReduced.RVCaller.JointHashWindows
+import Slop.UnifiedReduced.RVCaller.MixedWindowProjection
 
 namespace Airbender.UnifiedReduced
 
@@ -59,5 +61,26 @@ theorem Caller.rv_mixed_window_sequence_soundness : Caller.RVMixedWindowSequence
   intro p _ hp clockInverse rotationInverse data program before ca oa cells cut windows accepted inputs first positive
     ordered
   exact Caller.Proofs.rv_mixed_window_sequence hp clockInverse rotationInverse accepted inputs first positive ordered
+
+/-- Caller-only hash windows reach their complete RV reference (delegate link included) at the actual joint cut
+    RV states. -/
+theorem Caller.rv_joint_hash_window_soundness : Caller.RVJointHashWindowSoundnessClaim := by
+  intro p _ hp clockInverse data before addresses cells span lower upper accepted inputs first last positive ordered
+  exact Caller.Proofs.rv_joint_hash_window hp clockInverse accepted inputs first last positive ordered
+
+/-- Accepted state matching counts every instruction between the public cuts (callers from the RV caller table). -/
+theorem Caller.rv_window_schedule_soundness : Caller.RVWindowScheduleSoundnessClaim := by
+  intro p _ hp clockInverse data before addresses accepted inputs lower upper first last positive ordered afterInitial
+    beforeTerminal duration
+  exact Caller.Proofs.rv_caller_window_schedule hp clockInverse accepted inputs first last positive ordered afterInitial
+    beforeTerminal duration
+
+/-- Caller regions within mixed RV history derive worker matching and retained boundary images at the actual cut
+    states. -/
+theorem Caller.rv_mixed_window_projection_soundness : Caller.RVMixedWindowProjectionSoundnessClaim := by
+  intro p _ hp clockInverse rotationInverse data program before ca oa cells accepted inputs lower upper first last
+    positive ordered afterInitial beforeTerminal duration
+  exact Caller.Proofs.rv_mixed_projected_window hp clockInverse rotationInverse accepted inputs first last positive
+    ordered afterInitial beforeTerminal duration
 
 end Airbender.UnifiedReduced
