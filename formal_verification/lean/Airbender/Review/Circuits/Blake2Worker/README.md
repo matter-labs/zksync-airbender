@@ -308,3 +308,10 @@ calls, finalization/full worker hash and physical schedules remain open.
 four first diagonal wrapping A additions/D XORrotate16 results from the SAME
 counted source. Prior column G/replay effects stay. Remaining diagonal steps,
 finalization/write-result/full hash and physical schedules remain open.
+
+## First-half native diagonal G arithmetic
+
+[Diagonal first half](../../Trace/Families/ReducedMachine/WorkerDiagonalCBTheorems.lean) derives C wrapping additions/B XORrotate12 and
+assembles all four first-half G vectors on derived routed inputs/weighted messages
+from the SAME counted source. Prior column G/replay effects stay. Second diagonal
+steps, finalization/write-result/full hash and physical schedules remain open.
