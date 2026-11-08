@@ -85,8 +85,7 @@ IMPORT_ALL: dict[str, tuple[str, ...]] = {
     "Slop.KeccakSplit.RVStep": (_A,),
     "Slop.UnifiedReduced.RV.ControlMembership": (_A,),
     "Slop.Keccak.SlotReduction": (_D, _V),
-    "Slop.KeccakSplit.Reference.SlotReduction": (_D, _V),
-    "Slop.KeccakSplit.Reference.FinalIota": (_A,),
+    "Slop.KeccakSplit.Reference.CallSteps": (_A,),
     "Slop.Keccak.Phases.Rho": (_A,),
     "Slop.Keccak.Phases.Theta": (_A,),
     "Slop.Keccak.PermutationAssembly": (_A,),
@@ -102,7 +101,6 @@ IMPORT_ALL: dict[str, tuple[str, ...]] = {
 }
 # Generated proof families: every file under the prefix gets the same set.
 IMPORT_ALL_PREFIX: dict[str, tuple[str, ...]] = {
-    "Slop.KeccakSplit.Reference.Rounds.": (_A,),
     "Slop.Keccak.Phases.Chi.": (_A,),
     "Slop.Keccak.Phases.Iota.": (_A,),
 }

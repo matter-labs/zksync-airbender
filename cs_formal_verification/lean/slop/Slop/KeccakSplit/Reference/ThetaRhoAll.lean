@@ -1,52 +1,5 @@
 module
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow00
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh00
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow01
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh01
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow02
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh02
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow03
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh03
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow04
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh04
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow05
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh05
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow06
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh06
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow07
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh07
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow08
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh08
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow09
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh09
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow10
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh10
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow11
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh11
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow12
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh12
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow13
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh13
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow14
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh14
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow15
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh15
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow16
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh16
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow17
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh17
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow18
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh18
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow19
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh19
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow20
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh20
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow21
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh21
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow22
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh22
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoLow23
-public import Slop.KeccakSplit.Reference.Rounds.ThetaRhoHigh23
+public import Slop.KeccakSplit.Reference.CallSteps
 
 @[expose] public section
 
@@ -54,59 +7,79 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 
+/-- Clean's `rhoPi` reads lane `piSource lane` and rotates it by that lane's rho offset. -/
+theorem rho_pi_entry (v : Vector Nat 25) (lane : Fin 25) :
+    (rhoPi v)[lane.val] = rotLeft64 v[(Controller.piSource lane).val]
+      ((rotations[(Controller.piSource lane).val / 5]'(by
+        have := (Controller.piSource lane).isLt; omega))[(Controller.piSource lane).val % 5]'(by
+          omega)) := by
+  fin_cases lane <;> rfl
+
+theorem theta_xor_entry (v : Vector Nat 25) (d : Vector Nat 5) (lane : Fin 25) :
+    (thetaXor v d)[lane.val] = v[lane.val] ^^^ d[lane.val / 5]'(by omega) := by
+  fin_cases lane <;> rfl
+
+theorem theta_d_entry (c : Vector Nat 5) (column : Nat) (small : column < 5) :
+    (thetaD c)[column] =
+      c[(column + 4) % 5]'(by omega) ^^^ rotLeft64 (c[(column + 1) % 5]'(by omega)) 1 := by
+  interval_cases column <;> rfl
+
+/-- The theta+rho calls of any round give each lane rho of (lane ^ D[column]). -/
+theorem theta_rho_phase_slot (round : Fin 24) (state : LaneState) (lane : Fin 25) :
+    thetaRhoPhase round state (laneSlot round.val lane) =
+      rotLeft64 (state (laneSlot round.val lane) ^^^
+        (state ⟨25 + (lane.val / 5 + 4) % 5, by omega⟩ ^^^
+          rotLeft64 (state ⟨25 + (lane.val / 5 + 1) % 5, by omega⟩) 1))
+        ((rotations[lane.val / 5]'(by omega))[lane.val % 5]'(by omega)) := by
+  have column : lane.val / 5 < 5 := by omega
+  have position : lane.val % 5 < 5 := Nat.mod_lt _ (by decide)
+  have split : lane.val = 5 * (lane.val / 5) + lane.val % 5 := by omega
+  let owner : Fin 361 := ⟨15 * round.val + 5 + lane.val / 5, by omega⟩
+  have shape : owner.val = 15 * round.val + 5 + lane.val / 5 := rfl
+  let reads : Fin 31 → Prop := fun q =>
+    (∃ j, ∃ _ : j < 5, laneSlot round.val ⟨5 * (lane.val / 5) + j, by omega⟩ = q) ∨ 25 ≤ q.val
+  have here : reads (laneSlot round.val lane) :=
+    Or.inl ⟨lane.val % 5, position, by rw [lane_slot_eq_iff]; exact Fin.ext split.symm⟩
+  have kept (call : Fin 5) (other : call.val ≠ lane.val / 5) (t : LaneState) (q : Fin 31)
+      (read : reads q) :
+      microStep ⟨15 * round.val + 5 + call.val, by omega⟩ t q = t q := by
+    apply theta_rho_step_kept (round := round.val) (column := call.val) rfl round.isLt call.isLt
+    intro j position same
+    rcases read with ⟨k, small, rfl⟩ | high
+    · rw [lane_slot_eq_iff, Fin.mk.injEq] at same
+      omega
+    · have := lane_slot_bound round.val ⟨5 * call.val + j, by omega⟩
+      rw [same] at this
+      omega
+  have covered (j : Fin 7) : reads (slots owner)[j] := by
+    obtain ⟨j, bound⟩ := j
+    rw [Fin.getElem_fin]
+    by_cases low : j < 5
+    · rw [theta_rho_slot_lane shape round.isLt column j low]
+      exact Or.inl ⟨j, low, rfl⟩
+    · right
+      obtain rfl | rfl : j = 5 ∨ j = 6 := by omega
+      · rw [theta_rho_slot_five shape round.isLt column]
+        exact Nat.le_add_right 25 _
+      · rw [theta_rho_slot_six shape round.isLt column]
+        exact Nat.le_add_right 25 _
+  refine (fold_owned (fun call t => microStep ⟨15 * round.val + 5 + call.val, by omega⟩ t) state
+    (laneSlot round.val lane) ⟨lane.val / 5, column⟩ reads
+    (fun call other t => kept call (fun same => other (Fin.ext same)) t _ here)
+    (fun call other t q read => kept call (fun same => other (Fin.ext same)) t q read)
+    (fun t t' agree => micro_step_congr owner _ (fun j => agree _ (covered j)) (agree _ here))).trans ?_
+  exact theta_rho_step_lane shape round.isLt column state position split
+
 /-- All twenty-four theta+rho phases match the original Keccak reference. -/
 theorem theta_rho_phase_reference (round : Fin 24) (state : LaneState) :
     logicalLanes (round.val + 1) (thetaRhoPhase round state) =
       rhoPi (thetaXor (logicalLanes round.val state)
         (thetaD (Vector.ofFn fun column : Fin 5 => state ⟨25 + column.val, by omega⟩))) := by
-  fin_cases round
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_0 state lane low
-      else Rounds.thetaRho_high_0 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_1 state lane low
-      else Rounds.thetaRho_high_1 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_2 state lane low
-      else Rounds.thetaRho_high_2 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_3 state lane low
-      else Rounds.thetaRho_high_3 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_4 state lane low
-      else Rounds.thetaRho_high_4 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_5 state lane low
-      else Rounds.thetaRho_high_5 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_6 state lane low
-      else Rounds.thetaRho_high_6 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_7 state lane low
-      else Rounds.thetaRho_high_7 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_8 state lane low
-      else Rounds.thetaRho_high_8 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_9 state lane low
-      else Rounds.thetaRho_high_9 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_10 state lane low
-      else Rounds.thetaRho_high_10 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_11 state lane low
-      else Rounds.thetaRho_high_11 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_12 state lane low
-      else Rounds.thetaRho_high_12 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_13 state lane low
-      else Rounds.thetaRho_high_13 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_14 state lane low
-      else Rounds.thetaRho_high_14 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_15 state lane low
-      else Rounds.thetaRho_high_15 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_16 state lane low
-      else Rounds.thetaRho_high_16 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_17 state lane low
-      else Rounds.thetaRho_high_17 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_18 state lane low
-      else Rounds.thetaRho_high_18 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_19 state lane low
-      else Rounds.thetaRho_high_19 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_20 state lane low
-      else Rounds.thetaRho_high_20 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_21 state lane low
-      else Rounds.thetaRho_high_21 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_22 state lane low
-      else Rounds.thetaRho_high_22 state lane (by omega) bound
-  · exact Vector.ext fun lane bound => if low : lane < 13 then Rounds.thetaRho_low_23 state lane low
-      else Rounds.thetaRho_high_23 state lane (by omega) bound
+  apply Vector.ext
+  intro lane bound
+  have source := (Controller.piSource ⟨lane, bound⟩).isLt
+  rw [rho_pi_entry _ ⟨lane, bound⟩, theta_xor_entry, theta_d_entry _ _ (by omega)]
+  simp only [logicalLanes, Vector.getElem_ofFn]
+  exact theta_rho_phase_slot round state (Controller.piSource ⟨lane, bound⟩)
 
 end Airbender.Keccak.Split.Call.Proofs

@@ -1,52 +1,5 @@
 module
-public import Slop.KeccakSplit.Reference.Rounds.ParityA00
-public import Slop.KeccakSplit.Reference.Rounds.ParityB00
-public import Slop.KeccakSplit.Reference.Rounds.ParityA01
-public import Slop.KeccakSplit.Reference.Rounds.ParityB01
-public import Slop.KeccakSplit.Reference.Rounds.ParityA02
-public import Slop.KeccakSplit.Reference.Rounds.ParityB02
-public import Slop.KeccakSplit.Reference.Rounds.ParityA03
-public import Slop.KeccakSplit.Reference.Rounds.ParityB03
-public import Slop.KeccakSplit.Reference.Rounds.ParityA04
-public import Slop.KeccakSplit.Reference.Rounds.ParityB04
-public import Slop.KeccakSplit.Reference.Rounds.ParityA05
-public import Slop.KeccakSplit.Reference.Rounds.ParityB05
-public import Slop.KeccakSplit.Reference.Rounds.ParityA06
-public import Slop.KeccakSplit.Reference.Rounds.ParityB06
-public import Slop.KeccakSplit.Reference.Rounds.ParityA07
-public import Slop.KeccakSplit.Reference.Rounds.ParityB07
-public import Slop.KeccakSplit.Reference.Rounds.ParityA08
-public import Slop.KeccakSplit.Reference.Rounds.ParityB08
-public import Slop.KeccakSplit.Reference.Rounds.ParityA09
-public import Slop.KeccakSplit.Reference.Rounds.ParityB09
-public import Slop.KeccakSplit.Reference.Rounds.ParityA10
-public import Slop.KeccakSplit.Reference.Rounds.ParityB10
-public import Slop.KeccakSplit.Reference.Rounds.ParityA11
-public import Slop.KeccakSplit.Reference.Rounds.ParityB11
-public import Slop.KeccakSplit.Reference.Rounds.ParityA12
-public import Slop.KeccakSplit.Reference.Rounds.ParityB12
-public import Slop.KeccakSplit.Reference.Rounds.ParityA13
-public import Slop.KeccakSplit.Reference.Rounds.ParityB13
-public import Slop.KeccakSplit.Reference.Rounds.ParityA14
-public import Slop.KeccakSplit.Reference.Rounds.ParityB14
-public import Slop.KeccakSplit.Reference.Rounds.ParityA15
-public import Slop.KeccakSplit.Reference.Rounds.ParityB15
-public import Slop.KeccakSplit.Reference.Rounds.ParityA16
-public import Slop.KeccakSplit.Reference.Rounds.ParityB16
-public import Slop.KeccakSplit.Reference.Rounds.ParityA17
-public import Slop.KeccakSplit.Reference.Rounds.ParityB17
-public import Slop.KeccakSplit.Reference.Rounds.ParityA18
-public import Slop.KeccakSplit.Reference.Rounds.ParityB18
-public import Slop.KeccakSplit.Reference.Rounds.ParityA19
-public import Slop.KeccakSplit.Reference.Rounds.ParityB19
-public import Slop.KeccakSplit.Reference.Rounds.ParityA20
-public import Slop.KeccakSplit.Reference.Rounds.ParityB20
-public import Slop.KeccakSplit.Reference.Rounds.ParityA21
-public import Slop.KeccakSplit.Reference.Rounds.ParityB21
-public import Slop.KeccakSplit.Reference.Rounds.ParityA22
-public import Slop.KeccakSplit.Reference.Rounds.ParityB22
-public import Slop.KeccakSplit.Reference.Rounds.ParityA23
-public import Slop.KeccakSplit.Reference.Rounds.ParityB23
+public import Slop.KeccakSplit.Reference.CallSteps
 
 @[expose] public section
 
@@ -54,132 +7,126 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 
+/-- Clean's column parity C[x] is the XOR of lanes 5x .. 5x + 4. -/
+theorem theta_c_entry (v : Vector Nat 25) (column : Nat) (small : column < 5) :
+    (thetaC v)[column] = v[5 * column]'(by omega) ^^^ v[5 * column + 1]'(by omega) ^^^
+      v[5 * column + 2]'(by omega) ^^^ v[5 * column + 3]'(by omega) ^^^ v[5 * column + 4]'(by omega) := by
+  interval_cases column <;> rfl
+
+/-- The slots one parity call reads: its column, C[column] and the unused slot. -/
+def parityReads (round column : Nat) (small : column < 5) (q : Fin 31) : Prop :=
+  (∃ k, ∃ _ : k < 5, laneSlot round ⟨5 * column + k, by omega⟩ = q) ∨
+    q = ⟨25 + column, by omega⟩ ∨ q.val = 30
+
+theorem parity_kept (round : Fin 24) (column : Nat) (small : column < 5) (call : Fin 5)
+    (other : call.val ≠ column) (t : LaneState) (q : Fin 31) (read : parityReads round.val column small q) :
+    microStep ⟨15 * round.val + call.val, by omega⟩ t q = t q := by
+  apply parity_step_kept (round := round.val) (column := call.val) rfl (by omega) call.isLt
+  · intro j position same
+    rcases read with ⟨k, bound, rfl⟩ | rfl | high
+    · rw [lane_slot_eq_iff, Fin.mk.injEq] at same
+      omega
+    · have := lane_slot_bound round.val ⟨5 * call.val + j, by omega⟩
+      rw [same] at this
+      simp only at this
+      omega
+    · have := lane_slot_bound round.val ⟨5 * call.val + j, by omega⟩
+      rw [same] at this
+      omega
+  · intro same
+    rcases read with ⟨k, bound, rfl⟩ | rfl | high
+    · have := lane_slot_bound round.val ⟨5 * column + k, by omega⟩
+      rw [← same] at this
+      simp only at this
+      omega
+    · rw [Fin.mk.injEq] at same
+      omega
+    · rw [← same] at high
+      simp only at high
+      omega
+
+theorem parity_local (round : Fin 24) (column : Nat) (small : column < 5) (physical : Fin 31)
+    (here : parityReads round.val column small physical) (t t' : LaneState)
+    (agree : ∀ q, parityReads round.val column small q → t q = t' q) :
+    microStep ⟨15 * round.val + column, by omega⟩ t physical =
+      microStep ⟨15 * round.val + column, by omega⟩ t' physical := by
+  have shape : (⟨15 * round.val + column, by omega⟩ : Fin 361).val = 15 * round.val + column := rfl
+  apply micro_step_congr _ _ (fun j => agree _ ?_) (agree _ here)
+  obtain ⟨j, bound⟩ := j
+  rw [Fin.getElem_fin]
+  by_cases low : j < 5
+  · rw [parity_slot_lane shape (by omega) small j low]
+    exact Or.inl ⟨j, low, rfl⟩
+  · right
+    obtain rfl | rfl : j = 5 ∨ j = 6 := by omega
+    · rw [parity_slot_five shape (by omega) small]
+      exact Or.inl rfl
+    · rw [parity_slot_six shape (by omega) small]
+      exact Or.inr rfl
+
+/-- The parity calls of any round keep every lane, except the delayed iota on lane (0, 0). -/
+theorem parity_phase_lane (round : Fin 24) (state : LaneState) (lane : Fin 25) :
+    parityPhase round state (laneSlot round.val lane) =
+      if lane.val = 0 then state (laneSlot round.val lane) ^^^ roundConstant round.val
+      else state (laneSlot round.val lane) := by
+  have column : lane.val / 5 < 5 := by omega
+  have position : lane.val % 5 < 5 := Nat.mod_lt _ (by decide)
+  have split : lane.val = 5 * (lane.val / 5) + lane.val % 5 := by omega
+  have here : parityReads round.val (lane.val / 5) column (laneSlot round.val lane) :=
+    Or.inl ⟨lane.val % 5, position, by rw [lane_slot_eq_iff]; exact Fin.ext split.symm⟩
+  refine (fold_owned (fun call t => microStep ⟨15 * round.val + call.val, by omega⟩ t) state
+    (laneSlot round.val lane) ⟨lane.val / 5, column⟩ (parityReads round.val (lane.val / 5) column)
+    (fun call other t => parity_kept round _ column call (fun same => other (Fin.ext same)) t _ here)
+    (fun call other t q read => parity_kept round _ column call (fun same => other (Fin.ext same)) t q read)
+    (parity_local round _ column _ here)).trans ?_
+  exact parity_step_lane (round := round.val) (column := lane.val / 5) rfl (by omega) column state
+    position split
+
+/-- The parity calls of any round write C[column] of the state after the delayed iota. -/
+theorem parity_phase_column (round : Fin 24) (state : LaneState) (column : Fin 5) :
+    parityPhase round state ⟨25 + column.val, by omega⟩ =
+      (if column.val = 0 then
+        state (laneSlot round.val ⟨5 * column.val, by omega⟩) ^^^ roundConstant round.val
+      else state (laneSlot round.val ⟨5 * column.val, by omega⟩)) ^^^
+        state (laneSlot round.val ⟨5 * column.val + 1, by omega⟩) ^^^
+        state (laneSlot round.val ⟨5 * column.val + 2, by omega⟩) ^^^
+        state (laneSlot round.val ⟨5 * column.val + 3, by omega⟩) ^^^
+        state (laneSlot round.val ⟨5 * column.val + 4, by omega⟩) := by
+  have here : parityReads round.val column.val column.isLt ⟨25 + column.val, by omega⟩ :=
+    Or.inr (Or.inl rfl)
+  refine (fold_owned (fun call t => microStep ⟨15 * round.val + call.val, by omega⟩ t) state
+    ⟨25 + column.val, by omega⟩ column (parityReads round.val column.val column.isLt)
+    (fun call other t => parity_kept round _ column.isLt call (fun same => other (Fin.ext same)) t _ here)
+    (fun call other t q read =>
+      parity_kept round _ column.isLt call (fun same => other (Fin.ext same)) t q read)
+    (parity_local round _ column.isLt _ here)).trans ?_
+  exact parity_step_column (round := round.val) (column := column.val) rfl (by omega) column.isLt state
+
 /-- All 120 round parity calls match the original delayed-iota reference. -/
 theorem parity_phase_reference (round : Fin 24) (state : LaneState) :
     logicalLanes round.val (parityPhase round state) =
       iotaState (logicalLanes round.val state) (Fin.ofNat 25 round.val) ∧
     (∀ column : Fin 5, parityPhase round state ⟨25 + column.val, by omega⟩ =
       (thetaC (iotaState (logicalLanes round.val state) (Fin.ofNat 25 round.val)))[column]) := by
-  fin_cases round
-  · refine ⟨Rounds.parity_lanes_0 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_0 state
-    · exact Rounds.parity_columns_0 column zero state
-  · refine ⟨Rounds.parity_lanes_1 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_1 state
-    · exact Rounds.parity_columns_1 column zero state
-  · refine ⟨Rounds.parity_lanes_2 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_2 state
-    · exact Rounds.parity_columns_2 column zero state
-  · refine ⟨Rounds.parity_lanes_3 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_3 state
-    · exact Rounds.parity_columns_3 column zero state
-  · refine ⟨Rounds.parity_lanes_4 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_4 state
-    · exact Rounds.parity_columns_4 column zero state
-  · refine ⟨Rounds.parity_lanes_5 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_5 state
-    · exact Rounds.parity_columns_5 column zero state
-  · refine ⟨Rounds.parity_lanes_6 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_6 state
-    · exact Rounds.parity_columns_6 column zero state
-  · refine ⟨Rounds.parity_lanes_7 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_7 state
-    · exact Rounds.parity_columns_7 column zero state
-  · refine ⟨Rounds.parity_lanes_8 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_8 state
-    · exact Rounds.parity_columns_8 column zero state
-  · refine ⟨Rounds.parity_lanes_9 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_9 state
-    · exact Rounds.parity_columns_9 column zero state
-  · refine ⟨Rounds.parity_lanes_10 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_10 state
-    · exact Rounds.parity_columns_10 column zero state
-  · refine ⟨Rounds.parity_lanes_11 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_11 state
-    · exact Rounds.parity_columns_11 column zero state
-  · refine ⟨Rounds.parity_lanes_12 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_12 state
-    · exact Rounds.parity_columns_12 column zero state
-  · refine ⟨Rounds.parity_lanes_13 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_13 state
-    · exact Rounds.parity_columns_13 column zero state
-  · refine ⟨Rounds.parity_lanes_14 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_14 state
-    · exact Rounds.parity_columns_14 column zero state
-  · refine ⟨Rounds.parity_lanes_15 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_15 state
-    · exact Rounds.parity_columns_15 column zero state
-  · refine ⟨Rounds.parity_lanes_16 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_16 state
-    · exact Rounds.parity_columns_16 column zero state
-  · refine ⟨Rounds.parity_lanes_17 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_17 state
-    · exact Rounds.parity_columns_17 column zero state
-  · refine ⟨Rounds.parity_lanes_18 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_18 state
-    · exact Rounds.parity_columns_18 column zero state
-  · refine ⟨Rounds.parity_lanes_19 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_19 state
-    · exact Rounds.parity_columns_19 column zero state
-  · refine ⟨Rounds.parity_lanes_20 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_20 state
-    · exact Rounds.parity_columns_20 column zero state
-  · refine ⟨Rounds.parity_lanes_21 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_21 state
-    · exact Rounds.parity_columns_21 column zero state
-  · refine ⟨Rounds.parity_lanes_22 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_22 state
-    · exact Rounds.parity_columns_22 column zero state
-  · refine ⟨Rounds.parity_lanes_23 state, fun column => ?_⟩
-    by_cases zero : column = 0
-    · subst zero
-      exact Rounds.parity_column_zero_23 state
-    · exact Rounds.parity_columns_23 column zero state
+  have lanes : logicalLanes round.val (parityPhase round state) =
+      iotaState (logicalLanes round.val state) (Fin.ofNat 25 round.val) := by
+    apply Vector.ext
+    intro lane bound
+    rw [logical_lanes_entry, parity_phase_lane]
+    have small : round.val % 25 = round.val := Nat.mod_eq_of_lt (by omega)
+    simp only [iotaState, Fin.val_ofNat, small]
+    by_cases zero : round.val = 0
+    · simp [zero, roundConstant, logical_lanes_entry]
+    · have positive : 0 < round.val := by omega
+      simp [positive, roundConstant, iota, Vector.getElem_set, logical_lanes_entry, eq_comm (a := 0),
+        show round.val ≤ 24 by omega]
+      by_cases first : lane = 0
+      · subst first
+        rfl
+      · simp only [first, ↓reduceIte]
+  refine ⟨lanes, fun column => ?_⟩
+  rw [Fin.getElem_fin, theta_c_entry _ column.val column.isLt, ← lanes]
+  simp only [logical_lanes_entry, parity_phase_lane, parity_phase_column]
+  by_cases zero : column.val = 0 <;> simp [zero]
 
 end Airbender.Keccak.Split.Call.Proofs
