@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.MainDependencies
+import Airbender.Proofs.ReducedMachine.NativeMainDependencies
+import Airbender.Review.Circuits.ReducedMachine.MainDependenciesTheorems
+import Tests.NativeMainDependencies
+
 import Airbender.Review.Circuits.ReducedMachine.WorkerWriteWords
 import Airbender.Proofs.ReducedMachine.NativeWorkerWriteWords
 import Airbender.Review.Circuits.ReducedMachine.WorkerWriteWordsTheorems
@@ -7280,3 +7285,27 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerWriteWords.all_actual_workers
 #print axioms Airbender.Tests.NativeWorkerWriteWords.inactive_read_retained
 #print axioms Airbender.Tests.NativeWorkerWriteWords.complete_conditional_counted
+
+#print axioms Airbender.NativeMainDependencyProofs.bounded_rank
+#print axioms Airbender.NativeMainDependencyProofs.readonly_values
+#print axioms Airbender.NativeMainDependencyProofs.local_effects
+#print axioms Airbender.NativeMainDependencyProofs.effects
+#print axioms Airbender.NativeMainDependencyProofs.counted
+#print axioms Airbender.NativeMainDependencies.native_main_value_dependencies
+#print axioms Airbender.NativeMainDependencies.native_counted_main_read_dependencies
+#print axioms Airbender.Tests.NativeMainDependencies.port_count
+#print axioms Airbender.Tests.NativeMainDependencies.readonly_both
+#print axioms Airbender.Tests.NativeMainDependencies.store_mask
+#print axioms Airbender.Tests.NativeMainDependencies.store_values
+#print axioms Airbender.Tests.NativeMainDependencies.positive_local_both
+#print axioms Airbender.Tests.NativeMainDependencies.alias_refresh
+#print axioms Airbender.Tests.NativeMainDependencies.alias_third
+#print axioms Airbender.Tests.NativeMainDependencies.native_write_ranks
+#print axioms Airbender.Tests.NativeMainDependencies.ordered_writes
+#print axioms Airbender.Tests.NativeMainDependencies.prefix_dependencies
+#print axioms Airbender.Tests.NativeMainDependencies.all_last_dependencies
+#print axioms Airbender.Tests.NativeMainDependencies.source_exact
+#print axioms Airbender.Tests.NativeMainDependencies.worker_retained
+#print axioms Airbender.Tests.NativeMainDependencies.inactive_retention
+#print axioms Airbender.Tests.NativeMainDependencies.complete_conditional
+#print axioms Airbender.Tests.NativeMainDependencies.complete_conditional_counted

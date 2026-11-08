@@ -1773,3 +1773,10 @@ initialized word bounds and worker execution are not yet established.
 ports using actual lookup remainder expressions and full BODY, reusing the prior35.
 No input word bound is assumed. Copied values, initialized mixed word bounds and
 worker execution remain separate; all ports, raw times and source boundaries stay.
+
+## Actual main cross-read dependencies
+
+[Main dependencies](Airbender/Review/Circuits/ReducedMachine/MainDependenciesTheorems.lean) derives exact readonly/SW-mask value copies
+and read-slot i before write-slot j>=i on the same complete source. All three
+reads precede the third write; same-row aliases and raw refresh times remain.
+Main candidate closure, initialized mixed word bounds and worker execution stay open.

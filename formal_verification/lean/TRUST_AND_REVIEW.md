@@ -1,5 +1,51 @@
 # Trust and review boundaries
 
+## Actual main cross-read dependencies (8 November 2026)
+
+[MainDependencies](Airbender/Review/Circuits/ReducedMachine/MainDependencies.lean)
+records the actual three main memory ports and exact read/write values. The two
+readonly ports copy both value fields while refreshing timestamps. Full BODY
+also derives the native SW-mask case: under observed packed mask16386, the actual
+unmasked third write copies the second port read. The mask condition is conclusion
+scope, not a new supplied per-row mask, accepted profile or expected read value.
+The store OLDREAD and all native tokens remain.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeMainDependencies.lean)
+reuses the unchanged abstract-table store theorem on the same full BODY. It
+transfers no RuntimePool acceptance to the old Fixed table. Actual derived main
+write bounds identify the old signed proof rank with the ordinary measure only
+for those bounded writes; no raw clock field is recoded. Existing PC-state history
+and exact metadata then give write ranks row.clock+0/1/2. Prior exact latest reads
+supply actual read-token sources and strict progress at each port. Therefore a
+read at slot i precedes every write at slot j>=i, including all three reads before
+the third write. In particular, SW's other-port source is earlier than its write.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/MainDependenciesTheorems.lean)
+expose full-BODY value observations and the same-source counted consequence.
+All43 worker bounded-or-copy effects and prior latest-read/path/key results remain
+on the same full InitBatchAccepted plus old explicit SourceIdentity, positive main
+count and every prefix guard. The identity is not derived from fixed-challenge
+or finite-field sample equations. All raw fields, inactive AUX/m0 poles, inactiveD,
+caller/decoder equations, readonly refreshes, OLDREAD, unmasked writes and x0 times
+stay. Caller requests are never filtered; no history or read-bound premise is added.
+
+[Sixteen controls](Tests/NativeMainDependencies.lean) check actual port metadata,
+readonly copies, the SW-mask consequence, old complete LOCAL CSR BODYs for both
+execute flags, exact write ranks4/5/6 and cross-port ordering. The existing alias
+fixture has read1 at write0's refreshed time and read2 after write0. This rejects
+the stronger false rule that all reads must precede every same-row write. It is
+not a new nonempty global/source/worker/physical witness, attack or native defect.
+
+Four modules add23 roots/ten exact parent references, retaining all6,294 prior
+ordered roots and exact audit bytes addition-only. Native107 pins, v3 reference,
+dependencies, old proofs/acceptance/artifacts and FINDINGS remain unchanged. No
+native adoption, generation, heavy replay, issue assumption or production fix.
+Actual main write-word closure and public decoding, initialized mixed word bounds,
+consistent online replay, worker rounds/results, original CSR/MOP/worker Sail,
+caller activity/converse accounting, physical cryptography, completeness and parity
+remain open. The original seven-profile Sail scope still excludes CSR/MOP.
+
+
 ## Complete local native worker write-word closure (8 November 2026)
 
 [WorkerWriteWords](Airbender/Review/Circuits/ReducedMachine/WorkerWriteWords.lean)
