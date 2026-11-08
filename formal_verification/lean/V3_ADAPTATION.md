@@ -1,5 +1,51 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Grouped native worker post-state and frame (8 November 2026)
+
+[Group model](Airbender/Review/Trace/Families/ReducedMachine/WorkerGroup.lean) and
+[short TRACE root](Airbender/Review/Trace/Families/ReducedMachine/WorkerGroupTheorems.lean)
+derive for EVERY actual active worker one complete replay with its ALL43ports
+contiguous: exact initialized pre-state, exact post-state and continuation to the
+actual terminal state. Every other edge occurrence remains, including MAIN/worker
+writes at other addresses with the same noninjective proof rank. Both raw clock
+fields/address/value remain; no physical schedule or global clock injection.
+
+[Proof](Airbender/Proofs/ReducedMachine/NativeWorkerGroup.lean) derives block replay
+from prior common exact reads and distinct addresses. Generic multiset balance,
+occurrence-preserving Subperm/Perm and cancellation derive the residual matching;
+old generic replay existence supplies its weakly rank-ordered continuation.
+ALL43actual writes are present and unique in the post-state. Every exact token
+at an unaffected address is present afterward iff present before. ALL18readonly
+ports copy their values with raw refresh timestamps retained. Lossless decoding
+of post-state samples yields all25writable reference outputs, equal the complete
+weighted transition on losslessly decoded common pre-state samples.
+
+The SAME old counted source/original public image/log20/OLD LogicalLookups/OLD
+explicit SourceIdentity supply all premises. No desired state, read, value, range,
+key, clock, result, one-hot mask, schedule, history or fulfilled ledger is supplied.
+Prior replay/word bounds/capacity and every ordinary inactive pointwise transition
+remain. MAIN partial dependencies are unchanged. [19 controls](Tests/NativeWorkerGroup.lean)
+cover small generic tied-rank edge retention and frames, all group writes,
+duplicate-address rejection, pre/post sample references, readonly refreshes,
+retained MAIN alias ordering/inactive CSR and the complete counted source.
+These are generic/conditional controls, not new nonempty native-source-global,
+whole-worker or physical witnesses, attacks or defects. No fabricated global
+history for old local zero-pointer aliases.
+
+This closes each active worker's derived grouped POST-state/frame. The existential
+replay may differ between workers; one jointly grouped replay for ALL workers is
+not yet derived. Physical round sequencing/standard scheduled full hash, inactive
+caller activity/converse accounting, public MOP custom execution, original CSR/MOP/
+worker Sail, physical cryptography, completeness and parity remain open. Public
+ordinary7-or-CSR excludes MOP; original seven-profile Sail excludes CSR/MOP. All43
+ports/BOTHtimes/OLDREAD/refresh/aliases/AUX-m0poles/inactiveD/callerdecoder equations/
+unmaskedSW/publicx0times stay; caller requests never filtered. Old logical
+boundaries are not fixed-challenge/sum/capacity/finite-field/transcript or physical
+Rust/JSON/FFT-LDE/quotient/verifier refinement. No native adaptation/pin/artifact,
+intake/generation/heavy replay/dependency/v3refresh/production/Sail/old acceptance/
+FINDINGS change. Counts are audit counters, not parity.
+
+
 ## Common initialized native worker pre-state (8 November 2026)
 
 [Snapshot model](Airbender/Review/Trace/Families/ReducedMachine/WorkerSnapshot.lean)

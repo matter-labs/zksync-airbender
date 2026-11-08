@@ -357,3 +357,10 @@ scheduled full hash and protocol/Sail/accounting boundaries remain open.
 and all25writable reference outputs from those samples, retaining prior replay.
 MAIN partial dependencies remain. Grouped post-state/frame, physical scheduling,
 standard scheduled hash and protocol/Sail/accounting boundaries remain open.
+
+## Grouped native worker post-state
+
+[Grouped block](../../Trace/Families/ReducedMachine/WorkerGroupTheorems.lean) derives ALL43post-write tokens, unaffected-address
+frame and complete residual replay for each active worker, with all25reference
+outputs sampled from pre/post states. One jointly grouped trace for ALL workers,
+physical scheduling and protocol/Sail/accounting boundaries remain open.

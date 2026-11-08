@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerGroup
+import Airbender.Proofs.ReducedMachine.NativeWorkerGroup
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerGroupTheorems
+import Tests.NativeWorkerGroup
+
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerSnapshot
 import Airbender.Proofs.ReducedMachine.NativeWorkerSnapshot
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerSnapshotTheorems
@@ -7926,3 +7931,36 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerSnapshot.main_partial_dependencies_retained
 #print axioms Airbender.Tests.NativeWorkerSnapshot.inactive_requests_retained
 #print axioms Airbender.Tests.NativeWorkerSnapshot.complete_counted
+
+#print axioms Airbender.NativeWorkerGroupProofs.block_replay
+#print axioms Airbender.NativeWorkerGroupProofs.frame
+#print axioms Airbender.NativeWorkerGroupProofs.terminal_unique
+#print axioms Airbender.NativeWorkerGroupProofs.balance
+#print axioms Airbender.NativeWorkerGroupProofs.writes_present
+#print axioms Airbender.NativeWorkerGroupProofs.residual_balance
+#print axioms Airbender.NativeWorkerGroupProofs.regroup
+#print axioms Airbender.NativeWorkerGroupProofs.port_member
+#print axioms Airbender.NativeWorkerGroupProofs.readonly_value
+#print axioms Airbender.NativeWorkerGroupProofs.sampled_output
+#print axioms Airbender.NativeWorkerGroupProofs.row
+#print axioms Airbender.NativeWorkerGroupProofs.counted
+#print axioms Airbender.NativeWorkerGroup.native_counted_worker_group
+#print axioms Airbender.Tests.NativeWorkerGroup.equal_rank_original_replay
+#print axioms Airbender.Tests.NativeWorkerGroup.regrouped_ties
+#print axioms Airbender.Tests.NativeWorkerGroup.other_tied_edge_retained
+#print axioms Airbender.Tests.NativeWorkerGroup.frame_at_other_tied_address
+#print axioms Airbender.Tests.NativeWorkerGroup.frame_at_unused_address
+#print axioms Airbender.Tests.NativeWorkerGroup.both_group_writes
+#print axioms Airbender.Tests.NativeWorkerGroup.duplicate_address_group_rejected
+#print axioms Airbender.Tests.NativeWorkerGroup.actual_post_output_decode
+#print axioms Airbender.Tests.NativeWorkerGroup.all43_post_writes
+#print axioms Airbender.Tests.NativeWorkerGroup.exact_post_token
+#print axioms Airbender.Tests.NativeWorkerGroup.unaffected_frame
+#print axioms Airbender.Tests.NativeWorkerGroup.both_snapshot_reference
+#print axioms Airbender.Tests.NativeWorkerGroup.all_state_results
+#print axioms Airbender.Tests.NativeWorkerGroup.all_extended_results
+#print axioms Airbender.Tests.NativeWorkerGroup.readonly_refresh_values
+#print axioms Airbender.Tests.NativeWorkerGroup.complete_residual_replay
+#print axioms Airbender.Tests.NativeWorkerGroup.main_partial_dependencies_retained
+#print axioms Airbender.Tests.NativeWorkerGroup.inactive_requests_retained
+#print axioms Airbender.Tests.NativeWorkerGroup.complete_counted
