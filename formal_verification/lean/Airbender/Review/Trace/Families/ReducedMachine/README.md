@@ -767,3 +767,10 @@ reads, keys and request accounting remain open.
 all ports and aliases. This local fixture supplies no source/global/worker-trace
 acceptance, initialized memory history, issued request or Sail effects; those
 combined obligations and parity remain open.
+
+## Every native request and active main caller clocks
+
+[Request gates and caller clocks](../../../Circuits/ReducedMachine/CallerRequestsTheorems.lean) derive request shape on EVERY ordinary
+main row and canonical unique clock observations on the EXISTING active main-state
+projection. All physical requests/poles remain; inactive-request clocks and actual
+worker issuance, fulfillment, initialized history and accounting remain open.

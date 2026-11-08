@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.CallerRequests
+import Airbender.Proofs.ReducedMachine.NativeCallerRequests
+import Airbender.Review.Circuits.ReducedMachine.CallerRequestsTheorems
+import Tests.NativeCallerRequests
+
 import Airbender.Review.Circuits.Blake2Worker.PositiveRow
 import Airbender.Proofs.Blake2Worker.NativePositiveRow
 import Airbender.Review.Circuits.Blake2Worker.PositiveRowTheorems
@@ -6709,3 +6714,33 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeBlake2PositiveRow.actual_processing
 #print axioms Airbender.Tests.NativeBlake2PositiveRow.actual_zero_table_rows
 #print axioms Airbender.Tests.NativeBlake2PositiveRow.active_is_not_padding
+
+#print axioms Airbender.NativeCallerRequestProofs.packed_bit
+#print axioms Airbender.NativeCallerRequestProofs.relations
+#print axioms Airbender.NativeCallerRequestProofs.mask_bit
+#print axioms Airbender.NativeCallerRequestProofs.body
+#print axioms Airbender.NativeCallerRequestProofs.all_rows
+#print axioms Airbender.NativeCallerRequestProofs.translated_unique
+#print axioms Airbender.NativeCallerRequestProofs.row_clock
+#print axioms Airbender.NativeCallerRequestProofs.active_clocks
+#print axioms Airbender.NativeCallerRequests.native_caller_request_shape
+#print axioms Airbender.NativeCallerRequests.native_all_caller_requests
+#print axioms Airbender.NativeCallerRequests.native_active_main_caller_clocks
+#print axioms Airbender.Tests.NativeCallerRequests.mask_zero
+#print axioms Airbender.Tests.NativeCallerRequests.low_window
+#print axioms Airbender.Tests.NativeCallerRequests.csr_boundary
+#print axioms Airbender.Tests.NativeCallerRequests.csr_instruction_mask
+#print axioms Airbender.Tests.NativeCallerRequests.mop_selector_off
+#print axioms Airbender.Tests.NativeCallerRequests.upper_mask
+#print axioms Airbender.Tests.NativeCallerRequests.inactive_complete_shape
+#print axioms Airbender.Tests.NativeCallerRequests.active_complete_shape
+#print axioms Airbender.Tests.NativeCallerRequests.inactive_request_retained
+#print axioms Airbender.Tests.NativeCallerRequests.oracle_erased
+#print axioms Airbender.Tests.NativeCallerRequests.zero_gate_fields
+#print axioms Airbender.Tests.NativeCallerRequests.corrupt_selector_rejected
+#print axioms Airbender.Tests.NativeCallerRequests.translated_clock_list
+#print axioms Airbender.Tests.NativeCallerRequests.duplicate_clock_preserved
+#print axioms Airbender.Tests.NativeCallerRequests.complete_empty_requests
+#print axioms Airbender.Tests.NativeCallerRequests.complete_empty_clocks
+#print axioms Airbender.Tests.NativeCallerRequests.complete_conditional_joint
+#print axioms Airbender.Tests.NativeCallerRequests.actual_raw_offset

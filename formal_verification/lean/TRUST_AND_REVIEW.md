@@ -1,5 +1,67 @@
 # Trust and review boundaries
 
+## Every native request gate and active main caller clocks (8 November 2026)
+
+[The native request observations](Airbender/Review/Circuits/ReducedMachine/CallerRequests.lean)
+retain EVERY ordinary main row of the SAME actual proof list, without an execute,
+opcode or request filter. Complete native body equations derive multiplicity as
+the CSR selector times the raw delegation value, kind as the source code times
+multiplicity, ABI high as SOME source-high times multiplicity, and imported clock
+offset three. The selector is Boolean and equals bit 7 of the actual packed mask,
+using canonical field representatives and the complete native 18-bit packing.
+Thus multiplicity zero is equivalent to selector zero OR delegation value zero;
+a nonzero request requires selector one and delegation value nonzero. It also
+derives supported one and zero native CSR oracle words. The raw delegation value
+and request multiplicity are not declared Boolean under this general body scope.
+No valid CSR instruction/mask129, kind1991, execute1 or worker issuance follows.
+When packed bit7 is zero, the complete request tuple is zero, with SOMEzero ABI
+high and the original offset three retained. No auxiliary pole is discarded.
+
+[The proof assembly](Airbender/Proofs/ReducedMachine/NativeCallerRequests.lean)
+performs the entire generic Nat low-window/bit/high calculation before concrete
+mask instantiation. It extracts actual equations68 through73 on an abstract setup
+and then lifts their consequences through existing bounded, duplicate-preserving
+sampling to ALL ordinary main observations of unchanged full initialization/
+main/caller/worker/global acceptance. No expected rows/streams, row-list equality,
+mask/profile premise, OOB proof-object fallback or huge domain evaluation is used.
+
+Separately, the EXISTING execute1 main-state projection derives caller-clock
+observations bounded to 19 bits, exactly row.clock+3, congruent to3 modulo4,
+at least7, strictly before the ACTUAL public terminal clock and unique. Initial
+state ranges/alignment and row-clock uniqueness come from SAME accepted native
+PC/state chronology and full tagged logical matching. The calculation uses no
+old-read bound or fake previous-clock interface, accepted memory trace or history.
+The generic injective list translation precedes native instantiation. These
+clock observations include all active main rows, without a new request filter.
+All physical requests and auxiliary values remain in the separate all-row result;
+clocks of inactive requests are not proved bounded or attached to active callers.
+
+[Three short roots](Airbender/Review/Circuits/ReducedMachine/CallerRequestsTheorems.lean)
+keep body shape, full ordinary-domain consequences and active-state clocks
+explicit. Complete execute0/request1 CSR BODY controls still pass. No body-local
+execute0-to-request0 rule, source-worker matching, expected fulfilled ledger or
+scalar-to-permutation claim is introduced. Full logical matching/lookups remain
+explicit extraction boundaries; inactiveD and m0 auxiliary poles remain.
+
+[Eighteen controls](Tests/NativeCallerRequests.lean) cover packed-mask boundaries,
+actual complete CSR bodies for both execute flags, retained inactive request,
+zero oracle consequence, exact disabled tuple, selector corruption rejection,
+clock translation/duplicate preservation, COMPLETE EMPTY stronger acceptance,
+full conditional joint roots and exact raw offset. Pure/reference/body/empty/
+conditional controls are not NONEMPTY source/global/worker/physical witnesses,
+attacks, native defects or absence-of-other-enforcement evidence. Four modules
+add29 roots with13 exact parent origins; all5,831 prior ordered roots and exact
+audit bytes remain. Native103 pins, dependencies, old proofs/acceptance,
+production/Sail/importer/exporter/native artifacts/fixtures and findings remain.
+No new native adoption/pin/generation/heavy replay, axiom or issue assumption.
+
+Next: actual active-worker clock progress and seed reachability, initialized
+OLDREAD values/addresses and STAGE2 keys; remaining decoder/request-versus-execute
+padding and caller-worker issuance/fulfillment/converse/accounting. Original
+CSR/MOP/worker Sail effects, general public/physical refinement, cryptography,
+completeness and checked native-target/trust-boundary parity remain open.
+
+
 ## Complete local active-worker fixture (8 November 2026)
 
 [The explicit native worker row](Airbender/Review/Circuits/Blake2Worker/PositiveRow.lean)

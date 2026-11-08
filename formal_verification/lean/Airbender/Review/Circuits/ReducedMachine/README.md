@@ -910,3 +910,10 @@ actual read clock has an exact multiplicity-one worker-write source on the same
 complete ledger. Accepted inactive workers have both raw clock limbs zero; all
 worker observations remain. Active clock progress/bounds, initialized worker
 reads, keys and request accounting remain open.
+
+## Every native request and active main caller clocks
+
+[Request gates and caller clocks](CallerRequestsTheorems.lean) derive request shape on EVERY ordinary
+main row and canonical unique clock observations on the EXISTING active main-state
+projection. All physical requests/poles remain; inactive-request clocks and actual
+worker issuance, fulfillment, initialized history and accounting remain open.
