@@ -3,14 +3,15 @@
 This directory describes the imported circuit families as relations between
 witnesses and observable inputs/outputs. Each family identifies its actual
 constraint artifact, the words or state effects represented by its columns, and
-the Sail or project reference against which those effects are checked. Local row
+the RV32 spec step (or Clean reference) against which those effects are checked. Local row
 claims and complete instruction or worker execution have distinct scopes.
 
 ## Checked results
 
-The six ordinary-family local claims prove their mapped register/memory and PC
-effects agree with original Sail, under public initialization/configuration/table
-conditions and logical matching/membership. Their histories derive reads, operand
+The six ordinary-family local claims prove every accepted row is one `RV.step` of our spec
+with the row's mapped register/memory and PC effects (a step exists only for aligned accesses,
+RAM stores and aligned jump targets), under public initialization/table conditions
+(`RVInterfaceAssumptions`) and logical matching/membership. Their histories derive reads, operand
 bounds and preprocessing. A standalone local G claim retains explicit operand
 bounds; its integrated worker connection derives them from initialized history.
 
@@ -31,10 +32,10 @@ then select a family below.
 | Family | Review entry | Main distinction |
 | --- | --- | --- |
 | ADD/SUB | [Guide](AddSub/README.md) | Standard row effects versus custom arithmetic and callers. |
-| Jump/branch/SLT | [Guide](JumpBranchSlt/README.md) | Configuration and unresolved terminal-PC normalization. |
+| Jump/branch/SLT | [Guide](JumpBranchSlt/README.md) | Canonical terminal-PC premise (unresolved normalization). |
 | MUL/DIV | [Guide](MulDiv/README.md) | Four admitted operations, including zero divisors. |
-| Shift/binop | [Guide](ShiftBinop/README.md) | Register/immediate preprocessing and original REV8 decoding. |
-| Word memory | [Guide](WordMemory/README.md) | Physical RAM/ROM behavior and the discarded-LW profile. |
+| Shift/binop | [Guide](ShiftBinop/README.md) | Register/immediate preprocessing and REV8 decoding. |
+| Word memory | [Guide](WordMemory/README.md) | Physical RAM/ROM behavior; a load into x0 only advances the PC. |
 | Subword memory | [Guide](SubwordMemory/README.md) | Aligned-cell mapping, merged stores and public ROM bytes. |
 | Unified reduced | [Guide](UnifiedReduced/README.md) | Local selector slices versus mixed execution and callers. |
 | Bigint | [Guide](Bigint/README.md) | Address/operation effects versus full caller-control ABI. |
@@ -49,11 +50,10 @@ interface assumptions. Follow the named columns to the artifact and the selected
 reference to its actual semantics. Preserve the theorem's field minimum and
 serialized inverse conditions; generic field proofs do not establish a Proth120 import.
 
-Shared [`context`](../Helpers/Context/README.md), [decoder](../Helpers/Decoder/README.md)
-and [`memory`](../Helpers/Memory/README.md) supply initialized-history interpretation.
+Shared [context](../Helpers/Context/README.md), [decoder](../Helpers/Decoder/README.md)
+and [memory](../Helpers/Memory/README.md) supply initialized-history interpretation.
 Circuit Tables directories contain modeled setup rows; Rust setup correspondence
 remains unproved. [Whole execution](../Trace/README.md) is a separate route.
 
-Jump/branch/SLT, MUL/DIV and shift/binop theorem implementations retain the
-documented pooled proof-assembly dependency. Their local statements and models
-do not acquire a whole-run assumption.
+Circuit modules have no transitive dependency on whole-execution (Trace) modules,
+so local statements and models do not acquire a whole-run assumption.

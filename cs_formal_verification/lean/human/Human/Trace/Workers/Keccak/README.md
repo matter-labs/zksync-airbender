@@ -1,7 +1,7 @@
 # Complete Keccak permutation
 
 This directory states the complete permutation effect of a 649-call Keccak span,
-binding Clean's original reference to actual initial/final lane reads. Call and
+binding Clean's original reference to actual initial/final lane reads of the `RV.State`. Call and
 window contracts retain seed timestamps and protocol scope, while shared execution
 connects the final state to native terminal tokens.
 
@@ -15,11 +15,11 @@ agreement. [`Native.rv_window_soundness`](../../../../../slop/Slop/Final/Trace/W
 at retained cut states; later workers may remain outside the window.
 Public protocol/domain/alignment/table conditions remain inputs.
 
-Read [Theorems](../../../../../slop/Slop/Final/Trace/Workers/Keccak/RVTheorems.lean), [Call](Call.lean) and
-BoundaryCall. [Permutation](Permutation.lean) binds
+Read [RVTheorems](RVTheorems.lean), [Call](Call.lean) and
+[RVCall](RVCall.lean) (`RVCallInputs`, `RVNativeCallInputs`, `RVWindowInputs`). [Permutation](Permutation.lean) binds
 the original complete reference to actual initial/final lane reads.
 
-Windows selects the first complete 649-call span.
+`RVWindowInputs` selects the first complete 649-call span.
 Initialized matching derives the control schedule, fixed pointer, lane/scratch
 coverage and linked intermediate states. Keep native seed timestamps, modeled
 controller tables, public domain and complete-span ABI visible.

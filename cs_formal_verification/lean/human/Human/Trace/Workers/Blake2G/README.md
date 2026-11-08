@@ -1,7 +1,7 @@
 # Complete G work-vector spans
 
 This directory states the complete 56/80-call G work-vector fold on actual
-initial/final RAM, using Clean's original G reference. Call and window contracts
+initial/final RAM of the `RV.State`, using Clean's original G reference. Call and window contracts
 give the public protocol mode/count and native-boundary conditions. Shared history
 connects all calls and terminal tokens without supplied intermediate states.
 
@@ -14,12 +14,11 @@ the complete reference fold on actual initial/final RAM and terminal tokens.
 retain native seeds and derive boundary controls/intermediate states under the
 public mode/count, alignment/domain, modeled-table and matching conditions.
 
-Read [Theorems](../../../../../slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean), then Call and
-BoundaryCall for public initialization versus retained
-native-boundary timestamps. [WorkVector](WorkVector.lean) is the complete
+Read [RVTheorems](RVTheorems.lean), then
+[RVCall](RVCall.lean): `RVCallInputs` (public initialization), `RVNativeCallInputs` (retained
+native-boundary timestamps) and `RVWindowInputs` (a span after whole preceding spans). [WorkVector](WorkVector.lean) is the complete
 56/80-call fold using the original Clean G.
 
-Windows selects spans after whole preceding spans.
 Check public mode/count, tracked alignment and modeled tables.
 Accepted initialized history derives the schedule, controls, pointers,
 intermediate states and actual initial/final RAM reads.

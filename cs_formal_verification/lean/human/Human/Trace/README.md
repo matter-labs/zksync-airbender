@@ -10,14 +10,15 @@ admitted.
 ## Checked results
 
 [`rv_pooled_native_soundness`](../../../slop/Slop/Final/Trace/RVSoundness.lean) proves that the six admitted ordinary
-families execute from the public Sail state and reach the native final PC and
-tracked cells, interpreting native ROM shadows through public bytes.
-Initialization/configuration, modeled tables, logical matching/decoding and the
+families, booted from the public `RV.State`, are a run of `RV.run` reaching the native final PC and
+tracked cells. The RAM seeds are the inits/teardowns Init tokens (`RVPooledBootInputs`), the modeled
+ROM tables are built from the ROM image, and native ROM-shadow cells are shadow RAM.
+Initialization, modeled tables, logical matching/decoding and the
 unresolved jump terminal-PC condition remain inputs; reads, ranges and order are derived.
 
 [`NonDeterminism.Pooled.rv_native_soundness`](../../../slop/Slop/Final/Trace/RVSoundness.lean) proves the same terminal
 agreement for the external-read/write-hint extension and the exact stream consumption.
-The stream and its port connection are explicit; authentication of the stream is not proved.
+The stream (`RV.State.input`) and its port connection are explicit; authentication of the stream is not proved.
 
 [`no_zero_timestamp_writes`](../../../slop/Slop/Final/Trace/ZeroTimestamp.lean) (statements in
 [ZeroTimestamp](ZeroTimestamp.lean), one per pooled CPU trace, unified machine, delegation workers and split Keccak
@@ -31,16 +32,14 @@ has a separate registry. [Worker spans](Workers/README.md#checked-results) and
 [caller composition](Delegation/README.md#checked-results) establish their stated
 effects, without closing whole mixed caller retirement or global inactive padding.
 
-Start with [Soundness](../../../slop/Slop/Final/Trace/RVSoundness.lean) for the primary six-family standard claim
-and its external-stream extension. [Execution](RVExecution.lean) defines the generic
-step relation and `Realizes`: execution reaches the native final PC and tracked cells.
-PooledExecution specializes the standard relation.
+Start with [RVSoundness](RVSoundness.lean) for the primary six-family standard claim
+and its external-stream extension. [RVExecution](RVExecution.lean) defines `RVRealizes`:
+some number of `RV.step`s from the public state reach the native final PC and tracked cells.
 
-Read public pooled inputs,
+Read the [public boot inputs](../Helpers/Context/RVPooledBoundary.lean),
 [accepted matching](../Helpers/Context/Model.lean) and
-[public decoding](../Helpers/Decoder/PooledProgram.lean) alongside the conclusion.
-Native ROM shadows use the explicit public-byte view. The proof derives reads,
-bounds, instruction order and actual retirement from one initialized history.
+[public decoding](../Helpers/Decoder/RVPooledProgram.lean) alongside the conclusion.
+The proof derives reads, bounds, instruction order and actual retirement from one initialized history.
 
 ## Choose the composition scope
 
@@ -51,13 +50,14 @@ bounds, instruction order and actual retirement from one initialized history.
 | [Delegation](Delegation/README.md) | Caller/worker matching, shared histories and selected spans. |
 | [Unified reduced](UnifiedReduced/README.md) | Unified ordinary/custom execution, caller cycles and windows. |
 
-PooledNonDeterminism adds stream position and exact
+The external-input claim adds stream position and exact
 consumption. The stream is independently public; circuit authentication of it
 is not established.
 
-Check the exact registry and profile of the chosen theorem. Standard clauses use
-original Sail; custom clauses use pinned project references. Unchanged Sail's
-discarded-load restriction differs from the named Airbender PC-only-NOP profile.
+Check the exact registry of the chosen theorem. Standard and custom instructions are
+`RV.step` clauses of our spec; a load into x0 only advances the PC there, so no load restriction applies.
+Teardown values are bounded only under an open item ([TeardownBounds](TeardownBounds.lean));
+every write is range-checked ([WritesRangeChecked](WritesRangeChecked.lean)).
 
 Keep terminal-PC normalization, active-row scope, public domains and caller ABI
 conditions visible. Caller cycles and complete selected spans do not by themselves

@@ -8,22 +8,22 @@ executing a complete work-vector protocol.
 
 ## Checked results
 
-The [local soundness claims](../../../../slop/Slop/Final/Circuits/Blake2G/Theorems.lean) prove the four-word output equals
+The [local soundness claims](Theorems.lean) prove the four-word output equals
 Clean's original G under the visible modeled controller and four operand bounds.
-The [integrated worker claim](../../../../slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean)
+The [integrated worker claim](../../Trace/Workers/Blake2G/RVTheorems.lean)
 derives operation bounds and actual reads/writes from initialized accepted history.
 Its complete-span claims bind the 56/80-call work-vector fold and terminal tokens;
 that is broader than the local G calculation.
 
-Start with [Theorems](../../../../slop/Slop/Final/Circuits/Blake2G/Theorems.lean) and [Model](Model.lean) for one G mixing
+Start with [Theorems](Theorems.lean) and [Model](Model.lean) for one G mixing
 operation. The reference reuses Clean's original G, shared by BLAKE2s and BLAKE3;
 the local claim is not complete compression.
 
 The local model explicitly retains four input-word bounds. Integrated worker
-history derives the operation bounds through [Memory](Memory.lean); keep those
-two interfaces distinct.
+history derives the operation bounds (in the worker claims, from the initialized
+history); keep those two interfaces distinct.
 
-[Artifact](Artifact.lean), [Row](Row.lean), [Addresses](Addresses.lean) and
+[Artifact](Artifact.lean), [Addresses](Addresses.lean) and
 [Execution](Execution.lean) name imported controls, ports and effects.
 [Controller](Controller.lean) describes behavior;
 [controller rows](Tables/Controller.lean) and [`setup`](Tables/Setup.lean) are modeled tables.

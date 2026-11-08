@@ -1,7 +1,7 @@
 # Core representations and references
 
 This directory defines shared value representations and reference interfaces:
-field operations, two-limb RV32 words, the Airbender machine configuration and
+field operations, two-limb RV32 words, the Airbender machine configuration of the Sail model and
 independent stream observations. These definitions give meaning to encoded inputs
 and outputs; they do not assert that an accepted circuit row implements the
 reference.
@@ -26,5 +26,5 @@ stream ordering and port predicates; decoder-specific CSR forms live in
 [Decoder](../Decoder/README.md).
 
 These modules contain no accepted native trace or whole-execution contract.
-Review [`properties`](../Properties.lean) independently. Pins and generation
+Review [Properties](../Properties.lean) independently. Pins and generation
 fidelity remain recorded in the [trust document](../../../../../docs/TRUST_AND_REVIEW.md).

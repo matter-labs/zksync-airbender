@@ -3,7 +3,7 @@
 This directory defines the native row/state model and the public context in which
 rows are interpreted. Acceptance states actual constraint satisfaction, active-row
 membership and logical state/memory permutations; boundary records bind
-initialization, program, tables and configuration. Selected-row context locates a
+the public initial `RV.State`, program and tables. Selected-row context locates a
 pre-state in the same history without assuming the desired instruction result.
 
 ## Checked connections
@@ -30,17 +30,19 @@ preserve the full native encodings and clock/state boundaries.
 artifact layouts. The other registry modules provide family-specific trace data
 and public inputs; they do not assert instruction execution.
 
-Boundary binds public state/program/domain and initial clocks;
-ExecutionBoundary adds the restricted scope's physical image and tables.
-Interfaces packages shared per-circuit history/table inputs.
-PooledBoundary provides physical-image and native-boot
-boundaries for the integrated execution claim.
+[RVBoundary](RVBoundary.lean) binds the public `RV.State`, program table (`RV.read`, `RV.decode`),
+tracked cells and initial clocks (`RVNativeInputs`); there is no machine-configuration premise.
+[RVInterfaces](RVInterfaces.lean) packages the shared per-circuit history/table inputs
+(`RVPooledHistoryInputs`: initialization and the two modeled ROM tables built from the ROM image).
+[RVPooledBoundary](RVPooledBoundary.lean) provides the native-boot boundary of the integrated execution
+claim (`RVPooledBootInputs`: seeds from the inits/teardowns circuit, terminal-PC condition).
 
-[RowContext](RowContext.lean) constructs a selected row's pre-state by applying
-earlier native writes. Successful reads, operand bounds and ISA effects remain
+[RowContext](RowContext.lean) and [RVRowContext](RVRowContext.lean) construct a selected row's
+`RV.State` pre-state by applying earlier native writes (a RAM write stores four bytes in RAM at any address,
+shadow RAM below `ROM_END` included, and never changes the ROM image). Successful reads, operand bounds and ISA effects remain
 proof conclusions. Follow [Memory](../Memory/README.md) and
 [Decoder](../Decoder/README.md) for those interpretations.
 
-Review every public field, including configuration and terminal-PC conditions.
+Review every public field, including the terminal-PC condition.
 Acceptance includes active rows; global inactive padding neutrality remains open.
 These definitions do not depend on a whole-execution contract.

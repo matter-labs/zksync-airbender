@@ -2,28 +2,26 @@
 
 This directory describes the local witness slices of the unified reduced-machine
 artifact: arithmetic, control, binary/shift, memory and selected project-custom
-operations or caller requests. Models name the native selectors and observable
-word/state effects against the relevant reference. Complete execution and
+operations or caller requests. The artifact and decoder name the native selectors and the observable
+word/state effects against the relevant reference (our RV32 spec, or Clean's). Complete execution and
 composition statements are kept in the unified Trace directory.
 
 ## Checked results
 
-The [unified execution claims](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVTheorems.lean) prove
+The [unified execution claims](../../Trace/UnifiedReduced/RVTheorems.lean) prove
 the admitted standard and TRIADD/XORROT instructions retire in history-derived
 order to native terminal PC/cells, with public ROM bytes and derived reads/bounds.
-Those conclusions use the exact declared registry and public profile inputs.
+Those conclusions use the exact declared registry and public boot inputs.
 Caller cycles and selected hash windows have separate claims; full mixed caller
 retirement and control validity are not implied by local selector mappings.
 
-Start with Model for the arithmetic slice's observable words,
-selected pre-state and public instruction binding. [Artifact](Artifact.lean)
-and [Decoder](Decoder.lean) identify the unified columns, selectors and modeled setup.
+[Artifact](Artifact.lean) and [Decoder](Decoder.lean) identify the unified columns, selectors and modeled setup.
 
-Read the slice being reviewed: [`control`](Control.lean), jumps,
-[binary](Binary.lean), shifts, word memory,
-ROM, TRIADD, XORROT,
-or [delegation callers](Delegation.lean). Standard clauses use original Sail;
-custom operations use the pinned project reference.
+The unified slices (control, jumps, binary operations, shifts, word memory,
+ROM, TRIADD, XORROT) are described by the artifact, decoder and setup; the
+[delegation callers](Delegation.lean) have their own module. Standard
+instructions and the custom operations are both `RV.step` clauses of our spec
+([RV32.lean](../../ISA/RV32.lean)).
 
 Follow [shared row context](../../Helpers/Context/README.md),
 [decoding](../../Helpers/Decoder/README.md) and [memory history](../../Helpers/Memory/README.md)

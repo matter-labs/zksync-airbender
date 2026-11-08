@@ -10,11 +10,12 @@ caller controls or full CSR semantics.
 
 For the four worker families, imported constraints and initialized full-token
 matching imply native clock/address bounds, strict per-cell ordering and Clean
-memory consistency; [`memory_soundness`](../../../../slop/Slop/Final/Trace/Delegation/RVTheorems.lean)
+memory consistency; [`rv_memory_soundness`](../../../../slop/Slop/Final/Trace/Delegation/RVTheorems.lean)
 states this, and [`labeled_history`](../../../../slop/Slop/Delegation/History.lean)
 constructs the history. The corresponding
 [`rv_native_memory_execution`](../../../../slop/Slop/Final/Trace/Delegation/RVTheorems.lean) realizes actual
-Sail reads/writes and terminal cells under the public alignment/domain conditions.
+`RV.State` register/RAM reads and writes and terminal cells under the public alignment/domain conditions;
+RAM cells include the shadow RAM below `ROM_END` (`RV.State.delegationRAM`).
 
 [Caller composition](../../Trace/Delegation/README.md#checked-results) additionally
 derives issued-worker placement and shared histories. The
@@ -24,19 +25,20 @@ surplus zero-clock effects to make that core memory implication true.
 
 Start with [Columns](Columns.lean), [Requests](Requests.lean), [CallerRequests](CallerRequests.lean) and [Decoder](Decoder.lean)
 to identify the caller token, full CSR family and imported worker observables.
-RequestTrace and [RequestEffects](RequestEffects.lean)
+[RVRequestTrace](RVRequestTrace.lean) and [RVRequestEffects](RVRequestEffects.lean)
 state logical request matching and context; matching does not establish the full CSR ABI.
 
-[Memory](Memory.lean), [SharedMemory](SharedMemory.lean) and [MixedMemory](MixedMemory.lean)
-describe the initialized native pools. [WorkerContext](WorkerContext.lean)
-exposes actual per-port observations. [Operations](Operations.lean) and
-SharedOperations select the existing local worker references.
+[RVMemory](RVMemory.lean), [RVSharedMemory](RVSharedMemory.lean) and [RVMixedMemory](RVMixedMemory.lean)
+describe the initialized native pools ([Memory](Memory.lean), [SharedMemory](SharedMemory.lean) and
+[MixedMemory](MixedMemory.lean) hold the shared definitions). [WorkerContext](WorkerContext.lean)
+exposes actual per-port observations. [RVOperations](RVOperations.lean) selects the existing local worker references.
 
-[SpanABI](SpanABI.lean), [NativeWindows](NativeWindows.lean) and
-[RequestWindows](RequestWindows.lean) give protocol and native-cut inputs.
+[RVSpanABI](RVSpanABI.lean), [NativeWindows](NativeWindows.lean) and
+[RequestWindows](RequestWindows.lean) give protocol and native-cut inputs. [RVSchedule](RVSchedule.lean)
+states the caller-cycle placement of issued workers.
 Schedules and intermediate values must follow from accepted history and matching.
 
-Keep zero-clock surplus-worker effects, issued bigint invalid-control fixtures
-and worker ROM shadows at their actual logical scope. They remain admitted by
+Keep zero-clock surplus-worker effects and the issued bigint invalid-control fixture
+at their actual logical scope. They remain admitted by
 the relevant input relations; no assumed ABI validity closes them.
 [Trace/Delegation](../../Trace/Delegation/README.md) owns execution and composition.

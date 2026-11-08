@@ -15,14 +15,13 @@ pointer/read/range facts. Complete permutation and window claims additionally
 bind the reference output and terminal tokens for the 649-call protocol;
 invalid-control fallback is outside that complete protocol.
 
-Start with [Artifact](Artifact.lean), [Execution](Execution.lean) and
-[Controls](Controls.lean) for the seven native modes.
-[Theta](Theta.lean), [Rho](Rho.lean), [Mix](Mix.lean), [Chi](Chi.lean) and [Iota](Iota.lean)
+Start with [Artifact](Artifact.lean) and [Execution](Execution.lean) for the seven native modes.
+[Theta](Theta.lean), [Rho](Rho.lean), [Mix](Mix.lean) and [Iota](Iota.lean)
 select the original Clean operations and the circuit's phased lane effects.
 
 [Controller](Controller.lean) describes physical lane selection;
 [controller rows](Tables/Controller.lean) and [`setup`](Tables/Setup.lean) are modeled tables.
-[Addresses](Addresses.lean), [ControlUpdate](ControlUpdate.lean) and Memory
+[Addresses](Addresses.lean) and [ControlUpdate](ControlUpdate.lean)
 connect the actual indirect ports and controls to shared initialized history.
 
 The public complete-permutation claims live in

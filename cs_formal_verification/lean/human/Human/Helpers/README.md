@@ -9,8 +9,8 @@ conditions a claim uses. Whole-run execution conclusions belong in Trace.
 
 The [memory result](Memory/README.md#logical-memory-result) derives chronological
 history and latest-write reads from initialized matching and clock constraints.
-[Decoder connections](Decoder/README.md#checked-connections) establish original
-public decoding and preserve it through state updates.
+[Decoder connections](Decoder/README.md#checked-connections) build the public program
+table from the ROM image and `RV.decode`.
 [Context results](Context/README.md#checked-connections) recover native order and
 boundary ranges. [Delegation](Delegation/README.md#checked-connections) and
 [unified context](UnifiedReduced/README.md#checked-connections) extend the same
@@ -21,13 +21,13 @@ not turn the explicit logical permutations into cryptographic proofs or establis
 every remaining caller/padding obligation.
 
 [Properties](Properties.lean) is the entry point: soundness, completeness,
-the circuit model and its observable relation. It imports only Clean.
+the circuit model and its observable relation. It imports only [CleanCore](../../CleanCore.lean), our transcription of Clean.
 
 | Topic | Read it for |
 | --- | --- |
-| [Core](Core/README.md) | Field/word representation, Sail interface and stream primitives. |
-| [Decoder](Decoder/README.md) | Native metadata, public programs, fetch and clause selection. |
-| [Memory](Memory/README.md) | Ports, public images, ROM interpretation and logical history. |
+| [Core](Core/README.md) | Field/word representation, the Sail configuration (used only by the equivalence leaf) and stream primitives. |
+| [Decoder](Decoder/README.md) | Native metadata, public programs (ROM bytes, `RV.decode`) and external-input forms. |
+| [Memory](Memory/README.md) | Ports, the public initial `RV.State` image, ROM interpretation and logical history. |
 | [Context](Context/README.md) | Accepted rows, family registries, public boundaries and selected pre-states. |
 | [Tables](Tables/README.md) | Shared modeled range, byte, subword and lookup rows. |
 | [Delegation](Delegation/README.md) | Caller/worker requests, matching and worker context. |

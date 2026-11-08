@@ -10,14 +10,19 @@ assumptions for human review; supporting proof calculations live in Proofs.
 | Result | Where to review it |
 | --- | --- |
 | Matching plus timestamp/initialization conditions forces complete memory histories and latest-write reads. | [Logical memory result](Helpers/Memory/README.md#logical-memory-result) |
-| Public bytes and original Sail decoding bind the instruction and metadata used by retirement. | [Decoder connections](Helpers/Decoder/README.md#checked-connections) |
+| Public ROM bytes and `RV.decode` bind the instruction and metadata used by retirement. | [Decoder connections](Helpers/Decoder/README.md#checked-connections) |
 | Accepted selected circuit rows have the stated reference effects under their visible interfaces. | [Circuit results](Circuits/README.md#checked-results) |
-| Admitted ordinary instruction traces reach the native terminal PC and tracked values; external-read extensions also prove consumption. | [Trace results](Trace/README.md#checked-results) |
+| Admitted ordinary instruction traces are a run of `RV.run` reaching the native terminal PC and tracked values; external-read extensions also prove consumption. | [Trace results](Trace/README.md#checked-results) |
 | Native worker operations and complete selected hash spans reach their references on actual history values. | [Worker results](Trace/Workers/README.md#checked-results) |
 | Joint native cuts, caller placement and prepared references use derived states/schedules. | [Unified results](Trace/UnifiedReduced/README.md#checked-results) |
 
 Each link states the remaining premises and scope. A memory-consistency result,
 an operation effect and a whole-instruction retirement result are distinct claims.
+
+Every claim is stated against our RV32 spec, [ISA/RV32.lean](ISA/RV32.lean) (`RV.step`, `RV.run`; state in
+[State.lean](ISA/State.lean), custom operations and delegation calls in [Delegations.lean](ISA/Delegations.lean)).
+Read it first: it is short and marks each difference from standard RV32IM with `-- Airbender:`. Its tie to the
+official Sail model is the leaf [ISA/Sail](ISA/Sail/Theorems.lean), the only claims that mention Sail.
 
 Choose one of the two routes below. Start with [Properties](Helpers/Properties.lean)
 for the meaning of soundness, completeness and the observable circuit relation.
@@ -48,14 +53,21 @@ different scopes; the family guide points to the appropriate claim.
 Start in [Trace](Trace/README.md). Select the composed claim, then follow its
 execution relation, public boundary and composition-specific contracts.
 Check that the conclusion reaches the native terminal PC and tracked cells from
-one public initial state. Keep profile deviations and caller limitations explicit.
+one public initial `RV.State`. Keep caller limitations explicit.
 
 ## Scope and evidence
 
-Claims concern the imported richer no-cache constraints, using Clean and pinned
-original Sail standard semantics or the pinned project custom references.
-Field/configuration, public state/program/domain, modeled tables and logical
-matching are genuine conditions. Their applicability needs human review.
+Claims concern the imported richer no-cache constraints, using Clean's semantics
+(through CleanCore) and our RV32 spec. Field, public state/program/domain, modeled
+tables and logical matching are genuine conditions. Their applicability needs human review.
+
+Trust base of the spec: this directory (`Human.*`) and CleanCore, our transcription of Clean, import Lean and
+Mathlib (including Batteries) only, apart from the Sail leaf below. The one file that imports Clean is the leaf
+[CleanCore/Equivalence.lean](../CleanCore/Equivalence.lean), which proves each CleanCore definition equal to Clean's;
+nothing here imports it. Clean, and with it its native_decide prime instances in Clean's Utils/Primes.lean, is therefore
+not in the spec's import closure (nor in that of the proofs in `slop/`; only the audit file `test/Checks/Axioms.lean` imports it).
+The Sail model (generated SailRV32 and lean-sail) is imported only by `ISA/Sail/*` and
+[Helpers/Core/Configuration.lean](Helpers/Core/Configuration.lean).
 
 [Verification status](../../../docs/VERIFICATION_STATUS.md) records checked coverage and
 counterexamples. [Trust boundaries](../../../docs/TRUST_AND_REVIEW.md) records import,
