@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # One-command check: fetch the pinned lean-sail, require the generated Sail model, build the spec and every proof,
-# check that the spec does not depend on the proofs, run the regressions and the axiom audits (standard axioms only), check the review guides.
+# check that the spec does not depend on the proofs, run the regressions and the axiom audits (standard axioms only),
+# check every module's build budget (30 s of CPU), check the review guides.
 set -euo pipefail
 cd "$(dirname "$0")/lean"
 fail() { echo "FAIL: $*"; exit 1; }
@@ -16,11 +17,11 @@ if grep -rnE '^\s*(public\s+)?import\s+(Slop|Tests|Checks)(\.|$)' human; then fa
 echo "== 1b. The circuit JSONs the spec imports: pinned sha256, no duplicate keys, no duplicate circuits"
 python3 check_circuit_json.py
 
-echo "== 2. Lean build (spec + proofs)"
-lake build CleanCore Human Slop 2>&1 | tail -1
+echo "== 2. Lean build (spec + proofs), timing each module compiled (full log: lean/.lake/verify-build-*.log)"
+python3 scripts/module_budget.py build CleanCore Human Slop || fail "lake build"
 
 echo "== 3. Regressions; final statements (each slop/Slop/Final theorem proves its human/ ...Claim, test/Checks/Claims.lean); axiom audits"
-lake build Test airbender_tests 2>&1 | tail -1
+python3 scripts/module_budget.py build Test airbender_tests || fail "lake build (tests)"
 lake exe airbender_tests
 for audit in Claims Axioms TraceAxioms; do
   out=$(lake env lean "test/Checks/$audit.lean")
@@ -33,7 +34,11 @@ for audit in Claims Axioms TraceAxioms; do
   echo "$audit: $n theorems, standard axioms only"
 done
 
-echo "== 4. Review guides: every public claim theorem is audited, guide names and links resolve"
+echo "== 4. Module budget: every module compiles in at most 30 s of CPU, alone (scripts/module_budget.py;"
+echo "   docs/shared/lean-strategies.md 2). Table: lean/.lake/module-budget.tsv"
+python3 scripts/module_budget.py check || fail "module budget"
+
+echo "== 5. Review guides: every public claim theorem is audited, guide names and links resolve"
 python3 check_review.py
 
 echo "OK"

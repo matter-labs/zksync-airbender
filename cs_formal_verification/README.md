@@ -6,7 +6,8 @@ operations, plus Airbender's custom operations and delegations. The specificatio
 RISC-V model by a separate equivalence ([Sail leaf](lean/human/Human/ISA/Sail/Theorems.lean)); no circuit claim mentions Sail.
 
 **Check everything:** `./verify.sh` (prepares the pinned Clean, builds the spec and all proofs, checks that the spec
-does not import the proofs, runs the regressions and the axiom audits, checks the review guides).
+does not import the proofs, runs the regressions and the axiom audits, checks every module's [build budget](#build-budget),
+checks the review guides).
 
 ## Layout
 
@@ -93,6 +94,28 @@ machine, Sail's `execute` plus the listed changes, on everything a program can s
 [Provenance and regeneration](sail/README.md) record model/compiler/runtime pins. Generation fidelity (Sail to Lean)
 is trusted, not proved.
 Representation lemmas live in `Slop/Arithmetic/Word.lean`.
+
+## Build budget
+
+[Lean strategies](docs/shared/lean-strategies.md) section 2 sets the budget: about 10 s per module, 30 s at most.
+`verify.sh` fails any module of the build targets over 30 s ([module_budget.py](lean/scripts/module_budget.py)). A
+module's time is the CPU time (user + sys) of its `lean` process compiled alone, imports built. Wall time is not
+used: under parallel load it is off by 2–4×, and a module that elaborates in parallel finishes in less wall time
+than it costs. Load only inflates CPU time (efficiency cores, shared caches), so a module under budget under load
+is under budget alone. Three stages, each paying only for what the one before could not settle:
+1. During `verify.sh`'s `lake build` a sampler reads each compiling module's CPU time from `ps` every 0.5 s.
+2. Every target module is looked up in a ledger keyed by module and Lake's input hash (`depHash`, which covers the
+   source and every import): an entry is valid exactly as long as Lake would not rebuild the module. A module with
+   no entry (restored from Lake's artifact cache, or built outside `verify.sh`) is compiled again outside Lake,
+   four at a time (`MODULE_BUDGET_JOBS`), its CPU time read exactly (`wait4`).
+3. A module over budget in 1 or 2 is compiled again alone, at most twice; the lower time counts. Over 30 s alone
+   (`MODULE_BUDGET_S`) fails.
+
+The ledger is the file `<LAKE_CACHE_DIR>.module-cpu.tsv`, beside (not inside) Lake's shared artifact cache, so
+worktrees sharing the cache measure each module once per input hash; without the cache it is
+`lean/.lake/module-cpu.tsv` (`MODULE_BUDGET_LEDGER` overrides). Without a ledger, stage 2 measures every module once:
+about one cold build of CPU. `lean/.lake/module-budget.tsv` lists every module's time after a run, slowest first.
+Fix a module over budget by restructuring its proof (lean-strategies 2.1), never by raising the limit.
 
 ## Reproduce
 
