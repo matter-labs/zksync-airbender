@@ -1,5 +1,53 @@
 # Trust and review boundaries
 
+## Complete local native worker write-word closure (8 November 2026)
+
+[WorkerWriteWords](Airbender/Review/Circuits/ReducedMachine/WorkerWriteWords.lean)
+now records bounded-or-copy value writes at all43 actual ports, closing the eight
+arithmetic state ports left open by the prior35-port slice. Both canonical field
+limbs of each arithmetic write are below65536, without an input word bound,
+expected worker output or round-schedule premise. Copied prior values still need
+initialized bounds; this is not a proof of general initialized read/write bounds.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeWorkerWriteWords.lean)
+binds the actual linear write equations and lookup Expression inputs. The carry
+terms occur inside scaled lookup remainders, even though the output variables
+are not direct lookup columns. Exact query syntax is bound before witness
+sampling. Actual right-input bounds give8+8 or7+9-bit pieces. Kernel-proved M31
+coefficient reductions reconstruct each raw write as low+256*high or low+128*high;
+the generic canonical bound then gives both u16 limbs. Independent bounded Fin8
+units precede actual source extraction. Actual descriptor coordinates are checked
+before witness maps. The previous35-port result is reused unchanged.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/WorkerWriteWordsTheorems.lean)
+expose the full BODY local result and a same-source counted joint consequence.
+Every actual ordinary worker receives all43 effects, including inactive rows.
+The same full acceptance, positive main count, every capacity prefix guard,
+prior exact latest reads and old explicit SourceIdentity remain. That identity
+is not derived from fixed-challenge equations or finite-field samples. All ports,
+raw refresh times, inactive AUX/m0 poles, inactiveD, caller/decoder equations,
+OLDREAD, unmasked writes and x0 times remain; caller requests are never filtered.
+An internal preservation helper prepares a future initialized induction and does
+not add an acceptance or public read-range premise.
+
+[Sixteen controls](Tests/NativeWorkerWriteWords.lean) retain all43 ports, check
+arithmetic endpoints and actual first/last arithmetic ports, reject wide and
+negative-carry output values under full BODY, preserve the prior35 effects and
+show that a copied value still needs a bound. They reuse the old complete LOCAL
+positive worker BODY, with its visible zero-pointer aliases. These are pure,
+old local or conditional controls, not a new compatible nonempty global/source/
+whole-worker/physical accepted witness, native attack or defect.
+
+Four modules add24 roots/eight exact parent references, preserving all6,270 prior
+ordered roots and exact audit bytes addition-only. Native107 pins, v3 reference,
+dependencies, old proofs/acceptance/artifacts and FINDINGS stay unchanged. No
+native adoption, generation, heavy replay, issue assumption or production fix.
+Actual main write closure and earlier dependency reads, general initialized
+word bounds, consistent online replay, worker rounds/results, original CSR/MOP/
+worker Sail, caller activity and converse accounting, physical cryptography,
+completeness and parity remain open. The seven-profile Sail scope excludes CSR/MOP.
+
+
 ## Partial actual worker write-word closure (8 November 2026)
 
 [WorkerWriteSlices](Airbender/Review/Circuits/ReducedMachine/WorkerWriteSlices.lean)

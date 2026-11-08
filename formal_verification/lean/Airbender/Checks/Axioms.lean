@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.WorkerWriteWords
+import Airbender.Proofs.ReducedMachine.NativeWorkerWriteWords
+import Airbender.Review.Circuits.ReducedMachine.WorkerWriteWordsTheorems
+import Tests.NativeWorkerWriteWords
+
 import Airbender.Review.Circuits.ReducedMachine.WorkerWriteSlices
 import Airbender.Proofs.ReducedMachine.NativeWorkerWriteSlices
 import Airbender.Review.Circuits.ReducedMachine.WorkerWriteSlicesTheorems
@@ -7250,3 +7255,28 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerWriteSlices.inactive_read_retained
 #print axioms Airbender.Tests.NativeWorkerWriteSlices.complete_conditional
 #print axioms Airbender.Tests.NativeWorkerWriteSlices.complete_conditional_counted
+
+#print axioms Airbender.NativeWorkerWriteWordProofs.arithmetic_words
+#print axioms Airbender.NativeWorkerWriteWordProofs.arithmetic_ports
+#print axioms Airbender.NativeWorkerWriteWordProofs.local_effects
+#print axioms Airbender.NativeWorkerWriteWordProofs.preserves
+#print axioms Airbender.NativeWorkerWriteWordProofs.effects
+#print axioms Airbender.NativeWorkerWriteWordProofs.counted
+#print axioms Airbender.NativeWorkerWriteWords.native_worker_write_words
+#print axioms Airbender.NativeWorkerWriteWords.native_counted_worker_write_words
+#print axioms Airbender.Tests.NativeWorkerWriteWords.arithmetic_slots
+#print axioms Airbender.Tests.NativeWorkerWriteWords.all43_retained
+#print axioms Airbender.Tests.NativeWorkerWriteWords.low7_high9_endpoint
+#print axioms Airbender.Tests.NativeWorkerWriteWords.low8_high8_endpoint
+#print axioms Airbender.Tests.NativeWorkerWriteWords.arithmetic_first
+#print axioms Airbender.Tests.NativeWorkerWriteWords.arithmetic_last
+#print axioms Airbender.Tests.NativeWorkerWriteWords.wide_arithmetic_rejected
+#print axioms Airbender.Tests.NativeWorkerWriteWords.negative_carry_rejected
+#print axioms Airbender.Tests.NativeWorkerWriteWords.complete_positive_body
+#print axioms Airbender.Tests.NativeWorkerWriteWords.prior35_retained
+#print axioms Airbender.Tests.NativeWorkerWriteWords.all43_observations
+#print axioms Airbender.Tests.NativeWorkerWriteWords.copied_value_needs_bound
+#print axioms Airbender.Tests.NativeWorkerWriteWords.internal_preservation
+#print axioms Airbender.Tests.NativeWorkerWriteWords.all_actual_workers
+#print axioms Airbender.Tests.NativeWorkerWriteWords.inactive_read_retained
+#print axioms Airbender.Tests.NativeWorkerWriteWords.complete_conditional_counted

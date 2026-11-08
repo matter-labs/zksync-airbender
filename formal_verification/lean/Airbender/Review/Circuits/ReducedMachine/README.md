@@ -1029,3 +1029,10 @@ history, worker reference execution and accounting stay open.
 from full BODY/queries, without input word bounds. Eight arithmetic state ports
 remain open; all43 ports/timestamps and prior source boundaries stay. General
 initialized word bounds and worker execution are not yet established.
+
+## Complete local worker word writes
+
+[All43 bounded-or-copy writes](WorkerWriteWordsTheorems.lean) now closes the eight arithmetic
+ports using actual lookup remainder expressions and full BODY, reusing the prior35.
+No input word bound is assumed. Copied values, initialized mixed word bounds and
+worker execution remain separate; all ports, raw times and source boundaries stay.
