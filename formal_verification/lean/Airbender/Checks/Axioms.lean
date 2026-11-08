@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.CompleteMemoryPaths
+import Airbender.Proofs.ReducedMachine.NativeCompleteMemoryPaths
+import Airbender.Review.Circuits.ReducedMachine.CompleteMemoryPathsTheorems
+import Tests.NativeCompleteMemoryPaths
+
 import Airbender.Review.Circuits.ReducedMachine.StageTwoKeys
 import Airbender.Proofs.ReducedMachine.NativeStageTwoKeys
 import Airbender.Review.Circuits.ReducedMachine.StageTwoKeysTheorems
@@ -7130,3 +7135,27 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeStageTwoKeys.no_helper_failure
 #print axioms Airbender.Tests.NativeStageTwoKeys.complete_conditional
 #print axioms Airbender.Tests.NativeStageTwoKeys.complete_conditional_counted
+
+#print axioms Airbender.NativeCompleteMemoryPathProofs.finite_paths
+#print axioms Airbender.NativeCompleteMemoryPathProofs.step_rank
+#print axioms Airbender.NativeCompleteMemoryPathProofs.step_address
+#print axioms Airbender.NativeCompleteMemoryPathProofs.effects
+#print axioms Airbender.NativeCompleteMemoryPathProofs.counted
+#print axioms Airbender.NativeCompleteMemoryPaths.native_complete_memory_paths
+#print axioms Airbender.NativeCompleteMemoryPaths.native_counted_complete_memory_paths
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.chain_boundary
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.chain_matching
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.duplicate_seed_not_unique
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.duplicate_seed_fork_matching
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.single_seed_fork_rejected
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.complete_chain
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.complete_chain_counts
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.empty_address_path
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.separate_addresses_same_rank
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.terminal_addresses_unique
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.actual_port_covered
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.inactive_source_read_stays
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.all32_register_seeds
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.zero_factor_retained
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.complete_conditional
+#print axioms Airbender.Tests.NativeCompleteMemoryPaths.complete_conditional_counted

@@ -1001,3 +1001,10 @@ STAGE2 key identity, online history and worker Sail remain open.
 no u16 carry and modeled STAGE2/raw-key identity for all43 read/write ports of
 actual ordinary workers. Full acceptance, inactive accesses and prior crypto
 boundaries stay. Physical Rust, word values, history and Sail remain separate.
+
+## Conditional complete per-address paths
+
+[Complete actual raw-token paths](CompleteMemoryPathsTheorems.lean) covers every active main/worker
+port occurrence from actual seeds to teardown, with strict per-path ranks and
+all multiplicities retained. Prior source/crypto boundaries stay. General word
+values, Clean online history, worker execution and accounting remain open.

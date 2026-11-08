@@ -1,5 +1,54 @@
 # Verification status
 
+## Conditional complete mixed memory paths (8 November 2026)
+
+[CompleteMemoryPaths](Airbender/Review/Circuits/ReducedMachine/CompleteMemoryPaths.lean)
+records complete raw-token paths per actual seed address. Each path begins at
+that seed, ends at the same-address actual teardown token, and has adjacent
+edges that are a permutation of all active main/worker port occurrences at that
+address. All raw values, addresses and both timestamp fields remain unchanged.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeCompleteMemoryPaths.lean)
+reuses the unchanged generic finite-support counted-path theorem before native
+row-domain instantiation. Actual memory matching, address preservation, unique
+seed addresses and derived strict proof-rank growth discharge its premises.
+The rank is the prior noninjective signed ordering converted to Nat using
+already derived read nonnegativity. It never replaces native clock encoding.
+
+Each complete path has strictly increasing ranks with no repeated rank. The
+permutation accounts for every port copy; no duplicates or aliases are discarded.
+The boundary address permutation and teardown address uniqueness are derived.
+Every actual active port is covered by a complete path. Different addresses
+can share a write clock/rank; global unique write times, disjoint worker pointers
+and a fixed chronology of the43 worker ports are not assumed.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/CompleteMemoryPathsTheorems.lean)
+retain unchanged complete acceptance and the prior explicit formal extraction
+boundary. Positive main count, every capacity prefix guard and all prior worker
+key/address results stay on the same observations. AddressPath is a derived
+observable, not a new Accepted relation or an expected-history premise. Full
+source acceptance still includes inactive worker ports, auxiliary poles,
+inactiveD, caller/decoder equations, readonly refreshes, OLDREAD, unmasked writes
+and x0 times. Existing exact logical cancellation filters no caller request.
+
+[Sixteen controls](Tests/NativeCompleteMemoryPaths.lean) cover chain flow and
+complete edge counts, empty paths, duplicate-seed forks versus single-seed
+rejection, independent addresses sharing a rank, actual port coverage, teardown
+uniqueness, inactive read retention, all32 GPR seeds including x0, retained zero
+factors and full conditional roots. Pure and conditional controls are not new
+accepted native BODY/nonempty global/source/worker/physical witnesses, attacks,
+native defects or absent-other-enforcement evidence.
+
+Four modules add23 roots/12 exact parent references; all6,174 prior ordered roots
+and exact audit bytes remain addition-only. Native107 pins, dependencies, v3
+reference, prior proofs/acceptance/artifacts and FINDINGS stay unchanged. No
+new native adoption/pin/intake, production/importer/exporter/fixture change,
+generation, heavy replay, issue assumption, fix or project axiom. Complete
+per-address paths do not yet establish general word-value bounds, a Clean online
+history, worker rounds/results, original CSR/MOP/worker Sail, request activity
+and accounting, physical cryptography, completeness or parity.
+
+
 ## Conditional modeled native STAGE2 worker keys (8 November 2026)
 
 [StageTwoKeys](Airbender/Review/Circuits/ReducedMachine/StageTwoKeys.lean)
