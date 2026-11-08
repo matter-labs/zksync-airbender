@@ -2,16 +2,14 @@ module
 public import Human.Circuits.Bigint.Memory
 public import Slop.Bigint.Addresses
 public import Slop.Bigint.NativeExecution
-import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
-import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+public import Slop.Bigint.WitnessCheck
+public import Slop.KernelRfl
 
 @[expose] public section
 
 namespace Tests.BigintMemory
 open Airbender Trace Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 4000000
 
 def row (column : Nat) : ZMod babyBearModulus :=
   if column = 1 then 5
@@ -25,28 +23,12 @@ def row (column : Nat) : ZMod babyBearModulus :=
 def native : Delegation.Row babyBearModulus := ⟨.bigint, row⟩
 
 theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
-    (Bigint.importedConstraints Bigint.setupTable) := by
-  simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, row, Lookup.Contains, Table.toRaw, fromElements]
-  repeat' apply And.intro
-  all_goals solve
-    | decide
-    | (apply Verification.range16_contains; decide)
-    | (apply Trace.Proofs.range_contains; decide)
-    | (refine ⟨⟨0, by decide⟩, ?_⟩; decide)
-    | (refine ⟨⟨262144, by decide⟩, ?_⟩; decide)
-    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; decide)
-    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; decide)
-    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; decide)
-    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; decide)
+    (Bigint.importedConstraints Bigint.setupTable) :=
+  Bigint.holds_of_check (by kernel_rfl)
 
 private theorem clocks : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
-    (Bigint.importedConstraintsTimestampLookups (p := babyBearModulus)) := by
-  simp [Bigint.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-  repeat' apply And.intro
-  all_goals apply Trace.Proofs.range_contains
-  all_goals simp [Expression.eval, Verification.environment, row]
-  all_goals decide
+    (Bigint.importedConstraintsTimestampLookups (p := babyBearModulus)) :=
+  Bigint.timestamps_of_check (by kernel_rfl)
 
 def setup : Delegation.Setup babyBearModulus :=
   ⟨Bigint.setupTable, { name := "unused", Contains _ _ := False },

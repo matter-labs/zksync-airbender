@@ -2,14 +2,14 @@ module
 public import Human.Circuits.Bigint.Memory
 public import Slop.Bigint.Addresses
 public import Slop.Bigint.NativeExecution
+public import Slop.Bigint.WitnessCheck
+public import Slop.KernelRfl
 
 @[expose] public section
 
 namespace Tests.BigintAbi
 open Airbender
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 2400000
 
 def row (withOpcode : Bool) (high : Nat) : Nat → ZMod babyBearModulus
   | 0 | 212 | 214 | 215 => 1
@@ -22,19 +22,7 @@ abbrev setup : Table (ZMod babyBearModulus) (fields 3) := Bigint.setupTable
 theorem abiRowsSatisfy (withOpcode : Bool) (high : Nat) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row withOpcode high))
       (Bigint.importedConstraints setup) := by
-  cases withOpcode <;> simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, row, Lookup.Contains, Table.toRaw, fromElements]
-  repeat' apply And.intro
-  all_goals solve
-    | decide
-    | (apply Verification.range16_contains; norm_num [Expression.eval, Verification.environment, row, Verification.range16, fromElements, Arithmetic.limbBase])
-    | (apply Trace.Proofs.range_contains; norm_num [Expression.eval, Verification.environment, row, Trace.timestampBase])
-    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.setupRow, row, Verification.environment, Expression.eval])
-    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.setupRow, row, Verification.environment, Expression.eval])
-    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.setupRow, row, Verification.environment, Expression.eval])
-    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.setupRow, row, Verification.environment, Expression.eval])
-    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.setupRow, row, Verification.environment, Expression.eval])
-    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.setupRow, row, Verification.environment, Expression.eval])
+  cases withOpcode <;> exact Bigint.holds_of_check (by kernel_rfl)
 
 theorem noOpcodeSatisfies (high : Nat) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row false high))

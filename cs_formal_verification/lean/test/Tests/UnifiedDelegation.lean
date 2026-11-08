@@ -15,16 +15,14 @@ public import Slop.Trace.ROMView
 public import Slop.Trace.WindowCounts
 public import Slop.UnifiedReduced.WordROM
 public import Human.Circuits.UnifiedReduced.Tables.Setup
-import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
-import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+public import Slop.Bigint.WitnessCheck
+public import Slop.KernelRfl
 
 @[expose] public section
 
 namespace Tests.UnifiedDelegation
 open Airbender Trace Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 private theorem endpoint_permutation {start finish target : List (MemoryToken babyBearModulus)}
     {steps : List (MemoryToken babyBearModulus × MemoryToken babyBearModulus)}
@@ -39,27 +37,10 @@ private def abiAssignment (highControl : Bool) (column : Nat) : ZMod babyBearMod
 private theorem abiCore (highControl : Bool) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (abiAssignment highControl))
     (Bigint.importedConstraints Bigint.setupTable) := by
-  cases highControl <;> simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, abiAssignment, Tests.BigintMemory.row,
-    Lookup.Contains, Table.toRaw, fromElements]
-  repeat' apply And.intro
-  all_goals solve
-    | decide +kernel
-    | (apply Verification.range16_contains; decide +kernel)
-    | (apply Trace.Proofs.range_contains; decide +kernel)
-    | (refine ⟨⟨0, by decide +kernel⟩, ?_⟩; decide +kernel)
-    | (refine ⟨⟨262144, by decide +kernel⟩, ?_⟩; decide +kernel)
-    | (refine ⟨⟨1310720, by decide +kernel⟩, ?_⟩; decide +kernel)
-    | (refine ⟨⟨1312768, by decide +kernel⟩, ?_⟩; decide +kernel)
-    | (refine ⟨⟨1316864, by decide +kernel⟩, ?_⟩; decide +kernel)
-    | (refine ⟨⟨1325056, by decide +kernel⟩, ?_⟩; decide +kernel)
+  cases highControl <;> exact Bigint.holds_of_check (by kernel_rfl)
 
 private theorem abiTimestamps (highControl : Bool) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (abiAssignment highControl)) Bigint.importedConstraintsTimestampLookups := by
-  simp [Bigint.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-  repeat' apply And.intro
-  all_goals apply Trace.Proofs.range_contains
-  all_goals simp [Expression.eval, Verification.environment, abiAssignment, Tests.BigintMemory.row]
-  all_goals decide +kernel
+  cases highControl <;> exact Bigint.timestamps_of_check (by kernel_rfl)
 
 end Tests.UnifiedDelegation

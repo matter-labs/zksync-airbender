@@ -12,6 +12,8 @@ public import Slop.Trace.Pooled
 public import Slop.Trace.RowContext
 public import Slop.Trace.CompositionCore
 public import Slop.SubwordMemory.Stores
+public import Slop.SubwordMemory.WitnessCheck
+public import Slop.KernelRfl
 
 @[expose] public section
 
@@ -49,20 +51,21 @@ def row : Nat → ZMod babyBearModulus
   | 59 | 61 => 43
   | _ => 0
 
-set_option maxRecDepth 4096 in
 private theorem satisfies_table (setup : Table (ZMod babyBearModulus) (fields 9))
     (members : ∀ i : Fin 2, setup.Contains #[] (fixtureRow i)) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment row)
-      (SubwordMemory.importedConstraints setup) := by
-  simp [SubwordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, row, Lookup.Contains,
-    Table.toRaw, fromElements]
-  repeat' apply And.intro
-  all_goals first
-    | decide
-    | (apply Verification.range16_contains; decide)
-    | (simpa [fixtureRow] using members 0)
-    | (simpa [fixtureRow] using members 1)
+      (SubwordMemory.importedConstraints setup) :=
+  SubwordMemory.holds_of_check
+    (Verification.rowsChecked setup.toRaw [fixtureRow 0, fixtureRow 1] fun row mem => by
+      obtain ⟨i, rfl⟩ : ∃ i, row = fixtureRow i := by
+        rcases List.mem_cons.mp mem with rfl | mem
+        · exact ⟨0, rfl⟩
+        rcases List.mem_cons.mp mem with rfl | mem
+        · exact ⟨1, rfl⟩
+        exact absurd mem List.not_mem_nil
+      simp only [Table.toRaw, Array.map_empty]
+      exact members i)
+    rfl (by kernel_rfl)
 
 theorem satisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment row)
@@ -72,16 +75,8 @@ theorem satisfies :
 -- The same complete LBU witness also satisfies the full reconstructed setup.
 theorem satisfies_setup :
     FlatOperation.ConstraintsHoldFlat (Verification.environment row)
-      (SubwordMemory.importedConstraints (Verification.subwordTable (fun _ => 0))) := by
-  apply satisfies_table
-  intro i
-  fin_cases i
-  · refine ⟨⟨196609, by decide⟩, ?_⟩
-    norm_num [fixtureRow, Verification.subwordRow, Verification.subwordDataRow,
-      Verification.subwordLoadLimbs, Verification.subwordStoreContribution]
-  · refine ⟨⟨528949, by decide⟩, ?_⟩
-    norm_num [fixtureRow, Verification.subwordRow, Verification.subwordDataRow,
-      Verification.subwordLoadLimbs, Verification.subwordStoreContribution]
+      (SubwordMemory.importedConstraints (Verification.subwordTable (fun _ => 0))) :=
+  SubwordMemory.holds_of_check (SubwordMemory.subwordChecked _) rfl (by kernel_rfl)
 
 example : (Word.mk (row 33).val (row 34).val).Bounded :=
   SubwordMemory.Proofs.ram_output_bounds (p := babyBearModulus) (by decide) true
@@ -135,25 +130,10 @@ def storeRow (byte : Bool) : Nat → ZMod babyBearModulus
   | 59 | 61 => if byte then 29 else 0
   | _ => 0
 
-set_option maxRecDepth 4096 in
 theorem satisfies_store (byte : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (storeRow byte))
       (SubwordMemory.importedConstraints (Verification.subwordTable (fun _ => 0))) := by
-  cases byte <;>
-    simp [SubwordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Verification.environment, Expression.eval, storeRow, Lookup.Contains, Table.toRaw, fromElements]
-  all_goals repeat' apply And.intro
-  all_goals solve
-    | decide
-    | (apply Verification.range16_contains; decide)
-    | (refine ⟨⟨201269, by decide⟩, ?_⟩
-       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
-    | (refine ⟨⟨65708, by decide⟩, ?_⟩
-       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
-    | (refine ⟨⟨153209, by decide⟩, ?_⟩
-       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
-    | (refine ⟨⟨0, by decide⟩, ?_⟩
-       norm_num [Verification.subwordRow, Verification.subwordDataRow])
+  cases byte <;> exact SubwordMemory.holds_of_check (SubwordMemory.subwordChecked _) rfl (by kernel_rfl)
 
 example : Word.mk ((storeRow true) 33).val ((storeRow true) 34).val = Word.mk 43828 22136 := by
   have result := SubwordMemory.Proofs.store_data (p := babyBearModulus)
@@ -190,26 +170,9 @@ private def romRow (byte : Bool) : Nat → ZMod babyBearModulus
   | 59 | 61 => if byte then 45 else 44
   | _ => 0
 
-set_option maxRecDepth 4096 in
 private theorem satisfies_rom (byte : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (romRow byte))
       (SubwordMemory.importedConstraints (Verification.subwordTable (fun _ => romWord byte))) := by
-  cases byte <;>
-    simp [SubwordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-      Verification.environment, Expression.eval, romRow, Lookup.Contains, Table.toRaw, fromElements]
-  all_goals repeat' apply And.intro
-  all_goals solve
-    | decide
-    | (apply Verification.range16_contains; decide)
-    | (refine ⟨⟨131073, by decide⟩, ?_⟩
-       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
-    | (refine ⟨⟨196609, by decide⟩, ?_⟩
-       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
-    | (refine ⟨⟨655368, by decide⟩, ?_⟩
-       norm_num [romWord, Word.toBitVec, Word.value, limbBase, Verification.subwordRow,
-         Verification.subwordDataRow, Verification.subwordLoadLimbs])
-    | (refine ⟨⟨4849678, by decide⟩, ?_⟩
-       norm_num [romWord, Word.toBitVec, Word.value, limbBase, Verification.subwordRow,
-         Verification.subwordDataRow, Verification.subwordLoadLimbs])
+  cases byte <;> exact SubwordMemory.holds_of_check (SubwordMemory.subwordChecked _) rfl (by kernel_rfl)
 
 end Tests.SubwordMemory

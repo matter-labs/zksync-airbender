@@ -78,7 +78,6 @@ IMPORT_ALL: dict[str, tuple[str, ...]] = {
     "Slop.UnifiedReduced.RV.ControlResolution": (_A,),
     "Tests.Blake2GMemory": (_A,),
     "Tests.Bigint": (_D, _V),
-    "Tests.BigintMemory": (_D, _V),
     "Tests.BigintMultiplication": (_D, _V),
     "Tests.Blake2G": (_D, _V),
     "Tests.ShiftBinopImmediate": (_D, _V),
@@ -96,7 +95,6 @@ IMPORT_ALL: dict[str, tuple[str, ...]] = {
     "Tests.KeccakRho": (_A,),
     "Tests.DelegationROMBoundary": (_D, _V),
     "Tests.Keccak": (_D, _V),
-    "Tests.UnifiedDelegation": (_D, _V),
     # the JSON parser's proofs (integers through `Int.repr`) and its kernel-evaluated samples
     "Slop.Import.Json.Lexical": (_I,),
     "Slop.Import.Json.Sample": (_R, _S, _I),

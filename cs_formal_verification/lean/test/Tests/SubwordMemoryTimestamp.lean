@@ -2,14 +2,14 @@ module
 public import Tests.SubwordMemory
 public import Slop.SubwordMemory.Trace
 public import Human.Helpers.Tables.Subword
+public import Slop.SubwordMemory.WitnessCheck
+public import Slop.KernelRfl
 
 @[expose] public section
 
 namespace Tests.SubwordMemoryTimestamp
 open Airbender Arithmetic Trace
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 
 -- LBU x2,0(x1), where x1 points to 0x00400001, with independent
 -- register/RAM ports. Exercise ordinary clocks and the 19-bit rollover.
@@ -25,20 +25,9 @@ theorem constraints (rollover : Bool) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment rollover)) (Airbender.SubwordMemory.clockConstraints (Verification.subwordTable (fun _ => 0))) := by
   apply Verification.holds_append (left := Airbender.SubwordMemory.importedConstraints (Verification.subwordTable (fun _ => 0)))
     (right := Airbender.SubwordMemory.importedConstraintsTimestampLookups)
-  · have core := SubwordMemory.satisfies_setup
-    cases rollover <;>
-      simpa [Airbender.SubwordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-        Lookup.Contains, Vector.map, Expression.eval, Verification.environment, assignment, SubwordMemory.row, Verification.range16,
-        show (4 : ZMod babyBearModulus) + 4 + -8 = 0 by decide,
-        show (14745600 : ZMod babyBearModulus) * (524284 + 4) * (524284 + 4) +
-          3840 * (524284 + 4) = 0 by decide,
-        show (8 : ZMod babyBearModulus) + -7 + 3840 * (524284 + 4) = 0 by decide] using core
   · cases rollover <;>
-      simp [Airbender.SubwordMemory.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
-    all_goals repeat' apply And.intro
-    all_goals apply Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment, SubwordMemory.row]
-    all_goals decide
+      exact Airbender.SubwordMemory.holds_of_check (Airbender.SubwordMemory.subwordChecked _) rfl (by kernel_rfl)
+  · cases rollover <;> exact Airbender.SubwordMemory.timestamps_of_check (by kernel_rfl)
 
 theorem native_clocks (rollover : Bool) :
     ClockEffects Airbender.SubwordMemory.importedConstraintsTraceColumns (assignment rollover) := by
