@@ -1050,3 +1050,11 @@ has exact pre/post samples, all25reference outputs and an unaffected-address
 frame within that same order. Physical round scheduling, standard scheduled
 hash, caller activity/converse accounting and the prior Sail/physical boundaries
 remain open.
+
+## Exact aggregate worker-key accounting
+
+[Key accounting](DelegationKeyAccountingTheorems.lean) derives active-worker raw clock/key uniqueness
+from actual x12 writes and proves every raw-key caller aggregate is the exact
+0/1 worker indicator, retaining all caller rows. This is aggregate accounting;
+individual caller Booleanity/activity and per-call issuance bijection remain
+open alongside physical scheduling/Sail/cryptographic boundaries.

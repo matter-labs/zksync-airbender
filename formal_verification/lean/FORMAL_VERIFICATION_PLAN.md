@@ -1,5 +1,57 @@
 # Circuit formal verification plan
 
+## Exact aggregate delegation-key accounting (8 November 2026)
+
+[Accounting model](Airbender/Review/Trace/Families/ReducedMachine/DelegationKeyAccounting.lean)
+and [short TRACE root](Airbender/Review/Trace/Families/ReducedMachine/DelegationKeyAccountingTheorems.lean)
+derive unique raw processing-clock pairs and unique full four-field keys for the
+actual ACTIVE worker list. Every active worker includes actual x12 write port42
+at the same GPR12 address. Old full-flow write(address,proof-rank) uniqueness
+therefore excludes equal worker clock pairs. This is a derived property of active
+workers, not a global clock/rank injection premise for all ports.
+
+[Proof](Airbender/Proofs/ReducedMachine/NativeDelegationKeyAccounting.lean) first
+proves generic occurrence-preserving selection and key-uniqueness transfer. Exact
+actual descriptor42/register12 binding precedes token address arithmetic; old raw
+write-clock equality is reused unchanged. Generic Boolean WORKER weights and the
+derived active-key uniqueness yield the EXACT0/1 worker aggregate at EVERY raw
+key. Old formal-identity coefficient balance, plus zero weight outside its pole
+support, derives the same indicator for the aggregate over ALL ordinary caller
+rows. Nonzero aggregate iff an active worker key is present; that key has a unique
+active worker occurrence. ALL source row copies and zero weights remain.
+
+This closes exact AGGREGATE key accounting. It does NOT derive individual caller
+weight Booleanity, a natural caller count, caller activity/validity or per-call
+issuance/fulfillment bijection. Small generic caller weights1,-1 cancel to0;
+2,-1 sum to1 without individual Booleanity. Neither is an accepted native witness
+or evidence of a defect. [20 controls](Tests/NativeDelegationKeyAccounting.lean)
+cover these distinctions, unique/absent worker keys, duplicate active-key rejection,
+duplicate selection retention, actual x12 address, conditional raw clocks/keys/
+all coefficients/converse, prior joint execution, MAIN partial order, inactive CSR
+and the same counted source.
+
+The SAME old counted source/original public image/log20/OLD LogicalLookups/OLD
+explicit SourceIdentity retain the complete joint block execution, shared worker
+snapshots/reference outputs, word bounds and capacity. No expected rows, keys,
+clocks, reads, ranges, values, counts, results, one-hot masks, rounds, schedule,
+history or fulfilled ledger is supplied. Native source hashes and targeted
+x10/x11/x12 request and caller source were reread before the prototype; no new
+native file/pin/artifact/intake/generation/heavy replay/dependency/v3refresh/
+production/Sail/old acceptance/FINDINGS change. All43ports/BOTHtimes/aliases/
+readonlyrefresh/OLDREAD/AUX-m0poles/inactiveD/callerdecoder equations/unmaskedSW/
+publicx0times stay; caller requests never filtered.
+
+Per-row caller activity and converse per-call accounting, physical clock/round
+sequencing and standard scheduled full hash, public MOP custom execution, original
+CSR/MOP/worker Sail, physical cryptography, completeness and parity remain open.
+Public ordinary7-or-CSR excludes MOP; original seven-profile Sail excludes CSR/MOP.
+Old logical boundaries are not fixed-challenge/sum/capacity/finite-field/transcript
+or physical Rust/JSON/FFT-LDE/quotient/verifier refinement. Noninjective proof ranks
+and full raw tokens remain unchanged. Controls are generic/conditional only, not
+new nonempty native-source-global/whole-worker/physical witnesses, attacks or
+defects. Counts are audit counters, not parity.
+
+
 ## One joint native MAIN/worker block execution (8 November 2026)
 
 [Joint model](Airbender/Review/Trace/Families/ReducedMachine/JointReplay.lean) and

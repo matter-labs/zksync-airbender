@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.DelegationKeyAccounting
+import Airbender.Proofs.ReducedMachine.NativeDelegationKeyAccounting
+import Airbender.Review.Trace.Families.ReducedMachine.DelegationKeyAccountingTheorems
+import Tests.NativeDelegationKeyAccounting
+
 import Airbender.Review.Trace.Families.ReducedMachine.JointReplay
 import Airbender.Proofs.ReducedMachine.NativeJointReplay
 import Airbender.Review.Trace.Families.ReducedMachine.JointReplayTheorems
@@ -8002,3 +8007,36 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeJointReplay.main_partial_dependencies_retained
 #print axioms Airbender.Tests.NativeJointReplay.inactive_requests_retained
 #print axioms Airbender.Tests.NativeJointReplay.full_counted_source
+
+#print axioms Airbender.NativeDelegationKeyAccountingProofs.picks_sublist
+#print axioms Airbender.NativeDelegationKeyAccountingProofs.nodup_keys
+#print axioms Airbender.NativeDelegationKeyAccountingProofs.unique_weight
+#print axioms Airbender.NativeDelegationKeyAccountingProofs.absent_weight
+#print axioms Airbender.NativeDelegationKeyAccountingProofs.coefficient_all
+#print axioms Airbender.NativeDelegationKeyAccountingProofs.control_descriptor
+#print axioms Airbender.NativeDelegationKeyAccountingProofs.control_address
+#print axioms Airbender.NativeDelegationKeyAccountingProofs.active_clocks
+#print axioms Airbender.NativeDelegationKeyAccountingProofs.active_keys
+#print axioms Airbender.NativeDelegationKeyAccountingProofs.accounting
+#print axioms Airbender.NativeDelegationKeyAccountingProofs.counted
+#print axioms Airbender.NativeDelegationKeyAccounting.native_counted_delegation_key_accounting
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.cancelling_rows_nonzero
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.cancelling_aggregate_zero
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.nonboolean_rows_aggregate_one
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.worker_unique_keys
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.exact_small_indicator
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.absent_small_key
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.duplicate_active_key_rejected
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.selection_retains_duplicates
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.selected_edges_sublist
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.actual_x12_descriptor
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.actual_x12_address
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.active_raw_clock_pairs_unique
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.full_raw_keys_unique
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.all_worker_coefficients
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.all_caller_coefficients
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.exact_aggregate_converse
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.full_joint_execution_retained
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.main_partial_dependencies_retained
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.inactive_requests_retained
+#print axioms Airbender.Tests.NativeDelegationKeyAccounting.full_counted_source
