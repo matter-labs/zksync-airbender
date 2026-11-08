@@ -74,6 +74,8 @@ import Slop.Final.Circuits.SubwordMemory.Artifact
 import Slop.Final.Circuits.UnifiedReduced.Artifact
 import Slop.Final.Circuits.WordMemory.Artifact
 import Slop.Final.Import.Columns
+import Slop.Final.Import.Theorems
+import Human.Import.Theorems
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.AddSub.BabyBearRVSoundnessClaim := @Airbender.AddSub.babyBear_rv_soundness
@@ -204,6 +206,8 @@ example : Airbender.SubwordMemory.ArtifactImportClaim := @Airbender.SubwordMemor
 example : Airbender.UnifiedReduced.ArtifactImportClaim := @Airbender.UnifiedReduced.artifact_import
 example : Airbender.WordMemory.ArtifactImportClaim := @Airbender.WordMemory.artifact_import
 example : Airbender.PlacementsClaim := @Airbender.placements_claim
+example : Airbender.Json.ParseSoundClaim := @Airbender.Json.parse_sound
+example : Airbender.Json.TextUniqueClaim := @Airbender.Json.text_unique
 
 #print axioms Airbender.AddSub.rv_soundness
 #print axioms Airbender.AddSub.babyBear_rv_soundness
@@ -334,3 +338,5 @@ example : Airbender.PlacementsClaim := @Airbender.placements_claim
 #print axioms Airbender.UnifiedReduced.artifact_import
 #print axioms Airbender.WordMemory.artifact_import
 #print axioms Airbender.placements_claim
+#print axioms Airbender.Json.parse_sound
+#print axioms Airbender.Json.text_unique

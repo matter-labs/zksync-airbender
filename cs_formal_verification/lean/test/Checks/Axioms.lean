@@ -139,6 +139,7 @@ import Slop.Final.Circuits.SubwordMemory.Artifact
 import Slop.Final.Circuits.UnifiedReduced.Artifact
 import Slop.Final.Circuits.WordMemory.Artifact
 import Slop.Final.Import.Columns
+import Slop.Final.Import.Theorems
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1194,3 +1195,5 @@ import Slop.Final.Import.Columns
 #print axioms Airbender.UnifiedReduced.artifact_import
 #print axioms Airbender.WordMemory.artifact_import
 #print axioms Airbender.placements_claim
+#print axioms Airbender.Json.parse_sound
+#print axioms Airbender.Json.text_unique

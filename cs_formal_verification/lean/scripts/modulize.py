@@ -39,10 +39,12 @@ KEEP: dict[str, str] = {}
 # per file (elaboration time as the non-module baseline). Module name -> Init modules.
 UNTIL_435 = "-- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)"
 REPR = "-- Init.Data.Repr is not exposed (still true in 4.35)"
+INT_REPR = "-- Int.repr is not exposed"
 IMPORT_ALL_COMMENT = {"Init.Data.Array.Basic": UNTIL_435, "Init.Data.Array.DecidableEq": UNTIL_435,
-                      "Init.Data.Vector.Basic": UNTIL_435, "Init.Data.Repr": REPR, "Init.Data.String.Defs": REPR}
-_A, _D, _V, _R, _S = ("Init.Data.Array.Basic", "Init.Data.Array.DecidableEq", "Init.Data.Vector.Basic",
-                      "Init.Data.Repr", "Init.Data.String.Defs")
+                      "Init.Data.Vector.Basic": UNTIL_435, "Init.Data.Repr": REPR, "Init.Data.String.Defs": REPR,
+                      "Init.Data.Int.Repr": INT_REPR}
+_A, _D, _V, _R, _S, _I = ("Init.Data.Array.Basic", "Init.Data.Array.DecidableEq", "Init.Data.Vector.Basic",
+                          "Init.Data.Repr", "Init.Data.String.Defs", "Init.Data.Int.Repr")
 IMPORT_ALL: dict[str, tuple[str, ...]] = {
     "Slop.KeccakSplit.Reference.CallReference": (_A,),
     "Slop.Lookups": (_A,),
@@ -94,6 +96,9 @@ IMPORT_ALL: dict[str, tuple[str, ...]] = {
     "Tests.DelegationROMBoundary": (_D, _V),
     "Tests.Keccak": (_D, _V),
     "Tests.UnifiedDelegation": (_D, _V),
+    # the JSON parser's proofs (integers through `Int.repr`) and its kernel-evaluated samples
+    "Slop.Import.Json.Lexical": (_I,),
+    "Slop.Import.Json.Sample": (_R, _S, _I),
 }
 # Generated proof families: every file under the prefix gets the same set.
 IMPORT_ALL_PREFIX: dict[str, tuple[str, ...]] = {}
