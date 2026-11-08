@@ -59,20 +59,4 @@ theorem RVInputs.toRVNativeInputs {data : Data p} {before : RV.State} {cells : L
   ⟨inputs.toRVBoundaryInputs, RVValues.rv_image_bounds inputs.initialization,
     UnifiedReduced.Caller.Proofs.rv_image_clocks inputs.initialization⟩
 
-/-- RV sibling of `native_cell_source`. -/
-theorem rv_native_cell_source {data : Data p} {before : RV.State} {cells : List Cell}
-    (inputs : RVNativeInputs data before cells) {cell : Cell} (member : cell ∈ cells) :
-    ∃ token ∈ data.initial, token.address = cell.addressCode ∧
-      cell.readRV before = some token.word.toBitVec ∧
-      token.word = Word.ofBitVec token.word.toBitVec := by
-  obtain ⟨token, present, same⟩ := List.mem_map.mp
-    (inputs.addresses.mem_iff.mpr (List.mem_map.mpr ⟨cell, member, rfl⟩))
-  obtain ⟨actual, _, address, read⟩ := inputs.reads token present
-  have equal : actual = cell := cell_address_injective (address.trans same)
-  subst actual
-  have bound := inputs.words token present
-  refine ⟨token, present, same, read, ?_⟩
-  apply Word.eq_of_value bound (Word.ofBitVec_bound _)
-  rw [Word.ofBitVec_value, Word.toBitVec_toNat bound]
-
 end Airbender.Trace.Proofs.Transfer

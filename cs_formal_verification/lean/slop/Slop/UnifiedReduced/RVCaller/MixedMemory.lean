@@ -36,16 +36,6 @@ theorem rv_mixed_machine_time_of_program [Fact p.Prime] (hp : 2 * timestampBase 
   exact (write_time (by omega) (base := rawPair row.assignment row.columns.initialTime)
     clock.1 clock.2 (Trace.Proofs.port_offset row port present)).2
 
-theorem rv_mixed_machine_time [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
-    {data : RVRequestTrace p} {program : List UnifiedReduced.RVProgramEntry} {before : RV.State}
-    {ca oa : List (BitVec 32)} {cells : List Cell}
-    (accepted : RVMixedMemoryAccepted data program) (inputs : RVMixedMemoryInputs data program before ca oa cells)
-    {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows)
-    {port : MemoryPort} (present : port ∈ row.ports) :
-    (timeOfPair (writeToken row.columns row.assignment port).time).value = (port.event row.columns row.assignment).1 :=
-  rv_mixed_machine_time_of_program hp inverse accepted inputs.publicProgram member present
-
 theorem rv_ordinary_zero_preserving_of_program [Fact p.Prime] (hp : 524288 < p)
     {data : RVRequestTrace p} {program : List UnifiedReduced.RVProgramEntry} {before : RV.State}
     {oa : List (BitVec 32)}
@@ -60,14 +50,6 @@ theorem rv_ordinary_zero_preserving_of_program [Fact p.Prime] (hp : 524288 < p)
     obtain ⟨entry, present, _, query⟩ := rv_decoder_member (accepted.ordinaryDecoded _ member ordinary)
     obtain ⟨_, _, i, _, fields⟩ := rvProgram_entry_fetch ordinaryProgram entry present
     exact UnifiedReduced.Proofs.RV.rv_row_zero_preserving hp core (accepted.active _ member) fields query
-
-theorem rv_ordinary_zero_preserving [Fact p.Prime] (hp : 524288 < p)
-    {data : RVRequestTrace p} {program : List UnifiedReduced.RVProgramEntry} {before : RV.State}
-    {ca oa : List (BitVec 32)} {cells : List Cell}
-    (accepted : RVMixedMemoryAccepted data program) (inputs : RVMixedMemoryInputs data program before ca oa cells)
-    {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows) (ordinary : row ∉ data.callers) :
-    RowZeroPreserving row :=
-  rv_ordinary_zero_preserving_of_program hp accepted inputs.ordinaryProgram member ordinary
 
 theorem rv_mixed_zero_rules_of_program [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)

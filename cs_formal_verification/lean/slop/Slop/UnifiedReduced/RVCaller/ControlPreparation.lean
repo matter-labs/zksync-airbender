@@ -211,22 +211,6 @@ theorem rv_sequential_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
     exact (UnifiedReduced.Proofs.pc_successor (by omega) core active flags
       ⟨(ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm, rfl, rfl⟩ bounded).1
 
-theorem rv_arithmetic_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
-    {data : RVRequestTrace p} {program : List UnifiedReduced.RVProgramEntry} {before : RV.State}
-    {ca oa : List (BitVec 32)}
-    (accepted : RVMixedMemoryAccepted data program) (publicProgram : RVRequestInputs data before ca)
-    (ordinaryProgram : rvProgramImageWith UnifiedReduced.rvDecoderFields before oa = some program) (registry : RVArithmeticProgram program) :
-    ∀ row ∈ data.machine.rows, row.finish.word.value = row.start.word.value + 4 :=
-  rv_sequential_program_pc_advance hp accepted publicProgram ordinaryProgram (rv_arithmetic_sequential_program registry)
-
-theorem rv_literal_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
-    {data : RVRequestTrace p} {program : List UnifiedReduced.RVProgramEntry} {before : RV.State}
-    {ca oa : List (BitVec 32)}
-    (accepted : RVMixedMemoryAccepted data program) (publicProgram : RVRequestInputs data before ca)
-    (ordinaryProgram : rvProgramImageWith UnifiedReduced.rvDecoderFields before oa = some program) (registry : RVLiteralProgram program) :
-    ∀ row ∈ data.machine.rows, row.finish.word.value = row.start.word.value + 4 :=
-  rv_arithmetic_program_pc_advance hp accepted publicProgram ordinaryProgram (rv_literal_arithmetic_program registry)
-
 theorem rv_sequential_program_pc_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RVRequestTrace p} {program : List UnifiedReduced.RVProgramEntry} {before : RV.State}
@@ -489,20 +473,6 @@ theorem rv_literal_row_output_of_program [Fact p.Prime] (hp : 2 * timestampBase 
   · simp [writeToken, MemoryAddress.code, importedConstraintsMemoryPorts, Cell.addressCode, pairCode,
       destinationRAM, outputLocation, outputUpper, indices.2.2]
   · simpa [write_word, importedConstraintsMemoryPorts, WordColumns.evaluate] using result
-
-theorem rv_literal_row_output [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
-    {data : RVRequestTrace p} {program : List UnifiedReduced.RVProgramEntry} {before : RV.State}
-    {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {literal : ControlLiteral}
-    (accepted : RVMixedMemoryAccepted data program) (inputs : RVMixedMemoryInputs data program before ca oa cells)
-    (scope : RVControlPreparation data program cut register literal) (nonzero : register ≠ 0)
-    (zeroReads : ∀ edge ∈ data.mixedSteps, edge.1.address = (Cell.register 0).addressCode → edge.1.value = 0)
-    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.machine.rows)
-    (ordinary : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers)
-    (last : Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) + 4 = cut) :
-    (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]).address = (Cell.register register).addressCode ∧
-      (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]).word.toBitVec = literal.rvValue :=
-  rv_literal_row_output_of_program hp inverse accepted inputs.publicProgram inputs.ordinaryProgram scope nonzero zeroReads member ordinary last
 
 theorem rv_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
