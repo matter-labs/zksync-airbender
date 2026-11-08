@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerSnapshot
+import Airbender.Proofs.ReducedMachine.NativeWorkerSnapshot
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerSnapshotTheorems
+import Tests.NativeWorkerSnapshot
+
 import Airbender.Review.Circuits.Blake2Worker.Transition
 import Airbender.Proofs.ReducedMachine.NativeWorkerTransition
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerTransitionTheorems
@@ -7893,3 +7898,31 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerTransition.old_full_local_body
 #print axioms Airbender.Tests.NativeWorkerTransition.inactive_requests_retained
 #print axioms Airbender.Tests.NativeWorkerTransition.complete_counted
+
+#print axioms Airbender.NativeWorkerSnapshotProofs.ordered_cut
+#print axioms Airbender.NativeWorkerSnapshotProofs.split_replay
+#print axioms Airbender.NativeWorkerSnapshotProofs.early_read
+#print axioms Airbender.NativeWorkerSnapshotProofs.common_rank
+#print axioms Airbender.NativeWorkerSnapshotProofs.sampled_input
+#print axioms Airbender.NativeWorkerSnapshotProofs.snapshot
+#print axioms Airbender.NativeWorkerSnapshotProofs.counted
+#print axioms Airbender.NativeWorkerSnapshot.native_counted_worker_snapshot
+#print axioms Airbender.Tests.NativeWorkerSnapshot.equal_write_ranks
+#print axioms Airbender.Tests.NativeWorkerSnapshot.tied_replay
+#print axioms Airbender.Tests.NativeWorkerSnapshot.second_read_common_seed
+#print axioms Airbender.Tests.NativeWorkerSnapshot.tied_cut
+#print axioms Airbender.Tests.NativeWorkerSnapshot.duplicate_seed_rejected
+#print axioms Airbender.Tests.NativeWorkerSnapshot.old_read_not_new
+#print axioms Airbender.Tests.NativeWorkerSnapshot.decoded_actual_inputs
+#print axioms Airbender.Tests.NativeWorkerSnapshot.all43_reads
+#print axioms Airbender.Tests.NativeWorkerSnapshot.exact_raw_token
+#print axioms Airbender.Tests.NativeWorkerSnapshot.snapshot_reference
+#print axioms Airbender.Tests.NativeWorkerSnapshot.all_state_outputs
+#print axioms Airbender.Tests.NativeWorkerSnapshot.all_extended_outputs
+#print axioms Airbender.Tests.NativeWorkerSnapshot.both_control_outputs
+#print axioms Airbender.Tests.NativeWorkerSnapshot.unique_addresses
+#print axioms Airbender.Tests.NativeWorkerSnapshot.both_raw_times
+#print axioms Airbender.Tests.NativeWorkerSnapshot.initialized_cut
+#print axioms Airbender.Tests.NativeWorkerSnapshot.main_partial_dependencies_retained
+#print axioms Airbender.Tests.NativeWorkerSnapshot.inactive_requests_retained
+#print axioms Airbender.Tests.NativeWorkerSnapshot.complete_counted

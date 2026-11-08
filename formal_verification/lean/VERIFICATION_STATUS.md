@@ -1,5 +1,47 @@
 # Verification status
 
+## Common initialized native worker pre-state (8 November 2026)
+
+[Snapshot model](Airbender/Review/Trace/Families/ReducedMachine/WorkerSnapshot.lean)
+and [short TRACE root](Airbender/Review/Trace/Families/ReducedMachine/WorkerSnapshotTheorems.lean)
+derive one common initialized exact RAW-token snapshot for ALL43 ports of every
+actual active worker. It cuts the SAME complete mixed replay before every write
+at that worker's noninjective proof rank. Both raw clock fields remain in tokens;
+equal write ranks at different addresses are allowed.
+
+[Proof](Airbender/Proofs/ReducedMachine/NativeWorkerSnapshot.lean) proves generic
+ordered-cut/replay-split/early-read-origin lemmas before native instantiation.
+Actual port membership, strict old-read progress, common write time and distinct
+worker addresses come from prior checked effects. Every read is present and
+unique at its address. The old lossless decoder and ABI getters derive all state,
+extended-state, message and BOTH x12 reference inputs from snapshot samples.
+All25actual writable outputs equal the prior complete weighted transition on
+those samples. No desired snapshot, read, value, range, key, clock, result,
+one-hot mask, schedule, history or fulfilled ledger is supplied as a premise.
+
+The SAME counted source/original public image/log20/OLD LogicalLookups/OLD explicit
+SourceIdentity retain every ordinary inactive transition and full prior replay,
+word bounds, capacity and MAIN partial dependencies. All43ports, aliases, BOTH raw
+times, OLDREADs, refreshes, AUX/m0poles, inactiveD, caller equations, unmaskedSW and
+publicx0times stay; caller requests are never filtered. MAIN reads are not forced
+before every same-row write. [Nineteen controls](Tests/NativeWorkerSnapshot.lean)
+cover small generic tied-rank replay, duplicate-address rejection, common samples,
+all25outputs, retained MAIN alias order, inactive caller and full counted source.
+These are generic/conditional controls, not new nonempty native-source-global,
+whole-worker or physical witnesses, attacks or defects.
+
+This closes common PRE-state/reference-input connection. A grouped worker
+POST-state/frame, physical round sequence/standard scheduled hash, inactive caller
+activity/converse accounting, public MOP custom execution, original CSR/MOP/worker
+Sail, physical cryptography, completeness and parity remain open. Public ordinary7-
+or-CSR excludes MOP; original seven-profile Sail excludes CSR/MOP. Old logical
+boundaries do not follow from fixed-challenge equations/sums/capacity/finite-field
+samples/transcript probability or physical Rust/JSON/FFT-LDE/quotient/verifier
+refinement. No new native source adaptation/pin, artifact, generation, importer,
+heavy replay, dependency, v3 refresh, production, Sail, old acceptance or FINDINGS
+change. Audit counters are not parity.
+
+
 ## Complete native weighted worker transition (8 November 2026)
 
 [Pure transition](Airbender/Review/Circuits/Blake2Worker/Transition.lean) takes only

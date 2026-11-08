@@ -574,3 +574,10 @@ round schedules remain open.
 only, retaining zero/multiple masks, eight G calls and prior initialized replay.
 This closes pointwise reference assembly; physical round sequencing, standard
 scheduled full hash and protocol/Sail/accounting boundaries remain open.
+
+## Common initialized worker pre-state
+
+[Snapshot](../../Trace/Families/ReducedMachine/WorkerSnapshotTheorems.lean) derives ALL43exact reads from one initialized pre-state
+and all25writable reference outputs from those samples, retaining prior replay.
+MAIN partial dependencies remain. Grouped post-state/frame, physical scheduling,
+standard scheduled hash and protocol/Sail/accounting boundaries remain open.
