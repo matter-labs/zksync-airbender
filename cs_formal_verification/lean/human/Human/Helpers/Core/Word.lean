@@ -1,5 +1,3 @@
-import Sail.BitVec
-
 namespace Airbender.Arithmetic
 
 def limbBase : Nat := 65536
