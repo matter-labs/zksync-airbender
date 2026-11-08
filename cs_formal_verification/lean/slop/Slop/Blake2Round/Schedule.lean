@@ -23,7 +23,7 @@ def column (round : Fin 10) (position : Fin 16) : Fin 16 :=
 and a mode column; constraint `74 + 2 j + limb` sums, round by round, the terms of
 `Preparation.messageLimb` for message word `column r j`, over the committed products.
 `products_shape` and `message_shape` check the imported constraints against these
-templates, one closed fact per index; `products` and `message_equation` evaluate the
+templates, one closed fact per index; `products`, `round_terms` and `round_sum` evaluate the
 templates once. -/
 
 /-- The integer constant `c` as the importer writes it. -/

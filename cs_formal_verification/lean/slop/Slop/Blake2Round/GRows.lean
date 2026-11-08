@@ -49,7 +49,8 @@ include hp h hq
     (`importedConstraints.lookup_i`), has the row meaning of its tag. The per-tag
     lemmas below turn it into the chunk fact of the trace fields that the entry
     columns evaluate to; each call proves only those evaluations. -/
-theorem query_row {t : Nat} (ht : t ∈ tags) (tag : entry[5].eval (Verification.environment w) = t) :
+theorem query_row {t : Nat} (ht : t ∈ tags)
+    (tag : entry[5].eval (Verification.environment w) = t) :
     RowFacts t (entry[0].eval (Verification.environment w)).val
       (entry[1].eval (Verification.environment w)).val
       (entry[2].eval (Verification.environment w)).val
@@ -116,7 +117,8 @@ theorem query_57 (tag : entry[5].eval (Verification.environment w) = 57) {a b c 
     (hb : entry[1].eval (Verification.environment w) = b)
     (hc : entry[2].eval (Verification.environment w) = c)
     (hd : entry[3].eval (Verification.environment w) = d)
-    (he : entry[4].eval (Verification.environment w) = e) : SplitXor a.val b.val c.val d.val e.val := by
+    (he : entry[4].eval (Verification.environment w) = e) :
+    SplitXor a.val b.val c.val d.val e.val := by
   have row := query_row hp h hq (t := 57) (by decide) (by rw [tag, Nat.cast_ofNat])
   subst ha hb hc hd he
   exact row

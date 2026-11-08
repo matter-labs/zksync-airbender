@@ -26,8 +26,10 @@ theorem column_rows_0 {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
       q3 := query_4 hp512 h (importedConstraints.lookup_5 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
       q4 := query_20 hp512 h (importedConstraints.lookup_6 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
       q5 := query_20 hp512 h (importedConstraints.lookup_7 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
-      q6 := query_57 hp512 h (importedConstraints.lookup_8 _ (query_lt (by decide))) ?_ ?_ ?_ ?_ ?_ ?_
-      q7 := query_57 hp512 h (importedConstraints.lookup_9 _ (query_lt (by decide))) ?_ ?_ ?_ ?_ ?_ ?_
+      q6 := query_57 hp512 h (importedConstraints.lookup_8 _ (query_lt (by decide)))
+        ?_ ?_ ?_ ?_ ?_ ?_
+      q7 := query_57 hp512 h (importedConstraints.lookup_9 _ (query_lt (by decide)))
+        ?_ ?_ ?_ ?_ ?_ ?_
       q8 := query_4 hp512 h (importedConstraints.lookup_10 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
       q9 := query_4 hp512 h (importedConstraints.lookup_11 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
       q10 := query_55 hp512 h (importedConstraints.lookup_12 _ (query_lt (by decide))) ?_ ?_ ?_ ?_

@@ -21,8 +21,6 @@ namespace Airbender.Blake2Round.Proofs
 
 open Arithmetic
 
-set_option maxHeartbeats 4000000
-
 /-- XOR of two `width`-bit chunks, as one table row states it. -/
 def ChunkXor (width a b c : Nat) : Prop := a < 2 ^ width ∧ b < 2 ^ width ∧ c = a ^^^ b
 

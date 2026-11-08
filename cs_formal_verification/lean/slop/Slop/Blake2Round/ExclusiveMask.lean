@@ -13,7 +13,8 @@ private def packedBits {p : Nat} (w : Nat → ZMod p) : Nat := (w 139).val + 2 *
     64 * (w 145).val + 128 * (w 146).val + 256 * (w 147).val +
     512 * (w 148).val + 1024 * (w 149).val + 2048 * (w 150).val + 4096 * (w 151).val
 
-private theorem control_columns : ∀ i : Fin 13, Variables.controlBits[i] = 139 + i.val := by decide
+private theorem control_columns : ∀ i : Fin 13, Variables.controlBits[i] = 139 + i.val := by
+  decide
 
 private theorem round_columns : ∀ i : Fin 10, Variables.roundBits[i] = 142 + i.val := by decide
 

@@ -26,8 +26,10 @@ theorem diagonal_rows_2 {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
       q3 := query_4 hp512 h (importedConstraints.lookup_101 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
       q4 := query_20 hp512 h (importedConstraints.lookup_102 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
       q5 := query_20 hp512 h (importedConstraints.lookup_103 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
-      q6 := query_57 hp512 h (importedConstraints.lookup_104 _ (query_lt (by decide))) ?_ ?_ ?_ ?_ ?_ ?_
-      q7 := query_57 hp512 h (importedConstraints.lookup_105 _ (query_lt (by decide))) ?_ ?_ ?_ ?_ ?_ ?_
+      q6 := query_57 hp512 h (importedConstraints.lookup_104 _ (query_lt (by decide)))
+        ?_ ?_ ?_ ?_ ?_ ?_
+      q7 := query_57 hp512 h (importedConstraints.lookup_105 _ (query_lt (by decide)))
+        ?_ ?_ ?_ ?_ ?_ ?_
       q8 := query_4 hp512 h (importedConstraints.lookup_106 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
       q9 := query_4 hp512 h (importedConstraints.lookup_107 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
       q10 := query_55 hp512 h (importedConstraints.lookup_108 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
