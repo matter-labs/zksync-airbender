@@ -1,5 +1,51 @@
 # Trust and review boundaries
 
+## Actual native seed ledger and padding cancellation (8 November 2026)
+
+[The initialization ledger](Airbender/Review/Circuits/ReducedMachine/InitializationLedger.lean)
+constructs actual nonpadding seed/teardown lists from ALL ordinary rows of the same
+native main proofs. Its padding test checks ALL six address/value/time fields;
+zero address alone is insufficient. No execution filter is applied to seeds.
+Public register/PC, active main port/state and ALL worker access observations stay
+in the access list, including x0 public timestamps and readonly refreshes.
+
+[The proof assembly](Airbender/Proofs/ReducedMachine/NativeInitializationLedger.lean)
+derives that a six-zero record contributes the IDENTICAL zero RAM token on BOTH
+sides. Generic abstract list partition/reordering precedes native instantiation.
+Exact uncompressed multiset cancellation preserves duplicates and proves original
+FULL logical matching equivalent in BOTH directions to retained matching and to
+the explicit seed/teardown plus access ledger. Active port/state effects on a row
+with padded initialization remain. No division, nonzero factor, ratio1, compression
+injectivity, expected ledger or issued/fulfilled-worker premise is introduced.
+Original source acceptance, inactive factors and multiplicity-zero poles remain.
+
+[Three short roots](Airbender/Review/Circuits/ReducedMachine/InitializationLedgerTheorems.lean)
+expose these equivalences and derive the actual zero seeds' canonical two-limb RAM
+address domain from SAME complete initialization acceptance. Both limbs are16bit,
+the Nat radix address is below2^32 and agrees with the actual sorted address;
+seed value and raw field timestamp pair are zero. Full RV32 above M31 is retained
+without a whole-word field cast. This does not prescribe an architectural/public
+RAM region, alignment, image/seed coverage or initialized chronological history.
+Logical matching/lookups and normalized source fidelity remain explicit separate
+boundaries; no physical extraction or compiler/Rust/JSON refinement is inferred.
+
+[Seventeen controls](Tests/NativeInitializationLedger.lean) check all six padding
+fields, zero-address nonpadding retention, inactive seeds, active padded-row ports,
+duplicate occurrences/partition, exact zero seed fields, max RV32, wide-limb
+rejection, full matching equivalences and conditional domains. Complete EXISTING
+CSR BODY plus a local ledger observation is a weaker interface; these are not full
+positive NONEMPTY source/global/worker/physical witnesses, attacks or defects.
+Four modules add32 roots with12 exact parent origins. All5,634 prior ordered roots
+and exact audit source bytes remain; native103 pins and all previous boundaries,
+production, Sail, artifacts, fixtures, importer/exporter and findings are unchanged.
+No native generation, closed heavy replay, new axiom or issue assumption; no parity.
+
+Next: actual public-native memory domain/image/seed coverage, then chronological
+combined memory and active worker reads/value/address/rawclock/key bounds and
+caller-worker accounting. Canonical native zero seeds alone do not establish the
+public seed coverage required by the initialized logical histories.
+
+
 ## Same-main initialization and full native ledger (8 November 2026)
 
 [The constructed source views](Airbender/Review/Circuits/ReducedMachine/InitializationBatch.lean)

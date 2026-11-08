@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.InitializationLedger
+import Airbender.Proofs.ReducedMachine.NativeInitializationLedger
+import Airbender.Review.Circuits.ReducedMachine.InitializationLedgerTheorems
+import Tests.NativeInitializationLedger
+
 import Airbender.Review.Circuits.ReducedMachine.InitializationBatch
 import Airbender.Proofs.ReducedMachine.NativeInitializationBatch
 import Airbender.Review.Circuits.ReducedMachine.InitializationBatchTheorems
@@ -6468,3 +6473,36 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeInitializationBatch.empty_joint_terminal
 #print axioms Airbender.Tests.NativeInitializationBatch.wrong_empty_terminal_rejected
 #print axioms Airbender.Tests.NativeInitializationBatch.complete_conditional_joint
+
+#print axioms Airbender.NativeInitializationLedgerProofs.padding_test
+#print axioms Airbender.NativeInitializationLedgerProofs.padding_key
+#print axioms Airbender.NativeInitializationLedgerProofs.padding_token
+#print axioms Airbender.NativeInitializationLedgerProofs.seed_fields
+#print axioms Airbender.NativeInitializationLedgerProofs.row_domain
+#print axioms Airbender.NativeInitializationLedgerProofs.row_partition
+#print axioms Airbender.NativeInitializationLedgerProofs.split_rows
+#print axioms Airbender.NativeInitializationLedgerProofs.active_partition
+#print axioms Airbender.NativeInitializationLedgerProofs.retained_partition
+#print axioms Airbender.NativeInitializationLedgerProofs.matching_iff
+#print axioms Airbender.NativeInitializationLedgerProofs.seed_access_matching
+#print axioms Airbender.NativeInitializationLedgerProofs.accepted_domains
+#print axioms Airbender.NativeInitializationLedger.native_initialization_seed_domain
+#print axioms Airbender.NativeInitializationLedger.native_initialization_padding_matching
+#print axioms Airbender.NativeInitializationLedger.native_seed_access_ledger
+#print axioms Airbender.Tests.NativeInitializationLedger.six_zero_fields_padding
+#print axioms Airbender.Tests.NativeInitializationLedger.all_six_nonzero_fields_retained
+#print axioms Airbender.Tests.NativeInitializationLedger.padding_token_is_identical
+#print axioms Airbender.Tests.NativeInitializationLedger.zero_address_nonpadding_kept
+#print axioms Airbender.Tests.NativeInitializationLedger.inactive_nonpadding_kept
+#print axioms Airbender.Tests.NativeInitializationLedger.active_padding_ports_kept
+#print axioms Airbender.Tests.NativeInitializationLedger.padding_execute_independent
+#print axioms Airbender.Tests.NativeInitializationLedger.duplicate_padding_occurrences_kept
+#print axioms Airbender.Tests.NativeInitializationLedger.duplicate_preserving_partition
+#print axioms Airbender.Tests.NativeInitializationLedger.seed_zero_fields_without_execute
+#print axioms Airbender.Tests.NativeInitializationLedger.full_rv32_seed_word
+#print axioms Airbender.Tests.NativeInitializationLedger.wide_low_not_ram32
+#print axioms Airbender.Tests.NativeInitializationLedger.wide_high_not_ram32
+#print axioms Airbender.Tests.NativeInitializationLedger.complete_body_padding_ports
+#print axioms Airbender.Tests.NativeInitializationLedger.complete_matching_equivalence
+#print axioms Airbender.Tests.NativeInitializationLedger.explicit_seed_access_equivalence
+#print axioms Airbender.Tests.NativeInitializationLedger.complete_conditional_domains

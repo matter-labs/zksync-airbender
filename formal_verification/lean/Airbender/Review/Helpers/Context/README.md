@@ -260,3 +260,10 @@ from full main-ledger/protocol extraction, public seeds and initialized workers.
 caller/worker arguments and the SAME full logical ledger. Bounds/order/uniqueness,
 both-sided unmasked token membership and existing main chronology share one actual
 proof list. Public seeds and initialized combined worker memory remain open.
+
+## Actual native seed ledger
+
+[Native seed domains and padding cancellation](../../Circuits/ReducedMachine/InitializationLedgerTheorems.lean) derive canonical
+RAM32 zero seeds and exact duplicate-preserving matching equivalences on the same
+full ledger. Six-field padding cancellation keeps active ports and every worker
+access. Public domain/image/seed coverage and combined worker history remain open.
