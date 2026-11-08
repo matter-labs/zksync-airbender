@@ -12,7 +12,6 @@ public import Slop.Delegation.RVBoundaryInputs
 namespace Airbender.Bigint.Memory.Proofs
 open Trace Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
 
 theorem rv_addresses_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 32 * (-62914560 : ZMod p) = 1) (data : Delegation.MemoryData p)

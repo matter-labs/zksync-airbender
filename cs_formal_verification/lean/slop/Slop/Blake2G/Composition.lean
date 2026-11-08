@@ -5,8 +5,6 @@ public import Slop.Blake2G.State
 
 namespace Airbender.Blake2G.State.Proofs
 
-set_option maxHeartbeats 2000000
-set_option maxRecDepth 16384
 
 def project (state : Vector Arithmetic.Word 16) (a b c d : Fin 16) : Words :=
   ⟨state[a], state[b], state[c], state[d]⟩

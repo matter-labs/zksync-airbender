@@ -31,7 +31,7 @@ theorem carry_bits {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 3)}
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     ∀ i : Fin 16, w (83 + i.val) = 0 ∨ w (83 + i.val) = 1 :=
-  fun i => Shapes.flag_bit h (Shapes.carry_shape setup i)
+  fun i => Templates.flag_bit h (Shapes.carry_shape setup i)
 
 theorem result_ranges {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 3)}
     {w : Nat → ZMod p}
@@ -41,6 +41,6 @@ theorem result_ranges {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 3
   have member := Verification.lookup_of_holds h ⟨16 + i.val,
     by rw [lookup_count]; have := i.isLt; omega⟩
   rw [(Shapes.range_shape setup i).2] at member
-  simpa only [Shapes.entry_eval] using Verification.range16_bound member
+  simpa only [Templates.entry_eval] using Verification.range16_bound member
 
 end Airbender.Bigint.Additive.Proofs

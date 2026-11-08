@@ -8,8 +8,6 @@ public import Slop.Blake2G.ControlPool
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 
 abbrev scheduledController (reduced : Bool) (i : Nat) (_bound : i < callCount reduced) : Control.Input :=
   controllerAt reduced i

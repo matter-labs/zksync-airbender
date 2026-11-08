@@ -10,8 +10,6 @@ public import Slop.Delegation.PortEvents
 namespace Airbender.Blake2G.Native.Proofs
 open Trace
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 250000
 
 theorem native_mapping {p : Nat} (w : Nat → ZMod p) : WordMapping (input w) (output w) w := by
   constructor

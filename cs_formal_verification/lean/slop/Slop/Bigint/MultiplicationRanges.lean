@@ -79,9 +79,9 @@ def carryTag (i : Fin 31) : Nat :=
 
 /-- A carry as a query entry: `0 + 0 + 30720 * w (131 + i) + (-30720) * w (163 + i)`. -/
 abbrev carryEntry {p : Nat} (i : Nat) : Expression (ZMod p) :=
-  (((Shapes.constant (Int.ofNat 0)).add (Shapes.constant (Int.ofNat 0))).add
-    (Shapes.product (Shapes.constant (Int.ofNat 30720)) (Shapes.cell (131 + i)))).add
-    (Shapes.product (Shapes.constant (Int.negSucc 30719)) (Shapes.cell (163 + i)))
+  (((Templates.constant (Int.ofNat 0)).add (Templates.constant (Int.ofNat 0))).add
+    (Templates.product (Templates.constant (Int.ofNat 30720)) (Templates.cell (131 + i)))).add
+    (Templates.product (Templates.constant (Int.negSucc 30719)) (Templates.cell (163 + i)))
 
 theorem carry_entry_eval {p : Nat} [Fact p.Prime] (w : Nat → ZMod p) (i : Fin 31) :
     (carryEntry i.val : Expression (ZMod p)).eval (Verification.environment w) = carry w i := by
@@ -94,14 +94,15 @@ private theorem carry_query_lt (i : Fin 31) : carryQuery i < 95 := by
   split_ifs <;> omega
 
 /-- Lookup `carryQuery i` ranges carry `i` (in its first or second entry) under tag `carryTag i`. -/
-private theorem carry_shape {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 3)) (i : Fin 31) :
+private theorem carry_shape {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 3))
+    (i : Fin 31) :
     ∃ other : Expression (ZMod p),
       (FlatOperation.lookups (importedConstraints setup)).get
           ⟨carryQuery i, by rw [lookup_count]; exact carry_query_lt i⟩ =
-        Lookup.mk setup.toRaw #v[carryEntry i.val, other, Shapes.tagEntry (carryTag i)] ∨
+        Lookup.mk setup.toRaw #v[carryEntry i.val, other, Templates.tagEntry (carryTag i)] ∨
       (FlatOperation.lookups (importedConstraints setup)).get
           ⟨carryQuery i, by rw [lookup_count]; exact carry_query_lt i⟩ =
-        Lookup.mk setup.toRaw #v[other, carryEntry i.val, Shapes.tagEntry (carryTag i)] := by
+        Lookup.mk setup.toRaw #v[other, carryEntry i.val, Templates.tagEntry (carryTag i)] := by
   fin_cases i <;>
     simp (config := { decide := true }) only [carryQuery, carryTag, ↓reduceIte] <;>
     op_index <;>
@@ -121,7 +122,7 @@ theorem carry_ranges {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZM
     split_ifs <;> decide
   obtain ⟨other, shape | shape⟩ := carry_shape (p := p) setupTable i
   all_goals rw [shape] at member
-  all_goals have ranges := range_values hp tags member (Shapes.tag_eval w _)
+  all_goals have ranges := range_values hp tags member (Templates.tag_eval w _)
   all_goals simp only [Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_zero,
     List.getElem_cons_succ, carry_entry_eval] at ranges
   · exact ranges.1

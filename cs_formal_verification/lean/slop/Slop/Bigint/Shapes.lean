@@ -1,9 +1,7 @@
 module
 public import Slop.Bigint.OpIndex
-public import Slop.Constraints
-public import Human.Helpers.Properties
+public import Slop.Templates
 public import Mathlib.Tactic.FinCases
-public import Mathlib.Tactic.LinearCombination
 
 @[expose] public section
 
@@ -15,43 +13,14 @@ per index (lean-strategies §2.1).
 -/
 
 namespace Airbender.Bigint.Shapes
+open Templates
 set_option warningAsError true
-
-/-- The integer constant `c` as the importer writes it. -/
-abbrev constant {p : Nat} (c : Int) : Expression (ZMod p) := Expression.const (c : ZMod p)
-
-abbrev cell {p : Nat} (i : Nat) : Expression (ZMod p) := Expression.var ⟨i⟩
-
-/-- `1 * a * b`. -/
-abbrev product {p : Nat} (a b : Expression (ZMod p)) : Expression (ZMod p) :=
-  ((constant (Int.ofNat 1)).mul a).mul b
-
-/-- A column as a query entry: `0 + 0 + 1 * 1 * x`. -/
-abbrev entry {p : Nat} (x : Nat) : Expression (ZMod p) :=
-  ((constant (Int.ofNat 0)).add (constant (Int.ofNat 0))).add (product (constant (Int.ofNat 1)) (cell x))
-
-/-- A constant query column: `0 + t`. -/
-abbrev tagEntry {p : Nat} (t : Nat) : Expression (ZMod p) :=
-  (constant (Int.ofNat 0)).add (constant (Int.ofNat t))
-
-/-- The Boolean constraint `x * (x - 1)`. -/
-abbrev flag {p : Nat} (x : Nat) : Expression (ZMod p) :=
-  ((constant (Int.ofNat 1)).mul (cell x)).mul
-    (((constant (Int.ofNat 0)).add (cell x)).add (constant (Int.negSucc 0)))
 
 /-- Column of left limb `j` (`Variables.leftLimbs`). -/
 def leftColumn (j : Nat) : Nat := 5 + 4 * (j / 2) + j % 2
 
 /-- Column of written limb `j` (`Variables.writtenLimbs`). -/
 def writtenColumn (j : Nat) : Nat := 7 + 4 * (j / 2) + j % 2
-
-/-- `x * y` as the importer writes a product of two columns. -/
-abbrev pair {p : Nat} (x y : Nat) : Expression (ZMod p) := product (cell x) (cell y)
-
-/-- `acc + t₁ + … + tₙ`, left-nested as the importer writes sums. -/
-abbrev sumFrom {p : Nat} (acc : Expression (ZMod p)) (terms : List (Expression (ZMod p))) :
-    Expression (ZMod p) :=
-  terms.foldl Expression.add acc
 
 /-- Constraint `3 + i`: the additive step of limb `i`, selected by the opcode bits. The carry into
     limb 0 is the selected input carry (column 65); limb `i + 1` takes carry `82 + i + 1`. -/
@@ -89,29 +58,6 @@ theorem right_column (j : Fin 16) : Variables.rightLimbs[j] = 39 + j.val := by
   simp only [Variables.rightLimbs, Fin.getElem_fin, Vector.getElem_ofFn]
 
 variable {p : Nat} [Fact p.Prime]
-
-theorem tag_eval (w : Nat → ZMod p) (t : Nat) :
-    (tagEntry t : Expression (ZMod p)).eval (Verification.environment w) = (t : ZMod p) := by
-  simp [Expression.eval]
-
-theorem entry_eval (w : Nat → ZMod p) (x : Nat) :
-    (entry x : Expression (ZMod p)).eval (Verification.environment w) = w x := by
-  simp only [Expression.eval, Verification.environment]
-  push_cast
-  ring
-
-/-- A Boolean constraint that holds forces its column to be a bit. -/
-theorem flag_bit {w : Nat → ZMod p} {ops : List (FlatOperation (ZMod p))}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) ops)
-    {k : Nat} {hk : k < (FlatOperation.constraints ops).length} {x : Nat}
-    (shape : (FlatOperation.constraints ops).get ⟨k, hk⟩ = flag x) : w x = 0 ∨ w x = 1 := by
-  have zero := Verification.assertion_of_holds h ⟨k, hk⟩
-  rw [shape] at zero
-  simp only [Expression.eval, Verification.environment] at zero
-  push_cast at zero
-  rcases mul_eq_zero.mp zero with zero | one
-  · exact Or.inl (by simpa using zero)
-  · exact Or.inr (by linear_combination one)
 
 theorem step_eval (w : Nat → ZMod p) (i : Nat) :
     (stepExpr i : Expression (ZMod p)).eval (Verification.environment w) =
@@ -194,12 +140,14 @@ theorem carry_shape (setup : Table (ZMod p) (fields 3)) (i : Fin 16) :
       ⟨99 + i.val, by rw [constraint_count]; omega⟩ = flag (83 + i.val) := by
   fin_cases i <;> op_index
 
-/-- Lookups `i` and `16 + i`: the sixteen-bit ranges of the high product limbs and of the results. -/
+/-- Lookups `i` and `16 + i`: the sixteen-bit ranges of the high product limbs and of the
+    results. -/
 theorem range_shape (setup : Table (ZMod p) (fields 3)) (i : Fin 16) :
     (FlatOperation.lookups (importedConstraints setup)).get
         ⟨i.val, by rw [lookup_count]; omega⟩ = Verification.range16 (entry (147 + i.val)) ∧
       (FlatOperation.lookups (importedConstraints setup)).get
-        ⟨16 + i.val, by rw [lookup_count]; omega⟩ = Verification.range16 (entry (194 + i.val)) := by
+        ⟨16 + i.val, by rw [lookup_count]; omega⟩ =
+          Verification.range16 (entry (194 + i.val)) := by
   refine ⟨?_, ?_⟩ <;> fin_cases i <;> op_index
 
 /-- Lookups `34 + i` and `50 + i`: each source limb with its low byte (tag 41). -/

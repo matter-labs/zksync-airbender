@@ -8,7 +8,6 @@ namespace Airbender.Blake2G.Proofs
 
 open Arithmetic
 
-set_option maxHeartbeats 1200000
 
 -- These are intermediate field expressions from the imported queries, not a
 -- second G specification. The target operation is Clean's native reference.
@@ -37,11 +36,12 @@ private theorem first_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     chunkXor 8 (w 46) (w 42) (w 47) ∧
     chunkXor 8 ((-7864320 : ZMod p) * (w 28 - w 46))
       ((-7864320 : ZMod p) * (firstAhi w - w 42)) (w 48) := by
-  have q0 := data_lookups (by omega) h (0 : Fin 18)
-  have q1 := data_lookups (by omega) h (1 : Fin 18)
-  have q2 := data_lookups (by omega) h (2 : Fin 18)
-  have q3 := data_lookups (by omega) h (3 : Fin 18)
-  simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment] at q0 q1 q2 q3
+  have q0 := data_lookups (by omega) h ⟨0, by decide⟩
+  have q1 := data_lookups (by omega) h ⟨1, by decide⟩
+  have q2 := data_lookups (by omega) h ⟨2, by decide⟩
+  have q3 := data_lookups (by omega) h ⟨3, by decide⟩
+  op_index at q0 q1 q2 q3
+  simp [Expression.eval, Verification.environment] at q0 q1 q2 q3
   have inv := inverse256 compatible
   have loQuery : -(7864320 * w 15) + -(7864320 * w 19) + -(7864320 * w 33) +
       -(256 * w 37) + -(512 * w 38) + 7864320 * w 41 =
@@ -151,13 +151,14 @@ private theorem first_b_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     chunkXor 9 (w 61) (w 54) (w 63) ∧
     chunkXor 4 ((-491520 : ZMod p) * (w 20 - (w 60 + 8 * w 61)))
       ((-491520 : ZMod p) * (firstChi w - (w 53 + 8 * w 54))) (w 64) := by
-  have q4 := data_lookups (by omega) h (4 : Fin 18)
-  have q5 := data_lookups (by omega) h (5 : Fin 18)
-  have q6 := data_lookups (by omega) h (6 : Fin 18)
-  have q7 := data_lookups (by omega) h (7 : Fin 18)
-  have q8 := data_lookups (by omega) h (8 : Fin 18)
-  have q9 := data_lookups (by omega) h (9 : Fin 18)
-  simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment] at q4 q5 q6 q7 q8 q9
+  have q4 := data_lookups (by omega) h ⟨4, by decide⟩
+  have q5 := data_lookups (by omega) h ⟨5, by decide⟩
+  have q6 := data_lookups (by omega) h ⟨6, by decide⟩
+  have q7 := data_lookups (by omega) h ⟨7, by decide⟩
+  have q8 := data_lookups (by omega) h ⟨8, by decide⟩
+  have q9 := data_lookups (by omega) h ⟨9, by decide⟩
+  op_index at q4 q5 q6 q7 q8 q9
+  simp [Expression.eval, Verification.environment] at q4 q5 q6 q7 q8 q9
   have inv := inverse4096 compatible
   have bLo : -(491520 * w 19) + 491520 * w 55 + 3932160 * w 56 =
       (-491520 : ZMod p) * (w 19 - (w 55 + 8 * w 56)) := by ring

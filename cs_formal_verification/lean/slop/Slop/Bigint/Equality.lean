@@ -8,8 +8,6 @@ namespace Airbender.Bigint.Equality.Proofs
 open Arithmetic
 open scoped BigOperators
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 
 def carry {p : Nat} (w : Nat → ZMod p) (i : Nat) : Nat :=
   if i = 0 then 0 else (w (carryColumn i)).val

@@ -6,19 +6,54 @@ public import Mathlib.Tactic.FinCases
 
 namespace Airbender.Blake2G.Proofs
 
+private abbrev xorTags : Vector Nat 5 := #v[4, 17, 18, 19, 20]
+
+private abbrev xorWidths : Vector Nat 5 := #v[8, 3, 4, 7, 9]
+
+private theorem tags_injective (a b : Fin 5) (same : xorTags[a] = xorTags[b]) : a = b := by
+  fin_cases a <;> fin_cases b <;> first | rfl | simp at same
+
+private theorem tags_small : ∀ kind : Fin 5, xorTags[kind] ≤ 20 := by decide
+
 set_option maxRecDepth 100000 in
+/-- Every setup row, by region: a sized XOR row, or the controller region (tag 28). -/
+private theorem row_cases {control : Fin 512 → Vector Nat 7} (index : Fin 344896) :
+    (∃ kind : Fin 5, (setupRow control index)[8] = xorTags[kind] ∧
+      (setupRow control index)[0] < 2 ^ xorWidths[kind] ∧
+      (setupRow control index)[1] < 2 ^ xorWidths[kind] ∧
+      (setupRow control index)[2] = (setupRow control index)[0] ^^^ (setupRow control index)[1]) ∨
+    ((setupRow control index)[8] = 28 ∧ 344384 ≤ index.val) := by
+  have size := index.isLt
+  unfold setupRow
+  dsimp only
+  split_ifs
+  · exact Or.inl ⟨0, by simp [xorRow]; omega⟩
+  · exact Or.inl ⟨1, by simp [xorRow]; omega⟩
+  · exact Or.inl ⟨2, by simp [xorRow]; omega⟩
+  · exact Or.inl ⟨3, by simp [xorRow]; omega⟩
+  · exact Or.inl ⟨4, by simp [xorRow]; omega⟩
+  · exact Or.inr ⟨rfl, by omega⟩
+
 private theorem xor_rows {control : Fin 512 → Vector Nat 7} (index : Fin 344896)
     (kind : Fin 5) (selected : (setupRow control index)[8] = (#v[4, 17, 18, 19, 20][kind])) :
     (setupRow control index)[0] < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
     (setupRow control index)[1] < 2 ^ (#v[8, 3, 4, 7, 9][kind]) ∧
     (setupRow control index)[2] =
       (setupRow control index)[0] ^^^ (setupRow control index)[1] := by
-  have size := index.isLt
-  fin_cases kind <;> unfold setupRow at selected ⊢
-  all_goals dsimp only at selected ⊢
-  all_goals split_ifs at selected ⊢
-  all_goals simp [xorRow] at selected ⊢
-  all_goals omega
+  rcases row_cases (control := control) index with ⟨other, tag, a, b, xor⟩ | ⟨tag, _⟩
+  · obtain rfl := tags_injective other kind (tag.symm.trans selected)
+    exact ⟨a, b, xor⟩
+  · have := tags_small kind
+    simp only [xorTags] at this
+    omega
+
+/-- The tag of every setup row is at most 28. -/
+private theorem row_tag_le {control : Fin 512 → Vector Nat 7} (index : Fin 344896) :
+    (setupRow control index)[8] ≤ 28 := by
+  rcases row_cases (control := control) index with ⟨kind, tag, _⟩ | ⟨tag, _⟩
+  · have := tags_small kind
+    omega
+  · omega
 
 /-- Each selected XOR region in the native static table enforces its chunk bounds
     and exact XOR. This uses table membership, not an assumed circuit result. -/
@@ -40,9 +75,8 @@ theorem xor_lookup {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
     have equation := congrArg (fun (v : Vector (ZMod p) 9) => v[j]) row
     simpa only [Vector.getElem_map] using equation
   have tagBound : (setupRow control i)[8] < p := by
-    unfold setupRow
-    dsimp only
-    split_ifs <;> simp [xorRow] <;> omega
+    have := row_tag_le (control := control) i
+    omega
   have wantedBound : (#v[4, 17, 18, 19, 20][kind] : Nat) < p := by
     fin_cases kind <;> dsimp <;> omega
   have tagged : (setupRow control i)[8] = (#v[4, 17, 18, 19, 20][kind]) := by
@@ -81,9 +115,8 @@ theorem control_lookup {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
     have equation := congrArg (fun (v : Vector (ZMod p) 9) => v[j]) row
     simpa only [Vector.getElem_map] using equation
   have tagBound : (setupRow control i)[8] < p := by
-    unfold setupRow
-    dsimp only
-    split_ifs <;> simp [xorRow] <;> omega
+    have := row_tag_le (control := control) i
+    omega
   have tagged : (setupRow control i)[8] = 28 := by
     have equation := congrArg ZMod.val ((column 8 (by decide)).symm.trans selected)
     have literal : (28 : ZMod p).val = 28 := by
@@ -92,10 +125,10 @@ theorem control_lookup {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
     rw [ZMod.val_natCast_of_lt tagBound, literal] at equation
     exact equation
   have region : 344384 ≤ i.val := by
-    unfold setupRow at tagged
-    dsimp only at tagged
-    split_ifs at tagged <;> simp [xorRow] at tagged
-    omega
+    rcases row_cases (control := control) i with ⟨kind, tag, _⟩ | ⟨_, region⟩
+    · have := tags_small kind
+      omega
+    · exact region
   let key : Fin 512 := ⟨i.val - 344384, by have size := i.isLt; omega⟩
   have last : setupRow control i = #v[key.val, (control key)[0], (control key)[1],
       (control key)[2], (control key)[3], (control key)[4], (control key)[5], (control key)[6], 28] := by

@@ -11,7 +11,6 @@ public import Slop.Delegation.PortEvents
 namespace Airbender.Bigint.Native.Proofs
 open Trace
 set_option warningAsError true
-set_option maxRecDepth 16384
 
 theorem native_word_roles {p : Nat} (w : Nat → ZMod p) (i : Fin 8) :
     (Trace.readToken w (importedConstraintsMemoryPorts[1 + i.val]'(by change 1 + i.val < 19; omega))).word =

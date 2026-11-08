@@ -12,7 +12,6 @@ public import Slop.Delegation.RVCallLink
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
 
 /-- Every native G port touches x10, x11, x12 or a word of one of the two blocks. -/
 theorem g_port_cell {p : Nat} {w : Nat → ZMod p} {state message : BitVec 32} {controller : Control.Input}

@@ -8,8 +8,6 @@ import all Init.Data.Repr -- Init.Data.Repr is not exposed (still true in 4.35)
 
 namespace Airbender.Bigint
 
-set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 
 theorem timestamp_count {p : Nat} [Fact p.Prime] :
     (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 41 := by rfl

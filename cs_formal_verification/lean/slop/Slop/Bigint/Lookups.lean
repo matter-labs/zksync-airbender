@@ -11,8 +11,6 @@ public import Human.Helpers.Properties
 
 namespace Airbender.Bigint.Proofs
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 
 /-- Every setup row, by region: a carry range (tags 22 to 26) or a low byte (tag 41). -/
 theorem row_cases (index : Fin 1390592) :
@@ -24,7 +22,8 @@ theorem row_cases (index : Fin 1390592) :
   have size := index.isLt
   unfold setupRow
   dsimp only
-  split_ifs <;> dsimp only <;> simp only [Nat.reduceSub, Nat.reducePow, true_and, and_true] <;> omega
+  split_ifs <;> dsimp only <;> simp only [Nat.reduceSub, Nat.reducePow, true_and, and_true] <;>
+    omega
 
 private theorem low_byte_rows (index : Fin 1390592) (selected : (setupRow index).2.2 = 41) :
     (setupRow index).1 < 65536 ∧ (setupRow index).2.1 = (setupRow index).1 % 256 := by
@@ -78,7 +77,8 @@ theorem low_byte_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   refine ⟨⟨(setupRow i).1, keyBound⟩, Prod.ext key ?_⟩
   simpa only [lowValue] using low
 
-/-- Both low-byte queries of source limb `i` (lookups `34 + i` and `50 + i`), read once for every limb. -/
+/-- Both low-byte queries of source limb `i` (lookups `34 + i` and `50 + i`), read once for every
+    limb. -/
 theorem low_byte_pairs {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (i : Fin 16) :
@@ -93,12 +93,12 @@ theorem low_byte_pairs {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → 
     by rw [lookup_count]; have := i.isLt; omega⟩
   rw [leftShape] at left
   rw [rightShape] at right
-  have tag := Shapes.tag_eval w 41
+  have tag := Templates.tag_eval w 41
   rw [Nat.cast_ofNat] at tag
   have leftPair := low_byte_value hp left tag
   have rightPair := low_byte_value hp right tag
   simp only [Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_zero,
-    List.getElem_cons_succ, Shapes.entry_eval] at leftPair rightPair
+    List.getElem_cons_succ, Templates.entry_eval] at leftPair rightPair
   rw [Shapes.left_column, Shapes.right_column]
   exact ⟨leftPair, rightPair⟩
 

@@ -12,7 +12,6 @@ public import Slop.Blake2G.PhysicalWords
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
 set_option backward.isDefEq.respectTransparency false
 
 abbrev rvPhysicalWords (state : RV.State) (pointer : BitVec 32) : Vector Word 16 :=

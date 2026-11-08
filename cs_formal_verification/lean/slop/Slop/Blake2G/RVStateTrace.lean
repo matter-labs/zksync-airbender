@@ -13,7 +13,6 @@ public import Human.Trace.Workers.Blake2G.RVCall
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
 
 /-- RV sibling of `BoundaryCallInputs`: the proof-level RV boundary (`RVBoundaryInputs`) and the G span ABI. -/
 structure RVBoundaryCallInputs [Fact p.Prime] (data : Delegation.MemoryData p)

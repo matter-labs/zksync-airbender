@@ -14,7 +14,6 @@ namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic
 open Blake2Round.Proofs (rv_block_at rv_block_words)
 set_option warningAsError true
-set_option maxRecDepth 16384
 attribute [local irreducible] Specs.BLAKE3.g
 set_option backward.isDefEq.respectTransparency false
 

@@ -7,8 +7,6 @@ public import Slop.Delegation.IndexedPaths
 namespace Airbender.Blake2G.Proofs
 open Trace Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 
 theorem control_edges {data : Delegation.MemoryData p}
     (family : ∀ row ∈ data.rows, row.family = .blakeG) :

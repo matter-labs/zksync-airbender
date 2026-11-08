@@ -7,7 +7,6 @@ namespace Airbender.Blake2G.Proofs
 
 open Arithmetic
 
-set_option maxHeartbeats 1200000
 
 def secondAlo {p : Nat} (w : Nat → ZMod p) : ZMod p :=
   firstAlo w + w 59 + 16 * w 62 + 128 * w 63 + w 35 - 65536 * w 65 - 131072 * w 66
@@ -25,11 +24,12 @@ private theorem second_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     chunkXor 8 (w 48) ((-7864320 : ZMod p) * (secondAlo w - w 69)) (w 72) ∧
     chunkXor 8 (w 44) (w 70) (w 73) ∧
     chunkXor 8 (w 45) ((-7864320 : ZMod p) * (secondAhi w - w 70)) (w 74) := by
-  have q10 := data_lookups (by omega) h (10 : Fin 18)
-  have q11 := data_lookups (by omega) h (11 : Fin 18)
-  have q12 := data_lookups (by omega) h (12 : Fin 18)
-  have q13 := data_lookups (by omega) h (13 : Fin 18)
-  simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment] at q10 q11 q12 q13
+  have q10 := data_lookups (by omega) h ⟨10, by decide⟩
+  have q11 := data_lookups (by omega) h ⟨11, by decide⟩
+  have q12 := data_lookups (by omega) h ⟨12, by decide⟩
+  have q13 := data_lookups (by omega) h ⟨13, by decide⟩
+  op_index at q10 q11 q12 q13
+  simp [Expression.eval, Verification.environment] at q10 q11 q12 q13
   have inv := inverse256 compatible
   have loQuery : -(7864320 * w 15) + -(7864320 * w 19) + -(7864320 * w 33) +
       -(7864320 * w 35) + -(256 * w 37) + -(512 * w 38) + -(7864320 * w 59) +
@@ -159,11 +159,12 @@ private theorem second_b_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     chunkXor 9 (w 63) ((-15728640 : ZMod p) * (secondClo w - w 77)) (w 80) ∧
     chunkXor 7 (16 * w 57 + w 64) (w 78) (w 81) ∧
     chunkXor 9 (w 58) ((-15728640 : ZMod p) * (secondChi w - w 78)) (w 82) := by
-  have q14 := data_lookups (by omega) h (14 : Fin 18)
-  have q15 := data_lookups (by omega) h (15 : Fin 18)
-  have q16 := data_lookups (by omega) h (16 : Fin 18)
-  have q17 := data_lookups (by omega) h (17 : Fin 18)
-  simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment] at q14 q15 q16 q17
+  have q14 := data_lookups (by omega) h ⟨14, by decide⟩
+  have q15 := data_lookups (by omega) h ⟨15, by decide⟩
+  have q16 := data_lookups (by omega) h ⟨16, by decide⟩
+  have q17 := data_lookups (by omega) h ⟨17, by decide⟩
+  op_index at q14 q15 q16 q17
+  simp [Expression.eval, Verification.environment] at q14 q15 q16 q17
   have inv := inverse128 compatible
   have loQuery : -(15728640 * w 23) + -(15728640 * w 47) + 2 * w 48 + -(512 * w 49) +
       -(15728640 * w 72) + 2 * w 73 + -(512 * w 75) + 15728640 * w 77 =
@@ -308,8 +309,8 @@ theorem mixing_outputs {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   have cHi := Verification.assertion_of_holds h ⟨5, by rw [mixing_constraint_count]; decide⟩
   have dLo := Verification.assertion_of_holds h ⟨6, by rw [mixing_constraint_count]; decide⟩
   have dHi := Verification.assertion_of_holds h ⟨7, by rw [mixing_constraint_count]; decide⟩
-  simp [mixingConstraints, importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at aLo aHi bLo bHi cLo cHi dLo dHi
+  op_index at aLo aHi bLo bHi cLo cHi dLo dHi
+  simp [Expression.eval, Verification.environment] at aLo aHi bLo bHi cLo cHi dLo dHi
   have aLow : w 17 = secondAlo w := by unfold secondAlo firstAlo; linear_combination -aLo
   have aHigh : w 18 = secondAhi w := by unfold secondAhi firstAhi; linear_combination -aHi
   have cLow : w 25 = secondClo w := by unfold secondClo firstClo; linear_combination -cLo

@@ -10,7 +10,6 @@ public import Slop.Constraints
 
 namespace Airbender.Blake2G.Proofs
 
-set_option maxHeartbeats 1200000
 
 /-- The imported arithmetic fragment supplies all eighteen sized XOR queries. -/
 theorem data_lookups {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)

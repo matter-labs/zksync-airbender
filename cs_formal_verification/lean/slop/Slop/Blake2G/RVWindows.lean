@@ -14,7 +14,6 @@ namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Arithmetic Delegation.Proofs
 open Blake2Round.Proofs (rv_words_at_same)
 set_option warningAsError true
-set_option maxRecDepth 16384
 
 /-- The RV boundary of a G span (`RVBoundaryCallInputs`) from the human `RVCallInputs`. -/
 theorem RVCallInputs.toRVBoundary [Fact p.Prime] {data : Delegation.MemoryData p} {initial : RV.State}

@@ -9,13 +9,12 @@ public import Human.Circuits.Keccak.Tables.Controller
 namespace Airbender.Blake2G.Proofs
 open Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 1600000
 
 /-- One active controller step advances the scheduled counter, for every call at once. -/
 private theorem step_register (reduced : Bool) (i : Nat) (bound : i < callCount reduced)
     (small : (controlAt reduced i).lo < 256) :
-    (Control.step ⟨⟨(controlAt reduced i).lo, small⟩, true⟩).register = controlAt reduced (i + 1) := by
+    (Control.step ⟨⟨(controlAt reduced i).lo, small⟩, true⟩).register =
+      controlAt reduced (i + 1) := by
   have index : i % callCount reduced = i := Nat.mod_eq_of_lt bound
   cases reduced <;> simp only [callCount, Bool.false_eq_true, ↓reduceIte] at bound index <;>
     simp [Control.step, controlAt, callCount, index] <;> split_ifs <;> omega

@@ -7,7 +7,6 @@ public import Slop.MemoryPorts
 
 namespace Airbender.Blake2G.Addresses.Proofs
 
-set_option maxHeartbeats 800000
 
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1) :

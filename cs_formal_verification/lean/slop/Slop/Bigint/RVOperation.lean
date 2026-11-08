@@ -14,7 +14,6 @@ public import Slop.Bigint.RVSpec
 namespace Airbender.Bigint.Proofs
 open Arithmetic Native
 set_option warningAsError true
-set_option maxRecDepth 16384
 
 private theorem carry_split {s V l : Nat} (bound : V < 2 ^ 256) (bit : l ≤ 1) (sum : s = V + 2 ^ 256 * l) :
     V = s % 2 ^ 256 ∧ l = if 2 ^ 256 ≤ s then 1 else 0 := by

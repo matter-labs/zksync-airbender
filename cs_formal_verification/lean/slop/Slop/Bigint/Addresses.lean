@@ -12,8 +12,6 @@ public import Slop.Arithmetic.Chunks
 namespace Airbender.Bigint.Addresses.Proofs
 open Arithmetic
 set_option warningAsError true
-set_option maxHeartbeats 800000
-set_option maxRecDepth 16384
 
 theorem pointer_alignment {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 32 * (-62914560 : ZMod p) = 1) {w : Nat → ZMod p}

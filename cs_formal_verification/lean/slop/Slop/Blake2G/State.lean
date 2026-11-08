@@ -7,7 +7,6 @@ public import Slop.Blake2G.Control
 
 namespace Airbender.Blake2G.State.Proofs
 
-set_option maxHeartbeats 800000
 
 /-- Reuse the actual Clean G definition at arbitrary distinct lanes. This
     connects the existing four-word claim to the full state, once for all users. -/
@@ -89,20 +88,21 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
   have mixing := Airbender.Blake2G.Proofs.soundness hp compatible Control.controllerRows
     (mixingInput input) (mixingOutput input output) w ⟨interface.inputs, constraints, mapping.words⟩
   have distinct := selected_distinct (by omega) constraints mapping interface.active interface.controlBound
-  have ab : input.lanes[0] ≠ input.lanes[1] := by
+  have ab : (input.lanes[0]'(by decide)) ≠ (input.lanes[1]'(by decide)) := by
     exact (List.pairwise_iff_getElem.mp distinct) 0 1 (by simp) (by simp) (by decide)
-  have ac : input.lanes[0] ≠ input.lanes[2] := by
+  have ac : (input.lanes[0]'(by decide)) ≠ (input.lanes[2]'(by decide)) := by
     exact (List.pairwise_iff_getElem.mp distinct) 0 2 (by simp) (by simp) (by decide)
-  have ad : input.lanes[0] ≠ input.lanes[3] := by
+  have ad : (input.lanes[0]'(by decide)) ≠ (input.lanes[3]'(by decide)) := by
     exact (List.pairwise_iff_getElem.mp distinct) 0 3 (by simp) (by simp) (by decide)
-  have bc : input.lanes[1] ≠ input.lanes[2] := by
+  have bc : (input.lanes[1]'(by decide)) ≠ (input.lanes[2]'(by decide)) := by
     exact (List.pairwise_iff_getElem.mp distinct) 1 2 (by simp) (by simp) (by decide)
-  have bd : input.lanes[1] ≠ input.lanes[3] := by
+  have bd : (input.lanes[1]'(by decide)) ≠ (input.lanes[3]'(by decide)) := by
     exact (List.pairwise_iff_getElem.mp distinct) 1 3 (by simp) (by simp) (by decide)
-  have cd : input.lanes[2] ≠ input.lanes[3] := by
+  have cd : (input.lanes[2]'(by decide)) ≠ (input.lanes[3]'(by decide)) := by
     exact (List.pairwise_iff_getElem.mp distinct) 2 3 (by simp) (by simp) (by decide)
   have selected := reference_selected (input.state.map Arithmetic.Word.value)
-    input.lanes[0] input.lanes[1] input.lanes[2] input.lanes[3] input.mx.value input.my.value ab ac ad bc bd cd
+    (input.lanes[0]'(by decide)) (input.lanes[1]'(by decide)) (input.lanes[2]'(by decide))
+    (input.lanes[3]'(by decide)) input.mx.value input.my.value ab ac ad bc bd cd
   simp only [Blake2G.spec, mixingInput, mixingOutput, Fin.getElem_fin] at mixing
   simp only [Fin.getElem_fin, Vector.getElem_map] at selected
   have a := mixing.1.trans selected.1.symm
@@ -113,17 +113,18 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
   apply Vector.ext
   intro i hi
   let lane : Fin 16 := ⟨i, hi⟩
-  by_cases ha : lane = input.lanes[0]
+  by_cases ha : lane = (input.lanes[0]'(by decide))
   · simpa [lane, ← ha, mixingInput, mixingOutput] using a
-  by_cases hb : lane = input.lanes[1]
+  by_cases hb : lane = (input.lanes[1]'(by decide))
   · simpa [lane, ← hb, mixingInput, mixingOutput] using b
-  by_cases hc : lane = input.lanes[2]
+  by_cases hc : lane = (input.lanes[2]'(by decide))
   · simpa [lane, ← hc, mixingInput, mixingOutput] using c
-  by_cases hd : lane = input.lanes[3]
+  by_cases hd : lane = (input.lanes[3]'(by decide))
   · simpa [lane, ← hd, mixingInput, mixingOutput] using d
   have frame := interface.untouched lane (by intro j; fin_cases j <;> assumption)
   have original := reference_untouched (input.state.map Arithmetic.Word.value)
-    input.lanes[0] input.lanes[1] input.lanes[2] input.lanes[3] lane input.mx.value input.my.value ha hb hc hd
+    (input.lanes[0]'(by decide)) (input.lanes[1]'(by decide)) (input.lanes[2]'(by decide))
+    (input.lanes[3]'(by decide)) lane input.mx.value input.my.value ha hb hc hd
   simp only [Fin.getElem_fin, Vector.getElem_map] at original
   simpa [lane] using (congrArg Arithmetic.Word.value frame).trans original.symm
 

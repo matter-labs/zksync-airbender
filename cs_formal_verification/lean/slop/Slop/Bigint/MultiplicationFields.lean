@@ -46,7 +46,7 @@ theorem product_ranges {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     have member := Verification.lookup_of_holds h ⟨i.val,
       by rw [lookup_count]; have := i.isLt; omega⟩
     rw [(Shapes.range_shape setup i).1] at member
-    simpa only [Shapes.entry_eval] using Verification.range16_bound member
+    simpa only [Templates.entry_eval] using Verification.range16_bound member
   intro i
   by_cases lower : i.val < 16
   · exact low ⟨i.val, lower⟩

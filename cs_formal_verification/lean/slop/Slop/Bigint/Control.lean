@@ -19,7 +19,7 @@ theorem control_bits {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 3)
   intro i
   have column : Variables.controlBits[i] = 59 + i.val := by revert i; decide
   rw [column]
-  exact Shapes.flag_bit h (Shapes.control_shape setup i)
+  exact Templates.flag_bit h (Shapes.control_shape setup i)
 
 theorem opcode_exclusivity {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}

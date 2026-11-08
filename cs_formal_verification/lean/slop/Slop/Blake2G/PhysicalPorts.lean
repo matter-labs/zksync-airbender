@@ -8,8 +8,6 @@ public import Slop.Delegation.NativeViews
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 1600000
 
 def wordIndex (index : Fin 6) : Fin 9 :=
   if index.val < 4 then ⟨1 + index.val, by omega⟩ else ⟨2 + index.val, by omega⟩

@@ -10,8 +10,6 @@ public import Slop.Blake2Round.StateTransport
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 set_option backward.isDefEq.respectTransparency false
 
 def stateLanes (controller : Control.Input) : Vector (Fin 16) 4 :=

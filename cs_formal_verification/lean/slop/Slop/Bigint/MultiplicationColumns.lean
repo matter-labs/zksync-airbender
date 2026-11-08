@@ -1,6 +1,6 @@
 module
 public import Slop.Bigint.MultiplicationRanges
-public import Slop.Bigint.OpIndex
+public import Slop.Bigint.Shapes
 public import Slop.Arithmetic.Convolution
 public import Human.Helpers.Core.BabyBearPrime
 
@@ -24,21 +24,11 @@ left limb `j` with `k = i - j`, the byte products `l r + l (R - r) + (L - l) r` 
 intermediate column. `column_shape` checks the imported constraints against the template, one closed
 fact per index; `column_eval` evaluates the template once, for every column. -/
 namespace Column
-
-abbrev constant {p : Nat} (c : Int) : Expression (ZMod p) := Expression.const (c : ZMod p)
-
-abbrev cell {p : Nat} (i : Nat) : Expression (ZMod p) := Expression.var ⟨i⟩
-
-/-- `1 * a * b`. -/
-abbrev product {p : Nat} (a b : Expression (ZMod p)) : Expression (ZMod p) :=
-  ((constant (Int.ofNat 1)).mul a).mul b
+open Templates Shapes
 
 /-- `w a - w b` as `0 + a + 1 * (-1) * b`. -/
 abbrev diff {p : Nat} (a b : Nat) : Expression (ZMod p) :=
   ((constant (Int.ofNat 0)).add (cell a)).add (product (constant (Int.negSucc 0)) (cell b))
-
-/-- Column of left limb `j` (`Variables.leftLimbs`). -/
-def leftColumn (j : Nat) : Nat := 5 + 4 * (j / 2) + j % 2
 
 /-- The cross terms of limbs `j` and `k`, before the high-byte term. -/
 def lowFirst {p : Nat} (j k : Nat) (acc : Expression (ZMod p)) : Expression (ZMod p) :=
@@ -96,10 +86,10 @@ def termAt (i j : Nat) : ZMod p :=
   if j ≤ i then
     (if i - j < 16 then
       w (99 + j) * w (115 + (i - j)) + w (99 + j) * (w (39 + (i - j)) - w (115 + (i - j))) +
-        (w (Column.leftColumn j) - w (99 + j)) * w (115 + (i - j))
+        (w (Shapes.leftColumn j) - w (99 + j)) * w (115 + (i - j))
     else 0) +
     (if 1 ≤ i - j ∧ i - j ≤ 16 then
-      (-30720 : ZMod p) * (w (Column.leftColumn j) - w (99 + j)) *
+      (-30720 : ZMod p) * (w (Shapes.leftColumn j) - w (99 + j)) *
         (w (39 + (i - j - 1)) - w (115 + (i - j - 1)))
     else 0)
   else 0
@@ -141,13 +131,14 @@ private theorem term_value {w : Nat → ZMod babyBearModulus} {left right : Fin 
         byteCross (left j) (right k) else 0) +
       ∑ k : Fin 16, (if j.val + k.val + 1 = i then
         byteHigh (left j) (right k) else 0) : Nat) : ZMod babyBearModulus) := by
-  have leftLimb : w (Column.leftColumn j.val) =
+  have leftLimb : w (Shapes.leftColumn j.val) =
       ((left j % 256 : Nat) : ZMod babyBearModulus) +
         256 * ((left j / 256 : Nat) : ZMod babyBearModulus) := by
     have source := (sources j).1
     simp only [Variables.leftLimbs, Fin.getElem_fin, Vector.getElem_ofFn] at source
-    rw [Column.leftColumn, source]
-    have split := congrArg (fun n : Nat => (n : ZMod babyBearModulus)) (Nat.mod_add_div (left j) 256)
+    rw [Shapes.leftColumn, source]
+    have split :=
+      congrArg (fun n : Nat => (n : ZMod babyBearModulus)) (Nat.mod_add_div (left j) 256)
     simpa only [Nat.cast_add, Nat.cast_mul, Nat.cast_ofNat] using split.symm
   have rightLimb (k : Fin 16) : w (39 + k.val) =
       ((right k % 256 : Nat) : ZMod babyBearModulus) +
@@ -155,18 +146,19 @@ private theorem term_value {w : Nat → ZMod babyBearModulus} {left right : Fin 
     have source := (sources k).2
     simp only [Variables.rightLimbs, Fin.getElem_fin, Vector.getElem_ofFn] at source
     rw [source]
-    have split := congrArg (fun n : Nat => (n : ZMod babyBearModulus)) (Nat.mod_add_div (right k) 256)
+    have split :=
+      congrArg (fun n : Nat => (n : ZMod babyBearModulus)) (Nat.mod_add_div (right k) 256)
     simpa only [Nat.cast_add, Nat.cast_mul, Nat.cast_ofNat] using split.symm
   have scale : (-30720 : ZMod babyBearModulus) * 65536 = 1 := by decide
   have cross (k : Nat) (hk : k < 16) :
       w (99 + j.val) * w (115 + k) + w (99 + j.val) * (w (39 + k) - w (115 + k)) +
-        (w (Column.leftColumn j.val) - w (99 + j.val)) * w (115 + k) =
+        (w (Shapes.leftColumn j.val) - w (99 + j.val)) * w (115 + k) =
       (byteCross (left j) (right ⟨k, hk⟩) : ZMod babyBearModulus) := by
     rw [leftLimb, rightLimb ⟨k, hk⟩, (bytes j).1, (bytes ⟨k, hk⟩).2, byteCross]
     push_cast
     ring
   have high (k : Nat) (hk : k < 16) :
-      (-30720 : ZMod babyBearModulus) * (w (Column.leftColumn j.val) - w (99 + j.val)) *
+      (-30720 : ZMod babyBearModulus) * (w (Shapes.leftColumn j.val) - w (99 + j.val)) *
         (w (39 + k) - w (115 + k)) =
       (byteHigh (left j) (right ⟨k, hk⟩) : ZMod babyBearModulus) := by
     rw [leftLimb, rightLimb ⟨k, hk⟩, (bytes j).1, (bytes ⟨k, hk⟩).2, byteHigh]
@@ -209,13 +201,16 @@ private theorem term_value {w : Nat → ZMod babyBearModulus} {left right : Fin 
     by_cases lowIn : i - j.val < 16
     · rw [ite_eq_left lowIn, dite_eq_left ⟨below, lowIn⟩, Nat.cast_add, ← cross _ lowIn]
       by_cases highIn : 1 ≤ i - j.val
-      · rw [ite_eq_left ⟨highIn, by omega⟩, dite_eq_left ⟨below, highIn, by omega⟩, ← high _ (by omega)]
+      · rw [ite_eq_left ⟨highIn, by omega⟩, dite_eq_left ⟨below, highIn, by omega⟩,
+          ← high _ (by omega)]
       · rw [ite_eq_right (by omega), dite_eq_right (by omega), Nat.cast_zero]
     · rw [ite_eq_right lowIn, dite_eq_right (by omega), zero_add, zero_add]
       by_cases highIn : i - j.val ≤ 16
-      · rw [ite_eq_left ⟨by omega, highIn⟩, dite_eq_left ⟨below, by omega, highIn⟩, ← high _ (by omega)]
+      · rw [ite_eq_left ⟨by omega, highIn⟩, dite_eq_left ⟨below, by omega, highIn⟩,
+          ← high _ (by omega)]
       · rw [ite_eq_right (by omega), dite_eq_right (by omega), Nat.cast_zero]
-  · rw [ite_eq_right below, dite_eq_right (by omega), dite_eq_right (by omega), add_zero, Nat.cast_zero]
+  · rw [ite_eq_right below, dite_eq_right (by omega), dite_eq_right (by omega), add_zero,
+      Nat.cast_zero]
 
 /-- Normalize each imported multiplication assertion into its byte column.
     The serialized inverse is interpreted in this artifact's BabyBear field. -/

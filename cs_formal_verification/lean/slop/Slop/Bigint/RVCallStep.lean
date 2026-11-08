@@ -16,7 +16,6 @@ public import Slop.Delegation.RVNativeViews
 namespace Airbender.Bigint.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic Native
 set_option warningAsError true
-set_option maxRecDepth 16384
 
 theorem port_shapes :
     importedConstraintsMemoryPorts[0].address = .constantRegister 10 ∧ importedConstraintsMemoryPorts[9].address = .constantRegister 11 ∧

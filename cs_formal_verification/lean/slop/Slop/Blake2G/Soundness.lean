@@ -8,7 +8,6 @@ public import Human.Helpers.Core.BabyBearPrime
 
 namespace Airbender.Blake2G.Proofs
 
-set_option maxHeartbeats 1200000
 
 /-- This serialized inverse belongs to BabyBear. A different field needs its
     own imported coefficients, even though the arithmetic lemmas are generic. -/

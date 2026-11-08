@@ -8,7 +8,6 @@ namespace Airbender.Bigint.Multiplication.Proofs
 open Arithmetic
 open scoped BigOperators
 set_option warningAsError true
-set_option maxHeartbeats 2000000
 
 def leftSource (w : Nat → ZMod p) (i : Fin 16) : Nat := (w Variables.leftLimbs[i]).val
 def rightSource (w : Nat → ZMod p) (i : Fin 16) : Nat := (w Variables.rightLimbs[i]).val

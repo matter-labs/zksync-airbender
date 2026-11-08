@@ -14,7 +14,8 @@ private theorem schedule_bounded :
     ∀ r : Fin 10, ∀ k (h : k < 16), messageSchedule[r][k] < 16 := by
   decide
 
-private theorem lanes_distinct : ∀ m : Fin 8, stateLanes[m].toList.Pairwise (· ≠ ·) := by decide
+private theorem lanes_distinct : ∀ m : Fin 8, stateLanes[m].toList.Pairwise (· ≠ ·) := by
+  decide
 
 /-- Every row of `step`: a counter byte, then six word indices below 16. -/
 private theorem step_row_bounded (input : Input) :
@@ -36,7 +37,8 @@ private theorem step_row_bounded (input : Input) :
     checked separately below. -/
 theorem controller_bounded : ∀ key : Fin 512, ∀ j : Fin 7, (controllerRows key)[j] < 256 := by
   intro key j
-  have bounds := step_row_bounded ⟨⟨key.val % 256, Nat.mod_lt _ (by decide)⟩, decide (256 ≤ key.val)⟩
+  have bounds :=
+    step_row_bounded ⟨⟨key.val % 256, Nat.mod_lt _ (by decide)⟩, decide (256 ≤ key.val)⟩
   unfold controllerRows
   by_cases first : j.val = 0
   · simpa only [Fin.getElem_fin, first] using bounds.1

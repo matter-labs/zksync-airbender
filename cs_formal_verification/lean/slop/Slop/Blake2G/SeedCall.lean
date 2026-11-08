@@ -15,7 +15,6 @@ public import Slop.Delegation.SeedOperations
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
 
 /-- Seed-level G call span: the seed facts, modeled tables, the family/active rows, x12's seed word and the call
     count. -/

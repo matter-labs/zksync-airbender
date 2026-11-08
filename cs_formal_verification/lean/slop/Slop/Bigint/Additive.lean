@@ -8,8 +8,6 @@ namespace Airbender.Bigint.Additive.Proofs
 open Arithmetic
 open scoped BigOperators
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 
 theorem value_limbSum (limbs : Vector Nat 16) :
     value limbs = limbSum limbBase 16 (fun i => limbs[Fin.ofNat 16 i]) := by
