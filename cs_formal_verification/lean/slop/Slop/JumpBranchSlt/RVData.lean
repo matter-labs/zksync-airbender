@@ -43,14 +43,14 @@ theorem comparison_pooled_fields {input : Comparison.RVInput} {data : DecoderDat
       JumpBranchSlt.rvDecoderFields, nz] at fields <;> (subst fields; rfl)
 
 theorem branch_pooled_fields {input : Branch.RVInput} {data : DecoderData PooledFamily}
-    (fields : rvPooledDecoderFields (Branch.rvInstruction input) = some data) (family : data.family = .jumpBranchSlt) :
+    (fields : rvPooledDecoderFields (Branch.rvInstruction input) = some data) (_family : data.family = .jumpBranchSlt) :
     data = (branchData input).mapFamily (fun _ => .jumpBranchSlt) := by
   simp [rvPooledDecoderFields, Branch.rvInstruction, Trace.rvDecoderFields,
     JumpBranchSlt.rvDecoderFields] at fields
   simp [← fields, branchData, DecoderData.mapFamily]
 
 theorem jump_pooled_fields {input : Jump.RVInput} {data : DecoderData PooledFamily}
-    (fields : rvPooledDecoderFields (Jump.rvInstruction input) = some data) (family : data.family = .jumpBranchSlt) :
+    (fields : rvPooledDecoderFields (Jump.rvInstruction input) = some data) (_family : data.family = .jumpBranchSlt) :
     data = (jumpData input).mapFamily (fun _ => .jumpBranchSlt) := by
   obtain ⟨instruction, _, _, _, rs1, rd, _⟩ := input
   cases instruction <;> simp [rvPooledDecoderFields, Jump.rvInstruction, Trace.rvDecoderFields,

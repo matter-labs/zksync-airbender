@@ -105,7 +105,7 @@ def closedBool (side : Option Syntax) (G : Expr) : MetaM (Option (Bool × Expr))
     let (G', pn) ← match ← normExpr G with
       | some (G', p) => pure (G', some p)
       | none => pure (G, none)
-    let t0 ← IO.monoMsNow
+    let _t0 ← IO.monoMsNow
     -- compute the value (compiled code), then let the kernel check `G' = value`
     let some b ← (try some <$> (unsafe evalExpr Bool (mkConst ``Bool) G') catch _ => pure none) | return none
     let ty ← mkEq G' (toExpr b)
@@ -194,7 +194,7 @@ def applyLayer (side : Option Syntax) (hs : Expr) (lem : Expr) (m σ : Expr) :
 
 /-- One step inside `SailME.run X`: `(Y, h : run X = Y)`, or `none` if undecided. -/
 def meStep (side : Option Syntax) (X0 : Expr) : MetaM (Option (Expr × Expr)) := do
-  let t0 ← IO.monoMsNow
+  let _t0 ← IO.monoMsNow
   let X ← whnfC X0
   let runX ← mkAppM ``PreSail.PreSailME.run #[X]
   let ret (h : Expr) : MetaM (Option (Expr × Expr)) := do

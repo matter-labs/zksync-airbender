@@ -58,7 +58,7 @@ theorem rvwrite1 (m : BitVec 32 → BitVec 8) (a v : BitVec 32) :
     BitVec.ushiftRight_zero]
 
 theorem write_eq1 (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : ∀ b : BitVec 32, σm b.toNat = sm b)
-    (a v : BitVec 32) (h : a.toNat + 1 ≤ 2 ^ 32) (b : BitVec 32) :
+    (a v : BitVec 32) (_h : a.toNat + 1 ≤ 2 ^ 32) (b : BitVec 32) :
     writeBytes σm a.toNat 1 (v.setWidth (8 * 1)) b.toNat = RV.write sm a v 1 b := by
   rw [writeBytes1, rvwrite1]
   beta_reduce

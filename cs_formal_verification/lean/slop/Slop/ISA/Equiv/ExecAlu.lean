@@ -50,7 +50,7 @@ theorem exec_mext (σ : SailState) (rs2 rs1 rd : BitVec 5) (o : RV.Op) (ho : o =
   rcases ho with rfl | rfl | rfl | rfl <;>
   simp only [Airbender.toSail, Airbender.execute, execute, execute_MUL, execute_DIV, execute_REM, Slop.runF_bind,
     rX_run, Slop.runF_pure, RV.alu, mult_to_bits_half, Functions.xlen, ite_true, SailRV32.not,
-    Bool.not_true, Bool.false_and, Bool.false_eq_true, ite_false] <;> simp only [wX_run, Slop.runF_pure] <;>
+    Bool.not_true, Bool.false_and, Bool.false_eq_true, ite_false] <;> simp only [wX_run] <;>
   congr 2 <;> apply BitVec.eq_of_toNat_eq <;>
   simp [to_bits_truncate, get_slice_int, Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.toNatInt,
     mul_int, mulhu_nat, divu_nat, remu_nat]
@@ -59,8 +59,7 @@ theorem upper_eq (u : BitVec 20) :
     sign_extend (m := 32) ((u ++ (0 : BitVec 12)).extractLsb' 12 20 ++ 0x000#12) = u ++ (0 : BitVec 12) := by
   apply BitVec.eq_of_getLsbD_eq
   intro j hj
-  simp [sign_extend, Sail.BitVec.signExtend, BitVec.getLsbD_signExtend, BitVec.getLsbD_append,
-    BitVec.getLsbD_extractLsb']
+  simp [sign_extend, Sail.BitVec.signExtend]
   rw [BitVec.getLsbD_append, BitVec.getLsbD_append]
   by_cases h : j < 12
   · simp [h]

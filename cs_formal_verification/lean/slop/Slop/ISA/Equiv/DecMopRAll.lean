@@ -38,7 +38,7 @@ theorem dec_mopr (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ)
       have := congrArg BitVec.toNat hn
       rw [toNat_mopN] at this
       simp only [BitVec.extractLsb'_toNat, Nat.shiftRight_eq_div_pow] at this
-      simp only [BitVec.toNat_ofNat, Nat.reduceAdd, Nat.reducePow, Nat.reduceMod] at this
+      simp only [Nat.reduceAdd, Nat.reducePow] at this
       norm_num at this
       omega
   rcases (by omega : w.toNat / 2 ^ 26 % 64 = 32 ∨ w.toNat / 2 ^ 26 % 64 = 33 ∨ w.toNat / 2 ^ 26 % 64 = 34 ∨

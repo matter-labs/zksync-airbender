@@ -19,7 +19,7 @@ theorem rv_addsub_row_position (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (h
     {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry}
     (assumptions : RVInterfaceAssumptions trace initial cells program)
     (decoded : RVPooledDecoded trace program)
-    {w : Nat → ZMod p} (member : (⟨.addSub, w⟩ : Row p PooledFamily) ∈ trace.rows)
+    {w : Nat → ZMod p} (_member : (⟨.addSub, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {before : RV.State} (position : RVRowPosition trace initial cells (⟨.addSub, w⟩ : Row p PooledFamily) before) :
     ∀ i j : BitVec 5, w 5 = (i.toNat : ZMod p) → w 6 = (j.toNat : ZMod p) →
       before.getReg i = memoryWord ((importedConstraintsMemoryPorts[0]).readCode w) ∧
@@ -30,13 +30,11 @@ theorem rv_addsub_row_position (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (h
         importedConstraintsMemoryPorts[2]] := by
     have portsEq : (⟨.addSub, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := by rfl
     rw [portsEq]
-    first
-      | rfl
-      | simp [importedConstraintsMemoryPorts]
+    rfl
   have operands := rv_row_register_reads laws hp inverse accepted assumptions.toRVPooledHistoryInputs decoded position shape
     (by simp [importedConstraintsMemoryPorts]) (a := 5) (b := 6)
-    (by first | rfl | simp [importedConstraintsMemoryPorts])
-    (by first | rfl | simp [importedConstraintsMemoryPorts]) hi hj
+    rfl
+    rfl hi hj
   exact operands
 
 end Airbender.AddSub.Proofs

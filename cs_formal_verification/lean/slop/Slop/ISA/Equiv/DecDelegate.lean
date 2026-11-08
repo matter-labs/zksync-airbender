@@ -17,12 +17,11 @@ theorem dec_csrrw00 (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured 
   rw [Slop.runF_pure]
   subst_known
   bits_lsb
-  simp only [Airbender.csrToSail, EStateM.Result.ok.injEq, instruction.CSRReg.injEq, Prod.mk.injEq, and_true,
-    true_and]
+  simp only [Airbender.csrToSail, EStateM.Result.ok.injEq, instruction.CSRReg.injEq, Prod.mk.injEq, and_true]
   and_intros
   · apply BitVec.eq_of_getElem_eq; intro i hi
     rename_i hb
-    simp only [Sail.BitVec.extractLsb, BitVec.getElem_extractLsb', BitVec.getLsbD_eq_getElem]
+    simp only [Sail.BitVec.extractLsb]
     have := hb (20 + i) (by omega) (by omega)
     simp only [Nat.add_sub_cancel_left] at this
     rw [show c[i] = c.toNat.testBit i from BitVec.getElem_eq_testBit_toNat c i hi, ← this]

@@ -53,13 +53,11 @@ theorem rv_jbs_row_reads (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 2 
         importedConstraintsMemoryPorts[2]] := by
     have portsEq : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := by rfl
     rw [portsEq]
-    first
-      | rfl
-      | simp [importedConstraintsMemoryPorts]
+    rfl
   have operands := rv_row_register_reads laws hp inverse accepted inputs decoded position shape
     (by simp [importedConstraintsMemoryPorts]) (a := 5) (b := 6)
-    (by first | rfl | simp [importedConstraintsMemoryPorts])
-    (by first | rfl | simp [importedConstraintsMemoryPorts]) hi hj
+    rfl
+    rfl hi hj
   have leftWord : memoryWord ((importedConstraintsMemoryPorts[0]).readCode w) =
       (Word.mk (w 22).val (w 23).val).toBitVec := by
     simp [importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode, memoryWord]

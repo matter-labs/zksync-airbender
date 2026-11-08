@@ -27,7 +27,7 @@ theorem rv_decoder_field_bounds {i : RV.Instr} {data : Trace.DecoderData Unit}
        refine ⟨?_, ?_, ?_⟩
        · first | exact Word.ofBitVec_bound _ | (simp [Word.Bounded, limbBase])
        · dsimp
-         first | decide | (split <;> decide)
+         decide
        · dsimp
          first | decide | exact rvFunct3_lt _)
 

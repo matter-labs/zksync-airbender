@@ -118,7 +118,7 @@ theorem rv_pooled_row_history (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp
       RVHistory cells (rowEvents trace.memoryEpoch row).reverse before { rawAfter with pc := before.pc } ∧
       (∀ event ∈ trace.nativeEvents, event.2.1 = (Cell.register 0).addressCode →
         memoryWord event.2.2.2 = 0) := by
-  haveI : ClockLaws PooledFamily p := laws.clockLaws
+  have : ClockLaws PooledFamily p := laws.clockLaws
   have clocks := inputs.initialization.clocks
   obtain ⟨addresses, programImage⟩ := inputs.initialization.programImage
   have zero := Airbender.Trace.RVZero.rv_zero_writes_of_preserving hp inverse accepted clocks

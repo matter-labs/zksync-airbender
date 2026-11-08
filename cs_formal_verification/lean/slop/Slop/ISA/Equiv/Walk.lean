@@ -143,7 +143,7 @@ def evalSlice (facts : Array Fact) (lhs c : Expr) (hi lo : Nat) (whole : Bool) :
   let some ⟨_, cv⟩ ← getBitVecValue? c | return none
   let cn := cv.toNat
   if let some f ← exactFact facts lo (hi - lo + 1) then
-    let facts := #[f]
+    let _facts := #[f]
     if f.k == cn && !whole then
       let pf ← mkExpectedTypeHint f.pf (← mkAppM ``Bits #[lhs.getArg! 1, natLit lo, natLit (hi - lo + 1),
         ← mkAppM ``BitVec.toNat #[c]])

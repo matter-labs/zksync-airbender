@@ -91,7 +91,7 @@ theorem oracleEff_sound (known : (r : Register) → Option (RegisterType r))
       cases h
       show EStateM.Result.ok (Except.ok (readBytes s.mem req.address.toNat req.size, 0#req.numTag)) s
         = EStateM.Result.ok (Except.ok (w, 0#req.numTag)) s
-      rw [knownBytes_sound km s.mem hm _ _ _ hb] <;> rfl
+      rw [knownBytes_sound km s.mem hm _ _ _ hb]
   | memWrite => simp [oracleEff] at h
   | getCycleCount => simp only [oracleEff] at h; cases h; rfl
   | barrier _ | cacheOp _ | tlbOp _ | translationStart _ | translationEnd _ | archException _

@@ -38,13 +38,11 @@ theorem rv_muldiv_row_operands (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (h
         importedConstraintsMemoryPorts[2]] := by
     have portsEq : (⟨.mulDiv, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := by rfl
     rw [portsEq]
-    first
-      | rfl
-      | simp [importedConstraintsMemoryPorts]
+    rfl
   have operands := rv_row_register_reads laws hp inverse accepted assumptions decoded position shape
     (by simp [importedConstraintsMemoryPorts]) (a := 5) (b := 6)
-    (by first | rfl | simp [importedConstraintsMemoryPorts])
-    (by first | rfl | simp [importedConstraintsMemoryPorts]) hi hj
+    rfl
+    rfl hi hj
   have leftWord : memoryWord ((importedConstraintsMemoryPorts[0]).readCode w) =
       (Word.mk (w 20).val (w 21).val).toBitVec := by
     simp [importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode, memoryWord]

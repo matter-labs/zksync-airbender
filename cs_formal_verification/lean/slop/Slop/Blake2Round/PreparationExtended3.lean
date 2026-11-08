@@ -33,7 +33,7 @@ theorem extended_eqs_3 {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 
   all_goals simp only [extendedExpected, Bool.false_eq_true, ↓reduceIte]
   all_goals simp only [Fin.getElem_fin, get_append8]
   all_goals simp [firstFlag, compressionFlag, normalFlag, words,
-    Variables.preparedState, Variables.chainingInputs, Variables.extendedReads, iv_limbs,
+    Variables.preparedState, Variables.extendedReads, iv_limbs,
     compression_limbs] at lo high ⊢
   all_goals constructor
   all_goals first | linear_combination -lo | linear_combination -high

@@ -44,8 +44,8 @@ theorem rv_shift_row_operands (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp
     rfl
   have operands := rv_row_register_reads laws hp inverse accepted assumptions decoded position shape
     (by simp [importedConstraintsMemoryPorts]) (a := 5) (b := 6)
-    (by first | rfl | simp [importedConstraintsMemoryPorts])
-    (by first | rfl | simp [importedConstraintsMemoryPorts]) hi hj
+    rfl
+    rfl hi hj
   exact operands
 
 /-- For immediate forms and REV8 the second port reads x0 (`w 6 = 0`): its read is zero. -/
@@ -56,7 +56,7 @@ theorem rv_shift_zero_read (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 
     (decoded : RVPooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.shiftBinop, w⟩ : Row p PooledFamily) ∈ trace.rows)
     (zero : w 6 = 0) : importedConstraintsMemoryPorts[1].readCode w = 0 := by
-  haveI : ClockLaws PooledFamily p := laws.clockLaws
+  have : ClockLaws PooledFamily p := laws.clockLaws
   obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage
   have reads := Airbender.Trace.RVZero.rv_zero_reads_of_preserving hp inverse accepted
     assumptions.initialization.clocks assumptions.initialization.image

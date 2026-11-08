@@ -22,7 +22,6 @@ theorem iv_limbs : iv = #v[
   apply Vector.ext
   intro i hi
   interval_cases i <;> norm_num [iv, configuredIV, compressionIV, Specs.BLAKE3.iv, splitWord, limbBase]
-  all_goals decide
 
 theorem configured_limbs : configuredIV = #v[
     ⟨58951, 27400⟩, ⟨44677, 47975⟩, ⟨62322, 15470⟩, ⟨62778, 42319⟩,
@@ -30,7 +29,6 @@ theorem configured_limbs : configuredIV = #v[
   apply Vector.ext
   intro i hi
   interval_cases i <;> norm_num [iv, configuredIV, compressionIV, Specs.BLAKE3.iv, splitWord, limbBase]
-  all_goals decide
 
 theorem compression_limbs : compressionIV = #v[
     ⟨58983, 27145⟩, ⟨44677, 47975⟩, ⟨62322, 15470⟩, ⟨62778, 42319⟩,
@@ -38,7 +36,6 @@ theorem compression_limbs : compressionIV = #v[
   apply Vector.ext
   intro i hi
   interval_cases i <;> norm_num [iv, configuredIV, compressionIV, Specs.BLAKE3.iv, splitWord, limbBase]
-  all_goals decide
 
 theorem get_append8 (xs ys : Vector Word 8) (i : Nat) (hi : i < 16) :
     (show Vector Word 16 from xs ++ ys)[i] = if h : i < 8 then xs[i] else ys[i - 8] := by

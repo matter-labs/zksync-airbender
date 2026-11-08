@@ -67,7 +67,7 @@ private theorem rom_address (a : BitVec 32) (high : (Word.ofBitVec a).hi < 64) :
 
 theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
-  haveI : ClockLaws PooledFamily p := laws.clockLaws
+  have : ClockLaws PooledFamily p := laws.clockLaws
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints trace.rom.wordMemory) importedConstraintsTimestampLookups)

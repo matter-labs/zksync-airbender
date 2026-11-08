@@ -16,10 +16,10 @@ theorem holds_of_sublist {F : Type} [Field F]
   | slnil => trivial
   | @cons small large a subset ih =>
     cases a <;> simp only [FlatOperation.ConstraintsHoldFlat] at h
-    all_goals exact ih (by first | exact h.2 | exact h)
+    all_goals exact ih h.2
   | @cons_cons small large a subset ih =>
     cases a <;> simp only [FlatOperation.ConstraintsHoldFlat] at h ⊢
-    all_goals first | exact ⟨h.1, ih h.2⟩ | exact ih h
+    all_goals exact ⟨h.1, ih h.2⟩
 
 theorem holds_append {F : Type} [Field F]
     {left right : List (Airbender.FlatOperation F)} {env : Airbender.Environment F}

@@ -25,8 +25,7 @@ theorem control_bits {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 6)
   fin_cases i <;> op_index at flag <;> simp only [Expression.eval, Int.ofNat_eq_natCast,
     Nat.cast_one, Int.cast_one, Airbender.Verification.environment, one_mul, CharP.cast_eq_zero,
     Int.cast_zero, zero_add, Int.reduceNegSucc, Int.cast_neg, ← sub_eq_add_neg, mul_eq_zero,
-    sub_eq_zero, Variables.controlBits, add_zero, Vector.getElem_mk, List.getElem_toArray,
-    List.getElem_cons_succ, List.getElem_cons_zero, Nat.reduceAdd, Fin.isValue, mul_zero] at flag ⊢
+    sub_eq_zero, Variables.controlBits] at flag ⊢
   all_goals exact flag
 
 /-- Read/write control arithmetic uses only imported assertions. No exclusive

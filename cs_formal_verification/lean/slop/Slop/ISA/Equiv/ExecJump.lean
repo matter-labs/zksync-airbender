@@ -12,9 +12,9 @@ theorem sext_n {n : Nat} (x : BitVec n) (hn : 0 < n) (h32 : n ≤ 32) :
   apply BitVec.eq_of_getLsbD_eq
   intro j hj
   simp [sign_extend, Sail.BitVec.signExtend, BitVec.getLsbD_signExtend, BitVec.getLsbD_extractLsb']
-  by_cases h : j < n <;> simp [h, hj, BitVec.msb_eq_getLsbD_last, BitVec.getMsbD_eq_getLsbD, BitVec.getElem_signExtend]
+  by_cases h : j < n <;> simp [h, hj, BitVec.msb_eq_getLsbD_last, BitVec.getMsbD_eq_getLsbD]
   rw [show 31 - (32 - n) = n - 1 by omega]
-  simp [BitVec.getLsbD_signExtend, hn, h32, show n - 1 < n by omega, show n - 1 < 32 by omega, BitVec.getElem_signExtend]
+  simp [hn, h32, show n - 1 < n by omega, show n - 1 < 32 by omega, BitVec.getElem_signExtend]
 
 theorem blt_eq (a b : BitVec 32) : zopz0zI_s a b = a.slt b := by simp [zopz0zI_s, BitVec.slt]
 theorem bge_eq (a b : BitVec 32) : zopz0zKzJ_s a b = !a.slt b := by

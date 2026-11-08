@@ -101,7 +101,7 @@ theorem keyed_paths_finite {S K : Type} [DecidableEq S] [DecidableEq K]
           (steps.filter fun edge => key edge.1 = key source) := by
   let support := (initial ++ terminal ++ steps.flatMap (fun edge => [edge.1, edge.2])).toFinset
   let Node := {state : S // state ∈ support}
-  letI : Fintype Node := inferInstance
+  let : Fintype Node := inferInstance
   have initialSupport : ∀ state ∈ initial, state ∈ support := by
     intro state member
     simp only [support, List.mem_toFinset, List.mem_append]
