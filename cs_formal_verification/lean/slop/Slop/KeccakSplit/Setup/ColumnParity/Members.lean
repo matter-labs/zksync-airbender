@@ -58,10 +58,6 @@ theorem control_table_sound (tag : row[7] = 63) (active : row[1] = 1) :
       row[3] = ((if index.val % 5 = 0 then index.val / 15 else 0 : Nat) : ZMod babyBearModulus) :=
   control_facts (isFormulaRow sound) tag active
 
-/-- Tag 63: the execute column is boolean. -/
-theorem control_table_execute (tag : row[7] = 63) : row[1] = 0 ∨ row[1] = 1 :=
-  control_execute (isFormulaRow sound) tag
-
 /-- Tag 62 keyed by call `index` (control + 2048): that call's six slots. -/
 theorem slot_table_sound (tag : row[7] = 62) (index : Fin 361)
     (key : row[0] = ((controlAt index.val + 2048 : Nat) : ZMod babyBearModulus)) :

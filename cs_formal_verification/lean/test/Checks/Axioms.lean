@@ -143,7 +143,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Keccak.constraint_count
 #print axioms Airbender.Keccak.lookup_count
 #print axioms Airbender.Keccak.port_layout
-#print axioms Airbender.Keccak.variable_roles
 #print axioms Airbender.Keccak.Proofs.control_bits
 #print axioms Airbender.Keccak.Proofs.control_high_zero
 #print axioms Airbender.Keccak.Proofs.selector_counts
@@ -168,8 +167,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Keccak.Proofs.theta_limb_xors
 #print axioms Airbender.Keccak.Proofs.theta_lane_xor
 #print axioms Airbender.Keccak.Proofs.theta_scratch_preserved
-#print axioms Airbender.Keccak.Proofs.theta_reference_column
-#print axioms Airbender.Keccak.Proofs.theta_column
 #print axioms Airbender.Arithmetic.and_of_chunks
 #print axioms Airbender.Arithmetic.and_of_four_chunks
 #print axioms Airbender.Arithmetic.andn_of_chunks
@@ -182,8 +179,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Keccak.IotaMapping
 #print axioms Airbender.Keccak.IotaResult
 #print axioms Airbender.Keccak.Proofs.iota_column
-#print axioms Airbender.Keccak.Proofs.control_state_eq_of_packed
-#print axioms Airbender.Keccak.Proofs.next_control
 #print axioms Airbender.Arithmetic.rotate_left_one_of_limbs
 #print axioms Airbender.Keccak.readLaneLimbs
 #print axioms Airbender.Keccak.writeLaneLimbs
@@ -197,7 +192,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Keccak.Proofs.Mix.mix_rotation_operation
 #print axioms Airbender.Keccak.Proofs.mix_preserved
 #print axioms Airbender.Keccak.Proofs.Mix.stage_writes
-#print axioms Airbender.Keccak.Proofs.mixed_columns
 #print axioms Airbender.Arithmetic.rotated_lane_limb_bound
 #print axioms Airbender.Arithmetic.rotate_left_of_limbs
 #print axioms Airbender.Keccak.Proofs.lane_of_limbs
@@ -208,7 +202,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Keccak.Proofs.Rho.rho_rotation_parts
 #print axioms Airbender.Keccak.Proofs.Rho.rho_rotated_limb
 #print axioms Airbender.Keccak.Proofs.Rho.rho_rotated_lane
-#print axioms Airbender.Keccak.Proofs.theta_rho_column
 #print axioms Tests.KeccakTheta.nativeLaneValues
 #print axioms Tests.KeccakTheta.wrongWriteRejected
 #print axioms Airbender.Verification.IndirectPort.scaled_address
@@ -240,7 +233,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Verification.holds_append
 #print axioms Airbender.Blake2G.Proofs.mixing_constraint_count
 #print axioms Airbender.Blake2G.Proofs.mixing_lookup_count
-#print axioms Airbender.Blake2G.Proofs.mixing_lookups
 #print axioms Airbender.Blake2G.Proofs.mixing_holds
 #print axioms Airbender.Blake2G.Proofs.mixing_flags
 #print axioms Airbender.Blake2G.Proofs.mixing_soundness
@@ -290,7 +282,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Bigint.Additive.Proofs.modeled_soundness
 #print axioms Airbender.Bigint.Equality.Proofs.modeled_soundness
 #print axioms Tests.Bigint.Additive.sourceOverflowRejected
-#print axioms Airbender.Bigint.operand_roles
 #print axioms Airbender.Arithmetic.carry_chain
 #print axioms Airbender.Bigint.Additive.Proofs.selected_operations
 #print axioms Airbender.Bigint.Additive.Proofs.carry_bits
@@ -304,7 +295,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Tests.Bigint.Additive.zeroAddSatisfies
 #print axioms Airbender.Bigint.constraint_count
 #print axioms Airbender.Bigint.lookup_count
-#print axioms Airbender.Bigint.control_roles
 #print axioms Airbender.Bigint.Control.Proofs.control_bits
 #print axioms Airbender.Bigint.Control.Proofs.opcode_exclusivity
 #print axioms Airbender.Bigint.Control.Proofs.mask_bounded
@@ -416,7 +406,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.PCState.Proofs.decoder_high_bound
 #print axioms Airbender.PCState.outgoing_bounds
 
-#print axioms Airbender.Blake2G.variable_roles
 #print axioms Airbender.Blake2G.Proofs.local_flags
 #print axioms Airbender.Blake2G.Proofs.control_high_zero
 #print axioms Airbender.Blake2G.Proofs.pointer_alignment
@@ -446,7 +435,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Blake2G.soundness
 #print axioms Airbender.Blake2G.babyBear_soundness
 
-#print axioms Airbender.WordMemory.variable_roles
 #print axioms SailRV32.Functions.execute_LOAD
 #print axioms SailRV32.Functions.execute_STORE
 #print axioms _root_.plat_term_write
@@ -465,7 +453,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Artifact.signedCoefficient_cast
 
 #print axioms Airbender.JumpBranchSlt.Proofs.local_flags
-#print axioms Airbender.JumpBranchSlt.variable_roles
 #print axioms Airbender.JumpBranchSlt.Proofs.local_ranges
 #print axioms Airbender.JumpBranchSlt.Proofs.timestamp_equations
 #print axioms Airbender.JumpBranchSlt.Proofs.unsigned_borrow
@@ -548,7 +535,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.WordMemory.Proofs.ram_data
 #print axioms Airbender.WordMemory.Proofs.rom_data
 
-#print axioms Airbender.SubwordMemory.variable_roles
 #print axioms Airbender.SubwordMemory.Proofs.local_flags
 #print axioms Airbender.SubwordMemory.Proofs.local_ranges
 #print axioms Airbender.SubwordMemory.Proofs.pc_successor
@@ -573,7 +559,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Verification.subwordStoreContribution
 #print axioms Airbender.Verification.subword_store_values
 #print axioms Airbender.Verification.subword_zero_values
-#print axioms Airbender.Verification.subword_store_contribution_bound
 #print axioms Airbender.Verification.subword_store_entry
 #print axioms Airbender.Verification.subword_store_packed
 #print axioms Airbender.SubwordMemory.Proofs.clearing_data
@@ -583,7 +568,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.SubwordMemory.Proofs.store_byte_encoding
 
 #print axioms Airbender.Arithmetic.boolean_sum_le_one
-#print axioms Airbender.UnifiedReduced.variable_roles
 #print axioms Airbender.UnifiedReduced.Proofs.local_flags
 #print axioms Airbender.UnifiedReduced.Proofs.dispatch_count
 #print axioms Airbender.UnifiedReduced.Proofs.pc_bounds
@@ -595,11 +579,7 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.UnifiedReduced.Proofs.destination_bounds
 
 #print axioms Airbender.UnifiedReduced.clockConstraints
-#print axioms Airbender.UnifiedReduced.timestamp_count
-#print axioms Airbender.UnifiedReduced.clock_columns
-#print axioms Airbender.UnifiedReduced.memory_ports
 #print axioms Airbender.UnifiedReduced.memory_clocks
-#print axioms Airbender.UnifiedReduced.decoder_columns
 #print axioms Airbender.Trace.UnifiedTrace
 #print axioms Airbender.UnifiedReduced.Proofs.timestamp_equations
 #print axioms Airbender.UnifiedReduced.Proofs.final_clock_bound
@@ -705,7 +685,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 
 #print axioms Airbender.UnifiedReduced.Proofs.word_memory_address
 #print axioms Airbender.UnifiedReduced.Proofs.word_memory_copy
-#print axioms Airbender.UnifiedReduced.Proofs.word_memory_ram
 
 #print axioms Airbender.Bigint.Native.Proofs.native_word_roles
 #print axioms Airbender.Bigint.Native.Proofs.arithmetic_effects
@@ -718,8 +697,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Arithmetic.Word.byte_fields
 
 #print axioms Airbender.Keccak.Controller.Proofs.physical_bound
-#print axioms Airbender.Keccak.Controller.Proofs.physical_injective
-#print axioms Airbender.Keccak.Controller.Proofs.physical_pi
 #print axioms Airbender.Keccak.Controller.Proofs.rows_bound
 #print axioms Airbender.Keccak.Native.Proofs.lane_ports
 #print axioms Tests.KeccakController.initial_iota
@@ -763,9 +740,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Delegation.Proofs.call_group_perm
 #print axioms Airbender.Keccak.Proofs.call_event_time
 #print axioms Airbender.Blake2Round.Proofs.call_event_time
-#print axioms Airbender.Keccak.Proofs.scheduled_lane_indices_distinct
-#print axioms Airbender.Keccak.Proofs.scheduled_indices_injective
-#print axioms Airbender.Keccak.Proofs.scheduled_ports_distinct
 
 #print axioms Airbender.Delegation.Proofs.indexed_path_words
 #print axioms Airbender.Blake2G.Proofs.forced_control_step
@@ -777,7 +751,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 
 #print axioms Airbender.Delegation.Requests.Proofs.caller_tokens
 #print axioms Airbender.Delegation.Requests.Proofs.nonzero_matching
-#print axioms Airbender.Delegation.Requests.Proofs.zero_time_fulfillment_invisible
 #print axioms Tests.DelegationZeroInvocation.active_zero_invocation_rejected
 #print axioms Tests.DelegationZeroInvocation.inactive_zero_invocation_query
 #print axioms Airbender.Blake2G.Proofs.word_port_address

@@ -61,8 +61,4 @@ theorem control_table_sound (tag : row[10] = 66) (active : row[1] = 1) :
 theorem control_table_plane (tag : row[10] = 66) : row[8].val < 5 :=
   control_plane (isFormulaRow sound) tag
 
-/-- Tag 66: the execute column is boolean. -/
-theorem control_table_execute (tag : row[10] = 66) : row[1] = 0 ∨ row[1] = 1 :=
-  control_execute (isFormulaRow sound) tag
-
 end Airbender.Keccak.Split.Chi5.SetupProofs

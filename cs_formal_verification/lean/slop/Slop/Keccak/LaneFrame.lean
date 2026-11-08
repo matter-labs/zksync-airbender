@@ -22,11 +22,4 @@ theorem lane_half_address_injective (pointer : BitVec 32) (a b : Fin 31) (h k : 
   rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)] at values
   exact ⟨Fin.ext (by omega), Fin.ext (by omega)⟩
 
-private def halfPort (i : Fin 12) : MemoryPort :=
-  importedConstraintsMemoryPorts[2 + i.val]'(by change 2 + i.val < 14; omega)
-
-private theorem half_port_shape (i : Fin 12) :
-    (halfPort i).address = .indirect importedConstraintsIndirectPorts[i] := by
-  fin_cases i <;> rfl
-
 end Airbender.Keccak.Proofs

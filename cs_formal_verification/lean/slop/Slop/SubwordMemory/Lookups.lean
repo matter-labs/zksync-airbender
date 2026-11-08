@@ -153,14 +153,6 @@ theorem subword_zero_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     | contradiction
     | (simp [subwordDataRow])
 
-theorem subword_store_contribution_bound (clear : Bool) (key : Nat) :
-    subwordStoreContribution clear key < 65536 := by
-  have halfBound : key % 65536 < 65536 := Nat.mod_lt _ (by decide)
-  have byteBound : key % 256 < 256 := Nat.mod_lt _ (by decide)
-  unfold subwordStoreContribution
-  cases clear <;> simp only [Bool.false_eq_true, ite_false, ite_true]
-  all_goals split_ifs <;> omega
-
 /-- A bounded packed input selects the unique fixed store-table contribution. -/
 theorem subword_store_entry {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (clear : Bool) (key : Nat)

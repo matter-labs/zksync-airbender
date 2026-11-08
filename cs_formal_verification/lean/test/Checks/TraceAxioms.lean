@@ -40,7 +40,6 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.Trace.timestampTable
 #print axioms Airbender.Trace.ROMView.shadow
 #print axioms Airbender.Trace.ROMView.nativeBootImage
-#print axioms Airbender.Trace.ROMView.read_data_unused
 #print axioms Tests.NativeROM.native_constraints
 #print axioms Tests.NativeROM.native_accepted
 #print axioms Tests.NativeROM.physical_bytes_are_not_native_seed
@@ -56,25 +55,16 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.terminal_clock
 #print axioms Airbender.AddSub.clockConstraints
 #print axioms Airbender.AddSub.timestamp_count
-#print axioms Airbender.AddSub.clock_columns
 #print axioms Airbender.WordMemory.clockConstraints
 #print axioms Airbender.WordMemory.timestamp_count
-#print axioms Airbender.WordMemory.clock_columns
 #print axioms Airbender.Trace.Proofs.addSub_clock
 #print axioms Airbender.Trace.Proofs.wordMemory_clock
 #print axioms Tests.Timestamps.normal_effects
 #print axioms Tests.Timestamps.rollover_effects
 #print axioms Tests.Timestamps.equal_previous_rejected
 #print axioms Tests.Timestamps.oversized_limb_rejected
-#print axioms Airbender.AddSub.memory_ports
 #print axioms Airbender.AddSub.memory_clocks
-#print axioms Airbender.WordMemory.memory_ports
 #print axioms Airbender.WordMemory.memory_clocks
-#print axioms Airbender.Trace.Proofs.pairCode_eq_iff
-#print axioms Airbender.Trace.Proofs.readonly_preserves_value
-#print axioms Airbender.Trace.Proofs.mixed_register
-#print axioms Airbender.Trace.Proofs.mixed_ram
-#print axioms Airbender.Trace.Proofs.ram_register_disjoint
 #print axioms Airbender.Trace.Accepted
 #print axioms Airbender.Trace.Row.reads
 #print axioms Airbender.Trace.Row.writes
@@ -85,7 +75,6 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.write_time
 #print axioms Airbender.Trace.Proofs.clock_inputs
 #print axioms Airbender.Trace.Proofs.trace_clocks
-#print axioms Airbender.Trace.Proofs.trace_terminal_clock
 #print axioms Tests.TraceHistory.local_satisfies
 #print axioms Tests.TraceHistory.accepted
 #print axioms Tests.TraceHistory.unmatched_previous_rejected
@@ -110,7 +99,6 @@ public import Slop.Trace.MemoryPorts
 #print axioms Tests.TraceHistory.changed_value_locally_valid
 #print axioms Tests.TraceHistory.changed_read_value_rejected
 #print axioms Airbender.Trace.Proofs.cell_history
-#print axioms Airbender.Trace.Proofs.transfer_event
 #print axioms Airbender.Trace.Proofs.native_cell_histories
 #print axioms Tests.TraceMemory.local_satisfies
 #print axioms Tests.TraceMemory.accepted
@@ -127,8 +115,6 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.initial_token_word
 #print axioms Airbender.Trace.Proofs.cell_address_injective
 #print axioms Airbender.PCState.State.word
-#print axioms Airbender.AddSub.decoder_columns
-#print axioms Airbender.WordMemory.decoder_columns
 #print axioms Airbender.Trace.Row.decoderColumns
 #print axioms Airbender.Trace.Row.decoderQuery
 #print axioms Airbender.Trace.Proofs.unpack_decoder_bits
@@ -186,9 +172,6 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.native_port_order
 #print axioms Airbender.Trace.Proofs.clock_effects
 #print axioms Airbender.JumpBranchSlt.timestamp_count
-#print axioms Airbender.JumpBranchSlt.clock_columns
-#print axioms Airbender.JumpBranchSlt.memory_ports
-#print axioms Airbender.JumpBranchSlt.decoder_columns
 #print axioms Airbender.JumpBranchSlt.Proofs.timestamp_equations
 #print axioms Airbender.JumpBranchSlt.Proofs.final_clock_bound
 #print axioms Airbender.JumpBranchSlt.Proofs.clocks
@@ -204,18 +187,11 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.outgoing_pc_bounds
 
 #print axioms Airbender.Trace.Proofs.read_bounds_of_sources
-#print axioms Airbender.Trace.Proofs.write_bounds_of_sources
 #print axioms Airbender.Trace.Proofs.terminal_bounds_of_sources
 
-#print axioms Airbender.Trace.Proofs.matched_incoming_property
-#print axioms Airbender.JumpBranchSlt.Proofs.outgoing_pc_aligned
-#print axioms Airbender.JumpBranchSlt.Proofs.trace_pc_alignment
 
 #print axioms Airbender.Arithmetic.Word.eq_zero_of_bounded
 
-#print axioms Airbender.MulDiv.clock_columns
-#print axioms Airbender.MulDiv.memory_ports
-#print axioms Airbender.MulDiv.decoder_columns
 #print axioms Airbender.MulDiv.Proofs.timestamp_equations
 #print axioms Airbender.MulDiv.Proofs.final_clock_bound
 #print axioms Airbender.MulDiv.Proofs.clocks
@@ -226,9 +202,6 @@ public import Slop.Trace.MemoryPorts
 
 #print axioms Airbender.Trace.Proofs.packed_bytes
 #print axioms Airbender.Trace.Proofs.byte_port_code
-#print axioms Airbender.ShiftBinop.clock_columns
-#print axioms Airbender.ShiftBinop.memory_ports
-#print axioms Airbender.ShiftBinop.decoder_columns
 #print axioms Airbender.ShiftBinop.Proofs.timestamp_equations
 #print axioms Airbender.ShiftBinop.Proofs.final_clock_bound
 #print axioms Airbender.ShiftBinop.Proofs.clocks
@@ -261,10 +234,7 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.ShiftBinop.Proofs.shift_written_bounds
 #print axioms Tests.ShiftBinopPorts.written_bounds
 #print axioms Airbender.SubwordMemory.timestamp_count
-#print axioms Airbender.SubwordMemory.clock_columns
-#print axioms Airbender.SubwordMemory.memory_ports
 #print axioms Airbender.SubwordMemory.memory_clocks
-#print axioms Airbender.SubwordMemory.decoder_columns
 #print axioms Airbender.SubwordMemory.Proofs.timestamp_equations
 #print axioms Airbender.SubwordMemory.Proofs.final_clock_bound
 #print axioms Airbender.SubwordMemory.Proofs.clocks

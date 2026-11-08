@@ -49,7 +49,4 @@ def rcAdjusted : List Nat :=
 /-- Byte `b / 32` of the adjusted round constant `b % 32` (the iota table's second key). -/
 def rcByte (b : Nat) : Nat := rcAdjusted.getD (b % 32) 0 / 256 ^ (b / 32) % 256
 
-theorem rcAdjusted_eq : ∀ r < 32, rcAdjusted.getD r 0 = Call.roundConstant r := by
-  decide +kernel
-
 end Airbender.Keccak.Split.SetupProofs

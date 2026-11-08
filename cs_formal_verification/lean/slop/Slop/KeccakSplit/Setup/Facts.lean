@@ -44,10 +44,6 @@ theorem chi5_kindAt (j : Nat) :
   unfold kindAt callIndex
   split_ifs <;> first | rfl | omega
 
-theorem callIndex_mod {off j : Nat} (hoff : off = 0 ∨ off = 5 ∨ off = 10) (hj : 1 ≤ j) :
-    callIndex off j % 5 = (j - 1) % 5 := by
-  unfold callIndex; omega
-
 theorem slotNat_eq {i pos : Nat} (hi : i < 361) (hp : pos < 7) :
     slotNat i pos = ((Call.slots ⟨i, hi⟩)[pos]).val := by
   simp only [slotNat, Call.slots, Vector.getElem_ofFn]

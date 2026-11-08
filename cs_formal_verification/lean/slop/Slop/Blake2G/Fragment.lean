@@ -19,10 +19,6 @@ theorem mixing_constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p)
 theorem mixing_lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
     (FlatOperation.lookups (mixingConstraints setup)).length = 18 := by rfl
 
-theorem mixing_lookups {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
-    FlatOperation.lookups (mixingConstraints setup) =
-      (FlatOperation.lookups (importedConstraints setup)).drop 3 := by rfl
-
 theorem mixing_holds {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 9)}
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :

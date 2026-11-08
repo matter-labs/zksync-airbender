@@ -84,20 +84,6 @@ private theorem control_region {n : Nat}
   have t := tag_of (t := 66) (by omega) (tag.trans (Nat.cast_ofNat).symm)
   unfold spec10 at t; split_ifs at t <;> omega
 
-/-- Tag 66: the execute column is boolean. -/
-theorem control_execute {row : Vector (ZMod babyBearModulus) 11} (h : IsFormulaRow row)
-    (tag : row[10] = 66) : row[1] = 0 ∨ row[1] = 1 := by
-  obtain ⟨n, -, rfl⟩ := h
-  have r := control_region tag
-  rw [Vector.getElem_map, get1]
-  by_cases z : n = 1048576
-  · left
-    have : spec1 n = 0 := by simp (disch := omega) only [spec1, ctl, ite_eq_left, ite_eq_right, ite_true, ite_false]
-    rw [this, Nat.cast_zero]
-  · right
-    have : spec1 n = 1 := by simp (disch := omega) only [spec1, ctl, ite_eq_left, ite_eq_right, ite_true, ite_false]
-    rw [this, Nat.cast_one]
-
 /-- Tag 66: the plane column is below five (the zero key included). -/
 theorem control_plane {row : Vector (ZMod babyBearModulus) 11} (h : IsFormulaRow row)
     (tag : row[10] = 66) : row[8].val < 5 := by

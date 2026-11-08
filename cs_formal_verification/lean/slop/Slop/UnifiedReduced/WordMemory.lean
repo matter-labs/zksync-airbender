@@ -55,44 +55,4 @@ theorem word_memory_copy [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
   all_goals constructor
   all_goals first | linear_combination low | linear_combination high
 
-theorem word_memory_ram [Fact p.Prime] (hp : 131072 < p)
-    {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} (store : Bool)
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
-    (selected : w 28 = if store then 0 else 1) (other : w 29 = if store then 1 else 0)
-    (addressHi : 64 ≤ (w (if store then 45 else 39)).val) : w 54 = 0 := by
-  have index := Verification.assertion_of_holds holds ⟨if store then 35 else 34, by rw [constraint_count]; split <;> decide⟩
-  have residue := Verification.assertion_of_holds holds ⟨36, by rw [constraint_count]; decide⟩
-  have range := Verification.range16_bound (Verification.lookup_of_holds holds ⟨10, by rw [lookup_count]; decide⟩)
-  simp [Expression.eval, Verification.environment] at range
-  have indexed : w 58 = w (if store then 45 else 39) := by
-    cases store
-    all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected, other] at index
-    all_goals simp only [Bool.false_eq_true, ite_false, ite_true]
-    all_goals linear_combination index
-  have upper : (w (if store then 45 else 39)).val < limbBase := by
-    cases store
-    · have bound := Verification.range16_bound (Verification.lookup_of_holds holds ⟨7, by rw [lookup_count]; decide⟩)
-      simpa [Expression.eval, Verification.environment] using bound
-    · have bound := Verification.range16_bound (Verification.lookup_of_holds holds ⟨9, by rw [lookup_count]; decide⟩)
-      simpa [Expression.eval, Verification.environment] using bound
-  have equation : w 80 + 64 = w 58 + 65536 * w 54 := by
-    cases store
-    all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected, other] at residue
-    all_goals linear_combination residue
-  have flag := local_flags holds 22
-  change w 54 = 0 ∨ w 54 = 1 at flag
-  rcases flag with zero | one
-  · exact zero
-  · rw [one, indexed] at equation
-    have equal : (w 80).val + 64 = (w (if store then 45 else 39)).val + 65536 := by
-      apply bounded_nat_eq (F := ZMod p) (p := p)
-      · unfold limbBase at range; omega
-      · unfold limbBase at upper; omega
-      · simp only [mul_one] at equation
-        simpa only [Nat.cast_add, Nat.cast_ofNat, ZMod.natCast_zmod_val] using equation
-    unfold limbBase at range
-    omega
-
 end Airbender.UnifiedReduced.Proofs

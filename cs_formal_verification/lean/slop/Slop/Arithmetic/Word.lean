@@ -161,15 +161,4 @@ theorem Word.borrow_iff {p : Nat} [Fact p.Prime] (hp : 196608 < p)
   unfold Word.value limbBase
   omega
 
-/-- A forced final subtraction borrow proves strict comparison. -/
-theorem Word.lt_of_borrow {p : Nat} [Fact p.Prime] (hp : 196608 < p)
-    {output modulus remainder : Word} {carry : Nat}
-    (outputBound : output.Bounded) (modulusBound : modulus.Bounded)
-    (remainderBound : remainder.Bounded) (carryBound : carry ≤ 1)
-    (low : (remainder.lo : ZMod p) + modulus.lo = output.lo + 65536 * carry)
-    (high : (carry : ZMod p) + remainder.hi + modulus.hi = output.hi + 65536) :
-    output.value < modulus.value :=
-  (Word.borrow_iff hp outputBound modulusBound remainderBound carryBound (borrow := 1)
-    (by decide) low (by simpa using high)).mp rfl
-
 end Airbender.Arithmetic

@@ -55,12 +55,7 @@ theorem control_edges {data : MemoryData p} :
   intro row _
   exact row_control_steps row
 
-theorem control_start : controlAt 0 = 0 := by rfl
-
 theorem control_next : ∀ index : Fin 360, bump (controlAt index.val) = controlAt (index.val + 1) := by
-  decide +kernel
-
-theorem control_small : ∀ index : Fin 361, controlAt index.val < 65536 := by
   decide +kernel
 
 /-- One step of the control path: the row reading control word `c` writes `bump c`. -/

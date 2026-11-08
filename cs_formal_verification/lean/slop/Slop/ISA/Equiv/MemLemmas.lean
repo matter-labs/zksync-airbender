@@ -18,8 +18,6 @@ set_option maxRecDepth 1000000 in
 attribute [sail_norm] Int.toNat_zero ite_self Int.toNat_natCast bne_self_eq_false Bool.false_and Bool.and_false
   Bool.false_eq_true ite_false ite_true Bool.true_and Bool.and_true
 
-@[sail_norm] theorem int_toNat_ofNat (n : Nat) : (OfNat.ofNat n : Int).toNat = OfNat.ofNat n := rfl
-
 theorem is_aligned_vaddr_iff (a : BitVec 32) (n : Nat) :
     is_aligned_vaddr (.Virtaddr a) n = decide (a.toNat % n = 0) := by
   simp only [is_aligned_vaddr, BitVec.toNatInt]

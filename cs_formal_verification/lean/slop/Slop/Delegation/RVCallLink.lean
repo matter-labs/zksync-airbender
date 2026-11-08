@@ -94,7 +94,8 @@ theorem calls_same {ks : List RV.DelegationKind} {s t s' : RV.State} (same : RV.
         rw [applyT, Option.bind_some]
         exact ih sameUV run
 
-private theorem pc_step (pc : RV.Word) (m : Nat) :
+/-- The PC after `m` calls and one more step is the PC after `m + 1` calls. -/
+theorem pc_step (pc : RV.Word) (m : Nat) :
     pc + BitVec.ofNat 32 (4 * m) + 4 = pc + BitVec.ofNat 32 (4 * (m + 1)) := by
   rw [BitVec.add_assoc]
   congr 1

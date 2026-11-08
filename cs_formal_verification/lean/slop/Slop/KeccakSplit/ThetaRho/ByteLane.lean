@@ -30,23 +30,6 @@ def rotatedLaneByte (bytes : Vector Nat 8) (left : Fin 64) (digit : Fin 8) : Nat
   (bytes[source] * 2 ^ (left.val % 8)) % 256 +
     bytes[byteRotationPrevious source] / 2 ^ (8 - left.val % 8)
 
-/-- Canonical byte bounds give the complete lane bound. -/
-theorem pack_byte_lane_bound {bytes : Vector Nat 8} (bounds : ∀ digit : Fin 8, bytes[digit] < 256) :
-    packByteLane bytes < 2 ^ 64 := by
-  have h0 := bounds 0; have h1 := bounds 1; have h2 := bounds 2; have h3 := bounds 3
-  have h4 := bounds 4; have h5 := bounds 5; have h6 := bounds 6; have h7 := bounds 7
-  change bytes[(0 : Nat)] < 256 at h0
-  change bytes[(1 : Nat)] < 256 at h1
-  change bytes[(2 : Nat)] < 256 at h2
-  change bytes[(3 : Nat)] < 256 at h3
-  change bytes[(4 : Nat)] < 256 at h4
-  change bytes[(5 : Nat)] < 256 at h5
-  change bytes[(6 : Nat)] < 256 at h6
-  change bytes[(7 : Nat)] < 256 at h7
-  unfold packByteLane
-  norm_num only [Nat.reducePow]
-  omega
-
 /-- The two exact native-style fragments always form one canonical byte. -/
 theorem rotated_lane_byte_bound {bytes : Vector Nat 8} (bounds : ∀ digit : Fin 8, bytes[digit] < 256)
     (left : Fin 64) (digit : Fin 8) : rotatedLaneByte bytes left digit < 256 := by

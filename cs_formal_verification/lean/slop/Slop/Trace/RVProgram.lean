@@ -25,9 +25,6 @@ theorem rv_decoder_member {Kind : Type} [DecidableEq Kind]
   obtain ⟨present, selected⟩ := List.mem_filter.mp present
   exact ⟨_, present, by simpa using selected, equal⟩
 
-theorem rv_mapped_query {Kind Target : Type} {p : Nat} (f : Kind → Target)
-    (entry : RVProgramEntry Kind) : (entry.mapFamily f).query (p := p) = entry.query := by rfl
-
 /-- The native fetch query fixes both canonical PC limbs, for any family. -/
 theorem rv_native_query_pc_word {Kind : Type} {p : Nat} (hp : limbBase < p)
     {columns : TraceColumns} {decoder : DecoderColumns} {w : Nat → ZMod p}

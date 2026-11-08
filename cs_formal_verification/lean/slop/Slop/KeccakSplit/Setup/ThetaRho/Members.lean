@@ -72,10 +72,6 @@ theorem control_table_one_hot (tag : row[8] = 59) (active : row[1] = 1) :
   · rw [ite_eq_left hc, ite_eq_left (Fin.ext hc)]
   · rw [ite_eq_right hc, ite_eq_right (fun e => hc (congrArg Fin.val e))]
 
-/-- Tag 59: the execute column is boolean. -/
-theorem control_table_execute (tag : row[8] = 59) : row[1] = 0 ∨ row[1] = 1 :=
-  control_execute (isFormulaRow sound) tag
-
 /-- Tag 60 keyed by call `index` (control + 2048): that call's seven slots. -/
 theorem slot_table_sound (tag : row[8] = 60) (index : Fin 361)
     (key : row[0] = ((controlAt index.val + 2048 : Nat) : ZMod babyBearModulus)) :

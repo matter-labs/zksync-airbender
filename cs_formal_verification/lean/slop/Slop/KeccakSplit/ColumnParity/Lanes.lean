@@ -104,16 +104,6 @@ theorem readonly_lane (w : Nat → ZMod babyBearModulus) (lane : Fin 4) :
   funext limb
   rw [readonly_limb]
 
-theorem write_lane_bound {w : Nat → ZMod babyBearModulus} (h : Holds w) (lane : Fin 6) :
-    laneValue w true lane < 2 ^ 64 := by
-  have h0 := (write_limb_value h lane 0).1
-  have h1 := (write_limb_value h lane 1).1
-  have h2 := (write_limb_value h lane 2).1
-  have h3 := (write_limb_value h lane 3).1
-  unfold laneValue packFourChunks
-  norm_num only [Nat.reducePow]
-  omega
-
 theorem lane_operation {w : Nat → ZMod babyBearModulus} (h : Holds w) :
     laneValue w true 5 = laneValue w true 0 ^^^ laneValue w true 1 ^^^ laneValue w true 2 ^^^
       laneValue w true 3 ^^^ laneValue w true 4 := by

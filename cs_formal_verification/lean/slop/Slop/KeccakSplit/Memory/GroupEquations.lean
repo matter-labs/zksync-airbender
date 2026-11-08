@@ -66,29 +66,6 @@ theorem theta_rho_group_clocks [Fact p.Prime]
           Delegation.GroupedTimestamp.borrowValue, sub_eq_add_neg,
           add_assoc, add_comm, add_left_comm] using bit
 
-/-- The control-register read has one four-slot invocation distance. -/
-theorem theta_rho_register_clock [Fact p.Prime]
-    {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (ThetaRho.clockConstraints setup)) :
-    let group := ThetaRho.importedConstraintsTimestampGroups[0]
-    let columns := ThetaRho.importedConstraintsDelegationColumns
-    w group.previous[0] - w columns.invocation[0] - 2 * w columns.execute +
-      4 * w columns.execute - Trace.timestampBase * group.borrowValue w = 0 ∧
-    w group.previous[1] - w columns.invocation[1] + group.borrowValue w = 0 := by
-  have facts := theta_rho_group_clocks h 0
-  simpa [thetaRhoDistance, ThetaRho.importedConstraintsDelegationColumns] using
-    And.intro facts.1 facts.2.1
-
-/-- Booleanity applies to the high-limb difference. No borrow witness is committed. -/
-theorem theta_rho_register_borrow [Fact p.Prime]
-    {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (ThetaRho.clockConstraints setup)) :
-    let group := ThetaRho.importedConstraintsTimestampGroups[0]
-    group.borrowValue w * (group.borrowValue w - 1) = 0 := by
-  exact (theta_rho_group_clocks h 0).2.2
-
 /-- The native low equation and Boolean derived borrow imply the grouped
 clock equations. The high equation follows from the borrow definition. -/
 theorem chi5_group_clocks [Fact p.Prime]
@@ -130,28 +107,5 @@ theorem chi5_group_clocks [Fact p.Prime]
           Chi5.importedConstraintsTimestampGroups,
           Delegation.GroupedTimestamp.borrowValue, sub_eq_add_neg,
           add_assoc, add_comm, add_left_comm] using bit
-
-/-- The control-register read has one four-slot invocation distance. -/
-theorem chi5_register_clock [Fact p.Prime]
-    {setup : Table (ZMod p) (fields 11)} {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (Chi5.clockConstraints setup)) :
-    let group := Chi5.importedConstraintsTimestampGroups[0]
-    let columns := Chi5.importedConstraintsDelegationColumns
-    w group.previous[0] - w columns.invocation[0] - 2 * w columns.execute +
-      4 * w columns.execute - Trace.timestampBase * group.borrowValue w = 0 ∧
-    w group.previous[1] - w columns.invocation[1] + group.borrowValue w = 0 := by
-  have facts := chi5_group_clocks h 0
-  simpa [chi5Distance, Chi5.importedConstraintsDelegationColumns] using
-    And.intro facts.1 facts.2.1
-
-/-- Booleanity applies to the high-limb difference. No borrow witness is committed. -/
-theorem chi5_register_borrow [Fact p.Prime]
-    {setup : Table (ZMod p) (fields 11)} {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (Chi5.clockConstraints setup)) :
-    let group := Chi5.importedConstraintsTimestampGroups[0]
-    group.borrowValue w * (group.borrowValue w - 1) = 0 := by
-  exact (chi5_group_clocks h 0).2.2
 
 end Airbender.Keccak.Split.Proofs

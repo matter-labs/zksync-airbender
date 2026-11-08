@@ -94,8 +94,4 @@ theorem unique_fulfillment {calls : List (Request p)} {workers : List (Delegatio
   exact List.inj_on_of_nodup_map issuedUnique included chosen
     ((congrArg Request.time otherMatch.2).trans (congrArg Request.time same).symm)
 
-theorem zero_time_fulfillment_invisible (address : Nat) :
-    Matching ([] : List (Request p)) [⟨address, (0, 0)⟩] := by
-  simp [Matching, Request.issued, Request.empty, Request.token]
-
 end Airbender.Delegation.Requests.Proofs

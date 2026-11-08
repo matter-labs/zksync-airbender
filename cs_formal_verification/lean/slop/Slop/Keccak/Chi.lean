@@ -358,11 +358,4 @@ theorem chi_second {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   rw [o2] at o3
   exact ⟨o4, o1, o3, second_preserved h selected⟩
 
-private theorem chi_reference_row (state : Vector Nat 25) (row column : Fin 5) :
-    (Specs.Keccak256.chi state)[5 * column.val + row.val] =
-      state[5 * column.val + row.val] ^^^
-        ((not64 state[5 * ((column.val + 1) % 5) + row.val]) &&&
-          state[5 * ((column.val + 2) % 5) + row.val]) := by
-  fin_cases row <;> fin_cases column <;> rfl
-
 end Airbender.Keccak.Proofs

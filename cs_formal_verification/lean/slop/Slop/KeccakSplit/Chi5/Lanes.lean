@@ -102,16 +102,6 @@ def laneValue (w : Nat → ZMod babyBearModulus) (writing : Bool) (lane : Fin 5)
     ((limbOf w writing lane 1).val + 65536 *
       ((limbOf w writing lane 2).val + 65536 * (limbOf w writing lane 3).val))
 
-theorem lane_bound {w : Nat → ZMod babyBearModulus} (h : Holds w) (writing : Bool) (lane : Fin 5) :
-    laneValue w writing lane < 2 ^ 64 := by
-  have h0 := (limb_value h writing lane 0).1
-  have h1 := (limb_value h writing lane 1).1
-  have h2 := (limb_value h writing lane 2).1
-  have h3 := (limb_value h writing lane 3).1
-  unfold laneValue
-  norm_num only [Nat.reducePow]
-  omega
-
 /-- Chi on each complete lane. -/
 theorem lane_operation {w : Nat → ZMod babyBearModulus} (h : Holds w) (lane : Fin 5) :
     laneValue w true lane = laneValue w false lane ^^^

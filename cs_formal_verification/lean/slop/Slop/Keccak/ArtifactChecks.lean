@@ -30,13 +30,4 @@ theorem port_layout : importedConstraintsIndirectPorts =
       #v[15 + 4 * i.val, 16 + 4 * i.val]
       (some #v[17 + 4 * i.val, 18 + 4 * i.val])) := by decide
 
-theorem variable_roles :
-    importedConstraintsVariableNames.lookup 0 = some "Execute flag for cycle" ∧
-    importedConstraintsVariableNames.lookup 3 = some "x10 control register read/write read[0]" ∧
-    importedConstraintsVariableNames.lookup 4 = some "x10 control register read/write read[1]" ∧
-    importedConstraintsVariableNames.lookup 5 = some "x10 control register read/write write[0]" ∧
-    importedConstraintsVariableNames.lookup 6 = some "x10 control register read/write write[0]" ∧
-    importedConstraintsVariableNames.lookup 13 = some "x11 indirect access read[0]" ∧
-    importedConstraintsVariableNames.lookup 14 = some "x11 indirect access read[1]" := by decide
-
 end Airbender.Keccak

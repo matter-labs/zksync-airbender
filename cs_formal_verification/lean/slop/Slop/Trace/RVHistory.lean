@@ -249,7 +249,6 @@ theorem rv_realize_history {cells : List Cell} (events : List MemoryAccess)
       (fun same => zero event (List.mem_cons_self) (by rw [← address, same]))
     exact ⟨after, .cons past cell member address read written, last⟩
 
-
 /-- Native RV cell reads: every event of an initialized RV history addresses a public cell. -/
 theorem rv_initialized_cells {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
@@ -371,24 +370,6 @@ theorem rv_row_context_of_history {Kind : Type} [CircuitLayout Kind] [Fact p.Pri
   rw [same, List.flatMap_append, List.flatMap_cons]
   simp only [List.mem_append]
   exact Or.inr (Or.inr present)
-
-theorem rv_row_position_of_history {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    {trace : Data p Kind} {initial : RV.State} {cells : List Cell}
-    {rows : List (Row p Kind)} {final : RV.State}
-    (permutation : rows.Perm trace.rows)
-    (ordered : rows.Pairwise (fun a b => b.clock < a.clock))
-    (native : RVHistory cells
-      (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse) initial final)
-    {row : Row p Kind} (member : row ∈ trace.rows) :
-    ∃ before, RVRowPosition trace initial cells row before := by
-  obtain ⟨newer, older, same⟩ := List.mem_iff_append.mp (permutation.mem_iff.mpr member)
-  rw [same, List.flatMap_append, List.flatMap_cons] at native
-  obtain ⟨currentEnd, tailHistory, _⟩ := rv_history_append.mp native
-  obtain ⟨currentStart, past, _⟩ := rv_history_append.mp tailHistory
-  refine ⟨{ currentStart with pc := row.start.word.toBitVec },
-    newer, older, currentStart, same ▸ permutation, same ▸ ordered, ?_, rfl⟩
-  have writes := RVHistory.writes past
-  simpa only [List.map_flatMap, row_write_values] using writes
 
 /-- Operand reads of an RV row: the first port is a read-only register read (the first port's write equals its
     read), so its value is the pre-state register; the second port reads the same pre-state (the first write is

@@ -77,13 +77,6 @@ theorem member_port {w : Nat → ZMod babyBearModulus} {p : MemoryPort}
   obtain ⟨i, bound, rfl⟩ := Array.mem_iff_getElem.mp member
   exact ⟨⟨i, by simpa [Keccak.Split.Proofs.chi5_memory_ports] using bound⟩, rfl⟩
 
-/-- Lane ports: port `k ≥ 2` holds limbs `2·((k-2) % 2)` and the next of lane `(k-2)/2`. -/
-theorem read_col_lane (k : Nat) (k2 : 2 ≤ k) (k12 : k < 12) :
-    readCol k = limbColumn false ⟨(k - 2) / 2, by omega⟩ ⟨2 * ((k - 2) % 2), by omega⟩ ∧
-      readCol k + 1 = limbColumn false ⟨(k - 2) / 2, by omega⟩ ⟨2 * ((k - 2) % 2) + 1, by omega⟩ := by
-  simp only [readCol, limbColumn, Bool.false_eq_true, ↓reduceIte]
-  split_ifs <;> omega
-
 theorem write_col_lane (k : Nat) (k2 : 2 ≤ k) (k12 : k < 12) :
     writeCol k = limbColumn true ⟨(k - 2) / 2, by omega⟩ ⟨2 * ((k - 2) % 2), by omega⟩ ∧
       writeCol k + 1 = limbColumn true ⟨(k - 2) / 2, by omega⟩ ⟨2 * ((k - 2) % 2) + 1, by omega⟩ := by

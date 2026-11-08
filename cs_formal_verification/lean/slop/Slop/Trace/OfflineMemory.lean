@@ -109,21 +109,6 @@ private theorem cell_events_projection {S : Type} (address : Nat) (rank value : 
       rw [List.cons_append, ih]
       rfl
 
-/-- The Clean event is exactly the native port, with its clock shifted by one. -/
-theorem transfer_event [Fact p.Prime] [ClockLaws Kind p] (hp : timestampBase < p)
-    (row : Row p Kind) (port : MemoryPort) (member : port ∈ row.ports)
-    (initial : (decodeTimestamp row.assignment row.columns.initialTime).Bounded)
-    (aligned : (decodeTimestamp row.assignment row.columns.initialTime).lo % 4 = 0) :
-    transferEvent (readToken row.assignment port, writeToken row.columns row.assignment port) =
-      ((port.event row.columns row.assignment).1 + 1, port.address.code row.assignment,
-        port.readCode row.assignment, port.writeCode row.assignment) := by
-  have canonical := (write_time hp (base := rawPair row.assignment row.columns.initialTime)
-    initial aligned (port_offset row port member)).2
-  change ((timeOfPair ((rawPair row.assignment row.columns.initialTime).1 + (port.clock.offset : ZMod p),
-    (rawPair row.assignment row.columns.initialTime).2)).value + 1, _, _, _) = _
-  rw [canonical]
-  rfl
-
 theorem cell_history_of_path {p : Nat} (steps : List (MemoryToken p × MemoryToken p))
     (source : MemoryToken p) (path : List (MemoryToken p)) (head : path.head? = some source)
     (ordered : (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·))

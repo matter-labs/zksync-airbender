@@ -117,14 +117,6 @@ theorem read_bounds_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded :=
   read_bounds_of_rules hp inverse accepted clocks initial (write_rules_of_sources sources)
 
-theorem write_bounds_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
-    (accepted : Accepted trace) (clocks : ClockBoundary trace)
-    (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded) (sources : WriteSources trace) :
-    ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (writeToken row.columns row.assignment port).word.Bounded :=
-  write_bounds_of_rules hp inverse accepted clocks initial (write_rules_of_sources sources)
-
 theorem terminal_bounds_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
     [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}

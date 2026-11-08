@@ -21,18 +21,4 @@ theorem outgoing_pc_bounds {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
   · obtain ⟨next, present, same⟩ := List.mem_map.mp other
     exact same ▸ incoming next present
 
-/-- Native matching transports a state property from the public initial state
-    and the locally checked outputs to all incoming states and termination. -/
-theorem matched_incoming_property {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    {trace : Data p Kind} (accepted : Accepted trace) (property : PCState.State p → Prop)
-    (initial : property trace.initial)
-    (outputs : ∀ row ∈ trace.rows, property row.finish) :
-    ∀ state ∈ trace.terminal :: trace.rows.map Row.start, property state := by
-  intro state member
-  have matched := accepted.states.mem_iff.mpr member
-  rcases List.mem_cons.mp matched with same | finished
-  · exact same ▸ initial
-  · obtain ⟨row, present, same⟩ := List.mem_map.mp finished
-    exact same ▸ outputs row present
-
 end Airbender.Trace.Proofs

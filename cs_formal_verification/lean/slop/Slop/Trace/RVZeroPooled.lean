@@ -93,19 +93,4 @@ theorem rv_pooled_zero_preserving {p : Nat} [Fact p.Prime] (hp : 196608 < p)
   obtain ⟨_, _, _, _, fields⟩ := rvProgram_entry_fetch image entry present
   exact rv_pooled_row_zero_preserving hp trace.rom row (accepted.constraints row member) fields family query
 
-/-- The `zero` hypothesis of `rv_addsub_row_position`: every native write to x0 carries zero, derived from the RV
-    public program and initialization only. -/
-theorem rv_pooled_zero_writes {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
-    {trace : PooledTrace p} (accepted : Accepted trace) (boundary : ClockBoundary trace)
-    {initial : RV.State} {cells : List Cell}
-    (image : initialImageRV initial cells = some trace.initialMemory)
-    {addresses : List (BitVec 32)} {program : List RVPooledProgramEntry}
-    (programImage : rvProgramImageWith rvPooledDecoderFields initial addresses = some program)
-    (decoded : RVPooledDecoded trace program) :
-    ∀ event ∈ trace.nativeEvents, event.2.1 = (Cell.register 0).addressCode →
-      memoryWord event.2.2.2 = 0 :=
-  rv_zero_writes_of_preserving hp inverse accepted boundary image
-    (rv_pooled_zero_preserving (by dsimp [timestampBase] at hp; omega) accepted programImage decoded)
-
 end Airbender.Trace.RVZero

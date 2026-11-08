@@ -9,15 +9,6 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1000000
 
-private def piDestination (lane : Fin 25) : Fin 25 :=
-  ⟨5 * (lane.val % 5) + (2 * (lane.val / 5) + 3 * (lane.val % 5)) % 5, by
-    have := Nat.mod_lt lane.val (by decide : 0 < 5)
-    have := Nat.mod_lt (2 * (lane.val / 5) + 3 * (lane.val % 5)) (by decide : 0 < 5)
-    omega⟩
-
-private theorem destination_source (lane : Fin 25) : piDestination (piSource lane) = lane := by
-  fin_cases lane <;> decide
-
 theorem physical_bound (round : Nat) (lane : Fin 25) : physicalLane round lane < 25 := by
   induction round generalizing lane with
   | zero =>
@@ -25,27 +16,6 @@ theorem physical_bound (round : Nat) (lane : Fin 25) : physicalLane round lane <
     have := lane.isLt; have := Nat.mod_lt lane.val (by decide : 0 < 5)
     omega
   | succ round ih => exact ih _
-
-theorem physical_injective (round : Nat) : Function.Injective (physicalLane round) := by
-  induction round with
-  | zero =>
-    intro a b same
-    simp only [physicalLane] at same
-    have := a.isLt; have := b.isLt
-    have := Nat.mod_lt a.val (by decide : 0 < 5)
-    have := Nat.mod_lt b.val (by decide : 0 < 5)
-    apply Fin.ext
-    omega
-  | succ round ih =>
-    intro a b same
-    have sources := ih same
-    have restored := congrArg piDestination sources
-    simpa only [destination_source] using restored
-
-theorem physical_pi (round : Nat) (column lane : Fin 5) :
-    physicalLane (round + 1) rhoDestinations[column][lane] =
-      physicalLane round ⟨5 * column.val + lane.val, by omega⟩ := by
-  fin_cases column <;> fin_cases lane <;> rfl
 
 theorem rows_bound (key : Fin 4096) (lane : Fin 6) : (rows key)[lane] < 31 := by
   dsimp only [rows]

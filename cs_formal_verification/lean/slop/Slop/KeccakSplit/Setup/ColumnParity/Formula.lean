@@ -118,21 +118,6 @@ theorem control_facts {row : Vector (ZMod babyBearModulus) 8} (h : IsFormulaRow 
   · rw [Vector.getElem_map, get2, e2]
   · rw [Vector.getElem_map, get3, e3]
 
-/-- Tag 63: the execute column is boolean. -/
-theorem control_execute {row : Vector (ZMod babyBearModulus) 8} (h : IsFormulaRow row)
-    (tag : row[7] = 63) : row[1] = 0 ∨ row[1] = 1 := by
-  obtain ⟨n, -, rfl⟩ := h
-  have t := tag_of (t := 63) (by omega) (tag.trans (Nat.cast_ofNat).symm)
-  have r : 65658 ≤ n ∧ n < 65780 := by unfold spec7 at t; split_ifs at t <;> omega
-  rw [Vector.getElem_map, get1]
-  by_cases z : n = 65658
-  · left
-    have : spec1 n = 0 := by unfold spec1; region
-    rw [this, Nat.cast_zero]
-  · right
-    have : spec1 n = 1 := by unfold spec1; region
-    rw [this, Nat.cast_one]
-
 /-- Tag 62 with the key of call `index`: the six slots of that call. -/
 theorem slot_facts {row : Vector (ZMod babyBearModulus) 8} (h : IsFormulaRow row)
     (tag : row[7] = 62) (index : Fin 361)

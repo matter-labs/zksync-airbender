@@ -80,10 +80,6 @@ theorem fragment_byte_bound {w : Nat → ZMod babyBearModulus} (h : Holds w) (hi
   · simpa only [fragmentByte, Nat.add_assoc, Bool.false_eq_true, ↓reduceIte] using facts.2.2.2.1
   · simpa only [fragmentByte, Nat.add_assoc, ↓reduceIte] using facts.2.2.2.2.1
 
-theorem rotation_shift_bound {w : Nat → ZMod babyBearModulus} (h : Holds w) (lane : Fin 5) :
-    (rotationShift w lane).val < 8 := by
-  simpa only [rotationShift, Nat.add_zero] using (split_facts h ⟨8 * lane.val, by omega⟩).2.2.1
-
 theorem fragment_byte_operation {w : Nat → ZMod babyBearModulus} (h : Holds w) (lane : Fin 5)
     (digit : Fin 8) :
     (fragmentByte w false lane digit).val =

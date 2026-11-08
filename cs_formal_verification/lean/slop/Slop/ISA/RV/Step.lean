@@ -11,7 +11,6 @@ namespace RV
 
 -- State accessors. Proved by `Eq.trans rfl rfl`, not `rfl`, on purpose: simp then rewrites with explicit proofs
 -- instead of definitional steps, which otherwise made simp hang / the kernel recurse deeply on big symbolic states.
-@[simp] theorem r_zero (s : State) : s.getReg 0 = 0 := Eq.trans rfl rfl
 /-- `x0` in the literal form the step simp set uses. -/
 theorem r_zero5 (s : State) : s.getReg 0#5 = 0#32 := Eq.trans rfl rfl
 @[simp] theorem set_pc (s : State) rd v : (s.setReg rd v).pc = s.pc := Eq.trans rfl rfl
@@ -66,9 +65,6 @@ simproc reduceRSet (State.getReg (State.setReg _ _ _) _) := fun e => do
   let pf := mkApp6 (mkConst ``r_set_miss) s rd v i hi0 hne
   return .done { expr := r, proof? := some (← mkExpectedTypeHint pf (← mkEq e r)) }
 
-theorem goto_ok (s : State) (t : Word) (h : t.toNat % 4 = 0) : s.jumpAligned t = some (s.setPC t) := by
-  simp [State.jumpAligned, h]
-
 theorem run_succ (n : Nat) (s : State) : run (n + 1) s = (step s).bind (run n) := by rfl
 
 theorem step_fetch (s : State) (w : Word) (hpc : s.pc.toNat % 4 = 0) (hrom : s.pc.toNat + 4 ≤ ROM_END)
@@ -89,33 +85,6 @@ theorem run_add (n m : Nat) (s : State) : run (n + m) s = (run n s).bind (run m)
     cases step s with
     | none => rfl
     | some t => exact ih t
-
-theorem run_of_step (S : State) (P : State → Prop)
-    (h : (step S).elim False (fun T => ∃ m s', run m T = some s' ∧ P s')) : ∃ m s', run m S = some s' ∧ P s' := by
-  cases hs : step S with
-  | none => simp [hs] at h
-  | some T =>
-    simp only [hs, Option.elim] at h
-    obtain ⟨m, s', h1, h2⟩ := h
-    exact ⟨m + 1, s', by simp [run_succ, hs, h1], h2⟩
-
-theorem run_of_run (S S1 : State) (n : Nat) (P : State → Prop) (h1 : run n S = some S1)
-    (h : ∃ m s', run m S1 = some s' ∧ P s') : ∃ m s', run m S = some s' ∧ P s' := by
-  obtain ⟨m, s', h2, h3⟩ := h
-  exact ⟨n + m, s', by simp [run_add, h1, h2], h3⟩
-
-theorem exists_run_mono {U : State} {P Q : State → Prop} (H : ∃ m s', run m U = some s' ∧ Q s')
-    (h : ∀ s', Q s' → P s') : ∃ m s', run m U = some s' ∧ P s' := by
-  obtain ⟨m, s', h1, h2⟩ := H
-  exact ⟨m, s', h1, h s' h2⟩
-
-theorem run_done (S : State) (P : State → Prop) (h : P S) : ∃ m s', run m S = some s' ∧ P s' := ⟨0, S, rfl, h⟩
-
-/-- Run to a state with `Q`, then on from there. -/
-theorem run_cont {S : State} {P Q : State → Prop} (H : ∃ m S', run m S = some S' ∧ Q S')
-    (h : ∀ S', Q S' → ∃ m s', run m S' = some s' ∧ P s') : ∃ m s', run m S = some s' ∧ P s' := by
-  obtain ⟨m, S', h1, h2⟩ := H
-  exact run_of_run S S' m P h1 (h S' h2)
 
 /-! `exec`, one lemma per instruction kind; side conditions are left to the discharger. -/
 

@@ -153,16 +153,4 @@ theorem trace_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have h := accepted.constraints row member
   exact ClockLaws.effects hp inverse trace.rom row h inputs
 
-theorem trace_terminal_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
-    (accepted : Accepted trace) (boundary : ClockBoundary trace) :
-    (timeOfPair trace.terminal.timestamp).value =
-      (timeOfPair trace.initial.timestamp).value + 4 * trace.rows.length := by
-  have effects := trace_clocks hp inverse accepted boundary
-  have result := terminal_clock (clock_matching accepted) (by
-    intro step member
-    obtain ⟨row, rowMember, rfl⟩ := List.mem_map.mp member
-    exact (effects row rowMember).advances)
-  simpa only [clockSteps, List.length_map] using result
-
 end Airbender.Trace.Proofs

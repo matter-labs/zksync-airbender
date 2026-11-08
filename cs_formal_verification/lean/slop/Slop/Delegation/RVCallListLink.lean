@@ -9,15 +9,6 @@ public import Slop.Delegation.RVCallLink
 namespace Airbender.Delegation.Proofs
 set_option warningAsError true
 
-private theorem pc_step (pc : RV.Word) (m : Nat) :
-    pc + BitVec.ofNat 32 (4 * m) + 4 = pc + BitVec.ofNat 32 (4 * (m + 1)) := by
-  rw [BitVec.add_assoc]
-  congr 1
-  apply BitVec.eq_of_toNat_eq
-  have four : (4 : RV.Word).toNat = 4 := by rfl
-  simp only [BitVec.toNat_add, BitVec.toNat_ofNat, four]
-  omega
-
 /-- A span of calls `ks`: if call `m`, from the chronological circuit state `chron m` (at any PC), is the spec's call
     `ks[m]` landing on `chron (m + 1)`, then the spec's run of `ks` from `chron 0` is `chron ks.length` with the
     spec's PC. -/

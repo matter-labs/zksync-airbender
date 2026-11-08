@@ -136,11 +136,6 @@ def check_layers():
     graph = {".".join(path.relative_to(ROOT / src).with_suffix("").parts):
              re.findall(r"^(?:public\s+)?(?:meta\s+)?import\s+(?:all\s+)?(\S+)$", path.read_text(), re.M)
              for src in ("human", "slop") for path in (ROOT / src).rglob("*.lean")}
-    # These existing proof assemblies reuse pooled retirement lemmas. Their
-    # circuit models and statements do not require a whole-execution contract.
-    assemblies = {f"Slop.Final.Circuits.{family}.Theorems"
-                  for family in ("JumpBranchSlt", "MulDiv", "ShiftBinop")}
-    coupled = set()
     for module, dependencies in graph.items():
         for dependency in dependencies:
             if dependency.startswith(CLAIM_PREFIXES) and dependency not in graph:
@@ -155,12 +150,8 @@ def check_layers():
                 continue
             seen.add(current)
             if current.startswith(tuple(p + "Trace." for p in CLAIM_PREFIXES)):
-                if module in assemblies and path[1].startswith("Slop.") and not path[1].startswith("Slop.Final."):
-                    coupled.add(module)
-                    break
                 raise ValueError("Whole-execution dependency in circuit context: " + " → ".join(path))
             pending.extend(path + [dependency] for dependency in graph.get(current, []))
-    return len(coupled)
 
 
 def main():
@@ -176,7 +167,8 @@ def main():
     print(f"PASS {count} public claim theorems have explicit axiom audit roots")
     print(f"PASS {len(references)} guide declaration names resolve in Lean")
     print(f"PASS {check_links()} local guide links and heading anchors resolve")
-    print(f"PASS context/trace separation; {check_layers()} documented proof-assembly dependencies")
+    check_layers()
+    print("PASS context/trace separation")
 
 
 if __name__ == "__main__":

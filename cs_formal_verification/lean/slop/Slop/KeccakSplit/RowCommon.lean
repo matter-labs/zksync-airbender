@@ -83,10 +83,6 @@ theorem bump_val (index : Fin 361) :
     ((bump (controlAt index.val) : ZMod babyBearModulus)).val = bump (controlAt index.val) :=
   SetupProofs.val_cast (by have := bump_small (SetupProofs.controlAt_lt index.isLt); omega)
 
-/-- Every call slot is below 31. -/
-theorem slot_lt (index : Fin 361) (lane : Nat) (h : lane < 7) : ((Call.slots index)[lane]).val < 31 :=
-  ((Call.slots index)[lane]).isLt
-
 /-- An aligned pointer plus a slot offset does not carry out of the low limb. -/
 theorem lane_cell_code {lo hi slot c : Nat} (hlo : lo < 65536) (hhi : hi < 65536)
     (al : lo % 256 = 0) (hs : slot < 31) (hc : c ≤ 4) :

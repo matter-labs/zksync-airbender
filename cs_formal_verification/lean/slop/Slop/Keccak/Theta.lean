@@ -83,7 +83,6 @@ private theorem theta_bytes {p : Nat} [Fact p.Prime] (hp : 256 ≤ p)
     simpa [byteQuery, importedConstraints, FlatOperation.lookups, Expression.eval,
       Verification.environment] using query
 
-
 /-- Every observed input/output limb is forced by its two native byte queries. -/
 theorem theta_limb_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
@@ -192,26 +191,5 @@ theorem theta_scratch_preserved {p : Nat} [Fact p.Prime]
   simp [limbOffsets] at l0 l1 l2 l3
   change laneValue w 57 = laneValue w 55
   simp only [laneValue, ← l0, ← l1, ← l2, ← l3]
-
-/-- The original Clean reference exposes the same five-lane column projection. -/
-theorem theta_reference_column (state : Vector Nat 25) (d : Vector Nat 5)
-    (column i : Fin 5) :
-    (Specs.Keccak256.thetaXor state d)[5 * column.val + i.val] =
-      state[5 * column.val + i.val] ^^^ d[column] := by
-  fin_cases column <;> fin_cases i <;> rfl
-
-theorem theta_column {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
-    {state : Vector Nat 25} {d : Vector Nat 5} {column : Fin 5}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control)))
-    (interface : ThetaInterface state d column w) :
-    ThetaResult state d column w := by
-  constructor
-  · intro i
-    rw [theta_reference_column]
-    rw [← interface.stateReads i, ← interface.dRead]
-    exact (theta_lane_xor hp h interface.active interface.thetaSelected i).2.2.2
-  · exact theta_scratch_preserved h interface.thetaSelected
 
 end Airbender.Keccak.Proofs
