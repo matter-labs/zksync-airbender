@@ -8,7 +8,7 @@ Two facts make our own spec `RV.step` (`Human/ISA/RV32.lean`) trustworthy withou
 2. `StepIsAirbenderClaim`: our step does exactly what the Airbender machine (`Human/ISA/Sail/Airbender.lean`: Sail's
    `execute` plus the listed changes) does, on everything a program can see.
 `Configured` (Airbender behaves as Sail with fixed register values: `misa`, the memory map, …) appears only here, in
-the equivalence. `ConfiguredBridgeClaim` ties it to the circuit claims' `Configured` on lean-sail's state.
+the equivalence.
 Proofs: `slop/Slop/Final/ISA/Theorems.lean` (from `slop/Slop/ISA/Equiv/`). -/
 
 open Sail SailRV32 SailRV32.Functions Human
@@ -34,12 +34,6 @@ def DecodeIsSailClaim : Prop :=
 /-- 2. One step of our spec is one step of the Airbender machine. -/
 def StepIsAirbenderClaim : Prop :=
   ∀ s s' m, Agree s m → RV.step s = some s' → ∃ m', step m = some m' ∧ Agree s' m'
-
-/-- The circuit claims' `Configured` (on lean-sail's state, `Human/Helpers/Core/Configuration.lean`) gives this
-file's `Configured` on the Sail state it views (`Configuration.SailState.ofState`). -/
-def ConfiguredBridgeClaim : Prop :=
-  ∀ state : Airbender.Reference.RiscV.Sail.State, Airbender.Reference.RiscV.Sail.Configured state →
-    Configured (Airbender.Reference.RiscV.Sail.Configuration.SailState.ofState state)
 
 /-- The checks of `Checks.lean` (Sail's reset, what Airbender overrides Sail rejects, one machine step on
 representative words) hold. -/

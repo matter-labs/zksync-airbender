@@ -1,37 +1,39 @@
-import Tests.PooledHistory
-import Tests.PooledROM
+module
+public import Tests.PooledHistory
+public import Tests.PooledROM
 
-import Tests.SubwordMemoryTimestamp
-import Tests.ShiftBinopTimestamp
-import Tests.ShiftBinopHistory
-import Tests.ShiftBinopPorts
-import Tests.ShiftBinopImmediate
-import Slop.Trace.BytePorts
-import Tests.MulDivTimestamp
-import Tests.BranchTrace
-import Tests.ComparisonTrace
-import Tests.JalrTrace
-import Slop.Trace.Claims
-import Slop.Trace.ClockHistory
-import Tests.Timestamps
-import Tests.TraceHistory
-import Tests.TraceMemory
-import Tests.TraceExecution
-import Tests.NativeROM
-import Tests.NonDeterminismDecoder
-import Tests.OracleTrace
-import Tests.PooledOracle
-import Tests.JumpTimestamp
-import Tests.JumpPorts
-import Tests.JumpHistory
-import Tests.JumpSailHistory
-import Tests.DiscardedLoad
-import Tests.TraceROM
-import Tests.TraceStore
-import Tests.SailHistory
-import Tests.TraceZeroRegister
-import Slop.Trace.MemoryPorts
-import Human.Helpers.Core.Configuration
+public import Tests.SubwordMemoryTimestamp
+public import Tests.ShiftBinopTimestamp
+public import Tests.ShiftBinopHistory
+public import Tests.ShiftBinopPorts
+public import Tests.ShiftBinopImmediate
+public import Slop.Trace.BytePorts
+public import Tests.MulDivTimestamp
+public import Tests.BranchTrace
+public import Tests.ComparisonTrace
+public import Tests.JalrTrace
+public import Slop.Trace.Claims
+public import Slop.Trace.ClockHistory
+public import Tests.Timestamps
+public import Tests.TraceHistory
+public import Tests.TraceMemory
+public import Tests.TraceExecution
+public import Tests.NativeROM
+public import Tests.NonDeterminismDecoder
+public import Tests.OracleTrace
+public import Tests.PooledOracle
+public import Tests.JumpTimestamp
+public import Tests.JumpPorts
+public import Tests.JumpHistory
+public import Tests.JumpSailHistory
+public import Tests.DiscardedLoad
+public import Tests.TraceROM
+public import Tests.TraceStore
+public import Tests.SailHistory
+public import Tests.TraceZeroRegister
+public import Slop.Trace.MemoryPorts
+
+@[expose] public section
 
 #print axioms Airbender.Trace.timestampTable
 #print axioms Airbender.Trace.ROMView.shadow
@@ -41,7 +43,6 @@ import Human.Helpers.Core.Configuration
 #print axioms Tests.NativeROM.native_accepted
 #print axioms Tests.NativeROM.physical_bytes_are_not_native_seed
 #print axioms Airbender.Trace.Proofs.ordered_row_boundaries
-#print axioms Airbender.Reference.RiscV.Sail.Configured
 #print axioms Airbender.Trace.Proofs.range_bound
 #print axioms Airbender.Trace.Proofs.range_contains
 #print axioms Airbender.Trace.Proofs.increment

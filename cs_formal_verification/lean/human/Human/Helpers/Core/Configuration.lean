@@ -1,16 +1,16 @@
-import Human.Helpers.Core.Sail
+import SailRV32
 
 /-! # The Airbender machine's public configuration
 
 The same definition as the verifier branch's `HumanSail/Airbender.lean` (`misa`, `memoryMap`, `resetState`,
-`writtenByProgram`, `Configured`), adapted to this layout: the claims' states are lean-sail's hash-map
-`State`, so the reset is computed on a state that holds every register (as in `HumanSail/Machine.lean`), and a
-`Configured` state has each register a program never writes present with its reset value.
+`writtenByProgram`), on the simple Sail state `SailState` (every register, byte-addressed memory) that `runSail`
+interprets Sail's effects on.
 
 A state of the Airbender machine behaves as Sail with these register values: Sail's own reset (with
 `sail/config/airbender-base.json`), `misa` = RV32 I + M (Airbender has no `misa` CSR; this value selects the
 decoded extensions) and Airbender's memory map. Everything a program cannot change (privilege, `misa`, `mstatus`,
-`mseccfg`, the landing-pad state `elp`, the PMP/PMA registers, …) keeps that value. -/
+`mseccfg`, the landing-pad state `elp`, the PMP/PMA registers, …) keeps that value (`Configured`,
+`Human/ISA/Sail/Airbender.lean`). -/
 
 namespace Airbender.Reference.RiscV.Sail.Configuration
 open _root_.Sail _root_.Sail.ArchSem SailRV32 SailRV32.Functions
@@ -103,13 +103,3 @@ def writtenByProgram : Register → Bool
   | _ => false
 
 end Airbender.Reference.RiscV.Sail.Configuration
-
-namespace Airbender.Reference.RiscV.Sail
-open Configuration
-
-/-- A state of the Airbender machine: every register a program never writes (privilege, `misa`, `mstatus`,
-    `mseccfg`, `elp`, the memory map, …) is present with its value after reset. -/
-def Configured (σ : State) : Prop :=
-  ∀ r, writtenByProgram r = false → σ.regs.get? r = some (resetState.regs r)
-
-end Airbender.Reference.RiscV.Sail

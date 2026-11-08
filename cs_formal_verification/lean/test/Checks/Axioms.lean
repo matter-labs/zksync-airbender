@@ -1126,7 +1126,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.JumpBranchSlt.Jump.babyBear_rv_soundness
 #print axioms Airbender.decode_is_sail
 #print axioms Airbender.step_is_airbender
-#print axioms Airbender.configured_bridge
 #print axioms Airbender.machine_checks_claim
 #print axioms RV.calls_run
 #print axioms RV.blake_compress_run

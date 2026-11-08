@@ -1,7 +1,7 @@
 # Core representations and references
 
 This directory defines shared value representations and reference interfaces:
-field operations, two-limb RV32 words, architectural Sail transitions and
+field operations, two-limb RV32 words, the Airbender machine configuration and
 independent stream observations. These definitions give meaning to encoded inputs
 and outputs; they do not assert that an accepted circuit row implements the
 reference.
@@ -19,9 +19,9 @@ Read [Field](Field.lean) and [Word](Word.lean) for field operations and the
 two-limb RV32 representation. A represented word is not automatically bounded;
 check where the relevant claim proves its canonical range.
 
-[Sail](Sail.lean) names the architectural input/output relation and original
-standard-instruction clauses. It is the reference interface, not a replacement
-arithmetic semantics. [ExternalStream](ExternalStream.lean) supplies generic
+[Configuration](Configuration.lean) fixes the Airbender configuration of the Sail
+model (`misa`, memory map, reset state); only the RV32-to-Sail equivalence
+(`Human/ISA/Sail/`) uses it. [ExternalStream](ExternalStream.lean) supplies generic
 stream ordering and port predicates; decoder-specific CSR forms live in
 [Decoder](../Decoder/README.md).
 

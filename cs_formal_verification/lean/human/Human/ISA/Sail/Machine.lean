@@ -16,14 +16,3 @@ export Airbender.Reference.RiscV.Sail.Configuration
   (SailState SailState.set SailState.mk SailState.regs SailState.mem SailStateM readBytes writeBytes applyEffect runSail)
 
 end Human
-
-namespace Airbender.Reference.RiscV.Sail.Configuration
-
-/-- The Sail state a lean-sail state (the circuit claims' `State`) stands for: its registers and memory bytes, with a
-register it does not hold at its reset value and a byte it does not hold 0 (lean-sail's interpreter fails on reading
-either, so a successful run never sees these defaults). -/
-noncomputable def SailState.ofState (state : Airbender.Reference.RiscV.Sail.State) : SailState where
-  regs r := (state.regs.get? r).getD (resetState.regs r)
-  mem a := (state.mem.get? a).getD 0
-
-end Airbender.Reference.RiscV.Sail.Configuration

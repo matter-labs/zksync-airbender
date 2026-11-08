@@ -93,7 +93,6 @@ example : Airbender.WordMemory.BabyBearRVSoundnessClaim := @Airbender.WordMemory
 example : Airbender.PCState.OutgoingBoundsClaim := @Airbender.PCState.outgoing_bounds
 example : Airbender.DecodeIsSailClaim := @Airbender.decode_is_sail
 example : Airbender.StepIsAirbenderClaim := @Airbender.step_is_airbender
-example : Airbender.ConfiguredBridgeClaim := @Airbender.configured_bridge
 example : Airbender.MachineChecksClaim := @Airbender.machine_checks_claim
 example : RV.CallsRun := @RV.calls_run
 example : RV.BlakeCompressRun := @RV.blake_compress_run
@@ -207,7 +206,6 @@ example : Airbender.UnifiedReduced.Caller.RVPreparedRoundCyclesSoundnessClaim :=
 #print axioms Airbender.PCState.outgoing_bounds
 #print axioms Airbender.decode_is_sail
 #print axioms Airbender.step_is_airbender
-#print axioms Airbender.configured_bridge
 #print axioms Airbender.machine_checks_claim
 #print axioms RV.calls_run
 #print axioms RV.blake_compress_run
