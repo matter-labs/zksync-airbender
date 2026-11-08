@@ -61,7 +61,6 @@ import Slop.JumpBranchSlt.PortReads
 import Slop.MulDiv.PortReads
 import Slop.MulDiv.Soundness
 import Slop.ShiftBinop.PortReads
-import Slop.Sail.PMA
 import Slop.SubwordMemory.PortReads
 import Slop.Bigint.Claims
 import Slop.Blake2G.Claims

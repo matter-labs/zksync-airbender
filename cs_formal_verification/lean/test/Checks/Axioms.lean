@@ -115,7 +115,6 @@ import Clean.Specs.Keccak256
 import Human.Import.BabyBear
 import Human.Import.Coefficients
 import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
-import Slop.Sail.PMA
 import Slop.Trace.OracleConsumption
 import Human.Circuits.AddSub.Modular
 

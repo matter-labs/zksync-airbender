@@ -35,7 +35,7 @@ import Tests.TraceStore
 import Tests.SailHistory
 import Tests.TraceZeroRegister
 import Slop.Trace.MemoryPorts
-import Slop.Sail.PMA
+import Human.Helpers.Core.Configuration
 
 #print axioms Airbender.Trace.timestampTable
 #print axioms Airbender.Trace.ROMView.shadow
@@ -45,7 +45,6 @@ import Slop.Sail.PMA
 #print axioms Tests.NativeROM.native_accepted
 #print axioms Tests.NativeROM.physical_bytes_are_not_native_seed
 #print axioms Airbender.Trace.Proofs.ordered_row_boundaries
-#print axioms Airbender.Reference.RiscV.Sail.physical_address_value
 #print axioms Airbender.Reference.RiscV.Sail.Configured
 #print axioms Airbender.Trace.Proofs.range_bound
 #print axioms Airbender.Trace.Proofs.range_contains
