@@ -108,7 +108,7 @@ CleanCore (Clean's definitions, transcribed) supplies `Expression`, `FlatOperati
   [InitsTeardownsLayout](../lean/human/Human/Import/InitsTeardownsLayout.lean); the schema with its serde JSON and
   [Coefficients](../lean/human/Human/Import/Coefficients.lean) (coefficient cast equivalence proved).
 - **Not reviewed:** `Human/Import/Exec/` (the parser, the decoder, the emitters of the literal terms, and FastColumns, which
-  derives copies of the `Columns.lean` functions with the placement map passed in, for the emitter's speed); each file names
+  derives copies of the [Columns](../lean/human/Human/Import/Columns.lean) functions with the placement map passed in, for the emitter's speed); each file names
   the claims that fix its behaviour.
 
 Placement guards reject missing or ambiguous logical variables and check memory/witness banks. Named imported
