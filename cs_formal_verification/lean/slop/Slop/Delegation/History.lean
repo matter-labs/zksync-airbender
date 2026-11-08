@@ -1,5 +1,8 @@
-import Slop.Delegation.Memory
-import Slop.Trace.TransferHistory
+module
+public import Slop.Delegation.Memory
+public import Slop.Trace.TransferHistory
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 open Trace

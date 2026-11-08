@@ -1,13 +1,17 @@
-import Human.Helpers.Delegation.Memory
-import Slop.Bigint.Timestamp
-import Slop.Blake2G.Timestamp
-import Slop.Blake2Round.Timestamp
-import Slop.Keccak.Timestamp
-import Slop.Trace.MemoryPaths
-import Slop.Trace.InitialImage
-import Slop.Trace.OfflineMemory
-import Slop.Trace.Addresses
-import Slop.Delegation.BoundaryInputs
+module
+public import Human.Helpers.Delegation.Memory
+public import Slop.Bigint.Timestamp
+public import Slop.Blake2G.Timestamp
+public import Slop.Blake2Round.Timestamp
+public import Slop.Keccak.Timestamp
+public import Slop.Trace.MemoryPaths
+public import Slop.Trace.InitialImage
+public import Slop.Trace.OfflineMemory
+public import Slop.Trace.Addresses
+public import Slop.Delegation.BoundaryInputs
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 open Trace

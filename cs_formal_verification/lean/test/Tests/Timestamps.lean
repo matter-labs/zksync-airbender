@@ -1,5 +1,8 @@
-import Slop.Trace.Claims
-import Slop.Trace.Rows
+module
+public import Slop.Trace.Claims
+public import Slop.Trace.Rows
+
+@[expose] public section
 
 namespace Tests.Timestamps
 open Airbender
@@ -7,7 +10,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 
 -- An active zero-operand ADD row; previous register writes are at timestamp zero.
-private def row (clock : Nat) (v : Nat) : ZMod babyBearModulus :=
+def row (clock : Nat) (v : Nat) : ZMod babyBearModulus :=
   if v = 2 then clock
   else if v = 21 then ((clock + 4) % Trace.timestampBase : Nat)
   else if v = 22 then ((clock + 4) / Trace.timestampBase : Nat)

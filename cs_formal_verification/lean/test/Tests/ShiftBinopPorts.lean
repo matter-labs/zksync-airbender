@@ -1,5 +1,10 @@
-import Slop.ShiftBinop.Ports
-import Tests.ShiftBinopTimestamp
+module
+public import Slop.ShiftBinop.Ports
+public import Tests.ShiftBinopTimestamp
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.ShiftBinopPorts
 open Airbender
@@ -9,7 +14,7 @@ set_option maxHeartbeats 1000000
 
 /-- SLL x1,x0,x0. The unused high rs2 bytes cancel in Rust's field packing;
     they are deliberately not both canonical byte values. -/
-private def row (i : Nat) : ZMod babyBearModulus :=
+def row (i : Nat) : ZMod babyBearModulus :=
   if i = 11 ∨ i = 27 ∨ i = 59 ∨ i = 65 ∨ i = 68 ∨ i = 77 ∨ i = 86 then 1
   else if i = 12 then 0
   else if i = 28 then 7864320

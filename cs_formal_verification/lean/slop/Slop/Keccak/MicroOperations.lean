@@ -1,4 +1,7 @@
-import Slop.Keccak.NativeExecution
+module
+public import Slop.Keccak.NativeExecution
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true
@@ -42,7 +45,7 @@ theorem row_micro_writes {p : Nat} {w : Nat → ZMod p} (effects : Native.RowEff
     (packed : (w 3).val = control.packed) :
     Native.writtenLanes w = microWrites control (Vector.ofFn (Native.readLane w)) := by
   let reads := Vector.ofFn (Native.readLane w)
-  have out : Native.writtenLanes w = Vector.ofFn (Native.writtenLane w) := rfl
+  have out : Native.writtenLanes w = Vector.ofFn (Native.writtenLane w) := by rfl
   generalize mode : control.mode = selected
   fin_cases selected
   · have decoded : ControlState.mk 0 control.iteration ⟨(Fin.ofNat 25 control.round.val).val, by omega⟩ = control := by

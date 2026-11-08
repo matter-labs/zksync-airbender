@@ -1,4 +1,7 @@
-import Slop.Trace.Claims
+module
+public import Slop.Trace.Claims
+
+@[expose] public section
 
 namespace Tests.TraceHistory
 open Airbender
@@ -8,20 +11,20 @@ set_option maxRecDepth 16384
 -- Two reads of x0 refresh its clock from 0 to 4 to 5, then x1 is written at 6.
 -- The malformed variant reads x0 at previous-clock 2: the local constraints allow
 -- that bounded value, but the native memory matching has no corresponding write.
-private def assignment (malformed : Bool) (v : Nat) : ZMod babyBearModulus :=
+def assignment (malformed : Bool) (v : Nat) : ZMod babyBearModulus :=
   if v = 23 then (if malformed then 2 else 0)
   else if v = 2 ∨ v = 19 ∨ v = 27 then 4
   else if v = 21 then 8
   else if v = 4 ∨ v = 7 ∨ v = 10 ∨ v = 42 ∨ v = 43 ∨ v = 44 then 1
   else 0
 
-private def row (malformed : Bool) : Trace.Row babyBearModulus :=
+def row (malformed : Bool) : Trace.Row babyBearModulus :=
   ⟨.addSub, assignment malformed⟩
 
-private def token (register clock : Nat) : Trace.MemoryToken babyBearModulus :=
+def token (register clock : Nat) : Trace.MemoryToken babyBearModulus :=
   ⟨Nat.pair 0 (Nat.pair register 0), (clock, 0), 0⟩
 
-private def trace (rom : Table (ZMod babyBearModulus) (fields 9)) (malformed : Bool) :
+def trace (rom : Table (ZMod babyBearModulus) (fields 9)) (malformed : Bool) :
     Trace.Data babyBearModulus where
   rows := [row malformed]
   rom := rom
@@ -107,12 +110,12 @@ theorem latest_values (rom : Table (ZMod babyBearModulus) (fields 9)) :
 
 -- Change the second read's value and the arithmetic result together. Local ADD
 -- constraints cannot notice; native matching must reject the fabricated value.
-private def changedAssignment (v : Nat) : ZMod babyBearModulus :=
+def changedAssignment (v : Nat) : ZMod babyBearModulus :=
   if v = 29 ∨ v = 33 then 1 else assignment false v
 
-private def changedRow : Trace.Row babyBearModulus := ⟨.addSub, changedAssignment⟩
+def changedRow : Trace.Row babyBearModulus := ⟨.addSub, changedAssignment⟩
 
-private def changedTrace (rom : Table (ZMod babyBearModulus) (fields 9)) :
+def changedTrace (rom : Table (ZMod babyBearModulus) (fields 9)) :
     Trace.Data babyBearModulus where
   rows := [changedRow]
   rom := rom

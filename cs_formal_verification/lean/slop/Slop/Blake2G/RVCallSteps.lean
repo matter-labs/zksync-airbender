@@ -1,5 +1,8 @@
-import Slop.Blake2G.RVPhysical
-import Slop.Delegation.RVCallLink
+module
+public import Slop.Blake2G.RVPhysical
+public import Slop.Delegation.RVCallLink
+
+@[expose] public section
 
 /-! RV twin of `CallPhysical.call_physical_steps`, extended with what the delegate link needs: per G call, the RV
     pre/post states agree with the reference step on the work vector, keep the message block, keep every register
@@ -178,7 +181,7 @@ theorem rv_call_steps [Fact p.Prime] (hp : 8388608 ≤ p)
   have member : row ∈ data.rows := reversedPerm.mem_iff.mp (List.getElem_mem _)
   have family := inputs.family row member
   have native : row = ⟨.blakeG, row.assignment⟩ := by
-    have same : row = ⟨row.family, row.assignment⟩ := rfl
+    have same : row = ⟨row.family, row.assignment⟩ := by rfl
     simpa only [family] using same
   obtain ⟨_, controlRead, controlWrite, events, eventPerm, history, ports⟩ := effects i
   have core : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)

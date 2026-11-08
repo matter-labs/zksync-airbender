@@ -1,8 +1,11 @@
-import Slop.Keccak.ControlHistory
-import Slop.Keccak.PointerHistory
-import Slop.Keccak.StateCells
-import Slop.Delegation.RVCallHistory
-import Slop.Delegation.SeedOperations
+module
+public import Slop.Keccak.ControlHistory
+public import Slop.Keccak.PointerHistory
+public import Slop.Keccak.StateCells
+public import Slop.Delegation.RVCallHistory
+public import Slop.Delegation.SeedOperations
+
+@[expose] public section
 
 /-! State-free twins of the special5 span's control, pointer, effect and lane-domain lemmas (`ControlHistory.lean`,
     `PointerHistory.lean`, `CallExecution.lean`, `StateCells.lean`). Those take a Sail `BoundaryInputs` and read the

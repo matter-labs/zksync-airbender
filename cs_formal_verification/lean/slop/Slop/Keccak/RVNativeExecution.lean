@@ -1,7 +1,10 @@
-import Slop.Keccak.NativeExecution
-import Slop.Delegation.RVExecution
-import Slop.Delegation.SeedOperations
-import Human.Helpers.Delegation.RVOperations
+module
+public import Slop.Keccak.NativeExecution
+public import Slop.Delegation.RVExecution
+public import Slop.Delegation.SeedOperations
+public import Human.Helpers.Delegation.RVOperations
+
+@[expose] public section
 
 /-! RV twin of `NativeExecution.operation_execution`: an initialized mixed pool from an `RV.State` executes every access
     as RV cell reads/writes (RAM cells include the shadow RAM below `ROM_END`), and every Keccak row has the native

@@ -1,5 +1,8 @@
-import Slop.Blake2Round.FinalXor
-import Slop.Blake2Round.OpIndex
+module
+public import Slop.Blake2Round.FinalXor
+public import Slop.Blake2Round.OpIndex
+
+@[expose] public section
 
 set_option warningAsError true
 -- one call's goals may not use every lemma of the shared simp set

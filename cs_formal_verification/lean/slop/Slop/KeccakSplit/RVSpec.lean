@@ -1,7 +1,10 @@
-import Slop.KeccakSplit.Reference.PermutationDefinitions
-import Slop.Deleg.KeccakF1600
-import Slop.Deleg.KeccakClean
-import Slop.Deleg.KeccakCalls
+module
+public import Slop.KeccakSplit.Reference.PermutationDefinitions
+public import Slop.Deleg.KeccakF1600
+public import Slop.Deleg.KeccakClean
+public import Slop.Deleg.KeccakCalls
+
+@[expose] public section
 
 /-! State-free agreement of the split Keccak calls with the spec's `RV.Delegation.keccakF1600`: the split circuits'
     `physicalSlot`/`piSource` are the spec's `laneSlot`/`piSrc`; each scheduled call's live slots are distinct; and

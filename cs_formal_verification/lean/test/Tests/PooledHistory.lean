@@ -1,12 +1,15 @@
-import Tests.SubwordMemoryTimestamp
-import Slop.AddSub.Selectors
-import Slop.JumpBranchSlt.Branch
-import Slop.JumpBranchSlt.Jump
-import Slop.MulDiv.Values
-import Slop.ShiftBinop.Ports
-import Slop.SubwordMemory.Values
-import Slop.Trace.Family.Values
-import Slop.Trace.Pooled
+module
+public import Tests.SubwordMemoryTimestamp
+public import Slop.AddSub.Selectors
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
+public import Slop.Trace.Family.Values
+public import Slop.Trace.Pooled
+
+@[expose] public section
 
 namespace Tests.PooledHistory
 open Airbender Arithmetic Trace
@@ -16,7 +19,7 @@ set_option maxHeartbeats 4000000
 
 -- LBU x2,0(x1), then ADD x1,x2,x0. The corrupted ADD computes a consistent
 -- local result from 19, but the preceding LBU wrote 18 to x2.
-private def assignment (corrupt : Bool) : Nat → ZMod babyBearModulus
+def assignment (corrupt : Bool) : Nat → ZMod babyBearModulus
   | 0 | 35 => 4
   | 2 | 19 => 8
   | 21 => 12
@@ -27,13 +30,13 @@ private def assignment (corrupt : Bool) : Nat → ZMod babyBearModulus
   | 32 => 64
   | _ => 0
 
-private def load : Row babyBearModulus PooledFamily :=
+def load : Row babyBearModulus PooledFamily :=
   ⟨.subwordMemory, Tests.SubwordMemoryTimestamp.assignment false⟩
-private def add (corrupt : Bool) : Row babyBearModulus PooledFamily :=
+def add (corrupt : Bool) : Row babyBearModulus PooledFamily :=
   ⟨.addSub, assignment corrupt⟩
-private def token (cell : Cell) (time lo hi : Nat) : MemoryToken babyBearModulus :=
+def token (cell : Cell) (time lo hi : Nat) : MemoryToken babyBearModulus :=
   ⟨cell.addressCode, (time, 0), Nat.pair lo hi⟩
-private def trace (corrupt : Bool) : PooledTrace babyBearModulus where
+def trace (corrupt : Bool) : PooledTrace babyBearModulus where
   rows := [add corrupt, load]
   rom := ⟨ROM.table [] [], Verification.subwordTable (fun _ => 0)⟩
   initial := load.start
@@ -69,7 +72,7 @@ theorem accepted : Accepted (trace false) := by
   · intro row member
     simp [trace] at member
     rcases member with rfl | rfl <;> rfl
-  · have linked : load.finish = (add false).start := rfl
+  · have linked : load.finish = (add false).start := by rfl
     change [load.start, (add false).finish, load.finish].Perm
       [(add false).finish, (add false).start, load.start]
     rw [linked]

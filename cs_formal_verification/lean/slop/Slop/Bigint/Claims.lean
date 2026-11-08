@@ -1,9 +1,12 @@
-import Slop.Bigint.Control
-import Slop.Bigint.SetupSoundness
-import Slop.Bigint.Multiplication
-import Human.Circuits.Bigint.Memory
-import Slop.Bigint.Addresses
-import Slop.Bigint.NativeExecution
+module
+public import Slop.Bigint.Control
+public import Slop.Bigint.SetupSoundness
+public import Slop.Bigint.Multiplication
+public import Human.Circuits.Bigint.Memory
+public import Slop.Bigint.Addresses
+public import Slop.Bigint.NativeExecution
+
+@[expose] public section
 
 namespace Airbender.Bigint.Control
 

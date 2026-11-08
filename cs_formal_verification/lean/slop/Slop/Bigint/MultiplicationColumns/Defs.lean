@@ -1,6 +1,9 @@
-import Slop.Bigint.MultiplicationRanges
-import Slop.Arithmetic.Convolution
-import Human.Helpers.Core.BabyBearPrime
+module
+public import Slop.Bigint.MultiplicationRanges
+public import Slop.Arithmetic.Convolution
+public import Human.Helpers.Core.BabyBearPrime
+
+@[expose] public section
 
 namespace Airbender.Bigint.Multiplication.Proofs
 open Arithmetic

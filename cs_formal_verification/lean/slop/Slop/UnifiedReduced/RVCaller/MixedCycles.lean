@@ -1,5 +1,8 @@
-import Slop.UnifiedReduced.RVCaller.MixedCalls
-import Slop.UnifiedReduced.RVCaller.HistoryWindow
+module
+public import Slop.UnifiedReduced.RVCaller.MixedCalls
+public import Slop.UnifiedReduced.RVCaller.HistoryWindow
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic Trace.Proofs

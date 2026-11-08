@@ -1,16 +1,19 @@
-import Slop.SubwordMemory.Claims
-import Slop.SubwordMemory.Stores
+module
+public import Slop.SubwordMemory.Claims
+public import Slop.SubwordMemory.Stores
+
+@[expose] public section
 
 namespace Tests.SubwordMemory
 open Airbender Airbender.Arithmetic
 
 -- Two independently fixed rows exercise the imported clearing and RAM-byte
 -- queries. They are a boundary fixture, not a replacement setup table.
-private def fixtureRow (i : Fin 2) : Vector (ZMod babyBearModulus) 9 :=
+def fixtureRow (i : Fin 2) : Vector (ZMod babyBearModulus) 9 :=
   if i.val = 0 then #v[65536, 0, 0, 0, 0, 0, 0, 0, 30]
   else #v[135732, 18, 0, 0, 0, 0, 0, 0, 43]
 
-private def fixture : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
+def fixture : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
   name := "SubwordLoadFixture"
   length := 2
   row := fixtureRow
@@ -50,7 +53,7 @@ private theorem satisfies_table (setup : Table (ZMod babyBearModulus) (fields 9)
     | (simpa [fixtureRow] using members 0)
     | (simpa [fixtureRow] using members 1)
 
-private theorem satisfies :
+theorem satisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment row)
       (SubwordMemory.importedConstraints fixture) :=
   satisfies_table fixture (fun i => ⟨i, rfl⟩)
@@ -99,7 +102,7 @@ example {setup : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZMod baby
   exact misaligned (by simpa [← aligned.1] using aligned.2.2)
 
 -- SB at byte offset one and SH at halfword offset two share the same old cell.
-private def storeRow (byte : Bool) : Nat → ZMod babyBearModulus
+def storeRow (byte : Bool) : Nat → ZMod babyBearModulus
   | 4 | 5 | 10 | 48 | 60 => 1
   | 6 | 21 => 2
   | 13 | 15 => 4
@@ -122,7 +125,7 @@ private def storeRow (byte : Bool) : Nat → ZMod babyBearModulus
   | _ => 0
 
 set_option maxRecDepth 4096 in
-private theorem satisfies_store (byte : Bool) :
+theorem satisfies_store (byte : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (storeRow byte))
       (SubwordMemory.importedConstraints (Verification.subwordTable (fun _ => 0))) := by
   cases byte <;>

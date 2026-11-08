@@ -1,15 +1,18 @@
-import Slop.Constraints
-import Human.Circuits.AddSub.Modular
-import Human.Helpers.Core.BabyBearPrime
-import Slop.AddSub.Selectors
-import Slop.JumpBranchSlt.Branch
-import Slop.JumpBranchSlt.Jump
-import Slop.MulDiv.Values
-import Slop.ShiftBinop.Ports
-import Slop.SubwordMemory.Values
-import Slop.Trace.Family.Values
-import Slop.Trace.Pooled
-import Slop.Trace.RowContext
+module
+public import Slop.Constraints
+public import Human.Circuits.AddSub.Modular
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.AddSub.Selectors
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
+public import Slop.Trace.Family.Values
+public import Slop.Trace.Pooled
+public import Slop.Trace.RowContext
+
+@[expose] public section
 
 namespace Tests.Modular
 open Airbender

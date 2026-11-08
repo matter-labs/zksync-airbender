@@ -1,8 +1,11 @@
-import Slop.ShiftBinop.ArtifactChecks
-import Human.Helpers.Properties
-import Slop.Arithmetic.Word
-import Slop.Constraints
-import Mathlib.Tactic.FinCases
+module
+public import Slop.ShiftBinop.ArtifactChecks
+public import Human.Helpers.Properties
+public import Slop.Arithmetic.Word
+public import Slop.Constraints
+public import Mathlib.Tactic.FinCases
+
+@[expose] public section
 
 namespace Airbender.ShiftBinop.Proofs
 open Airbender.Arithmetic

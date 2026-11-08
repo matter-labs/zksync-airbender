@@ -1,12 +1,15 @@
-import Slop.Keccak.ArtifactChecks
-import Slop.Keccak.OpIndex
-import Human.Circuits.Keccak.Controls
-import Slop.Constraints
-import Slop.Trace.Timestamps
-import Slop.Arithmetic.Chunks
-import Slop.Arithmetic.OneHot
-import Mathlib.Tactic.FinCases
-import Mathlib.Tactic.LinearCombination
+module
+public import Slop.Keccak.ArtifactChecks
+public import Slop.Keccak.OpIndex
+public import Human.Circuits.Keccak.Controls
+public import Slop.Constraints
+public import Slop.Trace.Timestamps
+public import Slop.Arithmetic.Chunks
+public import Slop.Arithmetic.OneHot
+public import Mathlib.Tactic.FinCases
+public import Mathlib.Tactic.LinearCombination
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic

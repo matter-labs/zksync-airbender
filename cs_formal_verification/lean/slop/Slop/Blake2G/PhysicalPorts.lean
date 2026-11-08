@@ -1,6 +1,9 @@
-import Slop.Blake2G.Addresses
-import Human.Circuits.Blake2G.Execution
-import Slop.Delegation.NativeViews
+module
+public import Slop.Blake2G.Addresses
+public import Human.Circuits.Blake2G.Execution
+public import Slop.Delegation.NativeViews
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic

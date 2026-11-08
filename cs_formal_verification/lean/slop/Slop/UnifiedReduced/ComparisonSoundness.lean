@@ -1,6 +1,9 @@
-import Slop.UnifiedReduced.ControlContext
-import Slop.JumpBranchSlt.PC
-import Slop.JumpBranchSlt.Signed
+module
+public import Slop.UnifiedReduced.ControlContext
+public import Slop.JumpBranchSlt.PC
+public import Slop.JumpBranchSlt.Signed
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Control.Comparison.Proofs
 open Arithmetic Reference.RiscV Trace Trace.Proofs

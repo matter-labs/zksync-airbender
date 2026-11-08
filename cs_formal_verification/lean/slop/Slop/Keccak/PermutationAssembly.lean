@@ -1,9 +1,13 @@
-import Slop.Keccak.RoundTrace
-import Slop.Keccak.Phases.Chi
-import Slop.Keccak.Phases.Iota
-import Slop.Keccak.Phases.Mix
-import Slop.Keccak.Phases.Rho
-import Slop.Keccak.Phases.Theta
+module
+public import Slop.Keccak.RoundTrace
+public import Slop.Keccak.Phases.Chi
+public import Slop.Keccak.Phases.Iota
+public import Slop.Keccak.Phases.Mix
+public import Slop.Keccak.Phases.Rho
+public import Slop.Keccak.Phases.Theta
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256

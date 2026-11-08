@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.Reference.CallDestinations
-import Slop.KeccakSplit.Reference.CallValues
+module
+public import Slop.KeccakSplit.Reference.CallDestinations
+public import Slop.KeccakSplit.Reference.CallValues
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Call.Proofs
 open Trace Trace.Proofs

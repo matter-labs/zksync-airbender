@@ -1,6 +1,11 @@
-import Slop.Keccak.Claims
-import Slop.Keccak.Lookups
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.Keccak.Claims
+public import Slop.Keccak.Lookups
+public import Mathlib.Tactic.IntervalCases
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.Keccak
 open Airbender
@@ -68,14 +73,14 @@ theorem inactiveZeroTags (i : Fin 40) :
     Keccak.Proofs.byteTag permissiveSetup inactiveRow i = 0 :=
   Keccak.Proofs.inactive_tags (by decide) inactiveSatisfies rfl i
 
-private def control (_ : Fin 4096) : Vector Nat 6 := Vector.replicate 6 0
+def control (_ : Fin 4096) : Vector Nat 6 := Vector.replicate 6 0
 
-private def xorQuery (a b c : Nat) : Lookup (ZMod babyBearModulus) where
+def xorQuery (a b c : Nat) : Lookup (ZMod babyBearModulus) where
   table := (Keccak.setupTable control).toRaw
   entry := #v[.const (a : ZMod babyBearModulus), .const (b : ZMod babyBearModulus),
     .const (c : ZMod babyBearModulus), .const 0, .const 0, .const 0, .const 0, .const 4]
 
-private def emptyEnv : Environment (ZMod babyBearModulus) :=
+def emptyEnv : Environment (ZMod babyBearModulus) :=
   Verification.environment (fun _ => 0)
 
 -- A real setup row accepts the boundary byte pair; no permissive table is used.

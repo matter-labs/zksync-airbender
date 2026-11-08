@@ -1,5 +1,8 @@
-import Human.Trace.UnifiedReduced.RVTheorems
-import Slop.UnifiedReduced.RV.Execution
+module
+public import Human.Trace.UnifiedReduced.RVTheorems
+public import Slop.UnifiedReduced.RV.Execution
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced
 

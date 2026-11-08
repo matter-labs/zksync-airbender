@@ -1,6 +1,9 @@
-import Tests.SubwordMemory
-import Slop.SubwordMemory.Trace
-import Human.Helpers.Tables.Subword
+module
+public import Tests.SubwordMemory
+public import Slop.SubwordMemory.Trace
+public import Human.Helpers.Tables.Subword
+
+@[expose] public section
 
 namespace Tests.SubwordMemoryTimestamp
 open Airbender Arithmetic Trace

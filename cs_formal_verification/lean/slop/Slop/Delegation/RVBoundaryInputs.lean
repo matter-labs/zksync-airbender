@@ -1,6 +1,9 @@
-import Human.Helpers.Delegation.RVMemory
-import Slop.Delegation.SeedMemory
-import Slop.Trace.RVTransfer
+module
+public import Human.Helpers.Delegation.RVMemory
+public import Slop.Delegation.SeedMemory
+public import Slop.Trace.RVTransfer
+
+@[expose] public section
 
 /-! The RV public inputs of a delegation pool at the proof level: the state-free seed facts (`SeedProofs.SeedInputs`)
     plus each seed token's read from the starting `RV.State`, built from the human `RVMemoryInputs`. -/

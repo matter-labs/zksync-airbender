@@ -1,7 +1,10 @@
-import Human.Circuits.Bigint.Artifact
-import Slop.Bigint.ArtifactChecks
-import Slop.Delegation.ClockFacts
-import Slop.Bigint.OpIndex
+module
+public import Human.Circuits.Bigint.Artifact
+public import Slop.Bigint.ArtifactChecks
+public import Slop.Delegation.ClockFacts
+public import Slop.Bigint.OpIndex
+
+@[expose] public section
 
 namespace Airbender.Bigint.Proofs
 open Trace

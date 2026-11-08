@@ -1,7 +1,10 @@
-import Slop.Trace.Claims
-import Slop.Trace.NativeSailHistory
-import Slop.Trace.Terminal
-import Slop.Trace.RowContext
+module
+public import Slop.Trace.Claims
+public import Slop.Trace.NativeSailHistory
+public import Slop.Trace.Terminal
+public import Slop.Trace.RowContext
+
+@[expose] public section
 
 namespace Tests.TraceStore
 open Airbender Arithmetic Trace
@@ -10,7 +13,7 @@ set_option maxRecDepth 16384
 
 -- SW x2,4(x1), crossing a limb boundary. Native state starts at PC 65532,
 -- clock four; the three imported ports refresh x1/x2 and write RAM at 4259840.
-private def assignment : Nat → ZMod babyBearModulus
+def assignment : Nat → ZMod babyBearModulus
   | 0 | 17 => 65532
   | 2 | 8 => 4
   | 13 => 8
@@ -23,16 +26,16 @@ private def assignment : Nat → ZMod babyBearModulus
   | 38 => 4259840
   | _ => 0
 
-private def row : Row babyBearModulus := ⟨.wordMemory, assignment⟩
-private def regToken (index time lo hi : Nat) : MemoryToken babyBearModulus :=
+def row : Row babyBearModulus := ⟨.wordMemory, assignment⟩
+def regToken (index time lo hi : Nat) : MemoryToken babyBearModulus :=
   ⟨Nat.pair 0 (Nat.pair index 0), (time, 0), Nat.pair lo hi⟩
-private def ramToken (loAddress hiAddress time lo hi : Nat) : MemoryToken babyBearModulus :=
+def ramToken (loAddress hiAddress time lo hi : Nat) : MemoryToken babyBearModulus :=
   ⟨Nat.pair 1 (Nat.pair loAddress hiAddress), (time, 0), Nat.pair lo hi⟩
-private def initial : List (MemoryToken babyBearModulus) :=
+def initial : List (MemoryToken babyBearModulus) :=
   [regToken 1 0 65532 64, regToken 2 0 1234 5678, ramToken 0 65 0 0 0]
-private def rom : Table (ZMod babyBearModulus) (fields 9) :=
+def rom : Table (ZMod babyBearModulus) (fields 9) :=
   ROM.table [.register 1, .register 2, .ram 4259840] initial
-private def trace : Data babyBearModulus where
+def trace : Data babyBearModulus where
   rows := [row]
   rom := rom
   initial := row.start
@@ -87,7 +90,7 @@ private theorem aligned_domain :
   simp only [List.mem_cons, List.mem_nil_iff, or_false] at member
   rcases member with rfl | rfl | rfl <;> trivial
 
-private def wrongTerminal : Data babyBearModulus :=
+def wrongTerminal : Data babyBearModulus :=
   { trace with terminalMemory :=
     [regToken 1 4 65532 64, regToken 2 5 1234 5678, ramToken 0 65 6 99 5678] }
 
@@ -101,7 +104,7 @@ namespace Load
 
 -- LW x1,4(x1): the native destination aliases rs1, and its prior timestamp
 -- must refer to the first port's refresh. The public RAM word initially is zero.
-private def loadAssignment : Nat → ZMod babyBearModulus
+def loadAssignment : Nat → ZMod babyBearModulus
   | 0 | 17 | 29 => 65532
   | 2 | 8 | 27 => 4
   | 13 => 8
@@ -111,11 +114,11 @@ private def loadAssignment : Nat → ZMod babyBearModulus
   | 38 => 4259840
   | _ => 0
 
-private def loadRow : Row babyBearModulus := ⟨.wordMemory, loadAssignment⟩
-private def loadCells : List Cell := [.register 1, .ram 4259840]
-private def loadInitial : List (MemoryToken babyBearModulus) :=
+def loadRow : Row babyBearModulus := ⟨.wordMemory, loadAssignment⟩
+def loadCells : List Cell := [.register 1, .ram 4259840]
+def loadInitial : List (MemoryToken babyBearModulus) :=
   [regToken 1 0 65532 64, ramToken 0 65 0 0 0]
-private def loadTrace : Data babyBearModulus where
+def loadTrace : Data babyBearModulus where
   rows := [loadRow]
   rom := ROM.table loadCells loadInitial
   initial := loadRow.start

@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.ColumnParity.Iota
+module
+public import Slop.KeccakSplit.ColumnParity.Iota
+
+@[expose] public section
 
 /- The column-parity call result on its six lanes (ported from PR #585's
    SplitParityReferenceEffect). -/

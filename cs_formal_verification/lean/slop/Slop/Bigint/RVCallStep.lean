@@ -1,8 +1,11 @@
-import Slop.Bigint.RVOperation
-import Slop.Bigint.Addresses
-import Slop.Delegation.RVCallLink
-import Slop.Delegation.RVCallHistory
-import Slop.Delegation.RVNativeViews
+module
+public import Slop.Bigint.RVOperation
+public import Slop.Bigint.Addresses
+public import Slop.Delegation.RVCallLink
+public import Slop.Delegation.RVCallHistory
+public import Slop.Delegation.RVNativeViews
+
+@[expose] public section
 
 /-! The delegate link of one bigint row: the row's RV call (its accesses run from `start` to `finish`) is the spec's
     bigint call `RV.Delegation.bigint` from `start`, up to the spec's PC advance. Every guard of the spec call comes
@@ -242,14 +245,14 @@ theorem rv_bigint_call {data : Delegation.MemoryData babyBearModulus} {cells : L
   have leftBounded : (⟨(w 3).val, (w 4).val⟩ : Word).Bounded := by
     have bound := (ram_value 1 (by decide) (shapes 0).1 ports).1
     have first : (importedConstraintsIndirectPorts[0]'(by decide)) =
-        ⟨10, 0, #v[3, 4], 0, none, 0, #v[5, 6], some #v[7, 8]⟩ := rfl
+        ⟨10, 0, #v[3, 4], 0, none, 0, #v[5, 6], some #v[7, 8]⟩ := by rfl
     simp only [Fin.val_zero, first, Verification.IndirectPort.rawAddress, Option.elim, mul_zero, add_zero,
       Nat.cast_zero] at bound
     exact bound
   have rightBounded : (⟨(w 37).val, (w 38).val⟩ : Word).Bounded := by
     have bound := (ram_value 10 (by decide) (shapes 0).2 ports).1
     have first : (importedConstraintsIndirectPorts[8]'(by decide)) =
-        ⟨11, 0, #v[37, 38], 0, none, 0, #v[39, 40], none⟩ := rfl
+        ⟨11, 0, #v[37, 38], 0, none, 0, #v[39, 40], none⟩ := by rfl
     simp only [Fin.val_zero, first, Verification.IndirectPort.rawAddress, Option.elim, mul_zero,
       add_zero, Nat.cast_zero] at bound
     exact bound

@@ -1,5 +1,9 @@
-import Slop.Keccak.PhaseDefinitions
-import Slop.KernelRfl
+module
+public import Slop.Keccak.PhaseDefinitions
+public import Slop.KernelRfl
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256

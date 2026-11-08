@@ -1,7 +1,10 @@
-import Slop.UnifiedReduced.RVCaller.MixedCycles
-import Slop.UnifiedReduced.RV.Laws
-import Slop.UnifiedReduced.RVCaller.Transfer
-import Slop.Delegation.SharedOperations
+module
+public import Slop.UnifiedReduced.RVCaller.MixedCycles
+public import Slop.UnifiedReduced.RV.Laws
+public import Slop.UnifiedReduced.RVCaller.Transfer
+public import Slop.Delegation.SharedOperations
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic Trace.Proofs

@@ -1,5 +1,8 @@
-import Human.Circuits.Keccak.Tables.Controller
-import Slop.Keccak.Controller
+module
+public import Human.Circuits.Keccak.Tables.Controller
+public import Slop.Keccak.Controller
+
+@[expose] public section
 
 namespace Airbender.Keccak.Controller.Proofs
 set_option warningAsError true

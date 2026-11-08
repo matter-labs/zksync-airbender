@@ -1,7 +1,11 @@
-import Human.Trace.Workers.Keccak.Call
-import Slop.Keccak.ControllerLayout
-import Human.Circuits.Keccak.Execution
-import Mathlib.Data.List.Nodup
+module
+public import Human.Trace.Workers.Keccak.Call
+public import Slop.Keccak.ControllerLayout
+public import Human.Circuits.Keccak.Execution
+public import Mathlib.Data.List.Nodup
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true

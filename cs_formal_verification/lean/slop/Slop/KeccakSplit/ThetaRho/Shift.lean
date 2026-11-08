@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.ThetaRho.Inputs
+module
+public import Slop.KeccakSplit.ThetaRho.Inputs
+
+@[expose] public section
 
 /- The theta/rho column flags select the rho shift of each lane (ported from PR #585's
    SplitThetaControllerQuery). -/

@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.Chi5.Execution
-import Slop.KeccakSplit.RVRowExecution
+module
+public import Slop.KeccakSplit.Chi5.Execution
+public import Slop.KeccakSplit.RVRowExecution
+
+@[expose] public section
 
 /-! RV twin of `Chi5/Execution.lean`'s `executes`: the row executes its call on `RV.State`s (RAM cells include the
     shadow RAM below `ROM_END`). -/

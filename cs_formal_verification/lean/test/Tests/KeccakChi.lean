@@ -1,42 +1,46 @@
-import Slop.Keccak.Claims
-import Mathlib.Tactic.IntervalCases
-import Slop.Keccak.Completeness.Bytes
+module
+public import Slop.Keccak.Claims
+public import Mathlib.Tactic.IntervalCases
+public import Slop.Keccak.Completeness.Bytes
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.KeccakChi
 open Airbender
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-private def referenceState : Vector Nat 25 := Vector.ofFn fun i =>
+def referenceState : Vector Nat 25 := Vector.ofFn fun i =>
   if i.val % 5 = 2 then
     (#v[0xffffffffffffffff, 0x0123456789abcdef, 0x8080808080808080,
       0xaaaaaaaaaaaaaaaa, 0x5555555555555555] : Vector Nat 5)[i.val / 5]
   else 0
 
-private def control (_ : Fin 4096) : Vector Nat 6 := #v[0, 5, 10, 15, 20, 25]
-private abbrev setup : Table (ZMod babyBearModulus) (fields 8) := Keccak.setupTable control
-private def stateLane (i : Fin 5) : Nat := referenceState[5 * i.val + 2]
-private def andn (a b : Nat) : Nat := (not64 a) &&& b
-private def temps (second : Bool) : Vector Nat 3 :=
+def control (_ : Fin 4096) : Vector Nat 6 := #v[0, 5, 10, 15, 20, 25]
+abbrev setup : Table (ZMod babyBearModulus) (fields 8) := Keccak.setupTable control
+def stateLane (i : Fin 5) : Nat := referenceState[5 * i.val + 2]
+def andn (a b : Nat) : Nat := (not64 a) &&& b
+def temps (second : Bool) : Vector Nat 3 :=
   if second then #v[andn (stateLane 4) (stateLane 0), andn (stateLane 0) (stateLane 1), 0]
   else #v[andn (stateLane 2) (stateLane 3), andn (stateLane 3) (stateLane 4), 0]
-private def reads (second : Bool) : Vector Nat 6 :=
+def reads (second : Bool) : Vector Nat 6 :=
   if second then #v[stateLane 0, stateLane 3, stateLane 4, andn (stateLane 1) (stateLane 2), stateLane 1, 0xfedcba9876543210]
   else #v[stateLane 1, stateLane 2, stateLane 3, stateLane 4, 0, 0]
-private def writes (second : Bool) : Vector Nat 6 :=
+def writes (second : Bool) : Vector Nat 6 :=
   if second then #v[stateLane 0 ^^^ andn (stateLane 1) (stateLane 2), stateLane 3 ^^^ andn (stateLane 4) (stateLane 0),
     stateLane 4 ^^^ andn (stateLane 0) (stateLane 1), andn (stateLane 1) (stateLane 2), stateLane 1, 0xfedcba9876543210]
   else #v[stateLane 1 ^^^ andn (stateLane 2) (stateLane 3), stateLane 2 ^^^ andn (stateLane 3) (stateLane 4),
     stateLane 3, stateLane 4, andn (stateLane 1) (stateLane 2), stateLane 1]
-private def aWords (second : Bool) : Vector Nat 5 :=
+def aWords (second : Bool) : Vector Nat 5 :=
   if second then #v[stateLane 4, stateLane 3, stateLane 0, stateLane 4, stateLane 0] else #v[stateLane 1, stateLane 2, stateLane 1, stateLane 3, stateLane 2]
-private def bWords (second : Bool) : Vector Nat 5 :=
+def bWords (second : Bool) : Vector Nat 5 :=
   if second then #v[stateLane 0, (temps true)[0], stateLane 1, (temps true)[1], andn (stateLane 1) (stateLane 2)]
   else #v[stateLane 2, stateLane 3, (temps false)[0], stateLane 4, (temps false)[1]]
-private def isAndn (second : Bool) (op : Nat) : Bool :=
+def isAndn (second : Bool) (op : Nat) : Bool :=
   if second then op = 0 || op = 2 else op = 0 || op = 1 || op = 3
 
-private def base (second : Bool) (v : Nat) : ZMod babyBearModulus :=
+def base (second : Bool) (v : Nat) : ZMod babyBearModulus :=
   if v = 0 ∨ v = 70 ∨ v = (if second then 69 else 68) then 1
   else if v = 3 then (if second then 6 else 5)
   else if v = 5 then (if second then 13 else 6)
@@ -54,14 +58,14 @@ private def base (second : Bool) (v : Nat) : ZMod babyBearModulus :=
   else 0
 
 -- Byte query `i` (operation `i / 8`, byte `i % 8`): ANDN or XOR of the operation's two words.
-private def bytes (second : Bool) (part : Fin 3) (i : Fin 40) : Nat :=
+def bytes (second : Bool) (part : Fin 3) (i : Fin 40) : Nat :=
   let op : Fin 5 := ⟨i.val / 8, by omega⟩
   let a := (aWords second)[op]
   let b := (bWords second)[op]
   Keccak.Proofs.wordByte (if part.val = 0 then a else if part.val = 1 then b
     else if isAndn second op.val then andn a b else a ^^^ b) (i.val % 8)
 
-private def row (second : Bool) : Nat → ZMod babyBearModulus :=
+def row (second : Bool) : Nat → ZMod babyBearModulus :=
   Keccak.Proofs.bytesRow (base second) (bytes second)
 
 private theorem modes (second : Bool) (j : Fin 7) :

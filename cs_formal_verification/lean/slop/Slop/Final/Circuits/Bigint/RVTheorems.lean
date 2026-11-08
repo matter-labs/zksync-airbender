@@ -1,6 +1,9 @@
-import Slop.Bigint.RVMemorySoundness
-import Slop.Blake2G.Soundness
-import Human.Circuits.Bigint.RVTheorems
+module
+public import Slop.Bigint.RVMemorySoundness
+public import Slop.Blake2G.Soundness
+public import Human.Circuits.Bigint.RVTheorems
+
+@[expose] public section
 
 namespace Airbender.Bigint.Memory
 

@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.ColumnParity.Queries
+module
+public import Slop.KeccakSplit.ColumnParity.Queries
+
+@[expose] public section
 
 /- Column-parity lane limbs and the five-input XOR of the written lanes (ported from
    PR #585's SplitParityPacking, SplitParityLimbOperation, SplitParityLaneOperation). -/

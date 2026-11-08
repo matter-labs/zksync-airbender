@@ -1,29 +1,32 @@
-import Slop.Trace.OfflineMemory
-import Slop.Trace.Values
-import Slop.Trace.PC
-import Slop.Trace.Program
-import Slop.Trace.Addresses
-import Slop.Trace.MemoryHistory
-import Slop.Trace.ROMView
-import Slop.Trace.OracleConsumption
-import Slop.Trace.PooledOracleConsumption
-import Human.Helpers.Memory.ValueBoundary
-import Slop.Trace.Family.History
-import Human.Circuits.WordMemory.Output
-import Human.Helpers.Core.BabyBearPrime
-import Slop.Trace.CompositionCore
-import Slop.Trace.Family.Values
-import Human.Circuits.JumpBranchSlt.Jump
-import Human.Circuits.SubwordMemory.Output
-import Slop.JumpBranchSlt.Branch
-import Slop.JumpBranchSlt.Jump
-import Slop.JumpBranchSlt.PortReads
-import Slop.MulDiv.PortReads
-import Slop.MulDiv.Soundness
-import Slop.MulDiv.Values
-import Slop.ShiftBinop.PortReads
-import Slop.ShiftBinop.Ports
-import Slop.SubwordMemory.PortReads
+module
+public import Slop.Trace.OfflineMemory
+public import Slop.Trace.Values
+public import Slop.Trace.PC
+public import Slop.Trace.Program
+public import Slop.Trace.Addresses
+public import Slop.Trace.MemoryHistory
+public import Slop.Trace.ROMView
+public import Slop.Trace.OracleConsumption
+public import Slop.Trace.PooledOracleConsumption
+public import Human.Helpers.Memory.ValueBoundary
+public import Slop.Trace.Family.History
+public import Human.Circuits.WordMemory.Output
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.Family.Values
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Circuits.SubwordMemory.Output
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.JumpBranchSlt.PortReads
+public import Slop.MulDiv.PortReads
+public import Slop.MulDiv.Soundness
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.PortReads
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.PortReads
+
+@[expose] public section
 
 namespace Airbender.Trace
 

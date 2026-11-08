@@ -1,4 +1,7 @@
-import Slop.Delegation.RVCallHistory
+module
+public import Slop.Delegation.RVCallHistory
+
+@[expose] public section
 
 /-! Every worker row of a delegation pool is one contiguous call inside a realized RV history of the pool: its
     accesses share one native clock that no other row uses (every family's first port is x10), so in native timestamp

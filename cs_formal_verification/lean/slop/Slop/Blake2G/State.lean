@@ -1,6 +1,9 @@
-import Human.Circuits.Blake2G.State
-import Slop.Blake2G.Soundness
-import Slop.Blake2G.Control
+module
+public import Human.Circuits.Blake2G.State
+public import Slop.Blake2G.Soundness
+public import Slop.Blake2G.Control
+
+@[expose] public section
 
 namespace Airbender.Blake2G.State.Proofs
 

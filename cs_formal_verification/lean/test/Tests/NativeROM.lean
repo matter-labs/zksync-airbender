@@ -1,4 +1,7 @@
-import Tests.TraceExecution
+module
+public import Tests.TraceExecution
+
+@[expose] public section
 
 namespace Tests.NativeROM
 open Airbender Arithmetic Trace
@@ -6,11 +9,11 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-private def cells : List Cell := Tests.TraceExecution.cells ++ [.ram 0]
-private def physical : List (MemoryToken babyBearModulus) :=
+def cells : List Cell := Tests.TraceExecution.cells ++ [.ram 0]
+def physical : List (MemoryToken babyBearModulus) :=
   ROMView.nativeBootImage Tests.TraceExecution.cells ++ [Cell.initialToken (.ram 0) 0x2083]
 
-private def assignment : Nat → ZMod babyBearModulus
+def assignment : Nat → ZMod babyBearModulus
   | 4 | 7 | 25 | 35 | 37 | 44 | 46 | 47 | 48 => 1
   | 2 | 11 => 4
   | 13 => 8
@@ -19,14 +22,14 @@ private def assignment : Nat → ZMod babyBearModulus
   | 45 => 34
   | _ => 0
 
-private def nativeRow : Row babyBearModulus := ⟨.wordMemory, assignment⟩
-private def terminal : List (MemoryToken babyBearModulus) :=
+def nativeRow : Row babyBearModulus := ⟨.wordMemory, assignment⟩
+def terminal : List (MemoryToken babyBearModulus) :=
   [⟨(Cell.register 0).addressCode, (4, 0), Nat.pair 0 0⟩,
    ⟨(Cell.register 1).addressCode, (6, 0), Nat.pair 0x2083 0⟩] ++
   (ROMView.nativeBootImage (p := babyBearModulus) Tests.TraceExecution.cells).drop 2 ++
   [⟨(Cell.ram 0).addressCode, (5, 0), Nat.pair 0 0⟩]
 
-private def trace : Data babyBearModulus where
+def trace : Data babyBearModulus where
   rows := [nativeRow]
   rom := ROM.table cells physical
   initial := PCState.boundary 0 (4, 0)

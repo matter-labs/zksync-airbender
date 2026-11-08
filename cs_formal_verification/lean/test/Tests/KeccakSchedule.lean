@@ -1,4 +1,7 @@
-import Slop.Keccak.Schedule
+module
+public import Slop.Keccak.Schedule
+
+@[expose] public section
 
 namespace Tests.KeccakSchedule
 open Airbender.Keccak Airbender.Keccak.Proofs

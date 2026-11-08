@@ -1,6 +1,9 @@
-import Human.Helpers.UnifiedReduced.RVRequestTrace
-import Slop.UnifiedReduced.Delegation
-import Slop.Delegation.RVCallerDecoder
+module
+public import Human.Helpers.UnifiedReduced.RVRequestTrace
+public import Slop.UnifiedReduced.Delegation
+public import Slop.Delegation.RVCallerDecoder
+
+@[expose] public section
 
 /-! RV sibling of `caller_binding` (`Slop/UnifiedReduced/Delegation.lean`): a selected unified caller whose query is
     in the RV caller table decodes (`RV.decode`) to `.delegate k` of its family, and `RV.step` at its PC is that call. -/

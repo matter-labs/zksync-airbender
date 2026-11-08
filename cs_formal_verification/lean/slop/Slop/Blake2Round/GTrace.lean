@@ -1,5 +1,8 @@
-import Slop.Blake2Round.GWord
-import Slop.Blake2G.Soundness
+module
+public import Slop.Blake2Round.GWord
+public import Slop.Blake2G.Soundness
+
+@[expose] public section
 
 set_option warningAsError true
 

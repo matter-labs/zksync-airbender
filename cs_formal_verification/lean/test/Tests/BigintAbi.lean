@@ -1,4 +1,7 @@
-import Slop.Bigint.Claims
+module
+public import Slop.Bigint.Claims
+
+@[expose] public section
 
 namespace Tests.BigintAbi
 open Airbender
@@ -6,13 +9,13 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-private def row (withOpcode : Bool) (high : Nat) : Nat → ZMod babyBearModulus
+def row (withOpcode : Bool) (high : Nat) : Nat → ZMod babyBearModulus
   | 0 | 212 | 214 | 215 => 1
   | 55 | 59 => if withOpcode then 1 else 0
   | 56 => high
   | _ => 0
 
-private abbrev setup : Table (ZMod babyBearModulus) (fields 3) := Bigint.setupTable
+abbrev setup : Table (ZMod babyBearModulus) (fields 3) := Bigint.setupTable
 
 theorem abiRowsSatisfy (withOpcode : Bool) (high : Nat) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row withOpcode high))

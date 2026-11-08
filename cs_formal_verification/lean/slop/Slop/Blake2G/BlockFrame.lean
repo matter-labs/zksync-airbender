@@ -1,4 +1,7 @@
-import Slop.Blake2G.StateCells
+module
+public import Slop.Blake2G.StateCells
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic

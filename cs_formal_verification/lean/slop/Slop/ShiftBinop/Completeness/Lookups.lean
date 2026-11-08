@@ -1,7 +1,10 @@
-import Slop.ShiftBinop.ArtifactChecks
-import Slop.ShiftBinop.OpIndex
-import Slop.Eval
-import Mathlib.Tactic.FinCases
+module
+public import Slop.ShiftBinop.ArtifactChecks
+public import Slop.ShiftBinop.OpIndex
+public import Slop.Eval
+public import Mathlib.Tactic.FinCases
+
+@[expose] public section
 
 /-! Completeness of the shift/binary table queries, proved once for every row (lean-strategies §2.1):
 each query's entry is its row's columns, so a query holds when those columns are a table row. -/
@@ -74,7 +77,7 @@ theorem query_of_columns {p : Nat} [Fact p.Prime] {w : Nat → ZMod p} (i : Fin 
 
 theorem sign_arity {p : Nat} [Fact p.Prime] :
     ((FlatOperation.lookups (importedConstraints (p := p))).get
-      ⟨2, by rw [lookup_count]; decide⟩).table.arity = 10 := rfl
+      ⟨2, by rw [lookup_count]; decide⟩).table.arity = 10 := by rfl
 
 /-- The sign/truncation query's entry at its checked width. -/
 def signEntry {p : Nat} [Fact p.Prime] : Vector (Expression (ZMod p)) 10 :=
@@ -83,7 +86,7 @@ def signEntry {p : Nat} [Fact p.Prime] : Vector (Expression (ZMod p)) 10 :=
 
 theorem sign_shape {p : Nat} [Fact p.Prime] :
     (FlatOperation.lookups (importedConstraints (p := p))).get ⟨2, by rw [lookup_count]; decide⟩ =
-      Verification.shiftBinopLookup signEntry := rfl
+      Verification.shiftBinopLookup signEntry := by rfl
 
 /-- The sign/truncation query holds when its column values are the setup row at their index. -/
 theorem sign_query_of_columns {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}

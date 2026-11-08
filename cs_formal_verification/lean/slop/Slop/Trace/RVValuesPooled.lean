@@ -1,9 +1,12 @@
-import Slop.JumpBranchSlt.RVValues
-import Slop.ShiftBinop.RVValues
-import Slop.MulDiv.Values
-import Slop.SubwordMemory.Values
-import Slop.Trace.Family.Values
-import Slop.Trace.Pooled
+module
+public import Slop.JumpBranchSlt.RVValues
+public import Slop.ShiftBinop.RVValues
+public import Slop.MulDiv.Values
+public import Slop.SubwordMemory.Values
+public import Slop.Trace.Family.Values
+public import Slop.Trace.Pooled
+
+@[expose] public section
 
 /-! The pooled RV value-bounds law: the family write rules assembled over the pooled decoder projection. -/
 

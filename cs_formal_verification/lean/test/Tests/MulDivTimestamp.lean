@@ -1,7 +1,11 @@
-import Tests.MulDiv
-import Slop.MulDiv.Trace
-import Slop.Verification.StaticLookup
-import Mathlib.Tactic.IntervalCases
+module
+public import Tests.MulDiv
+public import Slop.MulDiv.Trace
+public import Slop.Verification.StaticLookup
+public import Mathlib.Tactic.IntervalCases
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.MulDivTimestamp
 open Airbender Arithmetic Trace

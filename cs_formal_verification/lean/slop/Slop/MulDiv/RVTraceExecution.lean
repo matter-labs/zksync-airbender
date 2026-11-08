@@ -1,10 +1,13 @@
-import Human.Trace.Families.MulDiv.RVTheorems
-import Slop.MulDiv.RVQuery
-import Slop.MulDiv.RVResult
-import Slop.MulDiv.Values
-import Slop.Trace.RVFamilyTrace
-import Slop.Trace.RVValues
-import Slop.Trace.RVZeroRows
+module
+public import Human.Trace.Families.MulDiv.RVTheorems
+public import Slop.MulDiv.RVQuery
+public import Slop.MulDiv.RVResult
+public import Slop.MulDiv.Values
+public import Slop.Trace.RVFamilyTrace
+public import Slop.Trace.RVValues
+public import Slop.Trace.RVZeroRows
+
+@[expose] public section
 
 /-! The MulDiv trace claim on the RV route (`RVTraceSoundnessClaim`): no Sail state, interpreter or `Configured` fact.
     Each row is one `RV.exec` of its entry's instruction (`rv_row_step`: decoder facts `rv_query_facts`, operand

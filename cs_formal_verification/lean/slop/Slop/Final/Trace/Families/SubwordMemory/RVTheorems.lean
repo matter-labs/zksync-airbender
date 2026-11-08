@@ -1,5 +1,8 @@
-import Human.Trace.Families.SubwordMemory.RVTheorems
-import Slop.SubwordMemory.RVTraceExecution
+module
+public import Human.Trace.Families.SubwordMemory.RVTheorems
+public import Slop.SubwordMemory.RVTraceExecution
+
+@[expose] public section
 
 namespace Airbender.SubwordMemory
 

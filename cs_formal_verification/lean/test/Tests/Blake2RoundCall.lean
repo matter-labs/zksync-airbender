@@ -1,4 +1,7 @@
-import Slop.Blake2Round.Claims
+module
+public import Slop.Blake2Round.Claims
+
+@[expose] public section
 
 namespace Tests.Blake2RoundCall
 open Airbender Arithmetic

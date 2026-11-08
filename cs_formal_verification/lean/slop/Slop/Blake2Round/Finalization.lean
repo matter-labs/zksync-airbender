@@ -1,8 +1,11 @@
-import Human.Circuits.Blake2Round.Finalization
-import Slop.Constraints
-import Slop.Blake2Round.FinalWriteback
-import Slop.Blake2Round.OpIndex
-import Mathlib.Tactic.LinearCombination
+module
+public import Human.Circuits.Blake2Round.Finalization
+public import Slop.Constraints
+public import Slop.Blake2Round.FinalWriteback
+public import Slop.Blake2Round.OpIndex
+public import Mathlib.Tactic.LinearCombination
+
+@[expose] public section
 
 set_option warningAsError true
 

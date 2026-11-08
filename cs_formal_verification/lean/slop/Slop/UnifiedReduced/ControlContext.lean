@@ -1,10 +1,13 @@
-import Human.Circuits.UnifiedReduced.Control
-import Human.Helpers.Decoder.Instruction
-import Mathlib.Logic.Relation
-import Slop.Trace.RowContext
-import Slop.UnifiedReduced.Values
-import Slop.UnifiedReduced.ZeroRegister
-import Slop.UnifiedReduced.ControlProjection
+module
+public import Human.Circuits.UnifiedReduced.Control
+public import Human.Helpers.Decoder.Instruction
+public import Mathlib.Logic.Relation
+public import Slop.Trace.RowContext
+public import Slop.UnifiedReduced.Values
+public import Slop.UnifiedReduced.ZeroRegister
+public import Slop.UnifiedReduced.ControlProjection
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Control.Proofs
 open Arithmetic Reference.RiscV Trace Trace.Proofs

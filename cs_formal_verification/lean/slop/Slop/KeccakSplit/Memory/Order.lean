@@ -1,7 +1,12 @@
-import Slop.KeccakSplit.Memory.GroupEquations
-import Slop.KeccakSplit.Memory.ParityClock
-import Human.Circuits.KeccakSplit.Native
-import Slop.Arithmetic.Lemmas
+module
+public import Slop.KeccakSplit.Memory.GroupEquations
+public import Slop.KeccakSplit.Memory.ParityClock
+public import Human.Circuits.KeccakSplit.Native
+public import Slop.Arithmetic.Lemmas
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 /- Read-before-write order of every split-worker port (ported from PR #585's
    SplitGroupedOrder, SplitControlLookup and SplitPortOrder, no-cache only).
@@ -87,10 +92,10 @@ theorem grouped_distance_order [Fact p.Prime]
 
 
 theorem theta_rho_lookup_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (ThetaRho.importedConstraints (ThetaRho.setup (p := p)))).length = 51 := rfl
+    (FlatOperation.lookups (ThetaRho.importedConstraints (ThetaRho.setup (p := p)))).length = 51 := by rfl
 
 theorem chi5_lookup_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (Chi5.importedConstraints (Chi5.setup (p := p)))).length = 18 := rfl
+    (FlatOperation.lookups (Chi5.importedConstraints (Chi5.setup (p := p)))).length = 18 := by rfl
 
 /-- The theta/rho controller query (native generic lookup 9, after the alignment query). -/
 noncomputable def thetaRhoControlQuery {p : Nat} [Fact p.Prime] : Lookup (ZMod p) :=
@@ -98,11 +103,11 @@ noncomputable def thetaRhoControlQuery {p : Nat} [Fact p.Prime] : Lookup (ZMod p
     ⟨10, by rw [theta_rho_lookup_count]; omega⟩
 
 theorem theta_rho_control_arity {p : Nat} [Fact p.Prime] :
-    (thetaRhoControlQuery (p := p)).table.arity = 9 := rfl
+    (thetaRhoControlQuery (p := p)).table.arity = 9 := by rfl
 
 theorem theta_rho_control_shape {p : Nat} [Fact p.Prime] :
     thetaRhoControlQuery (p := p) = Lookup.mk (ThetaRho.setup (p := p)).toRaw
-      ((thetaRhoControlQuery (p := p)).entry.cast theta_rho_control_arity) := rfl
+      ((thetaRhoControlQuery (p := p)).entry.cast theta_rho_control_arity) := by rfl
 
 /-- The chi5 controller query (native generic lookup 0, after the alignment query). -/
 noncomputable def chi5ControlQuery {p : Nat} [Fact p.Prime] : Lookup (ZMod p) :=
@@ -110,11 +115,11 @@ noncomputable def chi5ControlQuery {p : Nat} [Fact p.Prime] : Lookup (ZMod p) :=
     ⟨1, by rw [chi5_lookup_count]; omega⟩
 
 theorem chi5_control_arity {p : Nat} [Fact p.Prime] :
-    (chi5ControlQuery (p := p)).table.arity = 11 := rfl
+    (chi5ControlQuery (p := p)).table.arity = 11 := by rfl
 
 theorem chi5_control_shape {p : Nat} [Fact p.Prime] :
     chi5ControlQuery (p := p) = Lookup.mk (Chi5.setup (p := p)).toRaw
-      ((chi5ControlQuery (p := p)).entry.cast chi5_control_arity) := rfl
+      ((chi5ControlQuery (p := p)).entry.cast chi5_control_arity) := by rfl
 
 theorem getElem_cast_map {α β : Type} [Inhabited α] {n m : Nat} (h : n = m)
     (v : Vector α n) (f : α → β) (i : Nat) (hi : i < m) :

@@ -1,5 +1,8 @@
-import Slop.UnifiedReduced.RV.ControlQueries
-import Slop.JumpBranchSlt.Jump
+module
+public import Slop.UnifiedReduced.RV.ControlQueries
+public import Slop.JumpBranchSlt.Jump
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic

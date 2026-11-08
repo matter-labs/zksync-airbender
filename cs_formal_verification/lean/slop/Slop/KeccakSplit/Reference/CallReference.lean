@@ -1,4 +1,8 @@
-import Human.Circuits.KeccakSplit.Call
+module
+public import Human.Circuits.KeccakSplit.Call
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Call.Proofs
 set_option warningAsError true

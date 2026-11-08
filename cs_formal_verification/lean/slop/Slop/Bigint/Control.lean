@@ -1,7 +1,10 @@
-import Slop.Bigint.ArtifactChecks
-import Human.Circuits.Bigint.Control
-import Slop.Constraints
-import Slop.Arithmetic.Lemmas
+module
+public import Slop.Bigint.ArtifactChecks
+public import Human.Circuits.Bigint.Control
+public import Slop.Constraints
+public import Slop.Arithmetic.Lemmas
+
+@[expose] public section
 
 namespace Airbender.Bigint.Control.Proofs
 open Arithmetic

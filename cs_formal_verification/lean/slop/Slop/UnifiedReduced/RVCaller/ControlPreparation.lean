@@ -1,9 +1,12 @@
-import Human.Trace.UnifiedReduced.RVControlPreparation
-import Slop.UnifiedReduced.RVCaller.MixedWindowProjection
-import Slop.UnifiedReduced.ZeroRegister
-import Slop.Arithmetic.Word
-import Slop.UnifiedReduced.RV.Row
-import Slop.Trace.RVFetch
+module
+public import Human.Trace.UnifiedReduced.RVControlPreparation
+public import Slop.UnifiedReduced.RVCaller.MixedWindowProjection
+public import Slop.UnifiedReduced.ZeroRegister
+public import Slop.Arithmetic.Word
+public import Slop.UnifiedReduced.RV.Row
+public import Slop.Trace.RVFetch
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Arithmetic

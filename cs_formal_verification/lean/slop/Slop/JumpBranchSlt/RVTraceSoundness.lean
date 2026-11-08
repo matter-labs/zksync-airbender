@@ -1,9 +1,12 @@
-import Human.Circuits.JumpBranchSlt.RVTheorems
-import Slop.JumpBranchSlt.RVRow
-import Slop.Trace.RVPooledRow
-import Slop.Trace.RVValues
-import Slop.Trace.PC
-import Slop.Trace.RVRowGlue
+module
+public import Human.Circuits.JumpBranchSlt.RVTheorems
+public import Slop.JumpBranchSlt.RVRow
+public import Slop.Trace.RVPooledRow
+public import Slop.Trace.RVValues
+public import Slop.Trace.PC
+public import Slop.Trace.RVRowGlue
+
+@[expose] public section
 
 /-! RV32 comparison, branch and jump soundness (`Comparison/Branch/Jump.RVSoundnessClaim`), on the RV route: no Sail
     state, interpreter or `Configured` fact.
@@ -48,7 +51,7 @@ theorem rv_jbs_row_reads (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 2 
   have shape : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
         importedConstraintsMemoryPorts[2]] := by
-    have portsEq : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := rfl
+    have portsEq : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := by rfl
     rw [portsEq]
     first
       | rfl

@@ -1,11 +1,15 @@
-import Slop.MulDiv.Claims
+module
+public import Slop.MulDiv.Claims
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.Division
 open Airbender
 
 -- 13 / 5 = 2, remainder 3. The remainder comparison borrows across its low
 -- limb; the PC independently carries from 0x3fffc to 0x40000.
-private def row (remainder : Bool) : Nat → ZMod babyBearModulus
+def row (remainder : Bool) : Nat → ZMod babyBearModulus
   | 0 => 65532
   | 1 => 3
   | 4 | 5 | 7 | 55 => 1
@@ -52,7 +56,7 @@ private theorem satisfies (remainder : Bool) :
 
 -- The product equality 10 = 1*5 + 5 holds, but remainder = divisor requires
 -- comparison high limb 65536, which the imported range lookup rejects.
-private def badRemainder : Nat → ZMod babyBearModulus
+def badRemainder : Nat → ZMod babyBearModulus
   | 20 | 45 => 10
   | 28 | 51 => 5
   | 35 | 37 | 49 | 60 => 1

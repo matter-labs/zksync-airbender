@@ -1,11 +1,14 @@
-import Slop.Blake2Round.ArtifactChecks
-import Slop.Blake2Round.OpIndex
-import Human.Circuits.Blake2Round.Artifact
-import Human.Helpers.Properties
-import Slop.Constraints
-import Slop.Arithmetic.Chunks
-import Slop.Trace.Timestamps
-import Human.Helpers.Core.BabyBearPrime
+module
+public import Slop.Blake2Round.ArtifactChecks
+public import Slop.Blake2Round.OpIndex
+public import Human.Circuits.Blake2Round.Artifact
+public import Human.Helpers.Properties
+public import Slop.Constraints
+public import Slop.Arithmetic.Chunks
+public import Slop.Trace.Timestamps
+public import Human.Helpers.Core.BabyBearPrime
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Proofs
 

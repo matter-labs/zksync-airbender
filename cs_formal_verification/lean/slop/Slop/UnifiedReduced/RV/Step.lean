@@ -1,6 +1,9 @@
-import Slop.UnifiedReduced.RV.Row
-import Slop.ISA.RV.Step
-import Human.Circuits.UnifiedReduced.Tables.SetupRV
+module
+public import Slop.UnifiedReduced.RV.Row
+public import Slop.ISA.RV.Step
+public import Human.Circuits.UnifiedReduced.Tables.SetupRV
+
+@[expose] public section
 
 /-! The per-row obligation of the unified RV route (`RowStep`: `RV.exec` of the row's decoded instruction agrees with
     the row's RV history followed by its final PC) and the facts every row gives (`RowFacts`). Proved here for the NOP

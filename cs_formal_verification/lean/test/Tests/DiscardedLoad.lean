@@ -1,9 +1,12 @@
-import Tests.TraceExecution
-import Tests.TraceZeroRegister
-import Human.Circuits.AddSub.RowInput
-import Human.Helpers.Core.CircuitOutput
-import Mathlib.Tactic.IntervalCases
-import Slop.KernelRfl
+module
+public import Tests.TraceExecution
+public import Tests.TraceZeroRegister
+public import Human.Circuits.AddSub.RowInput
+public import Human.Helpers.Core.CircuitOutput
+public import Mathlib.Tactic.IntervalCases
+public import Slop.KernelRfl
+
+@[expose] public section
 
 namespace Tests.DiscardedLoad
 open Airbender Arithmetic Trace

@@ -1,4 +1,7 @@
-import Slop.UnifiedReduced.RV.Step
+module
+public import Slop.UnifiedReduced.RV.Step
+
+@[expose] public section
 
 /-! ADD/SUB/ADDI/LUI/AUIPC and TRIADD rows (decoder bits 0–9) on the RV route. -/
 

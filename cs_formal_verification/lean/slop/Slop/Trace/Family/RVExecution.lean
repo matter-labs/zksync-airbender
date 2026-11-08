@@ -1,14 +1,17 @@
-import Human.Trace.Families.AddSub.RVTheorems
-import Slop.AddSub.RVTraceExecution
-import Slop.WordMemory.RVTraceExecution
-import Slop.Trace.Family.History
-import Slop.Trace.Family.Values
-import Slop.Trace.RVFamilySelectors
-import Slop.Trace.RVZeroRows
-import Slop.Trace.RVValues
-import Slop.Trace.ROMView
-import Slop.Trace.RVBootSeed
-import Slop.Final.Circuits.InitsTeardowns.Theorems
+module
+public import Human.Trace.Families.AddSub.RVTheorems
+public import Slop.AddSub.RVTraceExecution
+public import Slop.WordMemory.RVTraceExecution
+public import Slop.Trace.Family.History
+public import Slop.Trace.Family.Values
+public import Slop.Trace.RVFamilySelectors
+public import Slop.Trace.RVZeroRows
+public import Slop.Trace.RVValues
+public import Slop.Trace.ROMView
+public import Slop.Trace.RVBootSeed
+public import Slop.Final.Circuits.InitsTeardowns.Theorems
+
+@[expose] public section
 
 /-! The ADD/SUB + word-memory trace claims on the RV route (`RVAirbenderSoundnessClaim`, `RVNativeBootSoundnessClaim`):
     no Sail state, interpreter, `Configured` or `OrdinaryWordAddress` fact. Rows step by family

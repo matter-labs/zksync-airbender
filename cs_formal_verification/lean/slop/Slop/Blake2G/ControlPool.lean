@@ -1,5 +1,8 @@
-import Slop.Blake2G.CallControl
-import Slop.Delegation.IndexedPaths
+module
+public import Slop.Blake2G.CallControl
+public import Slop.Delegation.IndexedPaths
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 open Trace Arithmetic

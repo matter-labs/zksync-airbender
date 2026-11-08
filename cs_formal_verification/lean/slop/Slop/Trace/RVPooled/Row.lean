@@ -1,11 +1,14 @@
-import Slop.Trace.RVPooled.AddSub
-import Slop.Trace.RVPooled.WordMemory
-import Slop.Trace.RVPooled.JumpBranchSlt
-import Slop.Trace.RVPooled.MulDiv
-import Slop.Trace.RVPooled.ShiftBinop
-import Slop.Trace.RVPooled.SubwordMemory
-import Slop.Trace.RVFetch
-import Slop.Trace.RVRom
+module
+public import Slop.Trace.RVPooled.AddSub
+public import Slop.Trace.RVPooled.WordMemory
+public import Slop.Trace.RVPooled.JumpBranchSlt
+public import Slop.Trace.RVPooled.MulDiv
+public import Slop.Trace.RVPooled.ShiftBinop
+public import Slop.Trace.RVPooled.SubwordMemory
+public import Slop.Trace.RVFetch
+public import Slop.Trace.RVRom
+
+@[expose] public section
 
 /-! Every pooled row with standard metadata takes one `RV.exec` (`rv_pooled_row_step`, by family), and what an accepted
     RV-decoded trace gives for each of its rows (`rv_pooled_row_facts`, for any decoder projection). -/

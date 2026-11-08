@@ -1,5 +1,8 @@
-import Tests.ShiftBinop
-import Slop.ShiftBinop.Trace
+module
+public import Tests.ShiftBinop
+public import Slop.ShiftBinop.Trace
+
+@[expose] public section
 
 namespace Tests.ShiftBinopTimestamp
 open Airbender Arithmetic Trace

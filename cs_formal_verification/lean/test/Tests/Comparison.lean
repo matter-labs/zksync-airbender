@@ -1,5 +1,9 @@
-import Slop.JumpBranchSlt.Claims
-import Slop.JumpBranchSlt.Completeness.Witness
+module
+public import Slop.JumpBranchSlt.Claims
+public import Slop.JumpBranchSlt.Completeness.Witness
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.Comparison
 open Airbender
@@ -7,7 +11,7 @@ open Airbender
 /-- A selected SLTU row with zero operands and correct lookup results, but an
     unbounded final-PC high limb. This is a local-interface counterexample, not a
     claim that the full decoder/ROM/execution arguments accept the row. -/
-private def row : Nat → ZMod babyBearModulus
+def row : Nat → ZMod babyBearModulus
   | 4 | 7 | 13 | 40 | 41 => 1
   | 10 => 3
   | 16 | 18 | 36 => 4

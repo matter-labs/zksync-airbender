@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.ThetaRho.Queries
+module
+public import Slop.KeccakSplit.ThetaRho.Queries
+
+@[expose] public section
 
 /- Theta/rho lane limbs and the bytes of its queries (ported from PR #585's
    SplitThetaBytes). -/

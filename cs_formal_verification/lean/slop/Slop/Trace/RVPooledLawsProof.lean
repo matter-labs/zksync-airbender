@@ -1,7 +1,10 @@
-import Slop.Trace.RVPooledLaws
-import Slop.Trace.Pooled
-import Slop.Trace.RVZeroPooled
-import Slop.Trace.RVValuesPooled
+module
+public import Slop.Trace.RVPooledLaws
+public import Slop.Trace.Pooled
+public import Slop.Trace.RVZeroPooled
+public import Slop.Trace.RVValuesPooled
+
+@[expose] public section
 
 /-! Proof of the pooled RV laws contract (`RVPooledLaws`): the only module that imports every family's row lemmas.
     Imported by the final theorems, not by the per-family proofs. -/

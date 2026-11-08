@@ -1,11 +1,16 @@
-import Slop.UnifiedReduced.Claims
-import Slop.UnifiedReduced.Completeness.Arith
+module
+public import Slop.UnifiedReduced.Claims
+public import Slop.UnifiedReduced.Completeness.Arith
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.UnifiedReduced
 open Airbender Airbender.Arithmetic
 
 -- A row using only the setup's disabled-query entry.
-private def zeroSetup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic {
+def zeroSetup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic {
   name := "UnifiedDisabledQueries"
   length := 1
   row _ := #v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -19,11 +24,11 @@ private theorem zeroSetup_zero : UnifiedReduced.Completeness.ZeroRow zeroSetup :
   change ∃ i : Fin 1, entry.map (Expression.eval env) = #v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   exact ⟨0, h.trans (by decide)⟩
 
-private def rowWitness : UnifiedReduced.Completeness.Arith :=
+def rowWitness : UnifiedReduced.Completeness.Arith :=
   ⟨⟨65532, 2, 0, 0, 0, 0, 0, 0, 0, 0⟩, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0⟩
-private def row : Nat → ZMod babyBearModulus := rowWitness.honest
+def row : Nat → ZMod babyBearModulus := rowWitness.honest
 
-private theorem satisfies :
+theorem satisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment row)
       (UnifiedReduced.importedConstraints zeroSetup) :=
   UnifiedReduced.Completeness.Arith.complete_core _
@@ -41,9 +46,9 @@ example : (∑ i : Fin 18, (row UnifiedReduced.Variables.dispatchColumns[i]).val
 
 open Airbender.Reference.RiscV
 
-private def aliasedWitness : UnifiedReduced.Completeness.Arith :=
+def aliasedWitness : UnifiedReduced.Completeness.Arith :=
   { rowWitness with rs1 := 1, rs2 := 1, rd := 1, aLo := 123, bLo := 123 }
-private def aliasedRow : Nat → ZMod babyBearModulus := aliasedWitness.honest
+def aliasedRow : Nat → ZMod babyBearModulus := aliasedWitness.honest
 
 private theorem aliased_satisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment aliasedRow)
@@ -73,13 +78,13 @@ open Trace
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-private def nativeWitness (rollover : Bool) : UnifiedReduced.Completeness.Arith :=
+def nativeWitness (rollover : Bool) : UnifiedReduced.Completeness.Arith :=
   { aliasedWitness with
     frame := ⟨65532, 2, if rollover then 524284 else 4, if rollover then 7 else 0, 0, 0,
       if rollover then 524284 else 4, if rollover then 7 else 0,
       if rollover then 524285 else 5, if rollover then 7 else 0⟩
     oldLo := 123 }
-private def nativeAssignment (rollover : Bool) : Nat → ZMod babyBearModulus :=
+def nativeAssignment (rollover : Bool) : Nat → ZMod babyBearModulus :=
   (nativeWitness rollover).honest
 
 private theorem native_constraints (rollover : Bool) : FlatOperation.ConstraintsHoldFlat
@@ -90,10 +95,10 @@ private theorem native_constraints (rollover : Bool) : FlatOperation.Constraints
       (by refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide)
       (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) _ zeroSetup_zero
 
-private def nativeToken (timeLo timeHi value : Nat) : MemoryToken babyBearModulus :=
+def nativeToken (timeLo timeHi value : Nat) : MemoryToken babyBearModulus :=
   ⟨(Cell.register 1).addressCode, (timeLo, timeHi), Nat.pair value 0⟩
 
-private def nativeTrace (rollover : Bool) : UnifiedTrace babyBearModulus where
+def nativeTrace (rollover : Bool) : UnifiedTrace babyBearModulus where
   rows := [⟨.machine, nativeAssignment rollover⟩]
   rom := zeroSetup
   initial := ⟨(65532, 2), (if rollover then 524284 else 4, if rollover then 7 else 0)⟩
@@ -128,11 +133,11 @@ theorem native_clock_effects (rollover : Bool) :
   Airbender.UnifiedReduced.native_clocks (by decide) (by decide)
     (native_accepted rollover) (native_boundary rollover)
 
-private def fabricatedWitness : UnifiedReduced.Completeness.Arith :=
+def fabricatedWitness : UnifiedReduced.Completeness.Arith :=
   { nativeWitness false with bLo := 124 }
-private def fabricatedAssignment : Nat → ZMod babyBearModulus := fabricatedWitness.honest
+def fabricatedAssignment : Nat → ZMod babyBearModulus := fabricatedWitness.honest
 
-private def fabricatedTrace : UnifiedTrace babyBearModulus :=
+def fabricatedTrace : UnifiedTrace babyBearModulus :=
   { (nativeTrace false) with
     rows := [⟨.machine, fabricatedAssignment⟩]
     terminalMemory := [nativeToken 6 0 247] }

@@ -1,6 +1,9 @@
-import Slop.Bigint.Lookups
-import Slop.Bigint.Additive
-import Slop.Bigint.Equality
+module
+public import Slop.Bigint.Lookups
+public import Slop.Bigint.Additive
+public import Slop.Bigint.Equality
+
+@[expose] public section
 
 namespace Airbender.Bigint.Proofs
 

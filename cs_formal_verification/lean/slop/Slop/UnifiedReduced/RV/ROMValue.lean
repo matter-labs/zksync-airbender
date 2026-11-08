@@ -1,5 +1,8 @@
-import Slop.UnifiedReduced.WordROM
-import Slop.UnifiedReduced.RV.ROMLookups
+module
+public import Slop.UnifiedReduced.WordROM
+public import Slop.UnifiedReduced.RV.ROMLookups
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic Trace

@@ -1,8 +1,11 @@
-import Human.Trace.UnifiedReduced.RVJointHashWindows
-import Slop.UnifiedReduced.RVCaller.WindowProjection
-import Slop.UnifiedReduced.RVCaller.SpanTarget
-import Slop.Blake2G.RVWindows
-import Slop.Blake2Round.RVWindows
+module
+public import Human.Trace.UnifiedReduced.RVJointHashWindows
+public import Slop.UnifiedReduced.RVCaller.WindowProjection
+public import Slop.UnifiedReduced.RVCaller.SpanTarget
+public import Slop.Blake2G.RVWindows
+public import Slop.Blake2Round.RVWindows
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Arithmetic

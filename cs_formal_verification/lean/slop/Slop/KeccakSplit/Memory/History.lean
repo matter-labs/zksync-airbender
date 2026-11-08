@@ -1,8 +1,12 @@
-import Slop.KeccakSplit.Memory.Order
-import Slop.Trace.TransferBoundary
-import Slop.Trace.TransferHistory
-import Slop.Trace.History
-import Human.Helpers.Delegation.WorkerContext
+module
+public import Slop.KeccakSplit.Memory.Order
+public import Slop.Trace.TransferBoundary
+public import Slop.Trace.TransferHistory
+public import Slop.Trace.History
+public import Human.Helpers.Delegation.WorkerContext
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 /- The split pool's logical memory history, through the generic Transfer layer
    (as slop/Slop/Delegation/{Memory,History,SailHistory,Terminal} do for the other

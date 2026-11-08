@@ -1,9 +1,12 @@
-import Slop.Delegation.Values
-import Slop.Keccak.Theta
-import Slop.Keccak.Chi
-import Slop.Keccak.Iota
-import Slop.Keccak.Mix
-import Slop.Keccak.Rho
+module
+public import Slop.Delegation.Values
+public import Slop.Keccak.Theta
+public import Slop.Keccak.Chi
+public import Slop.Keccak.Iota
+public import Slop.Keccak.Mix
+public import Slop.Keccak.Rho
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Trace Arithmetic

@@ -1,4 +1,7 @@
-import Slop.Blake2Round.PreparationBase
+module
+public import Slop.Blake2Round.PreparationBase
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Preparation.Proofs
 open Arithmetic

@@ -1,16 +1,19 @@
-import Slop.Blake2Round.PreparationBase
-import Slop.Blake2Round.PreparationExtended0
-import Slop.Blake2Round.PreparationExtended1
-import Slop.Blake2Round.PreparationExtended2
-import Slop.Blake2Round.PreparationExtended3
-import Slop.Blake2Round.ArtifactChecks
-import Slop.Blake2Round.OpIndex
-import Slop.Blake2G.OpIndex
-import Human.Circuits.Blake2Round.Preparation
-import Slop.Constraints
-import Slop.Arithmetic.Lemmas
-import Mathlib.Tactic.FinCases
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.Blake2Round.PreparationBase
+public import Slop.Blake2Round.PreparationExtended0
+public import Slop.Blake2Round.PreparationExtended1
+public import Slop.Blake2Round.PreparationExtended2
+public import Slop.Blake2Round.PreparationExtended3
+public import Slop.Blake2Round.ArtifactChecks
+public import Slop.Blake2Round.OpIndex
+public import Slop.Blake2G.OpIndex
+public import Human.Circuits.Blake2Round.Preparation
+public import Slop.Constraints
+public import Slop.Arithmetic.Lemmas
+public import Mathlib.Tactic.FinCases
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Preparation.Proofs
 open Arithmetic

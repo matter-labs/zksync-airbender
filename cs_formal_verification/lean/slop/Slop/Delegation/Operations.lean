@@ -1,8 +1,11 @@
-import Human.Helpers.Delegation.Operations
-import Slop.Bigint.Memory
-import Slop.Blake2G.Memory
-import Slop.Blake2Round.Memory
-import Slop.Keccak.Memory
+module
+public import Human.Helpers.Delegation.Operations
+public import Slop.Bigint.Memory
+public import Slop.Blake2G.Memory
+public import Slop.Blake2Round.Memory
+public import Slop.Keccak.Memory
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 open Trace

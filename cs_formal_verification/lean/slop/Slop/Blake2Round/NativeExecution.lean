@@ -1,8 +1,11 @@
-import Human.Circuits.Blake2Round.Execution
-import Slop.Blake2Round.Row
-import Slop.Delegation.Operations
-import Slop.Delegation.Requests
-import Slop.Delegation.SailHistory
+module
+public import Human.Circuits.Blake2Round.Execution
+public import Slop.Blake2Round.Row
+public import Slop.Delegation.Operations
+public import Slop.Delegation.Requests
+public import Slop.Delegation.SailHistory
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Native.Proofs
 open Trace

@@ -1,7 +1,10 @@
-import Human.Circuits.Blake2G.Row
-import Slop.Blake2G.Control
-import Slop.Blake2G.Addresses
-import Slop.Blake2G.State
+module
+public import Human.Circuits.Blake2G.Row
+public import Slop.Blake2G.Control
+public import Slop.Blake2G.Addresses
+public import Slop.Blake2G.State
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Row.Proofs
 

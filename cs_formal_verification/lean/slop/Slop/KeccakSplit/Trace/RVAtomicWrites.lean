@@ -1,6 +1,9 @@
-import Human.Helpers.Memory.RVAtomicWrites
-import Slop.Trace.RVHistoryFrame
-import Slop.Delegation.RVCallHistory
+module
+public import Human.Helpers.Memory.RVAtomicWrites
+public import Slop.Trace.RVHistoryFrame
+public import Slop.Delegation.RVCallHistory
+
+@[expose] public section
 
 /-! RV twins of `Trace/AtomicWrites.lean`: an `RVHistory` is an atomic list of RV cell writes; untouched aligned cells
     keep their reads and every declared destination reads its written value. -/

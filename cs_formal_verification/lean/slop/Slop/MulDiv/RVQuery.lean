@@ -1,7 +1,10 @@
-import Human.Circuits.MulDiv.RVModel
-import Slop.Trace.DecoderBits
-import Slop.MulDiv
-import Slop.MulDiv.RVResult
+module
+public import Human.Circuits.MulDiv.RVModel
+public import Slop.Trace.DecoderBits
+public import Slop.MulDiv
+public import Slop.MulDiv.RVResult
+
+@[expose] public section
 
 /-! Native decoder metadata of the RV MulDiv row's instruction (`MulDiv.rvDecoderFields`, through the pooled
     registry `rvPooledDecoderFields`), and what a matching decoder query fixes in the row: selectors, PC limbs and

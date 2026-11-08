@@ -1,8 +1,11 @@
-import Human.Circuits.Keccak.Chi
-import Slop.Keccak.FixedLookups
-import Slop.Keccak.OpIndex
-import Slop.Eval
-import Slop.Arithmetic.BitwiseAssembly
+module
+public import Human.Circuits.Keccak.Chi
+public import Slop.Keccak.FixedLookups
+public import Slop.Keccak.OpIndex
+public import Slop.Eval
+public import Slop.Arithmetic.BitwiseAssembly
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic
@@ -14,7 +17,7 @@ set_option maxHeartbeats 1200000
 
 private def nativeLimbs (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 4, start + 5]
 private def temporary (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 2, start + 3]
-private def chiMode (second : Bool) : Fin 7 := if second then 6 else 5
+def chiMode (second : Bool) : Fin 7 := if second then 6 else 5
 private def aColumns (second : Bool) : Vector (Vector Nat 4) 5 :=
   if second then #v[nativeLimbs 31, nativeLimbs 23, nativeLimbs 15, nativeLimbs 31, nativeLimbs 15]
   else #v[nativeLimbs 15, nativeLimbs 23, nativeLimbs 15, nativeLimbs 31, nativeLimbs 23]

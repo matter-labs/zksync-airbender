@@ -1,7 +1,10 @@
-import Slop.Keccak.RVStateTrace
-import Slop.Keccak.PhysicalStep
-import Slop.Delegation.RVNativeViews
-import Slop.Delegation.RVCallLink
+module
+public import Slop.Keccak.RVStateTrace
+public import Slop.Keccak.PhysicalStep
+public import Slop.Delegation.RVNativeViews
+public import Slop.Delegation.RVCallLink
+
+@[expose] public section
 
 /-! RV twins of `StateTransport.lean`, `LaneFrame.lean`, `PhysicalStep.lean` and `CallPhysical.lean`: each special5
     call's RV history touches x10, x11 and the twelve lane halves of its six slots only (`rv_keccak_row_frame`),
@@ -22,7 +25,7 @@ def rvRamLane (state : RV.State) (address : BitVec 32) : Nat :=
 def rvPhysicalLanes (state : RV.State) (pointer : BitVec 32) : LaneState :=
   fun lane => rvRamLane state (pointer + BitVec.ofNat 32 (8 * lane.val))
 
-private def wordPort (index : Fin 12) : MemoryPort :=
+def wordPort (index : Fin 12) : MemoryPort :=
   importedConstraintsMemoryPorts[2 + index.val]'(by change 2 + index.val < 14; omega)
 
 private theorem word_port_address (index : Fin 12) :

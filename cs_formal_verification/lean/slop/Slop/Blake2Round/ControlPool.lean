@@ -1,6 +1,9 @@
-import Slop.Blake2Round.ExclusiveMask
-import Slop.Delegation.CallPaths
-import Human.Trace.Workers.Blake2Round.Call
+module
+public import Slop.Blake2Round.ExclusiveMask
+public import Slop.Delegation.CallPaths
+public import Human.Trace.Workers.Blake2Round.Call
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Proofs
 open Trace Arithmetic

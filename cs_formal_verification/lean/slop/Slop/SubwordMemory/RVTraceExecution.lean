@@ -1,15 +1,18 @@
-import Human.Trace.Families.SubwordMemory.RVTheorems
-import Slop.SubwordMemory.RVQuery
-import Slop.SubwordMemory.RVData
-import Slop.SubwordMemory.RVWritable
-import Slop.SubwordMemory.Stores
-import Slop.SubwordMemory.Values
-import Slop.Trace.RVFamilyTrace
-import Slop.Trace.RVValues
-import Slop.Trace.RVZeroRows
-import Slop.Trace.RVWritable
-import Slop.ISA.RV.DecodeShape
-import Slop.ISA.RV.MemSubword
+module
+public import Human.Trace.Families.SubwordMemory.RVTheorems
+public import Slop.SubwordMemory.RVQuery
+public import Slop.SubwordMemory.RVData
+public import Slop.SubwordMemory.RVWritable
+public import Slop.SubwordMemory.Stores
+public import Slop.SubwordMemory.Values
+public import Slop.Trace.RVFamilyTrace
+public import Slop.Trace.RVValues
+public import Slop.Trace.RVZeroRows
+public import Slop.Trace.RVWritable
+public import Slop.ISA.RV.DecodeShape
+public import Slop.ISA.RV.MemSubword
+
+@[expose] public section
 
 /-! The RAM subword trace claim on the RV route (`RVRamTraceSoundnessClaim`): no Sail state, interpreter,
     `Configured` or `OrdinaryWordAddress` fact. Each row is one `RV.exec` of its entry's instruction (`rv_row_step`,

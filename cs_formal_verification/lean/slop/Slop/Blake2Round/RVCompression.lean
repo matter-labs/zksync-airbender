@@ -1,7 +1,10 @@
-import Slop.Blake2Round.RVCallSteps
-import Slop.Blake2Round.RVSpec
-import Slop.Blake2Round.RVWords
-import Slop.Delegation.ReverseFold
+module
+public import Slop.Blake2Round.RVCallSteps
+public import Slop.Blake2Round.RVSpec
+public import Slop.Blake2Round.RVWords
+public import Slop.Delegation.ReverseFold
+
+@[expose] public section
 
 /-! RV twins of `CallCompression.lean` and `CompressionBinding.lean`, plus the delegate link: the complete
     extended-BLAKE span on `RV.State`s reaches the 7/10-round reference, and its final state is the spec's run of the
@@ -17,7 +20,7 @@ private theorem offset_address (pointer : BitVec 32) (k : Nat) :
   rw [BitVec.add_assoc]
   congr 1
   apply BitVec.eq_of_toNat_eq
-  have thirtyTwo : (32#32).toNat = 32 := rfl
+  have thirtyTwo : (32#32).toNat = 32 := by rfl
   simp only [BitVec.toNat_add, BitVec.toNat_ofNat, thirtyTwo]
   omega
 
@@ -34,7 +37,7 @@ theorem two_block_words {S T : RV.State} {pointer : BitVec 32} {first : Vector R
         RV.read (S.storeAll (RV.writesAt pointer first ++ RV.writesAt (pointer + 32#32) second)).mem a 4 := by
   have fits : pointer.toNat + 96 ≤ 2 ^ 32 := by have := pointer.isLt; omega
   have secondAt : (pointer + 32#32).toNat = pointer.toNat + 32 := by
-    have thirtyTwo : (32#32).toNat = 32 := rfl
+    have thirtyTwo : (32#32).toNat = 32 := by rfl
     simp only [BitVec.toNat_add, thirtyTwo]
     omega
   intro a alignedA
@@ -99,7 +102,7 @@ theorem round_call_link {S T : RV.State} {statePointer messagePointer : BitVec 3
   have stateFits : statePointer.toNat + 96 ≤ 2 ^ 32 := by have := statePointer.isLt; omega
   have messageFits : messagePointer.toNat + 64 ≤ 2 ^ 32 := by have := messagePointer.isLt; omega
   have secondFits : (statePointer + 32#32).toNat = statePointer.toNat + 32 := by
-    have thirtyTwo : (32#32).toNat = 32 := rfl
+    have thirtyTwo : (32#32).toNat = 32 := by rfl
     simp only [BitVec.toNat_add, thirtyTwo]
     omega
   have hBits : (rvBlockWords S statePointer 8 0).map Word.toBitVec = RV.readWords S.mem statePointer 8 :=

@@ -1,5 +1,8 @@
-import Human.Circuits.Bigint.Additive
-import Slop.Bigint.Control
+module
+public import Human.Circuits.Bigint.Additive
+public import Slop.Bigint.Control
+
+@[expose] public section
 
 namespace Airbender.Bigint.Additive.Proofs
 open Arithmetic

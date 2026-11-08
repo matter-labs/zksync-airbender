@@ -1,20 +1,31 @@
-import Human.Import.Parse
-import Slop.AddSub.ArtifactChecks
-import Human.Circuits.WordMemory.Artifact
-import Human.Circuits.JumpBranchSlt.Artifact
-import Slop.ShiftBinop.ArtifactChecks
-import Human.Circuits.SubwordMemory.Artifact
-import Tests.Timestamps
-import Tests.TraceHistory
+module
+public import Human.Import.Parse
+public meta import Human.Import.Parse
+public import Slop.AddSub.ArtifactChecks
+public meta import Slop.AddSub.ArtifactChecks
+public import Human.Circuits.WordMemory.Artifact
+public meta import Human.Circuits.WordMemory.Artifact
+public import Human.Circuits.JumpBranchSlt.Artifact
+public meta import Human.Circuits.JumpBranchSlt.Artifact
+public import Slop.ShiftBinop.ArtifactChecks
+public meta import Slop.ShiftBinop.ArtifactChecks
+public import Human.Circuits.SubwordMemory.Artifact
+public meta import Human.Circuits.SubwordMemory.Artifact
+public import Tests.Timestamps
+public meta import Tests.Timestamps
+public import Tests.TraceHistory
+public meta import Tests.TraceHistory
+
+@[expose] public section
 
 namespace Tests.TraceImport
 open Airbender
 set_option warningAsError true
 
-private def check (ok : Bool) (label : String) : IO Unit :=
+def check (ok : Bool) (label : String) : IO Unit :=
   if ok then IO.println s!"PASS {label}" else throw (IO.userError s!"FAIL {label}")
 
-private def rejected {α : Type} : Except String α → Bool
+def rejected {α : Type} : Except String α → Bool
   | .error _ => true
   | .ok _ => false
 

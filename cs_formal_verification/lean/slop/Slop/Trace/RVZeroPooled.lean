@@ -1,7 +1,10 @@
-import Slop.Trace.RVFamilySelectors
-import Slop.Trace.RVZero
-import Slop.Trace.RVZeroRows
-import Slop.Trace.Pooled
+module
+public import Slop.Trace.RVFamilySelectors
+public import Slop.Trace.RVZero
+public import Slop.Trace.RVZeroRows
+public import Slop.Trace.Pooled
+
+@[expose] public section
 
 /-! The pooled x0 law: each family's row lemma (`RVZeroRows`) assembled over the pooled decoder projection. -/
 

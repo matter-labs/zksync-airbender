@@ -1,33 +1,37 @@
-import Human.Circuits.ShiftBinop.Artifact
+module
+public import Human.Circuits.ShiftBinop.Artifact
+import all Init.Data.Repr -- Init.Data.Repr is not exposed (still true in 4.35)
+
+@[expose] public section
 
 namespace Airbender.ShiftBinop
 
 theorem timestamp_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := rfl
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := by rfl
 
 theorem clock_columns : importedConstraintsTraceColumns =
     (⟨4, #v[0, 1], #v[13, 14], #v[2, 3], #v[15, 16],
       #[⟨0, #v[17, 18], 92⟩, ⟨1, #v[23, 24], 93⟩, ⟨2, #v[33, 34], 94⟩]⟩ :
-      Trace.TraceColumns) := rfl
+      Trace.TraceColumns) := by rfl
 
 theorem memory_ports : importedConstraintsMemoryPorts =
     (#[⟨⟨0, #v[17, 18], 92⟩, .register 5, .u8 #v[19, 20, 21, 22], none⟩,
        ⟨⟨1, #v[23, 24], 93⟩, .register 6, .u8 #v[25, 26, 27, 28], none⟩,
        ⟨⟨2, #v[33, 34], 94⟩, .register 7, #v[29, 30], some #v[31, 32]⟩] :
-      Array Trace.MemoryPort) := rfl
+      Array Trace.MemoryPort) := by rfl
 
 theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
     importedConstraintsTraceColumns.ports := by
   simp [importedConstraintsMemoryPorts, importedConstraintsTraceColumns]
 
 theorem decoder_columns : importedConstraintsDecoderColumns =
-    (⟨5, 6, 7, #v[8, 9], some 10, #[11, 12]⟩ : Trace.DecoderColumns) := rfl
+    (⟨5, 6, 7, #v[8, 9], some 10, #[11, 12]⟩ : Trace.DecoderColumns) := by rfl
 
 theorem constraint_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.constraints (importedConstraints (p := p))).length = 52 := rfl
+    (FlatOperation.constraints (importedConstraints (p := p))).length = 52 := by rfl
 
 theorem lookup_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraints (p := p))).length = 7 := rfl
+    (FlatOperation.lookups (importedConstraints (p := p))).length = 7 := by rfl
 
 
 theorem variable_roles :

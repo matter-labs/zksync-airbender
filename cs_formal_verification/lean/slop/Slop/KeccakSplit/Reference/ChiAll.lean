@@ -1,27 +1,30 @@
-import Slop.KeccakSplit.Reference.Rounds.Chi00
-import Slop.KeccakSplit.Reference.Rounds.Chi01
-import Slop.KeccakSplit.Reference.Rounds.Chi02
-import Slop.KeccakSplit.Reference.Rounds.Chi03
-import Slop.KeccakSplit.Reference.Rounds.Chi04
-import Slop.KeccakSplit.Reference.Rounds.Chi05
-import Slop.KeccakSplit.Reference.Rounds.Chi06
-import Slop.KeccakSplit.Reference.Rounds.Chi07
-import Slop.KeccakSplit.Reference.Rounds.Chi08
-import Slop.KeccakSplit.Reference.Rounds.Chi09
-import Slop.KeccakSplit.Reference.Rounds.Chi10
-import Slop.KeccakSplit.Reference.Rounds.Chi11
-import Slop.KeccakSplit.Reference.Rounds.Chi12
-import Slop.KeccakSplit.Reference.Rounds.Chi13
-import Slop.KeccakSplit.Reference.Rounds.Chi14
-import Slop.KeccakSplit.Reference.Rounds.Chi15
-import Slop.KeccakSplit.Reference.Rounds.Chi16
-import Slop.KeccakSplit.Reference.Rounds.Chi17
-import Slop.KeccakSplit.Reference.Rounds.Chi18
-import Slop.KeccakSplit.Reference.Rounds.Chi19
-import Slop.KeccakSplit.Reference.Rounds.Chi20
-import Slop.KeccakSplit.Reference.Rounds.Chi21
-import Slop.KeccakSplit.Reference.Rounds.Chi22
-import Slop.KeccakSplit.Reference.Rounds.Chi23
+module
+public import Slop.KeccakSplit.Reference.Rounds.Chi00
+public import Slop.KeccakSplit.Reference.Rounds.Chi01
+public import Slop.KeccakSplit.Reference.Rounds.Chi02
+public import Slop.KeccakSplit.Reference.Rounds.Chi03
+public import Slop.KeccakSplit.Reference.Rounds.Chi04
+public import Slop.KeccakSplit.Reference.Rounds.Chi05
+public import Slop.KeccakSplit.Reference.Rounds.Chi06
+public import Slop.KeccakSplit.Reference.Rounds.Chi07
+public import Slop.KeccakSplit.Reference.Rounds.Chi08
+public import Slop.KeccakSplit.Reference.Rounds.Chi09
+public import Slop.KeccakSplit.Reference.Rounds.Chi10
+public import Slop.KeccakSplit.Reference.Rounds.Chi11
+public import Slop.KeccakSplit.Reference.Rounds.Chi12
+public import Slop.KeccakSplit.Reference.Rounds.Chi13
+public import Slop.KeccakSplit.Reference.Rounds.Chi14
+public import Slop.KeccakSplit.Reference.Rounds.Chi15
+public import Slop.KeccakSplit.Reference.Rounds.Chi16
+public import Slop.KeccakSplit.Reference.Rounds.Chi17
+public import Slop.KeccakSplit.Reference.Rounds.Chi18
+public import Slop.KeccakSplit.Reference.Rounds.Chi19
+public import Slop.KeccakSplit.Reference.Rounds.Chi20
+public import Slop.KeccakSplit.Reference.Rounds.Chi21
+public import Slop.KeccakSplit.Reference.Rounds.Chi22
+public import Slop.KeccakSplit.Reference.Rounds.Chi23
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Call.Proofs
 open Specs.Keccak256

@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.ThetaRho.Bytes
-import Slop.Arithmetic.LaneRotation
+module
+public import Slop.KeccakSplit.ThetaRho.Bytes
+public import Slop.Arithmetic.LaneRotation
+
+@[expose] public section
 
 /- Theta/rho input lanes: state and C[x-1] limbs from their query bytes, C[x+1]
    rotated by one through its carry columns, and D = C[x-1] ^ rot(C[x+1], 1)

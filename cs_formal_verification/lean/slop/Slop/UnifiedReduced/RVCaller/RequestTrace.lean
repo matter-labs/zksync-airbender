@@ -1,7 +1,10 @@
-import Human.Helpers.UnifiedReduced.RVRequestTrace
-import Slop.UnifiedReduced.RVCaller.Binding
-import Slop.UnifiedReduced.Trace
-import Slop.Delegation.Schedule
+module
+public import Human.Helpers.UnifiedReduced.RVRequestTrace
+public import Slop.UnifiedReduced.RVCaller.Binding
+public import Slop.UnifiedReduced.Trace
+public import Slop.Delegation.Schedule
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic
@@ -20,7 +23,7 @@ theorem rv_request_binding [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       (timeOfPair (request row.assignment).time).value = Delegation.Caller.startClock row + 1 := by
     intro row present
     have clock := clocks row (member row present)
-    have one : Delegation.Requests.callerPort.clock.offset = 1 := rfl
+    have one : Delegation.Requests.callerPort.clock.offset = 1 := by rfl
     simpa only [request, Delegation.Requests.caller, one, Delegation.Caller.startClock, Trace.Row.clock,
       Trace.Row.columns, CircuitLayout.columns, decodeTimestamp, rawPair, timeOfPair,
       AddSub.importedConstraintsTraceColumns, importedConstraintsTraceColumns] using

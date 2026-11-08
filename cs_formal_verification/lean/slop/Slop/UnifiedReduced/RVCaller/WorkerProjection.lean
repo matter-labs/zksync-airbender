@@ -1,8 +1,11 @@
-import Human.Helpers.UnifiedReduced.RVWindows
-import Slop.UnifiedReduced.RVCaller.MixedMemoryClocks
-import Slop.Delegation.WorkerProjection
-import Slop.UnifiedReduced.RVCaller.Restriction
-import Slop.UnifiedReduced.RVCaller.Transfer
+module
+public import Human.Helpers.UnifiedReduced.RVWindows
+public import Slop.UnifiedReduced.RVCaller.MixedMemoryClocks
+public import Slop.Delegation.WorkerProjection
+public import Slop.UnifiedReduced.RVCaller.Restriction
+public import Slop.UnifiedReduced.RVCaller.Transfer
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic Trace.Proofs

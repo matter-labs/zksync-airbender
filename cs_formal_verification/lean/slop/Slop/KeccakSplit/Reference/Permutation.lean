@@ -1,6 +1,9 @@
-import Slop.KeccakSplit.Reference.RoundAssembly
-import Slop.KeccakSplit.Reference.FinalIota
-import Slop.Delegation.IntervalFold
+module
+public import Slop.KeccakSplit.Reference.RoundAssembly
+public import Slop.KeccakSplit.Reference.FinalIota
+public import Slop.Delegation.IntervalFold
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Call.Proofs
 open Specs.Keccak256

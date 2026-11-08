@@ -1,6 +1,9 @@
-import Human.Circuits.Blake2G.Control
-import Slop.Blake2G
-import Mathlib.Tactic.IntervalCases
+module
+public import Human.Circuits.Blake2G.Control
+public import Slop.Blake2G
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Control.Proofs
 

@@ -1,4 +1,7 @@
-import Slop.UnifiedReduced.RVCaller.MixedWindows
+module
+public import Slop.UnifiedReduced.RVCaller.MixedWindows
+
+@[expose] public section
 
 /-! Native x0 writes of the shared unified/worker pool carry zero (from the RV seed and the zero rules); used to drop
     x0 accesses from RV histories (`rv_history_without_zero`). -/

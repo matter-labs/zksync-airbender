@@ -1,10 +1,13 @@
-import Slop.Bigint.ArtifactChecks
-import Human.Circuits.Bigint.Tables.Setup
-import Human.Circuits.Bigint.Artifact
-import Slop.Lookups
-import Slop.Constraints
-import Slop.Arithmetic.Lemmas
-import Human.Helpers.Properties
+module
+public import Slop.Bigint.ArtifactChecks
+public import Human.Circuits.Bigint.Tables.Setup
+public import Human.Circuits.Bigint.Artifact
+public import Slop.Lookups
+public import Slop.Constraints
+public import Slop.Arithmetic.Lemmas
+public import Human.Helpers.Properties
+
+@[expose] public section
 
 namespace Airbender.Bigint.Proofs
 set_option warningAsError true

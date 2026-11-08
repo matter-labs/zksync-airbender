@@ -1,6 +1,10 @@
-import Slop.UnifiedReduced.ControlProjection
-import Slop.UnifiedReduced.RV.ControlResolution
-import Slop.JumpBranchSlt.ArtifactChecks
+module
+public import Slop.UnifiedReduced.ControlProjection
+public import Slop.UnifiedReduced.RV.ControlResolution
+public import Slop.JumpBranchSlt.ArtifactChecks
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic Verification

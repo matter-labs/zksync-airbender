@@ -1,5 +1,9 @@
-import Slop.Blake2G.Claims
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.Blake2G.Claims
+public import Mathlib.Tactic.IntervalCases
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.Blake2GMemory
 noncomputable section

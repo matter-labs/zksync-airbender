@@ -1,7 +1,12 @@
-import Slop.ShiftBinop.Claims
-import Slop.ShiftBinop.Shifts
-import Slop.ShiftBinop.Completeness.Lookups
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.ShiftBinop.Claims
+public import Slop.ShiftBinop.Shifts
+public import Slop.ShiftBinop.Completeness.Lookups
+public import Mathlib.Tactic.IntervalCases
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.Shifts
 open Airbender
@@ -9,20 +14,20 @@ open Airbender.ShiftBinop
 
 -- Three shifts and REV8, amounts 0/31, immediate/register preprocessing, a negative
 -- source and PC carry. Register amounts 32/63 exercise low-five-bit truncation.
-private def amount (tag : Fin 4) (zero : Bool) : Nat := if tag.val = 3 ∨ zero then 0 else 31
-private def code (tag : Fin 4) : Nat := if tag.val = 3 then 5 else tag.val + 1
-private def zeroRight (tag : Fin 4) (immediate : Bool) : Bool := immediate || tag.val = 3
-private def source : BitVec 32 := 2158742802
-private def sourceByte (i : Nat) : Nat := (source.extractLsb' (8 * i) 8).toNat
+def amount (tag : Fin 4) (zero : Bool) : Nat := if tag.val = 3 ∨ zero then 0 else 31
+def code (tag : Fin 4) : Nat := if tag.val = 3 then 5 else tag.val + 1
+def zeroRight (tag : Fin 4) (immediate : Bool) : Bool := immediate || tag.val = 3
+def source : BitVec 32 := 2158742802
+def sourceByte (i : Nat) : Nat := (source.extractLsb' (8 * i) 8).toNat
 -- Concrete expected bytes; soundness checks this value against original Sail.
-private def result (tag : Fin 4) (zero : Bool) : Nat :=
+def result (tag : Fin 4) (zero : Bool) : Nat :=
   if tag.val = 3 then 315468672 else
     (Verification.shiftOperation (code tag) source (amount tag zero)).toNat
-private def part (tag : Fin 4) (zero : Bool) (i j : Nat) : Nat :=
+def part (tag : Fin 4) (zero : Bool) (i j : Nat) : Nat :=
   (BitVec.extractLsb' (8 * j) 8
     (Verification.shiftByteContribution i (sourceByte i) (amount tag zero) (code tag))).toNat
 
-private def row (tag : Fin 4) (immediate zero : Bool) : Nat → ZMod babyBearModulus
+def row (tag : Fin 4) (immediate zero : Bool) : Nat → ZMod babyBearModulus
   | 0 => 65532
   | 4 | 5 | 7 | 11 | 14 => 1
   | 6 => if zeroRight tag immediate then 0 else 2
@@ -47,7 +52,7 @@ private def row (tag : Fin 4) (immediate zero : Bool) : Nat → ZMod babyBearMod
     else 0
 
 set_option maxRecDepth 4096 in
-private theorem satisfies (tag : Fin 4) (immediate zero : Bool) :
+theorem satisfies (tag : Fin 4) (immediate zero : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row tag immediate zero))
       importedConstraints := by
   apply FlatOperation.constraintsHoldFlat_iff_forall_mem.mpr

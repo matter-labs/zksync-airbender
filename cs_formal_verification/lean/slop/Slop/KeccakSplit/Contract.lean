@@ -1,7 +1,10 @@
-import Slop.KeccakSplit.Interface
-import Slop.KeccakSplit.ColumnParity.Execution
-import Slop.KeccakSplit.ThetaRho.Execution
-import Slop.KeccakSplit.Chi5.Execution
+module
+public import Slop.KeccakSplit.Interface
+public import Slop.KeccakSplit.ColumnParity.Execution
+public import Slop.KeccakSplit.ThetaRho.Execution
+public import Slop.KeccakSplit.Chi5.Execution
+
+@[expose] public section
 
 /- The per-row circuit contract of the three split Keccak workers, over BabyBear and
    the exported setups. -/

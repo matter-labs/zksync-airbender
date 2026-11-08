@@ -1,4 +1,7 @@
-import Slop.JumpBranchSlt.PC
+module
+public import Slop.JumpBranchSlt.PC
+
+@[expose] public section
 
 namespace Airbender.JumpBranchSlt.Proofs
 open Airbender.Arithmetic

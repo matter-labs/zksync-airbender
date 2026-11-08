@@ -1,5 +1,8 @@
-import Human.Trace.Families.MulDiv.RVTheorems
-import Slop.MulDiv.RVTraceExecution
+module
+public import Human.Trace.Families.MulDiv.RVTheorems
+public import Slop.MulDiv.RVTraceExecution
+
+@[expose] public section
 
 namespace Airbender.MulDiv
 

@@ -1,6 +1,9 @@
-import Slop.KeccakSplit.Setup.ThetaRho.Members
-import Slop.KeccakSplit.Setup.Chi5.Members
-import Slop.KeccakSplit.Memory.Order
+module
+public import Slop.KeccakSplit.Setup.ThetaRho.Members
+public import Slop.KeccakSplit.Setup.Chi5.Members
+public import Slop.KeccakSplit.Memory.Order
+
+@[expose] public section
 
 /- The exported controller rows give the grouped-clock controller facts. -/
 

@@ -1,8 +1,11 @@
-import Slop.Blake2Round.GTrace
-import Slop.Blake2Round.Lookups
-import Slop.Blake2Round.OpIndex
-import Slop.Eval
-import Mathlib.Tactic.ReduceModChar
+module
+public import Slop.Blake2Round.GTrace
+public import Slop.Blake2Round.Lookups
+public import Slop.Blake2Round.OpIndex
+public import Slop.Eval
+public import Mathlib.Tactic.ReduceModChar
+
+@[expose] public section
 
 set_option warningAsError true
 

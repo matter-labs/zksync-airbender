@@ -1,6 +1,9 @@
-import Slop.Delegation.RVExecution
-import Slop.Delegation.SeedOperations
-import Human.Trace.Delegation.RVTheorems
+module
+public import Slop.Delegation.RVExecution
+public import Slop.Delegation.SeedOperations
+public import Human.Trace.Delegation.RVTheorems
+
+@[expose] public section
 
 namespace Airbender.Delegation
 

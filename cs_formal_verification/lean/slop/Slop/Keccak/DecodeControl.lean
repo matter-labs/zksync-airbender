@@ -1,5 +1,8 @@
-import Slop.Keccak.Tags
-import Slop.Keccak.ControlUpdate
+module
+public import Slop.Keccak.Tags
+public import Slop.Keccak.ControlUpdate
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic

@@ -32,28 +32,103 @@ SRC_DIRS = ("human", "slop", "test")
 # Roots shipped with the toolchain; all are modules since Lean 4.22.
 CORE_ROOTS = {"Init", "Std", "Lean", "Lake"}
 # Files kept non-module by hand: module name -> reason. Their importers stay non-module too.
-KEEP: dict[str, str] = {
-    # Kernel evaluation (`decide`, `decide +kernel`, `with_unfolding_all`) of core definitions that Init does not
-    # expose to modules (`Array.map`, `Array.ofFn`, ...): their bodies are invisible to a module's proofs.
-    "Slop.Deleg.Vectors": "decide +kernel on Blake2s/Keccak test vectors needs Init's non-exposed Array bodies",
-    "Slop.KeccakSplit.Reference.CallReference": "decide +kernel over Vector slots needs Init's non-exposed Array bodies",
-    "Slop.Lookups": "with_unfolding_all change through ProvableType.eval needs Init's non-exposed Array.map",
-    "Slop.Bigint.ArtifactChecks": "decide on artifact columns needs Init's non-exposed Vector.ofFn/Array bodies",
-    "Slop.Blake2G.ArtifactChecks": "decide on artifact columns needs Init's non-exposed Vector.ofFn/Array bodies",
-    "Slop.Blake2Round.ArtifactChecks": "decide on artifact columns/names needs Init's non-exposed Array/String bodies",
-    "Slop.Keccak.ArtifactChecks": "decide on artifact columns needs Init's non-exposed Vector.ofFn/Array bodies",
-    "Slop.ShiftBinop.ArtifactChecks": "decide on artifact variable names needs Init's non-exposed List/String bodies",
-    "Slop.KeccakSplit.Memory.Order": "decide on Array.map over artifact ports needs Init's non-exposed Array.map",
-    "Slop.KeccakSplit.Setup.ColumnParity.Rows": "decide +kernel scan of col2Spec needs a non-exposed Init body",
-    "Slop.JumpBranchSlt.Completeness.Witness": "change through fromElements (Vector.map ...) needs Init's Array.map",
-    "Tests.Blake2Compression": "decide on Vector.map of a compression run needs Init's non-exposed Array bodies",
-    "Tests.KeccakFixedTables": "decide on setup rows (Vector equality) needs Init's non-exposed Array bodies",
+KEEP: dict[str, str] = {}
+# Files whose proofs evaluate concrete data in the kernel (`decide`, `decide +kernel`, `with_unfolding_all`) through
+# Init definitions that Init does not expose to modules: each privately imports exactly the Init modules it needs
+# with `import all` (bodies visible to this file's proofs only; importers and statements unchanged). Sets measured
+# per file (elaboration time as the non-module baseline). Module name -> Init modules.
+UNTIL_435 = "-- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)"
+REPR = "-- Init.Data.Repr is not exposed (still true in 4.35)"
+IMPORT_ALL_COMMENT = {"Init.Data.Array.Basic": UNTIL_435, "Init.Data.Array.DecidableEq": UNTIL_435,
+                      "Init.Data.Vector.Basic": UNTIL_435, "Init.Data.Repr": REPR, "Init.Data.String.Defs": REPR}
+_A, _D, _V, _R, _S = ("Init.Data.Array.Basic", "Init.Data.Array.DecidableEq", "Init.Data.Vector.Basic",
+                      "Init.Data.Repr", "Init.Data.String.Defs")
+IMPORT_ALL: dict[str, tuple[str, ...]] = {
+    "Slop.KeccakSplit.Reference.CallReference": (_A,),
+    "Slop.Lookups": (_A,),
+    "Slop.JumpBranchSlt.Completeness.Witness": (_A,),
+    "Slop.ShiftBinop.ArtifactChecks": (_R,),
+    "Slop.Deleg.Vectors": (_D, _V),
+    "Slop.Blake2G.ArtifactChecks": (_D, _V),
+    "Slop.Keccak.ArtifactChecks": (_D, _V),
+    "Slop.KeccakSplit.Memory.Order": (_D, _V),
+    "Tests.Blake2Compression": (_D, _V),
+    "Tests.KeccakFixedTables": (_D, _V),
+    "Slop.KeccakSplit.Setup.ColumnParity.Rows": (_D,),
+    "Slop.Bigint.ArtifactChecks": (_D, _V, _R),
+    "Slop.Blake2Round.ArtifactChecks": (_D, _V, _R, _S),
+    # found once the files above became modules (smallest passing set, measured the same way)
+    "Slop.Keccak.CallPorts": (_A,),
+    "Slop.KeccakSplit.ThetaRho.Lanes": (_A,),
+    "Slop.UnifiedReduced.RV.ControlLookups": (_A,),
+    "Slop.Delegation.Memory": (_D,),
+    "Slop.KeccakSplit.Memory.History": (_D,),
+    "Slop.Blake2Round.RVSpec": (_D, _V),
+    "Tests.Branch": (_A,),
+    "Tests.Comparison": (_A,),
+    "Tests.Division": (_A,),
+    "Tests.MulDiv": (_A,),
+    "Tests.MulDivProduct": (_A,),
+    "Tests.Binop": (_D, _V),
+    "Tests.KeccakController": (_D, _V),
+    "Tests.ShiftBinop": (_D, _V),
+    "Tests.Shifts": (_D, _V),
+    "Tests.TraceROM": (_D, _V),
+    "Slop.Keccak.StateCells": (_A,),
+    "Slop.UnifiedReduced.RV.ControlResolution": (_A,),
+    "Tests.Blake2GMemory": (_A,),
+    "Tests.MulDivTimestamp": (_A,),
+    "Tests.Bigint": (_D, _V),
+    "Tests.BigintMemory": (_D, _V),
+    "Tests.BigintMultiplication": (_D, _V),
+    "Tests.Blake2G": (_D, _V),
+    "Tests.ShiftBinopImmediate": (_D, _V),
+    "Tests.ShiftBinopPorts": (_D, _V),
+    "Slop.Keccak.Phases.Mix": (_A,),
+    "Slop.Keccak.RVSpec": (_A,),
+    "Slop.KeccakSplit.RVStep": (_A,),
+    "Slop.UnifiedReduced.RV.ControlMembership": (_A,),
+    "Slop.Keccak.SlotReduction": (_D, _V),
+    "Slop.KeccakSplit.Reference.SlotReduction": (_D, _V),
+    "Slop.KeccakSplit.Reference.FinalIota": (_A,),
+    "Slop.Keccak.Phases.Rho": (_A,),
+    "Slop.Keccak.Phases.Theta": (_A,),
+    "Slop.Keccak.PermutationAssembly": (_A,),
+    "Slop.KeccakSplit.Chain.Calls": (_A,),
+    "Tests.DelegationMemory": (_A,),
+    "Tests.KeccakChi": (_A,),
+    "Tests.KeccakIota": (_A,),
+    "Tests.KeccakMix": (_A,),
+    "Tests.KeccakRho": (_A,),
+    "Tests.DelegationROMBoundary": (_D, _V),
+    "Tests.Keccak": (_D, _V),
+    "Tests.UnifiedDelegation": (_D, _V),
+    "Tests.UnifiedMixedHistory": (_D, _V),
+    "Tests.UnifiedReduced": (_D, _V),
+    "Tests.UnifiedTriAddNative": (_D, _V),
 }
+# Generated proof families: every file under the prefix gets the same set.
+IMPORT_ALL_PREFIX: dict[str, tuple[str, ...]] = {
+    "Slop.KeccakSplit.Reference.Rounds.": (_A,),
+    "Slop.Keccak.Phases.Chi.": (_A,),
+    "Slop.Keccak.Phases.Iota.": (_A,),
+}
+
+
+def import_all_for(module: str) -> tuple[str, ...]:
+    if module in IMPORT_ALL:
+        return IMPORT_ALL[module]
+    return next((mods for prefix, mods in IMPORT_ALL_PREFIX.items() if module.startswith(prefix)), ())
+
+
 # Files that run code at elaboration time (command/term/tactic elaborators, attribute registration): their
 # imports are also `meta` imports and the body is a `public meta section` (meta code may call only meta code or
 # definitions from `meta import`ed modules). Detected by META_RE.
 META_RE = re.compile(r"^\s*(?:elab|run_cmd|run_elab|run_meta|declare_syntax_cat)\b"
                      r"|@\[(?:command_elab|term_elab|tactic)\b", re.M)
+# Files that `#eval` code using imported definitions: the interpreter needs their compiled code, which a module only
+# gets through `meta import`; such files also `public meta import` each import (their own definitions stay ordinary).
+EVAL_RE = re.compile(r"^#eval\b", re.M)
 
 IMPORT_RE = re.compile(r"^(?P<mods>(?:public\s+|meta\s+)*)import\s+(?P<all>all\s+)?(?P<name>[\w.'«»]+)\s*(?P<rest>--.*)?$")
 DECL_RE = re.compile(r"^(?:@\[[^\]]*\]\s*)*(?:(?:private|protected|noncomputable|nonrec|unsafe|partial)\s+)*"
@@ -169,7 +244,9 @@ def leaked_private(source: Source, seed: frozenset[str] = frozenset()) -> set[st
                 continue
             text = "\n".join(lines)
             if kind in ("theorem", "lemma"):
-                text = re.split(r":=|\bwhere\b|^\s*\|", text, maxsplit=1, flags=re.M)[0]
+                # the proof starts at `:= by` or a line-final `:=` (a `let x := ...` may sit in the statement)
+                proof = re.search(r":=\s*by\b|:=\s*$|^\s*\|", text, flags=re.M)
+                text = text[:proof.start()] if proof else re.split(r":=|\bwhere\b", text, maxsplit=1)[0]
             text = text.split(name, 1)[1] if name and name in text else text
             leaked |= set(pattern.findall(text))
         if len(leaked) == before:
@@ -226,6 +303,7 @@ MODULES: set[str] = set()  # the files that are (or become) modules, set by main
 
 def convert(source: Source, seed: frozenset[str] = frozenset()) -> str:
     meta = bool(META_RE.search(source.text))
+    meta_imports = meta or bool(EVAL_RE.search(source.text))
     lines = list(source.lines)
     start = strip_leading_comments(lines)
     out = lines[:start] + ["module"]
@@ -242,7 +320,7 @@ def convert(source: Source, seed: frozenset[str] = frozenset()) -> str:
             if "public" not in mods:
                 stmt = "public " + stmt
             out.append(stmt)
-            if meta and "meta" not in mods:
+            if meta_imports and "meta" not in mods:
                 out.append(stmt.replace("public import", "public meta import", 1))
             last_import = len(out)
             i += 1
@@ -253,6 +331,10 @@ def convert(source: Source, seed: frozenset[str] = frozenset()) -> str:
             break
     if last_import is None:
         last_import = len(out)
+    if import_all_for(source.module):
+        added = [f"import all {m} {IMPORT_ALL_COMMENT[m]}" for m in import_all_for(source.module)]
+        out[last_import:last_import] = added
+        last_import += len(added)
     # trailing blanks/comments after the last import belong to the body
     tail = out[last_import:]
     section = "public meta section" if meta else "@[expose] public section"

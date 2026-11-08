@@ -1,7 +1,10 @@
-import Human.Circuits.JumpBranchSlt.RVDecoder
-import Human.Circuits.JumpBranchSlt.Decoder
-import Slop.JumpBranchSlt
-import Slop.Trace.DecoderBits
+module
+public import Human.Circuits.JumpBranchSlt.RVDecoder
+public import Human.Circuits.JumpBranchSlt.Decoder
+public import Slop.JumpBranchSlt
+public import Slop.Trace.DecoderBits
+
+@[expose] public section
 
 /-! Native metadata facts of `JumpBranchSlt.rvDecoderFields` (twins of `Decoder.lean`/`Trace.lean` on `RV.Instr`). -/
 

@@ -1,5 +1,8 @@
-import Slop.JumpBranchSlt.PortReads
-import Tests.Jump
+module
+public import Slop.JumpBranchSlt.PortReads
+public import Tests.Jump
+
+@[expose] public section
 
 namespace Tests.JumpPorts
 open Airbender Arithmetic Trace

@@ -1,5 +1,10 @@
-import Slop.ShiftBinop.Claims
-import Tests.ShiftBinopTimestamp
+module
+public import Slop.ShiftBinop.Claims
+public import Tests.ShiftBinopTimestamp
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.ShiftBinopImmediate
 open Airbender Arithmetic Trace
@@ -8,7 +13,7 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 1000000
 
 -- XORI x1,x0,-1: exercise both packed immediate bytes and the upper sign bytes.
-private def assignment (i : Nat) : ZMod babyBearModulus :=
+def assignment (i : Nat) : ZMod babyBearModulus :=
   if i = 8 ∨ i = 9 ∨ i = 35 ∨ i = 36 ∨ i = 37 ∨ i = 38 ∨ i = 39 ∨
       i = 52 ∨ i = 53 ∨ i = 57 ∨ i = 58 ∨ i = 66 ∨ i = 67 ∨
       i = 75 ∨ i = 76 ∨ i = 84 ∨ i = 85 then 255

@@ -1,41 +1,45 @@
-import Slop.Keccak.Claims
-import Mathlib.Tactic.IntervalCases
-import Slop.Keccak.Completeness.Bytes
+module
+public import Slop.Keccak.Claims
+public import Mathlib.Tactic.IntervalCases
+public import Slop.Keccak.Completeness.Bytes
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.KeccakMix
 open Airbender
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-private def parities : Vector Nat 5 :=
+def parities : Vector Nat 5 :=
   #v[0xffffffffffffffff, 0x0123456789abcdef, 0x8080808080808080,
     0xaaaaaaaaaaaaaaaa, 0x5555555555555555]
-private def rotated (i : Fin 5) : Nat := rotLeft64 parities[i] 1
-private def firstWrites : Vector Nat 6 :=
+def rotated (i : Fin 5) : Nat := rotLeft64 parities[i] 1
+def firstWrites : Vector Nat 6 :=
   #v[parities[0] ^^^ rotated 2, parities[1], parities[2] ^^^ rotated 4,
     parities[3], parities[4], rotated 0]
-private def reads (second : Bool) : Vector Nat 6 :=
+def reads (second : Bool) : Vector Nat 6 :=
   if second then firstWrites else #v[parities[0], parities[1], parities[2], parities[3], parities[4], 0]
-private def writes (second : Bool) : Vector Nat 6 :=
+def writes (second : Bool) : Vector Nat 6 :=
   if second then
     #v[firstWrites[0], parities[1] ^^^ rotated 3, firstWrites[2], parities[3] ^^^ rotated 0,
       parities[4] ^^^ rotated 1, rotated 0]
   else firstWrites
-private def temps (second : Bool) : Vector Nat 3 :=
+def temps (second : Bool) : Vector Nat 3 :=
   if second then #v[rotated 1, rotated 3, 0] else #v[rotated 2, rotated 4, 0]
-private def aWords (second : Bool) : Vector Nat 5 :=
+def aWords (second : Bool) : Vector Nat 5 :=
   if second then #v[parities[1], parities[4], parities[3], parities[1], parities[3]]
   else #v[parities[0], parities[2], parities[0], parities[4], parities[2]]
-private def bWords (second : Bool) : Vector Nat 5 :=
+def bWords (second : Bool) : Vector Nat 5 :=
   if second then #v[0, rotated 1, 0, rotated 3, rotated 0]
   else #v[0, 0, rotated 2, 0, rotated 4]
-private def rotation (second : Bool) (op : Fin 5) : Bool :=
+def rotation (second : Bool) (op : Fin 5) : Bool :=
   if second then op.val = 0 || op.val = 2 else op.val = 0 || op.val = 1 || op.val = 3
-private def control (_ : Fin 4096) : Vector Nat 6 := #v[0, 5, 10, 15, 20, 25]
-private abbrev setup : Table (ZMod babyBearModulus) (fields 8) := Keccak.setupTable control
-private def stateControl (second : Bool) : Keccak.ControlState := ⟨if second then 2 else 1, 0, 24⟩
+def control (_ : Fin 4096) : Vector Nat 6 := #v[0, 5, 10, 15, 20, 25]
+abbrev setup : Table (ZMod babyBearModulus) (fields 8) := Keccak.setupTable control
+def stateControl (second : Bool) : Keccak.ControlState := ⟨if second then 2 else 1, 0, 24⟩
 
-private def base (second : Bool) (v : Nat) : ZMod babyBearModulus :=
+def base (second : Bool) (v : Nat) : ZMod babyBearModulus :=
   if v = 0 ∨ v = 70 ∨ v = (if second then 65 else 64) then 1
   else if v = 3 then (stateControl second).packed
   else if v = 5 then (stateControl second).nextPacked
@@ -55,7 +59,7 @@ private def base (second : Bool) (v : Nat) : ZMod babyBearModulus :=
 
 -- Byte query `i` (operation `i / 8`, byte `i % 8`): rotation by one of a word's 16-bit limbs,
 -- or the XOR bytes of two words.
-private def bytes (second : Bool) (part : Fin 3) (i : Fin 40) : Nat :=
+def bytes (second : Bool) (part : Fin 3) (i : Fin 40) : Nat :=
   let op : Fin 5 := ⟨i.val / 8, by omega⟩
   if rotation second op then
     if i.val % 8 < 4 then
@@ -67,7 +71,7 @@ private def bytes (second : Bool) (part : Fin 3) (i : Fin 40) : Nat :=
     else if part.val = 1 then (bWords second)[op] else (aWords second)[op] ^^^ (bWords second)[op])
     (i.val % 8)
 
-private def row (second : Bool) : Nat → ZMod babyBearModulus :=
+def row (second : Bool) : Nat → ZMod babyBearModulus :=
   Keccak.Proofs.bytesRow (base second) (bytes second)
 
 private theorem modes (second : Bool) (j : Fin 7) :

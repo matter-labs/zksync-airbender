@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.Setup.ColumnParity.Rows
+module
+public import Slop.KeccakSplit.Setup.ColumnParity.Rows
+
+@[expose] public section
 
 /- Membership in the exported column-parity table (`ColumnParity.setup`) over BabyBear,
    by tag: iota byte XOR (38), slots (62), control (63), five-nibble XOR (64). Padding

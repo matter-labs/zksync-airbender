@@ -1,9 +1,12 @@
-import Human.Trace.Families.ShiftBinop.RVTheorems
-import Slop.ShiftBinop.RVTraceSoundness
-import Slop.ShiftBinop.RVValues
-import Slop.Trace.RVFamilyTrace
-import Slop.Trace.RVZeroRows
-import Slop.ISA.RV.DecodeShape
+module
+public import Human.Trace.Families.ShiftBinop.RVTheorems
+public import Slop.ShiftBinop.RVTraceSoundness
+public import Slop.ShiftBinop.RVValues
+public import Slop.Trace.RVFamilyTrace
+public import Slop.Trace.RVZeroRows
+public import Slop.ISA.RV.DecodeShape
+
+@[expose] public section
 
 /-! The shift/binop trace claim on the RV route (`RVTraceSoundnessClaim`): no Sail state, interpreter or `Configured`
     fact. Each row is one `RV.exec` of its entry's instruction (`rv_row_step`: the instruction is `rvInstruction` of

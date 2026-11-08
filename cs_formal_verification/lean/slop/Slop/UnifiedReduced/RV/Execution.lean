@@ -1,12 +1,15 @@
-import Slop.UnifiedReduced.RV.Dispatch
-import Slop.UnifiedReduced.RV.Laws
-import Slop.Trace.RVRealizes
-import Slop.Trace.RVRom
-import Slop.Trace.ROMView
-import Human.Trace.UnifiedReduced.RVTheorems
-import Slop.Trace.RVBootSeed
-import Slop.KeccakSplit.Field
-import Slop.Final.Circuits.InitsTeardowns.Theorems
+module
+public import Slop.UnifiedReduced.RV.Dispatch
+public import Slop.UnifiedReduced.RV.Laws
+public import Slop.Trace.RVRealizes
+public import Slop.Trace.RVRom
+public import Slop.Trace.ROMView
+public import Human.Trace.UnifiedReduced.RVTheorems
+public import Slop.Trace.RVBootSeed
+public import Slop.KeccakSplit.Field
+public import Slop.Final.Circuits.InitsTeardowns.Theorems
+
+@[expose] public section
 
 /-! The unified execution claim on the RV route: the trace is seeded by the inline inits/teardowns sets' zero boot
     image (`rv_boot_seed`), which is the RV image of the starting state, x0-preserving, and each of its rows takes one

@@ -1,4 +1,7 @@
-import Slop.JumpBranchSlt.Trace
+module
+public import Slop.JumpBranchSlt.Trace
+
+@[expose] public section
 
 namespace Airbender.JumpBranchSlt.Proofs
 open Arithmetic Trace

@@ -1,8 +1,11 @@
-import Human.Trace.Delegation.RVMixedMemory
-import Slop.Delegation.RVSharedOperations
-import Slop.Delegation.MixedClocks
-import Slop.Trace.RVValuesPooled
-import Slop.Trace.RVZeroPooled
+module
+public import Human.Trace.Delegation.RVMixedMemory
+public import Slop.Delegation.RVSharedOperations
+public import Slop.Delegation.MixedClocks
+public import Slop.Trace.RVValuesPooled
+public import Slop.Trace.RVZeroPooled
+
+@[expose] public section
 
 /-! RV siblings of the mixed-pool proofs (`MixedClocks.lean`, `MixedMemory.lean`) over `RVRequestTrace`: ordinary rows
     come from the RV six-family table (`rv_pooled_row_zero_preserving`, `rv_pooled_row_write_rule`), the seeds are

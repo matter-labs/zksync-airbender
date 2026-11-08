@@ -1,6 +1,9 @@
-import Slop.Blake2Round.ControlPool
-import Slop.Blake2Round.NativeExecution
-import Slop.Delegation.CallGroups
+module
+public import Slop.Blake2Round.ControlPool
+public import Slop.Blake2Round.NativeExecution
+public import Slop.Delegation.CallGroups
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Proofs
 open Trace Trace.Proofs Delegation.Proofs

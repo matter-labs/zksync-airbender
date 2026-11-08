@@ -1,12 +1,15 @@
-import Human.Trace.Families.JumpBranchSlt.RVTheorems
-import Slop.JumpBranchSlt.RVRow
-import Slop.JumpBranchSlt.RVValues
-import Slop.JumpBranchSlt.Trace
-import Slop.Trace.RVFamilyTrace
-import Slop.Trace.RVValues
-import Slop.Trace.RVZeroRows
-import Slop.Trace.PC
-import Slop.ISA.RV.DecodeShape
+module
+public import Human.Trace.Families.JumpBranchSlt.RVTheorems
+public import Slop.JumpBranchSlt.RVRow
+public import Slop.JumpBranchSlt.RVValues
+public import Slop.JumpBranchSlt.Trace
+public import Slop.Trace.RVFamilyTrace
+public import Slop.Trace.RVValues
+public import Slop.Trace.RVZeroRows
+public import Slop.Trace.PC
+public import Slop.ISA.RV.DecodeShape
+
+@[expose] public section
 
 /-! The comparison/branch/jump trace claim on the RV route (`RVTraceSoundnessClaim`): no Sail state, interpreter or
     `Configured` fact. Each row is one `RV.exec` of its entry's instruction (`rv_row_step`): the row facts
@@ -73,7 +76,7 @@ theorem rv_row_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {w : Nat → Z
   have facts : RVRowFacts w before entry.data :=
     ⟨core, pcWord, aligned, low, high, tag, flags, left, right, leftBound, rightBound, finalHi⟩
   let output : Circuit.Output := ⟨⟨(w 30).val, (w 31).val⟩, ⟨(w 16).val, (w 17).val⟩⟩
-  have finish : (⟨.jumpBranchSlt, w⟩ : Row p TraceKind).finish.word = output.pc := rfl
+  have finish : (⟨.jumpBranchSlt, w⟩ : Row p TraceKind).finish.word = output.pc := by rfl
   rw [finish]
   have linked {s' : RV.State} (same : RV.Same s' ((before.setReg entry.data.rd output.destination.toBitVec).setPC
       output.pc.toBitVec)) : RV.Same s' { after with pc := output.pc.toBitVec } :=

@@ -1,6 +1,9 @@
-import Human.Circuits.ShiftBinop.RVTheorems
-import Slop.ShiftBinop.RVTraceSoundness
-import Slop.Trace.RVPooledLawsProof
+module
+public import Human.Circuits.ShiftBinop.RVTheorems
+public import Slop.ShiftBinop.RVTraceSoundness
+public import Slop.Trace.RVPooledLawsProof
+
+@[expose] public section
 
 namespace Airbender.ShiftBinop
 

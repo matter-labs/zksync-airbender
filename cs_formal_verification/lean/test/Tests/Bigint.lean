@@ -1,4 +1,9 @@
-import Slop.Bigint.Claims
+module
+public import Slop.Bigint.Claims
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.Bigint
 open Airbender
@@ -24,18 +29,18 @@ theorem oversizedControlRejected (setup : Table (ZMod babyBearModulus) (fields 3
   have bound := valid.2.1
   omega
 
-private def zeroSetup : Table (ZMod babyBearModulus) (fields 3) := Bigint.setupTable
+def zeroSetup : Table (ZMod babyBearModulus) (fields 3) := Bigint.setupTable
 
 namespace Additive
 open Airbender.Bigint.Additive
 
-private def zero : Vector Nat 16 := Vector.replicate 16 0
-private def maximum : Vector Nat 16 := Vector.replicate 16 65535
-private def one : Vector Nat 16 := Vector.ofFn fun i => if i.val = 0 then 1 else 0
+def zero : Vector Nat 16 := Vector.replicate 16 0
+def maximum : Vector Nat 16 := Vector.replicate 16 65535
+def one : Vector Nat 16 := Vector.ofFn fun i => if i.val = 0 then 1 else 0
 
 -- A concrete all-zero ADD row checks the full imported relation against
 -- the modeled production setup; no source-range premise is supplied.
-private def zeroAddRow : Nat → ZMod babyBearModulus
+def zeroAddRow : Nat → ZMod babyBearModulus
   | 0 | 55 | 59 | 212 | 214 | 215 => 1
   | _ => 0
 
@@ -114,10 +119,10 @@ end Additive
 namespace Equality
 open Airbender.Bigint.Equality
 
-private def zero : Vector Nat 16 := Vector.replicate 16 0
+def zero : Vector Nat 16 := Vector.replicate 16 0
 
 -- Incoming carry is set, but EQ must ignore it and still report equality.
-private def equalRow : Nat → ZMod babyBearModulus
+def equalRow : Nat → ZMod babyBearModulus
   | 55 => 96
   | 0 | 57 | 64 | 65 | 212 | 214 | 215 | 216 => 1
   | _ => 0

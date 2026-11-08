@@ -1,10 +1,13 @@
-import Human.Circuits.Blake2Round.Finalization
-import Slop.Blake2Round.ArtifactChecks
-import Slop.Blake2Round.Lookups
-import Slop.Blake2Round.OpIndex
-import Slop.Blake2G.Soundness
-import Slop.Arithmetic.FieldChunks
-import Mathlib.Tactic.ReduceModChar
+module
+public import Human.Circuits.Blake2Round.Finalization
+public import Slop.Blake2Round.ArtifactChecks
+public import Slop.Blake2Round.Lookups
+public import Slop.Blake2Round.OpIndex
+public import Slop.Blake2G.Soundness
+public import Slop.Arithmetic.FieldChunks
+public import Mathlib.Tactic.ReduceModChar
+
+@[expose] public section
 
 set_option warningAsError true
 -- one call's goals may not use every lemma of the shared simp set

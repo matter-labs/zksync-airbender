@@ -1,8 +1,11 @@
-import Human.Circuits.Keccak.Iota
-import Slop.Keccak.DecodeControl
-import Slop.Keccak.FixedLookups
-import Slop.Keccak.OpIndex
-import Slop.Arithmetic.ByteAssembly
+module
+public import Human.Circuits.Keccak.Iota
+public import Slop.Keccak.DecodeControl
+public import Slop.Keccak.FixedLookups
+public import Slop.Keccak.OpIndex
+public import Slop.Arithmetic.ByteAssembly
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic

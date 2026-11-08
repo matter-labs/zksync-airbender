@@ -1,8 +1,11 @@
-import Slop.Blake2Round.Mixing
-import Slop.Blake2Round.DiagonalGQueries0
-import Slop.Blake2Round.DiagonalGQueries1
-import Slop.Blake2Round.DiagonalGQueries2
-import Slop.Blake2Round.DiagonalGQueries3
+module
+public import Slop.Blake2Round.Mixing
+public import Slop.Blake2Round.DiagonalGQueries0
+public import Slop.Blake2Round.DiagonalGQueries1
+public import Slop.Blake2Round.DiagonalGQueries2
+public import Slop.Blake2Round.DiagonalGQueries3
+
+@[expose] public section
 
 set_option warningAsError true
 

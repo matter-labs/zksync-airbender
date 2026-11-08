@@ -1,6 +1,9 @@
-import Slop.Blake2G.PhysicalPorts
-import Slop.Delegation.Operations
-import Slop.Blake2G.ControlPool
+module
+public import Slop.Blake2G.PhysicalPorts
+public import Slop.Delegation.Operations
+public import Slop.Blake2G.ControlPool
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic

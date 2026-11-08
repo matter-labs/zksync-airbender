@@ -1,5 +1,8 @@
-import Slop.Blake2Round.Control
-import Human.Circuits.Blake2Round.Memory
+module
+public import Slop.Blake2Round.Control
+public import Human.Circuits.Blake2Round.Memory
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Proofs
 open Arithmetic

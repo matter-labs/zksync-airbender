@@ -1,5 +1,8 @@
-import Slop.MulDiv
-import Slop.Arithmetic.Multiplication
+module
+public import Slop.MulDiv
+public import Slop.Arithmetic.Multiplication
+
+@[expose] public section
 
 namespace Airbender.MulDiv.Proofs
 open Airbender.Arithmetic

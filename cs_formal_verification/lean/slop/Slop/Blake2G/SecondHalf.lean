@@ -1,4 +1,7 @@
-import Slop.Blake2G.Mixing
+module
+public import Slop.Blake2G.Mixing
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 

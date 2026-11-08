@@ -1,8 +1,11 @@
-import Slop.Delegation.Values
-import Slop.Bigint.Lookups
-import Slop.Bigint.AdditiveGates
-import Slop.Bigint.MultiplicationFields
-import Slop.Bigint.MultiplicationWriteback
+module
+public import Slop.Delegation.Values
+public import Slop.Bigint.Lookups
+public import Slop.Bigint.AdditiveGates
+public import Slop.Bigint.MultiplicationFields
+public import Slop.Bigint.MultiplicationWriteback
+
+@[expose] public section
 
 namespace Airbender.Bigint.Proofs
 open Arithmetic Trace

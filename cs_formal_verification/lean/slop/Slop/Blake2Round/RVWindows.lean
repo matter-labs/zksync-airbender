@@ -1,7 +1,10 @@
-import Slop.Blake2Round.RVCompression
-import Slop.Blake2Round.Memory
-import Slop.Delegation.RVNativeSegments
-import Human.Trace.Delegation.RVHashWindows
+module
+public import Slop.Blake2Round.RVCompression
+public import Slop.Blake2Round.Memory
+public import Slop.Delegation.RVNativeSegments
+public import Human.Trace.Delegation.RVHashWindows
+
+@[expose] public section
 
 /-! RV twin of `Windows.window_binding`: the first complete compression of a retained native boundary reaches its
     reference, delegate link included, on actual cut `RV.State`s. RAM cells include the shadow RAM below `ROM_END`. -/

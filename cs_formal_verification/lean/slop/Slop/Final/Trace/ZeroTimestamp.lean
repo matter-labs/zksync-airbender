@@ -1,9 +1,12 @@
-import Human.Trace.ZeroTimestamp
-import Slop.Trace.ZeroTimestamp
-import Slop.Trace.Pooled
-import Slop.UnifiedReduced.Trace
-import Slop.Delegation.Memory
-import Slop.KeccakSplit.Memory.History
+module
+public import Human.Trace.ZeroTimestamp
+public import Slop.Trace.ZeroTimestamp
+public import Slop.Trace.Pooled
+public import Slop.UnifiedReduced.Trace
+public import Slop.Delegation.Memory
+public import Slop.KeccakSplit.Memory.History
+
+@[expose] public section
 
 /-! The no-zero-timestamp-write claims of `Human.Trace.ZeroTimestamp`. -/
 

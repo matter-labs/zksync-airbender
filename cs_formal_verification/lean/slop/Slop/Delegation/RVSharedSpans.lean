@@ -1,9 +1,12 @@
-import Human.Trace.Delegation.RVSharedSpans
-import Slop.Delegation.RVSharedMemory
-import Slop.Delegation.WorkerProjection
-import Slop.Final.Trace.Workers.Blake2G.RVTheorems
-import Slop.Final.Trace.Workers.Blake2Round.RVTheorems
-import Slop.Final.Trace.Workers.Keccak.RVTheorems
+module
+public import Human.Trace.Delegation.RVSharedSpans
+public import Slop.Delegation.RVSharedMemory
+public import Slop.Delegation.WorkerProjection
+public import Slop.Final.Trace.Workers.Blake2G.RVTheorems
+public import Slop.Final.Trace.Workers.Blake2Round.RVTheorems
+public import Slop.Final.Trace.Workers.Keccak.RVTheorems
+
+@[expose] public section
 
 /-! RV siblings of the worker-projection and shared-span proofs (`WorkerProjection.lean`, `SpanBinding.lean`,
     `SharedSpans.lean`): the projected worker pool is initialized from the shared `initialImageRV` seeds, and the RV

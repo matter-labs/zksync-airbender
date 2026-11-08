@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.Chi5.Ports
-import Slop.KeccakSplit.Setup.Facts
+module
+public import Slop.KeccakSplit.Chi5.Ports
+public import Slop.KeccakSplit.Setup.Facts
+
+@[expose] public section
 
 /- The chi5 worker's row contract, but `executes`: canonical writes, the call
    effect, x11 alignment and the lane addresses (ported from PR #585's

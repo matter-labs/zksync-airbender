@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.Chi5.Lanes
-import Human.Circuits.KeccakSplit.Native
+module
+public import Slop.KeccakSplit.Chi5.Lanes
+public import Human.Circuits.KeccakSplit.Native
+
+@[expose] public section
 
 /- The chi5 worker's twelve memory ports: x10 (control), x11 (pointer), then the low
    and high word of each lane, with their value columns and RAM addresses. -/
@@ -15,7 +18,7 @@ def writeCol (k : Nat) : Nat := if k = 0 then 5 else if k = 1 then 12 else 16 + 
 abbrev port (k : Fin 12) : MemoryPort := Chi5.importedConstraintsMemoryPorts[k.val]
 
 theorem ports_eq (w : Nat → ZMod babyBearModulus) :
-    (⟨.chi5, w⟩ : Native.Row babyBearModulus).ports = Chi5.importedConstraintsMemoryPorts := rfl
+    (⟨.chi5, w⟩ : Native.Row babyBearModulus).ports = Chi5.importedConstraintsMemoryPorts := by rfl
 
 theorem read_code (w : Nat → ZMod babyBearModulus) (k : Fin 12) :
     (port k).readCode w = Nat.pair (w (readCol k)).val (w (readCol k + 1)).val := by

@@ -1,10 +1,13 @@
-import Slop.UnifiedReduced.RV.Row
-import Slop.UnifiedReduced.ZeroRegister
-import Slop.UnifiedReduced.Values
-import Slop.UnifiedReduced.Trace
-import Slop.Trace.RVZero
-import Slop.Trace.RVValues
-import Slop.Trace.RVProgram
+module
+public import Slop.UnifiedReduced.RV.Row
+public import Slop.UnifiedReduced.ZeroRegister
+public import Slop.UnifiedReduced.Values
+public import Slop.UnifiedReduced.Trace
+public import Slop.Trace.RVZero
+public import Slop.Trace.RVValues
+public import Slop.Trace.RVProgram
+
+@[expose] public section
 
 /-! Whole-trace laws of an accepted unified trace on the RV route, from the RV program table: every native write to
     x0 carries zero, and all port values are bounded words. -/

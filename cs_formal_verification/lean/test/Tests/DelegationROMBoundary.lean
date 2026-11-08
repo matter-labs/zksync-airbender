@@ -1,9 +1,14 @@
-import Tests.BigintMemory
-import Tests.DelegationCaller
-import Tests.DelegationOperationEffects
-import Slop.Delegation.RequestTrace
-import Human.Helpers.Memory.Native
-import Slop.Trace.ROMView
+module
+public import Tests.BigintMemory
+public import Tests.DelegationCaller
+public import Tests.DelegationOperationEffects
+public import Slop.Delegation.RequestTrace
+public import Human.Helpers.Memory.Native
+public import Slop.Trace.ROMView
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.DelegationROMBoundary
 noncomputable section
@@ -12,10 +17,10 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-private def assignment (column : Nat) : ZMod babyBearModulus :=
+def assignment (column : Nat) : ZMod babyBearModulus :=
   if column = 1 then 5 else if column = 4 ∨ column = 38 then 0 else Tests.BigintMemory.row column
-private def worker : Delegation.Row babyBearModulus := ⟨.bigint, assignment⟩
-private def workers : MemoryData babyBearModulus where
+def worker : Delegation.Row babyBearModulus := ⟨.bigint, assignment⟩
+def workers : MemoryData babyBearModulus where
   setup := modeledSetup Keccak.Controller.rows
   rows := [worker]
   initial := worker.memorySteps.map Prod.fst
@@ -52,7 +57,7 @@ theorem worker_constraints : FlatOperation.ConstraintsHoldFlat
     (Verification.environment assignment) (worker.constraints workers.setup) :=
   Verification.holds_append core clocks
 
-private def statePort : MemoryPort := worker.ports[1]'(by decide +kernel)
+def statePort : MemoryPort := worker.ports[1]'(by decide +kernel)
 
 theorem supported_copy_mode : assignment 66 = 1 ∧ assignment 55 = 128 ∧ assignment 56 = 0 := by
   decide +kernel

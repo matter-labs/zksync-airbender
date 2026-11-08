@@ -1,5 +1,8 @@
-import Slop.Bigint.AdditiveGates
-import Slop.Arithmetic.CarryChain
+module
+public import Slop.Bigint.AdditiveGates
+public import Slop.Arithmetic.CarryChain
+
+@[expose] public section
 
 namespace Airbender.Bigint.Additive.Proofs
 open Arithmetic

@@ -1,6 +1,9 @@
-import Human.Circuits.Bigint.Equality
-import Slop.Bigint.AdditiveFields
-import Slop.Bigint.OpIndex
+module
+public import Human.Circuits.Bigint.Equality
+public import Slop.Bigint.AdditiveFields
+public import Slop.Bigint.OpIndex
+
+@[expose] public section
 
 namespace Airbender.Bigint.Equality.Proofs
 open Arithmetic

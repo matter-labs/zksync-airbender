@@ -1,6 +1,9 @@
-import Human.Circuits.SubwordMemory.RVTheorems
-import Slop.SubwordMemory.RVTraceSoundness
-import Slop.Trace.RVPooledLawsProof
+module
+public import Human.Circuits.SubwordMemory.RVTheorems
+public import Slop.SubwordMemory.RVTraceSoundness
+public import Slop.Trace.RVPooledLawsProof
+
+@[expose] public section
 
 namespace Airbender.SubwordMemory
 

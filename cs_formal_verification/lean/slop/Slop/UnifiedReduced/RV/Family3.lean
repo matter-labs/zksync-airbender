@@ -1,8 +1,11 @@
-import Slop.UnifiedReduced.RV.Step
-import Slop.UnifiedReduced.RV.BinaryResult
-import Slop.UnifiedReduced.RV.BinaryOperands
-import Slop.UnifiedReduced.RV.Shift
-import Slop.UnifiedReduced.RV.XorRotateArithmetic
+module
+public import Slop.UnifiedReduced.RV.Step
+public import Slop.UnifiedReduced.RV.BinaryResult
+public import Slop.UnifiedReduced.RV.BinaryOperands
+public import Slop.UnifiedReduced.RV.Shift
+public import Slop.UnifiedReduced.RV.XorRotateArithmetic
+
+@[expose] public section
 
 /-! Shift/binary rows (decoder bits 15–16) on the RV route: XOR/OR/AND (register and immediate), SLL/SRL/SRA
     (register and immediate), REV8 and XORROT. -/

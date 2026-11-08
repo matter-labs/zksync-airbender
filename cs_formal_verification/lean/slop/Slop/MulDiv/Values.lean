@@ -1,5 +1,8 @@
-import Slop.MulDiv.Trace
-import Slop.Trace.Values
+module
+public import Slop.MulDiv.Trace
+public import Slop.Trace.Values
+
+@[expose] public section
 
 namespace Airbender.MulDiv.Proofs
 open Arithmetic Trace

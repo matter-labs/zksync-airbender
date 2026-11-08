@@ -1,6 +1,9 @@
-import Human.Circuits.Blake2G.Artifact
-import Slop.Blake2G.ArtifactChecks
-import Slop.Delegation.ClockFacts
+module
+public import Human.Circuits.Blake2G.Artifact
+public import Slop.Blake2G.ArtifactChecks
+public import Slop.Delegation.ClockFacts
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 open Trace

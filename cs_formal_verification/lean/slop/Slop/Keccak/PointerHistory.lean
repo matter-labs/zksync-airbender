@@ -1,5 +1,8 @@
-import Slop.Delegation.Readonly
-import Human.Trace.Workers.Keccak.Call
+module
+public import Slop.Delegation.Readonly
+public import Human.Trace.Workers.Keccak.Call
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Trace Arithmetic

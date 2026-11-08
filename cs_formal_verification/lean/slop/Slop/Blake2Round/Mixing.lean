@@ -1,7 +1,10 @@
-import Slop.Blake2Round.ColumnGQueries0
-import Slop.Blake2Round.ColumnGQueries1
-import Slop.Blake2Round.ColumnGQueries2
-import Slop.Blake2Round.ColumnGQueries3
+module
+public import Slop.Blake2Round.ColumnGQueries0
+public import Slop.Blake2Round.ColumnGQueries1
+public import Slop.Blake2Round.ColumnGQueries2
+public import Slop.Blake2Round.ColumnGQueries3
+
+@[expose] public section
 
 set_option warningAsError true
 

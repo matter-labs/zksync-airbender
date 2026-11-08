@@ -1,7 +1,10 @@
-import Human.Trace.Delegation.RVSharedMemory
-import Slop.Delegation.RVRequestTrace
-import Slop.Delegation.RVSharedImage
-import Slop.Trace.TransferValues
+module
+public import Human.Trace.Delegation.RVSharedMemory
+public import Slop.Delegation.RVRequestTrace
+public import Slop.Delegation.RVSharedImage
+public import Slop.Trace.TransferValues
+
+@[expose] public section
 
 /-! RV siblings of the caller-only shared pool proofs (`SharedClocks.lean`, `SharedMemory.lean`) over `RVRequestTrace`:
     the clock and transfer arguments are the Sail ones; the public seeds are `initialImageRV` reads and the history is

@@ -1,9 +1,12 @@
-import Slop.Delegation.Operations
-import Slop.Trace.TransferBounds
-import Human.Helpers.Delegation.RequestEffects
-import Human.Helpers.Delegation.SharedMemory
-import Slop.Delegation.RequestTrace
-import Slop.Trace.TransferValues
+module
+public import Slop.Delegation.Operations
+public import Slop.Trace.TransferBounds
+public import Human.Helpers.Delegation.RequestEffects
+public import Human.Helpers.Delegation.SharedMemory
+public import Slop.Delegation.RequestTrace
+public import Slop.Trace.TransferValues
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller.Proofs
 open Trace Arithmetic Trace.Proofs

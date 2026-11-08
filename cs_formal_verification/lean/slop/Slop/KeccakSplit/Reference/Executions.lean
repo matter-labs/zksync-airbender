@@ -1,6 +1,9 @@
-import Slop.KeccakSplit.Reference.Chain
-import Slop.KeccakSplit.Reference.Permutation
-import Human.Trace.Workers.Keccak.Permutation
+module
+public import Slop.KeccakSplit.Reference.Chain
+public import Slop.KeccakSplit.Reference.Permutation
+public import Human.Trace.Workers.Keccak.Permutation
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Call.Proofs
 open Trace Trace.Proofs Specs.Keccak256

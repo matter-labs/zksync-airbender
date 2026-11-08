@@ -1,6 +1,9 @@
-import Slop.Keccak.Claims
-import Mathlib.Tactic.IntervalCases
-import Slop.Keccak.Completeness.Bytes
+module
+public import Slop.Keccak.Claims
+public import Mathlib.Tactic.IntervalCases
+public import Slop.Keccak.Completeness.Bytes
+
+@[expose] public section
 
 namespace Tests.KeccakTheta
 open Airbender

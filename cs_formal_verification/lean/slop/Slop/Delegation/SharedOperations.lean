@@ -1,8 +1,11 @@
-import Slop.Delegation.SharedBounds
-import Slop.Bigint.NativeExecution
-import Slop.Blake2G.NativeExecution
-import Slop.Blake2Round.NativeExecution
-import Slop.Keccak.NativeExecution
+module
+public import Slop.Delegation.SharedBounds
+public import Slop.Bigint.NativeExecution
+public import Slop.Blake2G.NativeExecution
+public import Slop.Blake2Round.NativeExecution
+public import Slop.Keccak.NativeExecution
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller.Proofs
 open Trace

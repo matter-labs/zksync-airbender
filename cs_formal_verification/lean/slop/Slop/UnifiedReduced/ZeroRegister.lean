@@ -1,9 +1,12 @@
-import Slop.UnifiedReduced.Trace
-import Slop.Trace.RowHistory
-import Human.Circuits.UnifiedReduced.Decoder
-import Slop.JumpBranchSlt
-import Slop.ShiftBinop
-import Slop.UnifiedReduced
+module
+public import Slop.UnifiedReduced.Trace
+public import Slop.Trace.RowHistory
+public import Human.Circuits.UnifiedReduced.Decoder
+public import Slop.JumpBranchSlt
+public import Slop.ShiftBinop
+public import Slop.UnifiedReduced
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs
 open Trace Arithmetic

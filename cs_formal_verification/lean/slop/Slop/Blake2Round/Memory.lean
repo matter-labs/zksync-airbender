@@ -1,6 +1,9 @@
-import Slop.Delegation.Values
-import Slop.Blake2Round.Row
-import Human.Circuits.Blake2Round.Memory
+module
+public import Slop.Delegation.Values
+public import Slop.Blake2Round.Row
+public import Human.Circuits.Blake2Round.Memory
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Proofs
 open Trace Arithmetic

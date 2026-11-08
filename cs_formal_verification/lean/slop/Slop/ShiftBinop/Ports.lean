@@ -1,6 +1,9 @@
-import Slop.ShiftBinop.Soundness
-import Slop.Trace.BytePorts
-import Slop.Arithmetic.SignExtend
+module
+public import Slop.ShiftBinop.Soundness
+public import Slop.Trace.BytePorts
+public import Slop.Arithmetic.SignExtend
+
+@[expose] public section
 
 namespace Airbender.ShiftBinop.Proofs
 open Arithmetic

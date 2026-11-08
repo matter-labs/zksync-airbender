@@ -1,19 +1,22 @@
-import Slop.JumpBranchSlt.Claims
-import Slop.JumpBranchSlt.Completeness.Witness
+module
+public import Slop.JumpBranchSlt.Claims
+public import Slop.JumpBranchSlt.Completeness.Witness
+
+@[expose] public section
 
 namespace Tests.Jump
 open Airbender
 
-private def initial (wrap : Bool) : Arithmetic.Word :=
+def initial (wrap : Bool) : Arithmetic.Word :=
   if wrap then ⟨65532, 65535⟩ else ⟨0, 0⟩
 
-private def base (indirect wrap : Bool) : Arithmetic.Word :=
+def base (indirect wrap : Bool) : Arithmetic.Word :=
   if indirect then (if wrap then ⟨65535, 65535⟩ else ⟨5, 0⟩) else initial wrap
 
-private def offset (indirect wrap : Bool) : Arithmetic.Word :=
+def offset (indirect wrap : Bool) : Arithmetic.Word :=
   if wrap then ⟨if indirect then 6 else 8, 0⟩ else ⟨65532, 65535⟩
 
-private def final (indirect wrap : Bool) : Arithmetic.Word :=
+def final (indirect wrap : Bool) : Arithmetic.Word :=
   if wrap then ⟨4, 0⟩ else if indirect then ⟨0, 0⟩ else ⟨65532, 65535⟩
 
 def row (indirect wrap zero : Bool) : Nat → ZMod babyBearModulus
@@ -109,7 +112,7 @@ example (indirect wrap zero : Bool) :
   · cases indirect <;> cases wrap <;> decide
   · cases indirect <;> cases wrap <;> decide
 
-private def misalignedRow (i : Nat) : ZMod babyBearModulus :=
+def misalignedRow (i : Nat) : ZMod babyBearModulus :=
   if i = 22 then 7 else if i = 36 then 3 else if i = 46 then 1 else row true false false i
 
 /-- Clearing bit 0 of 7+(-4) gives PC 2, rejected by the imported bit-1 check. -/

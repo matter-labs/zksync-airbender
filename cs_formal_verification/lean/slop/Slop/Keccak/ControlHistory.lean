@@ -1,7 +1,10 @@
-import Human.Trace.Workers.Keccak.Call
-import Slop.Keccak.Schedule
-import Slop.Delegation.Memory
-import Slop.Delegation.CallPaths
+module
+public import Human.Trace.Workers.Keccak.Call
+public import Slop.Keccak.Schedule
+public import Slop.Delegation.Memory
+public import Slop.Delegation.CallPaths
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic Trace Trace.Proofs

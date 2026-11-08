@@ -1,6 +1,9 @@
-import Slop.Delegation.RVSharedSpans
-import Slop.Delegation.RVNativeSegments
-import Slop.Blake2Round.RVWords
+module
+public import Slop.Delegation.RVSharedSpans
+public import Slop.Delegation.RVNativeSegments
+public import Slop.Blake2Round.RVWords
+
+@[expose] public section
 
 /-! RV sibling of `Delegation/SpanTarget.lean` (`hash_span_at_target`): a complete span at a native boundary reaches its
     RV span result (delegate link included) at any final state that the same window's history reaches; two such final

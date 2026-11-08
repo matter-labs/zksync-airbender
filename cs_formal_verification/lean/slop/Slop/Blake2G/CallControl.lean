@@ -1,7 +1,10 @@
-import Slop.Blake2G.Control
-import Human.Circuits.Blake2G.Execution
-import Human.Circuits.Blake2G.Protocol
-import Human.Circuits.Keccak.Tables.Controller
+module
+public import Slop.Blake2G.Control
+public import Human.Circuits.Blake2G.Execution
+public import Human.Circuits.Blake2G.Protocol
+public import Human.Circuits.Keccak.Tables.Controller
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 open Arithmetic

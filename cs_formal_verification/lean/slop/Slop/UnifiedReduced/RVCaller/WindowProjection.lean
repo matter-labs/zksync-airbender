@@ -1,7 +1,10 @@
-import Human.Trace.UnifiedReduced.RVWindowProjection
-import Slop.UnifiedReduced.RVCaller.ZeroWrites
-import Slop.UnifiedReduced.RVCaller.WorkerProjection
-import Slop.UnifiedReduced.RVCaller.Restriction
+module
+public import Human.Trace.UnifiedReduced.RVWindowProjection
+public import Slop.UnifiedReduced.RVCaller.ZeroWrites
+public import Slop.UnifiedReduced.RVCaller.WorkerProjection
+public import Slop.UnifiedReduced.RVCaller.Restriction
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs

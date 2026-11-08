@@ -1,6 +1,9 @@
-import Slop.Keccak.RVCallSteps
-import Slop.Keccak.CallPermutation
-import Human.Trace.Workers.Keccak.RVCall
+module
+public import Slop.Keccak.RVCallSteps
+public import Slop.Keccak.CallPermutation
+public import Human.Trace.Workers.Keccak.RVCall
+
+@[expose] public section
 
 /-! RV twin of `PermutationBinding.permutation_binding_at_boundary`, with the delegate link: the complete special5
     span on `RV.State`s writes Clean's Keccak permutation into actual RV RAM, and its final state is the spec's run of
@@ -25,7 +28,7 @@ private theorem rv_lanes_at {state : RV.State} {pointer : BitVec 32} {cells : Li
   have four : BitVec.ofNat 32 4 = (4 : BitVec 32) := by decide +kernel
   simp only [physical, Controller.physicalLane, Fin.val_zero, Fin.val_one, Nat.mul_zero, Nat.add_zero,
     Nat.mul_one, BitVec.ofNat_add, ← BitVec.add_assoc, four] at lowAligned highAligned
-  have offset : 8 * (lane.val / 5 + 5 * (lane.val % 5)) = Permutation.laneOffset lane := rfl
+  have offset : 8 * (lane.val / 5 + 5 * (lane.val % 5)) = Permutation.laneOffset lane := by rfl
   rw [offset] at lowAligned highAligned
   refine ⟨_, _, rv_encoded_read lowAligned, rv_encoded_read highAligned, ?_, ?_⟩
   · simp only [logicalLanes, Fin.getElem_fin, Vector.getElem_ofFn, rvPhysicalLanes, rvRamLane,

@@ -1,6 +1,9 @@
-import Slop.Keccak.RVPermutation
-import Slop.Delegation.RVNativeSegments
-import Human.Trace.Delegation.RVHashWindows
+module
+public import Slop.Keccak.RVPermutation
+public import Slop.Delegation.RVNativeSegments
+public import Human.Trace.Delegation.RVHashWindows
+
+@[expose] public section
 
 /-! RV twins of `Windows.window_binding` and the boundary conversions: the first complete special5 span in a native
     worker pool reaches Clean's Keccak permutation, delegate link included, on its actual native-clock cut

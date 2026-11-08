@@ -1,7 +1,10 @@
-import Slop.Keccak.Phases.Iota.Part0
-import Slop.Keccak.Phases.Iota.Part1
-import Slop.Keccak.Phases.Iota.Part2
-import Slop.Keccak.Phases.Iota.Part3
+module
+public import Slop.Keccak.Phases.Iota.Part0
+public import Slop.Keccak.Phases.Iota.Part1
+public import Slop.Keccak.Phases.Iota.Part2
+public import Slop.Keccak.Phases.Iota.Part3
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256

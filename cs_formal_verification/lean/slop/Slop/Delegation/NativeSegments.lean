@@ -1,7 +1,10 @@
-import Human.Helpers.Delegation.NativeWindows
-import Slop.Delegation.Values
-import Slop.Delegation.SailHistory
-import Slop.Trace.TransferBoundary
+module
+public import Human.Helpers.Delegation.NativeWindows
+public import Slop.Delegation.Values
+public import Slop.Delegation.SailHistory
+public import Slop.Trace.TransferBoundary
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 open Trace Trace.Proofs

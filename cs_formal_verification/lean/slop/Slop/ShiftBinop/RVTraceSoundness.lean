@@ -1,9 +1,12 @@
-import Human.Circuits.ShiftBinop.RVTheorems
-import Slop.ShiftBinop.RVQuery
-import Slop.ShiftBinop.RVResult
-import Slop.Trace.RVPooledRow
-import Slop.Trace.RVZero
-import Slop.Trace.RVRowGlue
+module
+public import Human.Circuits.ShiftBinop.RVTheorems
+public import Slop.ShiftBinop.RVQuery
+public import Slop.ShiftBinop.RVResult
+public import Slop.Trace.RVPooledRow
+public import Slop.Trace.RVZero
+public import Slop.Trace.RVRowGlue
+
+@[expose] public section
 
 /-! RV32 shift/binop soundness (`RVSoundnessClaim`), on the RV route: no Sail state, interpreter or `Configured`
     fact.
@@ -36,7 +39,7 @@ theorem rv_shift_row_operands (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp
   have shape : (⟨.shiftBinop, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
         importedConstraintsMemoryPorts[2]] := by
-    have portsEq : (⟨.shiftBinop, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := rfl
+    have portsEq : (⟨.shiftBinop, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := by rfl
     rw [portsEq]
     rfl
   have operands := rv_row_register_reads laws hp inverse accepted assumptions decoded position shape

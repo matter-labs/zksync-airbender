@@ -1,16 +1,19 @@
-import Slop.UnifiedReduced.Completeness.Binary
-import Human.Circuits.UnifiedReduced.Control
-import Slop.Arithmetic.ShiftAssembly
-import Slop.Arithmetic.SignExtend
-import Slop.Arithmetic.WordBytes
-import Slop.Arithmetic.WordRotation
-import Slop.Trace.BytePorts
-import Slop.Trace.CompositionCore
-import Slop.Trace.RowContext
-import Slop.UnifiedReduced.Binary
-import Slop.UnifiedReduced.Values
-import Slop.UnifiedReduced.WordROM
-import Slop.UnifiedReduced.ZeroRegister
+module
+public import Slop.UnifiedReduced.Completeness.Binary
+public import Human.Circuits.UnifiedReduced.Control
+public import Slop.Arithmetic.ShiftAssembly
+public import Slop.Arithmetic.SignExtend
+public import Slop.Arithmetic.WordBytes
+public import Slop.Arithmetic.WordRotation
+public import Slop.Trace.BytePorts
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.RowContext
+public import Slop.UnifiedReduced.Binary
+public import Slop.UnifiedReduced.Values
+public import Slop.UnifiedReduced.WordROM
+public import Slop.UnifiedReduced.ZeroRegister
+
+@[expose] public section
 
 namespace Tests.UnifiedXorRotate
 open Airbender Arithmetic UnifiedReduced Trace

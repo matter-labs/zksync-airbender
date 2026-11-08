@@ -1,16 +1,19 @@
-import Slop.Keccak.MixStage
-import Slop.Keccak.Iota
-import Human.Circuits.Keccak.Execution
-import Slop.Keccak.ControllerLayout
-import Slop.Keccak.Addresses
-import Slop.Keccak.Chi
-import Slop.Keccak.RhoRotation
-import Slop.Keccak.Rho
-import Slop.Keccak.Theta
-import Slop.Keccak.DecodeControl
-import Slop.Delegation.Operations
-import Slop.Delegation.Requests
-import Slop.Delegation.SailHistory
+module
+public import Slop.Keccak.MixStage
+public import Slop.Keccak.Iota
+public import Human.Circuits.Keccak.Execution
+public import Slop.Keccak.ControllerLayout
+public import Slop.Keccak.Addresses
+public import Slop.Keccak.Chi
+public import Slop.Keccak.RhoRotation
+public import Slop.Keccak.Rho
+public import Slop.Keccak.Theta
+public import Slop.Keccak.DecodeControl
+public import Slop.Delegation.Operations
+public import Slop.Delegation.Requests
+public import Slop.Delegation.SailHistory
+
+@[expose] public section
 
 namespace Airbender.Keccak.Native.Proofs
 open Trace Arithmetic

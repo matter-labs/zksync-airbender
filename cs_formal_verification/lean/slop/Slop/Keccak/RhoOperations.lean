@@ -1,8 +1,11 @@
-import Human.Circuits.Keccak.Rho
-import Slop.Keccak.DecodeControl
-import Slop.Keccak.FixedLookups
-import Slop.Keccak.OpIndex
-import Slop.Arithmetic.LaneRotation
+module
+public import Human.Circuits.Keccak.Rho
+public import Slop.Keccak.DecodeControl
+public import Slop.Keccak.FixedLookups
+public import Slop.Keccak.OpIndex
+public import Slop.Arithmetic.LaneRotation
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs.Rho
 open Arithmetic

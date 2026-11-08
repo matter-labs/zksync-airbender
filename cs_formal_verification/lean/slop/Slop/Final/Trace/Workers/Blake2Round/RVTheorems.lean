@@ -1,6 +1,9 @@
-import Slop.Blake2Round.RVWindows
-import Slop.Blake2Round.RVNativeExecution
-import Human.Trace.Workers.Blake2Round.RVTheorems
+module
+public import Slop.Blake2Round.RVWindows
+public import Slop.Blake2Round.RVNativeExecution
+public import Human.Trace.Workers.Blake2Round.RVTheorems
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Native
 

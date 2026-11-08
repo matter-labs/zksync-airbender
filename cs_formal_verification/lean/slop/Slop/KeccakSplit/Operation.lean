@@ -1,6 +1,9 @@
-import Slop.KeccakSplit.Memory.History
-import Slop.KeccakSplit.Interface
-import Slop.Trace.TransferBounds
+module
+public import Slop.KeccakSplit.Memory.History
+public import Slop.KeccakSplit.Interface
+public import Slop.Trace.TransferBounds
+
+@[expose] public section
 
 /- An initialized split pool executes in Sail and every row is a call of the
    schedule, given the per-row circuit contract. -/

@@ -1,5 +1,8 @@
-import Slop.Bigint.RVNativeExecution
-import Human.Trace.Workers.Bigint.RVTheorems
+module
+public import Slop.Bigint.RVNativeExecution
+public import Human.Trace.Workers.Bigint.RVTheorems
+
+@[expose] public section
 
 namespace Airbender.Bigint.Native
 

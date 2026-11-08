@@ -1,6 +1,9 @@
-import Slop.Blake2G.RVWindows
-import Slop.Blake2G.RVNativeExecution
-import Human.Trace.Workers.Blake2G.RVTheorems
+module
+public import Slop.Blake2G.RVWindows
+public import Slop.Blake2G.RVNativeExecution
+public import Human.Trace.Workers.Blake2G.RVTheorems
+
+@[expose] public section
 
 namespace Airbender.Blake2G
 

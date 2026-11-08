@@ -1,9 +1,13 @@
-import Tests.KeccakTheta
-import Slop.Keccak.CallHistory
-import Slop.Delegation.NativeSegments
-import Mathlib.Data.List.OfFn
-import Slop.Delegation.NativeViews
-import Slop.Keccak.CallPorts
+module
+public import Tests.KeccakTheta
+public import Slop.Keccak.CallHistory
+public import Slop.Delegation.NativeSegments
+public import Mathlib.Data.List.OfFn
+public import Slop.Delegation.NativeViews
+public import Slop.Keccak.CallPorts
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.DelegationMemory
 noncomputable section
@@ -12,13 +16,13 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-private def row (column : Nat) : ZMod babyBearModulus :=
+def row (column : Nat) : ZMod babyBearModulus :=
   if column = 1 then 5
   else if column = 14 then 64
   else if 222 ≤ column ∧ column < 264 ∧ (column - 222) % 3 = 2 then 1
   else Tests.KeccakTheta.row column
 
-private def native : Delegation.Row babyBearModulus := ⟨.keccak, row⟩
+def native : Delegation.Row babyBearModulus := ⟨.keccak, row⟩
 
 theorem native_invocation_convention :
     (decodeTimestamp row Keccak.importedConstraintsDelegationColumns.invocation).lo % 4 = 1 ∧
@@ -79,7 +83,7 @@ private theorem clocks : FlatOperation.ConstraintsHoldFlat (Verification.environ
       Trace.timestampBase, ZMod.val_ofNat, ZMod.val_natCast, babyBearModulus]
     all_goals decide
 
-private def setup : Delegation.Setup babyBearModulus :=
+def setup : Delegation.Setup babyBearModulus :=
   ⟨{ name := "unused", Contains _ _ := False },
     { name := "unused", Contains _ _ := False },
     { name := "unused", Contains _ _ := False }, Tests.KeccakTheta.setup⟩

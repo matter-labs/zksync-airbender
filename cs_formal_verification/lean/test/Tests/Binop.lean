@@ -1,6 +1,11 @@
-import Slop.ShiftBinop.Claims
-import Slop.ShiftBinop.Completeness.Lookups
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.ShiftBinop.Claims
+public import Slop.ShiftBinop.Completeness.Lookups
+public import Mathlib.Tactic.IntervalCases
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.Binop
 open Airbender

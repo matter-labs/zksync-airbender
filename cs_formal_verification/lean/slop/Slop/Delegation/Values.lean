@@ -1,6 +1,9 @@
-import Slop.Delegation.History
-import Slop.Trace.TransferBounds
-import Slop.Trace.Values
+module
+public import Slop.Delegation.History
+public import Slop.Trace.TransferBounds
+public import Slop.Trace.Values
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 open Trace Arithmetic

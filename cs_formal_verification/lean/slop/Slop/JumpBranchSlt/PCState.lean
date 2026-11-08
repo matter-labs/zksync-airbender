@@ -1,5 +1,8 @@
-import Slop.Final.Helpers.Context.PCState.Theorems
-import Slop.JumpBranchSlt
+module
+public import Slop.Final.Helpers.Context.PCState.Theorems
+public import Slop.JumpBranchSlt
+
+@[expose] public section
 
 namespace Airbender.JumpBranchSlt.Proofs
 open Arithmetic

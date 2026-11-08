@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.Memory.History
-import Slop.Delegation.CallGroups
+module
+public import Slop.KeccakSplit.Memory.History
+public import Slop.Delegation.CallGroups
+
+@[expose] public section
 
 /- One split row's accesses happen at one clock, so the memory argument makes
    their addresses distinct; in any Sail history of exactly those accesses every

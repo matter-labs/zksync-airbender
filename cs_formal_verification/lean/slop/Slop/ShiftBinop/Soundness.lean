@@ -1,11 +1,14 @@
-import Slop.ShiftBinop
-import Slop.ShiftBinop.Shifts
-import Slop.ByteTables
-import Slop.Arithmetic.Bytes
-import Human.Helpers.Context.RowContext
-import Human.Helpers.Decoder.Instruction
-import Human.Helpers.Decoder.PooledProgram
-import Human.Circuits.AddSub.RowInput
+module
+public import Slop.ShiftBinop
+public import Slop.ShiftBinop.Shifts
+public import Slop.ByteTables
+public import Slop.Arithmetic.Bytes
+public import Human.Helpers.Context.RowContext
+public import Human.Helpers.Decoder.Instruction
+public import Human.Helpers.Decoder.PooledProgram
+public import Human.Circuits.AddSub.RowInput
+
+@[expose] public section
 
 namespace Airbender.ShiftBinop.Proofs
 open Airbender.Arithmetic

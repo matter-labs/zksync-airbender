@@ -1,7 +1,10 @@
-import Slop.Trace.RVPooledStep
-import Slop.Trace.RVPooledRow
-import Slop.JumpBranchSlt.RVTraceSoundness
-import Slop.ISA.RV.DecodeShape
+module
+public import Slop.Trace.RVPooledStep
+public import Slop.Trace.RVPooledRow
+public import Slop.JumpBranchSlt.RVTraceSoundness
+public import Slop.ISA.RV.DecodeShape
+
+@[expose] public section
 
 /-! One comparison/branch/jump row of a pooled trace is one `RV.exec` of its instruction (`RVPooledRowStep`), from
     the row's own RV history: the row facts of `JumpBranchSlt.Proofs.rv_row_facts` (`RVRowFacts`) with the operand
@@ -44,7 +47,7 @@ theorem rv_jbs_facts {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) {trace : Po
   have shape : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
         importedConstraintsMemoryPorts[2]] := by
-    have portsEq : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := rfl
+    have portsEq : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := by rfl
     rw [portsEq]
     rfl
   dsimp only [rowEvents] at history

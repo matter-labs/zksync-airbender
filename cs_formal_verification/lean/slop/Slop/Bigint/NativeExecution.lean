@@ -1,9 +1,12 @@
-import Human.Circuits.Bigint.Execution
-import Slop.Bigint.SetupSoundness
-import Slop.Bigint.Multiplication
-import Slop.Delegation.Operations
-import Slop.Delegation.Requests
-import Slop.Delegation.SailHistory
+module
+public import Human.Circuits.Bigint.Execution
+public import Slop.Bigint.SetupSoundness
+public import Slop.Bigint.Multiplication
+public import Slop.Delegation.Operations
+public import Slop.Delegation.Requests
+public import Slop.Delegation.SailHistory
+
+@[expose] public section
 
 namespace Airbender.Bigint.Native.Proofs
 open Trace

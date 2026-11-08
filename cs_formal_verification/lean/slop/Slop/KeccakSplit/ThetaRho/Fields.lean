@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.ThetaRho.Ports
+module
+public import Slop.KeccakSplit.ThetaRho.Ports
+
+@[expose] public section
 
 /- The theta/rho worker's row contract, but `executes`: canonical writes, the call
    effect, x11 alignment and the lane addresses (ported from PR #585's

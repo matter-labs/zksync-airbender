@@ -1,9 +1,12 @@
-import Human.Trace.Delegation.RVCallerTheorems
-import Slop.Delegation.RVSchedule
-import Slop.Delegation.RVSharedOperations
-import Slop.Delegation.RVSharedSpans
-import Slop.Delegation.RVMixedMemory
-import Slop.Delegation.RVRequestHashWindows
+module
+public import Human.Trace.Delegation.RVCallerTheorems
+public import Slop.Delegation.RVSchedule
+public import Slop.Delegation.RVSharedOperations
+public import Slop.Delegation.RVSharedSpans
+public import Slop.Delegation.RVMixedMemory
+public import Slop.Delegation.RVRequestHashWindows
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 

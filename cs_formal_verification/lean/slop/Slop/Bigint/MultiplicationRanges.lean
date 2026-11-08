@@ -1,5 +1,8 @@
-import Slop.Bigint.Lookups
-import Slop.Bigint.AdditiveFields
+module
+public import Slop.Bigint.Lookups
+public import Slop.Bigint.AdditiveFields
+
+@[expose] public section
 
 namespace Airbender.Bigint.Multiplication.Proofs
 open Arithmetic
@@ -87,7 +90,7 @@ private def carryQuery (i : Fin 31) : Nat :=
   else if 23 ≤ i.val then 53 + i.val
   else 72 + i.val
 
-private def carryTag (i : Fin 31) : Nat :=
+def carryTag (i : Fin 31) : Nat :=
   if i.val = 0 ∨ i.val = 30 then 22
   else if i.val = 1 ∨ i.val = 29 then 23
   else if i.val ≤ 3 ∨ 27 ≤ i.val then 24

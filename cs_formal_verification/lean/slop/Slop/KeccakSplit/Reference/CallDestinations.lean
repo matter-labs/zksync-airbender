@@ -1,8 +1,11 @@
-import Slop.KeccakSplit.Reference.CallReference
-import Mathlib.Tactic.FinCases
-import Slop.Arithmetic.Bytes
-import Slop.KernelRfl
-import Slop.Trace.InitialImage
+module
+public import Slop.KeccakSplit.Reference.CallReference
+public import Mathlib.Tactic.FinCases
+public import Slop.Arithmetic.Bytes
+public import Slop.KernelRfl
+public import Slop.Trace.InitialImage
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Call.Proofs
 open Trace Trace.Proofs

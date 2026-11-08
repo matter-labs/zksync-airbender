@@ -1,5 +1,8 @@
-import Slop.UnifiedReduced.RVCaller.RequestTrace
-import Slop.Delegation.RequestWindows
+module
+public import Slop.UnifiedReduced.RVCaller.RequestTrace
+public import Slop.Delegation.RequestWindows
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic

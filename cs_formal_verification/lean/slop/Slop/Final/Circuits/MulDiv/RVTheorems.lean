@@ -1,6 +1,9 @@
-import Human.Circuits.MulDiv.RVTheorems
-import Slop.MulDiv.RVTraceSoundness
-import Slop.Trace.RVPooledLawsProof
+module
+public import Human.Circuits.MulDiv.RVTheorems
+public import Slop.MulDiv.RVTraceSoundness
+public import Slop.Trace.RVPooledLawsProof
+
+@[expose] public section
 
 namespace Airbender.MulDiv
 

@@ -1,5 +1,8 @@
-import Human.Trace.UnifiedReduced.RVPreparedRoundWindows
-import Slop.UnifiedReduced.RVCaller.PreparedHashWindows
+module
+public import Human.Trace.UnifiedReduced.RVPreparedRoundWindows
+public import Slop.UnifiedReduced.RVCaller.PreparedHashWindows
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Arithmetic

@@ -1,11 +1,14 @@
-import Slop.Delegation.RVBoundaryInputs
-import Slop.Delegation.CallGroups
-import Slop.Delegation.SailHistory
-import Slop.Delegation.Readonly
-import Slop.Trace.RVHistory
-import Slop.Trace.RVHistoryFrame
-import Human.Helpers.Delegation.RVBoundaryMemory
-import Human.Trace.Delegation.RVExecution
+module
+public import Slop.Delegation.RVBoundaryInputs
+public import Slop.Delegation.CallGroups
+public import Slop.Delegation.SailHistory
+public import Slop.Delegation.Readonly
+public import Slop.Trace.RVHistory
+public import Slop.Trace.RVHistoryFrame
+public import Human.Helpers.Delegation.RVBoundaryMemory
+public import Human.Trace.Delegation.RVExecution
+
+@[expose] public section
 
 /-! RV twins of the delegation call-history chain (`CallHistory.lean`, `CallBoundaries.lean`, `AtomicHistory.lean`,
     `Atomic.lean`, `CopyFrame.lean`, `Readonly.lean`, `BoundaryInputs.lean`): grouping the realized RV history by

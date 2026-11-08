@@ -1,7 +1,10 @@
-import Slop.Bigint.NativeExecution
-import Slop.Bigint.Memory
-import Slop.Bigint.Control
-import Slop.Bigint.RVSpec
+module
+public import Slop.Bigint.NativeExecution
+public import Slop.Bigint.Memory
+public import Slop.Bigint.Control
+public import Slop.Bigint.RVSpec
+
+@[expose] public section
 
 /-! One bigint row is the spec's `bigintOp` (`RV.Delegation.bigint`) on its port values: the x12 control byte selects
     the same operation, and the written limbs and returned x12 are the operation's result `mod 2²⁵⁶` and flag. The

@@ -1,23 +1,26 @@
-import Slop.Trace.PooledOracleConsumption
-import Tests.ShiftBinopTimestamp
-import Tests.TraceExecution
-import Slop.AddSub.Completeness.Row
-import Human.Circuits.JumpBranchSlt.Jump
-import Human.Circuits.SubwordMemory.Output
-import Human.Circuits.WordMemory.Output
-import Human.Helpers.Memory.Native
-import Slop.JumpBranchSlt.Branch
-import Slop.JumpBranchSlt.Jump
-import Slop.JumpBranchSlt.PortReads
-import Slop.MulDiv.PortReads
-import Slop.MulDiv.Soundness
-import Slop.MulDiv.Values
-import Slop.ShiftBinop.PortReads
-import Slop.ShiftBinop.Ports
-import Slop.SubwordMemory.PortReads
-import Slop.Trace.CompositionCore
-import Slop.Trace.Family.Values
-import Slop.Trace.OracleConsumption
+module
+public import Slop.Trace.PooledOracleConsumption
+public import Tests.ShiftBinopTimestamp
+public import Tests.TraceExecution
+public import Slop.AddSub.Completeness.Row
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Circuits.SubwordMemory.Output
+public import Human.Circuits.WordMemory.Output
+public import Human.Helpers.Memory.Native
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.JumpBranchSlt.PortReads
+public import Slop.MulDiv.PortReads
+public import Slop.MulDiv.Soundness
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.PortReads
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.PortReads
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.Family.Values
+public import Slop.Trace.OracleConsumption
+
+@[expose] public section
 
 namespace Tests.PooledOracle
 open Airbender Arithmetic Trace

@@ -1,5 +1,8 @@
-import Human.Circuits.UnifiedReduced.Tables.Setup
-import Slop.Lookups
+module
+public import Human.Circuits.UnifiedReduced.Tables.Setup
+public import Slop.Lookups
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs
 set_option warningAsError true

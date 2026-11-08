@@ -1,5 +1,8 @@
-import Slop.Blake2Round.Claims
-import Slop.Blake2Round.Diagonal
+module
+public import Slop.Blake2Round.Claims
+public import Slop.Blake2Round.Diagonal
+
+@[expose] public section
 
 namespace Tests.Blake2Round
 open Airbender

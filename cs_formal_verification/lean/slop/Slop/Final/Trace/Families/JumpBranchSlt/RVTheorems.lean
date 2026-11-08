@@ -1,5 +1,8 @@
-import Human.Trace.Families.JumpBranchSlt.RVTheorems
-import Slop.JumpBranchSlt.RVTraceExecution
+module
+public import Human.Trace.Families.JumpBranchSlt.RVTheorems
+public import Slop.JumpBranchSlt.RVTraceExecution
+
+@[expose] public section
 
 namespace Airbender.JumpBranchSlt
 

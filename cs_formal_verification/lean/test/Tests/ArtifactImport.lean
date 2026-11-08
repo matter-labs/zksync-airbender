@@ -1,79 +1,82 @@
-import Slop.WordMemory.ArtifactChecks
-import Slop.SubwordMemory.ArtifactChecks
-import Slop.UnifiedReduced.ArtifactChecks
-import Slop.JumpBranchSlt.ArtifactChecks
-import Slop.Keccak.ArtifactChecks
-import Slop.Blake2G.ArtifactChecks
-import Slop.Blake2Round.ArtifactChecks
-import Slop.Bigint.ArtifactChecks
-import Tests.UnifiedMixedHistory
-import Tests.DelegationMixedMemory
-import Tests.DelegationSharedMemory
-import Tests.KeccakSchedule
-import Tests.UnifiedBranch
-import Tests.UnifiedComparison
-import Tests.UnifiedJump
-import Tests.UnifiedROMBoot
-import Tests.UnifiedShift
-import Tests.UnifiedROM
-import Tests.KeccakController
-import Tests.UnifiedBinary
-import Tests.BigintMemory
-import Tests.Blake2G
-import Tests.Blake2GMemory
-import Tests.Blake2Round
-import Tests.Bigint
-import Tests.BigintAbi
-import Tests.BigintMultiplication
-import Tests.BigintAddresses
-import Tests.Keccak
-import Tests.KeccakTheta
-import Tests.KeccakChi
-import Tests.KeccakIota
-import Tests.KeccakMix
-import Tests.KeccakRho
-import Tests.KeccakFixedTables
-import Tests.KeccakControlUpdate
-import Tests.SubwordMemory
-import Tests.UnifiedDelegation
-import Tests.DelegationROMBoundary
-import Tests.UnifiedReduced
-import Tests.DelegationTimestamps
-import Tests.DelegationMemory
-import Tests.WordMemory
-import Slop.AddSub.ArtifactChecks
-import Human.Circuits.JumpBranchSlt.Artifact
-import Human.Import.Parse
-import Human.Circuits.KeccakSplit.ColumnParity.Artifact
-import Human.Circuits.KeccakSplit.ThetaRho.Artifact
-import Human.Circuits.KeccakSplit.Chi5.Artifact
-import Human.Helpers.Properties
-import Slop.Constraints
-import Tests.InactiveRow
-import Tests.Modular
-import Tests.PC
-import Tests.NonDeterminism
-import Tests.Comparison
-import Tests.Discarded
-import Tests.Branch
-import Tests.Jump
-import Tests.MulDiv
-import Tests.MulDivProduct
-import Tests.Division
-import Tests.ShiftBinop
-import Tests.Binop
-import Tests.Shifts
-import Tests.TraceImport
-import Human.Helpers.Core.BabyBearPrime
+module
+public import Slop.WordMemory.ArtifactChecks
+public import Slop.SubwordMemory.ArtifactChecks
+public import Slop.UnifiedReduced.ArtifactChecks
+public import Slop.JumpBranchSlt.ArtifactChecks
+public import Slop.Keccak.ArtifactChecks
+public import Slop.Blake2G.ArtifactChecks
+public import Slop.Blake2Round.ArtifactChecks
+public import Slop.Bigint.ArtifactChecks
+public import Tests.UnifiedMixedHistory
+public import Tests.DelegationMixedMemory
+public import Tests.DelegationSharedMemory
+public import Tests.KeccakSchedule
+public import Tests.UnifiedBranch
+public import Tests.UnifiedComparison
+public import Tests.UnifiedJump
+public import Tests.UnifiedROMBoot
+public import Tests.UnifiedShift
+public import Tests.UnifiedROM
+public import Tests.KeccakController
+public import Tests.UnifiedBinary
+public import Tests.BigintMemory
+public import Tests.Blake2G
+public import Tests.Blake2GMemory
+public import Tests.Blake2Round
+public import Tests.Bigint
+public import Tests.BigintAbi
+public import Tests.BigintMultiplication
+public import Tests.BigintAddresses
+public import Tests.Keccak
+public import Tests.KeccakTheta
+public import Tests.KeccakChi
+public import Tests.KeccakIota
+public import Tests.KeccakMix
+public import Tests.KeccakRho
+public import Tests.KeccakFixedTables
+public import Tests.KeccakControlUpdate
+public import Tests.SubwordMemory
+public import Tests.UnifiedDelegation
+public import Tests.DelegationROMBoundary
+public import Tests.UnifiedReduced
+public import Tests.DelegationTimestamps
+public import Tests.DelegationMemory
+public import Tests.WordMemory
+public import Slop.AddSub.ArtifactChecks
+public import Human.Circuits.JumpBranchSlt.Artifact
+public import Human.Import.Parse
+public import Human.Circuits.KeccakSplit.ColumnParity.Artifact
+public import Human.Circuits.KeccakSplit.ThetaRho.Artifact
+public import Human.Circuits.KeccakSplit.Chi5.Artifact
+public import Human.Helpers.Properties
+public import Slop.Constraints
+public import Tests.InactiveRow
+public import Tests.Modular
+public import Tests.PC
+public import Tests.NonDeterminism
+public import Tests.Comparison
+public import Tests.Discarded
+public import Tests.Branch
+public import Tests.Jump
+public import Tests.MulDiv
+public import Tests.MulDivProduct
+public import Tests.Division
+public import Tests.ShiftBinop
+public import Tests.Binop
+public import Tests.Shifts
+public import Tests.TraceImport
+public import Human.Helpers.Core.BabyBearPrime
+
+@[expose] public section
 
 open Airbender Lean
 
 set_option maxRecDepth 16384
 
-private def check (ok : Bool) (label : String) : IO Unit :=
+def check (ok : Bool) (label : String) : IO Unit :=
   if ok then IO.println s!"PASS {label}" else throw (IO.userError s!"FAIL {label}")
 
-private def rejected {α : Type} : Except String α → Bool
+def rejected {α : Type} : Except String α → Bool
   | .error _ => true
   | .ok _ => false
 

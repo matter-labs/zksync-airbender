@@ -1,8 +1,11 @@
-import Slop.Blake2Round.RVStateTrace
-import Slop.Blake2Round.Compression
-import Slop.Delegation.RVNativeViews
-import Slop.Delegation.RVCallLink
-import Slop.Blake2Round.StateTransport
+module
+public import Slop.Blake2Round.RVStateTrace
+public import Slop.Blake2Round.Compression
+public import Slop.Delegation.RVNativeViews
+public import Slop.Delegation.RVCallLink
+public import Slop.Blake2Round.StateTransport
+
+@[expose] public section
 
 /-! RV twins of `StateTransport.native_word_observations` and `PhysicalWords.physical_row_words` for the
     extended-BLAKE row, and the row frame: a round call's RV history touches only x10, x11, x12, the 24 state words

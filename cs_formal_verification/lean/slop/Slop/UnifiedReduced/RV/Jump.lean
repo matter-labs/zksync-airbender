@@ -1,6 +1,9 @@
-import Slop.UnifiedReduced.RV.Step
-import Slop.UnifiedReduced.RV.JumpArithmetic
-import Slop.JumpBranchSlt.RVData
+module
+public import Slop.UnifiedReduced.RV.Step
+public import Slop.UnifiedReduced.RV.JumpArithmetic
+public import Slop.JumpBranchSlt.RVData
+
+@[expose] public section
 
 /-! JAL/JALR rows on the RV route: the unified jump arithmetic (`jump_link`, `jump_pc`) against `RV.exec`. -/
 

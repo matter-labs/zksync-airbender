@@ -1,5 +1,8 @@
-import Slop.Delegation.Values
-import Slop.Trace.SeedTransfer
+module
+public import Slop.Delegation.Values
+public import Slop.Trace.SeedTransfer
+
+@[expose] public section
 
 /-! State-free twins of the delegation memory chain (`Memory.lean` through `memory_soundness`, `History.transfer_facts`,
     `Values.lean`). Those take a Sail `BoundaryInputs` but read only its public seed facts (address domain, seed

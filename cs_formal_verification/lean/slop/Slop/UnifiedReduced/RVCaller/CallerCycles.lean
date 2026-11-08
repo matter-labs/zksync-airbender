@@ -1,6 +1,9 @@
-import Human.Trace.UnifiedReduced.RVCallerCycles
-import Slop.UnifiedReduced.RVCaller.PreparedRoundWindows
-import Slop.Delegation.RVCallLink
+module
+public import Human.Trace.UnifiedReduced.RVCallerCycles
+public import Slop.UnifiedReduced.RVCaller.PreparedRoundWindows
+public import Slop.Delegation.RVCallLink
+
+@[expose] public section
 
 /-! RV siblings of `MixedFetch.lean` and `CallerCycles.lean`: every row fetches its public RV entry in every reachable
     pre-state (the ROM image, `rom`, is never changed by an RV history), and every caller cycle has actual RV states,

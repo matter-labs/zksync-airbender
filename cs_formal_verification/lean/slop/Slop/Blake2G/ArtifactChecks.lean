@@ -1,4 +1,9 @@
-import Human.Circuits.Blake2G.Artifact
+module
+public import Human.Circuits.Blake2G.Artifact
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Airbender.Blake2G
 
@@ -8,10 +13,10 @@ theorem indirect_port_layout : importedConstraintsIndirectPorts = #v[
     Verification.IndirectPort.mk 10 2 #v[13, 14] 4 (some 9) 0 #v[23, 24] (some #v[25, 26]),
     Verification.IndirectPort.mk 10 3 #v[13, 14] 4 (some 10) 0 #v[27, 28] (some #v[29, 30]),
     Verification.IndirectPort.mk 11 0 #v[31, 32] 4 (some 11) 0 #v[33, 34] none,
-    Verification.IndirectPort.mk 11 1 #v[31, 32] 4 (some 12) 0 #v[35, 36] none] := rfl
+    Verification.IndirectPort.mk 11 1 #v[31, 32] 4 (some 12) 0 #v[35, 36] none] := by rfl
 
 theorem timestamp_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 21 := rfl
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 21 := by rfl
 
 theorem delegation_columns : importedConstraintsDelegationColumns =
     (⟨0, #v[1, 2], (Vector.ofFn (fun i : Fin 9 =>
@@ -23,10 +28,10 @@ theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.cloc
   simp [importedConstraintsMemoryPorts, importedConstraintsDelegationColumns]
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
-    (FlatOperation.constraints (importedConstraints setup)).length = 32 := rfl
+    (FlatOperation.constraints (importedConstraints setup)).length = 32 := by rfl
 
 theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
-    (FlatOperation.lookups (importedConstraints setup)).length = 21 := rfl
+    (FlatOperation.lookups (importedConstraints setup)).length = 21 := by rfl
 
 theorem variable_roles :
     importedConstraintsVariableNames.lookup 0 = some "Execute flag for cycle" ∧

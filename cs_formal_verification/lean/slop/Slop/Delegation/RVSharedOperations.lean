@@ -1,7 +1,10 @@
-import Human.Trace.Delegation.RVSharedMemory
-import Human.Trace.Delegation.RVRequestEffects
-import Slop.Delegation.RVSharedMemory
-import Slop.Delegation.SharedOperations
+module
+public import Human.Trace.Delegation.RVSharedMemory
+public import Human.Trace.Delegation.RVRequestEffects
+public import Slop.Delegation.RVSharedMemory
+public import Slop.Delegation.SharedOperations
+
+@[expose] public section
 
 /-! RV siblings of the shared word-bound and operation proofs (`SharedBounds.lean`, `SharedOperations.lean`) and of
     `request_operation_effects` (`RequestEffects.lean`): bounds propagate from the `initialImageRV` seeds

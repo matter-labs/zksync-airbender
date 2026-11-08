@@ -1,6 +1,9 @@
-import Slop.KeccakSplit.RowExecution
-import Slop.KeccakSplit.Trace.RVAtomicWrites
-import Human.Trace.Workers.KeccakSplit.RVCall
+module
+public import Slop.KeccakSplit.RowExecution
+public import Slop.KeccakSplit.Trace.RVAtomicWrites
+public import Human.Trace.Workers.KeccakSplit.RVCall
+
+@[expose] public section
 
 /-! RV twins of the row-level steps of `RowExecution.lean`, shared by the three split workers' RV `executes` proofs:
     a row's RV history of exactly its accesses, from a state where its ports read their native values, is one

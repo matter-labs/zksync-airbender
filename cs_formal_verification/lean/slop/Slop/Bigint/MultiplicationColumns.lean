@@ -1,11 +1,14 @@
-import Slop.Bigint.MultiplicationColumns.Part0
-import Slop.Bigint.MultiplicationColumns.Part1
-import Slop.Bigint.MultiplicationColumns.Part2
-import Slop.Bigint.MultiplicationColumns.Part3
-import Slop.Bigint.MultiplicationColumns.Part4
-import Slop.Bigint.MultiplicationColumns.Part5
-import Slop.Bigint.MultiplicationColumns.Part6
-import Slop.Bigint.MultiplicationColumns.Part7
+module
+public import Slop.Bigint.MultiplicationColumns.Part0
+public import Slop.Bigint.MultiplicationColumns.Part1
+public import Slop.Bigint.MultiplicationColumns.Part2
+public import Slop.Bigint.MultiplicationColumns.Part3
+public import Slop.Bigint.MultiplicationColumns.Part4
+public import Slop.Bigint.MultiplicationColumns.Part5
+public import Slop.Bigint.MultiplicationColumns.Part6
+public import Slop.Bigint.MultiplicationColumns.Part7
+
+@[expose] public section
 
 namespace Airbender.Bigint.Multiplication.Proofs
 open Arithmetic

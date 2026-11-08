@@ -1,4 +1,7 @@
-import Tests.BigintMultiplication
+module
+public import Tests.BigintMultiplication
+
+@[expose] public section
 
 namespace Tests.BigintAddresses
 open Airbender

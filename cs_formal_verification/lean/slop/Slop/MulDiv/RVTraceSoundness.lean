@@ -1,9 +1,12 @@
-import Human.Circuits.MulDiv.RVTheorems
-import Slop.MulDiv.RVQuery
-import Slop.MulDiv.RVResult
-import Slop.Trace.RVValues
-import Slop.Trace.RVPooledRow
-import Slop.Trace.RVRowGlue
+module
+public import Human.Circuits.MulDiv.RVTheorems
+public import Slop.MulDiv.RVQuery
+public import Slop.MulDiv.RVResult
+public import Slop.Trace.RVValues
+public import Slop.Trace.RVPooledRow
+public import Slop.Trace.RVRowGlue
+
+@[expose] public section
 
 /-! RV32 MulDiv soundness (`RVSoundnessClaim`), on the RV route: no Sail state, interpreter or `Configured` fact.
 
@@ -33,7 +36,7 @@ theorem rv_muldiv_row_operands (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (h
   have shape : (⟨.mulDiv, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
         importedConstraintsMemoryPorts[2]] := by
-    have portsEq : (⟨.mulDiv, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := rfl
+    have portsEq : (⟨.mulDiv, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := by rfl
     rw [portsEq]
     first
       | rfl

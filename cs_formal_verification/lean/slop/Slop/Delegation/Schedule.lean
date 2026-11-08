@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.Schedule
-import Slop.Delegation.RequestTrace
+module
+public import Human.Helpers.Delegation.Schedule
+public import Slop.Delegation.RequestTrace
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller.Proofs
 open Trace Arithmetic

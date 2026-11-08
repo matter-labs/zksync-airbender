@@ -1,6 +1,9 @@
-import Human.Circuits.JumpBranchSlt.RVTheorems
-import Slop.JumpBranchSlt.RVTraceSoundness
-import Slop.Trace.RVPooledLawsProof
+module
+public import Human.Circuits.JumpBranchSlt.RVTheorems
+public import Slop.JumpBranchSlt.RVTraceSoundness
+public import Slop.Trace.RVPooledLawsProof
+
+@[expose] public section
 
 namespace Airbender.JumpBranchSlt
 

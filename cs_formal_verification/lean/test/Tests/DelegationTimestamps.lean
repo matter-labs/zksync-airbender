@@ -1,7 +1,10 @@
-import Human.Helpers.Delegation.WorkerContext
-import Slop.Delegation.Operations
-import Slop.Delegation.Requests
-import Slop.Delegation.SailHistory
+module
+public import Human.Helpers.Delegation.WorkerContext
+public import Slop.Delegation.Operations
+public import Slop.Delegation.Requests
+public import Slop.Delegation.SailHistory
+
+@[expose] public section
 
 namespace Tests.DelegationTimestamps
 open Airbender
@@ -9,7 +12,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-private def clockRow (first ports invocation previous column : Nat) : ZMod babyBearModulus :=
+def clockRow (first ports invocation previous column : Nat) : ZMod babyBearModulus :=
   if column = 1 then invocation
   else if first ≤ column ∧ column < first + 3 * ports then
     if (column - first) % 3 = 0 then previous

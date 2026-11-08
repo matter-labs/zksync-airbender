@@ -1,6 +1,10 @@
-import Slop.KeccakSplit.Reference.SlotReduction
-import Slop.Keccak.DeferredIota
-import Slop.Keccak.LayoutReduction
+module
+public import Slop.KeccakSplit.Reference.SlotReduction
+public import Slop.Keccak.DeferredIota
+public import Slop.Keccak.LayoutReduction
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Call.Proofs
 open Specs.Keccak256

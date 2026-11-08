@@ -1,25 +1,28 @@
-import Human.Helpers.Context.Registries.JumpBranchSlt
-import Slop.JumpBranchSlt.Timestamp
-import Slop.Trace.RowHistory
-import Slop.Trace.PC
-import Slop.Trace.LatestReads
-import Slop.Trace.MemoryHistory
-import Slop.JumpBranchSlt
+module
+public import Human.Helpers.Context.Registries.JumpBranchSlt
+public import Slop.JumpBranchSlt.Timestamp
+public import Slop.Trace.RowHistory
+public import Slop.Trace.PC
+public import Slop.Trace.LatestReads
+public import Slop.Trace.MemoryHistory
+public import Slop.JumpBranchSlt
+
+@[expose] public section
 
 namespace Airbender.JumpBranchSlt
 
 @[simp] theorem trace_columns (kind : TraceKind) :
-    Trace.CircuitLayout.columns kind = importedConstraintsTraceColumns := rfl
+    Trace.CircuitLayout.columns kind = importedConstraintsTraceColumns := by rfl
 
 @[simp] theorem trace_ports (kind : TraceKind) :
-    Trace.CircuitLayout.ports kind = importedConstraintsMemoryPorts := rfl
+    Trace.CircuitLayout.ports kind = importedConstraintsMemoryPorts := by rfl
 
 @[simp] theorem trace_decoder_columns (kind : TraceKind) :
-    Trace.CircuitLayout.decoderColumns kind = importedConstraintsDecoderColumns := rfl
+    Trace.CircuitLayout.decoderColumns kind = importedConstraintsDecoderColumns := by rfl
 
 @[simp] theorem trace_constraints [Fact p.Prime] (kind : TraceKind)
     (rom : Table (ZMod p) (fields 9)) :
-    Trace.CircuitLayout.constraints kind rom = clockConstraints := rfl
+    Trace.CircuitLayout.constraints kind rom = clockConstraints := by rfl
 
 end Airbender.JumpBranchSlt
 

@@ -1,6 +1,13 @@
-import Human.Circuits.Blake2Round.Finalization
-import Human.Circuits.Blake2Round.Mixing
-import Human.Circuits.Blake2Round.Artifact
+module
+public import Human.Circuits.Blake2Round.Finalization
+public import Human.Circuits.Blake2Round.Mixing
+public import Human.Circuits.Blake2Round.Artifact
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Repr -- Init.Data.Repr is not exposed (still true in 4.35)
+import all Init.Data.String.Defs -- Init.Data.Repr is not exposed (still true in 4.35)
+
+@[expose] public section
 
 namespace Airbender.Blake2Round
 
@@ -18,7 +25,7 @@ theorem message_port_layout (i : Fin 16) : importedConstraintsIndirectPorts[24 +
   fin_cases i <;> rfl
 
 theorem timestamp_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 89 := rfl
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 89 := by rfl
 
 theorem delegation_columns : importedConstraintsDelegationColumns =
     (⟨0, #v[1, 2], (Vector.ofFn (fun i : Fin 43 =>
@@ -30,10 +37,10 @@ theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.cloc
   simp [importedConstraintsMemoryPorts, importedConstraintsDelegationColumns]
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
-    (FlatOperation.constraints (importedConstraints setup)).length = 220 := rfl
+    (FlatOperation.constraints (importedConstraints setup)).length = 220 := by rfl
 
 theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
-    (FlatOperation.lookups (importedConstraints setup)).length = 194 := rfl
+    (FlatOperation.lookups (importedConstraints setup)).length = 194 := by rfl
 
 theorem variable_roles :
     importedConstraintsVariableNames.lookup 0 = some "Execute flag for cycle" ∧

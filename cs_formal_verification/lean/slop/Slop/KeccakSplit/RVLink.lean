@@ -1,8 +1,11 @@
-import Slop.KeccakSplit.RVStep
-import Slop.KeccakSplit.Setup.Facts
-import Slop.KeccakSplit.Reference.RVExecutions
-import Slop.Keccak.RVCallSteps
-import Slop.Delegation.RVCallListLink
+module
+public import Slop.KeccakSplit.RVStep
+public import Slop.KeccakSplit.Setup.Facts
+public import Slop.KeccakSplit.Reference.RVExecutions
+public import Slop.Keccak.RVCallSteps
+public import Slop.Delegation.RVCallListLink
+
+@[expose] public section
 
 /-! The split delegate link: one documented split call executed on `RV.State`s (`Call.RVExecutesAt`) is the spec's
     Keccak-f1600 delegation of its worker (`RV.Delegation.keccakF1600`, CSRs `0x7cd`/`0x7cc`/`0x7ce`) from the

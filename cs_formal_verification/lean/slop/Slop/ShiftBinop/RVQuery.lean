@@ -1,6 +1,9 @@
-import Human.Circuits.ShiftBinop.RVModel
-import Slop.Trace.DecoderBits
-import Slop.ShiftBinop.RVDecoder
+module
+public import Human.Circuits.ShiftBinop.RVModel
+public import Slop.Trace.DecoderBits
+public import Slop.ShiftBinop.RVDecoder
+
+@[expose] public section
 
 /-! Native decoder metadata of the RV shift/binop row's instruction (`ShiftBinop.rvDecoderFields`), and what a matching
     decoder query fixes in the row: selectors, operation tag, immediate limbs, PC limbs and register indices. No Sail

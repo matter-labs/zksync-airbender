@@ -1,6 +1,9 @@
-import Slop.JumpBranchSlt
-import Mathlib.Tactic.LinearCombination
-import Human.Circuits.JumpBranchSlt.Model
+module
+public import Slop.JumpBranchSlt
+public import Mathlib.Tactic.LinearCombination
+public import Human.Circuits.JumpBranchSlt.Model
+
+@[expose] public section
 
 namespace Airbender.JumpBranchSlt.Proofs
 open Airbender.Arithmetic

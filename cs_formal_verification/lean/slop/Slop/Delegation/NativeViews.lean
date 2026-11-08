@@ -1,5 +1,8 @@
-import Slop.Arithmetic.Word
-import Slop.Delegation.CallGroups
+module
+public import Slop.Arithmetic.Word
+public import Slop.Delegation.CallGroups
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 open Trace Trace.Proofs Arithmetic

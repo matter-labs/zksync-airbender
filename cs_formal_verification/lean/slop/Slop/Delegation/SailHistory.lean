@@ -1,4 +1,7 @@
-import Slop.Delegation.History
+module
+public import Slop.Delegation.History
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 open Trace Trace.Proofs

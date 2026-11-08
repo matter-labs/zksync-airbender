@@ -1,6 +1,9 @@
-import Slop.UnifiedReduced.RVCaller.HistoryWindow
-import Human.Helpers.Delegation.RVBoundaryMemory
-import Slop.Delegation.RVSharedImage
+module
+public import Slop.UnifiedReduced.RVCaller.HistoryWindow
+public import Human.Helpers.Delegation.RVBoundaryMemory
+public import Slop.Delegation.RVSharedImage
+
+@[expose] public section
 
 /-! RV siblings of `HistoryRestriction` and `BoundaryRestriction` (the image restriction is
     `Transfer.rv_image_restriction`): restricting an RV history and an RV boundary image to a sub-domain of cells (here: dropping x0). -/

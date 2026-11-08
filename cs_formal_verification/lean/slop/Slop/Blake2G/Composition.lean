@@ -1,4 +1,7 @@
-import Slop.Blake2G.State
+module
+public import Slop.Blake2G.State
+
+@[expose] public section
 
 namespace Airbender.Blake2G.State.Proofs
 

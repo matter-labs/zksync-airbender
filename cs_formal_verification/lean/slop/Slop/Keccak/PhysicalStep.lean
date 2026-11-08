@@ -1,5 +1,8 @@
-import Slop.Keccak.LaneFrame
-import Slop.Keccak.MicroValue
+module
+public import Slop.Keccak.LaneFrame
+public import Slop.Keccak.MicroValue
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic
@@ -27,6 +30,6 @@ theorem micro_step_get (call : Fin 649) (state : LaneState) (physical : Fin 31) 
         microValue (scheduleControl ⟨call.val, by omega⟩)
           (fun lane => state ⟨(slotIndices call)[lane], Controller.Proofs.rows_bound _ lane⟩)
           ⟨(slotIndices call).toList.idxOf physical.val, h⟩
-      else state physical := rfl
+      else state physical := by rfl
 
 end Airbender.Keccak.Proofs

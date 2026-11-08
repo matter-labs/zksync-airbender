@@ -1,5 +1,8 @@
-import Slop.Keccak.Tables
-import Slop.Keccak.Controls
+module
+public import Slop.Keccak.Tables
+public import Slop.Keccak.Controls
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic
@@ -7,8 +10,8 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1200000
 
-private theorem row_tag (tag index : Nat) : (byteRow tag index)[7] = tag := rfl
-private theorem rotation_tag (key : Nat) : (rotationRow key)[7] = 40 := rfl
+private theorem row_tag (tag index : Nat) : (byteRow tag index)[7] = tag := by rfl
+private theorem rotation_tag (key : Nat) : (rotationRow key)[7] = 40 := by rfl
 
 private theorem controller_region {control : Fin 4096 → Vector Nat 6}
     (index : Fin 1249281) (selected : (setupRow control index)[7] = 37) :

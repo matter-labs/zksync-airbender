@@ -1,7 +1,10 @@
-import Slop.UnifiedReduced.Claims
-import Slop.UnifiedReduced.Completeness.Shift
-import Slop.ShiftBinop.PortReads
-import Slop.ShiftBinop.Ports
+module
+public import Slop.UnifiedReduced.Claims
+public import Slop.UnifiedReduced.Completeness.Shift
+public import Slop.ShiftBinop.PortReads
+public import Slop.ShiftBinop.Ports
+
+@[expose] public section
 
 namespace Tests.UnifiedShift
 open Airbender Arithmetic Trace Reference.RiscV

@@ -1,5 +1,8 @@
-import Slop.Bigint.AdditiveFields
-import Slop.Bigint.OpIndex
+module
+public import Slop.Bigint.AdditiveFields
+public import Slop.Bigint.OpIndex
+
+@[expose] public section
 
 namespace Airbender.Bigint.Additive.Proofs
 open Arithmetic

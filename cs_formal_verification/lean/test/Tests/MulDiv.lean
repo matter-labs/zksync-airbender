@@ -1,4 +1,8 @@
-import Slop.MulDiv.Claims
+module
+public import Slop.MulDiv.Claims
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.MulDiv
 open Airbender
@@ -63,7 +67,7 @@ example (remainder : Bool) :
       by change (4 : Nat) = (4 : ZMod babyBearModulus).val; decide⟩
     ⟨by decide, by decide⟩).2.2
 
-private def falseZeroRow (i : Nat) : ZMod babyBearModulus :=
+def falseZeroRow (i : Nat) : ZMod babyBearModulus :=
   if i = 24 then 256 else row false i
 
 /-- A nonzero divisor cannot borrow the exceptional division-by-zero flag. -/

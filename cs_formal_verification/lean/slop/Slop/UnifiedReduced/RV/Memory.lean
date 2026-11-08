@@ -1,5 +1,8 @@
-import Slop.UnifiedReduced.RV.Step
-import Slop.UnifiedReduced.RV.ROMValue
+module
+public import Slop.UnifiedReduced.RV.Step
+public import Slop.UnifiedReduced.RV.ROMValue
+
+@[expose] public section
 
 /-! LW/SW rows (decoder bits 17/18) on the RV route. A LW below `ROM_END` reads the ROM image through the setup
     table's ROM region (`word_rom_value`); from `ROM_END` on it copies the second port's RAM read. -/

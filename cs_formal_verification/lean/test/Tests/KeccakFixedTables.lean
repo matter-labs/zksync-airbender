@@ -1,15 +1,20 @@
-import Slop.Keccak.FixedTables
-import Mathlib.Tactic.IntervalCases
-import Human.Helpers.Core.BabyBearPrime
+module
+public import Slop.Keccak.FixedTables
+public import Mathlib.Tactic.IntervalCases
+public import Human.Helpers.Core.BabyBearPrime
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.KeccakFixedTables
 open Airbender
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-private def control (_ : Fin 4096) : Vector Nat 6 := Vector.replicate 6 0
-private def emptyEnv : Environment (ZMod babyBearModulus) := Verification.environment (fun _ => 0)
-private def query (tag a b c : Nat) : Lookup (ZMod babyBearModulus) :=
+def control (_ : Fin 4096) : Vector Nat 6 := Vector.replicate 6 0
+def emptyEnv : Environment (ZMod babyBearModulus) := Verification.environment (fun _ => 0)
+def query (tag a b c : Nat) : Lookup (ZMod babyBearModulus) :=
   Lookup.mk (Keccak.setupTable control).toRaw
     #v[.const (a : ZMod babyBearModulus), .const (b : ZMod babyBearModulus),
       .const (c : ZMod babyBearModulus), .const 0, .const 0, .const 0, .const 0,

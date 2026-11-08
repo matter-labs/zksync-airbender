@@ -1,7 +1,10 @@
-import Human.Trace.UnifiedReduced.RVMixedMemory
-import Slop.UnifiedReduced.RVCaller.RequestTrace
-import Slop.Delegation.RVSharedImage
-import Slop.Trace.TransferHistory
+module
+public import Human.Trace.UnifiedReduced.RVMixedMemory
+public import Slop.UnifiedReduced.RVCaller.RequestTrace
+public import Slop.Delegation.RVSharedImage
+public import Slop.Trace.TransferHistory
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic Trace.Proofs

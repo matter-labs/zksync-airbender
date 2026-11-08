@@ -1,11 +1,14 @@
-import Human.Circuits.JumpBranchSlt.Artifact
-import Slop.JumpBranchSlt.ArtifactChecks
-import Human.Helpers.Properties
-import Slop.Arithmetic.Lemmas
-import Slop.Arithmetic.Word
-import Slop.Constraints
-import Slop.Lookups
-import Mathlib.Tactic.FinCases
+module
+public import Human.Circuits.JumpBranchSlt.Artifact
+public import Slop.JumpBranchSlt.ArtifactChecks
+public import Human.Helpers.Properties
+public import Slop.Arithmetic.Lemmas
+public import Slop.Arithmetic.Word
+public import Slop.Constraints
+public import Slop.Lookups
+public import Mathlib.Tactic.FinCases
+
+@[expose] public section
 
 namespace Airbender.JumpBranchSlt.Proofs
 open Airbender.Arithmetic

@@ -1,8 +1,11 @@
-import Slop.UnifiedReduced.RV.Step
-import Slop.UnifiedReduced.RV.ControlMembership
-import Slop.UnifiedReduced.RV.JumpArithmetic
-import Slop.UnifiedReduced.ControlContext
-import Slop.JumpBranchSlt.RVRow
+module
+public import Slop.UnifiedReduced.RV.Step
+public import Slop.UnifiedReduced.RV.ControlMembership
+public import Slop.UnifiedReduced.RV.JumpArithmetic
+public import Slop.UnifiedReduced.ControlContext
+public import Slop.JumpBranchSlt.RVRow
+
+@[expose] public section
 
 /-! Jump/branch/comparison rows (decoder bits 10–14) on the RV route. Comparisons and branches project onto the
     JumpBranchSlt circuit (`control_constraints`) and reuse its RV row lemmas (`rv_comparison_exec`,
@@ -160,7 +163,7 @@ theorem branch_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat �
   obtain ⟨next, exec, same⟩ := JumpBranchSlt.Proofs.rv_branch_exec hp rowFacts even
     (output := ⟨Word.mk (w 50).val (w 51).val, Word.mk (w 30).val (w 31).val⟩) rfl rfl
   refine ⟨next, exec, same.trans ?_⟩
-  have zero : (JumpBranchSlt.Proofs.branchData input).rd = 0 := rfl
+  have zero : (JumpBranchSlt.Proofs.branchData input).rd = 0 := by rfl
   rw [zero] at write
   have quiet := (same_set_zero input.before _).symm.trans write.symm
   exact ⟨rfl, fun k => quiet.2.1 k, quiet.2.2.1, quiet.2.2.2.1, quiet.2.2.2.2⟩

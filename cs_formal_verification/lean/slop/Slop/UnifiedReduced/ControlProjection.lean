@@ -1,7 +1,10 @@
-import Human.Circuits.JumpBranchSlt.Artifact
-import Slop.ShiftBinop.Lookups
-import Slop.UnifiedReduced
-import Slop.UnifiedReduced.ControlKey
+module
+public import Human.Circuits.JumpBranchSlt.Artifact
+public import Slop.ShiftBinop.Lookups
+public import Slop.UnifiedReduced
+public import Slop.UnifiedReduced.ControlKey
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs
 open Arithmetic Verification

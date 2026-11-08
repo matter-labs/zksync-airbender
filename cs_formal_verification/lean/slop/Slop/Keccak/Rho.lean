@@ -1,6 +1,9 @@
-import Slop.Keccak.RhoRotation
-import Slop.Keccak.Theta
-import Slop.Keccak.Lanes
+module
+public import Slop.Keccak.RhoRotation
+public import Slop.Keccak.Theta
+public import Slop.Keccak.Lanes
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic

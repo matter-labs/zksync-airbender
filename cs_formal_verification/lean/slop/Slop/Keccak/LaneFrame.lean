@@ -1,5 +1,8 @@
-import Human.Trace.Workers.Keccak.Permutation
-import Slop.Keccak.StateCells
+module
+public import Human.Trace.Workers.Keccak.Permutation
+public import Slop.Keccak.StateCells
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic

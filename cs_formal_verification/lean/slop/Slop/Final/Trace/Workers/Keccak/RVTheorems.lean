@@ -1,6 +1,9 @@
-import Human.Trace.Workers.Keccak.RVTheorems
-import Slop.Keccak.RVWindows
-import Slop.Keccak.RVNativeExecution
+module
+public import Human.Trace.Workers.Keccak.RVTheorems
+public import Slop.Keccak.RVWindows
+public import Slop.Keccak.RVNativeExecution
+
+@[expose] public section
 
 namespace Airbender.Keccak
 

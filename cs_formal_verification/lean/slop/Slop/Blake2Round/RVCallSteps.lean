@@ -1,4 +1,7 @@
-import Slop.Blake2Round.RVPhysical
+module
+public import Slop.Blake2Round.RVPhysical
+
+@[expose] public section
 
 /-! RV twin of the per-call part of `CallCompression.call_compression`, extended with what the delegate link needs:
     per round call, the RV pre/post states agree with the reference round on both state blocks, keep the message

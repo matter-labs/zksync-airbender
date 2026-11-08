@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.ThetaRho.Fields
-import Slop.KeccakSplit.RowExecution
+module
+public import Slop.KeccakSplit.ThetaRho.Fields
+public import Slop.KeccakSplit.RowExecution
+
+@[expose] public section
 
 /- The theta/rho row executes its call in Sail (ported from PR #585's lane-halves,
    write-projection and call-execution modules). -/
@@ -67,8 +70,8 @@ theorem write_projection (w : Nat → ZMod babyBearModulus) (index : Fin 361) (h
         (fun entry => (entry.1.addressCode, entry.2)) := by
   simp only [Native.Row.memorySteps, List.map_map, Function.comp_def, transferEvent]
   rw [ports_enumeration]
-  have controlAddress : (readToken w (port 0)).address = (Cell.register 10).addressCode := rfl
-  have pointerAddress : (readToken w (port 1)).address = (Cell.register 11).addressCode := rfl
+  have controlAddress : (readToken w (port 0)).address = (Cell.register 10).addressCode := by rfl
+  have pointerAddress : (readToken w (port 1)).address = (Cell.register 11).addressCode := by rfl
   have controlWord : memoryWord ((thetaRow w).writeToken (port 0)).value =
       BitVec.ofNat 32 (bump (controlAt index.val)) := by
     have e := written_word_port w 0

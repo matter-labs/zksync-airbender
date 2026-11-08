@@ -1,30 +1,33 @@
-import Slop.UnifiedReduced.Completeness.Arith
-import Human.Circuits.JumpBranchSlt.Jump
-import Human.Circuits.UnifiedReduced.Binary
-import Human.Circuits.WordMemory.Output
-import Human.Trace.UnifiedReduced.PreparedRoundWindows
-import Slop.AddSub
-import Slop.Arithmetic.ShiftAssembly
-import Slop.Arithmetic.SignExtend
-import Slop.Arithmetic.WordBytes
-import Slop.Arithmetic.WordRotation
-import Slop.Blake2G.CallGroups
-import Slop.Blake2G.PhysicalWords
-import Slop.Delegation.NativeSegments
-import Slop.Delegation.RequestWindows
-import Slop.Delegation.SharedOperations
-import Slop.Delegation.WorkerProjection
-import Slop.JumpBranchSlt.Branch
-import Slop.JumpBranchSlt.Jump
-import Slop.Keccak.CallPermutation
-import Slop.Trace.BytePorts
-import Slop.Trace.CompositionCore
-import Slop.Trace.ROMView
-import Slop.Trace.WindowCounts
-import Slop.UnifiedReduced.Binary
-import Slop.UnifiedReduced.ComparisonSoundness
-import Slop.UnifiedReduced.Delegation
-import Slop.UnifiedReduced.WordROM
+module
+public import Slop.UnifiedReduced.Completeness.Arith
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Circuits.UnifiedReduced.Binary
+public import Human.Circuits.WordMemory.Output
+public import Human.Trace.UnifiedReduced.PreparedRoundWindows
+public import Slop.AddSub
+public import Slop.Arithmetic.ShiftAssembly
+public import Slop.Arithmetic.SignExtend
+public import Slop.Arithmetic.WordBytes
+public import Slop.Arithmetic.WordRotation
+public import Slop.Blake2G.CallGroups
+public import Slop.Blake2G.PhysicalWords
+public import Slop.Delegation.NativeSegments
+public import Slop.Delegation.RequestWindows
+public import Slop.Delegation.SharedOperations
+public import Slop.Delegation.WorkerProjection
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.Keccak.CallPermutation
+public import Slop.Trace.BytePorts
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.ROMView
+public import Slop.Trace.WindowCounts
+public import Slop.UnifiedReduced.Binary
+public import Slop.UnifiedReduced.ComparisonSoundness
+public import Slop.UnifiedReduced.Delegation
+public import Slop.UnifiedReduced.WordROM
+
+@[expose] public section
 
 namespace Tests.ControlPreparation
 open Airbender Trace Arithmetic
@@ -47,9 +50,9 @@ private theorem timestamps (mode : Fin 3) : FlatOperation.ConstraintsHoldFlat
     exact UnifiedReduced.Completeness.Frame.timestamps
       (by refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide) (witness _).columns
 
-private def chainedWitness : UnifiedReduced.Completeness.Arith :=
+def chainedWitness : UnifiedReduced.Completeness.Arith :=
   ⟨⟨4, 0, 8, 0, 5, 0, 8, 0, 6, 0⟩, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 128, 0⟩
-private def chainedAssignment : Nat → ZMod babyBearModulus := chainedWitness.honest
+def chainedAssignment : Nat → ZMod babyBearModulus := chainedWitness.honest
 private theorem chainedTimestamps : FlatOperation.ConstraintsHoldFlat
     (Verification.environment chainedAssignment) UnifiedReduced.importedConstraintsTimestampLookups :=
   UnifiedReduced.Completeness.Frame.timestamps
@@ -65,13 +68,13 @@ theorem overlapping_or_unaligned_sequences_rejected :
     ¬ UnifiedReduced.Caller.WindowsOrdered 4 [(4, 6), (8, 12)] := by
   simp [UnifiedReduced.Caller.WindowsOrdered]
 
-private def sequentialWitness (custom : Bool) (second : Bool) : UnifiedReduced.Completeness.Arith :=
+def sequentialWitness (custom : Bool) (second : Bool) : UnifiedReduced.Completeness.Arith :=
   if second then
     ⟨⟨4, 0, 8, 0, 0, 0, 8, 0, 6, 0⟩, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0,
       if custom then 3 else 2, if custom then 3 else 2⟩
   else
     ⟨⟨0, 0, 4, 0, 0, 0, 4, 0, 5, 0⟩, if custom then 3 else 0, 12, 12, 12, 1, 1, 1, 1, 0, 0, 1, 1⟩
-private def sequentialAssignment (custom : Bool) (second : Bool) : Nat → ZMod babyBearModulus :=
+def sequentialAssignment (custom : Bool) (second : Bool) : Nat → ZMod babyBearModulus :=
   (sequentialWitness custom second).honest
 private theorem sequentialTimestamps (custom : Bool) (second : Bool) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (sequentialAssignment custom second)) UnifiedReduced.importedConstraintsTimestampLookups := by

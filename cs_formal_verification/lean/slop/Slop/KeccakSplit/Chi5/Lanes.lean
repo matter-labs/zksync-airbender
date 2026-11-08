@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.Chi5.Packing
-import Slop.Arithmetic.BitwiseAssembly
+module
+public import Slop.KeccakSplit.Chi5.Packing
+public import Slop.Arithmetic.BitwiseAssembly
+
+@[expose] public section
 
 /- Chi on whole 64-bit lanes from the nibble queries (ported from PR #585's
    SplitChiLimbValues, SplitChiLimbOperation, SplitChiLaneOperation). -/

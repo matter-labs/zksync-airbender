@@ -1,5 +1,8 @@
-import Slop.Keccak.PhysicalStep
-import Slop.Keccak.DeferredIota
+module
+public import Slop.Keccak.PhysicalStep
+public import Slop.Keccak.DeferredIota
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true

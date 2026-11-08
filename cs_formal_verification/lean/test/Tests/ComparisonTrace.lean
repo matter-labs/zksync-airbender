@@ -1,6 +1,9 @@
-import Tests.Comparison
-import Slop.JumpBranchSlt.Claims
-import Tests.JumpHistory
+module
+public import Tests.Comparison
+public import Slop.JumpBranchSlt.Claims
+public import Tests.JumpHistory
+
+@[expose] public section
 
 namespace Tests.ComparisonTrace
 open Airbender Arithmetic Trace

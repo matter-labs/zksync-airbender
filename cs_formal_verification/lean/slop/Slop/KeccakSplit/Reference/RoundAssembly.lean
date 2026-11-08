@@ -1,7 +1,10 @@
-import Slop.KeccakSplit.Reference.ParityAll
-import Slop.KeccakSplit.Reference.ThetaRhoAll
-import Slop.KeccakSplit.Reference.ChiAll
-import Slop.Keccak.RoundTrace
+module
+public import Slop.KeccakSplit.Reference.ParityAll
+public import Slop.KeccakSplit.Reference.ThetaRhoAll
+public import Slop.KeccakSplit.Reference.ChiAll
+public import Slop.Keccak.RoundTrace
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Call.Proofs
 open Specs.Keccak256

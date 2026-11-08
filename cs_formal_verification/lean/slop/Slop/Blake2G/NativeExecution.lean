@@ -1,8 +1,11 @@
-import Human.Circuits.Blake2G.Execution
-import Slop.Blake2G.Soundness
-import Slop.Delegation.Operations
-import Slop.Delegation.Requests
-import Slop.Delegation.SailHistory
+module
+public import Human.Circuits.Blake2G.Execution
+public import Slop.Blake2G.Soundness
+public import Slop.Delegation.Operations
+public import Slop.Delegation.Requests
+public import Slop.Delegation.SailHistory
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Native.Proofs
 open Trace

@@ -1,4 +1,7 @@
-import Slop.Keccak.Mix
+module
+public import Slop.Keccak.Mix
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs.Mix
 open Arithmetic

@@ -1,6 +1,9 @@
-import Slop.Bigint.MultiplicationProduct
-import Slop.Bigint.MultiplicationWriteback
-import Slop.Arithmetic.Digits
+module
+public import Slop.Bigint.MultiplicationProduct
+public import Slop.Bigint.MultiplicationWriteback
+public import Slop.Arithmetic.Digits
+
+@[expose] public section
 
 namespace Airbender.Bigint.Multiplication.Proofs
 open Arithmetic

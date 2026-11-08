@@ -1,6 +1,9 @@
-import Human.Circuits.Blake2G.Addresses
-import Slop.Blake2G.Control
-import Slop.MemoryPorts
+module
+public import Human.Circuits.Blake2G.Addresses
+public import Slop.Blake2G.Control
+public import Slop.MemoryPorts
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Addresses.Proofs
 

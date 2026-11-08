@@ -1,8 +1,11 @@
-import Human.Trace.Delegation.RVRequestHashWindows
-import Slop.Delegation.RVSchedule
-import Slop.Final.Trace.Workers.Blake2G.RVTheorems
-import Slop.Final.Trace.Workers.Blake2Round.RVTheorems
-import Slop.Final.Trace.Workers.Keccak.RVTheorems
+module
+public import Human.Trace.Delegation.RVRequestHashWindows
+public import Slop.Delegation.RVSchedule
+public import Slop.Final.Trace.Workers.Blake2G.RVTheorems
+public import Slop.Final.Trace.Workers.Blake2Round.RVTheorems
+public import Slop.Final.Trace.Workers.Keccak.RVTheorems
+
+@[expose] public section
 
 /-! RV sibling of `bind_hash_window` (`RequestHashWindows.lean`): the request window binding and the RV worker window
     theorems (whose span results carry the delegate link) on the same selected worker rows. -/

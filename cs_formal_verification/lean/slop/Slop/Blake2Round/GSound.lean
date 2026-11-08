@@ -1,4 +1,7 @@
-import Slop.Blake2Round.GTrace
+module
+public import Slop.Blake2Round.GTrace
+
+@[expose] public section
 
 set_option warningAsError true
 

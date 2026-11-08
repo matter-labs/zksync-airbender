@@ -1,5 +1,8 @@
-import Slop.Blake2G
-import Slop.Arithmetic.Word
+module
+public import Slop.Blake2G
+public import Slop.Arithmetic.Word
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 

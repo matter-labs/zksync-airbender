@@ -1,7 +1,10 @@
-import Slop.Blake2G.SeedCall
-import Slop.Blake2G.CallGroups
-import Slop.Delegation.RVExecution
-import Human.Trace.Workers.Blake2G.RVCall
+module
+public import Slop.Blake2G.SeedCall
+public import Slop.Blake2G.CallGroups
+public import Slop.Delegation.RVExecution
+public import Human.Trace.Workers.Blake2G.RVCall
+
+@[expose] public section
 
 /-! RV twins of `CallGroups.call_scheduled_history` and `StateTrace.call_state_trace`: the G span's RV history grouped
     by call in control order, and the per-call RV states with each call's port observations. RAM cells include the

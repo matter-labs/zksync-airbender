@@ -1,6 +1,9 @@
-import Human.Circuits.ShiftBinop.RVDecoder
-import Slop.ShiftBinop
-import Slop.Trace.DecoderBits
+module
+public import Human.Circuits.ShiftBinop.RVDecoder
+public import Slop.ShiftBinop
+public import Slop.Trace.DecoderBits
+
+@[expose] public section
 
 /-! Native metadata facts of `ShiftBinop.rvDecoderFields` (twins of `Decoder.lean`/`Trace.lean` on `RV.Instr`). -/
 

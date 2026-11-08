@@ -1,4 +1,7 @@
-import Slop.Blake2Round.ColumnG
+module
+public import Slop.Blake2Round.ColumnG
+
+@[expose] public section
 
 set_option warningAsError true
 

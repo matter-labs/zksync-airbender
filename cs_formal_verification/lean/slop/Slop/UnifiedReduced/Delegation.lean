@@ -1,10 +1,13 @@
-import Human.Circuits.UnifiedReduced.Delegation
-import Slop.JumpBranchSlt
-import Slop.ShiftBinop
-import Slop.Trace.Program
-import Slop.UnifiedReduced
-import Slop.AddSub.PC
-import Slop.Delegation.CallerRequests
+module
+public import Human.Circuits.UnifiedReduced.Delegation
+public import Slop.JumpBranchSlt
+public import Slop.ShiftBinop
+public import Slop.Trace.Program
+public import Slop.UnifiedReduced
+public import Slop.AddSub.PC
+public import Slop.Delegation.CallerRequests
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic

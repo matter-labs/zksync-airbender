@@ -1,6 +1,9 @@
-import Human.ISA.RV32
-import Slop.ShiftBinop.Ports
-import Slop.ShiftBinop.RVQuery
+module
+public import Human.ISA.RV32
+public import Slop.ShiftBinop.Ports
+public import Slop.ShiftBinop.RVQuery
+
+@[expose] public section
 
 /-! Row-level XOR/OR/AND, SLL/SRL/SRA and REV8 result in RV32 terms: the imported constraints with the decoder's
     selectors, tag and immediate columns force the destination word to be `RV.alu` (or `RV.rev8`) of the two read

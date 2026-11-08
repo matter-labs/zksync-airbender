@@ -1,7 +1,10 @@
-import Human.Trace.Delegation.RVExecution
-import Slop.Delegation.RVBoundaryInputs
-import Slop.Delegation.SailHistory
-import Slop.Trace.RVHistoryFrame
+module
+public import Human.Trace.Delegation.RVExecution
+public import Slop.Delegation.RVBoundaryInputs
+public import Slop.Delegation.SailHistory
+public import Slop.Trace.RVHistoryFrame
+
+@[expose] public section
 
 /-! Core RV delegation memory execution: every imported delegation access executes once, in native timestamp order,
     as RV cell reads/writes (`RVHistory`) from the public initial `RV.State`. RAM cells are RAM at every address,

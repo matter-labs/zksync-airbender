@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.ColumnParity.IotaQueries
+module
+public import Slop.KeccakSplit.ColumnParity.IotaQueries
+
+@[expose] public section
 
 /- The delayed iota on lane 0 of a column-parity call: the byte queries apply the
    selected round constant (ported from PR #585's SplitParityIotaBytes and
@@ -51,7 +54,7 @@ theorem low_zero {w : Nat → ZMod babyBearModulus} (h : Holds w) (round : Fin 3
       (outputByte w 0 false).val = (inputLow w 0).val ^^^ iotaByte round.val := by
   have facts := byte_operation h round selected 0
   have q := low_query w
-  have p0 : iotaPosition 0 = 0 := rfl
+  have p0 : iotaPosition 0 = 0 := by rfl
   simp only [Fin.val_zero, Nat.add_zero, p0, Nat.mul_zero] at facts
   rw [q.1, q.2] at facts
   exact ⟨facts.1, facts.2.2⟩

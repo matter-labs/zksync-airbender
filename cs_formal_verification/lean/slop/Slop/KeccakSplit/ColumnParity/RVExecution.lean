@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.ColumnParity.Execution
-import Slop.KeccakSplit.RVRowExecution
+module
+public import Slop.KeccakSplit.ColumnParity.Execution
+public import Slop.KeccakSplit.RVRowExecution
+
+@[expose] public section
 
 /-! RV twin of `ColumnParity/Execution.lean`'s `executes`: the row executes its call on `RV.State`s (RAM cells include the
     shadow RAM below `ROM_END`). -/

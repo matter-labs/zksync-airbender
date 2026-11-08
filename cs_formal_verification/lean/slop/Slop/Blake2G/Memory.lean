@@ -1,6 +1,9 @@
-import Slop.Delegation.Values
-import Slop.Blake2G.Soundness
-import Slop.Blake2G.Control
+module
+public import Slop.Delegation.Values
+public import Slop.Blake2G.Soundness
+public import Slop.Blake2G.Control
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 open Trace Arithmetic

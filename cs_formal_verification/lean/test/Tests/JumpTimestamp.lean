@@ -1,5 +1,8 @@
-import Slop.JumpBranchSlt.Claims
-import Slop.JumpBranchSlt.Completeness.Witness
+module
+public import Slop.JumpBranchSlt.Claims
+public import Slop.JumpBranchSlt.Completeness.Witness
+
+@[expose] public section
 
 namespace Tests.JumpTimestamp
 open Airbender Arithmetic Trace
@@ -56,7 +59,7 @@ theorem constraints (rollover : Bool) :
     (by cases rollover <;> constructor <;> decide) (by cases rollover <;> constructor <;> decide)
     (by cases rollover <;> decide)
 
-private theorem inputs (rollover : Bool) :
+theorem inputs (rollover : Bool) :
     ClockInputs JumpBranchSlt.importedConstraintsTraceColumns (assignment rollover) := by
   refine ⟨?_, ?_, ?_⟩
   · cases rollover <;> constructor <;> decide

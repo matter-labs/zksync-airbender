@@ -1,11 +1,14 @@
-import Human.Circuits.Blake2G.Artifact
-import Human.Helpers.Properties
-import Slop.Constraints
-import Slop.Trace.Timestamps
-import Slop.Arithmetic.Chunks
-import Slop.Blake2G.Lookups
-import Mathlib.Tactic.FinCases
-import Mathlib.Tactic.LinearCombination
+module
+public import Human.Circuits.Blake2G.Artifact
+public import Human.Helpers.Properties
+public import Slop.Constraints
+public import Slop.Trace.Timestamps
+public import Slop.Arithmetic.Chunks
+public import Slop.Blake2G.Lookups
+public import Mathlib.Tactic.FinCases
+public import Mathlib.Tactic.LinearCombination
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 

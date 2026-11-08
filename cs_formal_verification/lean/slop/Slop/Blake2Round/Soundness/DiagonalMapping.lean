@@ -1,4 +1,7 @@
-import Slop.Blake2Round.Soundness.Outputs
+module
+public import Slop.Blake2Round.Soundness.Outputs
+
+@[expose] public section
 
 set_option warningAsError true
 

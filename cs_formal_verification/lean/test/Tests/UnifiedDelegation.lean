@@ -1,13 +1,18 @@
-import Tests.DelegationCaller
-import Tests.BigintMemory
-import Tests.DelegationOperationEffects
-import Slop.UnifiedReduced.Claims
-import Slop.UnifiedReduced.Completeness.Control
-import Slop.UnifiedReduced.Completeness.Binary
-import Slop.UnifiedReduced.Completeness.Arith
-import Slop.UnifiedReduced.Completeness.Memory
-import Slop.UnifiedReduced.Completeness.Call
-import Human.Circuits.UnifiedReduced.Tables.Setup
+module
+public import Tests.DelegationCaller
+public import Tests.BigintMemory
+public import Tests.DelegationOperationEffects
+public import Slop.UnifiedReduced.Claims
+public import Slop.UnifiedReduced.Completeness.Control
+public import Slop.UnifiedReduced.Completeness.Binary
+public import Slop.UnifiedReduced.Completeness.Arith
+public import Slop.UnifiedReduced.Completeness.Memory
+public import Slop.UnifiedReduced.Completeness.Call
+public import Human.Circuits.UnifiedReduced.Tables.Setup
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.UnifiedDelegation
 open Airbender Trace Arithmetic
@@ -16,14 +21,14 @@ set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
 /-- The delegation-call row at PC 0, clock 4, issuing CSR `address`. -/
-private def callerFrame : UnifiedReduced.Completeness.Frame := ⟨0, 0, 4, 0, 0, 0, 0, 0, 0, 0⟩
+def callerFrame : UnifiedReduced.Completeness.Frame := ⟨0, 0, 4, 0, 0, 0, 0, 0, 0, 0⟩
 private theorem callerFrame_clock : callerFrame.Clock := ⟨by decide, by decide, by decide⟩
-private def callWitness (address : ZMod babyBearModulus) : UnifiedReduced.Completeness.Call :=
+def callWitness (address : ZMod babyBearModulus) : UnifiedReduced.Completeness.Call :=
   ⟨callerFrame, 0, 0, address, 0, 0, 0, 0⟩
-private def assignmentWith (address : ZMod babyBearModulus) : Nat → ZMod babyBearModulus :=
+def assignmentWith (address : ZMod babyBearModulus) : Nat → ZMod babyBearModulus :=
   (callWitness address).honest
 
-private def assignment (family : Delegation.Family) := assignmentWith (Delegation.Requests.csr family)
+def assignment (family : Delegation.Family) := assignmentWith (Delegation.Requests.csr family)
 
 private theorem timestamps (family : Delegation.Family) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment family)) UnifiedReduced.importedConstraintsTimestampLookups := by

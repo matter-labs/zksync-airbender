@@ -1,9 +1,12 @@
-import Slop.KeccakSplit.Chi5.OpIndex
-import Slop.KeccakSplit.Setup.Chi5.Members
-import Slop.KeccakSplit.Memory.Order
-import Slop.Constraints
-import Slop.Trace.Timestamps
-import Slop.Arithmetic.Chunks
+module
+public import Slop.KeccakSplit.Chi5.OpIndex
+public import Slop.KeccakSplit.Setup.Chi5.Members
+public import Slop.KeccakSplit.Memory.Order
+public import Slop.Constraints
+public import Slop.Trace.Timestamps
+public import Slop.Arithmetic.Chunks
+
+@[expose] public section
 
 /- The chi5 worker's imported queries over BabyBear: the alignment query (lookup 0),
    the controller query (1) and the sixteen nibble chi queries (2–17), read through

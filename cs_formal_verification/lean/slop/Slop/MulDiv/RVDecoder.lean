@@ -1,7 +1,10 @@
-import Human.Circuits.MulDiv.RVDecoder
-import Human.Circuits.MulDiv.Decoder
-import Slop.MulDiv
-import Slop.Trace.DecoderBits
+module
+public import Human.Circuits.MulDiv.RVDecoder
+public import Human.Circuits.MulDiv.Decoder
+public import Slop.MulDiv
+public import Slop.Trace.DecoderBits
+
+@[expose] public section
 
 /-! Native metadata facts of `MulDiv.rvDecoderFields` (twins of `Decoder.lean`/`Trace.lean` on `RV.Instr`). -/
 

@@ -1,8 +1,11 @@
-import Slop.JumpBranchSlt.RVData
-import Slop.JumpBranchSlt.Branch
-import Slop.JumpBranchSlt.Jump
-import Slop.JumpBranchSlt.RVDecoder
-import Slop.ISA.RV.Step
+module
+public import Slop.JumpBranchSlt.RVData
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.JumpBranchSlt.RVDecoder
+public import Slop.ISA.RV.Step
+
+@[expose] public section
 
 /-! Row calculation of the RV comparison, branch and jump claims: from the imported constraints of one row, its
     decoder data (`comparisonData` / `branchData` / `jumpData`), its operand reads at the RV pre-state and the bounds
@@ -175,7 +178,7 @@ theorem rv_comparison_exec {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {w : Na
         w 26 + w 8 = (right.lo : ZMod p) ∧ w 27 + w 9 = (right.hi : ZMod p) :=
       ⟨(ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm, lo, hi⟩
     have leftBound : L.Bounded := facts.leftBound
-    have destination : output.destination.toBitVec = BitVec.ofNat 32 output.destination.value := rfl
+    have destination : output.destination.toBitVec = BitVec.ofNat 32 output.destination.value := by rfl
     cases signed
     · have value := unsigned_destination hp h s13 ⟨s11, s12, s14⟩ (by simpa using tag) s15 operands
         ⟨outputLo, outputHi⟩ facts.leftBound rightBound

@@ -1,4 +1,7 @@
-import Slop.Bigint.MultiplicationColumns.Defs
+module
+public import Slop.Bigint.MultiplicationColumns.Defs
+
+@[expose] public section
 
 namespace Airbender.Bigint.Multiplication.Proofs
 open Arithmetic

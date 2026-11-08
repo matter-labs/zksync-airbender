@@ -1,5 +1,8 @@
-import Slop.Keccak.MixOperations
-import Slop.Arithmetic.RotationAssembly
+module
+public import Slop.Keccak.MixOperations
+public import Slop.Arithmetic.RotationAssembly
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs.Mix
 open Arithmetic

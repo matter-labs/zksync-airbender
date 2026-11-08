@@ -1,8 +1,11 @@
-import Slop.Blake2G.State
-import Slop.Blake2G.NativeExecution
-import Slop.Blake2G.BlockFrame
-import Slop.Blake2Round.Compression
-import Slop.Blake2Round.StateTransport
+module
+public import Slop.Blake2G.State
+public import Slop.Blake2G.NativeExecution
+public import Slop.Blake2G.BlockFrame
+public import Slop.Blake2Round.Compression
+public import Slop.Blake2Round.StateTransport
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic

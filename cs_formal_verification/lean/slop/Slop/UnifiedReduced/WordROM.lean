@@ -1,6 +1,9 @@
-import Slop.UnifiedReduced.WordMemory
-import Human.Circuits.UnifiedReduced.Tables.Setup
-import Slop.ByteTables
+module
+public import Slop.UnifiedReduced.WordMemory
+public import Human.Circuits.UnifiedReduced.Tables.Setup
+public import Slop.ByteTables
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs
 open Arithmetic

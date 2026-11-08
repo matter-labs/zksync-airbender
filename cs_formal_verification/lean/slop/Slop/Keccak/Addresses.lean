@@ -1,6 +1,9 @@
-import Human.Circuits.Keccak.Addresses
-import Slop.Keccak.Controller
-import Slop.ScaledMemoryPorts
+module
+public import Human.Circuits.Keccak.Addresses
+public import Slop.Keccak.Controller
+public import Slop.ScaledMemoryPorts
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic

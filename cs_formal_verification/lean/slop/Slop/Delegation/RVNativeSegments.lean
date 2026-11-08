@@ -1,7 +1,10 @@
-import Slop.Delegation.NativeSegments
-import Slop.Delegation.RVCallHistory
-import Slop.Delegation.RVCallLink
-import Slop.Trace.RVTransferWindow
+module
+public import Slop.Delegation.NativeSegments
+public import Slop.Delegation.RVCallHistory
+public import Slop.Delegation.RVCallLink
+public import Slop.Trace.RVTransferWindow
+
+@[expose] public section
 
 /-! RV twins of `NativeSegments.lean` and `HashWindowTransport.lean`: a delegation pool's RV history cut at two
     native-clock times, the cut states' boundary inputs, and the uniqueness of a span's final state: two RV states

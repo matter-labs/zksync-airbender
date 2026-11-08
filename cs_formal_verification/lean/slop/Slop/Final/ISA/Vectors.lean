@@ -1,4 +1,7 @@
-import Slop.Deleg.Vectors
+module
+public import Slop.Deleg.Vectors
+
+@[expose] public section
 
 /-! The standards' test vectors (`Human/ISA/Vectors.lean`). -/
 

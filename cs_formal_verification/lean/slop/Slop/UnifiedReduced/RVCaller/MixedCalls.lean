@@ -1,7 +1,10 @@
-import Slop.UnifiedReduced.RVCaller.MixedMemoryClocks
-import Slop.Delegation.RVCallHistory
-import Slop.Delegation.RVRowCalls
-import Slop.UnifiedReduced.RVCaller.Transfer
+module
+public import Slop.UnifiedReduced.RVCaller.MixedMemoryClocks
+public import Slop.Delegation.RVCallHistory
+public import Slop.Delegation.RVRowCalls
+public import Slop.UnifiedReduced.RVCaller.Transfer
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic Trace.Proofs

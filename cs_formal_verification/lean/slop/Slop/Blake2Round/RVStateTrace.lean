@@ -1,7 +1,10 @@
-import Slop.Blake2Round.SeedCall
-import Slop.Blake2Round.CallGroups
-import Slop.Delegation.RVExecution
-import Human.Trace.Workers.Blake2Round.RVCall
+module
+public import Slop.Blake2Round.SeedCall
+public import Slop.Blake2Round.CallGroups
+public import Slop.Delegation.RVExecution
+public import Human.Trace.Workers.Blake2Round.RVCall
+
+@[expose] public section
 
 /-! RV twins of `CallGroups.call_scheduled_history` and `StateTrace.call_state_trace` for the extended-BLAKE span: the
     RV history grouped by call in control order, the per-call RV states, each call's round (its exclusive mask, from

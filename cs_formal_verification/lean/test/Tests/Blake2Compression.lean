@@ -1,4 +1,9 @@
-import Slop.Blake2Round.Compression
+module
+public import Slop.Blake2Round.Compression
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.Blake2Compression
 open Airbender Arithmetic
@@ -6,7 +11,7 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-private def emptyState : Blake2Round.Compression.State :=
+def emptyState : Blake2Round.Compression.State :=
   (Blake2Round.Preparation.configuredIV,
     (Blake2Round.Preparation.configuredIV ++ Blake2Round.Preparation.iv).set 14
       (Blake2Round.Preparation.splitWord (Specs.BLAKE3.iv[6] ^^^ 0xffffffff)))

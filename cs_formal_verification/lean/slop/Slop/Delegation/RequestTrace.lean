@@ -1,11 +1,14 @@
-import Slop.Trace.Pooled
-import Slop.Trace.Slots
-import Human.Helpers.Delegation.WorkerContext
-import Slop.Delegation.Operations
-import Slop.Delegation.SailHistory
-import Human.Helpers.Delegation.Decoder
-import Slop.AddSub.PC
-import Slop.Delegation.CallerRequests
+module
+public import Slop.Trace.Pooled
+public import Slop.Trace.Slots
+public import Human.Helpers.Delegation.WorkerContext
+public import Slop.Delegation.Operations
+public import Slop.Delegation.SailHistory
+public import Human.Helpers.Delegation.Decoder
+public import Slop.AddSub.PC
+public import Slop.Delegation.CallerRequests
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller.Proofs
 open Trace Arithmetic

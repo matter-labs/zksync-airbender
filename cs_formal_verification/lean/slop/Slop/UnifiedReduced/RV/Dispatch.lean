@@ -1,9 +1,12 @@
-import Slop.UnifiedReduced.RV.Arith
-import Slop.UnifiedReduced.RV.Family3
-import Slop.UnifiedReduced.RV.Control
-import Slop.UnifiedReduced.RV.Jump
-import Slop.UnifiedReduced.RV.Memory
-import Slop.ISA.RV.DecodeShape
+module
+public import Slop.UnifiedReduced.RV.Arith
+public import Slop.UnifiedReduced.RV.Family3
+public import Slop.UnifiedReduced.RV.Control
+public import Slop.UnifiedReduced.RV.Jump
+public import Slop.UnifiedReduced.RV.Memory
+public import Slop.ISA.RV.DecodeShape
+
+@[expose] public section
 
 /-! Every row of the unified RV table steps (`row_step`): the case split over `rvDecoderFields`. -/
 

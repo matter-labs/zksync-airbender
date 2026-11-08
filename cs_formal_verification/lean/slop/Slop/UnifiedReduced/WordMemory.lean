@@ -1,5 +1,8 @@
-import Slop.UnifiedReduced
-import Slop.Lookups
+module
+public import Slop.UnifiedReduced
+public import Slop.Lookups
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs
 open Arithmetic

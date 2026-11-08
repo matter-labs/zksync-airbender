@@ -1,6 +1,9 @@
-import Slop.Keccak.ControlUpdate
-import Human.Trace.Workers.Keccak.Call
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.Keccak.ControlUpdate
+public import Human.Trace.Workers.Keccak.Call
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true

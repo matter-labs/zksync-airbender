@@ -1,6 +1,10 @@
-import Slop.KeccakSplit.Chain.Paths
-import Slop.KeccakSplit.Chain.Atomic
-import Slop.KeccakSplit.Reference.Executions
+module
+public import Slop.KeccakSplit.Chain.Paths
+public import Slop.KeccakSplit.Chain.Atomic
+public import Slop.KeccakSplit.Reference.Executions
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 /- A complete initialized request: the control path orders the 361 rows, the Sail
    history splits into one atomic group per row, and each row executes its call

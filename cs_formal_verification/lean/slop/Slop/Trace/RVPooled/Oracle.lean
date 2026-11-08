@@ -1,7 +1,10 @@
-import Human.Helpers.Decoder.RVExternalInput
-import Slop.Trace.RVPooled.Arithmetic
-import Slop.Trace.RVZeroPooled
-import Slop.Trace.RVValuesPooled
+module
+public import Human.Helpers.Decoder.RVExternalInput
+public import Slop.Trace.RVPooled.Arithmetic
+public import Slop.Trace.RVZeroPooled
+public import Slop.Trace.RVValuesPooled
+
+@[expose] public section
 
 /-! The six-family registry extended with the CSR 0x7C0 forms (`NonDeterminism.Pooled.rvDecoderFields`): its cases
     (the read row, the write row = the NOP row, or the standard table), its x0 decoder rules, and the pooled x0 and

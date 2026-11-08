@@ -1,18 +1,21 @@
-import Tests.DelegationOperationEffects
-import Slop.Bigint.Claims
-import Slop.Blake2G.Claims
-import Slop.Blake2Round.Claims
-import Slop.Delegation.MixedClocks
-import Slop.Delegation.RequestWindows
-import Slop.Delegation.SharedOperations
-import Slop.Delegation.WorkerProjection
-import Slop.JumpBranchSlt.Branch
-import Slop.JumpBranchSlt.Jump
-import Slop.Keccak.Claims
-import Slop.MulDiv.Values
-import Slop.ShiftBinop.Ports
-import Slop.SubwordMemory.Values
-import Slop.Trace.Family.Values
+module
+public import Tests.DelegationOperationEffects
+public import Slop.Bigint.Claims
+public import Slop.Blake2G.Claims
+public import Slop.Blake2Round.Claims
+public import Slop.Delegation.MixedClocks
+public import Slop.Delegation.RequestWindows
+public import Slop.Delegation.SharedOperations
+public import Slop.Delegation.WorkerProjection
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.Keccak.Claims
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
+public import Slop.Trace.Family.Values
+
+@[expose] public section
 
 namespace Tests.DelegationMixedMemory
 open Airbender Delegation Trace Arithmetic
@@ -20,7 +23,7 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 5000000
 
-private def arithmetic (value : Nat) : Nat → ZMod babyBearModulus
+def arithmetic (value : Nat) : Nat → ZMod babyBearModulus
   | 0 => 4
   | 2 | 19 | 35 => 8
   | 21 | 5 | 7 => 12

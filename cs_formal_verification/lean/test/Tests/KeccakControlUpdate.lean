@@ -1,5 +1,8 @@
-import Tests.Keccak
-import Tests.KeccakTheta
+module
+public import Tests.Keccak
+public import Tests.KeccakTheta
+
+@[expose] public section
 
 namespace Tests.KeccakControlUpdate
 open Airbender
@@ -8,7 +11,7 @@ set_option maxRecDepth 16384
 
 -- These rows isolate the controller equations using the existing permissive
 -- fixed setup. The native range query and all 187 equations are still checked.
-private def zeroLaneRow (s : Keccak.ControlState) (active : Bool)
+def zeroLaneRow (s : Keccak.ControlState) (active : Bool)
     (v : Nat) : ZMod babyBearModulus :=
   let controlRound := if active ∧ s.iteration.val = 0 then s.round.val else 0
   let input := (if active then s.mode.val + 8 * s.iteration.val else 0) + 64 * s.round.val
@@ -21,8 +24,8 @@ private def zeroLaneRow (s : Keccak.ControlState) (active : Bool)
   else if 86 ≤ v ∧ v < 90 then (257 * controlRound + 8192 + 16448 * (v - 86) : Nat)
   else 0
 
-private def thetaEnd : Keccak.ControlState := ⟨3, 4, 24⟩
-private def chiEnd : Keccak.ControlState := ⟨6, 4, 31⟩
+def thetaEnd : Keccak.ControlState := ⟨3, 4, 24⟩
+def chiEnd : Keccak.ControlState := ⟨6, 4, 31⟩
 
 private theorem fixedMembership (w : Nat → ZMod babyBearModulus)
     (zeroPointer : w 13 = 0) :

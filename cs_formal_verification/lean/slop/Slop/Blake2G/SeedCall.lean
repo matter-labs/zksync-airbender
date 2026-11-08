@@ -1,8 +1,11 @@
-import Slop.Blake2G.ControlPool
-import Slop.Blake2G.StateCells
-import Slop.Blake2G.BlockFrame
-import Slop.Delegation.RVCallHistory
-import Slop.Delegation.SeedOperations
+module
+public import Slop.Blake2G.ControlPool
+public import Slop.Blake2G.StateCells
+public import Slop.Blake2G.BlockFrame
+public import Slop.Delegation.RVCallHistory
+public import Slop.Delegation.SeedOperations
+
+@[expose] public section
 
 /-! State-free twins of the G span's control, pointer and block-domain lemmas (`ControlPool.lean`, `CallHistory.lean`,
     `PointerHistory.lean`, `StateCells.lean`, `BlockFrame.lean`). Those take a Sail `BoundaryInputs` and read the
@@ -323,7 +326,7 @@ theorem seed_call_block_cells [Fact p.Prime] (hp : 8388608 ≤ p)
   let row := ordered[call.val]'rowBound
   have member : row ∈ data.rows := permutation.mem_iff.mp (List.getElem_mem _)
   have native : row = ⟨.blakeG, row.assignment⟩ := by
-    have same : row = ⟨row.family, row.assignment⟩ := rfl
+    have same : row = ⟨row.family, row.assignment⟩ := by rfl
     simpa only [inputs.family row member] using same
   have core : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (importedConstraints (setupTable Control.controllerRows)) := by
@@ -452,7 +455,7 @@ theorem seed_call_block_domain [Fact p.Prime] (hp : 8388608 ≤ p)
   have bounds := Delegation.SeedProofs.operation_word_bounds hp inverse accepted inputs.memory inputs.tables
     (operation_inputs inputs).1 (operation_inputs inputs).2
   have native : row = ⟨.blakeG, row.assignment⟩ := by
-    have same : row = ⟨row.family, row.assignment⟩ := rfl
+    have same : row = ⟨row.family, row.assignment⟩ := by rfl
     simpa only [family] using same
   have control : (row.assignment Variables.controlReadLo).val = (controlAt reduced 0).lo := by
     have value := congrArg Word.lo (controls 0 firstBound).1

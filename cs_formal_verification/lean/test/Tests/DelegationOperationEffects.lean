@@ -1,7 +1,10 @@
-import Tests.DelegationCaller
-import Tests.BigintMemory
-import Slop.KernelRfl
-import Slop.Trace.InitialImage
+module
+public import Tests.DelegationCaller
+public import Tests.BigintMemory
+public import Slop.KernelRfl
+public import Slop.Trace.InitialImage
+
+@[expose] public section
 
 namespace Tests.DelegationOperationEffects
 noncomputable section
@@ -11,9 +14,9 @@ set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
 -- `Tests.BigintMemory.row` already carries the active invocation clock 5.
-private def assignment (i : Nat) : ZMod babyBearModulus := Tests.BigintMemory.row i
-private def worker : Delegation.Row babyBearModulus := ⟨.bigint, assignment⟩
-private def workers : MemoryData babyBearModulus where
+def assignment (i : Nat) : ZMod babyBearModulus := Tests.BigintMemory.row i
+def worker : Delegation.Row babyBearModulus := ⟨.bigint, assignment⟩
+def workers : MemoryData babyBearModulus where
   setup := modeledSetup Keccak.Controller.rows
   rows := [worker]
   initial := worker.memorySteps.map Prod.fst
@@ -53,7 +56,7 @@ private theorem sharedCallerConstraints : FlatOperation.ConstraintsHoldFlat
       all_goals apply Trace.Proofs.range_contains
       all_goals decide +kernel
 
-private def wrongWorkerBoundaries : MemoryData babyBearModulus :=
+def wrongWorkerBoundaries : MemoryData babyBearModulus :=
   { workers with initial := [], terminal := [] }
 theorem separate_empty_boundaries_rejected : ¬MemoryAccepted wrongWorkerBoundaries := by
   intro valid

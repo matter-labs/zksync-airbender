@@ -1,6 +1,9 @@
-import Human.Circuits.MulDiv.Operation
-import Human.ISA.RV32
-import Slop.MulDiv.Product
+module
+public import Human.Circuits.MulDiv.Operation
+public import Human.ISA.RV32
+public import Slop.MulDiv.Product
+
+@[expose] public section
 
 /-! Row-level MUL/MULHU/DIVU/REMU result in RV32 terms: the imported constraints with one selected operation force
     the destination word to be `RV.alu` of the operand words (DIVU by zero = all ones, REMU by zero = the dividend).

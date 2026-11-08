@@ -1,5 +1,8 @@
-import Slop.Keccak.PermutationSchedule
-import Slop.Keccak.LayoutReduction
+module
+public import Slop.Keccak.PermutationSchedule
+public import Slop.Keccak.LayoutReduction
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256

@@ -1,8 +1,11 @@
-import Human.Trace.TeardownBounds
-import Slop.Trace.WriteSites
-import Slop.Trace.RVPooledBoot
-import Slop.Trace.RVPooled.Oracle
-import Slop.UnifiedReduced.RV.Execution
+module
+public import Human.Trace.TeardownBounds
+public import Slop.Trace.WriteSites
+public import Slop.Trace.RVPooledBoot
+public import Slop.Trace.RVPooled.Oracle
+public import Slop.UnifiedReduced.RV.Execution
+
+@[expose] public section
 
 /-! The teardown-bound claims of `Human.Trace.TeardownBounds`: under `MemoryArgumentReadsBounded`, a teardown value is
     an `Init` tuple's zero or a write of the booted trace, which its history bounds. -/

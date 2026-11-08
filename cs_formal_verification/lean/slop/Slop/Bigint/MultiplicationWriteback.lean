@@ -1,6 +1,9 @@
-import Human.Circuits.Bigint.Multiplication
-import Slop.Bigint.EqualityGates
-import Slop.Bigint.OpIndex
+module
+public import Human.Circuits.Bigint.Multiplication
+public import Slop.Bigint.EqualityGates
+public import Slop.Bigint.OpIndex
+
+@[expose] public section
 
 namespace Airbender.Bigint.Multiplication.Proofs
 open Arithmetic

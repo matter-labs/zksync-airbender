@@ -1,7 +1,10 @@
-import Slop.Trace.ExternalStream
-import Slop.Trace.Pooled
-import Human.Helpers.Decoder.PooledExternalInput
-import Mathlib.Logic.Relation
+module
+public import Slop.Trace.ExternalStream
+public import Slop.Trace.Pooled
+public import Human.Helpers.Decoder.PooledExternalInput
+public import Mathlib.Logic.Relation
+
+@[expose] public section
 
 namespace Airbender.Trace.NonDeterminism.Pooled.Proofs
 

@@ -1,7 +1,10 @@
-import Slop.Blake2Round.ControlPool
-import Slop.Blake2Round.NativeExecution
-import Slop.Delegation.RVCallHistory
-import Slop.Delegation.SeedOperations
+module
+public import Slop.Blake2Round.ControlPool
+public import Slop.Blake2Round.NativeExecution
+public import Slop.Delegation.RVCallHistory
+public import Slop.Delegation.SeedOperations
+
+@[expose] public section
 
 /-! State-free twins of the extended-BLAKE span's control and pointer lemmas (`ControlPool.lean`, `CallHistory.lean`,
     `PointerHistory.lean`): those take a Sail `BoundaryInputs` and read x10/x11/x12 from the Sail state; here the

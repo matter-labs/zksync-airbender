@@ -1,7 +1,10 @@
-import Slop.Trace.RVPooled.Oracle
-import Slop.Trace.RVPooled.Soundness
-import Slop.Trace.RVRealizesInput
-import Human.Trace.RVSoundness
+module
+public import Slop.Trace.RVPooled.Oracle
+public import Slop.Trace.RVPooled.Soundness
+public import Slop.Trace.RVRealizesInput
+public import Human.Trace.RVSoundness
+
+@[expose] public section
 
 /-! The six-family claim with the CSR 0x7C0 forms over our spec (`NonDeterminism.Pooled.RVNativeSoundnessClaim`).
     The input stream is `initial.input`. A read row (ADD/SUB selector 8) writes its response columns to `rd`, and

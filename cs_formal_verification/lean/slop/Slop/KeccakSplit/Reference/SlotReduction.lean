@@ -1,11 +1,16 @@
-import Slop.KeccakSplit.Reference.PermutationDefinitions
+module
+public import Slop.KeccakSplit.Reference.PermutationDefinitions
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Call.Proofs
 set_option warningAsError true
 set_option maxRecDepth 65536
 
 -- The finite proof below checks every index against the unchanged reference.
-private def slotCache : Vector (Vector (Fin 31) 7) 361 := #v[
+def slotCache : Vector (Vector (Fin 31) 7) 361 := #v[
 #v[0, 5, 10, 15, 20, 25, 30],
 #v[1, 6, 11, 16, 21, 26, 30],
 #v[2, 7, 12, 17, 22, 27, 30],
@@ -375,7 +380,7 @@ private theorem slot_cache_correct : ∀ index : Fin 361, slots index = slotCach
 theorem slots_normalized (index : Fin 361) : slots index = slotCache[index] :=
   slot_cache_correct index
 
-private def normalizedStep (index : Fin 361) (state : LaneState) : LaneState :=
+def normalizedStep (index : Fin 361) (state : LaneState) : LaneState :=
   let positions := slotCache[index]
   let input := Vector.ofFn fun lane : Fin 7 => state positions[lane]
   fun physical =>

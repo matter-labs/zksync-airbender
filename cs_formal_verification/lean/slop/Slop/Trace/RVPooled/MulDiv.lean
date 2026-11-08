@@ -1,6 +1,9 @@
-import Slop.Trace.RVPooledStep
-import Slop.Trace.RVPooledRow
-import Slop.MulDiv.RVQuery
+module
+public import Slop.Trace.RVPooledStep
+public import Slop.Trace.RVPooledRow
+public import Slop.MulDiv.RVQuery
+
+@[expose] public section
 
 /-! One MUL/MULHU/DIVU/REMU row of a pooled trace is one `RV.exec` of its instruction (`RVPooledRowStep`), from the
     row's own RV history: the row calculation of `MulDiv.Proofs.rv_trace_soundness` (`rv_query_facts`,
@@ -41,7 +44,7 @@ theorem rv_muldiv_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
   have shape : (⟨.mulDiv, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
         importedConstraintsMemoryPorts[2]] := by
-    have portsEq : (⟨.mulDiv, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := rfl
+    have portsEq : (⟨.mulDiv, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := by rfl
     rw [portsEq]
     rfl
   have history := facts.history

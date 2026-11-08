@@ -1,5 +1,8 @@
-import Slop.JumpBranchSlt
-import Slop.Arithmetic.Comparison
+module
+public import Slop.JumpBranchSlt
+public import Slop.Arithmetic.Comparison
+
+@[expose] public section
 
 namespace Airbender.JumpBranchSlt.Proofs
 open Airbender.Arithmetic

@@ -1,7 +1,10 @@
-import Slop.Blake2G.RVCallSteps
-import Slop.Blake2G.RVSpec
-import Slop.Delegation.ReverseFold
-import Slop.Blake2Round.RVWords
+module
+public import Slop.Blake2G.RVCallSteps
+public import Slop.Blake2G.RVSpec
+public import Slop.Delegation.ReverseFold
+public import Slop.Blake2Round.RVWords
+
+@[expose] public section
 
 /-! RV twins of `CallWorkVector.lean` and `WorkVectorBinding.lean`, plus the delegate link: the complete G span on
     `RV.State`s reaches the 56/80-call reference, and its final state is the spec's run of the span's `G` delegation

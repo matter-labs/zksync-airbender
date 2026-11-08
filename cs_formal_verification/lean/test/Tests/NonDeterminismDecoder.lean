@@ -1,4 +1,7 @@
-import Slop.Trace.Claims
+module
+public import Slop.Trace.Claims
+
+@[expose] public section
 
 namespace Tests.NonDeterminismDecoder
 open Airbender Arithmetic Trace
@@ -6,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-private def assignment : Nat → ZMod babyBearModulus
+def assignment : Nat → ZMod babyBearModulus
   | 2 | 19 | 27 => 4
   | 4 | 7 | 18 | 42 | 43 | 44 => 1
   | 21 => 8
@@ -14,10 +17,10 @@ private def assignment : Nat → ZMod babyBearModulus
   | 34 => 0x1234
   | _ => 0
 
-private def row : Row babyBearModulus := ⟨.addSub, assignment⟩
-private def regToken (index time value : Nat) : MemoryToken babyBearModulus :=
+def row : Row babyBearModulus := ⟨.addSub, assignment⟩
+def regToken (index time value : Nat) : MemoryToken babyBearModulus :=
   ⟨(Cell.register (BitVec.ofNat 5 index)).addressCode, (time, 0), value⟩
-private def trace : Data babyBearModulus where
+def trace : Data babyBearModulus where
   rows := [row]
   rom := ROM.table [] []
   initial := row.start
@@ -73,11 +76,11 @@ theorem single_native_consumption :
   subst actual
   decide
 
-private def later : Row babyBearModulus := ⟨.addSub, fun column =>
+def later : Row babyBearModulus := ⟨.addSub, fun column =>
   if column = 2 then 8 else if column = 33 then 0x9999 else assignment column⟩
-private def hint : Row babyBearModulus := ⟨.addSub, fun column =>
+def hint : Row babyBearModulus := ⟨.addSub, fun column =>
   if column = 2 then 12 else if column = 18 then 0 else assignment column⟩
-private def reordered : Data babyBearModulus := { trace with rows := [row, hint, later] }
+def reordered : Data babyBearModulus := { trace with rows := [row, hint, later] }
 
 -- These three-row fixtures check consumption/order only, not native acceptance.
 theorem clock_positions :

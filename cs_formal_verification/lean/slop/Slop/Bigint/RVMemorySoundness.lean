@@ -1,7 +1,10 @@
-import Human.Circuits.Bigint.RVMemory
-import Slop.Bigint.Memory
-import Slop.Bigint.Addresses
-import Slop.Delegation.RVBoundaryInputs
+module
+public import Human.Circuits.Bigint.RVMemory
+public import Slop.Bigint.Memory
+public import Slop.Bigint.Addresses
+public import Slop.Delegation.RVBoundaryInputs
+
+@[expose] public section
 
 /-! RV twin of `MemorySoundness.addresses_soundness`: the public state is an `RV.State` (RAM cells include read-write
     shadow RAM below `ROM_END`); pointer bounds come from the state-free seed facts of its initialization. -/

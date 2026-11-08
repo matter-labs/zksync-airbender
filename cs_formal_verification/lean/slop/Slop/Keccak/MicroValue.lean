@@ -1,4 +1,7 @@
-import Slop.Keccak.MicroOperations
+module
+public import Slop.Keccak.MicroOperations
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true

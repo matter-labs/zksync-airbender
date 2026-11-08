@@ -1,5 +1,8 @@
-import Slop.UnifiedReduced.Claims
-import Slop.UnifiedReduced.Completeness.Memory
+module
+public import Slop.UnifiedReduced.Claims
+public import Slop.UnifiedReduced.Completeness.Memory
+
+@[expose] public section
 
 namespace Tests.UnifiedMemory
 open Airbender Arithmetic Trace Reference.RiscV

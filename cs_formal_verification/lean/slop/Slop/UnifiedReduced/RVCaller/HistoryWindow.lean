@@ -1,7 +1,10 @@
-import Slop.Delegation.CallGroups
-import Slop.Trace.RowHistory
-import Slop.Trace.RVHistory
-import Slop.Trace.RVCells
+module
+public import Slop.Delegation.CallGroups
+public import Slop.Trace.RowHistory
+public import Slop.Trace.RVHistory
+public import Slop.Trace.RVCells
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 set_option warningAsError true

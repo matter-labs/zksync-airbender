@@ -1,9 +1,12 @@
-import Human.Trace.WritesRangeChecked
-import Slop.Trace.WriteSites
-import Slop.Trace.RVPooled.Oracle
-import Slop.UnifiedReduced.Values
-import Slop.Delegation.Operations
-import Slop.KeccakSplit.Contract
+module
+public import Human.Trace.WritesRangeChecked
+public import Slop.Trace.WriteSites
+public import Slop.Trace.RVPooled.Oracle
+public import Slop.UnifiedReduced.Values
+public import Slop.Delegation.Operations
+public import Slop.KeccakSplit.Contract
+
+@[expose] public section
 
 /-! The write-site inventory of `Human.Trace.WritesRangeChecked`: each circuit set's per-row write rule. -/
 

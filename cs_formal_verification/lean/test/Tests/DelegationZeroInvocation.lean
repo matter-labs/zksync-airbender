@@ -1,7 +1,10 @@
-import Human.Helpers.Delegation.WorkerContext
-import Slop.Delegation.Operations
-import Slop.Delegation.Requests
-import Slop.Delegation.SailHistory
+module
+public import Human.Helpers.Delegation.WorkerContext
+public import Slop.Delegation.Operations
+public import Slop.Delegation.Requests
+public import Slop.Delegation.SailHistory
+
+@[expose] public section
 
 /-! The upstream delegation circuits range-check `(invocation-low - execute) / 4`
     (timestamp query 0 of every family). An active worker (`execute = 1`) with a

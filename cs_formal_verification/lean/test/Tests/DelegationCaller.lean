@@ -1,19 +1,22 @@
-import Slop.Delegation.Requests
-import Slop.Trace.Timestamps
-import Slop.Bigint.Claims
-import Slop.Blake2G.Claims
-import Slop.Blake2Round.Claims
-import Slop.Delegation.MixedClocks
-import Slop.Delegation.RequestWindows
-import Slop.Delegation.SharedOperations
-import Slop.Delegation.WorkerProjection
-import Slop.JumpBranchSlt.Branch
-import Slop.JumpBranchSlt.Jump
-import Slop.Keccak.Claims
-import Slop.MulDiv.Values
-import Slop.ShiftBinop.Ports
-import Slop.SubwordMemory.Values
-import Slop.Trace.Family.Values
+module
+public import Slop.Delegation.Requests
+public import Slop.Trace.Timestamps
+public import Slop.Bigint.Claims
+public import Slop.Blake2G.Claims
+public import Slop.Blake2Round.Claims
+public import Slop.Delegation.MixedClocks
+public import Slop.Delegation.RequestWindows
+public import Slop.Delegation.SharedOperations
+public import Slop.Delegation.WorkerProjection
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.Keccak.Claims
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
+public import Slop.Trace.Family.Values
+
+@[expose] public section
 
 namespace Tests.DelegationCaller
 open Airbender Delegation Trace Arithmetic

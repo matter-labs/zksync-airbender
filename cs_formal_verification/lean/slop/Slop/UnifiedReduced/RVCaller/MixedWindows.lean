@@ -1,8 +1,11 @@
-import Human.Trace.UnifiedReduced.RVMixedWindows
-import Slop.UnifiedReduced.RVCaller.MixedMemory
-import Slop.UnifiedReduced.RVCaller.RequestWindows
-import Slop.Delegation.NativeSegments
-import Slop.Delegation.RVNativeSegments
+module
+public import Human.Trace.UnifiedReduced.RVMixedWindows
+public import Slop.UnifiedReduced.RVCaller.MixedMemory
+public import Slop.UnifiedReduced.RVCaller.RequestWindows
+public import Slop.Delegation.NativeSegments
+public import Slop.Delegation.RVNativeSegments
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic Trace.Proofs

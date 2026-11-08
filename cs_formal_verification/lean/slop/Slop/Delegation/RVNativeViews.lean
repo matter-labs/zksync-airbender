@@ -1,5 +1,8 @@
-import Slop.Delegation.NativeViews
-import Slop.Trace.RVCells
+module
+public import Slop.Delegation.NativeViews
+public import Slop.Trace.RVCells
+
+@[expose] public section
 
 /-! RV twins of `NativeViews.lean`: the word an `RV.State`'s RAM holds at an address (RAM at any address, the shadow RAM
     below `ROM_END` included), and what a native indirect port's read/write says about it. -/

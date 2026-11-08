@@ -1,6 +1,9 @@
-import Human.Circuits.Blake2Round.Addresses
-import Slop.Blake2Round.Addresses
-import Slop.MemoryPorts
+module
+public import Human.Circuits.Blake2Round.Addresses
+public import Slop.Blake2Round.Addresses
+public import Slop.MemoryPorts
+
+@[expose] public section
 
 set_option warningAsError true
 

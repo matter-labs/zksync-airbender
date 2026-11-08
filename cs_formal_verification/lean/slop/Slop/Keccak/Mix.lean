@@ -1,7 +1,10 @@
-import Slop.Keccak.Lanes
-import Slop.Keccak.MixRotation
-import Slop.Keccak.OpIndex
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.Keccak.Lanes
+public import Slop.Keccak.MixRotation
+public import Slop.Keccak.OpIndex
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic Mix
@@ -9,7 +12,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1200000
 
-private def preservedLanes (second : Bool) : Vector (Fin 6) 3 :=
+def preservedLanes (second : Bool) : Vector (Fin 6) 3 :=
   if second then #v[0, 2, 5] else #v[1, 3, 4]
 
 theorem mix_preserved {p : Nat} [Fact p.Prime]

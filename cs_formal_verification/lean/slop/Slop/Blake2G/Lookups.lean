@@ -1,9 +1,12 @@
-import Slop.Blake2G.ArtifactChecks
-import Slop.Blake2G.Tables
-import Slop.Blake2G.Fragment
-import Slop.Blake2G.OpIndex
-import Human.Helpers.Properties
-import Slop.Constraints
+module
+public import Slop.Blake2G.ArtifactChecks
+public import Slop.Blake2G.Tables
+public import Slop.Blake2G.Fragment
+public import Slop.Blake2G.OpIndex
+public import Human.Helpers.Properties
+public import Slop.Constraints
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 

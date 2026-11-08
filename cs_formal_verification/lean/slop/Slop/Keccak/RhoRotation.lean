@@ -1,4 +1,7 @@
-import Slop.Keccak.RhoOperations
+module
+public import Slop.Keccak.RhoOperations
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs.Rho
 open Arithmetic

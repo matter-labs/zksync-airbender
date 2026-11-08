@@ -1,7 +1,10 @@
-import Slop.Keccak.SeedCall
-import Slop.Keccak.CallHistory
-import Slop.Delegation.RVExecution
-import Human.Trace.Workers.Keccak.RVCall
+module
+public import Slop.Keccak.SeedCall
+public import Slop.Keccak.CallHistory
+public import Slop.Delegation.RVExecution
+public import Human.Trace.Workers.Keccak.RVCall
+
+@[expose] public section
 
 /-! RV twin of `CallHistory.call_scheduled_history` and `StateTrace.call_state_trace`: the special5 span's RV history
     grouped by call in control order, and the per-call RV states with each call's port observations. RAM cells include

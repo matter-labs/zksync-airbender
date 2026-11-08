@@ -1,6 +1,9 @@
-import Slop.JumpBranchSlt.Signed
-import Slop.JumpBranchSlt.PC
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.JumpBranchSlt.Signed
+public import Slop.JumpBranchSlt.PC
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.JumpBranchSlt.Proofs
 open Airbender.Arithmetic

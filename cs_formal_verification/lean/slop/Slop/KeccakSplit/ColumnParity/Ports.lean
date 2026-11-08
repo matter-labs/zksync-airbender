@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.ColumnParity.Effect
-import Human.Circuits.KeccakSplit.Native
+module
+public import Slop.KeccakSplit.ColumnParity.Effect
+public import Human.Circuits.KeccakSplit.Native
+
+@[expose] public section
 
 /- The column-parity worker's fourteen memory ports: x10 (control), x11 (pointer), then the low
    and high word of each lane, with their value columns and RAM addresses. -/
@@ -11,7 +14,7 @@ set_option warningAsError true
 abbrev port (k : Fin 14) : MemoryPort := ColumnParity.importedConstraintsMemoryPorts[k.val]
 
 theorem ports_eq (w : Nat → ZMod babyBearModulus) :
-    (⟨.columnParity, w⟩ : Native.Row babyBearModulus).ports = ColumnParity.importedConstraintsMemoryPorts := rfl
+    (⟨.columnParity, w⟩ : Native.Row babyBearModulus).ports = ColumnParity.importedConstraintsMemoryPorts := by rfl
 
 theorem read_code (w : Nat → ZMod babyBearModulus) (k : Fin 14) :
     (port k).readCode w = Nat.pair (w (readCol k)).val (w (readCol k + 1)).val := by

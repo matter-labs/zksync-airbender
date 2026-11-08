@@ -1,15 +1,18 @@
-import Human.Helpers.UnifiedReduced.RVProgram
-import Slop.UnifiedReduced.WordROM
-import Slop.UnifiedReduced.WordMemory
-import Slop.Trace.RVPorts
-import Slop.Trace.RVWritable
-import Slop.ISA.RV.Same
-import Slop.Trace.RVProgram
-import Slop.Trace.RVCells
-import Slop.Trace.DecoderBits
-import Slop.UnifiedReduced
-import Slop.JumpBranchSlt.RVDecoder
-import Slop.ShiftBinop.RVDecoder
+module
+public import Human.Helpers.UnifiedReduced.RVProgram
+public import Slop.UnifiedReduced.WordROM
+public import Slop.UnifiedReduced.WordMemory
+public import Slop.Trace.RVPorts
+public import Slop.Trace.RVWritable
+public import Slop.ISA.RV.Same
+public import Slop.Trace.RVProgram
+public import Slop.Trace.RVCells
+public import Slop.Trace.DecoderBits
+public import Slop.UnifiedReduced
+public import Slop.JumpBranchSlt.RVDecoder
+public import Slop.ShiftBinop.RVDecoder
+
+@[expose] public section
 
 /-! Row-level facts of one unified row on the RV route: decoder selectors and field bounds of the RV table
     (`rvDecoderFields`), and the row's three ports read against an RV history (`rv_three_ports`): operand registers,

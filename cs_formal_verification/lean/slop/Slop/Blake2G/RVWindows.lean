@@ -1,7 +1,10 @@
-import Slop.Blake2G.RVWorkVector
-import Slop.Blake2G.Memory
-import Slop.Delegation.RVNativeSegments
-import Human.Trace.Delegation.RVHashWindows
+module
+public import Slop.Blake2G.RVWorkVector
+public import Slop.Blake2G.Memory
+public import Slop.Delegation.RVNativeSegments
+public import Human.Trace.Delegation.RVHashWindows
+
+@[expose] public section
 
 /-! RV twin of `Windows.window_binding`: a complete G-worker span selected after whole preceding spans reaches the
     work-vector reference, delegate link included, on its actual native-clock cut `RV.State`s. RAM cells include the

@@ -1,6 +1,9 @@
-import Human.Helpers.Delegation.RVSchedule
-import Slop.Delegation.RVRequestTrace
-import Slop.Delegation.RequestWindows
+module
+public import Human.Helpers.Delegation.RVSchedule
+public import Slop.Delegation.RVRequestTrace
+public import Slop.Delegation.RequestWindows
+
+@[expose] public section
 
 /-! RV siblings of the schedule and request-window proofs (`Schedule.lean`, `RequestWindows.lean`) over
     `RVRequestTrace`: state-free conclusions from RV public inputs. The window argument is the generic
@@ -22,7 +25,7 @@ theorem rv_issued_worker_slot [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have clocks := Trace.Proofs.state_clock_inputs hp inverse accepted.constraints accepted.states
     inputs.initialClock inputs.initialAligned
   have clock := clocks caller included
-  have one : Requests.callerPort.clock.offset = 1 := rfl
+  have one : Requests.callerPort.clock.offset = 1 := by rfl
   have issued : (timeOfPair (Requests.caller caller.assignment).time).value = startClock caller + 1 := by
     simpa only [Requests.caller, one, Trace.Row.columns, family, CircuitLayout.columns,
       decodeTimestamp, rawPair, timeOfPair, startClock, Row.clock] using

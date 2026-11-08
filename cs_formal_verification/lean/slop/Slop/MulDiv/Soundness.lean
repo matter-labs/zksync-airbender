@@ -1,10 +1,13 @@
-import Slop.MulDiv.Product
-import Human.Circuits.MulDiv.Operation
-import Human.Helpers.Context.RowContext
-import Human.Helpers.Decoder.PooledProgram
-import Human.Helpers.Tables.Subword
-import Human.Circuits.AddSub.RowInput
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.MulDiv.Product
+public import Human.Circuits.MulDiv.Operation
+public import Human.Helpers.Context.RowContext
+public import Human.Helpers.Decoder.PooledProgram
+public import Human.Helpers.Tables.Subword
+public import Human.Circuits.AddSub.RowInput
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.MulDiv.Proofs
 open Airbender.Arithmetic

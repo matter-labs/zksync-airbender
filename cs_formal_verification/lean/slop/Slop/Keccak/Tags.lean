@@ -1,4 +1,7 @@
-import Slop.Keccak.Controls
+module
+public import Slop.Keccak.Controls
+
+@[expose] public section
 namespace Airbender.Keccak.Proofs
 open Arithmetic
 open scoped BigOperators

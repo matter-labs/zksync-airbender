@@ -1,5 +1,9 @@
-import Slop.KeccakSplit.ThetaRho.Output
-import Slop.KeccakSplit.ThetaRho.Rotate
+module
+public import Slop.KeccakSplit.ThetaRho.Output
+public import Slop.KeccakSplit.ThetaRho.Rotate
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 /- Each written state lane of a theta/rho call is rho of (lane ^ D) (ported from PR
    #585's SplitThetaOutputBytes, SplitThetaOutputPacking, SplitThetaLaneOperation and

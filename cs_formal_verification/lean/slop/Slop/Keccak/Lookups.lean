@@ -1,5 +1,8 @@
-import Slop.Keccak.Tables
-import Slop.Keccak.Tags
+module
+public import Slop.Keccak.Tables
+public import Slop.Keccak.Tags
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true

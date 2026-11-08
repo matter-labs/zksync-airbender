@@ -1,10 +1,13 @@
-import Human.Circuits.Blake2Round.Mixing
-import Slop.Blake2Round.Diagonal
-import Slop.Blake2Round.Reference
+module
+public import Human.Circuits.Blake2Round.Mixing
+public import Slop.Blake2Round.Diagonal
+public import Slop.Blake2Round.Reference
 
-import Slop.Blake2Round.Soundness.ColumnMapping
-import Slop.Blake2Round.Soundness.DiagonalMapping
-import Slop.Blake2Round.Soundness.Interfaces
+public import Slop.Blake2Round.Soundness.ColumnMapping
+public import Slop.Blake2Round.Soundness.DiagonalMapping
+public import Slop.Blake2Round.Soundness.Interfaces
+
+@[expose] public section
 
 set_option warningAsError true
 

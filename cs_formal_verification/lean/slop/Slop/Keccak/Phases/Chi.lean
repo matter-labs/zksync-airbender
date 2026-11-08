@@ -1,7 +1,10 @@
-import Slop.Keccak.Phases.Chi.Part0
-import Slop.Keccak.Phases.Chi.Part1
-import Slop.Keccak.Phases.Chi.Part2
-import Slop.Keccak.Phases.Chi.Part3
+module
+public import Slop.Keccak.Phases.Chi.Part0
+public import Slop.Keccak.Phases.Chi.Part1
+public import Slop.Keccak.Phases.Chi.Part2
+public import Slop.Keccak.Phases.Chi.Part3
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256

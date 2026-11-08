@@ -1,5 +1,8 @@
-import Slop.UnifiedReduced.Claims
-import Slop.UnifiedReduced.Completeness.Binary
+module
+public import Slop.UnifiedReduced.Claims
+public import Slop.UnifiedReduced.Completeness.Binary
+
+@[expose] public section
 
 namespace Tests.UnifiedBinary
 open Airbender Arithmetic Trace Reference.RiscV

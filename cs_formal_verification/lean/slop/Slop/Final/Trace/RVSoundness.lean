@@ -1,7 +1,10 @@
-import Human.Trace.RVSoundness
-import Slop.Trace.RVPooled.Soundness
-import Slop.Trace.RVPooled.OracleSoundness
-import Slop.Trace.RVPooledLawsProof
+module
+public import Human.Trace.RVSoundness
+public import Slop.Trace.RVPooled.Soundness
+public import Slop.Trace.RVPooled.OracleSoundness
+public import Slop.Trace.RVPooledLawsProof
+
+@[expose] public section
 
 namespace Airbender.Trace
 

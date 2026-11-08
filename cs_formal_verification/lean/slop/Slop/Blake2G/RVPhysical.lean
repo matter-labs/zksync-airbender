@@ -1,6 +1,9 @@
-import Slop.Blake2G.RVStateTrace
-import Slop.Delegation.RVNativeViews
-import Slop.Blake2G.PhysicalWords
+module
+public import Slop.Blake2G.RVStateTrace
+public import Slop.Delegation.RVNativeViews
+public import Slop.Blake2G.PhysicalWords
+
+@[expose] public section
 
 /-! RV twins of `PhysicalWords.lean`, `WordFrame.lean`, `PhysicalStep.lean` and `CallPhysical.lean`: each G call
     updates the actual RV work vector by the original Clean G and keeps the message block. RAM words are

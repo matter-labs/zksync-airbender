@@ -1,4 +1,7 @@
-import Slop.Delegation.CallPaths
+module
+public import Slop.Delegation.CallPaths
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 open Trace Arithmetic

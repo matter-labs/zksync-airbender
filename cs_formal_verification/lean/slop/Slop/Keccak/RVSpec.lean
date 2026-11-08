@@ -1,8 +1,12 @@
-import Slop.Keccak.PhysicalStep
-import Slop.Keccak.Schedule
-import Slop.Deleg.KeccakClean
-import Slop.Deleg.KeccakSlots
-import Slop.Deleg.KeccakCalls
+module
+public import Slop.Keccak.PhysicalStep
+public import Slop.Keccak.Schedule
+public import Slop.Deleg.KeccakClean
+public import Slop.Deleg.KeccakSlots
+public import Slop.Deleg.KeccakCalls
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 /-! State-free agreement of the special5 circuit's call with the spec's `RV.Delegation.keccakSpecial5`. The circuit
     selects six physical slots by Clean's column-major `Controller.physicalLane`/`piSource`, the spec by the row-major

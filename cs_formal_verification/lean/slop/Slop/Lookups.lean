@@ -1,5 +1,9 @@
-import Human.Helpers.Tables.Lookups
-import Human.Circuits.JumpBranchSlt.Tables.Control
+module
+public import Human.Helpers.Tables.Lookups
+public import Human.Circuits.JumpBranchSlt.Tables.Control
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Airbender.Verification
 

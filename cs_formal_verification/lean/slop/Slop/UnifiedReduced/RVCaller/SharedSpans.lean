@@ -1,6 +1,9 @@
-import Human.Trace.UnifiedReduced.RVMixedMemory
-import Slop.UnifiedReduced.RVCaller.WorkerProjection
-import Slop.Delegation.RVSharedSpans
+module
+public import Human.Trace.UnifiedReduced.RVMixedMemory
+public import Slop.UnifiedReduced.RVCaller.WorkerProjection
+public import Slop.Delegation.RVSharedSpans
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic Trace.Proofs

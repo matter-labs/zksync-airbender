@@ -1,29 +1,33 @@
-import Slop.Keccak.Claims
-import Mathlib.Tactic.IntervalCases
-import Slop.Keccak.Completeness.Bytes
+module
+public import Slop.Keccak.Claims
+public import Mathlib.Tactic.IntervalCases
+public import Slop.Keccak.Completeness.Bytes
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.KeccakRho
 open Airbender
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-private def scratch : Nat := 0x0100000000000001
-private def initial : Nat := 0xffffffffffffffff
-private def mixed : Nat := initial ^^^ scratch
-private def state : Vector Nat 25 := Vector.replicate 25 initial
-private def d : Vector Nat 5 := Vector.replicate 5 scratch
-private def control (_ : Fin 4096) : Vector Nat 6 := #v[0, 5, 10, 15, 20, 25]
-private abbrev setup : Table (ZMod babyBearModulus) (fields 8) := Keccak.setupTable control
-private def stateControl (rho : Bool) (column : Fin 5) : Keccak.ControlState :=
+def scratch : Nat := 0x0100000000000001
+def initial : Nat := 0xffffffffffffffff
+def mixed : Nat := initial ^^^ scratch
+def state : Vector Nat 25 := Vector.replicate 25 initial
+def d : Vector Nat 5 := Vector.replicate 5 scratch
+def control (_ : Fin 4096) : Vector Nat 6 := #v[0, 5, 10, 15, 20, 25]
+abbrev setup : Table (ZMod babyBearModulus) (fields 8) := Keccak.setupTable control
+def stateControl (rho : Bool) (column : Fin 5) : Keccak.ControlState :=
   ⟨if rho then 4 else 3, column, 0⟩
-private def rotation (column op : Fin 5) : Fin 64 := Keccak.Proofs.Rho.rotations[column][op]
-private def value (rho write : Bool) (column : Fin 5) (lane : Fin 6) : Nat :=
+def rotation (column op : Fin 5) : Fin 64 := Keccak.Proofs.Rho.rotations[column][op]
+def value (rho write : Bool) (column : Fin 5) (lane : Fin 6) : Nat :=
   if h : lane.val < 5 then
     if rho then if write then rotLeft64 mixed (rotation column ⟨lane.val, h⟩) else mixed
     else if write then mixed else initial
   else scratch
 
-private def base (rho : Bool) (column : Fin 5) (v : Nat) : ZMod babyBearModulus :=
+def base (rho : Bool) (column : Fin 5) (v : Nat) : ZMod babyBearModulus :=
   if v = 0 ∨ v = 70 + column.val ∨ v = (if rho then 67 else 66) then 1
   else if v = 3 then (stateControl rho column).packed
   else if v = 5 then (stateControl rho column).nextPacked
@@ -38,7 +42,7 @@ private def base (rho : Bool) (column : Fin 5) (v : Nat) : ZMod babyBearModulus 
 
 -- Byte query `i` (operation `i / 8`, byte `i % 8`): rotation pieces of the mixed lane's limbs
 -- in Rho mode, the XOR bytes of the two Theta inputs otherwise.
-private def bytes (rho : Bool) (column : Fin 5) (part : Fin 3) (i : Fin 40) : Nat :=
+def bytes (rho : Bool) (column : Fin 5) (part : Fin 3) (i : Fin 40) : Nat :=
   let op : Fin 5 := ⟨i.val / 8, by omega⟩
   if rho then
     if i.val % 8 < 4 then
@@ -50,7 +54,7 @@ private def bytes (rho : Bool) (column : Fin 5) (part : Fin 3) (i : Fin 40) : Na
   else Keccak.Proofs.wordByte (if part.val = 0 then initial else if part.val = 1 then scratch else mixed)
     (i.val % 8)
 
-private def row (rho : Bool) (column : Fin 5) : Nat → ZMod babyBearModulus :=
+def row (rho : Bool) (column : Fin 5) : Nat → ZMod babyBearModulus :=
   Keccak.Proofs.bytesRow (base rho column) (bytes rho column)
 
 private theorem modes (rho : Bool) (column : Fin 5) (j : Fin 7) :

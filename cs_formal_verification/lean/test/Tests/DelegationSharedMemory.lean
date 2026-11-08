@@ -1,8 +1,11 @@
-import Tests.DelegationCaller
-import Tests.DelegationMemory
-import Human.Helpers.Delegation.SharedMemory
-import Slop.Delegation.RequestTrace
-import Slop.Trace.TransferValues
+module
+public import Tests.DelegationCaller
+public import Tests.DelegationMemory
+public import Human.Helpers.Delegation.SharedMemory
+public import Slop.Delegation.RequestTrace
+public import Slop.Trace.TransferValues
+
+@[expose] public section
 
 namespace Tests.DelegationSharedMemory
 open Airbender Delegation Trace Arithmetic
@@ -10,7 +13,7 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-private def assignment (source : Nat) (i : Nat) : ZMod babyBearModulus :=
+def assignment (source : Nat) (i : Nat) : ZMod babyBearModulus :=
   if i = 35 then 4 else if i = 25 then source else Tests.DelegationCaller.assignment .keccak i
 private theorem caller_constraints (source : Fin 2) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment source.val)) AddSub.clockConstraints := by

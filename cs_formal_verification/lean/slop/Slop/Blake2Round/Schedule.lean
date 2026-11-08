@@ -1,10 +1,13 @@
-import Slop.Blake2Round.ArtifactChecks
-import Slop.Blake2Round.OpIndex
-import Slop.Blake2G.OpIndex
-import Human.Circuits.Blake2Round.Schedule
-import Slop.Constraints
-import Slop.Arithmetic.Lemmas
-import Mathlib.Tactic.FinCases
+module
+public import Slop.Blake2Round.ArtifactChecks
+public import Slop.Blake2Round.OpIndex
+public import Slop.Blake2G.OpIndex
+public import Human.Circuits.Blake2Round.Schedule
+public import Slop.Constraints
+public import Slop.Arithmetic.Lemmas
+public import Mathlib.Tactic.FinCases
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Schedule.Proofs
 open Arithmetic
@@ -17,7 +20,7 @@ set_option maxHeartbeats 2000000
 theorem schedule_indices : ∀ (round : Fin 10) (column : Fin 16),
     Blake2G.Control.messageSchedule[round][column] < 16 := by decide
 
-private def column (round : Fin 10) (position : Fin 16) : Fin 16 :=
+def column (round : Fin 10) (position : Fin 16) : Fin 16 :=
   Fin.ofNat 16 Blake2G.Control.messageSchedule[round][position]
 
 /-- Normalize each imported equation once to a sum over rounds of the selected

@@ -1,13 +1,17 @@
-import Slop.MulDiv.Claims
-import Slop.Verification.StaticLookup
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.MulDiv.Claims
+public import Slop.Verification.StaticLookup
+public import Mathlib.Tactic.IntervalCases
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.MulDivProduct
 open Airbender
 
 -- MUL/MULHU: (2^32-1)^2, with three nonzero byte carries.
 -- DIVU/REMU: (2^32-1) / 65537 = 65535, remainder zero.
-private def row (operation : Fin 4) : Nat → ZMod babyBearModulus
+def row (operation : Fin 4) : Nat → ZMod babyBearModulus
   | 4 => 1
   | 5 | 7 => 1
   | 6 => 2
@@ -39,7 +43,7 @@ private def row (operation : Fin 4) : Nat → ZMod babyBearModulus
   | 55 => if operation.val < 2 then 0 else 1
   | _ => 0
 
-private theorem satisfies (operation : Fin 4) :
+theorem satisfies (operation : Fin 4) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row operation))
       Airbender.MulDiv.importedConstraints := by
   rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]

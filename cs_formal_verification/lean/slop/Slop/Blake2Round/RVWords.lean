@@ -1,6 +1,9 @@
-import Human.Trace.Workers.Blake2Round.RVCompression
-import Slop.Delegation.RVNativeViews
-import Slop.ISA.RV.Same
+module
+public import Human.Trace.Workers.Blake2Round.RVCompression
+public import Slop.Delegation.RVNativeViews
+public import Slop.ISA.RV.Same
+
+@[expose] public section
 
 /-! RV RAM blocks: aligned words read their encodings (`rv_block_at`), the encodings are the spec's `RV.readWords`
     (`rv_block_words`), and `RV.Same` states read the same blocks (`rv_words_at_same`). RAM at any address, the

@@ -1,5 +1,8 @@
-import Slop.Blake2Round.GSound
-import Slop.Blake2Round.GRows
+module
+public import Slop.Blake2Round.GSound
+public import Slop.Blake2Round.GRows
+
+@[expose] public section
 
 set_option warningAsError true
 

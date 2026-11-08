@@ -1,7 +1,10 @@
-import Human.Trace.UnifiedReduced.RVMixedWindowProjection
-import Slop.Trace.WindowCounts
-import Slop.UnifiedReduced.RVCaller.WindowProjection
-import Slop.UnifiedReduced.RVCaller.ZeroWrites
+module
+public import Human.Trace.UnifiedReduced.RVMixedWindowProjection
+public import Slop.Trace.WindowCounts
+public import Slop.UnifiedReduced.RVCaller.WindowProjection
+public import Slop.UnifiedReduced.RVCaller.ZeroWrites
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs

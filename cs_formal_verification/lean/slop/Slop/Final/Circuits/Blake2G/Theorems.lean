@@ -1,4 +1,7 @@
-import Slop.Blake2G.Soundness
+module
+public import Slop.Blake2G.Soundness
+
+@[expose] public section
 
 namespace Airbender.Blake2G
 

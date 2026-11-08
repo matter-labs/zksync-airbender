@@ -1,7 +1,10 @@
-import Slop.ShiftBinop.ArtifactChecks
-import Human.Helpers.Properties
-import Slop.Constraints
-import Slop.Trace.Timestamps
+module
+public import Slop.ShiftBinop.ArtifactChecks
+public import Human.Helpers.Properties
+public import Slop.Constraints
+public import Slop.Trace.Timestamps
+
+@[expose] public section
 
 namespace Airbender.ShiftBinop.Proofs
 open Trace

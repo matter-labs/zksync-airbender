@@ -1,11 +1,16 @@
-import Slop.Trace.Claims
+module
+public import Slop.Trace.Claims
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.TraceROM
 open Airbender Arithmetic Trace
 set_option warningAsError true
 
-private def cells : List Cell := [.register 0, .ram 16]
-private def tokens : List (MemoryToken babyBearModulus) :=
+def cells : List Cell := [.register 0, .ram 16]
+def tokens : List (MemoryToken babyBearModulus) :=
   [(Cell.register 0).initialToken 0, (Cell.ram 16).initialToken 0x12345678]
 
 private theorem rows_eq : ROM.rows cells tokens =

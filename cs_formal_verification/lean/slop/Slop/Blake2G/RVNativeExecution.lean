@@ -1,7 +1,10 @@
-import Slop.Blake2G.NativeExecution
-import Slop.Delegation.RVExecution
-import Slop.Delegation.SeedOperations
-import Human.Helpers.Delegation.RVOperations
+module
+public import Slop.Blake2G.NativeExecution
+public import Slop.Delegation.RVExecution
+public import Slop.Delegation.SeedOperations
+public import Human.Helpers.Delegation.RVOperations
+
+@[expose] public section
 
 /-! RV twin of `NativeExecution.operation_execution`: native G rows inside actual RV memory execution (RAM cells
     include read-write shadow RAM below `ROM_END`). The per-row reference (`native_effects`) is state-free. -/

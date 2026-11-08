@@ -1,5 +1,8 @@
-import Slop.Keccak.FixedTables
-import Slop.Keccak.Lookups
+module
+public import Slop.Keccak.FixedTables
+public import Slop.Keccak.Lookups
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic

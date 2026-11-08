@@ -1,11 +1,14 @@
-import Human.Circuits.Blake2Round.Row
-import Slop.Blake2Round.Control
-import Slop.Blake2Round.Preparation
-import Slop.Blake2Round.PreparationBounds
-import Slop.Blake2Round.Schedule
-import Slop.Blake2Round.Soundness
-import Slop.Blake2Round.Finalization
-import Slop.Blake2Round.PortAddresses
+module
+public import Human.Circuits.Blake2Round.Row
+public import Slop.Blake2Round.Control
+public import Slop.Blake2Round.Preparation
+public import Slop.Blake2Round.PreparationBounds
+public import Slop.Blake2Round.Schedule
+public import Slop.Blake2Round.Soundness
+public import Slop.Blake2Round.Finalization
+public import Slop.Blake2Round.PortAddresses
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Row.Proofs
 open Arithmetic

@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.Reference.PhysicalSnapshot
+module
+public import Slop.KeccakSplit.Reference.PhysicalSnapshot
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Call.Proofs
 open Trace Trace.Proofs

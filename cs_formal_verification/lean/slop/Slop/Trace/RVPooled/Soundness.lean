@@ -1,8 +1,11 @@
-import Slop.Trace.RVPooled.Row
-import Slop.Trace.RVPooledBoot
-import Slop.Trace.RVRealizes
-import Slop.Trace.RVPooledLaws
-import Slop.Trace.RVZero
+module
+public import Slop.Trace.RVPooled.Row
+public import Slop.Trace.RVPooledBoot
+public import Slop.Trace.RVRealizes
+public import Slop.Trace.RVPooledLaws
+public import Slop.Trace.RVZero
+
+@[expose] public section
 
 /-! The six-family claim over our spec (`RVPooledNativeSoundnessClaim`): the boot inputs give the RV native inputs, the
     pooled laws give the x0 law and the read bounds, every row takes one `RV.step` (`rv_pooled_row_step`), and the

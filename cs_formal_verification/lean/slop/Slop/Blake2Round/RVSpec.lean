@@ -1,7 +1,12 @@
-import Human.Trace.Workers.Blake2Round.Compression
-import Slop.Deleg.BlakeCall
-import Slop.Blake2Round.Schedule
-import Slop.Arithmetic.Word
+module
+public import Human.Trace.Workers.Blake2Round.Compression
+public import Slop.Deleg.BlakeCall
+public import Slop.Blake2Round.Schedule
+public import Slop.Arithmetic.Word
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 /-! State-free agreement of the extended-BLAKE round reference (`Compression.step`) with the spec's round delegation
     (`RV.Delegation.blakeRound`, through `RV.blakeRound_mode_call`): the x12 schedule is `RV.bCtl`, and one reference
@@ -203,7 +208,7 @@ theorem step_effect (flags : Fin 8) {r : Nat} (bound : r < RV.nR (reducedOf flag
       (if Finalization.isFinal ⟨Fin.ofNat 10 r, reducedOf flags, h, prep.chaining, ext'⟩ then
         (Vector.ofFn fun i : Fin 8 => prep.chaining[i].value ^^^ ext'[i.val].value ^^^ ext'[8 + i.val].value).map
           (fun value => Word.ofBitVec (BitVec.ofNat 32 value))
-        else h, ext') := rfl
+        else h, ext') := by rfl
   have extB := prepared_extended_bounded (compressionOf flags) (rightOf flags) r h e m hb eb
   have msgB := prepared_message_bounded (compressionOf flags) (rightOf flags) (Fin.ofNat 10 r == 0) h e m hb mb
   have chainB := prepared_chaining_bounded (compressionOf flags) (rightOf flags) (Fin.ofNat 10 r == 0) h e m hb

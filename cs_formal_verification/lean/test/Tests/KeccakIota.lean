@@ -1,36 +1,40 @@
-import Slop.Keccak.Claims
-import Mathlib.Tactic.IntervalCases
-import Slop.Keccak.Completeness.Bytes
+module
+public import Slop.Keccak.Claims
+public import Mathlib.Tactic.IntervalCases
+public import Slop.Keccak.Completeness.Bytes
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.KeccakIota
 open Airbender
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-private def referenceState : Vector Nat 25 := Vector.ofFn fun i =>
+def referenceState : Vector Nat 25 := Vector.ofFn fun i =>
   (#v[0xffffffffffffffff, 0x0123456789abcdef, 0x8080808080808080,
     0xaaaaaaaaaaaaaaaa, 0x5555555555555555] : Vector Nat 5)[i.val % 5]
-private def selectedColumn (case : Fin 3) : Fin 5 := if case.val = 2 then 2 else 0
-private def selectedRound (case : Fin 3) : Fin 25 := if case.val = 0 then 0 else 24
-private def effectiveRound (case : Fin 3) : Nat :=
+def selectedColumn (case : Fin 3) : Fin 5 := if case.val = 2 then 2 else 0
+def selectedRound (case : Fin 3) : Fin 25 := if case.val = 0 then 0 else 24
+def effectiveRound (case : Fin 3) : Nat :=
   if (selectedColumn case).val = 0 then (selectedRound case).val else 0
-private def stateControl (case : Fin 3) : Keccak.ControlState :=
+def stateControl (case : Fin 3) : Keccak.ControlState :=
   ⟨0, selectedColumn case, ⟨(selectedRound case).val, by have := (selectedRound case).isLt; omega⟩⟩
-private def control (_ : Fin 4096) : Vector Nat 6 := #v[0, 5, 10, 15, 20, 25]
-private abbrev setup : Table (ZMod babyBearModulus) (fields 8) := Keccak.setupTable control
-private def reads (case : Fin 3) : Vector Nat 6 := Vector.ofFn fun i =>
+def control (_ : Fin 4096) : Vector Nat 6 := #v[0, 5, 10, 15, 20, 25]
+abbrev setup : Table (ZMod babyBearModulus) (fields 8) := Keccak.setupTable control
+def reads (case : Fin 3) : Vector Nat 6 := Vector.ofFn fun i =>
   if h : i.val < 5 then referenceState[5 * (selectedColumn case).val + i.val] else 0
-private def changed (case : Fin 3) : Nat := (reads case)[0] ^^^ Keccak.adjustedConstant (effectiveRound case)
-private def temps (case : Fin 3) : Vector Nat 3 :=
+def changed (case : Fin 3) : Nat := (reads case)[0] ^^^ Keccak.adjustedConstant (effectiveRound case)
+def temps (case : Fin 3) : Vector Nat 3 :=
   #v[changed case ^^^ (reads case)[1], changed case ^^^ (reads case)[1] ^^^ (reads case)[2],
     changed case ^^^ (reads case)[1] ^^^ (reads case)[2] ^^^ (reads case)[3]]
-private def writes (case : Fin 3) : Vector Nat 6 :=
+def writes (case : Fin 3) : Vector Nat 6 :=
   #v[changed case, (reads case)[1], (reads case)[2], (reads case)[3], (reads case)[4],
     (temps case)[2] ^^^ (reads case)[4]]
-private def aWords (case : Fin 3) : Vector Nat 5 :=
+def aWords (case : Fin 3) : Vector Nat 5 :=
   #v[(reads case)[0], changed case, (temps case)[0], (temps case)[1], (temps case)[2]]
 
-private def base (case : Fin 3) (v : Nat) : ZMod babyBearModulus :=
+def base (case : Fin 3) (v : Nat) : ZMod babyBearModulus :=
   if v = 0 ∨ v = 63 ∨ v = 70 + (selectedColumn case).val then 1
   else if v = 3 then (stateControl case).packed
   else if v = 5 then (stateControl case).nextPacked
@@ -51,7 +55,7 @@ private def base (case : Fin 3) (v : Nat) : ZMod babyBearModulus :=
 
 -- Byte query `i` (operation `i / 8`, byte `i % 8`): the Iota XOR of lane 0 with the round
 -- constant, then the running XOR of the column.
-private def bytes (case : Fin 3) (part : Fin 3) (i : Fin 40) : Nat :=
+def bytes (case : Fin 3) (part : Fin 3) (i : Fin 40) : Nat :=
   let op : Fin 5 := ⟨i.val / 8, by omega⟩
   if op.val = 0 then
     if part.val = 0 then Keccak.Proofs.wordByte (reads case)[0] (i.val % 8)
@@ -60,7 +64,7 @@ private def bytes (case : Fin 3) (part : Fin 3) (i : Fin 40) : Nat :=
   else Keccak.Proofs.wordByte (if part.val = 0 then (aWords case)[op]
     else if part.val = 1 then (reads case)[op] else (aWords case)[op] ^^^ (reads case)[op]) (i.val % 8)
 
-private def row (case : Fin 3) : Nat → ZMod babyBearModulus :=
+def row (case : Fin 3) : Nat → ZMod babyBearModulus :=
   Keccak.Proofs.bytesRow (base case) (bytes case)
 
 private theorem modes (case : Fin 3) (j : Fin 7) :

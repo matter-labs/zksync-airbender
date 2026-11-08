@@ -1,5 +1,8 @@
-import Slop.Bigint.EqualityGates
-import Slop.Arithmetic.Digits
+module
+public import Slop.Bigint.EqualityGates
+public import Slop.Arithmetic.Digits
+
+@[expose] public section
 
 namespace Airbender.Bigint.Equality.Proofs
 open Arithmetic
@@ -8,7 +11,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-private def carry {p : Nat} (w : Nat → ZMod p) (i : Nat) : Nat :=
+def carry {p : Nat} (w : Nat → ZMod p) (i : Nat) : Nat :=
   if i = 0 then 0 else (w (carryColumn i)).val
 
 theorem carry_bounded {p : Nat} [Fact p.Prime]

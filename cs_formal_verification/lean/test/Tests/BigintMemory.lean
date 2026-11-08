@@ -1,4 +1,9 @@
-import Slop.Bigint.Claims
+module
+public import Slop.Bigint.Claims
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.BigintMemory
 open Airbender Trace Arithmetic
@@ -15,7 +20,7 @@ def row (column : Nat) : ZMod babyBearModulus :=
   else if 216 ≤ column ∧ column < 273 ∧ (column - 216) % 3 = 2 then 1
   else 0
 
-private def native : Delegation.Row babyBearModulus := ⟨.bigint, row⟩
+def native : Delegation.Row babyBearModulus := ⟨.bigint, row⟩
 
 theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
     (Bigint.importedConstraints Bigint.setupTable) := by
@@ -41,7 +46,7 @@ private theorem clocks : FlatOperation.ConstraintsHoldFlat (Verification.environ
   all_goals simp [Expression.eval, Verification.environment, row]
   all_goals decide
 
-private def setup : Delegation.Setup babyBearModulus :=
+def setup : Delegation.Setup babyBearModulus :=
   ⟨Bigint.setupTable, { name := "unused", Contains _ _ := False },
     { name := "unused", Contains _ _ := False }, { name := "unused", Contains _ _ := False }⟩
 

@@ -1,5 +1,8 @@
-import Slop.Keccak.PermutationAssembly
-import Slop.Delegation.IntervalFold
+module
+public import Slop.Keccak.PermutationAssembly
+public import Slop.Delegation.IntervalFold
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Trace Trace.Proofs Delegation.Proofs Specs.Keccak256

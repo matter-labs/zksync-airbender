@@ -1,14 +1,17 @@
-import Slop.Blake2Round.Timestamp.Part0
-import Slop.Blake2Round.Timestamp.Part1
-import Slop.Blake2Round.Timestamp.Part2
-import Slop.Blake2Round.Timestamp.Part3
-import Slop.Blake2Round.Timestamp.Part4
-import Slop.Blake2Round.Timestamp.Part5
-import Slop.Blake2Round.Timestamp.Part6
-import Slop.Blake2Round.Timestamp.Part7
-import Human.Circuits.Blake2Round.Artifact
-import Slop.Blake2Round.ArtifactChecks
-import Slop.Delegation.ClockFacts
+module
+public import Slop.Blake2Round.Timestamp.Part0
+public import Slop.Blake2Round.Timestamp.Part1
+public import Slop.Blake2Round.Timestamp.Part2
+public import Slop.Blake2Round.Timestamp.Part3
+public import Slop.Blake2Round.Timestamp.Part4
+public import Slop.Blake2Round.Timestamp.Part5
+public import Slop.Blake2Round.Timestamp.Part6
+public import Slop.Blake2Round.Timestamp.Part7
+public import Human.Circuits.Blake2Round.Artifact
+public import Slop.Blake2Round.ArtifactChecks
+public import Slop.Delegation.ClockFacts
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Proofs
 open Trace

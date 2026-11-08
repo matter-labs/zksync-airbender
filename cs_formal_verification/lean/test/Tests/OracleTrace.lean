@@ -1,9 +1,12 @@
-import Tests.TraceExecution
-import Slop.Trace.Family.Timestamps
-import Human.Circuits.AddSub.RowInput
-import Human.Helpers.Core.CircuitOutput
-import Mathlib.Tactic.IntervalCases
-import Slop.KernelRfl
+module
+public import Tests.TraceExecution
+public import Slop.Trace.Family.Timestamps
+public import Human.Circuits.AddSub.RowInput
+public import Human.Helpers.Core.CircuitOutput
+public import Mathlib.Tactic.IntervalCases
+public import Slop.KernelRfl
+
+@[expose] public section
 
 namespace Tests.OracleTrace
 open Airbender Arithmetic Trace
@@ -11,14 +14,14 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-private def readAssignment : Nat → ZMod babyBearModulus
+def readAssignment : Nat → ZMod babyBearModulus
   | 2 | 19 | 27 => 4
   | 4 | 7 | 18 | 42 | 43 | 44 => 1
   | 21 => 8
   | 33 => 0x5678
   | 34 => 0x1234
   | _ => 0
-private def addAssignment : Nat → ZMod babyBearModulus
+def addAssignment : Nat → ZMod babyBearModulus
   | 0 => 4
   | 2 | 19 => 8
   | 21 => 12
@@ -30,7 +33,7 @@ private def addAssignment : Nat → ZMod babyBearModulus
   | 26 | 34 => 0x1234
   | 33 => 0x5679
   | _ => 0
-private def hintAssignment : Nat → ZMod babyBearModulus
+def hintAssignment : Nat → ZMod babyBearModulus
   | 0 => 8
   | 2 | 19 | 27 => 12
   | 21 => 16
@@ -38,15 +41,15 @@ private def hintAssignment : Nat → ZMod babyBearModulus
   | 23 => 9
   | 35 => 13
   | _ => 0
-private def readRow : Row babyBearModulus := ⟨.addSub, readAssignment⟩
-private def addRow : Row babyBearModulus := ⟨.addSub, addAssignment⟩
-private def hintRow : Row babyBearModulus := ⟨.addSub, hintAssignment⟩
+def readRow : Row babyBearModulus := ⟨.addSub, readAssignment⟩
+def addRow : Row babyBearModulus := ⟨.addSub, addAssignment⟩
+def hintRow : Row babyBearModulus := ⟨.addSub, hintAssignment⟩
 
-private def regToken (index time lo hi : Nat) : MemoryToken babyBearModulus :=
+def regToken (index time lo hi : Nat) : MemoryToken babyBearModulus :=
   ⟨(Cell.register (BitVec.ofNat 5 index)).addressCode, (time, 0), Nat.pair lo hi⟩
-private def cells := Tests.TraceExecution.cells
-private def seed : List (MemoryToken babyBearModulus) := ROMView.nativeBootImage cells
-private def trace : Data babyBearModulus where
+def cells := Tests.TraceExecution.cells
+def seed : List (MemoryToken babyBearModulus) := ROMView.nativeBootImage cells
+def trace : Data babyBearModulus where
   rows := [addRow, hintRow, readRow]
   rom := ROM.table cells seed
   initial := PCState.boundary 0 (4, 0)

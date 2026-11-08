@@ -1,22 +1,25 @@
-import Human.Helpers.Context.Registries.ShiftBinop
-import Slop.ShiftBinop.Timestamp
-import Slop.Trace.RowHistory
-import Slop.ShiftBinop
+module
+public import Human.Helpers.Context.Registries.ShiftBinop
+public import Slop.ShiftBinop.Timestamp
+public import Slop.Trace.RowHistory
+public import Slop.ShiftBinop
+
+@[expose] public section
 
 namespace Airbender.ShiftBinop
 
 @[simp] theorem trace_columns (kind : TraceKind) :
-    Trace.CircuitLayout.columns kind = importedConstraintsTraceColumns := rfl
+    Trace.CircuitLayout.columns kind = importedConstraintsTraceColumns := by rfl
 
 @[simp] theorem trace_ports (kind : TraceKind) :
-    Trace.CircuitLayout.ports kind = importedConstraintsMemoryPorts := rfl
+    Trace.CircuitLayout.ports kind = importedConstraintsMemoryPorts := by rfl
 
 @[simp] theorem trace_decoder_columns (kind : TraceKind) :
-    Trace.CircuitLayout.decoderColumns kind = importedConstraintsDecoderColumns := rfl
+    Trace.CircuitLayout.decoderColumns kind = importedConstraintsDecoderColumns := by rfl
 
 @[simp] theorem trace_constraints [Fact p.Prime] (kind : TraceKind)
     (rom : Table (ZMod p) (fields 9)) :
-    Trace.CircuitLayout.constraints kind rom = clockConstraints := rfl
+    Trace.CircuitLayout.constraints kind rom = clockConstraints := by rfl
 
 end Airbender.ShiftBinop
 

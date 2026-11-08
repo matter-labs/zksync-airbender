@@ -1,10 +1,13 @@
-import Slop.KeccakSplit.ColumnParity.OpIndex
-import Slop.KeccakSplit.Setup.ColumnParity.Members
-import Slop.KeccakSplit.Memory.Order
-import Slop.KeccakSplit.RowCommon
-import Slop.Constraints
-import Slop.Trace.Timestamps
-import Slop.Arithmetic.Chunks
+module
+public import Slop.KeccakSplit.ColumnParity.OpIndex
+public import Slop.KeccakSplit.Setup.ColumnParity.Members
+public import Slop.KeccakSplit.Memory.Order
+public import Slop.KeccakSplit.RowCommon
+public import Slop.Constraints
+public import Slop.Trace.Timestamps
+public import Slop.Arithmetic.Chunks
+
+@[expose] public section
 
 /- The column-parity worker's imported queries over BabyBear: the alignment query
    (lookup 0), then the 22 setup queries `query i` = lookup 1 + i: slots (i = 0),
@@ -26,7 +29,7 @@ theorem core {w : Nat → ZMod babyBearModulus} (h : Holds w) :
 
 theorem lookup_count :
     (FlatOperation.lookups (ColumnParity.importedConstraints
-      (ColumnParity.setup (p := babyBearModulus)))).length = 23 := rfl
+      (ColumnParity.setup (p := babyBearModulus)))).length = 23 := by rfl
 
 theorem control_high {w : Nat → ZMod babyBearModulus} (h : Holds w) : w 4 = 0 ∧ w 6 = 0 := by
   have read := Verification.assertion_of_holds (core h) ⟨1, by decide⟩

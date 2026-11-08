@@ -1,9 +1,12 @@
-import Human.Trace.Workers.KeccakSplit.RVTheorems
-import Slop.KeccakSplit.Contract
-import Slop.KeccakSplit.Setup.Control
-import Slop.KeccakSplit.Chain.RVCalls
-import Slop.KeccakSplit.RVLink
-import Slop.KeccakSplit.Field
+module
+public import Human.Trace.Workers.KeccakSplit.RVTheorems
+public import Slop.KeccakSplit.Contract
+public import Slop.KeccakSplit.Setup.Control
+public import Slop.KeccakSplit.Chain.RVCalls
+public import Slop.KeccakSplit.RVLink
+public import Slop.KeccakSplit.Field
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Native
 open Proofs

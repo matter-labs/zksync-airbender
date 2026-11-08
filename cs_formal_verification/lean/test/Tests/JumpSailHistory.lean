@@ -1,10 +1,13 @@
-import Tests.JumpHistory
-import Slop.JumpBranchSlt.Trace
-import Slop.Trace.Terminal
-import Human.Circuits.JumpBranchSlt.Jump
-import Slop.JumpBranchSlt.Branch
-import Slop.JumpBranchSlt.Jump
-import Slop.JumpBranchSlt.PortReads
+module
+public import Tests.JumpHistory
+public import Slop.JumpBranchSlt.Trace
+public import Slop.Trace.Terminal
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.JumpBranchSlt.PortReads
+
+@[expose] public section
 
 namespace Tests.JumpSailHistory
 open Airbender Arithmetic Trace
@@ -19,16 +22,16 @@ def assignment (discarded : Bool) (i : Nat) : ZMod babyBearModulus :=
   else if discarded && i = 32 then 5
   else JumpHistory.assignment 5 false i
 
-private def row (discarded : Bool) : Row babyBearModulus JumpBranchSlt.TraceKind :=
+def row (discarded : Bool) : Row babyBearModulus JumpBranchSlt.TraceKind :=
   ⟨.jumpBranchSlt, assignment discarded⟩
 
-private def seed : List (MemoryToken babyBearModulus) :=
+def seed : List (MemoryToken babyBearModulus) :=
   [Cell.initialToken (.register 0) 0, Cell.initialToken (.register 1) 5]
 
-private def token (index clock value : Nat) : MemoryToken babyBearModulus :=
+def token (index clock value : Nat) : MemoryToken babyBearModulus :=
   ⟨Nat.pair 0 (Nat.pair index 0), (clock, 0), Nat.pair value 0⟩
 
-private def trace (discarded : Bool) (rom : Table (ZMod babyBearModulus) (fields 9)) :
+def trace (discarded : Bool) (rom : Table (ZMod babyBearModulus) (fields 9)) :
     JumpBranchSlt.NativeTrace babyBearModulus where
   rows := [row discarded]
   rom := rom

@@ -1,22 +1,25 @@
-import Slop.MulDiv
-import Slop.MulDiv.Soundness
-import Slop.MulDiv.Product
-import Slop.MulDiv.Trace
-import Human.Circuits.JumpBranchSlt.Jump
-import Human.Helpers.Core.BabyBearPrime
-import Slop.AddSub.Selectors
-import Slop.JumpBranchSlt.Branch
-import Slop.JumpBranchSlt.Jump
-import Slop.JumpBranchSlt.PortReads
-import Slop.MulDiv.PortReads
-import Slop.MulDiv.Values
-import Slop.ShiftBinop.PortReads
-import Slop.ShiftBinop.Ports
-import Slop.SubwordMemory.Values
-import Slop.Trace.CompositionCore
-import Slop.Trace.Family.Values
-import Slop.Trace.Pooled
-import Slop.Trace.RowContext
+module
+public import Slop.MulDiv
+public import Slop.MulDiv.Soundness
+public import Slop.MulDiv.Product
+public import Slop.MulDiv.Trace
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.AddSub.Selectors
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.JumpBranchSlt.PortReads
+public import Slop.MulDiv.PortReads
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.PortReads
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.Family.Values
+public import Slop.Trace.Pooled
+public import Slop.Trace.RowContext
+
+@[expose] public section
 
 namespace Airbender.MulDiv
 

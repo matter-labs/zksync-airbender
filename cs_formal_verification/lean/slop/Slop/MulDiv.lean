@@ -1,10 +1,13 @@
-import Slop.MulDiv.ArtifactChecks
-import Human.Helpers.Properties
-import Slop.Arithmetic.Word
-import Slop.Constraints
-import Slop.Lookups
-import Mathlib.Tactic.FinCases
-import Mathlib.Tactic.LinearCombination
+module
+public import Slop.MulDiv.ArtifactChecks
+public import Human.Helpers.Properties
+public import Slop.Arithmetic.Word
+public import Slop.Constraints
+public import Slop.Lookups
+public import Mathlib.Tactic.FinCases
+public import Mathlib.Tactic.LinearCombination
+
+@[expose] public section
 
 namespace Airbender.MulDiv.Proofs
 open Airbender.Arithmetic

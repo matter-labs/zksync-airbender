@@ -1,10 +1,13 @@
-import Slop.Blake2Round.ArtifactChecks
-import Slop.Blake2Round.OpIndex
-import Slop.Blake2G.OpIndex
-import Human.Circuits.Blake2Round.Control
-import Slop.Constraints
-import Slop.Arithmetic.Lemmas
-import Mathlib.Tactic.FinCases
+module
+public import Slop.Blake2Round.ArtifactChecks
+public import Slop.Blake2Round.OpIndex
+public import Slop.Blake2G.OpIndex
+public import Human.Circuits.Blake2Round.Control
+public import Slop.Constraints
+public import Slop.Arithmetic.Lemmas
+public import Mathlib.Tactic.FinCases
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Control.Proofs
 open Arithmetic

@@ -1,7 +1,10 @@
-import Slop.Bigint.RVCallStep
-import Slop.Delegation.RVRowCalls
-import Slop.Delegation.RVExecution
-import Human.Trace.Workers.Bigint.RVTheorems
+module
+public import Slop.Bigint.RVCallStep
+public import Slop.Delegation.RVRowCalls
+public import Slop.Delegation.RVExecution
+public import Human.Trace.Workers.Bigint.RVTheorems
+
+@[expose] public section
 
 /-! RV twin of `NativeExecution.native_operation_execution`, with the delegate link: native bigint rows inside actual
     RV memory execution (RAM cells include read-write shadow RAM below `ROM_END`), each row one spec bigint call. -/

@@ -1,6 +1,11 @@
-import Slop.Bigint.Claims
-import Slop.Verification.StaticLookup
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.Bigint.Claims
+public import Slop.Verification.StaticLookup
+public import Mathlib.Tactic.IntervalCases
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.BigintMultiplication
 open Airbender Bigint.Multiplication.Proofs

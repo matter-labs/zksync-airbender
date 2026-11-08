@@ -1,18 +1,21 @@
-import Slop.Keccak.NativeExecution
-import Slop.Keccak.ControlHistory
-import Slop.Keccak.PointerHistory
-import Slop.Keccak.Theta
-import Slop.Keccak.Chi
-import Slop.Keccak.Iota
-import Slop.Keccak.Mix
-import Slop.Keccak.Rho
-import Slop.Keccak.Addresses
-import Slop.Keccak.FixedLookups
-import Slop.Keccak.ControlUpdate
-import Human.Helpers.Delegation.SpanABI
-import Human.Trace.Workers.Blake2G.WorkVector
-import Slop.Delegation.NativeSegments
-import Slop.Keccak.CallPermutation
+module
+public import Slop.Keccak.NativeExecution
+public import Slop.Keccak.ControlHistory
+public import Slop.Keccak.PointerHistory
+public import Slop.Keccak.Theta
+public import Slop.Keccak.Chi
+public import Slop.Keccak.Iota
+public import Slop.Keccak.Mix
+public import Slop.Keccak.Rho
+public import Slop.Keccak.Addresses
+public import Slop.Keccak.FixedLookups
+public import Slop.Keccak.ControlUpdate
+public import Human.Helpers.Delegation.SpanABI
+public import Human.Trace.Workers.Blake2G.WorkVector
+public import Slop.Delegation.NativeSegments
+public import Slop.Keccak.CallPermutation
+
+@[expose] public section
 
 namespace Airbender.Keccak
 

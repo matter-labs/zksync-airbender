@@ -1,4 +1,7 @@
-import Slop.Blake2G.Composition
+module
+public import Slop.Blake2G.Composition
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Proofs
 
@@ -93,6 +96,6 @@ theorem phase_reference (phase : Fin 2) (state message : Vector Arithmetic.Word 
   exact c3
 
 theorem round_phases (state message : Vector Nat 16) :
-    Specs.BLAKE3.round state message = referencePhase 1 (referencePhase 0 state message) message := rfl
+    Specs.BLAKE3.round state message = referencePhase 1 (referencePhase 0 state message) message := by rfl
 
 end Airbender.Blake2Round.Proofs

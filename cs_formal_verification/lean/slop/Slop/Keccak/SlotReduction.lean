@@ -1,10 +1,15 @@
-import Slop.Keccak.PhysicalStep
-import Slop.Keccak.LayoutReduction
+module
+public import Slop.Keccak.PhysicalStep
+public import Slop.Keccak.LayoutReduction
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true
 set_option maxRecDepth 65536
 set_option maxHeartbeats 2000000
-private def slotCache : Vector (Vector Nat 6) 649 := #v[
+def slotCache : Vector (Vector Nat 6) 649 := #v[
 #v[0, 5, 10, 15, 20, 25],
 #v[1, 6, 11, 16, 21, 26],
 #v[2, 7, 12, 17, 22, 27],
@@ -657,10 +662,10 @@ private def slotCache : Vector (Vector Nat 6) 649 := #v[
 private theorem slot_cache_correct : ∀ call : Fin 649, slotIndices call = slotCache[call] := by
   simp only [slotIndices, Controller.rows, physical_cached]
   decide +kernel
-private theorem cached_slot_bound (call : Fin 649) (lane : Fin 6) : slotCache[call][lane] < 31 := by
+theorem cached_slot_bound (call : Fin 649) (lane : Fin 6) : slotCache[call][lane] < 31 := by
   rw [← slot_cache_correct call]
   exact Controller.Proofs.rows_bound _ lane
-private def normalizedStep (call : Fin 649) (state : LaneState) : LaneState :=
+def normalizedStep (call : Fin 649) (state : LaneState) : LaneState :=
   let indices := slotCache[call]
   let read := fun lane : Fin 6 => state ⟨indices[lane], cached_slot_bound call lane⟩
   fun physical =>

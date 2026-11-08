@@ -1,20 +1,23 @@
-import Slop.Blake2Round.NativeExecution
-import Slop.Blake2Round.Control
-import Slop.Blake2Round.Lookups
-import Slop.Blake2Round.Addresses
-import Slop.Blake2Round.Preparation
-import Slop.Blake2Round.Schedule
-import Slop.Blake2Round.Soundness
-import Slop.Blake2Round.Finalization
-import Slop.Blake2Round.PortAddresses
-import Slop.Blake2Round.Row
-import Human.Helpers.Delegation.SpanABI
-import Human.Trace.Workers.Blake2G.WorkVector
-import Human.Trace.Workers.Keccak.Permutation
-import Slop.Blake2Round.Compression
-import Slop.Blake2Round.StateTransport
-import Slop.Delegation.NativeSegments
-import Slop.Delegation.ReverseFold
+module
+public import Slop.Blake2Round.NativeExecution
+public import Slop.Blake2Round.Control
+public import Slop.Blake2Round.Lookups
+public import Slop.Blake2Round.Addresses
+public import Slop.Blake2Round.Preparation
+public import Slop.Blake2Round.Schedule
+public import Slop.Blake2Round.Soundness
+public import Slop.Blake2Round.Finalization
+public import Slop.Blake2Round.PortAddresses
+public import Slop.Blake2Round.Row
+public import Human.Helpers.Delegation.SpanABI
+public import Human.Trace.Workers.Blake2G.WorkVector
+public import Human.Trace.Workers.Keccak.Permutation
+public import Slop.Blake2Round.Compression
+public import Slop.Blake2Round.StateTransport
+public import Slop.Delegation.NativeSegments
+public import Slop.Delegation.ReverseFold
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Row
 

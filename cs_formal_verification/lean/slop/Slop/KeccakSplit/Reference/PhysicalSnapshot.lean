@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.Reference.CallMemoryProjection
-import Slop.KeccakSplit.Reference.PermutationDefinitions
+module
+public import Slop.KeccakSplit.Reference.CallMemoryProjection
+public import Slop.KeccakSplit.Reference.PermutationDefinitions
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Call.Proofs
 open Trace

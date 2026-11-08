@@ -1,9 +1,12 @@
-import Human.Helpers.Context.Registries.Pooled
-import Slop.JumpBranchSlt.Trace
-import Slop.MulDiv.Trace
-import Slop.ShiftBinop.Trace
-import Slop.SubwordMemory.Trace
-import Slop.Trace.Family.History
+module
+public import Human.Helpers.Context.Registries.Pooled
+public import Slop.JumpBranchSlt.Trace
+public import Slop.MulDiv.Trace
+public import Slop.ShiftBinop.Trace
+public import Slop.SubwordMemory.Trace
+public import Slop.Trace.Family.History
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 

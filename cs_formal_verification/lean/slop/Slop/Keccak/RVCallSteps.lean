@@ -1,5 +1,8 @@
-import Slop.Keccak.RVPhysical
-import Slop.Keccak.RVSpec
+module
+public import Slop.Keccak.RVPhysical
+public import Slop.Keccak.RVSpec
+
+@[expose] public section
 
 /-! RV twin of `CallPhysical.call_physical_steps`, extended with what the delegate link needs: per special5 call, the
     RV pre/post states move the 31 physical lanes by `microStep`, keep every register but x10 (which advances along

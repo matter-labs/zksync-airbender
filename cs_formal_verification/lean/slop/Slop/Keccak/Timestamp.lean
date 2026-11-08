@@ -1,7 +1,10 @@
-import Human.Circuits.Keccak.Artifact
-import Slop.Keccak.ArtifactChecks
-import Slop.Delegation.ClockFacts
-import Slop.Keccak.OpIndex
+module
+public import Human.Circuits.Keccak.Artifact
+public import Slop.Keccak.ArtifactChecks
+public import Slop.Delegation.ClockFacts
+public import Slop.Keccak.OpIndex
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Trace

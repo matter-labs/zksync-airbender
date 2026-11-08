@@ -1,6 +1,9 @@
-import Human.Helpers.Delegation.WorkerProjection
-import Slop.Delegation.RequestTrace
-import Slop.Trace.TransferValues
+module
+public import Human.Helpers.Delegation.WorkerProjection
+public import Slop.Delegation.RequestTrace
+public import Slop.Trace.TransferValues
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller.Proofs
 open Trace Trace.Proofs

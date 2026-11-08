@@ -1,7 +1,10 @@
-import Human.Circuits.Keccak.Theta
-import Slop.Keccak.Lookups
-import Slop.Keccak.OpIndex
-import Slop.Arithmetic.ByteAssembly
+module
+public import Human.Circuits.Keccak.Theta
+public import Slop.Keccak.Lookups
+public import Slop.Keccak.OpIndex
+public import Slop.Arithmetic.ByteAssembly
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic
@@ -21,7 +24,7 @@ private theorem theta_rotations {p : Nat} [Fact p.Prime] (hp : 7 < p)
   all_goals op_index at flag
   all_goals simpa [Expression.eval, Verification.environment, rho] using flag.symm
 
-private def limbOffsets : Vector Nat 4 := #v[0, 1, 4, 5]
+def limbOffsets : Vector Nat 4 := #v[0, 1, 4, 5]
 
 private theorem theta_limb_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}

@@ -1,7 +1,10 @@
-import Slop.KeccakSplit.Reference.Executions
-import Slop.KeccakSplit.Trace.RVAtomicWrites
-import Human.Trace.Workers.KeccakSplit.RVCall
-import Human.Trace.Workers.Keccak.RVCall
+module
+public import Slop.KeccakSplit.Reference.Executions
+public import Slop.KeccakSplit.Trace.RVAtomicWrites
+public import Human.Trace.Workers.KeccakSplit.RVCall
+public import Human.Trace.Workers.Keccak.RVCall
+
+@[expose] public section
 
 /-! RV twins of `CallMemoryProjection.lean` (lane reads/frame), `PhysicalSnapshot.lean`, `SnapshotStep.lean`,
     `Chain.lean` and `Executions.lean`: the 361 documented split calls executed on `RV.State`s (`Call.RVExecutesAt`)
@@ -82,7 +85,7 @@ theorem rv_snapshot_step (index : Fin 361) (pointer : BitVec 32)
   have unfolded (physical : Fin 31) : microStep index lanes physical =
       if live : (slots index).toList.idxOf physical < slotCount (kindAt index.val) then
         (result index source)[(slots index).toList.idxOf physical]'(lt_of_lt_of_le live (slot_count_bound _))
-      else lanes physical := rfl
+      else lanes physical := by rfl
   refine ⟨?_, ?_⟩
   · rw [unfolded, dite_eq_right (padding_not_live index)]
     exact snapshot.1

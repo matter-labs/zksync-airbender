@@ -1,7 +1,10 @@
-import Human.Trace.Delegation.RVRequestTrace
-import Slop.Delegation.RVCallerDecoder
-import Slop.Delegation.RequestTrace
-import Slop.Final.Trace.Delegation.RVTheorems
+module
+public import Human.Trace.Delegation.RVRequestTrace
+public import Slop.Delegation.RVCallerDecoder
+public import Slop.Delegation.RequestTrace
+public import Slop.Final.Trace.Delegation.RVTheorems
+
+@[expose] public section
 
 /-! RV siblings of the request-binding proofs (`RequestTrace.lean`) over `RVRequestTrace`. The clock and matching
     arguments are the Sail-free ones (`caller_clock`, `csr_injective`, `Requests.Proofs.*`); the caller rows use
@@ -38,7 +41,7 @@ theorem rv_caller_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   obtain ⟨present, family⟩ := rv_caller_member member
   have clock := clocks row present
   simp only [Trace.Row.columns, family, CircuitLayout.columns] at clock
-  have one : Requests.callerPort.clock.offset = 1 := rfl
+  have one : Requests.callerPort.clock.offset = 1 := by rfl
   simpa only [Requests.caller, one, rank, Trace.Row.columns, family, CircuitLayout.columns,
     decodeTimestamp, timeOfPair, rawPair] using
     (Trace.Proofs.write_time (by omega) (base := rawPair row.assignment AddSub.importedConstraintsTraceColumns.initialTime)

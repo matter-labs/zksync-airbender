@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.ThetaRho.Shift
+module
+public import Slop.KeccakSplit.ThetaRho.Shift
+
+@[expose] public section
 
 /- The written state limbs of a theta/rho row: each is the flag-selected sum of the
    rho output bytes, built from the split fragments (ported from PR #585's
@@ -22,35 +25,35 @@ noncomputable def outputLimbExpression (w : Nat → ZMod babyBearModulus) (colum
   outputByte w lane (Call.rotations[column][lane]) ⟨2 * limb.val, by omega⟩ +
     256 * outputByte w lane (Call.rotations[column][lane]) ⟨2 * limb.val + 1, by omega⟩
 
-theorem rot_0_0 : (Call.rotations[0][0]).val = 0 := rfl
-theorem rot_0_1 : (Call.rotations[0][1]).val = 36 := rfl
-theorem rot_0_2 : (Call.rotations[0][2]).val = 3 := rfl
-theorem rot_0_3 : (Call.rotations[0][3]).val = 41 := rfl
-theorem rot_0_4 : (Call.rotations[0][4]).val = 18 := rfl
-theorem rot_1_0 : (Call.rotations[1][0]).val = 1 := rfl
-theorem rot_1_1 : (Call.rotations[1][1]).val = 44 := rfl
-theorem rot_1_2 : (Call.rotations[1][2]).val = 10 := rfl
-theorem rot_1_3 : (Call.rotations[1][3]).val = 45 := rfl
-theorem rot_1_4 : (Call.rotations[1][4]).val = 2 := rfl
-theorem rot_2_0 : (Call.rotations[2][0]).val = 62 := rfl
-theorem rot_2_1 : (Call.rotations[2][1]).val = 6 := rfl
-theorem rot_2_2 : (Call.rotations[2][2]).val = 43 := rfl
-theorem rot_2_3 : (Call.rotations[2][3]).val = 15 := rfl
-theorem rot_2_4 : (Call.rotations[2][4]).val = 61 := rfl
-theorem rot_3_0 : (Call.rotations[3][0]).val = 28 := rfl
-theorem rot_3_1 : (Call.rotations[3][1]).val = 55 := rfl
-theorem rot_3_2 : (Call.rotations[3][2]).val = 25 := rfl
-theorem rot_3_3 : (Call.rotations[3][3]).val = 21 := rfl
-theorem rot_3_4 : (Call.rotations[3][4]).val = 56 := rfl
-theorem rot_4_0 : (Call.rotations[4][0]).val = 27 := rfl
-theorem rot_4_1 : (Call.rotations[4][1]).val = 20 := rfl
-theorem rot_4_2 : (Call.rotations[4][2]).val = 39 := rfl
-theorem rot_4_3 : (Call.rotations[4][3]).val = 8 := rfl
-theorem rot_4_4 : (Call.rotations[4][4]).val = 14 := rfl
+theorem rot_0_0 : (Call.rotations[0][0]).val = 0 := by rfl
+theorem rot_0_1 : (Call.rotations[0][1]).val = 36 := by rfl
+theorem rot_0_2 : (Call.rotations[0][2]).val = 3 := by rfl
+theorem rot_0_3 : (Call.rotations[0][3]).val = 41 := by rfl
+theorem rot_0_4 : (Call.rotations[0][4]).val = 18 := by rfl
+theorem rot_1_0 : (Call.rotations[1][0]).val = 1 := by rfl
+theorem rot_1_1 : (Call.rotations[1][1]).val = 44 := by rfl
+theorem rot_1_2 : (Call.rotations[1][2]).val = 10 := by rfl
+theorem rot_1_3 : (Call.rotations[1][3]).val = 45 := by rfl
+theorem rot_1_4 : (Call.rotations[1][4]).val = 2 := by rfl
+theorem rot_2_0 : (Call.rotations[2][0]).val = 62 := by rfl
+theorem rot_2_1 : (Call.rotations[2][1]).val = 6 := by rfl
+theorem rot_2_2 : (Call.rotations[2][2]).val = 43 := by rfl
+theorem rot_2_3 : (Call.rotations[2][3]).val = 15 := by rfl
+theorem rot_2_4 : (Call.rotations[2][4]).val = 61 := by rfl
+theorem rot_3_0 : (Call.rotations[3][0]).val = 28 := by rfl
+theorem rot_3_1 : (Call.rotations[3][1]).val = 55 := by rfl
+theorem rot_3_2 : (Call.rotations[3][2]).val = 25 := by rfl
+theorem rot_3_3 : (Call.rotations[3][3]).val = 21 := by rfl
+theorem rot_3_4 : (Call.rotations[3][4]).val = 56 := by rfl
+theorem rot_4_0 : (Call.rotations[4][0]).val = 27 := by rfl
+theorem rot_4_1 : (Call.rotations[4][1]).val = 20 := by rfl
+theorem rot_4_2 : (Call.rotations[4][2]).val = 39 := by rfl
+theorem rot_4_3 : (Call.rotations[4][3]).val = 8 := by rfl
+theorem rot_4_4 : (Call.rotations[4][4]).val = 14 := by rfl
 
 theorem constraint_count :
     (FlatOperation.constraints (ThetaRho.importedConstraints
-      (ThetaRho.setup (p := babyBearModulus)))).length = 35 := rfl
+      (ThetaRho.setup (p := babyBearModulus)))).length = 35 := by rfl
 
 /-- Fragment columns of the XOR-and-split queries. -/
 theorem fragment_col (w : Nat → ZMod babyBearModulus) (high : Bool) (lane : Fin 5) (digit : Fin 8) :

@@ -1,7 +1,10 @@
-import Slop.Keccak.ControlHistory
-import Slop.Keccak.NativeExecution
-import Slop.Keccak.PointerHistory
-import Slop.Delegation.CallGroups
+module
+public import Slop.Keccak.ControlHistory
+public import Slop.Keccak.NativeExecution
+public import Slop.Keccak.PointerHistory
+public import Slop.Delegation.CallGroups
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic

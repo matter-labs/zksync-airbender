@@ -1,5 +1,8 @@
-import Human.Trace.Families.AddSub.RVTheorems
-import Slop.Trace.Family.RVExecution
+module
+public import Human.Trace.Families.AddSub.RVTheorems
+public import Slop.Trace.Family.RVExecution
+
+@[expose] public section
 
 namespace Airbender.Trace
 

@@ -1,4 +1,7 @@
-import Slop.Delegation.Readonly
+module
+public import Slop.Delegation.Readonly
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 open Trace Arithmetic

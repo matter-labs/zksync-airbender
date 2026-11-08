@@ -1,7 +1,10 @@
-import Human.Circuits.Keccak.ControlUpdate
-import Slop.Keccak.Controls
-import Slop.Keccak.OpIndex
-import Slop.Arithmetic.OneHot
+module
+public import Human.Circuits.Keccak.ControlUpdate
+public import Slop.Keccak.Controls
+public import Slop.Keccak.OpIndex
+public import Slop.Arithmetic.OneHot
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic

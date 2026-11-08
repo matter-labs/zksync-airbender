@@ -1,6 +1,9 @@
-import Slop.Delegation.RequestTrace
-import Slop.Trace.TransferHistory
-import Human.Helpers.Delegation.MixedMemory
+module
+public import Slop.Delegation.RequestTrace
+public import Slop.Trace.TransferHistory
+public import Human.Helpers.Delegation.MixedMemory
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller.Proofs
 open Trace Arithmetic Trace.Proofs

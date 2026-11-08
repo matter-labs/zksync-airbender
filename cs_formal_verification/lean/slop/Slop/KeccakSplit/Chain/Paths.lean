@@ -1,6 +1,9 @@
-import Slop.KeccakSplit.Operation
-import Slop.Delegation.CallPaths
-import Slop.Trace.MemoryPaths
+module
+public import Slop.KeccakSplit.Operation
+public import Slop.Delegation.CallPaths
+public import Slop.Trace.MemoryPaths
+
+@[expose] public section
 
 /- The x10 control cell's history in a 361-call request: matching links the 361
    control accesses into one path from the public start value 0; each row's
@@ -52,7 +55,7 @@ theorem control_edges {data : MemoryData p} :
   intro row _
   exact row_control_steps row
 
-theorem control_start : controlAt 0 = 0 := rfl
+theorem control_start : controlAt 0 = 0 := by rfl
 
 theorem control_next : ∀ index : Fin 360, bump (controlAt index.val) = controlAt (index.val + 1) := by
   decide +kernel

@@ -1,5 +1,8 @@
-import Slop.Delegation.Operations
-import Slop.Delegation.SeedMemory
+module
+public import Slop.Delegation.Operations
+public import Slop.Delegation.SeedMemory
+
+@[expose] public section
 
 /-! State-free twin of `Operations.operation_word_bounds_at_boundary`: the seed facts (`SeedInputs`) and the modeled
     operation tables bound every native read, write and terminal word. -/

@@ -1,6 +1,9 @@
-import Slop.Trace.Claims
-import Slop.Trace.RowHistory
-import Slop.Trace.Family.Timestamps
+module
+public import Slop.Trace.Claims
+public import Slop.Trace.RowHistory
+public import Slop.Trace.Family.Timestamps
+
+@[expose] public section
 
 namespace Tests.TraceMemory
 open Airbender
@@ -9,7 +12,7 @@ set_option maxRecDepth 16384
 
 -- ADD x2,x1,x0 with x1 initially five. Clean's zero-initial memory must receive
 -- an explicit initialization write before this nonzero operand can be read.
-private def assignment (v : Nat) : ZMod babyBearModulus :=
+def assignment (v : Nat) : ZMod babyBearModulus :=
   if v = 2 ∨ v = 19 then 4
   else if v = 21 then 8
   else if v = 4 ∨ v = 5 ∨ v = 10 ∨ v = 42 ∨ v = 43 ∨ v = 44 then 1
@@ -19,10 +22,10 @@ private def assignment (v : Nat) : ZMod babyBearModulus :=
 
 def row : Trace.Row babyBearModulus := ⟨.addSub, assignment⟩
 
-private def token (register clock value : Nat) : Trace.MemoryToken babyBearModulus :=
+def token (register clock value : Nat) : Trace.MemoryToken babyBearModulus :=
   ⟨Nat.pair 0 (Nat.pair register 0), (clock, 0), Nat.pair value 0⟩
 
-private def trace (rom : Table (ZMod babyBearModulus) (fields 9)) : Trace.Data babyBearModulus where
+def trace (rom : Table (ZMod babyBearModulus) (fields 9)) : Trace.Data babyBearModulus where
   rows := [row]
   rom := rom
   initial := row.start
@@ -85,7 +88,7 @@ theorem merged_clean_history (rom : Table (ZMod babyBearModulus) (fields 9)) :
 
 -- The second instruction reads the value written by the first, twice, then
 -- writes ten to x1. Rows are stored in reverse execution order.
-private def secondAssignment (v : Nat) : ZMod babyBearModulus :=
+def secondAssignment (v : Nat) : ZMod babyBearModulus :=
   if v = 0 ∨ v = 35 then 4
   else if v = 2 ∨ v = 19 ∨ v = 27 then 8
   else if v = 21 then 12
@@ -169,7 +172,7 @@ theorem reordered_instruction_accesses (rom : Table (ZMod babyBearModulus) (fiel
   exact ⟨rows, permutation, statePath, List.Perm.eq_of_pairwise' ordered (by simp)
     (times.trans expected.symm)⟩
 
-private def zeroTable : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
+def zeroTable : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
   name := "TraceValueFixture"
   length := 1
   row _ := Vector.replicate 9 0

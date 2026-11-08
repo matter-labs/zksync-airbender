@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.Reference.CallReference
-import Slop.Keccak.PermutationSchedule
+module
+public import Slop.KeccakSplit.Reference.CallReference
+public import Slop.Keccak.PermutationSchedule
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Call.Proofs
 open Specs.Keccak256

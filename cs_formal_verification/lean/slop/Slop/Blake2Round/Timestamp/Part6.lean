@@ -1,7 +1,10 @@
-import Human.Circuits.Blake2Round.Artifact
-import Slop.Blake2Round.ArtifactChecks
-import Slop.Delegation.ClockFacts
-import Slop.Blake2Round.OpIndex
+module
+public import Human.Circuits.Blake2Round.Artifact
+public import Slop.Blake2Round.ArtifactChecks
+public import Slop.Delegation.ClockFacts
+public import Slop.Blake2Round.OpIndex
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Proofs
 open Trace

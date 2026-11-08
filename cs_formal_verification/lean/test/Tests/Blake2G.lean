@@ -1,7 +1,12 @@
-import Slop.Blake2G
-import Slop.Blake2G.Tables
-import Slop.Blake2G.Claims
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.Blake2G
+public import Slop.Blake2G.Tables
+public import Slop.Blake2G.Claims
+public import Mathlib.Tactic.IntervalCases
+import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.Blake2G
 open Airbender
@@ -18,11 +23,11 @@ theorem wrongMixingOutputRejected (setup : Table (ZMod babyBearModulus) (fields 
   norm_num [Blake2G.Proofs.mixingConstraints, Blake2G.importedConstraints,
     FlatOperation.constraints, Expression.eval, Verification.environment] at output
 
-private def rowInput : Blake2G.Row.Input :=
+def rowInput : Blake2G.Row.Input :=
   ⟨⟨⟨0, by decide⟩, true⟩, ⟨0, 0⟩, ⟨0, 0⟩,
     Vector.replicate 16 ⟨0, 0⟩, Vector.replicate 16 ⟨0, 0⟩⟩
 
-private def wrongRowAddress : Blake2G.Row.Output :=
+def wrongRowAddress : Blake2G.Row.Output :=
   ⟨Blake2G.Control.step rowInput.controller, Vector.replicate 16 ⟨0, 0⟩,
     #v[4, 16, 32, 48, 0, 4]⟩
 
@@ -71,7 +76,7 @@ example : Blake2G.Control.step ⟨⟨127, by decide⟩, true⟩ =
 example : Blake2G.Control.step ⟨⟨255, by decide⟩, false⟩ =
     ⟨⟨0, 0⟩, #v[0, 0, 0, 0], #v[0, 0]⟩ := by decide
 
-private def wrongControlQuery : Lookup (ZMod babyBearModulus) where
+def wrongControlQuery : Lookup (ZMod babyBearModulus) where
   table := (Blake2G.setupTable Blake2G.Control.controllerRows).toRaw
   -- Key 335 is active/full-mode counter 79. The next counter must be zero.
   entry := #v[.const 335, .const 1, .const 3, .const 4, .const 9, .const 14,
@@ -117,15 +122,15 @@ example {setup : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZMod baby
   intro holds
   exact nonzero (Blake2G.Proofs.control_high_zero holds).1
 
-private def control (_ : Fin 512) : Vector Nat 7 := Vector.replicate 7 0
+def control (_ : Fin 512) : Vector Nat 7 := Vector.replicate 7 0
 
-private def chunkQuery (a b c tag : Nat) : Lookup (ZMod babyBearModulus) where
+def chunkQuery (a b c tag : Nat) : Lookup (ZMod babyBearModulus) where
   table := (Blake2G.setupTable control).toRaw
   entry := #v[.const (a : ZMod babyBearModulus), .const (b : ZMod babyBearModulus),
     .const (c : ZMod babyBearModulus), .const 0, .const 0, .const 0, .const 0,
     .const 0, .const (tag : ZMod babyBearModulus)]
 
-private def emptyEnv : Environment (ZMod babyBearModulus) := Verification.environment (fun _ => 0)
+def emptyEnv : Environment (ZMod babyBearModulus) := Verification.environment (fun _ => 0)
 
 -- A maximum-width boundary pair has a real row in the modeled static setup.
 example : (chunkQuery 511 256 255 20).Contains emptyEnv := by

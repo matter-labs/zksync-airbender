@@ -1,11 +1,14 @@
-import Slop.KeccakSplit.Chain.Calls
-import Slop.KeccakSplit.Memory.RVHistory
-import Slop.KeccakSplit.Reference.RVExecutions
-import Slop.KeccakSplit.ColumnParity.RVExecution
-import Slop.KeccakSplit.ThetaRho.RVExecution
-import Slop.KeccakSplit.Chi5.RVExecution
-import Slop.Delegation.RVCallHistory
-import Slop.Trace.SeedAddressClocks
+module
+public import Slop.KeccakSplit.Chain.Calls
+public import Slop.KeccakSplit.Memory.RVHistory
+public import Slop.KeccakSplit.Reference.RVExecutions
+public import Slop.KeccakSplit.ColumnParity.RVExecution
+public import Slop.KeccakSplit.ThetaRho.RVExecution
+public import Slop.KeccakSplit.Chi5.RVExecution
+public import Slop.Delegation.RVCallHistory
+public import Slop.Trace.SeedAddressClocks
+
+@[expose] public section
 
 /-! RV twin of `Chain/Atomic.lean` and `Chain/Calls.lean`: a complete initialized split request from an `RV.State`:
     the control path orders the 361 rows, the RV history splits into one atomic group per row, and each row executes

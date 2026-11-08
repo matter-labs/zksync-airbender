@@ -1,10 +1,13 @@
-import Human.Trace.Workers.KeccakSplit.RVExecution
-import Slop.KeccakSplit.Memory.History
-import Slop.KeccakSplit.Operation
-import Slop.Trace.RVTransfer
-import Slop.Trace.RVHistoryFrame
-import Slop.Trace.SeedTransfer
-import Slop.Trace.TransferBounds
+module
+public import Human.Trace.Workers.KeccakSplit.RVExecution
+public import Slop.KeccakSplit.Memory.History
+public import Slop.KeccakSplit.Operation
+public import Slop.Trace.RVTransfer
+public import Slop.Trace.RVHistoryFrame
+public import Slop.Trace.SeedTransfer
+public import Slop.Trace.TransferBounds
+
+@[expose] public section
 
 /-! RV twins of the split pool's memory layer (`Memory/History.lean`, `Operation.lean`): state-free seed facts
     (`SeedInputs`: the seed domain, canonical seed words and clocks, the clock room), the RV boundary (seed facts plus

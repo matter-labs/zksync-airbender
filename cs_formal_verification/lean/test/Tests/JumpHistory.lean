@@ -1,6 +1,9 @@
-import Slop.Trace.Claims
-import Slop.JumpBranchSlt.Trace
-import Tests.JumpTimestamp
+module
+public import Slop.Trace.Claims
+public import Slop.JumpBranchSlt.Trace
+public import Tests.JumpTimestamp
+
+@[expose] public section
 
 namespace Tests.JumpHistory
 open Airbender Arithmetic Trace
@@ -17,7 +20,7 @@ def assignment (old : Nat) (rollover : Bool) (i : Nat) : ZMod babyBearModulus :=
 def row (old : Nat) (rollover : Bool) : Row babyBearModulus JumpBranchSlt.TraceKind :=
   ⟨.jumpBranchSlt, assignment old rollover⟩
 
-private def token (index low high value : Nat) : MemoryToken babyBearModulus :=
+def token (index low high value : Nat) : MemoryToken babyBearModulus :=
   ⟨Nat.pair 0 (Nat.pair index 0), (low, high), Nat.pair value 0⟩
 
 def trace (old : Nat) (rollover : Bool) (rom : Table (ZMod babyBearModulus) (fields 9)) :

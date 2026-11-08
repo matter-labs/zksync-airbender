@@ -1,5 +1,9 @@
-import Slop.JumpBranchSlt.Claims
-import Slop.JumpBranchSlt.Completeness.Witness
+module
+public import Slop.JumpBranchSlt.Claims
+public import Slop.JumpBranchSlt.Completeness.Witness
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 namespace Tests.Branch
 open Airbender
@@ -80,7 +84,7 @@ theorem satisfies (tag : Fin 6) (wrap : Bool) :
 
 /-- Every real branch tag, with opposite signed/unsigned outcomes, has the
     resolved bit required by the local imported relation. -/
-private theorem resolved (tag : Fin 6) (wrap : Bool) :
+theorem resolved (tag : Fin 6) (wrap : Bool) :
     row tag wrap 45 = if taken tag then 1 else 0 := by
   have result := JumpBranchSlt.Proofs.branch_resolution (left := ⟨0, 0⟩)
     (right := ⟨65535, 65535⟩) (by decide) (satisfies tag wrap) rfl ⟨rfl, rfl, rfl⟩
@@ -110,7 +114,7 @@ example (tag : Fin 6) (wrap : Bool) :
 example (tag : Fin 6) (wrap : Bool) : row tag wrap 30 = 0 ∧ row tag wrap 31 = 0 :=
   JumpBranchSlt.Proofs.masked_destination (satisfies tag wrap) rfl
 
-private def equalRow (neq : Bool) : Nat → ZMod babyBearModulus
+def equalRow (neq : Bool) : Nat → ZMod babyBearModulus
   | 4 | 14 | 15 | 41 => 1
   | 8 => 8
   | 10 => if neq then 1 else 0
@@ -119,7 +123,7 @@ private def equalRow (neq : Bool) : Nat → ZMod babyBearModulus
   | 44 | 45 => if neq then 0 else 1
   | _ => 0
 
-private theorem equalSatisfies (neq : Bool) :
+theorem equalSatisfies (neq : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (equalRow neq))
       JumpBranchSlt.importedConstraints := by
   cases neq <;> simp [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
@@ -161,7 +165,7 @@ example (neq : Bool) : equalRow neq 45 = if neq then 0 else 1 := by
   convert result using 1
   cases neq <;> decide
 
-private def misalignedRow (i : Nat) : ZMod babyBearModulus :=
+def misalignedRow (i : Nat) : ZMod babyBearModulus :=
   if i = 8 ∨ i = 36 then 2 else if i = 16 then 0 else if i = 46 then 1
   else equalRow false i
 

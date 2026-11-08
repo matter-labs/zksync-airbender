@@ -1,8 +1,11 @@
-import Slop.Keccak.Lookups
-import Slop.Keccak.OpIndex
-import Slop.Eval
-import Mathlib.Tactic.IntervalCases
-import Mathlib.Tactic.FinCases
+module
+public import Slop.Keccak.Lookups
+public import Slop.Keccak.OpIndex
+public import Slop.Eval
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.FinCases
+
+@[expose] public section
 
 /-! Completeness of the forty byte queries, proved once for every row (lean-strategies §2.1):
 the query's value columns, the setup rows of each tag at their index, and membership from those. -/
@@ -236,7 +239,7 @@ theorem setup_row_controller (control : Fin 4096 → Vector Nat 6) {key : Nat} (
 
 theorem controller_arity {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8)) :
     ((FlatOperation.lookups (importedConstraints setup)).get
-      ⟨1, by rw [lookup_count]; decide⟩).table.arity = 8 := rfl
+      ⟨1, by rw [lookup_count]; decide⟩).table.arity = 8 := by rfl
 
 /-- The controller query's entry, at its checked width. -/
 def controllerEntry {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8)) :
@@ -246,7 +249,7 @@ def controllerEntry {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8))
 
 theorem controller_query_shape {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8)) :
     (FlatOperation.lookups (importedConstraints setup)).get ⟨1, by rw [lookup_count]; decide⟩ =
-      Lookup.mk setup.toRaw (controllerEntry setup) := rfl
+      Lookup.mk setup.toRaw (controllerEntry setup) := by rfl
 
 /-- The controller query holds when its packed key and six outputs are a controller row. -/
 theorem controller_query {p : Nat} [Fact p.Prime] {control : Fin 4096 → Vector Nat 6}

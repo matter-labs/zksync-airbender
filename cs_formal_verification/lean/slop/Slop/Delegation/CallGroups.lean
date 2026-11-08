@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.WorkerContext
-import Slop.Delegation.SailHistory
+module
+public import Human.Helpers.Delegation.WorkerContext
+public import Slop.Delegation.SailHistory
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 open Trace

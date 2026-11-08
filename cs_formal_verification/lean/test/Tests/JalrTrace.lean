@@ -1,5 +1,8 @@
-import Tests.JumpSailHistory
-import Slop.JumpBranchSlt.Claims
+module
+public import Tests.JumpSailHistory
+public import Slop.JumpBranchSlt.Claims
+
+@[expose] public section
 
 namespace Tests.JalrTrace
 open Airbender Arithmetic Trace

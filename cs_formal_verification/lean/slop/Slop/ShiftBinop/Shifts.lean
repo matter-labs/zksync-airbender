@@ -1,7 +1,10 @@
-import Slop.ShiftBinop.ArtifactChecks
-import Human.Helpers.Properties
-import Slop.ShiftBinop.Arithmetic
-import Slop.Constraints
+module
+public import Slop.ShiftBinop.ArtifactChecks
+public import Human.Helpers.Properties
+public import Slop.ShiftBinop.Arithmetic
+public import Slop.Constraints
+
+@[expose] public section
 
 namespace Airbender.ShiftBinop.Proofs
 open Airbender.Arithmetic

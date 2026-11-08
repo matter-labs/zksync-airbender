@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.Chi5.Queries
-import Slop.KeccakSplit.RowCommon
+module
+public import Slop.KeccakSplit.Chi5.Queries
+public import Slop.KeccakSplit.RowCommon
+
+@[expose] public section
 
 /- Each 16-bit memory limb of a chi5 lane is its four queried nibbles: three are
    witness columns, the top one is the limb minus them over 4096 (field inverse). -/

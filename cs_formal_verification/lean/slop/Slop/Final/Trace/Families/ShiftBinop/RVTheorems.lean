@@ -1,5 +1,8 @@
-import Human.Trace.Families.ShiftBinop.RVTheorems
-import Slop.ShiftBinop.RVTraceExecution
+module
+public import Human.Trace.Families.ShiftBinop.RVTheorems
+public import Slop.ShiftBinop.RVTraceExecution
+
+@[expose] public section
 
 namespace Airbender.ShiftBinop
 

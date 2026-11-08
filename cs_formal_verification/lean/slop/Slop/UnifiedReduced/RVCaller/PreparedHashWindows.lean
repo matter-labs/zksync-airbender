@@ -1,6 +1,9 @@
-import Human.Trace.UnifiedReduced.RVPreparedHashWindows
-import Slop.UnifiedReduced.RVCaller.ControlPreparation
-import Slop.UnifiedReduced.RVCaller.SpanTarget
+module
+public import Human.Trace.UnifiedReduced.RVPreparedHashWindows
+public import Slop.UnifiedReduced.RVCaller.ControlPreparation
+public import Slop.UnifiedReduced.RVCaller.SpanTarget
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Arithmetic

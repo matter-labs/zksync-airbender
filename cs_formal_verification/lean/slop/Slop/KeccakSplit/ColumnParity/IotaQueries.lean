@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.ColumnParity.Lanes
+module
+public import Slop.KeccakSplit.ColumnParity.Lanes
+
+@[expose] public section
 
 /- The iota byte queries and equations of the column-parity worker, evaluated to their
    witness columns (ported from PR #585's SplitParityIotaPacking and

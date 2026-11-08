@@ -1,4 +1,8 @@
-import Slop.KeccakSplit.RVSpec
+module
+public import Slop.KeccakSplit.RVSpec
+import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+
+@[expose] public section
 
 /-! One split call: the spec's `f1600Step` on 64-bit lanes is the split `microStep` on their values. The live slots of
     each call are distinct (`distinct_slots`); at a live slot both write the call's result, elsewhere both keep the
@@ -90,7 +94,7 @@ def slotsOf (kind : Kind) (x : Fin 5) (round : Nat) : Vector (Fin 31) 7 :=
     else 30
 
 theorem slots_of (i : Fin 361) : slots i = slotsOf (kindAt i.val) ⟨i.val % 5, Nat.mod_lt _ (by decide)⟩ (i.val / 15) :=
-  rfl
+  by rfl
 
 /-- `result` with the worker, column/row and round as parameters. -/
 def resultOf (kind : Kind) (x : Fin 5) (round : Nat) (input : Vector Nat 7) : Vector Nat 7 :=

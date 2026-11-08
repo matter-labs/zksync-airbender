@@ -1,10 +1,13 @@
-import Slop.Bigint.ArtifactChecks
-import Human.Circuits.Bigint.Addresses
-import Slop.MemoryPorts
-import Slop.Constraints
-import Slop.Trace.Timestamps
-import Slop.Lookups
-import Slop.Arithmetic.Chunks
+module
+public import Slop.Bigint.ArtifactChecks
+public import Human.Circuits.Bigint.Addresses
+public import Slop.MemoryPorts
+public import Slop.Constraints
+public import Slop.Trace.Timestamps
+public import Slop.Lookups
+public import Slop.Arithmetic.Chunks
+
+@[expose] public section
 
 namespace Airbender.Bigint.Addresses.Proofs
 open Arithmetic

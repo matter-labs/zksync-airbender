@@ -1,9 +1,12 @@
-import Slop.Keccak.ControllerLayout
+module
+public import Slop.Keccak.ControllerLayout
+
+@[expose] public section
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true
 set_option maxRecDepth 65536
 set_option maxHeartbeats 1600000
-private def layoutCache : Vector (Vector Nat 25) 25 := #v[
+def layoutCache : Vector (Vector Nat 25) 25 := #v[
 #v[0, 5, 10, 15, 20, 1, 6, 11, 16, 21, 2, 7, 12, 17, 22, 3, 8, 13, 18, 23, 4, 9, 14, 19, 24],
 #v[0, 3, 1, 4, 2, 6, 9, 7, 5, 8, 12, 10, 13, 11, 14, 18, 16, 19, 17, 15, 24, 22, 20, 23, 21],
 #v[0, 18, 6, 24, 12, 9, 22, 10, 3, 16, 13, 1, 19, 7, 20, 17, 5, 23, 11, 4, 21, 14, 2, 15, 8],
@@ -31,7 +34,7 @@ private def layoutCache : Vector (Vector Nat 25) 25 := #v[
 #v[0, 5, 10, 15, 20, 1, 6, 11, 16, 21, 2, 7, 12, 17, 22, 3, 8, 13, 18, 23, 4, 9, 14, 19, 24]]
 private theorem layout_cache_correct : ∀ r : Fin 25, ∀ i : Fin 25,
     Controller.physicalLane r.val i = layoutCache[r][i] := by decide +kernel
-private def cachedLane (round : Nat) (lane : Fin 25) : Nat :=
+def cachedLane (round : Nat) (lane : Fin 25) : Nat :=
   if h : round < 25 then layoutCache[round][lane] else Controller.physicalLane round lane
 theorem physical_cached (round : Nat) (lane : Fin 25) :
     Controller.physicalLane round lane = cachedLane round lane := by
