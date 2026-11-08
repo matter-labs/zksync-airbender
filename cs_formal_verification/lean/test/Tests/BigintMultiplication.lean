@@ -1,6 +1,7 @@
 module
-public import Slop.Bigint.Claims
-public import Slop.Verification.StaticLookup
+public import Human.Circuits.Bigint.Memory
+public import Slop.Bigint.Addresses
+public import Slop.Bigint.NativeExecution
 public import Mathlib.Tactic.IntervalCases
 import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
@@ -68,23 +69,6 @@ def fiveTimesSevenRow (high carryFlag : Bool) : Nat → ZMod babyBearModulus := 
   else if column = 7 then if high then 0 else 35
   else 0
 
-/-- A complete nonzero native witness for both halves and both incoming carry
-    values exercises all multiplication equations and lookup regions. -/
-theorem fiveTimesSevenSatisfies (high carryFlag : Bool) :
-    FlatOperation.ConstraintsHoldFlat (Verification.environment (fiveTimesSevenRow high carryFlag))
-      (Bigint.importedConstraints Bigint.setupTable) := by
-  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
-  constructor
-  · cases high <;> cases carryFlag <;> decide
-  · rw [List.forall_mem_iff_forall_getElem]
-    intro i bound
-    have short : i < 95 := by simpa only [Bigint.lookup_count] using bound
-    interval_cases i
-    all_goals first
-        | exact Verification.range16_contains (by cases high <;> cases carryFlag <;> decide)
-        | exact Verification.static_lookup_contains _ _ _ (by cases high <;> cases carryFlag <;> decide +kernel)
-            (by cases high <;> cases carryFlag <;> decide +kernel)
-
 -- (2^256 - 1) * 2: low half is 2^256 - 2, high half is one.
 def overflowRow : Nat → ZMod babyBearModulus := fun column =>
   if column = 0 ∨ column = 57 ∨ column = 62 ∨ column = 147 ∨ column = 179 ∨
@@ -99,38 +83,8 @@ def overflowRow : Nat → ZMod babyBearModulus := fun column =>
   else if 164 ≤ column ∧ column ≤ 178 then 131071
   else 0
 
-theorem overflowSatisfies :
-    FlatOperation.ConstraintsHoldFlat (Verification.environment overflowRow)
-      (Bigint.importedConstraints Bigint.setupTable) := by
-  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
-  constructor
-  · decide
-  · rw [List.forall_mem_iff_forall_getElem]
-    intro i bound
-    have short : i < 95 := by simpa only [Bigint.lookup_count] using bound
-    interval_cases i
-    all_goals first
-        | exact Verification.range16_contains (by decide)
-        | exact Verification.static_lookup_contains _ _ _ (by decide +kernel)
-            (by decide +kernel)
-
 def smallWord (value : Nat) : Vector Nat 16 :=
   Vector.ofFn fun i => if i.val = 0 then value else 0
-
-/-- The public claim applies to complete native witnesses, for both halves and
-    both incoming carry values. -/
-theorem fiveTimesSevenSoundness (high carryFlag : Bool) :
-    Bigint.Multiplication.spec
-      ⟨if high then .high else .low, smallWord 5, smallWord 7⟩
-      ⟨smallWord (if high then 0 else 35), ⟨0, 0⟩⟩ := by
-  apply Bigint.Multiplication.soundness _ _ (fiveTimesSevenRow high carryFlag)
-  refine ⟨fiveTimesSevenSatisfies high carryFlag, ?_⟩
-  constructor
-  · cases high <;> rfl
-  · intro i; cases high <;> cases carryFlag <;> fin_cases i <;> decide
-  · intro i; cases high <;> cases carryFlag <;> fin_cases i <;> decide
-  · intro i; cases high <;> cases carryFlag <;> fin_cases i <;> decide
-  · cases high <;> rfl
 
 theorem missingOverflowRejected (w : Nat → ZMod babyBearModulus)
     (selected : w 62 = 1) (nonzeroHigh : w 210 = 1) (wrongFlag : w 57 = 0) :

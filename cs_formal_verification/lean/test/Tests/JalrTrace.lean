@@ -1,6 +1,10 @@
 module
-public import Tests.JumpSailHistory
-public import Slop.JumpBranchSlt.Claims
+public import Tests.JumpHistory
+public import Slop.JumpBranchSlt.Trace
+public import Slop.Trace.Terminal
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
 
 @[expose] public section
 
@@ -30,31 +34,6 @@ private def trace (rom : Table (ZMod babyBearModulus) (fields 9)) :
   initialMemory := seed
   terminalMemory := [⟨(Cell.register 0).addressCode, (5, 0), Nat.pair 0 0⟩,
     ⟨(Cell.register 1).addressCode, (6, 0), Nat.pair 4 0⟩]
-
-/-- The honest inputs: JALR from x1 = 5 with `JumpHistory`'s clock; the second port reads
-    at clock 0 and the third at 4. -/
-private def witness : JumpBranchSlt.Completeness.Inputs :=
-  { JumpHistory.witness false with sel := 1, rs1 := 1, aLo := 5, oldLo := 5, prev1Lo := 0, prev2Lo := 4 }
-
-private theorem constraints : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment assignment) JumpBranchSlt.clockConstraints :=
-  JumpBranchSlt.Completeness.clock_complete_of_agree witness
-    (by constructor <;> decide) (by constructor <;> decide) (by decide)
-
-private theorem accepted (rom : Table (ZMod babyBearModulus) (fields 9)) : Accepted (trace rom) := by
-  constructor
-  · intro actual member
-    simp only [trace, List.mem_singleton] at member
-    subst actual
-    exact constraints
-  · intro actual member
-    simp only [trace, List.mem_singleton] at member
-    subst actual
-    rfl
-  · exact List.Perm.swap _ _ []
-  · dsimp [trace, Row.reads, Row.writes, Row.ports, Row.columns, row,
-      JumpBranchSlt.importedConstraintsMemoryPorts, JumpBranchSlt.importedConstraintsTraceColumns]
-    decide
 
 private theorem boundary (rom : Table (ZMod babyBearModulus) (fields 9)) : ClockBoundary (trace rom) := by
   constructor

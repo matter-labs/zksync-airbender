@@ -1,5 +1,6 @@
 module
-public import Human.Circuits.Keccak.Controls
+public import Human.Circuits.Keccak.Artifact
+public import Human.Helpers.Properties
 
 @[expose] public section
 

@@ -1,7 +1,6 @@
 module
 public import Slop.Keccak.ArtifactChecks
 public import Slop.Keccak.OpIndex
-public import Human.Circuits.Keccak.Controls
 public import Slop.Constraints
 public import Slop.Trace.Timestamps
 public import Slop.Arithmetic.Chunks
@@ -155,15 +154,6 @@ theorem control_read_bound {p : Nat} [Fact p.Prime] (hp : 2048 ≤ p)
     rw [← field]
     exact ZMod.val_natCast_of_lt packedBound
   omega
-
-theorem local_checks (hp : 134217728 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
-    LocalChecks w := by
-  have bits := control_bits h
-  have high := control_high_zero h
-  have counts := selector_counts (by omega) h
-  exact ⟨bits.1, bits.2, high.1, high.2, control_read_bound (by omega) h, counts.1, counts.2, pointer_alignment hp inverse h⟩
 
 theorem round_bound {p : Nat} [Fact p.Prime]
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}

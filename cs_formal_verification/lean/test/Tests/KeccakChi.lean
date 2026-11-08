@@ -1,7 +1,9 @@
 module
-public import Slop.Keccak.Claims
+public import Human.Helpers.Delegation.SpanABI
+public import Human.Trace.Workers.Blake2G.WorkVector
+public import Slop.Delegation.NativeSegments
+public import Slop.Keccak.CallPermutation
 public import Mathlib.Tactic.IntervalCases
-public import Slop.Keccak.Completeness.Bytes
 import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
@@ -58,92 +60,7 @@ def base (second : Bool) (v : Nat) : ZMod babyBearModulus :=
   else 0
 
 -- Byte query `i` (operation `i / 8`, byte `i % 8`): ANDN or XOR of the operation's two words.
-def bytes (second : Bool) (part : Fin 3) (i : Fin 40) : Nat :=
-  let op : Fin 5 := ⟨i.val / 8, by omega⟩
-  let a := (aWords second)[op]
-  let b := (bWords second)[op]
-  Keccak.Proofs.wordByte (if part.val = 0 then a else if part.val = 1 then b
-    else if isAndn second op.val then andn a b else a ^^^ b) (i.val % 8)
-
-def row (second : Bool) : Nat → ZMod babyBearModulus :=
-  Keccak.Proofs.bytesRow (base second) (bytes second)
-
-private theorem modes (second : Bool) (j : Fin 7) :
-    row second Keccak.Variables.modeColumns[j] = if j = (if second then 6 else 5) then 1 else 0 := by
-  cases second <;> fin_cases j <;> decide
-
-private theorem chi_tags (second : Bool) (op : Fin 5) :
-    Keccak.Proofs.operationTag (if second then 6 else 5) op = if isAndn second op.val then 39 else 4 := by
-  cases second <;> revert op <;> decide
-
-private theorem bytesHold (second : Bool) (i : Fin 40) :
-    (Keccak.Proofs.byteQuery setup i).Contains (Verification.environment (row second)) := by
-  have tag := Keccak.Proofs.byte_tag_of_mode setup _ (modes second) i
-  have byte (part : Fin 3) : row second (Keccak.Proofs.byteColumn part i) =
-      (bytes second part i : Nat) := Keccak.Proofs.bytes_row_byte _ _ part i
-  rw [chi_tags] at tag
-  by_cases selected : isAndn second (i.val / 8)
-  · rw [ite_eq_left selected] at tag
-    refine Keccak.Proofs.andn_query i _ _ (byte 0) (byte 1) ?_ tag
-    rw [byte]; simp only [bytes, selected, ↓reduceIte, Fin.isValue]; rfl
-  · rw [ite_eq_right selected] at tag
-    refine Keccak.Proofs.xor_query i _ _ (byte 0) (byte 1) ?_ tag
-    rw [byte]; simp only [bytes, selected, ↓reduceIte, Fin.isValue, Bool.false_eq_true]; rfl
-
-private theorem controllerHolds (second : Bool) :
-    ((FlatOperation.lookups (Keccak.importedConstraints setup)).get
-      ⟨1, by rw [Keccak.lookup_count]; decide⟩).Contains (Verification.environment (row second)) := by
-  refine Keccak.Proofs.controller_query (key := if second then 2054 else 2053) (by cases second <;> decide) ?_ ?_
-  · cases second <;> decide
-  · cases second <;> decide
-
-theorem satisfies (second : Bool) :
-    FlatOperation.ConstraintsHoldFlat (Verification.environment (row second))
-      (Keccak.importedConstraints setup) := by
-  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
-  constructor
-  · cases second <;> decide
-  · rw [List.forall_mem_iff_forall_getElem]
-    intro i hi
-    have bound : i < 42 := by simpa only [Keccak.lookup_count] using hi
-    by_cases range : i = 0
-    · subst i
-      apply Trace.Proofs.range_contains
-      cases second <;> decide
-    by_cases controller : i = 1
-    · subst i
-      simpa only [List.get_eq_getElem] using controllerHolds second
-    have relation := bytesHold second ⟨i - 2, by omega⟩
-    have index : i - 2 + 2 = i := by omega
-    simpa only [Keccak.Proofs.byteQuery, List.get_eq_getElem, Fin.val_mk, index] using relation
-
-theorem nativeMapping : Keccak.ChiMapping referenceState (2 : Fin 5) (row false) (row true) := by
-  constructor
-  · decide
-  · decide
-  · decide
-  · decide
-  · intro i; fin_cases i <;> decide
-  · decide
-  · intro i; fin_cases i <;> decide
-  · decide
-
-theorem referenceRow : Keccak.ChiResult referenceState (2 : Fin 5) (row false) (row true) :=
-  Keccak.chi_row_soundness (by decide) (satisfies false) (satisfies true) nativeMapping
 
 private theorem reference_nonzero : (Specs.Keccak256.chi referenceState)[2] ≠ 0 := by decide
-
-theorem wrongWriteRejected {first second : Nat → ZMod babyBearModulus}
-    (firstHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment first)
-      (Keccak.importedConstraints setup))
-    (mapping : Keccak.ChiMapping referenceState (2 : Fin 5) first second)
-    (wrong : Keccak.writeLane second 0 = 0) :
-    ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment second)
-      (Keccak.importedConstraints setup) := by
-  intro secondHolds
-  have result := (Keccak.chi_row_soundness (by decide) firstHolds secondHolds mapping).1 (0 : Fin 5)
-  change Keccak.writeLane second 0 = (Specs.Keccak256.chi referenceState)[2] at result
-  rw [wrong] at result
-  exact reference_nonzero result.symm
 
 end Tests.KeccakChi

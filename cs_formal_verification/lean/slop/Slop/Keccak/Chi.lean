@@ -1,5 +1,5 @@
 module
-public import Human.Circuits.Keccak.Chi
+public import Human.Circuits.Keccak.Theta
 public import Slop.Keccak.FixedLookups
 public import Slop.Keccak.OpIndex
 public import Slop.Eval
@@ -364,43 +364,5 @@ private theorem chi_reference_row (state : Vector Nat 25) (row column : Fin 5) :
         ((not64 state[5 * ((column.val + 1) % 5) + row.val]) &&&
           state[5 * ((column.val + 2) % 5) + row.val]) := by
   fin_cases row <;> fin_cases column <;> rfl
-
-theorem chi_row {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
-    {control : Fin 4096 → Vector Nat 6} {first second : Nat → ZMod p}
-    {state : Vector Nat 25} {row : Fin 5}
-    (firstHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment first)
-      (importedConstraints (setupTable control)))
-    (secondHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment second)
-      (importedConstraints (setupTable control)))
-    (mapping : ChiMapping state row first second) : ChiResult state row first second := by
-  have f := chi_first hp firstHolds mapping.firstActive mapping.firstSelected
-  have s := chi_second hp secondHolds mapping.secondActive mapping.secondSelected
-  have f0 := mapping.firstState (0 : Fin 4); have f1 := mapping.firstState (1 : Fin 4)
-  have f2 := mapping.firstState (2 : Fin 4); have f3 := mapping.firstState (3 : Fin 4)
-  change readLane first 0 = state[5 + row.val] at f0
-  change readLane first 1 = state[10 + row.val] at f1
-  change readLane first 2 = state[15 + row.val] at f2
-  change readLane first 3 = state[20 + row.val] at f3
-  have r0 := mapping.secondState
-  have r1 : readLane second 1 = state[15 + row.val] :=
-    (mapping.preservedState (0 : Fin 2)).trans ((f.2.2.2.2 (0 : Fin 2)).trans f2)
-  have r2 : readLane second 2 = state[20 + row.val] :=
-    (mapping.preservedState (1 : Fin 2)).trans ((f.2.2.2.2 (1 : Fin 2)).trans f3)
-  have r3 : readLane second 3 = (not64 state[5 + row.val]) &&& state[10 + row.val] := by
-    rw [mapping.scratch.1, f.2.2.1, f0, f1]
-  have r4 : readLane second 4 = state[5 + row.val] := by
-    rw [mapping.scratch.2, f.2.2.2.1, f0]
-  have c0 := s.1; have c1 := f.1; have c2 := f.2.1
-  have c3 := s.2.1; have c4 := s.2.2.1
-  simp only [r0, r1, r2, r3, r4, f0, f1, f2, f3] at c0 c1 c2 c3 c4
-  refine ⟨?_, f.2.2.2.2, s.2.2.2⟩
-  intro i
-  rw [chi_reference_row]
-  fin_cases i
-  · simpa [chiWrites] using c0
-  · simpa [chiWrites] using c1
-  · simpa [chiWrites] using c2
-  · simpa [chiWrites] using c3
-  · simpa [chiWrites] using c4
 
 end Airbender.Keccak.Proofs

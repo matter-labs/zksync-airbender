@@ -8,11 +8,11 @@ public import Tests.ShiftBinopHistory
 public import Tests.ShiftBinopPorts
 public import Tests.ShiftBinopImmediate
 public import Slop.Trace.BytePorts
-public import Tests.MulDivTimestamp
+public import Slop.MulDiv.Trace
+public import Mathlib.Tactic.IntervalCases
 public import Tests.BranchTrace
 public import Tests.ComparisonTrace
 public import Tests.JalrTrace
-public import Slop.Trace.Claims
 public import Slop.Trace.ClockHistory
 public import Tests.Timestamps
 public import Tests.TraceHistory
@@ -23,9 +23,11 @@ public import Tests.NonDeterminismDecoder
 public import Tests.OracleTrace
 public import Tests.PooledOracle
 public import Tests.JumpTimestamp
-public import Tests.JumpPorts
 public import Tests.JumpHistory
-public import Tests.JumpSailHistory
+public import Slop.JumpBranchSlt.Trace
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
 public import Tests.DiscardedLoad
 public import Tests.TraceROM
 public import Tests.TraceStore
@@ -84,12 +86,8 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.clock_inputs
 #print axioms Airbender.Trace.Proofs.trace_clocks
 #print axioms Airbender.Trace.Proofs.trace_terminal_clock
-#print axioms Airbender.Trace.clocks
-#print axioms Airbender.Trace.terminal_clock
 #print axioms Tests.TraceHistory.local_satisfies
 #print axioms Tests.TraceHistory.accepted
-#print axioms Tests.TraceHistory.derived_clock
-#print axioms Tests.TraceHistory.terminal_eight
 #print axioms Tests.TraceHistory.unmatched_previous_rejected
 #print axioms Airbender.Trace.Proofs.matched_flow
 #print axioms Airbender.Trace.Proofs.increasing_acyclic
@@ -99,49 +97,27 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.row_clocks_unique
 #print axioms Airbender.Trace.Proofs.slots_unique
 #print axioms Airbender.Trace.Proofs.access_times_unique
-#print axioms Airbender.Trace.state_path
-#print axioms Airbender.Trace.unique_access_times
-#print axioms Tests.TraceHistory.complete_state_path
-#print axioms Tests.TraceHistory.unique_slots
 #print axioms Tests.TraceHistory.reordered_path
 #print axioms Airbender.Trace.Proofs.ports_clocks
 #print axioms Airbender.Trace.Proofs.port_offset
 #print axioms Airbender.Trace.Proofs.initialized_addresses
-#print axioms Airbender.Trace.initialized_addresses
-#print axioms Tests.TraceHistory.initialized_ports
 #print axioms Airbender.Trace.Proofs.rank_ordered
 #print axioms Airbender.Trace.Proofs.boundary_keys
 #print axioms Airbender.Trace.Proofs.keyed_paths
 #print axioms Airbender.Trace.Proofs.keyed_paths_finite
 #print axioms Airbender.Trace.Proofs.native_memory_paths
-#print axioms Airbender.Trace.memory_paths
-#print axioms Tests.TraceHistory.complete_memory_paths
 #print axioms Tests.TraceHistory.interleaved_memory_paths
-#print axioms Airbender.Trace.Proofs.consecutive_ranks
-#print axioms Airbender.Trace.Proofs.latest_reads
-#print axioms Airbender.Trace.latest_reads
-#print axioms Tests.TraceHistory.latest_values
 #print axioms Tests.TraceHistory.changed_value_locally_valid
 #print axioms Tests.TraceHistory.changed_read_value_rejected
 #print axioms Airbender.Trace.Proofs.cell_history
 #print axioms Airbender.Trace.Proofs.transfer_event
 #print axioms Airbender.Trace.Proofs.native_cell_histories
-#print axioms Airbender.Trace.cell_histories
 #print axioms Tests.TraceMemory.local_satisfies
 #print axioms Tests.TraceMemory.accepted
-#print axioms Tests.TraceMemory.nonzero_clean_histories
 #print axioms Airbender.AddSub.Proofs.written_limb_bounds
 #print axioms Airbender.Trace.MemoryToken.word
-#print axioms Airbender.Trace.ValueBoundary
 #print axioms Airbender.Trace.Proofs.earlier_write
 #print axioms Airbender.Trace.Proofs.read_word
-#print axioms Airbender.Trace.Proofs.write_source
-#print axioms Airbender.Trace.Proofs.read_bounds
-#print axioms Airbender.Trace.Proofs.write_bounds
-#print axioms Airbender.Trace.Proofs.terminal_bounds
-#print axioms Airbender.Trace.read_bounds
-#print axioms Airbender.Trace.terminal_bounds
-#print axioms Tests.TraceMemory.bounded_native_values
 #print axioms Airbender.Arithmetic.Word.ofBitVec
 #print axioms Airbender.Arithmetic.Word.ofBitVec_bound
 #print axioms Airbender.Arithmetic.Word.ofBitVec_value
@@ -172,11 +148,8 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.consistent_retime
 #print axioms Airbender.Trace.Proofs.memory_event_times_unique
 #print axioms Airbender.Trace.Proofs.native_memory_history
-#print axioms Airbender.Trace.memory_history
-#print axioms Tests.TraceMemory.merged_clean_history
 #print axioms Tests.TraceMemory.second_satisfies
 #print axioms Tests.TraceMemory.two_accepted
-#print axioms Tests.TraceMemory.reordered_memory_history
 #print axioms Tests.TraceStore.local_satisfies
 #print axioms Tests.TraceStore.accepted
 #print axioms Airbender.Trace.Cell.Aligned
@@ -200,22 +173,13 @@ public import Slop.Trace.MemoryPorts
 
 #print axioms Tests.NonDeterminismDecoder.native_constraints
 
-#print axioms Airbender.Trace.NonDeterminism.Proofs.read_index_permutation
-#print axioms Airbender.Trace.NonDeterminism.Proofs.ordered_consumption
-#print axioms Airbender.Trace.NonDeterminism.Proofs.native_consumption
-#print axioms Airbender.Trace.NonDeterminism.native_consumption
-#print axioms Tests.NonDeterminismDecoder.single_native_consumption
 #print axioms Tests.NonDeterminismDecoder.clock_positions
 #print axioms Tests.NonDeterminismDecoder.ordered_responses
-#print axioms Tests.NonDeterminismDecoder.storage_order_does_not_change_position
 #print axioms Tests.NonDeterminismDecoder.chronological_ports
 #print axioms Tests.NonDeterminismDecoder.swapped_stream_rejected
 #print axioms Tests.NonDeterminismDecoder.short_stream_rejected
 
-
-
 #print axioms Airbender.Trace.NonDeterminism.readCount
-#print axioms Airbender.Trace.NonDeterminism.Proofs.consumed_length
 #print axioms Tests.OracleTrace.short_stream_rejected
 #print axioms Tests.OracleTrace.wrong_response_rejected
 
@@ -228,24 +192,14 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.JumpBranchSlt.Proofs.timestamp_equations
 #print axioms Airbender.JumpBranchSlt.Proofs.final_clock_bound
 #print axioms Airbender.JumpBranchSlt.Proofs.clocks
-#print axioms Airbender.JumpBranchSlt.clocks
-#print axioms Tests.JumpTimestamp.checked_clocks
 #print axioms Tests.JumpTimestamp.incorrect_borrow_rejected
 
 #print axioms Airbender.Trace.nativeDecoderQuery
 #print axioms Airbender.Trace.Proofs.unpack_decoder_bits_of_width
 
-
 #print axioms Airbender.Trace.nativeRowEvents
 
-#print axioms Tests.JumpHistory.constraints
-#print axioms Tests.JumpHistory.accepted
-#print axioms Tests.JumpHistory.derived_clocks
-#print axioms Tests.JumpHistory.complete_state_path
-#print axioms Tests.JumpHistory.complete_memory_history
-#print axioms Tests.JumpHistory.latest_native_reads
 #print axioms Tests.JumpHistory.invented_old_destination_rejected
-
 
 #print axioms Airbender.Trace.Proofs.outgoing_pc_bounds
 
@@ -256,15 +210,8 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.matched_incoming_property
 #print axioms Airbender.JumpBranchSlt.Proofs.outgoing_pc_aligned
 #print axioms Airbender.JumpBranchSlt.Proofs.trace_pc_alignment
-#print axioms Tests.JumpSailHistory.decoded_pc_alignment
-
-
 
 #print axioms Airbender.Arithmetic.Word.eq_zero_of_bounded
-
-
-
-
 
 #print axioms Airbender.MulDiv.clock_columns
 #print axioms Airbender.MulDiv.memory_ports
@@ -273,16 +220,9 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.MulDiv.Proofs.final_clock_bound
 #print axioms Airbender.MulDiv.Proofs.clocks
 #print axioms Airbender.MulDiv.Proofs.nativeClockLaws
-#print axioms Airbender.MulDiv.clocks
-#print axioms Tests.MulDivTimestamp.constraints
-#print axioms Tests.MulDivTimestamp.native_clocks
-
 
 #print axioms Airbender.MulDiv.Proofs.outgoing_pc_bounds
 #print axioms Airbender.MulDiv.Proofs.write_sources
-
-
-
 
 #print axioms Airbender.Trace.Proofs.packed_bytes
 #print axioms Airbender.Trace.Proofs.byte_port_code
@@ -296,7 +236,6 @@ public import Slop.Trace.MemoryPorts
 #print axioms Tests.ShiftBinop.satisfies
 #print axioms Tests.ShiftBinopTimestamp.constraints
 #print axioms Tests.ShiftBinopTimestamp.native_clocks
-#print axioms Airbender.ShiftBinop.clocks
 
 #print axioms Airbender.Trace.Proofs.byte_port_bytes
 #print axioms Airbender.Trace.Proofs.byte_port_low_bytes
@@ -330,7 +269,6 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.SubwordMemory.Proofs.final_clock_bound
 #print axioms Airbender.SubwordMemory.Proofs.clocks
 #print axioms Airbender.SubwordMemory.Proofs.nativeClockLaws
-#print axioms Airbender.SubwordMemory.clocks
 #print axioms Tests.SubwordMemoryTimestamp.constraints
 #print axioms Tests.SubwordMemoryTimestamp.native_clocks
 #print axioms Airbender.SubwordMemory.Proofs.outgoing_pc_bounds
@@ -346,47 +284,21 @@ public import Slop.Trace.MemoryPorts
 #print axioms Tests.PooledHistory.local_add
 #print axioms Tests.PooledHistory.accepted
 #print axioms Tests.PooledHistory.derived_clocks
-#print axioms Tests.PooledHistory.latest_reads
 #print axioms Tests.PooledHistory.fabricated_read_rejected
 
 #print axioms Airbender.Trace.Proofs.row_write_rule_of_sources
 
-
-
-
-
-
-
-
-
-
 #print axioms Airbender.Trace.Proofs.row_write_values
-
-
-
-
-
 
 #print axioms Airbender.Trace.ExternalStream.index
 #print axioms Airbender.Trace.ExternalStream.count
 #print axioms Airbender.Trace.ExternalStream.Ports
 #print axioms Airbender.Trace.ExternalStream.consumed
-#print axioms Airbender.Trace.ExternalStream.Proofs.consumed_length
-#print axioms Airbender.Trace.ExternalStream.Proofs.ordered_consumption
-#print axioms Airbender.Trace.ExternalStream.Proofs.native_consumption
 #print axioms Airbender.Trace.NonDeterminism.Pooled.isRead
 #print axioms Airbender.Trace.NonDeterminism.Pooled.response
 #print axioms Airbender.Trace.NonDeterminism.Pooled.readIndex
 #print axioms Airbender.Trace.NonDeterminism.Pooled.readCount
 #print axioms Airbender.Trace.NonDeterminism.Pooled.StreamPorts
 #print axioms Airbender.Trace.NonDeterminism.Pooled.consumed
-#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.read_index_permutation
-#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.consumed_length
-#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.native_consumption
-#print axioms Airbender.Trace.NonDeterminism.Pooled.native_consumption
 #print axioms Tests.PooledOracle.foreign_selector_ignored
-
-
-
-
 

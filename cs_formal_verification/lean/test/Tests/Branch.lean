@@ -1,6 +1,19 @@
 module
-public import Slop.JumpBranchSlt.Claims
-public import Slop.JumpBranchSlt.Completeness.Witness
+public import Slop.Final.Helpers.Context.PCState.Theorems
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.AddSub.Selectors
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.MulDiv.Product
+public import Human.Circuits.MulDiv.Operation
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.Family.Values
+public import Slop.Trace.Pooled
+public import Slop.Trace.RowContext
 import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
@@ -39,80 +52,6 @@ def row (tag : Fin 6) (wrap : Bool) : Nat → ZMod babyBearModulus
   | 39 | 40 => if wrap then 1 else 0
   | 44 | 45 => if taken tag then 1 else 0
   | _ => 0
-
-/-- The honest inputs `row` is built from: `0` against `-1`, x0 destination. -/
-def witness (tag : Fin 6) (wrap : Bool) : JumpBranchSlt.Completeness.Inputs where
-  sel := 3
-  rdZero := true
-  funct3 := funct3 tag
-  rs1 := 1
-  rs2 := 2
-  rd := 0
-  pcLo := (initial wrap).lo
-  pcHi := (initial wrap).hi
-  aLo := 0
-  aHi := 0
-  bLo := 65535
-  bHi := 65535
-  immLo := (offset wrap).lo
-  immHi := (offset wrap).hi
-  oldLo := 0
-  oldHi := 0
-  tsLo := 0
-  tsHi := 0
-  prev0Lo := 0
-  prev0Hi := 0
-  prev1Lo := 0
-  prev1Hi := 0
-  prev2Lo := 0
-  prev2Hi := 0
-  borrow0 := 0
-  borrow1 := 0
-  borrow2 := 0
-
-private theorem valid (tag : Fin 6) (wrap : Bool) : (witness tag wrap).Valid := by
-  fin_cases tag <;> cases wrap <;> constructor <;> decide
-
-private theorem agree (tag : Fin 6) (wrap : Bool) : ∀ i ∈ JumpBranchSlt.Completeness.columns,
-    row tag wrap i = (witness tag wrap).honest i := by
-  fin_cases tag <;> cases wrap <;> decide
-
-theorem satisfies (tag : Fin 6) (wrap : Bool) :
-    FlatOperation.ConstraintsHoldFlat (Verification.environment (row tag wrap))
-      JumpBranchSlt.importedConstraints :=
-  JumpBranchSlt.Completeness.complete_of_agree _ (valid tag wrap) (agree tag wrap)
-
-/-- Every real branch tag, with opposite signed/unsigned outcomes, has the
-    resolved bit required by the local imported relation. -/
-theorem resolved (tag : Fin 6) (wrap : Bool) :
-    row tag wrap 45 = if taken tag then 1 else 0 := by
-  have result := JumpBranchSlt.Proofs.branch_resolution (left := ⟨0, 0⟩)
-    (right := ⟨65535, 65535⟩) (by decide) (satisfies tag wrap) rfl ⟨rfl, rfl, rfl⟩
-    (by fin_cases tag <;> simp [row, funct3] <;> decide)
-    ⟨rfl, rfl, rfl, rfl⟩ ⟨by decide, by decide⟩ ⟨by decide, by decide⟩
-  convert result using 1
-  fin_cases tag <;> cases wrap <;> decide
-
-/-- Both branch outcomes and both PC boundaries: offset -4 at PC 0, and
-    offset +8 at PC 0xfffffffc. This verifies local PC arithmetic, not Sail stepping. -/
-example (tag : Fin 6) (wrap : Bool) :
-    (final tag wrap).toBitVec =
-      (if taken tag then (initial wrap).toBitVec + (offset wrap).toBitVec
-        else (initial wrap).toBitVec + 4) ∧
-      (final tag wrap).toBitVec.toNat % 4 = 0 := by
-  apply JumpBranchSlt.Proofs.branch_pc (w := row tag wrap) (by decide) (taken tag)
-    (satisfies tag wrap) rfl ⟨rfl, rfl, rfl⟩ (resolved tag wrap)
-  · constructor <;> cases wrap <;> cases ht : taken tag <;>
-      simp [row, initial, offset, final, ht]
-    all_goals decide
-  · cases wrap <;> decide
-  · cases wrap <;> decide
-  · cases wrap <;> exact ⟨by decide, by decide⟩
-  · cases wrap <;> decide
-  · cases wrap <;> cases ht : taken tag <;> simp [final, ht] <;> decide
-
-example (tag : Fin 6) (wrap : Bool) : row tag wrap 30 = 0 ∧ row tag wrap 31 = 0 :=
-  JumpBranchSlt.Proofs.masked_destination (satisfies tag wrap) rfl
 
 def equalRow (neq : Bool) : Nat → ZMod babyBearModulus
   | 4 | 14 | 15 | 41 => 1

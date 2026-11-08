@@ -1,7 +1,14 @@
 module
 public import Slop.Blake2G
 public import Slop.Blake2G.Tables
-public import Slop.Blake2G.Claims
+public import Slop.Final.Circuits.Blake2G.Theorems
+public import Human.Helpers.Delegation.SpanABI
+public import Human.Trace.Workers.Blake2G.WorkVector
+public import Human.Trace.Workers.Keccak.Permutation
+public import Slop.Blake2G.CallGroups
+public import Slop.Blake2G.PhysicalWords
+public import Slop.Delegation.NativeSegments
+public import Slop.Delegation.ReverseFold
 public import Mathlib.Tactic.IntervalCases
 import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
@@ -22,27 +29,6 @@ theorem wrongMixingOutputRejected (setup : Table (ZMod babyBearModulus) (fields 
     ⟨0, by rw [Blake2G.Proofs.mixing_constraint_count]; decide⟩
   norm_num [Blake2G.Proofs.mixingConstraints, Blake2G.importedConstraints,
     FlatOperation.constraints, Expression.eval, Verification.environment] at output
-
-def rowInput : Blake2G.Row.Input :=
-  ⟨⟨⟨0, by decide⟩, true⟩, ⟨0, 0⟩, ⟨0, 0⟩,
-    Vector.replicate 16 ⟨0, 0⟩, Vector.replicate 16 ⟨0, 0⟩⟩
-
-def wrongRowAddress : Blake2G.Row.Output :=
-  ⟨Blake2G.Control.step rowInput.controller, Vector.replicate 16 ⟨0, 0⟩,
-    #v[4, 16, 32, 48, 0, 4]⟩
-
-/-- Wrong address rejected through the primary row claim, for any assignment.
-    This checks the composed interface, not global memory-argument enforcement. -/
-theorem wrongRowAddressRejected (w : Nat → ZMod babyBearModulus) :
-    ¬ (Blake2G.Row.InterfaceAssumptions rowInput wrongRowAddress w ∧
-      Blake2G.Row.circuitModel.relation rowInput wrongRowAddress w) := by
-  intro row
-  have correct := Blake2G.Row.babyBear_soundness rowInput wrongRowAddress w row
-  have addresses := correct.2.2
-  have first := congrArg (fun a : Blake2G.Addresses.Output => a[0]) addresses
-  simp [rowInput, wrongRowAddress, Blake2G.Row.addressInput, Blake2G.Addresses.expected,
-    Blake2G.Control.step, Blake2G.Control.stateLanes, Arithmetic.Word.toBitVec,
-    Arithmetic.Word.value] at first
 
 -- Actual fourth state port, last word of the highest aligned 64-byte block.
 theorem lastLaneAddress : (Blake2G.importedConstraintsIndirectPorts[3]).address

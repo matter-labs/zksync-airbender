@@ -1,6 +1,5 @@
 module
 public import Tests.TraceMemory
-public import Human.Circuits.AddSub.Modular
 public import Human.Helpers.Core.BabyBearPrime
 public import Slop.AddSub.Selectors
 public import Slop.JumpBranchSlt.Branch

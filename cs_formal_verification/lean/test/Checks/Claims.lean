@@ -56,20 +56,6 @@ import Human.Circuits.AddSub.RVCallerTheorems
 import Human.Trace.Delegation.RVCallerTheorems
 import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 import Human.Trace.UnifiedReduced.RVCallerTheorems
-import Slop.JumpBranchSlt.PCState
-import Slop.JumpBranchSlt.PortReads
-import Slop.MulDiv.PortReads
-import Slop.MulDiv.Soundness
-import Slop.ShiftBinop.PortReads
-import Slop.SubwordMemory.PortReads
-import Slop.Bigint.Claims
-import Slop.Blake2G.Claims
-import Slop.Blake2Round.Claims
-import Slop.Keccak.Claims
-import Slop.Trace.OracleConsumption
-import Human.Circuits.UnifiedReduced.Binary
-import Slop.UnifiedReduced.Binary
-import Slop.UnifiedReduced.ComparisonSoundness
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.AddSub.BabyBearRVSoundnessClaim := @Airbender.AddSub.babyBear_rv_soundness

@@ -4,7 +4,6 @@ public import Slop.ShiftBinop.Shifts
 public import Slop.ByteTables
 public import Slop.Arithmetic.Bytes
 public import Human.Helpers.Context.RowContext
-public import Human.Helpers.Decoder.Instruction
 public import Human.Helpers.Decoder.PooledProgram
 public import Human.Circuits.AddSub.RowInput
 

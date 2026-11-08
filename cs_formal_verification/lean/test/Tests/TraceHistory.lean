@@ -1,5 +1,21 @@
 module
-public import Slop.Trace.Claims
+public import Slop.Trace.ROMView
+public import Slop.AddSub.Selectors
+public import Slop.Trace.Pooled
+public import Human.Helpers.Decoder.PooledExternalInput
+public import Human.Circuits.WordMemory.Output
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.Family.Values
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Circuits.SubwordMemory.Output
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.MulDiv.Product
+public import Human.Circuits.MulDiv.Operation
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
 
 @[expose] public section
 
@@ -76,37 +92,6 @@ private theorem boundary (rom : Table (ZMod babyBearModulus) (fields 9)) :
   · intro actual member
     simp at member
     rcases member with rfl | rfl <;> constructor <;> decide
-
-/-- The fixture supplies no per-row ClockInputs. They follow from native matching. -/
-theorem derived_clock (rom : Table (ZMod babyBearModulus) (fields 9)) :
-    Trace.ClockEffects (row false).columns (row false).assignment :=
-  Trace.clocks (accepted rom) (boundary rom) _ (List.mem_singleton_self _)
-
-theorem complete_state_path (rom : Table (ZMod babyBearModulus) (fields 9)) :
-    ∃ path, Trace.StatePath (trace rom false) path :=
-  Trace.state_path (accepted rom) (boundary rom)
-
-theorem unique_slots (rom : Table (ZMod babyBearModulus) (fields 9)) :
-    (trace rom false).accessTimes.Nodup :=
-  Trace.unique_access_times (accepted rom) (boundary rom)
-
-theorem initialized_ports (rom : Table (ZMod babyBearModulus) (fields 9)) :
-    ∀ port ∈ (row false).ports,
-      port.address.code (row false).assignment ∈ (trace rom false).initialMemory.map Trace.MemoryToken.address :=
-  Trace.initialized_addresses (accepted rom) (boundary rom) _ (List.mem_singleton_self _)
-
-theorem complete_memory_paths (rom : Table (ZMod babyBearModulus) (fields 9)) :
-    ∀ source ∈ (trace rom false).initialMemory, ∃ path, Trace.MemoryPath (trace rom false) source path := by
-  apply Trace.memory_paths (accepted rom) (boundary rom)
-  change ([token 0 0, token 1 0].map Trace.MemoryToken.address).Nodup
-  decide
-
-theorem latest_values (rom : Table (ZMod babyBearModulus) (fields 9)) :
-    ∀ port ∈ (row false).ports, Trace.LatestRead (trace rom false) (row false) port := by
-  have unique : ((trace rom false).initialMemory.map Trace.MemoryToken.address).Nodup := by
-    change ([token 0 0, token 1 0].map Trace.MemoryToken.address).Nodup
-    decide
-  exact Trace.latest_reads (accepted rom) (boundary rom) unique _ (List.mem_singleton_self _)
 
 -- Change the second read's value and the arithmetic result together. Local ADD
 -- constraints cannot notice; native matching must reject the fabricated value.
@@ -190,12 +175,6 @@ theorem reordered_path : ∃ path : List (Fin 3), path.head? = some 0 ∧
     rcases member with rfl | rfl <;> decide
   obtain ⟨path, head, last, _, counts⟩ := Trace.Proofs.matched_path Fin.val matching increasing
   exact ⟨path, head, last, List.perm_iff_count.mpr counts⟩
-
-theorem terminal_eight (rom : Table (ZMod babyBearModulus) (fields 9)) :
-    (Trace.timeOfPair (trace rom false).terminal.timestamp).value = 8 := by
-  have result := Trace.terminal_clock (accepted rom) (boundary rom)
-  change _ = 8 at result
-  exact result
 
 theorem unmatched_previous_rejected (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ¬ Trace.Accepted (trace rom true) := by

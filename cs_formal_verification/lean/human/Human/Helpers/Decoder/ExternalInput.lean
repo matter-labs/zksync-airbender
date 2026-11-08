@@ -1,5 +1,5 @@
 module
-public import Human.Helpers.Decoder.Instruction
+public import Human.Helpers.Decoder.Program
 public import Human.Helpers.Core.ExternalStream
 public import Human.Helpers.Context.FamilyLayout
 
@@ -40,6 +40,5 @@ def StreamPorts (trace : Data p) (stream : List (BitVec 32)) : Prop :=
     hence the reversal; writes/hints and standard instructions consume nothing. -/
 def consumed (rows : List (Row p)) : List (BitVec 32) :=
   ExternalStream.consumed isRead response rows
-
 
 end Airbender.Trace.NonDeterminism

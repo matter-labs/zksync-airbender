@@ -1,5 +1,5 @@
 module
-public import Human.Helpers.Decoder.Instruction
+public import Human.Helpers.Decoder.Program
 public import Human.Helpers.Context.FamilyLayout
 
 @[expose] public section

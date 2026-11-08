@@ -1,5 +1,6 @@
 module
-public import Slop.Trace.LatestReads
+public import Slop.Trace.MemoryPaths
+public import Slop.Trace.MemoryOrigins
 
 @[expose] public section
 
@@ -175,7 +176,6 @@ theorem cell_history_of_path {p : Nat} (steps : List (MemoryToken p × MemoryTok
     rw [reverseEq] at projected
     rw [projected]
     exact (projectedPermutation.append_right _).trans (List.perm_append_comm)
-
 
 theorem native_cell_histories [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}

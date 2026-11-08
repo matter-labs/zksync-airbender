@@ -1,5 +1,21 @@
 module
-public import Slop.Trace.Claims
+public import Slop.Trace.ROMView
+public import Slop.AddSub.Selectors
+public import Slop.Trace.Pooled
+public import Human.Helpers.Decoder.PooledExternalInput
+public import Human.Circuits.WordMemory.Output
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.Family.Values
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Circuits.SubwordMemory.Output
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.MulDiv.Product
+public import Human.Circuits.MulDiv.Operation
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
 public import Slop.Trace.RowHistory
 public import Slop.Trace.Family.Timestamps
 
@@ -74,18 +90,6 @@ private theorem boundary (rom : Table (ZMod babyBearModulus) (fields 9)) :
     simp at member
     rcases member with rfl | rfl | rfl <;> constructor <;> decide
 
-theorem nonzero_clean_histories (rom : Table (ZMod babyBearModulus) (fields 9)) :
-    ∀ source ∈ (trace rom).initialMemory, ∃ history, Trace.CellHistory (trace rom) source history := by
-  apply Trace.cell_histories (accepted rom) (boundary rom)
-  change ([token 0 0 0, token 1 0 5, token 2 0 0].map Trace.MemoryToken.address).Nodup
-  decide
-
-theorem merged_clean_history (rom : Table (ZMod babyBearModulus) (fields 9)) :
-    ∃ history, Trace.MemoryHistory (trace rom) history := by
-  apply Trace.memory_history (accepted rom) (boundary rom)
-  change ([token 0 0 0, token 1 0 5, token 2 0 0].map Trace.MemoryToken.address).Nodup
-  decide
-
 -- The second instruction reads the value written by the first, twice, then
 -- writes ten to x1. Rows are stored in reverse execution order.
 def secondAssignment (v : Nat) : ZMod babyBearModulus :=
@@ -137,13 +141,6 @@ theorem two_accepted (rom : Table (ZMod babyBearModulus) (fields 9)) : Trace.Acc
   · dsimp only [twoRows, trace]
     decide
 
-theorem reordered_memory_history (rom : Table (ZMod babyBearModulus) (fields 9)) :
-    ∃ history, Trace.MemoryHistory (twoRows rom) history := by
-  apply Trace.memory_history (two_accepted rom)
-  · exact ⟨(boundary rom).initial, (boundary rom).aligned, (boundary rom).memory⟩
-  · change ([token 0 0 0, token 1 0 5, token 2 0 0].map Trace.MemoryToken.address).Nodup
-    decide
-
 theorem reordered_instruction_accesses (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ rows : List (Trace.Row babyBearModulus), rows.Perm (twoRows rom).rows ∧
       (∃ path, Trace.StatePath (twoRows rom) path ∧
@@ -181,27 +178,8 @@ def zeroTable : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
   contains_iff _ := by simp
 }
 
-private theorem value_boundary : Trace.ValueBoundary (trace zeroTable) := by
-  constructor
-  · intro actual member
-    simp [trace] at member
-    rcases member with rfl | rfl | rfl <;>
-      norm_num [Trace.MemoryToken.word, token, Arithmetic.Word.Bounded, Arithmetic.limbBase]
-  · intro entry member _
-    obtain ⟨i, rfl⟩ := member
-    exact ⟨rfl, rfl⟩
-  · intro entry member
-    obtain ⟨i, rfl⟩ := member
-    simp [Arithmetic.limbBase]
-
 -- The nonzero public x1 value and its arithmetic result reach every actual
 -- read and terminal cell. No read-value or per-read range premise is supplied.
-theorem bounded_native_values :
-    (∀ actual ∈ (trace zeroTable).rows, ∀ port ∈ actual.ports,
-      (Trace.readToken actual.assignment port).word.Bounded) ∧
-    (∀ cell ∈ (trace zeroTable).terminalMemory, cell.word.Bounded) :=
-  ⟨Trace.read_bounds (accepted zeroTable) (boundary zeroTable) value_boundary,
-    Trace.terminal_bounds (accepted zeroTable) (boundary zeroTable) value_boundary⟩
 
 def publicROM : Table (ZMod babyBearModulus) (fields 9) :=
   Trace.ROM.table [.register 0, .register 1, .register 2] (trace zeroTable).initialMemory

@@ -1,7 +1,5 @@
 module
 public import Tests.TraceExecution
-public import Slop.Trace.Claims
-public import Slop.SubwordMemory.Claims
 public import Slop.Trace.RowContext
 
 @[expose] public section

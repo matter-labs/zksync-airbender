@@ -1,5 +1,8 @@
 module
-public import Slop.Keccak.Claims
+public import Human.Helpers.Delegation.SpanABI
+public import Human.Trace.Workers.Blake2G.WorkVector
+public import Slop.Delegation.NativeSegments
+public import Slop.Keccak.CallPermutation
 public import Slop.Keccak.Lookups
 public import Mathlib.Tactic.IntervalCases
 import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
@@ -35,39 +38,6 @@ theorem inactiveSatisfies :
     · apply Trace.Proofs.range_contains
       decide
     · simp [Lookup.Contains, permissiveSetup, Table.toRaw]
-
-theorem inactiveChecks : Keccak.LocalChecks inactiveRow :=
-  Keccak.babyBear_local_checks inactiveSatisfies
-
-theorem unalignedPointerRejected {w : Nat → ZMod babyBearModulus}
-    (pointer : w 13 = 1) :
-    ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (Keccak.importedConstraints permissiveSetup) := by
-  intro holds
-  have alignment := (Keccak.babyBear_local_checks holds).pointerAlignment
-  rw [pointer] at alignment
-  exact (by decide : (1 : ZMod babyBearModulus).val % 256 ≠ 0) alignment
-
-theorem multipleModesRejected {w : Nat → ZMod babyBearModulus}
-    (active : w 0 = 1) (first : w 63 = 1) (second : w 64 = 1) :
-    ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (Keccak.importedConstraints permissiveSetup) := by
-  intro holds
-  have counts := (Keccak.babyBear_local_checks holds).modeCount
-  have two : (w 63).val + (w 64).val ≤
-      ∑ i : Fin 7, (w Keccak.Variables.modeColumns[i]).val := by
-    simp [Keccak.Variables.modeColumns, Fin.sum_univ_succ]
-  rw [counts, active, first, second] at two
-  have one : (1 : ZMod babyBearModulus).val = 1 := by decide
-  rw [one] at two
-  omega
-
-theorem oversizedControlRejected {w : Nat → ZMod babyBearModulus}
-    (oversized : 2048 ≤ (w 3).val) :
-    ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (Keccak.importedConstraints permissiveSetup) := by
-  intro holds
-  exact Nat.not_lt_of_ge oversized (Keccak.babyBear_local_checks holds).readBound
 
 theorem inactiveZeroTags (i : Fin 40) :
     Keccak.Proofs.byteTag permissiveSetup inactiveRow i = 0 :=

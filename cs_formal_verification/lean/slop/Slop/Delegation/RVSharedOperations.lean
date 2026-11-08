@@ -6,7 +6,7 @@ public import Slop.Delegation.SharedOperations
 
 @[expose] public section
 
-/-! RV siblings of the shared word-bound and operation proofs (`SharedBounds.lean`, `SharedOperations.lean`) and of
+/-! RV siblings of the shared word-bound and operation proofs (`SharedOperations.lean`) and of
     `request_operation_effects` (`RequestEffects.lean`): bounds propagate from the `initialImageRV` seeds
     (`rv_image_bounds`); worker effects are the state-free `worker_effects_of_reads`. -/
 

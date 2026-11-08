@@ -46,7 +46,6 @@ _A, _D, _V, _R, _S = ("Init.Data.Array.Basic", "Init.Data.Array.DecidableEq", "I
 IMPORT_ALL: dict[str, tuple[str, ...]] = {
     "Slop.KeccakSplit.Reference.CallReference": (_A,),
     "Slop.Lookups": (_A,),
-    "Slop.JumpBranchSlt.Completeness.Witness": (_A,),
     "Slop.ShiftBinop.ArtifactChecks": (_R,),
     "Slop.Deleg.Vectors": (_D, _V),
     "Slop.Blake2G.ArtifactChecks": (_D, _V),
@@ -68,8 +67,6 @@ IMPORT_ALL: dict[str, tuple[str, ...]] = {
     "Tests.Comparison": (_A,),
     "Tests.Division": (_A,),
     "Tests.MulDiv": (_A,),
-    "Tests.MulDivProduct": (_A,),
-    "Tests.Binop": (_D, _V),
     "Tests.KeccakController": (_D, _V),
     "Tests.ShiftBinop": (_D, _V),
     "Tests.Shifts": (_D, _V),
@@ -77,7 +74,6 @@ IMPORT_ALL: dict[str, tuple[str, ...]] = {
     "Slop.Keccak.StateCells": (_A,),
     "Slop.UnifiedReduced.RV.ControlResolution": (_A,),
     "Tests.Blake2GMemory": (_A,),
-    "Tests.MulDivTimestamp": (_A,),
     "Tests.Bigint": (_D, _V),
     "Tests.BigintMemory": (_D, _V),
     "Tests.BigintMultiplication": (_D, _V),
@@ -103,9 +99,6 @@ IMPORT_ALL: dict[str, tuple[str, ...]] = {
     "Tests.DelegationROMBoundary": (_D, _V),
     "Tests.Keccak": (_D, _V),
     "Tests.UnifiedDelegation": (_D, _V),
-    "Tests.UnifiedMixedHistory": (_D, _V),
-    "Tests.UnifiedReduced": (_D, _V),
-    "Tests.UnifiedTriAddNative": (_D, _V),
 }
 # Generated proof families: every file under the prefix gets the same set.
 IMPORT_ALL_PREFIX: dict[str, tuple[str, ...]] = {

@@ -2,7 +2,6 @@ module
 public import Slop.Trace.RowHistory
 public import Human.Helpers.Memory.ROM
 public import Slop.Trace.Timestamps
-public import Human.Helpers.Decoder.Instruction
 public import Slop.AddSub.Selectors
 public import Slop.Trace.Family.Values
 public import Slop.Trace.PC

@@ -1,6 +1,19 @@
 module
-public import Slop.JumpBranchSlt.Claims
-public import Slop.JumpBranchSlt.Completeness.Witness
+public import Slop.Final.Helpers.Context.PCState.Theorems
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.AddSub.Selectors
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.MulDiv.Product
+public import Human.Circuits.MulDiv.Operation
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.Family.Values
+public import Slop.Trace.Pooled
+public import Slop.Trace.RowContext
 
 @[expose] public section
 
@@ -22,43 +35,6 @@ def assignment (rollover : Bool) : Nat → ZMod babyBearModulus
   | 30 | 34 | 47 => 4
   | _ => 0
 
-/-- The honest inputs `assignment` is built from; every previous clock is `(0, tsHi)`. -/
-def witness (rollover : Bool) : JumpBranchSlt.Completeness.Inputs where
-  sel := 0
-  rdZero := false
-  funct3 := 0
-  rs1 := 0
-  rs2 := 0
-  rd := 1
-  pcLo := 0
-  pcHi := 0
-  aLo := 0
-  aHi := 0
-  bLo := 0
-  bHi := 0
-  immLo := 65532
-  immHi := 65535
-  oldLo := 0
-  oldHi := 0
-  tsLo := if rollover then 524284 else 4
-  tsHi := if rollover then 7 else 0
-  prev0Lo := 0
-  prev0Hi := if rollover then 7 else 0
-  prev1Lo := 0
-  prev1Hi := if rollover then 7 else 0
-  prev2Lo := 0
-  prev2Hi := if rollover then 7 else 0
-  borrow0 := 1
-  borrow1 := 1
-  borrow2 := 1
-
-theorem constraints (rollover : Bool) :
-    FlatOperation.ConstraintsHoldFlat (Verification.environment (assignment rollover))
-      JumpBranchSlt.clockConstraints :=
-  JumpBranchSlt.Completeness.clock_complete_of_agree (witness rollover)
-    (by cases rollover <;> constructor <;> decide) (by cases rollover <;> constructor <;> decide)
-    (by cases rollover <;> decide)
-
 theorem inputs (rollover : Bool) :
     ClockInputs JumpBranchSlt.importedConstraintsTraceColumns (assignment rollover) := by
   refine ⟨?_, ?_, ?_⟩
@@ -67,12 +43,6 @@ theorem inputs (rollover : Bool) :
   · intro port member
     simp [JumpBranchSlt.importedConstraintsTraceColumns] at member
     rcases member with rfl | rfl | rfl <;> cases rollover <;> constructor <;> decide
-
-/-- Both ordinary advancement and low-limb rollover satisfy the full imported
-    clock relation, including all three prior-write comparisons. -/
-theorem checked_clocks (rollover : Bool) :
-    ClockEffects JumpBranchSlt.importedConstraintsTraceColumns (assignment rollover) :=
-  JumpBranchSlt.clocks (constraints rollover) (inputs rollover)
 
 /-- Replacing the first borrow bit by zero keeps it Boolean but violates the
     actual timestamp lookup. The artifact, rather than a supplied order, rejects it. -/

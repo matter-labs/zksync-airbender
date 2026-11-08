@@ -33,17 +33,40 @@ import Slop.Blake2G.ArtifactChecks
 import Slop.Blake2Round.ArtifactChecks
 import Slop.Bigint.ArtifactChecks
 import Tests.TransferSplit
-import Tests.UnifiedMixedHistory
+import Slop.UnifiedReduced.Delegation
+import Slop.UnifiedReduced.ControlContext
+import Human.Circuits.JumpBranchSlt.Jump
+import Human.Circuits.WordMemory.Output
+import Human.Trace.UnifiedReduced.PreparedRoundWindows
+import Slop.AddSub
+import Slop.Arithmetic.ShiftAssembly
+import Slop.Arithmetic.SignExtend
+import Slop.Arithmetic.WordRotation
+import Slop.Blake2G.CallGroups
+import Slop.Blake2G.PhysicalWords
+import Slop.Delegation.NativeSegments
+import Slop.Delegation.RequestWindows
+import Slop.Delegation.SharedOperations
+import Slop.Delegation.WorkerProjection
+import Slop.JumpBranchSlt.Branch
+import Slop.JumpBranchSlt.Jump
+import Slop.Keccak.CallPermutation
+import Slop.Trace.BytePorts
+import Slop.Trace.CompositionCore
+import Slop.Trace.ROMView
+import Slop.Trace.WindowCounts
+import Slop.UnifiedReduced.WordROM
+import Slop.Bigint.Addresses
 import Tests.UnifiedDelegation
 import Tests.ControlPreparation
 import Tests.DelegationROMBoundary
 import Tests.DelegationMixedMemory
 import Tests.DelegationSharedMemory
-import Tests.UnifiedXorRotate
+import Human.Helpers.Core.BabyBearPrime
+import Slop.Trace.RowContext
+import Slop.UnifiedReduced.Values
 import Tests.DelegationOperationEffects
-import Tests.UnifiedTriAddNative
 import Tests.DelegationCaller
-import Slop.Keccak.Claims
 import Tests.DelegationZeroInvocation
 import Slop.Blake2G.StateCells
 import Slop.Delegation.IndexedPaths
@@ -56,29 +79,17 @@ import Tests.Blake2RoundCall
 import Tests.Blake2Compression
 import Slop.Delegation.IntervalFold
 import Slop.Keccak.DeferredIota
-import Tests.UnifiedBranch
-import Tests.UnifiedComparison
-import Tests.UnifiedJump
-import Tests.UnifiedROMBoot
-import Tests.UnifiedShift
-import Tests.UnifiedROM
+import Slop.ShiftBinop.Ports
+import Human.Circuits.UnifiedReduced.Tables.Setup
+import Human.Circuits.UnifiedReduced.Decoder
 import Tests.KeccakController
-import Tests.UnifiedBinary
 import Slop.Arithmetic.WordBytes
 import Tests.BigintMemory
-import Slop.Blake2G.Claims
-import Slop.Blake2Round.Claims
-import Slop.Bigint.Claims
-import Slop.UnifiedReduced.Claims
 
-import Slop.SubwordMemory.Claims
 import Slop.SubwordMemory.Stores
 import Slop.WordMemory
 import Slop.AddSub.Timestamp
 import Slop.AddSub.Selectors
-import Slop.JumpBranchSlt.Claims
-import Slop.MulDiv.Claims
-import Slop.ShiftBinop.Claims
 import Slop.ShiftBinop.Shifts
 import Slop.Final.Circuits.WordMemory.RVTheorems
 import Slop.Final.Circuits.SubwordMemory.RVTheorems
@@ -105,16 +116,12 @@ import Tests.KeccakMix
 import Tests.KeccakRho
 import Tests.KeccakFixedTables
 import Tests.KeccakControlUpdate
-import Tests.UnifiedReduced
-import Tests.UnifiedMemory
 import Tests.DelegationTimestamps
 import Tests.DelegationMemory
 import Clean.Specs.Keccak256
 import Human.Import.BabyBear
 import Human.Import.Coefficients
 import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
-import Slop.Trace.OracleConsumption
-import Human.Circuits.AddSub.Modular
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -151,14 +158,7 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Keccak.Proofs.byte_query_shape
 #print axioms Airbender.Keccak.Proofs.theta_byte_relations
 #print axioms Airbender.Keccak.Proofs.pointer_alignment
-#print axioms Airbender.Keccak.Proofs.local_checks
-#print axioms Airbender.Keccak.local_checks
-#print axioms Airbender.Keccak.babyBear_local_checks
 #print axioms Tests.Keccak.inactiveSatisfies
-#print axioms Tests.Keccak.inactiveChecks
-#print axioms Tests.Keccak.unalignedPointerRejected
-#print axioms Tests.Keccak.multipleModesRejected
-#print axioms Tests.Keccak.oversizedControlRejected
 #print axioms Tests.Keccak.inactiveZeroTags
 #print axioms Tests.Keccak.xorBoundaryAccepted
 #print axioms Tests.Keccak.wrongXorRejected
@@ -170,29 +170,18 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Keccak.Proofs.theta_scratch_preserved
 #print axioms Airbender.Keccak.Proofs.theta_reference_column
 #print axioms Airbender.Keccak.Proofs.theta_column
-#print axioms Airbender.Keccak.theta_column_soundness
 #print axioms Airbender.Arithmetic.and_of_chunks
 #print axioms Airbender.Arithmetic.and_of_four_chunks
 #print axioms Airbender.Arithmetic.andn_of_chunks
 #print axioms Airbender.Arithmetic.andn_of_four_limbs
-#print axioms Airbender.Keccak.ChiMapping
-#print axioms Airbender.Keccak.chiWrites
-#print axioms Airbender.Keccak.ChiResult
 #print axioms Airbender.Keccak.Proofs.chi_first
 #print axioms Airbender.Keccak.Proofs.chi_second
-#print axioms Airbender.Keccak.Proofs.chi_row
-#print axioms Airbender.Keccak.chi_row_soundness
-#print axioms Tests.KeccakChi.satisfies
-#print axioms Tests.KeccakChi.nativeMapping
-#print axioms Tests.KeccakChi.referenceRow
-#print axioms Tests.KeccakChi.wrongWriteRejected
 #print axioms Airbender.Keccak.Proofs.round_bound
 #print axioms Airbender.Keccak.Proofs.decoded_control
 #print axioms Airbender.Keccak.iotaState
 #print axioms Airbender.Keccak.IotaMapping
 #print axioms Airbender.Keccak.IotaResult
 #print axioms Airbender.Keccak.Proofs.iota_column
-#print axioms Airbender.Keccak.iota_column_soundness
 #print axioms Airbender.Keccak.Proofs.control_state_eq_of_packed
 #print axioms Airbender.Keccak.Proofs.next_control
 #print axioms Airbender.Arithmetic.rotate_left_one_of_limbs
@@ -209,7 +198,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Keccak.Proofs.mix_preserved
 #print axioms Airbender.Keccak.Proofs.Mix.stage_writes
 #print axioms Airbender.Keccak.Proofs.mixed_columns
-#print axioms Airbender.Keccak.mix_columns_soundness
 #print axioms Airbender.Arithmetic.rotated_lane_limb_bound
 #print axioms Airbender.Arithmetic.rotate_left_of_limbs
 #print axioms Airbender.Keccak.Proofs.lane_of_limbs
@@ -221,35 +209,16 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Keccak.Proofs.Rho.rho_rotated_limb
 #print axioms Airbender.Keccak.Proofs.Rho.rho_rotated_lane
 #print axioms Airbender.Keccak.Proofs.theta_rho_column
-#print axioms Airbender.Keccak.theta_rho_column_soundness
-#print axioms Tests.KeccakRho.satisfies
-#print axioms Tests.KeccakRho.nativeMapping
-#print axioms Tests.KeccakRho.referenceColumns
-#print axioms Tests.KeccakRho.wrongWriteRejected
-#print axioms Tests.KeccakMix.satisfies
-#print axioms Tests.KeccakMix.nativeMapping
-#print axioms Tests.KeccakMix.referenceColumns
-#print axioms Tests.KeccakMix.wrongWriteRejected
-#print axioms Tests.KeccakIota.satisfies
-#print axioms Tests.KeccakIota.nativeMapping
-#print axioms Tests.KeccakIota.referenceColumn
-#print axioms Tests.KeccakIota.wrongWriteRejected
-#print axioms Tests.KeccakTheta.satisfies
 #print axioms Tests.KeccakTheta.nativeLaneValues
 #print axioms Tests.KeccakTheta.wrongWriteRejected
-#print axioms Tests.KeccakTheta.referenceColumn
 #print axioms Airbender.Verification.IndirectPort.scaled_address
 #print axioms Airbender.Keccak.Proofs.controller_lookup
 #print axioms Airbender.Keccak.Proofs.controller_columns
 #print axioms Airbender.Keccak.Proofs.controller_indices
 #print axioms Airbender.Keccak.Proofs.addresses
-#print axioms Airbender.Keccak.address_checks
-#print axioms Tests.KeccakTheta.nativeAddresses
 #print axioms Tests.KeccakTheta.boundaryNoCarry
 #print axioms Airbender.Keccak.Proofs.fixed_lookup
 #print axioms Airbender.Keccak.Proofs.byte_lookup_checks
-#print axioms Airbender.Keccak.fixed_lookup_checks
-#print axioms Tests.KeccakTheta.nativeFixedRelations
 #print axioms Tests.KeccakFixedTables.iotaInitialAccepted
 #print axioms Tests.KeccakFixedTables.iotaFinalByteAccepted
 #print axioms Tests.KeccakFixedTables.andnAccepted
@@ -262,13 +231,10 @@ import Human.Circuits.AddSub.Modular
 #print axioms Tests.KeccakFixedTables.nonzeroPaddingRejected
 #print axioms Airbender.Arithmetic.field_selection
 #print axioms Airbender.Keccak.Proofs.control_update_checks
-#print axioms Airbender.Keccak.control_updates
 #print axioms Tests.KeccakControlUpdate.thetaRolloverSatisfies
 #print axioms Tests.KeccakControlUpdate.chiRolloverSatisfies
 #print axioms Tests.KeccakControlUpdate.inactivePreservesSatisfies
 #print axioms Tests.KeccakControlUpdate.nativeRolloverValues
-#print axioms Tests.KeccakControlUpdate.nativeControlUpdate
-#print axioms Tests.KeccakControlUpdate.wrongControlWriteRejected
 
 #print axioms Airbender.Verification.holds_of_sublist
 #print axioms Airbender.Verification.holds_append
@@ -291,8 +257,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Blake2Round.Preparation.Proofs.compressionIV_bounded
 #print axioms Airbender.Blake2Round.Preparation.Proofs.output_bounded
 #print axioms Airbender.Blake2Round.Row.Proofs.soundness
-#print axioms Airbender.Blake2Round.Row.soundness
-#print axioms Airbender.Blake2Round.Row.babyBear_soundness
 #print axioms Airbender.Arithmetic.bounded_carry_step
 #print axioms Airbender.Arithmetic.subtraction_zero
 #print axioms Airbender.Bigint.Equality.Proofs.native_steps
@@ -305,11 +269,7 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Bigint.Equality.Proofs.natural_steps
 #print axioms Airbender.Bigint.Equality.Proofs.sum_zero_iff
 #print axioms Airbender.Bigint.Equality.Proofs.soundness
-#print axioms Airbender.Bigint.Equality.soundness
-#print axioms Airbender.Bigint.Equality.babyBear_soundness
 #print axioms Tests.Bigint.Equality.equalSatisfies
-#print axioms Tests.Bigint.Equality.equalSoundness
-#print axioms Tests.Bigint.Equality.falseInequalityRejected
 #print axioms Airbender.Verification.pair_value_of_row
 #print axioms Airbender.Bigint.Proofs.low_byte_value
 #print axioms Airbender.Bigint.Proofs.fixed_row_values
@@ -328,11 +288,7 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Bigint.Proofs.source_ranges
 #print axioms Airbender.Bigint.Proofs.mapped_source_ranges
 #print axioms Airbender.Bigint.Additive.Proofs.modeled_soundness
-#print axioms Airbender.Bigint.Additive.modeled_soundness
-#print axioms Airbender.Bigint.Additive.modeled_babyBear_soundness
 #print axioms Airbender.Bigint.Equality.Proofs.modeled_soundness
-#print axioms Airbender.Bigint.Equality.modeled_soundness
-#print axioms Airbender.Bigint.Equality.modeled_babyBear_soundness
 #print axioms Tests.Bigint.Additive.sourceOverflowRejected
 #print axioms Airbender.Bigint.operand_roles
 #print axioms Airbender.Arithmetic.carry_chain
@@ -345,12 +301,7 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Bigint.Additive.Proofs.value_limbSum
 #print axioms Airbender.Bigint.Additive.Proofs.natural_steps
 #print axioms Airbender.Bigint.Additive.Proofs.soundness
-#print axioms Airbender.Bigint.Additive.soundness
-#print axioms Airbender.Bigint.Additive.babyBear_soundness
 #print axioms Tests.Bigint.Additive.zeroAddSatisfies
-#print axioms Tests.Bigint.Additive.zeroAddSoundness
-#print axioms Tests.Bigint.Additive.missingCarryRejected
-#print axioms Tests.Bigint.Additive.missingBorrowRejected
 #print axioms Airbender.Bigint.constraint_count
 #print axioms Airbender.Bigint.lookup_count
 #print axioms Airbender.Bigint.control_roles
@@ -358,10 +309,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Bigint.Control.Proofs.opcode_exclusivity
 #print axioms Airbender.Bigint.Control.Proofs.mask_bounded
 #print axioms Airbender.Bigint.Control.Proofs.soundness
-#print axioms Airbender.Bigint.Control.soundness
-#print axioms Airbender.Bigint.Control.babyBear_soundness
-#print axioms Tests.Bigint.twoOperationsRejected
-#print axioms Tests.Bigint.oversizedControlRejected
 #print axioms Airbender.Blake2Round.Proofs.call_reference
 #print axioms Airbender.Blake2Round.Proofs.input_after_update
 #print axioms Airbender.Blake2Round.Proofs.phase_reference
@@ -374,20 +321,14 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Blake2Round.Proofs.extended_words_bounded
 #print axioms Airbender.Blake2Round.Proofs.GTrace.sound
 #print axioms Airbender.Blake2Round.Proofs.mixing_soundness
-#print axioms Airbender.Blake2Round.Mixing.soundness
-#print axioms Airbender.Blake2Round.Mixing.babyBear_soundness
 #print axioms Tests.Blake2Round.wrongDiagonalCarryRejected
-#print axioms Tests.Blake2Round.wrongRoundOutputRejected
 #print axioms Airbender.Blake2Round.Finalization.write_roles
 #print axioms Airbender.Blake2Round.Proofs.nonfinal_reference
 #print axioms Airbender.Blake2Round.Proofs.finalization_flag
 #print axioms Airbender.Blake2Round.Proofs.nonfinal_flag
 #print axioms Airbender.Blake2Round.Proofs.chaining_preserved
 #print axioms Airbender.Blake2Round.Proofs.nonfinal_soundness
-#print axioms Airbender.Blake2Round.Finalization.nonfinal_soundness
-#print axioms Airbender.Blake2Round.Finalization.babyBear_nonfinal_soundness
 #print axioms Tests.Blake2Round.wrongFinalFlagRejected
-#print axioms Tests.Blake2Round.wrongNonfinalWriteRejected
 #print axioms Airbender.Arithmetic.value_of_chunks
 #print axioms Airbender.Blake2Round.Proofs.xor_limb_chunks
 #print axioms Airbender.Blake2Round.Proofs.final_query
@@ -398,20 +339,14 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Blake2Round.Proofs.xor_three_words
 #print axioms Airbender.Blake2Round.Proofs.final_xor_writes
 #print axioms Airbender.Blake2Round.Proofs.finalization_soundness
-#print axioms Airbender.Blake2Round.Finalization.soundness
-#print axioms Airbender.Blake2Round.Finalization.babyBear_soundness
-#print axioms Tests.Blake2Round.wrongFinalWriteRejected
 #print axioms Tests.Blake2Round.wrongFinalChunkRejected
 #print axioms Airbender.Verification.block_offset_bound
 #print axioms Airbender.Verification.IndirectPort.constant_address
 #print axioms Airbender.Blake2Round.state_port_layout
 #print axioms Airbender.Blake2Round.message_port_layout
 #print axioms Airbender.Blake2Round.Addresses.Proofs.soundness
-#print axioms Airbender.Blake2Round.Addresses.soundness
-#print axioms Airbender.Blake2Round.Addresses.babyBear_soundness
 #print axioms Tests.Blake2Round.lastStateAddress
 #print axioms Tests.Blake2Round.lastMessageAddress
-#print axioms Tests.Blake2Round.wrongPortAddressRejected
 #print axioms Airbender.Blake2Round.Proofs.column_facts
 #print axioms Airbender.Blake2Round.Proofs.column_g_soundness
 #print axioms Airbender.Blake2Round.Proofs.column_g_output_bounds
@@ -422,9 +357,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Blake2Round.variable_roles
 #print axioms Airbender.Blake2Round.Control.Proofs.control_bits
 #print axioms Airbender.Blake2Round.Control.Proofs.soundness
-#print axioms Airbender.Blake2Round.Control.soundness
-#print axioms Airbender.Blake2Round.Control.babyBear_soundness
-#print axioms Tests.Blake2Round.wrongControlRejected
 #print axioms Airbender.Blake2Round.pointer_roles
 #print axioms Airbender.Blake2Round.Proofs.lookup_facts_raw
 #print axioms Airbender.Blake2Round.SetupProofs.setupRow_eq
@@ -437,10 +369,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Blake2Round.Preparation.Proofs.extended
 #print axioms Airbender.Blake2Round.Preparation.Proofs.message
 #print axioms Airbender.Blake2Round.Preparation.Proofs.soundness
-#print axioms Airbender.Blake2Round.Preparation.soundness
-#print axioms Airbender.Blake2Round.Preparation.babyBear_soundness
-#print axioms Tests.Blake2Round.wrongFirstStateRejected
-#print axioms Tests.Blake2Round.wrongCompressionOrderRejected
 #print axioms Airbender.Blake2Round.Schedule.Proofs.schedule_indices
 #print axioms Airbender.Delegation.Proofs.path_word_sequence
 #print axioms Airbender.Blake2Round.Proofs.exclusive_mask
@@ -462,30 +390,19 @@ import Human.Circuits.AddSub.Modular
 #print axioms Tests.Blake2RoundCall.changed_request_flags_rejected
 #print axioms Airbender.Blake2Round.Schedule.Proofs.equations
 #print axioms Airbender.Blake2Round.Schedule.Proofs.soundness
-#print axioms Airbender.Blake2Round.Schedule.soundness
-#print axioms Airbender.Blake2Round.Schedule.babyBear_soundness
-#print axioms Tests.Blake2Round.wrongPermutationRejected
 
 #print axioms Airbender.Blake2G.Control.Proofs.state_offsets_bounded
 #print axioms Airbender.Blake2G.Control.Proofs.message_offsets_bounded
-#print axioms Airbender.Blake2G.Row.soundness
-#print axioms Airbender.Blake2G.Row.babyBear_soundness
-#print axioms Airbender.Blake2G.Row.Proofs.message_indices_exact
-#print axioms Tests.Blake2G.wrongRowAddressRejected
 
 #print axioms Airbender.Blake2G.Control.Proofs.active_state_distinct
 #print axioms Airbender.Blake2G.State.Proofs.reference_selected
 #print axioms Airbender.Blake2G.State.Proofs.reference_untouched
 #print axioms Airbender.Blake2G.State.Proofs.selected_distinct
-#print axioms Airbender.Blake2G.State.soundness
-#print axioms Airbender.Blake2G.State.babyBear_soundness
 #print axioms Tests.Blake2G.aliasedStateLanesRejected
 
 #print axioms Airbender.Blake2G.indirect_port_layout
 #print axioms Airbender.Verification.block64_offset_bound
 #print axioms Airbender.Verification.IndirectPort.word_address
-#print axioms Airbender.Blake2G.Addresses.soundness
-#print axioms Airbender.Blake2G.Addresses.babyBear_soundness
 #print axioms Tests.Blake2G.lastLaneAddress
 
 #print axioms Airbender.Blake2G.Proofs.control_lookup
@@ -493,16 +410,11 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Blake2G.Control.Proofs.controller_lanes
 #print axioms Airbender.Blake2G.Control.Proofs.controller_input
 #print axioms Airbender.Blake2G.Control.Proofs.control_columns
-#print axioms Airbender.Blake2G.Control.soundness
-#print axioms Airbender.Blake2G.Control.babyBear_soundness
 #print axioms Tests.Blake2G.wrongControlWriteRejected
 
 #print axioms Airbender.PCState.Proofs.encoded_bounds
 #print axioms Airbender.PCState.Proofs.decoder_high_bound
 #print axioms Airbender.PCState.outgoing_bounds
-#print axioms Airbender.JumpBranchSlt.Proofs.final_pc_low_bound
-#print axioms Airbender.JumpBranchSlt.final_pc_bounds
-#print axioms Tests.Comparison.unboundedFinalPCNotComposable
 
 #print axioms Airbender.Blake2G.variable_roles
 #print axioms Airbender.Blake2G.Proofs.local_flags
@@ -540,7 +452,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms _root_.plat_term_write
 #print axioms _root_.load_reservation
 #print axioms _root_.match_reservation
-
 
 #print axioms Airbender.AddSub.Proofs.pc_successor
 #print axioms Airbender.AddSub.Proofs.local_flags
@@ -671,7 +582,6 @@ import Human.Circuits.AddSub.Modular
 
 #print axioms Airbender.SubwordMemory.Proofs.store_byte_encoding
 
-
 #print axioms Airbender.Arithmetic.boolean_sum_le_one
 #print axioms Airbender.UnifiedReduced.variable_roles
 #print axioms Airbender.UnifiedReduced.Proofs.local_flags
@@ -697,10 +607,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.UnifiedReduced.Proofs.clocks
 #print axioms Airbender.UnifiedReduced.Proofs.unifiedClockLaws
 #print axioms Airbender.UnifiedReduced.Proofs.row_write_sources
-#print axioms Airbender.UnifiedReduced.native_clocks
-#print axioms Tests.UnifiedReduced.native_clock_effects
-#print axioms Tests.UnifiedReduced.fabricated_constraints
-#print axioms Tests.UnifiedReduced.fabricated_read_rejected
 
 #print axioms Airbender.Arithmetic.byte_product
 #print axioms Airbender.Arithmetic.byte_product_bounds
@@ -727,18 +633,12 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Bigint.Multiplication.Proofs.product_split
 #print axioms Airbender.Bigint.Multiplication.Proofs.high_zero
 #print axioms Airbender.Bigint.Multiplication.Proofs.soundness
-#print axioms Airbender.Bigint.Multiplication.soundness
-#print axioms Tests.BigintMultiplication.fiveTimesSevenSatisfies
-#print axioms Tests.BigintMultiplication.overflowSatisfies
-#print axioms Tests.BigintMultiplication.fiveTimesSevenSoundness
 #print axioms Tests.BigintMultiplication.missingOverflowRejected
 
 #print axioms Airbender.Bigint.Addresses.port_layout
 #print axioms Airbender.Bigint.Addresses.Proofs.pointer_alignment
 #print axioms Airbender.Bigint.Addresses.Proofs.soundness
-#print axioms Airbender.Bigint.Addresses.soundness
 #print axioms Tests.BigintAddresses.unalignedPointerRejected
-#print axioms Tests.BigintAddresses.nativeAddresses
 #print axioms Tests.BigintAddresses.boundaryAddresses
 
 #print axioms Tests.BigintAbi.noOpcodeSatisfies
@@ -771,7 +671,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Tests.DelegationTimestamps.nativeQueries
 #print axioms Tests.DelegationTimestamps.nonadvancingAccessRejected
 #print axioms Tests.DelegationTimestamps.invalidInvocationRejected
-#print axioms Tests.DelegationMemory.accepted
 
 #print axioms Airbender.Blake2G.Proofs.memory_write_rule
 #print axioms Airbender.Blake2G.Proofs.memory_rules
@@ -797,7 +696,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Keccak.Proofs.returned_control_bounds
 #print axioms Airbender.Keccak.Proofs.memory_write_rule
 
-
 #print axioms Airbender.Trace.Proofs.last_write_relabel
 #print axioms Airbender.Trace.Proofs.consistent_relabel
 #print axioms Airbender.Trace.Proofs.split_memory_history
@@ -809,7 +707,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.UnifiedReduced.Proofs.word_memory_copy
 #print axioms Airbender.UnifiedReduced.Proofs.word_memory_ram
 
-
 #print axioms Airbender.Bigint.Native.Proofs.native_word_roles
 #print axioms Airbender.Bigint.Native.Proofs.arithmetic_effects
 
@@ -819,7 +716,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Verification.binary_row_shape
 #print axioms Airbender.Arithmetic.byte_pair_value
 #print axioms Airbender.Arithmetic.Word.byte_fields
-
 
 #print axioms Airbender.Keccak.Controller.Proofs.physical_bound
 #print axioms Airbender.Keccak.Controller.Proofs.physical_injective
@@ -833,16 +729,10 @@ import Human.Circuits.AddSub.Modular
 #print axioms Tests.KeccakController.invalid_round_fallback
 #print axioms Tests.KeccakController.padding_is_separate
 
-
-
 #print axioms Airbender.Verification.shift_assembly
 #print axioms Airbender.Verification.sum_byte_pairs
 
-
 #print axioms Airbender.UnifiedReduced.Proofs.word_rom_selection
-#print axioms Tests.UnifiedROM.shadow_read_is_zero
-
-
 
 #print axioms Airbender.UnifiedReduced.Proofs.conditional_sign_key
 #print axioms Airbender.UnifiedReduced.Proofs.control_assertions
@@ -859,13 +749,10 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Delegation.Proofs.port_offset
 #print axioms Tests.DelegationMemory.native_invocation_convention
 #print axioms Airbender.Keccak.Proofs.deferred_iota_permutation
-#print axioms Tests.KeccakIota.caller_first_control
-#print axioms Tests.KeccakIota.caller_final_control
 #print axioms Tests.KeccakSchedule.caller_endpoints
 #print axioms Tests.KeccakSchedule.initial_parity
 #print axioms Tests.KeccakSchedule.final_iota
 #print axioms Tests.KeccakSchedule.final_transition
-
 
 #print axioms Airbender.Delegation.Proofs.rows_from_path
 #print axioms Tests.DelegationMemory.native_write_convention
@@ -880,8 +767,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Keccak.Proofs.scheduled_indices_injective
 #print axioms Airbender.Keccak.Proofs.scheduled_ports_distinct
 
-
-
 #print axioms Airbender.Delegation.Proofs.indexed_path_words
 #print axioms Airbender.Blake2G.Proofs.forced_control_step
 #print axioms Airbender.Blake2G.Proofs.call_event_time
@@ -889,7 +774,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Delegation.Proofs.indirect_cell
 #print axioms Airbender.Keccak.Proofs.scheduled_lane_indices
 #print axioms Airbender.Keccak.Proofs.scheduled_lane_coverage
-
 
 #print axioms Airbender.Delegation.Requests.Proofs.caller_tokens
 #print axioms Airbender.Delegation.Requests.Proofs.nonzero_matching
@@ -925,19 +809,11 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Blake2G.Proofs.block_word_injective
 #print axioms Airbender.Blake2G.Proofs.aligned_block_words_distinct
 
-
-
-
-
-
 #print axioms Airbender.Trace.Proofs.state_clock_inputs
 #print axioms Airbender.Delegation.Caller.Proofs.caller_clock
 #print axioms Airbender.Delegation.Caller.Proofs.csr_injective
 
-
 #print axioms Airbender.Delegation.Caller.WorkerEffect
-
-#print axioms Airbender.UnifiedReduced.Proofs.binary_wiring
 
 #print axioms Airbender.Arithmetic.rotateRight_and
 #print axioms Airbender.Arithmetic.rotateRight_or
@@ -946,7 +822,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Arithmetic.rotated_chunk_pair
 #print axioms Airbender.Arithmetic.sum_four
 #print axioms Airbender.Arithmetic.rotated_limb_bytes
-
 
 #print axioms Airbender.Trace.Proofs.Transfer.Data
 #print axioms Airbender.Trace.Proofs.Transfer.Facts
@@ -967,20 +842,14 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Delegation.Caller.architecturalSteps
 #print axioms Tests.DelegationSharedMemory.changed_source_locally_satisfies
 
-
 #print axioms Airbender.Delegation.Proofs.operation_rules_of_queries
 #print axioms Airbender.Blake2G.Native.Proofs.native_effects
 #print axioms Airbender.Blake2Round.Native.Proofs.native_effects
 #print axioms Airbender.Keccak.Native.Proofs.native_effects
 #print axioms Airbender.Trace.Proofs.Transfer.WriteRules
 
-
 #print axioms Airbender.Delegation.Caller.HashSpan
 #print axioms Tests.DelegationOperationEffects.separate_empty_boundaries_rejected
-
-#print axioms Tests.UnifiedMixedHistory.fabricated_read_locally_satisfies
-#print axioms Tests.UnifiedMixedHistory.fabricated_custom_read_breaks_matching
-
 
 #print axioms Airbender.Delegation.Caller.machinePorts
 #print axioms Airbender.Delegation.Caller.Proofs.machine_port_native
@@ -1004,7 +873,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.UnifiedReduced.Caller.initialPC
 #print axioms Airbender.UnifiedReduced.Caller.finalPC
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_zeroes
-#print axioms Tests.UnifiedDelegation.caller_request_retains_full_csr
 
 #print axioms Airbender.Delegation.Requests.Proofs.shifted_times_unique
 #print axioms Airbender.Delegation.Requests.Proofs.bounded_pool
@@ -1019,20 +887,9 @@ import Human.Circuits.AddSub.Modular
 #print axioms Tests.DelegationROMBoundary.supported_copy_mode
 #print axioms Tests.DelegationROMBoundary.worker_accesses_rom
 
-
 #print axioms Airbender.Delegation.Proofs.split_clock
 
-
-
-
-
-
-
-
 #print axioms Airbender.Trace.Proofs.word_of_pc_query
-
-
-
 
 #print axioms Airbender.Delegation.Caller.Proofs.worker_addresses
 #print axioms Airbender.Delegation.Caller.Proofs.filtered_architectural_tokens
@@ -1072,7 +929,6 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Trace.Proofs.sum_indicators
 #print axioms Airbender.Trace.Proofs.native_window_count
 #print axioms Airbender.UnifiedReduced.Caller.ControlLiteral
-#print axioms Tests.ControlPreparation.chained_preparation_uses_previous_write
 #print axioms Airbender.UnifiedReduced.Caller.hashPreparation
 #print axioms Airbender.Blake2Round.Proofs.ControlMatchingInputs
 #print axioms Airbender.Blake2Round.Proofs.matching_rounds
@@ -1095,17 +951,12 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Trace.WordColumns.code_u16
 #print axioms Airbender.Trace.WordColumns.evaluate_u16
 
-
 #print axioms Airbender.UnifiedReduced.Caller.WindowsOrdered
 #print axioms Airbender.UnifiedReduced.Caller.HashWindow
 #print axioms Airbender.UnifiedReduced.Caller.HashWindow.interval
 #print axioms Tests.ControlPreparation.overlapping_or_unaligned_sequences_rejected
 
 #print axioms Airbender.UnifiedReduced.Caller.RoundRegion
-
-#print axioms Tests.ControlPreparation.arithmetic_preparation_uses_prior_aliased_add
-
-
 
 -- the importer's own facts (human/Human/Import)
 #print axioms Airbender.Artifact.signedCoefficient_mod

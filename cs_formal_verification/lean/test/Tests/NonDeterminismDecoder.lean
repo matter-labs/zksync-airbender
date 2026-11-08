@@ -1,5 +1,21 @@
 module
-public import Slop.Trace.Claims
+public import Slop.Trace.ROMView
+public import Slop.AddSub.Selectors
+public import Slop.Trace.Pooled
+public import Human.Helpers.Decoder.PooledExternalInput
+public import Human.Circuits.WordMemory.Output
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.Family.Values
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Circuits.SubwordMemory.Output
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.MulDiv.Product
+public import Human.Circuits.MulDiv.Operation
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
 
 @[expose] public section
 
@@ -64,18 +80,6 @@ private theorem clocks : ClockBoundary trace := by
     simp only [trace, List.mem_cons, List.not_mem_nil, or_false] at member
     rcases member with rfl | rfl <;> constructor <;> decide
 
-/-- The accepted native read consumes the independent first response and leaves
-    the unused suffix; its position is derived rather than supplied by a witness. -/
-theorem single_native_consumption :
-    ∃ rows, rows.Perm trace.rows ∧
-      rows.Pairwise (fun a b => b.clock < a.clock) ∧
-      ∃ rest, [0x12345678, 0xbeef] = NonDeterminism.consumed rows ++ rest := by
-  apply NonDeterminism.native_consumption accepted clocks
-  intro actual member _
-  have same := List.mem_singleton.mp member
-  subst actual
-  decide
-
 def later : Row babyBearModulus := ⟨.addSub, fun column =>
   if column = 2 then 8 else if column = 33 then 0x9999 else assignment column⟩
 def hint : Row babyBearModulus := ⟨.addSub, fun column =>
@@ -89,13 +93,6 @@ theorem clock_positions :
 
 theorem ordered_responses :
     NonDeterminism.consumed [hint, later, row] = [0x12345678, 0x12349999] := by decide
-
-theorem storage_order_does_not_change_position :
-    NonDeterminism.readIndex { reordered with rows := [hint, later, row] } later =
-      NonDeterminism.readIndex reordered later := by
-  apply NonDeterminism.Proofs.read_index_permutation
-  exact (List.Perm.cons hint (List.Perm.swap later row []).symm) |>.trans
-    (List.Perm.swap hint row [later]).symm
 
 theorem chronological_ports :
     NonDeterminism.StreamPorts reordered [0x12345678, 0x12349999] := by

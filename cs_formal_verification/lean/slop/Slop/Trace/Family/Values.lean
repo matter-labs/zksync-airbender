@@ -4,7 +4,6 @@ public import Slop.Trace.Values
 public import Slop.AddSub
 public import Slop.Trace.Family.History
 public import Slop.WordMemory
-public import Human.Helpers.Memory.ValueBoundary
 
 @[expose] public section
 
@@ -67,32 +66,5 @@ theorem row_write_source [Fact p.Prime] (row : Row p)
           simp only [inROM, one_mul, sub_self, zero_mul, sub_zero] at query
           have ranges := rom _ query
           simpa [write_word, Word.Bounded] using ranges
-
-theorem write_source [Fact p.Prime] {trace : Data p}
-    (accepted : Accepted trace) (values : ValueBoundary trace)
-    (row : Row p) (member : row ∈ trace.rows) (port : MemoryPort) (portMember : port ∈ row.ports) :
-    (writeToken row.columns row.assignment port).word.Bounded ∨
-      ∃ source ∈ row.ports,
-        (writeToken row.columns row.assignment port).value = (readToken row.assignment source).value ∧
-        (source.event row.columns row.assignment).1 ≤ (port.event row.columns row.assignment).1 :=
-  row_write_source row trace.rom (accepted.constraints row member) values.disabledROM values.rom port portMember
-
-theorem read_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
-    (accepted : Accepted trace) (clocks : ClockBoundary trace) (values : ValueBoundary trace) :
-    ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded :=
-  read_bounds_of_sources hp inverse accepted clocks values.initial (write_source accepted values)
-
-theorem write_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
-    (accepted : Accepted trace) (clocks : ClockBoundary trace) (values : ValueBoundary trace) :
-    ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (writeToken row.columns row.assignment port).word.Bounded :=
-  write_bounds_of_sources hp inverse accepted clocks values.initial (write_source accepted values)
-
-theorem terminal_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
-    (accepted : Accepted trace) (clocks : ClockBoundary trace) (values : ValueBoundary trace) :
-    ∀ token ∈ trace.terminalMemory, token.word.Bounded :=
-  terminal_bounds_of_sources hp inverse accepted clocks values.initial (write_source accepted values)
 
 end Airbender.Trace.Proofs

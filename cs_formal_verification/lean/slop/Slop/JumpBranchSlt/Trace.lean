@@ -3,7 +3,6 @@ public import Human.Helpers.Context.Registries.JumpBranchSlt
 public import Slop.JumpBranchSlt.Timestamp
 public import Slop.Trace.RowHistory
 public import Slop.Trace.PC
-public import Slop.Trace.LatestReads
 public import Slop.Trace.MemoryHistory
 public import Slop.JumpBranchSlt
 

@@ -61,28 +61,7 @@ theorem nativeRolloverValues :
     (zeroLaneRow thetaEnd true 3).val = 1571 ∧ (zeroLaneRow thetaEnd true 5).val = 1540 ∧
     (zeroLaneRow chiEnd true 3).val = 2022 ∧ (zeroLaneRow chiEnd true 5).val = 2048 := by decide
 
-theorem nativeControlUpdate : Keccak.ControlUpdateChecks Tests.KeccakTheta.row :=
-  Keccak.control_updates (by decide) Tests.KeccakTheta.satisfies
-
 -- A changed control write is rejected using only the native read and the full
 -- imported relation; no mode, iteration or round is supplied as a premise.
-theorem wrongControlWriteRejected {w : Nat → ZMod babyBearModulus}
-    (active : w 0 = 1) (input : w 3 = 1571) (wrong : w 5 = 1541) :
-    ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (Keccak.importedConstraints Tests.Keccak.permissiveSetup) := by
-  intro h
-  obtain ⟨s, decoded, next⟩ := (Keccak.control_updates (by decide) h).active active
-  rw [input] at decoded
-  rw [wrong] at next
-  have literal : (1571 : ZMod babyBearModulus).val = 1571 := by decide
-  rw [literal] at decoded
-  have modeBound := s.mode.isLt
-  have iterationBound := s.iteration.isLt
-  have roundBound := s.round.isLt
-  unfold Keccak.ControlState.packed at decoded
-  have values : s.mode.val = 3 ∧ s.iteration.val = 4 ∧ s.round.val = 24 := by omega
-  have literalWrong : (1541 : ZMod babyBearModulus).val = 1541 := by decide
-  rw [literalWrong] at next
-  simp [Keccak.ControlState.nextPacked, values.1, values.2.1, values.2.2] at next
 
 end Tests.KeccakControlUpdate

@@ -1,16 +1,20 @@
 module
 public import Slop.Delegation.Requests
 public import Slop.Trace.Timestamps
-public import Slop.Bigint.Claims
-public import Slop.Blake2G.Claims
-public import Slop.Blake2Round.Claims
+public import Human.Circuits.Bigint.Memory
+public import Slop.Bigint.Addresses
+public import Slop.Final.Circuits.Blake2G.Theorems
+public import Human.Trace.Workers.Blake2G.WorkVector
+public import Slop.Blake2G.CallGroups
+public import Slop.Blake2G.PhysicalWords
+public import Slop.Delegation.NativeSegments
 public import Slop.Delegation.MixedClocks
 public import Slop.Delegation.RequestWindows
 public import Slop.Delegation.SharedOperations
 public import Slop.Delegation.WorkerProjection
 public import Slop.JumpBranchSlt.Branch
 public import Slop.JumpBranchSlt.Jump
-public import Slop.Keccak.Claims
+public import Slop.Keccak.CallPermutation
 public import Slop.MulDiv.Values
 public import Slop.ShiftBinop.Ports
 public import Slop.SubwordMemory.Values

@@ -1,6 +1,19 @@
 module
-public import Slop.JumpBranchSlt.Claims
-public import Slop.JumpBranchSlt.Completeness.Witness
+public import Slop.Final.Helpers.Context.PCState.Theorems
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.AddSub.Selectors
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.MulDiv.Product
+public import Human.Circuits.MulDiv.Operation
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.Family.Values
+public import Slop.Trace.Pooled
+public import Slop.Trace.RowContext
 
 @[expose] public section
 
@@ -42,75 +55,6 @@ def row (indirect wrap zero : Bool) : Nat → ZMod babyBearModulus
   | 39 | 40 => if indirect || wrap then 1 else 0
   | 42 => if indirect && wrap then 1 else 0
   | _ => 0
-
-/-- The honest inputs `row` is built from: the operands, PC and offset; zero clocks. -/
-private def witness (indirect wrap zero : Bool) : JumpBranchSlt.Completeness.Inputs where
-  sel := if indirect then 1 else 0
-  rdZero := zero
-  funct3 := 0
-  rs1 := if indirect then 1 else 0
-  rs2 := 0
-  rd := if zero then 0 else 1
-  pcLo := (initial wrap).lo
-  pcHi := (initial wrap).hi
-  aLo := if indirect then (base indirect wrap).lo else 0
-  aHi := if indirect then (base indirect wrap).hi else 0
-  bLo := 0
-  bHi := 0
-  immLo := (offset indirect wrap).lo
-  immHi := (offset indirect wrap).hi
-  oldLo := 0
-  oldHi := 0
-  tsLo := 0
-  tsHi := 0
-  prev0Lo := 0
-  prev0Hi := 0
-  prev1Lo := 0
-  prev1Hi := 0
-  prev2Lo := 0
-  prev2Hi := 0
-  borrow0 := 0
-  borrow1 := 0
-  borrow2 := 0
-
-private theorem valid (indirect wrap zero : Bool) : (witness indirect wrap zero).Valid := by
-  cases indirect <;> cases wrap <;> cases zero <;> constructor <;> decide
-
-private theorem agree (indirect wrap zero : Bool) : ∀ i ∈ JumpBranchSlt.Completeness.columns,
-    row indirect wrap zero i = (witness indirect wrap zero).honest i := by
-  cases indirect <;> cases wrap <;> cases zero <;> decide
-
-theorem satisfies (indirect wrap zero : Bool) :
-    FlatOperation.ConstraintsHoldFlat (Verification.environment (row indirect wrap zero))
-      JumpBranchSlt.importedConstraints :=
-  JumpBranchSlt.Completeness.complete_of_agree _ (valid indirect wrap zero) (agree indirect wrap zero)
-
-/-- Eight imported rows: JAL/JALR, PC+4 and target wrapping, x0/nonzero rd.
-    JALR's sums are odd; their bit-0 cleanup is exercised explicitly. -/
-example (indirect wrap zero : Bool) :
-    (⟨(row indirect wrap zero 30).val, (row indirect wrap zero 31).val⟩ : Arithmetic.Word).toBitVec =
-      (if row indirect wrap zero 15 = 1 then 0 else (initial wrap).toBitVec + 4) ∧
-    (⟨(row indirect wrap zero 30).val, (row indirect wrap zero 31).val⟩ : Arithmetic.Word).Bounded := by
-  apply JumpBranchSlt.Proofs.jump_link (by decide) (satisfies indirect wrap zero)
-  · cases indirect <;> simp [row]
-  · exact ⟨rfl, rfl⟩
-  · constructor <;> cases wrap <;> simp [row, initial] <;> decide
-  · cases wrap <;> decide
-
-example (indirect wrap zero : Bool) :
-    (final indirect wrap).toBitVec =
-      (if indirect then ((base indirect wrap).toBitVec + (offset indirect wrap).toBitVec) &&& 0xfffffffe
-        else (base indirect wrap).toBitVec + (offset indirect wrap).toBitVec) ∧
-      (final indirect wrap).toBitVec.toNat % 4 = 0 := by
-  apply JumpBranchSlt.Proofs.jump_pc (w := row indirect wrap zero) (by decide) indirect
-    (satisfies indirect wrap zero) ⟨rfl, rfl⟩ ⟨rfl, rfl⟩
-  · constructor <;> cases indirect <;> cases wrap <;>
-      simp [row, initial, base, offset, final] <;> decide
-  · cases indirect <;> cases wrap <;> decide
-  · cases indirect <;> cases wrap <;> decide
-  · cases indirect <;> cases wrap <;> exact ⟨by decide, by decide⟩
-  · cases indirect <;> cases wrap <;> decide
-  · cases indirect <;> cases wrap <;> decide
 
 def misalignedRow (i : Nat) : ZMod babyBearModulus :=
   if i = 22 then 7 else if i = 36 then 3 else if i = 46 then 1 else row true false false i

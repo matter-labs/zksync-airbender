@@ -1,5 +1,12 @@
 module
-public import Slop.Blake2G.Claims
+public import Slop.Final.Circuits.Blake2G.Theorems
+public import Human.Helpers.Delegation.SpanABI
+public import Human.Trace.Workers.Blake2G.WorkVector
+public import Human.Trace.Workers.Keccak.Permutation
+public import Slop.Blake2G.CallGroups
+public import Slop.Blake2G.PhysicalWords
+public import Slop.Delegation.NativeSegments
+public import Slop.Delegation.ReverseFold
 public import Mathlib.Tactic.IntervalCases
 import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 

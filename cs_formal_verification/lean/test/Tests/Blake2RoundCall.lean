@@ -1,5 +1,11 @@
 module
-public import Slop.Blake2Round.Claims
+public import Human.Helpers.Delegation.SpanABI
+public import Human.Trace.Workers.Blake2G.WorkVector
+public import Human.Trace.Workers.Keccak.Permutation
+public import Slop.Blake2Round.Compression
+public import Slop.Blake2Round.StateTransport
+public import Slop.Delegation.NativeSegments
+public import Slop.Delegation.ReverseFold
 
 @[expose] public section
 

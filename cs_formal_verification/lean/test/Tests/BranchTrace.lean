@@ -1,6 +1,5 @@
 module
 public import Tests.Branch
-public import Slop.JumpBranchSlt.Claims
 public import Tests.JumpHistory
 
 @[expose] public section
@@ -31,33 +30,6 @@ private def trace (tag : Fin 6) (wrap : Bool) (rom : Table (ZMod babyBearModulus
   terminalMemory := [⟨(Cell.register 1).addressCode, (4, 0), 0⟩,
     ⟨(Cell.register 2).addressCode, (5, 0), Nat.pair 65535 65535⟩,
     ⟨(Cell.register 0).addressCode, (6, 0), 0⟩]
-
-/-- The honest inputs: `Branch`'s, at clock 4 with every previous access at clock 0. -/
-private def witness (tag : Fin 6) (wrap : Bool) : JumpBranchSlt.Completeness.Inputs :=
-  { Branch.witness tag wrap with tsLo := 4, borrow0 := 1, borrow1 := 1, borrow2 := 1 }
-
-private theorem constraints (tag : Fin 6) (wrap : Bool) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (assignment tag wrap)) JumpBranchSlt.clockConstraints :=
-  JumpBranchSlt.Completeness.clock_complete_of_agree (witness tag wrap)
-    (by fin_cases tag <;> cases wrap <;> constructor <;> decide)
-    (by fin_cases tag <;> cases wrap <;> constructor <;> decide)
-    (by fin_cases tag <;> cases wrap <;> decide)
-
-private theorem accepted (tag : Fin 6) (wrap : Bool)
-    (rom : Table (ZMod babyBearModulus) (fields 9)) : Accepted (trace tag wrap rom) := by
-  constructor
-  · intro actual member
-    simp only [trace, List.mem_singleton] at member
-    subst actual
-    exact constraints tag wrap
-  · intro actual member
-    simp only [trace, List.mem_singleton] at member
-    subst actual
-    fin_cases tag <;> cases wrap <;> rfl
-  · exact List.Perm.swap _ _ []
-  · dsimp [trace, Row.reads, Row.writes, Row.ports, Row.columns, row,
-      JumpBranchSlt.importedConstraintsMemoryPorts, JumpBranchSlt.importedConstraintsTraceColumns]
-    fin_cases tag <;> cases wrap <;> decide
 
 private theorem boundary (tag : Fin 6) (wrap : Bool)
     (rom : Table (ZMod babyBearModulus) (fields 9)) : ClockBoundary (trace tag wrap rom) := by

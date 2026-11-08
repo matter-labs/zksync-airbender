@@ -52,22 +52,6 @@ private theorem queries_unchanged (i : Fin 42) :
   all_goals interval_cases j
   all_goals decide +kernel +revert
 
-private theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
-    (Keccak.importedConstraints Tests.KeccakTheta.setup) := by
-  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
-  constructor
-  · decide
-  · rw [List.forall_mem_iff_forall_getElem]
-    intro i hi
-    have old := Verification.lookup_of_holds Tests.KeccakTheta.satisfies ⟨i, hi⟩
-    have bound : i < 42 := by simpa only [Keccak.lookup_count] using hi
-    have same := queries_unchanged ⟨i, bound⟩
-    simp only [List.get_eq_getElem] at same old
-    simp only [Lookup.Contains, Verification.environment] at old ⊢
-    exact Eq.mp (congrArg (fun entry =>
-      ((FlatOperation.lookups (Keccak.importedConstraints Tests.KeccakTheta.setup))[i]).table.Contains
-        #[] entry) same.symm) old
-
 private theorem clocks : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
     (Keccak.importedConstraintsTimestampLookups (p := babyBearModulus)) := by
   rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
@@ -97,14 +81,6 @@ def data : Delegation.MemoryData babyBearModulus where
   rows := [native]
   initial := native.memorySteps.map Prod.fst
   terminal := native.memorySteps.map Prod.snd
-
-theorem accepted : Delegation.MemoryAccepted data := by
-  constructor
-  · intro actual member
-    simp only [data, List.mem_singleton] at member
-    subst actual
-    exact Verification.holds_append core clocks
-  · exact List.perm_append_comm
 
 theorem native_window_keeps_all_ports :
     Delegation.Proofs.windowRows data 6 7 = [native] ∧

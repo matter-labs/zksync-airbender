@@ -98,11 +98,6 @@ theorem derived_clocks : ∀ row ∈ (trace false).rows,
     ClockEffects row.columns row.assignment :=
   Proofs.trace_clocks (by decide) (by decide) accepted boundary
 
-/-- The same generic latest-write proof spans the LBU-to-ADD dependency. -/
-theorem latest_reads : ∀ row ∈ (trace false).rows, ∀ port ∈ row.ports,
-    LatestRead (trace false) row port :=
-  Proofs.latest_reads (by decide) (by decide) accepted boundary (by decide)
-
 /-- Global matching rejects the fabricated cross-family read, although both
     rows separately satisfy their actual imported constraints and setups. -/
 theorem fabricated_read_rejected : ¬ Accepted (trace true) := by

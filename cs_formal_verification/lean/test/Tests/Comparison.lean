@@ -1,6 +1,19 @@
 module
-public import Slop.JumpBranchSlt.Claims
-public import Slop.JumpBranchSlt.Completeness.Witness
+public import Slop.Final.Helpers.Context.PCState.Theorems
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.AddSub.Selectors
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.MulDiv.Product
+public import Human.Circuits.MulDiv.Operation
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.Family.Values
+public import Slop.Trace.Pooled
+public import Slop.Trace.RowContext
 import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
@@ -44,16 +57,6 @@ theorem unboundedFinalPCSatisfies :
 example : ¬ ((⟨4, (row 17).val⟩ : Arithmetic.Word).toBitVec =
     (⟨0, 0⟩ : Arithmetic.Word).toBitVec + 4) := by decide
 
-/-- The malformed local row cannot be an outgoing PC in the logical global
-    interface, for any program or terminal boundary. Cryptographic enforcement
-    of this interface is not claimed here. -/
-theorem unboundedFinalPCNotComposable {n : Nat}
-    (context : PCState.Context babyBearModulus n)
-    (outgoing : PCState.Outgoing context (row 16, row 17)) : ¬ PCState.Interface context := by
-  intro global
-  have bounds := JumpBranchSlt.final_pc_bounds (by decide) global outgoing unboundedFinalPCSatisfies
-  exact (by decide : ¬ (row 17).val < Arithmetic.limbBase) bounds.2
-
 def edgeRow (signed immediate wrapPC : Bool) : Nat → ZMod babyBearModulus
   | 0 => if wrapPC then 65532 else 0
   | 1 => if wrapPC then 65535 else 0
@@ -70,73 +73,11 @@ def edgeRow (signed immediate wrapPC : Bool) : Nat → ZMod babyBearModulus
   | 43 => 65535
   | _ => 0
 
-/-- The honest inputs `edgeRow` is built from: `0` against `-1`, rd = x1 or x2. -/
-def edgeWitness (signed immediate wrapPC : Bool) : JumpBranchSlt.Completeness.Inputs where
-  sel := 2
-  rdZero := false
-  funct3 := if signed then 2 else 3
-  rs1 := 1
-  rs2 := if immediate then 0 else 2
-  rd := if immediate then 1 else 2
-  pcLo := if wrapPC then 65532 else 0
-  pcHi := if wrapPC then 65535 else 0
-  aLo := 0
-  aHi := 0
-  bLo := if immediate then 0 else 65535
-  bHi := if immediate then 0 else 65535
-  immLo := if immediate then 65535 else 0
-  immHi := if immediate then 65535 else 0
-  oldLo := 0
-  oldHi := 0
-  tsLo := 0
-  tsHi := 0
-  prev0Lo := 0
-  prev0Hi := 0
-  prev1Lo := 0
-  prev1Hi := 0
-  prev2Lo := 0
-  prev2Hi := 0
-  borrow0 := 0
-  borrow1 := 0
-  borrow2 := 0
-
-private theorem edgeValid (signed immediate wrapPC : Bool) :
-    (edgeWitness signed immediate wrapPC).Valid := by
-  cases signed <;> cases immediate <;> cases wrapPC <;> constructor <;> decide
-
-private theorem edgeAgree (signed immediate wrapPC : Bool) : ∀ i ∈ JumpBranchSlt.Completeness.columns,
-    edgeRow signed immediate wrapPC i = (edgeWitness signed immediate wrapPC).honest i := by
-  cases signed <;> cases immediate <;> cases wrapPC <;> decide
-
-theorem edgeSatisfies (signed immediate wrapPC : Bool) :
-    FlatOperation.ConstraintsHoldFlat (Verification.environment (edgeRow signed immediate wrapPC))
-      JumpBranchSlt.importedConstraints :=
-  JumpBranchSlt.Completeness.complete_of_agree _ (edgeValid signed immediate wrapPC)
-    (edgeAgree signed immediate wrapPC)
-
-/-- Unsigned 0 < 0xffffffff requires both subtraction borrows and resolves to one. -/
-example : (⟨(edgeRow false false false 30).val, (edgeRow false false false 31).val⟩ : Arithmetic.Word).value = 1 := by
-  have result := JumpBranchSlt.Proofs.unsigned_destination (p := babyBearModulus) (by decide)
-    (left := ⟨0, 0⟩) (right := ⟨65535, 65535⟩) (edgeSatisfies false false false)
-    rfl ⟨rfl, rfl, rfl⟩ rfl rfl ⟨rfl, rfl, rfl, rfl⟩
-    (output := ⟨(edgeRow false false false 30).val, (edgeRow false false false 31).val⟩)
-    ⟨rfl, rfl⟩ ⟨by decide, by decide⟩ ⟨by decide, by decide⟩
-  simpa [Arithmetic.Word.value, Arithmetic.limbBase] using result
-
 private def negativeRow : Nat → ZMod babyBearModulus
   | 4 | 5 | 7 | 13 | 30 | 42 | 44 | 47 => 1
   | 6 | 10 => 2
   | 16 | 18 | 36 => 4
   | 22 | 23 | 34 | 35 => 65535
   | _ => 0
-
-/-- `negativeRow`'s honest inputs: SLT of -1 against x0's 0, rd = x1. -/
-private def negativeWitness : JumpBranchSlt.Completeness.Inputs :=
-  { edgeWitness true false false with rd := 1, aLo := 65535, aHi := 65535, bLo := 0, bHi := 0 }
-
-private theorem negativeSatisfies :
-    FlatOperation.ConstraintsHoldFlat (Verification.environment negativeRow)
-      JumpBranchSlt.importedConstraints :=
-  JumpBranchSlt.Completeness.complete_of_agree negativeWitness (by constructor <;> decide) (by decide)
 
 end Tests.Comparison

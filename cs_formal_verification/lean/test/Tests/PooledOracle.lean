@@ -1,24 +1,18 @@
 module
-public import Slop.Trace.PooledOracleConsumption
 public import Tests.ShiftBinopTimestamp
 public import Tests.TraceExecution
-public import Slop.AddSub.Completeness.Row
+public import Human.Circuits.UnifiedReduced.Artifact
+public import Human.Circuits.UnifiedReduced.Tables.Setup
 public import Human.Circuits.JumpBranchSlt.Jump
 public import Human.Circuits.SubwordMemory.Output
 public import Human.Circuits.WordMemory.Output
 public import Human.Helpers.Memory.Native
 public import Slop.JumpBranchSlt.Branch
 public import Slop.JumpBranchSlt.Jump
-public import Slop.JumpBranchSlt.PortReads
-public import Slop.MulDiv.PortReads
-public import Slop.MulDiv.Soundness
 public import Slop.MulDiv.Values
-public import Slop.ShiftBinop.PortReads
 public import Slop.ShiftBinop.Ports
-public import Slop.SubwordMemory.PortReads
 public import Slop.Trace.CompositionCore
 public import Slop.Trace.Family.Values
-public import Slop.Trace.OracleConsumption
 
 @[expose] public section
 
@@ -30,16 +24,6 @@ set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
 -- CSRRW x1 oracle reads at clocks 4 and 12, with PC 0 and 8.
-private def readInput (second : Bool) : AddSub.Completeness.Row where
-  frame := ⟨if second then 8 else 0, 0, if second then 12 else 4, 0, if second then 9 else 0, 0,
-    if second then 12 else 4, 0, if second then 10 else 0, 0⟩
-  op := .oracle
-  active := 1
-  rd := 1
-  respLo := if second then 0xbeef else 0x5678
-  respHi := if second then 0 else 0x1234
-
-private def readAssignment (second : Bool) : Nat → ZMod babyBearModulus := (readInput second).honest
 
 private def shiftAssignment : Nat → ZMod babyBearModulus
   | 0 => 4
@@ -50,11 +34,6 @@ private def shiftAssignment : Nat → ZMod babyBearModulus
   | 30 => 0x1234
   | 33 => 6
   | i => if i = 14 then 0 else Tests.ShiftBinopTimestamp.assignment false i
-
-private theorem read_constraints (second : Bool) : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment (readAssignment second)) AddSub.clockConstraints := by
-  apply AddSub.Completeness.Row.complete <;> cases second
-  all_goals first | addsub_row_valid | addsub_frame_valid
 
 private theorem shift_constraints : FlatOperation.ConstraintsHoldFlat
     (Verification.environment shiftAssignment) ShiftBinop.clockConstraints := by

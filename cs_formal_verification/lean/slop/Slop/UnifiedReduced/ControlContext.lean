@@ -1,6 +1,5 @@
 module
-public import Human.Circuits.UnifiedReduced.Control
-public import Human.Helpers.Decoder.Instruction
+public import Human.Circuits.JumpBranchSlt.Model
 public import Mathlib.Logic.Relation
 public import Slop.Trace.RowContext
 public import Slop.UnifiedReduced.Values

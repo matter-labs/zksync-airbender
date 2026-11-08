@@ -1,5 +1,8 @@
 module
-public import Slop.Delegation.SharedBounds
+public import Human.Helpers.Delegation.RequestEffects
+public import Human.Helpers.Delegation.SharedMemory
+public import Slop.Delegation.RequestTrace
+public import Slop.Trace.TransferValues
 public import Slop.Bigint.NativeExecution
 public import Slop.Blake2G.NativeExecution
 public import Slop.Blake2Round.NativeExecution
@@ -10,7 +13,6 @@ public import Slop.Keccak.NativeExecution
 namespace Airbender.Delegation.Caller.Proofs
 open Trace
 set_option warningAsError true
-
 
 theorem worker_effects_of_reads
     {data : MemoryData babyBearModulus}

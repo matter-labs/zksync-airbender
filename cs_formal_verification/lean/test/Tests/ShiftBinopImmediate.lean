@@ -1,5 +1,4 @@
 module
-public import Slop.ShiftBinop.Claims
 public import Tests.ShiftBinopTimestamp
 import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)

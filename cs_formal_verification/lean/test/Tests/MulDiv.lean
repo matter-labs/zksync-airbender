@@ -1,5 +1,19 @@
 module
-public import Slop.MulDiv.Claims
+public import Slop.MulDiv.Product
+public import Human.Circuits.MulDiv.Operation
+public import Slop.MulDiv.Product
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.AddSub.Selectors
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.Family.Values
+public import Slop.Trace.Pooled
+public import Slop.Trace.RowContext
 import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section

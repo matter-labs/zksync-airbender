@@ -1,7 +1,20 @@
 module
-public import Slop.ShiftBinop.Claims
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.AddSub.Selectors
+public import Slop.JumpBranchSlt.Branch
+public import Slop.JumpBranchSlt.Jump
+public import Slop.MulDiv.Product
+public import Human.Circuits.MulDiv.Operation
+public import Slop.MulDiv.Values
+public import Slop.ShiftBinop.Ports
+public import Slop.SubwordMemory.Values
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.Family.Values
+public import Slop.Trace.Pooled
+public import Slop.Trace.RowContext
 public import Slop.ShiftBinop.Shifts
-public import Slop.ShiftBinop.Completeness.Lookups
+public import Slop.Eval
 public import Mathlib.Tactic.IntervalCases
 import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
@@ -51,54 +64,6 @@ def row (tag : Fin 4) (immediate zero : Bool) : Nat → ZMod babyBearModulus
       | 8 => 9 | j => part tag zero i (j - 4)
     else 0
 
-set_option maxRecDepth 4096 in
-theorem satisfies (tag : Fin 4) (immediate zero : Bool) :
-    FlatOperation.ConstraintsHoldFlat (Verification.environment (row tag immediate zero))
-      importedConstraints := by
-  apply FlatOperation.constraintsHoldFlat_iff_forall_mem.mpr
-  have equations : ∀ i : Fin (FlatOperation.constraints
-      (importedConstraints (p := babyBearModulus))).length,
-      ((FlatOperation.constraints importedConstraints).get i).eval
-        (Verification.environment (row tag immediate zero)) = 0 := by
-    intro i
-    fin_cases i <;> fin_cases tag <;> cases immediate <;> cases zero <;> decide
-  have queries : ∀ i : Fin (FlatOperation.lookups
-      (importedConstraints (p := babyBearModulus))).length,
-      ((FlatOperation.lookups importedConstraints).get i).Contains
-        (Verification.environment (row tag immediate zero)) := by
-    intro i
-    fin_cases i
-    · exact Verification.range16_contains (by fin_cases tag <;> cases immediate <;> cases zero <;> decide)
-    · exact Verification.range16_contains (by fin_cases tag <;> cases immediate <;> cases zero <;> decide)
-    · exact Proofs.sign_query_of_columns (by fin_cases tag <;> cases immediate <;> cases zero <;> decide +kernel)
-    · exact Proofs.query_of_columns 0 (by fin_cases tag <;> cases immediate <;> cases zero <;> decide +kernel)
-    · exact Proofs.query_of_columns 1 (by fin_cases tag <;> cases immediate <;> cases zero <;> decide +kernel)
-    · exact Proofs.query_of_columns 2 (by fin_cases tag <;> cases immediate <;> cases zero <;> decide +kernel)
-    · exact Proofs.query_of_columns 3 (by fin_cases tag <;> cases immediate <;> cases zero <;> decide +kernel)
-  constructor
-  · intro c hc
-    obtain ⟨i, rfl⟩ := List.mem_iff_get.mp hc
-    exact equations i
-  · intro q hq
-    obtain ⟨i, rfl⟩ := List.mem_iff_get.mp hq
-    exact queries i
-
-example (tag : Fin 4) (immediate zero : Bool) :
-    (Arithmetic.Word.mk (row tag immediate zero 31).val (row tag immediate zero 32).val).toBitVec =
-      Verification.shiftOperation (code tag) source (amount tag zero) := by
-  have tagValue : (row tag immediate zero 10).val = code tag := by
-    fin_cases tag <;> decide +revert
-  have truncated : (row tag immediate zero 35 + row tag immediate zero 8).val = amount tag zero := by
-    fin_cases tag <;> cases immediate <;> cases zero <;> decide
-  have result := Proofs.shift_destination (p := babyBearModulus) (by decide) source
-    (satisfies tag immediate zero) (by simp [row])
-    (by rw [tagValue]; fin_cases tag <;> decide)
-    (by rw [tagValue]; fin_cases tag <;> cases immediate <;> cases zero <;> decide)
-    (by intro i; fin_cases i <;> rfl)
-  rw [tagValue, truncated] at result
-  exact result
-
--- A shift count outside the table's five-bit domain cannot satisfy the query.
 example : ¬ (Verification.shiftBinopLookup
     (#v[.const 0, .const 18, .const 32, .const 1, .const 0, .const 0,
       .const 0, .const 0, .const 0, .const 9] :

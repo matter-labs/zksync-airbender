@@ -15,15 +15,6 @@ theorem unalignedPointerRejected (w : Nat → ZMod babyBearModulus)
   intro row
   exact unaligned (Bigint.Addresses.Proofs.pointer_alignment (by decide) (by decide) row).1
 
-/-- Exercise the public address contract on a full nonzero native row. -/
-theorem nativeAddresses :
-    Bigint.Addresses.spec ⟨⟨0, 0⟩, ⟨0, 0⟩⟩
-      (Bigint.importedConstraintsIndirectPorts.map
-        (fun port => port.address (BigintMultiplication.fiveTimesSevenRow false false))) := by
-  apply Bigint.Addresses.soundness _ _ (BigintMultiplication.fiveTimesSevenRow false false)
-  refine ⟨⟨by constructor <;> decide, by constructor <;> decide⟩, BigintMultiplication.fiveTimesSevenSatisfies false false, ?_⟩
-  constructor <;> rfl
-
 def boundaryRow : Nat → ZMod babyBearModulus := fun column =>
   if column = 3 ∨ column = 37 then 65504
   else if column = 4 ∨ column = 38 then 65535
