@@ -956,3 +956,12 @@ worker anchoring/rooting and delegated Sail execution remain open.
 processing convention for wide and zero processing clocks with explicit old
 timestamps. These are local component rows; global acceptance, initialized
 history and caller anchoring remain open.
+
+## Conditional delegation support
+
+[Native raw-key support](DelegationSupportTheorems.lean) uses an explicit formal polynomial identity
+on the same actual rows. It retains duplicate weights and derives a nonzero
+caller for each active worker, plus the raw clock domain for workers/old reads.
+Fixed-challenge source acceptance does not establish this new crypto boundary.
+Caller activity, lossless request matching and initialized worker history remain
+open; raw sentinel alternatives are retained.

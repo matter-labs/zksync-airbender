@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.DelegationSupport
+import Airbender.Proofs.ReducedMachine.NativeDelegationSupport
+import Airbender.Review.Circuits.ReducedMachine.DelegationSupportTheorems
+import Tests.NativeDelegationSupport
+
 import Airbender.Review.Circuits.ReducedMachine.WorkerClockFixtures
 import Airbender.Proofs.ReducedMachine.NativeWorkerClockFixtures
 import Airbender.Review.Circuits.ReducedMachine.WorkerClockFixturesTheorems
@@ -6931,3 +6936,32 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerClockFixtures.wide_reads_bounded
 #print axioms Airbender.Tests.NativeWorkerClockFixtures.pointers_control_zero
 #print axioms Airbender.Tests.NativeWorkerClockFixtures.complete_local_acceptance
+
+#print axioms Airbender.NativeDelegationSupportProofs.key_injective
+#print axioms Airbender.NativeDelegationSupportProofs.caller_denominator
+#print axioms Airbender.NativeDelegationSupportProofs.worker_denominator
+#print axioms Airbender.NativeDelegationSupportProofs.coefficient_balance
+#print axioms Airbender.NativeDelegationSupportProofs.support
+#print axioms Airbender.NativeDelegationSupportProofs.worker_length
+#print axioms Airbender.NativeDelegationSupportProofs.anchored
+#print axioms Airbender.NativeDelegationSupportProofs.clock_domain
+#print axioms Airbender.NativeDelegationSupportProofs.read_domains
+#print axioms Airbender.NativeDelegationSupportProofs.counted
+#print axioms Airbender.NativeDelegationSupport.native_worker_support
+#print axioms Airbender.NativeDelegationSupport.native_counted_worker_support
+#print axioms Airbender.Tests.NativeDelegationSupport.raw_keys_distinct
+#print axioms Airbender.Tests.NativeDelegationSupport.fixed_challenge_collision
+#print axioms Airbender.Tests.NativeDelegationSupport.formal_keys_distinct
+#print axioms Airbender.Tests.NativeDelegationSupport.one_parameter_collision
+#print axioms Airbender.Tests.NativeDelegationSupport.sentinel_preserved
+#print axioms Airbender.Tests.NativeDelegationSupport.duplicates_count
+#print axioms Airbender.Tests.NativeDelegationSupport.zero_weight_retained
+#print axioms Airbender.Tests.NativeDelegationSupport.empty_identity
+#print axioms Airbender.Tests.NativeDelegationSupport.nonboolean_caller
+#print axioms Airbender.Tests.NativeDelegationSupport.duplicate_worker_weights
+#print axioms Airbender.Tests.NativeDelegationSupport.weighted_identity
+#print axioms Airbender.Tests.NativeDelegationSupport.weighted_support
+#print axioms Airbender.Tests.NativeDelegationSupport.no_caller_rejected
+#print axioms Airbender.Tests.NativeDelegationSupport.wide_high_excluded
+#print axioms Airbender.Tests.NativeDelegationSupport.zero_low_high_sentinel_excluded
+#print axioms Airbender.Tests.NativeDelegationSupport.complete_conditional_counted

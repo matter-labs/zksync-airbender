@@ -1,5 +1,59 @@
 # Circuit formal verification plan
 
+## Conditional native delegation support (8 November 2026)
+
+[FormalIdentity / SourceIdentity](Airbender/Review/Circuits/ReducedMachine/DelegationSupport.lean)
+adds an **explicit formal cryptographic extraction boundary** on the same actual
+ordinary caller and worker observations. It equates cleared simple-pole
+numerators in formal gamma over Mersenne31 polynomials in Y, specializing native
+ABI/low/high challenges to Y/Y²/Y³. Exact native unit denominator bindings are
+checked. This polynomial identity is **not derived** from fixed-challenge
+auxiliary equations, scalar sums, capacity or equality on finite field samples.
+No transcript probability, physical verifier or Rust/JSON extraction theorem is
+claimed. Prior acceptance and all its equations remain unchanged.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeDelegationSupport.lean)
+first proves generic residue extraction and finite Boolean counting. Injective
+four-coefficient encoding retains kind, ABIhigh and both raw clock limbs without
+range assumptions. A distinct finite pole set clears denominators only; all
+original row positions, duplicate weights, inactive requests and zero weights
+remain in their aggregates. The identity derives equality of each aggregate.
+Complete configured source acceptance derives Boolean worker multiplicities and
+bounds the full ordinary worker list by the actual slot counter below M31. Thus
+an active worker has a nonzero aggregate and some nonzero actual caller at the
+exact raw key. No caller Booleanity, caller count bound, caller execution,
+expected fulfilled stream or lossless request matching is assumed or concluded.
+
+The existing all-ordinary caller clock domain transfers to active workers,
+including every sentinel alternative. Existing actual read-source extraction
+then transfers that domain to all full-ledger old-read clocks. This remains
+weaker than canonical19bit bounds and does not establish natural chronology,
+seed reachability, initialized values/addresses or STAGE2 key refinement.
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/DelegationSupportTheorems.lean)
+include the unchanged positive main count, all capacity prefix guards and full
+initialization/main/caller/worker/global components on the same counted batch.
+
+[Sixteen controls](Tests/NativeDelegationSupport.lean) cover fixed-challenge
+collisions versus formal key distinction, sentinel retention, duplicate weights,
+zero-weight poles, empty identity, a non-Boolean caller weight2 supporting two
+Boolean worker positions, absent-caller rejection and the complete conditional
+counted root. Pure domain exclusions reject the exact previous local wide-high
+and zero-low/high-sentinel clock shapes; they are not globally accepted witnesses,
+attacks, native defects or evidence of absent other enforcement. All inactiveD,
+m0 auxiliary poles, worker ports, readonly refreshes, OLDREAD, unmasked writes
+and public x0 times remain. No Sail frame crosses delegated effects.
+
+Four modules add28 explicit roots and11 exact parent references; all6,011 prior
+ordered roots and audit bytes remain addition-only. Native107 source pins,
+dependencies, deliberate v3 reference, old proofs/acceptance, artifacts and
+FINDINGS remain unchanged. There is no new native adoption, importer/exporter or
+production change, generation/heavy replay, issue assumption, fix or project
+axiom. Arbitrary inactive request validity/activity, caller execution/uniqueness,
+issuance/fulfillment/converse accounting, canonical worker bounds, initialized
+worker history, original CSR/MOP/worker Sail execution, physical cryptographic
+refinement, completeness and parity remain open.
+
+
 ## Full local worker clock boundary rows (8 November 2026)
 
 [Two explicit worker assignments](Airbender/Review/Circuits/ReducedMachine/WorkerClockFixtures.lean)
