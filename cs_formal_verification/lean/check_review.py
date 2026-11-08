@@ -34,6 +34,8 @@ SOURCE_NAMES = {
     "inits_or_teardowns_as_flattened_relation", "mask_read_for_witness",
     "run_hart_active", "F_Base", "FormalCircuit", "sorry",
     "PROVENANCE.txt", "regen.sh", "sail_rv32", "Zalrsc",
+    # the build budget (README): script, environment variables, Lake's input hash, OS tools
+    "verify.sh", "MODULE_BUDGET_JOBS", "MODULE_BUDGET_LEDGER", "MODULE_BUDGET_S", "depHash", "ps", "wait4",
 }
 
 
