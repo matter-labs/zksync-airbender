@@ -274,3 +274,10 @@ access. Public domain/image/seed coverage and combined worker history remain ope
 and exact canonical zero-token encoding on the SAME native main list. This is an
 observed domain; independent public image coverage, alignment, shadow/architectural
 separation and combined worker history remain separate.
+
+## Complete native seed boundary
+
+[Complete GPR/RAM seeds and memory matching](../../Circuits/ReducedMachine/InitializationSeedBoundaryTheorems.lean) retain all32 public
+registers, x0 timestamps and all43 worker ports, deriving exact shadow partition
+and memory-only matching from the SAME full ledger. Actual Sail public-image
+reads and initialized combined worker memory remain open.

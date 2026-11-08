@@ -1,5 +1,58 @@
 # Circuit formal verification plan
 
+## Complete native seed boundary and memory projection (8 November 2026)
+
+[The complete observed boundary](Airbender/Review/Circuits/ReducedMachine/InitializationSeedBoundary.lean)
+combines ALL32 actual public GPR seeds, including x0, with the SAME actual
+nonpadding RAM seeds. Source register keys derive exact canonical zero-token
+encoding. Register/RAM constructor separation and the existing RAM-domain proof
+derive the complete observed cell/address domain Nodup, exact zero-token encoding
+and every seed clock zero. Final public register observations keep raw timestamps,
+including x0; no public timestamp is silently reset or dropped.
+
+[The proof assembly](Airbender/Proofs/ReducedMachine/NativeInitializationSeedBoundary.lean)
+derives the exact architectural/ROM-shadow partition using the unchanged native
+shadow classifier. All shadow addresses are below4MiB and their actual seed values
+are zero. Partitioned domains remain Nodup and every token/duplicate occurrence
+is preserved by a permutation; architectural ROM byte values are not identified
+with shadow seeds. This is observed support/encoding/classification, not successful
+original Sail reads or independent public image/domain coverage, alignment or an
+initialized combined worker memory history.
+
+The SAME full tagged logical matching derives an actual memory-only permutation:
+complete public GPR+RAM seeds and actual writes match full public teardown and
+actual reads. All43 worker ports, including inactive workers, readonly refreshes,
+OLDREADs and unmasked writes remain. Only the already proved identical inactive
+main and padded initialization contributions are cancelled. No caller-request or
+worker filtering, division, nonzero/inverse answer, compression injectivity or
+expected stream/result premise. A concrete projection simplification hit the
+DEFAULT recursion limit; the entire projection algebra is now generic over
+abstract lists BEFORE native instantiation, at unchanged resource limits.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/InitializationSeedBoundaryTheorems.lean)
+use SAME complete initialization acceptance. Full logical matching/lookups and
+normalized source fidelity remain explicit cryptographic/refinement boundaries.
+No fake Trace.Accepted, initialized worker reads/clocks/keys/accounting, original
+CSR/MOP/worker Sail frame or physical extraction is inferred.
+
+[Eighteen controls](Tests/NativeInitializationSeedBoundary.lean) cover all32/x0/
+x31 seeds, retained final raw x0 timestamps, public memory projection, unique and
+architectural GPR cells, exact shadow cutoff0/4194303/4194304, duplicate retention,
+actual zero shadow tokens distinct from a nonzero value, mixed-domain partition,
+generic duplicate-preserving projection, COMPLETE EMPTY existing acceptance and
+conditional roots. These are pure/reference/structural/empty/conditional, not full
+positive NONEMPTY source/global/worker/physical witnesses, attacks or defects.
+Four modules add33 roots with12 exact parent origins; all5,691 prior ordered roots
+and exact audit bytes remain. Native103 pins, old proofs/acceptance, production,
+Sail, artifacts, fixtures, dependencies, importer/exporter and findings unchanged.
+No new native adoption/pin/generation/heavy replay, axiom or assumption; no parity.
+
+Next: actual public initial-state construction and successful original Sail reads
+for the architectural partition, while retaining separate native ROM shadows,
+then initialized combined memory/worker bounds and caller-worker accounting.
+Canonical zero-token encoding alone is not public image coverage.
+
+
 ## Unique observed native seed domain (8 November 2026)
 
 [The observed seed domain](Airbender/Review/Circuits/ReducedMachine/InitializationSeedDomain.lean)
