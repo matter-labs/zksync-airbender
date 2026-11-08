@@ -6,8 +6,8 @@ import Slop.ISA.Equiv.Hints
 (`Bits w lo n k` hypotheses), clause by clause, without ever simplifying the rest of the chain:
 * a clause whose guard is false (decided from the known bits, `Slice.lean`) is skipped: by `run_ite_false`, the
   clause is `pure none >>= jp`, i.e. the rest of the chain;
-* `currentlyEnabled X` is answered once per extension by a closed kernel computation (`oracle_run`, valid on every
-  `Configured` state);
+* `currentlyEnabled X` is answered by a closed fact about the configuration (`oracle_run`, valid on every
+  `Configured` state): proven once in `Known.lean`, or else by a kernel computation once per walk;
 * it stops at the first clause whose guard is true, leaving that clause's body as the goal.
 Each step looks only at the head of the goal and at one guard, so a walk costs the same per clause however long
 the decoder is. -/
@@ -298,7 +298,7 @@ def mkFunUnit : MetaM Expr :=
 
 /-- Head of `runSail M σ = r` goals. -/
 def splitGoal (g : MVarId) : MetaM (Expr × Expr × Expr) := do
-  let t ← whnfR (← g.getType)
+  let t ← whnfR (← instantiateMVars (← g.getType))
   let some (_, lhs, r) := t.eq? | throwError "walk_decoder: goal is not an equation"
   unless lhs.isAppOfArity ``runSail 3 do throwError "walk_decoder: lhs is not `runSail m σ`"
   return (lhs.getArg! 1, lhs.getArg! 2, r)
@@ -327,10 +327,20 @@ partial def findConj (pred : Expr → MetaM Bool) (G pG : Expr) : MetaM (Option 
     return ← findConj pred y (← mkAppOptM ``and_right #[x, y, pG])
   return none
 
+/-- A configuration fact proven once (`Known.lean`): `Slop.Equiv.Known.<c> : runOracle knownDemo _ m = some v` for
+an extension or register constructor `c`; returns `(v, proof)`. The kernel evaluates `currentlyEnabled` (well-founded
+recursion) slowly, ~0.3 s per extension, so a walk uses these instead of evaluating again. -/
+def knownFact? (c : Name) : MetaM (Option (Expr × Expr)) := do
+  let some ci := (← getEnv).find? (`Slop.Equiv.Known ++ .mkSimple c.lastComponentAsString) | return none
+  let some (_, _, rhs) := ci.type.eq? | return none
+  unless rhs.isAppOfArity ``Option.some 2 do return none
+  return some (rhs.getArg! 1, mkConst ci.name)
+
 structure Ctx where
   facts : Array Fact
   hs : Expr
-  survey : Bool
+  /-- stop at the first undecided guard (leaving it as the goal) instead of failing -/
+  stop : Bool := false
   cache : IO.Ref (Std.HashMap Name (Bool × Expr))
   /-- guards known to hold (inside a clause body): `G = true` proofs -/
   hyps : Array Expr := #[]
@@ -366,11 +376,8 @@ partial def walkLoop (ctx : Ctx) (g0 : MVarId) : MetaM (MVarId × Nat) := do
         if let some g' ← g.withContext (bodyNone ctx g M σ r G) then
           g := g'; skipped := skipped + 1
         else
-          unless ctx.survey do throwError "walk_decoder: undecided guard after {skipped} clauses:{indentExpr G}"
-          logInfo m!"survey: undecided guard after {skipped} clauses:{indentExpr G}"
-          let pG ← mkSorry (← mkEq G (toExpr false)) false
-          g ← g.withContext (step1 g ``run_ite_false #[none, G, M.getArg! 3, M.getArg! 4, σ, r, pG])
-          skipped := skipped + 1
+          if ctx.stop then break
+          throwError "walk_decoder: undecided guard after {skipped} clauses:{indentExpr G}"
     else if M.isAppOfArity ``Bind.bind 6 then
       let (m, f) := (M.getArg! 4, M.getArg! 5)
       let m' ← whnfCore m
@@ -387,17 +394,17 @@ partial def walkLoop (ctx : Ctx) (g0 : MVarId) : MetaM (MVarId × Nat) := do
         | some (true, pG) =>
           g ← g.withContext (step1 g ``run_bind_ite_true #[none, none, G, m'.getArg! 3, m'.getArg! 4, f, σ, r, pG])
         | none =>
-          unless ctx.survey do throwError "walk_decoder: undecided guard after {skipped} clauses:{indentExpr G}"
-          logInfo m!"survey: undecided guard after {skipped} clauses:{indentExpr G}"
-          let pG ← mkSorry (← mkEq G (toExpr false)) false
-          g ← g.withContext (step1 g ``run_bind_ite_false #[none, none, G, m'.getArg! 3, m'.getArg! 4, f, σ, r, pG])
-          skipped := skipped + 1
+          if ctx.stop then break
+          throwError "walk_decoder: undecided guard after {skipped} clauses:{indentExpr G}"
       else if m'.isAppOfArity ``currentlyEnabled 1 then
         let X := m'.getArg! 0
         let key := X.getAppFn.constName?.getD `_
         let (b, pb) ← match (← ctx.cache.get).get? key with
           | some v => pure v
           | none => g.withContext do
+            if let some (v, pv) ← knownFact? key then
+              if v.isConstOf ``Bool.true then return (true, pv)
+              if v.isConstOf ``Bool.false then return (false, pv)
             let mut res : Option (Bool × Expr) := none
             for b in [true, false] do
               let p ← mkEq (← mkAppM ``runOracle #[mkConst ``knownDemo, ← mkFunUnit, m']) (← mkAppM ``Option.some #[toExpr b])
@@ -410,7 +417,10 @@ partial def walkLoop (ctx : Ctx) (g0 : MVarId) : MetaM (MVarId × Nat) := do
       else if m'.isAppOf ``readReg then
         -- a register a program cannot change, of an enumeration type (the privilege): its value from the
         -- configured registers (`oracle_run`), found by deciding its constructor index in the kernel
-        let (v, pv) ← g.withContext do
+        let known ← match m'.appArg!.getAppFn.constName? with
+          | some reg => knownFact? reg
+          | none => pure none
+        let (v, pv) ← if let some vp := known then pure vp else g.withContext do
           let p ← mkAppM ``runOracle #[mkConst ``knownDemo, ← mkFunUnit, m']
           let α := (← inferType p).appArg!
           let ty ← whnf α
@@ -487,25 +497,80 @@ partial def bodyNone (ctx : Ctx) (g : MVarId) (M σ r G : Expr) : MetaM (Option 
         let (M2, _, _) ← splitGoal g2
         let M2 ← whnfCore M2
         unless M2.isAppOfArity ``Pure.pure 4 do
-          logInfo m!"bodyNone stopped at {M2}"
+          unless ctx.stop do logInfo m!"bodyNone stopped at {M2}"
           return false
         let pf ← mkAppM ``runF_pure #[M2.getArg! 3, σ]
         unless ← isDefEq (← inferType pf) (← g2.getType) do return false
         g2.assign pf
         return true
-    catch e => logInfo m!"bodyNone error: {e.toMessageData}"; return false
+    catch e =>
+      unless ctx.stop do logInfo m!"bodyNone error: {e.toMessageData}"
+      return false
   unless ok do return none
   return some (← step1 g ``run_ite_undec #[none, none, G, body, jp, σ, r, hbMv])
 end
 
-def walkDecoder (hs : Syntax) (survey : Bool) : TacticM Unit := withMainContext do
+/-- A walk may start from a definition of a decoder's rest (`decoder_rest%` below): unfold it once. -/
+def unfoldStart (g : MVarId) : MetaM MVarId := g.withContext do
+  let (M, σ, r) ← splitGoal g
+  let M' ← whnfCore M
+  if M'.isAppOf ``ext_decode || M'.isAppOf ``encdec_backwards || !M'.getAppFn.isConst ||
+      M'.isAppOfArity ``ite 5 || M'.isAppOfArity ``Bind.bind 6 || M'.isAppOfArity ``Pure.pure 4 then
+    return g
+  let some M'' ← delta? M' | return g
+  g.replaceTargetDefEq (← mkEq (← mkAppM ``runSail #[← whnfCore M'', σ]) r)
+
+def walkDecoder (hs : Syntax) : TacticM Unit := withMainContext do
   let hs ← elabTerm hs none
   let facts ← getFacts
   let cache ← IO.mkRef {}
-  let (g, skipped) ← walkLoop { facts, hs, survey, cache } (← getMainGoal)
+  let (g, skipped) ← walkLoop { facts, hs, cache } (← unfoldStart (← getMainGoal))
   replaceMainGoal [g]
   logInfo m!"walk_decoder: skipped {skipped} clauses"
 
-elab "walk_decoder " hs:term : tactic => walkDecoder hs false
+elab "walk_decoder " hs:term : tactic => walkDecoder hs
+
+/-! Walking a shared prefix once. Rows of the decoder table that share some known bits (e.g. opcode and
+`funct3`) skip the same long run of clauses. `decoder_rest% w ⟨lo, n, k⟩ …` is the decoder program left after
+skipping every clause decided by those bits alone (the walk stopped at the first clause they do not decide), as a
+term in `w`; `walk_decoder_rest hs` proves `runSail (ext_decode w) σ = runSail (R w) σ` for such a definition `R`
+(the same walk, then both sides agree by unfolding `R`). A row then rewrites with that lemma and walks only the
+rest. -/
+
+/-- Run `k` with a word `w`, a state `σ`, `hs : Configured σ` and one `Bits w lo n k` hypothesis per fact. -/
+def withDecoderFacts {α : Type} (w : Expr) (fs : List (Nat × Nat × Nat)) (k : Expr → Expr → MetaM α) : MetaM α :=
+  withLocalDeclD `σ (mkConst ``SailState) fun σ => do
+    withLocalDeclD `hs (← mkAppM ``Airbender.Configured #[σ]) fun hs => do
+      let rec go : List (Nat × Nat × Nat) → MetaM α
+        | [] => k σ hs
+        | (lo, n, v) :: rest => do
+          withLocalDeclD `h (mkAppN (mkConst ``Bits) #[w, mkNatLit lo, mkNatLit n, mkNatLit v]) fun _ => go rest
+      go fs
+
+syntax "decoder_rest% " ident ("⟨" num "," num "," num "⟩")* : term
+
+elab_rules : term
+  | `(decoder_rest% $w $[⟨$los, $ns, $ks⟩]*) => do
+    let w ← Term.elabTerm w (some (mkApp (mkConst ``BitVec) (mkNatLit 32)))
+    let fs := (los.zip (ns.zip ks)).toList.map fun (a, b, c) => (a.getNat, b.getNat, c.getNat)
+    withDecoderFacts w fs fun σ hs => do
+      let lhs ← mkAppM ``runSail #[← mkAppM ``ext_decode #[w], σ]
+      withLocalDeclD `r (← inferType lhs) fun r => do
+        let g ← mkFreshExprSyntheticOpaqueMVar (← mkEq lhs r)
+        let (g', skipped) ← walkLoop { facts := ← getFacts, hs, stop := true, cache := ← IO.mkRef {} } g.mvarId!
+        let (M, _, _) ← g'.withContext (splitGoal g')
+        let M ← instantiateMVars M
+        if M.hasMVar || (M.hasAnyFVar fun x => x != w.fvarId!) then
+          throwError "decoder_rest%: the rest of the decoder depends on more than the word:{indentExpr M}"
+        logInfo m!"decoder_rest%: skipped {skipped} clauses"
+        return M
+
+/-- `runSail (ext_decode w) σ = runSail (R w) σ` for `R` defined by `decoder_rest%` with the known bits in context. -/
+elab "walk_decoder_rest " hs:term : tactic => withMainContext do
+  let hs ← elabTerm hs none
+  let (g, _) ← walkLoop { facts := ← getFacts, hs, stop := true, cache := ← IO.mkRef {} } (← getMainGoal)
+  -- `runSail M σ = runSail (R w) σ`, `M` the body of `R` at `w`
+  g.refl
+  replaceMainGoal []
 
 end Slop.Equiv

@@ -1,4 +1,4 @@
-import Slop.ISA.Equiv.Walk
+import Slop.ISA.Equiv.Known
 import Mathlib.Tactic.IntervalCases
 
 /-! Closing a decoder row after `walk_decoder`: Sail's decoded instruction (fields as bit slices of the word)

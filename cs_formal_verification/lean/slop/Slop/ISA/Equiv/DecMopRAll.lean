@@ -1,13 +1,10 @@
-import Slop.ISA.Equiv.DecMopR1
-import Slop.ISA.Equiv.DecMopR2
-import Slop.ISA.Equiv.DecMopR3
+import Slop.ISA.Equiv.DecMopR
 
-/-! Sail's decoder on every word our `RV.decodeMopR` accepts: the case of `N` by its bits (`DecMopR1` … `3`). -/
+/-! Sail's decoder on every word our `RV.decodeMopR` accepts: the case of `N` by its bits (`DecMopR`). -/
 
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
-set_option maxHeartbeats 400000
 
 /-- `N` as a number (all 32 cases checked). -/
 theorem toNat_mopN : ∀ (a : BitVec 1) (b c : BitVec 2), (a ++ b ++ c).toNat = a.toNat * 16 + b.toNat * 4 + c.toNat := by

@@ -1,7 +1,9 @@
 import Slop.ISA.Equiv.Alu
 
 /-! Sail's `execute` on our ALU instructions (in Sail's names, `toSail`): the result is our `RV.alu` value
-written to `rd`. -/
+written to `rd`. Each proof first moves from `Airbender.execute` to the one `execute_X` the instruction dispatches to
+(by unfolding the dispatch on a known constructor, `rfl`), then runs only that small function: `simp` with Sail's
+~400-case `execute` costs ~10 s per call. -/
 
 open Sail SailRV32 SailRV32.Functions Human
 
@@ -22,13 +24,22 @@ theorem sext12 (x : BitVec 12) : sign_extend (m := 32) ((x.signExtend 32).extrac
   simp [sign_extend, Sail.BitVec.signExtend, BitVec.getLsbD_signExtend, BitVec.getLsbD_extractLsb']
   by_cases h : j < 12 <;> simp [h, hj, BitVec.msb_eq_getLsbD_last, BitVec.getMsbD_eq_getLsbD, BitVec.getElem_signExtend]
 
+/-- Sail's immediate operations of ours (what `toSail` gives for `opImm`). -/
+def sailIop : RV.Op → iop
+  | .slt => .SLTI | .sltu => .SLTIU | .xor => .XORI | .or => .ORI | .and => .ANDI | _ => .ADDI
+def sailSop : RV.Op → sop
+  | .srl => .SRLI | .sra => .SRAI | _ => .SLLI
+
 theorem exec_itype (σ : SailState) (rs1 rd : BitVec 5) (x : BitVec 12) (o : RV.Op)
     (ho : o = .add ∨ o = .slt ∨ o = .sltu ∨ o = .xor ∨ o = .or ∨ o = .and) :
     runSail (Airbender.execute next (Airbender.toSail (.opImm o rd rs1 (x.signExtend 32)))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (RV.alu o (xget σ rs1) (x.signExtend 32))) := by
+  have e : Airbender.execute next (Airbender.toSail (.opImm o rd rs1 (x.signExtend 32))) =
+      execute_ITYPE ((x.signExtend 32).extractLsb' 0 12) (.Regidx rs1) (.Regidx rd) (sailIop o) := by
+    rcases ho with rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
+  rw [e]
   rcases ho with rfl | rfl | rfl | rfl | rfl | rfl <;>
-  simp only [Airbender.toSail, Airbender.execute, execute, execute_ITYPE, Slop.runF_bind, rX_run, wX_run,
-    Slop.runF_pure, RV.alu, sext12, slt_eq, sltu_eq]
+  simp only [execute_ITYPE, sailIop, Slop.runF_bind, rX_run, wX_run, Slop.runF_pure, RV.alu, sext12, slt_eq, sltu_eq]
 
 theorem exec_op_alu (σ : SailState) (rs2 rs1 rd : BitVec 5) (o : RV.Op)
     (ho : o = .add ∨ o = .sub ∨ o = .sll ∨ o = .slt ∨ o = .sltu ∨ o = .xor ∨ o = .srl ∨ o = .sra ∨ o = .or ∨ o = .and) :
@@ -40,20 +51,28 @@ theorem exec_op_alu (σ : SailState) (rs2 rs1 rd : BitVec 5) (o : RV.Op)
 theorem exec_shiftiop (σ : SailState) (rs1 rd sh : BitVec 5) (o : RV.Op) (ho : o = .sll ∨ o = .srl ∨ o = .sra) :
     runSail (Airbender.execute next (Airbender.toSail (.opImm o rd rs1 (sh.zeroExtend 32)))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (RV.alu o (xget σ rs1) (sh.zeroExtend 32))) := by
+  have e : Airbender.execute next (Airbender.toSail (.opImm o rd rs1 (sh.zeroExtend 32))) =
+      execute_SHIFTIOP ((sh.zeroExtend 32).extractLsb' 0 6) (.Regidx rs1) (.Regidx rd) (sailSop o) := by
+    rcases ho with rfl | rfl | rfl <;> rfl
+  rw [e]
   rcases ho with rfl | rfl | rfl <;>
-  simp only [Airbender.toSail, Airbender.execute, execute, execute_SHIFTIOP, Slop.runF_bind, rX_run, wX_run,
-    Slop.runF_pure, RV.alu, sll6_eq, srl6_eq, sra6_eq]
+  simp only [execute_SHIFTIOP, sailSop, Slop.runF_bind, rX_run, wX_run, Slop.runF_pure, RV.alu, sll6_eq, srl6_eq, sra6_eq]
 
 theorem exec_mext (σ : SailState) (rs2 rs1 rd : BitVec 5) (o : RV.Op) (ho : o = .mul ∨ o = .mulhu ∨ o = .divu ∨ o = .remu) :
     runSail (Airbender.execute next (Airbender.toSail (.op o rd rs1 rs2))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (RV.alu o (xget σ rs1) (xget σ rs2))) := by
-  rcases ho with rfl | rfl | rfl | rfl <;>
-  simp only [Airbender.toSail, Airbender.execute, execute, execute_MUL, execute_DIV, execute_REM, Slop.runF_bind,
-    rX_run, Slop.runF_pure, RV.alu, mult_to_bits_half, Functions.xlen, ite_true, SailRV32.not,
-    Bool.not_true, Bool.false_and, Bool.false_eq_true, ite_false] <;> simp only [wX_run] <;>
-  congr 2 <;> apply BitVec.eq_of_toNat_eq <;>
-  simp [to_bits_truncate, get_slice_int, Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.toNatInt,
-    mul_int, mulhu_nat, divu_nat, remu_nat]
+  rcases ho with rfl | rfl | rfl | rfl <;> [
+    change runSail (execute_MUL (.Regidx rs2) (.Regidx rs1) (.Regidx rd) ⟨.Low, .Signed, .Signed⟩) σ = _;
+    change runSail (execute_MUL (.Regidx rs2) (.Regidx rs1) (.Regidx rd) ⟨.High, .Unsigned, .Unsigned⟩) σ = _;
+    change runSail (execute_DIV (.Regidx rs2) (.Regidx rs1) (.Regidx rd) true) σ = _;
+    change runSail (execute_REM (.Regidx rs2) (.Regidx rs1) (.Regidx rd) true) σ = _]
+  all_goals
+    simp only [execute_MUL, execute_DIV, execute_REM, Slop.runF_bind,
+      rX_run, Slop.runF_pure, RV.alu, mult_to_bits_half, Functions.xlen, ite_true, SailRV32.not,
+      Bool.not_true, Bool.false_and, Bool.false_eq_true, ite_false] <;> simp only [wX_run] <;>
+    congr 2 <;> apply BitVec.eq_of_toNat_eq <;>
+    simp [to_bits_truncate, get_slice_int, Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.toNatInt,
+      mul_int, mulhu_nat, divu_nat, remu_nat]
 
 theorem upper_eq (u : BitVec 20) :
     sign_extend (m := 32) ((u ++ (0 : BitVec 12)).extractLsb' 12 20 ++ 0x000#12) = u ++ (0 : BitVec 12) := by
@@ -70,14 +89,14 @@ theorem upper_eq (u : BitVec 20) :
 theorem exec_lui (σ : SailState) (rd : BitVec 5) (u : BitVec 20) :
     runSail (Airbender.execute next (Airbender.toSail (.lui rd (u ++ (0 : BitVec 12))))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (u ++ (0 : BitVec 12))) := by
-  simp only [Airbender.toSail, Airbender.execute, execute, execute_UTYPE, Slop.runF_bind, Slop.runF_pure,
-    upper_eq, wX_run]
+  change runSail (execute_UTYPE ((u ++ (0 : BitVec 12)).extractLsb' 12 20) (.Regidx rd) .LUI) σ = _
+  simp only [execute_UTYPE, Slop.runF_bind, Slop.runF_pure, upper_eq, wX_run]
 
 theorem exec_auipc (σ : SailState) (rd : BitVec 5) (u : BitVec 20) :
     runSail (Airbender.execute next (Airbender.toSail (.auipc rd (u ++ (0 : BitVec 12))))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (σ.regs .PC + (u ++ (0 : BitVec 12)))) := by
-  simp only [Airbender.toSail, Airbender.execute, execute, execute_UTYPE, Slop.runF_bind, Slop.runF_pure,
-    upper_eq, wX_run, get_arch_pc]
+  change runSail (execute_UTYPE ((u ++ (0 : BitVec 12)).extractLsb' 12 20) (.Regidx rd) .AUIPC) σ = _
+  simp only [execute_UTYPE, Slop.runF_bind, Slop.runF_pure, upper_eq, wX_run, get_arch_pc]
   rw [Slop.runF_readReg]
 
 end Slop.Equiv
