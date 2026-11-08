@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.InitializationSorted
+import Airbender.Proofs.ReducedMachine.NativeInitializationSorted
+import Airbender.Review.Circuits.ReducedMachine.InitializationSortedTheorems
+import Tests.NativeInitializationSorted
+
 import Airbender.Review.Circuits.ReducedMachine.PhysicalScalar16Setup
 import Airbender.Proofs.ReducedMachine.NativePhysicalScalar16Setup
 import Airbender.Review.Circuits.ReducedMachine.Scalar16Lookups
@@ -6348,3 +6353,25 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeScalar16Lookups.conditional_all_query_bounds
 #print axioms Airbender.Tests.NativeScalar16Lookups.conditional_address_word
 #print axioms Airbender.Tests.NativeScalar16Lookups.complete_conditional_component
+
+#print axioms Airbender.NativeInitializationSortedProofs.comparison
+#print axioms Airbender.NativeInitializationSortedProofs.padding_address
+#print axioms Airbender.NativeInitializationSortedProofs.local_order
+#print axioms Airbender.NativeInitializationSortedProofs.sequence_order
+#print axioms Airbender.NativeInitializationSortedProofs.adjacent_order
+#print axioms Airbender.NativeInitializationSortedProofs.full_order
+#print axioms Airbender.NativeInitializationSortedProofs.nonpadding_unique
+#print axioms Airbender.NativeInitializationSortedProofs.token_unique
+#print axioms Airbender.NativeInitializationSorted.native_initialization_sorted
+#print axioms Airbender.NativeInitializationSorted.native_initialization_nonpadding_unique
+#print axioms Airbender.Tests.NativeInitializationSorted.low_limb_carry_direction
+#print axioms Airbender.Tests.NativeInitializationSorted.radix_boundary_direction
+#print axioms Airbender.Tests.NativeInitializationSorted.full_rv32_comparison
+#print axioms Airbender.Tests.NativeInitializationSorted.descending_padding_rejection
+#print axioms Airbender.Tests.NativeInitializationSorted.unsigned_wrap_rejected_by_padding
+#print axioms Airbender.Tests.NativeInitializationSorted.complete_body_repeated_padding
+#print axioms Airbender.Tests.NativeInitializationSorted.nonadjacent_strict_growth
+#print axioms Airbender.Tests.NativeInitializationSorted.repeated_zero_padding_retained
+#print axioms Airbender.Tests.NativeInitializationSorted.compared_and_observed_domains
+#print axioms Airbender.Tests.NativeInitializationSorted.complete_conditional_sorted
+#print axioms Airbender.Tests.NativeInitializationSorted.complete_conditional_unique

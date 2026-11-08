@@ -685,3 +685,11 @@ family queries on the constructed prefix/zero-tail table. The last normalization
 value is derived symbolically. Logical lookup membership remains an explicit
 cryptographic extraction boundary; no initialized worker history or accounting
 is supplied, and original execution is unchanged.
+
+## Natural initialization sorting
+
+[Actual same-main sorting and nonpadding uniqueness](../../../Circuits/ReducedMachine/InitializationSortedTheorems.lean) follow from
+the existing complete source, derived full-family address ranges, native
+subtraction and six padding polynomials. All ordinary rows are included; repeated
+padding remains. Public windows/image/seeds and combined worker memory history
+are separate obligations; original execution is unchanged.

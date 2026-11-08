@@ -1,5 +1,55 @@
 # Trust and review boundaries
 
+## Natural native initialization sorting and global uniqueness (8 November 2026)
+
+[Actual initialization addresses](Airbender/Review/Circuits/ReducedMachine/InitializationSorted.lean)
+use canonical low/high field representatives as an unsigned radix32 Nat word.
+[The calculations](Airbender/Proofs/ReducedMachine/NativeInitializationSorted.lean)
+reuse the unchanged two-limb borrow theorem. The SAME complete source and full
+actual-family logical lookup boundary derive both current/next address ranges;
+the original complete BODY derives remainder ranges and Boolean borrows.
+The actual adjacent polynomials then derive high-borrow1 exactly when the current
+address is strictly smaller. No desired comparison bit or order is supplied.
+No whole-word cast into M31 is used, including for addresses above its modulus.
+
+The six native padding polynomials force all six current record fields to zero
+when high-borrow is zero. Thus EVERY adjacent ordinary pair is weakly increasing,
+and every nonpadding current record is strictly smaller than its successor.
+An abstract finite-sequence induction derives weak order across the complete
+8,388,607-row ordinary domain and strict order from any nonpadding record to ANY
+later ordinary record. Global uniqueness of nonpadding actual token addresses
+follows through the existing lossless address binding. Duplicate padding records
+and tokens remain. All 8,388,606 source comparisons are used; the last ordinary
+record is included and the reserved normalized last row is excluded.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/InitializationSortedTheorems.lean)
+retain the SAME existing acceptance relation. Full-family logical lookup and
+full-token logical matching remain explicit cryptographic extraction boundaries;
+this milestone introduces neither a new desired-result premise nor physical
+proof extraction. Public first/one-before-last/chunk-window/image and seed rules,
+combined chronological memory history, initialized worker reads/raw clocks,
+active stage2 key refinement and caller-worker accounting remain open. Original
+execution is unchanged and still excludes CSR/MOP; no Sail frame crosses an
+unproved delegated action.
+
+[Eleven controls](Tests/NativeInitializationSorted.lean) check low borrow,
+radix carry, full RV32 words above M31, descending/wrap source slices rejected
+by padding, the unchanged complete CSR BODY with its zero record, repeated
+zero padding, nonadjacent finite growth, exact domains and conditional roots.
+Source slices and finite references are NOT full positive nonempty main-aux,
+global, worker or physical witnesses, attacks or native-defect evidence.
+Four modules add 21 explicit roots with eight exact parent origins; all 5,539
+prior ordered roots and source bytes remain. Native101 pins, dependencies,
+artifacts, fixtures, production code, Sail and findings are unchanged. No native
+generation or closed heavy replay. General refinement, cryptographic extraction,
+completeness and checked parity remain separate and open.
+
+Next: inspect and pin actual public first/one-before-last and chunk-window
+sources before adapting their rules, then connect the sorted initialization
+records to public seeds and combined memory history. Sorting alone supplies
+neither public image coverage nor initialized worker semantics.
+
+
 ## Constructed native scalar setup and logical address bounds (8 November 2026)
 
 [The constructed setup](Airbender/Review/Circuits/ReducedMachine/PhysicalScalar16Setup.lean)
