@@ -7,20 +7,52 @@ public import Mathlib.Tactic.IntervalCases
 
 namespace Airbender.Blake2G.Control.Proofs
 
-set_option maxRecDepth 8192 in
+private theorem lanes_bounded : ∀ m : Fin 8, ∀ k (h : k < 4), stateLanes[m][k] < 16 := by
+  decide
+
+private theorem schedule_bounded :
+    ∀ r : Fin 10, ∀ k (h : k < 16), messageSchedule[r][k] < 16 := by
+  decide
+
+private theorem lanes_distinct : ∀ m : Fin 8, stateLanes[m].toList.Pairwise (· ≠ ·) := by decide
+
+/-- Every row of `step`: a counter byte, then six word indices below 16. -/
+private theorem step_row_bounded (input : Input) :
+    (step input).row[0] < 256 ∧ ∀ j : Fin 6, (step input).row[j.val + 1] < 16 := by
+  have register := input.register.isLt
+  unfold step
+  split
+  · refine ⟨by simp [Output.row], fun j => ?_⟩
+    fin_cases j <;> simp [Output.row]
+  · refine ⟨?_, fun j => ?_⟩
+    · simp only [Output.row, Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_zero]
+      split_ifs <;> omega
+    fin_cases j <;> simp only [Output.row, Vector.getElem_mk, List.getElem_toArray,
+      List.getElem_cons_zero, List.getElem_cons_succ, Nat.reduceAdd] <;> first
+      | exact lanes_bounded _ _ (by decide)
+      | exact schedule_bounded _ _ (by omega)
+
 /-- All 512 modeled rows have canonical eight-bit outputs; lane bounds are
-    checked separately below. This finite calculation is kernel checked. -/
+    checked separately below. -/
 theorem controller_bounded : ∀ key : Fin 512, ∀ j : Fin 7, (controllerRows key)[j] < 256 := by
-  decide
+  intro key j
+  have bounds := step_row_bounded ⟨⟨key.val % 256, Nat.mod_lt _ (by decide)⟩, decide (256 ≤ key.val)⟩
+  unfold controllerRows
+  by_cases first : j.val = 0
+  · simpa only [Fin.getElem_fin, first] using bounds.1
+  · have lane := bounds.2 ⟨j.val - 1, by omega⟩
+    simp only [Nat.sub_add_cancel (Nat.pos_of_ne_zero first)] at lane
+    simp only [Fin.getElem_fin]
+    omega
 
-set_option maxRecDepth 8192 in
-theorem controller_lanes : ∀ key : Fin 512, ∀ j : Fin 6, (controllerRows key)[j.val + 1] < 16 := by
-  decide
+theorem controller_lanes : ∀ key : Fin 512, ∀ j : Fin 6, (controllerRows key)[j.val + 1] < 16 :=
+  fun key => (step_row_bounded ⟨⟨key.val % 256, Nat.mod_lt _ (by decide)⟩,
+    decide (256 ≤ key.val)⟩).2
 
-set_option maxRecDepth 8192 in
-private theorem active_rows_distinct : ∀ register : Fin 256,
+private theorem active_rows_distinct (register : Fin 256) :
     (step ⟨register, true⟩).stateOffsets.toList.Pairwise (· ≠ ·) := by
-  decide
+  simp only [step, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
+  exact lanes_distinct _
 
 /-- Every active modeled controller row selects four different state words. -/
 theorem active_state_distinct (input : Input) (active : input.active = true) :

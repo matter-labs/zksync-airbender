@@ -12,6 +12,14 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
+/-- One active controller step advances the scheduled counter, for every call at once. -/
+private theorem step_register (reduced : Bool) (i : Nat) (bound : i < callCount reduced)
+    (small : (controlAt reduced i).lo < 256) :
+    (Control.step ⟨⟨(controlAt reduced i).lo, small⟩, true⟩).register = controlAt reduced (i + 1) := by
+  have index : i % callCount reduced = i := Nat.mod_eq_of_lt bound
+  cases reduced <;> simp only [callCount, Bool.false_eq_true, ↓reduceIte] at bound index <;>
+    simp [Control.step, controlAt, callCount, index] <;> split_ifs <;> omega
+
 theorem forced_control_step {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
     {w : Nat → ZMod p} (reduced : Bool) (i : Nat) (bound : i < callCount reduced)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
@@ -31,10 +39,8 @@ theorem forced_control_step {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
   have result : output = Control.step input :=
     Control.Proofs.soundness hp input output w ⟨holds, ⟨current.symm, active, rfl⟩⟩
   have update := congrArg Control.Output.register result
-  have scheduled : (Control.step input).register = controlAt reduced (i + 1) := by
-    cases reduced <;> simp only [callCount, Bool.false_eq_true, ↓reduceIte] at bound
-    all_goals interval_cases i
-    all_goals rfl'
+  have scheduled : (Control.step input).register = controlAt reduced (i + 1) :=
+    step_register reduced i bound controlBound
   exact update.trans scheduled
 
 end Airbender.Blake2G.Proofs
