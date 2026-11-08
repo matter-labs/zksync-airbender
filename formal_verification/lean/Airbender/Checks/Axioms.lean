@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.Blake2Worker.Finalization
+import Airbender.Proofs.ReducedMachine.NativeWorkerFinalization
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerFinalizationTheorems
+import Tests.NativeWorkerFinalization
+
 import Airbender.Review.Circuits.Blake2Worker.ExtendedOutput
 import Airbender.Proofs.ReducedMachine.NativeWorkerExtendedOutput
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerExtendedOutputTheorems
@@ -7810,3 +7815,37 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerExtendedOutput.corrupt_d_write_rejected
 #print axioms Airbender.Tests.NativeWorkerExtendedOutput.inactive_requests_retained
 #print axioms Airbender.Tests.NativeWorkerExtendedOutput.complete_counted
+
+#print axioms Airbender.NativeWorkerFinalizationProofs.xor79
+#print axioms Airbender.NativeWorkerFinalizationProofs.xor97
+#print axioms Airbender.NativeWorkerFinalizationProofs.xor88
+#print axioms Airbender.NativeWorkerFinalizationProofs.xor_limb
+#print axioms Airbender.NativeWorkerFinalizationProofs.xor_word
+#print axioms Airbender.NativeWorkerFinalizationProofs.write_value
+#print axioms Airbender.NativeWorkerFinalizationProofs.selector
+#print axioms Airbender.NativeWorkerFinalizationProofs.by_gate
+#print axioms Airbender.NativeWorkerFinalizationProofs.finalization
+#print axioms Airbender.NativeWorkerFinalizationProofs.row
+#print axioms Airbender.NativeWorkerFinalizationProofs.counted
+#print axioms Airbender.NativeWorkerFinalization.native_worker_finalization
+#print axioms Airbender.NativeWorkerFinalization.native_counted_worker_finalization
+#print axioms Airbender.Tests.NativeWorkerFinalization.nonzero_xor_reference
+#print axioms Airbender.Tests.NativeWorkerFinalization.control_choices
+#print axioms Airbender.Tests.NativeWorkerFinalization.no_onehot_requirement
+#print axioms Airbender.Tests.NativeWorkerFinalization.pure_wide_control
+#print axioms Airbender.Tests.NativeWorkerFinalization.full_local_finalization
+#print axioms Airbender.Tests.NativeWorkerFinalization.full_local_copy
+#print axioms Airbender.Tests.NativeWorkerFinalization.zero_local_writes
+#print axioms Airbender.Tests.NativeWorkerFinalization.actual_port_values
+#print axioms Airbender.Tests.NativeWorkerFinalization.selected_copy
+#print axioms Airbender.Tests.NativeWorkerFinalization.selected_xor
+#print axioms Airbender.Tests.NativeWorkerFinalization.all_state_words
+#print axioms Airbender.Tests.NativeWorkerFinalization.original_extended_results
+#print axioms Airbender.Tests.NativeWorkerFinalization.weighted_messages_retained
+#print axioms Airbender.Tests.NativeWorkerFinalization.corrupt_first_copy_rejected
+#print axioms Airbender.Tests.NativeWorkerFinalization.corrupt_last_copy_rejected
+#print axioms Airbender.Tests.NativeWorkerFinalization.corrupt_ac_xor_rejected
+#print axioms Airbender.Tests.NativeWorkerFinalization.corrupt_bd_xor_rejected
+#print axioms Airbender.Tests.NativeWorkerFinalization.corrupt_selector_rejected
+#print axioms Airbender.Tests.NativeWorkerFinalization.inactive_requests_retained
+#print axioms Airbender.Tests.NativeWorkerFinalization.complete_counted

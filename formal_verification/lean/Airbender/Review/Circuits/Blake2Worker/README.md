@@ -336,3 +336,10 @@ reference round/hash and physical schedules remain open.
 checked diagonal G results, retaining all eight G calls and initialized replay on
 the SAME counted source. First8-state finalization, full worker reference hash
 and physical round schedules remain open.
+
+## Actual native state-write finalization
+
+[Finalization](../../Trace/Families/ReducedMachine/WorkerFinalizationTheorems.lean) derives all8 actual state words as selected base/extended
+XOR or exact previous-read copies, retaining all G/extended-write/replay effects
+on the SAME counted source. Full reference worker round/hash assembly and physical
+round schedules remain open.

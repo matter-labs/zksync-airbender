@@ -1,5 +1,55 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Actual native state-write finalization (8 November 2026)
+
+[Finalization observables](Airbender/Review/Circuits/Blake2Worker/Finalization.lean)
+retain all8 actual state-write words, previous-read words, configured/read bases
+and the native finalization selector. FULL unchanged352-equation/296-query BODY
+on the actual344384-row fixed pool derives EVERY state word: when selected,
+base XOR actualextended[word] XOR actualextended[word+8]; otherwise the exact
+previous state-read word. Actual x12 input bits derive round9 OR(reduce AND round6)
+for the selector. Zero/multiple round masks and wide selected messages remain.
+
+[Short TRACE roots](Airbender/Review/Trace/Families/ReducedMachine/WorkerFinalizationTheorems.lean)
+provide full-BODY-only local finalization and SAME counted source consequences.
+Original public image/log20, OLD LogicalLookups and OLD explicit SourceIdentity
+retain all8 G results, all16 extended writes and full initialized exact raw-token
+replay, word bounds, capacity, dependencies, controls and messages for EVERY
+ordinary worker, including inactive. No expected read/value/range/result, one-hot
+mask, round, schedule, history or fulfilled ledger is supplied.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeWorkerFinalization.lean)
+binds all192 fields of64 query ASTs,16 split ASTs,2 selector ASTs and16 gated-write
+ASTs BEFORE witness evaluation. Physical-to-logical coordinates are explicit.
+Existing canonical7/9,9/7,8/8 packing and XOR lemmas are reused unchanged. Actual
+A/C carried expressions and B/D chunks reconnect to the previous16 extended writes.
+Whole Fin-coordinate equalities precede field transport; typed16-bit append facts
+precede32-bit assembly. Old finalization Boolean and exact ABI ports1..8 value
+bindings are reused unchanged. Existing full extended-CS Git67ee bytes were
+rechecked;674..872 read before XOR prototype,182..258 before selector prototype.
+Specific bindings are not general Rust/JSON/compiler/physical refinement. No new
+pin, artifact, importer, generation or heavy certificate replay.
+
+[Twenty controls](Tests/NativeWorkerFinalization.lean) retain an independently
+computed nonzero XOR vector, actual control choices including multiple bits, pure
+wide65537, old complete LOCAL BODY/copy/zeros, actual ports and all state effects.
+Corrupt first/last copies, A/C and B/D XOR chunks and selector reject the FULL BODY.
+Prior extended/message results, inactive requests and full counted acceptance stay.
+Pure/reference/oldLOCAL/conditional only, not new nonempty source-global/whole-worker/
+physical witnesses, attacks, defects or absent-enforcement evidence. Zero-pointer
+aliases remain visible; no compatible global history is fabricated.
+
+All43 ports, BOTH raw times, aliases, readonly refreshes, OLDREADs, AUX/m0 poles,
+inactiveD, caller equations, unmasked SW and public x0 times stay. Caller requests
+are never filtered. Public ordinary7-or-CSR excludes MOP; original seven-profile
+Sail excludes CSR/MOP. Four modules add33 roots and15 exact parent references,
+preserving all6,723 prior ordered roots and audit bytes addition-only. Native107
+pins, v3 reference, dependencies, production, original Sail, old acceptance and
+FINDINGS stay. Assembled full reference worker round/hash, physical round schedules,
+inactive caller activity/converse accounting, MOP public custom execution, original
+CSR/MOP/worker Sail, physical cryptography, completeness and parity remain open.
+
+
 ## Actual native extended-state write results (8 November 2026)
 
 [Output observables](Airbender/Review/Circuits/Blake2Worker/ExtendedOutput.lean)
