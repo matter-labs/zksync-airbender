@@ -518,3 +518,10 @@ replay and word bounds. Second G steps, full hash and physical schedules remain 
 from FULL native BODY and the SAME initialized counted source. Actual B bounds,
 native carry bits and prior weighted messages supply inputs; all prior effects stay.
 Second C/B, diagonal calls, full hash and physical schedules remain open.
+
+## Complete native column G arithmetic
+
+[Column G](../../Trace/Families/ReducedMachine/WorkerColumnGTheorems.lean) derives second C wrapping additions/B XORrotate7 and assembles
+all four COLUMN intermediate output vectors into pure G with derived pre-G inputs
+and weighted messages from the SAME counted source. Prior effects stay. Diagonal
+calls, finalization/full worker hash and physical schedules remain open.

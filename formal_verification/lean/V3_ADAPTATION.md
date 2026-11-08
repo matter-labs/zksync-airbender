@@ -1,5 +1,59 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Complete native column G arithmetic (8 November 2026)
+
+[Second C/B and column observables](Airbender/Review/Circuits/Blake2Worker/SecondCB.lean)
+retain actual second C carries/sums, rotated B chunks and all four intermediate
+outputs, with a pure G-function reference. FULL unchanged352-equation/296-query
+BODY on the actual344384-row fixed pool derives all8 Boolean second C carries,
+all8 C-limb u16 bounds and four exact B XOR/rotate7 results. Actual second D-output
+byte bounds/packing and already-derived first C bounds prove four second C wrapping
+additions. Prior actual B packing chains the final B rotations to first B results.
+
+[Short TRACE roots](Airbender/Review/Trace/Families/ReducedMachine/WorkerColumnGTheorems.lean)
+assemble ALLFOUR COLUMN G intermediate output vectors into the pure G reference
+on already-derived pre-G inputs and canonical ten-weight message words, under the
+SAME counted source, original public image/log20, OLD LogicalLookups and OLD explicit
+SourceIdentity. Every ordinary worker, including inactive, retains prior exact
+initialized raw-token replay, word bounds, capacity, dependencies, controls and
+all preceding arithmetic. Zero/multiple masks and wide weighted messages stay;
+no expected read/value/range/result, one-hot mask, round, schedule, history or
+fulfilled ledger is supplied. This is column G arithmetic with weighted messages;
+diagonal calls, finalization/write-result connections and a standard full worker
+round/hash remain open.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeWorkerSecondCB.lean) proves
+generic7/9-bit canonical packing and symbolic rotate7 before native data. All
+three fields of16 actual queries and16 prior second D-output bindings are kernel-
+checked before witness evaluation. Explicit bounds precede natural arithmetic;
+old width-parametric XOR, byte packing, no-wrap and wide-add lemmas are reused.
+Full existing pinned G-source bytes were checked against Git67ee and920..1055
+read before the first prototype. The eight old step anchors were reread after
+that prototype, before the milestone commit. Specific bindings are not general
+Rust/JSON/compiler/physical refinement. No new pin, importer, artifact, generation
+or heavy certificate replay.
+
+[Seventeen controls](Tests/NativeWorkerColumnG.lean) cover an independently computed
+nonzero G reference vector, wrap/rotate7, maximal7/9 chunks, symbolic rotation,
+the old complete LOCAL BODY and zero outputs; all carries/bounds/additions/chained
+rotations/column outputs; retained weighted messages, corrupt B-output rejection,
+inactive caller requests and full counted acceptance. Pure/reference/oldLOCAL/
+conditional only, not new nonempty source-global/whole-worker/physical witnesses,
+attacks, defects or absent-enforcement evidence. Zero-pointer aliases stay visible;
+no compatible global history is fabricated.
+
+All43 ports, BOTH raw times, aliases, readonly refreshes, OLDREADs, AUX/m0 poles,
+inactiveD, caller equations, unmasked SW and public x0 times stay; caller requests
+are never filtered. Public ordinary7-or-CSR excludes MOP; original seven-profile
+Sail excludes CSR/MOP. Logical boundaries remain explicit, not physical crypto.
+Four modules add32 roots and9 exact parent references, preserving all6,539 prior
+ordered roots and exact audit bytes addition-only. Native107 pins, v3 reference,
+dependencies, production, old acceptance, original Sail and FINDINGS stay.
+Diagonal G calls, output finalization/full worker round/hash, physical schedules,
+inactive caller activity/converse accounting, MOP public custom execution, original
+CSR/MOP/worker Sail, physical cryptography, completeness and parity remain open.
+
+
 ## Second native column A/D steps (8 November 2026)
 
 [Second A/D observables](Airbender/Review/Circuits/Blake2Worker/SecondAD.lean)

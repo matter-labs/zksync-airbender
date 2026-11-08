@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.Blake2Worker.SecondCB
+import Airbender.Proofs.ReducedMachine.NativeWorkerSecondCB
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerColumnGTheorems
+import Tests.NativeWorkerColumnG
+
 import Airbender.Review.Circuits.Blake2Worker.SecondAD
 import Airbender.Proofs.ReducedMachine.NativeWorkerSecondAD
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerSecondADTheorems
@@ -7590,3 +7595,36 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerSecondAD.corrupt_d_output_rejected
 #print axioms Airbender.Tests.NativeWorkerSecondAD.inactive_requests_retained
 #print axioms Airbender.Tests.NativeWorkerSecondAD.complete_counted
+
+#print axioms Airbender.NativeWorkerSecondCBProofs.pair_pack
+#print axioms Airbender.NativeWorkerSecondCBProofs.rotate7
+#print axioms Airbender.NativeWorkerSecondCBProofs.carry_bits
+#print axioms Airbender.NativeWorkerSecondCBProofs.limb_bounds
+#print axioms Airbender.NativeWorkerSecondCBProofs.rotated
+#print axioms Airbender.NativeWorkerSecondCBProofs.d_bounds
+#print axioms Airbender.NativeWorkerSecondCBProofs.d_pack
+#print axioms Airbender.NativeWorkerSecondCBProofs.mixing
+#print axioms Airbender.NativeWorkerSecondCBProofs.addition
+#print axioms Airbender.NativeWorkerSecondCBProofs.chained_rotated
+#print axioms Airbender.NativeWorkerSecondCBProofs.column
+#print axioms Airbender.NativeWorkerSecondCBProofs.row
+#print axioms Airbender.NativeWorkerSecondCBProofs.counted
+#print axioms Airbender.NativeWorkerSecondCB.native_worker_second_cb
+#print axioms Airbender.NativeWorkerSecondCB.native_counted_worker_column_g
+#print axioms Airbender.Tests.NativeWorkerColumnG.g_vector
+#print axioms Airbender.Tests.NativeWorkerColumnG.wrap_rotate7_vector
+#print axioms Airbender.Tests.NativeWorkerColumnG.pair_maximum
+#print axioms Airbender.Tests.NativeWorkerColumnG.chunk_rotation_reference
+#print axioms Airbender.Tests.NativeWorkerColumnG.full_local_second_cb
+#print axioms Airbender.Tests.NativeWorkerColumnG.zero_c_sums
+#print axioms Airbender.Tests.NativeWorkerColumnG.zero_b_outputs
+#print axioms Airbender.Tests.NativeWorkerColumnG.all_carry_bits
+#print axioms Airbender.Tests.NativeWorkerColumnG.all_c_bounds
+#print axioms Airbender.Tests.NativeWorkerColumnG.all_b_rotations
+#print axioms Airbender.Tests.NativeWorkerColumnG.all_second_c_additions
+#print axioms Airbender.Tests.NativeWorkerColumnG.all_chained_b_rotations
+#print axioms Airbender.Tests.NativeWorkerColumnG.all_column_g
+#print axioms Airbender.Tests.NativeWorkerColumnG.weighted_messages_retained
+#print axioms Airbender.Tests.NativeWorkerColumnG.corrupt_b_output_rejected
+#print axioms Airbender.Tests.NativeWorkerColumnG.inactive_requests_retained
+#print axioms Airbender.Tests.NativeWorkerColumnG.complete_counted
