@@ -9,7 +9,6 @@ public import Mathlib.Tactic.FinCases
 namespace Airbender.Bigint
 
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 
 -- All native equations, ranges and fixed queries. Setup rows remain an interface.
 -- The artifact, transcribed (trusted: `Human/Import/TranscribeCommand.lean`).

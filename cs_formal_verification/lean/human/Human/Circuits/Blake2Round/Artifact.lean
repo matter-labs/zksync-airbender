@@ -9,7 +9,6 @@ public import Mathlib.Tactic.FinCases
 namespace Airbender.Blake2Round
 
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 
 -- Native Clean equations and queries; setup provenance and memory transport remain external.
 -- The artifact, transcribed (trusted: `Human/Import/TranscribeCommand.lean`).

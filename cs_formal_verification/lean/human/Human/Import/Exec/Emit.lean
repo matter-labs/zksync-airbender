@@ -13,6 +13,8 @@ public import Human.Circuits.JumpBranchSlt.Tables.Control
 public meta import Human.Circuits.JumpBranchSlt.Tables.Control
 public import Human.Helpers.Tables.Bytes
 public meta import Human.Helpers.Tables.Bytes
+public import Human.Import.Exec.FastColumns
+public meta import Human.Import.Exec.FastColumns
 public import Lean
 public meta import Lean
 
@@ -78,8 +80,10 @@ elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison
   let c ← match parseCircuit source with
     | .ok c => pure c
     | .error e => throwError "circuit import failed: {e}"
+  -- the address map, built once (`FastColumns.lean`)
+  let pl := c.placements
   let ss ← c.structured_statements.toList.mapM cleanStatementSyntax
-  let ranges ← match c.range16Expressions with
+  let ranges ← match (Fast.range16Expressions pl c) with
     | .ok ranges => pure ranges
     | .error e => throwError "circuit import failed: {e}"
   let lookups ← ranges.toList.mapM fun e => do
@@ -91,10 +95,10 @@ elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison
   -- so only their invocation query precedes the alignment queries.
   let alignments ← if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome ||
       splitKeccak then do
-      let _ ← match (if splitMetadata.isSome then c.splitDelegationColumns else c.delegationColumns) with
+      let _ ← match (if splitMetadata.isSome then (Fast.splitDelegationColumns pl c) else (Fast.delegationColumns pl c)) with
         | .ok columns => pure columns
         | .error e => throwError "circuit import failed: {e}"
-      let queries ← match c.timestampExpressions with
+      let queries ← match (Fast.timestampExpressions pl c) with
         | .ok queries => pure queries
         | .error e => throwError "circuit import failed: {e}"
       let comparisons := if splitMetadata.isSome then 0 else 2 * c.memory_layout.ram_access_sets.size
@@ -108,12 +112,12 @@ elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison
   let rom := mkIdent (if submemory.isSome || unified.isSome || blake.isSome || blakeRound.isSome ||
     bigint.isSome || keccak.isSome || splitKeccak then `setup else `rom)
   let generic ← if memoryFamily then do
-    let queries ← match (if keccak.isSome then c.keccakQueries else if bigint.isSome then c.bigintQueries else if blakeRound.isSome then c.blakeRoundQueries
-        else if keccakParity.isSome then c.keccakColumnParityQueries
-        else if keccakThetaRho.isSome then c.keccakThetaRhoQueries
-        else if keccakChi5.isSome then c.keccakChi5Queries
-        else if blake.isSome then c.blakeGQueries else if unified.isSome then c.unifiedReducedQueries
-        else if submemory.isSome then c.subwordMemoryQueries else c.wordMemoryQueries) with
+    let queries ← match (if keccak.isSome then (Fast.keccakQueries pl c) else if bigint.isSome then (Fast.bigintQueries pl c) else if blakeRound.isSome then (Fast.blakeRoundQueries pl c)
+        else if keccakParity.isSome then (Fast.keccakColumnParityQueries pl c)
+        else if keccakThetaRho.isSome then (Fast.keccakThetaRhoQueries pl c)
+        else if keccakChi5.isSome then (Fast.keccakChi5Queries pl c)
+        else if blake.isSome then (Fast.blakeGQueries pl c) else if unified.isSome then (Fast.unifiedReducedQueries pl c)
+        else if submemory.isSome then (Fast.subwordMemoryQueries pl c) else (Fast.wordMemoryQueries pl c)) with
       | .ok queries => pure queries
       | .error e => throwError "circuit import failed: {e}"
     queries.toList.mapM fun entries => do
@@ -124,7 +128,7 @@ elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison
         entry := #v[$[$entries],*]
       })
     else if comparisons.isSome || muldiv.isSome then do
-    let queries ← match (if comparisons.isSome then c.comparisonQueries else c.mulDivQueries) with
+    let queries ← match (if comparisons.isSome then (Fast.comparisonQueries pl c) else (Fast.mulDivQueries pl c)) with
       | .ok queries => pure queries
       | .error e => throwError "circuit import failed: {e}"
     queries.toList.mapM fun (id, entries) => do
@@ -145,7 +149,7 @@ elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison
         | _ => throwError "unsupported comparison table"
       `(Airbender.FlatOperation.lookup $query)
     else if shifts.isSome then do
-      let queries ← match c.shiftBinopQueries with
+      let queries ← match (Fast.shiftBinopQueries pl c) with
         | .ok queries => pure queries
         | .error e => throwError "circuit import failed: {e}"
       queries.toList.mapM fun entries => do
@@ -163,7 +167,7 @@ elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison
     elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)] :
       List (Airbender.FlatOperation (ZMod $prime)) := [$[$ops],*]))
   if traceMetadata.isSome || delegationMetadata.isSome || splitMetadata.isSome then
-    let timestamps ← match c.timestampExpressions with
+    let timestamps ← match (Fast.timestampExpressions pl c) with
       | .ok queries => pure queries
       | .error e => throwError "timestamp import failed: {e}"
     let operations ← timestamps.toList.mapM fun e => do
@@ -173,7 +177,7 @@ elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison
     elabCommand (← `(def $timestampName {$prime : Nat} [Fact (Nat.Prime $prime)] :
       List (Airbender.FlatOperation (ZMod $prime)) := [$[$operations],*]))
   if splitMetadata.isSome then
-    let groups ← match c.splitTimestampGroups with
+    let groups ← match (Fast.splitTimestampGroups pl c) with
       | .ok groups => pure groups
       | .error e => throwError "split timestamp metadata import failed: {e}"
     let groupTerms ← groups.toList.mapM fun group => do
@@ -184,7 +188,7 @@ elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison
     let groupName := mkIdent (name.getId.appendAfter "TimestampGroups")
     elabCommand (← `(def $groupName : Array Airbender.Delegation.GroupedTimestamp := #[$[$groupTerms],*]))
   if delegationMetadata.isSome || splitMetadata.isSome then
-    let columns ← match (if splitMetadata.isSome then c.splitDelegationColumns else c.delegationColumns) with
+    let columns ← match (if splitMetadata.isSome then (Fast.splitDelegationColumns pl c) else (Fast.delegationColumns pl c)) with
       | .ok columns => pure columns
       | .error e => throwError "delegation metadata import failed: {e}"
     let pairSyntax := fun (columns : Vector Nat 2) => do
@@ -198,7 +202,7 @@ elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison
     elabCommand (← `(def $columnsName : Airbender.Delegation.ClockColumns :=
       ⟨$(quote columns.execute), $(← pairSyntax columns.invocation), #[$[$portTerms],*]⟩))
   if traceMetadata.isSome then
-    let columns ← match c.traceColumns with
+    let columns ← match (Fast.traceColumns pl c) with
       | .ok columns => pure columns
       | .error e => throwError "trace metadata import failed: {e}"
     let pairSyntax := fun (columns : Vector Nat 2) => do
@@ -216,8 +220,8 @@ elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison
     let pairSyntax := fun (columns : Vector Nat 2) => do
       let terms := columns.toArray.map quote
       `(#v[$[$terms],*])
-    let ports ← match (if splitMetadata.isSome then c.splitMemoryPorts
-        else if delegationMetadata.isSome then c.delegationPorts else c.memoryPorts) with
+    let ports ← match (if splitMetadata.isSome then (Fast.splitMemoryPorts pl c)
+        else if delegationMetadata.isSome then (Fast.delegationPorts pl c) else (Fast.memoryPorts pl c)) with
       | .ok ports => pure ports
       | .error e => throwError "memory metadata import failed: {e}"
     let wordSyntax := fun (word : Airbender.Trace.WordColumns) => do
@@ -259,7 +263,7 @@ elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison
     let pairSyntax := fun (columns : Vector Nat 2) => do
       let terms := columns.toArray.map quote
       `(#v[$[$terms],*])
-    let decoder ← match c.decoderColumns with
+    let decoder ← match (Fast.decoderColumns pl c) with
       | .ok decoder => pure decoder
       | .error e => throwError "decoder metadata import failed: {e}"
     let funct3 ← match decoder.funct3 with
@@ -271,7 +275,7 @@ elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison
       ⟨$(quote decoder.rs1), $(quote decoder.rs2), $(quote decoder.rd),
         $(← pairSyntax decoder.immediate), $funct3, #[$[$flags],*]⟩))
   if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome || splitKeccak then
-    let ports ← match c.indirectPorts with
+    let ports ← match (Fast.indirectPorts pl c) with
       | .ok ports => pure ports
       | .error e => throwError "indirect port import failed: {e}"
     let portTerms ← ports.toList.mapM fun port => do
