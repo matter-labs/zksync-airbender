@@ -1,38 +1,32 @@
 module
-public import Human.Import.Parse
-public meta import Human.Import.Parse
+public import Human.Import.Columns
 public import Human.Helpers.Memory.InitsTeardownsColumns
-public meta import Human.Helpers.Memory.InitsTeardownsColumns
-public import Lean
-public meta import Lean
 
-public meta section
+@[expose] public section
 
-/-! Import of the inits/teardowns sets: the standalone circuit
-    (`cs/src/gkr_compiler/inits_and_teardowns.rs`) and the sets inlined into a family
-    circuit (`cs/src/gkr_compiler/inits_and_teardowns_inline.rs`). Kept out of
-    `Parse`/`Embed` so that adding it does not rebuild every other artifact. -/
+/-! # What the inits/teardowns sets of a circuit JSON mean
+
+The inits/teardowns sets of the standalone circuit (`cs/src/gkr_compiler/inits_and_teardowns.rs`) and of the sets
+inlined into a family circuit (`cs/src/gkr_compiler/inits_and_teardowns_inline.rs`), as a pure function of the
+decoded artifact. `StandaloneImportClaim` and `UnifiedImportClaim` (`Human/Circuits/InitsTeardowns/`) state that
+the imported layouts are this function applied to the transcribed artifacts. -/
 
 namespace Airbender
-open Lean Elab Command
 
-/-- The logical variable placed at memory column `n`; unique, as `Parse`'s
-    (private) `Circuit.logicalVariable` requires. Teardown columns are never scratch aliases. -/
-private def Circuit.teardownVariable (c : Circuit) (address : GKRAddress) : Except String Nat := do
+/-- The logical variable placed at memory column `n` (`Circuit.logicalVariable`). -/
+def Circuit.teardownVariable (c : Circuit) (address : GKRAddress) : Except String Nat := do
   let .BaseLayerMemory n := address | throw "teardown column must be a memory column"
   unless n < c.memory_layout.total_width do throw "teardown column outside memory layout"
-  match (c.placement_data.entries.filter fun (_, a) => a == address).toList with
-  | [(v, _)] => pure v
-  | _ => throw s!"teardown column must have exactly one logical variable: {n}"
+  c.logicalVariable address
 
 /-- The two logical variables of a limb pair. -/
-private def Circuit.teardownPair (c : Circuit) (columns : Fixed 2 GKRAddress) : Except String (Vector Nat 2) := do
+def Circuit.teardownPair (c : Circuit) (columns : Fixed 2 GKRAddress) : Except String (Vector Nat 2) := do
   let lo ← c.teardownVariable (columns.values[0]'(by rw [columns.size_eq]; decide))
   let hi ← c.teardownVariable (columns.values[1]'(by rw [columns.size_eq]; decide))
   pure #v[lo, hi]
 
 /-- Raw memory column index of a teardown column. -/
-private def teardownColumn (address : GKRAddress) : Except String Nat := do
+def teardownColumn (address : GKRAddress) : Except String Nat := do
   let .BaseLayerMemory n := address | throw "teardown column must be a memory column"
   pure n
 
@@ -95,24 +89,5 @@ def Circuit.initsTeardownsLayout (c : Circuit) (standalone : Bool) :
         c.witness_layout.total_width == 0 && layout.total_width == 4 * count do
       throw "standalone inits/teardowns cannot carry constraints, lookups or other columns"
   pure ⟨traceLog, wordBits, sets⟩
-
-/-- `import_inits_teardowns name from "path" [standalone]` defines
-    `name : InitsTeardowns.Layout` from the artifact's inits/teardowns sets
-    (`Circuit.initsTeardownsLayout`). -/
-elab "import_inits_teardowns " name:ident " from " path:str standalone:(" standalone")? : command => do
-  let source ← IO.FS.readFile path.getString
-  let c ← match parseCircuit source with
-    | .ok c => pure c
-    | .error e => throwError "circuit import failed: {e}"
-  let layout ← match c.initsTeardownsLayout standalone.isSome with
-    | .ok layout => pure layout
-    | .error e => throwError "inits/teardowns import failed: {e}"
-  let pairSyntax := fun (columns : Vector Nat 2) =>
-    `(#v[$(quote columns[0]), $(quote columns[1])])
-  let setTerms ← layout.sets.toList.mapM fun set => do
-    `(Airbender.InitsTeardowns.TeardownSet.mk $(← pairSyntax set.value) $(← pairSyntax set.timestamp))
-  let setTerms := setTerms.toArray
-  elabCommand (← `(def $name : Airbender.InitsTeardowns.Layout :=
-    ⟨$(quote layout.traceLog), $(quote layout.wordBits), #[$[$setTerms],*]⟩))
 
 end Airbender

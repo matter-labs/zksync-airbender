@@ -5,9 +5,8 @@ public import Lean
 
 /- Compressed native setup columns, as written by `prover/src/gkr/prover/setup_artifact.rs`
    (`ColumnBlock`, `value_at`), plus grid blocks (a named row formula) that the import emits
-   for table regions after an exact row-by-row comparison with the JSON (`SetupEmit`).
-   Parsing, that comparison and decoding are an import-layer trust boundary: the blocks are
-   data, and proofs consume only what `decode` returns. -/
+   for table regions after an exact row-by-row comparison with the JSON (`SetupEmit`, trusted).
+   Proofs consume only what `decode` returns. -/
 
 namespace Airbender.Import.Setup
 
@@ -104,53 +103,5 @@ structure SetupData where
   timestampRange : List Block
   tables : Array Table
   deriving Inhabited
-
-section Parse
-
-def blockOf (j : Json) : Except String Block := do
-  let kind ← j.getObjValAs? String "kind"
-  match kind with
-  | "affine" =>
-    let n ← j.getObjValAs? Nat "length"
-    let first ← j.getObjValAs? Int "first"
-    let step ← j.getObjValAs? Int "step"
-    return .affine n first step
-  | "dense" =>
-    let vs ← j.getObjValAs? (Array Int) "values"
-    return .dense vs
-  | "periodic" =>
-    let r ← j.getObjValAs? Nat "repetitions"
-    let stride ← j.getObjValAs? Int "stride"
-    let vs ← j.getObjValAs? (Array Int) "values"
-    return .periodic r stride vs
-  | k => throw s!"unknown block kind {k}"
-
-def blocksOf (j : Json) : Except String (List Block) := do
-  let bs ← (← j.getObjVal? "blocks").getArr?
-  bs.toList.mapM blockOf
-
-def tableOf (j : Json) : Except String Table := do
-  let id ← j.getObjValAs? Nat "id"
-  let offset ← j.getObjValAs? Nat "offset"
-  let length ← j.getObjValAs? Nat "length"
-  let width ← j.getObjValAs? Nat "width"
-  let keyColumns ← j.getObjValAs? Nat "key_columns"
-  return { id, offset, length, width, keyColumns }
-
-/-- Parse the setup JSON text. -/
-def parseSetup (text : String) : Except String SetupData := do
-  let j ← Json.parse text
-  let version ← j.getObjValAs? Nat "version"
-  if version != 1 then throw s!"unsupported setup version {version}"
-  let traceLen ← j.getObjValAs? Nat "trace_len"
-  let cols ← (← j.getObjVal? "columns").getArr?
-  let columns : Array (List Block) ← cols.mapM blocksOf
-  let range16 ← blocksOf (← j.getObjVal? "range16")
-  let timestampRange ← blocksOf (← j.getObjVal? "timestamp_range")
-  let tables ← (← j.getObjVal? "tables").getArr?
-  let tables : Array Table ← tables.mapM tableOf
-  return { traceLen, columns, range16, timestampRange, tables := tables }
-
-end Parse
 
 end Airbender.Import.Setup

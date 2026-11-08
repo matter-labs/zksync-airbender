@@ -1,6 +1,8 @@
 module
-public import Human.Import.Parse
-public meta import Human.Import.Parse
+public import Human.Import.Transcribe
+public meta import Human.Import.Transcribe
+public import Human.Import.Columns
+public meta import Human.Import.Columns
 public import Human.Import.Coefficients
 public meta import Human.Import.Coefficients
 public import Human.Helpers.Tables.Range
@@ -15,6 +17,11 @@ public import Lean
 public meta import Lean
 
 public meta section
+
+/-! No need to review: behaviour is fixed by each artifact's `ArtifactImportClaim` (its `Artifact.lean`).
+
+`import_clean name from circuit flags` emits the imported operations and column descriptors of the transcribed
+artifact `circuit` (`import_circuit`, `TranscribeCommand.lean`) as literal terms, which the proofs unfold. -/
 
 open Lean Elab Command
 
@@ -47,9 +54,8 @@ private def cleanStatementSyntax (s : StructuredStatement) : CommandElabM (TSynt
       (Airbender.Expression.add (Airbender.Expression.var ⟨$(quote v)⟩)
         (Airbender.Expression.mul $negOne $rhs)))
 
-/-- Emit retained equations and 16-bit range queries as native Clean operations.
-    Parsing/emission remains an artifact-binding trust boundary. -/
-elab "import_clean " name:ident " from " path:str comparisons:(" comparison_lookups")?
+/-- Emit the operations (equations, range queries, alignment and fixed-table queries) and the column metadata. -/
+elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison_lookups")?
     muldiv:(" mul_div_lookups")? shifts:(" shift_binop_lookups")? memory:(" word_memory_lookups")?
     submemory:(" subword_memory_lookups")? unified:(" unified_reduced_lookups")?
     blake:(" blake_g_lookups")? blakeRound:(" blake_round_lookups")?
@@ -66,7 +72,9 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
       keccakParity.isSome.toNat + keccakThetaRho.isSome.toNat + keccakChi5.isSome.toNat) > 1 then
     throwError "select one fixed-lookup family"
   let splitKeccak := keccakParity.isSome || keccakThetaRho.isSome || keccakChi5.isSome
-  let source ← IO.FS.readFile path.getString
+  let circuitName ← liftCoreM <| realizeGlobalConstNoOverload circuit
+  let some (.lit (.strVal source)) := (← getConstInfo (circuitName.appendAfter "SourceBytes")).value?
+    | throwError "{circuit} is not a transcribed circuit"
   let c ← match parseCircuit source with
     | .ok c => pure c
     | .error e => throwError "circuit import failed: {e}"
@@ -154,13 +162,6 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
   else
     elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)] :
       List (Airbender.FlatOperation (ZMod $prime)) := [$[$ops],*]))
-  let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")
-  elabCommand (← `(def $sourceName : String := $(quote source)))
-  let namesName := mkIdent (name.getId.appendAfter "VariableNames")
-  let names ← c.variable_names.entries.toList.mapM fun (v, n) =>
-    `((($(quote v) : Nat), ($(quote n) : String)))
-  let names := names.toArray
-  elabCommand (← `(def $namesName : List (Nat × String) := [$[$names],*]))
   if traceMetadata.isSome || delegationMetadata.isSome || splitMetadata.isSome then
     let timestamps ← match c.timestampExpressions with
       | .ok queries => pure queries

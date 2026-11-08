@@ -1,5 +1,7 @@
 module
-public import Human.Import.Embed
+public import Human.Import.TranscribeCommand
+public import Human.Import.Exec.Emit
+public import Human.Import.Operations
 
 @[expose] public section
 
@@ -20,7 +22,19 @@ def Operation.isShift : Operation → Bool
 -- All retained equations, both range queries and all five dynamic-tag lookups.
 -- Native trace/decoder metadata is imported; logical matching and setup fidelity
 -- remain external boundaries.
-import_clean importedConstraints from "../../cs/compiled_circuits/shift_binop_layout_no_caches_gkr.json" shift_binop_lookups trace_metadata
+-- The artifact, transcribed (trusted: `Human/Import/TranscribeCommand.lean`).
+import_circuit importedCircuit from "../../cs/compiled_circuits/shift_binop_layout_no_caches_gkr.json"
+-- Its operations and column metadata as literal terms, fixed by `ArtifactImportClaim`.
+import_clean importedConstraints from importedCircuit shift_binop_lookups trace_metadata
+
+/-- The imported definitions are the meaning (`Human/Import/Operations.lean`, `Columns.lean`) of the artifact. -/
+def ArtifactImportClaim : Prop :=
+  (∀ (p : Nat) [Fact p.Prime], importedCircuit.operations .shiftBinop = .ok (importedConstraints (p := p))) ∧
+  (∀ (p : Nat) [Fact p.Prime],
+    importedCircuit.timestampOperations = .ok (importedConstraintsTimestampLookups (p := p))) ∧
+  importedCircuit.traceColumns = .ok importedConstraintsTraceColumns ∧
+  importedCircuit.memoryPorts = .ok importedConstraintsMemoryPorts ∧
+  importedCircuit.decoderColumns = .ok importedConstraintsDecoderColumns
 
 def clockConstraints {p : Nat} [Fact p.Prime] : List (FlatOperation (ZMod p)) :=
   importedConstraints ++ importedConstraintsTimestampLookups

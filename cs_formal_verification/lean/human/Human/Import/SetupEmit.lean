@@ -1,12 +1,17 @@
 module
 public import Human.Import.SetupBlocks
 public meta import Human.Import.SetupBlocks
+public import Human.Import.Transcribe
+public meta import Human.Import.Transcribe
 public import Lean
 public meta import Lean
 
 public meta section
 
-/- `import_setup_blocks name from "path"` reads a native setup JSON at elaboration time and
+/- TRUSTED: review. Not kernel-checked: the decoding of the setup JSON (`parseSetup`: the JSON value from
+   `jsonOfText`, `Transcribe.lean`, read field by field) and the comparison of grid blocks with the JSON rows.
+
+   `import_setup_blocks name from "path"` reads a native setup JSON at elaboration time and
    adds `name : Airbender.Import.Setup.SetupData` with one declaration per column. The terms
    are built directly as kernel expressions (no surface syntax), so elaboration cost stays
    linear in the number of blocks. Lake tracks the file through the `needs` input of the
@@ -27,23 +32,23 @@ namespace Airbender.Import.Setup
 
 open Lean Elab Command
 
-private def natE (n : Nat) : Expr := mkRawNatLit n
+private def natE (n : Nat) : Lean.Expr := mkRawNatLit n
 
-private def intE (i : Int) : Expr :=
+private def intE (i : Int) : Lean.Expr :=
   if i < 0 then mkApp (mkConst ``Int.negSucc) (natE (-i - 1).toNat)
   else mkApp (mkConst ``Int.ofNat) (natE i.toNat)
 
-private def listE (ty : Expr) (xs : List Expr) : Expr :=
+private def listE (ty : Lean.Expr) (xs : List Lean.Expr) : Lean.Expr :=
   xs.foldr (fun x acc => mkApp3 (mkConst ``List.cons [Level.zero]) ty x acc)
     (mkApp (mkConst ``List.nil [Level.zero]) ty)
 
-private def arrayE (ty : Expr) (xs : List Expr) : Expr :=
+private def arrayE (ty : Lean.Expr) (xs : List Lean.Expr) : Lean.Expr :=
   mkApp2 (mkConst ``Array.mk [Level.zero]) ty (listE ty xs)
 
-private def intTy : Expr := mkConst ``Int
-private def blockTy : Expr := mkConst ``Airbender.Import.Setup.Block
+private def intTy : Lean.Expr := mkConst ``Int
+private def blockTy : Lean.Expr := mkConst ``Airbender.Import.Setup.Block
 
-private def gridE : GridFn → Expr
+private def gridE : GridFn → Lean.Expr
   | .digit d w => mkAppN (mkConst ``GridFn.digit) #[natE d, natE w]
   | .xorDigits d₁ d₂ w => mkAppN (mkConst ``GridFn.xorDigits) #[natE d₁, natE d₂, natE w]
   | .xor4x3 => mkConst ``GridFn.xor4x3
@@ -54,7 +59,7 @@ private def gridE : GridFn → Expr
   | .xorTable w t => mkAppN (mkConst ``GridFn.xorTable)
       #[natE w, arrayE (mkConst ``Nat) (t.toList.map natE)]
 
-private def blockE : Block → Expr
+private def blockE : Block → Lean.Expr
   | .affine n f s => mkAppN (mkConst ``Airbender.Import.Setup.Block.affine) #[natE n, intE f, intE s]
   | .dense vs => mkApp (mkConst ``Airbender.Import.Setup.Block.dense)
       (arrayE intTy (vs.toList.map intE))
@@ -62,7 +67,55 @@ private def blockE : Block → Expr
       #[natE r, intE s, arrayE intTy (vs.toList.map intE)]
   | .grid n f => mkAppN (mkConst ``Airbender.Import.Setup.Block.grid) #[natE n, gridE f]
 
-private def blocksE (bs : List Block) : Expr := listE blockTy (bs.map blockE)
+private def blocksE (bs : List Block) : Lean.Expr := listE blockTy (bs.map blockE)
+
+section Parse
+
+def blockOf (j : Json) : Except String Block := do
+  let kind ← j.getObjValAs? String "kind"
+  match kind with
+  | "affine" =>
+    let n ← j.getObjValAs? Nat "length"
+    let first ← j.getObjValAs? Int "first"
+    let step ← j.getObjValAs? Int "step"
+    return .affine n first step
+  | "dense" =>
+    let vs ← j.getObjValAs? (Array Int) "values"
+    return .dense vs
+  | "periodic" =>
+    let r ← j.getObjValAs? Nat "repetitions"
+    let stride ← j.getObjValAs? Int "stride"
+    let vs ← j.getObjValAs? (Array Int) "values"
+    return .periodic r stride vs
+  | k => throw s!"unknown block kind {k}"
+
+def blocksOf (j : Json) : Except String (List Block) := do
+  let bs ← (← j.getObjVal? "blocks").getArr?
+  bs.toList.mapM blockOf
+
+def tableOf (j : Json) : Except String Table := do
+  let id ← j.getObjValAs? Nat "id"
+  let offset ← j.getObjValAs? Nat "offset"
+  let length ← j.getObjValAs? Nat "length"
+  let width ← j.getObjValAs? Nat "width"
+  let keyColumns ← j.getObjValAs? Nat "key_columns"
+  return { id, offset, length, width, keyColumns }
+
+/-- Parse the setup JSON text. -/
+def parseSetup (text : String) : Except String SetupData := do
+  let j ← jsonOfText text
+  let version ← j.getObjValAs? Nat "version"
+  if version != 1 then throw s!"unsupported setup version {version}"
+  let traceLen ← j.getObjValAs? Nat "trace_len"
+  let cols ← (← j.getObjVal? "columns").getArr?
+  let columns : Array (List Block) ← cols.mapM blocksOf
+  let range16 ← blocksOf (← j.getObjVal? "range16")
+  let timestampRange ← blocksOf (← j.getObjVal? "timestamp_range")
+  let tables ← (← j.getObjVal? "tables").getArr?
+  let tables : Array Table ← tables.mapM tableOf
+  return { traceLen, columns, range16, timestampRange, tables := tables }
+
+end Parse
 
 /-! Structured regions -/
 
@@ -183,15 +236,15 @@ def structureColumn (tables : Array Table) (c : Nat) (bs : List Block) :
   | .ok () => return out
   | .error e => throw s!"column {c}: {e}"
 
-private def blocksTy : Expr := mkApp (mkConst ``List [Level.zero]) blockTy
+private def blocksTy : Lean.Expr := mkApp (mkConst ``List [Level.zero]) blockTy
 
-private def tableE (t : Table) : Expr :=
+private def tableE (t : Table) : Lean.Expr :=
   mkAppN (mkConst ``Airbender.Import.Setup.Table.mk)
     #[natE t.id, natE t.offset, natE t.length, natE t.width, natE t.keyColumns]
 
 /-- Kernel-checked definition without code generation: the data is used by kernel reduction, so its body is
     exposed to importing modules (`forceExpose`; no effect in a non-module). -/
-private def addDef (name : Name) (ty value : Expr) : CoreM Unit :=
+private def addDef (name : Name) (ty value : Lean.Expr) : CoreM Unit :=
   addDecl (forceExpose := true) <| .defnDecl {
     name, levelParams := [], type := ty, value, hints := .abbrev, safety := .safe }
 

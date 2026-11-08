@@ -1,6 +1,8 @@
 module
-public import Human.Import.Parse
-public meta import Human.Import.Parse
+public import Human.Import.Transcribe
+public import Human.Import.Columns
+public meta import Human.Import.Transcribe
+public meta import Human.Import.Columns
 public import Slop.AddSub.ArtifactChecks
 public meta import Slop.AddSub.ArtifactChecks
 public import Human.Circuits.WordMemory.Artifact
@@ -36,7 +38,7 @@ def run : IO Unit := do
   let .ok timestampQueries := c.timestampExpressions | throw (IO.userError "timestamp query import failed")
   let .ok ports := c.memoryPorts | throw (IO.userError "memory metadata import failed")
   check (clock == AddSub.importedConstraintsTraceColumns && timestampQueries.size == 8 &&
-    source == AddSub.importedConstraintsSourceBytes)
+    source == AddSub.importedCircuitSourceBytes)
     "ADD/SUB: eight native timestamp queries and placement-resolved clock ports"
   check (ports == AddSub.importedConstraintsMemoryPorts && ports.map (·.clock) == clock.ports)
     "ADD/SUB: native register addresses, old/new values and clock descriptors"
@@ -103,7 +105,7 @@ def run : IO Unit := do
   let .ok wordTimestamps := word.timestampExpressions | throw (IO.userError "word-memory timestamp import failed")
   let .ok wordPorts := word.memoryPorts | throw (IO.userError "word-memory port import failed")
   check (wordClock == WordMemory.importedConstraintsTraceColumns && wordTimestamps.size == 8 &&
-    wordSource == WordMemory.importedConstraintsSourceBytes)
+    wordSource == WordMemory.importedCircuitSourceBytes)
     "word-memory: eight native timestamp queries and placement-resolved clock ports"
   check (wordPorts == WordMemory.importedConstraintsMemoryPorts &&
     wordPorts.map (·.clock) == wordClock.ports)
@@ -129,7 +131,7 @@ def run : IO Unit := do
   let .ok jumpPorts := jump.memoryPorts | throw (IO.userError "jump/branch/SLT ports failed")
   let .ok jumpDecoder := jump.decoderColumns | throw (IO.userError "jump/branch/SLT decoder failed")
   check (jumpClock == JumpBranchSlt.importedConstraintsTraceColumns && jumpTimestamps.size == 8 &&
-    jumpSource == JumpBranchSlt.importedConstraintsSourceBytes)
+    jumpSource == JumpBranchSlt.importedCircuitSourceBytes)
     "jump/branch/SLT: eight native timestamp queries and placement-resolved clocks"
   check (jumpPorts == JumpBranchSlt.importedConstraintsMemoryPorts &&
     jumpPorts.map (·.clock) == jumpClock.ports)
@@ -171,7 +173,7 @@ def run : IO Unit := do
   let .ok subwordPorts := subword.memoryPorts | throw (IO.userError "subword port import failed")
   let .ok subwordDecoder := subword.decoderColumns | throw (IO.userError "subword decoder import failed")
   check (subwordClock == SubwordMemory.importedConstraintsTraceColumns && subwordTimestamps.size == 8 &&
-    subwordSource == SubwordMemory.importedConstraintsSourceBytes)
+    subwordSource == SubwordMemory.importedCircuitSourceBytes)
     "subword-memory: eight native timestamp queries and placement-resolved clocks"
   check (subwordPorts == SubwordMemory.importedConstraintsMemoryPorts &&
     subwordPorts.map (·.clock) == subwordClock.ports)

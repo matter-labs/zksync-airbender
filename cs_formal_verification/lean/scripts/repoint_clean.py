@@ -7,7 +7,7 @@ Deterministic and idempotent; re-run after a rebase that brings files importing 
     we did not transcribe is reported and left alone, and the file then keeps needing Clean);
   * `_root_.N` -> `Airbender.N` for the transcribed names (CleanCore declares them in namespace `Airbender`, so
     bare references inside `namespace Airbender ...` already resolve to CleanCore; this includes the terms the
-    importer, Human.Import.Embed, emits);
+    importer, Human.Import.Exec.Emit, emits);
   * in a file outside `namespace Airbender` (and not opening it), bare `Expression.eval` -> `Airbender.Expression.eval`
     (macro quotations resolve names where the macro is defined, e.g. Slop.Eval's `eval_entry`), and Clean's
     root namespaces `Specs.BLAKE3`, `Specs.Keccak256`, `Utils.Bits`, `Utils.Rotation`, `ByteUtils`,

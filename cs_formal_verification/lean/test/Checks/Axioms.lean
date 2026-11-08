@@ -122,6 +122,23 @@ import Clean.Specs.Keccak256
 import Human.Import.BabyBear
 import Human.Import.Coefficients
 import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
+import Slop.Final.Circuits.AddSub.Artifact
+import Slop.Final.Circuits.Bigint.Artifact
+import Slop.Final.Circuits.Blake2G.Artifact
+import Slop.Final.Circuits.Blake2Round.Artifact
+import Slop.Final.Circuits.InitsTeardowns.Artifact
+import Slop.Final.Circuits.InitsTeardowns.UnifiedArtifact
+import Slop.Final.Circuits.JumpBranchSlt.Artifact
+import Slop.Final.Circuits.Keccak.Artifact
+import Slop.Final.Circuits.KeccakSplit.Chi5.Artifact
+import Slop.Final.Circuits.KeccakSplit.ColumnParity.Artifact
+import Slop.Final.Circuits.KeccakSplit.ThetaRho.Artifact
+import Slop.Final.Circuits.MulDiv.Artifact
+import Slop.Final.Circuits.ShiftBinop.Artifact
+import Slop.Final.Circuits.SubwordMemory.Artifact
+import Slop.Final.Circuits.UnifiedReduced.Artifact
+import Slop.Final.Circuits.WordMemory.Artifact
+import Slop.Final.Import.Columns
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1160,3 +1177,20 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.UnifiedReduced.Caller.rv_program_prepared_protocol_sequence_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_caller_cycles_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_cycles_soundness
+#print axioms Airbender.AddSub.artifact_import
+#print axioms Airbender.Bigint.artifact_import
+#print axioms Airbender.Blake2G.artifact_import
+#print axioms Airbender.Blake2Round.artifact_import
+#print axioms Airbender.InitsTeardowns.standalone_import
+#print axioms Airbender.InitsTeardowns.unified_import
+#print axioms Airbender.JumpBranchSlt.artifact_import
+#print axioms Airbender.Keccak.artifact_import
+#print axioms Airbender.Keccak.Split.Chi5.artifact_import
+#print axioms Airbender.Keccak.Split.ColumnParity.artifact_import
+#print axioms Airbender.Keccak.Split.ThetaRho.artifact_import
+#print axioms Airbender.MulDiv.artifact_import
+#print axioms Airbender.ShiftBinop.artifact_import
+#print axioms Airbender.SubwordMemory.artifact_import
+#print axioms Airbender.UnifiedReduced.artifact_import
+#print axioms Airbender.WordMemory.artifact_import
+#print axioms Airbender.placements_claim

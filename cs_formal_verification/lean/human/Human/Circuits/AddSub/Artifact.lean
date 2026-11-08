@@ -1,5 +1,7 @@
 module
-public import Human.Import.Embed
+public import Human.Import.TranscribeCommand
+public import Human.Import.Exec.Emit
+public import Human.Import.Operations
 public import Human.Helpers.Core.Word
 
 @[expose] public section
@@ -7,8 +9,19 @@ public import Human.Helpers.Core.Word
 namespace Airbender.AddSub
 open Arithmetic
 
--- The JSON's retained equations and range queries, emitted as native Clean operations.
-import_clean importedConstraints from "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json" trace_metadata
+-- The artifact, transcribed (trusted: `Human/Import/TranscribeCommand.lean`).
+import_circuit importedCircuit from "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"
+-- Its equations, range queries and column metadata as literal terms, fixed by `ArtifactImportClaim`.
+import_clean importedConstraints from importedCircuit trace_metadata
+
+/-- The imported definitions are the meaning (`Human/Import/Operations.lean`, `Columns.lean`) of the artifact. -/
+def ArtifactImportClaim : Prop :=
+  (∀ (p : Nat) [Fact p.Prime], importedCircuit.operations .addSub = .ok (importedConstraints (p := p))) ∧
+  (∀ (p : Nat) [Fact p.Prime],
+    importedCircuit.timestampOperations = .ok (importedConstraintsTimestampLookups (p := p))) ∧
+  importedCircuit.traceColumns = .ok importedConstraintsTraceColumns ∧
+  importedCircuit.memoryPorts = .ok importedConstraintsMemoryPorts ∧
+  importedCircuit.decoderColumns = .ok importedConstraintsDecoderColumns
 
 /-- Arithmetic, word ranges and the eight native timestamp queries. Decoder and
     global state/memory matching are separate trace obligations. -/

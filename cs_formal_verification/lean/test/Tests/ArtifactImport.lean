@@ -35,7 +35,8 @@ public import Tests.DelegationMemory
 public import Tests.WordMemory
 public import Slop.AddSub.ArtifactChecks
 public import Human.Circuits.JumpBranchSlt.Artifact
-public import Human.Import.Parse
+public import Human.Import.Transcribe
+public import Human.Import.Columns
 public import Human.Circuits.KeccakSplit.ColumnParity.Artifact
 public import Human.Circuits.KeccakSplit.ThetaRho.Artifact
 public import Human.Circuits.KeccakSplit.Chi5.Artifact
@@ -93,14 +94,14 @@ def main : IO UInt32 := do
     check (rejected (Circuit.range16Expressions {c with placement_data :=
       ⟨c.placement_data.entries.push (48, .BaseLayerMemory 15)⟩}))
       "range query with ambiguous logical placement rejected"
-    check (source == AddSub.importedConstraintsSourceBytes) "embedded source equals current artifact bytes"
+    check (source == AddSub.importedCircuitSourceBytes) "embedded source equals current artifact bytes"
     Tests.TraceImport.run
     let wordSource ← IO.FS.readFile "../../cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json"
     let .ok word := parseCircuit wordSource | throw (IO.userError "word-memory artifact failed import")
     let .ok wordQueries := word.wordMemoryQueries | throw (IO.userError "word-memory ROM query failed import")
     check (word.structured_statements.size == 27 && wordQueries.size == 1 &&
       word.range_check_16_lookup_expressions.size == 3 &&
-      wordSource == WordMemory.importedConstraintsSourceBytes)
+      wordSource == WordMemory.importedCircuitSourceBytes)
       "word-memory: 27 equations, three ranges, ROM query and source binding"
     check (rejected (Circuit.wordMemoryQueries {word with generic_lookup_tables_width := 10}))
       "word-memory: wrong ROM-query width rejected"
@@ -113,7 +114,7 @@ def main : IO UInt32 := do
     let .ok subwordQueries := subword.subwordMemoryQueries | throw (IO.userError "subword-memory queries failed import")
     check (subword.structured_statements.size == 43 && subwordQueries.size == 2 &&
       subword.range_check_16_lookup_expressions.size == 5 &&
-      subwordSource == SubwordMemory.importedConstraintsSourceBytes)
+      subwordSource == SubwordMemory.importedCircuitSourceBytes)
       "subword-memory: 43 equations, five ranges, two data queries and source binding"
     check (rejected (Circuit.subwordMemoryQueries {subword with generic_lookups := #[]}))
       "subword-memory: missing data queries rejected"
@@ -137,7 +138,7 @@ def main : IO UInt32 := do
     let .ok unifiedQueries := unified.unifiedReducedQueries | throw (IO.userError "unified reduced queries failed import")
     check (unified.structured_statements.size == 120 && unifiedQueries.size == 5 &&
       unifiedQueries.all (·.size == 10) && unified.range_check_16_lookup_expressions.size == 13 &&
-      unifiedSource == UnifiedReduced.importedConstraintsSourceBytes)
+      unifiedSource == UnifiedReduced.importedCircuitSourceBytes)
       "unified reduced: 120 equations, 13 ranges, five complete pooled queries and source binding"
     check (rejected (Circuit.unifiedReducedQueries {unified with generic_lookups := #[]}))
       "unified reduced: missing pooled queries rejected"
@@ -161,7 +162,7 @@ def main : IO UInt32 := do
     check (blake.structured_statements.size == 32 && blakeQueries.size == 19 &&
       blakeQueries.all (·.size == 9) && blake.range_check_16_lookup_expressions.size == 0 &&
       blake.timestamp_range_check_lookup_expressions.size == 21 &&
-      blakeSource == Blake2G.importedConstraintsSourceBytes)
+      blakeSource == Blake2G.importedCircuitSourceBytes)
       "BLAKE2 G: 32 equations, no range queries (alignment in the 21 timestamp queries), 19 complete queries and source binding"
     let .ok ports := blake.indirectPorts | throw (IO.userError "BLAKE2 G ports failed import")
     check (ports == Blake2G.importedConstraintsIndirectPorts.toArray)
@@ -244,7 +245,7 @@ def main : IO UInt32 := do
       "constant port spuriously claiming an unlisted variable offset rejected"
     check (round.structured_statements.size == 220 && roundQueries.size == 192 &&
       roundQueries.all (·.size == 6) && round.range_check_16_lookup_expressions.size == 0 &&
-      roundSource == Blake2Round.importedConstraintsSourceBytes)
+      roundSource == Blake2Round.importedCircuitSourceBytes)
       "BLAKE2 round: 220 equations, no range queries, 192 six-column queries and source binding"
     let roundInspection : Table (ZMod babyBearModulus) (fields 6) :=
       { name := "TagInspection", Contains _ _ := True }
@@ -273,7 +274,7 @@ def main : IO UInt32 := do
     let .ok bigintQueries := bigint.bigintQueries | throw (IO.userError "bigint queries failed import")
     check (bigint.structured_statements.size == 135 && bigintQueries.size == 61 &&
       bigint.range_check_16_lookup_expressions.size == 32 &&
-      bigintSource == Bigint.importedConstraintsSourceBytes)
+      bigintSource == Bigint.importedCircuitSourceBytes)
       "bigint: 135 equations, 32 ranges, 61 fixed queries and source binding"
     let bigintInspection : Table (ZMod babyBearModulus) (fields 3) :=
       { name := "TagInspection", Contains _ _ := True }
@@ -308,7 +309,7 @@ def main : IO UInt32 := do
       keccak.range_check_16_lookup_expressions.size == 0 &&
       keccak.timestamp_range_check_lookup_expressions.size == 30 &&
       (FlatOperation.constraints (Keccak.importedConstraints Tests.Keccak.permissiveSetup)).length == 187 &&
-      keccakSource == Keccak.importedConstraintsSourceBytes)
+      keccakSource == Keccak.importedCircuitSourceBytes)
       "Keccak: 187 equations, no range query (alignment in the 30 timestamp queries), all fixed queries and source binding"
     check (keccakPorts.size == 12 && keccakPorts == Keccak.importedConstraintsIndirectPorts.toArray)
       "Keccak: twelve native ports preserve six shared lane offsets"
@@ -359,7 +360,7 @@ def main : IO UInt32 := do
       (FlatOperation.lookups (MulDiv.importedConstraints (p := babyBearModulus))).length == 16)
       "mul/div: 43 equations and all 16 native lookups"
     check (mulQueries.map Prod.fst == #[1, 41, 41, 26, 26, 26, 41, 41] &&
-      mulSource == MulDiv.importedConstraintsSourceBytes)
+      mulSource == MulDiv.importedCircuitSourceBytes)
       "mul/div: fixed-table IDs and source bytes match"
     check (rejected (Circuit.mulDivQueries {mul with scratch_space_mapping_rev :=
       ⟨mul.scratch_space_mapping_rev.entries.filter (fun (i, _) => i != 5)⟩}))
@@ -379,7 +380,7 @@ def main : IO UInt32 := do
     let .ok shiftQueries := shift.shiftBinopQueries | throw (IO.userError "dynamic byte queries failed import")
     let byteLookups := (FlatOperation.lookups (ShiftBinop.importedConstraints (p := babyBearModulus))).drop 2
     check (shift.structured_statements.size == 52 && shiftQueries.size == 5 &&
-      byteLookups.length == 5 && shiftSource == ShiftBinop.importedConstraintsSourceBytes)
+      byteLookups.length == 5 && shiftSource == ShiftBinop.importedCircuitSourceBytes)
       "shift/binop: 52 equations, all seven lookups and source bytes match"
     let tagEnv := Verification.environment (fun v => if v == 55 then 3 else (4 : ZMod babyBearModulus))
     check (byteLookups.map (fun q => (q.entry.toArray.back!.eval tagEnv).val) == [3, 4, 4, 4, 4])
@@ -436,7 +437,7 @@ def main : IO UInt32 := do
     check (rejected (Circuit.comparisonQueries {comparison with placement_data :=
       ⟨comparison.placement_data.entries.push (99, address)⟩}))
       "comparison query with ambiguous logical placement rejected"
-    check (comparisonSource == JumpBranchSlt.importedConstraintsSourceBytes)
+    check (comparisonSource == JumpBranchSlt.importedCircuitSourceBytes)
       "jump/branch/SLT: embedded source equals current artifact bytes"
     for (label, circuit, columns, ports) in
         [("bigint", bigint, Bigint.importedConstraintsDelegationColumns, Bigint.importedConstraintsMemoryPorts),
@@ -473,9 +474,9 @@ def main : IO UInt32 := do
     let (parity, paritySource) ← splitLoad "column_parity"
     let (theta, thetaSource) ← splitLoad "theta_rho"
     let (chi, chiSource) ← splitLoad "chi5"
-    check (paritySource == Keccak.Split.ColumnParity.importedConstraintsSourceBytes &&
-      thetaSource == Keccak.Split.ThetaRho.importedConstraintsSourceBytes &&
-      chiSource == Keccak.Split.Chi5.importedConstraintsSourceBytes) "split Keccak: embedded sources equal artifact bytes"
+    check (paritySource == Keccak.Split.ColumnParity.importedCircuitSourceBytes &&
+      thetaSource == Keccak.Split.ThetaRho.importedCircuitSourceBytes &&
+      chiSource == Keccak.Split.Chi5.importedCircuitSourceBytes) "split Keccak: embedded sources equal artifact bytes"
     let .ok parityQueries := parity.keccakColumnParityQueries | throw (IO.userError "column parity queries rejected")
     let .ok thetaQueries := theta.keccakThetaRhoQueries | throw (IO.userError "theta/rho queries rejected")
     let .ok chiQueries := chi.keccakChi5Queries | throw (IO.userError "chi5 queries rejected")
@@ -513,7 +514,7 @@ def main : IO UInt32 := do
     check (rejected emptyGroup.splitTimestampGroups && rejected emptyGroup.splitMemoryPorts)
       "split Keccak: empty timestamp group rejected"
     check (rejected (Circuit.delegationColumns theta)) "split Keccak: grouped layout rejected by the ordinary importer"
-    let cached ← loadCircuit "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json"
+    let cached := parseCircuit (← IO.FS.readFile "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
     check (!rejected cached) "cached sibling decoded with the standard JSON parser"
     return (0 : UInt32)
   catch e =>

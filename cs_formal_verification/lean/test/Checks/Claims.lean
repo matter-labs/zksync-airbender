@@ -56,6 +56,24 @@ import Human.Circuits.AddSub.RVCallerTheorems
 import Human.Trace.Delegation.RVCallerTheorems
 import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 import Human.Trace.UnifiedReduced.RVCallerTheorems
+-- P3.1: each imported artifact is the meaning of its transcription
+import Slop.Final.Circuits.AddSub.Artifact
+import Slop.Final.Circuits.Bigint.Artifact
+import Slop.Final.Circuits.Blake2G.Artifact
+import Slop.Final.Circuits.Blake2Round.Artifact
+import Slop.Final.Circuits.InitsTeardowns.Artifact
+import Slop.Final.Circuits.InitsTeardowns.UnifiedArtifact
+import Slop.Final.Circuits.JumpBranchSlt.Artifact
+import Slop.Final.Circuits.Keccak.Artifact
+import Slop.Final.Circuits.KeccakSplit.Chi5.Artifact
+import Slop.Final.Circuits.KeccakSplit.ColumnParity.Artifact
+import Slop.Final.Circuits.KeccakSplit.ThetaRho.Artifact
+import Slop.Final.Circuits.MulDiv.Artifact
+import Slop.Final.Circuits.ShiftBinop.Artifact
+import Slop.Final.Circuits.SubwordMemory.Artifact
+import Slop.Final.Circuits.UnifiedReduced.Artifact
+import Slop.Final.Circuits.WordMemory.Artifact
+import Slop.Final.Import.Columns
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.AddSub.BabyBearRVSoundnessClaim := @Airbender.AddSub.babyBear_rv_soundness
@@ -169,6 +187,23 @@ example : Airbender.UnifiedReduced.Caller.RVPreparedRoundWindowSoundnessClaim :=
 example : Airbender.UnifiedReduced.Caller.RVProgramPreparedProtocolSequenceSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_program_prepared_protocol_sequence_soundness
 example : Airbender.UnifiedReduced.Caller.RVCallerCyclesSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_caller_cycles_soundness
 example : Airbender.UnifiedReduced.Caller.RVPreparedRoundCyclesSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_round_cycles_soundness
+example : Airbender.AddSub.ArtifactImportClaim := @Airbender.AddSub.artifact_import
+example : Airbender.Bigint.ArtifactImportClaim := @Airbender.Bigint.artifact_import
+example : Airbender.Blake2G.ArtifactImportClaim := @Airbender.Blake2G.artifact_import
+example : Airbender.Blake2Round.ArtifactImportClaim := @Airbender.Blake2Round.artifact_import
+example : Airbender.InitsTeardowns.StandaloneImportClaim := @Airbender.InitsTeardowns.standalone_import
+example : Airbender.InitsTeardowns.UnifiedImportClaim := @Airbender.InitsTeardowns.unified_import
+example : Airbender.JumpBranchSlt.ArtifactImportClaim := @Airbender.JumpBranchSlt.artifact_import
+example : Airbender.Keccak.ArtifactImportClaim := @Airbender.Keccak.artifact_import
+example : Airbender.Keccak.Split.Chi5.ArtifactImportClaim := @Airbender.Keccak.Split.Chi5.artifact_import
+example : Airbender.Keccak.Split.ColumnParity.ArtifactImportClaim := @Airbender.Keccak.Split.ColumnParity.artifact_import
+example : Airbender.Keccak.Split.ThetaRho.ArtifactImportClaim := @Airbender.Keccak.Split.ThetaRho.artifact_import
+example : Airbender.MulDiv.ArtifactImportClaim := @Airbender.MulDiv.artifact_import
+example : Airbender.ShiftBinop.ArtifactImportClaim := @Airbender.ShiftBinop.artifact_import
+example : Airbender.SubwordMemory.ArtifactImportClaim := @Airbender.SubwordMemory.artifact_import
+example : Airbender.UnifiedReduced.ArtifactImportClaim := @Airbender.UnifiedReduced.artifact_import
+example : Airbender.WordMemory.ArtifactImportClaim := @Airbender.WordMemory.artifact_import
+example : Airbender.PlacementsClaim := @Airbender.placements_claim
 
 #print axioms Airbender.AddSub.rv_soundness
 #print axioms Airbender.AddSub.babyBear_rv_soundness
@@ -282,3 +317,20 @@ example : Airbender.UnifiedReduced.Caller.RVPreparedRoundCyclesSoundnessClaim :=
 #print axioms Airbender.UnifiedReduced.Caller.rv_program_prepared_protocol_sequence_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_caller_cycles_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_cycles_soundness
+#print axioms Airbender.AddSub.artifact_import
+#print axioms Airbender.Bigint.artifact_import
+#print axioms Airbender.Blake2G.artifact_import
+#print axioms Airbender.Blake2Round.artifact_import
+#print axioms Airbender.InitsTeardowns.standalone_import
+#print axioms Airbender.InitsTeardowns.unified_import
+#print axioms Airbender.JumpBranchSlt.artifact_import
+#print axioms Airbender.Keccak.artifact_import
+#print axioms Airbender.Keccak.Split.Chi5.artifact_import
+#print axioms Airbender.Keccak.Split.ColumnParity.artifact_import
+#print axioms Airbender.Keccak.Split.ThetaRho.artifact_import
+#print axioms Airbender.MulDiv.artifact_import
+#print axioms Airbender.ShiftBinop.artifact_import
+#print axioms Airbender.SubwordMemory.artifact_import
+#print axioms Airbender.UnifiedReduced.artifact_import
+#print axioms Airbender.WordMemory.artifact_import
+#print axioms Airbender.placements_claim

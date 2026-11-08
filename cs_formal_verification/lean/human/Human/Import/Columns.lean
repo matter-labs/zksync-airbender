@@ -5,8 +5,17 @@ public import Human.Helpers.Context.Columns
 public import Human.Helpers.Memory.Ports
 public import Human.Helpers.Delegation.Columns
 public import Human.Helpers.Decoder.Columns
+public import Std.Data.TreeMap
 
 @[expose] public section
+
+/-! # What the circuit JSON's layout fields mean
+
+Pure functions from the decoded artifact (`Circuit`, `Schema.lean`) to the column descriptors the claims use:
+logical variables of physical addresses, lookup expressions, memory ports, clocks, decoder columns, and the
+per-family lookup-query profiles (each checks the native setup profile and rejects anything else). Each
+artifact's `ArtifactImportClaim` (in its `Artifact.lean`) states that the imported definitions are these
+functions applied to the transcribed artifact. -/
 
 namespace Airbender
 open Lean
@@ -26,12 +35,35 @@ def Circuit.lookupAddress (c : Circuit) (address : GKRAddress) : Except String G
     | _ => throw "lookup scratch alias must have exactly one forward mapping"
   | _ => pure address
 
+/-- Numbers naming an address: its constructor, then its fields. Distinct addresses have distinct keys. -/
+def GKRAddress.key : GKRAddress → List Nat
+  | .BaseLayerWitness n => [0, n]
+  | .BaseLayerMemory n => [1, n]
+  | .InnerLayer layer offset => [2, layer, offset]
+  | .Setup n => [3, n]
+  | .VirtualSetup .RangeCheck16Bits => [4, 0]
+  | .VirtualSetup .RangeCheckTimestamp => [4, 1]
+  | .VirtualSetup .InitsAndTeardownsLow => [4, 2]
+  | .VirtualSetup .InitsAndTeardownsHigh => [4, 3]
+  | .ScratchSpace n => [5, n]
+  | .Cached layer offset => [6, layer, offset]
+
+/-- The logical variables placed at each address (by key), collected once from `placement_data`, latest first
+    (`PlacementsClaim`, below, states what each entry holds). -/
+def Circuit.placements (c : Circuit) : Std.TreeMap (List Nat) (List Nat) :=
+  c.placement_data.entries.toList.foldl
+    (fun m (v, a) => m.alter a.key fun vs => some (v :: vs.getD [])) {}
+
+/-- The entry of address `a` lists the variable `v` of every entry `(v, a)` of `placement_data`, latest first. -/
+def PlacementsClaim : Prop :=
+  ∀ (c : Circuit) (a : GKRAddress),
+    c.placements.getD a.key [] = ((c.placement_data.entries.toList.filter (·.2 == a)).map (·.1)).reverse
+
 /-- Recover one logical variable for a physical address; reject ambiguity. -/
 def Circuit.logicalVariable (c : Circuit) (address : GKRAddress) : Except String Nat := do
   let address ← c.lookupAddress address
-  let placements := c.placement_data.entries.filter fun (_, a) => a == address
-  match placements.toList with
-  | [(v, _)] => pure v
+  match c.placements.getD address.key [] with
+  | [v] => pure v
   | _ => throw s!"address must have exactly one logical variable: {repr address}"
 
 /-- Recover logical variables for physical lookup addresses; reject ambiguity. -/
@@ -563,12 +595,5 @@ def Circuit.keccakThetaRhoQueries (c : Circuit) : Except String (Array (Array Ex
 /-- Chi5: the chi table (65) and control (66). -/
 def Circuit.keccakChi5Queries (c : Circuit) : Except String (Array (Array Expr)) :=
   c.splitKeccakQueries 11 17 1048697 [65, 66]
-
-/-- Decode the Rust artifact using Lean's JSON parser and the typed serde mirror. -/
-def parseCircuit (text : String) : Except String Circuit := do
-  fromJson? (← Json.parse text)
-
-def loadCircuit (path : System.FilePath) : IO (Except String Circuit) := do
-  return parseCircuit (← IO.FS.readFile path)
 
 end Airbender
