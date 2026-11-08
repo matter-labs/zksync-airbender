@@ -5,8 +5,6 @@ public import Slop.Keccak.NativeExecution
 
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true
-set_option maxRecDepth 16384
-set_option maxHeartbeats 1600000
 
 def columnState (reads : Vector Nat 6) (column : Fin 5) : Vector Nat 25 :=
   Vector.ofFn fun i => if i.val / 5 = column.val then reads[Fin.ofNat 6 (i.val % 5)] else 0
