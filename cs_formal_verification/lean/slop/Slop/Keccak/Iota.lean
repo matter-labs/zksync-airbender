@@ -2,7 +2,7 @@ module
 public import Human.Circuits.Keccak.Iota
 public import Slop.Keccak.DecodeControl
 public import Slop.Keccak.ByteFacts
-public import Slop.Keccak.OpIndex
+public import Slop.Keccak.XorRoutes
 public import Slop.Arithmetic.ByteAssembly
 
 @[expose] public section
@@ -10,16 +10,12 @@ public import Slop.Arithmetic.ByteAssembly
 namespace Airbender.Keccak.Proofs
 open Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
-
-private def nativeLimbs (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 4, start + 5]
-private def temporary (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 2, start + 3]
 private def aColumns : Vector (Vector Nat 4) 5 :=
-  #v[nativeLimbs 15, nativeLimbs 17, temporary 90, temporary 94, temporary 98]
+  #v[nativeLimbs 15, nativeLimbs 17, temporaryLimbs 90, temporaryLimbs 94, temporaryLimbs 98]
 private def bColumns : Vector (Vector Nat 4) 5 :=
-  #v[temporary 86, nativeLimbs 23, nativeLimbs 31, nativeLimbs 39, nativeLimbs 47]
+  #v[temporaryLimbs 86, nativeLimbs 23, nativeLimbs 31, nativeLimbs 39, nativeLimbs 47]
 private def cColumns : Vector (Vector Nat 4) 5 :=
-  #v[nativeLimbs 17, temporary 90, temporary 94, temporary 98, nativeLimbs 57]
+  #v[nativeLimbs 17, temporaryLimbs 90, temporaryLimbs 94, temporaryLimbs 98, nativeLimbs 57]
 private def packed {p : Nat} (w : Nat → ZMod p) (columns : Vector Nat 4) : Nat :=
   (w columns[0]).val + 65536 * ((w columns[1]).val +
     65536 * ((w columns[2]).val + 65536 * (w columns[3]).val))
@@ -34,33 +30,11 @@ private theorem iota_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
       256 * w (111 + 24 * operation.val + 2 * limb.val) = w bColumns[operation][limb] ∧
     w (118 + 24 * operation.val + 2 * limb.val) +
       256 * w (119 + 24 * operation.val + 2 * limb.val) = w cColumns[operation][limb] := by
-  have modes := selected_modes hp h active (0 : Fin 7) selected
-  have m1 := modes (1 : Fin 7); have m2 := modes (2 : Fin 7); have m3 := modes (3 : Fin 7)
-  have m4 := modes (4 : Fin 7); have m5 := modes (5 : Fin 7); have m6 := modes (6 : Fin 7)
-  simp [Variables.modeColumns] at m1 m2 m3 m4 m5 m6
-  have rotations (i : Fin 5) : w (80 + i.val) = 0 := by
-    have equation := Verification.assertion_of_holds h ⟨9 + i.val, by rw [constraint_count]; omega⟩
-    fin_cases i
-    all_goals op_index at equation
-    all_goals simpa [Expression.eval, Verification.environment, m4] using equation.symm
-  have r0 := rotations (0 : Fin 5); have r1 := rotations (1 : Fin 5)
-  have r2 := rotations (2 : Fin 5); have r3 := rotations (3 : Fin 5); have r4 := rotations (4 : Fin 5)
-  change w 80 = 0 at r0
-  change w 81 = 0 at r1
-  change w 82 = 0 at r2
-  change w 83 = 0 at r3
-  change w 84 = 0 at r4
-  have a := Verification.assertion_of_holds h
-    ⟨20 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  have b := Verification.assertion_of_holds h
-    ⟨21 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  have c := Verification.assertion_of_holds h
-    ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  fin_cases operation <;> fin_cases limb
-  all_goals op_index at a b c
-  all_goals simp [Expression.eval, Verification.environment, selected, m1, m2, m3, m4, m5, m6,
-      r0, r1, r2, r3, r4, aColumns, bColumns, cColumns, nativeLimbs, temporary] at a b c ⊢
-  all_goals exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
+  have routes := xor_routes hp h active 0 (Or.inl rfl) selected operation limb
+  have ca : routeA[(0 : Fin 7)] = aColumns := rfl
+  have cb : routeB[(0 : Fin 7)] = bColumns := rfl
+  have cc : routeC[(0 : Fin 7)] = cColumns := rfl
+  rwa [ca, cb, cc] at routes
 
 private theorem iota_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
@@ -125,8 +99,23 @@ private theorem constant_limb (round : Fin 32) (limb : Fin 4) :
     iotaByte (round.val + 32 * (2 * limb.val)) +
       256 * iotaByte (round.val + 32 * (2 * limb.val + 1)) =
       adjustedConstant round.val / 65536 ^ limb.val % 65536 := by
-  revert round limb
-  decide +kernel
+  have byte (k : Nat) :
+      iotaByte (round.val + 32 * k) = adjustedConstant round.val / 2 ^ (8 * k) % 256 := by
+    unfold iotaByte
+    rw [show (round.val + 32 * k) % 32 = round.val by omega,
+      show (round.val + 32 * k) / 32 = k by omega]
+  rw [byte, byte, show 8 * (2 * limb.val) = 16 * limb.val by omega,
+    show 8 * (2 * limb.val + 1) = 16 * limb.val + 8 by omega, pow_add, pow_mul,
+    ← Nat.div_div_eq_div_mul]
+  generalize adjustedConstant round.val / (2 ^ 16) ^ limb.val = b
+  norm_num only
+  omega
+
+private theorem adjusted_bound (round : Nat) : adjustedConstant round < 2 ^ 64 := by
+  unfold adjustedConstant
+  split
+  · exact UInt64.toNat_lt _
+  · decide
 
 private theorem constant_assembly (round : Fin 32) :
     adjustedConstant round.val =
@@ -134,8 +123,10 @@ private theorem constant_assembly (round : Fin 32) :
       65536 * ((adjustedConstant round.val / 65536 % 65536) +
       65536 * ((adjustedConstant round.val / 65536 ^ 2 % 65536) +
       65536 * (adjustedConstant round.val / 65536 ^ 3 % 65536))) := by
-  revert round
-  decide +kernel
+  have bound := adjusted_bound round.val
+  generalize adjustedConstant round.val = n at bound ⊢
+  norm_num only at bound ⊢
+  omega
 
 private theorem control_pair {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (round : Fin 32)
@@ -157,7 +148,7 @@ private theorem control_pair {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
         256 * (round.val + 32 * (2 * limb.val + 1)) : Nat) : ZMod p) := by
     fin_cases limb
     all_goals op_index at definition
-    all_goals simp [Expression.eval, Verification.environment, bColumns, temporary, rc] at definition routes ⊢
+    all_goals simp [Expression.eval, Verification.environment, bColumns, temporaryLimbs, rc] at definition routes ⊢
     all_goals linear_combination routes - definition
   have bound : round.val + 32 * (2 * limb.val) +
       256 * (round.val + 32 * (2 * limb.val + 1)) < p := by
@@ -241,6 +232,24 @@ private theorem iota_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   norm_num only [Nat.reducePow] at xor
   exact xor.symm
 
+private theorem iota_copies {p : Nat} [Fact p.Prime]
+    {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (selected : w 63 = 1) (lane limb : Fin 4) :
+    w (23 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) =
+      w (25 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) := by
+  refine copy_of_holds h ⟨84 + 4 * lane.val + limb.val, by rw [constraint_count]; omega⟩ ?_ selected
+  fin_cases lane <;> fin_cases limb
+  all_goals op_index
+  all_goals rfl
+
+/-- Every written lane is an operation's output or a copy of the read lane. -/
+private theorem iota_written_cover : ∀ lane : Fin 6, ∀ limb : Fin 4,
+    (∃ operation : Fin 5, cColumns[operation][limb] =
+      17 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) ∨
+    ∃ i : Fin 4, i.val + 1 = lane.val := by
+  decide
+
 theorem iota_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
@@ -259,32 +268,13 @@ theorem iota_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     have value := value_of_bounded_pair (radix := 256) (capacity := 256)
       (by omega) low.2.2.1 high.2.2.1 route
     rw [value]; omega
-  have copied (i : Fin 4) :
-      (w (25 + 8 * i.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536 := by
-    have equation := Verification.assertion_of_holds h
-      ⟨84 + 4 * i.val + limb.val, by rw [constraint_count]; omega⟩
-    have bound := reads ⟨i.val + 1, by omega⟩ limb
-    have same : w (25 + 8 * i.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) =
-        w (23 + 8 * i.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) := by
-      fin_cases i <;> fin_cases limb
-      all_goals op_index at equation
-      all_goals simp [Expression.eval, Verification.environment, selected] at equation ⊢
-      all_goals linear_combination -equation
-    rw [same]
+  rcases iota_written_cover lane limb with ⟨operation, same⟩ | ⟨i, same⟩
+  · rw [← same]
+    exact result operation
+  · have bound := reads ⟨i.val + 1, by omega⟩ limb
     change (w (15 + 8 * (i.val + 1) + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536 at bound
-    convert bound using 1
-    congr 2
-    omega
-  have r0 := result 0; have r4 := result 4
-  have c0 := copied 0; have c1 := copied 1; have c2 := copied 2; have c3 := copied 3
-  fin_cases lane <;> fin_cases limb
-  all_goals first
-    | simpa [cColumns, nativeLimbs] using r0
-    | simpa [cColumns, nativeLimbs] using r4
-    | simpa using c0
-    | simpa using c1
-    | simpa using c2
-    | simpa using c3
+    rw [show 15 + 8 * (i.val + 1) = 23 + 8 * i.val by omega, iota_copies h selected i limb] at bound
+    rwa [← same, show 17 + 8 * (i.val + 1) = 25 + 8 * i.val by omega]
 
 private theorem iota_operation {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (round : Fin 32)
@@ -319,20 +309,10 @@ private theorem iota_preserved {p : Nat} [Fact p.Prime]
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 63 = 1) (lane : Fin 4) :
     writeLane w ⟨lane.val + 1, by omega⟩ = readLane w ⟨lane.val + 1, by omega⟩ := by
-  have limbs (limb : Fin 4) :
-      w (25 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) =
-        w (23 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) := by
-    have equation := Verification.assertion_of_holds h
-      ⟨84 + 4 * lane.val + limb.val, by rw [constraint_count]; omega⟩
-    fin_cases lane <;> fin_cases limb
-    all_goals op_index at equation
-    all_goals simp [Expression.eval, Verification.environment, selected] at equation ⊢
-    all_goals linear_combination -equation
-  have l0 := limbs (0 : Fin 4); have l1 := limbs (1 : Fin 4)
-  have l2 := limbs (2 : Fin 4); have l3 := limbs (3 : Fin 4)
-  simp at l0 l1 l2 l3
-  fin_cases lane <;> simp [writeLane, readLane, laneValue] at l0 l1 l2 l3 ⊢
-  all_goals rw [l0, l1, l2, l3]
+  change laneValue w (17 + 8 * (lane.val + 1)) = laneValue w (15 + 8 * (lane.val + 1))
+  rw [show 17 + 8 * (lane.val + 1) = 25 + 8 * lane.val by omega,
+    show 15 + 8 * (lane.val + 1) = 23 + 8 * lane.val by omega]
+  exact lane_copy_of_limbs (iota_copies h selected lane)
 
 private theorem reference_column (state : Vector Nat 25) (column i : Fin 5) (round : Fin 25) :
     (iotaState state round)[5 * column.val + i.val] =
@@ -362,7 +342,7 @@ theorem iota_column {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have op2 := iota_operation hp rc h mapping.active flags.1 flags.2 (2 : Fin 5)
   have op3 := iota_operation hp rc h mapping.active flags.1 flags.2 (3 : Fin 5)
   have op4 := iota_operation hp rc h mapping.active flags.1 flags.2 (4 : Fin 5)
-  simp [packed, aColumns, bColumns, cColumns, nativeLimbs, temporary] at op0 op1 op2 op3 op4
+  simp [packed, aColumns, bColumns, cColumns, nativeLimbs, temporaryLimbs] at op0 op1 op2 op3 op4
   have changed : ∀ i : Fin 5, writeLane w ⟨i.val, by omega⟩ =
       (iotaState state round)[5 * column.val + i.val] := by
     intro i
@@ -396,13 +376,13 @@ theorem iota_column {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have p4 : writeLane w 4 = readLane w 4 := iota_preserved h flags.1 (3 : Fin 4)
   rw [p1, p2, p3, p4]
   change laneValue w 57 = _
-  change laneValue w 57 = packed w (temporary 98) ^^^ laneValue w 47 at op4
+  change laneValue w 57 = packed w (temporaryLimbs 98) ^^^ laneValue w 47 at op4
   rw [op4]
-  change packed w (temporary 98) = packed w (temporary 94) ^^^ laneValue w 39 at op3
+  change packed w (temporaryLimbs 98) = packed w (temporaryLimbs 94) ^^^ laneValue w 39 at op3
   rw [op3]
-  change packed w (temporary 94) = packed w (temporary 90) ^^^ laneValue w 31 at op2
+  change packed w (temporaryLimbs 94) = packed w (temporaryLimbs 90) ^^^ laneValue w 31 at op2
   rw [op2]
-  change packed w (temporary 90) = laneValue w 17 ^^^ laneValue w 23 at op1
+  change packed w (temporaryLimbs 90) = laneValue w 17 ^^^ laneValue w 23 at op1
   rw [op1]
   rfl
 
