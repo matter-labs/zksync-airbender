@@ -1,5 +1,60 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Native initialization windows and cross-chunk uniqueness (8 November 2026)
+
+[The actual native window interface](Airbender/Review/Circuits/ReducedMachine/InitializationWindow.lean)
+checks parsed previous-terminal/current-first public addresses. Its parser keeps
+BOTH native high-bit masks, the32bit left shift and bitwise OR. The unchanged
+native checked-u16 helper was byte-compared and pinned BEFORE adaptation:
+103native sources, all previous102 unchanged. The already pinned full-statement
+window source was rechecked against exact native67ee before adaptation.
+[The parser calculation](Airbender/Proofs/ReducedMachine/NativeInitializationAddressParser.lean)
+derives successful parsing and the exact Nat radix address from the already
+derived public16bit limbs, including full RV32 words above M31. This is a pure
+source reference, not Rust/field-storage/serialization/compiler refinement.
+
+The native IF branch accepts strict public window growth. Its ELSE branch checks
+previous terminal address0 AND all four teardown value/time fields0. Both are
+retained: no strict-window premise is supplied for padding chunks.
+[The window calculations](Airbender/Proofs/ReducedMachine/NativeInitializationWindow.lean)
+derive that this fallback forces EVERY previous ordinary record to padding using
+the complete source, actual public endpoint binding and strict local sorting.
+They then derive weak order for every pair of rows across adjacent chunks, and
+strict order from each nonpadding record. An abstract finite chunk induction
+extends this to every ordered pair of supplied chunks and every ordinary row.
+Global nonpadding actual token-address uniqueness identifies BOTH chunk and row
+indices. All padding records/tokens and intermediate chunks remain in the proof.
+
+[Three short roots](Airbender/Review/Circuits/ReducedMachine/InitializationWindowTheorems.lean)
+retain EVERY supplied complete boundary/scalar/main/init component and EVERY
+native adjacent window in an explicit indexed source-normalized batch. No expected
+order, image, seed, read, clock, key, worker/request stream, result or filter is
+supplied. This is not full Rust ProofOutput/count/setup-cap/challenge/transcript/
+global-memory/delegation acceptance or cryptographic extraction. Coupling this
+view to the SAME complete main-argument list and full token ledger, public image/
+seed coverage, combined chronological memory history, initialized worker reads/
+raw clocks/keys and real caller-worker accounting remain open. Original Sail
+execution stays unchanged and excludes CSR/MOP; no unproved delegated frame.
+
+[Sixteen controls](Tests/NativeInitializationWindow.lean) cover zero/max-RV32 parsing,
+both wide-limb rejections, retained zero fallback, raw teardown fields on strict
+windows, each of four fallback-field corruptions, equal/descending nonzero window
+rejections, failed-parser rejection, nonadjacent finite growth/padding retention,
+existing complete CSR BODY plus zero public window and conditional full roots.
+These are pure/source/reference/conditional controls, not full positive nonempty
+source-aux/global/worker/physical witnesses, attacks or native-defect evidence.
+Five modules add31 roots with eight exact parent origins and one manual source
+reference. All5,582 prior ordered roots and exact source bytes remain. No production/
+Sail/old acceptance/proof/importer/exporter/artifact/fixture/dependency change,
+native generation or closed heavy replay. Findings remain unchanged; no issue
+assumption, new axiom, physical extraction, completeness or checked parity claim.
+
+Next: couple these checks by construction to the SAME actual main-argument list
+and full native ledger, then establish public initialization image/seed coverage
+and chronological combined memory history. Sorted windows alone do not provide
+expected public seeds or active worker bounds.
+
+
 ## Native public initialization endpoints and sorted interval (8 November 2026)
 
 [The public boundary component](Airbender/Review/Circuits/ReducedMachine/InitializationBoundary.lean)

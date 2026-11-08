@@ -246,3 +246,10 @@ are separate obligations; original execution is unchanged.
 endpoint records and derive the public address interval for every ordinary row.
 The normalized last row is excluded. Cross-chunk windows, public image/seeds
 and combined initialized worker history remain separate obligations.
+
+## Native initialization windows
+
+[Successful native windows and global nonpadding uniqueness](../../Circuits/ReducedMachine/InitializationWindowTheorems.lean) retain
+the actual zero-terminal fallback and all padding records. The fallback derives
+a wholly padded previous ordinary chunk. The indexed normalized batch is separate
+from full main-ledger/protocol extraction, public seeds and initialized workers.
