@@ -1573,3 +1573,10 @@ the existing complete source, derived full-family address ranges, native
 subtraction and six padding polynomials. All ordinary rows are included; repeated
 padding remains. Public windows/image/seeds and combined worker memory history
 are separate obligations; original execution is unchanged.
+
+## Public initialization endpoint binding
+
+[All twelve actual public boundary polynomials](Airbender/Review/Circuits/ReducedMachine/InitializationBoundaryTheorems.lean) bind both six-field
+endpoint records and derive the public address interval for every ordinary row.
+The normalized last row is excluded. Cross-chunk windows, public image/seeds
+and combined initialized worker history remain separate obligations.

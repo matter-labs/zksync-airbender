@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.InitializationBoundary
+import Airbender.Proofs.ReducedMachine.NativeInitializationBoundary
+import Airbender.Review.Circuits.ReducedMachine.InitializationBoundaryTheorems
+import Tests.NativeInitializationBoundary
+
 import Airbender.Review.Circuits.ReducedMachine.InitializationSorted
 import Airbender.Proofs.ReducedMachine.NativeInitializationSorted
 import Airbender.Review.Circuits.ReducedMachine.InitializationSortedTheorems
@@ -6375,3 +6380,26 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeInitializationSorted.compared_and_observed_domains
 #print axioms Airbender.Tests.NativeInitializationSorted.complete_conditional_sorted
 #print axioms Airbender.Tests.NativeInitializationSorted.complete_conditional_unique
+
+#print axioms Airbender.NativeInitializationBoundaryProofs.geometry
+#print axioms Airbender.NativeInitializationBoundaryProofs.unit_scaling
+#print axioms Airbender.NativeInitializationBoundaryProofs.endpoint
+#print axioms Airbender.NativeInitializationBoundaryProofs.record_address
+#print axioms Airbender.NativeInitializationBoundaryProofs.full_endpoints
+#print axioms Airbender.NativeInitializationBoundaryProofs.public_bounds
+#print axioms Airbender.NativeInitializationBoundaryProofs.public_interval
+#print axioms Airbender.NativeInitializationBoundaryProofs.strict_terminal
+#print axioms Airbender.NativeInitializationBoundary.native_initialization_public_interval
+#print axioms Airbender.NativeInitializationBoundary.native_initialization_public_bounds
+#print axioms Airbender.Tests.NativeInitializationBoundary.actual_geometry
+#print axioms Airbender.Tests.NativeInitializationBoundary.public_constant_unscaled
+#print axioms Airbender.Tests.NativeInitializationBoundary.all_six_actual_fields
+#print axioms Airbender.Tests.NativeInitializationBoundary.nonzero_public_record_allowed
+#print axioms Airbender.Tests.NativeInitializationBoundary.changed_address_rejected
+#print axioms Airbender.Tests.NativeInitializationBoundary.changed_teardown_value_rejected
+#print axioms Airbender.Tests.NativeInitializationBoundary.changed_teardown_time_rejected
+#print axioms Airbender.Tests.NativeInitializationBoundary.raw_wide_timestamp_retained
+#print axioms Airbender.Tests.NativeInitializationBoundary.complete_body_zero_boundary
+#print axioms Airbender.Tests.NativeInitializationBoundary.last_ordinary_not_normalized
+#print axioms Airbender.Tests.NativeInitializationBoundary.complete_conditional_interval
+#print axioms Airbender.Tests.NativeInitializationBoundary.complete_conditional_strict

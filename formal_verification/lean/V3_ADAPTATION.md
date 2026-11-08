@@ -1,5 +1,53 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Native public initialization endpoints and sorted interval (8 November 2026)
+
+[The public boundary component](Airbender/Review/Circuits/ReducedMachine/InitializationBoundary.lean)
+retains the SAME complete scalar/main/init/sorting input and adds the actual twelve
+native boundary polynomials. They bind all six address, teardown-value and
+teardown-timestamp fields at row0 and rowN-2 to the observed public auxiliary
+boundary values. Only trace values receive half-domain scaling; public constants
+are unscaled. No desired first/last address, comparison, window, image or seed is
+supplied. The last ordinary row N-2 is the public endpoint; normalized N-1 is not.
+
+[The calculations](Airbender/Proofs/ReducedMachine/NativeInitializationBoundary.lean)
+derive equality of ALL endpoint fields to their actual public inputs, both public
+address pairs' canonical16bit bounds and the public interval containing EVERY
+ordinary initialization address. Earlier nonpadding records are strictly below
+the public upper endpoint. These consequences use the unchanged natural sorting
+proof and the SAME full-family logical lookup boundary. Public teardown values
+and timestamps remain raw field limbs; no new value/time range or codec follows.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/InitializationBoundaryTheorems.lean)
+expose the actual public bindings, interval and address bounds. Individual
+unit-normalized source relations remain separate from physical quotient/LDE/
+verifier extraction. This is not Rust/serialization/transcript/commitment or
+cryptographic refinement. Native constructor/debug assertions are not promoted
+to proof enforcement. Public chunk windows and sorted image/seed coverage,
+combined initialized memory/worker history, active worker keys/raw clocks and
+real caller-worker accounting remain open. Original Sail execution is unchanged
+and still excludes CSR/MOP; no frame crosses unproved delegated actions.
+
+[Twelve controls](Tests/NativeInitializationBoundary.lean) cover all six fields,
+unscaled public constants, a nonzero public endpoint SOURCE SLICE, corrupted
+address/value/time rejections, a raw wide-timestamp SLICE, unchanged complete
+CSR BODY plus its zero boundary, lastordinary versus normalizedlast and complete
+conditional interval/strictness. These are not full positive nonempty source-aux,
+global, worker or physical witnesses, attacks or native-defect evidence.
+Four modules add22 explicit roots and eight exact parent origins plus one manual
+source-reference record, preserving all5,560 previous ordered roots/source bytes.
+The unchanged native helper was byte-compared and pinned BEFORE adaptation:
+102 native pins, all previous101 preserved. Already pinned source dispatch,
+scaling and boundary-value definitions were rechecked against exact native67ee.
+No production/Sail/parser/exporter/artifact/fixture/dependency change or native
+generation/closed heavy replay. Findings, completeness and checked parity remain
+unchanged; no native defect or issue-handling assumption is introduced.
+
+Next: actual cross-chunk window checks on these public endpoints, then sorted
+public image/seed coverage and chronological combined memory history. Endpoint
+binding and sorting alone do not identify initialization zeros with public seeds.
+
+
 ## Natural native initialization sorting and global uniqueness (8 November 2026)
 
 [Actual initialization addresses](Airbender/Review/Circuits/ReducedMachine/InitializationSorted.lean)
