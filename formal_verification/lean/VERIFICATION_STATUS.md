@@ -1,5 +1,46 @@
 # Verification status
 
+## Natural native caller counts (9 November 2026)
+
+[Natural counts](Airbender/Review/Trace/Families/ReducedMachine/CallerCount.lean),
+[proof](Airbender/Proofs/ReducedMachine/NativeCallerCount.lean) and
+[short root](Airbender/Review/Trace/Families/ReducedMachine/CallerCountTheorems.lean)
+connect the checked individual Boolean weights to the old exact aggregate over
+EVERY original caller occurrence. No inactive requests are removed. The count is
+a natural indicator sum, not a field weight or an acceptance premise.
+
+The actual MAIN count/capacity guard derives at most 68,719,468,544 ordinary positions.
+At each raw four-field key, the natural request count is EXACTLY the active-worker
+0/1 indicator plus p*q, where p=2147483647 and q<=31. A missing worker key therefore
+has zero callers or at least p; a fulfilled key has one caller or at least p+1.
+Every active worker key has an actual caller with weight1. Any departure from the
+0/1 indicator DERIVES at least 257 actual MAIN proofs, using capacity 8,388,607 and
+count binding. Thus batches of up to 256 proofs have exact per-key natural counts.
+No count/no-wrap/activity/fulfilled-ledger premise is added to the public root.
+The quotient is not assumed zero, and no characteristic-sized native witness or
+accepted discrepancy is claimed. Universal activity/per-call matching remains open.
+
+The SAME counted source/public image/log20/OLD LogicalLookups/OLD explicit
+SourceIdentity retain individual request validity, active-worker key/clock
+uniqueness, joint initialized execution, weighted worker outputs, word bounds,
+capacity and MAIN partial dependencies. All inactive caller requests/AUX/m0 poles,
+43 worker ports, both raw timestamps, aliases, OLDREADs, readonly refreshes,
+unmasked SW and public x0 timestamps remain. Logical identities still do not
+establish physical cryptographic enforcement, Rust/JSON/compiler refinement or
+original CSR/MOP/worker Sail effects. Physical scheduling/standard hash, protocol
+spans/padding-terminal/init-teardown, cryptography, completeness and parity remain
+open. Zero established native defects; FINDINGS unchanged, no issue assumption/fix.
+
+[21 controls](Tests/NativeCallerCount.lean) cover small duplicate/zero/absent counts,
+characteristic arithmetic, quotient31, derived bounds/remainders/thresholds,
+up-to256 exact counts, actual caller existence, retained inactive LOCAL validity,
+prior execution/validity and the full counted root. These are pure/old LOCAL/
+conditional controls, not new nonempty native-global/physical accepted witnesses,
+attacks, defects or absent-enforcement evidence. No new native source/pin, parser,
+importer/exporter, artifact/fixture, generation/heavy replay, dependency/v3 refresh,
+production/Sail/old acceptance change. Audit counters are not parity.
+
+
 ## Individual native caller validity (9 November 2026)
 
 [Caller validity](Airbender/Review/Circuits/ReducedMachine/CallerValidity.lean) and

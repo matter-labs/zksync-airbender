@@ -1955,3 +1955,10 @@ request shape on all ordinary rows, including inactive rows, with raw key1991
 and bounded ABI for nonzero requests. Full mixed queries and actual table outputs
 exclude the competing pattern. Activity and per-call accounting remain open;
 no full mask, activity, expected key/range or Boolean weight is supplied.
+
+## Natural caller counts
+
+[Caller counts](Airbender/Review/Trace/Families/ReducedMachine/CallerCountTheorems.lean) derive count=workerIndicator+p*q with q<=31
+over every original caller occurrence. Any deviation requires at least257 MAIN
+proofs; up-to256 batches have exact per-key counts. No no-wrap/count/activity
+premise is added. Universal activity/per-call matching remains open.

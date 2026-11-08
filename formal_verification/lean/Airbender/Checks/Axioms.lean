@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.CallerCount
+import Airbender.Proofs.ReducedMachine.NativeCallerCount
+import Airbender.Review.Trace.Families.ReducedMachine.CallerCountTheorems
+import Tests.NativeCallerCount
+
 import Airbender.Review.Circuits.ReducedMachine.CallerValidity
 import Airbender.Proofs.ReducedMachine.NativeCallerValidity
 import Airbender.Review.Trace.Families.ReducedMachine.CallerValidityTheorems
@@ -8106,3 +8111,32 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeCallerValidity.wide_abi_rejected
 #print axioms Airbender.Tests.NativeCallerValidity.full_mixed_memberships_retained
 #print axioms Airbender.Tests.NativeCallerValidity.full_counted_source
+
+#print axioms Airbender.NativeCallerCountProofs.count_bound
+#print axioms Airbender.NativeCallerCountProofs.count_cast
+#print axioms Airbender.NativeCallerCountProofs.count_positive
+#print axioms Airbender.NativeCallerCountProofs.quotient
+#print axioms Airbender.NativeCallerCountProofs.from_prior
+#print axioms Airbender.NativeCallerCountProofs.counted
+#print axioms Airbender.NativeCallerCount.native_counted_caller_counts
+#print axioms Airbender.Tests.NativeCallerCount.duplicate_positions
+#print axioms Airbender.Tests.NativeCallerCount.zero_weights
+#print axioms Airbender.Tests.NativeCallerCount.absent_key
+#print axioms Airbender.Tests.NativeCallerCount.empty_count
+#print axioms Airbender.Tests.NativeCallerCount.occurrence_bound
+#print axioms Airbender.Tests.NativeCallerCount.field_characteristic_retained
+#print axioms Airbender.Tests.NativeCallerCount.main_capacity_below_32_characteristics
+#print axioms Airbender.Tests.NativeCallerCount.quotient31_arithmetic
+#print axioms Airbender.Tests.NativeCallerCount.no_wrap_not_inferred
+#print axioms Airbender.Tests.NativeCallerCount.inactive_valid_request_retained
+#print axioms Airbender.Tests.NativeCallerCount.natural_bound
+#print axioms Airbender.Tests.NativeCallerCount.exact_remainder
+#print axioms Airbender.Tests.NativeCallerCount.bounded_quotient
+#print axioms Airbender.Tests.NativeCallerCount.unfulfilled_requires_characteristic
+#print axioms Airbender.Tests.NativeCallerCount.repeated_fulfilled_requires_characteristic
+#print axioms Airbender.Tests.NativeCallerCount.worker_has_actual_caller
+#print axioms Airbender.Tests.NativeCallerCount.wrap_requires257_proofs
+#print axioms Airbender.Tests.NativeCallerCount.up_to256_exact
+#print axioms Airbender.Tests.NativeCallerCount.individual_validity_retained
+#print axioms Airbender.Tests.NativeCallerCount.joint_execution_retained
+#print axioms Airbender.Tests.NativeCallerCount.full_counted_source
