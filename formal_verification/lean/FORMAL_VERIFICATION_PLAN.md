@@ -1,5 +1,50 @@
 # Circuit formal verification plan
 
+## Actual worker progress and active-zero read sources (8 November 2026)
+
+[Actual worker clock observations](Airbender/Review/Circuits/ReducedMachine/WorkerClockProgress.lean)
+retain all43 old reads and their full raw token addresses, values and BOTH time
+fields. Complete native BODY derives Boolean borrows and19bit difference bounds.
+The existing generic borrowed comparison, at offset zero, gives strict old-read
+progress when both actual clocks are bounded. The local conclusion exposes every
+case: processor unbounded OR old read unbounded OR old read strictly earlier.
+Neither clock bound nor a desired chronological read is supplied to the public root.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeWorkerClockProgress.lean)
+lifts that calculation to EVERY active port of the SAME actual ordinary worker
+list under unchanged complete initialization/main/caller/worker/global acceptance.
+An unbounded old read is an exact ACTUAL active-worker write on the SAME complete
+memory ledger, retaining address/value/BOTH timestamps and its common raw worker
+clock, itself unbounded. Thus each active port has an unbounded processor clock,
+a strictly earlier old read, or an exact unbounded active writer. At actual
+processing clock zero, strict earlier Nat time is impossible: EVERY one of43 old
+reads must come from an actual unbounded active-worker write. This does not exclude
+all active zero clocks, establish global bounds/seed rooting/history or anchor a
+worker to a caller. The unbounded dependency remains explicit.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/WorkerClockProgressTheorems.lean)
+keep full BODY and same-ledger conclusions separate. No new Accepted relation,
+expected read/range/clock/state/row-list/fulfilled stream, fake Trace.Accepted or
+ClockInputs.previous, activity filter, deduplication, OOB proof object or huge
+evaluation is introduced. All inactive worker observations and auxiliary poles,
+inactiveD, readonly refreshes, OLDREAD, unmasked writes and public x0 times remain.
+Full logical matching/lookups remain explicit cryptographic extraction boundaries.
+
+[Twelve controls](Tests/NativeWorkerClockProgress.lean) cover exact raw token
+fields, all43 ports of the existing complete positive LOCAL worker row, full BODY
+rejection of active-zero/old-zero DATA, a pure order cycle, duplicate preservation,
+COMPLETE EMPTY stronger acceptance and full conditional roots. They are not new
+NONEMPTY source/global/whole-worker/physical witnesses, attacks, defects or evidence
+of absent other enforcement. Four modules add20 roots/10 exact parent origins;
+all5,883 ordered roots and exact audit bytes remain addition-only. Native103 pins,
+dependencies, old proofs/acceptance, production/Sail/importer/exporter/native
+artifacts/fixtures/findings remain unchanged. No new native adoption, generation,
+heavy replay, project axiom, issue assumption or fix. Next: actual nonempty worker
+bounds/rooting, initialized OLDREAD addresses/values, STAGE2 keys and actual caller
+anchoring/accounting. Original CSR/MOP/worker Sail, public/physical refinement,
+cryptography, completeness and native-target/trust-boundary parity remain open.
+
+
 ## Every physical caller raw-clock domain (8 November 2026)
 
 [Raw caller-clock observations](Airbender/Review/Circuits/ReducedMachine/CallerClockDomain.lean)

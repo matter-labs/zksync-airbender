@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.WorkerClockProgress
+import Airbender.Proofs.ReducedMachine.NativeWorkerClockProgress
+import Airbender.Review.Circuits.ReducedMachine.WorkerClockProgressTheorems
+import Tests.NativeWorkerClockProgress
+
 import Airbender.Review.Circuits.ReducedMachine.CallerClockDomain
 import Airbender.Proofs.ReducedMachine.NativeCallerClockDomain
 import Airbender.Review.Circuits.ReducedMachine.CallerClockDomainTheorems
@@ -6773,3 +6778,24 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeCallerClockDomain.existing_fixture_endpoints
 #print axioms Airbender.Tests.NativeCallerClockDomain.complete_empty_domains
 #print axioms Airbender.Tests.NativeCallerClockDomain.complete_conditional_domains
+
+#print axioms Airbender.NativeWorkerClockProgressProofs.read_time
+#print axioms Airbender.NativeWorkerClockProgressProofs.strict_read
+#print axioms Airbender.NativeWorkerClockProgressProofs.local_progress
+#print axioms Airbender.NativeWorkerClockProgressProofs.zero_unbounded
+#print axioms Airbender.NativeWorkerClockProgressProofs.read_member
+#print axioms Airbender.NativeWorkerClockProgressProofs.effects
+#print axioms Airbender.NativeWorkerClockProgress.native_worker_local_clock_progress
+#print axioms Airbender.NativeWorkerClockProgress.native_worker_clock_progress
+#print axioms Airbender.Tests.NativeWorkerClockProgress.all43_exact_old_times
+#print axioms Airbender.Tests.NativeWorkerClockProgress.old_value_address_retained
+#print axioms Airbender.Tests.NativeWorkerClockProgress.positive_clock
+#print axioms Airbender.Tests.NativeWorkerClockProgress.positive_all43_old_clocks
+#print axioms Airbender.Tests.NativeWorkerClockProgress.positive_all43_strict_progress
+#print axioms Airbender.Tests.NativeWorkerClockProgress.complete_positive_local_progress
+#print axioms Airbender.Tests.NativeWorkerClockProgress.active_zero_oldzero_body_rejected
+#print axioms Airbender.Tests.NativeWorkerClockProgress.bounded_cycle_rejected
+#print axioms Airbender.Tests.NativeWorkerClockProgress.duplicate_port_occurrences
+#print axioms Airbender.Tests.NativeWorkerClockProgress.complete_empty_progress
+#print axioms Airbender.Tests.NativeWorkerClockProgress.complete_conditional_progress
+#print axioms Airbender.Tests.NativeWorkerClockProgress.complete_zero_source

@@ -923,3 +923,9 @@ worker issuance, fulfillment, initialized history and accounting remain open.
 [Raw clock domains](CallerClockDomainTheorems.lean) derive exact carry/wrap alternatives on EVERY ordinary
 main row. M31minus1 sentinel cases remain explicit; this is not a19bit or worker
 clock bound. Caller anchoring, initialized worker history and accounting remain open.
+
+## Actual worker clock progress
+
+[Progress and zero-clock sources](WorkerClockProgressTheorems.lean) retain all43 actual ports. Bounded
+clocks progress strictly; other cases retain exact unbounded active sources. Active
+zero clocks require such sources, without claiming global bounds or seeded history.
