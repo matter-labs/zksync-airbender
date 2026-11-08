@@ -38,7 +38,7 @@ theorem mem_read_ram1 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVe
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_ram_load] stepwise
   dsimp only [Sail.ArchSem.Mem_request.toArchSem, MemoryOpResult_drop_meta]
   eval_closed
-  simp only [EStateM.Result.ok.injEq, and_true, Result.Ok.injEq, phys_addr_toNat, roundtrip1, BitVec.setWidth_eq,
+  simp only [phys_addr_toNat, roundtrip1, BitVec.setWidth_eq,
     update_full8]
 
 theorem mem_read_ram2 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (ha : a.toNat % 2 = 0)
@@ -49,7 +49,7 @@ theorem mem_read_ram2 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVe
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_ram_load] stepwise
   dsimp only [Sail.ArchSem.Mem_request.toArchSem, MemoryOpResult_drop_meta]
   eval_closed
-  simp only [EStateM.Result.ok.injEq, and_true, Result.Ok.injEq, phys_addr_toNat, roundtrip2, BitVec.setWidth_eq,
+  simp only [phys_addr_toNat, roundtrip2, BitVec.setWidth_eq,
     update_full16]
 
 theorem mem_read_ram4 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (ha : a.toNat % 4 = 0)
@@ -60,7 +60,7 @@ theorem mem_read_ram4 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVe
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_ram_load] stepwise
   dsimp only [Sail.ArchSem.Mem_request.toArchSem, MemoryOpResult_drop_meta]
   eval_closed
-  simp only [EStateM.Result.ok.injEq, and_true, Result.Ok.injEq, phys_addr_toNat, roundtrip4, BitVec.setWidth_eq,
+  simp only [phys_addr_toNat, roundtrip4, BitVec.setWidth_eq,
     update_full32]
 
 theorem mem_read_rom1 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (ha : a.toNat % 1 = 0)
@@ -71,7 +71,7 @@ theorem mem_read_rom1 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVe
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_rom_load] stepwise
   dsimp only [Sail.ArchSem.Mem_request.toArchSem, MemoryOpResult_drop_meta]
   eval_closed
-  simp only [EStateM.Result.ok.injEq, and_true, Result.Ok.injEq, phys_addr_toNat, roundtrip1, BitVec.setWidth_eq,
+  simp only [phys_addr_toNat, roundtrip1, BitVec.setWidth_eq,
     update_full8]
 
 theorem mem_read_rom2 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (ha : a.toNat % 2 = 0)
@@ -82,7 +82,7 @@ theorem mem_read_rom2 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVe
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_rom_load] stepwise
   dsimp only [Sail.ArchSem.Mem_request.toArchSem, MemoryOpResult_drop_meta]
   eval_closed
-  simp only [EStateM.Result.ok.injEq, and_true, Result.Ok.injEq, phys_addr_toNat, roundtrip2, BitVec.setWidth_eq,
+  simp only [phys_addr_toNat, roundtrip2, BitVec.setWidth_eq,
     update_full16]
 
 theorem mem_read_rom4 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (ha : a.toNat % 4 = 0)
@@ -93,7 +93,7 @@ theorem mem_read_rom4 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVe
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_rom_load] stepwise
   dsimp only [Sail.ArchSem.Mem_request.toArchSem, MemoryOpResult_drop_meta]
   eval_closed
-  simp only [EStateM.Result.ok.injEq, and_true, Result.Ok.injEq, phys_addr_toNat, roundtrip4, BitVec.setWidth_eq,
+  simp only [phys_addr_toNat, roundtrip4, BitVec.setWidth_eq,
     update_full32]
 
 end Slop.Equiv

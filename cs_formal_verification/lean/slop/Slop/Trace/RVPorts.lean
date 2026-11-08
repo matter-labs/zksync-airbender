@@ -70,8 +70,8 @@ theorem rv_write_read_self (m : RV.Word → BitVec 8) (a : RV.Word) : RV.write m
       simp [BitVec.getElem_or, BitVec.getElem_shiftLeft, BitVec.getElem_setWidth, hi,
         show i < 32 by omega, show 8 + i < 32 by omega, show 16 + i < 32 by omega, show 24 + i < 32 by omega,
         show 16 + i - 8 = 8 + i by omega, show 8 + i - 8 = i by omega, show 24 + i - 8 = 16 + i by omega,
-        BitVec.getLsbD_of_ge (m _) (8 + i) (by omega), BitVec.getLsbD_of_ge (m _) (16 + i) (by omega),
-        BitVec.getLsbD_of_ge (m _) (24 + i) (by omega), show ¬ 8 + i < 8 by omega, show ¬ 16 + i < 8 by omega,
+
+        show ¬ 8 + i < 8 by omega, show ¬ 16 + i < 8 by omega,
         show ¬ 24 + i < 8 by omega, show 8 ≤ 16 + i by omega, show 8 ≤ 8 + i by omega, show 8 ≤ 24 + i by omega]
   · apply RV.write_other
     intro i hi same

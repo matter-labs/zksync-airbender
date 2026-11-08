@@ -37,7 +37,7 @@ theorem read_eq1 (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : �
   have e0 := hm a
   have z : readBytes σm (a.toNat + 1) 0 = 0#0 := rfl
   simp only [RV.read, readBytes_succ, z]
-  simp only [Nat.add_assoc, Nat.reduceAdd, e0, BitVec.add_assoc]
+  simp only [Nat.reduceAdd, e0]
   try simp only [BitVec.reduceAdd]
   generalize sm a = b0
   apply BitVec.eq_of_getLsbD_eq; intro j hj
@@ -47,15 +47,15 @@ theorem read_eq1 (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : �
 theorem writeBytes1 (m : Nat → BitVec 8) (A : Nat) (v : BitVec 32) :
     writeBytes m A 1 (v.setWidth (8 * 1)) = fun c => if c = A then byte v 0 else m c := by
   have z : ∀ x, writeBytes m (A + 1) 0 x = m := fun _ => rfl
-  simp only [writeBytes_succ, Nat.add_assoc, Nat.reduceAdd, z]
+  simp only [writeBytes_succ, Nat.reduceAdd, z]
   funext c
   split_ifs <;> first | rfl | (apply BitVec.eq_of_getLsbD_eq; intro j hj; interval_cases j <;> simp)
 
 theorem rvwrite1 (m : BitVec 32 → BitVec 8) (a v : BitVec 32) :
     RV.write m a v 1 = fun b => if b = a then byte v 0 else m b := by
   funext b
-  simp only [RV.write, BitVec.add_assoc, BitVec.reduceAdd, byte, Nat.reduceMul, ← BitVec.shiftRight_add,
-    Nat.reduceAdd, BitVec.ushiftRight_zero, BitVec.ofNat_eq_ofNat, BitVec.setWidth_eq]
+  simp only [RV.write, byte, Nat.reduceMul,
+    BitVec.ushiftRight_zero]
 
 theorem write_eq1 (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : ∀ b : BitVec 32, σm b.toNat = sm b)
     (a v : BitVec 32) (h : a.toNat + 1 ≤ 2 ^ 32) (b : BitVec 32) :
@@ -71,7 +71,7 @@ theorem read_eq2 (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : �
   have e1 := e 1 (by omega); have e0 := hm a
   have z : readBytes σm (a.toNat + 2) 0 = 0#0 := rfl
   simp only [RV.read, readBytes_succ, z]
-  simp only [Nat.add_assoc, Nat.reduceAdd, e0, e1, BitVec.add_assoc]
+  simp only [Nat.reduceAdd, e0, e1]
   try simp only [BitVec.reduceAdd]
   generalize sm a = b0; generalize sm (a + 1#32) = b1
   apply BitVec.eq_of_getLsbD_eq; intro j hj
@@ -88,8 +88,8 @@ theorem writeBytes2 (m : Nat → BitVec 8) (A : Nat) (v : BitVec 32) :
 theorem rvwrite2 (m : BitVec 32 → BitVec 8) (a v : BitVec 32) :
     RV.write m a v 2 = fun b => if b = a + 1 then byte v 1 else if b = a then byte v 0 else m b := by
   funext b
-  simp only [RV.write, BitVec.add_assoc, BitVec.reduceAdd, byte, Nat.reduceMul, ← BitVec.shiftRight_add,
-    Nat.reduceAdd, BitVec.ushiftRight_zero, BitVec.ofNat_eq_ofNat, BitVec.setWidth_eq]
+  simp only [RV.write, byte, Nat.reduceMul,
+    BitVec.ushiftRight_zero, BitVec.ofNat_eq_ofNat]
 
 theorem write_eq2 (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : ∀ b : BitVec 32, σm b.toNat = sm b)
     (a v : BitVec 32) (h : a.toNat + 2 ≤ 2 ^ 32) (b : BitVec 32) :
@@ -126,7 +126,7 @@ theorem rvwrite4 (m : BitVec 32 → BitVec 8) (a v : BitVec 32) :
     RV.write m a v 4 = fun b => if b = a + 3 then byte v 3 else if b = a + 2 then byte v 2 else if b = a + 1 then byte v 1 else if b = a then byte v 0 else m b := by
   funext b
   simp only [RV.write, BitVec.add_assoc, BitVec.reduceAdd, byte, Nat.reduceMul, ← BitVec.shiftRight_add,
-    Nat.reduceAdd, BitVec.ushiftRight_zero, BitVec.ofNat_eq_ofNat, BitVec.setWidth_eq]
+    Nat.reduceAdd, BitVec.ushiftRight_zero, BitVec.ofNat_eq_ofNat]
 
 theorem write_eq4 (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : ∀ b : BitVec 32, σm b.toNat = sm b)
     (a v : BitVec 32) (h : a.toNat + 4 ≤ 2 ^ 32) (b : BitVec 32) :

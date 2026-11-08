@@ -95,14 +95,14 @@ theorem step_lift {s s' : State} (h : step s = some s') (he : s.input = []) :
     s'.input = [] ∧ ∀ t, step (s.withInput t) = some (s'.withInput t) := by
   unfold step at h
   by_cases hc : s.pc.toNat % 4 = 0 ∧ s.pc.toNat + 4 ≤ ROM_END
-  case neg => rw [if_neg hc] at h; cases h
-  rw [if_pos hc] at h
+  case neg => rw [ite_eq_right hc] at h; cases h
+  rw [ite_eq_left hc] at h
   obtain ⟨i, hdec, hex⟩ := Option.bind_eq_some_iff.mp h
   cases hr : i.readsInput
   · refine ⟨(exec_keeps_input hex hr).trans he, fun t => ?_⟩
     show (if s.pc.toNat % 4 = 0 ∧ s.pc.toNat + 4 ≤ ROM_END then
       (decode (read s.rom s.pc 4)).bind (exec (s.withInput t)) else none) = _
-    rw [if_pos hc, hdec, Option.bind_some, exec_input_irrel s i hr t, hex]; rfl
+    rw [ite_eq_left hc, hdec, Option.bind_some, exec_input_irrel s i hr t, hex]; rfl
   · obtain ⟨rd, rfl⟩ : ∃ rd, i = .inputRead rd := by cases i <;> simp_all [Instr.readsInput]
     simp [exec, he] at hex
 
@@ -165,7 +165,7 @@ theorem run_reads : ∀ (ps : List (Reg × Word)) (R : State) (rest : List Word)
     simp only [List.map_cons, List.cons_append] at hin
     simp only [List.length_cons] at hrom
     have h0 := hdec 0 (by simp)
-    simp only [BitVec.add_zero, List.getElem_cons_zero, Nat.mul_zero, BitVec.ofNat_eq_ofNat] at h0
+    simp only [BitVec.add_zero, List.getElem_cons_zero, Nat.mul_zero] at h0
     have hs := step_read R _ rd v _ hpc (by omega) rfl h0 hin
     have hpc1 : ((R.setReg rd v).nextInstr.withInput (ps.map (·.2) ++ rest)).pc = R.pc + 4 := by rfl
     have ih := run_reads ps ((R.setReg rd v).nextInstr.withInput (ps.map (·.2) ++ rest)) rest rfl

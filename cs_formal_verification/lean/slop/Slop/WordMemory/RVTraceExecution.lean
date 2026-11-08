@@ -212,7 +212,7 @@ theorem rv_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (
     refine ⟨(input.before.setReg input.rd (RV.read input.before.loadView a 4)).nextInstr, ?_,
       rv_same_next (by rw [value]; exact written) finalPC⟩
     simp only [rvInstruction, hs, Bool.false_eq_true, ite_false, RV.exec, target, rd0]
-    rw [if_pos ⟨cellAligned, readable⟩]
+    rw [ite_eq_left ⟨cellAligned, readable⟩]
     simp
   · -- SW: the second port reads rs2; the third writes the RAM cell at the effective address.
     simp only [hs, ite_true] at selected
@@ -266,6 +266,6 @@ theorem rv_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (
     refine ⟨(input.before.store a (input.before.getReg input.rs2) 4).nextInstr, ?_,
       rv_same_next (by rw [value]; exact written) finalPC⟩
     simp only [rvInstruction, hs, ite_true, RV.exec, target]
-    rw [if_pos ⟨cellAligned, writable⟩]
+    rw [ite_eq_left ⟨cellAligned, writable⟩]
 
 end Airbender.WordMemory.Proofs

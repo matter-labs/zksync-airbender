@@ -213,7 +213,7 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
     refine ⟨(input.before.setReg input.rd (RV.read input.before.loadView a 4)).nextInstr, ?_, ?_⟩
     · rw [step]
       simp only [rvInstruction, hs, Bool.false_eq_true, ite_false, RV.exec, target, rd0]
-      rw [if_pos ⟨aligned, readable⟩]
+      rw [ite_eq_left ⟨aligned, readable⟩]
       simp
     · rw [dataWord]
       exact rv_same_of_write _ _ _ _ _ (fun _ => value) hpc
@@ -273,7 +273,7 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
     refine ⟨(input.before.store a (input.before.getReg input.rs2) 4).nextInstr, ?_, ?_⟩
     · rw [step]
       simp only [rvInstruction, hs, ite_true, RV.exec, target]
-      rw [if_pos ⟨aligned, writable⟩]
+      rw [ite_eq_left ⟨aligned, writable⟩]
     · rw [dataWord, addressWord, cellWord, Word.ofBitVec_roundtrip]
       exact rv_same_of_store _ _ _ _ _ value hpc
 

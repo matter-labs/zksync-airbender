@@ -144,10 +144,10 @@ theorem oracleGo_sound {α : Type} (known : (r : Register) → Option (RegisterT
     | .impure (.inr k) cont =>
       simp only [oracleGo] at h
       by_cases hk0 : @LT.lt Nat instLTNat 0 k
-      · rw [dif_pos hk0] at h
+      · rw [dite_eq_left hk0] at h
         rw [runF_choice_pos k hk0 cont s]
         exact ih _ _ h
-      · rw [dif_neg hk0] at h
+      · rw [dite_eq_right hk0] at h
         simp at h
 
 theorem runOracle_sound {α : Type} (known : (r : Register) → Option (RegisterType r))

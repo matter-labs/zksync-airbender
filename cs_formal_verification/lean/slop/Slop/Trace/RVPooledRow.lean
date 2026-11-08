@@ -75,12 +75,12 @@ theorem applyRV_with_pc {cell : Cell} {value : BitVec 32} {s t : RV.State} (pc :
   unfold Cell.applyRV at write ⊢
   rw [read]
   by_cases h : cell.readRV s = some value
-  · rw [if_pos h] at write
-    rw [if_pos h]
+  · rw [ite_eq_left h] at write
+    rw [ite_eq_left h]
     obtain rfl := Option.some.inj write
     rfl
-  · rw [if_neg h] at write
-    rw [if_neg h]
+  · rw [ite_eq_right h] at write
+    rw [ite_eq_right h]
     cases cell with
     | register index =>
       obtain rfl := Option.some.inj write

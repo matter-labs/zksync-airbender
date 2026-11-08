@@ -87,7 +87,7 @@ theorem rv_shift_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
       (by change importedConstraintsMemoryPorts[1] ∈ importedConstraintsMemoryPorts
           simp [importedConstraintsMemoryPorts])
     apply rv_zero_code bound
-    rw [← right, if_pos ignored]
+    rw [← right, ite_eq_left ignored]
     rfl
   have result := rv_row_value (by omega) core input.operation input.immediate input.encodedImmediate
     selected funct3 immediateLo immediateHi zeroRead
@@ -105,7 +105,7 @@ theorem rv_shift_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
     rw [outputWord, result, left, ← right]
     by_cases ignored : (input.immediate || input.operation = .rev8) = true
     · exact rv_value_second _ _ _ _ ignored
-    · rw [if_neg ignored]
+    · rw [ite_eq_right ignored]
   refine ⟨_, rv_exec_row _ _, ?_⟩
   rw [value]
   exact rv_register_next written finish

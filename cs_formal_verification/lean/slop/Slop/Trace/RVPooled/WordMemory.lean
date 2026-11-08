@@ -171,7 +171,7 @@ theorem rv_word_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
     have written := rv_apply_register rdIs thirdWrite
     refine ⟨(input.before.setReg input.rd (RV.read input.before.loadView a 4)).nextInstr, ?_, ?_⟩
     · simp only [rvInstruction, hs, Bool.false_eq_true, ite_false, RV.exec, target, rd0]
-      rw [if_pos ⟨aligned, readable⟩]
+      rw [ite_eq_left ⟨aligned, readable⟩]
       simp
     · rw [value]
       exact rv_register_next written finish
@@ -225,7 +225,7 @@ theorem rv_word_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
       rw [sourceRead, offset, address]
     refine ⟨(input.before.store a (input.before.getReg input.rs2) 4).nextInstr, ?_, ?_⟩
     · simp only [rvInstruction, hs, ite_true, RV.exec, target]
-      rw [if_pos ⟨aligned, writable⟩]
+      rw [ite_eq_left ⟨aligned, writable⟩]
     · rw [value]
       exact rv_state_next (rv_apply_ram thirdWrite) rfl finish
 

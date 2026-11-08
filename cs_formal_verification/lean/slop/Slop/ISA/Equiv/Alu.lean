@@ -8,7 +8,7 @@ namespace Slop.Equiv
 
 theorem shamt_eq (y : BitVec 32) :
     (Sail.BitVec.extractLsb y ((↑Functions.log2_xlen : Int) - 1).toNat 0).toNat = (y.setWidth 5).toNat := by
-  simp [Sail.BitVec.extractLsb, BitVec.extractLsb, Functions.log2_xlen, Functions.xlen]
+  simp [Sail.BitVec.extractLsb, BitVec.extractLsb, Functions.log2_xlen]
 
 theorem sll_eq (x y : BitVec 32) :
     shift_bits_left x (Sail.BitVec.extractLsb y ((↑Functions.log2_xlen : Int) - 1).toNat 0) = x <<< (y.setWidth 5).toNat := by

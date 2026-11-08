@@ -90,6 +90,6 @@ theorem rv_step_fetch (s initial : RV.State) (agree : s.rom = initial.rom)
   have bound : s.pc.toNat + 4 ≤ RV.ROM_END := by
     unfold RV.ROM_END at guard ⊢
     omega
-  rw [if_pos ⟨guard.2, bound⟩, word]
+  rw [ite_eq_left ⟨guard.2, bound⟩, word]
 
 end Airbender.Trace

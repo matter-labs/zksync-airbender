@@ -110,7 +110,7 @@ theorem rv_oracle_row_steps {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
         response ⟨.addSub, w⟩ :: initial.input.drop (readIndex trace ⟨.addSub, w⟩ + 1) := by
       rw [List.drop_eq_getElem_cons bound, word]
     refine ⟨_, (stepped _).trans (by rw [drop]; rfl), ?_⟩
-    rw [if_pos selected]
+    rw [ite_eq_left selected]
     exact ⟨finish.symm, fun j => (written.2.1 j).symm, written.2.2.1.symm, written.2.2.2.1.symm, rfl⟩
   · -- A write: the NOP row.
     have tag := rv_oracle_addsub facts.family data rfl
@@ -123,13 +123,13 @@ theorem rv_oracle_row_steps {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
     obtain ⟨next, exec, same⟩ := rv_step_lift_input rfl
       (rv_nop_row_step hp inverse facts data (i := .inputWrite src) ⟨_, rfl, RV.Same.refl _⟩) (initial.input.drop (readIndex trace _))
     refine ⟨next, (stepped _).trans exec, ?_⟩
-    rw [if_neg (by simp [notRead]), Nat.add_zero]
+    rw [ite_eq_right (by simp [notRead]), Nat.add_zero]
     exact same
   · -- A standard row reads no input.
     obtain ⟨next, exec, same⟩ := rv_step_lift_input (rv_pooled_no_read standard)
       (rv_pooled_row_step hp inverse facts standard decodes) (initial.input.drop (readIndex trace row))
     refine ⟨next, (stepped _).trans exec, ?_⟩
-    rw [if_neg (by simp [rv_pooled_not_read limbSize facts standard]), Nat.add_zero]
+    rw [ite_eq_right (by simp [rv_pooled_not_read limbSize facts standard]), Nat.add_zero]
     exact same
 
 /-- `NonDeterminism.Pooled.RVNativeSoundnessClaim` for any field, given the zero seed of the tracked cells. -/

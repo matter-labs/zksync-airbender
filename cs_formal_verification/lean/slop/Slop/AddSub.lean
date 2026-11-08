@@ -52,7 +52,7 @@ private theorem selected_equations_row {p : Nat} [Fact p.Prime] {row : RowInput}
   have s14 := dc.otherSelectors 14 (by omega) (by omega)
   have s15 := dc.otherSelectors 15 (by omega) (by omega)
   have s16 := dc.otherSelectors 16 (by omega) (by omega)
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, dc.addSelector, dc.subSelector, nz, nonzero,
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, dc.addSelector, dc.subSelector, nz,
     s12, s13, s14, s15, s16, wm.leftLo, wm.leftHi, wm.rightLo, wm.rightHi,
     wm.immediateLo, wm.immediateHi, wm.pcLo, wm.pcHi, outLo, outHi, hc, hd] at lo hi
   cases hop : row.opcode <;> simp [hop] at lo hi ⊢ <;> constructor
@@ -133,19 +133,19 @@ theorem result_of_limbs_row {p : Nat} [Fact p.Prime] (hp : 196608 < p)
   have nz : rd ≠ 0#5 := nonzero
   cases hop : row.opcode <;> simp only [hop] at eqs ⊢
   · have pre := preprocessing
-    simp only [PreprocessingRow, nz, nonzero, ite_false, hop] at pre
+    simp only [PreprocessingRow, nonzero, ite_false, hop] at pre
     simpa [pre, Word.toBitVec, Word.value] using
       (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
         resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) eqs.1 eqs.2)
   · have pre := preprocessing
-    simp only [PreprocessingRow, nz, nonzero, ite_false, hop] at pre
+    simp only [PreprocessingRow, nonzero, ite_false, hop] at pre
     simpa [pre, Word.toBitVec, Word.value] using
       (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
         resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) eqs.1 eqs.2)
   · exact Word.sub_of_limbs (by omega) bounds.leftBound bounds.rightBound
       resultBounds cb db eqs.1 eqs.2
   · have pre := preprocessing
-    simp only [PreprocessingRow, nz, nonzero, ite_false, hop] at pre
+    simp only [PreprocessingRow, nonzero, ite_false, hop] at pre
     simpa [pre.1, pre.2, Word.toBitVec, Word.value] using
       (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
         resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) eqs.1 eqs.2)

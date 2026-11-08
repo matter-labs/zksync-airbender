@@ -25,7 +25,7 @@ theorem roundtrip1 (x : BitVec 8) : from_bytes_le (bitvec_to_vecbytes (n := 1) x
   dsimp only [pure]
   apply BitVec.eq_of_getLsbD_eq; intro j hj
   simp only [Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange']
-  interval_cases j <;> simp [sail_int_getElem, Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_succ,
+  interval_cases j <;> simp [sail_int_getElem, Vector.getElem_mk, List.getElem_toArray,
     List.getElem_cons_zero]
 
 theorem bytes2 (x : BitVec 16) : bitvec_to_vecbytes (n := 2) x = #v[x.extractLsb' 0 8, x.extractLsb' 8 8] := by

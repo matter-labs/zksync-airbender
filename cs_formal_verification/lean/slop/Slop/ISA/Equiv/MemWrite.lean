@@ -70,7 +70,7 @@ theorem vmem_write_addr_ram1 (σ : SailState) (hs : Airbender.Configured σ) (a 
   sail_run hs using mem_side with [satp_mode_machine, translate_store, mem_write_ea_ram1, mem_write_value_ram1]
     stepwise
   eval_closed
-  simp only [Bool.and_self, setWidth_extract8]
+  simp only [setWidth_extract8]
 
 theorem vmem_write1 (σ : SailState) (hs : Airbender.Configured σ) (r : BitVec 5) (off : BitVec 32) (v : BitVec 8)
     (ha : (xget σ r + off).toNat % 1 = 0) (h1 : Airbender.RAM_START ≤ (xget σ r + off).toNat)
@@ -87,7 +87,7 @@ theorem vmem_write_addr_ram2 (σ : SailState) (hs : Airbender.Configured σ) (a 
   sail_run hs using mem_side with [satp_mode_machine, translate_store, mem_write_ea_ram2, mem_write_value_ram2]
     stepwise
   eval_closed
-  simp only [Bool.and_self, setWidth_extract16]
+  simp only [setWidth_extract16]
 
 theorem vmem_write2 (σ : SailState) (hs : Airbender.Configured σ) (r : BitVec 5) (off : BitVec 32) (v : BitVec 16)
     (ha : (xget σ r + off).toNat % 2 = 0) (h1 : Airbender.RAM_START ≤ (xget σ r + off).toNat)
@@ -104,7 +104,7 @@ theorem vmem_write_addr_ram4 (σ : SailState) (hs : Airbender.Configured σ) (a 
   sail_run hs using mem_side with [satp_mode_machine, translate_store, mem_write_ea_ram4, mem_write_value_ram4]
     stepwise
   eval_closed
-  simp only [Bool.and_self, setWidth_extract32]
+  simp only [setWidth_extract32]
 
 theorem vmem_write4 (σ : SailState) (hs : Airbender.Configured σ) (r : BitVec 5) (off : BitVec 32) (v : BitVec 32)
     (ha : (xget σ r + off).toNat % 4 = 0) (h1 : Airbender.RAM_START ≤ (xget σ r + off).toNat)

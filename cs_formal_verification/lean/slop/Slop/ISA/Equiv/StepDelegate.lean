@@ -54,8 +54,8 @@ theorem delegation_none (h : Airbender.AgreeSail s σ) (shadow : Airbender.Shado
   unfold Airbender.delegation
   simp only [h.2.1]
   by_cases hc : s.pc.toNat % 4 = 0 ∧ s.pc.toNat + 4 ≤ Airbender.RAM_START
-  · rw [if_pos hc, fetch_rom_read h hc.2, hdec]; cases i <;> first | rfl | exact absurd rfl (hi _)
-  · rw [if_neg hc]
+  · rw [ite_eq_left hc, fetch_rom_read h hc.2, hdec]; cases i <;> first | rfl | exact absurd rfl (hi _)
+  · rw [ite_eq_right hc]
 
 /-- Applying the same effect to agreeing states gives agreeing states. -/
 theorem applyEffect_agree (h : Airbender.AgreeSail s σ) {shadow : Airbender.Shadow}
@@ -81,7 +81,7 @@ theorem applyEffect_agree (h : Airbender.AgreeSail s σ) {shadow : Airbender.Sha
   refine ⟨((xset σ₁ e.reg e.val).set .PC pc').set .nextPC pc',
     fun a => if a.toNat < RV.ROM_END then ram a else shadow a, ?_, ⟨?_, ?_, ?_, ?_⟩, ?_⟩
   · unfold Airbender.applyEffect
-    simp only [if_pos hw, wX_run, hram, ← hramdef]
+    simp only [ite_eq_left hw, wX_run, hram, ← hramdef]
     rfl
   · exact sys_set (sys_set (sys_xset (show Airbender.Configured σ₁ from h.1) _ _) .PC _ rfl) .nextPC _ rfl
   · rw [set_regs_ne _ _ _ _ (by decide), set_regs_self]
@@ -98,11 +98,11 @@ theorem applyEffect_agree (h : Airbender.AgreeSail s σ) {shadow : Airbender.Sha
       simp only [SailState.set, xset_mem]]
     show (if RV.ROM_END ≤ a.toNat ∧ a.toNat < 2 ^ 32 then ram (BitVec.ofNat 32 a.toNat) else σ.mem a.toNat) = _
     by_cases ha : a.toNat < RV.ROM_END
-    · rw [if_neg (by omega), h.2.2.2 a, RV.loadView_low _ _ ha, RV.loadView_low _ _ ha, trom]
-    · rw [if_pos ⟨by omega, a.isLt⟩, RV.loadView_high _ _ (by omega), tmem, BitVec.ofNat_toNat,
+    · rw [ite_eq_right (by omega), h.2.2.2 a, RV.loadView_low _ _ ha, RV.loadView_low _ _ ha, trom]
+    · rw [ite_eq_left ⟨by omega, a.isLt⟩, RV.loadView_high _ _ (by omega), tmem, BitVec.ofNat_toNat,
         BitVec.setWidth_eq]
   · intro a ha
-    simp only [if_pos ha, tmem]
+    simp only [ite_eq_left ha, tmem]
 
 theorem kind_delegate (h : Airbender.AgreeSail s σ) {shadow : Airbender.Shadow}
     (hsh : ∀ a : RV.Word, a.toNat < RV.ROM_END → shadow a = s.mem a) (k : RV.DelegationKind)
@@ -118,7 +118,7 @@ theorem kind_delegate (h : Airbender.AgreeSail s σ) {shadow : Airbender.Shadow}
   obtain ⟨σ', shadow', h₁, h₂, h₃⟩ := applyEffect_agree h hsh e hex
   refine ⟨σ', shadow', ?_, h₂, h₃⟩
   unfold Airbender.delegation
-  simp only [h.2.1, hr, ite_cond_eq_true _ _ (eq_true (show s.pc.toNat % 4 = 0 ∧
+  simp only [h.2.1, hr, ite_eq_left_of_eq_true _ _ (eq_true (show s.pc.toNat % 4 = 0 ∧
     s.pc.toNat + 4 ≤ Airbender.RAM_START from hc)), fetch_rom_read h hc.2, hdec, ramView_eq h hsh, he,
     Option.bind_some, h₁]
 

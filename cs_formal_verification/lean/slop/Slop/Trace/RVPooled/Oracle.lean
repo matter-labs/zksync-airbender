@@ -99,7 +99,7 @@ theorem rv_oracle_zero_preserving {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     have query' : (⟨.addSub, w⟩ : Row p).decoderQuery = (⟨pc, bits, rvReadData rd⟩ : RVProgramEntry).query := query
     have fetch : RVZero.RVFetched (⟨.addSub, w⟩ : Row p) NonDeterminism.rvDecoderFields :=
       ⟨⟨pc, bits, rvReadData rd⟩, .inputRead rd,
-        by simp only [NonDeterminism.rvDecoderFields, if_neg nonzero], rfl, query',
+        by simp only [NonDeterminism.rvDecoderFields, ite_eq_right nonzero], rfl, query',
         rv_row_query_selectors_of_bound limbField trace.rom.wordMemory (accepted.constraints _ member)
           (show (256 : Nat) < 512 by decide) query'⟩
     exact RVZero.row_zero_write_from_reads rvOracleDecoderRules hp ⟨.addSub, w⟩ trace.rom.wordMemory

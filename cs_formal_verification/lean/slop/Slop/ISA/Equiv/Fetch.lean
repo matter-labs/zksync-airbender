@@ -17,7 +17,7 @@ theorem mem_read_fetch_rom4 (σ : SailState) (hs : Airbender.Configured σ) (a :
   sail_run hs using mem_side with [pmp_check_machine, mmio_readable_false, pma_rom_fetch] stepwise
   dsimp only [Sail.ArchSem.Mem_request.toArchSem, MemoryOpResult_drop_meta]
   eval_closed
-  simp only [EStateM.Result.ok.injEq, and_true, Result.Ok.injEq, phys_addr_toNat, roundtrip4, BitVec.setWidth_eq, update_full32]
+  simp only [phys_addr_toNat, roundtrip4, BitVec.setWidth_eq, update_full32]
 
 theorem access_low (a : BitVec 32) (h : a.toNat % 4 = 0) : BitVec.access a 0 = 0#1 ∧ BitVec.access a 1 = 0#1 := by
   have h0 : a.toNat.testBit 0 = false := by simp [Nat.testBit_zero]; omega

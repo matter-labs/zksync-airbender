@@ -319,7 +319,7 @@ theorem rv_jump_exec {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {w : Nat → 
     have s13 : w 13 = 0 := by simpa using flag f ⟨2, by decide⟩ _ (bits ⟨2, by decide⟩)
     have s14 : w 14 = 0 := by simpa using flag f ⟨3, by decide⟩ _ (bits ⟨3, by decide⟩)
     have s15 (nz : rd ≠ 0) : w 15 = 0 := by
-      simpa using flag f ⟨4, by decide⟩ false (by rw [if_neg nz]; decide)
+      simpa using flag f ⟨4, by decide⟩ false (by rw [ite_eq_right nz]; decide)
     obtain ⟨link, _⟩ := jump_link hp h (by rw [s11, s12, add_zero]) ⟨s13, s14⟩ ⟨rfl, rfl⟩
       (pc_bound facts.pcWord).1
     obtain ⟨target, aligned⟩ := jump_pc hp false h (base := ⟨(w 0).val, (w 1).val⟩)
@@ -335,7 +335,7 @@ theorem rv_jump_exec {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {w : Nat → 
     rw [← target]
     apply same_link
     intro nz
-    rw [destination, link, ite_cond_eq_false _ _ (by rw [s15 nz]; exact eq_false one.symm)]
+    rw [destination, link, ite_eq_right_of_eq_false _ _ (by rw [s15 nz]; exact eq_false one.symm)]
   | jalr imm =>
     have bits (k : Fin 4) : Nat.testBit (if rd = 0 then 18 else 2) k.val = (k.val == 1) := by
       split <;> fin_cases k <;> decide
@@ -345,7 +345,7 @@ theorem rv_jump_exec {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {w : Nat → 
     have s13 : w 13 = 0 := by simpa using flag f ⟨2, by decide⟩ _ (bits ⟨2, by decide⟩)
     have s14 : w 14 = 0 := by simpa using flag f ⟨3, by decide⟩ _ (bits ⟨3, by decide⟩)
     have s15 (nz : rd ≠ 0) : w 15 = 0 := by
-      simpa using flag f ⟨4, by decide⟩ false (by rw [if_neg nz]; decide)
+      simpa using flag f ⟨4, by decide⟩ false (by rw [ite_eq_right nz]; decide)
     obtain ⟨link, _⟩ := jump_link hp h (by rw [s11, s12, zero_add]) ⟨s13, s14⟩ ⟨rfl, rfl⟩
       (pc_bound facts.pcWord).1
     obtain ⟨target, aligned⟩ := jump_pc hp true h (base := ⟨(w 22).val, (w 23).val⟩)
@@ -361,6 +361,6 @@ theorem rv_jump_exec {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {w : Nat → 
     rw [← target]
     apply same_link
     intro nz
-    rw [destination, link, ite_cond_eq_false _ _ (by rw [s15 nz]; exact eq_false one.symm)]
+    rw [destination, link, ite_eq_right_of_eq_false _ _ (by rw [s15 nz]; exact eq_false one.symm)]
 
 end Airbender.JumpBranchSlt.Proofs

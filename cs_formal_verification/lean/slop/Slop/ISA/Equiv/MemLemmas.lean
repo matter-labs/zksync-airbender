@@ -47,24 +47,24 @@ theorem match_ram (a : BitVec 32) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (h1 : A
     range_subset, zopz0zIzJ_u, BitVec.toNatInt, zero_extend, Sail.BitVec.zeroExtend, bits_of_physaddr, to_bits,
     Airbender.RAM_START, Airbender.RAM_END, RV.ROM_END, RV.RAM_END, Airbender.Reference.RiscV.Sail.Configuration.ROM_END, Airbender.Reference.RiscV.Sail.Configuration.RAM_END]
   have hw' : (get_slice_int 64 (↑w) 0 : BitVec 64).toNat = w := by
-    simp [get_slice_int, BitVec.toNat_ofInt] <;> omega
+    simp [get_slice_int] <;> omega
   have ha32 := a.isLt
   have e1 : (BitVec.zeroExtend 64 (BitVec.zeroExtend 34 a)).toNat = a.toNat := by simp <;> omega
-  simp [BitVec.toNat_sub, BitVec.toNat_add, hw', e1]
-  rw [if_neg (by omega), if_pos (by omega)]
+  simp [BitVec.toNat_sub, BitVec.toNat_add, hw']
+  rw [ite_eq_right (by omega), ite_eq_left (by omega)]
 
 theorem match_rom (a : BitVec 32) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (h2 : a.toNat + w ≤ Airbender.RAM_START) :
     matching_pma_region Airbender.memoryMap (.Physaddr (zero_extend (m := 34) a)) w =
       some (Airbender.region 0 Airbender.RAM_START true false true) := by
-  simp only [Airbender.RAM_START, Airbender.RAM_END, RV.ROM_END, RV.RAM_END] at h2
+  simp only [Airbender.RAM_START, RV.ROM_END] at h2
   simp only [matching_pma_region, matching_pma_region_bits_range, Airbender.memoryMap, Airbender.region,
     range_subset, zopz0zIzJ_u, BitVec.toNatInt, zero_extend, Sail.BitVec.zeroExtend, bits_of_physaddr, to_bits,
-    Airbender.RAM_START, Airbender.RAM_END, RV.ROM_END, RV.RAM_END, Airbender.Reference.RiscV.Sail.Configuration.ROM_END, Airbender.Reference.RiscV.Sail.Configuration.RAM_END]
+    Airbender.RAM_START, RV.ROM_END, Airbender.Reference.RiscV.Sail.Configuration.ROM_END, Airbender.Reference.RiscV.Sail.Configuration.RAM_END]
   have hw' : (get_slice_int 64 (↑w) 0 : BitVec 64).toNat = w := by
-    simp [get_slice_int, BitVec.toNat_ofInt] <;> omega
+    simp [get_slice_int] <;> omega
   have ha32 := a.isLt
   have e1 : (BitVec.zeroExtend 64 (BitVec.zeroExtend 34 a)).toNat = a.toNat := by simp <;> omega
-  simp [BitVec.toNat_sub, BitVec.toNat_add, hw', e1]
+  simp [BitVec.toNat_sub, BitVec.toNat_add, hw']
   constructor <;> omega
 
 /-- An aligned access of 1, 2 or 4 bytes never crosses a 4 KiB page. -/

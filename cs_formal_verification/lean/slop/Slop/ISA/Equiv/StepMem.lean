@@ -32,12 +32,12 @@ theorem kind_load (h : Airbender.AgreeSail s σ) (ha : (σ.regs .PC).toNat % 4 =
   simp only [RV.exec] at ht
   by_cases hz : rd = 0
   · subst hz
-    rw [if_pos rfl, Option.some.injEq] at ht; subst ht
+    rw [ite_eq_left rfl, Option.some.injEq] at ht; subst ht
     exact step_next h ha h2 _ hdec (exec_load_x0 _ rs1 _ n sg)
-  · rw [if_neg hz] at ht
+  · rw [ite_eq_right hz] at ht
     by_cases hc : RV.aligned (s.getReg rs1 + x.signExtend 32) n ∧ RV.readable (s.getReg rs1 + x.signExtend 32) n
-    case neg => rw [if_neg hc] at ht; cases ht
-    rw [if_pos hc, Option.some.injEq] at ht; subst ht
+    case neg => rw [ite_eq_right hc] at ht; cases ht
+    rw [ite_eq_left hc, Option.some.injEq] at ht; subst ht
     obtain ⟨hal, hrd⟩ := hc
     have hx : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.getReg rs1 := by rw [xget_set_nextPC, agree_xget h]
     have e := exec_load (next := next) (σ.set .nextPC (σ.regs .PC + 4)) (sys_set h.1 .nextPC _ rfl) rd rs1 x n sg hn hz
@@ -56,8 +56,8 @@ theorem kind_store (h : Airbender.AgreeSail s σ) (ha : (σ.regs .PC).toNat % 4 
     ∃ σ', stepSail next σ = some (σ', false) ∧ Airbender.AgreeSail t σ' := by
   simp only [RV.exec] at ht
   by_cases hc : RV.aligned (s.getReg rs1 + x.signExtend 32) n ∧ RV.writable (s.getReg rs1 + x.signExtend 32) n
-  case neg => rw [if_neg hc] at ht; cases ht
-  rw [if_pos hc, Option.some.injEq] at ht; subst ht
+  case neg => rw [ite_eq_right hc] at ht; cases ht
+  rw [ite_eq_left hc, Option.some.injEq] at ht; subst ht
   obtain ⟨hal, hw1, hw2⟩ := hc
   have hx : xget (σ.set .nextPC (σ.regs .PC + 4)) rs1 = s.getReg rs1 := by rw [xget_set_nextPC, agree_xget h]
   have hx2 : xget (σ.set .nextPC (σ.regs .PC + 4)) rs2 = s.getReg rs2 := by rw [xget_set_nextPC, agree_xget h]

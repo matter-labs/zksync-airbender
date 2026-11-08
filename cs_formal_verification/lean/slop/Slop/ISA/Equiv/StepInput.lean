@@ -23,7 +23,7 @@ theorem exec_input (σ : SailState) (rd : BitVec 5) (hrd : rd ≠ 0) :
     runSail (Airbender.execute next (Airbender.toSail (.inputRead rd))) σ = .ok RETIRE_SUCCESS (xset σ rd next) := by
   simp only [Airbender.toSail, Airbender.csrToSail, Airbender.execute, Airbender.nonDeterminism,
     show ((0x7c0 : BitVec 12) == 0x7c0) = true from rfl, show (regidx.Regidx 0 == zreg) = true from rfl,
-    ite_true, bne, regidx_beq_zreg rd hrd, Bool.not_false, Bool.and_true, Bool.true_and, Slop.runF_bind, wX_run,
+    ite_true, bne, regidx_beq_zreg rd hrd, Bool.not_false, Bool.and_true, Slop.runF_bind, wX_run,
     Slop.runF_pure]
 
 theorem exec_write (σ : SailState) (src : BitVec 5) (hsrc : src ≠ 0) :
@@ -31,7 +31,7 @@ theorem exec_write (σ : SailState) (src : BitVec 5) (hsrc : src ≠ 0) :
   simp only [Airbender.toSail, Airbender.csrToSail, Airbender.execute, Airbender.nonDeterminism,
     show ((0x7c0 : BitVec 12) == 0x7c0) = true from rfl, show (regidx.Regidx 0 == zreg) = true from rfl,
     regidx_beq_zreg src hsrc, ite_true, ite_false, bne, Bool.not_false, Bool.not_true, Bool.and_true,
-    Bool.true_and, Bool.false_and, Bool.and_false, Bool.false_eq_true, Slop.runF_pure] <;> rfl
+    Bool.and_false, Bool.false_eq_true, Slop.runF_pure] <;> rfl
 
 theorem kind_input (h : Airbender.AgreeSail s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (h2 : (σ.regs .PC).toNat + 4 ≤ Airbender.RAM_START) (rd : BitVec 5)

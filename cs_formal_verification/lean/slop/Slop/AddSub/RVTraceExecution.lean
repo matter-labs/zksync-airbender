@@ -280,7 +280,7 @@ theorem rv_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (
         all_goals cases hop : input.row.opcode
         all_goals simpa [rvData, arithmeticFields, hop, nz, Nat.testBit, Nat.shiftRight_eq_div_pow] using flag
       · unfold PreprocessingRow
-        rw [if_neg hz]
+        rw [ite_eq_right hz]
         cases hop : input.row.opcode
         · simpa [rvData, arithmeticFields, hop, nz, Word.ofBitVec] using immediateValue
         · rw [rowRight]
