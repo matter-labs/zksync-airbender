@@ -14,16 +14,6 @@ namespace Airbender.Blake2Round.Proofs
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-theorem nonfinal_reference {p : Nat} {input : Finalization.Input} {output : Finalization.Output}
-    {w : Nat → ZMod p} (interface : Finalization.NonFinalAssumptions input output w) :
-    Finalization.isFinal input = false := by
-  have last : input.round ≠ 9 := fun eq => interface.nonFinal.1 (congrArg Fin.val eq)
-  cases reduced : input.reducedRounds
-  · simp [Finalization.isFinal, reduced, last]
-  · have seventh : input.round ≠ 6 := fun eq =>
-      interface.nonFinal.2 reduced (congrArg Fin.val eq)
-    simp [Finalization.isFinal, reduced, last, seventh]
-
 /-- The actual selector equation agrees with the final-round rule for all
     twenty round/mode combinations under the exclusive caller mask. -/
 theorem finalization_flag {p : Nat} [Fact p.Prime]
@@ -44,16 +34,6 @@ theorem finalization_flag {p : Nat} [Fact p.Prime]
   rw [equation, mask6, mask9, reduced]
   rcases input with ⟨round, mode, state, chaining, extended⟩
   cases mode <;> fin_cases round <;> norm_num [Finalization.isFinal, Fin.ext_iff]
-
-theorem nonfinal_flag {p : Nat} [Fact p.Prime]
-    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
-    {input : Finalization.Input} {output : Finalization.Output}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
-    (mapping : Finalization.WordMapping input output w)
-    (interface : Finalization.NonFinalAssumptions input output w) : w 152 = 0 := by
-  have flag := finalization_flag h mapping interface.roundMask
-  rw [nonfinal_reference interface] at flag
-  exact flag
 
 /-- Every chaining-state limb is preserved by its actual write equation when
     final XOR is disabled. No range or XOR-table assumptions are needed. -/
@@ -78,16 +58,6 @@ theorem chaining_preserved {p : Nat} [Fact p.Prime]
   intro i hi
   have equal := limbs ⟨i, hi⟩
   simp [Preparation.words, Finalization.stateWrites, Variables.stateReads, equal.1, equal.2]
-
-theorem nonfinal_soundness {p : Nat} [Fact p.Prime] :
-    (Finalization.circuitModel (p := p)).SoundnessUnder (Finalization.NonFinalAssumptions (p := p))
-      Finalization.spec := by
-  intro input output w ⟨interface, holds, mapping⟩
-  unfold Finalization.spec
-  rw [nonfinal_reference interface]
-  simp only [Bool.false_eq_true, ↓reduceIte]
-  rw [mapping.output, mapping.state]
-  exact chaining_preserved holds (nonfinal_flag holds mapping interface)
 
 /-- One shared soundness claim covers all full/reduced final and non-final rounds. -/
 theorem finalization_soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)

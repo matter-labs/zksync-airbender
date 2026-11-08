@@ -28,8 +28,6 @@ theorem byte_pair {x y : Nat} (hx : x < 256) (hy : y < 256) : x + 256 * y < 6553
 
 theorem chunk_pair {x y : Nat} (hx : x < 128) (hy : y < 512) : x + 128 * y < 65536 := by omega
 
-theorem chunk_pair' {x y : Nat} (hx : x < 512) (hy : y < 128) : x + 512 * y < 65536 := by omega
-
 theorem chunk_triple {x y z : Nat} (hx : x < 8) (hy : y < 512) (hz : z < 16) :
     x + 8 * y + 4096 * z < 65536 := by omega
 

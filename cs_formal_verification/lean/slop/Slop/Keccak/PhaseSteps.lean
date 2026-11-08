@@ -326,12 +326,6 @@ theorem rho_slot_lane (j : Nat) (position : j < 5) :
   subst shape
   exact Fin.ext ((rho_table ⟨round, by omega⟩ ⟨column, small⟩).1 ⟨j, position⟩)
 
-theorem rho_slot_five : callSlot call 5 = ⟨25, by decide⟩ := by
-  obtain ⟨call, bound⟩ := call
-  simp only at shape
-  subst shape
-  exact Fin.ext (rho_table ⟨round, by omega⟩ ⟨column, small⟩).2.1
-
 theorem rho_nodup : (slotIndices call).toList.Nodup := by
   obtain ⟨call, bound⟩ := call
   simp only at shape

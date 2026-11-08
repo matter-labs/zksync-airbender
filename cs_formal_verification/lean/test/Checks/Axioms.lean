@@ -311,11 +311,8 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Blake2Round.Proofs.GTrace.sound
 #print axioms Airbender.Blake2Round.Proofs.mixing_soundness
 #print axioms Tests.Blake2Round.wrongDiagonalCarryRejected
-#print axioms Airbender.Blake2Round.Proofs.nonfinal_reference
 #print axioms Airbender.Blake2Round.Proofs.finalization_flag
-#print axioms Airbender.Blake2Round.Proofs.nonfinal_flag
 #print axioms Airbender.Blake2Round.Proofs.chaining_preserved
-#print axioms Airbender.Blake2Round.Proofs.nonfinal_soundness
 #print axioms Tests.Blake2Round.wrongFinalFlagRejected
 #print axioms Airbender.Arithmetic.value_of_chunks
 #print axioms Airbender.Blake2Round.Proofs.xor_limb_chunks
