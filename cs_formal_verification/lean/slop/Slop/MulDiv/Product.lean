@@ -29,7 +29,7 @@ private theorem product_wiring {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   have s2 := selected ⟨2, by decide⟩
   have s3 := selected ⟨3, by decide⟩
   fin_cases i <;>
-    simp only [index, List.get_eq_getElem (l := [2, 3, 4, 5, 8, 9, 10, 11]), Fin.val_mk,
+    simp only [index, List.get_eq_getElem (l := [2, 3, 4, 5, 8, 9, 10, 11]),
       List.getElem_cons_succ, List.getElem_cons_zero] at equation <;>
     op_index at equation <;>
     fin_cases operation <;>
