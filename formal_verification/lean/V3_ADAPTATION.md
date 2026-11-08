@@ -1,5 +1,52 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Initialized mixed native word bounds (8 November 2026)
+
+[MixedWordBounds](Airbender/Review/Trace/Families/ReducedMachine/MixedWordBounds.lean)
+records two canonical u16 limbs for every actual seed/active write, every active
+main/worker read, every ordinary worker43 port under both flags, and every actual
+terminal GPR/RAM token. The same prior main dependencies and counted capacity
+remain. This is a derived initialized bound, not a supplied read range or result.
+
+[The short root](Airbender/Review/Trace/Families/ReducedMachine/MixedWordBoundsTheorems.lean)
+keeps the SAME complete counted MainDecoder source, original stateful public image
+at log20, old named LogicalLookups and old explicit SourceIdentity. The public
+projection is ordinary7-or-CSR, excluding MOP. Neither logical boundary is derived
+from fixed-challenge equations, sums, capacity or physical proof enforcement.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeMixedWordBounds.lean) performs
+generic strong-rank induction before native data/domain instantiation. Exact old
+main-list mapping and abstract sampling couple every actual active main row to its
+already-derived public write rule. Actual port event order derives the prefix-slot
+relation; old exact sources and earlier-read dependencies cover every needed read,
+including SW's other port1 value. Worker bounded-or-copy rules use exact own-read
+sources. Actual zero seed encoding derives initial bounds. Exact latest membership
+then bounds all active reads, while unchanged processing masks handle inactive
+worker values. Full old active memory matching bounds every terminal token.
+
+Raw address, value and both timestamps remain unchanged. Signed rank is only a
+noninjective proof order; no canonical clock recoding or global clock injectivity
+is asserted. All inactive source rows,43 worker ports, poles, auxiliary values,
+readonly refreshes, OLDREADs, unmasked SW writes and public x0 times remain.
+Caller requests are never filtered. Inactive main read bounds are not asserted.
+
+[Eleven controls](Tests/NativeMixedWordBounds.lean) cover a pure changing-value
+chain, copying without an initialized bound, actual seeds/active reads/writes,
+all ordinary worker ports under both flags, terminal tokens, prior latest-read
+results, retained inactive requests and the full conditional counted interface.
+They are pure/local/conditional controls, not new nonempty source-global/whole-
+worker/physical witnesses, attacks or findings.
+
+Four modules add19 roots and11 exact parent references, preserving all6,343 prior
+ordered roots and exact audit bytes addition-only. Native107 pins, dependencies,
+v3 reference, original Sail, old proofs/acceptance/artifacts and FINDINGS remain
+unchanged. No native adoption, generation, issue assumption or production fix.
+Consistent mixed online replay, worker rounds/hash results, inactive caller activity
+and converse accounting, physical cryptography, completeness and parity remain
+open. Original seven-profile Sail still excludes CSR/MOP; these word bounds do not
+establish original CSR execution or a Sail frame across delegation.
+
+
 ## Public-decoded native main write rules (8 November 2026)
 
 [DecodedMain](Airbender/Review/Circuits/ReducedMachine/DecodedMain.lean) records the

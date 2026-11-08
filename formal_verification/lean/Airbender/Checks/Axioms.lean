@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.MixedWordBounds
+import Airbender.Proofs.ReducedMachine.NativeMixedWordBounds
+import Airbender.Review.Trace.Families.ReducedMachine.MixedWordBoundsTheorems
+import Tests.NativeMixedWordBounds
+
 import Airbender.Review.Circuits.ReducedMachine.DecodedMain
 import Airbender.Proofs.ReducedMachine.NativeDecodedMain
 import Airbender.Review.Trace.Families.ReducedMachine.DecodedMainTheorems
@@ -7346,3 +7351,23 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeDecodedMain.all_dynamic_queries
 #print axioms Airbender.Tests.NativeDecodedMain.original_public_body
 #print axioms Airbender.Tests.NativeDecodedMain.complete_counted_rules
+
+#print axioms Airbender.NativeMixedWordBoundsProofs.rank_closed
+#print axioms Airbender.NativeMixedWordBoundsProofs.main_rules
+#print axioms Airbender.NativeMixedWordBoundsProofs.available_bounds
+#print axioms Airbender.NativeMixedWordBoundsProofs.step_bounds
+#print axioms Airbender.NativeMixedWordBoundsProofs.worker_bounds
+#print axioms Airbender.NativeMixedWordBoundsProofs.terminal_bounds
+#print axioms Airbender.NativeMixedWordBoundsProofs.counted
+#print axioms Airbender.NativeMixedWordBounds.native_initialized_mixed_words
+#print axioms Airbender.Tests.NativeMixedWordBounds.rank_chain_changes
+#print axioms Airbender.Tests.NativeMixedWordBounds.copy_is_not_bound
+#print axioms Airbender.Tests.NativeMixedWordBounds.seed_words
+#print axioms Airbender.Tests.NativeMixedWordBounds.active_reads
+#print axioms Airbender.Tests.NativeMixedWordBounds.active_writes
+#print axioms Airbender.Tests.NativeMixedWordBounds.ordinary_worker_reads
+#print axioms Airbender.Tests.NativeMixedWordBounds.ordinary_worker_writes
+#print axioms Airbender.Tests.NativeMixedWordBounds.terminal_words
+#print axioms Airbender.Tests.NativeMixedWordBounds.latest_retained
+#print axioms Airbender.Tests.NativeMixedWordBounds.inactive_requests_retained
+#print axioms Airbender.Tests.NativeMixedWordBounds.complete_counted

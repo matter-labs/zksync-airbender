@@ -1794,3 +1794,10 @@ this is no table-equivalence premise or physical setup proof.
 ordinary BODY and local ordinary-or-CSR preservation from the same counted public
 source. PC alignment is public-derived. Inactive rows/requests and all worker ports
 remain. Initialized mixed word bounds and CSR/MOP Sail execution remain open.
+
+## Initialized mixed words
+
+[Mixed word bounds](Airbender/Review/Trace/Families/ReducedMachine/MixedWordBoundsTheorems.lean) derive both u16 limbs for actual active main/worker
+reads and writes, every ordinary worker43 port under both flags, and terminal
+tokens on the same counted public source. Old logical boundaries remain explicit.
+Mixed online replay, worker hash results and original CSR/MOP Sail remain open.
