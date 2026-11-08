@@ -7,7 +7,6 @@ open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
 variable {next : BitVec 32}
-set_option maxHeartbeats 400000
 set_option maxRecDepth 1000000
 
 theorem exec_store (σ : SailState) (hs : Airbender.Configured σ) (rs2 rs1 : BitVec 5) (x : BitVec 12) (n : Nat)
@@ -17,7 +16,8 @@ theorem exec_store (σ : SailState) (hs : Airbender.Configured σ) (rs2 rs1 : Bi
     runSail (Airbender.execute next (Airbender.toSail (.store n rs2 rs1 (x.signExtend 32)))) σ =
       .ok RETIRE_SUCCESS
         { σ with mem := writeBytes σ.mem (xget σ rs1 + x.signExtend 32).toNat n ((xget σ rs2).setWidth (8 * n)) } := by
-  simp only [Airbender.toSail, Airbender.execute, execute, execute_STORE, sext12]
+  change runSail (execute_STORE ((x.signExtend 32).extractLsb' 0 12) (.Regidx rs2) (.Regidx rs1) (n : Int).toNat) σ = _
+  simp only [execute_STORE, sext12]
   rcases hn with rfl | rfl | rfl
   · sail_run hs with [vmem_write1] stepwise
     simp only [setWidth_extract_low8]

@@ -1,6 +1,8 @@
 import Slop.ISA.Equiv.Jump
 
-/-! Sail's `execute` on our control-flow instructions (branches, JAL, JALR): same target, same link value. -/
+/-! Sail's `execute` on our control-flow instructions (branches, JAL, JALR): same target, same link value. Each proof
+first moves from `Airbender.execute` to the one `execute_X` the instruction dispatches to (`change`, by unfolding on a
+known constructor): `simp` with Sail's ~400-case `execute` costs ~10 s per module. -/
 
 open Sail SailRV32 SailRV32.Functions Human
 
@@ -29,8 +31,10 @@ theorem exec_branch (σ : SailState) (hs : Airbender.Configured σ) (c : RV.Cond
       if c.holds (xget σ rs1) (xget σ rs2) then .ok RETIRE_SUCCESS (σ.set .nextPC (σ.regs .PC + x.signExtend 32))
       else .ok RETIRE_SUCCESS σ := by
   have hx := sext_n x (by decide) (by decide)
+  change runSail (execute_BTYPE ((x.signExtend 32).extractLsb' 0 13) (.Regidx rs2) (.Regidx rs1)
+    (Airbender.sailBranchOp c)) σ = _
   cases c
-  all_goals simp only [Airbender.toSail, Airbender.sailBranchOp, Airbender.execute, execute, execute_BTYPE, Slop.runF_bind, rX_run,
+  all_goals simp only [Airbender.sailBranchOp, execute_BTYPE, Slop.runF_bind, rX_run,
     Slop.runF_pure, blt_eq, bge_eq, bltu_eq, bgeu_eq, RV.Cond.holds] at hal ⊢
   all_goals (split <;> rename_i hc <;> simp only [hc, ↓reduceIte])
   all_goals first
@@ -42,7 +46,8 @@ theorem exec_jal (σ : SailState) (hs : Airbender.Configured σ) (rd : BitVec 5)
     runSail (Airbender.execute next (Airbender.toSail (.jal rd (x.signExtend 32)))) σ =
       .ok RETIRE_SUCCESS (xset (σ.set .nextPC (σ.regs .PC + x.signExtend 32)) rd (σ.regs .nextPC)) := by
   have hx := sext_n x (by decide) (by decide)
-  simp only [Airbender.toSail, Airbender.execute, execute, execute_JAL, Slop.runF_bind, get_next_pc, hx]
+  change runSail (execute_JAL ((x.signExtend 32).extractLsb' 0 21) (.Regidx rd)) σ = _
+  simp only [execute_JAL, Slop.runF_bind, get_next_pc, hx]
   rw [Slop.runF_readReg]; dsimp only
   rw [Slop.runF_readReg]; dsimp only
   rw [jump_to_run σ hs _ hal]; dsimp only
@@ -59,7 +64,8 @@ theorem exec_jalr (σ : SailState) (hs : Airbender.Configured σ) (rd rs1 : BitV
       .ok RETIRE_SUCCESS (xset (σ.set .nextPC ((xget σ rs1 + x.signExtend 32) &&& ~~~1)) rd (σ.regs .nextPC)) := by
   have hx := sext_n x (by decide) (by decide)
   have hz : runSail (currentlyEnabled .Ext_Zicfilp) σ = .ok false σ := oracle_run hs _ _ (by decide +kernel)
-  simp only [Airbender.toSail, Airbender.execute, execute, execute_JALR, Slop.runF_bind, update_elp_state, hz,
+  change runSail (execute_JALR ((x.signExtend 32).extractLsb' 0 12) (.Regidx rs1) (.Regidx rd)) σ = _
+  simp only [execute_JALR, Slop.runF_bind, update_elp_state, hz,
     get_next_pc, rX_run, hx, clear_bit0, Bool.false_eq_true, ↓reduceIte, Slop.runF_pure]
   rw [Slop.runF_readReg]; dsimp only
   rw [jump_to_run σ hs _ hal]; dsimp only

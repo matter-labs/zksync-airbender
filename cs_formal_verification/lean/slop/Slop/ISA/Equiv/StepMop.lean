@@ -48,7 +48,8 @@ theorem kind_xorrot (h : Airbender.AgreeSail s σ) (ha : (σ.regs .PC).toNat % 4
 theorem exec_rev8 (σ : SailState) (rd rs1 : BitVec 5) :
     runSail (Airbender.execute next (Airbender.toSail (.rev8 rd rs1))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (RV.rev8 (xget σ rs1))) := by
-  simp only [Airbender.toSail, Airbender.execute, execute, execute_REV8, Slop.runF_bind, rX_run, wX_run,
+  change runSail (execute_REV8 (.Regidx rs1) (.Regidx rd)) σ = _
+  simp only [execute_REV8, Slop.runF_bind, rX_run, wX_run,
     Slop.runF_pure, Airbender.Reference.Sail.rev8_eq]
 
 theorem kind_rev8 (h : Airbender.AgreeSail s σ) (ha : (σ.regs .PC).toNat % 4 = 0)

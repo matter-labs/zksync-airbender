@@ -7,7 +7,6 @@ open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
 variable {next : BitVec 32}
-set_option maxHeartbeats 400000
 set_option maxRecDepth 1000000
 
 theorem regidx_beq_zreg (rd : BitVec 5) (h : rd ≠ 0) : (regidx.Regidx rd == zreg) = false := by
@@ -22,8 +21,9 @@ theorem exec_load (σ : SailState) (hs : Airbender.Configured σ) (rd rs1 : BitV
     (hr : (xget σ rs1 + x.signExtend 32).toNat + n ≤ Airbender.RAM_END) :
     runSail (Airbender.execute next (Airbender.toSail (.load n sg rd rs1 (x.signExtend 32)))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (extend_value (!sg) (readBytes σ.mem (xget σ rs1 + x.signExtend 32).toNat n))) := by
-  simp only [Airbender.toSail, Airbender.execute, regidx_beq_zreg rd hrd, Bool.false_eq_true, ite_false, execute,
-    execute_LOAD, sext12]
+  change runSail (if (regidx.Regidx rd == zreg) = true then pure RETIRE_SUCCESS
+    else execute_LOAD ((x.signExtend 32).extractLsb' 0 12) (.Regidx rs1) (.Regidx rd) (!sg) (n : Int).toNat) σ = _
+  simp only [regidx_beq_zreg rd hrd, Bool.false_eq_true, ite_false, execute_LOAD, sext12]
   rcases hn with rfl | rfl | rfl
   · sail_run hs with [vmem_read1] stepwise; rfl
   · sail_run hs with [vmem_read2] stepwise; rfl
