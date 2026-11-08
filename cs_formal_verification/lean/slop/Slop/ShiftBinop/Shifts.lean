@@ -67,7 +67,6 @@ theorem shift_amount {p : Nat} [Fact p.Prime] (hp : 256 < p) {w : Nat → ZMod p
     (by simpa [Expression.eval, Verification.environment] using wt)
   simpa [Expression.eval, Verification.environment, wa, wb, wc] using values
 
-set_option maxHeartbeats 1000000 in
 /-- Each selected shift query forces its four canonical contribution bytes,
     the shared amount and the operation tag. All wiring comes from JSON equations. -/
 theorem shift_bytes {p : Nat} [Fact p.Prime] (hp : 256 < p) {w : Nat → ZMod p}
