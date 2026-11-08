@@ -958,3 +958,10 @@ Whole-word addition, remaining G steps, hash results and physical schedules rema
 the SAME counted source and initialized raw read-token bounds. Natural weighted
 messages retain zero/multiple round bits and wide limbs; prior exact D rotation,
 initialization, replay and word bounds stay. Full G/hash and physical schedules remain open.
+
+## First native column C/B steps
+
+[First C/B steps](WorkerCBTheorems.lean) derive actual Boolean carries, C/B limb bounds and
+exact XOR/rotate12 from FULL native BODY/fixed pool. The SAME counted initialized
+source derives four C wrapping additions, retaining prior A/D, weighted messages,
+replay and word bounds. Second G steps, full hash and physical schedules remain open.

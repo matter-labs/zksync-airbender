@@ -1,5 +1,52 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## First native column C/B steps (8 November 2026)
+
+[Column C/B observables](Airbender/Review/Circuits/Blake2Worker/ColumnCB.lean) retain
+actual C carries, C sums, B inputs and native3/9/4-bit output chunks. FULL unchanged
+352-equation/296-query BODY on the actual344384-row fixed pool derives all eight
+Boolean carries, eight C-sum and eight B-input u16 bounds, and exact B XOR/rotate12
+in all four first column calls. No expected read, result, range, one-hot mask,
+round, schedule or history is supplied. Zero/multiple round bits remain.
+
+[Short TRACE roots](Airbender/Review/Trace/Families/ReducedMachine/WorkerCBTheorems.lean)
+add four natural RV32 C wrapping additions under the SAME counted public source,
+original stateful public image/log20, OLD LogicalLookups and OLD explicit
+SourceIdentity. Already-derived initialized pre-G reads and actual D-output bounds
+supply the operands. Prior exact first A wrapping additions/D XORrotate16,
+canonical ten-weight messages, full exact initialized raw-token replay, word
+bounds, capacity and dependencies stay. EVERY ordinary worker, including inactive
+rows, receives these effects. Public ordinary7-or-CSR excludes MOP; original7 Sail
+excludes CSR/MOP. Logical boundaries remain explicit, not physical crypto proofs.
+
+[Proofs](Airbender/Proofs/ReducedMachine/NativeWorkerCB.lean) establish generic
+3/9/4-bit reconstruction, width-parametric XOR and symbolic rotate12 before native
+data. All three fields of24 actual queries and16 original D-byte output bindings
+are kernel-bound before witness evaluation. Exact source/canonical field identities
+precede finite assembly; D packing reuses old byte reconstruction and C addition
+reuses the checked generic wide addition. Full pinned G-source hash was checked
+against Git67ee before adaptation. These specific bindings do not prove general
+Rust/JSON/compiler/physical refinement. No new pin, artifact, importer, generation
+or heavy certificate replay.
+
+[Fourteen controls](Tests/NativeWorkerCB.lean) cover a nonzero wrap/XOR/rotation
+vector, maximal chunks, symbolic rotation, the old complete LOCAL BODY, all zero
+C sums/B outputs, conditional carry/bounds/rotation/addition effects, retained
+weighted messages, corrupt B output rejection, inactive caller requests and the
+full counted interface. Pure/reference/oldLOCAL/conditional only, not new nonempty
+source-global/whole-worker/physical witnesses, attacks, defects or absent-enforcement
+evidence. All43 ports, BOTH raw timestamps, aliases, readonly refreshes, OLDREADs,
+AUX/m0 poles, inactiveD, caller equations, unmasked writes and public x0 times stay.
+Caller requests are never filtered. FINDINGS and old acceptance are unchanged.
+
+Four modules add29 roots and9 exact parent references, preserving all6,480 prior
+ordered roots and exact audit bytes addition-only. Native107 pins, v3 reference,
+dependencies, production and original Sail stay. Second A/D and C/B operations,
+diagonal calls, output finalization/full hash, physical round schedules, inactive
+caller activity/converse accounting, MOP public custom execution, original
+CSR/MOP/worker Sail, physical cryptography, completeness and parity remain open.
+
+
 ## Initialized native first G wrapping additions (8 November 2026)
 
 [Addition observables](Airbender/Review/Circuits/Blake2Worker/Addition.lean) retain

@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.Blake2Worker.ColumnCB
+import Airbender.Proofs.ReducedMachine.NativeWorkerCB
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerCBTheorems
+import Tests.NativeWorkerCB
+
 import Airbender.Review.Circuits.Blake2Worker.Addition
 import Airbender.Proofs.ReducedMachine.NativeWorkerAddition
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerAdditionTheorems
@@ -7519,3 +7524,33 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerAddition.exact_d_rotations_retained
 #print axioms Airbender.Tests.NativeWorkerAddition.inactive_requests_retained
 #print axioms Airbender.Tests.NativeWorkerAddition.complete_counted
+
+#print axioms Airbender.NativeWorkerCBProofs.triple_value
+#print axioms Airbender.NativeWorkerCBProofs.triple_pack
+#print axioms Airbender.NativeWorkerCBProofs.piece_xor
+#print axioms Airbender.NativeWorkerCBProofs.rotate12
+#print axioms Airbender.NativeWorkerCBProofs.carry_bits
+#print axioms Airbender.NativeWorkerCBProofs.limb_bounds
+#print axioms Airbender.NativeWorkerCBProofs.rotated
+#print axioms Airbender.NativeWorkerCBProofs.d_bounds
+#print axioms Airbender.NativeWorkerCBProofs.d_pack
+#print axioms Airbender.NativeWorkerCBProofs.mixing
+#print axioms Airbender.NativeWorkerCBProofs.addition
+#print axioms Airbender.NativeWorkerCBProofs.row
+#print axioms Airbender.NativeWorkerCBProofs.counted
+#print axioms Airbender.NativeWorkerCB.native_worker_first_cb
+#print axioms Airbender.NativeWorkerCB.native_counted_worker_first_cb
+#print axioms Airbender.Tests.NativeWorkerCB.wrap_rotation_vector
+#print axioms Airbender.Tests.NativeWorkerCB.triple_maximum
+#print axioms Airbender.Tests.NativeWorkerCB.chunk_rotation_reference
+#print axioms Airbender.Tests.NativeWorkerCB.full_local_cb
+#print axioms Airbender.Tests.NativeWorkerCB.zero_c_sums
+#print axioms Airbender.Tests.NativeWorkerCB.zero_b_outputs
+#print axioms Airbender.Tests.NativeWorkerCB.all_carry_bits
+#print axioms Airbender.Tests.NativeWorkerCB.all_limb_bounds
+#print axioms Airbender.Tests.NativeWorkerCB.all_b_rotations
+#print axioms Airbender.Tests.NativeWorkerCB.all_c_additions
+#print axioms Airbender.Tests.NativeWorkerCB.weighted_messages_retained
+#print axioms Airbender.Tests.NativeWorkerCB.corrupt_b_output_rejected
+#print axioms Airbender.Tests.NativeWorkerCB.inactive_requests_retained
+#print axioms Airbender.Tests.NativeWorkerCB.complete_counted
