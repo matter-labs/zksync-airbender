@@ -5,8 +5,8 @@ public import Human.Helpers.Context.Model
 
 @[expose] public section
 
-/-! RV-typed sibling of `NativeInputs` (`Boundary.lean`): the public starting point is an `RV.State`. No `Configured`
-    premise: the RV spec has no configuration state. Program entries are the RV table (`rvProgramImageWith`). -/
+/-! The public starting point is an `RV.State`. No machine-configuration premise is needed: the RV spec has no
+    configuration state. Program entries are the RV table (`rvProgramImageWith`). -/
 
 namespace Airbender.Trace
 

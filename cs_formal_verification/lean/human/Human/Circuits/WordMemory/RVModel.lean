@@ -8,10 +8,10 @@ public import Human.ISA.RV32
 
 @[expose] public section
 
-/-! RV32 vocabulary for the LW/SW circuit (as `Model.lean`, with RV registers, an `RV.State` pre-state and the
-    instruction `RV.decode` of the public program entry). `Output` (effective address, transferred word, next PC) is
-    shared with the Sail statements. There is no MMIO and no configuration in the RV memory map, so the Sail
-    premises `ordinary` and `configuration` have no RV counterpart. -/
+/-! RV32 vocabulary for the LW/SW circuit (RV registers, an `RV.State` pre-state and the
+    instruction `RV.decode` of the public program entry). `Output` is the effective address, transferred word and next
+    PC. There is no MMIO and no configuration in the RV memory map, so no memory-map or configuration premise is
+    needed. -/
 
 namespace Airbender.WordMemory
 open Arithmetic Trace Variables
@@ -37,7 +37,7 @@ def rvInstruction (input : RVInput) : RV.Instr :=
   if input.store then .store 4 input.rs2 input.rs1 (input.encodedImmediate.signExtend 32)
   else .load 4 true input.rd input.rs1 (input.encodedImmediate.signExtend 32)
 
-/-- `WordMapping` (`Model.lean`) for the RV input: the same imported variable IDs. -/
+/-- Word mapping for the RV input: the imported variable IDs. -/
 structure RVWordMapping {p : Nat} (input : RVInput) (output : Output) (w : Nat → ZMod p) : Prop where
   sourceLo : input.source.lo = (w Variables.sourceLo).val
   sourceHi : input.source.hi = (w Variables.sourceHi).val
@@ -57,7 +57,7 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Output) (w : Nat �
   finalPCLo : output.pc.lo = (w Variables.finalPCLo).val
   finalPCHi : output.pc.hi = (w Variables.finalPCHi).val
 
-/-- `TraceMapping` (`Model.lean`) in RV32 terms: the row's pre-state is the RV state at its clock position, and its
+/-- Trace mapping in RV32 terms: the row's pre-state is the RV state at its clock position, and its
     decoder entry in the public program is `RV.decode` of the entry's encoding, equal to the input's instruction. -/
 structure RVTraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry)
@@ -79,8 +79,7 @@ def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   satisfies := fun w => Accepted trace ∧ RVPooledDecoded trace program ∧ (⟨.wordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := RVTraceMapping trace initial cells program
 
-/-- The RV-typed assumptions: public initialization and modeled tables (`InterfaceAssumptions` without the Sail-only
-    `ordinary` and `configuration`). -/
+/-- Assumptions of the RV statements: public initialization and modeled tables. -/
 abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
   RVPooledHistoryInputs trace initial cells program

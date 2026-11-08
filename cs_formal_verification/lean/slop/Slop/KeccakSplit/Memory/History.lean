@@ -9,9 +9,9 @@ import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector o
 @[expose] public section
 
 /- The split pool's logical memory history, through the generic Transfer layer
-   (as slop/Slop/Delegation/{Memory,History,SailHistory,Terminal} do for the other
+   (as slop/Slop/Delegation/{Memory,History,Terminal} do for the other
    delegation workers): ports read before they write, so matching gives initialized
-   per-address histories and an actual Sail execution. -/
+   per-address histories. -/
 
 namespace Airbender.Keccak.Split.Native.Proofs
 open Trace Trace.Proofs

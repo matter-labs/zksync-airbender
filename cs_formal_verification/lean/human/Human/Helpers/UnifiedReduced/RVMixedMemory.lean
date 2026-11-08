@@ -7,10 +7,10 @@ public import Human.Circuits.UnifiedReduced.Tables.SetupRV
 
 @[expose] public section
 
-/-! RV siblings of `MixedMemory.lean` (helpers): the shared unified/worker architecture over `RVRequestTrace`, executed
+/-! The shared unified/worker architecture over `RVRequestTrace`, executed
     as RV cell reads/writes (`RVHistory`) from a public `RV.State`. The ordinary program is the unified RV program table
     (`rvDecoderFields`). A RAM cell is RAM at any address, INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW
-    `ROM_END` (`RV.State.delegationRAM`). Native ports (`machinePorts`) are unchanged. -/
+    `ROM_END` (`RV.State.delegationRAM`). Native ports are `machinePorts`. -/
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace
@@ -29,7 +29,7 @@ def RVRequestTrace.cycleSteps [Fact p.Prime] (data : RVRequestTrace p) (row : Tr
     (readToken row.assignment port, writeToken row.columns row.assignment port)) ++
     (data.cycleWorkers row).flatMap Delegation.Row.memorySteps
 
-/-- RV sibling of `CycleExecution`: actual instruction-cycle RV states inside the one shared RV history. -/
+/-- Actual instruction-cycle RV states inside the one shared RV history. -/
 def RVCycleExecution [Fact p.Prime] (data : RVRequestTrace p) (cells : List Cell)
     (events : List MemoryAccess) (initial finalState : RV.State)
     (row : Trace.Row p UnifiedFamily) : Prop :=
@@ -40,7 +40,7 @@ def RVCycleExecution [Fact p.Prime] (data : RVRequestTrace p) (cells : List Cell
     RVHistory cells current before after ∧
     RVHistory cells newer after finalState
 
-/-- RV sibling of `MixedMemoryAccepted`: native request checks, every noncaller in the unified RV program table, and
+/-- Native request checks, every noncaller in the unified RV program table, and
     one architectural permutation. -/
 structure RVMixedMemoryAccepted [Fact p.Prime] (data : RVRequestTrace p)
     (program : List UnifiedReduced.RVProgramEntry) : Prop extends RVRequestChecks data where
@@ -49,8 +49,8 @@ structure RVMixedMemoryAccepted [Fact p.Prime] (data : RVRequestTrace p)
   memory : (data.machine.initialMemory ++ data.mixedSteps.map Prod.snd).Perm
     (data.machine.terminalMemory ++ data.mixedSteps.map Prod.fst)
 
-/-- RV sibling of `MixedMemoryInputs`: public cells read from an `RV.State`, the caller and ordinary RV program tables
-    read from its ROM image, initial clocks and modeled setup. No `Configured`. -/
+/-- Public cells read from an `RV.State`, the caller and ordinary RV program tables
+    read from its ROM image, initial clocks and modeled setup. -/
 structure RVMixedMemoryInputs [Fact p.Prime] (data : RVRequestTrace p)
     (program : List UnifiedReduced.RVProgramEntry) (before : RV.State)
     (callerAddresses ordinaryAddresses : List (BitVec 32)) (cells : List Cell) : Prop where

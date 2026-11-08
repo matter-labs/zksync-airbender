@@ -5,21 +5,21 @@ public import Human.Trace.Workers.Keccak.RVCall
 
 @[expose] public section
 
--- The statements proven in slop/Slop/Final/Trace/Workers/KeccakSplit/RVTheorems.lean (checked by verify.sh). RV
--- siblings of `Theorems.lean`: the public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING
+-- The statements proven in slop/Slop/Final/Trace/Workers/KeccakSplit/RVTheorems.lean (checked by verify.sh). The
+-- public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING
 -- READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). The complete-span claim also states
 -- the delegate link: the circuits' final state IS the spec's run of the 361 Keccak-f1600 delegations
 -- (`RV.calls RV.f1600Calls`, `RV.Delegation.keccakF1600`), up to the spec's PC advance.
 
 namespace Airbender.Keccak.Split.Native
 
-/-- RV sibling of `OperationExecutionClaim`: in an initialized pool of split workers from an `RV.State`, every access
+/-- In an initialized pool of split workers from an `RV.State`, every access
     executes as RV cell reads/writes (`RVMemoryExecution`) and every row is a call of the documented schedule. -/
 def RVOperationExecutionClaim : Prop :=
   ∀ {p : Nat} [Fact p.Prime] (inverse : 256 * (-7864320 : ZMod p) = 1) {data : MemoryData p} {before : RV.State} {cells : List Trace.Cell} (accepted : MemoryAccepted data) (inputs : RVOperationInputs data before cells) (aligned : ∀ cell ∈ cells, cell.Aligned),
     RVMemoryExecution data before cells ∧ ∀ row ∈ data.rows, RowEffects row
 
-/-- RV sibling of `PermutationSoundnessClaim`: a complete initialized split request on `RV.State`s: its 361 calls
+/-- A complete initialized split request on `RV.State`s: its 361 calls
     execute in schedule order, one documented call each (`Call.RVExecutesAt`), together write Clean's Keccak-f[1600]
     permutation of the block at the public x11 pointer, and the final state is the spec's run of the 361
     Keccak-f1600 calls `RV.f1600Calls` from `initial` (memory and registers; the PC advance is the spec's). -/

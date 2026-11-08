@@ -3,7 +3,7 @@ public import Human.Circuits.UnifiedReduced.Tables.Setup
 
 @[expose] public section
 
-/-! RV sibling of `Setup.table`: the same fixed rows, with the ROM words read from an `RV.State`. `rowWith`/`tableWith`
+/-! The same fixed rows, with the ROM words read from an `RV.State`. `rowWith`/`tableWith`
     are `row`/`table` with the ROM word function as a parameter; `tableRV` reads it with `ROM.wordsRV`. -/
 
 namespace Airbender.UnifiedReduced.Setup

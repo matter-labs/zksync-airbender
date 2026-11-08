@@ -7,7 +7,7 @@ public import Human.Helpers.Memory.RVHistory
 namespace Airbender.Delegation.Caller
 open Trace
 
-/-- RV sibling of `MixedMemoryEffects`: mixed architectural transport and worker operations on the actual native port
+/-- Mixed architectural transport and worker operations on the actual native port
     values; every transfer executes once in native clock order as RV cell reads/writes from the public initial
     `RV.State` (`RVHistory`; RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END`) and reaches all
     shared terminal cells in one final `RV.State`. -/

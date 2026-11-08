@@ -7,7 +7,7 @@ public import Human.Helpers.Delegation.RequestEffects
 namespace Airbender.Delegation.Caller
 open Trace
 
-/-- RV sibling of `RequestOperationInputs`: public RV worker seeds (`RVRequestMemoryInputs`; RAM cells include the
+/-- Public RV worker seeds (`RVRequestMemoryInputs`; RAM cells include the
     shadow RAM below `ROM_END`), the modeled operation tables and the extended BLAKE round-mask ABI. -/
 structure RVRequestOperationInputs [Fact p.Prime] (data : RVRequestTrace p)
     (before : RV.State) (addresses : List (BitVec 32))

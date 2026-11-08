@@ -1,7 +1,7 @@
 module
 public import Human.Trace.Delegation.RVExecution
 public import Slop.Delegation.RVBoundaryInputs
-public import Slop.Delegation.SailHistory
+public import Slop.Delegation.PortEvents
 public import Slop.Trace.RVHistoryFrame
 
 @[expose] public section

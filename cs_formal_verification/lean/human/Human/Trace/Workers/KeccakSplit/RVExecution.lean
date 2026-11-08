@@ -4,13 +4,13 @@ public import Human.Helpers.Delegation.RVMemory
 
 @[expose] public section
 
-/-! RV siblings of the split memory execution and trace mapping (`Execution.lean`). RAM cells are RAM at any address,
+/-! Split memory execution and trace mapping. RAM cells are RAM at any address,
     INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 
 namespace Airbender.Keccak.Split.Native
 open Trace
 
-/-- RV sibling of `MemoryExecution`: every imported split-worker access executes once, in native timestamp order, as
+/-- Every imported split-worker access executes once, in native timestamp order, as
     RV cell reads/writes (`RVHistory`) from the public initial state; untouched aligned cells keep their reads; every
     terminal token is read from the final state. -/
 def RVMemoryExecution (data : MemoryData p) (before : RV.State) (cells : List Cell) : Prop :=
@@ -24,7 +24,8 @@ def RVMemoryExecution (data : MemoryData p) (before : RV.State) (cells : List Ce
     ∀ token ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = token.address ∧
       cell.readRV after = some (memoryWord token.value)
 
-/-- RV sibling of `TraceMapping`. -/
+/-- The native steps are, in some order, a history from `initial` to `after` (`RVHistory`), and every terminal
+    token is read from `after`. -/
 structure RVTraceMapping (data : MemoryData p) (initial after : RV.State) (cells : List Cell) : Prop where
   history : ∃ events : List MemoryAccess, events.Perm (data.steps.map transferEvent) ∧
     RVHistory cells events initial after

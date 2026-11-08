@@ -7,7 +7,7 @@ public import Human.Helpers.Delegation.RVBoundaryMemory
 namespace Airbender.Delegation.Caller
 open Trace
 
-/-- RV sibling of `HashSpan.WindowResult`, for a span result `result` over `RV.State`s (each worker family states its
+/-- For a span result `result` over `RV.State`s (each worker family states its
     own, e.g. `Blake2G.RVSpanResult`): a complete span reaches `result` on the actual RV states of a native-clock
     window. Both states and all boundary reads are derived from the public initial history. RAM cells include
     READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/

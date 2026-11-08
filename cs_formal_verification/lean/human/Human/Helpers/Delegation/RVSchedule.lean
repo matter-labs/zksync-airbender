@@ -7,7 +7,7 @@ public import Human.Helpers.Delegation.RVRequestTrace
 namespace Airbender.Delegation.Caller
 open Trace
 
-/-- RV sibling of `WorkerSchedule` over `RVRequestTrace` (state-free; same fields): every live worker has one caller
+/-- Worker schedule over `RVRequestTrace` (state-free): every live worker has one caller
     and occupies that caller's native cycle; zero-clock workers are exposed as unissued. -/
 structure RVWorkerSchedule [Fact p.Prime] (data : RVRequestTrace p) : Prop where
   callers : ∀ caller ∈ data.callers, ∃! worker,

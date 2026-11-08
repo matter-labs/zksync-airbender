@@ -11,7 +11,7 @@ public import Slop.Keccak.Theta
 public import Slop.Keccak.DecodeControl
 public import Slop.Delegation.Operations
 public import Slop.Delegation.Requests
-public import Slop.Delegation.SailHistory
+public import Slop.Delegation.PortEvents
 
 @[expose] public section
 

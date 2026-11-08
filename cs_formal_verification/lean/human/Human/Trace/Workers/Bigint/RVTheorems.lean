@@ -4,15 +4,14 @@ public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section
 
--- The statements proven in slop/Slop/Final/Trace/Workers/Bigint/RVTheorems.lean (checked by verify.sh). RV sibling
--- of `Theorems.lean`: the public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING
+-- The statements proven in slop/Slop/Final/Trace/Workers/Bigint/RVTheorems.lean (checked by verify.sh). The public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING
 -- READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`): no pointer is required to be at or
 -- above `ROM_END`. The claim also states the delegate link: every bigint row is one spec bigint call
 -- (`RV.Delegation.bigint`), its post-state the spec's effect applied to its pre-state.
 
 namespace Airbender.Bigint.Native
 
-/-- RV sibling of `OperationExecutionClaim`: all seven selected bigint operations act on the values realized by actual
+/-- All seven selected bigint operations act on the values realized by actual
     RV port reads/writes (`RVMemoryExecution`), and every bigint row, the no-opcode row included, is one spec bigint
     call (`RVCalls`): from the call's pre-state the spec's effect exists (its pointer, alignment and control guards
     hold) and applying it gives the call's post-state, up to the spec's PC advance. Other delegation families may share

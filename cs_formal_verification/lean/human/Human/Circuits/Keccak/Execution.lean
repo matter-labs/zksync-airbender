@@ -11,7 +11,7 @@ namespace Airbender.Keccak.Native
 open Trace
 
 /-- One 64-bit lane observed through its two imported RV32 ports. Port numbers
-    stay in these observations; shared history establishes their actual Sail
+    stay in these observations; shared history establishes their actual RV
     read/write values and their bounds. -/
 def readLane (w : Nat → ZMod p) (lane : Fin 6) : Nat :=
   let row : Delegation.Row p := ⟨.keccak, w⟩

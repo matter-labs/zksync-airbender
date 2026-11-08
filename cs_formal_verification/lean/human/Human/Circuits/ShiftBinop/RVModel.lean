@@ -8,9 +8,9 @@ public import Human.Helpers.Core.CircuitOutput
 
 @[expose] public section
 
-/-! RV32 vocabulary for the XOR/OR/AND, SLL/SRL/SRA (register and immediate forms) and REV8 circuit (as
-    `Model.lean`, with RV registers, an `RV.State` pre-state and the instruction `RV.decode` of the public program
-    entry). `Circuit.Output` (destination word and PC) is shared with the Sail statements. -/
+/-! RV32 vocabulary for the XOR/OR/AND, SLL/SRL/SRA (register and immediate forms) and REV8 circuit (RV
+    registers, an `RV.State` pre-state and the instruction `RV.decode` of the public program entry). `Circuit.Output`
+    is the destination word and PC. -/
 
 namespace Airbender.ShiftBinop
 open Arithmetic Trace
@@ -48,7 +48,7 @@ def rvInstruction (input : RVInput) : RV.Instr :=
   | .srl, false => .op .srl input.rd input.rs1 input.rs2
   | .sra, false => .op .sra input.rd input.rs1 input.rs2
 
-/-- `WordMapping` (`Model.lean`) for the RV input: the same imported variable IDs. These mappings identify operands;
+/-- Word mapping for the RV input: the imported variable IDs. These mappings identify operands;
     none prescribes the result. -/
 structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w : Nat → ZMod p) : Prop where
   leftBytes : ∀ i : Fin 4,
@@ -73,7 +73,7 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w
   finalPCLo : output.pc.lo = (w 13).val
   finalPCHi : output.pc.hi = (w 14).val
 
-/-- `TraceMapping` (`Model.lean`) in RV32 terms: the row's pre-state is the RV state at its clock position, and its
+/-- Trace mapping in RV32 terms: the row's pre-state is the RV state at its clock position, and its
     decoder entry in the public program is `RV.decode` of the entry's encoding, equal to the input's instruction. -/
 structure RVTraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry)
@@ -96,7 +96,7 @@ def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (⟨.shiftBinop, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := RVTraceMapping trace initial cells program
 
-/-- The RV-typed assumptions: public initialization and modeled tables (`InterfaceAssumptions`, no `Configured`). -/
+/-- Assumptions of the RV statements: public initialization and modeled tables. -/
 abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
   RVPooledHistoryInputs trace initial cells program

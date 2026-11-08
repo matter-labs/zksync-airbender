@@ -22,7 +22,7 @@ public import Human.Circuits.KeccakSplit.Native
 namespace Airbender.Trace
 
 /-- Every write token of an accepted six-family pooled trace that boots at native clock four (the boot premise
-    `PooledBootInputs.initialBoundary`) has clock at least four: each row writes at its start clock plus a port
+    `RVPooledBootInputs.initialBoundary`) has clock at least four: each row writes at its start clock plus a port
     offset, and state matching chains every row start back to the initial clock. -/
 def NoZeroTimestampWritesClaim : Prop :=
   ∀ {trace : PooledTrace babyBearModulus} (accepted : Accepted trace)
@@ -47,7 +47,7 @@ open Trace
 
 /-- Every write of a delegation row (bigint, Blake2s G, Blake2s round, Keccak) has clock at least two: it is the
     invocation clock plus the port offset two. `clockRoom` and `invocationHigh` are the clock fields of
-    `MemoryInputs`; no acceptance is needed. -/
+    `RVMemoryInputs`; no acceptance is needed. -/
 def NoZeroTimestampWritesClaim : Prop :=
   ∀ {data : MemoryData babyBearModulus}
     (clockRoom : ∀ row ∈ data.rows,
@@ -61,7 +61,7 @@ end Airbender.Delegation
 namespace Airbender.Keccak.Split.Native
 open Trace
 
-/-- The same for the split Keccak workers (`MemoryInputs.clockRoom`, `MemoryInputs.invocationHigh`). -/
+/-- The same for the split Keccak workers (`RVMemoryInputs.clockRoom`, `RVMemoryInputs.invocationHigh`). -/
 def NoZeroTimestampWritesClaim : Prop :=
   ∀ {data : MemoryData babyBearModulus}
     (clockRoom : ∀ row ∈ data.rows,

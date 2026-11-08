@@ -4,14 +4,14 @@ public import Human.Trace.Delegation.RVExecution
 
 @[expose] public section
 
-/-! RV siblings of the Sail-stated unified caller window contracts (same file name without `RV`): states are
+/-! Unified caller window contracts: states are
     `RV.State`s, cells are read by `Cell.readRV` and executed by `RVHistory`, programs are RV program tables. A RAM cell
     is RAM at any address, INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace
 
-/-- Derived prefix/window worker matching and Sail transport at the same joint
+/-- Derived prefix/window worker matching and RV transport at the same joint
     cut states. The empty ordinary registry establishes caller-only rows.
     Full mixed instruction interleaving and ISA retirement remain separate. -/
 structure RVProjectedWindowExecution [Fact p.Prime] (data : RVRequestTrace p) (before : RV.State)

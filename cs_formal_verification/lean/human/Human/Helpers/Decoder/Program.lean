@@ -4,8 +4,7 @@ public import Human.Helpers.Memory.ROM
 
 @[expose] public section
 
--- The full Sail model compiles its decoder (`encdec_backwards`) as noncomputable (sail/regen.sh,
--- `proof` variant): these definitions are specifications, read by proofs, never executed.
+-- These definitions are specifications, read by proofs, never executed.
 noncomputable section
 
 namespace Airbender.Trace
@@ -31,8 +30,8 @@ def arithmeticFields (rs1 rs2 rd : BitVec 5) (immediate : BitVec 32)
   if rd = 0 then ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩
   else ⟨.addSub, rs1, rs2, rd, Word.ofBitVec immediate, mask, 0⟩
 
-/-- Change only the circuit registry tag; native metadata and Sail instruction
-    are retained verbatim. -/
+/-- Change only the circuit registry tag; native metadata is retained
+    verbatim. -/
 def DecoderData.mapFamily {Kind Target : Type} (f : Kind → Target)
     (data : DecoderData Kind) : DecoderData Target :=
   ⟨f data.family, data.rs1, data.rs2, data.rd, data.immediate, data.mask, data.funct3⟩

@@ -8,19 +8,19 @@ public import Human.Helpers.Tables.Subword
 
 @[expose] public section
 
-/-! RV32 twin of `RamTraceSoundnessClaim` (`Theorems.lean`): the accepted rows are a run of our spec (`RV.run`) from
+/-! RAM trace claim: the accepted rows are a run of our spec (`RV.run`) from
     the public starting state `initial : RV.State`. Proven in
     `slop/Slop/Final/Trace/Families/SubwordMemory/RVTheorems.lean` (checked by verify.sh). -/
 
 namespace Airbender.SubwordMemory
 open Trace
 
-/-- RV twin of `Decoded`: every row's decoder query is in the family table built from the RV program. Logical
+/-- Every row's decoder query is in the family table built from the RV program. Logical
     membership; lookup enforcement is external. -/
 def RVDecoded {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (program : List RVProgramEntry) : Prop :=
   ∀ row ∈ trace.rows, (rvDecoderTable program).Contains #[] (decoderQuery row.assignment)
 
-/-- RV twin of `RAMInputs`, without the Sail-only `Configured`, `OrdinaryWordAddress` and code-domain conditions (the
+/-- Public inputs for RAM rows. No machine-configuration, memory-map or code-domain premise is needed (the
     RV program table's fetch guard keeps every row's PC in ROM, aligned). -/
 structure RVRAMInputs {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (initial : RV.State)
     (cells : List Cell) (program : List RVProgramEntry) : Prop

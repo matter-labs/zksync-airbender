@@ -3,7 +3,7 @@ public import Human.Circuits.Blake2Round.Execution
 public import Slop.Blake2Round.Row
 public import Slop.Delegation.Operations
 public import Slop.Delegation.Requests
-public import Slop.Delegation.SailHistory
+public import Slop.Delegation.PortEvents
 
 @[expose] public section
 

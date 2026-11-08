@@ -5,14 +5,14 @@ public import Human.Trace.Delegation.RVRequestHashWindows
 
 @[expose] public section
 
-/-! RV siblings of `MixedMemory.lean` and `SharedSpans.lean` (unified callers): the shared unified/caller/worker
+/-! The shared unified/caller/worker
     architecture executed as RV cell reads/writes (`RVHistory`) from a public `RV.State`. A RAM cell is RAM at any
     address, INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace
 
-/-- RV sibling of `MixedMemoryEffects`: actual unified/worker transport through one initialized RV history. Native
+/-- Actual unified/worker transport through one initialized RV history. Native
     words, addresses and x0 values are derived; issued workers have actual RV call boundaries; from a nonzero initial
     clock every instruction has derived RV cycle states. -/
 structure RVMixedMemoryEffects [Fact p.Prime] (data : RVRequestTrace p)
@@ -35,7 +35,7 @@ structure RVMixedMemoryEffects [Fact p.Prime] (data : RVRequestTrace p)
     ∀ token ∈ data.machine.terminalMemory, ∃ cell ∈ cells,
       cell.addressCode = token.address ∧ cell.readRV after = some token.word.toBitVec
 
-/-- RV sibling of `SharedSpanInputs` (unified): public RV inputs for a complete hash span in the unified caller pool. -/
+/-- Public RV inputs for a complete hash span in the unified caller pool. -/
 structure RVSharedSpanInputs [Fact p.Prime] (data : RVRequestTrace p)
     (before : RV.State) (addresses : List (BitVec 32)) (cells : List Cell)
     (span : Delegation.Caller.HashSpan) : Prop extends
@@ -45,13 +45,13 @@ structure RVSharedSpanInputs [Fact p.Prime] (data : RVRequestTrace p)
   distinct : (cells.map Cell.addressCode).Nodup
   aligned : ∀ cell ∈ cells, cell.Aligned
 
-/-- RV sibling of `SharedTerminalState` (unified): every terminal token is read from the same final RV state. -/
+/-- Every terminal token is read from the same final RV state. -/
 def RVSharedTerminalState [Fact p.Prime] (data : RVRequestTrace p) (after : RV.State)
     (cells : List Cell) : Prop :=
   ∀ token ∈ data.machine.terminalMemory, ∃ cell ∈ cells,
     cell.addressCode = token.address ∧ cell.readRV after = some token.word.toBitVec
 
-/-- RV sibling of `SharedSpanEffects` (unified): decoded requests and the complete RV hash reference (with the delegate
+/-- Decoded requests and the complete RV hash reference (with the delegate
     link) reach one actual shared terminal RV state. -/
 structure RVSharedSpanEffects [Fact p.Prime] (data : RVRequestTrace p) (before : RV.State)
     (cells : List Cell) (span : Delegation.Caller.HashSpan) : Prop where

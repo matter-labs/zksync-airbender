@@ -1,10 +1,10 @@
 module
-public import Slop.Trace.SailHistory
+public import Slop.Trace.LastWrite
 public import Human.Helpers.Core.Field
 
 @[expose] public section
 
-namespace Tests.SailHistory
+namespace Tests.MemoryWord
 open Airbender Arithmetic Trace Reference
 set_option warningAsError true
 
@@ -14,4 +14,4 @@ private theorem value_code (value : BitVec 32) : memoryWord (valueCode value) = 
   simp only [memoryWord, valueCode, Nat.unpair_pair]
   change (Word.ofBitVec value).toBitVec = value
   exact Word.ofBitVec_roundtrip value
-end Tests.SailHistory
+end Tests.MemoryWord

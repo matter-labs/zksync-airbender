@@ -7,7 +7,7 @@ public import Human.Helpers.Memory.InitialImageRV
 namespace Airbender.Delegation.Caller
 open Trace
 
-/-- RV sibling of `HashSpan.Protocol`: the same modeled tables, homogeneous family and span-size ABI; the public
+/-- The same modeled tables, homogeneous family and span-size ABI; the public
     mode/control register is read from an `RV.State` (`Cell.readRV`). -/
 structure HashSpan.RVProtocol [Fact p.Prime] (workers : MemoryData p)
     (before : RV.State) (span : HashSpan) : Prop where

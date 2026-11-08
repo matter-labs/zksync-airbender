@@ -30,7 +30,7 @@ def multiplicationInput (operation : Multiplication.Operation) (w : Nat → ZMod
 
 /-- Each selected branch agrees with its existing arithmetic reference.
     The shared execution claim additionally realizes these same port values in
-    actual Sail read/write states. This covers operation effects, not caller ABI:
+    actual RV read/write states. This covers operation effects, not caller ABI:
     no-opcode rows remain the separately flagged local circuit mismatch. -/
 def ArithmeticEffects (w : Nat → ZMod p) : Prop :=
   (∀ operation, w Variables.operations[operation.index] = 1 →

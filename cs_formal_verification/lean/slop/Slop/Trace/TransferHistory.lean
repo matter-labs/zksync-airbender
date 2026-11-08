@@ -1,5 +1,5 @@
 module
-public import Slop.Trace.NativeSailHistory
+public import Slop.Trace.HistorySplit
 public import Slop.Trace.OfflineMemory
 
 @[expose] public section

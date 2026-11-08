@@ -5,10 +5,10 @@ public import Human.Helpers.Context.RVRowContext
 
 @[expose] public section
 
-/-! RV siblings of the delegation caller decoder (`Decoder.lean`): the public caller table is built from an `RV.State`
+/-! The delegation caller decoder: the public caller table is built from an `RV.State`
     (`rvProgramImageWith`: the ROM image's bytes, `RV.decode`, then `rvDecoderFields`); an admitted entry decodes to
-    `.delegate k` (`csrrw x0, <csr>, x0`) for one of the four caller families. No `Configured`. The native row columns
-    (`nativeQuery`, `destination`, the ports and PC words) are the Sail-free definitions of `Decoder.lean`. -/
+    `.delegate k` (`csrrw x0, <csr>, x0`) for one of the four caller families. The native row columns
+    (`nativeQuery`, `destination`, the ports and PC words) are defined in `Decoder.lean`. -/
 
 namespace Airbender.Delegation
 
@@ -24,7 +24,7 @@ end Airbender.Delegation
 namespace Airbender.Delegation.Caller
 open Trace Arithmetic
 
-/-- RV sibling of `decoderFields`: the four caller delegations (`.delegate k`, both GPR operands x0 by `RV.decode`) get
+/-- The four caller delegations (`.delegate k`, both GPR operands x0 by `RV.decode`) get
     the native caller metadata; every other instruction, the split Keccak-f1600 calls included, is rejected. -/
 def rvDecoderFields : RV.Instr → Option (DecoderData Family)
   | .delegate .bigint => some ⟨.bigint, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩
@@ -35,20 +35,20 @@ def rvDecoderFields : RV.Instr → Option (DecoderData Family)
 
 abbrev RVProgramEntry := Trace.RVProgramEntry Family
 
-/-- RV sibling of `programImage`: caller entries read from the public ROM image and decoded by `RV.decode`. -/
+/-- Caller entries read from the public ROM image and decoded by `RV.decode`. -/
 noncomputable abbrev rvProgramImage := Trace.rvProgramImageWith rvDecoderFields
 
-/-- RV sibling of `ProgramEntry.SourceWith before decoderFields`: the entry is the public table's entry at its PC, an
+/-- The entry is the public table's entry at its PC, an
     aligned ROM word of `before` that `RV.decode` reads as an admitted caller delegation. -/
 def RVSource (before : RV.State) (entry : RVProgramEntry) : Prop :=
   Trace.rvProgramEntryWith rvDecoderFields before entry.pc = some entry
 
-/-- RV sibling of `query`: the same nine-column ADD/SUB decoder row (rs2 field = the full virtual CSR address). -/
+/-- The same nine-column ADD/SUB decoder row (rs2 field = the full virtual CSR address). -/
 def rvQuery {p : Nat} (entry : RVProgramEntry) : Vector (ZMod p) 9 :=
   let pc := Word.ofBitVec entry.pc
   #v[pc.lo, pc.hi, 0, Requests.csr entry.data.family, 0, 0, 0, 0, 128]
 
-/-- RV sibling of `decoderTable`: the modeled caller table, constructed from public RV entries. -/
+/-- The modeled caller table, constructed from public RV entries. -/
 def rvDecoderTable {p : Nat} [Fact p.Prime] (program : List RVProgramEntry) :
     Table (ZMod p) (fields 9) := .fromStatic {
   name := "Airbender.DelegationCaller"
@@ -65,7 +65,7 @@ def rvDecoderTable {p : Nat} [Fact p.Prime] (program : List RVProgramEntry) :
       obtain ⟨i, rfl⟩ := List.mem_iff_get.mp member
       exact ⟨i, equal⟩ }
 
-/-- RV sibling of `PCBinding`: caller PC effects tied to actual public RV decoding. Range queries prove the final word
+/-- Caller PC effects tied to actual public RV decoding. Range queries prove the final word
     is canonical; the RV retirement (`nextInstr`, and any successful `RV.step` of the call) lands on it. -/
 structure RVPCBinding (w : Nat → ZMod p) (before : RV.State) (program : List RVProgramEntry) : Prop where
   /-- The native starting PC locates one actual public caller instruction. -/
@@ -80,7 +80,7 @@ structure RVPCBinding (w : Nat → ZMod p) (before : RV.State) (program : List R
   step : ∀ s t : RV.State, s.rom = before.rom → s.pc = (initialPC w).toBitVec → RV.step s = some t →
     t.pc = (finalPC w).toBitVec
 
-/-- RV sibling of `Binding`: one actual public RV instruction, the delegation call `.delegate k` of the request's family
+/-- One actual public RV instruction, the delegation call `.delegate k` of the request's family
     (so `RV.step` at that PC is the call's effect, `RV.exec s (.delegate k)`), its full CSR request token, and a zero
     architectural destination word. These are conclusions; no selected instruction or desired result is assumed. -/
 structure RVBinding (w : Nat → ZMod p) (before : RV.State) (program : List RVProgramEntry) : Prop where

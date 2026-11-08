@@ -10,7 +10,7 @@ open Arithmetic
 /-- Airbender's ROM/RAM split, used by the native word-memory lookup. -/
 def limit : Nat := 4194304
 
-/-- RV sibling of `words`: the word at byte address `4 * index` of the RV ROM image, read little-endian. Zero
+/-- The word at byte address `4 * index` of the RV ROM image, read little-endian. Zero
     when the word lies past the RAM address range (`RV.RAM_END`), the same fallback as `words`. -/
 def wordsRV (before : RV.State) (index : Nat) : BitVec 32 :=
   if 4 * index + 4 ≤ RV.RAM_END then RV.read before.rom (BitVec.ofNat 32 (4 * index)) 4 else 0
@@ -28,7 +28,7 @@ def rows {p : Nat} (cells : List Cell) (tokens : List (MemoryToken p)) :
     | .register _ => none
     | .ram address => if address.toNat < limit then some (row address token.word) else none
 
-/-- The current modeled ROM format, instantiated with the public Sail image.
+/-- The current modeled ROM format, instantiated with the public ROM image.
     The image equality binds the zipped cells/values; the zero row is the disabled
     query. This constructs no Rust setup artifact and proves no lookup argument. -/
 def table {p : Nat} [Fact p.Prime] (cells : List Cell) (tokens : List (MemoryToken p)) :

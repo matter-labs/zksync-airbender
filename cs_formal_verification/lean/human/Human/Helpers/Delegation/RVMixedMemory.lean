@@ -5,19 +5,19 @@ public import Human.Helpers.Decoder.RVPooledProgram
 
 @[expose] public section
 
-/-! RV siblings of the mixed ordinary/caller/worker pool records (`MixedMemory.lean`) over `RVRequestTrace`: both
+/-! Mixed ordinary/caller/worker pool records over `RVRequestTrace`: both
     decoder tables are RV tables (`RV.decode` of the same public ROM image), the shared seeds are `initialImageRV`
     reads. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 
 namespace Airbender.Delegation.Caller
 open Trace
 
-/-- RV sibling of `RequestTrace.mixedSteps`: ordinary instructions, delegation callers and all worker transfers. -/
+/-- Ordinary instructions, delegation callers and all worker transfers. -/
 def RVRequestTrace.mixedSteps [Fact p.Prime] (data : RVRequestTrace p) :=
   data.machine.rows.flatMap (fun row => (machinePorts row).toList.map fun port =>
     (readToken row.assignment port, writeToken row.columns row.assignment port)) ++ data.workers.steps
 
-/-- RV sibling of `MixedMemoryAccepted`: every noncaller row's decoder query is in the RV six-family table. -/
+/-- Every noncaller row's decoder query is in the RV six-family table. -/
 structure RVMixedMemoryAccepted [Fact p.Prime] (data : RVRequestTrace p)
     (program : List RVPooledProgramEntry) : Prop extends RVRequestChecks data where
   ordinaryDecoded : ∀ row ∈ data.machine.rows, row ∉ data.callers →
@@ -25,7 +25,7 @@ structure RVMixedMemoryAccepted [Fact p.Prime] (data : RVRequestTrace p)
   memory : (data.machine.initialMemory ++ data.mixedSteps.map Prod.snd).Perm
     (data.machine.terminalMemory ++ data.mixedSteps.map Prod.fst)
 
-/-- RV sibling of `MixedMemoryInputs`: public RV initialization (`initialImageRV`), both RV decoder tables from the
+/-- Public RV initialization (`initialImageRV`), both RV decoder tables from the
     same public ROM image, and the modeled setup. As in `RVPooledHistoryInputs`, the word-ROM table holds the ROM
     image's words at the public cells (`romImageRV`, the ROM image `rom`, not RAM) and the subword table the ROM
     image's words (`ROM.wordsRV`). -/

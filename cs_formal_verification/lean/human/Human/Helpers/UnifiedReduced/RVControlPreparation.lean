@@ -4,7 +4,7 @@ public import Human.Helpers.UnifiedReduced.ControlPreparation
 
 @[expose] public section
 
-/-! RV siblings of `ControlPreparation.lean` (helpers): public control literals and instruction registries stated over
+/-! Public control literals and instruction registries stated over
     `RV.Instr`, the RV program table's instruction being `RV.decode entry.bits`. The literal kinds (`ControlLiteral`)
     are reused. -/
 
@@ -22,12 +22,12 @@ def ControlLiteral.rvValue : ControlLiteral → BitVec 32
   | .addi immediate => immediate.signExtend 32
   | .lui immediate => immediate ++ (0 : BitVec 12)
 
-/-- RV sibling of `LiteralProgram`: every entry decodes to a public constant write to a nonzero register. -/
+/-- Every entry decodes to a public constant write to a nonzero register. -/
 def RVLiteralProgram (program : List UnifiedReduced.RVProgramEntry) : Prop :=
   ∀ entry ∈ program, ∃ (register : BitVec 5) (literal : ControlLiteral),
     register ≠ (0 : BitVec 5) ∧ RV.decode entry.bits = some (literal.rvInstruction register)
 
-/-- RV sibling of `ArithmeticInstruction`: ADD/SUB/ADDI/LUI/AUIPC, operands and results unrestricted. -/
+/-- ADD/SUB/ADDI/LUI/AUIPC, operands and results unrestricted. -/
 inductive RVArithmeticInstruction : RV.Instr → Prop where
   | add (rd rs1 rs2 : BitVec 5) : RVArithmeticInstruction (.op .add rd rs1 rs2)
   | sub (rd rs1 rs2 : BitVec 5) : RVArithmeticInstruction (.op .sub rd rs1 rs2)
@@ -35,11 +35,11 @@ inductive RVArithmeticInstruction : RV.Instr → Prop where
   | lui (rd : BitVec 5) (imm : BitVec 32) : RVArithmeticInstruction (.lui rd imm)
   | auipc (rd : BitVec 5) (imm : BitVec 32) : RVArithmeticInstruction (.auipc rd imm)
 
-/-- RV sibling of `ArithmeticProgram`: every entry decodes to an arithmetic instruction. -/
+/-- Every entry decodes to an arithmetic instruction. -/
 def RVArithmeticProgram (program : List UnifiedReduced.RVProgramEntry) : Prop :=
   ∀ entry ∈ program, ∀ instruction, RV.decode entry.bits = some instruction → RVArithmeticInstruction instruction
 
-/-- RV sibling of `SequentialInstruction`: instruction forms using the native PC-increment path. -/
+/-- Instruction forms using the native PC-increment path. -/
 inductive RVSequentialInstruction : RV.Instr → Prop where
   | arithmetic {instruction} (supported : RVArithmeticInstruction instruction) : RVSequentialInstruction instruction
   | lw (rd rs1 : BitVec 5) (imm : BitVec 32) : RVSequentialInstruction (.load 4 true rd rs1 imm)
@@ -60,11 +60,11 @@ inductive RVSequentialInstruction : RV.Instr → Prop where
   | triadd (rd rs1 rs2 : BitVec 5) : RVSequentialInstruction (.mop .triAdd rd rs1 rs2)
   | xorrot (n rd rs1 : BitVec 5) : RVSequentialInstruction (.xorRot n rd rs1)
 
-/-- RV sibling of `SequentialProgram`: every entry decodes to a sequential instruction. -/
+/-- Every entry decodes to a sequential instruction. -/
 def RVSequentialProgram (program : List UnifiedReduced.RVProgramEntry) : Prop :=
   ∀ entry ∈ program, ∀ instruction, RV.decode entry.bits = some instruction → RVSequentialInstruction instruction
 
-/-- RV sibling of `PreparationProgram`: uniform literals or a public registry whose entry at the final preparation
+/-- Uniform literals or a public registry whose entry at the final preparation
     address decodes to the literal. -/
 inductive RVPreparationProgram [Fact p.Prime] (data : RVRequestTrace p)
     (program : List UnifiedReduced.RVProgramEntry) (cut : Nat)
@@ -86,7 +86,7 @@ inductive RVPreparationProgram [Fact p.Prime] (data : RVRequestTrace p)
           data.machine.initial.word.value + (cut - 4) →
         RV.decode entry.bits = some (literal.rvInstruction register))
 
-/-- RV sibling of `ControlPreparation`: public preparation registry and its final cycle. -/
+/-- Public preparation registry and its final cycle. -/
 structure RVControlPreparation [Fact p.Prime] (data : RVRequestTrace p)
     (program : List UnifiedReduced.RVProgramEntry) (cut : Nat) (register : BitVec 5) (literal : ControlLiteral) :
     Prop where
@@ -95,7 +95,7 @@ structure RVControlPreparation [Fact p.Prime] (data : RVRequestTrace p)
   afterInitial : (timeOfPair data.machine.initial.timestamp).value + 4 ≤ cut
   beforeTerminal : cut ≤ (timeOfPair data.machine.terminal.timestamp).value
 
-/-- RV sibling of `PreparedControl`: the control register reads the literal in the RV state, and the actual control
+/-- The control register reads the literal in the RV state, and the actual control
     token retains the final preparation write's timestamp. -/
 def RVPreparedControl (tokens : List (MemoryToken p)) (state : RV.State) (cut : Nat)
     (register : BitVec 5) (literal : ControlLiteral) : Prop :=

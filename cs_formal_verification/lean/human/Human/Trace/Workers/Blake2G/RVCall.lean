@@ -8,8 +8,7 @@ public import Human.ISA.DelegationRuns
 
 @[expose] public section
 
-/-! RV siblings of the G call, boundary-call, window and work-vector contracts (`Call.lean`, `BoundaryCall.lean`,
-    `Windows.lean`, `WorkVector.lean`): the public state is an `RV.State`; RAM cells are RAM at any address, INCLUDING
+/-! G call, boundary-call, window and work-vector contracts: the public state is an `RV.State`; RAM cells are RAM at any address, INCLUDING
     READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`); no pointer is required to be at or
     above `ROM_END`. -/
 
@@ -20,7 +19,7 @@ open Trace
 abbrev rvCalls (reduced : Bool) : List RV.DelegationKind :=
   List.replicate (callCount reduced) .blakeG
 
-/-- RV sibling of `CallInputs`: one uninterrupted G-only request span from a public `RV.State`. -/
+/-- One uninterrupted G-only request span from a public `RV.State`. -/
 structure RVCallInputs [Fact p.Prime] (data : Delegation.MemoryData p) (initial : RV.State)
     (cells : List Cell) (reduced : Bool) : Prop where
   memory : Delegation.RVMemoryInputs data initial cells
@@ -30,7 +29,7 @@ structure RVCallInputs [Fact p.Prime] (data : Delegation.MemoryData p) (initial 
   controlStart : (Cell.register 12).readRV initial = some (if reduced then 128 else 0)
   calls : data.rows.length = callCount reduced
 
-/-- RV sibling of `NativeCallInputs`: the complete G caller ABI at a native boundary, retaining seed clocks. -/
+/-- The complete G caller ABI at a native boundary, retaining seed clocks. -/
 structure RVNativeCallInputs [Fact p.Prime] (data : Delegation.MemoryData p)
     (initial : RV.State) (cells : List Cell) (reduced : Bool) : Prop where
   memory : Delegation.RVBoundaryMemoryInputs data initial cells
@@ -40,7 +39,7 @@ structure RVNativeCallInputs [Fact p.Prime] (data : Delegation.MemoryData p)
   controlStart : (Cell.register 12).readRV initial = some (if reduced then 128 else 0)
   calls : data.rows.length = callCount reduced
 
-/-- RV sibling of `WindowInputs`: one complete G-worker span selected after whole preceding spans. -/
+/-- One complete G-worker span selected after whole preceding spans. -/
 structure RVWindowInputs [Fact p.Prime] (data : Delegation.MemoryData p) (before : RV.State)
     (cells : List Cell) (reduced : Bool) (lower upper : Nat) : Prop where
   memory : Delegation.RVMemoryInputs data before cells
@@ -51,7 +50,7 @@ structure RVWindowInputs [Fact p.Prime] (data : Delegation.MemoryData p) (before
   prefixComplete : (data.prefixRows lower).length % callCount reduced = 0
   calls : (data.windowRows lower upper).length = callCount reduced
 
-/-- RV sibling of `WorkVector.WordMapping`: actual public pointers, initialized input/message words, and result words
+/-- Actual public pointers, initialized input/message words, and result words
     read (`Cell.readRV`) from the same final `RV.State` exposed by `Delegation.RVTraceMapping`. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 structure WorkVector.RVWordMapping (initial after : RV.State) (statePointer messagePointer : BitVec 32)
     (input message output : Vector Arithmetic.Word 16) : Prop where
@@ -62,7 +61,7 @@ structure WorkVector.RVWordMapping (initial after : RV.State) (statePointer mess
   outputWords : Blake2Round.Compression.RVWordsAt after statePointer 0 output
   messageUnchanged : Blake2Round.Compression.RVWordsAt after messagePointer 0 message
 
-/-- RV sibling of `HashSpan.Result` for `.blakeG reduced`: the complete G work-vector reference on actual initial/final
+/-- Result of a `.blakeG reduced` span: the complete G work-vector reference on actual initial/final
     RV RAM, the same final state executing every native access (`RVTraceMapping`), and the delegate link: the final
     state IS the spec's run of the request's `G` delegations (`RV.calls (rvCalls reduced)`, `RV.Delegation.blakeG`)
     from `before`, up to the spec's PC advance. -/

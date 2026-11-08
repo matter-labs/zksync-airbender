@@ -7,7 +7,7 @@ public import Human.Helpers.Delegation.RVRequestTrace
 namespace Airbender.Delegation.Caller
 open Trace
 
-/-- RV sibling of `RequestExecution`: request binding and the same worker pool's accesses executed as RV cell
+/-- Request binding and the same worker pool's accesses executed as RV cell
     reads/writes (`RVMemoryExecution`; RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END`). -/
 structure RVRequestExecution [Fact p.Prime] (data : RVRequestTrace p)
     (before : RV.State) (cells : List Cell) : Prop where

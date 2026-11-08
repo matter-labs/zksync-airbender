@@ -17,7 +17,7 @@ open Airbender.Arithmetic
 open Variables
 open Trace
 
-/-- Standard Sail clauses covered by this comparison slice. -/
+/-- The comparison opcodes covered by this slice (SLT, SLTI, SLTU, SLTIU). -/
 inductive Opcode where
   | slt | slti | sltu | sltiu
   deriving Repr, DecidableEq

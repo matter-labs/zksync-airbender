@@ -1,6 +1,6 @@
 module
 public import Human.Helpers.UnifiedReduced.RequestTrace
-public import Human.Helpers.Memory.SailHistory
+public import Human.Helpers.Memory.RowEvents
 public import Human.Circuits.UnifiedReduced.Tables.Setup
 public import Human.Circuits.JumpBranchSlt.Model
 public import Human.Helpers.Memory.Native

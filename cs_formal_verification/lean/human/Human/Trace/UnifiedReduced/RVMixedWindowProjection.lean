@@ -3,7 +3,7 @@ public import Human.Trace.UnifiedReduced.RVWindowProjection
 
 @[expose] public section
 
-/-! RV siblings of the Sail-stated unified caller window contracts (same file name without `RV`): states are
+/-! Unified caller window contracts: states are
     `RV.State`s, cells are read by `Cell.readRV` and executed by `RVHistory`, programs are RV program tables. A RAM cell
     is RAM at any address, INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 

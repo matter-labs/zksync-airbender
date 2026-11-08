@@ -6,15 +6,14 @@ public import Human.Helpers.Context.RVRowContext
 
 @[expose] public section
 
-/-! RV siblings of the unified caller request trace (`RequestTrace.lean`, `Circuits/UnifiedReduced/Delegation.lean`):
-    the caller program is an RV program table (ROM bytes decoded by `RV.decode` to `.delegate k`, `csrrw x0, csr, x0`),
-    and the public state is an `RV.State`. No `Configured`. Native selectors, ports and request tokens are unchanged.
+/-! The unified caller request trace: the caller program is an RV program table (ROM bytes decoded by `RV.decode` to `.delegate k`, `csrrw x0, csr, x0`),
+    and the public state is an `RV.State`. Native selectors, ports and request tokens are the unified machine's own.
     The caller table is the shared delegation caller table (`Delegation.Caller.rvProgramImage`, `rvDecoderTable`). -/
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace Arithmetic
 
-/-- RV sibling of `RequestTrace`: actual unified machine rows and delegation workers sharing one request pool; the
+/-- Actual unified machine rows and delegation workers sharing one request pool; the
     caller entries come from the RV program table. -/
 structure RVRequestTrace (p : Nat) [Fact p.Prime] where
   machine : UnifiedTrace p
@@ -28,7 +27,7 @@ def RVRequestTrace.calls [Fact p.Prime] (data : RVRequestTrace p) :=
 def RVRequestTrace.fulfillments [Fact p.Prime] (data : RVRequestTrace p) :=
   data.workers.rows.map Delegation.Requests.fulfillment
 
-/-- RV sibling of `RequestChecks`: native equations, participation and exact logical request matching; selected
+/-- Native equations, participation and exact logical request matching; selected
     callers use the RV caller table. -/
 structure RVRequestChecks [Fact p.Prime] (data : RVRequestTrace p) : Prop where
   constraints : ∀ row ∈ data.machine.rows,
@@ -42,15 +41,15 @@ structure RVRequestChecks [Fact p.Prime] (data : RVRequestTrace p) : Prop where
   workerActive : ∀ row ∈ data.workers.rows, row.assignment row.columns.execute = 1
   requests : Delegation.Requests.Matching data.calls data.fulfillments
 
-/-- RV sibling of `RequestInputs`: the RV ROM image and `RV.decode` construct the caller table; the initial native
-    clock. No `Configured`. -/
+/-- The RV ROM image and `RV.decode` construct the caller table; the initial native
+    clock. -/
 structure RVRequestInputs [Fact p.Prime] (data : RVRequestTrace p)
     (before : RV.State) (addresses : List (BitVec 32)) : Prop where
   image : Delegation.Caller.rvProgramImage before addresses = some data.program
   initialClock : (timeOfPair data.machine.initial.timestamp).Bounded
   initialAligned : (timeOfPair data.machine.initial.timestamp).value % 4 = 0
 
-/-- RV sibling of `Binding`: what the RV caller table and the unified equations prove about a caller. The entry is read
+/-- What the RV caller table and the unified equations prove about a caller. The entry is read
     from the ROM image and decodes to `.delegate k` of its family; `RV.step` at any state with that ROM image and the
     row's starting PC is `RV.exec` of that delegation call. x0 reads 0 and the native zero write to x0 leaves the state
     unchanged. -/
@@ -72,7 +71,7 @@ structure RVBinding (w : Nat → ZMod p) (before : RV.State) (program : List Del
   registerEffects : ∀ state : RV.State, (Cell.register 0).readRV state = some 0 ∧
     (Cell.register 0).applyRV (destinationToken w).word.toBitVec state = some state
 
-/-- RV sibling of `RequestBinding`: unified caller/worker identity and timing from the same native pool. -/
+/-- Unified caller/worker identity and timing from the same native pool. -/
 structure RVRequestBinding [Fact p.Prime] (data : RVRequestTrace p) (before : RV.State) : Prop where
   callers : ∀ row ∈ data.callers, RVBinding row.assignment before data.program
   fulfilled : data.calls.Perm (data.fulfillments.filter fun call => decide (Delegation.Requests.Live call))

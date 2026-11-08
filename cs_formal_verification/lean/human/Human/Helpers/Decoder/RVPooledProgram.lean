@@ -20,7 +20,7 @@ def rvPooledDecoderFields (i : RV.Instr) : Option (DecoderData PooledFamily) :=
 
 abbrev RVPooledProgramEntry := RVProgramEntry PooledFamily
 
-/-- Decoder lookup membership for every row of the six-family trace (as `PooledDecoded`), in the RV table. Public
+/-- Decoder lookup membership for every row of the six-family trace, in the RV table. Public
     image binding is separate (`RVNativeInputs.programImage`). Logical membership; lookup enforcement is deferred. -/
 def RVPooledDecoded {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (program : List RVPooledProgramEntry) : Prop :=

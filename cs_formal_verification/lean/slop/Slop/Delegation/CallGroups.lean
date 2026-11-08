@@ -1,6 +1,6 @@
 module
 public import Human.Helpers.Delegation.WorkerContext
-public import Slop.Delegation.SailHistory
+public import Slop.Delegation.PortEvents
 
 @[expose] public section
 

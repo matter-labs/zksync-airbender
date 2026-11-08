@@ -50,7 +50,7 @@ namespace Airbender.Delegation
 open Trace
 
 /-- The four delegation workers: every row of an accepted pool has range-checked writes. The tables, `rounds` and
-    `keccakActive` are the fields of `OperationInputs` (the modeled tables; the Blake2s round's round mask and the
+    `keccakActive` are the fields of `RVOperationInputs` (the modeled tables; the Blake2s round's round mask and the
     Keccak row's execute flag, caller/padding conditions awaiting request binding). -/
 def WritesRangeCheckedClaim : Prop :=
   ∀ {data : MemoryData babyBearModulus} {control : Fin 4096 → Vector Nat 6} (accepted : MemoryAccepted data) (tables : data.setup = modeledSetup control) (rounds : ∀ row ∈ data.rows, row.family = .blakeRound → ∃ round, Blake2Round.Memory.RoundMask row.assignment round) (keccakActive : ∀ row ∈ data.rows, row.family = .keccak → row.assignment Keccak.Variables.execute = 1),

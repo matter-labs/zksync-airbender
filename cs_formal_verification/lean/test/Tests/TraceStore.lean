@@ -16,7 +16,7 @@ public import Human.Circuits.MulDiv.Operation
 public import Slop.MulDiv.Values
 public import Slop.ShiftBinop.Ports
 public import Slop.SubwordMemory.Values
-public import Slop.Trace.NativeSailHistory
+public import Slop.Trace.HistorySplit
 public import Slop.Trace.Terminal
 public import Slop.Trace.RowContext
 

@@ -4,7 +4,7 @@ public import Slop.Bigint.SetupSoundness
 public import Slop.Bigint.Multiplication
 public import Slop.Delegation.Operations
 public import Slop.Delegation.Requests
-public import Slop.Delegation.SailHistory
+public import Slop.Delegation.PortEvents
 
 @[expose] public section
 

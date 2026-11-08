@@ -8,21 +8,20 @@ public import Human.Trace.RVExecution
 
 @[expose] public section
 
-/-! RV32 twins of the ADD/SUB and word-memory trace claims (`Theorems.lean`): the accepted rows are a run of our spec
-    (`RV.run`) from the public starting state `initial : RV.State`. `SailSoundnessClaim` (unchanged Sail, LW to x0
-    excluded) has no twin: in our spec LW to x0 is a no-op (`RV.exec`), which is the Airbender profile, so
-    `RVAirbenderSoundnessClaim` covers it. Proven in `slop/Slop/Final/Trace/Families/AddSub/RVTheorems.lean` (checked
+/-! ADD/SUB and word-memory trace claims: the accepted rows are a run of our spec
+    (`RV.run`) from the public starting state `initial : RV.State`. In our spec LW to x0 is a no-op (`RV.exec`), as in
+    Airbender, so `RVAirbenderSoundnessClaim` needs no load restriction. Proven in `slop/Slop/Final/Trace/Families/AddSub/RVTheorems.lean` (checked
     by verify.sh). -/
 
 namespace Airbender.Trace
 
-/-- RV twin of `Decoded`: every row's decoder query is in its family's table built from the RV program. Logical
+/-- Every row's decoder query is in its family's table built from the RV program. Logical
     membership; lookup enforcement is external. -/
 def RVDecoded {p : Nat} [Fact p.Prime] (trace : Data p) (program : List RVProgramEntry) : Prop :=
   ∀ row ∈ trace.rows, (rvDecoderTable program row.family).Contains #[] row.decoderQuery
 
-/-- RV twin of `ExecutionBoundary`, without the Sail-only conditions (`Configured`, `OrdinaryWordAddress`, the
-    code-domain guard: the RV program table's fetch guard keeps every row's PC in ROM, aligned) and without the
+/-- Public boundary of the accepted rows. No machine-configuration, memory-map or code-domain premise is needed (the
+    RV program table's fetch guard keeps every row's PC in ROM, aligned), nor a
     register-domain condition (every register a row touches is a tracked cell through the row's own history). The
     modeled word-ROM table holds the ROM image's words (`romImageRV`), not the seed values (RAM, shadow RAM below
     `ROM_END` included). -/
@@ -32,12 +31,11 @@ structure RVExecutionBoundary {p : Nat} [Fact p.Prime] (trace : Data p) (initial
   /-- Bind the modeled word-ROM table to the ROM image. -/
   rom : trace.rom = ROM.table cells (romImageRV initial cells)
 
-/-- RV twin of `NativeBootBoundary`, with the seeds of `RVPooledBootInputs`: native boot, PC zero, registers zero; the
+/-- Native boot with the seeds of `RVPooledBootInputs`: PC zero, registers zero; the
     RAM is seeded by the `Init` tokens of the inits/teardowns instances `inits`, whose public top bits pass the
     verifier's check, so the tracked RAM is the union of their windows (ROM shadow below 4 MiB included) and `image`
     ties the spec's starting state to those seeds (every tracked RAM cell then reads 0, as `BootRamZeroClaim` derives);
-    the ROM image holds the program. Sail-only and register-domain conditions are dropped as in
-    `RVExecutionBoundary`. -/
+    the ROM image holds the program. As in `RVExecutionBoundary`, no register-domain or memory-map premise is needed. -/
 structure RVNativeBootBoundary {p : Nat} [Fact p.Prime] (trace : Data p) (initial : RV.State)
     (cells : List Cell) (program : List RVProgramEntry)
     (inits : List (InitsTeardowns.Witness p InitsTeardowns.importedLayout)) : Prop where

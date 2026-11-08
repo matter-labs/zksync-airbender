@@ -8,16 +8,15 @@ public import Human.ISA.RV32
 
 @[expose] public section
 
-/-! RV32 vocabulary for the SLT/SLTI/SLTU/SLTIU, branch and JAL/JALR circuit (`Model.lean`, `Branch.lean`,
-    `Jump.lean`): register fields are `RV.Reg`, the pre-state is an `RV.State`, and the instruction is `RV.decode` of
-    the public program entry. `Comparison.Opcode` and `Jump.Instruction` (encodings only, no Sail) are shared with the
-    Sail statements, as is `Circuit.Output` (destination word and PC). -/
+/-! RV32 vocabulary for the SLT/SLTI/SLTU/SLTIU, branch and JAL/JALR circuit: register fields are `RV.Reg`, the pre-state is an `RV.State`, and the instruction is `RV.decode` of
+    the public program entry. `Comparison.Opcode` and `Jump.Instruction` (encodings only) and `Circuit.Output`
+    (destination word and PC) are the circuit-side types. -/
 
 namespace Airbender.JumpBranchSlt
 open Arithmetic Trace
 
-/-- Public conditions shared by comparisons, branches and jumps, in RV32 terms (`TraceInputs` without `codeAligned`,
-    which is now the program table's fetch guard, `rvProgramEntryWith`). `terminalPC` stays: this circuit does not
+/-- Public conditions shared by comparisons, branches and jumps, in RV32 terms (no code-alignment premise: the
+    program table's fetch guard, `rvProgramEntryWith`, aligns every PC). `terminalPC` stays: this circuit does not
     range-check the outgoing PC's high limb (column 17); a row's outgoing PC is canonical because it is the next
     row's incoming PC (a decoder-table PC) or, for the last row, the terminal PC. -/
 structure RVTraceInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
@@ -69,7 +68,7 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w
   finalPCLo : output.pc.lo = (w finalPCLo).val
   finalPCHi : output.pc.hi = (w finalPCHi).val
 
-/-- `TraceMapping` in RV32 terms: the row's pre-state is the RV state at its clock position, and its decoder entry in
+/-- Trace mapping in RV32 terms: the row's pre-state is the RV state at its clock position, and its decoder entry in
     the public program is `RV.decode` of the entry's encoding, equal to the input's instruction. -/
 structure RVTraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry)
@@ -92,7 +91,7 @@ def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     Accepted trace ∧ RVPooledDecoded trace program ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := RVTraceMapping trace initial cells program
 
-/-- The RV-typed assumptions (`InterfaceAssumptions` without `codeAligned`). -/
+/-- Assumptions of the RV statements: `RVTraceInputs`. No code-alignment premise is needed. -/
 abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
   RVTraceInputs trace initial cells program
@@ -102,7 +101,7 @@ end Airbender.JumpBranchSlt.Comparison
 namespace Airbender.JumpBranchSlt.Branch
 open Arithmetic Variables Trace
 
-/-- The branch's input in RV32 terms (`Input`): `cond` replaces Sail's `bop`. -/
+/-- The branch's input in RV32 terms: `cond` is the RV branch condition. -/
 structure RVInput where
   cond : RV.Cond
   left : Word
@@ -136,7 +135,7 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w
   rs1Index : w Variables.rs1Index = (input.rs1.toNat : ZMod p)
   rs2Index : w Variables.rs2Index = (input.rs2.toNat : ZMod p)
 
-/-- `TraceMapping` in RV32 terms (as `Comparison.RVTraceMapping`). -/
+/-- Trace mapping in RV32 terms, as `Comparison.RVTraceMapping`. -/
 structure RVTraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry)
     (input : RVInput) (output : Circuit.Output) (w : Nat → ZMod p) : Prop where
@@ -158,7 +157,7 @@ def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     Accepted trace ∧ RVPooledDecoded trace program ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := RVTraceMapping trace initial cells program
 
-/-- The RV-typed assumptions (`InterfaceAssumptions` without `codeAligned` and `Configured`). -/
+/-- Assumptions of the RV statements: `RVTraceInputs`. No code-alignment premise is needed. -/
 abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
   RVTraceInputs trace initial cells program
@@ -204,7 +203,7 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w
   rs1Index : input.instruction.indirect = true → w Variables.rs1Index = (input.rs1.toNat : ZMod p)
   rdIndex : w Variables.rdIndex = (input.rd.toNat : ZMod p)
 
-/-- `TraceMapping` in RV32 terms (as `Comparison.RVTraceMapping`). -/
+/-- Trace mapping in RV32 terms, as `Comparison.RVTraceMapping`. -/
 structure RVTraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry)
     (input : RVInput) (output : Circuit.Output) (w : Nat → ZMod p) : Prop where
@@ -226,7 +225,7 @@ def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     Accepted trace ∧ RVPooledDecoded trace program ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := RVTraceMapping trace initial cells program
 
-/-- The RV-typed assumptions (`InterfaceAssumptions` without `codeAligned` and `Configured`). -/
+/-- Assumptions of the RV statements: `RVTraceInputs`. No code-alignment premise is needed. -/
 abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
   RVTraceInputs trace initial cells program

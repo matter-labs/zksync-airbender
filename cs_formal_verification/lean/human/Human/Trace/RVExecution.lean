@@ -5,7 +5,7 @@ public import Human.ISA.RV32
 @[expose] public section
 
 /-! The shared conclusion of trace-level claims over our RV32 spec: an accepted trace is a run of `RV.run` from the
-    public starting state `initial : RV.State` (not a Sail execution). RV sibling of `Execution.lean`'s `Realizes`. -/
+    public starting state `initial : RV.State`. -/
 
 namespace Airbender.Trace
 open Arithmetic

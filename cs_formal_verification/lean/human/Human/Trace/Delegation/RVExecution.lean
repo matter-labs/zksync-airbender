@@ -6,7 +6,7 @@ public import Human.Helpers.Delegation.RVMemory
 namespace Airbender.Delegation
 open Trace
 
-/-- RV sibling of `MemoryExecution`: every imported delegation access executes once, in native timestamp order, as
+/-- Every imported delegation access executes once, in native timestamp order, as
     RV cell reads/writes from the public initial state (RAM cells are `mem`, INCLUDING READ-WRITE ACCESS TO THE
     SHADOW RAM BELOW `ROM_END`, `RV.State.delegationRAM`); untouched aligned cells keep their reads; every declared
     terminal token is read from the resulting state. -/
@@ -21,7 +21,7 @@ def RVMemoryExecution (data : MemoryData p) (before : RV.State) (cells : List Ce
     ∀ token ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = token.address ∧
       cell.readRV after = some (memoryWord token.value)
 
-/-- RV sibling of `TraceMapping`: the same final state executes every native access once and agrees with every
+/-- The same final state executes every native access once and agrees with every
     terminal token. -/
 structure RVTraceMapping (data : Delegation.MemoryData p) (initial after : RV.State)
     (cells : List Cell) : Prop where

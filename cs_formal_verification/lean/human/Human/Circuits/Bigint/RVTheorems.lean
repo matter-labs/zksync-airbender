@@ -3,14 +3,13 @@ public import Human.Circuits.Bigint.RVMemory
 
 @[expose] public section
 
--- The statements proven in slop/Slop/Final/Circuits/Bigint/RVTheorems.lean (checked by verify.sh). RV sibling of
--- `Theorems.lean`: the public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING READ-WRITE
+-- The statements proven in slop/Slop/Final/Circuits/Bigint/RVTheorems.lean (checked by verify.sh). The public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING READ-WRITE
 -- ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`): no pointer is required to be at or above
 -- `ROM_END`.
 
 namespace Airbender.Bigint.Memory
 
-/-- RV sibling of `AddressesSoundnessClaim`: the sixteen actual indirect addresses follow x10/x11's aligned 32-byte
+/-- The sixteen actual indirect addresses follow x10/x11's aligned 32-byte
     blocks; pointer bounds come from the public `RV.State` initialization and accepted writes/reads. RAM cells include
     READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def RVAddressesSoundnessClaim : Prop :=

@@ -1,7 +1,7 @@
 module
 public import Slop.Delegation.RVBoundaryInputs
 public import Slop.Delegation.CallGroups
-public import Slop.Delegation.SailHistory
+public import Slop.Delegation.PortEvents
 public import Slop.Delegation.Readonly
 public import Slop.Trace.RVHistory
 public import Slop.Trace.RVHistoryFrame
@@ -201,7 +201,7 @@ theorem RVBoundaryMemoryInputs.toRVBoundaryInputs {data : MemoryData p} {before 
 
 /-! ### Grouped RV histories -/
 
-/-- RV sibling of `GroupedSailHistory`: an RV history split into consecutive worker calls (newest first). -/
+/-- An RV history split into consecutive worker calls (newest first). -/
 inductive GroupedRVHistory (cells : List Cell) (accesses : α → List MemoryAccess) :
     List α → RV.State → RV.State → Prop where
   | nil (before) : GroupedRVHistory cells accesses [] before before

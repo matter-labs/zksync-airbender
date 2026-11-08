@@ -5,15 +5,14 @@ public import Human.Helpers.Delegation.RVOperations
 
 @[expose] public section
 
--- The statements proven in slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean (checked by verify.sh). RV siblings
--- of `Theorems.lean`: the public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING
+-- The statements proven in slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean (checked by verify.sh). The public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING
 -- READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`): no pointer is required to be at or
 -- above `ROM_END`. The complete-span claims also state the delegate link: the circuit's final state IS the spec's run
 -- of the span's `G` delegations (`RV.calls`, `RV.Delegation.blakeG`), up to the spec's PC advance.
 
 namespace Airbender.Blake2G
 
-/-- RV sibling of `Native.WorkvectorSoundnessClaim`: the complete native G span updates its actual RAM work vector
+/-- The complete native G span updates its actual RAM work vector
     through the pinned 56/80-call schedule and original Clean G, on `RV.State`s. `RVWordMapping` exposes successful
     initial/final reads; `RVTraceMapping` binds the same final state to every native access and terminal token. The
     final state is the spec's run of the 56/80 `G` delegation calls from `initial` (memory and registers; the PC
@@ -28,7 +27,7 @@ def Native.RVWorkvectorSoundnessClaim : Prop :=
         ∃ s', RV.calls (rvCalls reduced) initial = some s' ∧
           RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * (rvCalls reduced).length)))
 
-/-- RV sibling of `Native.WorkvectorBoundarySoundnessClaim`: the complete G reference binds actual boundary RV reads
+/-- The complete G reference binds actual boundary RV reads
     and the final `RV.State`, retaining native seed timestamps, with the same delegate link. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def Native.RVWorkvectorBoundarySoundnessClaim : Prop :=
   ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Trace.Cell} {reduced : Bool} (accepted : Delegation.MemoryAccepted data) (inputs : RVNativeCallInputs data initial cells reduced) (aligned : ∀ cell ∈ cells, cell.Aligned),
@@ -40,7 +39,7 @@ def Native.RVWorkvectorBoundarySoundnessClaim : Prop :=
         ∃ s', RV.calls (rvCalls reduced) initial = some s' ∧
           RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * (rvCalls reduced).length)))
 
-/-- RV sibling of `Native.WindowSoundnessClaim`: a complete G-worker span selected after whole preceding spans reaches
+/-- A complete G-worker span selected after whole preceding spans reaches
     the pinned work-vector reference (`RVSpanResult`, delegate link included) on its actual native-clock cut
     `RV.State`s. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def Native.RVWindowSoundnessClaim : Prop :=
@@ -51,7 +50,7 @@ end Airbender.Blake2G
 
 namespace Airbender.Blake2G.Native
 
-/-- RV sibling of `OperationExecutionClaim`: native G reads and writes agree with Clean's original G reference within
+/-- Native G reads and writes agree with Clean's original G reference within
     actual RV memory execution (`RVMemoryExecution`; RAM cells include the shadow RAM below `ROM_END`). -/
 def RVOperationExecutionClaim : Prop :=
   ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {before : RV.State} {cells : List Trace.Cell} {control : Fin 4096 → Vector Nat 6} (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.RVOperationInputs data before cells control) (aligned : ∀ cell ∈ cells, cell.Aligned),

@@ -7,7 +7,7 @@ public import Human.Helpers.Memory.RVHistory
 namespace Airbender.Delegation.Caller
 open Trace
 
-/-- RV sibling of `SharedMemoryEffects`: caller and worker accesses execute together as RV cell reads/writes from the
+/-- Caller and worker accesses execute together as RV cell reads/writes from the
     public initial `RV.State` (`RVHistory`; RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END`),
     in native clock order, reaching every shared terminal value. -/
 structure RVSharedMemoryEffects [Fact p.Prime] (data : RVRequestTrace p)
@@ -23,7 +23,7 @@ structure RVSharedMemoryEffects [Fact p.Prime] (data : RVRequestTrace p)
     ∀ token ∈ data.machine.terminalMemory, ∃ cell ∈ cells,
       cell.addressCode = token.address ∧ cell.readRV after = some token.word.toBitVec
 
-/-- RV sibling of `SharedOperationEffects`: requests, RV transfers and the four operation references on the same
+/-- Requests, RV transfers and the four operation references on the same
     architectural pool, with every word bound proved. -/
 structure RVSharedOperationEffects [Fact p.Prime] (data : RVRequestTrace p)
     (before : RV.State) (cells : List Cell) : Prop where

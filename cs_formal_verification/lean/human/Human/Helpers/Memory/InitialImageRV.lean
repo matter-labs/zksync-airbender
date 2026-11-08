@@ -6,8 +6,8 @@ public import Human.ISA.State
 
 @[expose] public section
 
-/-! RV-typed siblings of `InitialImage.lean`: the same public cell domain and
-    seed tokens, but the starting point is an `RV.State`, not a Sail state.
+/-! Public cell domain and seed tokens (`Cell`, `initialToken`) with an
+    `RV.State` as the starting point.
     The `readable` failure of byte reads is kept (it is the RV memory map's
     range condition, `RV.readable`), so a cell outside the map still makes the
     construction fail. -/

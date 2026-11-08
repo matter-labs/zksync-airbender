@@ -6,7 +6,7 @@ public import Human.Helpers.Delegation.RequestWindows
 
 @[expose] public section
 
-/-! RV siblings of `Windows.lean`, `WorkerProjection.lean` and `WindowProjection.lean` (helpers): native windows over
+/-! Native windows over
     `RVRequestTrace`, and cut images read from `RV.State`s (`Cell.readRV`). A RAM cell is RAM at any address, INCLUDING
     READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 
@@ -28,7 +28,7 @@ def RVRequestTrace.windowSteps [Fact p.Prime] (data : RVRequestTrace p) (lower u
 def RVRequestTrace.prefixSteps [Fact p.Prime] (data : RVRequestTrace p) (cutoff : Nat) :=
   data.mixedSteps.filter fun edge => decide ((timeOfPair edge.2.time).value < cutoff)
 
-/-- RV sibling of `NativeBoundary`: actual RV cell reads and canonical native tokens at a derived cut; raw timestamps
+/-- Actual RV cell reads and canonical native tokens at a derived cut; raw timestamps
     are retained. -/
 def RVNativeBoundary (tokens : List (MemoryToken p)) (state : RV.State) (cells : List Cell) : Prop :=
   Delegation.RVBoundaryImage tokens state cells ∧
@@ -45,13 +45,13 @@ def RVRequestTrace.prefixProjection [Fact p.Prime] (data : RVRequestTrace p) (lo
   ⟨data.workers.setup, data.workers.prefixRows lower, data.workerProjection.initial,
     start.filter fun token => token.address != (Cell.register 0).addressCode⟩
 
-/-- RV sibling of `CallerWindowSchedule`: clock matching and a public four-tick duration derive a caller-only region. -/
+/-- Clock matching and a public four-tick duration derive a caller-only region. -/
 structure RVCallerWindowSchedule [Fact p.Prime] (data : RVRequestTrace p) (lower upper : Nat) : Prop where
   machineCount : (data.windowMachineRows lower upper).length = (upper - lower) / 4
   rows : Delegation.Caller.windowCallers data.callers lower upper = data.windowMachineRows lower upper
   workerCount : (data.windowMachineRows lower upper).length = (data.workers.windowRows lower upper).length
 
-/-- RV sibling of `ProgramCallerRegion`: public RV program addresses exclude ordinary instructions from a caller region
+/-- Public RV program addresses exclude ordinary instructions from a caller region
     and identify its full CSR family. -/
 structure RVProgramCallerRegion [Fact p.Prime] (data : RVRequestTrace p)
     (program : List UnifiedReduced.RVProgramEntry) (family : Delegation.Family) (lower upper : Nat) : Prop where
@@ -63,7 +63,8 @@ structure RVProgramCallerRegion [Fact p.Prime] (data : RVRequestTrace p)
       entry.pc.toNat + (timeOfPair data.machine.initial.timestamp).value < data.machine.initial.word.value + upper →
     entry.data.family = family
 
-/-- RV sibling of `ProgramCallerWindow`. -/
+/-- A caller region (`RVCallerWindowSchedule`) whose requests bind callers to workers and whose worker rows all
+    belong to `family`. -/
 structure RVProgramCallerWindow [Fact p.Prime] (data : RVRequestTrace p)
     (family : Delegation.Family) (lower upper : Nat) : Prop extends RVCallerWindowSchedule data lower upper where
   requests : Delegation.Caller.RequestWindowBinding data.callers data.workers lower upper

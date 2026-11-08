@@ -10,12 +10,12 @@ public import Human.Helpers.Core.CircuitOutput
 
 /-! RV32 vocabulary for the ADD/SUB/ADDI/LUI/AUIPC circuit: the input's instruction fields are RV registers and
     immediates, its pre-state is an `RV.State`, and its instruction is `RV.decode` of the public program entry.
-    `Circuit.Output` (destination word and PC, `Helpers/Core/CircuitOutput.lean`) is shared with the Sail statements. -/
+    `Circuit.Output` (destination word and PC) is defined in `Helpers/Core/CircuitOutput.lean`. -/
 
 namespace Airbender.AddSub
 open Arithmetic Reference.RiscV Trace
 
-/-- The circuit's input in RV32 terms; `row` is the decoder-preprocessed operands (as in `Reference.lean`). -/
+/-- The circuit's input in RV32 terms; `row` is the decoder-preprocessed operands. -/
 structure RVInput where
   row : RowInput
   rs1 : RV.Reg
@@ -37,7 +37,7 @@ def rvInstruction (input : RVInput) : RV.Instr :=
   | .lui => .lui input.rd (input.encodedUpperImmediate ++ 0#12)
   | .auipc => .auipc input.rd (input.encodedUpperImmediate ++ 0#12)
 
-/-- `WordMapping` (`Model.lean`) for the RV input: the same imported variable IDs. -/
+/-- Word mapping for the RV input: the imported variable IDs. -/
 structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w : Nat → ZMod p) : Prop where
   leftLo : input.row.left.lo = (w 25).val
   leftHi : input.row.left.hi = (w 26).val
@@ -53,7 +53,7 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w
   finalPCLo : output.pc.lo = (w 19).val
   finalPCHi : output.pc.hi = (w 20).val
 
-/-- `TraceMapping` (`Model.lean`) in RV32 terms: the row's pre-state is the RV state at its clock position, and its
+/-- Trace mapping in RV32 terms: the row's pre-state is the RV state at its clock position, and its
     decoder entry in the public program is `RV.decode` of the entry's encoding, equal to the input's instruction. -/
 structure RVTraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry)
@@ -75,7 +75,7 @@ def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   satisfies := fun w => Accepted trace ∧ RVPooledDecoded trace program ∧ (⟨.addSub, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := RVTraceMapping trace initial cells program
 
-/-- The RV-typed assumptions: public initialization and modeled tables (`InterfaceAssumptions`, no `Configured`). -/
+/-- Assumptions of the RV statements: public initialization and modeled tables. -/
 structure RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop
     extends RVPooledHistoryInputs trace initial cells program where

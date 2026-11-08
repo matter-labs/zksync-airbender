@@ -10,7 +10,7 @@ public import Human.Trace.Workers.Keccak.RVCall
 namespace Airbender.Delegation.Caller
 open Trace
 
-/-- RV sibling of `HashSpan.Result`: the worker family's RV span result. It is the complete hash reference on actual
+/-- The worker family's RV span result. It is the complete hash reference on actual
     initial/final RV RAM (RAM at any address, INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END`), the same
     final state executing every native access (`RVTraceMapping`), and the delegate link: the final state IS the spec's
     run of the span's delegation calls (`RV.calls`) from `before`, up to the spec's PC advance. -/
@@ -21,13 +21,13 @@ def HashSpan.RVResult [Fact p.Prime] (span : HashSpan) (workers : MemoryData p)
   | .blakeRound flags => Blake2Round.RVSpanResult flags workers before after cells
   | .keccak => Keccak.RVSpanResult workers before after cells
 
-/-- RV sibling of `SharedSpanInputs`: one complete worker span in the caller-only shared RV architecture. -/
+/-- One complete worker span in the caller-only shared RV architecture. -/
 structure RVSharedSpanInputs [Fact p.Prime] (data : RVRequestTrace p)
     (before : RV.State) (addresses : List (BitVec 32)) (cells : List Cell)
     (span : HashSpan) : Prop extends RVSharedMemoryInputs data before addresses cells,
       HashSpan.RVProtocol data.workers before span
 
-/-- RV sibling of `SharedTerminalState`: every shared terminal token is read (`Cell.readRV`) from the same final
+/-- Every shared terminal token is read (`Cell.readRV`) from the same final
     `RV.State`. -/
 def RVSharedTerminalState [Fact p.Prime] (data : RVRequestTrace p) (after : RV.State)
     (cells : List Cell) : Prop :=
@@ -38,7 +38,7 @@ abbrev RVSpanResult [Fact p.Prime] (span : HashSpan) (data : RVRequestTrace p)
     (before after : RV.State) (cells : List Cell) : Prop :=
   span.RVResult data.workerProjection before after (workerCells cells)
 
-/-- RV sibling of `SharedSpanEffects`: decoded RV caller requests, the complete hash reference with its delegate link,
+/-- Decoded RV caller requests, the complete hash reference with its delegate link,
     and all shared terminal values, on one actual final `RV.State`. -/
 structure RVSharedSpanEffects [Fact p.Prime] (data : RVRequestTrace p) (before : RV.State)
     (cells : List Cell) (span : HashSpan) : Prop where

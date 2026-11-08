@@ -5,8 +5,8 @@ public import Human.Circuits.ShiftBinop.RVDecoder
 
 @[expose] public section
 
-/-! The unified program table on `RV.Instr`: `Mixed.decoderFields` (standard `decoderFields` and the TRIADD/XORROT
-    `customDecoderFields`) restated in `RV.decode`'s vocabulary (immediates already sign-extended or shifted), plus the
+/-! The unified program table on `RV.Instr`: the standard decoder fields and the TRIADD/XORROT custom ones, in
+    `RV.decode`'s vocabulary (immediates already sign-extended or shifted), plus the
     reduced machine's x0 preprocessing. Same Rust decoder: `cs/src/gkr_circuits/unified_reduced_machine/decoder.rs`. -/
 
 namespace Airbender.UnifiedReduced
@@ -58,7 +58,7 @@ abbrev RVProgramEntry := Trace.RVProgramEntry Trace.UnifiedFamily
 abbrev rvDecoderTable {p : Nat} [Fact p.Prime] (program : List RVProgramEntry) :=
   Trace.rvDecoderTable (p := p) program .machine
 
-/-- Every row's native query belongs to the RV program table (a logical lookup boundary, as `Decoded`). -/
+/-- Every row's native query belongs to the RV program table (a logical lookup boundary: membership only, lookup enforcement is external). -/
 def RVDecoded [Fact p.Prime] (trace : Trace.UnifiedTrace p) (program : List RVProgramEntry) : Prop :=
   ∀ row ∈ trace.rows, (rvDecoderTable program).Contains #[] row.decoderQuery
 

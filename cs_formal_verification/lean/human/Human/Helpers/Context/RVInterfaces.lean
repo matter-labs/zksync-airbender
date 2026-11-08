@@ -8,7 +8,7 @@ public import Human.Helpers.Tables.Subword
 
 namespace Airbender.Trace
 
-/-- RV-typed sibling of `PooledHistoryInputs`: public context shared by per-row claims, with the starting state an
+/-- Public context shared by per-row claims, with the starting state an
     `RV.State`. Initialization fixes the starting state and program; the two modeled ROM tables use that same state. -/
 structure RVPooledHistoryInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop where

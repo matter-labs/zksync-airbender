@@ -6,8 +6,8 @@ public import Human.Helpers.Delegation.RVMemory
 
 namespace Airbender.Delegation
 
-/-- RV sibling of `OperationInputs`: the public state is an `RV.State` (`RVMemoryInputs`, whose RAM cells include the
-    shadow RAM below `ROM_END`); the modeled tables and the caller/padding rules are unchanged. -/
+/-- The public state is an `RV.State` (`RVMemoryInputs`, whose RAM cells include the
+    shadow RAM below `ROM_END`); the other fields fix the modeled tables, the extended-BLAKE round masks and the active Keccak rows. -/
 structure RVOperationInputs [Fact p.Prime] (data : MemoryData p)
     (before : RV.State) (cells : List Trace.Cell)
     (control : Fin 4096 → Vector Nat 6) : Prop where

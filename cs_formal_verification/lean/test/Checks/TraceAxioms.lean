@@ -31,7 +31,7 @@ public import Slop.JumpBranchSlt.Jump
 public import Tests.DiscardedLoad
 public import Tests.TraceROM
 public import Tests.TraceStore
-public import Tests.SailHistory
+public import Tests.MemoryWord
 public import Tests.TraceZeroRegister
 public import Slop.Trace.MemoryPorts
 

@@ -7,7 +7,7 @@ public import Human.ISA.RV32
 /-! The public program table in RV32 terms. An entry is a ROM word: its PC, its four bytes and the native decoder
     metadata of `RV.decode` of those bytes. There is no instruction field: the instruction is `RV.decode entry.bits`.
     The metadata projections are functions of `RV.Instr` (this file: ADD/SUB/ADDI/LUI/AUIPC and LW/SW; the other
-    families in `Circuits/*/RVDecoder.lean`), following the same Rust decoders as the Sail-typed `decoderFields`. -/
+    families in `Circuits/*/RVDecoder.lean`), following the Rust decoders. -/
 
 noncomputable section
 

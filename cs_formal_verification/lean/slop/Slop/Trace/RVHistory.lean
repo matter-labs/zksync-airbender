@@ -2,15 +2,15 @@ module
 public import Slop.Trace.RVCells
 public import Human.Helpers.Memory.RVHistory
 public import Slop.Trace.RowHistory
-public import Slop.Trace.SailHistory
+public import Slop.Trace.LastWrite
 public import Slop.Trace.RowContext
 public import Slop.Trace.Addresses
 
 @[expose] public section
 
-/-! RV32 history core: the RV twin of `SailHistory` / `RowContext`. The event-level core (`MemoryHistory`, timestamp
+/-! RV32 history core. The event-level core (`MemoryHistory`, timestamp
     sorting, permutation, `native_row_order`, `native_events_projection`, `native_history_parts`,
-    `native_memory_history`) is state-free and reused verbatim. Only the state-touching parts are ported: the
+    `native_memory_history`) is state-free. The state-touching parts are the
     history inductive over `RV.State` (`Cell.readRV` / `Cell.writeRV`), seeding from `initialImageRV`, realization,
     relabelling, address membership, and the row position. -/
 

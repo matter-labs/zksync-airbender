@@ -18,7 +18,7 @@ inductive Family where
 /-- Connect each circuit family to its imported columns, memory ports, decoder
     placement and Clean constraints. `Kind` selects the admitted families;
     `Setup` supplies their modeled lookup tables. This registry identifies the
-    artifact used by `Row`; it does not assert that the circuit implements Sail. -/
+    artifact used by `Row`; it does not assert that the circuit implements RV32. -/
 class CircuitLayout (Kind : Type) where
   /-- Imported execute, PC and clock variable IDs for the chosen family. -/
   columns : Kind → TraceColumns
@@ -105,19 +105,19 @@ def Row.memorySteps (row : Row p Kind) : List (MemoryToken p × MemoryToken p) :
 /-- Native trace data, before any correctness claim. `rows` may be unordered;
     the proofs recover clock order from `Accepted`. PC/state and memory tokens
     come from the imported columns. The public initialization records bind
-    their starting values to Sail. -/
+    their starting values to the public RV state. -/
 structure Data (p : Nat) (Kind : Type := Family) [CircuitLayout Kind] [Fact p.Prime] where
   /-- All participating active rows; list order need not be execution order. -/
   rows : List (Row p Kind)
   /-- Modeled setup table or table bundle; `rom` is the historical field name. -/
   rom : CircuitLayout.Setup (Kind := Kind) p
-  /-- Starting PC and machine timestamp, bound to the public Sail state. -/
+  /-- Starting PC and machine timestamp, bound to the public RV starting state. -/
   initial : PCState.State p
   /-- Claimed final PC and machine timestamp, checked by trace soundness. -/
   terminal : PCState.State p
   /-- Seed values and prior timestamps for the public tracked cell domain. -/
   initialMemory : List (MemoryToken p)
-  /-- Final tokens whose register/RAM values must match the resulting Sail state. -/
+  /-- Final tokens whose register/RAM values must match the resulting RV state. -/
   terminalMemory : List (MemoryToken p)
 
 def Data.memorySteps [Fact p.Prime] (trace : Data p Kind) : List (MemoryToken p × MemoryToken p) :=
@@ -127,7 +127,7 @@ def Data.memorySteps [Fact p.Prime] (trace : Data p Kind) : List (MemoryToken p 
     `trace`. Every listed row is active. Matching uses the actual imported
     tokens; no expected read, decoded instruction or execution result is given.
 
-    Public image binding is supplied by `NativeInputs` or `PooledBootInputs`.
+    Public image binding is supplied by `RVNativeInputs` or `RVPooledBootInputs`.
     Cryptographic enforcement of these permutations remains outside this claim. -/
 structure Accepted [Fact p.Prime] (trace : Data p Kind) : Prop where
   /-- Every row satisfies its actual imported equations and lookups. -/

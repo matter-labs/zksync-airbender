@@ -48,7 +48,7 @@ def Cell.Aligned : Cell → Prop
   | .ram address => address.toNat % 4 = 0
 
 /-- Encode a public cell value with prior timestamp zero. `value` is an
-    actual 32-bit word; `initialImage` obtains it by reading Sail state. -/
+    actual 32-bit word; `initialImageRV` obtains it by reading the RV state. -/
 def Cell.initialToken (cell : Cell) (value : BitVec 32) : MemoryToken p :=
   let word := Word.ofBitVec value
   ⟨cell.addressCode, (0, 0), Nat.pair word.lo word.hi⟩

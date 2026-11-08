@@ -1,5 +1,5 @@
 module
-public import Slop.Trace.SailHistory
+public import Slop.Trace.LastWrite
 public import Slop.Trace.MemoryHistory
 public import Slop.Trace.Addresses
 

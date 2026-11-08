@@ -90,7 +90,7 @@ def Row.writtenLanes (row : Row p) : Vector Nat 7 :=
 /-- What one actual worker row does: it is some call `index` of the schedule with
     its worker; it reads that call's control word from x10 and writes the next one;
     its lane writes are the call's `Call.result` on its lane reads. Which RAM slots
-    the lanes address is part of `Call.ExecutesAt`. -/
+    the lanes address is part of `Call.RVExecutesAt`. -/
 def RowEffects (row : Row p) : Prop :=
   ∃ index : Fin 361, kindAt index.val = row.kind ∧
     row.readWord 0 = ⟨controlAt index.val, 0⟩ ∧

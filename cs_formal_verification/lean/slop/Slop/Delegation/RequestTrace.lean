@@ -3,7 +3,7 @@ public import Slop.Trace.Pooled
 public import Slop.Trace.Slots
 public import Human.Helpers.Delegation.WorkerContext
 public import Slop.Delegation.Operations
-public import Slop.Delegation.SailHistory
+public import Slop.Delegation.PortEvents
 public import Human.Helpers.Delegation.Decoder
 public import Slop.AddSub.PC
 public import Slop.Delegation.CallerRequests

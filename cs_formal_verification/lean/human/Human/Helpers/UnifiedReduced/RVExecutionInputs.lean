@@ -5,12 +5,11 @@ public import Human.Helpers.Context.RVPooledBoundary
 
 @[expose] public section
 
-/-! RV siblings of `BootInputsWith`/`ExecutionInputsWith` (`NativeROM.lean`, `ExecutionInputs.lean`): the public
+/-! Public inputs of the unified execution claim: the public
     starting state is an `RV.State`; its ROM image (`rom`) holds the program, and the trace's RAM seeds are the `Init`
     tokens of the unified machine's inline inits/teardowns sets, as `Trace.RVPooledBootInputs` takes them from the
-    standalone circuit. Sail-only conditions are absent: the machine configuration (`Configured`), the Sail memory-map
-    profile (`OrdinaryWordAddress`), the LW-to-x0 exclusion (a load into x0 is a no-op in `RV.exec`) and the
-    code-domain guard (the RV table's fetch guard, `rvProgramEntryWith`). -/
+    standalone circuit. No machine-configuration or memory-map premise is needed: a load into x0 is a no-op in
+    `RV.exec`, and the code-domain guard is the RV table's fetch guard (`rvProgramEntryWith`). -/
 
 namespace Airbender.UnifiedReduced
 open Trace
@@ -57,7 +56,7 @@ structure RVBootInputs [Fact p.Prime] (trace : UnifiedTrace p) (initial : RV.Sta
   /-- The modeled setup table is fixed by the ROM image (`ROM.wordsRV`). -/
   setup : trace.rom = Setup.tableRV initial
 
-/-- Public inputs of the unified execution claim: the boot inputs. Sail's register-domain condition is not needed: x0 and
+/-- Public inputs of the unified execution claim: the boot inputs. No register-domain condition is needed: x0 and
     every other register a row reads are tracked cells through the row's own history. -/
 abbrev RVExecutionInputs {p : Nat} [Fact p.Prime] := RVBootInputs (p := p)
 

@@ -7,14 +7,14 @@ public import Human.Helpers.Delegation.RVMemory
 namespace Airbender.Blake2Round.Compression
 open Arithmetic
 
-/-- RV sibling of `WordsAt`: bind a block to successful reads from actual RV RAM (`Cell.readRV`; RAM at any address,
+/-- Bind a block to successful reads from actual RV RAM (`Cell.readRV`; RAM at any address,
     INCLUDING THE SHADOW RAM BELOW `ROM_END`), at four-byte intervals. Canonical word bounds are conclusions. -/
 def RVWordsAt {n : Nat} (state : RV.State) (pointer : BitVec 32)
     (offset : Nat) (words : Vector Word n) : Prop :=
   ∀ i : Fin n, words[i].Bounded ∧
     (Trace.Cell.ram (pointer + BitVec.ofNat 32 (4 * (offset + i.val)))).readRV state = some words[i].toBitVec
 
-/-- RV sibling of `WordMapping`: the compression's public pointers, initial blocks and final RAM blocks, read from
+/-- The compression's public pointers, initial blocks and final RAM blocks, read from
     `RV.State`s. A proved result: callers do not supply these reads or word bounds. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 structure RVWordMapping (initial after : RV.State)
     (statePointer messagePointer : BitVec 32) (input output : State)

@@ -3,17 +3,16 @@ public import Human.Helpers.UnifiedReduced.RVMixedMemory
 
 @[expose] public section
 
-/-! RV siblings of `CallerCycles.lean` and `MixedFetch.lean` (`CurrentFetch`): caller cycles inside one shared RV
+/-! Caller cycles inside one shared RV
     history from a public `RV.State`. Fetch reads the RV program table (the ROM image, `rom`, which no history step
     changes); PC retirement is the spec's `nextInstr`. A RAM cell is RAM at any address, INCLUDING READ-WRITE ACCESS TO
-    THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). Sail's readonly-code profile (`CodeProfile`: tracked RAM
-    above the ROM boundary, entries in aligned ROM words) has no RV counterpart: the ROM image is separate from RAM, and
-    the RV program table's fetch guard already places every entry in aligned ROM words. -/
+    THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). No readonly-code or code-domain premise is needed:
+    the ROM image is separate from RAM, and the RV program table's fetch guard places every entry in aligned ROM words. -/
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace
 
-/-- RV sibling of `CycleFetch`: at an actual instruction cycle of the shared RV history, the matched public entry is the
+/-- At an actual instruction cycle of the shared RV history, the matched public entry is the
     RV table entry read from the ROM image (`rvProgramEntryWith`) in every reachable pre-state. -/
 structure RVCycleFetch {NativeKind EntryKind : Type} [CircuitLayout NativeKind]
     (initial : RV.State) (cells : List Cell) (events : List MemoryAccess)
@@ -26,7 +25,7 @@ structure RVCycleFetch {NativeKind EntryKind : Type} [CircuitLayout NativeKind]
     ∀ before, RVHistory cells (events.filter fun event => decide (event.1 ≤ row.clock)) initial before →
       rvProgramEntryWith projection before entry.pc = some entry
 
-/-- RV sibling of `CurrentFetch`: every ordinary row and every caller fetches and decodes its public RV entry. -/
+/-- Every ordinary row and every caller fetches and decodes its public RV entry. -/
 structure RVCurrentFetch [Fact p.Prime] (data : RVRequestTrace p)
     (program : List UnifiedReduced.RVProgramEntry) (initial : RV.State)
     (cells : List Cell) (events : List MemoryAccess) : Prop where
@@ -35,7 +34,7 @@ structure RVCurrentFetch [Fact p.Prime] (data : RVRequestTrace p)
   callers : ∀ row ∈ data.callers,
     RVCycleFetch initial cells events row data.program Delegation.Caller.rvDecoderFields Delegation.Caller.rvQuery
 
-/-- RV sibling of `CallerCycle`: actual caller cycle RV states, public RV fetch (the entry decodes to `.delegate k`
+/-- Actual caller cycle RV states, public RV fetch (the entry decodes to `.delegate k`
     of its family, and `RV.step` at the cycle's pre-state is that call), the matched worker's port reads at the cycle
     boundaries, and the spec's PC retirement. -/
 def RVCallerCycle [Fact p.Prime] (data : RVRequestTrace p) (initial finalState : RV.State)
@@ -58,7 +57,7 @@ def RVCallerCycle [Fact p.Prime] (data : RVRequestTrace p) (initial finalState :
         cell.readRV after = some (worker.writeToken port).word.toBitVec) ∧
     (after.setPC row.start.word.toBitVec).nextInstr = after.setPC row.finish.word.toBitVec
 
-/-- RV sibling of `CallerCycleEffects`: one shared initialized RV history supplies every caller cycle and terminal
+/-- One shared initialized RV history supplies every caller cycle and terminal
     read. -/
 structure RVCallerCycleEffects [Fact p.Prime] (data : RVRequestTrace p)
     (program : List UnifiedReduced.RVProgramEntry) (initial : RV.State) (cells : List Cell) : Prop where

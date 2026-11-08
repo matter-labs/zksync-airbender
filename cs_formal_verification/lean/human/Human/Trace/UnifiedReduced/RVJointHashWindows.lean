@@ -4,7 +4,7 @@ public import Human.Trace.UnifiedReduced.RVMixedMemory
 
 @[expose] public section
 
-/-! RV siblings of the Sail-stated unified caller window contracts (same file name without `RV`): states are
+/-! Unified caller window contracts: states are
     `RV.State`s, cells are read by `Cell.readRV` and executed by `RVHistory`, programs are RV program tables. A RAM cell
     is RAM at any address, INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 
@@ -34,13 +34,13 @@ structure RVJointHashWindowInputs [Fact p.Prime] (data : RVRequestTrace p) (befo
   aligned : ∀ cell ∈ cells, cell.Aligned
   /-- The unified modeled setup uses this same public memory. -/
   setup : data.machine.rom = Setup.tableRV before
-  /-- The unchanged modeled worker tables and Keccak controller. -/
+  /-- The modeled worker tables and Keccak controller. -/
   tables : data.workers.setup = Delegation.modeledSetup Keccak.Controller.rows
   /-- One hash protocol owns the uninterrupted worker pool. -/
   family : ∀ row ∈ data.workers.rows, row.family = span.family
   /-- The public initial protocol mode/control; entry controls follow from history. -/
   controlStart : (Cell.register span.controlRegister).readRV before = some span.controlStart
-  /-- Prefix scope and the unchanged complete-span call count. -/
+  /-- Prefix scope and the complete-span call count. -/
   prefixScope : RVHashWindowPrefix data span lower
   /-- The selected complete span has the existing protocol call count. -/
   calls : (data.workers.windowRows lower upper).length = span.callCount

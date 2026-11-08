@@ -6,7 +6,7 @@ public import Human.Helpers.Context.Columns
 namespace Airbender.Trace
 
 /-- Logical variables of Rust's native DecoderPlacementDescription, resolved
-    through the JSON placement map. Table contents and Sail decoding are separate. -/
+    through the JSON placement map. Table contents and instruction decoding are separate. -/
 structure DecoderColumns where
   rs1 : Nat
   rs2 : Nat

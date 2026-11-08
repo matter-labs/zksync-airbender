@@ -5,15 +5,15 @@ public import Human.Helpers.Context.Registries.Pooled
 
 @[expose] public section
 
-/-! RV siblings of the caller/worker request records (`RequestTrace.lean`): the public caller table is the RV table
+/-! Caller/worker request records: the public caller table is the RV table
     (`rvProgramImage`, `RV.decode`), the public starting point is an `RV.State`, seed cells are read by `Cell.readRV`.
-    No `Configured`. A RAM cell is RAM at any address, INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END`
+    A RAM cell is RAM at any address, INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END`
     (`RV.State.delegationRAM`); no pointer is required to be at or above `ROM_END`. -/
 
 namespace Airbender.Delegation.Caller
 open Trace
 
-/-- RV sibling of `RequestTrace`: the six-family machine path, the actual worker pool and the public RV caller table. -/
+/-- The six-family machine path, the actual worker pool and the public RV caller table. -/
 structure RVRequestTrace (p : Nat) [Fact p.Prime] where
   /-- The six-family machine path, including its ADD/SUB caller rows. -/
   machine : PooledTrace p
@@ -32,7 +32,7 @@ def RVRequestTrace.calls [Fact p.Prime] (data : RVRequestTrace p) : List (Reques
 def RVRequestTrace.fulfillments [Fact p.Prime] (data : RVRequestTrace p) : List (Requests.Request p) :=
   data.workers.rows.map Requests.fulfillment
 
-/-- RV sibling of `RequestChecks`: the same native equations, participation flags and exact logical matching; caller
+/-- The same native equations, participation flags and exact logical matching; caller
     decoder membership is in the RV caller table. -/
 structure RVRequestChecks [Fact p.Prime] (data : RVRequestTrace p) : Prop where
   constraints : ∀ row ∈ data.machine.rows,
@@ -50,7 +50,7 @@ structure RVRequestChecks [Fact p.Prime] (data : RVRequestTrace p) : Prop where
   workerActive : ∀ row ∈ data.workers.rows, row.assignment row.columns.execute = 1
   requests : Requests.Matching data.calls data.fulfillments
 
-/-- RV sibling of `RequestAccepted`: the request checks plus the worker-only native memory matching. -/
+/-- The request checks plus the worker-only native memory matching. -/
 structure RVRequestAccepted [Fact p.Prime] (data : RVRequestTrace p) : Prop extends RVRequestChecks data where
   workerMemory : (data.workers.initial ++ data.workers.steps.map Prod.snd).Perm
     (data.workers.terminal ++ data.workers.steps.map Prod.fst)
@@ -59,7 +59,7 @@ def RVRequestAccepted.workers [Fact p.Prime] {data : RVRequestTrace p}
     (accepted : RVRequestAccepted data) : MemoryAccepted data.workers :=
   ⟨accepted.workerConstraints, accepted.workerMemory⟩
 
-/-- RV sibling of `RequestInputs`: the public RV caller table and initial-clock conditions; no `Configured`. -/
+/-- The public RV caller table and initial-clock conditions. -/
 structure RVRequestInputs [Fact p.Prime] (data : RVRequestTrace p)
     (before : RV.State) (addresses : List (BitVec 32)) : Prop where
   /-- Public ROM reads and `RV.decode` construct the caller table. -/
@@ -67,7 +67,7 @@ structure RVRequestInputs [Fact p.Prime] (data : RVRequestTrace p)
   initialClock : (timeOfPair data.machine.initial.timestamp).Bounded
   initialAligned : (timeOfPair data.machine.initial.timestamp).value % 4 = 0
 
-/-- RV sibling of `RequestBinding`: every public caller (an RV delegation call `.delegate k`, `RVBinding`) is fulfilled
+/-- Every public caller (an RV delegation call `.delegate k`, `RVBinding`) is fulfilled
     by a worker of the decoded family at the exact issued invocation; native clock room is proved for the pool. -/
 structure RVRequestBinding [Fact p.Prime] (data : RVRequestTrace p) (before : RV.State) : Prop where
   callers : ∀ row ∈ data.callers,
@@ -83,7 +83,7 @@ structure RVRequestBinding [Fact p.Prime] (data : RVRequestTrace p) (before : RV
   invocations : (data.calls.map Requests.Request.time).Nodup ∧
     ((data.fulfillments.filter (fun request => decide (Requests.Live request))).map Requests.Request.time).Nodup
 
-/-- RV sibling of `RequestMemoryInputs`: the worker pool's seed tokens are RV reads of public cells (`initialImageRV`;
+/-- The worker pool's seed tokens are RV reads of public cells (`initialImageRV`;
     RAM cells include the shadow RAM below `ROM_END`). -/
 structure RVRequestMemoryInputs [Fact p.Prime] (data : RVRequestTrace p)
     (before : RV.State) (addresses : List (BitVec 32)) (cells : List Cell) : Prop where

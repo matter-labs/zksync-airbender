@@ -5,9 +5,8 @@ public import Human.Circuits.InitsTeardowns.Theorems
 
 @[expose] public section
 
-/-! RV sibling of `PooledBootInputs` (`PooledBoundary.lean`): the public starting state is an `RV.State`, and the
-    trace's RAM seeds are the inits/teardowns circuit's `Init` tokens (`InitsTeardowns.Witness.initTokens`) instead of
-    an assumed zero image. -/
+/-! Pooled-trace boot inputs: the public starting state is an `RV.State`, and the trace's RAM seeds are the
+    inits/teardowns circuit's `Init` tokens (`InitsTeardowns.Witness.initTokens`); no zero image is assumed. -/
 
 namespace Airbender.Trace
 
@@ -17,9 +16,9 @@ def registerCells : List Cell := (List.range 32).map fun index => .register (Bit
 /-- The register seeds: zero value and timestamp for each register cell. -/
 def registerSeeds {p : Nat} : List (MemoryToken p) := ROMView.nativeBootImage registerCells
 
-/-- Public boot inputs of the six-family claims over our spec. Sail-only conditions of `PooledBootInputs` are absent:
-    the machine configuration (`configuration`), the Sail memory-map profile (`ordinary`), the LW-to-x0 exclusion
-    (`loads`: a load into x0 is a no-op in `RV.exec`) and the code-domain guard (`code`: the RV table's fetch guard).
+/-- Public boot inputs of the six-family claims over our spec. No machine-configuration or memory-map premise is
+    needed, nor a LW-to-x0 exclusion (a load into x0 is a no-op in `RV.exec`) or a code-domain guard (the RV table's
+    fetch guard covers it).
 
     Seeds: the registers are seeded by the chunk's public state (zero for the first chunk), not by the inits/teardowns
     circuit; the RAM is seeded by the `Init` tokens of the inits/teardowns instances `inits`, whose public top bits pass

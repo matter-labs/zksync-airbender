@@ -1,7 +1,7 @@
 module
 public import Human.Circuits.KeccakSplit.Native
 public import Human.Helpers.Core.BabyBearPrime
-public import Human.Helpers.Memory.SailHistory
+public import Human.Helpers.Memory.RowEvents
 
 @[expose] public section
 

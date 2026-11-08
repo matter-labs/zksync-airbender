@@ -3,8 +3,7 @@ public import Human.Helpers.Core.Word
 
 @[expose] public section
 
-/-! Observable outputs of the arithmetic circuits: destination word and next PC. Neutral (no Sail import); the Sail
-    namespace re-exports it so existing Sail-side statements read the same. -/
+/-! Observable outputs of the arithmetic circuits: destination word and next PC. Neutral (no Sail import). -/
 
 namespace Airbender.Circuit
 open Arithmetic

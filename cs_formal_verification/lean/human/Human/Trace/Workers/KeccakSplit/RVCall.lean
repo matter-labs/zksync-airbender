@@ -4,20 +4,19 @@ public import Human.Helpers.Memory.RVAtomicWrites
 
 @[expose] public section
 
-/-! RV siblings of `Call.ArgumentsAt` and `Call.ExecutesAt` (`Human/Circuits/KeccakSplit/Call.lean`): one documented
-    split call on `RV.State`s; the state block is RAM at any address, INCLUDING THE SHADOW RAM BELOW `ROM_END`. -/
+/-! One documented split call on `RV.State`s (`RVArgumentsAt`, `RVExecutesAt`); the state block is RAM at any address, INCLUDING THE SHADOW RAM BELOW `ROM_END`. -/
 
 namespace Airbender.Keccak.Split.Call
 open Trace
 
-/-- RV sibling of `ArgumentsAt`: x10 holds call `index`'s control word, x11 a 256-byte aligned pointer. -/
+/-- X10 holds call `index`'s control word, x11 a 256-byte aligned pointer. -/
 def RVArgumentsAt (index : Nat) (state : RV.State) : Prop :=
   ∃ control pointer : BitVec 32,
     (Cell.register 10).readRV state = some control ∧
     (Cell.register 11).readRV state = some pointer ∧
     control = BitVec.ofNat 32 (controlAt index) ∧ pointer.toNat % 256 = 0
 
-/-- RV sibling of `ExecutesAt`: from `before` call `index` has its arguments, reads the 64-bit lanes `input` at its
+/-- From `before` call `index` has its arguments, reads the 64-bit lanes `input` at its
     slots, and `after` is `before` with exactly `writes` applied (`RVAtomicWrites`). -/
 def RVExecutesAt (index : Fin 361) (before after : RV.State) : Prop :=
   ∃ (pointer : BitVec 32) (input : Vector Nat 7),

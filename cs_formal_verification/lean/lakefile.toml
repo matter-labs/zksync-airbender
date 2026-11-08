@@ -446,7 +446,7 @@ roots = [
   "Tests.PooledHistory",
   "Tests.PooledOracle",
   "Tests.PooledROM",
-  "Tests.SailHistory",
+  "Tests.MemoryWord",
   "Tests.ShiftBinop",
   "Tests.ShiftBinopHistory",
   "Tests.ShiftBinopImmediate",

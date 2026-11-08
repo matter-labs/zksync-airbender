@@ -1,7 +1,7 @@
 module
 public import Human.Circuits.KeccakSplit.Schedule
 public import CleanCore.Specs.Keccak256
-public import Human.Helpers.Memory.SailHistory
+public import Human.Helpers.Memory.RowEvents
 
 @[expose] public section
 

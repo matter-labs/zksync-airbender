@@ -6,20 +6,20 @@ public import Human.Circuits.JumpBranchSlt.RVDecoder
 
 @[expose] public section
 
-/-! RV32 twin of `TraceSoundnessClaim` (`Theorems.lean`): the accepted rows are a run of our spec (`RV.run`) from the
+/-! Trace claim: the accepted rows are a run of our spec (`RV.run`) from the
     public starting state `initial : RV.State`. Proven in `slop/Slop/Final/Trace/Families/JumpBranchSlt/RVTheorems.lean`
     (checked by verify.sh). -/
 
 namespace Airbender.JumpBranchSlt
 open Trace
 
-/-- RV twin of `Decoded`: every row's decoder query is in the family table built from the RV program. Logical
+/-- Every row's decoder query is in the family table built from the RV program. Logical
     membership; lookup enforcement is external. -/
 def RVDecoded {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (program : List RVProgramEntry) : Prop :=
   ∀ row ∈ trace.rows, (rvDecoderTable program).Contains #[] (decoderQuery row.assignment)
 
-/-- RV twin of `ExecutionBoundary`, without the Sail-only `Configured` and without `initialAligned` (the RV program
-    table's fetch guard aligns every row's PC). -/
+/-- Public inputs (`RVNativeInputs`). No alignment premise on the initial PC is needed: the RV program
+    table's fetch guard aligns every row's PC. -/
 structure RVExecutionInputs {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (initial : RV.State)
     (cells : List Cell) (program : List RVProgramEntry) : Prop
     extends RVNativeInputs rvDecoderFields trace initial cells program where

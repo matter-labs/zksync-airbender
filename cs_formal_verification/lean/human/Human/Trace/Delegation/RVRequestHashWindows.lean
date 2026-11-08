@@ -9,7 +9,7 @@ namespace Airbender.Delegation.Caller
 open Trace
 variable {Kind : Type} [CircuitLayout Kind]
 
-/-- RV sibling of `HashSpan.RequestWindowInputs`: the worker families' RV native-window ABI (public controls read by
+/-- The worker families' RV native-window ABI (public controls read by
     `Cell.readRV`, modeled tables, span sizes). -/
 def HashSpan.RVRequestWindowInputs [Fact p.Prime] (span : HashSpan) (workers : MemoryData p)
     (before : RV.State) (cells : List Cell) (lower upper : Nat) : Prop :=
@@ -18,7 +18,7 @@ def HashSpan.RVRequestWindowInputs [Fact p.Prime] (span : HashSpan) (workers : M
   | .blakeRound flags => Blake2Round.RVWindowInputs workers before cells flags lower upper
   | .keccak => Keccak.RVWindowInputs workers before cells lower upper
 
-/-- RV sibling of `HashSpan.RequestWindowResult`: actual decoded caller requests and the complete hash reference
+/-- Actual decoded caller requests and the complete hash reference
     (`HashSpan.RVResult` at history-derived RV cut states, with the delegate link: the window's final state IS the spec's
     run of the span's delegation calls) use the same selected native worker rows. RAM cells include READ-WRITE ACCESS
     TO THE SHADOW RAM BELOW `ROM_END`. -/

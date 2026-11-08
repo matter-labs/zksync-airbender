@@ -1,6 +1,6 @@
 module
 public import Slop.Trace.MemoryPorts
-public import Slop.Trace.SailHistory
+public import Slop.Trace.LastWrite
 
 @[expose] public section
 
