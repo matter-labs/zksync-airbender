@@ -858,3 +858,10 @@ and combined initialized worker history remain separate obligations.
 the actual zero-terminal fallback and all padding records. The fallback derives
 a wholly padded previous ordinary chunk. The indexed normalized batch is separate
 from full main-ledger/protocol extraction, public seeds and initialized workers.
+
+## Same-main initialization ledger
+
+[Constructed same-main initialization views](InitializationBatchTheorems.lean) retain complete main/
+caller/worker arguments and the SAME full logical ledger. Bounds/order/uniqueness,
+both-sided unmasked token membership and existing main chronology share one actual
+proof list. Public seeds and initialized combined worker memory remain open.

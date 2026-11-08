@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.InitializationBatch
+import Airbender.Proofs.ReducedMachine.NativeInitializationBatch
+import Airbender.Review.Circuits.ReducedMachine.InitializationBatchTheorems
+import Tests.NativeInitializationBatch
+
 import Airbender.Review.Circuits.ReducedMachine.InitializationWindow
 import Airbender.Proofs.ReducedMachine.NativeInitializationAddressParser
 import Airbender.Proofs.ReducedMachine.NativeInitializationWindow
@@ -6441,3 +6446,25 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeInitializationWindow.conditional_fallback_empty
 #print axioms Airbender.Tests.NativeInitializationWindow.complete_conditional_order
 #print axioms Airbender.Tests.NativeInitializationWindow.complete_conditional_unique
+
+#print axioms Airbender.NativeInitializationBatchProofs.scalar_main
+#print axioms Airbender.NativeInitializationBatchProofs.same_list
+#print axioms Airbender.NativeInitializationBatchProofs.list_cross
+#print axioms Airbender.NativeInitializationBatchProofs.batch_token_member
+#print axioms Airbender.NativeInitializationBatchProofs.token_in_full
+#print axioms Airbender.NativeInitializationBatchProofs.initialization_effects
+#print axioms Airbender.NativeInitializationBatchProofs.joint_effects
+#print axioms Airbender.NativeInitializationBatch.native_same_main_initialization
+#print axioms Airbender.NativeInitializationBatch.native_same_main_initialization_tokens
+#print axioms Airbender.Tests.NativeInitializationBatch.actual_same_main
+#print axioms Airbender.Tests.NativeInitializationBatch.actual_same_auxiliary
+#print axioms Airbender.Tests.NativeInitializationBatch.actual_same_caller_rows
+#print axioms Airbender.Tests.NativeInitializationBatch.retained_observations
+#print axioms Airbender.Tests.NativeInitializationBatch.distinct_claims_retained
+#print axioms Airbender.Tests.NativeInitializationBatch.same_actual_list
+#print axioms Airbender.Tests.NativeInitializationBatch.both_sides_full_ledger
+#print axioms Airbender.Tests.NativeInitializationBatch.last_ordinary_token_kept
+#print axioms Airbender.Tests.NativeInitializationBatch.empty_combined_component
+#print axioms Airbender.Tests.NativeInitializationBatch.empty_joint_terminal
+#print axioms Airbender.Tests.NativeInitializationBatch.wrong_empty_terminal_rejected
+#print axioms Airbender.Tests.NativeInitializationBatch.complete_conditional_joint

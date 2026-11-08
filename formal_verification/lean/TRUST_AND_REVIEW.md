@@ -1,5 +1,59 @@
 # Trust and review boundaries
 
+## Same-main initialization and full native ledger (8 November 2026)
+
+[The constructed source views](Airbender/Review/Circuits/ReducedMachine/InitializationBatch.lean)
+contain ONE existing main-argument proof plus separate actual scalar base/witness/
+setup/polynomial/omega and public endpoint observations. The scalar view's
+initialization.main IS the original argument's memory MainProof by construction;
+caller rows, typed auxiliary trace and both original claims remain on that proof.
+No desired row/trace/ledger equality is supplied. Both list projections are derived
+maps of the same actual finite list, with no proof-object fallback out of bounds.
+
+Acceptance retains the UNCHANGED complete main/caller/worker/global components
+with the same configured worker batch, shared challenges and public memory inputs,
+plus complete initialization acceptance on the constructed views and ALL actual
+adjacent windows. The SAME [full tagged native logical ledger](Airbender/Review/Circuits/ReducedMachine/TokenLedger.lean)
+retains every main/worker/public token and remains an explicit cryptographic
+extraction boundary. No expected seed/read/value/key/clock/request/fulfilled-worker
+stream, execution filter, count equality or result premise is added.
+
+[The proof assembly](Airbender/Proofs/ReducedMachine/NativeInitializationBatch.lean)
+uses abstract finite-list arithmetic/property projections BEFORE native-domain
+instantiation. Only unused Nat/Prop projections outside list bounds have0/True;
+no accepted row/history/proof object or token ledger is fabricated there. Existing
+source-window, local uniqueness and lossless token binding derive all ordinary
+initialization bounds, cross-chunk order and nonpadding address uniqueness on the
+actual full main list. A generic full-domain sampling proof shows every ordinary
+unmasked initialization/teardown token is present in that SAME full ledger on BOTH
+sides, including lastordinary and inactive rows. Padding tokens remain.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/InitializationBatchTheorems.lean)
+compose unchanged caller/worker scalar/product/capacity results, actual main-state
+chronology and these initialization consequences on the SAME inputs. This does
+not derive public seed/image coverage, chronological combined worker memory,
+active worker read/value/rawclock/key bounds, issuance/fulfillment/accounting,
+original CSR/MOP/worker Sail semantics, physical extraction or completeness.
+No frame crosses an unproved delegated action; original execution is unchanged.
+
+[Twelve controls](Tests/NativeInitializationBatch.lean) check actual main/caller/
+scalar observation identity, retained distinct claims/source data/list projection,
+both-sided full-ledger membership and lastordinary inclusion. A COMPLETE EMPTY
+stronger selected component feeds the joint root and derives terminal4; terminal8
+is rejected. Data/structural/empty/conditional controls are not full positive
+NONEMPTY source-aux/global/worker/physical witnesses, attacks or native defects.
+Four modules add21 roots with12 exact parent origins; all5,613 prior ordered roots
+and exact source bytes remain. Native103 pins, dependencies, artifacts, fixtures,
+old acceptance/proofs, production, Sail, importer/exporter and findings are
+unchanged. No native generation or closed heavy replay. Cryptographic/general
+Rust/JSON/field/LDE/quotient/refinement boundaries remain separate; no parity claim.
+
+Next: actual initialization seed ledger/public-domain and padding treatment,
+public image/seed coverage, then chronological combined memory and active worker
+bounds/keys/accounting. Same-list coupling and sorted zero tokens alone are not a
+desired public seed stream or an initialized worker-memory proof.
+
+
 ## Native initialization windows and cross-chunk uniqueness (8 November 2026)
 
 [The actual native window interface](Airbender/Review/Circuits/ReducedMachine/InitializationWindow.lean)
