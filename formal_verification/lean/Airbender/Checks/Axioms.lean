@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.WorkerClockFixtures
+import Airbender.Proofs.ReducedMachine.NativeWorkerClockFixtures
+import Airbender.Review.Circuits.ReducedMachine.WorkerClockFixturesTheorems
+import Tests.NativeWorkerClockFixtures
+
 import Airbender.Review.Circuits.ReducedMachine.CallerDecoder
 import Airbender.Proofs.ReducedMachine.NativeCallerDecoder
 import Airbender.Review.Circuits.ReducedMachine.CallerDecoderTheorems
@@ -6901,3 +6906,28 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeCallerDecoder.inactive_still_requests
 #print axioms Airbender.Tests.NativeCallerDecoder.full_local_negative_nonboolean
 #print axioms Airbender.Tests.NativeCallerDecoder.complete_conditional_joint
+
+#print axioms Airbender.NativeWorkerClockFixtureProofs.body
+#print axioms Airbender.NativeWorkerClockFixtureProofs.local_processing
+#print axioms Airbender.NativeWorkerClockFixtureProofs.multiplicity
+#print axioms Airbender.NativeWorkerClockFixtureProofs.raw_clock
+#print axioms Airbender.NativeWorkerClockFixtureProofs.old_fields
+#print axioms Airbender.NativeWorkerClockFixtureProofs.read_time
+#print axioms Airbender.NativeWorkerClockFixtureProofs.zero_old_unbounded
+#print axioms Airbender.NativeWorkerClockFixtureProofs.wide_clock_unbounded
+#print axioms Airbender.NativeWorkerClockFixtures.native_worker_clock_fixture_body
+#print axioms Airbender.NativeWorkerClockFixtures.native_worker_clock_fixture_processing
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.multiplicity_one
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.abi_high_zero
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.zero_raw_clock
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.wide_raw_clock
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.all_borrows_zero
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.all_round_flags_zero
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.all_raw_old_times
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.all_read_values_zero
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.all_writes_same_clock
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.zero_reads_unbounded
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.wide_processor_unbounded
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.wide_reads_bounded
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.pointers_control_zero
+#print axioms Airbender.Tests.NativeWorkerClockFixtures.complete_local_acceptance

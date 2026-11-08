@@ -1,5 +1,60 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Full local worker clock boundary rows (8 November 2026)
+
+[Two explicit worker assignments](Airbender/Review/Circuits/ReducedMachine/WorkerClockFixtures.lean)
+check the local scope of the remaining worker-clock obligation. Both have actual
+multiplicity1, all43 borrows0 and otherwise zero data. The false fixture has
+processing clock(0,524288) and all old times(0,0). The true fixture has processing
+clock(0,0) and all old times(0,-1) in Mersenne31. Its canonical old high limb is
+M31minus1, not a natural negative timestamp. Both pointer pairs/aliases, all13
+round flags and old/new control values remain visibly zero.
+
+[Kernel proof assembly](Airbender/Proofs/ReducedMachine/NativeWorkerClockFixtures.lean)
+checks ALL352 actual native equations and ALL296 lookups for BOTH rows, including
+208 actual literal fixed queries, two scalar16 queries and86 timestamp19 queries.
+Complete existing processing conventions are also derived, giving the unchanged
+LocalProcessingAccepted interface with all226 conventions. No expected accepted
+row, range/read/clock/history/result premise or new Accepted relation is supplied.
+The original checked block splitting retains all648 operations; unchanged
+PositiveRowProofs.zero_member supplies all five actual literal zero memberships.
+There is no recipe/table equivalence, whole literal row equality, opacity,
+native_decide, generation or replay of the unchanged heavy fixed certificates.
+Abstract lookup and coordinate calculations precede concrete data/descriptor
+instantiation. All43 old-read times, zero read values and common actual write
+clocks remain. The wide processor is not19bit-bounded while its old clocks are
+zero; at active processing clock zero, all43 old clocks are unbounded, consistent
+with the prior checked zero-clock source dependency.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/WorkerClockFixturesTheorems.lean)
+expose complete BODY and local processing acceptance. They are FULL LOCAL rows,
+not nonempty counted source/whole-worker/global/physical accepted witnesses or
+native attacks/defects. They do not construct compatible initialized history,
+actual unbounded writer sources, auxiliary processing/memory grand products,
+difference polynomials, counted/configured proof outputs or caller anchoring.
+Zero pointer aliases remain; no compatible memory history is fabricated. This
+checks that BODY/local processing alone do not exclude the two cases. It makes
+no claim about absent other native enforcement or globally accepted wrap behavior.
+
+[Fourteen controls](Tests/NativeWorkerClockFixtures.lean) check multiplicity/ABI,
+actual raw clocks, all43 borrows/read times/read values/write clocks, all13 round
+flags, pointers/control, derived unbounded clocks and complete local acceptance.
+No scalar-to-permutation/request-matching claim, fake Trace.Accepted,
+ClockInputs.previous, desired read/value/address/key/range/state/row-list/fulfilled
+ledger/history/result, dedup, OOB proof object or huge evaluation is introduced.
+All inactiveD/m0 poles/worker ports/readonly refresh/OLDREAD/unmasked writes/public
+x0 times in the broader acceptance remain. No Sail frame crosses delegated effects.
+
+Four modules add24 roots/9 exact parent origins. All5,987 prior ordered roots and
+exact audit bytes remain addition-only. Native107 pins, dependencies, deliberate
+v3 reference, prior proof/acceptance/source and FINDINGS remain unchanged. No native
+adoption/pin/intake/production/Sail/importer/exporter/artifact/fixture change,
+generation/heavy replay, issue assumption, project axiom or fix. Global worker
+bounds/rooting and caller anchoring, initialized OLDREAD values/addresses, STAGE2
+keys, issuance/fulfillment/converse/accounting, original CSR/MOP/worker Sail,
+physical/crypto refinement, completeness and parity remain open.
+
+
 ## Active fetched caller request validity (8 November 2026)
 
 [The mixed public projection](Airbender/Review/Circuits/ReducedMachine/CallerDecoder.lean)

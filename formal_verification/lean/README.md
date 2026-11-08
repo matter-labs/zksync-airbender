@@ -1686,3 +1686,10 @@ activity, worker rooting and delegated execution remain open.
 and exact kind1991 CSR requests on active fetched rows of the SAME counted source
 batch. Logical extraction stays explicit; arbitrary inactive request validity,
 worker anchoring/rooting and delegated Sail execution remain open.
+
+## Local worker clock boundary rows
+
+[Full local clock fixtures](Airbender/Review/Circuits/ReducedMachine/WorkerClockFixturesTheorems.lean) check every native equation/lookup and
+processing convention for wide and zero processing clocks with explicit old
+timestamps. These are local component rows; global acceptance, initialized
+history and caller anchoring remain open.
