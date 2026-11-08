@@ -1,6 +1,6 @@
 import Human.Trace.UnifiedReduced.RVMixedMemory
 import Slop.UnifiedReduced.RVCaller.RequestTrace
-import Slop.UnifiedReduced.RVCaller.Image
+import Slop.Delegation.RVSharedImage
 import Slop.Trace.TransferHistory
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
@@ -70,7 +70,7 @@ theorem rv_mixed_memory_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       (timeOfPair token.time).Bounded := by
     intro token present
     rcases List.mem_append.mp present with initial | written
-    · exact rv_image_clocks image token initial
+    · exact Transfer.rv_image_clocks image token initial
     · obtain ⟨edge, member, rfl⟩ := List.mem_map.mp written
       exact rv_mixed_write_clocks hp inverse accepted publicProgram requests edge member
   intro edge member

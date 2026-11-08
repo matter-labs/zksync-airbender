@@ -1,6 +1,6 @@
 import Human.Helpers.UnifiedReduced.RVWindows
 import Human.Trace.Delegation.RVExecution
-import Human.Trace.UnifiedReduced.RVHashSpans
+import Human.Trace.Delegation.RVRequestHashWindows
 
 /-! RV siblings of `MixedMemory.lean` and `SharedSpans.lean` (unified callers): the shared unified/caller/worker
     architecture executed as RV cell reads/writes (`RVHistory`) from a public `RV.State`. A RAM cell is RAM at any
@@ -37,7 +37,7 @@ structure RVSharedSpanInputs [Fact p.Prime] (data : RVRequestTrace p)
     (before : RV.State) (addresses : List (BitVec 32)) (cells : List Cell)
     (span : Delegation.Caller.HashSpan) : Prop extends
       RVRequestInputs data before addresses,
-      RVHashSpanProtocol data.workers before span where
+      Delegation.Caller.HashSpan.RVProtocol data.workers before span where
   initialization : initialImageRV before cells = some data.machine.initialMemory
   distinct : (cells.map Cell.addressCode).Nodup
   aligned : ∀ cell ∈ cells, cell.Aligned
@@ -54,6 +54,6 @@ structure RVSharedSpanEffects [Fact p.Prime] (data : RVRequestTrace p) (before :
     (cells : List Cell) (span : Delegation.Caller.HashSpan) : Prop where
   requests : RVRequestBinding data before
   result : ∃ after, RVSharedTerminalState data after cells ∧
-    rvSpanResult span data.workerProjection before after (Delegation.Caller.workerCells cells)
+    Delegation.Caller.HashSpan.RVResult span data.workerProjection before after (Delegation.Caller.workerCells cells)
 
 end Airbender.UnifiedReduced.Caller

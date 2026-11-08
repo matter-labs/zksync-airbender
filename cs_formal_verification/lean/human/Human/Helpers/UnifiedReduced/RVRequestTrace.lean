@@ -1,67 +1,22 @@
 import Human.Helpers.UnifiedReduced.RequestTrace
 import Human.Helpers.UnifiedReduced.RVProgram
+import Human.Helpers.Delegation.RVDecoder
 import Human.Helpers.Context.RVRowContext
 
 /-! RV siblings of the unified caller request trace (`RequestTrace.lean`, `Circuits/UnifiedReduced/Delegation.lean`):
     the caller program is an RV program table (ROM bytes decoded by `RV.decode` to `.delegate k`, `csrrw x0, csr, x0`),
     and the public state is an `RV.State`. No `Configured`. Native selectors, ports and request tokens are unchanged.
-    (Reconciliation note: `rvCallerFields`, `rvCallerQuery` and `rvCallerTable` are the RV siblings of
-    `Delegation.Caller.decoderFields`/`query`/`decoderTable`.) -/
+    The caller table is the shared delegation caller table (`Delegation.Caller.rvProgramImage`, `rvDecoderTable`). -/
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace Arithmetic
-
-/-- The RV delegation kind called by a worker family. -/
-def familyKind : Delegation.Family → RV.DelegationKind
-  | .bigint => .bigint
-  | .blakeG => .blakeG
-  | .blakeRound => .blakeRound
-  | .keccak => .keccak
-
-/-- RV sibling of `Delegation.Caller.decoderFields`: the four pinned delegation CSRs (`RV.decode` gives `.delegate k`;
-    both architectural operands are x0). The split Keccak kinds have no unified caller. The full CSR stays in the
-    query, not in a five-bit register field. -/
-def rvCallerFields : RV.Instr → Option (DecoderData Delegation.Family)
-  | .delegate .bigint => some ⟨.bigint, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩
-  | .delegate .blakeG => some ⟨.blakeG, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩
-  | .delegate .blakeRound => some ⟨.blakeRound, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩
-  | .delegate .keccak => some ⟨.keccak, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩
-  | _ => none
-
-/-- One public caller entry: its PC, ROM bytes and native metadata of `RV.decode` of those bytes. -/
-abbrev RVCallerEntry := Trace.RVProgramEntry Delegation.Family
-
-/-- Caller entries read from the ROM image (`RV.read` of `rom`) and decoded by `RV.decode`. -/
-noncomputable abbrev rvCallerImage := Trace.rvProgramImageWith rvCallerFields
-
-/-- RV sibling of `Delegation.Caller.query`: the ADD/SUB-placement caller query; its rs2 field is the full CSR. -/
-def rvCallerQuery {p : Nat} (entry : RVCallerEntry) : Vector (ZMod p) 9 :=
-  let pc := Word.ofBitVec entry.pc
-  #v[pc.lo, pc.hi, 0, Delegation.Requests.csr entry.data.family, 0, 0, 0, 0, 128]
-
-/-- RV sibling of `Delegation.Caller.decoderTable`: the logical caller table of public RV entries. -/
-def rvCallerTable {p : Nat} [Fact p.Prime] (program : List RVCallerEntry) :
-    Table (ZMod p) (fields 9) := .fromStatic {
-  name := "Airbender.DelegationCaller"
-  length := program.length
-  row i := rvCallerQuery (program.get i)
-  index values := program.toArray.findIdx (fun entry => rvCallerQuery entry == values)
-  Spec values := ∃ entry ∈ program, values = rvCallerQuery entry
-  contains_iff := by
-    intro values
-    constructor
-    · rintro ⟨i, equal⟩
-      exact ⟨program.get i, List.get_mem _ _, equal⟩
-    · rintro ⟨entry, member, equal⟩
-      obtain ⟨i, rfl⟩ := List.mem_iff_get.mp member
-      exact ⟨i, equal⟩ }
 
 /-- RV sibling of `RequestTrace`: actual unified machine rows and delegation workers sharing one request pool; the
     caller entries come from the RV program table. -/
 structure RVRequestTrace (p : Nat) [Fact p.Prime] where
   machine : UnifiedTrace p
   workers : Delegation.MemoryData p
-  program : List RVCallerEntry
+  program : List Delegation.Caller.RVProgramEntry
 
 def RVRequestTrace.callers [Fact p.Prime] (data : RVRequestTrace p) :=
   data.machine.rows.filter fun row => decide (Selected row.assignment)
@@ -78,7 +33,7 @@ structure RVRequestChecks [Fact p.Prime] (data : RVRequestTrace p) : Prop where
   active : ∀ row ∈ data.machine.rows, row.assignment row.columns.execute = 1
   states : (data.machine.initial :: data.machine.rows.map Trace.Row.finish).Perm
     (data.machine.terminal :: data.machine.rows.map Trace.Row.start)
-  decoded : ∀ row ∈ data.callers, (rvCallerTable data.program).Contains #[] (decoderQuery row.assignment)
+  decoded : ∀ row ∈ data.callers, (Delegation.Caller.rvDecoderTable data.program).Contains #[] (decoderQuery row.assignment)
   workerConstraints : ∀ row ∈ data.workers.rows,
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (row.constraints data.workers.setup)
   workerActive : ∀ row ∈ data.workers.rows, row.assignment row.columns.execute = 1
@@ -88,7 +43,7 @@ structure RVRequestChecks [Fact p.Prime] (data : RVRequestTrace p) : Prop where
     clock. No `Configured`. -/
 structure RVRequestInputs [Fact p.Prime] (data : RVRequestTrace p)
     (before : RV.State) (addresses : List (BitVec 32)) : Prop where
-  image : rvCallerImage before addresses = some data.program
+  image : Delegation.Caller.rvProgramImage before addresses = some data.program
   initialClock : (timeOfPair data.machine.initial.timestamp).Bounded
   initialAligned : (timeOfPair data.machine.initial.timestamp).value % 4 = 0
 
@@ -96,12 +51,12 @@ structure RVRequestInputs [Fact p.Prime] (data : RVRequestTrace p)
     from the ROM image and decodes to `.delegate k` of its family; `RV.step` at any state with that ROM image and the
     row's starting PC is `RV.exec` of that delegation call. x0 reads 0 and the native zero write to x0 leaves the state
     unchanged. -/
-structure RVBinding (w : Nat → ZMod p) (before : RV.State) (program : List RVCallerEntry) : Prop where
-  instruction : ∃ entry ∈ program, rvProgramEntryWith rvCallerFields before entry.pc = some entry ∧
-    RV.decode entry.bits = some (.delegate (familyKind entry.data.family)) ∧
+structure RVBinding (w : Nat → ZMod p) (before : RV.State) (program : List Delegation.Caller.RVProgramEntry) : Prop where
+  instruction : ∃ entry ∈ program, Delegation.Caller.RVSource before entry ∧
+    RV.decode entry.bits = some (.delegate entry.data.family.rvKind) ∧
     (request w).csr = Delegation.Requests.csr entry.data.family ∧
     ∀ state : RV.State, state.rom = before.rom → state.pc = (initialPC w).toBitVec →
-      RV.step state = RV.exec state (.delegate (familyKind entry.data.family))
+      RV.step state = RV.exec state (.delegate entry.data.family.rvKind)
   selected : w importedConstraintsTraceColumns.execute = 1 ∧
     w importedConstraintsDecoderColumns.flags[7] = 1
   virtual : readToken w virtualPort = (request w).empty ∧

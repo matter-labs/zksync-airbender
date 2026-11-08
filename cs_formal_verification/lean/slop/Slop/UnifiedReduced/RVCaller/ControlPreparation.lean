@@ -188,7 +188,7 @@ theorem rv_sequential_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
       by_cases caller : (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∈ data.callers
       · have decoded := accepted.decoded _ caller
         change ∃ i : Fin data.program.length,
-          decoderQuery w = rvCallerQuery (data.program.get i) at decoded
+          decoderQuery w = Delegation.Caller.rvQuery (data.program.get i) at decoded
         obtain ⟨i, query⟩ := decoded
         have selectors := rv_caller_selectors hp core query
         exact ⟨selectors 10, selectors 11, selectors 12, selectors 13⟩
@@ -275,8 +275,8 @@ theorem rv_literal_program_pc_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 <
   rv_arithmetic_program_pc_clock hp inverse accepted publicProgram ordinaryProgram (rv_literal_arithmetic_program registry)
 
 theorem rv_caller_query_pc_word [Fact p.Prime] (hp : limbBase < p)
-    {row : Trace.Row p UnifiedFamily} {entry : RVCallerEntry}
-    (query : row.decoderQuery = rvCallerQuery entry) :
+    {row : Trace.Row p UnifiedFamily} {entry : Delegation.Caller.RVProgramEntry}
+    (query : row.decoderQuery = Delegation.Caller.rvQuery entry) :
     row.start.word = Word.ofBitVec entry.pc := by
   cases row with
   | mk family w =>
@@ -335,7 +335,7 @@ theorem rv_program_caller_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have range := of_decide_eq_true range
   have nativeMember := List.mem_of_mem_filter callerMember
   have decoded := accepted.decoded caller callerMember
-  change ∃ i : Fin data.program.length, caller.decoderQuery = rvCallerQuery (data.program.get i) at decoded
+  change ∃ i : Fin data.program.length, caller.decoderQuery = Delegation.Caller.rvQuery (data.program.get i) at decoded
   obtain ⟨i, query⟩ := decoded
   let entry := data.program.get i
   have pc := rv_caller_query_pc_word (by dsimp [limbBase]; norm_num [timestampBase] at hp; omega) query
@@ -491,7 +491,7 @@ theorem rv_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
   have requests := rv_request_binding size clockInverse accepted.toRVRequestChecks publicProgram
   have facts := rv_mixed_memory_facts size clockInverse accepted publicProgram initialization requests
   have zero := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
-    (rv_initial_zero initialization)
+    (Transfer.rv_initial_zero initialization)
     (rv_mixed_zero_rules_of_program size clockInverse accepted publicProgram ordinaryProgram requests)
   obtain ⟨row, member, last, ordinary⟩ := rv_preparation_row size clockInverse accepted.toRVRequestChecks publicProgram scope aligned
   cases row with

@@ -1,4 +1,4 @@
-import Slop.UnifiedReduced.RVCaller.SpanBinding
+import Slop.Delegation.RVSharedSpans
 import Slop.Delegation.RVNativeSegments
 import Slop.Blake2Round.RVWords
 
@@ -14,9 +14,9 @@ set_option maxRecDepth 16384
 /-- An RV span result transfers to an `RV.Same` final state that the same accesses reach. -/
 theorem rv_span_result_transfer [Fact p.Prime] {span : HashSpan} {workers : Delegation.MemoryData p}
     {before first last : RV.State} {cells : List Cell}
-    (result : rvSpanResult span workers before first cells) (same : RV.Same first last)
+    (result : Delegation.Caller.HashSpan.RVResult span workers before first cells) (same : RV.Same first last)
     (target : Delegation.RVTraceMapping workers before last cells) :
-    rvSpanResult span workers before last cells := by
+    Delegation.Caller.HashSpan.RVResult span workers before last cells := by
   cases span with
   | blakeG reduced =>
     obtain ⟨statePointer, messagePointer, input, message, output, mapping, _, value, s', run, linked⟩ := result
@@ -45,15 +45,15 @@ theorem rv_hash_span_at_target [Fact p.Prime] (hp : 16777216 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {workers : Delegation.MemoryData p} {before after : RV.State} {cells : List Cell} {span : HashSpan}
     (accepted : Delegation.MemoryAccepted workers) (inputs : Delegation.RVBoundaryMemoryInputs workers before cells)
-    (protocol : RVHashSpanProtocol workers before span)
+    (protocol : Delegation.Caller.HashSpan.RVProtocol workers before span)
     (active : ∀ row ∈ workers.rows, row.assignment row.columns.execute = 1)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (target : Delegation.RVTraceMapping workers before after cells)
     (addresses : (workers.terminal.map MemoryToken.address).Perm (cells.map Cell.addressCode)) :
-    rvSpanResult span workers before after cells := by
+    Delegation.Caller.HashSpan.RVResult span workers before after cells := by
   have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
   have byteInverse : 256 * (-7864320 : ZMod p) = 1 := by linear_combination clockInverse
-  have reference : ∃ reached, rvSpanResult span workers before reached cells := by
+  have reference : ∃ reached, Delegation.Caller.HashSpan.RVResult span workers before reached cells := by
     cases span with
     | blakeG reduced =>
       have abi : Blake2G.RVNativeCallInputs workers before cells reduced := by
@@ -82,7 +82,7 @@ theorem rv_hash_span_at_target [Fact p.Prime] (hp : 16777216 ≤ p)
         (abi.toRVBoundary (by norm_num [timestampBase]; omega) accepted) protocol.tables aligned
       exact ⟨reached, result⟩
   obtain ⟨reached, result⟩ := reference
-  have same := Delegation.Proofs.rv_trace_mapping_same (rv_hash_span_result_mapping result) target addresses aligned
+  have same := Delegation.Proofs.rv_trace_mapping_same (Delegation.Caller.Proofs.rv_hash_span_result_mapping result) target addresses aligned
   exact rv_span_result_transfer result same target
 
 end Airbender.UnifiedReduced.Caller.Proofs

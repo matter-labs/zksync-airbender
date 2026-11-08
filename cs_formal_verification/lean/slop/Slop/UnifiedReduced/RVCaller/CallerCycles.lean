@@ -56,18 +56,18 @@ theorem rv_current_fetch_of_history
       frame (rv_image_entry_source inputs.ordinaryProgram present) row.clock⟩
   · intro row member
     have decoded := accepted.decoded row member
-    change ∃ i : Fin data.program.length, row.decoderQuery = rvCallerQuery (data.program.get i) at decoded
+    change ∃ i : Fin data.program.length, row.decoderQuery = Delegation.Caller.rvQuery (data.program.get i) at decoded
     obtain ⟨i, query⟩ := decoded
     let entry := data.program.get i
     have present : entry ∈ data.program := List.get_mem _ _
     have pcWord := rv_caller_query_pc_word (by decide) query
     have pc : row.start.word.toBitVec = entry.pc := (congrArg Word.toBitVec pcWord).trans (Word.ofBitVec_roundtrip _)
     exact ⟨reachable row (List.mem_of_mem_filter member), entry, present, query, pc,
-      frame (rv_caller_entry inputs.publicProgram.image present).1 row.clock⟩
+      frame (Delegation.Caller.Proofs.rv_source_of_image inputs.publicProgram.image entry present) row.clock⟩
 
 theorem rv_caller_worker_family [Fact p.Prime] (hp : 2048 ≤ p)
-    {row : Trace.Row p UnifiedFamily} {entry : RVCallerEntry} {worker : Delegation.Row p}
-    (query : row.decoderQuery = rvCallerQuery entry)
+    {row : Trace.Row p UnifiedFamily} {entry : Delegation.Caller.RVProgramEntry} {worker : Delegation.Row p}
+    (query : row.decoderQuery = Delegation.Caller.rvQuery entry)
     (matched : Delegation.Requests.fulfillment worker = request row.assignment) :
     worker.family = entry.data.family := by
   have field := congrArg (fun fields : Vector (ZMod p) 9 => fields[3]) query
@@ -157,11 +157,12 @@ theorem rv_caller_cycles
   obtain ⟨entry, present, query, pc, source⟩ := (fetch.callers row member).instruction
   obtain ⟨worker, workerMember, matched, observations⟩ := rv_caller_cycle_observations (by decide) (by decide)
     accepted inputs effects.requests member cycle current zero
-  have decoded := (rv_caller_entry inputs.publicProgram.image present).2.2.2
+  have call := Delegation.Caller.Proofs.rv_source_call
+    (Delegation.Caller.Proofs.rv_source_of_image inputs.publicProgram.image entry present)
+  have decoded := call.1
   have step : RV.step (before.setPC entry.pc) =
-      RV.exec (before.setPC entry.pc) (.delegate (familyKind entry.data.family)) :=
-    rv_caller_step inputs.publicProgram.image present
-      ((Delegation.Proofs.rv_history_fields past).2.1) rfl
+      RV.exec (before.setPC entry.pc) (.delegate entry.data.family.rvKind) :=
+    call.2 _ ((Delegation.Proofs.rv_history_fields past).2.1) rfl
   exact ⟨before, after, past, current, future,
     ⟨entry, present, query, pc, source before past, decoded, step, worker, workerMember, matched,
       rv_caller_worker_family (by decide) query matched, effects.operations worker workerMember, observations⟩,

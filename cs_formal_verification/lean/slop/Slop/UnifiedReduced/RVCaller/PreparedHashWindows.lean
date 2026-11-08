@@ -52,7 +52,7 @@ theorem rv_prepared_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
     (rv_hash_control_register_nonzero span) first prefixMatching startBoundary
   have entry : (Cell.register span.controlRegister).readRV atStart = some span.controlStart := by
     simpa only [rv_hash_preparation_value] using control.1
-  have protocol : RVHashSpanProtocol (data.windowProjection lower upper start finish) atStart span :=
+  have protocol : Delegation.Caller.HashSpan.RVProtocol (data.windowProjection lower upper start finish) atStart span :=
     ⟨inputs.tables, inputs.family, entry, inputs.calls⟩
   have result := rv_hash_span_at_target hp clockInverse selected initialized protocol
     (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))
@@ -77,7 +77,7 @@ theorem rv_prepared_hash_reference_at_states [Fact p.Prime] (hp : 16777216 ≤ p
     (startBoundary : RVNativeBoundary start atStart cells) (finishBoundary : RVNativeBoundary finish atFinish cells)
     (spanPerm : spanEvents.Perm ((data.windowSteps lower upper).map transferEvent))
     (spanHistory : RVHistory cells spanEvents atStart atFinish) :
-    rvSpanResult span (data.windowProjection lower upper start finish) atStart atFinish (Delegation.Caller.workerCells cells) := by
+    Delegation.Caller.HashSpan.RVResult span (data.windowProjection lower upper start finish) atStart atFinish (Delegation.Caller.workerCells cells) := by
   have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   have memory := rv_prepared_hash_memory_inputs inputs
   have floor := inputs.preparation.afterInitial
@@ -92,7 +92,7 @@ theorem rv_prepared_hash_reference_at_states [Fact p.Prime] (hp : 16777216 ≤ p
     (rv_hash_control_register_nonzero span) first prefixMatching startBoundary
   have entry : (Cell.register span.controlRegister).readRV atStart = some span.controlStart := by
     simpa only [rv_hash_preparation_value] using control.1
-  have protocol : RVHashSpanProtocol (data.windowProjection lower upper start finish) atStart span :=
+  have protocol : Delegation.Caller.HashSpan.RVProtocol (data.windowProjection lower upper start finish) atStart span :=
     ⟨inputs.tables, inputs.family, entry, inputs.calls⟩
   exact rv_hash_span_at_target hp clockInverse selected initialized protocol
     (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))

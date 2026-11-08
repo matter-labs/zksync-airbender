@@ -137,7 +137,7 @@ theorem rv_mixed_memory_effects
   have initialized : Transfer.RVInputs (rv_mixedData data) before cells := ⟨inputs.initialization, inputs.distinct⟩
   have zeroRules := rv_mixed_zero_rules (by decide) (by decide) accepted inputs requests
   have zeroReads := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
-    (rv_initial_zero inputs.initialization) zeroRules
+    (Transfer.rv_initial_zero inputs.initialization) zeroRules
   have rules := rv_mixed_write_rules (by decide) (by decide) accepted inputs
   have words : ∀ edge ∈ data.mixedSteps, edge.1.word.Bounded ∧ edge.2.word.Bounded := by
     intro edge present

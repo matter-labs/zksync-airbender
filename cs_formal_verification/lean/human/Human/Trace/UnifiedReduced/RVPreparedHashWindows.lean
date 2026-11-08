@@ -55,9 +55,9 @@ structure RVPreparedHashChainResult [Fact p.Prime] (data : RVRequestTrace p) (be
   secondCount : (Delegation.Caller.windowCallers data.callers secondLower secondUpper).length = secondSpan.callCount
   execution : ∃ chain : RVWindowChain p,
     chain.Realizes data before cells firstLower firstUpper secondLower secondUpper ∧
-    rvSpanResult firstSpan (data.windowProjection firstLower firstUpper chain.firstStart chain.firstFinish)
+    Delegation.Caller.HashSpan.RVResult firstSpan (data.windowProjection firstLower firstUpper chain.firstStart chain.firstFinish)
       chain.atFirstStart chain.atFirstFinish (Delegation.Caller.workerCells cells) ∧
-    rvSpanResult secondSpan (data.windowProjection secondLower secondUpper chain.secondStart chain.secondFinish)
+    Delegation.Caller.HashSpan.RVResult secondSpan (data.windowProjection secondLower secondUpper chain.secondStart chain.secondFinish)
       chain.atSecondStart chain.atSecondFinish (Delegation.Caller.workerCells cells)
 
 /-- Request binding, exact caller count and the complete reference at one actual
@@ -66,7 +66,7 @@ def RVHashWindowResult [Fact p.Prime] (data : RVRequestTrace p) (cells : List Ce
     (window : HashWindow) (segment : RVWindowSegment p) : Prop :=
   Delegation.Caller.RequestWindowBinding data.callers data.workers window.lower window.upper ∧
   (Delegation.Caller.windowCallers data.callers window.lower window.upper).length = window.span.callCount ∧
-  rvSpanResult window.span (data.windowProjection window.lower window.upper segment.start segment.finish)
+  Delegation.Caller.HashSpan.RVResult window.span (data.windowProjection window.lower window.upper segment.start segment.finish)
     segment.atStart segment.atFinish (Delegation.Caller.workerCells cells)
 
 /-- A nonempty list of complete prepared references uses one initialized history.

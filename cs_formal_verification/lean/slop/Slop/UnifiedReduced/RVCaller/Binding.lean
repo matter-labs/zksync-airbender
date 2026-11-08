@@ -1,7 +1,6 @@
 import Human.Helpers.UnifiedReduced.RVRequestTrace
 import Slop.UnifiedReduced.Delegation
-import Slop.Trace.RVFetch
-import Slop.ISA.RVAccept
+import Slop.Delegation.RVCallerDecoder
 
 /-! RV sibling of `caller_binding` (`Slop/UnifiedReduced/Delegation.lean`): a selected unified caller whose query is
     in the RV caller table decodes (`RV.decode`) to `.delegate k` of its family, and `RV.step` at its PC is that call. -/
@@ -11,19 +10,10 @@ open Trace Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem rv_caller_fields_delegate {i : RV.Instr} {data : DecoderData Delegation.Family}
-    (fields : rvCallerFields i = some data) :
-    i = .delegate (familyKind data.family) ∧ data.rs1 = 0 ∧ data.rs2 = 0 ∧ data.rd = 0 := by
-  cases i with
-  | delegate k =>
-    cases k <;> simp only [rvCallerFields, reduceCtorEq, Option.some.injEq] at fields <;> subst fields <;>
-      exact ⟨rfl, rfl, rfl, rfl⟩
-  | _ => simp [rvCallerFields] at fields
-
 theorem rv_caller_selectors [Fact p.Prime] (hp : 524288 < p)
-    {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {entry : RVCallerEntry}
+    {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {entry : Delegation.Caller.RVProgramEntry}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
-    (query : decoderQuery w = rvCallerQuery entry) :
+    (query : decoderQuery w = Delegation.Caller.rvQuery entry) :
     ∀ i : Fin 19, w importedConstraintsDecoderColumns.flags[i] = if i.val = 7 then 1 else 0 := by
   let bits (i : Fin 19) := w importedConstraintsDecoderColumns.flags[i]
   have boolean : ∀ i, bits i = 0 ∨ bits i = 1 := by
@@ -39,44 +29,18 @@ theorem rv_caller_selectors [Fact p.Prime] (hp : 524288 < p)
   have value : (128 : Nat).testBit i.val = decide (i.val = 7) := by fin_cases i <;> decide
   simpa [bits, value] using bit
 
-/-- A public RV caller entry: built by the image at its own PC, its fetch guard, and its decoded delegation. -/
-theorem rv_caller_entry {before : RV.State} {addresses : List (BitVec 32)} {program : List RVCallerEntry}
-    (image : rvCallerImage before addresses = some program) {entry : RVCallerEntry} (present : entry ∈ program) :
-    rvProgramEntryWith rvCallerFields before entry.pc = some entry ∧
-      (entry.pc.toNat < RV.ROM_END ∧ entry.pc.toNat % 4 = 0) ∧ entry.bits = RV.read before.rom entry.pc 4 ∧
-      RV.decode entry.bits = some (.delegate (familyKind entry.data.family)) := by
-  obtain ⟨pc, _, built⟩ := mem_rvProgramImage image entry present
-  obtain ⟨pcEq, guard, bits, i, decoded, fields⟩ := rvProgramEntryWith_some built
-  subst pcEq
-  rw [(rv_caller_fields_delegate fields).1] at decoded
-  exact ⟨built, guard, bits, decoded⟩
-
-/-- `RV.step` at the caller entry's PC, from any state with the public ROM image, is the decoded delegation call. -/
-theorem rv_caller_step {before : RV.State} {addresses : List (BitVec 32)} {program : List RVCallerEntry}
-    (image : rvCallerImage before addresses = some program) {entry : RVCallerEntry} (present : entry ∈ program)
-    {state : RV.State} (rom : state.rom = before.rom) (pc : state.pc = entry.pc) :
-    RV.step state = RV.exec state (.delegate (familyKind entry.data.family)) := by
-  obtain ⟨_, guard, bits, decoded⟩ := rv_caller_entry image present
-  apply RV.step_of_decode
-  · rw [pc]
-    refine ⟨guard.2, ?_⟩
-    have := guard.1
-    simp only [RV.ROM_END] at this ⊢
-    omega
-  · rw [rom, pc, ← bits]
-    exact decoded
-
 theorem rv_caller_binding [Fact p.Prime] (hp : 524288 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
-    {before : RV.State} {addresses : List (BitVec 32)} {program : List RVCallerEntry}
+    {before : RV.State} {addresses : List (BitVec 32)} {program : List Delegation.Caller.RVProgramEntry}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
-    (image : rvCallerImage before addresses = some program)
-    (member : (rvCallerTable program).Contains #[] (decoderQuery w)) : RVBinding w before program := by
-  change ∃ i : Fin program.length, decoderQuery w = rvCallerQuery (program.get i) at member
+    (image : Delegation.Caller.rvProgramImage before addresses = some program)
+    (member : (Delegation.Caller.rvDecoderTable program).Contains #[] (decoderQuery w)) : RVBinding w before program := by
+  change ∃ i : Fin program.length, decoderQuery w = Delegation.Caller.rvQuery (program.get i) at member
   obtain ⟨i, query⟩ := member
   let entry := program.get i
   have present : entry ∈ program := List.get_mem _ _
-  have source := rv_caller_entry image present
+  have source := Delegation.Caller.Proofs.rv_source_of_image image entry present
+  have call := Delegation.Caller.Proofs.rv_source_call source
   have selectors := rv_caller_selectors hp h query
   have s11 : w 11 = 0 := selectors 0
   have s12 : w 12 = 0 := selectors 1
@@ -144,8 +108,8 @@ theorem rv_caller_binding [Fact p.Prime] (hp : 524288 < p)
       WordColumns.code, WordColumns.evaluate, importedConstraintsMemoryPorts, outLo, outHi]
   have entryPC : (initialPC w).toBitVec = entry.pc := by
     rw [initial, Word.ofBitVec_roundtrip]
-  refine ⟨⟨entry, present, source.1, source.2.2.2, requestCSR, fun state rom statePC =>
-      rv_caller_step image present rom (statePC.trans entryPC)⟩, ⟨active, s18⟩, ?_, ?_,
+  refine ⟨⟨entry, present, source, call.1, requestCSR, fun state rom statePC =>
+      call.2 state rom (statePC.trans entryPC)⟩, ⟨active, s18⟩, ?_, ?_,
     ⟨initialBounds, UnifiedReduced.Proofs.pc_bounds h, pc.2.2⟩, ?_⟩
   · simp [virtualPort, importedConstraintsMemoryPorts, importedConstraintsTraceColumns,
       request, Delegation.Requests.caller, Delegation.Requests.callerPort,

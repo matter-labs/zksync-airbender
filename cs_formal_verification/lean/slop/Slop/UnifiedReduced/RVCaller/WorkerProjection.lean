@@ -65,7 +65,7 @@ theorem rv_worker_projection_inputs [Fact p.Prime] {data : RVRequestTrace p}
     (image : initialImageRV before cells = some data.machine.initialMemory)
     (distinct : (cells.map Cell.addressCode).Nodup) (requests : RVRequestBinding data before) :
     Delegation.RVMemoryInputs data.workerProjection before (Delegation.Caller.workerCells cells) := by
-  refine ⟨rv_image_restriction image (fun address => address != (Cell.register 0).addressCode), ?_, fun row member => (requests.clocks row member).2,
+  refine ⟨Transfer.rv_image_restriction image (fun address => address != (Cell.register 0).addressCode), ?_, fun row member => (requests.clocks row member).2,
     fun row member => (requests.clocks row member).1.2⟩
   exact distinct.sublist (List.filter_sublist.map Cell.addressCode)
 

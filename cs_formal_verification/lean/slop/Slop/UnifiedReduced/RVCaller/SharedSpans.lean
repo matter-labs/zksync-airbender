@@ -1,6 +1,6 @@
 import Human.Trace.UnifiedReduced.RVMixedMemory
 import Slop.UnifiedReduced.RVCaller.WorkerProjection
-import Slop.UnifiedReduced.RVCaller.SpanBinding
+import Slop.Delegation.RVSharedSpans
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic Trace.Proofs
@@ -43,7 +43,7 @@ theorem rv_projected_shared_terminal [Fact p.Prime] {data : RVRequestTrace p}
   intro token member
   by_cases zero : token.address = (Cell.register 0).addressCode
   · have produced := Transfer.produced_cell_values facts (Cell.register 0).addressCode 0
-      (rv_initial_zero image) (rv_caller_only_zero_closed accepted requests)
+      (Transfer.rv_initial_zero image) (rv_caller_only_zero_closed accepted requests)
     have value := produced token (facts.matching.mem_iff.mpr (List.mem_append.mpr (Or.inl member))) zero
     obtain ⟨source, sourceMember, same, _⟩ := SeedTransfer.terminal_path facts (⟨image, distinct⟩ : Transfer.RVInputs _ _ _).toSeed member
     obtain ⟨cell, present, _, _, sourceEq⟩ := RVZero.rv_image_token_sources image source sourceMember
@@ -73,11 +73,11 @@ theorem rv_shared_span_effects [Fact p.Prime] (hp : 16777216 ≤ p)
   have initialized := rv_worker_projection_inputs inputs.initialization inputs.distinct requests
   have aligned : ∀ cell ∈ Delegation.Caller.workerCells cells, cell.Aligned :=
     fun cell member => inputs.aligned cell (List.mem_of_mem_filter member)
-  have protocol : RVHashSpanProtocol data.workerProjection before span :=
+  have protocol : Delegation.Caller.HashSpan.RVProtocol data.workerProjection before span :=
     ⟨inputs.tables, inputs.family, inputs.controlStart, inputs.calls⟩
-  obtain ⟨after, result⟩ := rv_hash_span_binding hp clockInverse projected initialized
+  obtain ⟨after, result⟩ := Delegation.Caller.Proofs.rv_hash_span_binding hp clockInverse projected initialized
     protocol accepted.workerActive aligned
   exact ⟨requests, after, rv_projected_shared_terminal accepted requests facts inputs.initialization inputs.distinct
-    (rv_hash_span_result_mapping result), result⟩
+    (Delegation.Caller.Proofs.rv_hash_span_result_mapping result), result⟩
 
 end Airbender.UnifiedReduced.Caller.Proofs

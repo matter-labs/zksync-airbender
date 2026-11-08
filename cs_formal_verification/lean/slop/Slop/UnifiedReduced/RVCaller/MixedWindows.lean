@@ -138,7 +138,7 @@ theorem rv_mixed_window_execution [Fact p.Prime] (hp : 8388608 ≤ p)
   have initialized : Transfer.RVInputs (rv_mixedData data) before cells := ⟨inputs.initialization, inputs.distinct⟩
   have zeroRules := rv_mixed_zero_rules size clockInverse accepted inputs requests
   have zeroReads := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
-    (rv_initial_zero inputs.initialization) zeroRules
+    (Transfer.rv_initial_zero inputs.initialization) zeroRules
   have zero : ∀ edge ∈ (rv_mixedData data).steps, edge.1.address = (Cell.register 0).addressCode →
       memoryWord edge.2.value = 0 := by
     intro edge member same
@@ -283,7 +283,7 @@ theorem rv_mixed_window_chain [Fact p.Prime] (hp : 8388608 ≤ p)
   have clocks := rv_mixed_write_clocks size clockInverse accepted inputs.publicProgram requests
   have zeroRules := rv_mixed_zero_rules size clockInverse accepted inputs requests
   have zeroReads := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
-    (rv_initial_zero inputs.initialization) zeroRules
+    (Transfer.rv_initial_zero inputs.initialization) zeroRules
   have zero : ∀ edge ∈ (rv_mixedData data).steps, edge.1.address = (Cell.register 0).addressCode → memoryWord edge.2.value = 0 := by
     intro edge member same
     have value := zeroRules edge member same (fun previous present _ address => zeroReads previous present address)
@@ -365,7 +365,7 @@ theorem rv_mixed_window_sequence [Fact p.Prime] (hp : 8388608 ≤ p)
   have clocks := rv_mixed_write_clocks size clockInverse accepted inputs.publicProgram requests
   have zeroRules := rv_mixed_zero_rules size clockInverse accepted inputs requests
   have zeroReads := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
-    (rv_initial_zero inputs.initialization) zeroRules
+    (Transfer.rv_initial_zero inputs.initialization) zeroRules
   have zero : ∀ edge ∈ (rv_mixedData data).steps, edge.1.address = (Cell.register 0).addressCode → memoryWord edge.2.value = 0 := by
     intro edge member same
     have value := zeroRules edge member same (fun previous present _ address => zeroReads previous present address)

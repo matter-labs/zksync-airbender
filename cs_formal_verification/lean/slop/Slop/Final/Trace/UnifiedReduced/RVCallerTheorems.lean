@@ -2,7 +2,7 @@ import Human.Trace.UnifiedReduced.RVCallerTheorems
 import Slop.UnifiedReduced.RVCaller.RequestWindows
 import Slop.UnifiedReduced.RVCaller.MixedMemory
 import Slop.UnifiedReduced.RVCaller.SharedSpans
-import Slop.UnifiedReduced.RVCaller.RequestHashWindows
+import Slop.Delegation.RVRequestHashWindows
 import Slop.UnifiedReduced.RVCaller.WindowProjection
 import Slop.UnifiedReduced.RVCaller.JointHashWindows
 import Slop.UnifiedReduced.RVCaller.MixedWindowProjection
@@ -35,7 +35,7 @@ theorem Caller.rv_shared_span_soundness : Caller.RVSharedSpanSoundnessClaim := b
 theorem Caller.rv_request_hash_window_soundness : Caller.RVRequestHashWindowSoundnessClaim := by
   intro p _ hp clockInverse wordInverse byteInverse data before addresses cells span lower upper accepted workers
     program inputs aligned first last pastZero
-  exact Caller.Proofs.rv_bind_hash_window hp wordInverse byteInverse workers inputs aligned
+  exact Delegation.Caller.Proofs.rv_bind_hash_window hp wordInverse byteInverse workers inputs aligned
     (Caller.Proofs.rv_request_windows (by norm_num [Trace.timestampBase]; omega) clockInverse
       accepted program first last pastZero)
 

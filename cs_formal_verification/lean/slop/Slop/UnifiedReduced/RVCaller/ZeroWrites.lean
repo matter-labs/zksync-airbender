@@ -17,7 +17,7 @@ theorem rv_mixed_zero_writes [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have facts := rv_mixed_memory_facts hp clockInverse accepted inputs.publicProgram inputs.initialization requests
   have zeroRules := rv_mixed_zero_rules hp clockInverse accepted inputs requests
   have zeroReads := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
-    (rv_initial_zero inputs.initialization) zeroRules
+    (Transfer.rv_initial_zero inputs.initialization) zeroRules
   intro edge member same
   have value := zeroRules edge member same (fun previous present _ address => zeroReads previous present address)
   rw [value]

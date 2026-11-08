@@ -57,6 +57,6 @@ structure RVJointHashWindowResult [Fact p.Prime] (data : RVRequestTrace p) (befo
     RVNativeBoundary start atStart cells ∧ RVNativeBoundary finish atFinish cells ∧
     Delegation.MemoryAccepted (data.windowProjection lower upper start finish) ∧
     Delegation.RVBoundaryMemoryInputs (data.windowProjection lower upper start finish) atStart (Delegation.Caller.workerCells cells) ∧
-    rvSpanResult span (data.windowProjection lower upper start finish) atStart atFinish (Delegation.Caller.workerCells cells)
+    Delegation.Caller.HashSpan.RVResult span (data.windowProjection lower upper start finish) atStart atFinish (Delegation.Caller.workerCells cells)
 
 end Airbender.UnifiedReduced.Caller

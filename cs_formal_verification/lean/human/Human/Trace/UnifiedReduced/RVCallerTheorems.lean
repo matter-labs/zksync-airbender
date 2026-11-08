@@ -5,7 +5,7 @@ import Human.Trace.UnifiedReduced.RVPreparedRoundWindows
 import Human.Trace.UnifiedReduced.RVCallerCycles
 
 -- The statements proven in slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean (checked by verify.sh). RV
--- siblings of the `Caller.*` claims of `Theorems.lean`. Complete hash-span results (`rvSpanResult`) carry the delegate
+-- siblings of the `Caller.*` claims of `Theorems.lean`. Complete hash-span results (`Delegation.Caller.HashSpan.RVResult`) carry the delegate
 -- link: the span's final state IS the spec's run of its `.delegate` calls (`RV.calls`), up to the spec's PC advance.
 -- Every caller binding (`RVBinding`) states that the caller's entry decodes to `.delegate k` and that `RV.step` at its
 -- PC is `RV.exec` of that call.
@@ -51,8 +51,8 @@ def Caller.RVRequestWindowSoundnessClaim : Prop :=
     window. Public worker initialization, mode/count ABI and worker-only matching
     remain visible; caller control preparation and joint retirement are separate. -/
 def Caller.RVRequestHashWindowSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1) (wordInverse : 64 * (-31457280 : ZMod p) = 1) (byteInverse : 256 * (-7864320 : ZMod p) = 1) {data : Caller.RVRequestTrace p} {before : RV.State} {addresses : List (BitVec 32)} {cells : List Trace.Cell} {span : Delegation.Caller.HashSpan} {lower upper : Nat} (accepted : Caller.RVRequestChecks data) (workers : Delegation.MemoryAccepted data.workers) (program : Caller.RVRequestInputs data before addresses) (inputs : Caller.rvRequestWindowInputs span data.workers before cells lower upper) (aligned : ∀ cell ∈ cells, cell.Aligned) (first : lower % 4 = 0) (last : upper % 4 = 0) (pastZero : 2 ≤ lower),
-    Caller.RVRequestWindowResult span data.callers data.workers before cells lower upper
+  ∀ {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1) (wordInverse : 64 * (-31457280 : ZMod p) = 1) (byteInverse : 256 * (-7864320 : ZMod p) = 1) {data : Caller.RVRequestTrace p} {before : RV.State} {addresses : List (BitVec 32)} {cells : List Trace.Cell} {span : Delegation.Caller.HashSpan} {lower upper : Nat} (accepted : Caller.RVRequestChecks data) (workers : Delegation.MemoryAccepted data.workers) (program : Caller.RVRequestInputs data before addresses) (inputs : Delegation.Caller.HashSpan.RVRequestWindowInputs span data.workers before cells lower upper) (aligned : ∀ cell ∈ cells, cell.Aligned) (first : lower % 4 = 0) (last : upper % 4 = 0) (pastZero : 2 ≤ lower),
+    Delegation.Caller.HashSpan.RVRequestWindowResult span data.callers data.workers before cells lower upper
 
 /-- RV sibling of `Caller.MixedWindowSoundnessClaim`: states are `RV.State`s, cells are read by `Cell.readRV` and
     executed by `RVHistory`, programs are RV program tables (`RV.decode`), no `Configured`; RAM cells include READ-WRITE

@@ -31,7 +31,7 @@ structure RVCurrentFetch [Fact p.Prime] (data : RVRequestTrace p)
   ordinary : ∀ row ∈ data.machine.rows, row ∉ data.callers →
     RVCycleFetch initial cells events row program UnifiedReduced.rvDecoderFields (fun entry => entry.query)
   callers : ∀ row ∈ data.callers,
-    RVCycleFetch initial cells events row data.program rvCallerFields rvCallerQuery
+    RVCycleFetch initial cells events row data.program Delegation.Caller.rvDecoderFields Delegation.Caller.rvQuery
 
 /-- RV sibling of `CallerCycle`: actual caller cycle RV states, public RV fetch (the entry decodes to `.delegate k`
     of its family, and `RV.step` at the cycle's pre-state is that call), the matched worker's port reads at the cycle
@@ -43,11 +43,11 @@ def RVCallerCycle [Fact p.Prime] (data : RVRequestTrace p) (initial finalState :
     RVHistory cells (events.filter fun event => decide
       (Delegation.Caller.startClock row < event.1 ∧ event.1 ≤ Delegation.Caller.finishClock row)) before after ∧
     RVHistory cells (events.filter fun event => decide (Delegation.Caller.finishClock row < event.1)) after finalState ∧
-    (∃ entry ∈ data.program, row.decoderQuery = rvCallerQuery entry ∧
+    (∃ entry ∈ data.program, row.decoderQuery = Delegation.Caller.rvQuery entry ∧
       row.start.word.toBitVec = entry.pc ∧
-      rvProgramEntryWith rvCallerFields before entry.pc = some entry ∧
-      RV.decode entry.bits = some (.delegate (familyKind entry.data.family)) ∧
-      RV.step (before.setPC entry.pc) = RV.exec (before.setPC entry.pc) (.delegate (familyKind entry.data.family)) ∧
+      Delegation.Caller.RVSource before entry ∧
+      RV.decode entry.bits = some (.delegate entry.data.family.rvKind) ∧
+      RV.step (before.setPC entry.pc) = RV.exec (before.setPC entry.pc) (.delegate entry.data.family.rvKind) ∧
       ∃ worker ∈ data.workers.rows, Delegation.Requests.fulfillment worker = request row.assignment ∧
       worker.family = entry.data.family ∧ Delegation.Caller.WorkerEffect worker ∧
       ∀ port ∈ worker.ports, ∃ cell ∈ cells,

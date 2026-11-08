@@ -1,26 +1,12 @@
 import Slop.UnifiedReduced.RVCaller.HistoryWindow
 import Human.Helpers.Delegation.RVBoundaryMemory
+import Slop.Delegation.RVSharedImage
 
-/-! RV siblings of `ImageRestriction`, `HistoryRestriction` and `BoundaryRestriction`: restricting an RV seed image,
-    an RV history and an RV boundary image to a sub-domain of cells (here: dropping x0). -/
+/-! RV siblings of `HistoryRestriction` and `BoundaryRestriction` (the image restriction is
+    `Transfer.rv_image_restriction`): restricting an RV history and an RV boundary image to a sub-domain of cells (here: dropping x0). -/
 
 namespace Airbender.Trace.Proofs
 set_option warningAsError true
-
-theorem rv_image_restriction {before : RV.State} {cells : List Cell}
-    {tokens : List (MemoryToken p)} (image : initialImageRV before cells = some tokens)
-    (keep : Nat → Bool) :
-    initialImageRV before (cells.filter fun cell => keep cell.addressCode) =
-      some (tokens.filter fun token => keep token.address) := by
-  have reads := rvImage_reads cells tokens image
-  clear image
-  induction reads with
-  | nil => rfl
-  | @cons cell token cells tokens head tail ih =>
-    obtain ⟨value, read, rfl⟩ := head
-    simp only [initialImageRV, Cell.initialToken] at ih
-    cases selected : keep cell.addressCode <;>
-      simp [Cell.initialToken, selected, initialImageRV, List.mapM_cons, read, ih]
 
 theorem rv_history_restriction {cells : List Cell} {events : List MemoryAccess} {before after : RV.State}
     (history : RVHistory cells events before after) (keep : Nat → Bool)

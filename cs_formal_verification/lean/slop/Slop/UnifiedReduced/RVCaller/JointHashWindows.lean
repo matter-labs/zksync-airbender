@@ -161,7 +161,7 @@ theorem rv_joint_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
   obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm, firstHistory, spanHistory,
     startBoundary, finishBoundary, prior, priorHistory, selected, initialized, finalBoundary, target⟩ := projection.execution
   have control := rv_joint_entry_control size accepted inputs requests prior priorHistory
-  have protocol : RVHashSpanProtocol (data.windowProjection lower upper start finish) atStart span :=
+  have protocol : Delegation.Caller.HashSpan.RVProtocol (data.windowProjection lower upper start finish) atStart span :=
     ⟨inputs.tables, fun row member => inputs.family row (List.mem_of_mem_filter member), control, inputs.calls⟩
   have result := rv_hash_span_at_target hp clockInverse selected initialized protocol
     (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))
