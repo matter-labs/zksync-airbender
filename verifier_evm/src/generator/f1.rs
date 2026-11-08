@@ -4,6 +4,7 @@
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
+use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTES as DIGEST_BYTES;
 
 use crate::encoding::{fe_run_len, ts_run_len, Geometry};
 
@@ -128,7 +129,7 @@ pub(crate) fn gkr_decoder(
     num_top_bits: usize,
 ) -> GkrDecoder {
     let cap = params.cap();
-    let db = params.digest_bytes;
+    let db = DIGEST_BYTES;
     assert_eq!(setup_cap.len(), cap, "setup cap size");
     let t = params.trace_log2;
     let e = params.explicit_output_log2;

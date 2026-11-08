@@ -117,10 +117,7 @@ pub(super) fn encode_gkr(
     w.put("gkr_top_bits", &top_bits);
     let memory_cap = &proof.whir_proof.memory_commitment.commitment.cap.cap;
     assert_eq!(memory_cap.len(), params.cap(), "memory cap size");
-    let memory_cap: Vec<u8> = memory_cap
-        .iter()
-        .flat_map(|d| digest_wire(d, params.digest_bytes))
-        .collect();
+    let memory_cap: Vec<u8> = memory_cap.iter().flat_map(digest_wire).collect();
     w.put("gkr_memory_cap", &memory_cap);
     w.put(
         "gkr_external_pow_nonce",

@@ -17,10 +17,8 @@ pub(crate) fn base_leaf(vals: &[Proth120], num_columns: usize) -> Vec<Proth120> 
         .collect()
 }
 
-fn digests(path: &[[u32; 8]], params: &Geometry) -> Vec<u8> {
-    path.iter()
-        .flat_map(|d| digest_wire(d, params.digest_bytes))
-        .collect()
+fn digests(path: &[[u32; 8]]) -> Vec<u8> {
+    path.iter().flat_map(digest_wire).collect()
 }
 
 pub(super) fn encode_whir(w: &mut Writer, proof: &Proof, params: &Geometry) {
@@ -56,7 +54,7 @@ pub(super) fn encode_whir(w: &mut Writer, proof: &Proof, params: &Geometry) {
         if r < num_rounds - 1 {
             let cap = &wp.intermediate_whir_oracles[r].commitment.cap.cap;
             assert_eq!(cap.len(), params.cap(), "intermediate cap size");
-            w.put(format!("whir_{r}_cap"), &digests(cap, params));
+            w.put(format!("whir_{r}_cap"), &digests(cap));
             w.put(
                 format!("whir_{r}_ood"),
                 &wp.intermediate_whir_oracles[r].ood_samples[0]
@@ -93,7 +91,7 @@ pub(super) fn encode_whir(w: &mut Writer, proof: &Proof, params: &Geometry) {
                     };
                     w.put(
                         format!("whir_0_query_{q}_{name}_path"),
-                        &digests(&query.path[..kept], params),
+                        &digests(&query.path[..kept]),
                     );
                 }
             } else {
@@ -103,10 +101,7 @@ pub(super) fn encode_whir(w: &mut Writer, proof: &Proof, params: &Geometry) {
                     format!("whir_{r}_query_{q}_leaf"),
                     &write_fe_run(&query.leaf_values_concatenated),
                 );
-                w.put(
-                    format!("whir_{r}_query_{q}_path"),
-                    &digests(&query.path, params),
-                );
+                w.put(format!("whir_{r}_query_{q}_path"), &digests(&query.path));
             }
         }
     }

@@ -22,6 +22,7 @@ use cs::definitions::{GKRAddress, OutputType};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use prover::gkr::prover_config::{pow_bits, ProverConfig};
+use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTES as DIGEST_BYTES;
 use std::collections::BTreeSet;
 
 const GKR_TEMPLATE: &str = include_str!("../templates/gkr.sol");
@@ -294,10 +295,9 @@ contract SetupFrontier {{
     )
 }
 
-/// The GKR decoder, wire digest size and setup frontier (nodes, level and skipped levels).
+/// The GKR decoder and setup frontier (nodes, level and skipped levels).
 struct F1Render {
     decoder: f1::GkrDecoder,
-    digest_bytes: usize,
     frontier: (Vec<u8>, usize, usize),
 }
 
@@ -326,17 +326,13 @@ pub fn generate_f1_verifier(
             "setup frontier size"
         );
         assert_eq!(
-            crate::encoding::merkle_reduce(
-                nodes,
-                params.setup_frontier_skip(),
-                params.digest_bytes
-            ),
+            crate::encoding::merkle_reduce(nodes, params.setup_frontier_skip()),
             setup_cap,
             "the setup frontier does not reduce to the setup cap"
         );
         nodes
             .iter()
-            .flat_map(|d| crate::encoding::digest_wire(d, params.digest_bytes))
+            .flat_map(crate::encoding::digest_wire)
             .collect::<Vec<u8>>()
     };
     let decoder = f1::gkr_decoder(
@@ -348,7 +344,6 @@ pub fn generate_f1_verifier(
     );
     let f1_render = F1Render {
         decoder,
-        digest_bytes: params.digest_bytes,
         frontier: (
             frontier,
             params.setup_frontier_level,
@@ -361,7 +356,6 @@ pub fn generate_f1_verifier(
         external_pow_bits,
         final_pc,
         inits_teardowns_top_bits,
-        params.digest_bytes,
         &f1_render,
     );
     let level = params.setup_frontier_level;
@@ -378,7 +372,6 @@ fn render(
     external_pow_bits: u32,
     final_pc: u32,
     inits_teardowns_top_bits: &[u32],
-    digest_bytes: usize,
     f1: &F1Render,
 ) -> (String, Vec<u8>) {
     // Every proving-geometry parameter comes from the prover config: the packing
@@ -688,15 +681,15 @@ fn render(
             );
         let digest_load = format!(
             "d := and(calldataload(cp), 0x{}{})",
-            "ff".repeat(f.digest_bytes),
-            "00".repeat(32 - f.digest_bytes)
+            "ff".repeat(DIGEST_BYTES),
+            "00".repeat(32 - DIGEST_BYTES)
         );
         assert_eq!(whir.matches("// __F1_DIGEST_LOAD__").count(), 1);
         whir = whir.replace("// __F1_DIGEST_LOAD__", &digest_load);
         whir = set_const(
             &whir,
             "__TEMPLATE_F1_DIGEST_BYTES",
-            f.digest_bytes,
+            DIGEST_BYTES,
             &mut assigned,
         );
         let nodes = &f.frontier.0[..];
@@ -734,8 +727,8 @@ fn render(
         "__TEMPLATE_DIGEST_MASK",
         format!(
             "0x{}{}",
-            "ff".repeat(digest_bytes),
-            "00".repeat(32 - digest_bytes)
+            "ff".repeat(DIGEST_BYTES),
+            "00".repeat(32 - DIGEST_BYTES)
         ),
         &mut assigned,
     );

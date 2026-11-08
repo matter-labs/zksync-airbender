@@ -2,10 +2,9 @@
 
 use prover::gkr::prover_config::ProverConfig;
 
-/// Independent wire/deployment choices. Protocol geometry comes from ProverConfig.
+/// Setup deployment choices. Protocol geometry comes from ProverConfig.
 #[derive(Clone, Debug)]
 pub struct FormatParams {
-    pub digest_bytes: usize,
     pub setup_frontier_level: usize,
 }
 
@@ -17,8 +16,6 @@ pub(crate) struct Geometry {
     pub cap_log2: usize,
     pub folds: Vec<usize>,
     pub queries: Vec<usize>,
-    /// Wire bytes per Merkle digest: 25 (the truncated L1 commitment).
-    pub digest_bytes: usize,
     /// Setup-tree level the verifier holds as deployment data (the setup frontier); setup paths
     /// stop there. The frontier lies strictly below the cap.
     pub setup_frontier_level: usize,
@@ -27,13 +24,8 @@ pub(crate) struct Geometry {
 impl Geometry {
     pub fn from_config(config: &ProverConfig, wire: &FormatParams) -> Self {
         let FormatParams {
-            digest_bytes,
             setup_frontier_level,
         } = *wire;
-        assert!(
-            digest_bytes == 25,
-            "the L1 wrap commitment uses 25-byte digests"
-        );
         let ws = &config.whir_schedule;
         assert!(
             ws.cap_size.is_power_of_two(),
@@ -55,7 +47,6 @@ impl Geometry {
             cap_log2: ws.cap_size.trailing_zeros() as usize,
             folds: ws.fold_steps().clone(),
             queries: ws.queries_per_round().clone(),
-            digest_bytes,
             setup_frontier_level,
         }
     }

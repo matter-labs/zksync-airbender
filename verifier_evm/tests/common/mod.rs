@@ -16,7 +16,7 @@ pub type Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 
 pub const BUNDLE: &str = "../prover_pipeline/fixtures/l1_reference_2p21/l1_bundle.json";
 pub const INITS_TEARDOWNS_TOP_BITS: &[u32] = &[0, 1];
-pub const DIGEST_BYTES: usize = 25;
+pub use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTES as DIGEST_BYTES;
 
 /// gkr.sol consumes monomial rounds, transcript-identical to the windowed prover schedule.
 pub fn prover_config() -> ProverConfig {
@@ -81,7 +81,6 @@ pub const F1_WRONG_FINAL_PC: &str = "negative/f1_wrong_final_pc/src/GkrWhirVerif
 
 pub fn f1_params() -> verifier_evm::encoding::FormatParams {
     verifier_evm::encoding::FormatParams {
-        digest_bytes: DIGEST_BYTES,
         setup_frontier_level: setup_frontier().0,
     }
 }
@@ -127,7 +126,7 @@ pub fn f1_field_metadata(
         "gkr_bytes": f1.gkr_bytes,
         "bytes": f1.bytes.len(),
         "whir_rounds": whir_rounds,
-        "digest_bytes": params.digest_bytes,
+        "digest_bytes": DIGEST_BYTES,
         "setup_frontier_level": params.setup_frontier_level,
         "fields": fields,
     })
