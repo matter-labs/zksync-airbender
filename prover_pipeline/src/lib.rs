@@ -1637,7 +1637,7 @@ impl ProgramProver {
         ))
     }
 
-    /// Continue `artifact` to the configured target.
+    /// Continue `artifact` with the modes and setups prepared by [`Self::for_continuation`].
     pub fn continue_artifact(&mut self, artifact: ProofArtifact) -> Result<ProofArtifact, String> {
         self.continue_artifact_observed(artifact, &mut NoopObserver)
     }
@@ -1649,27 +1649,15 @@ impl ProgramProver {
     ) -> Result<ProofArtifact, String> {
         artifact.validate_expected_mode(self.config.soundness_mode)?;
         validate_continuation_request(&artifact, self.config.target)?;
+        let blake = PipelineBlakeModes::continuing(&artifact, || self.fsv.modes())?;
+        assert_eq!(
+            blake,
+            self.fsv.modes(),
+            "continuation modes differ from the prepared session; use ProgramProver::for_continuation"
+        );
         let loaded = load_and_validate_program(&self.source, &artifact)?;
         // A serialized checkpoint is untrusted even when its mode label matches.
         verify_accepted_artifact(&artifact, &loaded, self.config.soundness_mode, None)?;
-        let blake = PipelineBlakeModes::continuing(&artifact, || self.fsv.modes())?;
-        if blake != self.fsv.modes() {
-            self.fsv = FsvPrograms::load(self.config.target, self.config.soundness_mode, blake);
-            self.backend = match self.config.backend {
-                ProverBackend::Cpu => BackendImpl::Cpu(PipelineBackend::new(&self.config)),
-                ProverBackend::Gpu => {
-                    #[cfg(feature = "gpu")]
-                    {
-                        BackendImpl::Gpu(PipelineBackend::new(&self.config))
-                    }
-                    #[cfg(not(feature = "gpu"))]
-                    {
-                        unreachable!("GPU backend was not compiled")
-                    }
-                }
-            };
-            self.register_pipeline_binaries(Some(artifact.target), &loaded);
-        }
 
         let batch_id = artifact.batch_id;
         // A single chain entry (just the base end-params) means no recursion
