@@ -26,21 +26,4 @@ theorem write_sources {p : Nat} [Fact p.Prime]
   exact row_write_sources row (Verification.holds_of_sublist (accepted.constraints row member)
     (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups))
 
-/-- Every operand, write and terminal register has bounded limbs, derived
-    from the public Sail seed and latest-write/read consistency. -/
-theorem native_value_bounds {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
-    {trace : NativeTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell}
-    (image : initialImage before cells = some trace.initialMemory) :
-    (∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧
-      (∀ row ∈ trace.rows, ∀ port ∈ row.ports,
-        (writeToken row.columns row.assignment port).word.Bounded) ∧
-      (∀ token ∈ trace.terminalMemory, token.word.Bounded) := by
-  have sources := write_sources accepted
-  have seed := Trace.Proofs.image_bounds image
-  exact ⟨Trace.Proofs.read_bounds_of_sources hp inverse accepted clocks seed sources,
-    Trace.Proofs.write_bounds_of_sources hp inverse accepted clocks seed sources,
-    Trace.Proofs.terminal_bounds_of_sources hp inverse accepted clocks seed sources⟩
-
 end Airbender.MulDiv.Proofs

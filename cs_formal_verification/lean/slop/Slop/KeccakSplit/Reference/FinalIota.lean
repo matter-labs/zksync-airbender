@@ -1,4 +1,3 @@
-import Slop.KeccakSplit.Reference.Layout
 import Slop.KeccakSplit.Reference.SlotReduction
 import Slop.Keccak.DeferredIota
 import Slop.Keccak.LayoutReduction

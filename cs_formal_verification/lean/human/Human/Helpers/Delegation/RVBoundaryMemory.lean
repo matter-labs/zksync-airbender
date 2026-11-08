@@ -1,4 +1,3 @@
-import Human.Helpers.Delegation.BoundaryMemory
 import Human.Helpers.Delegation.RVMemory
 
 /-! RV siblings of `BoundaryMemory.lean`: a native cut's image read from an `RV.State` (`Cell.readRV`). A RAM cell is

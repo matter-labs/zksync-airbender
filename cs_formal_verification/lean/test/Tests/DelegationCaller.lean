@@ -1,33 +1,24 @@
-import Slop.Final.Circuits.AddSub.CallerTheorems
-import Slop.Final.Trace.Delegation.CallerTheorems
-import Slop.Sail.WordMemoryState
 import Slop.Delegation.Requests
-import Slop.BabyBear
 import Slop.Trace.Timestamps
-import Slop.Sail.ResetState
+import Slop.Bigint.Claims
+import Slop.Blake2G.Claims
+import Slop.Blake2Round.Claims
+import Slop.Delegation.MixedClocks
+import Slop.Delegation.RequestWindows
+import Slop.Delegation.SharedOperations
+import Slop.Delegation.WorkerProjection
+import Slop.JumpBranchSlt.Branch
+import Slop.JumpBranchSlt.Jump
+import Slop.Keccak.Claims
+import Slop.MulDiv.Values
+import Slop.ShiftBinop.Ports
+import Slop.SubwordMemory.Values
+import Slop.Trace.Family.Values
 
 namespace Tests.DelegationCaller
-open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail
+open Airbender Delegation Trace Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 32768
-
-private def encoding (family : Delegation.Family) : BitVec 32 :=
-  BitVec.ofNat 32 (Requests.csr family * 2 ^ 20 + 0x1073)
-
-private noncomputable def instruction (family : Delegation.Family) : SailRV32.instruction :=
-  .CSRReg (BitVec.ofNat 12 (Requests.csr family), .Regidx 0, .Regidx 0, .CSRRW)
-
-noncomputable def entry (family : Delegation.Family) : Caller.ProgramEntry :=
-  ⟨0, encoding family, instruction family, ⟨family, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩⟩
-
-/-- The original Sail decoder on the Airbender configuration (kernel-checked). -/
-theorem original_decoder (family : Delegation.Family) :
-    decodeOnReset (encoding family) = some (instruction family) := by
-  cases family <;> dsimp only [encoding, instruction, Requests.csr] <;> decode_on_reset
-
-theorem metadata (family : Delegation.Family) :
-    Caller.decoderFields (instruction family) = some (entry family).data := by
-  cases family <;> rfl
 
 def assignment (family : Delegation.Family) (column : Nat) : ZMod babyBearModulus :=
   if column = 2 ∨ column = 19 then 4
@@ -58,86 +49,9 @@ theorem satisfies (family : Delegation.Family) :
       all_goals apply Trace.Proofs.range_contains
       all_goals cases family <;> decide +kernel
 
-theorem query_bound (family : Delegation.Family) :
-    Caller.nativeQuery (assignment family) = Caller.query (entry family) := by
-  cases family <;> decide +kernel
-
 theorem request_address (family : Delegation.Family) :
     (Requests.caller (assignment family)).csr = Requests.csr family ∧
       31 < (Requests.caller (assignment family)).csr := by
   cases family <;> decide +kernel
-
-theorem unsupported_rejected :
-    Caller.decoderFields (.CSRReg (0x7C7, .Regidx 1, .Regidx 0, .CSRRW)) = none ∧
-    Caller.decoderFields (.CSRReg (0x7C7, .Regidx 0, .Regidx 1, .CSRRW)) = none ∧
-    Caller.decoderFields (.CSRReg (0x7C0, .Regidx 0, .Regidx 0, .CSRRW)) = none := by
-  decide +kernel
-
-noncomputable def before (family : Delegation.Family) : State :=
-  wordWriteState resetMachine 0 (encoding family)
-
-theorem airbender_before (family : Delegation.Family) : Configured (before family) := by
-  configured_fixture [before, wordWriteState]
-
--- One fetched entry, stated over arbitrary words and decoder projections: the kernel checks the
--- image construction once, not on the concrete Sail state. Also used by UnifiedDelegation.
-theorem single_entry {Kind : Type} {projection : SailRV32.instruction → Option (DecoderData Kind)}
-    {state : State} {pc bits : BitVec 32} {instruction : SailRV32.instruction} {data : DecoderData Kind}
-    (aligned : pc.toNat < ROM.limit ∧ pc.toNat % 4 = 0)
-    (read : (Cell.ram pc).read state = .ok bits state)
-    (decoded : decodeOnReset bits = some instruction)
-    (fields : projection instruction = some data) :
-    programImageWith projection state [pc] = some [⟨pc, bits, instruction, data⟩] := by
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, aligned, read, decoded, fields,
-    bind, Option.bind, pure]
-  rfl
-
-theorem public_image (family : Delegation.Family) :
-    Caller.programImage (before family) [0] = some [entry family] :=
-  single_entry (by decide) (written_word_read resetMachine 0 (encoding family))
-    (original_decoder family) (metadata family)
-
-theorem public_caller (family : Delegation.Family) :
-    Caller.Binding (assignment family) (before family) [entry family] := by
-  apply Caller.soundness (by decide)
-  · exact Verification.holds_of_sublist (satisfies family)
-      (List.sublist_append_left _ AddSub.importedConstraintsTimestampLookups)
-  · exact airbender_before family
-  · exact public_image family
-  · change ∃ i : Fin 1, Caller.nativeQuery (assignment family) =
-      Caller.query ([entry family].get i)
-    exact ⟨0, query_bound family⟩
-
-theorem truncated_csr_rejected (family : Delegation.Family) :
-    ¬ (Caller.decoderTable [entry family]).Contains #[]
-      (Caller.nativeQuery (fun column => if column = 6 then 0 else assignment family column)) := by
-  intro member
-  change ∃ i : Fin 1, Caller.nativeQuery
-    (fun column => if column = 6 then 0 else assignment family column) =
-    Caller.query ([entry family].get i) at member
-  obtain ⟨i, equal⟩ := member
-  have index : i = 0 := Subsingleton.elim _ _
-  subst i
-  have address := Caller.Proofs.query_csr (by decide) equal
-  change 0 = Requests.csr family at address
-  cases family <;> norm_num [Requests.csr] at address
-
-theorem pc_effects (family : Delegation.Family) :
-    Caller.PCBinding (assignment family) (before family) [entry family] := by
-  apply Caller.pc_soundness (by decide) (by decide)
-  · exact Verification.holds_of_sublist (satisfies family)
-      (List.sublist_append_left _ AddSub.importedConstraintsTimestampLookups)
-  · exact airbender_before family
-  · exact public_image family
-  · change ∃ i : Fin 1, Caller.nativeQuery (assignment family) = Caller.query ([entry family].get i)
-    exact ⟨0, query_bound family⟩
-
-theorem real_register_effects (family : Delegation.Family) (state : State) :
-    (Caller.sourceToken (assignment family)).address = (Cell.register 0).addressCode ∧
-    (Caller.destinationToken (assignment family)).address = (Cell.register 0).addressCode ∧
-    (Cell.register 0).read state = .ok 0 state ∧
-    run ((Cell.register 0).write (Caller.destination (assignment family)).toBitVec) state = .ok () state :=
-  ⟨(public_caller family).sourceAddress, (public_caller family).destinationAddress,
-    (public_caller family).registerEffects state⟩
 
 end Tests.DelegationCaller

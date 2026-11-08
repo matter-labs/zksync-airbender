@@ -8,15 +8,15 @@ kept separate.
 
 ## Checked results
 
-The [local soundness claims](../../../../slop/Slop/Final/Circuits/WordMemory/Theorems.lean) prove effective addresses, actual
+The [local soundness claims](../../../../slop/Slop/Final/Circuits/WordMemory/RVTheorems.lean) prove effective addresses, actual
 LW/SW register/memory effects and PC retirement under the ordinary-domain and
 flat-memory configuration. Reads and address/word bounds follow from accepted
 initialized history. Public-ROM interpretation is connected explicitly; the
 discarded-LW profile remains distinct from unchanged Sail.
 
-1. Read [Theorems](../../../../slop/Slop/Final/Circuits/WordMemory/Theorems.lean) for the exact local claim.
-2. Read [Model](Model.lean) for satisfaction, named observable mappings and interface assumptions.
-3. Follow [the selected reference](Model.lean) and [Artifact](Artifact.lean) for semantics and imported variable placement.
+1. Read [Theorems](../../../../slop/Slop/Final/Circuits/WordMemory/RVTheorems.lean) for the exact local claim.
+2. Read Model for satisfaction, named observable mappings and interface assumptions.
+3. Follow the selected reference and [Artifact](Artifact.lean) for semantics and imported variable placement.
 
 Retain the public tracked domain, ordinary addresses, flat-memory configuration and modeled ROM binding. Native zero ROM shadows and public byte reads are distinct.
 
@@ -28,5 +28,5 @@ the selected theorem; artifact/import and modeled-table fidelity remain explicit
 
 LW-to-x0 routes to the named Airbender PC-only-NOP profile. Unchanged Sail excludes that deviation; the checked sparse-memory fixture demonstrates the difference.
 
-[Family execution](../../../../slop/Slop/Final/Trace/Families/AddSub/Theorems.lean) is a separate whole-trace claim.
-[Pooled execution](../../../../slop/Slop/Final/Trace/Soundness.lean) composes the six ordinary families.
+[Family execution](../../../../slop/Slop/Final/Trace/Families/AddSub/RVTheorems.lean) is a separate whole-trace claim.
+[Pooled execution](../../../../slop/Slop/Final/Trace/RVSoundness.lean) composes the six ordinary families.

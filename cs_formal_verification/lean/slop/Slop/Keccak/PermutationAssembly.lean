@@ -1,5 +1,9 @@
-import Slop.Keccak.PermutationPhases
 import Slop.Keccak.RoundTrace
+import Slop.Keccak.Phases.Chi
+import Slop.Keccak.Phases.Iota
+import Slop.Keccak.Phases.Mix
+import Slop.Keccak.Phases.Rho
+import Slop.Keccak.Phases.Theta
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256

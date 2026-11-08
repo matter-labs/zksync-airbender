@@ -7,14 +7,6 @@ open Arithmetic
 /-- Airbender's ROM/RAM split, used by the native word-memory lookup. -/
 def limit : Nat := 4194304
 
-/-- Fixed subword-ROM contents read directly from the public Sail byte image.
-    The zero fallback only pads unreadable words; accessed cells must occur in
-    the successfully constructed public initial image. -/
-def words (before : Reference.RiscV.Sail.State) (index : Nat) : BitVec 32 :=
-  match (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 (4 * index)).run before with
-  | .ok value _ => value
-  | .error _ _ => 0
-
 /-- RV sibling of `words`: the word at byte address `4 * index` of the RV ROM image, read little-endian. Zero
     when the word lies past the RAM address range (`RV.RAM_END`), the same fallback as `words`. -/
 def wordsRV (before : RV.State) (index : Nat) : BitVec 32 :=
@@ -22,16 +14,6 @@ def wordsRV (before : RV.State) (index : Nat) : BitVec 32 :=
 
 def row {p : Nat} (address : BitVec 32) (word : Word) : Vector (ZMod p) 9 :=
   #v[address.toNat, word.lo, word.hi, 0, 0, 0, 0, 0, 34]
-
-/-- Uniform ROM binding needed by the word-memory proof. Every active table
-    query agrees with an actual read of the supplied Sail state. -/
-def Reads {p : Nat} [Fact p.Prime] (before : Reference.RiscV.Sail.State)
-    (rom : Table (ZMod p) (fields 9)) : Prop :=
-  ∀ (address : Word) (lo hi : ZMod p), address.Bounded → address.hi < 64 →
-    rom.Contains #[] #v[(address.lo : ZMod p) + 65536 * address.hi,
-      lo, hi, 0, 0, 0, 0, 0, 34] →
-    (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 address.toBitVec.toNat).run before =
-      .ok (Word.mk lo.val hi.val).toBitVec before
 
 /-- Modeled word-ROM rows: a zero disabled-query row, then one row for each
     public ROM cell paired with its seed value. Image binding must establish

@@ -1,6 +1,9 @@
-import Slop.Trace.NonDeterminism
 import Slop.Trace.ExternalStream
 import Slop.Trace.Family.History
+import Human.Helpers.Decoder.ExternalInput
+import Mathlib.Logic.Relation
+import Slop.AddSub.Selectors
+import Slop.WordMemory
 
 namespace Airbender.Trace.NonDeterminism.Proofs
 open Trace.Proofs

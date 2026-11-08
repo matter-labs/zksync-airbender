@@ -8,7 +8,7 @@ import Slop.Trace.MemoryPaths
    and orders the rows. -/
 
 namespace Airbender.Keccak.Split.Native.Proofs
-open Trace Trace.Proofs Reference.RiscV.Sail Arithmetic
+open Trace Trace.Proofs Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 
@@ -71,31 +71,5 @@ theorem advance_iterate (n : Nat) (bound : n < 361) :
     rw [Function.iterate_succ_apply', ih (by omega)]
     simp only [advance]
     rw [control_next ⟨n, by omega⟩]
-
-/-- Matching gives the x10 cell's complete path from its public seed. -/
-theorem control_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (control : Split.Proofs.ControlFacts p) {data : MemoryData p} (accepted : MemoryAccepted data)
-    (active : ∀ row ∈ data.rows, row.assignment row.columns.execute = 1)
-    {initial : State} {cells : List Cell} (inputs : BoundaryInputs data initial cells)
-    {source : MemoryToken p} (sourceMember : source ∈ data.initial)
-    (sourceCode : source.address = (Cell.register 10).addressCode) :
-    ∃ path : List (MemoryToken p), path.head? = some source ∧
-      (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·) ∧
-      (path.zip path.tail).Perm (data.rows.map controlEdge) := by
-  have facts := transfer_facts hp control accepted active inputs
-  have unique : (data.initial.map MemoryToken.address).Nodup :=
-    inputs.toNativeInputs.toBoundaryInputs.addresses.nodup_iff.mpr inputs.toNativeInputs.toBoundaryInputs.distinct
-  obtain ⟨_, _, _, path, head, _, _, permutation⟩ :=
-    Trace.Proofs.keyed_paths_finite MemoryToken.address (fun token => (timeOfPair token.time).value)
-      facts.matching facts.addresses unique facts.order source sourceMember
-  refine ⟨path, head, ?_, ?_⟩
-  · apply Trace.Proofs.rank_ordered (fun token => (timeOfPair token.time).value) path
-    intro edge edgeMember
-    exact facts.order edge (List.mem_of_mem_filter (permutation.mem_iff.mp edgeMember))
-  · rw [sourceCode] at permutation
-    have edges := @control_edges p data
-    change (path.zip path.tail).Perm (data.steps.filter fun edge => edge.1.address = _) at permutation
-    rw [edges] at permutation
-    exact permutation
 
 end Airbender.Keccak.Split.Native.Proofs

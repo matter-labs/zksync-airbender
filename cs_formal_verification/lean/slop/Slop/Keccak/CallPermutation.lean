@@ -1,9 +1,8 @@
-import Slop.Keccak.CallPhysical
 import Slop.Keccak.PermutationAssembly
 import Slop.Delegation.IntervalFold
 
 namespace Airbender.Keccak.Proofs
-open Trace Trace.Proofs Delegation.Proofs Reference.RiscV.Sail Specs.Keccak256
+open Trace Trace.Proofs Delegation.Proofs Specs.Keccak256
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
@@ -74,23 +73,5 @@ theorem permutation_of_chain (states : Fin 650 → LaneState)
   rw [full, deferred_iota_permutation] at lastRound
   rw [final_layout] at lastRound
   exact lastRound
-
-theorem call_permutation [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
-    {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells)
-    (tables : data.setup = Delegation.modeledSetup Controller.rows)
-    (aligned : ∀ cell ∈ cells, cell.Aligned) :
-    ∃ (pointer : BitVec 32) (after : State),
-      (Cell.register 11).read initial = .ok pointer initial ∧
-      Delegation.TraceMapping data initial after cells ∧
-      (∀ cell ∈ cells, ∃ value, cell.read after = .ok value after) ∧
-      logicalLanes 0 (physicalLanes after pointer) =
-        keccakPermutation (logicalLanes 0 (physicalLanes initial pointer)) := by
-  obtain ⟨pointer, after, states, pointerRead, first, last, trace, readable, transitions⟩ :=
-    call_physical_steps hp inverse accepted inputs tables aligned
-  have result := permutation_of_chain states transitions
-  rw [first, last] at result
-  exact ⟨pointer, after, pointerRead, trace, readable, result⟩
 
 end Airbender.Keccak.Proofs

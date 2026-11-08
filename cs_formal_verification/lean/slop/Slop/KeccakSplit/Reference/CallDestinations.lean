@@ -1,8 +1,11 @@
-import Slop.Trace.SailCells
 import Slop.KeccakSplit.Reference.CallReference
+import Mathlib.Tactic.FinCases
+import Slop.Arithmetic.Bytes
+import Slop.KernelRfl
+import Slop.Trace.InitialImage
 
 namespace Airbender.Keccak.Split.Call.Proofs
-open Trace Trace.Proofs Reference.RiscV.Sail
+open Trace Trace.Proofs
 set_option warningAsError true
 set_option maxRecDepth 65536
 

@@ -8,7 +8,7 @@ statement in the worker Trace directory.
 
 ## Checked results
 
-[`Native.operation_execution`](../../../../slop/Slop/Final/Trace/Workers/Blake2Round/Theorems.lean)
+[`Native.rv_operation_execution`](../../../../slop/Slop/Final/Trace/Workers/Blake2Round/RVTheorems.lean)
 proves the selected row's preparation, eight-G mixing, chaining/control and
 address effects on actual port values. Its standalone operation inputs retain
 the exclusive mask ABI. Complete compression and native-window claims bind actual

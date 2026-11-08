@@ -1,9 +1,10 @@
-import Slop.Trace.ZeroRegister
+import Slop.Trace.Program
+import Slop.Trace.Values
+import Slop.Trace.ZeroValues
 
 namespace Airbender.Trace.Proofs
 
 variable {Kind : Type} [CircuitLayout Kind]
-open Reference.RiscV.Sail
 
 abbrev rowClock (row : Row p Kind) : Nat := row.clock
 
@@ -137,84 +138,5 @@ theorem ordered_row_state_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have mapped := permutation.map (fun row => (row.start, row.finish))
   exact ⟨path, ⟨head, last, edges, unique⟩,
     List.Perm.eq_of_pairwise' reversed rowEdges ((List.reverse_perm _).trans (edges.trans mapped.symm))⟩
-
-/-- Shared realization and instruction grouping for any certified three-port
-    family. The local x0 law is discharged by the caller's artifact/decoder proof. -/
-theorem native_row_history [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) [ClockLaws Kind p]
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
-    (accepted : Accepted trace) (boundary : ClockBoundary trace)
-    {before : State} {cells : List Cell}
-    (image : initialImage before cells = some trace.initialMemory)
-    (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (zero : ∀ event ∈ trace.nativeEvents, event.2.1 = (Cell.register 0).addressCode →
-      memoryWord event.2.2.2 = 0) :
-    ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row p Kind)) (after : State),
-      MemoryHistory trace history ∧ rows.Perm trace.rows ∧
-      rows.Pairwise (fun a b => rowClock b < rowClock a) ∧
-      SailHistory cells (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse)
-        before after ∧ SailStateMatches cells history after := by
-  obtain ⟨history, events, seed, after, consistent, combined, permutation, execution, final⟩ :=
-    native_sail_history hp inverse accepted boundary image domain aligned zero
-  obtain ⟨rows, rowPermutation, rowSorted, sorted, eventPermutation⟩ :=
-    native_row_order hp inverse accepted boundary
-  have eventsSorted : MemoryAccessList.isTimestampSorted events := by
-    have full : MemoryAccessList.isTimestampSorted (List.append (α := MemoryAccess) events seed.val) := by
-      simpa only [combined] using history.property
-    exact (List.pairwise_append.mp full).1
-  have same := List.Perm.eq_of_pairwise' sorted eventsSorted (eventPermutation.trans permutation.symm)
-  exact ⟨history, rows, after, consistent, rowPermutation, rowSorted, same.symm ▸ execution, final⟩
-
-/-- Split a native Sail history at an instruction boundary. Lists are stored
-    backwards: the suffix executes before the prefix. -/
-theorem sail_history_append {cells : List Cell} {new old : List MemoryAccess}
-    {before after : State} :
-    SailHistory cells (new ++ old) before after ↔
-      ∃ middle, SailHistory cells old before middle ∧ SailHistory cells new middle after := by
-  constructor
-  · intro history
-    induction new generalizing after with
-    | nil => exact ⟨after, history, .nil after⟩
-    | cons event rest ih =>
-      cases history with
-      | cons past cell member address read written =>
-        obtain ⟨middle, oldHistory, newHistory⟩ := ih past
-        exact ⟨middle, oldHistory, .cons newHistory cell member address read written⟩
-  · rintro ⟨middle, oldHistory, newHistory⟩
-    induction newHistory with
-    | nil => exact oldHistory
-    | cons past cell member address read written ih =>
-      exact .cons (ih oldHistory) cell member address read written
-
-/-- The first two native ports refresh clocks without changing Sail state.
-    All three reads therefore come from the same instruction pre-state, even
-    when their addresses alias. The third port supplies the actual update. -/
-theorem sail_history_row_reads {cells : List Cell} {a b c : MemoryAccess}
-    {before after : State} (history : SailHistory cells [c, b, a] before after)
-    (firstReadonly : a.2.2.1 = a.2.2.2) (secondReadonly : b.2.2.1 = b.2.2.2) :
-    ∃ left right destination : Cell,
-      left ∈ cells ∧ right ∈ cells ∧ destination ∈ cells ∧
-      left.addressCode = a.2.1 ∧ right.addressCode = b.2.1 ∧ destination.addressCode = c.2.1 ∧
-      left.read before = .ok (memoryWord a.2.2.1) before ∧
-      right.read before = .ok (memoryWord b.2.2.1) before ∧
-      destination.read before = .ok (memoryWord c.2.2.1) before ∧
-      Reference.Sail.run (destination.write (memoryWord c.2.2.2)) before = .ok () after := by
-  cases history with
-  | cons past destination dm da dr dw =>
-    cases past with
-    | cons past right rm ra rr rw =>
-      cases past with
-      | cons empty left lm la lr lw =>
-        cases empty with
-        | nil =>
-          have first := cell_write_same lr
-          rw [firstReadonly] at first
-          have same := (EStateM.Result.ok.inj (first.symm.trans lw)).2
-          subst_vars
-          have second := cell_write_same rr
-          rw [secondReadonly] at second
-          have same := (EStateM.Result.ok.inj (second.symm.trans rw)).2
-          subst_vars
-          exact ⟨left, right, destination, lm, rm, dm, la, ra, da, lr, rr, dr, dw⟩
 
 end Airbender.Trace.Proofs

@@ -1,7 +1,9 @@
 import Human.Helpers.Tables.Subword
 import Slop.Arithmetic.Word
-import Slop.Sail.Memory
 import Slop.ISA.RV.MemSubword
+import Human.Circuits.AddSub.RowInput
+import Human.Helpers.Core.CircuitOutput
+import Mathlib.Tactic.IntervalCases
 
 namespace Airbender.Verification
 open Airbender.Arithmetic
@@ -183,47 +185,6 @@ theorem subword_store_packed (clear highByte : Bool) (half : Nat) (bound : half 
   simp only [subwordStoreContribution, low, bit, byte]
 
 -- Encoding lemma: the reference operation here is Sail's own extend_value.
-theorem extend_subword_limbs (byte signed : Bool) (value : Nat)
-    (bound : value < (if byte then 256 else 65536)) :
-    let negative := signed = true ∧ (if byte then 128 else 32768) ≤ value
-    let result := Word.mk (value + if byte && negative then 65280 else 0)
-      (if negative then 65535 else 0)
-    result.Bounded ∧ result.toBitVec =
-      if byte then SailRV32.Functions.extend_value (!signed) (BitVec.ofNat 8 value)
-      else SailRV32.Functions.extend_value (!signed) (BitVec.ofNat 16 value) := by
-  dsimp only
-  cases byte <;> cases signed
-  all_goals
-    simp at bound ⊢
-    constructor
-    · simp [Word.Bounded, limbBase]
-      first | omega | (split_ifs <;> omega)
-    · apply BitVec.eq_of_toNat_eq
-      simp only [Word.toBitVec, Word.value, limbBase, SailRV32.Functions.extend_value,
-        SailRV32.Functions.zero_extend, SailRV32.Functions.sign_extend, Sail.BitVec.zeroExtend,
-        Sail.BitVec.signExtend, Bool.false_eq_true, ite_false, ite_true,
-        BitVec.zeroExtend, BitVec.toNat_signExtend, BitVec.msb_eq_decide,
-        BitVec.toNat_setWidth, BitVec.toNat_ofNat]
-      norm_num only [Nat.reducePow, Nat.reduceSub, Nat.reduceMul, Nat.reduceAdd, Bool.false_and,
-        Bool.true_and, Bool.and_true, Bool.and_false, Bool.decide_coe]
-      have canonical : value % 65536 = value := Nat.mod_eq_of_lt (by omega)
-      try rw [canonical]
-      first | omega | (split_ifs <;> norm_num at * <;> omega)
-
-/-- Decode the table's sign-extension packing using the actual Sail function. -/
-theorem subword_load_extension (byte : Bool) (key : Nat) :
-    let value := if byte then (key % 65536) / (if key / 131072 % 2 = 1 then 256 else 1) % 256
-      else key % 65536
-    let data := subwordLoadLimbs byte key
-    (Word.mk data.1 data.2).Bounded ∧ (Word.mk data.1 data.2).toBitVec =
-      if byte then SailRV32.Functions.extend_value (!(decide (key / 65536 % 2 = 1))) (BitVec.ofNat 8 value)
-      else SailRV32.Functions.extend_value (!(decide (key / 65536 % 2 = 1))) (BitVec.ofNat 16 value) := by
-  let value := if byte then (key % 65536) / (if key / 131072 % 2 = 1 then 256 else 1) % 256
-    else key % 65536
-  have bound : value < (if byte then 256 else 65536) := by
-    cases byte <;> dsimp [value] <;> exact Nat.mod_lt _ (by decide)
-  have result := extend_subword_limbs byte (decide (key / 65536 % 2 = 1)) value bound
-  simpa [subwordLoadLimbs, value] using result
 
 /-- The table's extended-limb encoding is `RV.extendLoad` (twin of `extend_subword_limbs`). -/
 theorem rv_extend_subword_limbs (byte signed : Bool) (value : Nat)
@@ -284,26 +245,6 @@ theorem subword_ram_bounds {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     omega
   simp only [lo, hi, ZMod.val_natCast, Nat.mod_eq_of_lt lowBound, Nat.mod_eq_of_lt highBound]
   exact bounded
-
-theorem subword_packed_extension (byte signed highByte : Bool) (half : Nat) (bound : half < 65536) :
-    let key := half + 65536 * (if signed then 1 else 0) + 131072 * (if highByte then 1 else 0)
-    let data := subwordLoadLimbs byte key
-    (Word.mk data.1 data.2).Bounded ∧ (Word.mk data.1 data.2).toBitVec =
-      if byte then SailRV32.Functions.extend_value (!signed)
-        (BitVec.ofNat 8 (half / (if highByte then 256 else 1)))
-      else SailRV32.Functions.extend_value (!signed) (BitVec.ofNat 16 half) := by
-  dsimp only
-  let key := half + 65536 * (if signed then 1 else 0) + 131072 * (if highByte then 1 else 0)
-  have low : key % 65536 = half := by cases signed <;> cases highByte <;> dsimp [key] <;> omega
-  have sign : decide (key / 65536 % 2 = 1) = signed := by
-    cases signed <;> cases highByte <;> simp [key] <;> omega
-  have high : (key / 131072 % 2 = 1) ↔ highByte = true := by
-    cases signed <;> cases highByte <;> simp [key] <;> omega
-  have ext := subword_load_extension byte key
-  have canonical (n : Nat) : BitVec.ofNat 8 (n % 256) = BitVec.ofNat 8 n := by
-    apply BitVec.eq_of_toNat_eq
-    simp
-  cases byte <;> simpa only [low, sign, high, Bool.false_eq_true, ite_false, ite_true, canonical] using ext
 
 theorem subword_extract (byte highHalf highByte : Bool) (word : Word) (bound : word.Bounded)
     (aligned : byte = false → highByte = false) :

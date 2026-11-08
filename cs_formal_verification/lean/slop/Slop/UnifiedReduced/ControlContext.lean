@@ -1,33 +1,16 @@
 import Human.Circuits.UnifiedReduced.Control
-import Slop.UnifiedReduced.RegisterReads
-import Slop.UnifiedReduced.ControlMembership
+import Human.Helpers.Decoder.Instruction
+import Mathlib.Logic.Relation
+import Slop.Trace.RowContext
+import Slop.UnifiedReduced.Values
+import Slop.UnifiedReduced.ZeroRegister
+import Slop.UnifiedReduced.ControlProjection
 
 namespace Airbender.UnifiedReduced.Control.Proofs
-open Arithmetic Reference.RiscV Reference.RiscV.Sail Trace Trace.Proofs
+open Arithmetic Reference.RiscV Trace Trace.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
-
-theorem selectors [Fact p.Prime] (hp : 524288 < p)
-    {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {entry : ProgramEntry}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
-    (fields : decoderFields entry.instruction = some entry.data)
-    (query : decoderQuery w = entry.query) (branch : Bool)
-    (mask : entry.data.mask = if branch then 24576 else 4096) :
-    (w 21 = 0 ∧ w 22 = 0) ∧
-    (w 23 = if branch then 0 else 1) ∧ (w 24 = if branch then 1 else 0) ∧
-    (w 25 = if branch then 1 else 0) ∧
-    (w 26 = 0 ∧ w 27 = 0) ∧ w 28 = 0 ∧ w 29 = 0 ∧ w 81 = 0 := by
-  have flags := UnifiedReduced.Proofs.decoder_selectors hp holds
-    (UnifiedReduced.Proofs.decoder_field_bounds fields).2.1 query
-  have a := flags 10; have b := flags 11; have c := flags 12; have d := flags 13
-  have e := flags 14; have f := flags 15; have g := flags 16; have h := flags 17; have i := flags 18
-  cases branch <;> simp [mask, importedConstraintsDecoderColumns, Nat.testBit,
-    Nat.shiftRight_eq_div_pow] at a b c d e f g h i ⊢
-  all_goals refine ⟨⟨a, b⟩, c, d, e, ⟨f, g⟩, h, i, ?_⟩
-  all_goals have gate := Verification.assertion_of_holds holds ⟨39, by rw [constraint_count]; decide⟩
-  all_goals simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, h] using gate
 
 theorem right_sign_source [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))

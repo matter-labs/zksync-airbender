@@ -1,5 +1,4 @@
 import Slop.Blake2G.Soundness
-import Slop.BabyBear
 
 namespace Airbender.Blake2G
 

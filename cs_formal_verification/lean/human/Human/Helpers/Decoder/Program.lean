@@ -1,6 +1,5 @@
 import Human.Helpers.Memory.InitialImage
 import Human.Helpers.Memory.ROM
-import Human.Helpers.Core.Configuration
 
 -- The full Sail model compiles its decoder (`encdec_backwards`) as noncomputable (sail/regen.sh,
 -- `proof` variant): these definitions are specifications, read by proofs, never executed.
@@ -29,106 +28,11 @@ def arithmeticFields (rs1 rs2 rd : BitVec 5) (immediate : BitVec 32)
   if rd = 0 then ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩
   else ⟨.addSub, rs1, rs2, rd, Word.ofBitVec immediate, mask, 0⟩
 
-/-- Match actual Sail instruction constructors. Discarded arithmetic/LW writes
-    become native NOP rows; the original instruction is retained in ProgramEntry.
-    Proving its successful Sail execution remains a separate obligation. -/
-def decoderFields : SailRV32.instruction → Option DecoderData
-  | .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .ADD) =>
-    some (arithmeticFields rs1 rs2 rd 0 1)
-  | .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SUB) =>
-    some (arithmeticFields rs1 rs2 rd 0 2)
-  | .ITYPE (imm, .Regidx rs1, .Regidx rd, .ADDI) =>
-    some (arithmeticFields rs1 0 rd (SailRV32.Functions.sign_extend (m := 32) imm) 1)
-  | .UTYPE (imm, .Regidx rd, .LUI) =>
-    some (arithmeticFields 0 0 rd (imm ++ BitVec.ofNat 12 0) 1)
-  | .UTYPE (imm, .Regidx rd, .AUIPC) =>
-    some (arithmeticFields 0 0 rd (imm ++ BitVec.ofNat 12 0) 4)
-  | .LOAD (imm, .Regidx rs1, .Regidx rd, false, 4) =>
-    if rd = 0 then some (arithmeticFields 0 0 0 0 1)
-    else some ⟨.wordMemory, rs1, 0, rd,
-      Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0, 0⟩
-  | .STORE (imm, .Regidx rs2, .Regidx rs1, 4) =>
-    some ⟨.wordMemory, rs1, rs2, 0,
-      Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 1, 0⟩
-  | _ => none
-
-/-- One public instruction entry: `pc` locates its four `bits` bytes,
-    `instruction` is the original Sail decoder result, and `data` is its native
-    circuit metadata. Public-image construction binds these fields together;
-    the record alone supplies no correctness guarantee. -/
-structure ProgramEntry (Kind : Type := Family) where
-  pc : BitVec 32
-  bits : BitVec 32
-  instruction : SailRV32.instruction
-  data : DecoderData Kind
-
 /-- Change only the circuit registry tag; native metadata and Sail instruction
     are retained verbatim. -/
 def DecoderData.mapFamily {Kind Target : Type} (f : Kind → Target)
     (data : DecoderData Kind) : DecoderData Target :=
   ⟨f data.family, data.rs1, data.rs2, data.rd, data.immediate, data.mask, data.funct3⟩
-
-def ProgramEntry.mapFamily {Kind Target : Type} (f : Kind → Target)
-    (entry : ProgramEntry Kind) : ProgramEntry Target :=
-  ⟨entry.pc, entry.bits, entry.instruction, entry.data.mapFamily f⟩
-
-/-- Public bytes and the pinned upstream decoder construct the table input.
-    Unreadable, undecodable or unsupported instructions fail the construction.
-    Addresses and state are external inputs, independent of the witness. -/
-noncomputable abbrev programEntryWith {Kind : Type}
-    (projection : SailRV32.instruction → Option (DecoderData Kind))
-    (before : Reference.RiscV.Sail.State) (pc : BitVec 32) :
-    Option (ProgramEntry Kind) := do
-  -- Airbender fetches instructions from ROM at aligned addresses only (`RV.step`, `Human/ISA/State.lean`).
-  if ¬(pc.toNat < ROM.limit ∧ pc.toNat % 4 = 0) then none else
-  let bits ← match (Cell.ram pc).read before with
-    | .ok bits _ => some bits
-    | .error _ _ => none
-  -- The original Sail decoder on the Airbender configuration: a pure function of the word.
-  let instruction ← Reference.RiscV.Sail.decodeOnReset bits
-  let data ← projection instruction
-  pure ⟨pc, bits, instruction, data⟩
-
-/-- Construct entries for the public `addresses`. A missing byte, undecodable or unsupported
-    instruction makes it fail. -/
-noncomputable abbrev programImageWith {Kind : Type}
-    (projection : SailRV32.instruction → Option (DecoderData Kind))
-    (before : Reference.RiscV.Sail.State) (addresses : List (BitVec 32)) :
-    Option (List (ProgramEntry Kind)) := addresses.mapM (programEntryWith projection before)
-
-noncomputable abbrev programEntry := programEntryWith decoderFields
-noncomputable abbrev programImage := programImageWith decoderFields
-
-/-- Rust's nine-column decoder row; omitted funct3 is represented by zero.
-    This remains a modeled setup, not an extracted Rust table. -/
-def ProgramEntry.query {Kind : Type} {p : Nat} (entry : ProgramEntry Kind) : Vector (ZMod p) 9 :=
-  let pc := Word.ofBitVec entry.pc
-  #v[pc.lo, pc.hi, entry.data.rs1.toNat, entry.data.rs2.toNat, entry.data.rd.toNat,
-    entry.data.immediate.lo, entry.data.immediate.hi, entry.data.funct3, entry.data.mask]
-
-/-- A family table made from successful public-image construction. Padding is
-    unnecessary for logical membership of active rows. -/
-def decoderTable {Kind : Type} [DecidableEq Kind] {p : Nat} [Fact p.Prime]
-    (program : List (ProgramEntry Kind)) (family : Kind) : Table (ZMod p) (fields 9) := .fromStatic {
-  name := "Airbender.NativeDecoder"
-  length := (program.filter fun entry => entry.data.family == family).length
-  row i := ((program.filter fun entry => entry.data.family == family).get i).query
-  index query := (program.filter fun entry => entry.data.family == family).toArray.findIdx
-    (fun entry => entry.query == query)
-  Spec query := ∃ entry ∈ program, entry.data.family = family ∧ query = entry.query
-  contains_iff := by
-    intro query
-    constructor
-    · rintro ⟨i, rfl⟩
-      have member := List.get_mem (program.filter fun entry => entry.data.family == family) i
-      obtain ⟨member, selected⟩ := List.mem_filter.mp member
-      exact ⟨_, member, by simpa using selected, rfl⟩
-    · rintro ⟨entry, member, selected, equal⟩
-      have filtered : entry ∈ program.filter (fun entry => entry.data.family == family) := by
-        simp [member, selected]
-      obtain ⟨i, index⟩ := List.mem_iff_get.mp filtered
-      exact ⟨i, equal.trans (congrArg ProgramEntry.query index).symm⟩
-}
 
 /-- The active native decoder query, using only imported column descriptors.
     The missing funct3 column is zero; selector bits are packed as in Rust. -/
@@ -144,23 +48,5 @@ noncomputable abbrev Row.decoderQuery {Kind : Type} [CircuitLayout Kind] (row : 
 def Row.decoderImmediate {Kind : Type} [CircuitLayout Kind] (row : Row p Kind) : Word :=
   ⟨(row.assignment row.decoderColumns.immediate[0]).val,
     (row.assignment row.decoderColumns.immediate[1]).val⟩
-
-/-- Record how `entry` comes from the Sail state `before`: read its actual
-    bytes, run original Sail decoding, then project native metadata. Public-image
-    construction proves this evidence for its entries; execution uses it again
-    after showing that writes preserve the public code/configuration. -/
-structure ProgramEntry.SourceWith {Kind : Type} (before : Reference.RiscV.Sail.State)
-    (entry : ProgramEntry Kind) (projection : SailRV32.instruction → Option (DecoderData Kind)) : Prop where
-  /-- The entry's encoding is read from the actual public byte memory. -/
-  bytes : (Cell.ram entry.pc).read before = .ok entry.bits before
-  /-- The pinned Sail decoder returns this original instruction without changing the state. -/
-  decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards entry.bits) before =
-    .ok entry.instruction before
-  /-- The native metadata projection of that instruction matches the entry. -/
-  fields : projection entry.instruction = some entry.data
-
-noncomputable abbrev ProgramEntry.Source (before : Reference.RiscV.Sail.State) (entry : ProgramEntry)
-    (projection : SailRV32.instruction → Option DecoderData := decoderFields) :=
-  entry.SourceWith before projection
 
 end Airbender.Trace

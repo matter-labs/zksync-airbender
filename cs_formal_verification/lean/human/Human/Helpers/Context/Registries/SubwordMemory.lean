@@ -15,8 +15,4 @@ instance : Trace.CircuitLayout TraceKind where
 
 abbrev NativeTrace (p : Nat) [Fact p.Prime] := Trace.Data p TraceKind
 
-/-- Logical decoder membership is tied to the actual public program image. -/
-def Decoded {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (program : List ProgramEntry) : Prop :=
-  ∀ row ∈ trace.rows, (decoderTable program).Contains #[] (decoderQuery row.assignment)
-
 end Airbender.SubwordMemory

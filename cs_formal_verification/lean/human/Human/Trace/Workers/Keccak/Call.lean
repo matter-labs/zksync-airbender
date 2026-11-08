@@ -3,7 +3,7 @@ import Human.Circuits.Keccak.Addresses
 import Human.Circuits.Keccak.ControlUpdate
 
 namespace Airbender.Keccak
-open Trace Reference.RiscV.Sail Reference.Sail
+open Trace
 
 /-- Control expected by the pinned caller: 24 rounds of 27 micro-operations,
     followed by the final Iota. The initialized-history proof derives these
@@ -18,34 +18,11 @@ def scheduleControl (i : Fin 650) : ControlState :=
       by have bound : stage < 27 := Nat.mod_lt _ (by decide); split_ifs <;> omega⟩,
     ⟨i.val / 27, by have := i.isLt; omega⟩⟩
 
-/-- Public boundary for one uninterrupted Keccak request span. The pinned caller
-    performs 649 calls with x10 initially zero (`common_constants/src/delegation_types/keccak_special5.rs`).
-    Shared initialized matching proves every later control read. Connecting this
-    span to the calling instruction trace remains the request-binding task. -/
-structure CallInputs [Fact p.Prime] (data : Delegation.MemoryData p) (initial : State)
-    (cells : List Cell) : Prop where
-  memory : Delegation.MemoryInputs data initial cells
-  controlCell : Cell.register 10 ∈ cells
-  controlStart : (Cell.register 10).read initial = .ok 0 initial
-  /-- This span contains the active calls of this one request. -/
-  family : ∀ row ∈ data.rows, row.family = .keccak
-  active : ∀ row ∈ data.rows, row.assignment Variables.execute = 1
-  calls : data.rows.length = 649
-
 /-- The declared final x10 token is the caller's completion value 1544. This
     is a proved result, never an assumed response or per-row control sequence. -/
 def CallControl (data : Delegation.MemoryData p) : Prop :=
   ∃ sink ∈ data.terminal, sink.address = (Cell.register 10).addressCode ∧
     sink.word = Arithmetic.Word.ofBitVec 1544
-
-/-- Every call uses the public initial x11 pointer, and its terminal token
-    preserves that pointer. Shared matching supplies the actual initial read;
-    no pointer value, bound or per-row mapping is assumed. -/
-def CallPointer (data : Delegation.MemoryData p) (initial : State) : Prop :=
-  ∃ pointer, (Cell.register 11).read initial = .ok pointer initial ∧
-    (∀ row ∈ data.rows, statePointer row.assignment = Arithmetic.Word.ofBitVec pointer) ∧
-    ∃ sink ∈ data.terminal, sink.address = (Cell.register 11).addressCode ∧
-      sink.word = Arithmetic.Word.ofBitVec pointer
 
 /-- The native control port's write time. This observes the imported clock
     descriptor, including its offset; it does not assign a new clock. -/

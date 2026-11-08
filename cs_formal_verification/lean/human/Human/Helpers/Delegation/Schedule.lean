@@ -1,4 +1,6 @@
-import Human.Helpers.Delegation.RequestTrace
+import Human.Helpers.Context.Registries.Pooled
+import Human.Helpers.Delegation.Decoder
+import Human.Helpers.Delegation.WorkerContext
 
 namespace Airbender.Delegation.Caller
 open Trace
@@ -24,25 +26,5 @@ structure WorkerSlot (caller : Trace.Row p Kind) (worker : Delegation.Row p) : P
     (timeOfPair (worker.writeToken port).time).value = startClock caller + 3
   /-- The caller finishes at tick four, after the worker writes. -/
   finish : finishClock caller = startClock caller + 4
-
-/-- Exact scheduling of issued workers, without an assumed ordering or count.
-    Every live worker has one caller and occupies that caller's cycle. Native
-    zero-clock workers have no caller; this known gap is exposed, not excluded. -/
-structure WorkerSchedule [Fact p.Prime] (data : RequestTrace p) : Prop where
-  /-- Each actual caller has exactly one native worker in its cycle. -/
-  callers : ∀ caller ∈ data.callers, ∃! worker,
-    worker ∈ data.workers.rows ∧ Requests.fulfillment worker = Requests.caller caller.assignment ∧
-      WorkerSlot caller worker
-  /-- Every nonzero invocation belongs to exactly one actual caller. -/
-  workers : ∀ worker ∈ data.workers.rows, Requests.Live (Requests.fulfillment worker) →
-    ∃! caller, caller ∈ data.callers ∧
-      Requests.fulfillment worker = Requests.caller caller.assignment ∧ WorkerSlot caller worker
-  /-- An active worker is unissued exactly when its invocation clock is zero. -/
-  unissued : ∀ worker ∈ data.workers.rows,
-    (¬ ∃ caller ∈ data.callers, Requests.fulfillment worker = Requests.caller caller.assignment) ↔
-      (Requests.fulfillment worker).time = (0, 0)
-  /-- No other instruction starts strictly inside an issued caller's cycle. -/
-  separated : ∀ caller ∈ data.callers, ∀ row ∈ data.machine.rows,
-    ¬ (startClock caller < startClock row ∧ startClock row < finishClock caller)
 
 end Airbender.Delegation.Caller

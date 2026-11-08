@@ -1,4 +1,3 @@
-import Human.Trace.Workers.KeccakSplit.Theorems
 import Human.Trace.Workers.KeccakSplit.RVExecution
 import Human.Trace.Workers.KeccakSplit.RVCall
 import Human.Trace.Workers.Keccak.RVCall

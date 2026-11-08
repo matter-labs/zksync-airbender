@@ -8,15 +8,15 @@ caller control is valid under the full project ABI.
 
 ## Checked results
 
-[`Memory.addresses_soundness`](../../../../slop/Slop/Final/Circuits/Bigint/Theorems.lean) proves all sixteen native indirect
+[`Memory.rv_addresses_soundness`](../../../../slop/Slop/Final/Circuits/Bigint/RVTheorems.lean) proves all sixteen native indirect
 addresses from initialized accepted history, without per-row pointer bounds.
 The [shared pointer ABI](PointerABI.lean) derives canonical, aligned, distinct RAM
 bases under its public tracked-domain conditions.
-[`Native.operation_execution`](../../../../slop/Slop/Final/Trace/Workers/Bigint/Theorems.lean) connects
+[`Native.rv_operation_execution`](../../../../slop/Slop/Final/Trace/Workers/Bigint/RVTheorems.lean) connects
 the seven selected arithmetic/equality/copy effects to actual port observations.
 The issued invalid-control and ROM-shadow fixtures remain admitted at their stated scope.
 
-Start with [Theorems](../../../../slop/Slop/Final/Circuits/Bigint/Theorems.lean) for native indirect-address soundness and
+Start with [Theorems](../../../../slop/Slop/Final/Circuits/Bigint/RVTheorems.lean) for native indirect-address soundness and
 [Memory](Memory.lean) for its model and public-history assumptions.
 [Addresses](Addresses.lean) and [PointerABI](PointerABI.lean) name the sixteen
 indirect addresses and shared aligned/RAM pointer claim.

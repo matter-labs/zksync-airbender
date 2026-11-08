@@ -67,9 +67,4 @@ theorem runF_bind_error {α β : Type} (m : SailM α) (f : α → SailM β) (s s
   unfold runSail
   rfl
 
-@[simp] theorem runF_throw {α : Type} (e : Sail.Error exception) (s : SailState) :
-    runSail (throw e : SailM α) s = .error e s := by
-  unfold runSail
-  rfl
-
 end Slop

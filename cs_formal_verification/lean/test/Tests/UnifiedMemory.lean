@@ -1,9 +1,8 @@
-import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 import Slop.UnifiedReduced.Completeness.Memory
 
 namespace Tests.UnifiedMemory
-open Airbender Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
+open Airbender Arithmetic Trace Reference.RiscV
 set_option warningAsError true
 set_option maxRecDepth 16384
 
@@ -58,58 +57,6 @@ private theorem accepted (store : Bool) : Accepted (trace store) := by
         ((row store).writes ++ (row store).reads) := List.perm_append_comm
     simpa [trace, Row.reads, Row.writes, row] using exchange
 
-private def cells (store : Bool) : List Cell :=
-  [.register 1, if store then .register 2 else .ram 4194304,
-    if store then .ram 4194304 else .register 2]
-
-private noncomputable def before (store : Bool) : State :=
-  { resetMachine with
-    regs := resetMachine.regs |>.insert .PC 0 |>.insert .x1 4194304 |>.insert .x2 (if store then 0xbeef1234 else 0)
-    mem := (Std.ExtHashMap.emptyWithCapacity : Std.ExtHashMap Nat (BitVec 8))
-      |>.insert 4194304 (if store then 0 else 0x34) |>.insert 4194305 (if store then 0 else 0x12)
-      |>.insert 4194306 (if store then 0 else 0xef) |>.insert 4194307 (if store then 0 else 0xbe)
-      |>.insert 0 (if store then 0x23 else 0x03) |>.insert 1 (if store then 0xa0 else 0xa1)
-      |>.insert 2 (if store then 0x20 else 0) |>.insert 3 0 }
-theorem airbender_before (store : Bool) : Configured (before store) := by
-  configured_fixture [before]
-
-
-private def entry (store : Bool) : UnifiedReduced.ProgramEntry :=
-  ⟨0, if store then 0x0020a023 else 0x0000a103,
-    if store then .STORE (0, .Regidx 2, .Regidx 1, 4) else .LOAD (0, .Regidx 1, .Regidx 2, false, 4),
-    ⟨.machine, 1, if store then 2 else 0, if store then 0 else 2, ⟨0, 0⟩,
-      if store then 262144 else 131072, 0⟩⟩
-
-private theorem program_image (store : Bool) :
-    UnifiedReduced.programImage (before store) [0] = some [entry store] := by
-  have bytes : (Cell.ram 0).read (before store) = .ok (entry store).bits (before store) := by
-    cases store <;> simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
-      get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
-      before, entry, Std.ExtHashMap.getElem_insert]
-  have decoded : decodeOnReset (entry store).bits = some (entry store).instruction := by
-    cases store <;> decode_on_reset
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]
-  cases store <;> rfl
-
-private theorem public_image (store : Bool) :
-    initialImage (before store) (cells store) = some (trace store).initialMemory := by
-  have first : (Cell.register 1).read (before store) = .ok 4194304 (before store) := by
-    apply read_register
-    simp [before, Std.ExtDHashMap.get?_insert]
-  have second : (Cell.register 2).read (before store) =
-      .ok (if store then 0xbeef1234 else 0) (before store) := by
-    apply read_register
-    simp [before]
-  have bytes : (Cell.ram 4194304).read (before store) =
-      .ok (if store then 0 else 0xbeef1234) (before store) := by
-    cases store <;> simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
-      get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
-      before, Std.ExtHashMap.getElem_insert]
-  cases store
-  all_goals simp only [cells, Bool.false_eq_true, ite_false, ite_true, initialImage,
-    List.mapM_cons, List.mapM_nil, first, second, bytes]
-  all_goals decide
-
 private theorem boundary (store : Bool) : ClockBoundary (trace store) := by
   constructor
   · cases store <;> constructor <;> decide
@@ -120,60 +67,5 @@ private theorem boundary (store : Bool) : ClockBoundary (trace store) := by
         UnifiedReduced.importedConstraintsMemoryPorts] at member
     all_goals rcases member with rfl | rfl | rfl
     all_goals constructor <;> decide
-
-private theorem public_inputs (store : Bool) :
-    NativeInputs UnifiedReduced.decoderFields (trace store) (before store) (cells store) [entry store] := by
-  constructor
-  · cases store <;> decide
-  · intro cell member
-    cases store <;> simp only [cells, Bool.false_eq_true, ite_false, ite_true,
-      List.mem_cons, List.not_mem_nil, or_false] at member
-    all_goals rcases member with rfl | rfl | rfl
-    all_goals simp [Cell.Aligned]
-  · exact public_image store
-  · refine ⟨⟨4, 0⟩, ?_⟩
-    have pc : run (SailRV32.Functions.get_arch_pc ()) (before store) = .ok 0 (before store) := by
-      apply read_register
-      simp [before, Std.ExtDHashMap.get?_insert]
-    simp only [initialState, pc]
-    cases store <;> rfl
-  · exact ⟨[0], program_image store⟩
-  · exact boundary store
-  · exact airbender_before store
-
-private noncomputable def input (store : Bool) : Airbender.WordMemory.Input :=
-  ⟨store, ⟨0, 64⟩, ⟨0, 0⟩, ⟨0x1234, 0xbeef⟩, ⟨0, 0⟩,
-    .Regidx 1, .Regidx 2, if store then .Regidx 0 else .Regidx 2, 0, Trace.retiredState (before store) 0⟩
-private def output : Airbender.WordMemory.Output := ⟨⟨0, 64⟩, ⟨0x1234, 0xbeef⟩, ⟨4, 0⟩⟩
-
-private theorem decoded (store : Bool) : UnifiedReduced.Decoded (trace store) [entry store] := by
-  intro current member
-  simp only [trace, List.mem_singleton] at member
-  subst current
-  change ∃ i : Fin 1, _
-  exact ⟨0, by cases store <;> decide⟩
-
-theorem ram_soundness (store : Bool) : Airbender.WordMemory.spec (input store) output := by
-  apply UnifiedReduced.WordMemory.soundness (by decide) (by decide) (trace store) (before store)
-    (cells store) [entry store] (input store) output (assignment store)
-  refine ⟨?_, ⟨accepted store, decoded store, by simp [trace, row]⟩, ?_⟩
-  · constructor
-    · exact public_inputs store
-    · exact airbender_before store
-    · intro address member
-      cases store <;> simp [cells] at member
-      all_goals subst address
-      all_goals unfold OrdinaryWordAddress
-      all_goals decide
-    · intro address member
-      cases store <;> simp [cells] at member
-      all_goals subst address
-      all_goals decide
-    · cases store <;> simp [input, zeroRegister]
-  · constructor
-    · cases store <;> constructor
-      all_goals rfl
-    · exact ⟨[], [], before store, List.Perm.refl _, by simp, WriteHistory.nil _, rfl⟩
-    · exact ⟨entry store, by simp, by cases store <;> decide, by cases store <;> rfl⟩
 
 end Tests.UnifiedMemory

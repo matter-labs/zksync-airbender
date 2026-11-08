@@ -8,16 +8,16 @@ external-input forms and delegation callers have their own contracts.
 
 ## Checked results
 
-The [local soundness claims](../../../../slop/Slop/Final/Circuits/AddSub/Theorems.lean) prove every represented accepted
+The [local soundness claims](../../../../slop/Slop/Final/Circuits/AddSub/RVTheorems.lean) prove every represented accepted
 ADD/ADDI/SUB/LUI/AUIPC row has its original Sail destination/register and PC effects.
 Public initialization/tables and logical matching/decoding remain premises;
 reads, operand/immediate/PC bounds and preprocessing are derived.
 The [logical memory result](../../Helpers/Memory/README.md#logical-memory-result)
 supplies history consistency; inactive padding and full delegation ABI remain open.
 
-1. Read [Theorems](../../../../slop/Slop/Final/Circuits/AddSub/Theorems.lean) for the exact local claim.
-2. Read [Model](Model.lean) for satisfaction, named observable mappings and interface assumptions.
-3. Follow [the selected reference](Reference.lean) and [Artifact](Artifact.lean) for semantics and imported variable placement.
+1. Read [Theorems](../../../../slop/Slop/Final/Circuits/AddSub/RVTheorems.lean) for the exact local claim.
+2. Read Model for satisfaction, named observable mappings and interface assumptions.
+3. Follow the selected reference and [Artifact](Artifact.lean) for semantics and imported variable placement.
 
 The model retains public initialization, modeled tables and all initialized registers. Bounds, actual reads and preprocessing are derived.
 
@@ -27,7 +27,7 @@ only where the model requires them. Per-row reads and bounds are derived from
 accepted initialized history. Field minima and inverse conditions are those of
 the selected theorem; artifact/import and modeled-table fidelity remain explicit.
 
-[Modular](Modular.lean), [external reads](NonDeterminism.lean) and [caller claims](../../../../slop/Slop/Final/Circuits/AddSub/CallerTheorems.lean) have separate scopes. Global inactive-row obligations remain open.
+[Modular](Modular.lean), external reads and [caller claims](../../../../slop/Slop/Final/Circuits/AddSub/RVCallerTheorems.lean) have separate scopes. Global inactive-row obligations remain open.
 
-[Family execution](../../../../slop/Slop/Final/Trace/Families/AddSub/Theorems.lean) is a separate whole-trace claim.
-[Pooled execution](../../../../slop/Slop/Final/Trace/Soundness.lean) composes the six ordinary families.
+[Family execution](../../../../slop/Slop/Final/Trace/Families/AddSub/RVTheorems.lean) is a separate whole-trace claim.
+[Pooled execution](../../../../slop/Slop/Final/Trace/RVSoundness.lean) composes the six ordinary families.

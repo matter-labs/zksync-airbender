@@ -1,5 +1,4 @@
 import Slop.Blake2G
-import Slop.BabyBear
 import Slop.Blake2G.Tables
 import Slop.Blake2G.Claims
 import Mathlib.Tactic.IntervalCases

@@ -2,7 +2,6 @@ import Slop.UnifiedReduced.RVCaller.MixedCycles
 import Slop.UnifiedReduced.RV.Laws
 import Slop.UnifiedReduced.RVCaller.Transfer
 import Slop.Delegation.SharedOperations
-import Slop.Delegation.SharedMemory
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic Trace.Proofs

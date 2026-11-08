@@ -45,9 +45,4 @@ def ConfiguredBridgeClaim : Prop :=
 representative words) hold. -/
 def MachineChecksClaim : Prop := MachineChecks
 
-/-- `numSteps` steps of the Airbender machine. -/
-noncomputable def run : (numSteps : Nat) → Machine → Option Machine
-  | 0,     m => some m
-  | n + 1, m => (step m).bind (run n)
-
 end Airbender

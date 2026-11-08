@@ -1,10 +1,8 @@
-import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
-import Slop.Sail.WordMemoryState
 import Slop.UnifiedReduced.Completeness.Arith
 
 namespace Tests.UnifiedMixedHistory
-open Airbender Arithmetic UnifiedReduced Trace Reference.RiscV.Sail Reference.Sail
+open Airbender Arithmetic UnifiedReduced Trace
 set_option warningAsError true
 set_option maxRecDepth 32768
 
@@ -30,19 +28,6 @@ private def arithmetic : Nat → ZMod babyBearModulus := arithmeticWitness.hones
 private def triadd (value : Nat) : Nat → ZMod babyBearModulus := (triaddWitness value).honest
 private def standardRow : Row babyBearModulus UnifiedFamily := ⟨.machine, arithmetic⟩
 private def customRow (value : Nat) : Row babyBearModulus UnifiedFamily := ⟨.machine, triadd value⟩
-private def cells : List Cell := [.register 1, .register 0]
-private noncomputable def before : State :=
-  wordWriteState (wordWriteState { resetMachine with
-    regs := resetMachine.regs.insert .x1 (123 : BitVec 32) |>.insert .PC (0 : BitVec 32) }
-    0 0x00108093) 4 0xc210c0f3
-
-theorem airbender_before : Configured before := by
-  configured_fixture [before, wordWriteState]
-
-private noncomputable def program : List UnifiedReduced.ProgramEntry := [
-  ⟨0, 0x00108093, .ITYPE (1, .Regidx 1, .Regidx 1, .ADDI), ⟨.machine, 1, 0, 1, ⟨1, 0⟩, 1, 0⟩⟩,
-  ⟨4, 0xc210c0f3, .ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1),
-    ⟨.machine, 1, 1, 1, ⟨0, 0⟩, 512, 0⟩⟩]
 private def trace (value : Nat) : UnifiedTrace babyBearModulus where
   rows := [customRow value, standardRow]
   rom := setup
@@ -71,62 +56,6 @@ private theorem accepted : Accepted (trace 124) := by
     rcases member with rfl | rfl <;> rfl
   · exact (List.Perm.swap _ _ _).trans (List.Perm.cons _ (List.Perm.swap _ _ []))
   · decide +kernel
-
-private theorem decoded : UnifiedReduced.Decoded (trace 124) program := by
-  intro actual member
-  simp only [trace, List.mem_cons, List.not_mem_nil, or_false] at member
-  rcases member with rfl | rfl
-  · change ∃ i : Fin 2, _
-    exact ⟨1, by decide +kernel⟩
-  · change ∃ i : Fin 2, _
-    exact ⟨0, by decide +kernel⟩
-
-theorem original_mixed_public_image : Mixed.programImage before [0, 4] = some program := by
-  have first : (Cell.ram 0).read before = .ok 0x00108093 before :=
-    written_word_disjoint 4 0xc210c0f3 (Or.inl (by decide)) (written_word_read _ 0 0x00108093)
-  have second : (Cell.ram 4).read before = .ok 0xc210c0f3 before := written_word_read _ _ _
-  have standard : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00108093 = some (.ITYPE (1, .Regidx 1, .Regidx 1, .ADDI)) :=
-    by decode_on_reset
-  have custom : Airbender.Reference.RiscV.Sail.decodeOnReset 0xc210c0f3 = some (.ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1)) :=
-    by decode_on_reset
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, first, second, standard, custom,
-    bind, Option.bind, pure]
-  rfl
-
-private theorem inputs : NativeInputs Mixed.decoderFields (trace 124) before cells program := by
-  refine ⟨by decide, ?_, ?_, ?_, ⟨[0, 4], original_mixed_public_image⟩, ?_, airbender_before⟩
-  · intro cell member
-    simp [cells] at member
-    rcases member with rfl | rfl <;> trivial
-  · have read : (Cell.register 1).read before = .ok 123 before := by
-      apply read_register
-      simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
-    simp only [initialImage, cells, List.mapM_cons, List.mapM_nil, read]
-    rfl
-  · refine ⟨(4, 0), ?_⟩
-    have pc : run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before := by
-      apply read_register
-      simp [before, wordWriteState]
-    simp [initialState, pc, trace, PCState.boundary]
-  · constructor
-    · constructor <;> decide
-    · decide
-    · intro token member
-      simp [trace] at member
-      rcases member with rfl | rfl <;> constructor <;> decide
-
-theorem actual_mixed_memory : MemoryExecution (trace 124) before cells :=
-  Mixed.native_memory_execution (by decide) (by decide) inputs accepted decoded
-
-theorem final_dependency : ∃ after, (Cell.register 1).read after = .ok 372 after := by
-  obtain ⟨history, rows, after, consistent, permutation, ordered, native, matched⟩ := actual_mixed_memory
-  have final := Trace.Proofs.terminal_sail_reads (by decide) (by decide) accepted inputs.clocks
-    inputs.image inputs.distinct consistent matched
-  obtain ⟨cell, present, address, read⟩ := final (trace 124).terminalMemory[0] (by simp [trace])
-  have same : cell = Cell.register 1 := Trace.Proofs.cell_address_injective address
-  subst cell
-  have value : Trace.memoryWord (trace 124).terminalMemory[0].value = (372 : BitVec 32) := by decide +kernel
-  exact ⟨after, value ▸ read⟩
 
 theorem fabricated_read_locally_satisfies : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (triadd 125)) (clockConstraints setup) := constraints 2

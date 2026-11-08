@@ -7,19 +7,19 @@ connects the final state to native terminal tokens.
 
 ## Checked results
 
-[`Native.operation_execution`](../../../../../slop/Slop/Final/Trace/Workers/Keccak/Theorems.lean) proves actual port/lane effects
+[`Native.rv_operation_execution`](../../../../../slop/Slop/Final/Trace/Workers/Keccak/RVTheorems.lean) proves actual port/lane effects
 for all seven native modes under the modeled controller.
-[`Native.permutation_soundness` and `Native.permutation_boundary_soundness`](../../../../../slop/Slop/Final/Trace/Workers/Keccak/Theorems.lean)
+[`Native.rv_permutation_soundness` and `Native.rv_permutation_boundary_soundness`](../../../../../slop/Slop/Final/Trace/Workers/Keccak/RVTheorems.lean)
 prove the original full permutation on actual boundary lanes, with shared terminal
-agreement. [`Native.window_soundness`](../../../../../slop/Slop/Final/Trace/Workers/Keccak/Theorems.lean) binds the first complete span
+agreement. [`Native.rv_window_soundness`](../../../../../slop/Slop/Final/Trace/Workers/Keccak/RVTheorems.lean) binds the first complete span
 at retained cut states; later workers may remain outside the window.
 Public protocol/domain/alignment/table conditions remain inputs.
 
-Read [Theorems](../../../../../slop/Slop/Final/Trace/Workers/Keccak/Theorems.lean), [Call](Call.lean) and
-[BoundaryCall](BoundaryCall.lean). [Permutation](Permutation.lean) binds
+Read [Theorems](../../../../../slop/Slop/Final/Trace/Workers/Keccak/RVTheorems.lean), [Call](Call.lean) and
+BoundaryCall. [Permutation](Permutation.lean) binds
 the original complete reference to actual initial/final lane reads.
 
-[Windows](Windows.lean) selects the first complete 649-call span.
+Windows selects the first complete 649-call span.
 Initialized matching derives the control schedule, fixed pointer, lane/scratch
 coverage and linked intermediate states. Keep native seed timestamps, modeled
 controller tables, public domain and complete-span ABI visible.

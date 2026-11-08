@@ -1,6 +1,6 @@
 import Slop.Bigint.MultiplicationRanges
 import Slop.Arithmetic.Convolution
-import Slop.BabyBear
+import Human.Helpers.Core.BabyBearPrime
 
 namespace Airbender.Bigint.Multiplication.Proofs
 open Arithmetic

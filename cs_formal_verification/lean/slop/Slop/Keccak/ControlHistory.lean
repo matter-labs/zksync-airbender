@@ -1,11 +1,10 @@
-import Slop.Keccak.BoundaryInputs
 import Human.Trace.Workers.Keccak.Call
 import Slop.Keccak.Schedule
 import Slop.Delegation.Memory
 import Slop.Delegation.CallPaths
 
 namespace Airbender.Keccak.Proofs
-open Arithmetic Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs
+open Arithmetic Trace Trace.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
@@ -62,95 +61,5 @@ theorem forced_path [Fact p.Prime] (hp : 4096 ≤ p)
       have next := forced_schedule_step hp ⟨n, by omega⟩ holds active current
       rw [write, next, high.2, ZMod.val_zero]
   exact establish i.val i.isLt
-
-private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells) :
-    ∃ sink ∈ data.terminal, sink.address = (Cell.register 10).addressCode ∧
-      ∃ path : List (MemoryToken p), ∃ size : path.length = 650, path.getLast? = some sink ∧
-        (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·) ∧
-        (path.zip path.tail).Perm (data.rows.map fun row =>
-          (readToken row.assignment importedConstraintsMemoryPorts[0],
-            row.writeToken importedConstraintsMemoryPorts[0])) ∧
-        ∀ i : Fin 650, (path[i.val]'(by have := i.isLt; omega)).word =
-          ⟨(scheduleControl i).packed, 0⟩ := by
-  obtain ⟨source, sourceMember, value, read, sourceCode, sourceWord⟩ :=
-    Delegation.Proofs.boundary_cell_source inputs.memory inputs.controlCell
-  have zero := (EStateM.Result.ok.inj (read.symm.trans inputs.controlStart)).1
-  subst value
-  change source.word = ⟨0, 0⟩ at sourceWord
-  obtain ⟨sink, sinkMember, address, path, head, last, ordered, matching⟩ :=
-    (Delegation.Proofs.memory_effects hp accepted inputs.memory).paths _ sourceMember
-  have edges : (path.zip path.tail).Perm
-      (data.rows.map fun row => (readToken row.assignment importedConstraintsMemoryPorts[0],
-        row.writeToken importedConstraintsMemoryPorts[0])) := by
-    rw [sourceCode] at matching
-    rw [control_edges inputs.family] at matching
-    exact matching
-  have length : path.length = 650 := by
-    have count := edges.length_eq
-    have positive : 0 < path.length := by
-      cases path with
-      | nil => simp at head
-      | cons _ _ => simp
-    simp only [List.length_zip, List.length_tail, List.length_map, inputs.calls] at count
-    omega
-  have checks : ∀ edge ∈ path.zip path.tail, ∃ w : Nat → ZMod p,
-      FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints data.setup.keccak) ∧ w 0 = 1 ∧
-      edge.1.word = Word.mk (w 3).val (w 4).val ∧ edge.2.word = Word.mk (w 5).val (w 6).val := by
-    intro edge member
-    obtain ⟨row, rowMember, rfl⟩ := List.mem_map.mp (edges.mem_iff.mp member)
-    cases row with
-    | mk kind w =>
-      have family := inputs.family ⟨kind, w⟩ rowMember
-      change kind = .keccak at family
-      subst kind
-      have core := Verification.holds_of_sublist (accepted.constraints _ rowMember)
-        (List.sublist_append_left (importedConstraints data.setup.keccak) importedConstraintsTimestampLookups)
-      refine ⟨w, core, inputs.active _ rowMember, ?_, ?_⟩
-      all_goals simp [readToken, Delegation.Row.writeToken, MemoryToken.word,
-        importedConstraintsMemoryPorts, MemoryPort.readCode, MemoryPort.writeCode, pairCode]
-  exact ⟨sink, sinkMember, address.trans sourceCode, path, length, last, ordered, edges,
-    forced_path (by dsimp [timestampBase] at hp; omega) length head
-      sourceWord checks⟩
-
-theorem call_control [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells) : CallControl data := by
-  obtain ⟨sink, sinkMember, address, path, length, last, _, _, schedule⟩ :=
-    call_path hp accepted inputs
-  have lastToken : (path[649]'(by omega)) = sink := by
-    simpa [List.getLast?_eq_getElem?, length] using last
-  refine ⟨sink, sinkMember, address, ?_⟩
-  have result := schedule (649 : Fin 650)
-  change (path[649]'(by omega)).word = Word.mk (scheduleControl 649).packed 0 at result
-  rw [lastToken] at result
-  simpa [schedule_finish, Word.ofBitVec, limbBase] using result
-
-theorem call_schedule [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells) :
-    CallSchedule data := by
-  obtain ⟨sink, sinkMember, address, path, length, last, increasing, matching, schedule⟩ :=
-    call_path hp accepted inputs
-  obtain ⟨ordered, perm, edges, clocks⟩ :=
-    Delegation.Proofs.ordered_rows_from_path _ matching increasing
-  have count : ordered.length = 649 := perm.length_eq.trans inputs.calls
-  refine ⟨ordered, count, perm, clocks, ?_⟩
-  intro i
-  have edge : (readToken (ordered[i.val]'(by omega)).assignment importedConstraintsMemoryPorts[0],
-      (ordered[i.val]'(by omega)).writeToken importedConstraintsMemoryPorts[0]) =
-      (path[i.val]'(by omega), path[i.val + 1]'(by omega)) := by
-    have atIndex := congrArg (fun pairs => pairs[i.val]?) edges
-    simpa [List.getElem?_eq_getElem, count, length] using atIndex.symm
-  have read := congrArg (fun pair => pair.1.word) edge
-  have write := congrArg (fun pair => pair.2.word) edge
-  constructor
-  · simpa [readToken, MemoryToken.word, MemoryPort.readCode, WordColumns.code,
-      importedConstraintsMemoryPorts, pairCode] using
-      read.trans (schedule ⟨i.val, by have := i.isLt; omega⟩)
-  · simpa [Delegation.Row.writeToken, MemoryToken.word, MemoryPort.writeCode, WordColumns.code,
-      importedConstraintsMemoryPorts, pairCode] using
-      write.trans (schedule ⟨i.val + 1, by have := i.isLt; omega⟩)
 
 end Airbender.Keccak.Proofs

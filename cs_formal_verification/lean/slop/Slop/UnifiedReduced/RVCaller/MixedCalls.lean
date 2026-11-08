@@ -1,6 +1,4 @@
 import Slop.UnifiedReduced.RVCaller.MixedMemoryClocks
-import Slop.Delegation.CallHistory
-import Slop.Delegation.Atomic
 import Slop.Delegation.RVCallHistory
 import Slop.Delegation.RVRowCalls
 import Slop.UnifiedReduced.RVCaller.Transfer

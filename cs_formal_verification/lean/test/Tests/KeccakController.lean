@@ -1,5 +1,5 @@
 import Slop.Keccak.ControllerLayout
-import Slop.BabyBear
+import Human.Helpers.Core.BabyBearPrime
 
 namespace Tests.KeccakController
 open Airbender Keccak

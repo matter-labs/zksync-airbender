@@ -1,5 +1,4 @@
 import Human.Circuits.WordMemory.RVTheorems
-import Slop.BabyBear
 import Slop.WordMemory.RVTraceSoundness
 import Slop.Trace.RVPooledLawsProof
 

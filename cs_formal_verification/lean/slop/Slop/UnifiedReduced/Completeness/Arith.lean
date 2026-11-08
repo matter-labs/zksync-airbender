@@ -16,12 +16,6 @@ def ZeroRow (t : Table (ZMod babyBearModulus) (fields 10)) : Prop :=
   ∀ (env : Environment (ZMod babyBearModulus)) (entry : Vector (Expression (ZMod babyBearModulus)) 10),
     entry.map (Expression.eval env) = Vector.replicate 10 0 → (Lookup.mk t.toRaw entry).Contains env
 
-theorem setup_zero (before : Reference.RiscV.Sail.State) : ZeroRow (Setup.table before) := by
-  intro env entry h
-  refine table_contains ⟨0, by decide⟩ ?_
-  rw [h, row_fixed before 0 (by decide) (by decide)]
-  decide +kernel
-
 /-- Inputs of one honest additive row: `sel` is 0 (ADD/ADDI), 1 (SUB), 2 (AUIPC) or
     3 (TriAdd, which adds the old destination value). -/
 structure Arith where

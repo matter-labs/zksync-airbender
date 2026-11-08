@@ -121,28 +121,4 @@ theorem window_hash_calls [Fact p.Prime] {callers : List (Trace.Row p Kind)} {wo
   exact (congrArg Requests.Request.csr matched.2.1).symm.trans
     (congrArg Requests.csr (family worker matched.1))
 
-theorem request_windows [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (pcInverse : (-30720 : ZMod p) * 65536 = 1)
-    {data : RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
-    (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
-    {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (pastZero : 2 ≤ lower) :
-    RequestWindowBinding data.callers data.workers lower upper := by
-  have binding := request_binding_checks hp clockInverse pcInverse accepted inputs
-  have clocks := Trace.Proofs.state_clock_inputs hp clockInverse accepted.constraints accepted.states
-    inputs.initialClock inputs.initialAligned
-  apply request_window (by omega)
-    (⟨binding.fulfilled, fun worker member => ⟨binding.clocks worker member, binding.clockRoom worker member⟩,
-      ?_, ?_, ?_, binding.invocations.1⟩ : WindowFacts data.callers data.workers) first last pastZero
-  · intro caller member
-    obtain ⟨worker, present, same, _⟩ := binding.workers caller member
-    have slot := issued_worker_slot hp clockInverse accepted inputs binding member present same
-    exact (congrArg (fun request : Requests.Request p => (timeOfPair request.time).value) same).symm.trans slot.invocation
-  · intro caller member
-    exact Trace.Proofs.ClockLaws.advance hp clockInverse data.machine.rom caller
-      (accepted.constraints caller (caller_member member).1) (clocks caller (caller_member member).1).1
-  · intro caller member
-    simpa [startClock, Trace.Row.clock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod]
-      using (clocks caller (caller_member member).1).2
-
 end Airbender.Delegation.Caller.Proofs

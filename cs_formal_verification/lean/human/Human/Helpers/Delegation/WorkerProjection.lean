@@ -22,11 +22,4 @@ open Trace
 def workerCells (cells : List Cell) :=
   cells.filter fun cell => cell.addressCode != (Cell.register 0).addressCode
 
-/-- The same native workers with boundary tokens derived from shared matching.
-    Original worker-only seed/terminal tokens are unused. This projection is
-    valid for the caller-only scope; ordinary ISA rows can update worker cells
-    and require the subsequent mixed-machine history. -/
-def RequestTrace.workerProjection [Fact p.Prime] (data : RequestTrace p) : MemoryData p :=
-  data.workers.workerProjection data.machine.initialMemory data.machine.terminalMemory
-
 end Airbender.Delegation.Caller

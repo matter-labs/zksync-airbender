@@ -1,7 +1,4 @@
-import Slop.Final.Trace.Workers.Blake2Round.Theorems
 import Slop.Blake2Round.NativeExecution
-import Slop.Blake2Round.CallExecution
-import Slop.Blake2Round.CompressionBinding
 import Slop.Blake2Round.Control
 import Slop.Blake2Round.Lookups
 import Slop.Blake2Round.Addresses
@@ -11,8 +8,13 @@ import Slop.Blake2Round.Soundness
 import Slop.Blake2Round.Finalization
 import Slop.Blake2Round.PortAddresses
 import Slop.Blake2Round.Row
-import Slop.Blake2Round.MemorySoundness
-import Slop.BabyBear
+import Human.Helpers.Delegation.SpanABI
+import Human.Trace.Workers.Blake2G.WorkVector
+import Human.Trace.Workers.Keccak.Permutation
+import Slop.Blake2Round.Compression
+import Slop.Blake2Round.StateTransport
+import Slop.Delegation.NativeSegments
+import Slop.Delegation.ReverseFold
 
 namespace Airbender.Blake2Round.Row
 
@@ -116,30 +118,9 @@ end Airbender.Blake2Round.Addresses
 namespace Airbender.Blake2Round.Memory
 
 
-theorem soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (data : Delegation.MemoryData p)
-    (before : Reference.RiscV.Sail.State) (cells : List Trace.Cell) :
-    (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Row.spec :=
-  Proofs.soundness hp compatible data before cells
-
-theorem babyBear_soundness (data : Delegation.MemoryData babyBearModulus)
-    (before : Reference.RiscV.Sail.State) (cells : List Trace.Cell) :
-    (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Row.spec :=
-  soundness (by decide) (by decide) data before cells
-
 end Airbender.Blake2Round.Memory
 
 namespace Airbender.Blake2Round.Native
 
-
-theorem call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
-    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
-    {flags : Fin 8} (accepted : Delegation.MemoryAccepted data)
-    (inputs : CallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned) :
-    CallModes data flags ∧ Delegation.MemoryExecution data initial cells ∧
-      ∀ row ∈ data.rows, ∃ round, Memory.RoundMask row.assignment round ∧
-        Row.spec (input round row.assignment) (output row.assignment) :=
-  Airbender.Blake2Round.Proofs.call_execution hp inverse accepted inputs.toBoundaryInputs aligned
 
 end Airbender.Blake2Round.Native

@@ -1,6 +1,7 @@
-import Human.Trace.PooledNonDeterminism
 import Slop.Trace.ExternalStream
 import Slop.Trace.Pooled
+import Human.Helpers.Decoder.PooledExternalInput
+import Mathlib.Logic.Relation
 
 namespace Airbender.Trace.NonDeterminism.Pooled.Proofs
 

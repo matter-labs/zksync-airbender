@@ -1,6 +1,7 @@
 import Slop.Trace.RVValues
 import Slop.ShiftBinop.RVDecoder
-import Slop.ShiftBinop.Values
+import Slop.ShiftBinop.Ports
+import Slop.ShiftBinop.Trace
 
 /-! ShiftBinop row facts of the RV value-bounds law (`RVValuesPooled`): write sources from the RV projection
     equation. -/

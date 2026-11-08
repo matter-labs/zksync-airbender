@@ -8,15 +8,15 @@ their bounds or successful reads.
 
 ## Checked results
 
-The [local soundness claims](../../../../slop/Slop/Final/Circuits/ShiftBinop/Theorems.lean) prove the admitted shifts/binops
+The [local soundness claims](../../../../slop/Slop/Final/Circuits/ShiftBinop/RVTheorems.lean) prove the admitted shifts/binops
 and REV8 match original Sail destination/PC effects. Accepted constraints and
 initialized history derive input bytes, shift bounds, immediate preprocessing
 and reads; public decoding retains configuration-sensitive instruction selection.
 The family trace claim composes these effects through terminal PC/cells.
 
-1. Read [Theorems](../../../../slop/Slop/Final/Circuits/ShiftBinop/Theorems.lean) for the exact local claim.
-2. Read [Model](Model.lean) for satisfaction, named observable mappings and interface assumptions.
-3. Follow [the selected reference](Model.lean) and [Artifact](Artifact.lean) for semantics and imported variable placement.
+1. Read [Theorems](../../../../slop/Slop/Final/Circuits/ShiftBinop/RVTheorems.lean) for the exact local claim.
+2. Read Model for satisfaction, named observable mappings and interface assumptions.
+3. Follow the selected reference and [Artifact](Artifact.lean) for semantics and imported variable placement.
 
 The model's external condition is public initialization. Operand bytes, shift ranges, immediate preprocessing and actual reads are derived; modeled byte-table fidelity remains separate.
 
@@ -28,5 +28,5 @@ the selected theorem; artifact/import and modeled-table fidelity remain explicit
 
 Use [Decoder](Decoder.lean) for sign/immediate-byte projection and original configuration-sensitive decoding, including REV8.
 
-[Family execution](../../../../slop/Slop/Final/Trace/Families/ShiftBinop/Theorems.lean) is a separate whole-trace claim.
-[Pooled execution](../../../../slop/Slop/Final/Trace/Soundness.lean) composes the six ordinary families.
+[Family execution](../../../../slop/Slop/Final/Trace/Families/ShiftBinop/RVTheorems.lean) is a separate whole-trace claim.
+[Pooled execution](../../../../slop/Slop/Final/Trace/RVSoundness.lean) composes the six ordinary families.

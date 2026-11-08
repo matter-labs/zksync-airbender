@@ -1,20 +1,12 @@
 -- Each final theorem (slop/Slop/Final) proves the statement of the same name in human/ (UpperCamelCase).
-import Slop.Final.Circuits.AddSub.CallerTheorems
-import Slop.Final.Circuits.AddSub.Theorems
 import Slop.Final.Circuits.AddSub.RVTheorems
-import Slop.Final.Circuits.Bigint.Theorems
 import Slop.Final.Circuits.Bigint.RVTheorems
 import Slop.Final.Circuits.Blake2G.Theorems
 import Slop.Final.Circuits.InitsTeardowns.Theorems
-import Slop.Final.Circuits.JumpBranchSlt.Theorems
 import Slop.Final.Circuits.JumpBranchSlt.RVTheorems
-import Slop.Final.Circuits.MulDiv.Theorems
 import Slop.Final.Circuits.MulDiv.RVTheorems
-import Slop.Final.Circuits.ShiftBinop.Theorems
 import Slop.Final.Circuits.ShiftBinop.RVTheorems
-import Slop.Final.Circuits.SubwordMemory.Theorems
 import Slop.Final.Circuits.SubwordMemory.RVTheorems
-import Slop.Final.Circuits.WordMemory.Theorems
 import Slop.Final.Circuits.WordMemory.RVTheorems
 import Slop.Final.Trace.UnifiedReduced.RVTheorems
 import Slop.Final.Trace.RVSoundness
@@ -22,76 +14,40 @@ import Slop.Final.Helpers.Context.PCState.Theorems
 import Slop.Final.ISA.Theorems
 import Slop.Final.ISA.DelegationRuns
 import Slop.Final.ISA.Vectors
-import Slop.Final.Trace.Delegation.CallerTheorems
-import Slop.Final.Trace.Delegation.Theorems
 import Slop.Final.Trace.Delegation.RVTheorems
-import Slop.Final.Trace.Families.AddSub.Theorems
 import Slop.Final.Trace.Families.AddSub.RVTheorems
-import Slop.Final.Trace.Families.JumpBranchSlt.Theorems
 import Slop.Final.Trace.Families.JumpBranchSlt.RVTheorems
-import Slop.Final.Trace.Families.MulDiv.Theorems
 import Slop.Final.Trace.Families.MulDiv.RVTheorems
-import Slop.Final.Trace.Families.ShiftBinop.Theorems
 import Slop.Final.Trace.Families.ShiftBinop.RVTheorems
-import Slop.Final.Trace.Families.SubwordMemory.Theorems
 import Slop.Final.Trace.Families.SubwordMemory.RVTheorems
-import Slop.Final.Trace.Soundness
 import Slop.Final.Trace.ZeroTimestamp
 import Slop.Final.Trace.WritesRangeChecked
 import Slop.Final.Trace.TeardownBounds
-import Slop.Final.Trace.UnifiedReduced.Theorems
-import Slop.Final.Trace.Workers.Bigint.Theorems
 import Slop.Final.Trace.Workers.Bigint.RVTheorems
-import Slop.Final.Trace.Workers.Blake2G.Theorems
 import Slop.Final.Trace.Workers.Blake2G.RVTheorems
-import Slop.Final.Trace.Workers.Blake2Round.Theorems
 import Slop.Final.Trace.Workers.Blake2Round.RVTheorems
-import Slop.Final.Trace.Workers.Keccak.Theorems
 import Slop.Final.Trace.Workers.Keccak.RVTheorems
-import Slop.Final.Trace.Workers.KeccakSplit.Theorems
 import Slop.Final.Trace.Workers.KeccakSplit.RVTheorems
-import Human.Circuits.AddSub.CallerTheorems
-import Human.Circuits.AddSub.Theorems
 import Human.Circuits.AddSub.RVTheorems
-import Human.Circuits.Bigint.Theorems
 import Human.Circuits.Bigint.RVTheorems
 import Human.Circuits.Blake2G.Theorems
 import Human.Circuits.InitsTeardowns.Theorems
-import Human.Circuits.JumpBranchSlt.Theorems
 import Human.Circuits.JumpBranchSlt.RVTheorems
-import Human.Circuits.MulDiv.Theorems
-import Human.Circuits.ShiftBinop.Theorems
-import Human.Circuits.SubwordMemory.Theorems
-import Human.Circuits.WordMemory.Theorems
 import Human.Helpers.Context.PCState.Theorems
 import Human.ISA.Sail.Theorems
-import Human.Trace.Delegation.CallerTheorems
-import Human.Trace.Delegation.Theorems
 import Human.Trace.Delegation.RVTheorems
-import Human.Trace.Families.AddSub.Theorems
 import Human.Trace.Families.AddSub.RVTheorems
-import Human.Trace.Families.JumpBranchSlt.Theorems
 import Human.Trace.Families.JumpBranchSlt.RVTheorems
-import Human.Trace.Families.MulDiv.Theorems
 import Human.Trace.Families.MulDiv.RVTheorems
-import Human.Trace.Families.ShiftBinop.Theorems
 import Human.Trace.Families.ShiftBinop.RVTheorems
-import Human.Trace.Families.SubwordMemory.Theorems
 import Human.Trace.Families.SubwordMemory.RVTheorems
-import Human.Trace.Soundness
 import Human.Trace.ZeroTimestamp
 import Human.Trace.WritesRangeChecked
 import Human.Trace.TeardownBounds
-import Human.Trace.UnifiedReduced.Theorems
-import Human.Trace.Workers.Bigint.Theorems
 import Human.Trace.Workers.Bigint.RVTheorems
-import Human.Trace.Workers.Blake2G.Theorems
 import Human.Trace.Workers.Blake2G.RVTheorems
-import Human.Trace.Workers.Blake2Round.Theorems
 import Human.Trace.Workers.Blake2Round.RVTheorems
-import Human.Trace.Workers.Keccak.Theorems
 import Human.Trace.Workers.Keccak.RVTheorems
-import Human.Trace.Workers.KeccakSplit.Theorems
 import Human.Trace.Workers.KeccakSplit.RVTheorems
 -- callers1: RV delegation caller claims
 import Slop.Final.Circuits.AddSub.RVCallerTheorems
@@ -100,43 +56,39 @@ import Human.Circuits.AddSub.RVCallerTheorems
 import Human.Trace.Delegation.RVCallerTheorems
 import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 import Human.Trace.UnifiedReduced.RVCallerTheorems
+import Slop.JumpBranchSlt.PCState
+import Slop.JumpBranchSlt.PortReads
+import Slop.MulDiv.PortReads
+import Slop.MulDiv.Soundness
+import Slop.ShiftBinop.PortReads
+import Slop.Sail.PMA
+import Slop.SubwordMemory.PortReads
+import Slop.Bigint.Claims
+import Slop.Blake2G.Claims
+import Slop.Blake2Round.Claims
+import Slop.Keccak.Claims
+import Slop.Trace.OracleConsumption
+import Human.Circuits.UnifiedReduced.Binary
+import Slop.UnifiedReduced.Binary
+import Slop.UnifiedReduced.ComparisonSoundness
 
-example : Airbender.Delegation.Caller.SoundnessClaim := @Airbender.Delegation.Caller.soundness
-example : Airbender.Delegation.Caller.PcSoundnessClaim := @Airbender.Delegation.Caller.pc_soundness
-example : Airbender.AddSub.SoundnessClaim := @Airbender.AddSub.soundness
-example : Airbender.AddSub.BabyBearSoundnessClaim := @Airbender.AddSub.babyBear_soundness
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.AddSub.BabyBearRVSoundnessClaim := @Airbender.AddSub.babyBear_rv_soundness
-example : Airbender.Bigint.Memory.AddressesSoundnessClaim := @Airbender.Bigint.Memory.addresses_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
 example : Airbender.Blake2G.SoundnessClaim := @Airbender.Blake2G.soundness
 example : Airbender.Blake2G.BabyBearSoundnessClaim := @Airbender.Blake2G.babyBear_soundness
-example : Airbender.JumpBranchSlt.Comparison.SoundnessClaim := @Airbender.JumpBranchSlt.Comparison.soundness
-example : Airbender.JumpBranchSlt.Comparison.BabyBearSoundnessClaim := @Airbender.JumpBranchSlt.Comparison.babyBear_soundness
-example : Airbender.JumpBranchSlt.Branch.SoundnessClaim := @Airbender.JumpBranchSlt.Branch.soundness
-example : Airbender.JumpBranchSlt.Branch.BabyBearSoundnessClaim := @Airbender.JumpBranchSlt.Branch.babyBear_soundness
-example : Airbender.JumpBranchSlt.Jump.SoundnessClaim := @Airbender.JumpBranchSlt.Jump.soundness
-example : Airbender.JumpBranchSlt.Jump.BabyBearSoundnessClaim := @Airbender.JumpBranchSlt.Jump.babyBear_soundness
 example : Airbender.JumpBranchSlt.Comparison.RVSoundnessClaim := @Airbender.JumpBranchSlt.Comparison.rv_soundness
 example : Airbender.JumpBranchSlt.Comparison.BabyBearRVSoundnessClaim := @Airbender.JumpBranchSlt.Comparison.babyBear_rv_soundness
 example : Airbender.JumpBranchSlt.Branch.RVSoundnessClaim := @Airbender.JumpBranchSlt.Branch.rv_soundness
 example : Airbender.JumpBranchSlt.Branch.BabyBearRVSoundnessClaim := @Airbender.JumpBranchSlt.Branch.babyBear_rv_soundness
 example : Airbender.JumpBranchSlt.Jump.RVSoundnessClaim := @Airbender.JumpBranchSlt.Jump.rv_soundness
 example : Airbender.JumpBranchSlt.Jump.BabyBearRVSoundnessClaim := @Airbender.JumpBranchSlt.Jump.babyBear_rv_soundness
-example : Airbender.MulDiv.SoundnessClaim := @Airbender.MulDiv.soundness
-example : Airbender.MulDiv.BabyBearSoundnessClaim := @Airbender.MulDiv.babyBear_soundness
 example : Airbender.MulDiv.RVSoundnessClaim := @Airbender.MulDiv.rv_soundness
 example : Airbender.MulDiv.BabyBearRVSoundnessClaim := @Airbender.MulDiv.babyBear_rv_soundness
-example : Airbender.ShiftBinop.SoundnessClaim := @Airbender.ShiftBinop.soundness
-example : Airbender.ShiftBinop.BabyBearSoundnessClaim := @Airbender.ShiftBinop.babyBear_soundness
 example : Airbender.ShiftBinop.RVSoundnessClaim := @Airbender.ShiftBinop.rv_soundness
 example : Airbender.ShiftBinop.BabyBearRVSoundnessClaim := @Airbender.ShiftBinop.babyBear_rv_soundness
-example : Airbender.SubwordMemory.SoundnessClaim := @Airbender.SubwordMemory.soundness
-example : Airbender.SubwordMemory.BabyBearSoundnessClaim := @Airbender.SubwordMemory.babyBear_soundness
 example : Airbender.SubwordMemory.RVSoundnessClaim := @Airbender.SubwordMemory.rv_soundness
 example : Airbender.SubwordMemory.BabyBearRVSoundnessClaim := @Airbender.SubwordMemory.babyBear_rv_soundness
-example : Airbender.WordMemory.SoundnessClaim := @Airbender.WordMemory.soundness
-example : Airbender.WordMemory.BabyBearSoundnessClaim := @Airbender.WordMemory.babyBear_soundness
 example : Airbender.WordMemory.RVSoundnessClaim := @Airbender.WordMemory.rv_soundness
 example : Airbender.WordMemory.BabyBearRVSoundnessClaim := @Airbender.WordMemory.babyBear_rv_soundness
 example : Airbender.PCState.OutgoingBoundsClaim := @Airbender.PCState.outgoing_bounds
@@ -154,37 +106,15 @@ example : RV.BlakeGRun10 := @RV.blake_g_run10
 example : RV.KeccakSpecial5Run := @RV.keccak_special5_run
 example : RV.KeccakF1600Run := @RV.keccak_f1600_run
 example : RV.StandardVectors := @RV.standard_vectors
-example : Airbender.Delegation.Caller.RequestsSoundnessClaim := @Airbender.Delegation.Caller.requests_soundness
-example : Airbender.Delegation.Caller.RequestMemorySoundnessClaim := @Airbender.Delegation.Caller.request_memory_soundness
-example : Airbender.Delegation.Caller.OperationSoundnessClaim := @Airbender.Delegation.Caller.operation_soundness
-example : Airbender.Delegation.Caller.SharedMemorySoundnessClaim := @Airbender.Delegation.Caller.shared_memory_soundness
-example : Airbender.Delegation.Caller.SharedOperationSoundnessClaim := @Airbender.Delegation.Caller.shared_operation_soundness
-example : Airbender.Delegation.Caller.SharedSpanSoundnessClaim := @Airbender.Delegation.Caller.shared_span_soundness
-example : Airbender.Delegation.Caller.MixedMemorySoundnessClaim := @Airbender.Delegation.Caller.mixed_memory_soundness
-example : Airbender.Delegation.Caller.WorkerScheduleSoundnessClaim := @Airbender.Delegation.Caller.worker_schedule_soundness
-example : Airbender.Delegation.Caller.RequestWindowSoundnessClaim := @Airbender.Delegation.Caller.request_window_soundness
-example : Airbender.Delegation.Caller.RequestHashWindowSoundnessClaim := @Airbender.Delegation.Caller.request_hash_window_soundness
-example : Airbender.Delegation.NativeMemoryExecutionClaim := @Airbender.Delegation.native_memory_execution
-example : Airbender.Delegation.OperationMemorySoundnessClaim := @Airbender.Delegation.operation_memory_soundness
-example : Airbender.Delegation.MemorySoundnessClaim := @Airbender.Delegation.memory_soundness
 example : Airbender.Delegation.RVNativeMemoryExecutionClaim := @Airbender.Delegation.rv_native_memory_execution
 example : Airbender.Delegation.RVOperationMemorySoundnessClaim := @Airbender.Delegation.rv_operation_memory_soundness
 example : Airbender.Delegation.RVMemorySoundnessClaim := @Airbender.Delegation.rv_memory_soundness
-example : Airbender.Trace.SailSoundnessClaim := @Airbender.Trace.sail_soundness
-example : Airbender.Trace.AirbenderSoundnessClaim := @Airbender.Trace.airbender_soundness
-example : Airbender.Trace.NativeBootSoundnessClaim := @Airbender.Trace.native_boot_soundness
-example : Airbender.JumpBranchSlt.TraceSoundnessClaim := @Airbender.JumpBranchSlt.trace_soundness
-example : Airbender.MulDiv.TraceSoundnessClaim := @Airbender.MulDiv.trace_soundness
-example : Airbender.ShiftBinop.TraceSoundnessClaim := @Airbender.ShiftBinop.trace_soundness
-example : Airbender.SubwordMemory.RamTraceSoundnessClaim := @Airbender.SubwordMemory.ram_trace_soundness
 example : Airbender.Trace.RVAirbenderSoundnessClaim := @Airbender.Trace.rv_airbender_soundness
 example : Airbender.Trace.RVNativeBootSoundnessClaim := @Airbender.Trace.rv_native_boot_soundness
 example : Airbender.JumpBranchSlt.RVTraceSoundnessClaim := @Airbender.JumpBranchSlt.rv_trace_soundness
 example : Airbender.MulDiv.RVTraceSoundnessClaim := @Airbender.MulDiv.rv_trace_soundness
 example : Airbender.ShiftBinop.RVTraceSoundnessClaim := @Airbender.ShiftBinop.rv_trace_soundness
 example : Airbender.SubwordMemory.RVRamTraceSoundnessClaim := @Airbender.SubwordMemory.rv_ram_trace_soundness
-example : Airbender.Trace.PooledNativeSoundnessClaim := @Airbender.Trace.pooled_native_soundness
-example : Airbender.Trace.NonDeterminism.Pooled.NativeSoundnessClaim := @Airbender.Trace.NonDeterminism.Pooled.native_soundness
 example : Airbender.Trace.RVPooledNativeSoundnessClaim := @Airbender.Trace.rv_pooled_native_soundness
 example : Airbender.Trace.BootRamZeroClaim := @Airbender.Trace.boot_ram_zero
 example : Airbender.Trace.NonDeterminism.Pooled.RVNativeSoundnessClaim := @Airbender.Trace.NonDeterminism.Pooled.rv_native_soundness
@@ -201,62 +131,21 @@ example : Airbender.Keccak.Split.Native.WritesRangeCheckedClaim := @Airbender.Ke
 example : Airbender.InitsTeardowns.WritesRangeCheckedClaim := @Airbender.InitsTeardowns.writes_range_checked
 example : Airbender.Trace.TeardownsBoundedClaim := @Airbender.Trace.teardowns_bounded
 example : Airbender.UnifiedReduced.TeardownsBoundedClaim := @Airbender.UnifiedReduced.teardowns_bounded
-example : Airbender.UnifiedReduced.Mixed.ExecutionSoundnessClaim := @Airbender.UnifiedReduced.Mixed.execution_soundness
-example : Airbender.UnifiedReduced.ExecutionSoundnessClaim := @Airbender.UnifiedReduced.execution_soundness
 example : Airbender.UnifiedReduced.RVExecutionSoundnessClaim := @Airbender.UnifiedReduced.rv_execution_soundness
 example : Airbender.UnifiedReduced.BootRamZeroClaim := @Airbender.UnifiedReduced.boot_ram_zero
-example : Airbender.UnifiedReduced.Caller.MixedMemorySoundnessClaim := @Airbender.UnifiedReduced.Caller.mixed_memory_soundness
-example : Airbender.UnifiedReduced.Caller.SharedSpanSoundnessClaim := @Airbender.UnifiedReduced.Caller.shared_span_soundness
-example : Airbender.UnifiedReduced.Caller.RequestWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.request_window_soundness
-example : Airbender.UnifiedReduced.Caller.RequestHashWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.request_hash_window_soundness
-example : Airbender.UnifiedReduced.Caller.MixedWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.mixed_window_soundness
-example : Airbender.UnifiedReduced.Caller.JointHashWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.joint_hash_window_soundness
-example : Airbender.UnifiedReduced.Caller.WindowProjectionSoundnessClaim := @Airbender.UnifiedReduced.Caller.window_projection_soundness
-example : Airbender.UnifiedReduced.Caller.WindowScheduleSoundnessClaim := @Airbender.UnifiedReduced.Caller.window_schedule_soundness
-example : Airbender.UnifiedReduced.Caller.MixedWindowProjectionSoundnessClaim := @Airbender.UnifiedReduced.Caller.mixed_window_projection_soundness
-example : Airbender.UnifiedReduced.Caller.ControlPreparationSoundnessClaim := @Airbender.UnifiedReduced.Caller.control_preparation_soundness
-example : Airbender.UnifiedReduced.Caller.ControlPreparationWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.control_preparation_window_soundness
-example : Airbender.UnifiedReduced.Caller.MixedWindowChainSoundnessClaim := @Airbender.UnifiedReduced.Caller.mixed_window_chain_soundness
-example : Airbender.UnifiedReduced.Caller.MixedWindowSequenceSoundnessClaim := @Airbender.UnifiedReduced.Caller.mixed_window_sequence_soundness
-example : Airbender.UnifiedReduced.Caller.PreparedHashWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.prepared_hash_window_soundness
-example : Airbender.UnifiedReduced.Caller.PreparedHashChainSoundnessClaim := @Airbender.UnifiedReduced.Caller.prepared_hash_chain_soundness
-example : Airbender.UnifiedReduced.Caller.PreparedHashSequenceSoundnessClaim := @Airbender.UnifiedReduced.Caller.prepared_hash_sequence_soundness
-example : Airbender.UnifiedReduced.Caller.PreparedRoundRegionMasksSoundnessClaim := @Airbender.UnifiedReduced.Caller.prepared_round_region_masks_soundness
-example : Airbender.UnifiedReduced.Caller.PreparedProtocolSequenceSoundnessClaim := @Airbender.UnifiedReduced.Caller.prepared_protocol_sequence_soundness
-example : Airbender.UnifiedReduced.Caller.PreparedRoundMasksSoundnessClaim := @Airbender.UnifiedReduced.Caller.prepared_round_masks_soundness
-example : Airbender.UnifiedReduced.Caller.PreparedRoundWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.prepared_round_window_soundness
-example : Airbender.UnifiedReduced.Caller.CallerCyclesSoundnessClaim := @Airbender.UnifiedReduced.Caller.caller_cycles_soundness
-example : Airbender.UnifiedReduced.Caller.PreparedRoundCyclesSoundnessClaim := @Airbender.UnifiedReduced.Caller.prepared_round_cycles_soundness
-example : Airbender.UnifiedReduced.Caller.ProgramWindowScheduleSoundnessClaim := @Airbender.UnifiedReduced.Caller.program_window_schedule_soundness
-example : Airbender.UnifiedReduced.Caller.ProgramPreparedProtocolSequenceSoundnessClaim := @Airbender.UnifiedReduced.Caller.program_prepared_protocol_sequence_soundness
-example : Airbender.Bigint.Native.OperationExecutionClaim := @Airbender.Bigint.Native.operation_execution
 example : Airbender.Bigint.Native.RVOperationExecutionClaim := @Airbender.Bigint.Native.rv_operation_execution
-example : Airbender.Blake2G.Native.WorkvectorSoundnessClaim := @Airbender.Blake2G.Native.workvector_soundness
-example : Airbender.Blake2G.Native.WorkvectorBoundarySoundnessClaim := @Airbender.Blake2G.Native.workvector_boundary_soundness
-example : Airbender.Blake2G.Native.WindowSoundnessClaim := @Airbender.Blake2G.Native.window_soundness
-example : Airbender.Blake2G.Native.OperationExecutionClaim := @Airbender.Blake2G.Native.operation_execution
 example : Airbender.Blake2G.Native.RVWorkvectorSoundnessClaim := @Airbender.Blake2G.Native.rv_workvector_soundness
 example : Airbender.Blake2G.Native.RVWorkvectorBoundarySoundnessClaim := @Airbender.Blake2G.Native.rv_workvector_boundary_soundness
 example : Airbender.Blake2G.Native.RVWindowSoundnessClaim := @Airbender.Blake2G.Native.rv_window_soundness
 example : Airbender.Blake2G.Native.RVOperationExecutionClaim := @Airbender.Blake2G.Native.rv_operation_execution
-example : Airbender.Blake2Round.Native.OperationExecutionClaim := @Airbender.Blake2Round.Native.operation_execution
-example : Airbender.Blake2Round.Native.CompressionSoundnessClaim := @Airbender.Blake2Round.Native.compression_soundness
-example : Airbender.Blake2Round.Native.CompressionBoundarySoundnessClaim := @Airbender.Blake2Round.Native.compression_boundary_soundness
-example : Airbender.Blake2Round.Native.WindowSoundnessClaim := @Airbender.Blake2Round.Native.window_soundness
 example : Airbender.Blake2Round.Native.RVOperationExecutionClaim := @Airbender.Blake2Round.Native.rv_operation_execution
 example : Airbender.Blake2Round.Native.RVCompressionSoundnessClaim := @Airbender.Blake2Round.Native.rv_compression_soundness
 example : Airbender.Blake2Round.Native.RVCompressionBoundarySoundnessClaim := @Airbender.Blake2Round.Native.rv_compression_boundary_soundness
 example : Airbender.Blake2Round.Native.RVWindowSoundnessClaim := @Airbender.Blake2Round.Native.rv_window_soundness
-example : Airbender.Keccak.Native.PermutationBoundarySoundnessClaim := @Airbender.Keccak.Native.permutation_boundary_soundness
-example : Airbender.Keccak.Native.PermutationSoundnessClaim := @Airbender.Keccak.Native.permutation_soundness
-example : Airbender.Keccak.Native.OperationExecutionClaim := @Airbender.Keccak.Native.operation_execution
-example : Airbender.Keccak.Native.WindowSoundnessClaim := @Airbender.Keccak.Native.window_soundness
 example : Airbender.Keccak.Native.RVPermutationBoundarySoundnessClaim := @Airbender.Keccak.Native.rv_permutation_boundary_soundness
 example : Airbender.Keccak.Native.RVPermutationSoundnessClaim := @Airbender.Keccak.Native.rv_permutation_soundness
 example : Airbender.Keccak.Native.RVOperationExecutionClaim := @Airbender.Keccak.Native.rv_operation_execution
 example : Airbender.Keccak.Native.RVWindowSoundnessClaim := @Airbender.Keccak.Native.rv_window_soundness
-example : Airbender.Keccak.Split.Native.OperationExecutionClaim := @Airbender.Keccak.Split.Native.operation_execution
-example : Airbender.Keccak.Split.Native.PermutationSoundnessClaim := @Airbender.Keccak.Split.Native.permutation_soundness
 example : Airbender.Keccak.Split.Native.RVOperationExecutionClaim := @Airbender.Keccak.Split.Native.rv_operation_execution
 example : Airbender.Keccak.Split.Native.RVPermutationSoundnessClaim := @Airbender.Keccak.Split.Native.rv_permutation_soundness
 -- callers1: RV delegation caller claims
@@ -297,42 +186,23 @@ example : Airbender.UnifiedReduced.Caller.RVProgramPreparedProtocolSequenceSound
 example : Airbender.UnifiedReduced.Caller.RVCallerCyclesSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_caller_cycles_soundness
 example : Airbender.UnifiedReduced.Caller.RVPreparedRoundCyclesSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_round_cycles_soundness
 
-#print axioms Airbender.Delegation.Caller.soundness
-#print axioms Airbender.Delegation.Caller.pc_soundness
-#print axioms Airbender.AddSub.soundness
-#print axioms Airbender.AddSub.babyBear_soundness
 #print axioms Airbender.AddSub.rv_soundness
 #print axioms Airbender.AddSub.babyBear_rv_soundness
-#print axioms Airbender.Bigint.Memory.addresses_soundness
 #print axioms Airbender.Bigint.Memory.rv_addresses_soundness
 #print axioms Airbender.Blake2G.soundness
 #print axioms Airbender.Blake2G.babyBear_soundness
-#print axioms Airbender.JumpBranchSlt.Comparison.soundness
-#print axioms Airbender.JumpBranchSlt.Comparison.babyBear_soundness
-#print axioms Airbender.JumpBranchSlt.Branch.soundness
-#print axioms Airbender.JumpBranchSlt.Branch.babyBear_soundness
-#print axioms Airbender.JumpBranchSlt.Jump.soundness
-#print axioms Airbender.JumpBranchSlt.Jump.babyBear_soundness
 #print axioms Airbender.JumpBranchSlt.Comparison.rv_soundness
 #print axioms Airbender.JumpBranchSlt.Comparison.babyBear_rv_soundness
 #print axioms Airbender.JumpBranchSlt.Branch.rv_soundness
 #print axioms Airbender.JumpBranchSlt.Branch.babyBear_rv_soundness
 #print axioms Airbender.JumpBranchSlt.Jump.rv_soundness
 #print axioms Airbender.JumpBranchSlt.Jump.babyBear_rv_soundness
-#print axioms Airbender.MulDiv.soundness
-#print axioms Airbender.MulDiv.babyBear_soundness
 #print axioms Airbender.MulDiv.rv_soundness
 #print axioms Airbender.MulDiv.babyBear_rv_soundness
-#print axioms Airbender.ShiftBinop.soundness
-#print axioms Airbender.ShiftBinop.babyBear_soundness
 #print axioms Airbender.ShiftBinop.rv_soundness
 #print axioms Airbender.ShiftBinop.babyBear_rv_soundness
-#print axioms Airbender.SubwordMemory.soundness
-#print axioms Airbender.SubwordMemory.babyBear_soundness
 #print axioms Airbender.SubwordMemory.rv_soundness
 #print axioms Airbender.SubwordMemory.babyBear_rv_soundness
-#print axioms Airbender.WordMemory.soundness
-#print axioms Airbender.WordMemory.babyBear_soundness
 #print axioms Airbender.WordMemory.rv_soundness
 #print axioms Airbender.WordMemory.babyBear_rv_soundness
 #print axioms Airbender.PCState.outgoing_bounds
@@ -350,37 +220,15 @@ example : Airbender.UnifiedReduced.Caller.RVPreparedRoundCyclesSoundnessClaim :=
 #print axioms RV.keccak_special5_run
 #print axioms RV.keccak_f1600_run
 #print axioms RV.standard_vectors
-#print axioms Airbender.Delegation.Caller.requests_soundness
-#print axioms Airbender.Delegation.Caller.request_memory_soundness
-#print axioms Airbender.Delegation.Caller.operation_soundness
-#print axioms Airbender.Delegation.Caller.shared_memory_soundness
-#print axioms Airbender.Delegation.Caller.shared_operation_soundness
-#print axioms Airbender.Delegation.Caller.shared_span_soundness
-#print axioms Airbender.Delegation.Caller.mixed_memory_soundness
-#print axioms Airbender.Delegation.Caller.worker_schedule_soundness
-#print axioms Airbender.Delegation.Caller.request_window_soundness
-#print axioms Airbender.Delegation.Caller.request_hash_window_soundness
-#print axioms Airbender.Delegation.native_memory_execution
-#print axioms Airbender.Delegation.operation_memory_soundness
-#print axioms Airbender.Delegation.memory_soundness
 #print axioms Airbender.Delegation.rv_native_memory_execution
 #print axioms Airbender.Delegation.rv_operation_memory_soundness
 #print axioms Airbender.Delegation.rv_memory_soundness
-#print axioms Airbender.Trace.sail_soundness
-#print axioms Airbender.Trace.airbender_soundness
-#print axioms Airbender.Trace.native_boot_soundness
-#print axioms Airbender.JumpBranchSlt.trace_soundness
-#print axioms Airbender.MulDiv.trace_soundness
-#print axioms Airbender.ShiftBinop.trace_soundness
-#print axioms Airbender.SubwordMemory.ram_trace_soundness
 #print axioms Airbender.Trace.rv_airbender_soundness
 #print axioms Airbender.Trace.rv_native_boot_soundness
 #print axioms Airbender.JumpBranchSlt.rv_trace_soundness
 #print axioms Airbender.MulDiv.rv_trace_soundness
 #print axioms Airbender.ShiftBinop.rv_trace_soundness
 #print axioms Airbender.SubwordMemory.rv_ram_trace_soundness
-#print axioms Airbender.Trace.pooled_native_soundness
-#print axioms Airbender.Trace.NonDeterminism.Pooled.native_soundness
 #print axioms Airbender.Trace.rv_pooled_native_soundness
 #print axioms Airbender.Trace.boot_ram_zero
 #print axioms Airbender.Trace.NonDeterminism.Pooled.rv_native_soundness
@@ -397,56 +245,17 @@ example : Airbender.UnifiedReduced.Caller.RVPreparedRoundCyclesSoundnessClaim :=
 #print axioms Airbender.InitsTeardowns.writes_range_checked
 #print axioms Airbender.Trace.teardowns_bounded
 #print axioms Airbender.UnifiedReduced.teardowns_bounded
-#print axioms Airbender.UnifiedReduced.Mixed.execution_soundness
-#print axioms Airbender.UnifiedReduced.execution_soundness
 #print axioms Airbender.UnifiedReduced.rv_execution_soundness
 #print axioms Airbender.UnifiedReduced.boot_ram_zero
-#print axioms Airbender.UnifiedReduced.Caller.mixed_memory_soundness
-#print axioms Airbender.UnifiedReduced.Caller.shared_span_soundness
-#print axioms Airbender.UnifiedReduced.Caller.request_window_soundness
-#print axioms Airbender.UnifiedReduced.Caller.request_hash_window_soundness
-#print axioms Airbender.UnifiedReduced.Caller.mixed_window_soundness
-#print axioms Airbender.UnifiedReduced.Caller.joint_hash_window_soundness
-#print axioms Airbender.UnifiedReduced.Caller.window_projection_soundness
-#print axioms Airbender.UnifiedReduced.Caller.window_schedule_soundness
-#print axioms Airbender.UnifiedReduced.Caller.mixed_window_projection_soundness
-#print axioms Airbender.UnifiedReduced.Caller.control_preparation_soundness
-#print axioms Airbender.UnifiedReduced.Caller.control_preparation_window_soundness
-#print axioms Airbender.UnifiedReduced.Caller.mixed_window_chain_soundness
-#print axioms Airbender.UnifiedReduced.Caller.mixed_window_sequence_soundness
-#print axioms Airbender.UnifiedReduced.Caller.prepared_hash_window_soundness
-#print axioms Airbender.UnifiedReduced.Caller.prepared_hash_chain_soundness
-#print axioms Airbender.UnifiedReduced.Caller.prepared_hash_sequence_soundness
-#print axioms Airbender.UnifiedReduced.Caller.prepared_round_region_masks_soundness
-#print axioms Airbender.UnifiedReduced.Caller.prepared_protocol_sequence_soundness
-#print axioms Airbender.UnifiedReduced.Caller.prepared_round_masks_soundness
-#print axioms Airbender.UnifiedReduced.Caller.prepared_round_window_soundness
-#print axioms Airbender.UnifiedReduced.Caller.caller_cycles_soundness
-#print axioms Airbender.UnifiedReduced.Caller.prepared_round_cycles_soundness
-#print axioms Airbender.UnifiedReduced.Caller.program_window_schedule_soundness
-#print axioms Airbender.UnifiedReduced.Caller.program_prepared_protocol_sequence_soundness
-#print axioms Airbender.Bigint.Native.operation_execution
 #print axioms Airbender.Bigint.Native.rv_operation_execution
-#print axioms Airbender.Blake2G.Native.workvector_soundness
-#print axioms Airbender.Blake2G.Native.workvector_boundary_soundness
-#print axioms Airbender.Blake2G.Native.window_soundness
-#print axioms Airbender.Blake2G.Native.operation_execution
 #print axioms Airbender.Blake2G.Native.rv_workvector_soundness
 #print axioms Airbender.Blake2G.Native.rv_workvector_boundary_soundness
 #print axioms Airbender.Blake2G.Native.rv_window_soundness
 #print axioms Airbender.Blake2G.Native.rv_operation_execution
-#print axioms Airbender.Blake2Round.Native.operation_execution
-#print axioms Airbender.Blake2Round.Native.compression_soundness
-#print axioms Airbender.Blake2Round.Native.compression_boundary_soundness
-#print axioms Airbender.Blake2Round.Native.window_soundness
 #print axioms Airbender.Blake2Round.Native.rv_operation_execution
 #print axioms Airbender.Blake2Round.Native.rv_compression_soundness
 #print axioms Airbender.Blake2Round.Native.rv_compression_boundary_soundness
 #print axioms Airbender.Blake2Round.Native.rv_window_soundness
-#print axioms Airbender.Keccak.Native.permutation_boundary_soundness
-#print axioms Airbender.Keccak.Native.permutation_soundness
-#print axioms Airbender.Keccak.Native.operation_execution
-#print axioms Airbender.Keccak.Native.window_soundness
 #print axioms Airbender.Keccak.Native.rv_permutation_boundary_soundness
 #print axioms Airbender.Keccak.Native.rv_permutation_soundness
 #print axioms Airbender.Keccak.Native.rv_operation_execution

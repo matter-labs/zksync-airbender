@@ -8,7 +8,7 @@ interpretations used by execution claims, rather than whole-execution conclusion
 
 ## Checked connections
 
-[`Caller.mixed_memory_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/Theorems.lean)
+[`Caller.rv_mixed_memory_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVTheorems.lean)
 derives actual GPR/RAM transfers, ranges, addresses and worker reference effects
 from one joint machine/worker history. It does not require a separate worker
 permutation or supplied intermediate states.
@@ -20,25 +20,25 @@ link the scheduling, projection, control-preparation and reference claims.
 Public cut/duration, program/domain and protocol conditions remain explicit.
 
 [Registry](Registry.lean) connects the machine row to its imported layout.
-[Program](Program.lean), [ExecutionInputs](ExecutionInputs.lean) and
-[CustomInputs](CustomInputs.lean) name the public decoder/initialization/profile inputs.
-[NativeROM](NativeROM.lean) exposes the ordinary-machine ROM view.
+Program, ExecutionInputs and
+CustomInputs name the public decoder/initialization/profile inputs.
+NativeROM exposes the ordinary-machine ROM view.
 
-[RequestTrace](RequestTrace.lean) and [WorkerProjection](WorkerProjection.lean)
+[RequestTrace](RequestTrace.lean) and WorkerProjection
 connect full caller requests to workers. [MixedMemory](MixedMemory.lean) retains
-machine ports and all worker families in the same history; [MixedFetch](MixedFetch.lean)
+machine ports and all worker families in the same history; MixedFetch
 binds current-state fetch.
 
-[Windows](Windows.lean), [WindowProjection](WindowProjection.lean) and
-[WindowSchedule](WindowSchedule.lean) describe native-clock cuts and selected regions.
-[`ProgramCallerRegion`](WindowSchedule.lean) describes public code in a PC/clock
+Windows, WindowProjection and
+WindowSchedule describe native-clock cuts and selected regions.
+`RVProgramCallerRegion` describes public code in a PC/clock
 interval: ordinary entries lie outside it and CSR entries select its full family.
 With a sequential ordinary registry, accepted state/request matching derives
-[`ProgramCallerWindow`](WindowSchedule.lean): every selected machine row is a
+`RVProgramCallerWindow`: every selected machine row is a
 caller, both row counts equal `(upper - lower) / 4`, and every selected worker has
 that public family and a unique native slot. No selected-worker family, count or
 duration proportional to its row list is supplied. See
-[`Caller.program_window_schedule_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/Theorems.lean).
+[`Caller.rv_program_window_schedule_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVTheorems.lean).
 Alignment, cut location and the public code profile remain explicit. COPY followed
 by ADDI checks this connection; the wrong family and an interval including the
 ordinary instruction are rejected. Both invalid bigint controls remain admitted
@@ -47,11 +47,11 @@ by this request/schedule result.
 [ControlPreparation](ControlPreparation.lean) names the public preparation registry.
 It accepts one uniform literal, different ADDI-from-x0/LUI literals, or ordinary
 arithmetic, LW/SW, bitwise/shifts, REV8 and supported TRIADD/XORROT forms along a
-straight path with callers. [`SequentialProgram`](ControlPreparation.lean) states
-these original public instruction forms; `ArithmeticProgram` remains available.
+straight path with callers. [`RVSequentialProgram`](ControlPreparation.lean) states
+these original public instruction forms; `RVArithmeticProgram` remains available.
 No operand, read, native selector or result is supplied.
-[`sequential_fields_mask`, `sequential_program_pc_advance` and
-`sequential_program_pc_clock`](../../../Proofs/UnifiedReduced/ControlPreparation.lean)
+[`rv_sequential_fields_mask`, `rv_sequential_program_pc_advance` and
+`rv_sequential_program_pc_clock`](../../../Proofs/UnifiedReduced/ControlPreparation.lean)
 derive native selectors, PC increments and the instruction address from public
 decoding and accepted constraints/matching. Jumps, branches and comparisons are
 outside this linear PC/clock profile; comparisons use a wraparound PC path.
@@ -61,7 +61,7 @@ Only its final cycle is worker-free; earlier worker effects remain in the same
 history. The original extended-round first-span scope retains an empty worker prefix.
 Boundary timestamps are retained; scheduling, actual controls and intermediate
 states are derived rather than supplied.
-The [prepared control window](../../Trace/UnifiedReduced/ControlPreparation.lean)
+The prepared control window
 connects two prepared controls through the same actual intervening history, keeping
 all ordinary and worker accesses. Both controls follow from the public registry
 and joint prefix/window matching.
@@ -74,7 +74,7 @@ The [arithmetic preparation regression](../../../../test/Tests/ControlPreparatio
 uses an aliased ADD before ADDI-from-x0, with reversed native rows. One continuous
 history derives actual x12 values 65537→131074→0, retaining write clocks six/ten;
 a fabricated preparation read is rejected by joint matching.
-[`triadd_prefix_and_preparation_share_history`](../../../../test/Tests/ControlPreparation.lean)
+[triadd_prefix_and_preparation_share_history](../../../../test/Tests/ControlPreparation.lean)
 checks the custom prefix with the same aliased fixture: actual x12 is
 65537→196611→0, with the same clocks and fabricated-read rejection. This is
 preparation and memory transport. It adds no successful full-prefix retirement

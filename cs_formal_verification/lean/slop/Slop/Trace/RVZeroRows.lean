@@ -1,6 +1,5 @@
 import Slop.WordMemory
 import Slop.Trace.Family.Timestamps
-import Slop.Trace.ZeroRegister
 import Slop.Trace.RVProgram
 import Slop.JumpBranchSlt.Trace
 import Slop.MulDiv.Trace

@@ -1,6 +1,8 @@
 import Slop.Trace.RVValues
 import Slop.JumpBranchSlt.RVDecoder
-import Slop.JumpBranchSlt.Values
+import Slop.JumpBranchSlt.Branch
+import Slop.JumpBranchSlt.Jump
+import Slop.JumpBranchSlt.Trace
 
 /-! JumpBranchSlt row facts of the RV value-bounds law (`RVValuesPooled`): destination bounds and write sources
     from the RV projection equation. -/

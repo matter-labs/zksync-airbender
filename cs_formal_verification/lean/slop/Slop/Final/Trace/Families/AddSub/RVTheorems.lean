@@ -1,6 +1,5 @@
 import Human.Trace.Families.AddSub.RVTheorems
 import Slop.Trace.Family.RVExecution
-import Slop.BabyBear
 
 namespace Airbender.Trace
 

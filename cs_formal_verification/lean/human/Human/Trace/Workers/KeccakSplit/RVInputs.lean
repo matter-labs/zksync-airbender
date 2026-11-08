@@ -1,5 +1,6 @@
-import Human.Trace.Workers.KeccakSplit.Inputs
 import Human.Helpers.Memory.InitialImageRV
+import Human.Circuits.KeccakSplit.Native
+import Human.Helpers.Delegation.WorkerContext
 
 /-! RV siblings of the split worker inputs (`Inputs.lean`): the public starting point is an `RV.State`; RAM cells are
     RAM at any address, INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/

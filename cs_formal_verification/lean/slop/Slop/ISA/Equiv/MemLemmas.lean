@@ -12,8 +12,6 @@ namespace Slop.Equiv
     Functions.xlen]
   congr 1; apply BitVec.eq_of_toNat_eq; simp
 
-@[sail_norm] theorem bits_of_virtaddr_mk (a : BitVec 32) : bits_of_virtaddr (.Virtaddr a) = a := rfl
-
 set_option maxRecDepth 1000000 in
 @[sail_norm] theorem stInit_cur_privilege : Airbender.resetState.regs .cur_privilege = .Machine := by kernel_rfl
 
@@ -26,14 +24,6 @@ theorem is_aligned_vaddr_iff (a : BitVec 32) (n : Nat) :
     is_aligned_vaddr (.Virtaddr a) n = decide (a.toNat % n = 0) := by
   simp only [is_aligned_vaddr, BitVec.toNatInt]
   rw [Int.ofNat_eq_natCast, Int.tmod_eq_emod_of_nonneg (Int.natCast_nonneg _)]
-  rw [← Int.natCast_mod]; by_cases h : a.toNat % n = 0 <;> simp [h] <;> exact_mod_cast h
-
-theorem is_aligned_paddr_iff (a : BitVec 32) (n : Nat) :
-    is_aligned_paddr (.Physaddr (zero_extend (m := 34) a)) n = decide (a.toNat % n = 0) := by
-  simp only [is_aligned_paddr, BitVec.toNatInt, zero_extend, Sail.BitVec.zeroExtend]
-  rw [Int.ofNat_eq_natCast, Int.tmod_eq_emod_of_nonneg (Int.natCast_nonneg _)]
-  have : (BitVec.zeroExtend 34 a).toNat = a.toNat := by simp; omega
-  rw [this]
   rw [← Int.natCast_mod]; by_cases h : a.toNat % n = 0 <;> simp [h] <;> exact_mod_cast h
 
 theorem is_aligned_paddr_iff' (x : physaddrbits) (n : Nat) :
@@ -78,10 +68,6 @@ theorem match_rom (a : BitVec 32) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (h2 : a
   have e1 : (BitVec.zeroExtend 64 (BitVec.zeroExtend 34 a)).toNat = a.toNat := by simp
   simp [BitVec.toNat_sub, BitVec.toNat_add, hw', e1]
   constructor <;> omega
-
-theorem page_mask_eq :
-    (BitVec.updateSubrange ones ((fun x y => x - y) (↑Functions.pagesize_bits : Int) 1).toNat 0 zeros : BitVec 32) =
-      0xFFFFF000#32 := by decide
 
 /-- An aligned access of 1, 2 or 4 bytes never crosses a 4 KiB page. -/
 theorem same_page (a : BitVec 32) (w : Nat) (hw : w = 1 ∨ w = 2 ∨ w = 4) (ha : a.toNat % w = 0) :

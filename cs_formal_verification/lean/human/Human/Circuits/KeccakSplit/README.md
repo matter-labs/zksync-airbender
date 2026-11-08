@@ -8,7 +8,7 @@ the permutation.
 Start with [Schedule](Schedule.lean) (worker kinds, the 361-call `schedule`, the x10
 control words `controlAt` and `bump`), then [Call](Call.lean): `slots` (which RAM
 lanes call `index` accesses), `result` (column parity with the previous round's
-delayed iota, theta+rho with Clean's rotation table, chi) and `ExecutesAt` (the
+delayed iota, theta+rho with Clean's rotation table, chi) and `RVExecutesAt` (the
 complete Sail effect of one call, frame included).
 
 [Native](Native.lean) binds the imported circuits ([column parity](ColumnParity/Artifact.lean),

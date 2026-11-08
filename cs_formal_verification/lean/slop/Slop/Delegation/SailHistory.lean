@@ -1,7 +1,7 @@
 import Slop.Delegation.History
 
 namespace Airbender.Delegation.Proofs
-open Trace Trace.Proofs Reference.RiscV.Sail
+open Trace Trace.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
 
@@ -39,21 +39,5 @@ theorem labeled_events_split (data : MemoryData p) : labeledEvents data =
       (data.initial.map fun token => ((token.address, token.address, 0, token.value) : MemoryAccess))
       ((data.steps.map transferEvent).map (relabelMemoryEvent (eventClock data))) :=
   Trace.Proofs.Transfer.labeled_events_split (transferData data)
-
-theorem native_sail_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
-    (aligned : ∀ cell ∈ cells, cell.Aligned) :
-    ∃ (history : TimestampSortedMemoryAccessList) (events : List MemoryAccess) (after : State),
-      history.val.Perm (labeledEvents data) ∧
-      events.Perm (data.steps.map transferEvent) ∧
-      events.Pairwise (fun a b => b.1 ≤ a.1) ∧
-      SailHistory cells events before after ∧ SailStateMatches cells history after := by
-  apply Trace.Proofs.Transfer.native_sail_history_at_boundary (transfer_facts hp accepted inputs)
-    (transferInputs inputs) aligned
-  intro edge present same
-  obtain ⟨row, _, step⟩ := List.mem_flatMap.mp present
-  obtain ⟨port, portMember, rfl⟩ := List.mem_map.mp step
-  exact False.elim (port_not_zero row (by simpa using portMember) same)
 
 end Airbender.Delegation.Proofs

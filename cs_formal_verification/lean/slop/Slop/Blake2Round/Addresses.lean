@@ -4,8 +4,8 @@ import Human.Circuits.Blake2Round.Artifact
 import Human.Helpers.Properties
 import Slop.Constraints
 import Slop.Arithmetic.Chunks
-import Slop.BabyBear
 import Slop.Trace.Timestamps
+import Human.Helpers.Core.BabyBearPrime
 
 namespace Airbender.Blake2Round.Proofs
 

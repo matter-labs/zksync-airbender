@@ -30,10 +30,10 @@ preserve the full native encodings and clock/state boundaries.
 artifact layouts. The other registry modules provide family-specific trace data
 and public inputs; they do not assert instruction execution.
 
-[Boundary](Boundary.lean) binds public state/program/domain and initial clocks;
-[ExecutionBoundary](ExecutionBoundary.lean) adds the restricted scope's physical image and tables.
-[Interfaces](Interfaces.lean) packages shared per-circuit history/table inputs.
-[PooledBoundary](PooledBoundary.lean) provides physical-image and native-boot
+Boundary binds public state/program/domain and initial clocks;
+ExecutionBoundary adds the restricted scope's physical image and tables.
+Interfaces packages shared per-circuit history/table inputs.
+PooledBoundary provides physical-image and native-boot
 boundaries for the integrated execution claim.
 
 [RowContext](RowContext.lean) constructs a selected row's pre-state by applying

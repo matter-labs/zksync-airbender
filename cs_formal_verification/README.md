@@ -107,7 +107,7 @@ lake env lean test/Checks/TraceAxioms.lean
 This focused target checks ADD/SUB, word-memory and jump/branch/SLT native
 clock/port artifacts, rollover/rejection
 fixtures and timestamp/address/value importer guards. The primary public surface is
-[Trace/Soundness.lean](lean/slop/Slop/Final/Trace/Soundness.lean), with the native
+[Trace/Soundness.lean](lean/slop/Slop/Final/Trace/RVSoundness.lean), with the native
 matching and initial-clock conditions in [Trace/Model.lean](lean/human/Human/Helpers/Context/Model.lean).
 The history fixtures check rejection of an unmatched previous-write timestamp
 and complete per-address paths with interleaved accesses and changing values.

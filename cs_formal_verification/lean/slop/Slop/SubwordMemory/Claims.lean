@@ -1,21 +1,18 @@
-import Slop.Final.Circuits.SubwordMemory.Theorems
-import Slop.Final.Trace.Families.SubwordMemory.Theorems
-import Slop.SubwordMemory.RowClaims
-import Slop.SubwordMemory.TraceSoundness
-import Slop.BabyBear
 import Slop.SubwordMemory.Trace
-import Slop.SubwordMemory.Composition
+import Human.Circuits.SubwordMemory.Output
+import Human.Helpers.Core.BabyBearPrime
+import Slop.AddSub.Selectors
+import Slop.JumpBranchSlt.Branch
+import Slop.JumpBranchSlt.Jump
+import Slop.MulDiv.Values
+import Slop.ShiftBinop.Ports
+import Slop.SubwordMemory.PortReads
+import Slop.Trace.Family.Values
+import Slop.Trace.Pooled
+import Slop.Trace.RowContext
+import Slop.Trace.CompositionCore
 
 namespace Airbender.SubwordMemory
-open _root_.Sail.ArchSem
-theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
-    {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
-    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (image : programImage before addresses = some program)
-    (configuration : Reference.RiscV.Sail.Configured before)
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
-    (member : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
-  Proofs.fetched hp image (by find_configured) h member
 
 
 theorem clocks {setup : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZMod babyBearModulus}

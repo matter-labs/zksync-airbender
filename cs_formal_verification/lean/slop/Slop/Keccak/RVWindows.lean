@@ -1,5 +1,4 @@
 import Slop.Keccak.RVPermutation
-import Slop.Keccak.MemorySoundness
 import Slop.Delegation.RVNativeSegments
 import Human.Trace.Delegation.RVHashWindows
 

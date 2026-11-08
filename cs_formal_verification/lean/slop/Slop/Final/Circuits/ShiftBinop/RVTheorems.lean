@@ -1,5 +1,4 @@
 import Human.Circuits.ShiftBinop.RVTheorems
-import Slop.BabyBear
 import Slop.ShiftBinop.RVTraceSoundness
 import Slop.Trace.RVPooledLawsProof
 

@@ -10,7 +10,7 @@ executing a complete work-vector protocol.
 
 The [local soundness claims](../../../../slop/Slop/Final/Circuits/Blake2G/Theorems.lean) prove the four-word output equals
 Clean's original G under the visible modeled controller and four operand bounds.
-The [integrated worker claim](../../../../slop/Slop/Final/Trace/Workers/Blake2G/Theorems.lean)
+The [integrated worker claim](../../../../slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean)
 derives operation bounds and actual reads/writes from initialized accepted history.
 Its complete-span claims bind the 56/80-call work-vector fold and terminal tokens;
 that is broader than the local G calculation.

@@ -1,12 +1,15 @@
-import Slop.Sail.ResetState
-import Slop.Trace.PooledHistory
-import Slop.Trace.PooledCode
-import Slop.Sail.WordMemoryState
-import Slop.Sail.PhysicalMemory
 import Tests.SubwordMemoryTimestamp
+import Slop.AddSub.Selectors
+import Slop.JumpBranchSlt.Branch
+import Slop.JumpBranchSlt.Jump
+import Slop.MulDiv.Values
+import Slop.ShiftBinop.Ports
+import Slop.SubwordMemory.Values
+import Slop.Trace.Family.Values
+import Slop.Trace.Pooled
 
 namespace Tests.PooledHistory
-open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
+open Airbender Arithmetic Trace
 set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
@@ -107,102 +110,5 @@ theorem fabricated_read_rejected : ¬ Accepted (trace true) := by
   have absent : token (.register 2) 6 18 0 ∉
       (trace true).terminalMemory ++ (trace true).rows.flatMap Row.reads := by decide
   exact absent (matching.mem_iff.mp present)
-
-private def cells : List Cell := [.register 0, .register 1, .ram 4194304, .register 2]
-private def loadEntry : PooledProgramEntry :=
-  ⟨0, 0x0000c103, .LOAD (0, .Regidx 1, .Regidx 2, true, 1),
-    ⟨.subwordMemory, 1, 0, 2, ⟨0, 0⟩, 2, 0⟩⟩
-private def addEntry : PooledProgramEntry :=
-  ⟨4, 0x000100b3, .RTYPE (.Regidx 0, .Regidx 2, .Regidx 1, .ADD),
-    ⟨.addSub, 2, 0, 1, ⟨0, 0⟩, 1, 0⟩⟩
-private noncomputable def initial : State :=
-  { resetMachine with
-    regs := (resetMachine.regs.insert .x1 0x00400001 |>.insert .x2 0 |>.insert .PC 0) }
-private noncomputable def dataState := wordWriteState initial 4194304 0x56781234
-private noncomputable def codeState := wordWriteState dataState 0 loadEntry.bits
-private noncomputable def before := wordWriteState codeState 4 addEntry.bits
-
-theorem airbender_before  : Airbender.Reference.RiscV.Sail.Configured before := by
-  configured_fixture [before, codeState, dataState, initial, Airbender.Reference.RiscV.Sail.wordWriteState]
-
-
-private theorem image : initialImage before cells = some (trace false).initialMemory := by
-  have zero : (Cell.register 0).read before = .ok 0 before := rfl
-  have one : (Cell.register 1).read before = .ok 0x00400001 before := by
-    apply read_register
-    simp [before, codeState, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
-  have two : (Cell.register 2).read before = .ok 0 before := by
-    apply read_register
-    simp [before, codeState, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
-  have memory : (Cell.ram 4194304).read before = .ok 0x56781234 before :=
-    written_word_disjoint 4 addEntry.bits (Or.inr (by decide))
-      (written_word_disjoint 0 loadEntry.bits (Or.inr (by decide))
-        (written_word_read initial 4194304 0x56781234))
-  simp only [initialImage, cells, List.mapM_cons, List.mapM_nil, zero, one, two, memory]
-  rfl
-
-private theorem program_image : pooledProgramImage before [0, 4] = some [loadEntry, addEntry] := by
-  have loadBytes : (Cell.ram 0).read before = .ok loadEntry.bits before :=
-    written_word_disjoint 4 addEntry.bits (Or.inl (by decide)) (written_word_read dataState 0 loadEntry.bits)
-  have addBytes : (Cell.ram 4).read before = .ok addEntry.bits before := written_word_read _ 4 _
-  have loadDecoded : Airbender.Reference.RiscV.Sail.decodeOnReset loadEntry.bits = some loadEntry.instruction :=
-    by decode_on_reset
-  have addDecoded : Airbender.Reference.RiscV.Sail.decodeOnReset addEntry.bits = some addEntry.instruction :=
-    by decode_on_reset
-  simp only [pooledProgramImage, List.mapM_cons, List.mapM_nil, programEntryWith,
-    loadBytes, addBytes, loadDecoded, addDecoded, bind, Option.bind]
-  rfl
-
-private theorem decoded : PooledDecoded (trace false) [loadEntry, addEntry] := by
-  intro row member
-  simp only [trace, List.mem_cons, List.not_mem_nil, or_false] at member
-  rcases member with rfl | rfl
-  all_goals change ∃ i, _
-  all_goals exact ⟨⟨0, by decide⟩, by decide⟩
-
-/-- All mixed-family reads, writes and terminal values inherit canonical limbs
-    from the actual public Sail image. No operand bound is provided to this proof. -/
-theorem derived_values :
-    (∀ row ∈ (trace false).rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧
-    (∀ row ∈ (trace false).rows, ∀ port ∈ row.ports,
-      (writeToken row.columns row.assignment port).word.Bounded) ∧
-    (∀ sink ∈ (trace false).terminalMemory, sink.word.Bounded) := by
-  apply Proofs.pooled_value_bounds (by decide) (by decide) accepted boundary image
-    (values := fun _ => 0) (programImage := program_image) (decoded := decoded)
-  · rfl
-  · rfl
-
-/-- The same mixed trace transports its reads/writes through actual Sail GPR
-    and byte-memory semantics. ISA-clause retirement is a later composition step. -/
-theorem actual_cell_history :
-    ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row babyBearModulus PooledFamily))
-      (after : State),
-      MemoryHistory (trace false) history ∧ rows.Perm (trace false).rows ∧
-      rows.Pairwise (fun a b => b.clock < a.clock) ∧
-      SailHistory cells
-        (rows.flatMap fun row => (Trace.rowEvents (trace false).memoryEpoch row).reverse) before after ∧
-      SailStateMatches cells history after := by
-  exact Proofs.pooled_native_history (by decide) (by decide) accepted boundary image
-    (by decide) (by intro cell member; simp [cells] at member; rcases member with rfl | rfl | rfl | rfl <;> simp [Cell.Aligned])
-    program_image decoded
-
-/-- The full mixed history preserves both fetched public instructions. Their
-    bytes and original Sail decoding remain linked after the native writes. -/
-theorem preserved_program :
-    ∃ (rows : List (Row babyBearModulus PooledFamily)) (after : State),
-      rows.Perm (trace false).rows ∧
-      SailHistory cells
-        (rows.flatMap fun row => (Trace.rowEvents (trace false).memoryEpoch row).reverse) before after ∧
-      loadEntry.SourceWith after pooledDecoderFields ∧ addEntry.SourceWith after pooledDecoderFields := by
-  obtain ⟨_, rows, after, _, permutation, _, nativeHistory, _⟩ := actual_cell_history
-  have eventPermutation :
-      (rows.flatMap fun row => (Trace.rowEvents (trace false).memoryEpoch row).reverse).Perm
-        (trace false).nativeEvents := by
-    rw [Proofs.native_events_projection (by decide) (by decide) accepted boundary]
-    exact permutation.flatMap (fun row _ => List.reverse_perm _)
-  refine ⟨rows, after, permutation, nativeHistory, ?_, ?_⟩
-  all_goals
-    exact Proofs.pooled_source_after_history (by decide) (by decide) accepted boundary image
-      program_image (by simp) (by decide) (fun _ member => eventPermutation.mem_iff.mp member) nativeHistory
 
 end Tests.PooledHistory

@@ -1,8 +1,10 @@
 import Human.Trace.Workers.Keccak.Permutation
-import Human.Trace.Workers.Keccak.Windows
 import Human.Helpers.Delegation.RVBoundaryMemory
 import Human.Trace.Delegation.RVExecution
 import Human.ISA.DelegationRuns
+import Human.Helpers.Delegation.NativeWindows
+import Human.Helpers.Delegation.SpanABI
+import Human.Trace.Workers.Blake2G.WorkVector
 
 /-! RV siblings of the Keccak special5 call, boundary-call, window and permutation contracts (`Call.lean`,
     `BoundaryCall.lean`, `Windows.lean`, `Permutation.lean`): the public state is an `RV.State`; RAM cells are RAM at

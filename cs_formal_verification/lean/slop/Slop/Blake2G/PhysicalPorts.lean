@@ -3,7 +3,7 @@ import Human.Circuits.Blake2G.Execution
 import Slop.Delegation.NativeViews
 
 namespace Airbender.Blake2G.Proofs
-open Trace Trace.Proofs Delegation.Proofs Arithmetic Reference.RiscV.Sail
+open Trace Trace.Proofs Delegation.Proofs Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
@@ -38,34 +38,5 @@ theorem native_addresses [Fact p.Prime] (hp : 33554432 ≤ p)
   all_goals simp [addressInput, Native.statePointer, Native.messagePointer,
     Delegation.Row.readWord, Delegation.Row.ports, readToken, MemoryToken.word,
     MemoryPort.readCode, WordColumns.code, importedConstraintsMemoryPorts]
-
-theorem native_word_observations {p : Nat} {w : Nat → ZMod p} {before after : State}
-    {controlBound : (w Variables.controlReadLo).val < 256}
-    (addresses : Addresses.spec (addressInput w controlBound)
-      (importedConstraintsIndirectPorts.map (fun port => port.address w)))
-    (reads : ∀ port ∈ (⟨.blakeG, w⟩ : Delegation.Row p).ports, (readToken w port).word.Bounded)
-    (writes : ∀ port ∈ (⟨.blakeG, w⟩ : Delegation.Row p).ports,
-      ((⟨.blakeG, w⟩ : Delegation.Row p).writeToken port).word.Bounded)
-    (observed : ∀ port ∈ (⟨.blakeG, w⟩ : Delegation.Row p).ports,
-      ∃ cell : Cell, cell.addressCode = port.address.code w ∧
-        cell.read before = .ok (memoryWord (port.readCode w)) before ∧
-        cell.read after = .ok (memoryWord (port.writeCode w)) after) (index : Fin 6) :
-    let address := (Addresses.expected (addressInput w controlBound))[index]
-    ramWord before address = ((⟨.blakeG, w⟩ : Delegation.Row p).readWord (wordIndex index)).value ∧
-      ramWord after address = ((⟨.blakeG, w⟩ : Delegation.Row p).writtenWord (wordIndex index)).value := by
-  have member : wordPort index ∈ (⟨.blakeG, w⟩ : Delegation.Row p).ports :=
-    Array.getElem_mem (wordIndex index).isLt
-  have result := indirect_word_observations (word_port_address index)
-    (reads _ member) (writes _ member) (observed _ member)
-  have address := congrArg (fun values : Vector (BitVec 32) 6 => values[index]) addresses
-  simp only [Fin.getElem_fin, Vector.getElem_map] at address
-  change importedConstraintsIndirectPorts[index].address w =
-    (Addresses.expected (addressInput w controlBound))[index] at address
-  change ramWord before (importedConstraintsIndirectPorts[index].address w) =
-    ((⟨.blakeG, w⟩ : Delegation.Row p).readWord (wordIndex index)).value ∧
-    ramWord after (importedConstraintsIndirectPorts[index].address w) =
-    ((⟨.blakeG, w⟩ : Delegation.Row p).writtenWord (wordIndex index)).value at result
-  rw [address] at result
-  exact result
 
 end Airbender.Blake2G.Proofs

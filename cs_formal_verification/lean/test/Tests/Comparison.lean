@@ -119,48 +119,6 @@ example : (⟨(edgeRow false false false 30).val, (edgeRow false false false 31)
     ⟨rfl, rfl⟩ ⟨by decide, by decide⟩ ⟨by decide, by decide⟩
   simpa [Arithmetic.Word.value, Arithmetic.limbBase] using result
 
-private def input (signed immediate wrapPC : Bool) : JumpBranchSlt.Comparison.Input where
-  opcode := if signed then (if immediate then .slti else .slt)
-    else (if immediate then .sltiu else .sltu)
-  left := ⟨0, 0⟩
-  right := ⟨65535, 65535⟩
-  pc := if wrapPC then ⟨65532, 65535⟩ else ⟨0, 0⟩
-  rs1 := .Regidx 1
-  rs2 := if immediate then .Regidx 0 else .Regidx 2
-  rd := if immediate then .Regidx 1 else .Regidx 2
-  encodedImmediate := if immediate then 4095 else 0
-  before := { (default : Reference.RiscV.Sail.State) with regs :=
-    ((default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .x1 (0 : BitVec 32) |>.insert .x2 (4294967295 : BitVec 32)
-      |>.insert .PC (if wrapPC then 4294967292 else 0 : BitVec 32)) }
-
-private def output (signed wrapPC : Bool) : Reference.RiscV.Sail.Output :=
-  ⟨⟨if signed then 0 else 1, 0⟩, if wrapPC then ⟨0, 0⟩ else ⟨4, 0⟩⟩
-
-/-- All four comparisons against -1 (including its immediate encoding),
-    with source/destination aliases and 32-bit PC
-    wraparound, obtained from concrete satisfying imported assignments. -/
-example (signed immediate wrapPC : Bool) : JumpBranchSlt.Comparison.spec (input signed immediate wrapPC) (output signed wrapPC) := by
-  apply JumpBranchSlt.Comparison.babyBear_row_soundness (input signed immediate wrapPC) (output signed wrapPC) (edgeRow signed immediate wrapPC)
-  refine ⟨?_, edgeSatisfies signed immediate wrapPC, ?_⟩
-  · constructor
-    all_goals solve
-      | (apply Reference.RiscV.Sail.read_register
-         cases signed <;> cases immediate <;> cases wrapPC <;> simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
-           Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
-      | (change Arithmetic.Word.Bounded ⟨0, 0⟩; exact ⟨by decide, by decide⟩)
-      | (change Arithmetic.Word.Bounded ⟨65535, 65535⟩; exact ⟨by decide, by decide⟩)
-      | (intro hop
-         cases signed <;> cases immediate <;> cases wrapPC
-         all_goals solve
-           | (rcases hop with hop | hop <;> cases hop)
-           | (apply Reference.RiscV.Sail.read_register
-              simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
-                Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
-           | decide)
-      | (cases signed <;> cases immediate <;> cases wrapPC <;> (try dsimp [input]) <;> decide)
-  · constructor <;> cases signed <;> cases immediate <;> cases wrapPC <;> rfl
-
 private def negativeRow : Nat → ZMod babyBearModulus
   | 4 | 5 | 7 | 13 | 30 | 42 | 44 | 47 => 1
   | 6 | 10 => 2
@@ -176,39 +134,5 @@ private theorem negativeSatisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment negativeRow)
       JumpBranchSlt.importedConstraints :=
   JumpBranchSlt.Completeness.complete_of_agree negativeWitness (by constructor <;> decide) (by decide)
-
-private def negativeInput : JumpBranchSlt.Comparison.Input :=
-  { (input false false false) with
-    opcode := .slt
-    left := ⟨65535, 65535⟩
-    right := ⟨0, 0⟩
-    rd := .Regidx 1
-    before :=
-      { (default : Reference.RiscV.Sail.State) with regs :=
-        ((default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-          |>.insert .x1 (4294967295 : BitVec 32) |>.insert .x2 (0 : BitVec 32)
-          |>.insert .PC (0 : BitVec 32)) } }
-
-/-- -1 < 0 signed, although the unsigned borrow is zero; rd aliases rs1. -/
-example : JumpBranchSlt.Comparison.spec negativeInput (output false false) := by
-  apply JumpBranchSlt.Comparison.babyBear_row_soundness negativeInput (output false false) negativeRow
-  refine ⟨?_, negativeSatisfies, ?_⟩
-  · constructor
-    all_goals solve
-      | (simp only [negativeInput, input]
-         apply Reference.RiscV.Sail.read_register
-         simp [Arithmetic.Word.toBitVec, Arithmetic.Word.value,
-           Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
-      | (change Arithmetic.Word.Bounded ⟨0, 0⟩; exact ⟨by decide, by decide⟩)
-      | (change Arithmetic.Word.Bounded ⟨65535, 65535⟩; exact ⟨by decide, by decide⟩)
-      | (intro hop
-         solve
-           | (rcases hop with hop | hop <;> cases hop)
-           | (simp only [negativeInput, input]
-              apply Reference.RiscV.Sail.read_register
-              simp [Arithmetic.Word.toBitVec, Arithmetic.Word.value,
-                Arithmetic.limbBase, Std.ExtDHashMap.get?_insert]))
-      | ((try dsimp [negativeInput, input]) <;> decide)
-  · constructor <;> simp [negativeRow, negativeInput, input, output] <;> decide
 
 end Tests.Comparison

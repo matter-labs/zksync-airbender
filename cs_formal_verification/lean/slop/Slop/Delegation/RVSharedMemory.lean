@@ -1,7 +1,6 @@
 import Human.Trace.Delegation.RVSharedMemory
 import Slop.Delegation.RVRequestTrace
 import Slop.Delegation.RVSharedImage
-import Slop.Delegation.SharedClocks
 import Slop.Trace.TransferValues
 
 /-! RV siblings of the caller-only shared pool proofs (`SharedClocks.lean`, `SharedMemory.lean`) over `RVRequestTrace`:

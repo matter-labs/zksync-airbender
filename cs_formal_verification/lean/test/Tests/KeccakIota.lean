@@ -1,5 +1,4 @@
 import Slop.Keccak.Claims
-import Slop.BabyBear
 import Mathlib.Tactic.IntervalCases
 import Slop.Keccak.Completeness.Bytes
 

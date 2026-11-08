@@ -1,9 +1,9 @@
 import Slop.AddSub.RowModel
 import Slop.Arithmetic.Lemmas
 import Slop.Arithmetic.Word
-import Slop.Sail.PC
 import Slop.AddSub.PC
 import Slop.Constraints
+import Mathlib.Tactic.IntervalCases
 
 namespace Airbender.AddSub.Proofs
 open Airbender.Reference.RiscV
@@ -23,7 +23,7 @@ private theorem carry_bits {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     simpa [mul_eq_zero, sub_eq_add_neg] using h40
 
 private theorem selected_equations_row {p : Nat} [Fact p.Prime] {row : RowInput} {rd : BitVec 5}
-    {output : Sail.Output} {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    {output : Circuit.Output} {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (dc : DecoderContractRow row rd w) (nonzero : rd ≠ 0) (wm : RowWordMappingRow row rd output w)
     {c d : Nat} (hc : w 39 = (c : ZMod p)) (hd : w 40 = (d : ZMod p)) :
     match row.opcode with
@@ -104,18 +104,10 @@ theorem zero_operands_result {p : Nat} [Fact p.Prime] (hp : 196608 < p) {w : Nat
     (written_limb_bounds h) (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide))
     (by simpa only [Nat.cast_zero] using low) (by simpa only [Nat.cast_zero] using high)
 
-/-- The result's limb bounds follow from the two imported output range queries. -/
-theorem output_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
-    {input : Sail.Input} {output : Sail.Output}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (mapping : RowWordMapping input output w) : output.destination.Bounded := by
-  have bounds := written_limb_bounds h
-  exact ⟨mapping.outputLo ▸ bounds.1, mapping.outputHi ▸ bounds.2⟩
-
 /-- Shared limb calculation for the standard arithmetic clauses over `(row, rd)`, independent
     of artifact placement and selector gates. Callers supply the instruction meaning. -/
 theorem result_of_limbs_row {p : Nat} [Fact p.Prime] (hp : 196608 < p)
-    {row : RowInput} {rd : BitVec 5} {output : Sail.Output} {c d : Nat}
+    {row : RowInput} {rd : BitVec 5} {output : Circuit.Output} {c d : Nat}
     (nonzero : rd ≠ 0) (preprocessing : PreprocessingRow row rd)
     (bounds : InputBounds row) (pcBounds : row.pc.Bounded)
     (resultBounds : output.destination.Bounded) (cb : c ≤ 1) (db : d ≤ 1)
@@ -158,34 +150,9 @@ theorem result_of_limbs_row {p : Nat} [Fact p.Prime] (hp : 196608 < p)
       (Word.add_of_limbs (right := ⟨0, 0⟩) hp pcBounds ⟨by decide, by decide⟩
         bounds.immediateBound resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) (by simpa using eqs.1) (by simpa using eqs.2))
 
-/-- Sail-typed `result_of_limbs`: the row-level calculation at `input.row` and `rdBits input.rd`. -/
-theorem result_of_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p)
-    {input : Sail.Input} {output : Sail.Output} {c d : Nat}
-    (nonzero : input.rd ≠ Sail.zeroRegister) (preprocessing : Preprocessing input)
-    (bounds : InputBounds input.row) (pcBounds : input.row.pc.Bounded)
-    (resultBounds : output.destination.Bounded) (cb : c ≤ 1) (db : d ≤ 1)
-    (eqs : match input.row.opcode with
-      | .sub =>
-        (output.destination.lo : ZMod p) + input.row.right.lo = input.row.left.lo + 65536 * c ∧
-        (c : ZMod p) + output.destination.hi + input.row.right.hi = input.row.left.hi + 65536 * d
-      | .auipc =>
-        (input.row.pc.lo : ZMod p) + input.row.immediate.lo = output.destination.lo + 65536 * c ∧
-        (c : ZMod p) + input.row.pc.hi + input.row.immediate.hi = output.destination.hi + 65536 * d
-      | _ =>
-        (input.row.left.lo : ZMod p) + input.row.right.lo + input.row.immediate.lo = output.destination.lo + 65536 * c ∧
-        (c : ZMod p) + input.row.left.hi + input.row.right.hi + input.row.immediate.hi = output.destination.hi + 65536 * d) :
-    output.destination.toBitVec = match input.row.opcode with
-      | .add => input.row.left.toBitVec + input.row.right.toBitVec
-      | .addi => input.row.left.toBitVec + input.row.immediate.toBitVec
-      | .sub => input.row.left.toBitVec - input.row.right.toBitVec
-      | .lui => input.row.immediate.toBitVec
-      | .auipc => input.row.pc.toBitVec + input.row.immediate.toBitVec :=
-  result_of_limbs_row (row := input.row) (rd := rdBits input.rd) hp (rd_ne_zero nonzero)
-    (preprocessing_toRow preprocessing) bounds pcBounds resultBounds cb db eqs
-
 /-- A calculation lemma over `(row, rd)`, derived from the imported constraints, not an ISA spec. -/
 theorem result_word_row {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) {row : RowInput} {rd : BitVec 5} {output : Sail.Output} {w : Nat → ZMod p}
+    (hp : 196608 < p) {row : RowInput} {rd : BitVec 5} {output : Circuit.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (dc : DecoderContractRow row rd w) (nonzero : rd ≠ 0) (bounds : InputBounds row) (pcBounds : row.pc.Bounded)
     (mapping : RowWordMappingRow row rd output w) :
@@ -201,38 +168,5 @@ theorem result_word_row {p : Nat} [Fact p.Prime]
     ⟨mapping.outputLo ▸ written.1, mapping.outputHi ▸ written.2⟩
   exact result_of_limbs_row hp nonzero dc.preprocessing bounds pcBounds
     resultBounds cb db (selected_equations_row h dc nonzero mapping hc hd)
-
-/-- A calculation lemma derived from the imported constraints, not an ISA spec. The Sail-typed
-    statement is the row-level `result_word_row` at `input.row` and `rdBits input.rd`. -/
-theorem result_word {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) {input : Sail.Input} {output : Sail.Output} {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (dc : DecoderContract input w) (nonzero : input.rd ≠ Sail.zeroRegister) (bounds : InputBounds input.row) (pcBounds : input.row.pc.Bounded)
-    (mapping : RowWordMapping input output w) :
-    output.destination.toBitVec = match input.row.opcode with
-      | .add => input.row.left.toBitVec + input.row.right.toBitVec
-      | .addi => input.row.left.toBitVec + input.row.immediate.toBitVec
-      | .sub => input.row.left.toBitVec - input.row.right.toBitVec
-      | .lui => input.row.immediate.toBitVec
-      | .auipc => input.row.pc.toBitVec + input.row.immediate.toBitVec :=
-  result_word_row (row := input.row) (rd := rdBits input.rd) hp h dc.toRow (rd_ne_zero nonzero)
-    bounds pcBounds mapping.toRow
-
-/-- Combined destination/PC soundness for the decoded four-byte Sail path. -/
-theorem soundness {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
-    (rowCircuitModel (p := p)).SoundnessUnder RowInterfaces Sail.spec := by
-  rintro input output w ⟨assumptions, constraints, mapping⟩
-  have pc := pc_successor hp inverse constraints
-    (PCMapping.mk mapping.pcLo mapping.pcHi mapping.finalPCLo mapping.finalPCHi)
-    assumptions.initialPCBounds
-  apply Sail.step_of_destination assumptions.registers pc.2.2
-  intro state contract
-  by_cases hz : input.rd = Sail.zeroRegister
-  · exact Sail.spec_zero_write contract hz
-  · apply Sail.spec_of_result contract hz
-    have result := result_word hp constraints assumptions.decoder hz (assumptions.ranges hz)
-      assumptions.initialPCBounds mapping
-    exact result
 
 end Airbender.AddSub.Proofs

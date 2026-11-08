@@ -15,11 +15,11 @@ native terminal tokens, with schedules and intermediate values derived from matc
 
 | Claim | Direct theorem entry |
 | --- | --- |
-| Seven selected bigint operation effects | [`operation_execution`](../../../../slop/Slop/Final/Trace/Workers/Bigint/Theorems.lean) |
-| Complete G work-vector fold | [`Native.workvector_soundness`](../../../../slop/Slop/Final/Trace/Workers/Blake2G/Theorems.lean) |
-| Complete extended-BLAKE compression | [`compression_soundness`](../../../../slop/Slop/Final/Trace/Workers/Blake2Round/Theorems.lean) |
-| Complete Keccak permutation | [`Native.permutation_soundness`](../../../../slop/Slop/Final/Trace/Workers/Keccak/Theorems.lean) |
-| Complete split Keccak permutation | [`Split.Native.permutation_soundness`](../../../../slop/Slop/Final/Trace/Workers/KeccakSplit/Theorems.lean) |
+| Seven selected bigint operation effects | [`rv_operation_execution`](../../../../slop/Slop/Final/Trace/Workers/Bigint/RVTheorems.lean) |
+| Complete G work-vector fold | [`Native.rv_workvector_soundness`](../../../../slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean) |
+| Complete extended-BLAKE compression | [`rv_compression_soundness`](../../../../slop/Slop/Final/Trace/Workers/Blake2Round/RVTheorems.lean) |
+| Complete Keccak permutation | [`Native.rv_permutation_soundness`](../../../../slop/Slop/Final/Trace/Workers/Keccak/RVTheorems.lean) |
+| Complete split Keccak permutation | [`Split.Native.rv_permutation_soundness`](../../../../slop/Slop/Final/Trace/Workers/KeccakSplit/RVTheorems.lean) |
 
 Native-boundary/window variants retain timestamps rather than restarting history.
 Public protocol modes/counts, modeled tables, domain/alignment and the existing

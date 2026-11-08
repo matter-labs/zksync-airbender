@@ -1,4 +1,5 @@
-import Slop.Delegation.Terminal
+import Human.Helpers.Delegation.WorkerContext
+import Slop.Delegation.SailHistory
 
 namespace Airbender.Delegation.Proofs
 open Trace

@@ -1,5 +1,4 @@
 import Slop.ShiftBinop.Claims
-import Slop.BabyBear
 import Mathlib.Tactic.IntervalCases
 
 namespace Tests.ShiftBinop

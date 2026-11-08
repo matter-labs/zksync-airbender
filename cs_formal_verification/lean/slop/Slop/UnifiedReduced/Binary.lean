@@ -1,9 +1,9 @@
 import Slop.UnifiedReduced.ArtifactChecks
-import Slop.UnifiedReduced.BinaryLookups
-import Slop.UnifiedReduced.ShiftLookups
 import Human.Circuits.UnifiedReduced.Artifact
 import Slop.Constraints
 import Slop.Arithmetic.Bytes
+import Human.Circuits.UnifiedReduced.Tables.Setup
+import Slop.ShiftBinop.Lookups
 
 namespace Airbender.UnifiedReduced.Proofs
 open Arithmetic Verification
@@ -52,42 +52,5 @@ theorem binary_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : N
       all_goals first | linear_combination c | linear_combination d | linear_combination e | linear_combination f
     · exact g
     · exact k
-
-theorem binary_query_values [Fact p.Prime] (hp : 256 < p)
-    {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
-    (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
-    (tag : Nat) (valid : tag = 4 ∨ tag = 6 ∨ tag = 7) (funct3 : w 10 = (Setup.binaryTag tag : ZMod p))
-    (i : Fin 4) :
-    (leftByte w i).val < 256 ∧ (rightByte w i + immediateByte w i).val < 256 ∧
-      (w (58 + 4 * i.val)).val < 256 ∧
-      BitVec.ofNat 8 (w (58 + 4 * i.val)).val = byteOperation tag
-        (BitVec.ofNat 8 (leftByte w i).val) (BitVec.ofNat 8 (rightByte w i + immediateByte w i).val) ∧
-      ∀ j : Fin 3, w (59 + 4 * i.val + j.val) = 0 := by
-  have wires := binary_wiring holds selected other i
-  have query := Verification.lookup_of_holds holds
-    ⟨14 + i.val, by rw [lookup_count]; have := i.isLt; omega⟩
-  fin_cases i
-  all_goals
-    norm_num only at wires
-    have result := Setup.Proofs.wide_lookup hp query tag valid
-      (by simpa [Expression.eval, Verification.environment] using wires.1.trans funct3)
-    have a := wires.2.1
-    have b := wires.2.2.1
-    have c := wires.2.2.2.1 ⟨0, by decide⟩
-    have d := wires.2.2.2.1 ⟨1, by decide⟩
-    have e := wires.2.2.2.1 ⟨2, by decide⟩
-    have f := wires.2.2.2.1 ⟨3, by decide⟩
-    norm_num only at a b c d e f
-    refine ⟨?_, ?_, ?_, ?_, ?_⟩
-    · simpa [Expression.eval, Verification.environment, a] using result.1
-    · simpa [Expression.eval, Verification.environment, b] using result.2.1
-    · simpa [Expression.eval, Verification.environment, c] using result.2.2.1
-    · simpa [Expression.eval, Verification.environment, a, b, c] using result.2.2.2.1
-    · intro j; fin_cases j
-      all_goals first
-        | simpa [Expression.eval, Verification.environment, d] using result.2.2.2.2 0
-        | simpa [Expression.eval, Verification.environment, e] using result.2.2.2.2 1
-        | simpa [Expression.eval, Verification.environment, f] using result.2.2.2.2 2
 
 end Airbender.UnifiedReduced.Proofs

@@ -53,41 +53,4 @@ def fixedRow (index : Fin 1048961) : Vector Nat 10 :=
     #v[key, conditionalValue (conditionalKey key), 0, 0, 0, 0, 0, 0, 0, 51]
   else rotateRow ⟨n - 786817, by have := index.isLt; dsimp [n] at *; omega⟩
 
-/-- Fixed setup plus aligned ROM words read from the public Sail byte image.
-    Missing words pad with zero, as in the existing modeled ROM interface;
-    successful access/public-image conditions remain visible in the trace model.
-    Column 9 holds the table ID; unused columns are zero. -/
-def row (before : Reference.RiscV.Sail.State) (index : Fin 2097537) : Vector Nat 10 :=
-  if h : index.val < 1048961 then fixedRow ⟨index.val, h⟩ else
-    let key := index.val - 1048961
-    let word := Arithmetic.Word.ofBitVec (ROM.words before key)
-    #v[4 * key, word.lo, word.hi, 0, 0, 0, 0, 0, 0, 34]
-
-/-- One concrete Clean static table for the pooled unified queries. The public
-    initial state fixes ROM contents; the witness supplies no table values.
-    Rust setup fidelity remains the same explicit gap as the other modeled tables. -/
-def table {p : Nat} [Fact p.Prime] (before : Reference.RiscV.Sail.State) :
-    Table (ZMod p) (fields 10) := .fromStatic {
-  name := "Airbender.UnifiedReduced"
-  length := 2097537
-  row i := (row before i).map (fun (n : Nat) => (n : ZMod p))
-  index query := match query[9].val with
-    | 0 => 0
-    | 3 => 1 + query[0].val
-    | 52 => 257 + query[0].val * 256 + query[1].val
-    | 53 => 65793 + query[0].val * 256 + query[1].val
-    | 54 => 131329 + query[0].val * 256 + query[1].val
-    | 8 => 196865 + query[0].val * 256 + query[1].val
-    | 9 => 262401 + query[0].val * 65536 + query[1].val * 256 + query[2].val * 8 + query[3].val
-    | 1 => 524545 + query[0].val
-    | 5 => 655617 + query[0].val
-    | 2 => 721153 + query[0].val
-    | 51 => 786689 + query[0].val
-    | 47 | 48 | 49 | 50 => 786817 + (query[9].val - 47) * 65536 + query[0].val * 256 + query[1].val
-    | 34 => 1048961 + query[0].val / 4
-    | _ => 0
-  Spec query := ∃ i : Fin 2097537, query = (row before i).map (fun (n : Nat) => (n : ZMod p))
-  contains_iff _ := Iff.rfl
-}
-
 end Airbender.UnifiedReduced.Setup

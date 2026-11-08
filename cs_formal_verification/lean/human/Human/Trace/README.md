@@ -9,13 +9,13 @@ admitted.
 
 ## Checked results
 
-[`pooled_native_soundness`](../../../slop/Slop/Final/Trace/Soundness.lean) proves that the six admitted ordinary
+[`rv_pooled_native_soundness`](../../../slop/Slop/Final/Trace/RVSoundness.lean) proves that the six admitted ordinary
 families execute from the public Sail state and reach the native final PC and
 tracked cells, interpreting native ROM shadows through public bytes.
 Initialization/configuration, modeled tables, logical matching/decoding and the
 unresolved jump terminal-PC condition remain inputs; reads, ranges and order are derived.
 
-[`NonDeterminism.Pooled.native_soundness`](../../../slop/Slop/Final/Trace/Soundness.lean) proves the same terminal
+[`NonDeterminism.Pooled.rv_native_soundness`](../../../slop/Slop/Final/Trace/RVSoundness.lean) proves the same terminal
 agreement for the external-read/write-hint extension and the exact stream consumption.
 The stream and its port connection are explicit; authentication of the stream is not proved.
 
@@ -31,12 +31,12 @@ has a separate registry. [Worker spans](Workers/README.md#checked-results) and
 [caller composition](Delegation/README.md#checked-results) establish their stated
 effects, without closing whole mixed caller retirement or global inactive padding.
 
-Start with [Soundness](../../../slop/Slop/Final/Trace/Soundness.lean) for the primary six-family standard claim
-and its external-stream extension. [Execution](Execution.lean) defines the generic
+Start with [Soundness](../../../slop/Slop/Final/Trace/RVSoundness.lean) for the primary six-family standard claim
+and its external-stream extension. [Execution](RVExecution.lean) defines the generic
 step relation and `Realizes`: execution reaches the native final PC and tracked cells.
-[PooledExecution](PooledExecution.lean) specializes the standard relation.
+PooledExecution specializes the standard relation.
 
-Read [public pooled inputs](../Helpers/Context/PooledBoundary.lean),
+Read public pooled inputs,
 [accepted matching](../Helpers/Context/Model.lean) and
 [public decoding](../Helpers/Decoder/PooledProgram.lean) alongside the conclusion.
 Native ROM shadows use the explicit public-byte view. The proof derives reads,
@@ -51,7 +51,7 @@ bounds, instruction order and actual retirement from one initialized history.
 | [Delegation](Delegation/README.md) | Caller/worker matching, shared histories and selected spans. |
 | [Unified reduced](UnifiedReduced/README.md) | Unified ordinary/custom execution, caller cycles and windows. |
 
-[PooledNonDeterminism](PooledNonDeterminism.lean) adds stream position and exact
+PooledNonDeterminism adds stream position and exact
 consumption. The stream is independently public; circuit authentication of it
 is not established.
 

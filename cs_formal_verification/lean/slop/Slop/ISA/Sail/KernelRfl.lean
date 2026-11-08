@@ -1,5 +1,6 @@
 import Lean
-import Slop.Sail.Configured
+import Human.Helpers.Core.Configuration
+import Slop.KernelRfl
 
 /-! `kernel_rfl`: close `a = b` with `Eq.refl a`, checked ONLY by the Lean kernel (the elaborator's
 definitional-equality check is skipped; it is far slower on the generated Sail model). The tactic is

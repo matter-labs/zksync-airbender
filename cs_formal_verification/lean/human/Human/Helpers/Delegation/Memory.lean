@@ -79,25 +79,6 @@ structure MemoryAccepted [Fact p.Prime] (data : MemoryData p) : Prop where
   matching : (data.initial ++ data.steps.map Prod.snd).Perm
     (data.terminal ++ data.steps.map Prod.fst)
 
-/-- Public initialization reads actual Sail cells, with one seed per address.
-    Invocation timestamps have room for the native offset two. This permits
-    the caller's `1 mod 4` invocations and `3 mod 4` writes; low-limb rollover and request binding remain
-    explicit boundaries. Previous-access ranges are proved internally. -/
-structure MemoryInputs (data : MemoryData p) (before : Reference.RiscV.Sail.State)
-    (cells : List Cell) : Prop where
-  initialization : initialImage before cells = some data.initial
-  distinct : (cells.map Cell.addressCode).Nodup
-  clockRoom : ∀ row ∈ data.rows,
-    (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase
-  /-- Approved assumption, mirroring PR #585's `BoundaryInputs.invocationHigh`.
-      The new delegation circuits range-check only `(invocation-low - execute) / 4`
-      and never `invocation-high` on its own (the upper limb is related to the
-      workers' memory comparisons, not bounded). Cross-circuit binding should
-      discharge this later: the invocation timestamp equals the main CPU circuit's
-      range-checked delegation request timestamp. It is not derived per circuit. -/
-  invocationHigh : ∀ row ∈ data.rows,
-    (decodeTimestamp row.assignment row.columns.invocation).hi < timestampBase
-
 /-- Native access order and complete per-address paths. Every path starts at
     a public seed, ends at a declared terminal token and contains exactly that
     address's imported accesses. It therefore determines each read's predecessor. -/

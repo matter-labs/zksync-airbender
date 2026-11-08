@@ -19,20 +19,20 @@ The helper topics are `Core/`, `Decoder/`, `Memory/` and `Context/`; tables,
 delegation and unified-machine context retain their own groups.
 
 For individual circuit soundness, start with its `Circuits/<family>/` model and
-local claim, then [shared history inputs](../lean/human/Human/Helpers/Context/Interfaces.lean),
-[public initialization](../lean/human/Human/Helpers/Context/Boundary.lean),
+local claim, then shared history inputs,
+public initialization,
 [accepted native matching](../lean/human/Human/Helpers/Context/Model.lean) and
 [the selected row's pre-state](../lean/human/Human/Helpers/Context/RowContext.lean).
 The accepted initialized history is still part of these claims; reads and ranges
 remain conclusions. Circuit setup definitions live in each family's `Tables/`;
 shared range/byte/subword constructions live in `Helpers/Tables/`.
 
-For whole execution, start with [Trace/Soundness.lean](../lean/slop/Slop/Final/Trace/Soundness.lean), then
-[pooled public inputs](../lean/human/Human/Helpers/Context/PooledBoundary.lean),
+For whole execution, start with [Trace/Soundness.lean](../lean/slop/Slop/Final/Trace/RVSoundness.lean), then
+pooled public inputs,
 [native matching](../lean/human/Human/Helpers/Context/Model.lean), the
 [family registry](../lean/human/Human/Helpers/Context/Registries/Pooled.lean), and
 [actual public decoding](../lean/human/Human/Helpers/Decoder/PooledProgram.lean).
-[Execution.lean](../lean/human/Human/Trace/Execution.lean) states the shared `Realizes`
+[Execution.lean](../lean/human/Human/Trace/RVExecution.lean) states the shared `Realizes`
 conclusion; [SailHistory.lean](../lean/human/Human/Helpers/Memory/SailHistory.lean) defines native
 row events and the meaning of intermediate and retired states.
 
@@ -65,7 +65,7 @@ when reviewing or strengthening a theorem.
 | --- | --- |
 | Inactive padding | [Inactive ADD/SUB row](../lean/test/Tests/InactiveRow.lean): execute zero admits PC 0→4 and result 123 under the retained local constraints. Padding neutrality needs global state/write obligations; the selected trace model includes active rows. |
 | Jump termination | [Noncanonical JAL endpoint](../lean/test/Tests/JumpSailHistory.lean): imported constraints, decoding and native matching admit a field-aliased terminal PC that disagrees with Sail. The public terminal-PC bound remains required; teardown binding is open. |
-| Discarded LW | [Sparse-memory load](../lean/test/Tests/DiscardedLoad.lean): an accepted native NOP can fail original Sail's LW-to-x0 access. The unchanged-Sail claim retains `NoDiscardedLoads`; the named Airbender profile uses the pinned PC-only NOP rule. |
+| Discarded LW | [Sparse-memory load](../lean/test/Tests/DiscardedLoad.lean): an accepted native NOP can fail original Sail's LW-to-x0 access. The unchanged-Sail claim retains NoDiscardedLoads; the named Airbender profile uses the pinned PC-only NOP rule. |
 | Unissued workers | [Zero-clock rejection](../lean/test/Tests/DelegationZeroInvocation.lean): the circuit's timestamp query 0 rejects an active zero-clock worker in every family, so the former x12 prefix-effect fixture is no longer constructible. The claims themselves still do not exclude unissued prefix effects. |
 | Bigint controls | [Issued unified calls](../lean/test/Tests/UnifiedDelegation.lean): x12 = 0 admits no opcode; x12 = 65537 admits ADD with a nonzero high limb. Current caller-cycle observations hold, while the pinned reference rejects these control words. Full custom-CSR ABI remains open. |
 | Worker ROM | [COPY with ROM pointers](../lean/test/Tests/DelegationROMBoundary.lean): zero native shadows and exactly matched worker values can differ from public ROM bytes. Replacing shadow tokens with public bytes breaks matching; RAM-profile claims retain their stated domain. |
@@ -80,7 +80,7 @@ when reviewing or strengthening a theorem.
 | Sail model/compiler | The official sail-riscv model `6136f84` (tag `2026-10-12-6136f84`) compiled by Sail `2ba3212` (0.20.3) with the [airbender-base config](../sail/config/airbender-base.json); pins and their rationale in [PINS.md](../sail/PINS.md), generation in [regen.sh](../sail/regen.sh). The generated model is not committed. |
 | Sail runtime | `lean-sail` revision `c816ea7ad03cce98d51acee252540fd4215fede8`, fetched by [fetch-lean-sail.sh](../sail/fetch-lean-sail.sh) with the Lean 4.34 [patch](../sail/patches/lean-sail-lean4.34.1.patch). |
 | Platform support | The full model implements the platform hooks concretely; three upstream hooks without a Lean body get trivial bodies in [sail-riscv-lean-missing-externs.patch](../sail/patches/sail-riscv-lean-missing-externs.patch). Experimental extensions and CLINT/interrupt devices are off in [airbender-base.json](../sail/config/airbender-base.json). |
-| Panicking platform hooks | lean-sail's executable externs `plat_term_write`, `load_reservation`, `match_reservation` and `get_16_random_bits` ([RiscvExtrasExecutable.lean](../lean/sail-rv32/SailRV32/RiscvExtrasExecutable.lean), generated) are `panic` stubs. They are unreachable from the claims: `plat_term_write` is called only by the HTIF store path, which requires `htif_tohost_base = some _` (`Configured` fixes `none`, [reset_htif](../lean/slop/Slop/Sail/Configured.lean)); `load_reservation`/`match_reservation` only with `res = true` (LR/SC), which decode only when `currentlyEnabled Ext_Zalrsc` holds — `Zalrsc` is unsupported and misa `0x40001100` clears A; `get_16_random_bits` only by Sail's `seed` CSR read, and the claims never run Sail's CSR execute (CSRRW is the project's [delegation/non-determinism semantics](../lean/human/Human/Helpers/Decoder/ExternalInput.lean)). Each relies on the program not changing `misa`/HTIF state, i.e. on the per-step frame (a claimed step writes only PC, nextPC, x1–x31). |
+| Panicking platform hooks | lean-sail's executable externs `plat_term_write`, `load_reservation`, `match_reservation` and `get_16_random_bits` ([RiscvExtrasExecutable.lean](../lean/sail-rv32/SailRV32/RiscvExtrasExecutable.lean), generated) are `panic` stubs. They are unreachable from the claims: `plat_term_write` is called only by the HTIF store path, which requires `htif_tohost_base = some _` (`Configured` fixes `none`, reset_htif); `load_reservation`/`match_reservation` only with `res = true` (LR/SC), which decode only when `currentlyEnabled Ext_Zalrsc` holds — `Zalrsc` is unsupported and misa `0x40001100` clears A; `get_16_random_bits` only by Sail's seed CSR read, and the claims never run Sail's CSR execute (CSRRW is the project's [delegation/non-determinism semantics](../lean/human/Human/Helpers/Decoder/ExternalInput.lean)). Each relies on the program not changing `misa`/HTIF state, i.e. on the per-step frame (a claimed step writes only PC, nextPC, x1–x31). |
 | Project profile/custom reference | Unmodified [00-master.md](airbender/00-master.md) at `2331d1c511f26c17be85879fbab02ab109aefd05`, with [hash/provenance](airbender/provenance.json). Applicability to the circuit revision remains a review obligation. |
 | Base ADD/SUB artifact | `av_gkr_compiler` revision `28ffe3ff0353edd9051485c2974b28b52b495dc4`; [retained no-cache JSON](../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json), SHA-256 `084a58f08dd122160b548689383f74d4a790c782046f8a5bf43f9f287c22a620`. Other family JSON paths remain in their reviewed artifact declarations. |
 
@@ -136,19 +136,19 @@ query binding and padding remain deferred provenance work.
 
 `Accepted` checks imported equations/lookups and logical native state/memory
 permutations. Decoder membership and caller/request matching are likewise logical
-conditions. [Caller request windows](../lean/human/Human/Trace/Delegation/RequestHashWindows.lean)
+conditions. Caller request windows
 reuse these checks at aligned instruction cuts after clock two. Exact worker/caller
 multiplicity, slots and full CSR families are derived; zero-clock worker effects
 stay in the actual prefix. Standalone hash-window claims retain explicit worker-only
-matching and protocol ABI. [Joint instruction windows](../lean/human/Human/Helpers/UnifiedReduced/Windows.lean)
+matching and protocol ABI. Joint instruction windows
 now derive actual shared cut states and canonical boundary tokens from architectural
 matching. Machine ports include native offset zero; Clean event clocks add one.
-[Joint caller-only hash windows](../lean/human/Human/Trace/UnifiedReduced/JointHashWindows.lean)
+Joint caller-only hash windows
 now bind the complete references at those same states. Worker boundaries are
 projected from shared matching and x0 refreshes are removed as Sail no-ops. Public
 mode/count, prefix scope and modeled tables remain explicit; no worker-only
 permutation or intermediate state is an input.
-[Mixed-history worker projections](../lean/human/Human/Helpers/UnifiedReduced/WindowSchedule.lean)
+Mixed-history worker projections
 derive selected caller regions from accepted clock/request matching. Public cuts
 must lie inside the native path, with duration four times the selected worker
 count; no caller selector or instruction schedule is supplied. Earlier ordinary
@@ -190,13 +190,13 @@ pool homogeneity and a global ten-row cap are absent from this entry; local fami
 count/duration, literal preparation, cut order and region coverage remain witness-
 shape boundaries. They are not a theorem that general acceptance runs valid
 protocols. Broader preparation/protocol binding and whole mixed retirement remain open.
-The [public-program sequence entry](../lean/slop/Slop/Final/Trace/UnifiedReduced/Theorems.lean)
+The [public-program sequence entry](../lean/slop/Slop/Final/Trace/UnifiedReduced/RVTheorems.lean)
 now derives selected worker families and complete call counts instead of assuming
-them. `ProgramCallerRegion` excludes ordinary entries from a public PC/clock
+them. `RVProgramCallerRegion` excludes ordinary entries from a public PC/clock
 interval and fixes its full CSR family. With a sequential ordinary registry,
 accepted state matching locates every instruction and request matching derives
 its worker, family, native slot and count. The public reference duration determines
-the count independently of the worker list. `ProgramProtocolWindowInputs` keeps
+the count independently of the worker list. `RVProgramProtocolWindowInputs` keeps
 preparation and cuts explicit; shared extended-round regions still require their
 existing shape and global coverage. General protocol validity, invalid-call ABI
 and whole caller retirement remain open. Both invalid bigint controls still satisfy
@@ -216,11 +216,11 @@ workers remain connected. The original extended-round first-span scope retains
 its empty prefix while regional composition uses controller coverage. Accepted
 decoding, clock matching and writes derive the actual control and retained timestamp.
 The selected registry and cut bounds remain public; no desired control value at an intermediate state is assumed.
-The [prepared control window](../lean/human/Human/Trace/UnifiedReduced/ControlPreparation.lean)
+The prepared control window
 connects two prepared controls through the same actual intervening machine/worker
 history. Prefix/window matching composes the second boundary; neither state nor
 control is an input. This is preparation/transport, with whole instruction retirement separate.
-[Caller cycles](../lean/human/Human/Trace/UnifiedReduced/CallerCycles.lean) now bind original
+Caller cycles now bind original
 public fetch, the full-CSR matched worker family, existing local operation references,
 all actual worker observations and Sail PC retirement at the same boundaries.
 The public physical/code domain, positive machine start and existing worker ABI
@@ -243,21 +243,21 @@ bind initial PC/clock, configuration, program bytes and modeled ROM. Relevant
 memory claims retain alignment, ordinary-address/domain and platform conditions.
 Per-row expected reads, operand bounds and execution results are conclusions.
 
-The [initialization profile](../lean/human/Human/Helpers/Memory/Initialization.lean) fixes zero
+The initialization profile fixes zero
 GPR/non-ROM RAM and PC zero. [Native ROM view](../lean/human/Human/Helpers/Memory/Native.lean)
 keeps zero native ROM shadow slots separate from public code bytes. Slot masking
 comes from `mask_read_for_witness` in `riscv_transpiler/src/replayer/mod.rs`;
 zero seeds come from `inits_or_teardowns_as_flattened_relation` in
 `prover/src/gkr/prover/forward_loop/utils.rs`. Checked public-byte view conversions
 preserve the relevant constraints, queries, ports, clocks, outputs and matching.
-[Unified NativeROM.lean](../lean/human/Human/Helpers/UnifiedReduced/NativeROM.lean) exposes its
+Unified NativeROM.lean exposes its
 projection explicitly. Rust fidelity and cryptographic enforcement remain external;
 worker ROM transport retains the gap recorded in the status table.
 
-The unchanged-Sail theorem retains `NoDiscardedLoads`: an accepted native NOP
+The unchanged-Sail theorem retains NoDiscardedLoads: an accepted native NOP
 can fail an actual Sail load under sparse memory, as
 [DiscardedLoad.lean](../lean/test/Tests/DiscardedLoad.lean) checks. The named Airbender
-`profileClause` implements the pinned LW-to-x0 PC-only-NOP rule through Sail's
+profileClause implements the pinned LW-to-x0 PC-only-NOP rule through Sail's
 ADDI x0,x0,0 clause. Keep that profile connection distinct from original LOAD
 semantics. Arithmetic writes to x0 use their original clauses.
 

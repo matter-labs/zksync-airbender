@@ -8,20 +8,20 @@ composition statements are kept in the unified Trace directory.
 
 ## Checked results
 
-The [unified execution claims](../../../../slop/Slop/Final/Trace/UnifiedReduced/Theorems.lean) prove
+The [unified execution claims](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVTheorems.lean) prove
 the admitted standard and TRIADD/XORROT instructions retire in history-derived
 order to native terminal PC/cells, with public ROM bytes and derived reads/bounds.
 Those conclusions use the exact declared registry and public profile inputs.
 Caller cycles and selected hash windows have separate claims; full mixed caller
 retirement and control validity are not implied by local selector mappings.
 
-Start with [Model](Model.lean) for the arithmetic slice's observable words,
+Start with Model for the arithmetic slice's observable words,
 selected pre-state and public instruction binding. [Artifact](Artifact.lean)
 and [Decoder](Decoder.lean) identify the unified columns, selectors and modeled setup.
 
-Read the slice being reviewed: [`control`](Control.lean), [jumps](Jump.lean),
-[`binary`](Binary.lean), [shifts](Shift.lean), [word memory](WordMemory.lean),
-[ROM](WordROM.lean), [TRIADD](TriAdd.lean), [XORROT](XorRotate.lean),
+Read the slice being reviewed: [`control`](Control.lean), jumps,
+[binary](Binary.lean), shifts, word memory,
+ROM, TRIADD, XORROT,
 or [delegation callers](Delegation.lean). Standard clauses use original Sail;
 custom operations use the pinned project reference.
 

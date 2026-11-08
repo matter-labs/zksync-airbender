@@ -1,6 +1,5 @@
 import Slop.Keccak.Claims
 import Mathlib.Tactic.IntervalCases
-import Slop.BabyBear
 import Slop.Keccak.Completeness.Bytes
 
 namespace Tests.KeccakTheta

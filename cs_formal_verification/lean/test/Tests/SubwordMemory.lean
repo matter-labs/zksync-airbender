@@ -1,6 +1,5 @@
 import Slop.SubwordMemory.Claims
 import Slop.SubwordMemory.Stores
-import Slop.BabyBear
 
 namespace Tests.SubwordMemory
 open Airbender Airbender.Arithmetic
@@ -73,49 +72,6 @@ theorem satisfies_setup :
 example : (Word.mk (row 33).val (row 34).val).Bounded :=
   SubwordMemory.Proofs.ram_output_bounds (p := babyBearModulus) (by decide) true
     satisfies_setup rfl rfl rfl rfl
-
--- The complete imported LBU row selects the second byte of its independently
--- fixed RAM word, not an unconstrained value supplied by the witness generator.
-example : (Word.mk (row 33).val (row 34).val).toBitVec =
-    SailRV32.Functions.extend_value true
-      (((Word.mk 4660 22136).toBitVec >>> 8).setWidth 8) := by
-  have data := SubwordMemory.Proofs.ram_load_data (p := babyBearModulus)
-    (readData := ⟨4660, 22136⟩) (by decide) true false true false satisfies_setup
-    rfl rfl rfl rfl rfl rfl rfl ⟨rfl, rfl⟩ ⟨by decide, by decide⟩ (by decide)
-  exact data.2
-
-private def nativeState : Reference.RiscV.Sail.State := {
-  regs := {}
-  mem := ({} : Std.ExtHashMap Nat (BitVec 8)).insert 4194304 52 |>.insert 4194305 18
-    |>.insert 4194306 120 |>.insert 4194307 86
-  tags := ()
-  cycleCount := 0
-  sailOutput := #[] }
-
-private theorem nativeRead :
-    _root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 4194304 nativeState =
-      .ok (Word.mk 4660 22136).toBitVec nativeState := by
-  simp only [_root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte, get, getThe,
-    MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure]
-  simp [nativeState, Std.ExtHashMap.getElem_insert, EStateM.pure]
-  rfl
-
-example (offset : Fin 4) :
-    (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 1 (4194304 + offset.val)).run nativeState =
-      .ok (((Word.mk 4660 22136).toBitVec >>> (8 * offset.val)).setWidth 8) nativeState :=
-  Reference.RiscV.Sail.read_subword true offset.isLt (by simp) nativeRead
-
-example (half : Fin 2) :
-    (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 2 (4194304 + 2 * half.val)).run nativeState =
-      .ok (((Word.mk 4660 22136).toBitVec >>> (8 * (2 * half.val))).setWidth 16) nativeState :=
-  Reference.RiscV.Sail.read_subword false (by omega) (by intro _; omega) nativeRead
-
--- Sign-boundary checks use the same generic Sail-extension proof as table soundness.
-example : SailRV32.Functions.extend_value false (BitVec.ofNat 8 128) = (Word.mk 65408 65535).toBitVec := by
-  exact (Verification.extend_subword_limbs true true 128 (by decide)).2.symm
-
-example : SailRV32.Functions.extend_value false (BitVec.ofNat 16 32768) = (Word.mk 32768 65535).toBitVec := by
-  exact (Verification.extend_subword_limbs false true 32768 (by decide)).2.symm
 
 example : (Word.mk 0 64).toBitVec + 1 = (Word.mk 1 64).toBitVec + (Word.mk 0 0).toBitVec := by
   have address := SubwordMemory.Proofs.effective_address (p := babyBearModulus)
@@ -199,39 +155,6 @@ example : Word.mk ((storeRow false) 33).val ((storeRow false) 34).val = Word.mk 
     ⟨by decide, by decide⟩ ⟨by decide, by decide⟩
   exact result.2
 
--- The actual native state update agrees with SB/SH, including untouched bytes.
-example : Reference.Sail.run
-    (Reference.RiscV.Sail.writeMemory (size := 4) (BitVec.ofNat 32 4194304) (Word.mk 43828 22136).toBitVec)
-    nativeState = Reference.Sail.run
-    (Reference.RiscV.Sail.writeMemory (size := 1) (BitVec.ofNat 32 4194305) (BitVec.ofNat 8 171))
-    nativeState := by
-  have encoded := SubwordMemory.Proofs.store_byte_encoding (p := babyBearModulus)
-    (source := ⟨171, 0⟩) (old := ⟨4660, 22136⟩) (by decide) true true false
-    (satisfies_store true) rfl rfl rfl rfl rfl rfl ⟨rfl, rfl, rfl⟩
-    ⟨by decide, by decide⟩ ⟨by decide, by decide⟩ (by decide)
-  have output : Word.mk ((storeRow true) 33).val ((storeRow true) 34).val = Word.mk 43828 22136 := by decide
-  rw [output] at encoded
-  exact Reference.RiscV.Sail.write_subword_memory (before := nativeState)
-    (BitVec.ofNat 32 4194304) (Word.mk 4660 22136).toBitVec (Word.mk 43828 22136).toBitVec
-    true 1 (by decide) (by decide) (by decide) (BitVec.ofNat 8 171)
-    (Reference.RiscV.Sail.read_word_memory nativeRead) encoded
-
-example : Reference.Sail.run
-    (Reference.RiscV.Sail.writeMemory (size := 4) (BitVec.ofNat 32 4194304) (Word.mk 4660 65535).toBitVec)
-    nativeState = Reference.Sail.run
-    (Reference.RiscV.Sail.writeMemory (size := 2) (BitVec.ofNat 32 4194306) (BitVec.ofNat 16 65535))
-    nativeState := by
-  have encoded := SubwordMemory.Proofs.store_byte_encoding (p := babyBearModulus)
-    (source := ⟨65535, 0⟩) (old := ⟨4660, 22136⟩) (by decide) false false true
-    (satisfies_store false) rfl rfl rfl rfl rfl rfl ⟨rfl, rfl, rfl⟩
-    ⟨by decide, by decide⟩ ⟨by decide, by decide⟩ (by decide)
-  have output : Word.mk ((storeRow false) 33).val ((storeRow false) 34).val = Word.mk 4660 65535 := by decide
-  rw [output] at encoded
-  exact Reference.RiscV.Sail.write_subword_memory (before := nativeState)
-    (BitVec.ofNat 32 4194304) (Word.mk 4660 22136).toBitVec (Word.mk 4660 65535).toBitVec
-    false 2 (by decide) (by decide) (by decide) (BitVec.ofNat 16 65535)
-    (Reference.RiscV.Sail.read_word_memory nativeRead) encoded
-
 -- Signed ROM loads exercise both key layouts against an independently fixed image.
 private def romWord (byte : Bool) : BitVec 32 :=
   (if byte then Word.mk 65332 22136 else Word.mk 4660 32768).toBitVec
@@ -274,15 +197,5 @@ private theorem satisfies_rom (byte : Bool) :
     | (refine ⟨⟨4849678, by decide⟩, ?_⟩
        norm_num [romWord, Word.toBitVec, Word.value, limbBase, Verification.subwordRow,
          Verification.subwordDataRow, Verification.subwordLoadLimbs])
-
-example (byte : Bool) : (Word.mk ((romRow byte) 33).val ((romRow byte) 34).val).toBitVec =
-    SailRV32.Functions.extend_value false
-      ((romWord byte >>> (if byte then 8 else 16)).setWidth (8 * (if byte then 1 else 2))) := by
-  have result := SubwordMemory.Proofs.rom_load_data (p := babyBearModulus)
-    (cell := ⟨4, 0⟩) (by decide) byte true byte (!byte) (satisfies_rom byte)
-    rfl rfl rfl rfl rfl rfl (by cases byte <;> rfl) ⟨rfl, rfl⟩
-    ⟨by decide, by decide⟩ (by decide) (by cases byte <;> decide)
-  cases byte <;> simpa only [Bool.not_false, Bool.not_true, Bool.false_eq_true, ite_false,
-    ite_true, Bool.not_true, Nat.reduceAdd, Nat.reduceMul] using result.2
 
 end Tests.SubwordMemory

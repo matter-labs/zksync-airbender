@@ -1,12 +1,9 @@
 import Human.Import.Embed
-import Human.Helpers.Core.Sail
+import Human.Helpers.Core.CircuitOutput
 
 namespace Airbender.JumpBranchSlt
 
 namespace Branch
-def funct3 (opcode : SailRV32.bop) : Nat :=
-  match opcode with
-  | .BEQ => 0 | .BNE => 1 | .BLT => 4 | .BGE => 5 | .BLTU => 6 | .BGEU => 7
 
 end Branch
 

@@ -8,15 +8,15 @@ behavior.
 
 ## Checked results
 
-The [local soundness claims](../../../../slop/Slop/Final/Circuits/MulDiv/Theorems.lean) prove the four mapped operations
+The [local soundness claims](../../../../slop/Slop/Final/Circuits/MulDiv/RVTheorems.lean) prove the four mapped operations
 agree with original Sail destination/PC effects, including zero divisors.
 Shared initialization, tables and logical membership/matching derive the operands
 and actual reads. Full family execution also binds the terminal PC/cells;
 discarded destination writes still route to ADD/SUB.
 
-1. Read [Theorems](../../../../slop/Slop/Final/Circuits/MulDiv/Theorems.lean) for the exact local claim.
-2. Read [Model](Model.lean) for satisfaction, named observable mappings and interface assumptions.
-3. Follow [the selected reference](Model.lean) and [Artifact](Artifact.lean) for semantics and imported variable placement.
+1. Read [Theorems](../../../../slop/Slop/Final/Circuits/MulDiv/RVTheorems.lean) for the exact local claim.
+2. Read Model for satisfaction, named observable mappings and interface assumptions.
+3. Follow the selected reference and [Artifact](Artifact.lean) for semantics and imported variable placement.
 
 Initialization and modeled-table conditions stay visible in the model. Original Sail decoding retains configuration reads; discarded destinations route to ADD/SUB.
 
@@ -28,5 +28,5 @@ the selected theorem; artifact/import and modeled-table fidelity remain explicit
 
 Check [Decoder](Decoder.lean) against the original public instruction and native metadata.
 
-[Family execution](../../../../slop/Slop/Final/Trace/Families/MulDiv/Theorems.lean) is a separate whole-trace claim.
-[Pooled execution](../../../../slop/Slop/Final/Trace/Soundness.lean) composes the six ordinary families.
+[Family execution](../../../../slop/Slop/Final/Trace/Families/MulDiv/RVTheorems.lean) is a separate whole-trace claim.
+[Pooled execution](../../../../slop/Slop/Final/Trace/RVSoundness.lean) composes the six ordinary families.

@@ -1,4 +1,5 @@
-import Slop.Trace.TransferTerminal
+import Slop.Trace.Terminal
+import Slop.Trace.TransferHistory
 
 /-! State-free twins of the `Transfer` history lemmas (`TransferHistory.lean`, `TransferTerminal.lean`). Those take a
     Sail `BoundaryInputs` but read only its public address domain (`addresses`, `distinct`); here the domain is

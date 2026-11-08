@@ -1,6 +1,5 @@
 import Slop.Blake2G.RVCallSteps
 import Slop.Blake2G.RVSpec
-import Slop.Blake2G.CallWorkVector
 import Slop.Delegation.ReverseFold
 import Slop.Blake2Round.RVWords
 

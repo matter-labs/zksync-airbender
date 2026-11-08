@@ -1,9 +1,9 @@
 import Slop.Bigint.Control
 import Slop.Bigint.SetupSoundness
 import Slop.Bigint.Multiplication
-import Slop.BabyBear
-import Slop.Final.Circuits.Bigint.Theorems
-import Slop.Final.Trace.Workers.Bigint.Theorems
+import Human.Circuits.Bigint.Memory
+import Slop.Bigint.Addresses
+import Slop.Bigint.NativeExecution
 
 namespace Airbender.Bigint.Control
 
@@ -68,12 +68,5 @@ theorem soundness :
 end Airbender.Bigint.Addresses
 
 namespace Airbender.Bigint.Memory
-
-theorem native_value_bounds [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
-    {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : Inputs data before cells) :
-    (∀ row ∈ data.rows, ∀ port ∈ row.ports, (Trace.readToken row.assignment port).word.Bounded) ∧
-    (∀ row ∈ data.rows, ∀ port ∈ row.ports, (row.writeToken port).word.Bounded) ∧
-    (∀ token ∈ data.terminal, token.word.Bounded) := Proofs.value_bounds hp accepted inputs
 
 end Airbender.Bigint.Memory

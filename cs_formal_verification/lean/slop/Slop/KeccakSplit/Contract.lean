@@ -42,15 +42,5 @@ theorem row_facts : RowFacts where
       · exact ColumnParity.Proofs.addresses w index h active control pointerBound
       · exact ThetaRho.Proofs.addresses w index h active control pointerBound
       · exact Chi5.Proofs.addresses w index h active control pointerBound
-theorem row_contract : RowContract where
-  toRowFacts := row_facts
-  executes := by
-    intro row index before after cells events h active arguments reads history permutation observed
-    cases row with
-    | mk kind w =>
-      cases kind
-      · exact ColumnParity.Proofs.executes w index h active arguments reads history permutation observed
-      · exact ThetaRho.Proofs.executes w index h active arguments reads history permutation observed
-      · exact Chi5.Proofs.executes w index h active arguments reads history permutation observed
 
 end Airbender.Keccak.Split.Native.Proofs

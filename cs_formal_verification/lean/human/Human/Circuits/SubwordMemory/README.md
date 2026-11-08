@@ -8,15 +8,15 @@ architectural behavior.
 
 ## Checked results
 
-The [local soundness claims](../../../../slop/Slop/Final/Circuits/SubwordMemory/Theorems.lean) prove aligned-cell address, selected
+The [local soundness claims](../../../../slop/Slop/Final/Circuits/SubwordMemory/RVTheorems.lean) prove aligned-cell address, selected
 load data or merged store word, sign/width behavior and PC effects against Sail.
 Public initialization/tables and ordinary-domain/configuration conditions remain;
 history derives reads, ranges and byte/halfword/word transport.
 The standalone RAM trace and pooled RAM/ROM claim have distinct scopes.
 
-1. Read [Theorems](../../../../slop/Slop/Final/Circuits/SubwordMemory/Theorems.lean) for the exact local claim.
-2. Read [Model](Model.lean) for satisfaction, named observable mappings and interface assumptions.
-3. Follow [the selected reference](Model.lean) and [Artifact](Artifact.lean) for semantics and imported variable placement.
+1. Read [Theorems](../../../../slop/Slop/Final/Circuits/SubwordMemory/RVTheorems.lean) for the exact local claim.
+2. Read Model for satisfaction, named observable mappings and interface assumptions.
+3. Follow the selected reference and [Artifact](Artifact.lean) for semantics and imported variable placement.
 
 Retain public initialization/table binding, ordinary addresses and flat-memory configuration. Check aligned-cell observables separately from the accessed byte/halfword.
 
@@ -28,5 +28,5 @@ the selected theorem; artifact/import and modeled-table fidelity remain explicit
 
 Use [Decoder](Decoder.lean) for width/sign/immediate projection. The standalone trace theorem covers RAM; pooled composition separately includes public-ROM transport.
 
-[Family execution](../../../../slop/Slop/Final/Trace/Families/SubwordMemory/Theorems.lean) is a separate whole-trace claim.
-[Pooled execution](../../../../slop/Slop/Final/Trace/Soundness.lean) composes the six ordinary families.
+[Family execution](../../../../slop/Slop/Final/Trace/Families/SubwordMemory/RVTheorems.lean) is a separate whole-trace claim.
+[Pooled execution](../../../../slop/Slop/Final/Trace/RVSoundness.lean) composes the six ordinary families.

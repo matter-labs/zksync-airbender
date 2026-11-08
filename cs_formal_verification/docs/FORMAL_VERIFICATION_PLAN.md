@@ -11,8 +11,8 @@ connections. Keep these documents as snapshots, without completed-work history.
 ## Integrated review contract
 
 Start with the composed execution claim in
-[Trace/Soundness.lean](../lean/slop/Slop/Final/Trace/Soundness.lean) and its
-[public inputs](../lean/human/Human/Helpers/Context/PooledBoundary.lean). The proof path is:
+[Trace/Soundness.lean](../lean/slop/Slop/Final/Trace/RVSoundness.lean) and its
+public inputs. The proof path is:
 
 ```text
 public initialization → preserved write bounds → latest-write reads

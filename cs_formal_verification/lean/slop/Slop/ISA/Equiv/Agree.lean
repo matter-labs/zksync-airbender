@@ -16,9 +16,6 @@ theorem set_regs_ne (σ : SailState) (r r' : Register) (v : RegisterType r) (h :
     (σ.set r v).regs r' = σ.regs r' := by
   simp [SailState.set, h]
 
-theorem set_set (σ : SailState) (r : Register) (v w : RegisterType r) : (σ.set r v).set r w = σ.set r w := by
-  cases σ; simp only [SailState.set, Airbender.Reference.RiscV.Sail.Configuration.SailState.mk.injEq, and_true]; funext r'; split <;> simp_all
-
 theorem xget_set_nextPC (σ : SailState) (v : BitVec 32) (i : BitVec 5) : xget (σ.set .nextPC v) i = xget σ i := by
   obtain ⟨⟨n, hn⟩⟩ := i
   interval_cases n <;> rfl
@@ -29,9 +26,6 @@ theorem xget_set_PC (σ : SailState) (v : BitVec 32) (i : BitVec 5) : xget (σ.s
 
 theorem xset_nextPC (σ : SailState) (i : BitVec 5) (v : BitVec 32) : (xset σ i v).regs .nextPC = σ.regs .nextPC :=
   xset_regs σ i v .nextPC (by simp)
-
-theorem xset_PC (σ : SailState) (i : BitVec 5) (v : BitVec 32) : (xset σ i v).regs .PC = σ.regs .PC :=
-  xset_regs σ i v .PC (by simp)
 
 theorem agree_xget {s : RV.State} {σ : SailState} (h : Airbender.AgreeSail s σ) (i : BitVec 5) : xget σ i = s.getReg i := by
   rw [← reg_eq]; exact h.2.2.1 i

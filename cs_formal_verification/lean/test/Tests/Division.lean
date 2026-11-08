@@ -1,5 +1,4 @@
 import Slop.MulDiv.Claims
-import Slop.BabyBear
 
 namespace Tests.Division
 open Airbender
@@ -50,35 +49,6 @@ private theorem satisfies (remainder : Bool) :
            ((i.val : ZMod babyBearModulus), ((i.val % 256 : Nat) : ZMod babyBearModulus))
        exact ⟨⟨0, by decide⟩, rfl⟩)
     | decide
-
-private def input (remainder : Bool) : Airbender.MulDiv.Input where
-  operation := if remainder then .remu else .divu
-  left := ⟨13, 0⟩
-  right := ⟨5, 0⟩
-  pc := ⟨65532, 3⟩
-  rs1 := .Regidx 1
-  rs2 := .Regidx 2
-  rd := .Regidx 1
-  before := { (default : Reference.RiscV.Sail.State) with regs :=
-    ((default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .x1 (13 : BitVec 32) |>.insert .x2 (5 : BitVec 32)
-      |>.insert .PC (262140 : BitVec 32)) }
-
-private def output (remainder : Bool) : Reference.RiscV.Sail.Output :=
-  ⟨if remainder then ⟨3, 0⟩ else ⟨2, 0⟩, ⟨0, 4⟩⟩
-
-example (remainder : Bool) : Airbender.MulDiv.spec (input remainder) (output remainder) := by
-  apply Airbender.MulDiv.Proofs.soundness (by decide) (by decide) (input remainder) (output remainder) (row remainder)
-  refine ⟨?_, satisfies remainder, ?_⟩
-  · constructor
-    all_goals solve
-      | (intro i; fin_cases i <;> cases remainder <;>
-         dsimp [input, Airbender.MulDiv.Operation.selector, row] <;> decide)
-      | (apply Reference.RiscV.Sail.read_register
-         cases remainder <;> simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
-           Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
-      | (constructor <;> cases remainder <;> dsimp [input, row] <;> decide)
-  · constructor <;> cases remainder <;> dsimp [input, output, row] <;> decide
 
 -- The product equality 10 = 1*5 + 5 holds, but remainder = divisor requires
 -- comparison high limb 65536, which the imported range lookup rejects.

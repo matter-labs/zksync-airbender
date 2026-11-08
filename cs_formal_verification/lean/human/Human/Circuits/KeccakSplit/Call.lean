@@ -1,9 +1,9 @@
 import Human.Circuits.KeccakSplit.Schedule
-import Human.Helpers.Memory.AtomicWrites
 import Clean.Specs.Keccak256
+import Human.Helpers.Memory.SailHistory
 
 namespace Airbender.Keccak.Split.Call
-open Trace Reference.RiscV.Sail Reference.Sail
+open Trace
 
 /-- Inverse Pi, in the row-major lane coordinates of the state block. -/
 def piSource (lane : Fin 25) : Fin 25 :=
@@ -106,30 +106,5 @@ def writes (index : Fin 361) (pointer : BitVec 32) (output : Vector Nat 7) :
         [(laneCell pointer (slots index)[lane] false, half output[lane] false),
          (laneCell pointer (slots index)[lane] true, half output[lane] true)]
       else [])
-
-/-- Call `index`'s arguments: x10 holds its control word, x11 a 256-byte aligned
-    pointer to the state block. -/
-def ArgumentsAt (index : Nat) (state : State) : Prop :=
-  ∃ control pointer : BitVec 32,
-    (Cell.register 10).read state = .ok control state ∧
-    (Cell.register 11).read state = .ok pointer state ∧
-    control = BitVec.ofNat 32 (controlAt index) ∧ pointer.toNat % 256 = 0
-
-/-- Call `index` of the schedule in Sail: from `before` it has its arguments,
-    reads the 64-bit lanes `input` at its slots, and `after` is `before` with
-    exactly `writes` applied (the frame is unchanged). -/
-def ExecutesAt (index : Fin 361) (before after : State) : Prop :=
-  ∃ (pointer : BitVec 32) (input : Vector Nat 7),
-    ArgumentsAt index.val before ∧
-    (Cell.register 11).read before = .ok pointer before ∧
-    (∀ lane : Fin 7, lane.val < slotCount (kindAt index.val) →
-      input[lane] < 2 ^ 64 ∧
-      (laneCell pointer (slots index)[lane] false).read before = .ok (half input[lane] false) before ∧
-      (laneCell pointer (slots index)[lane] true).read before = .ok (half input[lane] true) before) ∧
-    AtomicWrites (writes index pointer (result index input)) before after
-
-/-- One call of a `kind` worker: some call of the schedule with that worker. -/
-def Executes (kind : Kind) (before after : State) : Prop :=
-  ∃ index : Fin 361, kindAt index.val = kind ∧ ExecutesAt index before after
 
 end Airbender.Keccak.Split.Call

@@ -3,7 +3,6 @@ import Slop.Trace.NativeSailHistory
 namespace Airbender.Trace.Proofs
 
 variable {Kind : Type} [CircuitLayout Kind]
-open Reference.RiscV.Sail
 
 theorem last_write_max (history : MemoryAccessList)
     (sorted : history.isTimestampSorted) {event : MemoryAccess}
@@ -123,29 +122,5 @@ theorem terminal_latest_value [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       have less := writeUpper edge edgeMember same
       change trace.memoryEpoch + rank edge.2 ≤ trace.memoryEpoch + rank sink
       omega
-
-/-- The realized Sail state reads the exact terminal register/RAM values from
-    native matching. No claimed terminal value is assumed to be correct. -/
-theorem terminal_sail_reads [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
-    (accepted : Accepted trace) (boundary : ClockBoundary trace)
-    {before after : State} {cells : List Cell}
-    (image : initialImage before cells = some trace.initialMemory) (domain : cells.Nodup)
-    {history : TimestampSortedMemoryAccessList} (consistent : MemoryHistory trace history)
-    (realized : SailStateMatches cells history after) :
-    ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
-      cell.read after = .ok (memoryWord sink.value) after := by
-  intro sink member
-  obtain ⟨source, present, _, address, _⟩ := terminal_path hp inverse accepted boundary
-    (image_unique image domain) member
-  obtain ⟨cell, cellMember, _, _, same⟩ := image_sources image source present
-  have code : source.address = cell.addressCode := congrArg MemoryToken.address same
-  refine ⟨cell, cellMember, ?_, ?_⟩
-  · exact code.symm.trans address
-  · have read := realized cell cellMember
-    have latest := terminal_latest_value hp inverse accepted boundary
-      (image_unique image domain) consistent member
-    rw [code.symm.trans address, latest] at read
-    exact read
 
 end Airbender.Trace.Proofs

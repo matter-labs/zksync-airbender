@@ -1,6 +1,6 @@
 import Slop.Keccak.FixedTables
-import Slop.BabyBear
 import Mathlib.Tactic.IntervalCases
+import Human.Helpers.Core.BabyBearPrime
 
 namespace Tests.KeccakFixedTables
 open Airbender

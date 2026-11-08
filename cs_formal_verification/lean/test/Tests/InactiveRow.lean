@@ -1,7 +1,7 @@
 import Slop.AddSub.ArtifactChecks
 import Human.Helpers.Properties
-import Slop.BabyBear
 import Slop.Constraints
+import Human.Helpers.Core.BabyBearPrime
 
 namespace Tests.InactiveRow
 open Airbender

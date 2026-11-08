@@ -5,7 +5,7 @@ import Slop.Blake2Round.NativeExecution
 import Slop.Keccak.NativeExecution
 
 namespace Airbender.Delegation.Caller.Proofs
-open Trace Reference.RiscV.Sail
+open Trace
 set_option warningAsError true
 
 
@@ -32,20 +32,5 @@ theorem worker_effects_of_reads
     · obtain ⟨round, mask⟩ := rounds ⟨.blakeRound, w⟩ member rfl
       exact ⟨round, mask, Blake2Round.Native.Proofs.native_effects (by decide) (by decide) round core mask bounds⟩
     · exact Keccak.Native.Proofs.native_effects (by decide) (by decide) core (active _ member) bounds
-
-theorem shared_operation_effects
-    {data : RequestTrace babyBearModulus} {before : State}
-    {addresses : List (BitVec 32)} {cells : List Cell}
-    (accepted : SharedMemoryAccepted data) (inputs : SharedOperationInputs data before addresses cells) :
-    SharedOperationEffects data before cells := by
-  have memory := shared_memory_execution (by decide) (by decide) (by decide)
-    accepted inputs.toSharedMemoryInputs
-  have words := shared_word_bounds (by decide) (by decide) (by decide) accepted inputs memory.requests
-  refine ⟨memory, words, worker_effects_of_reads accepted.workerConstraints inputs.tables inputs.rounds accepted.workerActive ?_⟩
-  intro row member port present
-  have included : (readToken row.assignment port, row.writeToken port) ∈ data.sharedSteps :=
-    List.mem_append.mpr (Or.inr (List.mem_flatMap.mpr ⟨row, member,
-      List.mem_map.mpr ⟨port, by simpa using present, rfl⟩⟩))
-  exact (words.accesses _ included).1
 
 end Airbender.Delegation.Caller.Proofs

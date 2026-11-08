@@ -7,19 +7,19 @@ connects all calls and terminal tokens without supplied intermediate states.
 
 ## Checked results
 
-[`Native.operation_execution`](../../../../../slop/Slop/Final/Trace/Workers/Blake2G/Theorems.lean) connects each G row to actual
-port effects. [`Native.workvector_soundness`](../../../../../slop/Slop/Final/Trace/Workers/Blake2G/Theorems.lean) additionally proves
+[`Native.rv_operation_execution`](../../../../../slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean) connects each G row to actual
+port effects. [`Native.rv_workvector_soundness`](../../../../../slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean) additionally proves
 the complete reference fold on actual initial/final RAM and terminal tokens.
-[`Native.workvector_boundary_soundness` and `Native.window_soundness`](../../../../../slop/Slop/Final/Trace/Workers/Blake2G/Theorems.lean)
+[`Native.rv_workvector_boundary_soundness` and `Native.rv_window_soundness`](../../../../../slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean)
 retain native seeds and derive boundary controls/intermediate states under the
 public mode/count, alignment/domain, modeled-table and matching conditions.
 
-Read [Theorems](../../../../../slop/Slop/Final/Trace/Workers/Blake2G/Theorems.lean), then [Call](Call.lean) and
-[BoundaryCall](BoundaryCall.lean) for public initialization versus retained
+Read [Theorems](../../../../../slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean), then Call and
+BoundaryCall for public initialization versus retained
 native-boundary timestamps. [WorkVector](WorkVector.lean) is the complete
 56/80-call fold using the original Clean G.
 
-[Windows](Windows.lean) selects spans after whole preceding spans.
+Windows selects spans after whole preceding spans.
 Check public mode/count, tracked alignment and modeled tables.
 Accepted initialized history derives the schedule, controls, pointers,
 intermediate states and actual initial/final RAM reads.

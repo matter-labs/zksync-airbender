@@ -1,5 +1,4 @@
 import Human.Circuits.AddSub.RVTheorems
-import Slop.BabyBear
 import Slop.AddSub.RVTraceSoundness
 import Slop.Trace.RVPooledLawsProof
 

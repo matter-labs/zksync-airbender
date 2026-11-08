@@ -8,15 +8,15 @@ consequences of the local equations alone.
 
 ## Checked results
 
-The [comparison, branch and jump soundness claims](../../../../slop/Slop/Final/Circuits/JumpBranchSlt/Theorems.lean) prove original
+The [comparison, branch and jump soundness claims](../../../../slop/Slop/Final/Circuits/JumpBranchSlt/RVTheorems.lean) prove original
 Sail register/PC effects for each admitted row, with reads and local ranges derived
 from initialized history. Aligned code, public ISA/configuration and canonical
 terminal PC remain visible conditions. The shared PC-range interface does not
 yet discharge standalone jump teardown; the checked aliased endpoint remains.
 
-1. Read [Theorems](../../../../slop/Slop/Final/Circuits/JumpBranchSlt/Theorems.lean) for the exact local claim.
+1. Read [Theorems](../../../../slop/Slop/Final/Circuits/JumpBranchSlt/RVTheorems.lean) for the exact local claim.
 2. Read [Model](Model.lean) for satisfaction, named observable mappings and interface assumptions.
-3. Follow [the selected reference](Branch.lean) and [Artifact](Artifact.lean) for semantics and imported variable placement.
+3. Follow the selected reference and [Artifact](Artifact.lean) for semantics and imported variable placement.
 
 Retain aligned public code and canonical terminal-PC limbs. Branch/jump configuration is the machine's `Configured` initial state (reset privilege, `misa`, landing-pad state), visible in their models.
 
@@ -28,5 +28,5 @@ the selected theorem; artifact/import and modeled-table fidelity remain explicit
 
 Review [Jump](Jump.lean) alongside [Decoder](Decoder.lean). A checked noncanonical JAL endpoint keeps terminal-PC teardown binding open.
 
-[Family execution](../../../../slop/Slop/Final/Trace/Families/JumpBranchSlt/Theorems.lean) is a separate whole-trace claim.
-[Pooled execution](../../../../slop/Slop/Final/Trace/Soundness.lean) composes the six ordinary families.
+[Family execution](../../../../slop/Slop/Final/Trace/Families/JumpBranchSlt/RVTheorems.lean) is a separate whole-trace claim.
+[Pooled execution](../../../../slop/Slop/Final/Trace/RVSoundness.lean) composes the six ordinary families.

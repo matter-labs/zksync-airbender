@@ -10,26 +10,26 @@ witness rows, with preprocessing provenance reviewed separately.
 
 Successful public-program construction implies actual byte-read, original Sail
 decoder and metadata-projection evidence; see
-[`program_sources` and `run_program_sources`](../../../../slop/Slop/Trace/Program.lean).
-[`decoded_misa_frame`](../../../../slop/Slop/Sail/DecoderFrame.lean) proves successful
+[program_sources and run_program_sources](../../../../slop/Slop/Trace/Program.lean).
+decoded_misa_frame proves successful
 decoding changes no state and replays in states with the same public ISA configuration.
 
 With logical decoder membership and preserved code/history, the instruction used
 by retirement is derived at the current PC; see
-[`row_execution_step`](../../../../slop/Slop/Trace/Composition.lean) and
-[unified mixed retirement](../../../../slop/Slop/Final/Trace/UnifiedReduced/Theorems.lean).
+row_execution_step and
+[unified mixed retirement](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVTheorems.lean).
 Actual source decoding is proved; correspondence with Rust preprocessing/setup
 is still a separate condition.
 
 Start with [Program](Program.lean): public bytes are read and passed to the
 original Sail decoder, then projected into native family/register/immediate metadata.
 The public entry record alone does not establish correct decoding.
-[Decoded](Decoded.lean) states the restricted scope's decoder-table membership and fetch agreement.
+Decoded states the restricted scope's decoder-table membership and fetch agreement.
 
 [Columns](Columns.lean) identifies imported decoder columns.
 [PooledProgram](PooledProgram.lean) combines the six admitted families and defines
 logical decoder-table membership. Family projections remain in their circuit directories.
-[CycleFetch](CycleFetch.lean) binds fetch to the current history state.
+CycleFetch binds fetch to the current history state.
 
 [Instruction](Instruction.lean) selects original clauses and the named Airbender
 LW-to-x0 profile. Review that deviation separately from unchanged Sail.

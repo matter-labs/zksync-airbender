@@ -8,7 +8,7 @@ import Human.Helpers.Memory.SailHistory
    inverse fixes it). -/
 
 namespace Airbender.Keccak.Split.Native.Proofs
-open Trace Reference.RiscV.Sail
+open Trace
 
 /-- Native facts of one active split row whose imported constraints hold (the state-free part, used by the RV
     proofs). -/
@@ -39,21 +39,5 @@ structure RowFacts : Prop where
     ∀ lane : Fin 7, lane.val < Call.slotCount (kindAt index.val) → ∀ high : Bool,
       ∃ port ∈ row.ports, port.address.code row.assignment =
         (Call.laneCell (row.readWord 1).toBitVec (Call.slots index)[lane] high).addressCode
-/-- `RowFacts` plus the row's Sail execution. -/
-structure RowContract : Prop extends RowFacts where
-  /-- In a Sail history of exactly the row's accesses, from a state where every
-      port reads its native value and call `index`'s arguments hold, the row
-      executes call `index`. -/
-  executes : ∀ (row : Row babyBearModulus) (index : Fin 361) {before after : State}
-    {cells : List Cell} {events : List MemoryAccess},
-    FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) row.constraints →
-    row.assignment row.columns.execute = 1 →
-    Call.ArgumentsAt index.val before →
-    (∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) →
-    SailHistory cells events before after →
-    events.Perm (row.memorySteps.map transferEvent) →
-    (∀ port ∈ row.ports, ∃ cell : Cell, cell.addressCode = port.address.code row.assignment ∧
-      cell.read before = .ok (readToken row.assignment port).word.toBitVec before) →
-    Call.ExecutesAt index before after
 
 end Airbender.Keccak.Split.Native.Proofs

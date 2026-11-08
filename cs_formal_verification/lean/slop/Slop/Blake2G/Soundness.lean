@@ -1,6 +1,6 @@
 import Human.Circuits.Blake2G.Model
-import Slop.Blake2G.Assembly
-import Slop.BabyBear
+import Slop.Blake2G.SecondHalf
+import Human.Helpers.Core.BabyBearPrime
 
 
 namespace Airbender.Blake2G.Proofs

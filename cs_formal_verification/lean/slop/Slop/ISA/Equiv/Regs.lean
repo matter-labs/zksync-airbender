@@ -92,8 +92,6 @@ theorem wX_run (i : BitVec 5) (v : BitVec 32) (σ : SailState) : runSail (wX_bit
 theorem reg_eq (σ : SailState) (i : BitVec 5) : Airbender.getReg σ i = xget σ i := by
   unfold Airbender.getReg; rw [rX_run]
 
-theorem xget_zero (σ : SailState) : xget σ 0 = 0 := rfl
-
 theorem xset_mem (σ : SailState) (i : BitVec 5) (v : BitVec 32) : (xset σ i v).mem = σ.mem := by
   obtain ⟨⟨n, hn⟩⟩ := i
   interval_cases n <;> rfl

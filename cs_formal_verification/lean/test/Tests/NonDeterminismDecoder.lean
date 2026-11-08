@@ -1,68 +1,10 @@
-import Slop.Sail.ResetState
 import Slop.Trace.Claims
-import Slop.Trace.OracleExecution
-import Slop.Trace.Family.ZeroRegister
 
 namespace Tests.NonDeterminismDecoder
-open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
+open Airbender Arithmetic Trace
 set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
-
--- Independent public bytes: CSRRW x1,0x7C0,x0; CSRRW x0,0x7C0,x1.
-private noncomputable def before : State :=
-  { Airbender.Reference.RiscV.Sail.resetMachine with
-    regs := Airbender.Reference.RiscV.Sail.resetMachine.regs.insert .x1 (0 : BitVec 32) |>.insert .PC 0
-    mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0xF3 : BitVec 8)
-      |>.insert 1 0x10 |>.insert 2 0 |>.insert 3 0x7C
-      |>.insert 4 0x73 |>.insert 5 0x90 |>.insert 6 0 |>.insert 7 0x7C }
-
-theorem airbender_before  : Airbender.Reference.RiscV.Sail.Configured before := by
-  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
-
-
-private noncomputable def readEntry : ProgramEntry :=
-  ⟨0, 0x7C0010F3, .CSRReg (0x7C0, .Regidx 0, .Regidx 1, .CSRRW),
-    ⟨.addSub, 0, 0, 1, ⟨0, 0⟩, 256, 0⟩⟩
-private noncomputable def writeEntry : ProgramEntry :=
-  ⟨4, 0x7C009073, .CSRReg (0x7C0, .Regidx 1, .Regidx 0, .CSRRW),
-    ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩⟩
-
-private theorem read_decoding : Airbender.Reference.RiscV.Sail.decodeOnReset readEntry.bits = some readEntry.instruction := by
-  dsimp only [readEntry, writeEntry]
-  decode_on_reset
-
-private theorem write_decoding : Airbender.Reference.RiscV.Sail.decodeOnReset writeEntry.bits = some writeEntry.instruction := by
-  dsimp only [readEntry, writeEntry]
-  decode_on_reset
-
-/-- On every `Configured` state the original decoder returns these instructions. -/
-theorem original_read_decoder {state : State} (configured : Configured state) :
-    run (SailRV32.Functions.encdec_backwards 0x7C0010F3) state =
-      .ok readEntry.instruction state :=
-  decode_on_reset_run configured read_decoding
-
-theorem original_write_decoder {state : State} (configured : Configured state) :
-    run (SailRV32.Functions.encdec_backwards 0x7C009073) state =
-      .ok writeEntry.instruction state :=
-  decode_on_reset_run configured write_decoding
-
-private theorem bytes (write : Bool) :
-    (Cell.ram (if write then 4 else 0)).read before =
-      .ok (if write then writeEntry.bits else readEntry.bits) before := by
-  cases write <;>
-    simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
-      get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
-      before, readEntry, writeEntry, Std.ExtHashMap.getElem_insert]
-
-theorem public_image : programImageWith NonDeterminism.decoderFields before [0, 4] =
-    some [readEntry, writeEntry] := by
-  have read := bytes false
-  have write := bytes true
-  simp only [Bool.false_eq_true, ite_false, ite_true] at read write
-  simp only [programImageWith, List.mapM_cons, List.mapM_nil, programEntryWith,
-    read, write, read_decoding, write_decoding, bind, Option.bind]
-  rfl
 
 private def assignment : Nat → ZMod babyBearModulus
   | 2 | 19 | 27 => 4
@@ -111,36 +53,6 @@ private theorem accepted : Accepted trace := by
   · exact List.Perm.swap _ _ []
   · decide
 
-private theorem membership : Decoded trace [readEntry, writeEntry] := by
-  intro actual member
-  have same := List.mem_singleton.mp member
-  subst actual
-  change ∃ i : Fin 2, _
-  exact ⟨0, by decide⟩
-
-/-- Source bytes, original CSR instruction, PC, indices and selector 8 are
-    recovered from public decoding and native query membership. -/
-theorem fetched_read : row.Fetched before NonDeterminism.decoderFields :=
-  NonDeterminism.decoder_soundness accepted public_image membership airbender_before row (by simp [trace])
-
-theorem read_selector : ∀ i : Fin 9,
-    assignment (#[10, 11, 12, 13, 14, 15, 16, 17, 18][i]) = if i.val = 8 then 1 else 0 := by
-  have bits := Proofs.query_selectors_of_bound (p := babyBearModulus) (by decide)
-    accepted (row := row) (by simp [trace]) (entry := readEntry) (by decide) (by decide)
-  intro i
-  have checked := bits i
-  fin_cases i <;>
-    simpa [readEntry, row, Row.decoderColumns, AddSub.importedConstraintsDecoderColumns,
-      Nat.testBit, Nat.shiftRight_eq_div_pow] using checked
-
-theorem malformed_csr_rejected :
-    NonDeterminism.decoderFields (.CSRReg (0x7C0, .Regidx 1, .Regidx 1, .CSRRW)) = none ∧
-    NonDeterminism.decoderFields (.CSRReg (0x7C0, .Regidx 0, .Regidx 0, .CSRRW)) = none ∧
-    NonDeterminism.decoderFields (.CSRReg (0x7C1, .Regidx 0, .Regidx 1, .CSRRW)) = none ∧
-    NonDeterminism.decoderFields (.CSRReg (0x7C0, .Regidx 0, .Regidx 1, .CSRRS)) = none ∧
-    NonDeterminism.decoderFields (.CSRImm (0x7C0, 0, .Regidx 1, .CSRRW)) = none := by
-  repeat' first | apply And.intro | rfl
-
 private theorem clocks : ClockBoundary trace := by
   constructor
   · constructor <;> decide
@@ -160,69 +72,6 @@ theorem single_native_consumption :
   have same := List.mem_singleton.mp member
   subst actual
   decide
-
-private def cells : List Cell := [.register 0, .register 1]
-
-private theorem initial_image : initialImage before cells = some trace.initialMemory := by
-  have one : (Cell.register 1).read before = .ok 0 before := by
-    apply Reference.RiscV.Sail.read_register
-    simp [before, Std.ExtDHashMap.get?_insert]
-  change List.mapM _ [Cell.register 0, Cell.register 1] = _
-  simp only [List.mapM_cons, List.mapM_nil, one, bind, Option.bind]
-  rfl
-
-/-- The CSR read enters the same native offline-memory/Sail history proof as
-    arithmetic. Its actual final x1 value is derived; x0/read values are not premises. -/
-theorem native_register_history :
-    ∃ after, (Cell.register 1).read after = .ok 0x12345678 after := by
-  obtain ⟨history, events, _, after, consistent, _, _, _, matched⟩ :=
-    Proofs.decoded_sail_history NonDeterminism.Proofs.decoderRules (by decide) (by decide)
-      accepted clocks initial_image (by decide) (by
-        intro cell member
-        simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at member
-        rcases member with rfl | rfl <;> trivial) public_image membership
-  have terminal := Proofs.terminal_sail_reads (by decide) (by decide) accepted clocks
-    initial_image (by decide) consistent matched
-      (regToken 1 6 (Nat.pair 0x5678 0x1234)) (by simp [trace])
-  obtain ⟨cell, _, address, read⟩ := terminal
-  have same : cell = Cell.register 1 := Proofs.cell_address_injective address
-  subst cell
-  exact ⟨after, by simpa [regToken, memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value, limbBase] using read⟩
-
-/-- Native CSR register effects and PC retirement are one actual reference
-    step, consuming exactly the first independently supplied external word. -/
-theorem native_read_step  :
-    ∃ after, NonDeterminism.Step [0x12345678] [readEntry, writeEntry]
-      (before, 0) (after, 1) ∧
-      run (SailRV32.Functions.get_arch_pc ()) after = .ok 4 after := by
-  obtain ⟨_, rows, after, _, permutation, _, history, _⟩ :=
-    Proofs.decoded_row_history NonDeterminism.Proofs.decoderRules (by decide) (by decide)
-      accepted clocks initial_image (by decide) (by
-        intro cell member
-        simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at member
-        rcases member with rfl | rfl <;> trivial) public_image membership
-  have single : rows = [row] := List.perm_singleton.mp permutation
-  rw [single] at history
-  simp only [List.flatMap_cons] at history
-  have current : run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before := by
-    apply Reference.RiscV.Sail.read_register
-    simp [before]
-  have currentNative : run (SailRV32.Functions.get_arch_pc ()) before =
-      .ok row.start.word.toBitVec before := current
-  have checked := NonDeterminism.Proofs.read_row_execution (by decide) (by decide)
-    accepted (by
-      change 0 < limbBase ∧ 0 < limbBase
-      constructor <;> decide) (by simp [trace, row])
-    (entry := readEntry) (rd := 1) rfl (by decide) history currentNative
-  have value : NonDeterminism.response row = 0x12345678 := by decide
-  have next : row.finish.word.toBitVec = 4 := by decide
-  change run (normalStep (writeResult (.Regidx 1) (Word.ofBitVec (NonDeterminism.response row))))
-    before = .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after row.finish.word.toBitVec) at checked
-  rw [value, next] at checked
-  refine ⟨retiredState after 4, ?_, Proofs.retired_state_pc after 4⟩
-  refine ⟨readEntry, by simp, Proofs.program_sources public_image readEntry (by simp),
-    current, writeResult (.Regidx 1) (Word.ofBitVec 0x12345678), ?_, checked⟩
-  rfl
 
 private def later : Row babyBearModulus := ⟨.addSub, fun column =>
   if column = 2 then 8 else if column = 33 then 0x9999 else assignment column⟩

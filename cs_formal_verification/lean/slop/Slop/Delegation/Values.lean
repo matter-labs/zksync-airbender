@@ -27,39 +27,4 @@ theorem transfer_write_rules {data : MemoryData p} (rules : WriteBoundsFromReads
     simp only [Row.writeToken, port_offset row sourceMember, port_offset row portMember]
   rw [sameTime]
 
-theorem produced_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
-    (rules : WriteBoundsFromReads data) :
-    ∀ token ∈ data.initial ++ data.steps.map Prod.snd, token.word.Bounded :=
-  Trace.Proofs.Transfer.produced_bounds_of_seed (transfer_facts hp accepted inputs) inputs.words
-    (transfer_write_rules rules)
-
-theorem read_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
-    (rules : WriteBoundsFromReads data) {row : Row p} (member : row ∈ data.rows)
-    {port : MemoryPort} (present : port ∈ row.ports) : (readToken row.assignment port).word.Bounded := by
-  apply produced_value_bounds hp accepted inputs rules
-  apply accepted.matching.mem_iff.mpr
-  exact List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨_,
-    List.mem_flatMap.mpr ⟨row, member, List.mem_map.mpr ⟨port, by simpa using present, rfl⟩⟩, rfl⟩))
-
-theorem write_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
-    (rules : WriteBoundsFromReads data) {row : Row p} (member : row ∈ data.rows)
-    {port : MemoryPort} (present : port ∈ row.ports) : (row.writeToken port).word.Bounded := by
-  apply produced_value_bounds hp accepted inputs rules
-  exact List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨_,
-    List.mem_flatMap.mpr ⟨row, member, List.mem_map.mpr ⟨port, by simpa using present, rfl⟩⟩, rfl⟩))
-
-theorem terminal_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
-    (rules : WriteBoundsFromReads data) {token : MemoryToken p} (member : token ∈ data.terminal) :
-    token.word.Bounded :=
-  produced_value_bounds hp accepted inputs rules token
-    (accepted.matching.mem_iff.mpr (List.mem_append.mpr (Or.inl member)))
-
 end Airbender.Delegation.Proofs

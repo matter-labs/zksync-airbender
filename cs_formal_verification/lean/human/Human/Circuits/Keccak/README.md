@@ -8,7 +8,7 @@ permutation-state binding.
 
 ## Checked results
 
-[`Native.operation_execution`](../../../../slop/Slop/Final/Trace/Workers/Keccak/Theorems.lean)
+[`Native.rv_operation_execution`](../../../../slop/Slop/Final/Trace/Workers/Keccak/RVTheorems.lean)
 proves all seven native lane-mode effects against the existing Clean references,
 including actual ports and modeled physical lane selection. History derives
 pointer/read/range facts. Complete permutation and window claims additionally
@@ -22,7 +22,7 @@ select the original Clean operations and the circuit's phased lane effects.
 
 [Controller](Controller.lean) describes physical lane selection;
 [controller rows](Tables/Controller.lean) and [`setup`](Tables/Setup.lean) are modeled tables.
-[Addresses](Addresses.lean), [ControlUpdate](ControlUpdate.lean) and [Memory](Memory.lean)
+[Addresses](Addresses.lean), [ControlUpdate](ControlUpdate.lean) and Memory
 connect the actual indirect ports and controls to shared initialized history.
 
 The public complete-permutation claims live in

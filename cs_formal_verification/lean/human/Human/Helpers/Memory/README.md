@@ -48,8 +48,8 @@ inactive-row obligations remain separate; a consistent memory history does not
 by itself validate an instruction or a caller's control word.
 
 Start with [InitialImage](InitialImage.lean) for actual public Sail GPR/byte reads
-and the tracked cell domain. [Initialization](Initialization.lean) describes the
-boot profile; [Platform](Platform.lean) records the ordinary-memory configuration.
+and the tracked cell domain. Initialization describes the
+boot profile; Platform records the ordinary-memory configuration.
 
 [Ports](Ports.lean) and [IndirectPorts](IndirectPorts.lean) interpret imported
 addresses, timestamps and values. [Values](Values.lean) gives the word view;

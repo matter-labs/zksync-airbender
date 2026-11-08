@@ -2,16 +2,9 @@ import Slop.KeccakSplit.Reference.CallMemoryProjection
 import Slop.KeccakSplit.Reference.PermutationDefinitions
 
 namespace Airbender.Keccak.Split.Call.Proofs
-open Trace Reference.RiscV.Sail
+open Trace
 set_option warningAsError true
 set_option maxRecDepth 65536
-
-/-- A complete physical snapshot reads the thirty real lane slots. The unused
-padding slot has value zero and requires no Sail memory cell. -/
-def PhysicalSnapshot (state : State) (pointer : BitVec 32) (lanes : LaneState) : Prop :=
-  lanes 30 = 0 ∧ ∀ physical : Fin 31, physical.val < 30 →
-    lanes physical < 2 ^ 64 ∧ ∀ high : Bool,
-      (laneCell pointer physical high).read state = .ok (half (lanes physical) high) state
 
 /-- Both exact word halves identify the complete canonical sixty-four-bit lane. -/
 theorem lane_eq_of_halves {one two : Nat} (first : one < 2 ^ 64) (second : two < 2 ^ 64)

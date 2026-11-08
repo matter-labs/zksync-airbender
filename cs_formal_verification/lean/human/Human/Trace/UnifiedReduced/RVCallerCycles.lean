@@ -1,5 +1,4 @@
 import Human.Helpers.UnifiedReduced.RVMixedMemory
-import Human.Trace.Delegation.RequestEffects
 
 /-! RV siblings of `CallerCycles.lean` and `MixedFetch.lean` (`CurrentFetch`): caller cycles inside one shared RV
     history from a public `RV.State`. Fetch reads the RV program table (the ROM image, `rom`, which no history step

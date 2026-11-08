@@ -1,5 +1,4 @@
 import Human.Circuits.MulDiv.RVTheorems
-import Slop.BabyBear
 import Slop.MulDiv.RVTraceSoundness
 import Slop.Trace.RVPooledLawsProof
 

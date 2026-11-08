@@ -1,62 +1,22 @@
 import Slop.Final.Circuits.Blake2G.Theorems
-import Slop.Final.Trace.Workers.Blake2G.Theorems
-import Slop.Blake2G.WorkVectorBinding
 import Slop.Blake2G.BlockFrame
 import Slop.Blake2G.NativeExecution
-import Slop.Blake2G.CallHistory
-import Slop.Blake2G.PointerHistory
 import Slop.Blake2G.Soundness
-import Slop.Blake2G.MemorySoundness
 import Slop.Blake2G.Control
 import Slop.Blake2G.Addresses
 import Slop.Blake2G.State
 import Slop.Blake2G.Row
-import Slop.BabyBear
+import Human.Helpers.Delegation.SpanABI
+import Human.Trace.Workers.Blake2G.WorkVector
+import Human.Trace.Workers.Keccak.Permutation
+import Slop.Blake2G.CallGroups
+import Slop.Blake2G.PhysicalWords
+import Slop.Delegation.NativeSegments
+import Slop.Delegation.ReverseFold
+import Human.Circuits.Blake2G.Memory
 
 namespace Airbender.Blake2G
 
-
-theorem Native.call_blocks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
-    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
-    {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
-    (inputs : CallInputs data initial cells reduced) :
-    ∃ statePointer messagePointer, BlockMapping initial cells statePointer messagePointer := by
-  obtain ⟨state, message, stateRead, messageRead, stateAligned, messageAligned, separate, initialized⟩ :=
-    Proofs.call_block_domain hp inverse accepted inputs.toBoundaryInputs
-  exact ⟨state, message, ⟨⟨stateRead, messageRead⟩, ⟨stateAligned, messageAligned⟩, separate, initialized⟩⟩
-
-
-
-theorem call_control_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
-    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
-    {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
-    (inputs : CallInputs data initial cells reduced) : CallSchedule data reduced := by
-  obtain ⟨ordered, matching, clocks, controls, sink, member, address, final⟩ :=
-    Proofs.ordered_controls hp accepted inputs.toBoundaryInputs
-  have reset : controlAt reduced data.rows.length = controlAt reduced 0 := by
-    rw [inputs.calls]
-    cases reduced <;> rfl
-  exact ⟨ordered, matching, clocks, controls, sink, member, address, final.trans reset⟩
-
-
-theorem Native.call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
-    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
-    {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
-    (inputs : CallInputs data initial cells reduced) (aligned : ∀ cell ∈ cells, cell.Aligned) :
-    Delegation.MemoryExecution data initial cells ∧ CallSchedule data reduced ∧
-      CallPointers data initial ∧ ∀ row ∈ data.rows, spec (input row.assignment) (output row.assignment) := by
-  have operation : Delegation.OperationInputs data initial cells Keccak.Controller.rows := by
-    refine ⟨inputs.memory, inputs.tables, ?_, ?_⟩
-    all_goals intro row member other; have := inputs.family row member; simp_all
-  obtain ⟨execution, effects⟩ := Native.Proofs.operation_execution hp inverse accepted operation aligned
-  have clockBound : 2 * Trace.timestampBase + 4 < p := by norm_num [Trace.timestampBase]; omega
-  obtain ⟨statePointer, messagePointer, stateRead, messageRead, pointers, _, _⟩ :=
-    Proofs.call_pointers clockBound accepted inputs.toBoundaryInputs
-  exact ⟨execution, call_control_soundness clockBound accepted inputs,
-    ⟨statePointer, messagePointer, stateRead, messageRead, pointers⟩,
-    fun row member => effects row member (inputs.family row member)⟩
 
 namespace Row
 
@@ -115,17 +75,6 @@ end State
 
 namespace Memory
 
-
-theorem soundness [Fact p.Prime] (hp : 33554432 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) (data : Delegation.MemoryData p)
-    (before : Reference.RiscV.Sail.State) (cells : List Trace.Cell) :
-    (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Blake2G.spec :=
-  Proofs.soundness hp inverse data before cells
-
-theorem babyBear_soundness (data : Delegation.MemoryData babyBearModulus)
-    (before : Reference.RiscV.Sail.State) (cells : List Trace.Cell) :
-    (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Blake2G.spec :=
-  soundness (by decide) (by decide) data before cells
 
 end Memory
 

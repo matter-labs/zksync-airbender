@@ -1,5 +1,7 @@
-import Human.Trace.Workers.Blake2G.Call
 import Slop.Blake2G.Control
+import Human.Circuits.Blake2G.Execution
+import Human.Circuits.Blake2G.Protocol
+import Human.Circuits.Keccak.Tables.Controller
 
 namespace Airbender.Blake2G.Proofs
 open Arithmetic

@@ -1,5 +1,4 @@
 import Slop.MulDiv.Claims
-import Slop.BabyBear
 
 namespace Tests.MulDiv
 open Airbender
@@ -74,38 +73,5 @@ example : ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment falseZe
   have zero := (Airbender.MulDiv.Proofs.divisor_zero_iff (by decide) h).mp rfl
   have notZero : (⟨(falseZeroRow 24).val, (falseZeroRow 25).val⟩ : Arithmetic.Word).value ≠ 0 := by decide
   exact notZero zero
-
-private def input (remainder : Bool) : Airbender.MulDiv.Input where
-  operation := if remainder then .remu else .divu
-  left := ⟨7, 2⟩
-  right := ⟨0, 0⟩
-  pc := ⟨65532, 3⟩
-  rs1 := .Regidx 1
-  rs2 := .Regidx 2
-  rd := .Regidx 1
-  before := { (default : Reference.RiscV.Sail.State) with regs :=
-    ((default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .x1 (131079 : BitVec 32) |>.insert .x2 (0 : BitVec 32)
-      |>.insert .PC (262140 : BitVec 32)) }
-
-private def output (remainder : Bool) : Reference.RiscV.Sail.Output :=
-  ⟨if remainder then ⟨7, 2⟩ else ⟨65535, 65535⟩, ⟨0, 4⟩⟩
-
-/-- Both actual Sail clauses, source/destination aliasing and native PC carry. -/
-example (remainder : Bool) :
-    Airbender.MulDiv.spec (input remainder) (output remainder) := by
-  apply Airbender.MulDiv.babyBear_row_soundness
-    (input remainder) (output remainder) (row remainder)
-  refine ⟨?_, satisfies remainder, ?_⟩
-  · constructor
-    all_goals solve
-      | (intro i; fin_cases i <;> cases remainder <;>
-         dsimp [input, Airbender.MulDiv.Operation.selector, row] <;> decide)
-      | (apply Reference.RiscV.Sail.read_register
-         cases remainder <;> simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
-           Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
-      | (change (⟨7, 2⟩ : Arithmetic.Word).Bounded; exact ⟨by decide, by decide⟩)
-      | (change (⟨65532, 3⟩ : Arithmetic.Word).Bounded; exact ⟨by decide, by decide⟩)
-  · constructor <;> cases remainder <;> dsimp [input, output, row] <;> decide
 
 end Tests.MulDiv

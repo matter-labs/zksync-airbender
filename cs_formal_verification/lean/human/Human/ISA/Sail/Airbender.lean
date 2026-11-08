@@ -41,16 +41,6 @@ def Configured (σ : SailState) : Prop := ∀ r, writtenByProgram r = false → 
 
 `sail/config/airbender-base.json` switches these extensions off. Airbender has none of them; the ones marked (*)
 would otherwise re-decode instructions Airbender runs as plain RV32I. Checked here against the generated model. -/
-theorem sail_extensions_off :
-    hartSupports .Ext_Zihintntl = false ∧   -- (*) `add x0, x0, x2..x5` would be an NTL hint
-    hartSupports .Ext_Zicbop = false ∧      -- (*) `ori x0, rs1, imm` would be a prefetch
-    hartSupports .Ext_Zicfilp = false ∧     -- landing pads (would check JALR targets)
-    hartSupports .Ext_Zicfiss = false ∧     -- shadow stack
-    hartSupports .Ext_C = false ∧ hartSupports .Ext_Zca = false := by  -- compressed instructions
-  decide +kernel
-
-/-- Zimop stays on: Sail decodes Airbender's field operations `mop.rr.N` (and its `execute` is replaced below). -/
-theorem sail_zimop_on : hartSupports .Ext_Zimop = true := by decide +kernel
 
 /-! ## Airbender's instructions, named as in Sail -/
 

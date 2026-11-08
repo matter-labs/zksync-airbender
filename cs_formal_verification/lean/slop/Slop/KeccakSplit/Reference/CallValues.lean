@@ -2,7 +2,7 @@ import Slop.KeccakSplit.Reference.CallReference
 import Clean.Utils.Rotation
 
 namespace Airbender.Keccak.Split.Call.Proofs
-open Trace Reference.RiscV.Sail
+open Trace
 set_option warningAsError true
 set_option maxRecDepth 65536
 

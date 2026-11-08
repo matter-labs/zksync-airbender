@@ -3,7 +3,6 @@ import Slop.JumpBranchSlt.RVRow
 import Slop.Trace.RVPooledRow
 import Slop.Trace.RVValues
 import Slop.Trace.PC
-import Slop.BabyBear
 import Slop.Trace.RVRowGlue
 
 /-! RV32 comparison, branch and jump soundness (`Comparison/Branch/Jump.RVSoundnessClaim`), on the RV route: no Sail

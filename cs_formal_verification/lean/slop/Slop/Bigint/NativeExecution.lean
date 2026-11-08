@@ -1,7 +1,9 @@
 import Human.Circuits.Bigint.Execution
 import Slop.Bigint.SetupSoundness
 import Slop.Bigint.Multiplication
-import Slop.Final.Trace.Delegation.Theorems
+import Slop.Delegation.Operations
+import Slop.Delegation.Requests
+import Slop.Delegation.SailHistory
 
 namespace Airbender.Bigint.Native.Proofs
 open Trace
@@ -47,22 +49,5 @@ theorem arithmetic_effects {w : Nat → ZMod babyBearModulus}
     apply Multiplication.Proofs.soundness (multiplicationInput operation w) (output w) w
     exact ⟨holds, selected, (by intro i; simp [multiplicationInput, limbs]), (by intro i; simp [multiplicationInput, limbs]),
       (by intro i; simp [output, limbs]), rfl⟩
-
-theorem native_operation_execution {data : Delegation.MemoryData babyBearModulus}
-    {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.MemoryInputs data before cells)
-    (aligned : ∀ cell ∈ cells, cell.Aligned) (table : data.setup.bigint = setupTable) :
-    Delegation.MemoryExecution data before cells ∧
-      ∀ row ∈ data.rows, row.family = .bigint → ArithmeticEffects row.assignment := by
-  refine ⟨Delegation.native_memory_execution (by decide) accepted inputs aligned, ?_⟩
-  intro row member family
-  have holds := accepted.constraints row member
-  rcases row with ⟨kind, w⟩
-  change kind = .bigint at family
-  subst kind
-  change FlatOperation.ConstraintsHoldFlat (Verification.environment w) (clockConstraints data.setup.bigint) at holds
-  rw [table] at holds
-  exact arithmetic_effects (Verification.holds_of_sublist holds
-    (List.sublist_append_left (importedConstraints setupTable) importedConstraintsTimestampLookups))
 
 end Airbender.Bigint.Native.Proofs

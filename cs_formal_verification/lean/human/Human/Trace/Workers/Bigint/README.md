@@ -8,13 +8,13 @@ fixtures leave open.
 
 ## Checked results
 
-[`operation_execution`](../../../../../slop/Slop/Final/Trace/Workers/Bigint/Theorems.lean) proves all seven selected operation
+[`rv_operation_execution`](../../../../../slop/Slop/Final/Trace/Workers/Bigint/RVTheorems.lean) proves all seven selected operation
 effects on actual native Sail reads/writes and terminal cells in a shared pool,
 under public initialization/alignment, exact matching and the modeled bigint table.
 Operand/pointer bounds are derived; this still admits the flagged no-opcode case
 and does not prove the original caller's full control-mask ABI.
 
-Read [Theorems](../../../../../slop/Slop/Final/Trace/Workers/Bigint/Theorems.lean) for the seven selected operation references
+Read [Theorems](../../../../../slop/Slop/Final/Trace/Workers/Bigint/RVTheorems.lean) for the seven selected operation references
 on actual native port observations. Follow
 [the local circuit guide](../../../Circuits/Bigint/README.md) for addresses,
 control decoding and named limb mappings.

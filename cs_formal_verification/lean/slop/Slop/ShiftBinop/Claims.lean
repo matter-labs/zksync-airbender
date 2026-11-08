@@ -1,25 +1,24 @@
-import Slop.Final.Circuits.ShiftBinop.Theorems
-import Slop.Final.Trace.Families.ShiftBinop.Theorems
 import Slop.ShiftBinop
-import Slop.ShiftBinop.RowClaims
-import Slop.ShiftBinop.TraceSoundness
 import Slop.ShiftBinop.Shifts
 import Slop.ShiftBinop.Trace
-import Slop.ShiftBinop.Decoder
-import Slop.ShiftBinop.Composition
-import Slop.BabyBear
+import Human.Circuits.JumpBranchSlt.Jump
+import Human.Helpers.Core.BabyBearPrime
+import Slop.AddSub.Selectors
+import Slop.JumpBranchSlt.Branch
+import Slop.JumpBranchSlt.Jump
+import Slop.JumpBranchSlt.PortReads
+import Slop.MulDiv.PortReads
+import Slop.MulDiv.Soundness
+import Slop.MulDiv.Values
+import Slop.ShiftBinop.PortReads
+import Slop.ShiftBinop.Ports
+import Slop.SubwordMemory.Values
+import Slop.Trace.CompositionCore
+import Slop.Trace.Family.Values
+import Slop.Trace.Pooled
+import Slop.Trace.RowContext
 
 namespace Airbender.ShiftBinop
-
-
-theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
-    {w : Nat → ZMod p} {before : Reference.RiscV.Sail.State}
-    {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (image : programImage before addresses = some program)
-    (configuration : Reference.RiscV.Sail.Configured before)
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (member : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
-  Proofs.fetched hp image (by find_configured) h member
 
 
 theorem clocks {w : Nat → ZMod babyBearModulus}
