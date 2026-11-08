@@ -1,5 +1,11 @@
 module
 public import CleanCore.Circuit.Expression
+-- Clean's Mathlib/Lean imports for this file, re-exported so importers see what they saw through Clean
+public import Init.Data.List.Find
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Algebra.Order.Star.Basic
+public import Mathlib.Analysis.Normed.Ring.Lemmas
+public import Mathlib.Combinatorics.Enumerative.Composition
 
 /-! # Row types of lookup tables (Clean `Clean.Circuit.Provable`, pinned 93c9d1e)
 

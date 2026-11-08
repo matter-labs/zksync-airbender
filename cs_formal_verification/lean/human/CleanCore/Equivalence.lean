@@ -177,11 +177,11 @@ theorem toBits_eq : Airbender.Utils.Bits.toBits = _root_.Utils.Bits.toBits := by
   simp only [Airbender.Utils.Bits.toBits, _root_.Utils.Bits.toBits, mapRange_eq]
 theorem fromBits_eq {n : ℕ} : @Airbender.Utils.Bits.fromBits n = @_root_.Utils.Bits.fromBits n := rfl
 theorem fieldToBits_eq {p : ℕ} [Fact p.Prime] :
-    @Airbender.Utils.Bits.fieldToBits p = @_root_.Utils.Bits.fieldToBits p _ := by
+    @Airbender.Utils.Bits.fieldToBits p _ = @_root_.Utils.Bits.fieldToBits p _ := by
   funext n x
   simp only [Airbender.Utils.Bits.fieldToBits, _root_.Utils.Bits.fieldToBits, toBits_eq]
 theorem fieldFromBits_eq {p n : ℕ} [Fact p.Prime] :
-    @Airbender.Utils.Bits.fieldFromBits p n = @_root_.Utils.Bits.fieldFromBits p _ n := rfl
+    @Airbender.Utils.Bits.fieldFromBits p _ n = @_root_.Utils.Bits.fieldFromBits p _ n := rfl
 theorem splitTwoBytes_eq : Airbender.ByteUtils.splitTwoBytes = _root_.ByteUtils.splitTwoBytes := rfl
 
 theorem memoryAccess_eq : Airbender.MemoryAccess = _root_.MemoryAccess := rfl

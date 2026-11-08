@@ -3,6 +3,9 @@ public import CleanCore.Utils.Bitwise
 public import Mathlib.Data.Nat.Bitwise
 public import Mathlib.Tactic.Ring
 public import Mathlib.Tactic.Linarith
+-- Clean's Mathlib/Lean imports for this file, re-exported so importers see what they saw through Clean
+public import Init.Data.List.Find
+public import Mathlib.Combinatorics.Enumerative.Composition
 
 /-! # 64-bit rotation bounds (Clean `Clean.Utils.Rotation`, pinned 93c9d1e): transcribed with proofs. -/
 

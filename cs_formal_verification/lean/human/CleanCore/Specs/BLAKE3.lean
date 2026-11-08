@@ -1,5 +1,8 @@
 module
 public import CleanCore.Utils.Bitwise
+-- Clean's Mathlib/Lean imports for this file, re-exported so importers see what they saw through Clean
+public import Init.Data.List.Find
+public import Mathlib.Combinatorics.Enumerative.Composition
 
 /-! # The BLAKE3 mixing function and round (Clean `Clean.Specs.BLAKE3`, pinned 93c9d1e)
 

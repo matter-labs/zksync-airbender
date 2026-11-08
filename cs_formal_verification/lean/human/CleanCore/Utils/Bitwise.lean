@@ -1,6 +1,12 @@
 module
 public import Mathlib.Data.Nat.Bitwise
 public import Mathlib.Tactic.Linarith
+-- Clean's Mathlib/Lean imports for this file, re-exported so importers see what they saw through Clean
+public import Lean.Meta.Tactic.Simp.RegisterCommand
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Algebra.Order.Star.Basic
+public import Mathlib.Analysis.Normed.Ring.Lemmas
+public import Std.Tactic.BVDecide
 
 /-! # 64- and 32-bit word operations on naturals (Clean `Clean.Utils.Bitwise`, pinned 93c9d1e): the operations the
 Keccak-f[1600] and BLAKE3/Blake2s specs use, and the lemmas our proofs cite; transcribed with proofs. -/

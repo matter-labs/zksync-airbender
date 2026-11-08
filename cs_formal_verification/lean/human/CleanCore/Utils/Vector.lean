@@ -1,5 +1,9 @@
 module
 public import Mathlib.Tactic.Linarith
+-- Clean's Mathlib/Lean imports for this file, re-exported so importers see what they saw through Clean
+public import Init.Data.List.Find
+public import Mathlib.Analysis.Normed.Ring.Lemmas
+public import Mathlib.Combinatorics.Enumerative.Composition
 
 /-! # `Vector.mapRange` (Clean `Clean.Utils.Vector`, pinned 93c9d1e): transcribed with proofs. -/
 

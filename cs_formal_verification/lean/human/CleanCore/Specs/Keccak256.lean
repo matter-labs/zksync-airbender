@@ -1,5 +1,11 @@
 module
 public import CleanCore.Utils.Bitwise
+-- Clean's Mathlib/Lean imports for this file, re-exported so importers see what they saw through Clean
+public import Init.Data.List.Find
+public import Lean
+public import Lean.Elab.Tactic
+public import Mathlib.Combinatorics.Enumerative.Composition
+public import Mathlib.Control.Monad.Writer
 
 /-! # Keccak-f[1600] (Clean `Clean.Specs.Keccak256`, pinned 93c9d1e)
 

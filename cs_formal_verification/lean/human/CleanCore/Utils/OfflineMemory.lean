@@ -1,5 +1,16 @@
 module
 public import Mathlib.Data.List.Sort
+-- Clean's Mathlib/Lean imports for this file, re-exported so importers see what they saw through Clean
+public import Init.Data.List.Find
+public import Lean
+public import Lean.Elab.Tactic
+public import Lean.Meta
+public import Lean.Meta.Tactic.Simp.RegisterCommand
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Algebra.Order.Star.Basic
+public import Mathlib.Analysis.Normed.Ring.Lemmas
+public import Mathlib.Combinatorics.Enumerative.Composition
+public import Mathlib.Control.Monad.Writer
 
 /-! # Offline memory checking (Clean `Clean.Utils.OfflineMemory`, pinned 93c9d1e): memory accesses, timestamp-sorted
 access lists and their online consistency; transcribed with proofs. Deviation: the circuit gadgets are omitted. -/

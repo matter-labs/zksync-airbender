@@ -1,5 +1,7 @@
 module
 public import Mathlib.Algebra.Field.Basic
+-- Clean's Mathlib/Lean imports for this file, re-exported so importers see what they saw through Clean
+public import Lean.Meta.Tactic.Simp.RegisterCommand
 
 /-! # Expressions and environments (Clean `Clean.Circuit.Expression`, pinned 93c9d1e)
 

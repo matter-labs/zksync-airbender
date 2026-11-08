@@ -3,6 +3,10 @@ public import CleanCore.Utils.Fin
 public import CleanCore.Utils.Vector
 public import Mathlib.Data.ZMod.Basic
 public import Mathlib.Tactic.Linarith
+-- Clean's Mathlib/Lean imports for this file, re-exported so importers see what they saw through Clean
+public import Lean.Meta.Tactic.Simp.RegisterCommand
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Algebra.Order.Star.Basic
 
 /-! # Bit decomposition of naturals and field elements (Clean `Clean.Utils.Bits`, pinned 93c9d1e): transcribed with proofs.
 `F p` is `ZMod p`. -/

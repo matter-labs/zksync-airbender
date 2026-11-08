@@ -1,5 +1,10 @@
 module
 public import Mathlib.Tactic.NormNum
+-- Clean's Mathlib/Lean imports for this file, re-exported so importers see what they saw through Clean
+public import Lean.Meta.Tactic.Simp.RegisterCommand
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Algebra.Order.Star.Basic
+public import Mathlib.Analysis.Normed.Ring.Lemmas
 
 /-! # Splitting a 16-bit value into two bytes (Clean `Clean.Utils.Field`, pinned 93c9d1e). -/
 
