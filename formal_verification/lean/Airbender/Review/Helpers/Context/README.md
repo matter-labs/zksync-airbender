@@ -397,3 +397,10 @@ reads, online history, STAGE2 keys and worker Sail execution remain open.
 addresses for active main/worker ports from same-source seed paths. All prior
 crypto boundaries and source observations stay. Read-value bounds, alignment,
 STAGE2 key identity, online history and worker Sail remain open.
+
+## Conditional modeled STAGE2 keys
+
+[Actual worker helper-key agreement](../../Circuits/ReducedMachine/StageTwoKeysTheorems.lean) derives bounded base reads,
+no u16 carry and modeled STAGE2/raw-key identity for all43 read/write ports of
+actual ordinary workers. Full acceptance, inactive accesses and prior crypto
+boundaries stay. Physical Rust, word values, history and Sail remain separate.

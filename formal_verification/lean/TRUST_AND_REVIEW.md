@@ -1,5 +1,54 @@
 # Trust and review boundaries
 
+## Conditional modeled native STAGE2 worker keys (8 November 2026)
+
+[StageTwoKeys](Airbender/Review/Circuits/ReducedMachine/StageTwoKeys.lean)
+connects the existing modeled native STAGE2 helper keys to the actual raw
+quotient keys. All43 read/write ports and all actual ordinary worker rows stay;
+raw values and both timestamp fields remain unchanged. Physical Rust memory,
+extension arithmetic, LDE/compiler refinement and worker semantics stay separate.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeStageTwoKeys.lean)
+first proves generic field/Nat and u16 helper arithmetic. Kernel-checked syntax
+binds actual zero-offset state/message ports1/26 to bases[2,3]/[100,101], and all
+indirect descriptors to those bases. The prior derived active raw-address domains
+therefore bound both actual pointer-base read limbs. Each native offset is below
+128; field addition cannot wrap here. The derived bound on every actual raw sum
+then forces natural baseLow+offset below65536. No pointer range, no-carry,
+alignment or RAM-only permission is supplied as a premise.
+
+The modeled helper truncations and additions consequently preserve each active
+raw address, with no u16 carry/high overflow. Its complete modeled read and write
+keys equal the quotient keys at every port. The unchanged source-derived Boolean
+multiplicity and padding-key proof cover inactive rows too. No accepted row,
+auxiliary pole, timestamp, duplicate, alias, readonly refresh, OLDREAD or unmasked
+write is discarded. This does not establish general word-value bounds, online
+history, worker reference results, caller activity or issuance accounting.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/StageTwoKeysTheorems.lean)
+retain unchanged full acceptance and the prior explicit formal extraction
+boundary. Positive main count and every prefix guard stay on the same proof
+list/workers/challenges/inputs. The already pinned native helper/dispatcher source
+hashes were rereviewed before this adaptation; no new pin, source adoption or
+physical Rust/field/transcript refinement is claimed.
+
+[Sixteen controls](Tests/NativeStageTwoKeys.lean) cover exact ABI bases,
+no-carry endpoints, unchanged pure carry/overflow/wide-base differences, raw-domain
+rejections, a retained zero factor, all43 positions, actual base/read/write keys,
+no modeled helper failure and complete conditional roots. Pure and conditional
+controls are not new accepted native BODY/nonempty global/worker/physical
+witnesses, attacks, native defects or absent-other-enforcement evidence.
+
+Four modules add28 roots/10 exact parent references; all6,146 prior ordered roots
+and audit bytes remain addition-only. Native107 pins, dependencies, v3 reference,
+prior proofs/acceptance/artifacts and FINDINGS stay unchanged. No production,
+importer/exporter/fixture change, generation, heavy replay, issue assumption, fix
+or project axiom. General initialized word values, unique/latest reads, online
+history, worker rounds/results, arbitrary inactive request validity/activity,
+issuance/fulfillment/converse accounting, original CSR/MOP/worker Sail, physical
+cryptography, completeness and parity remain open.
+
+
 ## Conditional active native address support (8 November 2026)
 
 [AddressSupport](Airbender/Review/Circuits/ReducedMachine/AddressSupport.lean)

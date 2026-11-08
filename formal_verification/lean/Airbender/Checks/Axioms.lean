@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.StageTwoKeys
+import Airbender.Proofs.ReducedMachine.NativeStageTwoKeys
+import Airbender.Review.Circuits.ReducedMachine.StageTwoKeysTheorems
+import Tests.NativeStageTwoKeys
+
 import Airbender.Review.Circuits.ReducedMachine.AddressSupport
 import Airbender.Proofs.ReducedMachine.NativeAddressSupport
 import Airbender.Review.Circuits.ReducedMachine.AddressSupportTheorems
@@ -7096,3 +7101,32 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeAddressSupport.inactive_read_stays
 #print axioms Airbender.Tests.NativeAddressSupport.complete_conditional
 #print axioms Airbender.Tests.NativeAddressSupport.complete_conditional_counted
+
+#print axioms Airbender.NativeStageTwoKeyProofs.sum_value
+#print axioms Airbender.NativeStageTwoKeyProofs.ram_bounds
+#print axioms Airbender.NativeStageTwoKeyProofs.indirect_address
+#print axioms Airbender.NativeStageTwoKeyProofs.base_locations
+#print axioms Airbender.NativeStageTwoKeyProofs.location_bases
+#print axioms Airbender.NativeStageTwoKeyProofs.base_bounds
+#print axioms Airbender.NativeStageTwoKeyProofs.indirect_bounds
+#print axioms Airbender.NativeStageTwoKeyProofs.active_keys
+#print axioms Airbender.NativeStageTwoKeyProofs.effects
+#print axioms Airbender.NativeStageTwoKeyProofs.counted
+#print axioms Airbender.NativeStageTwoKeys.native_worker_stage_two_keys
+#print axioms Airbender.NativeStageTwoKeys.native_counted_worker_stage_two_keys
+#print axioms Airbender.Tests.NativeStageTwoKeys.zero_offset_bases
+#print axioms Airbender.Tests.NativeStageTwoKeys.no_carry_endpoint
+#print axioms Airbender.Tests.NativeStageTwoKeys.no_carry_zero
+#print axioms Airbender.Tests.NativeStageTwoKeys.carry_reference
+#print axioms Airbender.Tests.NativeStageTwoKeys.high_overflow_reference
+#print axioms Airbender.Tests.NativeStageTwoKeys.wide_reference_difference
+#print axioms Airbender.Tests.NativeStageTwoKeys.carry_raw_domain_rejected
+#print axioms Airbender.Tests.NativeStageTwoKeys.wide_raw_domain_rejected
+#print axioms Airbender.Tests.NativeStageTwoKeys.zero_factor_stays
+#print axioms Airbender.Tests.NativeStageTwoKeys.all_positions
+#print axioms Airbender.Tests.NativeStageTwoKeys.actual_base_reads
+#print axioms Airbender.Tests.NativeStageTwoKeys.actual_read_keys
+#print axioms Airbender.Tests.NativeStageTwoKeys.actual_write_keys
+#print axioms Airbender.Tests.NativeStageTwoKeys.no_helper_failure
+#print axioms Airbender.Tests.NativeStageTwoKeys.complete_conditional
+#print axioms Airbender.Tests.NativeStageTwoKeys.complete_conditional_counted
