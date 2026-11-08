@@ -999,3 +999,10 @@ steps, finalization/write-result/full hash and physical schedules remain open.
 [Second diagonal A/D](WorkerDiagonalADTheorems.lean) derives wrapping A additions
 and chained D XORrotate8 while retaining prior column G/diagonal first-half/replay.
 Second C/B, finalization/write-result/full hash and physical schedules remain open.
+
+## Complete native diagonal G arithmetic
+
+[Diagonal G](WorkerDiagonalGTheorems.lean) derives final C/B steps and all four complete diagonal G
+results, retaining all four column G and initialized replay effects from the SAME
+counted source. These are intermediate results; native final writes, full worker
+reference round/hash and physical schedules remain open.

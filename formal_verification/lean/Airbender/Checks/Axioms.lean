@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.Blake2Worker.DiagonalG
+import Airbender.Proofs.ReducedMachine.NativeWorkerDiagonalG
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerDiagonalGTheorems
+import Tests.NativeWorkerDiagonalG
+
 import Airbender.Review.Circuits.Blake2Worker.DiagonalAD
 import Airbender.Proofs.ReducedMachine.NativeWorkerDiagonalAD
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerDiagonalADTheorems
@@ -7736,3 +7741,35 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerDiagonalAD.corrupt_d_output_rejected
 #print axioms Airbender.Tests.NativeWorkerDiagonalAD.inactive_requests_retained
 #print axioms Airbender.Tests.NativeWorkerDiagonalAD.complete_counted
+
+#print axioms Airbender.NativeWorkerDiagonalGProofs.carry_bits
+#print axioms Airbender.NativeWorkerDiagonalGProofs.limb_bounds
+#print axioms Airbender.NativeWorkerDiagonalGProofs.rotated
+#print axioms Airbender.NativeWorkerDiagonalGProofs.d_bounds
+#print axioms Airbender.NativeWorkerDiagonalGProofs.d_pack
+#print axioms Airbender.NativeWorkerDiagonalGProofs.mixing
+#print axioms Airbender.NativeWorkerDiagonalGProofs.addition
+#print axioms Airbender.NativeWorkerDiagonalGProofs.chained_rotated
+#print axioms Airbender.NativeWorkerDiagonalGProofs.diagonal
+#print axioms Airbender.NativeWorkerDiagonalGProofs.row
+#print axioms Airbender.NativeWorkerDiagonalGProofs.counted
+#print axioms Airbender.NativeWorkerDiagonalG.native_worker_diagonal_final_cb
+#print axioms Airbender.NativeWorkerDiagonalG.native_counted_worker_diagonal_g
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.g_vector
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.wrap_rotate7_vector
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.pair_maximum
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.chunk_rotation_reference
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.full_local_second_cb
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.zero_c_sums
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.zero_b_outputs
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.all_carry_bits
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.all_c_bounds
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.all_b_rotations
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.all_second_c_additions
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.all_chained_b_rotations
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.all_diagonal_g
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.weighted_messages_retained
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.prior_columns_retained
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.corrupt_b_output_rejected
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.inactive_requests_retained
+#print axioms Airbender.Tests.NativeWorkerDiagonalG.complete_counted
