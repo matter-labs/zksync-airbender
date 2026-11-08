@@ -1,5 +1,51 @@
 # Trust and review boundaries
 
+## Initialized native first G wrapping additions (8 November 2026)
+
+[Addition observables](Airbender/Review/Circuits/Blake2Worker/Addition.lean) retain
+natural ten-weight selected messages and actual pre-G/A-output words. The SAME
+counted public source, original stateful image/log20, OLD LogicalLookups and OLD
+explicit SourceIdentity derive initialized effects for EVERY ordinary worker,
+including inactive rows. ALL32 pre-G limbs and ALL32 compression-input limbs are
+u16; selected limbs equal their natural weighted sums below655360. Zero and
+multiple round bits remain. Selected limbs are not asserted u16.
+
+[Short TRACE root](Airbender/Review/Trace/Families/ReducedMachine/WorkerAdditionTheorems.lean)
+derives RV32 wrapping addition in all four first column A steps. Both Boolean
+carry bits keep actual weights1/2, deriving encoded carries at most3 without an
+assumed carry-at-most2 premise. Wide message limbs retain carry into the high
+half before32bit reduction. Prior exact D XOR/rotate16, initialization, schedule,
+complete initialized raw-token replay, word bounds, capacity and dependencies
+stay. No expected read, range, result, one-hot mask, round, schedule or history
+is supplied. Public ordinary7-or-CSR excludes MOP; original7 Sail excludes CSR/MOP.
+
+[Proofs](Airbender/Proofs/ReducedMachine/NativeWorkerAddition.lean) prove generic
+weighted sums, canonical carry values, limb packing and wide modular addition
+before native data. Exact descriptor syntax is kernel-bound before sampling.
+Actual initialized raw read-token bounds derive the required operand bounds;
+M31 no-wrap arithmetic derives natural limb equations. Existing full352-equation/
+296-query BODY and actual344384-row fixed-pool consequences are reused unchanged.
+No new native pin, importer, artifact, generation or heavy certificate replay.
+Specific bindings do not prove general Rust/JSON/compiler/physical refinement.
+
+[Fourteen controls](Tests/NativeWorkerAddition.lean) cover all-ten-bit655350 and
+zero-weight reference sums, carry3 encoding, wide-limb modular wrap, loss from
+truncating a wide limb, all initialized/input/selection/carry/addition effects,
+retained D rotation, inactive caller requests and the complete counted interface.
+Pure/reference/conditional only, not new nonempty source-global/whole-worker/
+physical accepted witnesses, attacks or native findings. All43 ports, BOTH raw
+timestamps, aliases, readonly refreshes, OLDREADs, AUX/m0 poles, inactiveD, caller
+equations, unmasked writes and public x0 times remain. Caller requests stay.
+
+Four modules add29 roots and9 exact parent references, preserving all6,451 prior
+ordered roots and exact audit bytes addition-only. Native107 pins, v3 reference,
+dependencies, production, original Sail, old proofs/acceptance and FINDINGS stay.
+Remaining C/B and second A/D/B operations, diagonal calls, output finalization,
+full hash, physical round schedules, inactive caller activity/converse accounting,
+MOP public custom execution, original CSR/MOP/worker Sail, physical cryptography,
+completeness and parity remain open. Logical boundaries remain explicit.
+
+
 ## First A/D steps in native worker G calls (8 November 2026)
 
 [First G observables](Airbender/Review/Circuits/Blake2Worker/FirstG.lean) retain

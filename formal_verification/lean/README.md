@@ -1831,3 +1831,10 @@ G mixing, rotations/XOR, hash results, physical schedules and converse accountin
 and exact XOR/rotate16 for all four column calls from FULL native BODY/fixed pool.
 Same counted source retains prior initialization/schedule/replay/word bounds.
 Whole-word addition, remaining G steps, hash results and physical schedules remain open.
+
+## Initialized first G wrapping additions
+
+[Initialized additions](Airbender/Review/Trace/Families/ReducedMachine/WorkerAdditionTheorems.lean) derive all four first A wrapping sums from
+the SAME counted source and initialized raw read-token bounds. Natural weighted
+messages retain zero/multiple round bits and wide limbs; prior exact D rotation,
+initialization, replay and word bounds stay. Full G/hash and physical schedules remain open.

@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.Blake2Worker.Addition
+import Airbender.Proofs.ReducedMachine.NativeWorkerAddition
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerAdditionTheorems
+import Tests.NativeWorkerAddition
+
 import Airbender.Review.Circuits.Blake2Worker.FirstG
 import Airbender.Proofs.ReducedMachine.NativeWorkerFirstG
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerFirstGTheorems
@@ -7484,3 +7489,33 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerFirstG.corrupt_xor_rejected
 #print axioms Airbender.Tests.NativeWorkerFirstG.inactive_requests_retained
 #print axioms Airbender.Tests.NativeWorkerFirstG.complete_counted
+
+#print axioms Airbender.NativeWorkerAdditionProofs.weighted_sum
+#print axioms Airbender.NativeWorkerAdditionProofs.carry_value
+#print axioms Airbender.NativeWorkerAdditionProofs.pack_value
+#print axioms Airbender.NativeWorkerAdditionProofs.limb_sum
+#print axioms Airbender.NativeWorkerAdditionProofs.wide_add
+#print axioms Airbender.NativeWorkerAdditionProofs.read_bounds
+#print axioms Airbender.NativeWorkerAdditionProofs.initial_bounds
+#print axioms Airbender.NativeWorkerAdditionProofs.input_bounds
+#print axioms Airbender.NativeWorkerAdditionProofs.selected_bounds
+#print axioms Airbender.NativeWorkerAdditionProofs.carry_bounds
+#print axioms Airbender.NativeWorkerAdditionProofs.addition
+#print axioms Airbender.NativeWorkerAdditionProofs.selected_values
+#print axioms Airbender.NativeWorkerAdditionProofs.row
+#print axioms Airbender.NativeWorkerAdditionProofs.counted
+#print axioms Airbender.NativeWorkerAddition.native_counted_worker_first_addition
+#print axioms Airbender.Tests.NativeWorkerAddition.all_round_bits_wide
+#print axioms Airbender.Tests.NativeWorkerAddition.zero_round_bits
+#print axioms Airbender.Tests.NativeWorkerAddition.native_carry_encoding_three
+#print axioms Airbender.Tests.NativeWorkerAddition.wide_limb_addition
+#print axioms Airbender.Tests.NativeWorkerAddition.wide_addition_wrap
+#print axioms Airbender.Tests.NativeWorkerAddition.truncating_each_wide_limb_changes_word
+#print axioms Airbender.Tests.NativeWorkerAddition.all_initial_limbs
+#print axioms Airbender.Tests.NativeWorkerAddition.all_compression_inputs
+#print axioms Airbender.Tests.NativeWorkerAddition.all_weighted_messages
+#print axioms Airbender.Tests.NativeWorkerAddition.all_actual_carries
+#print axioms Airbender.Tests.NativeWorkerAddition.all_wrapping_additions
+#print axioms Airbender.Tests.NativeWorkerAddition.exact_d_rotations_retained
+#print axioms Airbender.Tests.NativeWorkerAddition.inactive_requests_retained
+#print axioms Airbender.Tests.NativeWorkerAddition.complete_counted
