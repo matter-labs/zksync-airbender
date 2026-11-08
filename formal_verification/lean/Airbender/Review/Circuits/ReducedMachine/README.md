@@ -886,3 +886,11 @@ separation and combined worker history remain separate.
 registers, x0 timestamps and all43 worker ports, deriving exact shadow partition
 and memory-only matching from the SAME full ledger. Actual Sail public-image
 reads and initialized combined worker memory remain open.
+
+## Constructed original initial image
+
+[Original Sail reads and complete native memory matching](InitializationPublicImageTheorems.lean) derive
+architectural initial-image reads from explicit PC/GPR/RAM inserts, preserving
+the exact ROM and separate native shadows. The declared three-byte logical halo
+supports unaligned RV32 cell reads. Arbitrary public-state coverage, combined
+chronological worker history, keys and accounting remain open.

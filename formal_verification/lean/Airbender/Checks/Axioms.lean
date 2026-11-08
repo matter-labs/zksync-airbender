@@ -1,3 +1,10 @@
+import Airbender.Review.Helpers.Memory.ReducedMachineInitialState
+import Airbender.Proofs.ReducedMachine.NativeInitialState
+import Airbender.Review.Circuits.ReducedMachine.InitializationPublicImage
+import Airbender.Proofs.ReducedMachine.NativeInitializationPublicImage
+import Airbender.Review.Circuits.ReducedMachine.InitializationPublicImageTheorems
+import Tests.NativeInitializationPublicImage
+
 import Airbender.Review.Circuits.ReducedMachine.InitializationSeedBoundary
 import Airbender.Proofs.ReducedMachine.NativeInitializationSeedBoundary
 import Airbender.Review.Circuits.ReducedMachine.InitializationSeedBoundaryTheorems
@@ -6576,3 +6583,41 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeInitializationSeedBoundary.complete_empty_boundary
 #print axioms Airbender.Tests.NativeInitializationSeedBoundary.complete_conditional_boundary
 #print axioms Airbender.Tests.NativeInitializationSeedBoundary.complete_conditional_memory
+
+#print axioms Airbender.ReducedMachine.NativeInitialStateProofs.register_frame
+#print axioms Airbender.ReducedMachine.NativeInitialStateProofs.pc_read
+#print axioms Airbender.ReducedMachine.NativeInitialStateProofs.gpr_read
+#print axioms Airbender.ReducedMachine.NativeInitialStateProofs.ram_byte
+#print axioms Airbender.ReducedMachine.NativeInitialStateProofs.outside_byte
+#print axioms Airbender.ReducedMachine.NativeInitialStateProofs.rom_image
+#print axioms Airbender.ReducedMachine.NativeInitialStateProofs.rom_read
+#print axioms Airbender.ReducedMachine.NativeInitialStateProofs.ram_read
+#print axioms Airbender.ReducedMachine.NativeInitialStateProofs.architectural_read
+#print axioms Airbender.ReducedMachine.NativeInitialStateProofs.image_of_reads
+#print axioms Airbender.ReducedMachine.NativeInitialStateProofs.architectural_image
+#print axioms Airbender.ReducedMachine.NativeInitialStateProofs.initial_profile
+#print axioms Airbender.ReducedMachine.NativeInitialStateProofs.initial_pc
+#print axioms Airbender.NativeInitializationPublicImageProofs.public_image
+#print axioms Airbender.NativeInitializationPublicImageProofs.memory_matching
+#print axioms Airbender.NativeInitializationPublicImage.native_constructed_public_image
+#print axioms Airbender.NativeInitializationPublicImage.native_constructed_memory_matching
+#print axioms Airbender.Tests.NativeInitializationPublicImage.original_pc_zero
+#print axioms Airbender.Tests.NativeInitializationPublicImage.original_x0_zero
+#print axioms Airbender.Tests.NativeInitializationPublicImage.original_x31_zero
+#print axioms Airbender.Tests.NativeInitializationPublicImage.original_all_gprs
+#print axioms Airbender.Tests.NativeInitializationPublicImage.missing_pc_is_inserted
+#print axioms Airbender.Tests.NativeInitializationPublicImage.configuration_lookup_preserved
+#print axioms Airbender.Tests.NativeInitializationPublicImage.next_pc_lookup_preserved
+#print axioms Airbender.Tests.NativeInitializationPublicImage.first_ram_word
+#print axioms Airbender.Tests.NativeInitializationPublicImage.unaligned_ram_word
+#print axioms Airbender.Tests.NativeInitializationPublicImage.last_rv32_word
+#print axioms Airbender.Tests.NativeInitializationPublicImage.final_halo_byte
+#print axioms Airbender.Tests.NativeInitializationPublicImage.outside_halo_preserved
+#print axioms Airbender.Tests.NativeInitializationPublicImage.complete_native_rom
+#print axioms Airbender.Tests.NativeInitializationPublicImage.rom_word_four
+#print axioms Airbender.Tests.NativeInitializationPublicImage.zero_shadow_distinct_from_rom
+#print axioms Airbender.Tests.NativeInitializationPublicImage.duplicate_image_cells
+#print axioms Airbender.Tests.NativeInitializationPublicImage.zero_boot_profile_derived
+#print axioms Airbender.Tests.NativeInitializationPublicImage.complete_empty_image
+#print axioms Airbender.Tests.NativeInitializationPublicImage.complete_conditional_image
+#print axioms Airbender.Tests.NativeInitializationPublicImage.complete_conditional_memory

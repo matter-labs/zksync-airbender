@@ -1,5 +1,65 @@
 # Verification status
 
+## Constructed original Sail initial image (8 November 2026)
+
+[The explicit public reference-input constructor](Airbender/Review/Helpers/Memory/ReducedMachineInitialState.lean)
+inserts original Sail PC zero and x1 through x31 zero, with original hardwired x0.
+It preserves nextPC and every other configuration-register lookup. It reuses the
+exact native ROM byte constructor and explicitly inserts zero bytes from4MiB to
+4294967299 exclusive. The three bytes above the RV32 address range are a declared
+logical reference-input halo: original natural-address four-byte reads at any
+canonical, possibly unaligned, RV32 cell succeed. This is not native physical
+address-space, alignment, loader, platform-permission or Rust refinement.
+Missing registers are actually inserted; bytes beyond both intervals retain their
+original lookup, including missing values. No default read is substituted.
+
+[The original-read proofs](Airbender/Proofs/ReducedMachine/NativeInitialState.lean)
+derive PC/GPR success and zero architectural RAM reads from those constructors.
+The entire generic finite image recursion precedes instantiation, and all byte
+interval reasoning is symbolic: no four-GiB or million-word fixture is evaluated.
+The existing zero-boot profile is a conclusion. The unchanged full native ROM
+extractor/word-read proof is reused; address16 reads21015 through Sail while its
+native permutation shadow remains zero. No shadow/ROM-value equality is assumed.
+A broad register-frame simplifier hit default recursion and then the default
+heartbeat limit; a generic insert-frame lemma and explicit linear rewrites solve
+it at unchanged limits. All other configuration lookups remain exact.
+
+[The observed image](Airbender/Review/Circuits/ReducedMachine/InitializationPublicImage.lean)
+and [two short roots](Airbender/Review/Circuits/ReducedMachine/InitializationPublicImageTheorems.lean)
+use SAME existing complete native initialization acceptance. Successful ORIGINAL
+Sail image reads cover the derived architectural GPR/RAM partition; separate
+actual native ROM shadows remain in the image. The actual initial native token
+list is proved PERM that constructed image, and initial PC/time is0/(4,0).
+The SAME actual memory ledger starts from this derived Sail image plus shadows;
+all32 public registers including x0 timestamps, all43 worker ports/inactive
+workers, readonly refreshes, OLDREADs and unmasked writes remain. Only previously
+proved exact multiset cancellations are reused. No per-cell read/value/image,
+expected ledger, stream, key, clock, request or result premise is introduced.
+No fake accepted trace/history, caller-request filter, division/nonzero answer,
+compression injectivity or scalar-to-permutation claim is introduced.
+
+[Twenty controls](Tests/NativeInitializationPublicImage.lean) check original PC/
+x0/x31/all-GPR reads, missing PC insertion, configuration/nextPC lookup frames,
+first and unaligned RAM, maxRV32 word, last halo byte and missing-preserving lookup
+outside it, full native ROM, word4 and its distinct zero shadow, duplicate image
+cells, derived boot profile, COMPLETE EMPTY existing acceptance and conditional
+roots. These are symbolic/source/reference/structural/empty/conditional controls,
+not full positive NONEMPTY source/global/worker/physical witnesses or attacks.
+Six modules add37 roots with16 exact parent origins. All5,724 prior ordered roots
+and exact audit bytes, native103 pins, old proofs/acceptance, production/Sail,
+artifacts/fixtures/dependencies/importer/exporter and findings remain unchanged.
+No new native adoption/pin/generation/heavy replay, axiom or issue assumption.
+
+This closes successful original initial-image reads on the observed domain for
+the explicit constructor, not arbitrary public-state/domain/platform coverage,
+alignment, initialized combined chronological memory, active worker old-read
+values/addresses/clocks, STAGE2 key refinement, caller-worker accounting,
+original CSR/MOP/worker Sail effects or physical/cryptographic refinement.
+Next: combine the actual complete ledger with real chronological memory laws,
+derive active old-read values/address bounds and worker clocks/keys, then request/
+execute padding and actual issuance/fulfillment/accounting. No parity claim.
+
+
 ## Complete native seed boundary and memory projection (8 November 2026)
 
 [The complete observed boundary](Airbender/Review/Circuits/ReducedMachine/InitializationSeedBoundary.lean)
