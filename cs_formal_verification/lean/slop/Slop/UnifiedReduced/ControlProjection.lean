@@ -68,23 +68,23 @@ theorem control_assertions [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
   fin_cases i
   all_goals op_index
   all_goals simp [Expression.eval, Verification.environment, controlAssignment, jumps.1, jumps.2]
-  all_goals solve
-    | exact e0
-    | linear_combination e12
-    | linear_combination e13
-    | linear_combination e14
-    | linear_combination e15
-    | linear_combination e16
-    | linear_combination e17
-    | exact e18
-    | linear_combination low
-    | exact high
-    | (have flag := local_flags holds 13; change w 23 = 0 ∨ w 23 = 1 at flag; rcases flag with bit | bit <;> simp [bit])
-    | (have flag := local_flags holds 14; change w 24 = 0 ∨ w 24 = 1 at flag; rcases flag with bit | bit <;> simp [bit])
-    | (have flag := local_flags holds 15; change w 25 = 0 ∨ w 25 = 1 at flag; rcases flag with bit | bit <;> simp [bit])
-    | (have flag := local_flags holds 20; change w 52 = 0 ∨ w 52 = 1 at flag; rcases flag with bit | bit <;> simp [bit])
-    | (have flag := local_flags holds 21; change w 53 = 0 ∨ w 53 = 1 at flag; rcases flag with bit | bit <;> simp [bit])
-    | (have flag := local_flags holds 22; change w 54 = 0 ∨ w 54 = 1 at flag; rcases flag with bit | bit <;> simp [bit])
-    | (have flag := local_flags holds 23; change w 55 = 0 ∨ w 55 = 1 at flag; rcases flag with bit | bit <;> simp [bit])
+  -- The equations the simp step leaves, in constraint order.
+  · exact e0
+  · linear_combination e12
+  · linear_combination e13
+  · linear_combination e14
+  · linear_combination e15
+  · linear_combination e16
+  · linear_combination e17
+  · exact e18
+  · linear_combination low
+  · exact high
+  · have flag := local_flags holds 13; change w 23 = 0 ∨ w 23 = 1 at flag; rcases flag with bit | bit <;> simp [bit]
+  · have flag := local_flags holds 14; change w 24 = 0 ∨ w 24 = 1 at flag; rcases flag with bit | bit <;> simp [bit]
+  · have flag := local_flags holds 15; change w 25 = 0 ∨ w 25 = 1 at flag; rcases flag with bit | bit <;> simp [bit]
+  · have flag := local_flags holds 20; change w 52 = 0 ∨ w 52 = 1 at flag; rcases flag with bit | bit <;> simp [bit]
+  · have flag := local_flags holds 21; change w 53 = 0 ∨ w 53 = 1 at flag; rcases flag with bit | bit <;> simp [bit]
+  · have flag := local_flags holds 22; change w 54 = 0 ∨ w 54 = 1 at flag; rcases flag with bit | bit <;> simp [bit]
+  · have flag := local_flags holds 23; change w 55 = 0 ∨ w 55 = 1 at flag; rcases flag with bit | bit <;> simp [bit]
 
 end Airbender.UnifiedReduced.Proofs
