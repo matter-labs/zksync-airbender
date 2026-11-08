@@ -57,18 +57,24 @@ fn deserialize_artifact_version<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<u32, D::Error> {
     let version = u32::deserialize(deserializer)?;
-    if version != ARTIFACT_SCHEMA_VERSION {
-        return Err(<D::Error as serde::de::Error>::custom(format!(
-            "artifact schema version {version} is not the supported {ARTIFACT_SCHEMA_VERSION}"
-        )));
-    }
+    validate_artifact_version(version).map_err(<D::Error as serde::de::Error>::custom)?;
     Ok(version)
 }
 
+fn validate_artifact_version(version: u32) -> Result<(), String> {
+    if version != ARTIFACT_SCHEMA_VERSION {
+        return Err(format!(
+            "artifact schema version {version} is not the supported {ARTIFACT_SCHEMA_VERSION}"
+        ));
+    }
+    Ok(())
+}
+
 impl ProofArtifact {
-    /// Check the caller's soundness mode before source loading or backend work, asserting
-    /// that an L1 artifact is pessimistic only. Decoding already enforces the schema rules.
+    /// Admit the schema and caller's soundness mode before source or backend work.
+    /// Direct library callers must satisfy the same schema rules as decoded artifacts.
     pub fn validate_expected_mode(&self, expected: SoundnessMode) -> Result<(), String> {
+        validate_artifact_version(self.schema_version)?;
         // L1 artifacts exist only in PessimisticConjecture: neither an ethproofs request nor
         // an ethproofs label reaches an L1 verifier or continuation.
         for mode in [expected, self.soundness_mode] {
@@ -127,6 +133,26 @@ mod tests {
                 num_it_circuits: None,
             },
             setups: Setups::new(),
+        }
+    }
+
+    #[test]
+    fn in_memory_schema_rejected_before_source_loading() {
+        let source = crate::ProgramSource::elf("must-not-read.elf");
+        for version in [3, 4, ARTIFACT_SCHEMA_VERSION + 1] {
+            let mut artifact = artifact(SoundnessMode::DEFAULT);
+            artifact.schema_version = version;
+            let error = crate::verify_artifact_in_mode(&artifact, &source, SoundnessMode::DEFAULT)
+                .expect_err("unsupported schema must refuse before reading the source");
+            assert!(error.contains("artifact schema version"), "{error}");
+            let error = crate::ProgramProver::for_continuation(
+                source.clone(),
+                crate::ProgramProverConfig::default(),
+                &artifact,
+            )
+            .err()
+            .expect("continuation must refuse an unsupported schema");
+            assert!(error.contains("artifact schema version"), "{error}");
         }
     }
 
