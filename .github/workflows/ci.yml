@@ -226,7 +226,7 @@ jobs:
             -p cpu_execution_prover -p prover_pipeline -p cli \
             -- --test-threads=1
       - name: Prove, continue and verify in every soundness mode
-        run: .github/scripts/soundness_mode_smoke.sh ./target/release/cli examples/basic_fibonacci/app.bin cpu --cycles-bound 16777216 --worker-threads 8
+        run: .github/scripts/soundness_mode_smoke.sh ./target/release/cli examples/basic_fibonacci/app.bin cpu --cycles-bound 16777216 --worker-threads 16
   # Keep branch protection tied to one stable check name even as the
   # underlying CI fan-out changes over time.
   pr-checks:
