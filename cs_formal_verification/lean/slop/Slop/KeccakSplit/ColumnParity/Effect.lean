@@ -29,7 +29,6 @@ theorem first_lane {w : Nat → ZMod babyBearModulus} (h : Holds w) (index : Fin
   · simpa only [selectedRound, first, ↓reduceIte] using effect
   · simpa [selectedRound, first, Call.roundConstant] using effect
 
-set_option maxHeartbeats 400000 in
 theorem reference_result_of_values (input output : Fin 6 → Nat) (index : Fin 361)
     (kind : kindAt index.val = .columnParity)
     (first : output 0 = if index.val % 5 = 0 then input 0 ^^^ Call.roundConstant (index.val / 15) else input 0)

@@ -94,7 +94,6 @@ private theorem branch_bits {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   rw [sourceEq, mapping.2.2.2, ZMod.val_natCast, Nat.mod_eq_of_lt (by
     have := rightBound.2; unfold limbBase at this; omega)]
 
-set_option maxHeartbeats 600000 in
 /-- Local branch resolution, derived from subtraction and the imported lookup.
     This is not yet an architectural Sail branch/PC soundness theorem. -/
 theorem branch_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
