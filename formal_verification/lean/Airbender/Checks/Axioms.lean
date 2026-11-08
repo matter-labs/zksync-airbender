@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.MemoryRoots
+import Airbender.Proofs.ReducedMachine.NativeMemoryRoots
+import Airbender.Review.Circuits.ReducedMachine.MemoryRootsTheorems
+import Tests.NativeMemoryRoots
+
 import Airbender.Review.Circuits.ReducedMachine.MixedMemoryOrder
 import Airbender.Proofs.ReducedMachine.NativeMixedMemoryOrder
 import Airbender.Review.Circuits.ReducedMachine.MixedMemoryOrderTheorems
@@ -7029,3 +7034,34 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeMixedMemoryOrder.any_finite_cycle_rejected
 #print axioms Airbender.Tests.NativeMixedMemoryOrder.complete_conditional
 #print axioms Airbender.Tests.NativeMixedMemoryOrder.complete_conditional_counted
+
+#print axioms Airbender.NativeMemoryRootsProofs.split
+#print axioms Airbender.NativeMemoryRootsProofs.cancel
+#print axioms Airbender.NativeMemoryRootsProofs.rooted
+#print axioms Airbender.NativeMemoryRootsProofs.main_projection
+#print axioms Airbender.NativeMemoryRootsProofs.worker_projection
+#print axioms Airbender.NativeMemoryRootsProofs.projections
+#print axioms Airbender.NativeMemoryRootsProofs.step_iff
+#print axioms Airbender.NativeMemoryRootsProofs.inactive_equal
+#print axioms Airbender.NativeMemoryRootsProofs.partition
+#print axioms Airbender.NativeMemoryRootsProofs.matching_iff
+#print axioms Airbender.NativeMemoryRootsProofs.effects
+#print axioms Airbender.NativeMemoryRootsProofs.counted
+#print axioms Airbender.NativeMemoryRoots.native_memory_seed_paths
+#print axioms Airbender.NativeMemoryRoots.native_counted_memory_seed_paths
+#print axioms Airbender.Tests.NativeMemoryRoots.duplicate_cancellation
+#print axioms Airbender.Tests.NativeMemoryRoots.duplicate_restoration
+#print axioms Airbender.Tests.NativeMemoryRoots.inactive_only_common
+#print axioms Airbender.Tests.NativeMemoryRoots.two_step_seed_path
+#print axioms Airbender.Tests.NativeMemoryRoots.separate_seed_paths
+#print axioms Airbender.Tests.NativeMemoryRoots.duplicate_active_paths
+#print axioms Airbender.Tests.NativeMemoryRoots.unseeded_loop_matching
+#print axioms Airbender.Tests.NativeMemoryRoots.unseeded_loop_not_strict
+#print axioms Airbender.Tests.NativeMemoryRoots.all_worker_positions
+#print axioms Airbender.Tests.NativeMemoryRoots.inactive_exact_tokens
+#print axioms Airbender.Tests.NativeMemoryRoots.inactive_source_read_retained
+#print axioms Airbender.Tests.NativeMemoryRoots.active_edge_list_exact
+#print axioms Airbender.Tests.NativeMemoryRoots.actual_main_read_root
+#print axioms Airbender.Tests.NativeMemoryRoots.actual_worker_write_root
+#print axioms Airbender.Tests.NativeMemoryRoots.complete_conditional
+#print axioms Airbender.Tests.NativeMemoryRoots.complete_conditional_counted

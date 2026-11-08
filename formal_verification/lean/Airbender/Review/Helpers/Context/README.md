@@ -383,3 +383,10 @@ history remain open.
 finite cycles across actual main and worker ports. It retains the prior explicit
 crypto boundaries and all inactive accesses in acceptance. Inactive worker loops,
 seed paths and initialized worker history remain separately scoped.
+
+## Conditional native seed paths
+
+[Exact raw-token seed paths](../../Circuits/ReducedMachine/MemoryRootsTheorems.lean) derives inactive-worker token equality,
+duplicate-preserving logical cancellation and seed paths for active main/worker
+ports. All source acceptance and prior crypto boundaries remain. Unique/latest
+reads, online history, STAGE2 keys and worker Sail execution remain open.

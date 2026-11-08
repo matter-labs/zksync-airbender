@@ -1,5 +1,56 @@
 # Trust and review boundaries
 
+## Conditional native memory seed paths (8 November 2026)
+
+[MemoryRoots](Airbender/Review/Circuits/ReducedMachine/MemoryRoots.lean)
+constructs the actual active memory-step list from existing execute1 main rows
+and all multiplicity1 worker ports. Every raw token retains address, value and
+both timestamp fields; all positions, aliases and readonly refreshes remain.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeMemoryRoots.lean)
+derives complete local processing acceptance from the same full native source.
+The unchanged padding-key theorem makes every inactive worker read/write token
+identical. Generic list partition and multiset cancellation then prove, in BOTH
+directions, that full memory matching is equivalent to active memory matching
+with the same inactive list cancelled on each side. All duplicate copies are
+accounted for. This removes no physical row, source equation, auxiliary value
+or pole from acceptance, and filters no caller request.
+
+Generic well-founded induction precedes native row-domain instantiation. The
+prior derived strict mixed order and nonnegative actual reads supply its rank;
+the signed measure remains noninjective and never replaces token timestamps.
+Full accepted tagged matching supplies actual memory matching. Every active main
+or worker read and write now has an exact raw-token path from an actual initial
+seed. All32 GPR seeds including x0, nonpadding RAM seeds and complete teardown
+observations remain. Inactive worker loops stay in full acceptance and its read
+ledger; no claim is made that each inactive read has an active seed path.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/MemoryRootsTheorems.lean)
+retain the unchanged explicit formal SourceIdentity extraction boundary, full
+prior initialization/main/caller/worker/global components, positive main count
+and every capacity prefix guard on the same observations. No new Accepted,
+expected source/ledger/read/range/clock/key/value/history premise, scalar-to-
+permutation inference, fake Trace.Accepted or Sail frame is introduced.
+
+[Sixteen controls](Tests/NativeMemoryRoots.lean) cover duplicate cancellation
+and restoration, inactive-only common lists, unseeded pure self-loop matching
+versus strict-order rejection, small seed paths with duplicates and independent
+seeds, all43 worker positions, conditional inactive equality/read retention,
+exact active-edge membership, actual port seed paths and complete counted roots.
+They are pure or conditional controls, not new accepted native BODY, nonempty
+global/source/whole-worker/physical witnesses, attacks or native defects.
+
+Four modules add30 roots/11 exact parent references; all6,091 prior ordered roots
+and audit bytes are preserved addition-only. Native107 pins, dependencies, v3
+reference, prior acceptance/proofs/artifacts and FINDINGS remain unchanged. No
+new native adoption/pin/intake, production/importer/exporter/fixture change,
+generation, heavy replay, issue assumption, fix or project axiom. Unique/latest
+reads, online initialized worker history, canonical clock bounds, STAGE2 key
+refinement, worker reference results, arbitrary inactive request validity and
+activity, issuance/fulfillment/converse accounting, original CSR/MOP/worker Sail,
+physical cryptography, completeness and parity remain open.
+
+
 ## Conditional mixed main/worker memory order (8 November 2026)
 
 [MixedMemoryOrder](Airbender/Review/Circuits/ReducedMachine/MixedMemoryOrder.lean)
