@@ -13,7 +13,6 @@ structure ColumnRange where
   start : Nat
   «end» : Nat
   deriving Repr
-
 instance : Serde ColumnRange := ⟨fun r => .obj [("start", encode r.start), ("end", encode r.«end»)]⟩
 
 /-- Source: `cs/src/definitions/gkr_layers.rs`, `OutputType`. -/
@@ -24,7 +23,6 @@ inductive OutputType where
   | GenericLookup
   | InitsAndTeardownsProduct
   deriving Repr
-
 instance : ObjectKey OutputType := ⟨fun
   | .PermutationProduct => "PermutationProduct" | .Lookup16Bits => "Lookup16Bits"
   | .LookupTimestamps => "LookupTimestamps" | .GenericLookup => "GenericLookup"
@@ -37,7 +35,6 @@ inductive VirtualSetupPoly where
   | InitsAndTeardownsLow
   | InitsAndTeardownsHigh
   deriving Repr, DecidableEq
-
 instance : Serde VirtualSetupPoly := ⟨fun
   | .RangeCheck16Bits => .str "RangeCheck16Bits" | .RangeCheckTimestamp => .str "RangeCheckTimestamp"
   | .InitsAndTeardownsLow => .str "InitsAndTeardownsLow" | .InitsAndTeardownsHigh => .str "InitsAndTeardownsHigh"⟩
@@ -52,7 +49,6 @@ inductive GKRAddress where
   | ScratchSpace : Nat → GKRAddress
   | Cached (layer : Nat) (offset : Nat)
   deriving Repr, DecidableEq
-
 instance : Serde GKRAddress := ⟨fun
   | .BaseLayerWitness i => tag "BaseLayerWitness" (encode i)
   | .BaseLayerMemory i => tag "BaseLayerMemory" (encode i)
@@ -67,7 +63,6 @@ structure LinearRelation where
   linear_terms : (Array (Coefficient × GKRAddress))
   constant : Coefficient
   deriving Repr
-
 instance : Serde LinearRelation := ⟨fun r => .obj [
   ("linear_terms", encode r.linear_terms), ("constant", encode r.constant)]⟩
 
@@ -76,7 +71,6 @@ structure SingleColumnLookupRelation where
   input : LinearRelation
   lookup_set_index : Nat
   deriving Repr
-
 instance : Serde SingleColumnLookupRelation := ⟨fun r => .obj [
   ("input", encode r.input), ("lookup_set_index", encode r.lookup_set_index)]⟩
 
@@ -85,7 +79,6 @@ structure VectorLookupRelation where
   columns : (Array LinearRelation)
   lookup_set_index : Nat
   deriving Repr
-
 instance : Serde VectorLookupRelation := ⟨fun r => .obj [
   ("columns", encode r.columns), ("lookup_set_index", encode r.lookup_set_index)]⟩
 
@@ -95,7 +88,6 @@ structure CompiledMaxQuadraticGKRRelation where
   linear_terms : (Array (Coefficient × GKRAddress))
   constant : Coefficient
   deriving Repr
-
 instance : Serde CompiledMaxQuadraticGKRRelation := ⟨fun r => .obj [
   ("quadratic_terms", encode r.quadratic_terms), ("linear_terms", encode r.linear_terms),
   ("constant", encode r.constant)]⟩
@@ -106,7 +98,6 @@ inductive CompiledAddressSpaceRelationStrict where
   | IsRegister : Nat → CompiledAddressSpaceRelationStrict
   | IsRam : Nat → CompiledAddressSpaceRelationStrict
   deriving Repr
-
 instance : Serde CompiledAddressSpaceRelationStrict := ⟨fun
   | .Constant c => tag "Constant" (encode c) | .IsRegister i => tag "IsRegister" (encode i)
   | .IsRam i => tag "IsRam" (encode i)⟩
@@ -120,7 +111,6 @@ inductive CompiledAddressStrict where
   | U32SpaceSpecialIndirect (low_base : Nat) (low_dynamic_offset : (Option (U16 × Nat))) (low_offset : U32) (high : Nat)
   | U32SpaceGeneric : (Fixed 2 ((Array ((BoundedNat 18446744073709551616) × Nat)) × (BoundedNat 18446744073709551616))) → CompiledAddressStrict
   deriving Repr
-
 instance : Serde CompiledAddressStrict := ⟨fun
   | .ConstantU16 c => tag "ConstantU16" (encode c)
   | .Constant c => tag "Constant" (encode c)
@@ -136,7 +126,6 @@ inductive CompiledMemoryTimestamp where
   | Zero
   | Normal : (Fixed 2 Nat) → CompiledMemoryTimestamp
   deriving Repr
-
 instance : Serde CompiledMemoryTimestamp := ⟨fun
   | .Zero => .str "Zero" | .Normal t => tag "Normal" (encode t)⟩
 
@@ -146,7 +135,6 @@ inductive RamWordRepresentation where
   | U16Limbs : (Fixed 2 Nat) → RamWordRepresentation
   | U8Limbs : (Fixed 4 Nat) → RamWordRepresentation
   deriving Repr
-
 instance : Serde RamWordRepresentation := ⟨fun
   | .Zero => .str "Zero" | .U16Limbs l => tag "U16Limbs" (encode l) | .U8Limbs l => tag "U8Limbs" (encode l)⟩
 
@@ -158,7 +146,6 @@ structure SpecialMemoryContributionRelation where
   value : RamWordRepresentation
   timestamp_offset : U32
   deriving Repr
-
 instance : Serde SpecialMemoryContributionRelation := ⟨fun r => .obj [("address_space", encode r.address_space),
   ("address", encode r.address), ("timestamp", encode r.timestamp), ("value", encode r.value),
   ("timestamp_offset", encode r.timestamp_offset)]⟩
@@ -169,7 +156,6 @@ structure MaxQuadraticConstraintsGKRRelation where
   linear_terms : (Array (GKRAddress × (Array (Coefficient × Nat))))
   constants : (Array (Coefficient × Nat))
   deriving Repr
-
 instance : Serde MaxQuadraticConstraintsGKRRelation := ⟨fun r => .obj [
   ("quadratic_terms", encode r.quadratic_terms), ("linear_terms", encode r.linear_terms),
   ("constants", encode r.constants)]⟩
@@ -179,7 +165,6 @@ inductive InitsOrTeardownsTimestampAndValue where
   | Init
   | Teardown (lhs_timestamp : (Fixed 2 Nat)) (lhs_value : (Fixed 2 Nat)) (rhs_timestamp : (Fixed 2 Nat)) (rhs_value : (Fixed 2 Nat))
   deriving Repr
-
 instance : Serde InitsOrTeardownsTimestampAndValue := ⟨fun
   | .Init => .str "Init"
   | .Teardown lhs_timestamp lhs_value rhs_timestamp rhs_value => tag "Teardown" (.obj
@@ -193,7 +178,6 @@ inductive StructuredExpression where
   | Sum : (Array StructuredExpression) → StructuredExpression
   | Product : (Array StructuredExpression) → StructuredExpression
   deriving Repr
-
 def StructuredExpression.encode : StructuredExpression → Json.Value
   | .Constant c => tag "Constant" (Serde.encode c)
   | .Place a => tag "Place" (Serde.encode a)
@@ -235,7 +219,6 @@ inductive GKRRelation where
   | AggregateLookupRationalPair (input : (Fixed 2 (Fixed 2 GKRAddress))) (output : (Fixed 2 GKRAddress))
   | InitsOrTeardownsInitialPair (timestamp_and_value : InitsOrTeardownsTimestampAndValue) (setup : (Fixed 2 GKRAddress)) (output : GKRAddress) (set_idxes : (Fixed 2 Nat))
   deriving Repr
-
 instance : Serde GKRRelation := ⟨fun
   | .LinearBaseFieldRelation input output =>
       tag "LinearBaseFieldRelation" (.obj [("input", encode input), ("output", encode output)])
@@ -318,7 +301,6 @@ inductive GKRCacheRelation where
   | MemoryTuple : SpecialMemoryContributionRelation → GKRCacheRelation
   | VectorizedLookupSetup : (Array GKRAddress) → GKRCacheRelation
   deriving Repr
-
 instance : Serde GKRCacheRelation := ⟨fun
   | .SingleColumnLookup relation range_check_width => tag "SingleColumnLookup"
       (.obj [("relation", encode relation), ("range_check_width", encode range_check_width)])
@@ -331,7 +313,6 @@ structure GateArtifacts where
   output_layer : Nat
   enforced_relation : GKRRelation
   deriving Repr
-
 instance : Serde GateArtifacts := ⟨fun g => .obj [
   ("output_layer", encode g.output_layer), ("enforced_relation", encode g.enforced_relation)]⟩
 
@@ -339,7 +320,6 @@ instance : Serde GateArtifacts := ⟨fun g => .obj [
 structure RamAuxComparisonSet where
   intermediate_borrow : GKRAddress
   deriving Repr
-
 instance : Serde RamAuxComparisonSet := ⟨fun s => .obj [("intermediate_borrow", encode s.intermediate_borrow)]⟩
 
 /-- One shared read timestamp of the split Keccak workers: `members` index the
@@ -348,7 +328,6 @@ structure RelativeTimestampGroup where
   read_timestamp : Fixed 2 Nat
   members : Array Nat
   deriving Repr
-
 instance : Serde RelativeTimestampGroup := ⟨fun g => .obj [
   ("read_timestamp", encode g.read_timestamp), ("members", encode g.members)]⟩
 
@@ -358,7 +337,6 @@ structure GKRAuxLayoutData where
   shuffle_ram_timestamp_comparison_aux_vars : Array (Option RamAuxComparisonSet)
   relative_timestamp_groups : Option (Array RelativeTimestampGroup) := none
   deriving Repr
-
 instance : Serde GKRAuxLayoutData := ⟨fun d => .obj
   ([("shuffle_ram_timestamp_comparison_aux_vars", encode d.shuffle_ram_timestamp_comparison_aux_vars)] ++
     omitNone "relative_timestamp_groups" d.relative_timestamp_groups)⟩
@@ -371,7 +349,6 @@ structure GKRLayerDescription where
   gates : (Array GateArtifacts)
   intermediate_layer_width : (Option Nat)
   deriving Repr
-
 instance : Serde GKRLayerDescription := ⟨fun l => .obj [("layer", encode l.layer),
   ("gates_with_external_connections", encode l.gates_with_external_connections),
   ("cached_relations", encode l.cached_relations), ("gates", encode l.gates),
@@ -381,7 +358,6 @@ instance : Serde GKRLayerDescription := ⟨fun l => .obj [("layer", encode l.lay
 structure RegisterOnlyAccessAddress where
   register_index : Nat
   deriving Repr
-
 instance : Serde RegisterOnlyAccessAddress := ⟨fun a => .obj [("register_index", encode a.register_index)]⟩
 
 /-- Source: `cs/src/definitions/gkr/ram_access.rs`, `RegisterOrRamAddressSpace`. -/
@@ -389,7 +365,6 @@ inductive RegisterOrRamAddressSpace where
   | RegisterAddressSpace : Nat → RegisterOrRamAddressSpace
   | RamAddressSpace : Nat → RegisterOrRamAddressSpace
   deriving Repr
-
 instance : Serde RegisterOrRamAddressSpace := ⟨fun
   | .RegisterAddressSpace i => tag "RegisterAddressSpace" (encode i)
   | .RamAddressSpace i => tag "RamAddressSpace" (encode i)⟩
@@ -399,7 +374,6 @@ structure RegisterOrRamAccessAddress where
   address_space : RegisterOrRamAddressSpace
   address : (Fixed 2 Nat)
   deriving Repr
-
 instance : Serde RegisterOrRamAccessAddress := ⟨fun a => .obj [
   ("address_space", encode a.address_space), ("address", encode a.address)]⟩
 
@@ -411,7 +385,6 @@ structure IndirectRamAccessAddress where
   indirect_access_idx_for_register : Nat
   variable_offset : (Option (U16 × Nat))
   deriving Repr
-
 instance : Serde IndirectRamAccessAddress := ⟨fun a => .obj [("base_register_value", encode a.base_register_value),
   ("base_register_index", encode a.base_register_index), ("constant_offset", encode a.constant_offset),
   ("indirect_access_idx_for_register", encode a.indirect_access_idx_for_register),
@@ -424,7 +397,6 @@ inductive RamAddress where
   | RegisterOrRam : RegisterOrRamAccessAddress → RamAddress
   | IndirectRam : IndirectRamAccessAddress → RamAddress
   deriving Repr
-
 instance : Serde RamAddress := ⟨fun
   | .ConstantRegister r => tag "ConstantRegister" (encode r) | .RegisterOnly a => tag "RegisterOnly" (encode a)
   | .RegisterOrRam a => tag "RegisterOrRam" (encode a) | .IndirectRam a => tag "IndirectRam" (encode a)⟩
@@ -436,7 +408,6 @@ structure RamReadQuery where
   read_timestamp : (Fixed 2 Nat)
   read_value : RamWordRepresentation
   deriving Repr
-
 instance : Serde RamReadQuery := ⟨fun q => .obj [("in_cycle_write_index", encode q.in_cycle_write_index),
   ("address", encode q.address), ("read_timestamp", encode q.read_timestamp), ("read_value", encode q.read_value)]⟩
 
@@ -448,7 +419,6 @@ structure RamWriteQuery where
   read_value : RamWordRepresentation
   write_value : RamWordRepresentation
   deriving Repr
-
 instance : Serde RamWriteQuery := ⟨fun q => .obj [("in_cycle_write_index", encode q.in_cycle_write_index),
   ("address", encode q.address), ("read_timestamp", encode q.read_timestamp), ("read_value", encode q.read_value),
   ("write_value", encode q.write_value)]⟩
@@ -458,7 +428,6 @@ inductive RamQuery where
   | Readonly : RamReadQuery → RamQuery
   | Write : RamWriteQuery → RamQuery
   deriving Repr
-
 instance : Serde RamQuery := ⟨fun
   | .Readonly q => tag "Readonly" (encode q) | .Write q => tag "Write" (encode q)⟩
 
@@ -467,7 +436,6 @@ structure GKRMachineState where
   pc : (Fixed 2 Nat)
   timestamp : (Fixed 2 Nat)
   deriving Repr
-
 instance : Serde GKRMachineState := ⟨fun s => .obj [("pc", encode s.pc), ("timestamp", encode s.timestamp)]⟩
 
 /-- Source: `cs/src/definitions/gkr/mod.rs`, `MachineStatePermutationDescription`. -/
@@ -476,7 +444,6 @@ structure MachineStatePermutationDescription where
   initial_state : GKRMachineState
   final_state : GKRMachineState
   deriving Repr
-
 instance : Serde MachineStatePermutationDescription := ⟨fun d => .obj [("execute", encode d.execute),
   ("initial_state", encode d.initial_state), ("final_state", encode d.final_state)]⟩
 
@@ -485,7 +452,6 @@ structure CompiledDelegationCircuitState where
   execute : Nat
   invocation_timestamp : (Fixed 2 Nat)
   deriving Repr
-
 instance : Serde CompiledDelegationCircuitState := ⟨fun s => .obj [
   ("execute", encode s.execute), ("invocation_timestamp", encode s.invocation_timestamp)]⟩
 
@@ -499,7 +465,6 @@ structure DecoderPlacementDescription where
   imm : (Fixed 2 Nat)
   funct3 : (Option Nat)
   deriving Repr
-
 instance : Serde DecoderPlacementDescription := ⟨fun d => .obj [("rs1_index", encode d.rs1_index),
   ("rs2_index", encode d.rs2_index), ("rd_index", encode d.rd_index),
   ("circuit_family_mask_bits", encode d.circuit_family_mask_bits),
@@ -517,7 +482,6 @@ structure GKRMemoryLayout where
   total_width : Nat
   inits_and_teardowns_word_bits : (Option U32)
   deriving Repr
-
 instance : Serde GKRMemoryLayout := ⟨fun l => .obj [("ram_access_sets", encode l.ram_access_sets),
   ("machine_state", encode l.machine_state), ("delegation_state", encode l.delegation_state),
   ("decoder_input", encode l.decoder_input),
@@ -532,7 +496,6 @@ structure GKRWitnessLayout where
   multiplicities_columns_for_generic_lookup : ColumnRange
   total_width : Nat
   deriving Repr
-
 instance : Serde GKRWitnessLayout := ⟨fun l => .obj [
   ("multiplicities_columns_for_range_check_16", encode l.multiplicities_columns_for_range_check_16),
   ("multiplicities_columns_for_timestamp_range_check", encode l.multiplicities_columns_for_timestamp_range_check),
@@ -544,7 +507,6 @@ structure Degree1Constraint where
   linear_terms : (Array (Coefficient × Nat))
   constant_term : Coefficient
   deriving Repr
-
 instance : Serde Degree1Constraint := ⟨fun c => .obj [
   ("linear_terms", encode c.linear_terms), ("constant_term", encode c.constant_term)]⟩
 
@@ -554,7 +516,6 @@ structure Degree2Constraint where
   linear_terms : (Array (Coefficient × Nat))
   constant_term : Coefficient
   deriving Repr
-
 instance : Serde Degree2Constraint := ⟨fun c => .obj [("quadratic_terms", encode c.quadratic_terms),
   ("linear_terms", encode c.linear_terms), ("constant_term", encode c.constant_term)]⟩
 
@@ -563,7 +524,6 @@ inductive Term where
   | Constant : Coefficient → Term
   | Expression (coeff : Coefficient) (inner : (Fixed 4 Nat)) (degree : Nat)
   deriving Repr
-
 instance : Serde Term := ⟨fun
   | .Constant c => tag "Constant" (encode c)
   | .Expression coeff inner degree =>
@@ -573,7 +533,6 @@ instance : Serde Term := ⟨fun
 structure Constraint where
   terms : (Array Term)
   deriving Repr
-
 instance : Serde Constraint := ⟨fun c => .obj [("terms", encode c.terms)]⟩
 
 /-- Source: `cs/src/structured_expr.rs`, `Expr`. -/
@@ -583,7 +542,6 @@ inductive Expr where
   | Sum : (Array Expr) → Expr
   | Product : (Array Expr) → Expr
   deriving Repr
-
 def Expr.encode : Expr → Json.Value
   | .Constant c => tag "Constant" (Serde.encode c)
   | .Var v => tag "Var" (Serde.encode v)
@@ -597,7 +555,6 @@ inductive StructuredStatement where
   | AssertZero (expr : Expr) (compiled_constraint : Constraint) (prevent_optimizations : Bool)
   | Define (dst : Nat) (compiled_constraint : Constraint) (expr : Expr) (output_layer : Nat)
   deriving Repr
-
 instance : Serde StructuredStatement := ⟨fun
   | .AssertZero expr compiled_constraint prevent_optimizations => tag "AssertZero" (.obj [("expr", encode expr),
       ("compiled_constraint", encode compiled_constraint), ("prevent_optimizations", encode prevent_optimizations)])
@@ -622,6 +579,7 @@ structure GKRCircuitArtifact where
   generic_lookup_tables_width : Nat
   decode_table_columns_mask : (Array Bool)
   tables_ids_in_generic_lookups : Bool
+  /-- Value of every setup column beyond `total_tables_size`; absent means zero. serde omits it when `None`. -/
   generic_lookup_padding : Option Coefficient := none
   degree_2_constraints : (Array Degree2Constraint)
   degree_1_constraints : (Array Degree1Constraint)
@@ -635,7 +593,6 @@ structure GKRCircuitArtifact where
   aux_layout_data : GKRAuxLayoutData
   _marker : JsonNull
   deriving Repr
-
 instance : Serde GKRCircuitArtifact := ⟨fun c => .obj (
   [("trace_len", encode c.trace_len), ("table_offsets", encode c.table_offsets),
    ("total_tables_size", encode c.total_tables_size),

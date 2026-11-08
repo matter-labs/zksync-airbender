@@ -40,9 +40,10 @@ KEEP: dict[str, str] = {}
 UNTIL_435 = "-- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)"
 REPR = "-- Init.Data.Repr is not exposed (still true in 4.35)"
 INT_REPR = "-- Int.repr is not exposed"
+RANGE = "-- Init.Data.Range.Basic is not exposed"
 IMPORT_ALL_COMMENT = {"Init.Data.Array.Basic": UNTIL_435, "Init.Data.Array.DecidableEq": UNTIL_435,
                       "Init.Data.Vector.Basic": UNTIL_435, "Init.Data.Repr": REPR, "Init.Data.String.Defs": REPR,
-                      "Init.Data.Int.Repr": INT_REPR}
+                      "Init.Data.Int.Repr": INT_REPR, "Init.Data.Range.Basic": RANGE}
 _A, _D, _V, _R, _S, _I = ("Init.Data.Array.Basic", "Init.Data.Array.DecidableEq", "Init.Data.Vector.Basic",
                           "Init.Data.Repr", "Init.Data.String.Defs", "Init.Data.Int.Repr")
 IMPORT_ALL: dict[str, tuple[str, ...]] = {
@@ -99,6 +100,8 @@ IMPORT_ALL: dict[str, tuple[str, ...]] = {
     # the JSON parser's proofs (integers through `Int.repr`) and its kernel-evaluated samples
     "Slop.Import.Json.Lexical": (_I,),
     "Slop.Import.Json.Sample": (_R, _S, _I),
+    # the standalone inits/teardowns layout and its bytes parsed and decoded, evaluated by the kernel
+    "Slop.Final.Circuits.InitsTeardowns.Artifact": (_A, "Init.Data.Range.Basic", _R, _S, _I),
 }
 # Generated proof families: every file under the prefix gets the same set.
 IMPORT_ALL_PREFIX: dict[str, tuple[str, ...]] = {}

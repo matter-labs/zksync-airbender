@@ -166,9 +166,7 @@ instance : Lawful Coefficient where
 
 instance : NotNull Nat := ⟨fun _ => nofun⟩
 instance : NotNull (BoundedNat b) := ⟨fun _ => nofun⟩
-instance : NotNull Coefficient := ⟨fun _ => nofun⟩
 instance [Serde α] [Serde β] : NotNull (α × β) := ⟨fun _ => nofun⟩
-instance [Serde α] : NotNull (Array α) := ⟨fun _ => nofun⟩
 
 /-! Map keys and maps -/
 
