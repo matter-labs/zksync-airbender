@@ -2465,3 +2465,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Delegation.Caller.rv_request_window_soundness
 #print axioms Airbender.Delegation.Caller.rv_request_hash_window_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_request_window_soundness
+#print axioms Airbender.UnifiedReduced.Caller.rv_mixed_memory_soundness
+#print axioms Airbender.UnifiedReduced.Caller.rv_shared_span_soundness
+#print axioms Airbender.UnifiedReduced.Caller.rv_request_hash_window_soundness

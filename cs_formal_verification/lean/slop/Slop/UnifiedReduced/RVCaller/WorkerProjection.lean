@@ -1,0 +1,72 @@
+import Human.Helpers.UnifiedReduced.RVWindows
+import Slop.UnifiedReduced.RVCaller.MixedMemoryClocks
+import Slop.Delegation.WorkerProjection
+import Slop.UnifiedReduced.RVCaller.Restriction
+import Slop.UnifiedReduced.RVCaller.Transfer
+
+namespace Airbender.UnifiedReduced.Caller.Proofs
+open Trace Arithmetic Trace.Proofs
+set_option warningAsError true
+set_option maxRecDepth 16384
+
+theorem rv_callers_of_empty_registry [Fact p.Prime] {data : RVRequestTrace p}
+    (accepted : RVMixedMemoryAccepted data []) : data.callers = data.machine.rows := by
+  apply List.filter_eq_self.mpr
+  intro row member
+  have caller : row ∈ data.callers := by
+    by_contra ordinary
+    have impossible := accepted.ordinaryDecoded row member ordinary
+    change ∃ i : Fin 0, _ at impossible
+    obtain ⟨i, _⟩ := impossible
+    exact Fin.elim0 i
+  exact (List.mem_filter.mp caller).2
+
+theorem rv_caller_only_addresses [Fact p.Prime] {data : RVRequestTrace p}
+    {before : RV.State} (accepted : RVMixedMemoryAccepted data [])
+    (requests : RVRequestBinding data before) :
+    ∀ edge ∈ data.machine.rows.flatMap (fun row => (machinePorts row).toList.map fun port =>
+      (readToken row.assignment port, writeToken row.columns row.assignment port)),
+      edge.1.address = (Cell.register 0).addressCode ∧ edge.2.address = (Cell.register 0).addressCode := by
+  intro edge present
+  obtain ⟨row, member, step⟩ := List.mem_flatMap.mp present
+  have caller : row ∈ data.callers := (rv_callers_of_empty_registry accepted).symm ▸ member
+  obtain ⟨port, portMember, rfl⟩ := List.mem_map.mp step
+  have ports := rv_machine_ports_caller caller
+  rw [ports] at portMember
+  have modes : port = importedConstraintsMemoryPorts[0] ∨ port = importedConstraintsMemoryPorts[2] := by
+    simpa [architecturalPorts] using portMember
+  rcases modes with rfl | rfl
+  · exact ⟨(requests.callers row caller).registers.1, (requests.callers row caller).registers.1⟩
+  · exact ⟨(requests.callers row caller).registers.2.1, (requests.callers row caller).registers.2.1⟩
+
+theorem rv_filtered_caller_only_tokens [Fact p.Prime] {data : RVRequestTrace p}
+    {before : RV.State} (accepted : RVMixedMemoryAccepted data [])
+    (requests : RVRequestBinding data before) (written : Bool) :
+    ((data.mixedSteps.map fun edge => if written then edge.2 else edge.1).filter fun token =>
+      token.address != (Cell.register 0).addressCode) =
+    data.workers.steps.map (fun edge => if written then edge.2 else edge.1) :=
+  Delegation.Caller.Proofs.filtered_architectural_tokens _ _
+    (rv_caller_only_addresses accepted requests) Delegation.Caller.Proofs.worker_addresses written
+
+theorem rv_worker_projection_accepted [Fact p.Prime] {data : RVRequestTrace p}
+    {before : RV.State} (accepted : RVMixedMemoryAccepted data [])
+    (requests : RVRequestBinding data before) : Delegation.MemoryAccepted data.workerProjection := by
+  refine ⟨accepted.workerConstraints, ?_⟩
+  have matching := accepted.memory.filter fun token => token.address != (Cell.register 0).addressCode
+  have writes := rv_filtered_caller_only_tokens accepted requests true
+  have reads := rv_filtered_caller_only_tokens accepted requests false
+  change (data.mixedSteps.map Prod.snd).filter _ = data.workers.steps.map Prod.snd at writes
+  change (data.mixedSteps.map Prod.fst).filter _ = data.workers.steps.map Prod.fst at reads
+  simp only [List.filter_append, writes, reads] at matching
+  exact matching
+
+theorem rv_worker_projection_inputs [Fact p.Prime] {data : RVRequestTrace p}
+    {before : RV.State} {cells : List Cell}
+    (image : initialImageRV before cells = some data.machine.initialMemory)
+    (distinct : (cells.map Cell.addressCode).Nodup) (requests : RVRequestBinding data before) :
+    Delegation.RVMemoryInputs data.workerProjection before (Delegation.Caller.workerCells cells) := by
+  refine ⟨rv_image_restriction image (fun address => address != (Cell.register 0).addressCode), ?_, fun row member => (requests.clocks row member).2,
+    fun row member => (requests.clocks row member).1.2⟩
+  exact distinct.sublist (List.filter_sublist.map Cell.addressCode)
+
+end Airbender.UnifiedReduced.Caller.Proofs
