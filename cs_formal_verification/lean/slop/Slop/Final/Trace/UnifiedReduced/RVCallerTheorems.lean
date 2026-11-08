@@ -7,6 +7,7 @@ import Slop.UnifiedReduced.RVCaller.WindowProjection
 import Slop.UnifiedReduced.RVCaller.JointHashWindows
 import Slop.UnifiedReduced.RVCaller.MixedWindowProjection
 import Slop.UnifiedReduced.RVCaller.ControlPreparation
+import Slop.UnifiedReduced.RVCaller.PreparedRoundWindows
 
 namespace Airbender.UnifiedReduced
 
@@ -105,5 +106,50 @@ theorem Caller.rv_program_window_schedule_soundness : Caller.RVProgramWindowSche
     region first last positive ordered afterInitial beforeTerminal
   exact Caller.Proofs.rv_program_caller_window hp clockInverse accepted publicProgram ordinaryProgram registry region
     first last positive ordered afterInitial beforeTerminal
+
+/-- Complete G and Keccak RV references (delegate link included) reach the actual mixed-history cut RV states after
+    public RV literal preparation. -/
+theorem Caller.rv_prepared_hash_window_soundness : Caller.RVPreparedHashWindowSoundnessClaim := by
+  intro p _ hp clockInverse data before ca oa cells program span lower upper accepted inputs first last
+  exact Caller.Proofs.rv_prepared_hash_window hp clockInverse accepted inputs first last
+
+/-- Two complete prepared G/Keccak RV references compose through one continuous RV history. -/
+theorem Caller.rv_prepared_hash_chain_soundness : Caller.RVPreparedHashChainSoundnessClaim := by
+  intro p _ hp clockInverse data before ca oa cells program firstSpan secondSpan a b c d accepted firstInputs
+    secondInputs aa ba ca' da gap
+  exact Caller.Proofs.rv_prepared_hash_chain hp clockInverse accepted firstInputs secondInputs aa ba ca' da gap
+
+/-- A nonempty ordered list of complete prepared G/Keccak RV references shares one continuous RV history. -/
+theorem Caller.rv_prepared_hash_sequence_soundness : Caller.RVPreparedHashSequenceSoundnessClaim := by
+  intro p _ hp clockInverse data before ca oa cells program first rest accepted firstInputs restInputs ordered
+  exact Caller.Proofs.rv_prepared_hash_sequence hp clockInverse accepted firstInputs restInputs ordered
+
+/-- Public RV LUI preparation and raw joint matching derive exclusive masks within one caller region. -/
+theorem Caller.rv_prepared_round_region_masks_soundness : Caller.RVPreparedRoundRegionMasksSoundnessClaim := by
+  intro p _ hp clockInverse data before ca oa cells program regions region accepted inputs scope
+  exact Caller.Proofs.rv_prepared_round_region_masks hp clockInverse accepted inputs scope
+
+/-- Complete prepared G, extended-BLAKE and Keccak RV references share one continuous RV memory execution. -/
+theorem Caller.rv_prepared_protocol_sequence_soundness : Caller.RVPreparedProtocolSequenceSoundnessClaim := by
+  intro p _ hp clockInverse data before ca oa cells program regions first rest accepted inputs scopes ordered
+  exact Caller.Proofs.rv_prepared_protocol_sequence hp clockInverse accepted inputs scopes ordered
+
+/-- Public RV LUI preparation and native matching derive all extended-BLAKE masks. -/
+theorem Caller.rv_prepared_round_masks_soundness : Caller.RVPreparedRoundMasksSoundnessClaim := by
+  intro p _ hp clockInverse data before ca oa cells program flags lower accepted inputs first
+  exact Caller.Proofs.rv_prepared_round_masks hp clockInverse accepted inputs first
+
+/-- Complete extended-BLAKE compression (delegate link included) reaches the actual prepared mixed-history cut RV
+    states. -/
+theorem Caller.rv_prepared_round_window_soundness : Caller.RVPreparedRoundWindowSoundnessClaim := by
+  intro p _ hp clockInverse data before ca oa cells program flags lower upper accepted inputs first last
+  exact Caller.Proofs.rv_prepared_round_window hp clockInverse accepted inputs first last
+
+/-- Public RV caller regions derive selected worker families and complete call counts for all three references in one
+    continuous prepared RV history. -/
+theorem Caller.rv_program_prepared_protocol_sequence_soundness :
+    Caller.RVProgramPreparedProtocolSequenceSoundnessClaim := by
+  intro p _ hp clockInverse data before ca oa cells program regions first rest accepted inputs registry scopes ordered
+  exact Caller.Proofs.rv_program_prepared_protocol_sequence hp clockInverse accepted inputs registry scopes ordered
 
 end Airbender.UnifiedReduced
