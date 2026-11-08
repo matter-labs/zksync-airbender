@@ -1,5 +1,67 @@
 # Trust and review boundaries
 
+## Actual read sources and main-memory history (8 November 2026)
+
+[The native memory observations](Airbender/Review/Circuits/ReducedMachine/NativeMemoryHistory.lean)
+retain the SAME actual proof list, complete GPR/RAM seeds and teardown, public PC
+endpoints and actual runtime table. For ANY selected worker batch, every actual
+read has an exact actual seed, main-write or worker-write token source, including
+address/value/both raw timestamps. Every read clock is19bit OR comes from an
+actual worker write. That alternative does not assume raw worker ranges or turn
+source membership into chronological seed reachability. All43 worker ports and
+inactive worker observations remain; no caller request or worker row is filtered.
+
+The explicitly empty selected worker batch is constructed with actual count0 and
+outputs empty. SAME full native acceptance is checked ON that batch; no supplied
+worker-list/count/fulfilled-ledger equality or nonempty-worker filtering is used.
+The main trace contains actual execute1 rows from ALL ordinary rows, exact native
+runtime table, complete observed initial/terminal memory and public PC endpoints.
+All four actual Trace.Accepted clauses and ClockBoundary are DERIVED, including
+full body, activity, PC/state matching and complete memory matching. There is no
+placeholder memory, fake accepted trace/history or expected per-row read premise.
+Caller requests/claims and source auxiliary equations remain unchanged.
+
+[The proof assembly](Airbender/Proofs/ReducedMachine/NativeMemoryHistory.lean)
+reuses unchanged generic clock/graph/memory proofs on that real trace. It derives
+ALL old-read clock bounds, newest preceding write/value-token reads, strict read
+before access, initialized address support, every seed's exact per-address path
+and ONE complete consistent-online Clean memory history. All32 public GPR seed
+writes including x0 and every active main port, readonly refresh, OLDREAD and
+unmasked write remain. The previous constructed original Sail initial image and
+separate native ROM shadows are retained. This is main-memory history under the
+explicit empty batch, not combined nonempty-worker history or original CSR/MOP/
+worker Sail execution. Alignment/platform, worker clocks/keys, request issuance/
+fulfillment/accounting and physical/cryptographic refinement remain open.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/NativeMemoryHistoryTheorems.lean)
+keep full-batch read provenance and empty-batch main history separate. Actual
+source acceptance and explicit full logical matching/lookups remain unchanged.
+Only prior exact duplicate-preserving inactive-main/padded-init cancellations
+are reused; inactiveD and m0 auxiliary poles remain. No division/nonzero/inverse,
+compression-injectivity, scalar-to-permutation, expected stream/result, opcode/
+caller filter or assumption that all physical rows execute is introduced.
+Generic abstract list projection, matched-read membership and sampling property
+precede concrete native instantiation; all checks retain default resource limits.
+
+[Seventeen controls](Tests/NativeMemoryHistory.lean) cover actual empty-batch
+count/list, exact initial/terminal views, both port projections, exact read-source
+membership, an unseeded loop showing that membership alone is not rooting,
+unmatched-read rejection, duplicate preservation, all32 initial registers,
+COMPLETE EMPTY stronger native acceptance deriving real accepted trace/history/
+public image, wrong terminal clock8 rejection, and full conditional roots.
+Pure/structural/generic-negative/empty/conditional controls are not full positive
+NONEMPTY source/global/worker/physical witnesses, attacks or native defects.
+Four modules add29 roots with13 exact parent origins; all5,761 prior ordered roots
+and exact audit bytes remain. Native103 pins, dependencies, old proofs/acceptance,
+production/Sail/artifacts/fixtures/importer/exporter and findings are unchanged.
+No new native adoption/pin/generation/heavy replay, axiom or issue assumption.
+
+Next: actual nonempty-worker clock progress and seed reachability on the SAME
+complete ledger, then active old-read value/address bounds and STAGE2 key
+refinement, request-versus-execute padding and caller-worker accounting. The new
+empty-batch result does not discharge those nonempty-worker obligations. No parity.
+
+
 ## Constructed original Sail initial image (8 November 2026)
 
 [The explicit public reference-input constructor](Airbender/Review/Helpers/Memory/ReducedMachineInitialState.lean)

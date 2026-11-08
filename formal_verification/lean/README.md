@@ -1623,3 +1623,11 @@ architectural initial-image reads from explicit PC/GPR/RAM inserts, preserving
 the exact ROM and separate native shadows. The declared three-byte logical halo
 supports unaligned RV32 cell reads. Arbitrary public-state coverage, combined
 chronological worker history, keys and accounting remain open.
+
+## Actual native main-memory history
+
+[Actual read sources and main history](Airbender/Review/Circuits/ReducedMachine/NativeMemoryHistoryTheorems.lean) derive read-token provenance
+for every selected worker batch, and complete Clean main-memory history when the
+batch is explicitly constructed empty. The real accepted trace retains actual
+seeds/teardown and all main ports. Nonempty-worker chronology, active read bounds,
+keys/accounting and original CSR/MOP/worker Sail execution remain open.

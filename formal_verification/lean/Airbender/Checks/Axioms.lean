@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.NativeMemoryHistory
+import Airbender.Proofs.ReducedMachine.NativeMemoryHistory
+import Airbender.Review.Circuits.ReducedMachine.NativeMemoryHistoryTheorems
+import Tests.NativeMemoryHistory
+
 import Airbender.Review.Helpers.Memory.ReducedMachineInitialState
 import Airbender.Proofs.ReducedMachine.NativeInitialState
 import Airbender.Review.Circuits.ReducedMachine.InitializationPublicImage
@@ -6621,3 +6626,33 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeInitializationPublicImage.complete_empty_image
 #print axioms Airbender.Tests.NativeInitializationPublicImage.complete_conditional_image
 #print axioms Airbender.Tests.NativeInitializationPublicImage.complete_conditional_memory
+
+#print axioms Airbender.NativeMemoryHistoryProofs.row_projection
+#print axioms Airbender.NativeMemoryHistoryProofs.main_projection
+#print axioms Airbender.NativeMemoryHistoryProofs.matched_read
+#print axioms Airbender.NativeMemoryHistoryProofs.selected_active
+#print axioms Airbender.NativeMemoryHistoryProofs.components
+#print axioms Airbender.NativeMemoryHistoryProofs.full_read_sources
+#print axioms Airbender.NativeMemoryHistoryProofs.empty_accesses
+#print axioms Airbender.NativeMemoryHistoryProofs.trace_accepted
+#print axioms Airbender.NativeMemoryHistoryProofs.clock_boundary
+#print axioms Airbender.NativeMemoryHistoryProofs.main_history
+#print axioms Airbender.NativeMemoryHistory.native_actual_read_sources
+#print axioms Airbender.NativeMemoryHistory.native_main_memory_history
+#print axioms Airbender.Tests.NativeMemoryHistory.actual_empty_batch
+#print axioms Airbender.Tests.NativeMemoryHistory.same_initial_memory
+#print axioms Airbender.Tests.NativeMemoryHistory.same_terminal_memory
+#print axioms Airbender.Tests.NativeMemoryHistory.both_actual_port_projections
+#print axioms Airbender.Tests.NativeMemoryHistory.actual_empty_accesses
+#print axioms Airbender.Tests.NativeMemoryHistory.source_seed_control
+#print axioms Airbender.Tests.NativeMemoryHistory.unseeded_loop_not_rooted
+#print axioms Airbender.Tests.NativeMemoryHistory.unmatched_read_rejected
+#print axioms Airbender.Tests.NativeMemoryHistory.duplicate_sources_preserved
+#print axioms Airbender.Tests.NativeMemoryHistory.all32_initial_registers_kept
+#print axioms Airbender.Tests.NativeMemoryHistory.complete_empty_effects
+#print axioms Airbender.Tests.NativeMemoryHistory.complete_empty_real_acceptance
+#print axioms Airbender.Tests.NativeMemoryHistory.complete_empty_history
+#print axioms Airbender.Tests.NativeMemoryHistory.complete_empty_public_image
+#print axioms Airbender.Tests.NativeMemoryHistory.wrong_empty_terminal_rejected
+#print axioms Airbender.Tests.NativeMemoryHistory.full_conditional_read_sources
+#print axioms Airbender.Tests.NativeMemoryHistory.full_conditional_main_history
