@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.Blake2Worker.PositiveRow
+import Airbender.Proofs.Blake2Worker.NativePositiveRow
+import Airbender.Review.Circuits.Blake2Worker.PositiveRowTheorems
+import Tests.NativeBlake2PositiveRow
+
 import Airbender.Review.Circuits.ReducedMachine.ActiveWorkerClocks
 import Airbender.Proofs.ReducedMachine.NativeActiveWorkerClocks
 import Airbender.Review.Circuits.ReducedMachine.ActiveWorkerClocksTheorems
@@ -6686,3 +6691,21 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeActiveWorkerClocks.complete_empty_sources
 #print axioms Airbender.Tests.NativeActiveWorkerClocks.complete_conditional_sources
 #print axioms Airbender.Tests.NativeActiveWorkerClocks.exact_unbounded_raw_source
+
+#print axioms Airbender.Blake2Worker.PositiveRowProofs.zero_member
+#print axioms Airbender.Blake2Worker.PositiveRowProofs.body
+#print axioms Airbender.Blake2Worker.PositiveRowProofs.local_processing
+#print axioms Airbender.Blake2Worker.PositiveRow.native_positive_body
+#print axioms Airbender.Blake2Worker.PositiveRow.native_positive_processing
+#print axioms Airbender.Tests.NativeBlake2PositiveRow.multiplicity_one
+#print axioms Airbender.Tests.NativeBlake2PositiveRow.abi_high_zero
+#print axioms Airbender.Tests.NativeBlake2PositiveRow.raw_clock
+#print axioms Airbender.Tests.NativeBlake2PositiveRow.all_flags_zero
+#print axioms Airbender.Tests.NativeBlake2PositiveRow.all_old_times_zero
+#print axioms Airbender.Tests.NativeBlake2PositiveRow.all_borrows_one
+#print axioms Airbender.Tests.NativeBlake2PositiveRow.pointers_zero
+#print axioms Airbender.Tests.NativeBlake2PositiveRow.control_values_zero
+#print axioms Airbender.Tests.NativeBlake2PositiveRow.actual_complete_body
+#print axioms Airbender.Tests.NativeBlake2PositiveRow.actual_processing
+#print axioms Airbender.Tests.NativeBlake2PositiveRow.actual_zero_table_rows
+#print axioms Airbender.Tests.NativeBlake2PositiveRow.active_is_not_padding

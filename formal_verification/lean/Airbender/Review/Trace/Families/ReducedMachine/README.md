@@ -759,3 +759,11 @@ actual read clock has an exact multiplicity-one worker-write source on the same
 complete ledger. Accepted inactive workers have both raw clock limbs zero; all
 worker observations remain. Active clock progress/bounds, initialized worker
 reads, keys and request accounting remain open.
+
+## Complete local active-worker fixture
+
+[The explicit positive worker row](../../../Circuits/Blake2Worker/PositiveRowTheorems.lean) satisfies all 352 native equations,
+296 actual lookups and 226 normalized processing conventions. Its source retains
+all ports and aliases. This local fixture supplies no source/global/worker-trace
+acceptance, initialized memory history, issued request or Sail effects; those
+combined obligations and parity remain open.

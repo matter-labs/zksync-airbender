@@ -1,5 +1,52 @@
 # Trust and review boundaries
 
+## Complete local active-worker fixture (8 November 2026)
+
+[The explicit native worker row](Airbender/Review/Circuits/Blake2Worker/PositiveRow.lean)
+has multiplicity one, raw processing clock(3,0), all 43 timestamp borrows one,
+and every other logical variable zero. It is a local fixture, with all native
+ports and aliases retained. Both pointers are zero; no initialized memory history,
+issued request, valid round schedule or source-worker acceptance is supplied.
+
+[The kernel proof](Airbender/Proofs/Blake2Worker/NativePositiveRow.lean) checks ALL
+352 native equations and ALL 296 lookups: 208 into the complete actual literal
+worker fixed pool, two scalar16 queries and 86 timestamp19 queries. It then proves
+the SAME existing LocalProcessingAccepted, including all 226 normalized processing
+conventions. Assertions are split into small actual source blocks; range and clock
+bounds are computed on actual queries. All five zero fixed-table memberships are
+derived from existing actual-row/field/XOR theorems. Entire generic coordinate,
+vector and typed-lookup proofs precede concrete literal-table instantiation.
+There is no table-equivalence premise, recipe-defined membership, opacity or
+heavy table-certificate replay. Concrete whole-pool/row equality reductions hit
+allocation caps during exploration; the final abstract proofs avoid those paths
+and retain all normal resource and lint limits.
+
+[Two short public roots](Airbender/Review/Circuits/Blake2Worker/PositiveRowTheorems.lean)
+expose complete local body and processing acceptance. This is a positive local
+active row, not a nonempty accepted source proof, worker trace, global/protocol/
+physical witness or initialized combined history. It does not establish hashing/
+reference correctness, original Sail worker effects, clock progress, request
+anchoring or absence of other enforcement. No native defect or issue assumption.
+
+[Twelve controls](Tests/NativeBlake2PositiveRow.lean) check actual multiplicity,
+ABI high, raw clock, all 13 zero flags, all 43 old-time pairs and borrows, both
+zero pointer pairs, old/new control values, complete body/processing acceptance,
+all five actual zero table rows and the active/nonpadding distinction. All
+readonly refreshes, OLDREAD, aliases and unmasked writes remain in the source.
+Four modules add 17 roots with 10 exact parent origins; every one of the 5,814
+prior ordered roots and exact audit bytes remains. Native 103 pins, dependencies,
+old proofs/acceptance, production/Sail/importer/exporter/native artifacts and
+findings are unchanged. This new logical witness requires no native generation,
+new pin/adoption, heavy replay, axiom or desired-result premise.
+
+Next: actual nonempty-worker clock progress and seed reachability on the same
+complete ledger, initialized active old-read values/addresses and STAGE2 keys,
+request-versus-execute padding, caller-worker issuance/fulfillment/converse/
+accounting and original worker round/reference/state/Sail effects. Multiplicity-
+one zero-clock exclusion, general public/physical refinement, cryptography,
+completeness and checked native-target/trust-boundary parity remain open.
+
+
 ## Active sources of actual worker clocks (8 November 2026)
 
 [The actual worker-clock observations](Airbender/Review/Circuits/ReducedMachine/ActiveWorkerClocks.lean)

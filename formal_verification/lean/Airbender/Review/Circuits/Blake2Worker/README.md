@@ -243,3 +243,11 @@ all117 main equations/22 lookups and aliased GPR matching. It executes no worker
 A separate execute0 BODY witness still requests; full-domain padding/global
 accounting must be checked before filtering. No F03 defect or worker acceptance
 is inferred from this weaker boundary.
+
+## Complete local active-worker fixture
+
+[The explicit positive worker row](PositiveRowTheorems.lean) satisfies all 352 native equations,
+296 actual lookups and 226 normalized processing conventions. Its source retains
+all ports and aliases. This local fixture supplies no source/global/worker-trace
+acceptance, initialized memory history, issued request or Sail effects; those
+combined obligations and parity remain open.
