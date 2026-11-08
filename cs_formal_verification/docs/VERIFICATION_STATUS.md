@@ -90,7 +90,7 @@ derived from the initialized history. A step exists only for aligned accesses, s
 | --- | --- |
 | Full Lean build | Verification library, all 72 test modules under `test/Tests`, both executables and the full axiom-audit root pass. |
 | Claim check | [Claims.lean](../lean/test/Checks/Claims.lean) checks 111 claim theorems, each against its `…Claim` statement by name and type, and their axioms. |
-| Axiom audits | [Axioms.lean](../lean/test/Checks/Axioms.lean) lists 996 axiom roots and [TraceAxioms.lean](../lean/test/Checks/TraceAxioms.lean) 246; only `propext`, `Classical.choice` and `Quot.sound`. |
+| Axiom audits | [Axioms.lean](../lean/test/Checks/Axioms.lean) lists 960 axiom roots and [TraceAxioms.lean](../lean/test/Checks/TraceAxioms.lean) 216; only `propext`, `Classical.choice` and `Quot.sound`. |
 | Public review surface | Every source-declared public claim theorem in `Human/` and `Slop/Final/` has an explicit axiom root. Root and directory-guide names/links and context/trace import separation are checked by the [review check](../lean/check_review.py). |
 | Regression coverage | Accepted/rejected native rows and traces cover public decoding/bytes, aliasing, clock rollover, initialized reads, terminal cells, fabricated reads (changed read value, unmatched previous-write timestamp, interleaved per-address paths) and the delegation fixtures named above. BLAKE compression also checks the standard empty-block digest in the kernel. |
 | Project diagnostics | No `sorry`, no project axioms, no native_decide or bv_decide. Some `slop/` modules still emit linter and deprecation warnings. |
