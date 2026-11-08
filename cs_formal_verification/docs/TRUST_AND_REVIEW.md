@@ -158,6 +158,15 @@ query binding and padding remain deferred provenance work.
 permutations. Decoder membership and caller/request matching are likewise logical
 conditions; cryptographic enforcement of any of them is outside the claims.
 
+**Open item: decoder-table padding.** When decoder lookup enforcement is modelled (with the unifying protocol
+spec), the protocol's decoder table is the program rows ∪ the unsupported −1 rows ∪ tail rows filled with the
+artifact's `generic_lookup_padding` (0 when the field is absent). Discharging `RVPooledDecoded`
+([RVSoundness.lean](../lean/human/Human/Trace/RVSoundness.lean)) then needs: the mask coordinate is < 512, from the
+nine Boolean family bits, so no −1 sentinel row matches. Zero padding would make that step false (a phantom 0⁸
+row). The add_sub artifact's padding is fixed now: [AddSub's `ArtifactImportClaim`](../lean/human/Human/Circuits/AddSub/Artifact.lean)
+states `generic_lookup_padding` is −1 (canonical p − 1), as the Rust compiler sets it for that family
+(`cs/src/gkr_compiler/family_circuit.rs`) and the Rust test checks (`cs/src/gkr_circuits/add_sub_family/circuit.rs`).
+
 Caller and worker claims add public inputs, all visible in their `…Inputs` structures:
 - Request matching derives exact worker/caller multiplicity, unique native slots, full CSR families and the placement of
   each issued worker inside its caller's four-tick cycle (invocation at start + 1, writes at start + 3). Machine ports

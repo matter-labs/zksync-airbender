@@ -10,6 +10,6 @@ namespace Airbender.AddSub
 
 /-- The kernel evaluates the meaning on the transcribed artifact and compares it with the emitted terms. -/
 theorem artifact_import : ArtifactImportClaim :=
-  by refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;> intros <;> kernel_rfl
+  by refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;> intros <;> kernel_rfl
 
 end Airbender.AddSub

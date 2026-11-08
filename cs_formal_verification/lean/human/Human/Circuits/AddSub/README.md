@@ -30,5 +30,11 @@ the selected theorem; artifact/import and modeled-table fidelity remain explicit
 
 External reads and [caller claims](RVCallerTheorems.lean) have separate scopes. Global inactive-row obligations remain open.
 
+Open item (decoder-table padding): the [Artifact](Artifact.lean) claim fixes `generic_lookup_padding` = −1
+(canonical p − 1). When decoder lookup enforcement is modelled, the decoder table is program rows ∪ unsupported −1
+rows ∪ tail rows of that padding (0 when absent); discharging `RVPooledDecoded` then needs "mask coordinate < 512
+from the nine Boolean family bits ⇒ no −1 sentinel matches", which zero padding would make false (a phantom 0⁸
+row). See [trust and review](../../../../../docs/TRUST_AND_REVIEW.md#modeled-tables-and-logical-arguments).
+
 [Family execution](../../Trace/Families/AddSub/RVTheorems.lean) is a separate whole-trace claim.
 [Pooled execution](../../Trace/RVSoundness.lean) composes the six ordinary families.
