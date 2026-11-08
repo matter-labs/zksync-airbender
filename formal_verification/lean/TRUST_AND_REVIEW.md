@@ -1,5 +1,50 @@
 # Trust and review boundaries
 
+## Complete native weighted worker transition (8 November 2026)
+
+[Pure transition](Airbender/Review/Circuits/Blake2Worker/Transition.lean) takes only
+actual state, extended-state, message and BOTH x12 read fields. It computes the
+initial state, compression choices, all ten natural weighted message limbs, four
+column G calls, four diagonal G calls, final state words and control update.
+No witness intermediate or desired output enters the reference. Zero/multiple
+round masks and wide low carry remain before reduction modulo2^32.
+
+[Short TRACE theorem](Airbender/Review/Trace/Families/ReducedMachine/WorkerTransitionTheorems.lean)
+derives EVERY ordinary worker's actual25writable ABI outputs (ports1..24 and42)
+equal this complete reference: eight state words, sixteen extended words and x12.
+The SAME counted source/original public image/log20/OLD LogicalLookups/OLD explicit
+SourceIdentity retain initialized exact raw-token replay, word bounds, capacity,
+dependencies, controls and messages, including inactive workers. No expected read,
+value, range, result, one-hot mask, round, schedule or history premise is supplied.
+
+[Assembly](Airbender/Proofs/ReducedMachine/NativeWorkerTransition.lean) reuses the
+checked initialization, selected-value bounds, eight G results, actual extended
+writes, finalization and x12 update unchanged. Exact old read ABI shapes and the
+control port42 descriptor are bound before sampling; prior write bindings are
+reused. Explicit Fin2 getters keep both fields. The full existing extended-CS
+Git67ee hash and455..578/573..600 call-site/update spans were checked before the
+prototype. No new native pin, artifact, generation, importer or heavy replay.
+Specific ABI/source checks are not general Rust/JSON/compiler/physical refinement.
+
+[Twenty-one controls](Tests/NativeWorkerTransition.lean) include independent
+nonzero Python32bit column/diagonal/destination and final-state vectors, multiple
+masks, round9/reduce-round6 finalization, compression choices, wide655350 low carry,
+zero messages, next controls, actual read/write values and all25outputs. Old LOCAL
+BODY and inactive requests remain. These are pure/reference/oldLOCAL/conditional
+controls, not new nonempty source-global/whole-worker/physical witnesses, attacks
+or defects. Aliases stay visible; no compatible global history is fabricated.
+
+All43ports, both raw times, OLDREADs, refreshes, AUX/m0poles, inactiveD, caller
+equations, unmaskedSW and publicx0times remain; caller requests are never filtered.
+Public ordinary7-or-CSR excludes MOP; original seven-profile Sail excludes CSR/MOP.
+Four modules add38roots/13exact parent references, preserving all6756prior ordered
+roots and audit bytes addition-only. Native107/v3/dependencies/production/Sail/old
+acceptance/FINDINGS unchanged. The complete POINTWISE weighted transition is now
+assembled. Physical round sequencing/standard scheduled full hash, inactive caller
+activity/converse accounting, public MOP custom execution, original CSR/MOP/worker
+Sail, physical cryptography, completeness and parity remain open.
+
+
 ## Actual native state-write finalization (8 November 2026)
 
 [Finalization observables](Airbender/Review/Circuits/Blake2Worker/Finalization.lean)

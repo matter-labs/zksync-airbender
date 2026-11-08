@@ -343,3 +343,10 @@ and physical round schedules remain open.
 XOR or exact previous-read copies, retaining all G/extended-write/replay effects
 on the SAME counted source. Full reference worker round/hash assembly and physical
 round schedules remain open.
+
+## Complete native weighted worker transition
+
+[Transition](../../Trace/Families/ReducedMachine/WorkerTransitionTheorems.lean) derives all25actual writable ABI outputs from read inputs
+only, retaining zero/multiple masks, eight G calls and prior initialized replay.
+This closes pointwise reference assembly; physical round sequencing, standard
+scheduled full hash and protocol/Sail/accounting boundaries remain open.

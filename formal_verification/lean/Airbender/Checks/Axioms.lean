@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.Blake2Worker.Transition
+import Airbender.Proofs.ReducedMachine.NativeWorkerTransition
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerTransitionTheorems
+import Tests.NativeWorkerTransition
+
 import Airbender.Review.Circuits.Blake2Worker.Finalization
 import Airbender.Proofs.ReducedMachine.NativeWorkerFinalization
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerFinalizationTheorems
@@ -7849,3 +7854,42 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerFinalization.corrupt_selector_rejected
 #print axioms Airbender.Tests.NativeWorkerFinalization.inactive_requests_retained
 #print axioms Airbender.Tests.NativeWorkerFinalization.complete_counted
+
+#print axioms Airbender.NativeWorkerTransitionProofs.read_state
+#print axioms Airbender.NativeWorkerTransitionProofs.read_extended
+#print axioms Airbender.NativeWorkerTransitionProofs.read_message
+#print axioms Airbender.NativeWorkerTransitionProofs.read_control
+#print axioms Airbender.NativeWorkerTransitionProofs.output_values
+#print axioms Airbender.NativeWorkerTransitionProofs.input_values
+#print axioms Airbender.NativeWorkerTransitionProofs.initial_word
+#print axioms Airbender.NativeWorkerTransitionProofs.selected_word
+#print axioms Airbender.NativeWorkerTransitionProofs.column_result
+#print axioms Airbender.NativeWorkerTransitionProofs.routed_result
+#print axioms Airbender.NativeWorkerTransitionProofs.extended_result
+#print axioms Airbender.NativeWorkerTransitionProofs.state_result
+#print axioms Airbender.NativeWorkerTransitionProofs.control_result
+#print axioms Airbender.NativeWorkerTransitionProofs.result
+#print axioms Airbender.NativeWorkerTransitionProofs.row
+#print axioms Airbender.NativeWorkerTransitionProofs.counted
+#print axioms Airbender.NativeWorkerTransition.native_counted_worker_transition
+#print axioms Airbender.Tests.NativeWorkerTransition.independent_column_multiple
+#print axioms Airbender.Tests.NativeWorkerTransition.independent_diagonal_multiple
+#print axioms Airbender.Tests.NativeWorkerTransition.independent_diagonal_destinations
+#print axioms Airbender.Tests.NativeWorkerTransition.independent_round9_first
+#print axioms Airbender.Tests.NativeWorkerTransition.independent_round9_last
+#print axioms Airbender.Tests.NativeWorkerTransition.independent_reduce_final
+#print axioms Airbender.Tests.NativeWorkerTransition.multiple_mask_copy
+#print axioms Airbender.Tests.NativeWorkerTransition.zero_mask_messages
+#print axioms Airbender.Tests.NativeWorkerTransition.configured_compression_initial
+#print axioms Airbender.Tests.NativeWorkerTransition.compression_sides
+#print axioms Airbender.Tests.NativeWorkerTransition.wide_selected_carry
+#print axioms Airbender.Tests.NativeWorkerTransition.next_controls
+#print axioms Airbender.Tests.NativeWorkerTransition.both_control_reads
+#print axioms Airbender.Tests.NativeWorkerTransition.all_read_inputs
+#print axioms Airbender.Tests.NativeWorkerTransition.actual_output_values
+#print axioms Airbender.Tests.NativeWorkerTransition.all_state_results
+#print axioms Airbender.Tests.NativeWorkerTransition.all_extended_results
+#print axioms Airbender.Tests.NativeWorkerTransition.all_control_results
+#print axioms Airbender.Tests.NativeWorkerTransition.old_full_local_body
+#print axioms Airbender.Tests.NativeWorkerTransition.inactive_requests_retained
+#print axioms Airbender.Tests.NativeWorkerTransition.complete_counted
