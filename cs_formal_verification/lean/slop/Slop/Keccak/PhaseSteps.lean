@@ -393,13 +393,6 @@ theorem chi_cell_ne {round : Nat} {row row' x x' : Fin 5} (different : row ≠ r
   · exact different (Fin.ext (by omega))
   · exact different (Fin.ext (by omega))
 
-theorem chi_cell_ne_scratch {round : Nat} {row x : Fin 5} {physical : Fin 31} (high : 25 ≤ physical.val) :
-    chiCell round row x ≠ physical := by
-  intro same
-  have := chi_cell_bound round row x
-  rw [same] at this
-  omega
-
 section ChiFirst
 variable {call : Fin 649} {round : Nat} {row : Fin 5} (shape : call.val = 27 * round + 17 + 2 * row.val)
 include shape
