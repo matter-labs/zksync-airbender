@@ -2486,3 +2486,5 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_masks_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_window_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_program_prepared_protocol_sequence_soundness
+#print axioms Airbender.UnifiedReduced.Caller.rv_caller_cycles_soundness
+#print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_cycles_soundness

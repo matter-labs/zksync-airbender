@@ -294,6 +294,8 @@ example : Airbender.UnifiedReduced.Caller.RVPreparedProtocolSequenceSoundnessCla
 example : Airbender.UnifiedReduced.Caller.RVPreparedRoundMasksSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_round_masks_soundness
 example : Airbender.UnifiedReduced.Caller.RVPreparedRoundWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_round_window_soundness
 example : Airbender.UnifiedReduced.Caller.RVProgramPreparedProtocolSequenceSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_program_prepared_protocol_sequence_soundness
+example : Airbender.UnifiedReduced.Caller.RVCallerCyclesSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_caller_cycles_soundness
+example : Airbender.UnifiedReduced.Caller.RVPreparedRoundCyclesSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_round_cycles_soundness
 
 #print axioms Airbender.Delegation.Caller.soundness
 #print axioms Airbender.Delegation.Caller.pc_soundness
@@ -486,3 +488,5 @@ example : Airbender.UnifiedReduced.Caller.RVProgramPreparedProtocolSequenceSound
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_masks_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_window_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_program_prepared_protocol_sequence_soundness
+#print axioms Airbender.UnifiedReduced.Caller.rv_caller_cycles_soundness
+#print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_cycles_soundness

@@ -8,6 +8,7 @@ import Slop.UnifiedReduced.RVCaller.JointHashWindows
 import Slop.UnifiedReduced.RVCaller.MixedWindowProjection
 import Slop.UnifiedReduced.RVCaller.ControlPreparation
 import Slop.UnifiedReduced.RVCaller.PreparedRoundWindows
+import Slop.UnifiedReduced.RVCaller.CallerCycles
 
 namespace Airbender.UnifiedReduced
 
@@ -151,5 +152,16 @@ theorem Caller.rv_program_prepared_protocol_sequence_soundness :
     Caller.RVProgramPreparedProtocolSequenceSoundnessClaim := by
   intro p _ hp clockInverse data before ca oa cells program regions first rest accepted inputs registry scopes ordered
   exact Caller.Proofs.rv_program_prepared_protocol_sequence hp clockInverse accepted inputs registry scopes ordered
+
+/-- Actual caller fetch from the RV program table, issued-worker references and the spec's PC retirement use one
+    shared RV history; each caller's `RV.step` at its pre-state is `RV.exec` of its decoded `.delegate k`. -/
+theorem Caller.rv_caller_cycles_soundness : Caller.RVCallerCyclesSoundnessClaim := by
+  intro data program initial ca oa cells accepted inputs started
+  exact Caller.Proofs.rv_caller_cycles accepted inputs started
+
+/-- The prepared extended-round scope derives masks before constructing the same actual RV caller cycles. -/
+theorem Caller.rv_prepared_round_cycles_soundness : Caller.RVPreparedRoundCyclesSoundnessClaim := by
+  intro data program initial ca oa cells flags lower accepted inputs first started
+  exact Caller.Proofs.rv_prepared_round_caller_cycles accepted inputs first started
 
 end Airbender.UnifiedReduced
