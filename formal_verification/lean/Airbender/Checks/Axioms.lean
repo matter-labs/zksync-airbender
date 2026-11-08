@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.WorkerSignedClocks
+import Airbender.Proofs.ReducedMachine.NativeWorkerSignedClocks
+import Airbender.Review.Circuits.ReducedMachine.WorkerSignedClocksTheorems
+import Tests.NativeWorkerSignedClocks
+
 import Airbender.Review.Circuits.ReducedMachine.DelegationSupport
 import Airbender.Proofs.ReducedMachine.NativeDelegationSupport
 import Airbender.Review.Circuits.ReducedMachine.DelegationSupportTheorems
@@ -6965,3 +6970,32 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeDelegationSupport.wide_high_excluded
 #print axioms Airbender.Tests.NativeDelegationSupport.zero_low_high_sentinel_excluded
 #print axioms Airbender.Tests.NativeDelegationSupport.complete_conditional_counted
+
+#print axioms Airbender.NativeWorkerSignedClockProofs.sentinel
+#print axioms Airbender.NativeWorkerSignedClockProofs.limb_cast
+#print axioms Airbender.NativeWorkerSignedClockProofs.domain_bounds
+#print axioms Airbender.NativeWorkerSignedClockProofs.domain_lower
+#print axioms Airbender.NativeWorkerSignedClockProofs.bounded_nonnegative
+#print axioms Airbender.NativeWorkerSignedClockProofs.local_progress
+#print axioms Airbender.NativeWorkerSignedClockProofs.effects
+#print axioms Airbender.NativeWorkerSignedClockProofs.dependency_order
+#print axioms Airbender.NativeWorkerSignedClockProofs.no_cycles
+#print axioms Airbender.NativeWorkerSignedClockProofs.counted
+#print axioms Airbender.NativeWorkerSignedClocks.native_worker_signed_progress
+#print axioms Airbender.NativeWorkerSignedClocks.native_counted_worker_signed_progress
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.zero_value
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.low_sentinel
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.high_sentinel
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.sentinel_pairs_distinct
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.wide_carry_alias
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.wide_still_not_canonical
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.domain_allows_minus_one
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.domain_lower_boundary
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.local_body
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.local_clock_value
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.local_all_read_values
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.local_all_progress
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.active_zero_excluded
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.self_dependency_rejected
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.two_cycle_rejected
+#print axioms Airbender.Tests.NativeWorkerSignedClocks.complete_conditional_counted

@@ -368,3 +368,11 @@ caller for each active worker, plus the raw clock domain for workers/old reads.
 Fixed-challenge source acceptance does not establish this new crypto boundary.
 Caller activity, lossless request matching and initialized worker history remain
 open; raw sentinel alternatives are retained.
+
+## Conditional worker clock ordering
+
+[Signed proof ordering](../../Circuits/ReducedMachine/WorkerSignedClocksTheorems.lean) retains raw timestamp tokens and derives
+strict progress, positive active clocks and exclusion of worker-only dependency
+cycles under full prior acceptance and the explicit formal extraction boundary.
+Canonical clock bounds, mixed cycles, seed reachability and initialized worker
+history remain open.

@@ -1,5 +1,58 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Conditional worker ordering across clock sentinels (8 November 2026)
+
+[WorkerSignedClocks](Airbender/Review/Circuits/ReducedMachine/WorkerSignedClocks.lean)
+defines a proof ordering: map the exact field sentinel M31minus1 to integer-1,
+otherwise retain its canonical natural value, then use low+524288*high. Every
+raw token, both timestamp fields, address and value remains unchanged. This
+ordering is not an injective timestamp encoding or a change to native/Clean/Sail
+semantics; distinct sentinel pairs and carry representations can share a value.
+
+[Generic modular interval and difference proofs](Airbender/Proofs/ReducedMachine/NativeWorkerSignedClocks.lean)
+precede native instantiation. Cast recovery is derived. The existing raw Domain
+bounds low representatives to[-1,1048574] and high to[-1,524287], including every
+sentinel case. Complete native BODY derives all43 Boolean borrows and19bit
+clock differences. Those equations force every active worker OLDREAD to precede
+its common write in the signed ordering, without canonical raw-clock assumptions.
+
+The existing full initialization/main/caller/worker/global acceptance and the
+**unchanged explicit formal SourceIdentity extraction boundary** derive all
+worker/read domains. Domain gives an initial lower bound-1. Strict progress first
+gives nonnegative active worker clocks. The exact existing bounded-or-activewriter
+read-source theorem then gives nonnegative actual old-read clocks, so every active
+worker clock is positive. Raw processing clock(0,0) is therefore excluded at this
+stronger conditional interface. This is not a native fixed-challenge enforcement
+proof, physical verifier theorem, fix or native defect finding.
+
+An exact worker-to-worker Dependency retains full token equality, Fin43 ports,
+address/value and both raw timestamps. Every such active edge strictly increases
+the ordering, excluding all nonempty finite worker-only dependency cycles. Mixed
+main/worker cycles, seed reachability, initialized values/addresses, canonical19bit
+clock bounds and timestamp/key uniqueness remain open. Inactive rows, m0 auxiliary
+poles, inactiveD, all43 ports, readonly refreshes, OLDREAD, unmasked writes and
+public x0 times remain in acceptance. No caller activity, fulfilled stream,
+read/value/address/key/range/clock/history/result premise or Sail frame is added.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/WorkerSignedClocksTheorems.lean)
+retain positive main count, every prefix guard and complete prior components on
+the same batch. [Sixteen controls](Tests/NativeWorkerSignedClocks.lean) cover raw
+sentinels, noninjective carry representations, the domain lower bound, the reused
+full LOCAL native positive row and all43 strict reads, zero-clock exclusion,
+self/two-worker cycle rejection and the complete conditional counted root. They
+are not new nonempty global/source/whole-worker/physical accepted witnesses or
+attacks, defects or evidence of absent other enforcement.
+
+Four modules add28 roots/11 exact parent references; all6,039 prior ordered roots
+and audit bytes remain addition-only. Native107 source pins, dependencies, v3
+reference, prior proofs/acceptance/artifacts and FINDINGS remain unchanged. No new
+native adoption/pin/intake, production/importer/exporter/fixture change, generation,
+heavy replay, issue assumption, fix or project axiom. Initialized worker history,
+STAGE2 keys, request validity/activity and issuance/fulfillment/converse accounting,
+original CSR/MOP/worker Sail execution, physical cryptography, completeness and
+parity remain open.
+
+
 ## Conditional native delegation support (8 November 2026)
 
 [FormalIdentity / SourceIdentity](Airbender/Review/Circuits/ReducedMachine/DelegationSupport.lean)
