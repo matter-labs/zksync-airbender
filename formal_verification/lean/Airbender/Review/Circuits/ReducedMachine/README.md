@@ -1080,3 +1080,10 @@ all32 selected-message limbs and exact x12 update from FULL native BODY. The sam
 counted source retains initialized replay/word bounds and covers every ordinary
 worker including inactive rows. Zero/multiple round bits stay visible. Standard
 hash results, physical round schedules, converse accounting and worker Sail remain open.
+
+## Native worker state initialization
+
+[Worker initialization](../../Trace/Families/ReducedMachine/WorkerInitialTheorems.lean) derives all32 pre-mixing limbs and all16
+final-XOR base limbs from actual original reads/control bits. Same counted source
+retains exact replay, word bounds and prior schedule for every ordinary worker.
+G mixing, rotations/XOR, hash results, physical schedules and converse accounting remain open.

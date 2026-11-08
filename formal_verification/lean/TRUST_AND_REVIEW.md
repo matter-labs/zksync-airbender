@@ -1,5 +1,49 @@
 # Trust and review boundaries
 
+## Actual native worker state initialization (8 November 2026)
+
+[State initialization](Airbender/Review/Circuits/Blake2Worker/StateInitialization.lean)
+references the pinned IV/configured twist and actual original state/extended-state
+reads. FULL352-equation/296-query BODY derives all16 final-XOR base limbs and all32
+pre-mixing extended-state limbs. The prior derived canonical first/compression bits
+select actual reads or exact IV constants. Normal first-round words12/14 retain
+their original extended values; compression resets them with the native counter64
+and final all-ones XOR constants. No expected round, read, schedule or hash result.
+
+[Short TRACE roots](Airbender/Review/Trace/Families/ReducedMachine/WorkerInitialTheorems.lean)
+retain the prior full control/message schedule and SAME counted public source,
+original stateful image/log20, OLD LogicalLookups and OLD explicit SourceIdentity.
+EVERY ordinary worker, including inactive rows, receives the derived initialization;
+prior exact initialized raw-token replay, word bounds, capacity and dependencies stay.
+Public ordinary7-or-CSR excludes MOP; original7 Sail still excludes CSR/MOP.
+The logical boundaries remain explicit, not fixed-challenge or physical proofs.
+
+[Proofs](Airbender/Proofs/ReducedMachine/NativeWorkerInitial.lean) bind actual
+Q170..218, with four independent eight-limb source and reference units. The combined
+reference assembly hit the default heartbeat limit and was split, never raised.
+Existing canonical control/schedule/replay proofs are reused unchanged. Full Git67ee
+hashes of the already-pinned CS and IV source were rechecked before adapting slices.
+No new native pin, importer, artifact, literal table, generation or heavy replay.
+Specific equation bindings do not prove general Rust/JSON/compiler refinement.
+
+[Fifteen controls](Tests/NativeWorkerInitial.lean) cover configured/unconfigured IV,
+compression constants, actual columns, zero/later/first normal/compression choices,
+normal special-word retention, right-bit independence, old complete LOCAL BODY,
+all32 zero-control observations, corrupt initial-column rejection, retained inactive
+requests and the full conditional counted interface. Pure/LOCAL/conditional only,
+not new nonempty source-global/whole-worker/physical witnesses, attacks or findings.
+All43 ports, raw timestamps, aliases, readonly refreshes, OLDREADs, auxiliary values,
+m0 poles, inactiveD, caller equations, unmasked writes and public x0 times remain.
+Caller requests are never filtered. No fake Trace.Accepted or Sail frame is used.
+
+Four modules add21 roots and8 exact parent references, preserving all6,407 prior
+ordered roots and exact audit bytes addition-only. Native107 pins, v3 reference,
+dependencies, production, original Sail, old proofs/acceptance and FINDINGS stay.
+Actual G arithmetic, rotations/XOR, output finalization/hash results, physical round
+schedules, inactive caller activity/converse accounting, original CSR/MOP/worker Sail,
+physical cryptography, completeness and parity remain open.
+
+
 ## Actual native worker message schedules (8 November 2026)
 
 [Schedule](Airbender/Review/Circuits/Blake2Worker/Schedule.lean) records the exact

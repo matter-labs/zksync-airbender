@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.Blake2Worker.StateInitialization
+import Airbender.Proofs.ReducedMachine.NativeWorkerInitial
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerInitialTheorems
+import Tests.NativeWorkerInitial
+
 import Airbender.Review.Circuits.Blake2Worker.Schedule
 import Airbender.Proofs.ReducedMachine.NativeWorkerSchedule
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerScheduleTheorems
@@ -7428,3 +7433,25 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerSchedule.actual_message_schedule
 #print axioms Airbender.Tests.NativeWorkerSchedule.inactive_requests_retained
 #print axioms Airbender.Tests.NativeWorkerSchedule.complete_counted
+
+#print axioms Airbender.NativeWorkerInitialProofs.bases
+#print axioms Airbender.NativeWorkerInitialProofs.initialized
+#print axioms Airbender.NativeWorkerInitialProofs.row
+#print axioms Airbender.NativeWorkerInitialProofs.counted
+#print axioms Airbender.NativeWorkerInitial.native_worker_state_initialization
+#print axioms Airbender.NativeWorkerInitial.native_counted_worker_state_initialization
+#print axioms Airbender.Tests.NativeWorkerInitial.configured_twist
+#print axioms Airbender.Tests.NativeWorkerInitial.compression_constants
+#print axioms Airbender.Tests.NativeWorkerInitial.actual_columns
+#print axioms Airbender.Tests.NativeWorkerInitial.no_round_preserves
+#print axioms Airbender.Tests.NativeWorkerInitial.later_round_preserves
+#print axioms Airbender.Tests.NativeWorkerInitial.first_normal_base
+#print axioms Airbender.Tests.NativeWorkerInitial.first_normal_special
+#print axioms Airbender.Tests.NativeWorkerInitial.first_normal_upper
+#print axioms Airbender.Tests.NativeWorkerInitial.first_compression
+#print axioms Airbender.Tests.NativeWorkerInitial.right_bit_independent
+#print axioms Airbender.Tests.NativeWorkerInitial.full_local_initialization
+#print axioms Airbender.Tests.NativeWorkerInitial.zero_local_state
+#print axioms Airbender.Tests.NativeWorkerInitial.corrupt_initial_rejected
+#print axioms Airbender.Tests.NativeWorkerInitial.inactive_requests_retained
+#print axioms Airbender.Tests.NativeWorkerInitial.complete_counted
