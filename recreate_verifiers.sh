@@ -64,6 +64,9 @@ for CIRCUIT_NAME in "${unrolled_circuit_names[@]}"; do
     (cd circuit_defs/unrolled_circuits/${CIRCUIT_NAME} && RUST_MIN_STACK=100000000 cargo test generate)
 done
 
+(RUST_MIN_STACK=100000000 cargo test -p unified_reduced_machine_2_22 --profile cli --lib \
+    test::witness_eval_fn_matches_sibling -- --exact)
+
 (cd circuit_defs/setups && RUST_MIN_STACK=100000000 cargo test --release generate_delegation_circuits_artifacts)
 
 cargo run -p gpu_witness_eval_generator --bin regenerate_committed

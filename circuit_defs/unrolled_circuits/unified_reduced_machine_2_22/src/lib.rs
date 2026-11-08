@@ -62,14 +62,11 @@ mod test {
     /// this crate re-exports instead of carrying a copy.
     #[test]
     fn witness_eval_fn_matches_sibling() {
-        skip_if_ci!();
-
         let ssa = circuit_common::risc_v_with_mem_get_ssa_form::<
             BabyBearField,
             UnifiedReducedMachineCircuit2_22,
         >(&[]);
-        let compiled_circuit: cs::gkr_compiler::GKRCircuitArtifact<BabyBearField> =
-            serde_json::from_str(include_str!("../generated/layout.json")).unwrap();
+        let compiled_circuit = get_circuit(true);
         let generated = witness_eval_generator::derive_from_ssa::derive_from_gkr_ssa(
             &ssa,
             &compiled_circuit,
