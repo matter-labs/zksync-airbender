@@ -1183,6 +1183,7 @@ import Slop.Final.Import.Theorems
 #print axioms Airbender.Blake2G.artifact_import
 #print axioms Airbender.Blake2Round.artifact_import
 #print axioms Airbender.InitsTeardowns.standalone_import
+#print axioms Airbender.InitsTeardowns.standalone_bytes
 #print axioms Airbender.InitsTeardowns.unified_import
 #print axioms Airbender.JumpBranchSlt.artifact_import
 #print axioms Airbender.Keccak.artifact_import
@@ -1197,3 +1198,4 @@ import Slop.Final.Import.Theorems
 #print axioms Airbender.placements_claim
 #print axioms Airbender.Json.parse_sound
 #print axioms Airbender.Json.text_unique
+#print axioms Airbender.decode_claim

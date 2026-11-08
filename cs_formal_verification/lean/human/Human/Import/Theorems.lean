@@ -1,13 +1,16 @@
 module
 public import Human.Import.JsonGrammar
 public import Human.Import.Exec.JsonParser
+public import Human.Import.Exec.Decode
 
 @[expose] public section
 
-/-! # The artifact parser's claims
+/-! # The artifact parser's and decoder's claims
 
-`parse` (Human/Import/Exec/JsonParser.lean, not reviewed) turns the pinned artifact bytes into a JSON value.
-These claims fix its behaviour by the grammar of Human/Import/JsonGrammar.lean. -/
+`parse` (Human/Import/Exec/JsonParser.lean, not reviewed) turns the pinned artifact bytes into a JSON value; the
+first two claims fix its behaviour by the grammar of Human/Import/JsonGrammar.lean. `Circuit.decode`
+(Human/Import/Exec/Decode.lean, not reviewed) turns that value into a `Circuit`; `DecodeClaim` fixes its behaviour
+by the JSON serde writes for a circuit (`Serde.encode`, Human/Import/Serde.lean and Schema.lean). -/
 
 namespace Airbender.Json
 
@@ -34,3 +37,11 @@ def TextUniqueClaim : Prop :=
   (∀ (bytes : List UInt8) (v w : Value), Text bytes v → Text bytes w → v = w) ∧ Text (utf8 sample) sampleValue
 
 end Airbender.Json
+
+namespace Airbender
+
+/-- The decoder returns `c` from a JSON value exactly when the value is the one serde writes for `c`. So a value
+    decodes to at most one circuit (`encode` is injective), and every value serde writes for a circuit decodes. -/
+def DecodeClaim : Prop := ∀ (v : Json.Value) (c : Circuit), Circuit.decode v = .ok c ↔ Serde.encode c = v
+
+end Airbender

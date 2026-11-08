@@ -2,6 +2,7 @@ module
 public import Slop.Import.Json.Sound
 public import Slop.Import.Json.Complete
 public import Slop.Import.Json.Sample
+public import Slop.Import.Decode.Schema
 
 @[expose] public section
 
@@ -16,3 +17,10 @@ theorem text_unique : TextUniqueClaim :=
   ⟨fun _ _ _ hv hw => Parser.text_unique' hv hw, (Parser.parse_sound' Parser.parse_sample).1⟩
 
 end Airbender.Json
+
+namespace Airbender
+
+/-- 3. The decoder returns exactly the circuit whose serde JSON is the value. -/
+theorem decode_claim : DecodeClaim := Decode.Lawful.iff
+
+end Airbender

@@ -1,15 +1,15 @@
 module
 public import Human.Import.SetupBlocks
 public meta import Human.Import.SetupBlocks
-public import Human.Import.Transcribe
-public meta import Human.Import.Transcribe
+public import Human.Import.Exec.Decode
+public meta import Human.Import.Exec.Decode
 public import Lean
 public meta import Lean
 
 public meta section
 
 /- TRUSTED: review. Not kernel-checked: the decoding of the setup JSON (`parseSetup`: the JSON value from
-   `jsonOfText`, `Transcribe.lean`, read field by field) and the comparison of grid blocks with the JSON rows.
+   `Json.parse`, read field by field) and the comparison of grid blocks with the JSON rows.
 
    `import_setup_blocks name from "path"` reads a native setup JSON at elaboration time and
    adds `name : Airbender.Import.Setup.SetupData` with one declaration per column. The terms
@@ -71,49 +71,39 @@ private def blocksE (bs : List Block) : Lean.Expr := listE blockTy (bs.map block
 
 section Parse
 
-def blockOf (j : Json) : Except String Block := do
-  let kind ← j.getObjValAs? String "kind"
-  match kind with
-  | "affine" =>
-    let n ← j.getObjValAs? Nat "length"
-    let first ← j.getObjValAs? Int "first"
-    let step ← j.getObjValAs? Int "step"
-    return .affine n first step
-  | "dense" =>
-    let vs ← j.getObjValAs? (Array Int) "values"
-    return .dense vs
-  | "periodic" =>
-    let r ← j.getObjValAs? Nat "repetitions"
-    let stride ← j.getObjValAs? Int "stride"
-    let vs ← j.getObjValAs? (Array Int) "values"
-    return .periodic r stride vs
+/-- Member `k` of a JSON object, decoded. -/
+def get [Decode α] (j : Airbender.Json.Value) (k : String) : Except String α := do
+  let .obj ms := j | throw s!"expected an object with field {k}"
+  let some v := ms.lookup k | throw s!"missing field {k}"
+  Decode.decode v
+
+instance : Decode Int := ⟨fun | .int n => .ok n | _ => .error "expected an integer"⟩
+instance : Decode Airbender.Json.Value := ⟨.ok⟩
+
+def blockOf (j : Airbender.Json.Value) : Except String Block := do
+  match ← (get j "kind" : Except String String) with
+  | "affine" => return .affine (← get j "length") (← get j "first") (← get j "step")
+  | "dense" => return .dense (← get j "values")
+  | "periodic" => return .periodic (← get j "repetitions") (← get j "stride") (← get j "values")
   | k => throw s!"unknown block kind {k}"
 
-def blocksOf (j : Json) : Except String (List Block) := do
-  let bs ← (← j.getObjVal? "blocks").getArr?
-  bs.toList.mapM blockOf
+def blocksOf (j : Airbender.Json.Value) : Except String (List Block) := do
+  (← (get j "blocks" : Except String (List Airbender.Json.Value))).mapM blockOf
 
-def tableOf (j : Json) : Except String Table := do
-  let id ← j.getObjValAs? Nat "id"
-  let offset ← j.getObjValAs? Nat "offset"
-  let length ← j.getObjValAs? Nat "length"
-  let width ← j.getObjValAs? Nat "width"
-  let keyColumns ← j.getObjValAs? Nat "key_columns"
-  return { id, offset, length, width, keyColumns }
+def tableOf (j : Airbender.Json.Value) : Except String Table :=
+  return { id := ← get j "id", offset := ← get j "offset", length := ← get j "length", width := ← get j "width",
+           keyColumns := ← get j "key_columns" }
 
-/-- Parse the setup JSON text. -/
+/-- Parse the setup JSON text (`Json.parse`, fixed by `ParseSoundClaim` and `TextUniqueClaim`). -/
 def parseSetup (text : String) : Except String SetupData := do
-  let j ← jsonOfText text
-  let version ← j.getObjValAs? Nat "version"
+  let j ← Airbender.Json.parse text.toUTF8
+  let version : Nat ← get j "version"
   if version != 1 then throw s!"unsupported setup version {version}"
-  let traceLen ← j.getObjValAs? Nat "trace_len"
-  let cols ← (← j.getObjVal? "columns").getArr?
-  let columns : Array (List Block) ← cols.mapM blocksOf
-  let range16 ← blocksOf (← j.getObjVal? "range16")
-  let timestampRange ← blocksOf (← j.getObjVal? "timestamp_range")
-  let tables ← (← j.getObjVal? "tables").getArr?
-  let tables : Array Table ← tables.mapM tableOf
-  return { traceLen, columns, range16, timestampRange, tables := tables }
+  let columns : List Airbender.Json.Value ← get j "columns"
+  let tables : List Airbender.Json.Value ← get j "tables"
+  return { traceLen := ← get j "trace_len", columns := (← columns.mapM blocksOf).toArray,
+           range16 := ← blocksOf (← get j "range16"), timestampRange := ← blocksOf (← get j "timestamp_range"),
+           tables := (← tables.mapM tableOf).toArray }
 
 end Parse
 

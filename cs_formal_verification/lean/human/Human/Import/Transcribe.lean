@@ -1,6 +1,5 @@
 module
-public import Human.Import.Schema
-public import Human.Import.Exec.JsonParser
+public import Human.Import.Exec.Decode
 
 @[expose] public section
 
@@ -11,42 +10,15 @@ kernel-checked. Everything after them is: each artifact's `ArtifactImportClaim` 
 claims use are the meaning functions (`Columns`, `Operations`, `InitsTeardownsLayout`) applied to the transcribed
 artifact.
 
-A circuit JSON is parsed by `Json.parse` (behaviour fixed by `ParseSoundClaim` and `TextUniqueClaim`,
-`Human/Import/Theorems.lean`: it accepts exactly the JSON texts without duplicate member names) and decoded by the
-`FromJson` instances derived for the serde mirror (`Schema.lean`). -/
+A circuit JSON is parsed by `Json.parse` (behaviour fixed by `ParseSoundClaim` and `TextUniqueClaim`: it accepts
+exactly the JSON texts without duplicate member names) and decoded by `Circuit.decode` (behaviour fixed by
+`DecodeClaim`: it returns the circuit whose `Serde.encode` is the value), all in `Human/Import/Theorems.lean`. What
+remains trusted here is reading the file and the composition of the two. -/
 
 namespace Airbender
-open Lean
-
-mutual
-/-- A JSON value as a `Lean.Json`, the input of the derived decoders. Integers become `JsonNumber`s with
-    exponent 0; an object becomes a map from member names (unique, by `ParseSoundClaim`) to values. -/
-def Json.Value.toLean : Json.Value → Lean.Json
-  | .null => .null
-  | .bool b => .bool b
-  | .int n => .num (JsonNumber.fromInt n)
-  | .str s => .str s
-  | .arr items => .arr (Json.Value.itemsToLean items).toArray
-  | .obj members => Lean.Json.mkObj (Json.Value.membersToLean members)
-
-/-- `toLean` of each item. -/
-def Json.Value.itemsToLean : List Json.Value → List Lean.Json
-  | [] => []
-  | v :: vs => v.toLean :: Json.Value.itemsToLean vs
-
-/-- `toLean` of each member's value. -/
-def Json.Value.membersToLean : List (String × Json.Value) → List (String × Lean.Json)
-  | [] => []
-  | (k, v) :: ms => (k, v.toLean) :: Json.Value.membersToLean ms
-end
-
-/-- The JSON value of a text: `Json.parse` (behaviour fixed by `ParseSoundClaim` and `TextUniqueClaim`), as a
-    `Lean.Json`. -/
-def jsonOfText (text : String) : Except String Lean.Json :=
-  return (← Json.parse text.toUTF8).toLean
 
 /-- The circuit artifact of a JSON text. -/
 def parseCircuit (text : String) : Except String Circuit := do
-  fromJson? (← jsonOfText text)
+  Circuit.decode (← Json.parse text.toUTF8)
 
 end Airbender

@@ -89,23 +89,25 @@ CleanCore (Clean's definitions, transcribed) supplies `Expression`, `FlatOperati
 
 - **Trusted (not kernel-checked):** [Transcribe](../lean/human/Human/Import/Transcribe.lean) and
   [TranscribeCommand](../lean/human/Human/Import/TranscribeCommand.lean), headed `TRUSTED: review`. The import_circuit command
-  reads a circuit JSON, parses it with `Json.parse`, decodes the value with the `FromJson` instances derived for the
-  serde mirror ([Schema](../lean/human/Human/Import/Schema.lean)) and reflects the result as `importedCircuit`
-  (derived `ToExpr`), next to the file's text `importedCircuitSourceBytes`. The sha256 pins of the JSON files are
+  reads a circuit JSON, parses it with `Json.parse`, decodes the value with `Circuit.decode` and reflects the result as
+  `importedCircuit` (derived `ToExpr`), next to the file's text `importedCircuitSourceBytes`. Trusted: the file read,
+  the composition and the reflection. For the standalone inits/teardowns artifact, `StandaloneBytesClaim` has the
+  kernel parse and decode the file's bytes, so only the file read stays trusted. The sha256 pins of the JSON files are
   checked by [check_circuit_json.py](../lean/check_circuit_json.py) (verify.sh step 1b).
 - **Proved:** the parser accepts exactly the JSON texts without duplicate member names, and a text has one value
   (`ParseSoundClaim`, `TextUniqueClaim`, [Theorems](../lean/human/Human/Import/Theorems.lean), against the byte-level
   grammar of [JsonGrammar](../lean/human/Human/Import/JsonGrammar.lean): RFC 8259 restricted to integers and to `\u`
-  escapes below U+10000). Each artifact's `ArtifactImportClaim` (`StandaloneImportClaim`, `UnifiedImportClaim` for the
+  escapes below U+10000); the decoder returns exactly the circuit whose serde JSON (`Serde.encode`,
+  [Serde](../lean/human/Human/Import/Serde.lean) and the schema) is the value (`DecodeClaim`). Each artifact's `ArtifactImportClaim` (`StandaloneImportClaim`, `UnifiedImportClaim` for the
   inits/teardowns layouts) states that every imported definition the claims use is the meaning function applied to
   `importedCircuit`; the kernel evaluates both sides.
 - **Reviewed as specification:** the meaning, pure functions of the decoded artifact:
   [Columns](../lean/human/Human/Import/Columns.lean) (logical variables, ports, clocks, decoder columns, per-family
   query profiles; `PlacementsClaim` states the placement index), [Operations](../lean/human/Human/Import/Operations.lean)
   (equations and lookups as Clean operations) and
-  [InitsTeardownsLayout](../lean/human/Human/Import/InitsTeardownsLayout.lean); the schema and
+  [InitsTeardownsLayout](../lean/human/Human/Import/InitsTeardownsLayout.lean); the schema with its serde JSON and
   [Coefficients](../lean/human/Human/Import/Coefficients.lean) (coefficient cast equivalence proved).
-- **Not reviewed:** `Human/Import/Exec/` (the parser and the emitters of the literal terms); each file names the claims
+- **Not reviewed:** `Human/Import/Exec/` (the parser, the decoder and the emitters of the literal terms); each file names the claims
   that fix its behaviour.
 
 Placement guards reject missing or ambiguous logical variables and check memory/witness banks. Named imported

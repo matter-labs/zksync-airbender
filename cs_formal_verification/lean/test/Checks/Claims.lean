@@ -194,6 +194,7 @@ example : Airbender.Bigint.ArtifactImportClaim := @Airbender.Bigint.artifact_imp
 example : Airbender.Blake2G.ArtifactImportClaim := @Airbender.Blake2G.artifact_import
 example : Airbender.Blake2Round.ArtifactImportClaim := @Airbender.Blake2Round.artifact_import
 example : Airbender.InitsTeardowns.StandaloneImportClaim := @Airbender.InitsTeardowns.standalone_import
+example : Airbender.InitsTeardowns.StandaloneBytesClaim := @Airbender.InitsTeardowns.standalone_bytes
 example : Airbender.InitsTeardowns.UnifiedImportClaim := @Airbender.InitsTeardowns.unified_import
 example : Airbender.JumpBranchSlt.ArtifactImportClaim := @Airbender.JumpBranchSlt.artifact_import
 example : Airbender.Keccak.ArtifactImportClaim := @Airbender.Keccak.artifact_import
@@ -208,6 +209,7 @@ example : Airbender.WordMemory.ArtifactImportClaim := @Airbender.WordMemory.arti
 example : Airbender.PlacementsClaim := @Airbender.placements_claim
 example : Airbender.Json.ParseSoundClaim := @Airbender.Json.parse_sound
 example : Airbender.Json.TextUniqueClaim := @Airbender.Json.text_unique
+example : Airbender.DecodeClaim := @Airbender.decode_claim
 
 #print axioms Airbender.AddSub.rv_soundness
 #print axioms Airbender.AddSub.babyBear_rv_soundness
@@ -326,6 +328,7 @@ example : Airbender.Json.TextUniqueClaim := @Airbender.Json.text_unique
 #print axioms Airbender.Blake2G.artifact_import
 #print axioms Airbender.Blake2Round.artifact_import
 #print axioms Airbender.InitsTeardowns.standalone_import
+#print axioms Airbender.InitsTeardowns.standalone_bytes
 #print axioms Airbender.InitsTeardowns.unified_import
 #print axioms Airbender.JumpBranchSlt.artifact_import
 #print axioms Airbender.Keccak.artifact_import
@@ -340,3 +343,4 @@ example : Airbender.Json.TextUniqueClaim := @Airbender.Json.text_unique
 #print axioms Airbender.placements_claim
 #print axioms Airbender.Json.parse_sound
 #print axioms Airbender.Json.text_unique
+#print axioms Airbender.decode_claim

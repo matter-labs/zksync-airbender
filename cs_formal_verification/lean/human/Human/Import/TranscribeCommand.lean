@@ -15,7 +15,9 @@ kernel terms:
 * `name : Circuit`, the decoded artifact, reflected constructor by constructor (`ToExpr`: derived for the schema
   types, by hand below for the two types that carry a proof).
 The kernel checks that `name` is a well-typed `Circuit`; that it is the decoding of the text is this file's
-responsibility. -/
+responsibility, unless the artifact's claims also state it. With `bytes`, the command also adds
+* `nameBytes : ByteArray`, the file's bytes, for a claim that the kernel evaluates
+  (`Json.parse nameBytes >>= Circuit.decode = .ok name`); then only the file read is trusted. -/
 
 namespace Airbender
 open Lean Elab Command
@@ -89,25 +91,48 @@ def addTranscribedDef (name : Name) (type value : Lean.Expr) : CoreM Unit :=
   addDecl (forceExpose := true) <| .defnDecl {
     name, levelParams := [], type, value, hints := .abbrev, safety := .safe }
 
-syntax (name := importCircuit) "import_circuit " ident " from " str : command
+/-- Pairs of neighbours joined by `app`, in order. -/
+def pairUp (app : Lean.Expr → Lean.Expr → Lean.Expr) : List Lean.Expr → List Lean.Expr
+  | a :: b :: rest => app a b :: pairUp app rest
+  | l => l
+
+/-- One term joining all, by `app` in a balanced tree (`fuel` at least the list length). -/
+def balanced (app : Lean.Expr → Lean.Expr → Lean.Expr) (empty : Lean.Expr) : Nat → List Lean.Expr → Lean.Expr
+  | _, [] => empty
+  | _, [e] => e
+  | 0, e :: _ => e
+  | fuel + 1, l => balanced app empty fuel (pairUp app l)
+
+/-- `ByteArray.mk (Array.mk l)`, `l` the bytes as a balanced `List.append` tree of 256-byte lists: the kernel
+    evaluates it without deep recursion (a flat list of a 19 KB file overflows it). -/
+def bytesExpr (bytes : ByteArray) : Lean.Expr :=
+  let u8 := mkConst ``UInt8
+  let nil := mkApp (mkConst ``List.nil [0]) u8
+  let leaf (bs : List UInt8) := bs.foldr (fun b acc => mkApp3 (mkConst ``List.cons [0]) u8 (toExpr b) acc) nil
+  let leaves := (List.range ((bytes.size + 255) / 256)).map fun i =>
+    leaf (bytes.data.extract (256 * i) (256 * i + 256)).toList
+  let l := balanced (mkApp3 (mkConst ``List.append [0]) u8) nil leaves.length leaves
+  mkApp (mkConst ``ByteArray.mk) (mkApp2 (mkConst ``Array.mk [0]) u8 l)
+
+syntax (name := importCircuit) "import_circuit " ident " from " str (&" bytes")? : command
 
 @[command_elab importCircuit]
 def elabImportCircuit : CommandElab := fun stx => do
-  match stx with
-  | `(import_circuit $name:ident from $path:str) => do
-    let text ← IO.FS.readFile path.getString
-    let c ← match parseCircuit text with
-      | .ok c => pure c
-      | .error e => throwError "circuit import failed: {e}"
-    let base := (← getCurrNamespace) ++ name.getId
-    liftCoreM do
-      let bytesName := base.appendAfter "SourceBytes"
-      let stringType := mkConst ``String
-      addTranscribedDef bytesName stringType (mkStrLit text)
-      compileDecl (.defnDecl
-        { name := bytesName, levelParams := [], type := stringType, value := mkStrLit text, hints := .abbrev,
-          safety := .safe })
-      addTranscribedDef base (mkConst ``Circuit) (toExpr c)
-  | _ => throwUnsupportedSyntax
+  let some path := stx[3].isStrLit? | throwUnsupportedSyntax
+  let text ← IO.FS.readFile path
+  let c ← match parseCircuit text with
+    | .ok c => pure c
+    | .error e => throwError "circuit import failed: {e}"
+  let base := (← getCurrNamespace) ++ stx[1].getId
+  liftCoreM do
+    let bytesName := base.appendAfter "SourceBytes"
+    let stringType := mkConst ``String
+    addTranscribedDef bytesName stringType (mkStrLit text)
+    compileDecl (.defnDecl
+      { name := bytesName, levelParams := [], type := stringType, value := mkStrLit text, hints := .abbrev,
+        safety := .safe })
+    addTranscribedDef base (mkConst ``Circuit) (toExpr c)
+    unless stx[4].isNone do
+      addTranscribedDef (base.appendAfter "Bytes") (mkConst ``ByteArray) (bytesExpr text.toUTF8)
 
 end Airbender

@@ -5,7 +5,6 @@ public import Human.Helpers.Core.Field
 @[expose] public section
 
 namespace Airbender
-open Lean
 
 /-- Canonical residues, ready for algebraic semantics (no Mathlib dependency). -/
 abbrev Fp := Fin babyBearModulus
@@ -21,12 +20,6 @@ def Fp.mul (a b : Fp) : Fp := Fp.ofNat (a.val * b.val)
 structure Coefficient where
   raw : BoundedNat babyBearModulus
   deriving Repr
-
-instance : FromJson Coefficient where
-  fromJson? j := Coefficient.mk <$> fromJson? j
-
-instance : ToJson Coefficient where
-  toJson c := toJson c.raw
 
 /-- Inverse of R = 2^32 modulo the BabyBear prime. See field/src/baby_bear/base.rs. -/
 def montgomeryInverse : Nat := 943718400
