@@ -191,13 +191,13 @@ Recursive step: prove the execution of FullStatement; repeat.
 >       $$
 >
 >       Each call updates $T_{\mathrm{chunk}}$.
->    4. Set $z_{\mathrm{whir}}\leftarrow z_{\mathrm{gkr}}$.
+>    4. Set $\mathbf{z}_{\mathrm{whir}}\leftarrow\mathbf{z}_{\mathrm{gkr}}$.
 >
 > 6. Run $\operatorname{OutputChecks}(A_0,\ldots,A_{s-1})$ (Algorithm 6), obtaining the read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$ and, if $C$ is the unified instruction circuit, the additional initialization/teardown products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$.
 >
 > 7. Prover sends the 64-bit batching/proximity-PoW nonce. Both parties absorb it into $T_{\mathrm{chunk}}$ and draw one 32-bit PoW word. Verifier requires the number of leading zero bits to meet the batching-PoW threshold specified in Algorithm 12 for $C$ and the inherited configuration. Both parties then sample the WHIR batching challenge $r_{\mathrm{batch},\mathrm{whir}}\in E$ from subsequent words.
 >
-> 8. Run $\operatorname{WHIR}((\mathtt{MemoryCaps},\mathtt{WitnessCaps},\mathtt{SetupCaps}),(\mathbf{z}_{\mathrm{whir}},\mathbf{a}_{\mathrm{whir}}),r_{\mathrm{batch},\mathrm{whir}},T_{\mathrm{chunk}})$ (Algorithm 7).
+> 8. Run $\operatorname{WHIR}((\mathtt{MemoryCaps},\mathtt{WitnessCaps},\mathtt{SetupCaps}),(\mathbf{z}_{\mathrm{whir}},\mathbf{a}),r_{\mathrm{batch},\mathrm{whir}},T_{\mathrm{chunk}})$ (Algorithm 7).
 >
 > 9. Return $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional pair $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ when present, `MemoryCaps`, `SetupCaps` and $b$.
 >
@@ -264,7 +264,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >    1. Prover sends the required input evaluations at $r$.
 >    2. Verifier requires $v=e\,\operatorname{Gate}_{C_{\mathrm{layer}}}(\text{input values};\lambda,\mathbf{r}_{\mathrm{mem}},\alpha,\beta,b)$.
 >    3. Prover sends the additional evaluations required by $C_{\mathrm{layer}}$'s auxiliary polynomial relations. Both parties absorb these together with the input evaluations and draw $\lambda'$.
->    4. Check $C_{\mathrm{layer}}$'s auxiliary relations and publicly evaluable setup polynomials with the supplied public parameters. Return $r$, the preceding-layer claims in $C_{\mathrm{layer}}$'s fixed input-polynomial order, and $\lambda'$.
+>    4. Check $C_{\mathrm{layer}}$'s auxiliary relations and publicly evaluable setup polynomials with the supplied public parameters. For the final main-layer call (the layer with base-polynomial inputs), return $r$, the committed-column claims in memory/witness/setup order and increasing column-index order within each group, and $\lambda'$. Otherwise return $r$, the preceding-layer claims in $C_{\mathrm{layer}}$'s fixed input-polynomial order, and $\lambda'$.
 >
 > Compression gates: product $h_0h_1$; rational sum $(n_0d_1+n_1d_0,d_0d_1)$. The Verifier evaluates public setup polynomials directly, including those for virtual setup tables; committed setup polynomials become WHIR opening claims.
 >
@@ -538,6 +538,39 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > **Input:** fixed circuit description $C$, $\mathrm{profile}$, $\mathrm{mode}$ and $\mathrm{commitment\text{-}config}$. **Output:** ordered instruction-family list, commitment layout and GKR/WHIR parameters. All layout choices and proof parameters below are fixed before proof messages are read.
 >
+> **Fixed circuit data.** $C$ is the compiled circuit artifact for the selected family, serialized in the `generated/layout.json` linked below at the reference revision. The artifact contains the circuit's layer relations, arithmetic constraints, lookup specifications, column layouts and output map:
+>
+> | Data used by the algorithms | Artifact fields |
+> |---|---|
+> | Trace row count $2^n$ | `trace_len` |
+> | Main layers, their gates and auxiliary relations; main-layer count $L_{\mathrm{main}}$ | `layers`; $L_{\mathrm{main}}$ is its length |
+> | Output-table count $s$ and order | `global_output_map`; $s$ is the total number of output addresses |
+> | Memory and witness column layouts | `memory_layout`, `witness_layout` |
+> | Arithmetic constraints and lookup specifications | `degree_1_constraints`, `degree_2_constraints`, `structured_statements`, `generic_lookups`, `range_check_16_lookup_expressions`, `timestamp_range_check_lookup_expressions` |
+>
+> Output tables follow `global_output_map` in `OutputType` order: `PermutationProduct`, `Lookup16Bits`, `LookupTimestamps`, `GenericLookup`, `InitsAndTeardownsProduct`, omitting absent categories and preserving the address order within each category.
+>
+> For the sixteen-entry output tables used here, Algorithm 3 makes $n-4$ compression-layer calls and $L_{\mathrm{main}}$ main-layer calls to Algorithm 5, for $L_{\mathrm{main}}+n-4$ GKR layers in total. The main layers are stored in `layers`; the compression layers are derived from the output map and the output dimension $4$, specified by `sumcheck_explicit_output_size_log_2` in each circuit's adjacent `prover_config_sec_100.json`.
+>
+> **Circuit artifacts and GKR dimensions:**
+>
+> | Circuit (compiled artifact) | Family ID | $n$ | Main layers $L_{\mathrm{main}}$ | Compression layers $n-4$ | Total GKR layers | Output tables $s$ |
+> |---|---|---|---|---|---|---|
+> | [add/sub/LUI/AUIPC/MOP](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json) | 1 | 24 | 4 | 20 | 24 | 8 |
+> | [jump/branch/compare](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/unrolled_circuits/jump_branch_slt/generated/layout.json) | 2 | 24 | 4 | 20 | 24 | 8 |
+> | [shift/binary](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/unrolled_circuits/shift_binary/generated/layout.json) | 3 | 24 | 4 | 20 | 24 | 8 |
+> | [unsigned multiply/divide](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/unrolled_circuits/mul_div_unsigned/generated/layout.json) | 4 | 23 | 4 | 19 | 23 | 8 |
+> | [word memory](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/unrolled_circuits/load_store_word_only/generated/layout.json) | 16 | 24 | 4 | 20 | 24 | 8 |
+> | [subword memory](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/unrolled_circuits/load_store_subword_only/generated/layout.json) | 17 | 24 | 4 | 20 | 24 | 8 |
+> | [unified instructions](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json) | 128 | 23 | 4 | 19 | 23 | 10 |
+> | [standalone IT](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/unrolled_circuits/inits_and_teardowns/generated/layout.json) | 255 | 24 | 3 | 20 | 23 | 2 |
+> | [BLAKE2s](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/blake2_with_compression/generated/layout.json) | 0x7c7 | 20 | 8 | 16 | 24 | 6 |
+> | [bigint](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/bigint_with_control/generated/layout.json) | 0x7ca | 22 | 6 | 18 | 24 | 8 |
+> | [Keccak special5](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/keccak_special5/generated/layout.json) | 0x7cb | 22 | 6 | 18 | 24 | 6 |
+> | [Keccak theta/rho](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/keccak_theta_rho/generated/layout.json) | 0x7cc | 22 | 6 | 18 | 24 | 6 |
+> | [Keccak column parity](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/keccak_column_parity/generated/layout.json) | 0x7cd | 22 | 5 | 18 | 23 | 6 |
+> | [Keccak chi5](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/circuit_defs/keccak_chi5/generated/layout.json) | 0x7ce | 22 | 5 | 18 | 23 | 6 |
+>
 > **Program setup caps (Algorithm 1):**
 >
 > | $\mathrm{profile}$ | $\mathrm{mode}$ | Instruction-family IDs, in order | Setup-cap count |
@@ -550,7 +583,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > `ProgramSetupCaps` contains one cap per selected instruction family, including families with zero chunks. Neither its count nor its family list is sent in the proof. $\mathrm{commitment\text{-}config}$ does not change this selection.
 >
-> 1. Select the ordered instruction-family list from the table above and the other families from their fixed identifiers. From $C$, set $n=\log_2(\mathrm{trace\ rows})$, memory/witness/committed-setup widths $(c_M,c_W,c_S)$ and the GKR layer relations.
+> 1. Select the ordered instruction-family list from the table above and the other families from their fixed identifiers. From $C$, set $n=\log_2(\mathrm{trace\ rows})$, memory/witness/committed-setup widths $(c_M,c_W,c_S)$, the output-table count $s$ and order, and the GKR layer relations and counts defined above.
 > 2. Select the parameter row below:
 >
 >    - **$\mathrm{commitment\text{-}config}=\mathrm{ordinary}$:** select ordinary parameters by $n\in\{20,21,22,23,24\}$.
