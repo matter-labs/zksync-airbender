@@ -183,7 +183,7 @@ jobs:
           cargo test -p verifier_evm --release --test flatten_calldata -- --ignored
       - name: EVM verifier Foundry tests
         # Forge installs solc as pinned by each project's foundry.toml under l1_wrap_2p21/.
-        run: bash -o pipefail verifier_evm/generated_contracts/run_merged.sh --no-gas
+        run: bash -o pipefail verifier_evm/generated_contracts/run_merged.sh
       - name: Fail if the generated contract or calldata changed
         run: |
           if [ -n "$(git status --porcelain -- verifier_evm/)" ]; then

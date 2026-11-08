@@ -90,7 +90,7 @@ word is Keccak256 of the setup cap serialized as big-endian u32 digest words;
 
 Run the Rust checks with `cargo test -p verifier_evm --tests`. Run the
 cryptographic verifier with
-`cd verifier_evm/generated_contracts && ./run_merged.sh --no-gas`.
+`cd verifier_evm/generated_contracts && ./run_merged.sh`.
 The Rust transcript checks do not replace this Foundry gate.
 
 For proof regeneration, use `REGENERATE` in

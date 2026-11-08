@@ -2,8 +2,8 @@
 # Build and test the committed L1 wrap verifier projects after regenerating contracts and calldata.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--no-gas" ]; }; then
-  echo "usage: run_merged.sh [--no-gas]" >&2
+if [ "$#" -ne 0 ]; then
+  echo "usage: run_merged.sh" >&2
   exit 1
 fi
 cd "$SCRIPT_DIR/l1_wrap_2p21"

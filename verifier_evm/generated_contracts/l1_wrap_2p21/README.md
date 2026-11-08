@@ -27,7 +27,7 @@ From the repository root, with Foundry on PATH:
 ```sh
 cargo test -p verifier_evm --release --test generate_contracts -- --ignored
 cargo test -p verifier_evm --release --test flatten_calldata -- --ignored
-verifier_evm/generated_contracts/run_merged.sh --no-gas
+verifier_evm/generated_contracts/run_merged.sh
 ```
 
 The EVM CI job runs these producers and rejects any changed or new output
