@@ -10,13 +10,11 @@ public import Slop.Trace.RVPooledLaws
 
 /-! Shared RV facts for one row of an accepted pooled trace, for every family:
 
-    - `rv_pooled_row_entry`: the row's public program entry (family and query match, an aligned ROM word of the
-      starting ROM image that `RV.decode`s to `i` with `rvPooledDecoderFields i = some entry.data`), and the row's start
-      PC is the entry's PC. `rv_pooled_fields_family` turns the pooled projection into the row family's own.
+    - `rv_pooled_fields_family` turns the pooled projection of a row's program entry into the row family's own.
     - `rv_pooled_row_history`: the row's native events are an RV history from the row's pre-state (up to its PC),
       together with the x0 law of the whole trace (from the `RVPooledLaws` contract). Each family derives its operand reads from it
       (`rv_row_operand_reads`).
-    - `rv_step_of_position` / `rv_step_of_row`: `RV.step` of the row's pre-state executes the entry's instruction. -/
+    - `rv_step_of_position`: `RV.step` of the row's pre-state executes the entry's instruction. -/
 
 namespace Airbender.Trace.Proofs
 open Arithmetic
@@ -46,24 +44,6 @@ theorem rv_pooled_fields_family {i : RV.Instr} {data : DecoderData PooledFamily}
     | exact ⟨d, fd, rfl⟩
     | (simp [DecoderData.mapFamily] at tag; done)
     | (rcases arithmetic d.family with a | a <;> simp [DecoderData.mapFamily, a] at tag)
-
-/-- (a) Row-entry fetch: every row of an accepted RV-decoded pooled trace has a public program entry with the row's
-    family and query, an aligned ROM address whose starting bytes decode to `i` with native data
-    `rvPooledDecoderFields i`; the row's start PC is the entry's PC. -/
-theorem rv_pooled_row_entry {p : Nat} [Fact p.Prime] (hp : limbBase < p)
-    {trace : PooledTrace p} {initial : RV.State} {addresses : List (BitVec 32)}
-    {program : List RVPooledProgramEntry}
-    (image : rvProgramImageWith rvPooledDecoderFields initial addresses = some program)
-    (decoded : RVPooledDecoded trace program) {row : Row p PooledFamily} (member : row ∈ trace.rows) :
-    ∃ entry ∈ program, ∃ i : RV.Instr,
-      entry.data.family = row.family ∧ row.decoderQuery = entry.query ∧
-      RV.decode entry.bits = some i ∧ rvPooledDecoderFields i = some entry.data ∧
-      (entry.pc.toNat < RV.ROM_END ∧ entry.pc.toNat % 4 = 0) ∧
-      entry.bits = RV.read initial.rom entry.pc 4 ∧
-      row.start.word.toBitVec = entry.pc := by
-  obtain ⟨entry, present, family, query⟩ := rv_decoder_member (decoded row member)
-  obtain ⟨guard, bits, i, decodes, fields⟩ := rvProgram_entry_fetch image entry present
-  exact ⟨entry, present, i, family, query, decodes, fields, guard, bits, rv_query_pc hp query⟩
 
 /-! ### (b) The row's RV history -/
 
@@ -158,22 +138,5 @@ theorem rv_step_of_position {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p
   obtain ⟨_, step⟩ := rv_step_fetch before initial agree pc beforePC guard
   rw [decodes] at step
   exact ⟨beforePC, step⟩
-
-/-- (c) for a pooled row: (a) and `rv_step_of_position` together. -/
-theorem rv_step_of_row {p : Nat} [Fact p.Prime] (hp : limbBase < p)
-    {trace : PooledTrace p} {initial : RV.State} {cells : List Cell} {addresses : List (BitVec 32)}
-    {program : List RVPooledProgramEntry}
-    (image : rvProgramImageWith rvPooledDecoderFields initial addresses = some program)
-    (decoded : RVPooledDecoded trace program) {row : Row p PooledFamily} (member : row ∈ trace.rows)
-    {before : RV.State} (position : RVRowPosition trace initial cells row before) :
-    ∃ entry ∈ program, ∃ i : RV.Instr,
-      entry.data.family = row.family ∧ row.decoderQuery = entry.query ∧
-      RV.decode entry.bits = some i ∧ rvPooledDecoderFields i = some entry.data ∧
-      before.pc = entry.pc ∧ RV.step before = RV.exec before i := by
-  obtain ⟨entry, present, i, family, query, decodes, fields, guard, bits, start⟩ :=
-    rv_pooled_row_entry hp image decoded member
-  have fetched : RV.decode (RV.read initial.rom entry.pc 4) = some i := bits ▸ decodes
-  obtain ⟨beforePC, step⟩ := rv_step_of_position position start guard fetched
-  exact ⟨entry, present, i, family, query, decodes, fields, beforePC, step⟩
 
 end Airbender.Trace.Proofs

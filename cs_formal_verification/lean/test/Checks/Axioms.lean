@@ -415,7 +415,6 @@ import Slop.Final.Import.Theorems
 #print axioms Airbender.PCState.Proofs.decoder_high_bound
 #print axioms Airbender.PCState.outgoing_bounds
 
-#print axioms Airbender.Blake2G.Proofs.local_flags
 #print axioms Airbender.Blake2G.Proofs.control_high_zero
 #print axioms Airbender.Blake2G.Proofs.pointer_alignment
 #print axioms Airbender.Specs.BLAKE3.g
@@ -688,9 +687,7 @@ import Slop.Final.Import.Theorems
 #print axioms Airbender.Trace.Proofs.last_write_relabel
 #print axioms Airbender.Trace.Proofs.consistent_relabel
 #print axioms Airbender.Trace.Proofs.split_memory_history
-#print axioms Airbender.Delegation.Proofs.event_clock_order
 #print axioms Airbender.Delegation.Proofs.port_not_zero
-#print axioms Airbender.Delegation.Proofs.native_clock_roundtrip
 
 #print axioms Airbender.UnifiedReduced.Proofs.word_memory_address
 #print axioms Airbender.UnifiedReduced.Proofs.word_memory_copy

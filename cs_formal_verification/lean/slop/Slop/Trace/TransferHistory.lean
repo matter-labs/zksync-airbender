@@ -76,64 +76,11 @@ theorem zero_event_seed {data : Data p} {event : MemoryAccess}
   · obtain ⟨edge, _, rfl⟩ := List.mem_map.mp native
     simp [transferEvent] at zero
 
-private theorem address_clocks_distinct (events : List MemoryAccess)
-    (perAddress : ∀ address, ((events.filter fun event => decide (event.2.1 = address)).map Prod.fst).Nodup) :
-    (events.map fun event => (event.1, event.2.1)).Nodup := by
-  induction events with
-  | nil => simp
-  | cons first rest ih =>
-    have tailLocal : ∀ address,
-        ((rest.filter fun event => decide (event.2.1 = address)).map Prod.fst).Nodup := by
-      intro address
-      have unique := perAddress address
-      by_cases same : first.2.1 = address
-      · simp only [List.filter_cons, same, decide_true, ite_true] at unique
-        change (first.1 :: (rest.filter fun event => decide (event.2.1 = address)).map Prod.fst).Nodup at unique
-        exact (List.nodup_cons.mp unique).2
-      · simpa [same] using unique
-    refine List.nodup_cons.mpr ⟨?_, ih tailLocal⟩
-    intro present
-    obtain ⟨other, member, equal⟩ := List.mem_map.mp present
-    change (other.1, other.2.1) = (first.1, first.2.1) at equal
-    have sameTime := (Prod.mk.inj equal).1
-    have sameAddress := (Prod.mk.inj equal).2
-    have unique := perAddress first.2.1
-    have excluded : first.1 ∉ (rest.filter fun event => decide (event.2.1 = first.2.1)).map Prod.fst := by
-      simp only [List.filter_cons, decide_true, ite_true] at unique
-      change (first.1 :: (rest.filter fun event => decide (event.2.1 = first.2.1)).map Prod.fst).Nodup at unique
-      exact (List.nodup_cons.mp unique).1
-    exact excluded (List.mem_map.mpr ⟨other,
-      List.mem_filter.mpr ⟨member, by simpa only [decide_eq_true_eq] using sameAddress⟩,
-      sameTime⟩)
-
 theorem raw_seed_bound {data : Data p} {event : MemoryAccess}
     (member : event ∈ rawEvents data) : event.1 = 0 → event.2.1 < memoryEpoch data := by
   intro zero
   obtain ⟨source, present, rfl⟩ := zero_event_seed member zero
   exact seed_below_epoch present
-
-private theorem nodup_of_address_filters (events : List MemoryAccess)
-    (unique : ∀ address, (MemoryAccessList.filterAddress events address).Nodup) : events.Nodup := by
-  induction events with
-  | nil => simp
-  | cons head rest ih =>
-    obtain ⟨time, key, old, value⟩ := head
-    have tailUnique (address : Nat) : (MemoryAccessList.filterAddress rest address).Nodup := by
-      have checked := unique address
-      by_cases same : key = address
-      · simp [MemoryAccessList.filterAddress, same] at checked
-        exact checked.2
-      · simpa [MemoryAccessList.filterAddress, same] using checked
-    refine List.nodup_cons.mpr ⟨?_, ih tailUnique⟩
-    intro member
-    have checked := unique key
-    simp only [MemoryAccessList.filterAddress, List.filter_cons, decide_true,
-      ite_true, List.nodup_cons] at checked
-    exact checked.1 (List.mem_filter.mpr ⟨member, by simp⟩)
-
-private theorem filter_address_eq (events : List MemoryAccess) (address : Nat) :
-    MemoryAccessList.filterAddress events address = events.filter (fun event => decide (event.2.1 = address)) := by
-  rfl
 
 def nativeEventClock (data : Data p) (event : MemoryAccess) : Nat :=
   (event.1 - memoryEpoch data) / (rawEvents data).length.succ

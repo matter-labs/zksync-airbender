@@ -48,7 +48,6 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.range_contains
 #print axioms Airbender.Trace.Proofs.increment
 #print axioms Airbender.Trace.Proofs.comparison
-#print axioms Airbender.Trace.Proofs.distinct_slots
 #print axioms Airbender.Trace.Proofs.incoming_bounds
 #print axioms Airbender.Trace.Proofs.incoming_alignment
 #print axioms Airbender.Trace.Proofs.low_alignment
@@ -241,7 +240,6 @@ public import Slop.Trace.MemoryPorts
 #print axioms Airbender.SubwordMemory.Proofs.nativeClockLaws
 #print axioms Tests.SubwordMemoryTimestamp.constraints
 #print axioms Tests.SubwordMemoryTimestamp.native_clocks
-#print axioms Airbender.SubwordMemory.Proofs.outgoing_pc_bounds
 #print axioms Airbender.Trace.Proofs.WriteBoundsFromReads
 #print axioms Airbender.Trace.Proofs.write_rules_of_sources
 #print axioms Airbender.Trace.Proofs.read_bounds_of_rules

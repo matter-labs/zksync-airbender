@@ -107,9 +107,6 @@ theorem native_port_order_of_room {p : Nat} [Fact p.Prime] (hp : 2 * timestampBa
   rw [equation] at low high
   exact comparison_of_room hp ib pb ob room cb low high
 
-theorem distinct_slots {initial : Timestamp} {left right : Nat} (different : left ≠ right) :
-    initial.value + left ≠ initial.value + right := by omega
-
 theorem native_port_order {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {initial previous : Timestamp} (ib : initial.Bounded) (pb : previous.Bounded)
     {offset : Nat} (ob : offset < 4) (aligned : initial.lo % 4 = 0)

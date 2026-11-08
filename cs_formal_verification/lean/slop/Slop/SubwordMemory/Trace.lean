@@ -36,13 +36,4 @@ instance nativeClockLaws [Fact p.Prime] : Trace.Proofs.ClockLaws TraceKind p whe
   offsets _ := rfl
   effects hp inverse _ _ h inputs := clocks hp inverse h inputs
 
-theorem outgoing_pc_bounds {p : Nat} [Fact p.Prime]
-    {trace : NativeTrace p} (accepted : Accepted trace) :
-    ∀ row ∈ trace.rows, row.finish.word.Bounded := by
-  intro row member
-  have core := Verification.holds_of_sublist (accepted.constraints row member)
-    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
-  have ranges := local_ranges core
-  exact ⟨ranges.2.2.2.1, ranges.2.2.2.2⟩
-
 end Airbender.SubwordMemory.Proofs

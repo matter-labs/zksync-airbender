@@ -12,11 +12,4 @@ set_option maxRecDepth 16384
 def wordIndex (index : Fin 40) : Fin 43 :=
   if h : index.val < 24 then ⟨1 + index.val, by omega⟩ else ⟨2 + index.val, by omega⟩
 
-private def wordPort (index : Fin 40) : MemoryPort :=
-  importedConstraintsMemoryPorts[wordIndex index]
-
-private theorem word_port_address (index : Fin 40) :
-    (wordPort index).address = .indirect importedConstraintsIndirectPorts[index] := by
-  fin_cases index <;> rfl
-
 end Airbender.Blake2Round.Proofs

@@ -13,22 +13,6 @@ namespace Airbender.Keccak.Split.Native.Proofs
 open Trace Trace.Proofs
 set_option warningAsError true
 
-private theorem member_flatMap_sublist (f : α → List β) {items : List α} {item : α}
-    (member : item ∈ items) : (f item).Sublist (items.flatMap f) := by
-  induction items with
-  | nil => cases member
-  | cons first rest ih =>
-    rcases List.mem_cons.mp member with same | member
-    · subst first
-      exact List.sublist_append_left _ _
-    · exact (ih member).trans (List.sublist_append_right _ _)
-
-private theorem row_events_sublist {data : MemoryData p} {row : Row p} (member : row ∈ data.rows) :
-    (row.memorySteps.map transferEvent).Sublist (Transfer.rawEvents (transferData data)) := by
-  simp only [Transfer.rawEvents, transferData, MemoryData.steps, List.map_flatMap]
-  apply List.Sublist.trans ?_ (List.sublist_append_right _ _)
-  exact member_flatMap_sublist (fun r : Row p => r.memorySteps.map transferEvent) member
-
 theorem row_no_zero {row : Row p} :
     ∀ event ∈ row.memorySteps.map transferEvent, event.2.1 ≠ (Cell.register 0).addressCode := by
   intro event included
