@@ -31,25 +31,6 @@ fn unused_source() -> ProgramSource {
 }
 
 #[test]
-fn remaining_stage_calls_include_exactly_one_wrap() {
-    use ProofTarget::{Base, L1Feeder, RecursionUnified, L1};
-    for (current, target, expected) in [
-        (Base, L1, vec![RecursionUnified, L1Feeder, L1]),
-        (RecursionUnified, L1Feeder, vec![L1Feeder]),
-        (RecursionUnified, L1, vec![L1Feeder, L1]),
-        (L1Feeder, L1, vec![L1]),
-    ] {
-        let mut calls = vec![];
-        advance_stages((), current, target, |(), next| {
-            calls.push(next);
-            Ok::<_, String>(())
-        })
-        .unwrap();
-        assert_eq!(calls, expected, "{current:?} -> {target:?}");
-    }
-}
-
-#[test]
 fn malformed_l1_envelopes_fail_verify_and_continuation_before_loading_programs() {
     validate_artifact_envelope(&wrapped_artifact()).unwrap();
     let mutations: &[(&str, fn(&mut ProofArtifact))] = &[

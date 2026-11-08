@@ -256,12 +256,20 @@ mod tests {
 
     #[test]
     fn l1_feeder_and_wrap_rounds_preserve_security_margin() {
-        for config in [
-            l1_feeder_config_for_2_22(),
-            l1_feeder_a_config_for_2_23(),
-            l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100),
+        for (config, max_pow) in [
+            (l1_feeder_config_for_2_22(), L1_FEEDER_MAX_POW_BITS),
+            (l1_feeder_a_config_for_2_23(), L1_FEEDER_MAX_POW_BITS),
+            (
+                l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100),
+                l1_wrap_2p21::MAX_POW_BITS,
+            ),
         ] {
             assert_every_round_preserves_security_margin(&config);
+            assert!(config
+                .whir_schedule
+                .queries_pow_bits_per_round()
+                .iter()
+                .all(|&bits| bits <= max_pow));
         }
     }
 

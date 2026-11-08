@@ -280,35 +280,10 @@ fn handle_key(kind: ExecutionKind, machine: MachineType, bin: &[u32], text: &[u3
     (kind as u8, machine as u8, hasher.finalize().into())
 }
 
-struct RegisteredBinary<H> {
-    handle: H,
+struct RegisteredBinary {
+    handle: BinaryHandle,
     profiles: BTreeSet<ProofProfile>,
     role: String,
-}
-
-fn register_binary<H>(
-    handles: &mut BTreeMap<HandleKey, RegisteredBinary<H>>,
-    key: HandleKey,
-    profiles: &[ProofProfile],
-    prepare: impl FnOnce() -> H,
-) {
-    let profiles = profiles.iter().copied().collect();
-    match handles.entry(key) {
-        std::collections::btree_map::Entry::Occupied(entry) => {
-            assert_eq!(
-                entry.get().profiles,
-                profiles,
-                "pipeline binary was registered for a different profile set"
-            );
-        }
-        std::collections::btree_map::Entry::Vacant(entry) => {
-            entry.insert(RegisteredBinary {
-                handle: prepare(),
-                profiles,
-                role: String::new(),
-            });
-        }
-    }
 }
 
 #[cfg(test)]
@@ -320,7 +295,7 @@ thread_local! {
 
 struct PipelineBackend<B: execution_prover::backend::ExecutionBackend> {
     prover: execution_prover::ExecutionProver<B>,
-    handles: BTreeMap<HandleKey, RegisteredBinary<BinaryHandle>>,
+    handles: BTreeMap<HandleKey, RegisteredBinary>,
 }
 
 impl<B: execution_prover::backend::ExecutionBackend> PipelineBackend<B> {
@@ -390,16 +365,19 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
                 .add_binary_variants(bin.to_vec(), text.to_vec(), &kinds, cycles_bound);
         for ((kind, machine, profiles, role), handle) in missing.into_iter().zip(handles) {
             log::info!("registered {role} with key {handle:?}");
-            register_binary(
-                &mut self.handles,
-                handle_key(kind, machine, bin, text),
-                profiles,
-                || handle,
+            assert!(
+                self.handles
+                    .insert(
+                        handle_key(kind, machine, bin, text),
+                        RegisteredBinary {
+                            handle,
+                            profiles: profiles.iter().copied().collect(),
+                            role: role.to_owned(),
+                        },
+                    )
+                    .is_none(),
+                "pipeline binary was registered twice"
             );
-            self.handles
-                .get_mut(&handle_key(kind, machine, bin, text))
-                .unwrap()
-                .role = role.to_owned();
         }
     }
 
