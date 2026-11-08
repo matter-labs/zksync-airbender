@@ -929,3 +929,9 @@ clock bound. Caller anchoring, initialized worker history and accounting remain 
 [Progress and zero-clock sources](WorkerClockProgressTheorems.lean) retain all43 actual ports. Bounded
 clocks progress strictly; other cases retain exact unbounded active sources. Active
 zero clocks require such sources, without claiming global bounds or seeded history.
+
+## Counted native main loop
+
+[Main-loop count and capacity](MainBatchTheorems.lean) tie the source u32 count to the SAME proof
+list and derive1..8192 proofs plus actual ordinary-slot and u64 bounds. This counts
+physical capacity, not issued requests; caller matching and worker rooting remain open.

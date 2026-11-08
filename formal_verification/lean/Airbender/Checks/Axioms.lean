@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.MainBatch
+import Airbender.Proofs.ReducedMachine.NativeMainBatch
+import Airbender.Review.Circuits.ReducedMachine.MainBatchTheorems
+import Tests.NativeMainBatch
+
 import Airbender.Review.Circuits.ReducedMachine.WorkerClockProgress
 import Airbender.Proofs.ReducedMachine.NativeWorkerClockProgress
 import Airbender.Review.Circuits.ReducedMachine.WorkerClockProgressTheorems
@@ -6799,3 +6804,31 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerClockProgress.complete_empty_progress
 #print axioms Airbender.Tests.NativeWorkerClockProgress.complete_conditional_progress
 #print axioms Airbender.Tests.NativeWorkerClockProgress.complete_zero_source
+
+#print axioms Airbender.NativeMainBatchProofs.fold_count
+#print axioms Airbender.NativeMainBatchProofs.list_guards
+#print axioms Airbender.NativeMainBatchProofs.sampled_length
+#print axioms Airbender.NativeMainBatchProofs.geometry
+#print axioms Airbender.NativeMainBatchProofs.count_binding
+#print axioms Airbender.NativeMainBatchProofs.prefix_count
+#print axioms Airbender.NativeMainBatchProofs.total_count
+#print axioms Airbender.NativeMainBatchProofs.counter_iff
+#print axioms Airbender.NativeMainBatchProofs.natural_headroom
+#print axioms Airbender.NativeMainBatchProofs.headroom
+#print axioms Airbender.NativeMainBatchProofs.ordinary_count
+#print axioms Airbender.NativeMainBatchProofs.effects
+#print axioms Airbender.NativeMainBatchProofs.joint
+#print axioms Airbender.NativeMainBatch.native_main_loop_capacity
+#print axioms Airbender.NativeMainBatch.native_counted_main_worker_progress
+#print axioms Airbender.Tests.NativeMainBatch.native_geometry
+#print axioms Airbender.Tests.NativeMainBatch.constructed_count
+#print axioms Airbender.Tests.NativeMainBatch.zero_count_rejected
+#print axioms Airbender.Tests.NativeMainBatch.one_count_pass
+#print axioms Airbender.Tests.NativeMainBatch.last_count_pass
+#print axioms Airbender.Tests.NativeMainBatch.first_excess_rejected
+#print axioms Airbender.Tests.NativeMainBatch.beyond_field_capacity_still_passes_count
+#print axioms Airbender.Tests.NativeMainBatch.largest_capacity_below_cycle_limit
+#print axioms Airbender.Tests.NativeMainBatch.u32_product_u64_headroom
+#print axioms Airbender.Tests.NativeMainBatch.duplicate_proofs_counted
+#print axioms Airbender.Tests.NativeMainBatch.actual_all_ordinary_count
+#print axioms Airbender.Tests.NativeMainBatch.complete_conditional_joint

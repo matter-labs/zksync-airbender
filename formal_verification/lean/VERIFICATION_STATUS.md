@@ -1,5 +1,61 @@
 # Verification status
 
+## Counted native main loop and actual ordinary capacity (8 November 2026)
+
+[The source batch](Airbender/Review/Circuits/ReducedMachine/MainBatch.lean) uses the
+actual u32 count to index a vector of existing full initialization/main proof
+observations. Its list length is derived by construction, without a desired count,
+row-list or stream equality premise. Native source guards require positive count,
+EVERY processed capacity prefix below MAX_CYCLES, and positive final total. The
+stronger SourceAccepted wrapper retains these guards and UNCHANGED complete
+existing acceptance on the SAME constructed proof list and worker batch. Prior
+COMPLETE EMPTY component controls remain unchanged; they do not pass this positive
+main-loop guard. Rust stream/ProofOutput/setup/metadata/transcript/physical
+extraction and full compiler/Rust/JSON refinement remain separate boundaries.
+
+Before adaptation, four exact native sources were pinned: statement lib.rs only
+MAX_CYCLES, selected verifier size_constants only TRACE_LEN, layout_import's include
+path, and generated circuit_layout ONLY its trace_len_log2 scalar23. Existing
+unified statement main-loop guards and timestamp constants were independently
+rechecked at67ee. This adopts no generated body or layout equivalence and transfers
+no119-equation historical coverage to the117-equation native artifact. Prior103
+pins remain exact; the new source inventory has107 pins. Dependencies and v3 pin
+are unchanged. The selected ordinary capacity is8388607; MAX_CYCLES is2^36.
+
+[Generic proof assembly](Airbender/Proofs/ReducedMachine/NativeMainBatch.lean)
+performs the entire fold/prefix-guard/sampling-length/u32-u64 arithmetic before
+concrete native domain/data instantiation. Source guards derive1..8192 main proofs,
+exact actual ordinary mainRows length equal to the processed capacity counter,
+at most68719468544 ordinary positions, and u64 headroom for every actual prefix.
+All proof/row duplicates remain. The capacity counts available ordinary positions,
+including execute-zero rows, and is not an active-cycle or issued-request count.
+The worker slot counter does not supply a caller below-field bound.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/MainBatchTheorems.lean)
+expose count effects and their joint conclusion with actual worker progress on
+SAME accepted inputs. No expected fulfilled ledger, request matching, clock bound,
+initialized history, fake Trace.Accepted, dedup, OOB proof object or huge evaluation
+is introduced. All inactiveD/m0 auxiliary poles, worker ports, readonly refreshes,
+OLDREAD, unmasked writes and public x0 timestamps remain. Import fidelity and
+cryptographic extraction stay explicit; no scalar-to-permutation claim is made.
+
+[Twelve controls](Tests/NativeMainBatch.lean) include zero/excess count rejection,
+first/last allowed counts, exact maximum capacity, u64 arithmetic, duplicates,
+actual all-ordinary length and the full conditional joint root. A PURE control
+passes the count guard for257 proofs while its ordinary capacity exceeds M31.
+That counter DATA is not a full accepted nonempty source/global/worker/physical
+witness, attack, defect or no-wrap counterexample. It does not derive caller
+multiplicity Boolean, actual caller count below M31, activity, issuance or matching.
+Four modules add27 roots/6 exact parent origins plus reviewed native source intake;
+all5,903 prior ordered roots and exact audit bytes remain addition-only. No
+production/Sail/old proof/acceptance/parser/importer/exporter/artifact/fixture change,
+native generation/heavy replay, finding, issue assumption, project axiom or fix.
+Next: actual caller anchoring and worker unbounded-source exclusion/rooting,
+initialized OLDREAD values/addresses, raw bounds and STAGE2 keys, request-versus-
+execute and issuance/fulfillment/converse/accounting. Original CSR/MOP/worker Sail,
+public/physical refinement, cryptography, completeness and parity remain open.
+
+
 ## Actual worker progress and active-zero read sources (8 November 2026)
 
 [Actual worker clock observations](Airbender/Review/Circuits/ReducedMachine/WorkerClockProgress.lean)
