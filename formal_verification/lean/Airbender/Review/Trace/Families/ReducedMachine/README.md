@@ -721,3 +721,10 @@ proof list. Public seeds and initialized combined worker memory remain open.
 RAM32 zero seeds and exact duplicate-preserving matching equivalences on the same
 full ledger. Six-field padding cancellation keeps active ports and every worker
 access. Public domain/image/seed coverage and combined worker history remain open.
+
+## Observed native seed domain
+
+[Unique observed seed cells](../../../Circuits/ReducedMachine/InitializationSeedDomainTheorems.lean) derive actual seed-address/cell Nodup
+and exact canonical zero-token encoding on the SAME native main list. This is an
+observed domain; independent public image coverage, alignment, shadow/architectural
+separation and combined worker history remain separate.

@@ -1,5 +1,54 @@
 # Circuit formal verification plan
 
+## Unique observed native seed domain (8 November 2026)
+
+[The observed seed domain](Airbender/Review/Circuits/ReducedMachine/InitializationSeedDomain.lean)
+comes from ALL ordinary rows of the SAME actual main list, after the unchanged
+six-field padding cancellation. The seed and teardown lists retain actual field
+observations and never filter by execute or worker/request status. Their equality
+to the existing native ledger projections is proved in BOTH directions of use.
+
+[The proof assembly](Airbender/Proofs/ReducedMachine/NativeInitializationSeedDomain.lean)
+first proves generic finite sampling and product-of-finite-position uniqueness
+BEFORE native-domain instantiation. Every position is bounded; there is no
+out-of-bounds proof/row/history/ledger fallback or million-row evaluation. The
+existing global indexed nonpadding address uniqueness derives address Nodup for
+the ACTUAL whole seed list. Duplicate proof/row values are not silently deduplicated.
+
+Every actual seed is derived canonical RAM32 with zero value/time from the SAME
+complete initialization acceptance. The unchanged bounded Word lemmas prove its
+exact equality to a canonical RAM cell's zero initialToken. The observed cell list
+is derived Nodup, and its mapped zero tokens equal the actual seed list. Whole
+RV32 addresses above M31 stay Nat/BitVec; there is no whole-word field cast.
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/InitializationSeedDomainTheorems.lean)
+expose these derived consequences and exact full native logical matching over the
+constructed seed/teardown lists plus unchanged public/main/worker access tokens.
+
+This is an OBSERVED domain and canonical encoding result. It does not assert an
+independent public domain, successful original Sail reads/initialImage equality,
+ImageBoundary/ShadowImageBoundary, architectural ROM values, alignment, combined
+chronological memory or worker bounds/keys/accounting. An unaligned canonical RAM
+cell remains unaligned. Public x0 timestamps, all worker ports and original source
+acceptance/poles remain; no expected seed/read/result stream or new assumption.
+
+[Fifteen controls](Tests/NativeInitializationSeedDomain.lean) check canonical zero
+RAM, max RV32 projection, unaligned retention, register/RAM separation, bad value/
+time rejection, preserved duplicate source positions, duplicate-key rejection,
+generic unique sampling, empty observed lists, COMPLETE EMPTY accepted-domain
+consequences, both-sided same-ledger identity, matching and conditional domains.
+These are pure/structural/empty/conditional, not full positive NONEMPTY source/
+global/worker/physical witnesses, attacks or native defects. Four modules add25
+roots with12 exact parent origins; all5,666 prior ordered roots and exact audit
+source bytes remain. Native103 pins, dependencies, old proofs/acceptance, production,
+Sail, artifacts, fixtures, importer/exporter and findings are unchanged. No new
+native adoption/generation/heavy replay, axiom or issue assumption; no parity.
+
+Next: combine actual register and RAM seed domains with actual public initialization
+meaning, classify native ROM shadows separately from architectural bytes, and prove
+public image/domain coverage before initialized combined memory/worker consequences.
+The observed cell-domain proof is not an independent public-image premise.
+
+
 ## Actual native seed ledger and padding cancellation (8 November 2026)
 
 [The initialization ledger](Airbender/Review/Circuits/ReducedMachine/InitializationLedger.lean)
