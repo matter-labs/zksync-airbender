@@ -1,4 +1,4 @@
-import Clean.Circuit.Operations
+import CleanCore.Circuit.Operations
 import Mathlib.Algebra.Field.ZMod
 
 /-! Completeness of a query into any static table (lean-strategies §2.1): the query holds when its
@@ -9,7 +9,7 @@ namespace Airbender.Verification
 
 theorem static_lookup_contains {p : Nat} [Fact p.Prime] {Row : TypeMap} [ProvableType Row]
     (t : StaticTable (ZMod p) Row) (entry : Vector (Expression (ZMod p)) (size Row))
-    (env : _root_.Environment (ZMod p))
+    (env : Airbender.Environment (ZMod p))
     (bound : t.index (fromElements (entry.map (Expression.eval env))) < t.length)
     (row : ∀ h : t.index (fromElements (entry.map (Expression.eval env))) < t.length,
       fromElements (entry.map (Expression.eval env)) = t.row ⟨_, h⟩) :

@@ -1,4 +1,4 @@
-import Clean.Specs.Keccak256
+import CleanCore.Specs.Keccak256
 import Batteries.Data.Fin.Fold
 
 namespace Airbender.Keccak.Proofs

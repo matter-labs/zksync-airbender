@@ -20,7 +20,7 @@ macro_rules
       Airbender.Verification.environment, Fin.isValue, Int.ofNat_eq_natCast, CharP.cast_eq_zero,
       Int.cast_zero, Nat.cast_one, Int.cast_one, Int.cast_neg, Int.cast_ofNat, Nat.cast_ofNat,
       Int.reduceNegSucc, Fin.getElem_fin, Vector.map_mk, List.map_toArray, List.map_cons, List.map_nil,
-      Expression.eval, add_zero, mul_one, mul_zero, one_mul, zero_add, mul_neg, neg_mul,
+      Airbender.Expression.eval, add_zero, mul_one, mul_zero, one_mul, zero_add, mul_neg, neg_mul,
       Nat.reduceAdd, Fin.coe_ofNat_eq_mod, Nat.zero_mod, Vector.getElem_mk, List.getElem_toArray,
       List.getElem_cons_zero, List.getElem_cons_succ, getElem!_pos, List.size_toArray,
       List.length_cons, List.length_nil, Nat.zero_add, Nat.lt_add_one])
@@ -28,7 +28,7 @@ macro_rules
       Airbender.Verification.environment, Fin.isValue, Int.ofNat_eq_natCast, CharP.cast_eq_zero,
       Int.cast_zero, Nat.cast_one, Int.cast_one, Int.cast_neg, Int.cast_ofNat, Nat.cast_ofNat,
       Int.reduceNegSucc, Fin.getElem_fin, Vector.map_mk, List.map_toArray, List.map_cons, List.map_nil,
-      Expression.eval, add_zero, mul_one, mul_zero, one_mul, zero_add, mul_neg, neg_mul,
+      Airbender.Expression.eval, add_zero, mul_one, mul_zero, one_mul, zero_add, mul_neg, neg_mul,
       Nat.reduceAdd, Fin.coe_ofNat_eq_mod, Nat.zero_mod, Vector.getElem_mk, List.getElem_toArray,
       List.getElem_cons_zero, List.getElem_cons_succ, getElem!_pos, List.size_toArray,
       List.length_cons, List.length_nil, Nat.zero_add, Nat.lt_add_one] $loc:location)
@@ -36,7 +36,7 @@ macro_rules
       Airbender.Verification.environment, Fin.isValue, Int.ofNat_eq_natCast, CharP.cast_eq_zero,
       Int.cast_zero, Nat.cast_one, Int.cast_one, Int.cast_neg, Int.cast_ofNat, Nat.cast_ofNat,
       Int.reduceNegSucc, Fin.getElem_fin, Vector.map_mk, List.map_toArray, List.map_cons, List.map_nil,
-      Expression.eval, add_zero, mul_one, mul_zero, one_mul, zero_add, mul_neg, neg_mul,
+      Airbender.Expression.eval, add_zero, mul_one, mul_zero, one_mul, zero_add, mul_neg, neg_mul,
       Nat.reduceAdd, Fin.coe_ofNat_eq_mod, Nat.zero_mod, Vector.getElem_mk, List.getElem_toArray,
       List.getElem_cons_zero, List.getElem_cons_succ, getElem!_pos, List.size_toArray,
       List.length_cons, List.length_nil, Nat.zero_add, Nat.lt_add_one, $xs,*])
@@ -44,7 +44,7 @@ macro_rules
       Airbender.Verification.environment, Fin.isValue, Int.ofNat_eq_natCast, CharP.cast_eq_zero,
       Int.cast_zero, Nat.cast_one, Int.cast_one, Int.cast_neg, Int.cast_ofNat, Nat.cast_ofNat,
       Int.reduceNegSucc, Fin.getElem_fin, Vector.map_mk, List.map_toArray, List.map_cons, List.map_nil,
-      Expression.eval, add_zero, mul_one, mul_zero, one_mul, zero_add, mul_neg, neg_mul,
+      Airbender.Expression.eval, add_zero, mul_one, mul_zero, one_mul, zero_add, mul_neg, neg_mul,
       Nat.reduceAdd, Fin.coe_ofNat_eq_mod, Nat.zero_mod, Vector.getElem_mk, List.getElem_toArray,
       List.getElem_cons_zero, List.getElem_cons_succ, getElem!_pos, List.size_toArray,
       List.length_cons, List.length_nil, Nat.zero_add, Nat.lt_add_one, $xs,*] $loc:location)

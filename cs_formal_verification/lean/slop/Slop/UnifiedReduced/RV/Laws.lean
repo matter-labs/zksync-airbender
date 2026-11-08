@@ -126,7 +126,7 @@ theorem rv_row_zero_preserving [Fact p.Prime] (hp : 524288 < p)
       have result := zero_operands_result (by omega) h active selected
         ⟨leftLimbs.1, leftLimbs.2, rightLimbs.1, rightLimbs.2, immLo, immHi⟩
       have value := congrArg BitVec.toNat result
-      rw [Word.toBitVec_toNat (destination_bounds h)] at value
+      rw [Word.toBitVec_toNat (word := ⟨(w 50).val, (w 51).val⟩) (destination_bounds h)] at value
       have limbs : (w 50).val = 0 ∧ (w 51).val = 0 := by
         change (w 50).val + limbBase * (w 51).val = 0 at value
         dsimp [limbBase] at value

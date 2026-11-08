@@ -1,4 +1,4 @@
-import Clean.Utils.SourceSinkPath
+import CleanCore.Utils.SourceSinkPath
 import Slop.Trace.StateClocks
 
 namespace Airbender.Trace.Proofs

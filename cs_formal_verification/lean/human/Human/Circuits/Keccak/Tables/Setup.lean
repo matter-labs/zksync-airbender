@@ -1,6 +1,6 @@
 import Human.Circuits.Keccak.Artifact
 import Human.Helpers.Properties
-import Clean.Specs.Keccak256
+import CleanCore.Specs.Keccak256
 
 namespace Airbender.Keccak
 

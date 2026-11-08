@@ -1,5 +1,5 @@
 import Human.Circuits.KeccakSplit.Schedule
-import Clean.Specs.Keccak256
+import CleanCore.Specs.Keccak256
 import Human.Helpers.Memory.SailHistory
 
 namespace Airbender.Keccak.Split.Call

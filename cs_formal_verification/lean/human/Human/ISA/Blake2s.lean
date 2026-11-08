@@ -1,9 +1,9 @@
 import Human.ISA.State
 import Mathlib.Data.Fin.VecNotation
-import Clean.Specs.BLAKE3
+import CleanCore.Specs.BLAKE3
 
 /-! # The Blake2s building blocks (RFC 7693): constants, `G`, one round, used by Airbender's Blake2s delegations
-(`Delegations`). The external reference is Clean's `Specs.BLAKE3` (pinned in `lakefile.toml`): BLAKE3 shares
+(`Delegations`). The external reference is Clean's `Specs.BLAKE3` (pinned in `lakefile.toml`; transcribed in CleanCore): BLAKE3 shares
 Blake2s's `IV`, `G` (rotations 16, 12, 8, 7) and column/diagonal round, on natural-number words; it has no `SIGMA`
 (its message schedule is a fixed permutation), so a Blake2s round is Clean's round on the `SIGMA`-permuted block. -/
 
@@ -11,7 +11,7 @@ namespace Spec
 open RV (Word)
 
 /-- The initialisation vector: Clean's `iv`. -/
-def IV (i : Fin 8) : Word := BitVec.ofNat 32 (Specs.BLAKE3.iv[i]).toNat
+def IV (i : Fin 8) : Word := BitVec.ofNat 32 (Airbender.Specs.BLAKE3.iv[i]).toNat
 
 /-- The message schedule of the 10 rounds. -/
 def SIGMA : Fin 10 → Fin 16 → Fin 16 :=
@@ -31,11 +31,11 @@ def configuredIV : Fin 8 → Word := fun i => IV i ^^^ (if i = 0 then 0x01010020
 
 /-- The mixing function `G` on words `a b c d` of the working vector, with message words `x y`: Clean's `g`. -/
 def G (v : Vector Word 16) (a b c d : Fin 16) (x y : Word) : Vector Word 16 :=
-  (Specs.BLAKE3.g (v.map BitVec.toNat) a b c d x.toNat y.toNat).map (BitVec.ofNat 32)
+  (Airbender.Specs.BLAKE3.g (v.map BitVec.toNat) a b c d x.toNat y.toNat).map (BitVec.ofNat 32)
 
 /-- One round: `G` on the four columns, then on the four diagonals, message words in schedule `s`: Clean's `round`
 on the block permuted by `s`. -/
 def round (m : Vector Word 16) (s : Fin 16 → Fin 16) (v : Vector Word 16) : Vector Word 16 :=
-  (Specs.BLAKE3.round (v.map BitVec.toNat) (Vector.ofFn fun i => m[s i].toNat)).map (BitVec.ofNat 32)
+  (Airbender.Specs.BLAKE3.round (v.map BitVec.toNat) (Vector.ofFn fun i => m[s i].toNat)).map (BitVec.ofNat 32)
 
 end Spec

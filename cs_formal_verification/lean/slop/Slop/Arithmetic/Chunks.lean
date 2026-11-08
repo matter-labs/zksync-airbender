@@ -1,4 +1,4 @@
-import Clean.Specs.BLAKE3
+import CleanCore.Specs.BLAKE3
 import Slop.Arithmetic.Lemmas
 import Slop.Arithmetic.Word
 

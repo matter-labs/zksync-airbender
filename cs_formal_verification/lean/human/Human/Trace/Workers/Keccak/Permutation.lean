@@ -1,5 +1,5 @@
 import Human.Trace.Workers.Keccak.Call
-import Clean.Specs.Keccak256
+import CleanCore.Specs.Keccak256
 import Human.Helpers.Delegation.WorkerContext
 
 namespace Airbender.Keccak.Permutation

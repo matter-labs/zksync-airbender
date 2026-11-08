@@ -130,8 +130,8 @@ import Human.Circuits.AddSub.Modular
 #print axioms ExplicitCircuit.from_foldlRange
 #print axioms Gadgets.Equality.circuit
 #print axioms U64.AssertNormalized.circuit
-#print axioms Specs.Keccak256.keccakRound
-#print axioms Specs.Keccak256.keccakPermutation
+#print axioms Airbender.Specs.Keccak256.keccakRound
+#print axioms Airbender.Specs.Keccak256.keccakPermutation
 
 #print axioms Airbender.Keccak.constraint_count
 #print axioms Airbender.Keccak.lookup_count
@@ -508,7 +508,7 @@ import Human.Circuits.AddSub.Modular
 #print axioms Airbender.Blake2G.Proofs.local_flags
 #print axioms Airbender.Blake2G.Proofs.control_high_zero
 #print axioms Airbender.Blake2G.Proofs.pointer_alignment
-#print axioms Specs.BLAKE3.g
+#print axioms Airbender.Specs.BLAKE3.g
 #print axioms Airbender.Arithmetic.xor_of_chunks
 #print axioms Airbender.Arithmetic.rotate_right_of_chunks
 #print axioms Airbender.Blake2G.Proofs.xor_lookup

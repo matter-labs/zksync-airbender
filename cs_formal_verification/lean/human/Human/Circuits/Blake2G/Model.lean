@@ -2,7 +2,7 @@ import Human.Circuits.Blake2G.Artifact
 import Human.Circuits.Blake2G.Tables.Setup
 import Human.Helpers.Properties
 import Human.Helpers.Core.Word
-import Clean.Specs.BLAKE3
+import CleanCore.Specs.BLAKE3
 
 namespace Airbender.Blake2G
 

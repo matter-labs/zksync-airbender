@@ -374,7 +374,7 @@ theorem ts_high (x : Inputs) :
 /-! ### Fixed-table queries from an explicit row -/
 
 theorem pair_contains {p : Nat} [Fact p.Prime] {name : String} {length : Nat} {value : Nat → Nat}
-    {key val : Expression (ZMod p)} {env : _root_.Environment (ZMod p)} (n : Nat) (hn : n < length)
+    {key val : Expression (ZMod p)} {env : Airbender.Environment (ZMod p)} (n : Nat) (hn : n < length)
     (hk : key.eval env = (n : ZMod p)) (hv : val.eval env = (value n : ZMod p)) :
     (pairLookup (pairTable name length value) key val).Contains env := by
   refine ⟨⟨n, hn⟩, ?_⟩
@@ -383,7 +383,7 @@ theorem pair_contains {p : Nat} [Fact p.Prime] {name : String} {length : Nat} {v
   rw [hk, hv]
 
 theorem cleanup_contains {p : Nat} [Fact p.Prime] {k b c : Expression (ZMod p)}
-    {env : _root_.Environment (ZMod p)} (n : Nat) (hn : n < 65536)
+    {env : Airbender.Environment (ZMod p)} (n : Nat) (hn : n < 65536)
     (hk : k.eval env = (n : ZMod p)) (hb : b.eval env = ((n / 2 % 2 : Nat) : ZMod p))
     (hc : c.eval env = ((n - n % 4 : Nat) : ZMod p)) :
     (jumpCleanup k b c).Contains env := by

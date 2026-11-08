@@ -1,7 +1,7 @@
 import Human.Helpers.Context.Columns
 import Human.Helpers.Memory.IndirectPorts
 import Mathlib.Data.Nat.Pairing
-import Clean.Utils.OfflineMemory
+import CleanCore.Utils.OfflineMemory
 
 namespace Airbender.Trace
 

@@ -1,4 +1,4 @@
-import Clean.Circuit.Operations
+import CleanCore.Circuit.Operations
 import Slop.OpIndexAttr
 
 /-! Per-index interface lemmas for an imported circuit (`import_clean`): one lemma per constraint and

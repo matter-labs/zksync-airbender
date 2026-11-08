@@ -1,6 +1,6 @@
 import Human.Helpers.Tables.Lookups
 import Human.Circuits.JumpBranchSlt.Tables.Control
-import Clean.Utils.Field
+import CleanCore.Utils.Field
 
 namespace Airbender.Verification
 

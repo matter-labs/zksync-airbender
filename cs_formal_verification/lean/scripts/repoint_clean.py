@@ -9,7 +9,10 @@ Deterministic and idempotent; re-run after a rebase that brings files importing 
     bare references inside `namespace Airbender ...` already resolve to CleanCore; this includes the terms the
     importer, Human.Import.Embed, emits);
   * in a file outside `namespace Airbender` (and not opening it), bare `Expression.eval` -> `Airbender.Expression.eval`
-    (macro quotations resolve names where the macro is defined, e.g. Slop.Eval's `eval_entry`);
+    (macro quotations resolve names where the macro is defined, e.g. Slop.Eval's `eval_entry`), and Clean's
+    root namespaces `Specs.BLAKE3`, `Specs.Keccak256`, `Utils.Bits`, `Utils.Rotation`, `ByteUtils`,
+    `MemoryAccessList` and its root definitions `add32`, `not64`, `rotLeft64`, `rotRight64`, `rotRight32`
+    -> `Airbender.` + the same (e.g. Human.ISA.Blake2s, Slop.Deleg.* in `namespace Spec`; not inside backticks);
   * `[FiniteField F]` -> `[Field F]` (CleanCore's semantics needs only a field; CleanCore.Equivalence, deviation 2);
   * test/Checks/Axioms.lean audits CleanCore's Keccak/BLAKE3 specs (`#print axioms Specs.X` ->
     `Airbender.Specs.X`) and keeps importing Clean for its audits of pinned Clean proofs.
@@ -50,6 +53,9 @@ def rewrite(path: Path, text: str) -> tuple[str, list[str]]:
     text = re.sub(rf"\b_root_\.({names})\b", r"Airbender.\1", text)
     if not re.search(r"^\s*(?:namespace|open)\s+Airbender\b", text, re.M):
         text = re.sub(r"(?<![\w.])Expression\.eval\b", "Airbender.Expression.eval", text)
+        text = re.sub(r"(?<![\w.`])(Specs\.(?:BLAKE3|Keccak256)|Utils\.(?:Bits|Rotation)|ByteUtils|MemoryAccessList)\b",
+                      r"Airbender.\1", text)
+        text = re.sub(r"(?<![\w.`'])(add32|not64|rotLeft64|rotRight64|rotRight32)\b(?!')", r"Airbender.\1", text)
     text = re.sub(r"\[FiniteField (\w+)\]", r"[Field \1]", text)
     if path.name == "Axioms.lean" and path.parent.name == "Checks":
         text = re.sub(r"^#print axioms Specs\.", "#print axioms Airbender.Specs.", text, flags=re.M)

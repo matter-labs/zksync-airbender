@@ -1,5 +1,5 @@
 import Slop.KeccakSplit.Reference.CallReference
-import Clean.Utils.Rotation
+import CleanCore.Utils.Rotation
 
 namespace Airbender.Keccak.Split.Call.Proofs
 open Trace

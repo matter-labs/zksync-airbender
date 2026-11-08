@@ -1,5 +1,5 @@
 import Human.Helpers.Properties
-import Clean.Utils.Bits
+import CleanCore.Utils.Bits
 import Mathlib.Tactic.FinCases
 import Mathlib.Tactic.IntervalCases
 

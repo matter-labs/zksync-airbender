@@ -1,5 +1,5 @@
 import Human.Circuits.Blake2Round.Control
-import Clean.Specs.BLAKE3
+import CleanCore.Specs.BLAKE3
 
 namespace Airbender.Blake2Round.Preparation
 open Arithmetic

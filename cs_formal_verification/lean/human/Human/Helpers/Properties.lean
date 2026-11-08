@@ -1,4 +1,4 @@
-import Clean.Circuit.Operations
+import CleanCore.Circuit.Operations
 
 namespace Airbender.Properties
 
@@ -39,7 +39,7 @@ end CircuitModel
 
 /-- Lift a variable assignment into Clean's environment. Static range tables
     define their own rows and do not use external table data. -/
-def environment {F : Type} (w : Nat → F) : _root_.Environment F where
+def environment {F : Type} (w : Nat → F) : Airbender.Environment F where
   get := w
   data := fun _ _ => #[]
 

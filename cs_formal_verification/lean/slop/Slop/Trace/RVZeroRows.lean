@@ -140,7 +140,7 @@ theorem row_zero_write_from_reads {p : Nat} [Fact p.Prime]
         have result := AddSub.Proofs.zero_operands_result hp core selected others
           ⟨leftLimbs.1, leftLimbs.2, rightLimbs.1, rightLimbs.2, immediateLo, immediateHi⟩
         have value := congrArg BitVec.toNat result
-        rw [Word.toBitVec_toNat (AddSub.Proofs.written_limb_bounds core)] at value
+        rw [Word.toBitVec_toNat (word := ⟨(w 33).val, (w 34).val⟩) (AddSub.Proofs.written_limb_bounds core)] at value
         have limbs : (w 33).val = 0 ∧ (w 34).val = 0 := by
           change (w 33).val + limbBase * (w 34).val = 0 at value
           dsimp [limbBase] at value

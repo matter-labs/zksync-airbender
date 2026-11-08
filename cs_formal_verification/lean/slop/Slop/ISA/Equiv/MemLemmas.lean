@@ -49,9 +49,9 @@ theorem match_ram (a : BitVec 32) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (h1 : A
     range_subset, zopz0zIzJ_u, BitVec.toNatInt, zero_extend, Sail.BitVec.zeroExtend, bits_of_physaddr, to_bits,
     Airbender.RAM_START, Airbender.RAM_END, RV.ROM_END, RV.RAM_END, Airbender.Reference.RiscV.Sail.Configuration.ROM_END, Airbender.Reference.RiscV.Sail.Configuration.RAM_END]
   have hw' : (get_slice_int 64 (↑w) 0 : BitVec 64).toNat = w := by
-    simp [get_slice_int, BitVec.toNat_ofInt]
+    simp [get_slice_int, BitVec.toNat_ofInt] <;> omega
   have ha32 := a.isLt
-  have e1 : (BitVec.zeroExtend 64 (BitVec.zeroExtend 34 a)).toNat = a.toNat := by simp
+  have e1 : (BitVec.zeroExtend 64 (BitVec.zeroExtend 34 a)).toNat = a.toNat := by simp <;> omega
   simp [BitVec.toNat_sub, BitVec.toNat_add, hw', e1]
   rw [if_neg (by omega), if_pos (by omega)]
 
@@ -63,9 +63,9 @@ theorem match_rom (a : BitVec 32) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (h2 : a
     range_subset, zopz0zIzJ_u, BitVec.toNatInt, zero_extend, Sail.BitVec.zeroExtend, bits_of_physaddr, to_bits,
     Airbender.RAM_START, Airbender.RAM_END, RV.ROM_END, RV.RAM_END, Airbender.Reference.RiscV.Sail.Configuration.ROM_END, Airbender.Reference.RiscV.Sail.Configuration.RAM_END]
   have hw' : (get_slice_int 64 (↑w) 0 : BitVec 64).toNat = w := by
-    simp [get_slice_int, BitVec.toNat_ofInt]
+    simp [get_slice_int, BitVec.toNat_ofInt] <;> omega
   have ha32 := a.isLt
-  have e1 : (BitVec.zeroExtend 64 (BitVec.zeroExtend 34 a)).toNat = a.toNat := by simp
+  have e1 : (BitVec.zeroExtend 64 (BitVec.zeroExtend 34 a)).toNat = a.toNat := by simp <;> omega
   simp [BitVec.toNat_sub, BitVec.toNat_add, hw', e1]
   constructor <;> omega
 

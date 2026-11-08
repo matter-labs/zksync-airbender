@@ -13,29 +13,29 @@ namespace Airbender
 private def cleanConstantSyntax (n : Int) : CommandElabM (TSyntax `term) := do
   let value ← if n ≥ 0 then `(Int.ofNat $(quote n.toNat))
     else `(Int.negSucc $(quote (-n - 1).toNat))
-  `(_root_.Expression.const (Int.cast $value))
+  `(Airbender.Expression.const (Int.cast $value))
 
 /-- Emit native Clean expressions directly from decoded JSON data. -/
 private partial def cleanExprSyntax (e : Airbender.Expr) : CommandElabM (TSyntax `term) := do
   match e with
   | .Constant c => cleanConstantSyntax (Artifact.signedCoefficient c)
-  | .Var v => `(_root_.Expression.var ⟨$(quote v)⟩)
+  | .Var v => `(Airbender.Expression.var ⟨$(quote v)⟩)
   | .Sum es =>
-    es.foldlM (fun acc e => do `(_root_.Expression.add $acc $(← cleanExprSyntax e)))
+    es.foldlM (fun acc e => do `(Airbender.Expression.add $acc $(← cleanExprSyntax e)))
       (← cleanConstantSyntax 0)
   | .Product es =>
-    es.foldlM (fun acc e => do `(_root_.Expression.mul $acc $(← cleanExprSyntax e)))
+    es.foldlM (fun acc e => do `(Airbender.Expression.mul $acc $(← cleanExprSyntax e)))
       (← cleanConstantSyntax 1)
 
 private def cleanStatementSyntax (s : StructuredStatement) : CommandElabM (TSyntax `term) := do
   match s with
-  | .AssertZero e _ _ => `(_root_.FlatOperation.assert $(← cleanExprSyntax e))
+  | .AssertZero e _ _ => `(Airbender.FlatOperation.assert $(← cleanExprSyntax e))
   | .Define v _ e _ =>
     let rhs ← cleanExprSyntax e
     let negOne ← cleanConstantSyntax (-1)
-    `(_root_.FlatOperation.assert
-      (_root_.Expression.add (_root_.Expression.var ⟨$(quote v)⟩)
-        (_root_.Expression.mul $negOne $rhs)))
+    `(Airbender.FlatOperation.assert
+      (Airbender.Expression.add (Airbender.Expression.var ⟨$(quote v)⟩)
+        (Airbender.Expression.mul $negOne $rhs)))
 
 /-- Emit retained equations and 16-bit range queries as native Clean operations.
     Parsing/emission remains an artifact-binding trust boundary. -/
@@ -65,7 +65,7 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     | .ok ranges => pure ranges
     | .error e => throwError "circuit import failed: {e}"
   let lookups ← ranges.toList.mapM fun e => do
-    `(_root_.FlatOperation.lookup (Airbender.Verification.range16 $(← cleanExprSyntax e)))
+    `(Airbender.FlatOperation.lookup (Airbender.Verification.range16 $(← cleanExprSyntax e)))
   -- Native worker pointer alignment moved to the timestamp range table.
   -- Keep these actual queries in the operation core, before its fixed-table
   -- queries, while retaining the complete timestamp metadata separately.
@@ -81,7 +81,7 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
         | .error e => throwError "circuit import failed: {e}"
       let comparisons := if splitMetadata.isSome then 0 else 2 * c.memory_layout.ram_access_sets.size
       (queries.toList.drop (1 + comparisons)).mapM fun e => do
-        `(_root_.FlatOperation.lookup (Airbender.Trace.timestampLookup $(← cleanExprSyntax e)))
+        `(Airbender.FlatOperation.lookup (Airbender.Trace.timestampLookup $(← cleanExprSyntax e)))
     else pure []
   let memoryFamily := memory.isSome || submemory.isSome || unified.isSome || blake.isSome ||
     blakeRound.isSome || bigint.isSome || keccak.isSome || splitKeccak
@@ -101,7 +101,7 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     queries.toList.mapM fun entries => do
       let entries ← entries.toList.mapM cleanExprSyntax
       let entries := entries.toArray
-      `(_root_.FlatOperation.lookup {
+      `(Airbender.FlatOperation.lookup {
         table := ($rom).toRaw
         entry := #v[$[$entries],*]
       })
@@ -125,7 +125,7 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
           let some cleaned := entries[2]? | throwError "cleanup lookup is missing its result"
           `(Airbender.Verification.jumpCleanup $key $value $(← cleanExprSyntax cleaned))
         | _ => throwError "unsupported comparison table"
-      `(_root_.FlatOperation.lookup $query)
+      `(Airbender.FlatOperation.lookup $query)
     else if shifts.isSome then do
       let queries ← match c.shiftBinopQueries with
         | .ok queries => pure queries
@@ -133,17 +133,17 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
       queries.toList.mapM fun entries => do
         let entries ← entries.toList.mapM cleanExprSyntax
         let entries := entries.toArray
-        `(_root_.FlatOperation.lookup (Airbender.Verification.shiftBinopLookup #v[$[$entries],*]))
+        `(Airbender.FlatOperation.lookup (Airbender.Verification.shiftBinopLookup #v[$[$entries],*]))
     else pure []
   let ops := (ss ++ lookups ++ alignments ++ generic).toArray
   let prime := mkIdent `p
   if memoryFamily then
     elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)]
-      ($rom : _root_.Table (ZMod $prime) (_root_.fields $(quote tableWidth))) :
-      List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
+      ($rom : Airbender.Table (ZMod $prime) (Airbender.fields $(quote tableWidth))) :
+      List (Airbender.FlatOperation (ZMod $prime)) := [$[$ops],*]))
   else
     elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)] :
-      List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
+      List (Airbender.FlatOperation (ZMod $prime)) := [$[$ops],*]))
   let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")
   elabCommand (← `(def $sourceName : String := $(quote source)))
   let namesName := mkIdent (name.getId.appendAfter "VariableNames")
@@ -156,11 +156,11 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
       | .ok queries => pure queries
       | .error e => throwError "timestamp import failed: {e}"
     let operations ← timestamps.toList.mapM fun e => do
-      `(_root_.FlatOperation.lookup (Airbender.Trace.timestampLookup $(← cleanExprSyntax e)))
+      `(Airbender.FlatOperation.lookup (Airbender.Trace.timestampLookup $(← cleanExprSyntax e)))
     let operations := operations.toArray
     let timestampName := mkIdent (name.getId.appendAfter "TimestampLookups")
     elabCommand (← `(def $timestampName {$prime : Nat} [Fact (Nat.Prime $prime)] :
-      List (_root_.FlatOperation (ZMod $prime)) := [$[$operations],*]))
+      List (Airbender.FlatOperation (ZMod $prime)) := [$[$operations],*]))
   if splitMetadata.isSome then
     let groups ← match c.splitTimestampGroups with
       | .ok groups => pure groups

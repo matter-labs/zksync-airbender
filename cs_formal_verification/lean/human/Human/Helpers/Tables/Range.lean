@@ -1,5 +1,5 @@
 import Human.Helpers.Core.Word
-import Clean.Circuit.Operations
+import CleanCore.Circuit.Operations
 import Mathlib.Algebra.Field.ZMod
 
 namespace Airbender.Verification

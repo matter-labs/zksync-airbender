@@ -1,7 +1,7 @@
 import Human.Circuits.KeccakSplit.ColumnParity.SetupArtifact
 import Human.Circuits.KeccakSplit.ThetaRho.SetupArtifact
 import Human.Circuits.KeccakSplit.Chi5.SetupArtifact
-import Clean.Circuit.Operations
+import CleanCore.Circuit.Operations
 import Mathlib.Algebra.Field.ZMod
 
 /- Native fixed tables of the three split Keccak workers, as exported from the Rust
