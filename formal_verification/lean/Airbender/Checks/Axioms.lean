@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.Blake2Worker.SecondAD
+import Airbender.Proofs.ReducedMachine.NativeWorkerSecondAD
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerSecondADTheorems
+import Tests.NativeWorkerSecondAD
+
 import Airbender.Review.Circuits.Blake2Worker.ColumnCB
 import Airbender.Proofs.ReducedMachine.NativeWorkerCB
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerCBTheorems
@@ -7554,3 +7559,34 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerCB.corrupt_b_output_rejected
 #print axioms Airbender.Tests.NativeWorkerCB.inactive_requests_retained
 #print axioms Airbender.Tests.NativeWorkerCB.complete_counted
+
+#print axioms Airbender.NativeWorkerSecondADProofs.rotate8
+#print axioms Airbender.NativeWorkerSecondADProofs.rotated_half
+#print axioms Airbender.NativeWorkerSecondADProofs.carry_bits
+#print axioms Airbender.NativeWorkerSecondADProofs.limb_bounds
+#print axioms Airbender.NativeWorkerSecondADProofs.rotated
+#print axioms Airbender.NativeWorkerSecondADProofs.b_halves
+#print axioms Airbender.NativeWorkerSecondADProofs.mixing
+#print axioms Airbender.NativeWorkerSecondADProofs.carry_bounds
+#print axioms Airbender.NativeWorkerSecondADProofs.addition
+#print axioms Airbender.NativeWorkerSecondADProofs.chained_rotated
+#print axioms Airbender.NativeWorkerSecondADProofs.row
+#print axioms Airbender.NativeWorkerSecondADProofs.counted
+#print axioms Airbender.NativeWorkerSecondAD.native_worker_second_ad
+#print axioms Airbender.NativeWorkerSecondAD.native_counted_worker_second_ad
+#print axioms Airbender.Tests.NativeWorkerSecondAD.wrap_rotation_vector
+#print axioms Airbender.Tests.NativeWorkerSecondAD.rotated_chunk_maximum
+#print axioms Airbender.Tests.NativeWorkerSecondAD.byte_rotation_reference
+#print axioms Airbender.Tests.NativeWorkerSecondAD.full_local_second_ad
+#print axioms Airbender.Tests.NativeWorkerSecondAD.zero_a_sums
+#print axioms Airbender.Tests.NativeWorkerSecondAD.zero_d_outputs
+#print axioms Airbender.Tests.NativeWorkerSecondAD.all_carry_bits
+#print axioms Airbender.Tests.NativeWorkerSecondAD.all_limb_bounds
+#print axioms Airbender.Tests.NativeWorkerSecondAD.all_b_input_bounds
+#print axioms Airbender.Tests.NativeWorkerSecondAD.encoded_carry_bounds
+#print axioms Airbender.Tests.NativeWorkerSecondAD.all_second_a_additions
+#print axioms Airbender.Tests.NativeWorkerSecondAD.all_chained_d_rotations
+#print axioms Airbender.Tests.NativeWorkerSecondAD.weighted_messages_retained
+#print axioms Airbender.Tests.NativeWorkerSecondAD.corrupt_d_output_rejected
+#print axioms Airbender.Tests.NativeWorkerSecondAD.inactive_requests_retained
+#print axioms Airbender.Tests.NativeWorkerSecondAD.complete_counted

@@ -287,3 +287,10 @@ initialization, replay and word bounds stay. Full G/hash and physical schedules 
 exact XOR/rotate12 from FULL native BODY/fixed pool. The SAME counted initialized
 source derives four C wrapping additions, retaining prior A/D, weighted messages,
 replay and word bounds. Second G steps, full hash and physical schedules remain open.
+
+## Second native column A/D steps
+
+[Second A/D steps](../../Trace/Families/ReducedMachine/WorkerSecondADTheorems.lean) derive second A wrapping additions and D XOR/rotate8
+from FULL native BODY and the SAME initialized counted source. Actual B bounds,
+native carry bits and prior weighted messages supply inputs; all prior effects stay.
+Second C/B, diagonal calls, full hash and physical schedules remain open.
