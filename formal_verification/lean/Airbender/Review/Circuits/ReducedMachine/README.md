@@ -917,3 +917,9 @@ reads, keys and request accounting remain open.
 main row and canonical unique clock observations on the EXISTING active main-state
 projection. All physical requests/poles remain; inactive-request clocks and actual
 worker issuance, fulfillment, initialized history and accounting remain open.
+
+## Every physical caller raw-clock domain
+
+[Raw clock domains](CallerClockDomainTheorems.lean) derive exact carry/wrap alternatives on EVERY ordinary
+main row. M31minus1 sentinel cases remain explicit; this is not a19bit or worker
+clock bound. Caller anchoring, initialized worker history and accounting remain open.

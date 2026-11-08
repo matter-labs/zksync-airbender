@@ -1,5 +1,52 @@
 # Trust and review boundaries
 
+## Every physical caller raw-clock domain (8 November 2026)
+
+[Raw caller-clock observations](Airbender/Review/Circuits/ReducedMachine/CallerClockDomain.lean)
+now retain exact canonical wrap alternatives on EVERY ordinary physical main row,
+including execute0 and all request values. Complete native BODY acceptance gives
+the actual Boolean carry and both final clock limbs below524288. Carry zero yields
+callerLow+1=finalLow, or callerLow=M31minus1 with finalLow zero; callerHigh=finalHigh.
+Carry one yields callerLow+1=finalLow+524288, and callerHigh+1=finalHigh or callerHigh
+M31minus1 with finalHigh zero. These follow from actual low+4/high+carry equations;
+no initial-clock range, old-read bound, active row or desired clock premise is used.
+
+[The proof](Airbender/Proofs/ReducedMachine/NativeCallerClockDomain.lean) performs
+canonical successor modulo arithmetic and all endpoint-domain algebra over
+abstract naturals before concrete field/domain instantiation. The resulting raw
+low is below1048575 OR M31minus1; raw high is below524288 OR M31minus1. A low
+sentinel forces high below524288. A high sentinel forces524287<=low<1048575.
+Both sentinel cases remain visible, and cannot occur together. This is a canonical
+field domain, not a19bit bound, natural chronology, active caller or worker clock
+bound. The prior canonical active-state caller-clock result remains separate.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/CallerClockDomainTheorems.lean)
+expose full-BODY consequences and their lift to the SAME actual proof list under
+unchanged complete initialization/main/caller/worker/global acceptance. Existing
+generic sampling retains every ordinary row and positional duplicate, with no
+execute/opcode/request filter, deduplication, OOB proof fallback or huge evaluation.
+All caller auxiliary values, inactiveD, m0 poles, worker ports, refreshes, OLDREAD,
+unmasked writes and public x0 timestamps remain. No request matching, expected
+fulfilled stream, fake Trace.Accepted/history, new Accepted relation or extraction
+from fixed-challenge sums/capacity is introduced. Import fidelity stays separate.
+
+[Sixteen controls](Tests/NativeCallerClockDomain.lean) cover generic successor,
+ordinary/sentinel boundaries and rejections, sentinel failure of19bit bounds,
+old complete active/inactive LOCAL CSR bodies, actual old fixture endpoints,
+COMPLETE EMPTY acceptance and the full conditional source root. Pure sentinel
+domain cases are not accepted native wrap witnesses, global worker/physical
+witnesses, attacks, defects or absence-of-other-enforcement evidence. Four modules
+add23 roots with9 exact parent origins; all5,860 ordered audit roots and exact bytes
+remain addition-only. Native103 pins, dependencies, production/Sail/old proofs/
+acceptance/parser/importer/exporter/native artifacts/fixtures/findings are unchanged.
+No new native adoption, generation, heavy replay, axiom, issue assumption or fix.
+
+Next: actual nonempty-worker progress/rooting, initialized OLDREAD values/addresses,
+raw bounds and STAGE2 keys; actual caller anchoring and issuance/fulfillment/
+converse/accounting. Original CSR/MOP/worker Sail, general public/physical refinement,
+cryptography, completeness and checked native-target/trust-boundary parity remain open.
+
+
 ## Every native request gate and active main caller clocks (8 November 2026)
 
 [The native request observations](Airbender/Review/Circuits/ReducedMachine/CallerRequests.lean)

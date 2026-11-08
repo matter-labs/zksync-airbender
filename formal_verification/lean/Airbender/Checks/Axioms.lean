@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.CallerClockDomain
+import Airbender.Proofs.ReducedMachine.NativeCallerClockDomain
+import Airbender.Review.Circuits.ReducedMachine.CallerClockDomainTheorems
+import Tests.NativeCallerClockDomain
+
 import Airbender.Review.Circuits.ReducedMachine.CallerRequests
 import Airbender.Proofs.ReducedMachine.NativeCallerRequests
 import Airbender.Review.Circuits.ReducedMachine.CallerRequestsTheorems
@@ -6744,3 +6749,27 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeCallerRequests.complete_empty_clocks
 #print axioms Airbender.Tests.NativeCallerRequests.complete_conditional_joint
 #print axioms Airbender.Tests.NativeCallerRequests.actual_raw_offset
+
+#print axioms Airbender.NativeCallerClockDomainProofs.successor
+#print axioms Airbender.NativeCallerClockDomainProofs.endpoint_domain
+#print axioms Airbender.NativeCallerClockDomainProofs.endpoints
+#print axioms Airbender.NativeCallerClockDomainProofs.body
+#print axioms Airbender.NativeCallerClockDomainProofs.all_rows
+#print axioms Airbender.NativeCallerClockDomain.native_caller_clock_domain
+#print axioms Airbender.NativeCallerClockDomain.native_all_caller_clock_domains
+#print axioms Airbender.Tests.NativeCallerClockDomain.successor_normal
+#print axioms Airbender.Tests.NativeCallerClockDomain.successor_wrap
+#print axioms Airbender.Tests.NativeCallerClockDomain.ordinary_domain
+#print axioms Airbender.Tests.NativeCallerClockDomain.upper_ordinary_domain
+#print axioms Airbender.Tests.NativeCallerClockDomain.low_sentinel_domain
+#print axioms Airbender.Tests.NativeCallerClockDomain.high_sentinel_domain
+#print axioms Airbender.Tests.NativeCallerClockDomain.sentinel_is_not19bit
+#print axioms Airbender.Tests.NativeCallerClockDomain.two_sentinels_rejected
+#print axioms Airbender.Tests.NativeCallerClockDomain.high_sentinel_below_window_rejected
+#print axioms Airbender.Tests.NativeCallerClockDomain.ordinary_low_above_window_rejected
+#print axioms Airbender.Tests.NativeCallerClockDomain.ordinary_high_above_window_rejected
+#print axioms Airbender.Tests.NativeCallerClockDomain.complete_active_body
+#print axioms Airbender.Tests.NativeCallerClockDomain.complete_inactive_body
+#print axioms Airbender.Tests.NativeCallerClockDomain.existing_fixture_endpoints
+#print axioms Airbender.Tests.NativeCallerClockDomain.complete_empty_domains
+#print axioms Airbender.Tests.NativeCallerClockDomain.complete_conditional_domains
