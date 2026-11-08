@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.JointReplay
+import Airbender.Proofs.ReducedMachine.NativeJointReplay
+import Airbender.Review.Trace.Families.ReducedMachine.JointReplayTheorems
+import Tests.NativeJointReplay
+
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerGroup
 import Airbender.Proofs.ReducedMachine.NativeWorkerGroup
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerGroupTheorems
@@ -7964,3 +7969,36 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerGroup.main_partial_dependencies_retained
 #print axioms Airbender.Tests.NativeWorkerGroup.inactive_requests_retained
 #print axioms Airbender.Tests.NativeWorkerGroup.complete_counted
+
+#print axioms Airbender.NativeJointReplayProofs.uniform_order
+#print axioms Airbender.NativeJointReplayProofs.flat_order
+#print axioms Airbender.NativeJointReplayProofs.pack
+#print axioms Airbender.NativeJointReplayProofs.batch_exists
+#print axioms Airbender.NativeJointReplayProofs.locate
+#print axioms Airbender.NativeJointReplayProofs.source_flatten
+#print axioms Airbender.NativeJointReplayProofs.common_write
+#print axioms Airbender.NativeJointReplayProofs.worker_member
+#print axioms Airbender.NativeJointReplayProofs.worker_effect
+#print axioms Airbender.NativeJointReplayProofs.from_prior
+#print axioms Airbender.NativeJointReplayProofs.counted
+#print axioms Airbender.NativeJointReplay.native_counted_joint_replay
+#print axioms Airbender.Tests.NativeJointReplay.full_balance
+#print axioms Airbender.Tests.NativeJointReplay.common_write
+#print axioms Airbender.Tests.NativeJointReplay.strict_old_reads
+#print axioms Airbender.Tests.NativeJointReplay.complete_joint
+#print axioms Airbender.Tests.NativeJointReplay.both_workers_in_same_execution
+#print axioms Airbender.Tests.NativeJointReplay.tied_blocks
+#print axioms Airbender.Tests.NativeJointReplay.dependent_worker_not_initially_ready
+#print axioms Airbender.Tests.NativeJointReplay.wrong_terminal_rejected
+#print axioms Airbender.Tests.NativeJointReplay.duplicated_source_changes_balance
+#print axioms Airbender.Tests.NativeJointReplay.actual_group_flatten
+#print axioms Airbender.Tests.NativeJointReplay.main_is_singleton
+#print axioms Airbender.Tests.NativeJointReplay.worker_is_all43
+#print axioms Airbender.Tests.NativeJointReplay.actual_common_both_times
+#print axioms Airbender.Tests.NativeJointReplay.current_snapshot_reference
+#print axioms Airbender.Tests.NativeJointReplay.all_state_and_extended_outputs
+#print axioms Airbender.Tests.NativeJointReplay.exact_post_and_frame
+#print axioms Airbender.Tests.NativeJointReplay.readonly_refresh_retained
+#print axioms Airbender.Tests.NativeJointReplay.main_partial_dependencies_retained
+#print axioms Airbender.Tests.NativeJointReplay.inactive_requests_retained
+#print axioms Airbender.Tests.NativeJointReplay.full_counted_source

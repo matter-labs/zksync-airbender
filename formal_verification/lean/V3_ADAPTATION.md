@@ -1,5 +1,52 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## One joint native MAIN/worker block execution (8 November 2026)
+
+[Joint model](Airbender/Review/Trace/Families/ReducedMachine/JointReplay.lean) and
+[short TRACE root](Airbender/Review/Trace/Families/ReducedMachine/JointReplayTheorems.lean)
+derive ONE initialized exact RAW-token execution containing EVERY actual active
+worker as a contiguous ALL43-port block and EVERY active MAIN port as a singleton.
+All workers share the SAME ordered block list and successive snapshots. The
+constructed source groups flatten EXACTLY to the old actual edge list; label and
+flattened permutations retain every occurrence, including tied-rank other-address
+writes. Both raw timestamp fields/address/value are unchanged.
+
+[Proof](Airbender/Proofs/ReducedMachine/NativeJointReplay.lean) sorts block positions
+by common write proof rank, derives the weakly ordered flattened list and reuses
+the old full-balance replay theorem. Generic replay splitting and early-read
+origin derive ALL block reads together in each current snapshot. Every worker's
+prefix, post-state and suffix occur WITHIN this single execution. Existing generic
+write/frame/uniqueness results and the lossless input/output codec derive all43
+exact post-write tokens, unaffected-address FULL-token membership iff, and all25
+weighted-reference outputs from samples at these shared pre/post states. ALL18
+readonly refreshes remain. MAIN partial dependencies stay; whole MAIN rows are
+not forced into simultaneous blocks.
+
+The SAME old counted source/original public image/log20/OLD LogicalLookups/OLD
+explicit SourceIdentity supply the boundary. No expected group list, state, read,
+value, range, key, clock, result, one-hot mask, round, schedule, history or fulfilled
+ledger is supplied. Prior replay/word bounds/capacity and every ordinary inactive
+pointwise transition remain. [20 controls](Tests/NativeJointReplay.lean) cover a
+small generic interacting MAIN/two-worker execution, tied write ranks, dependent
+reads, wrong terminal and duplicate-occurrence rejection, actual group/ABI bindings,
+all reference outputs, frame/readonly refreshes, MAIN partial order, inactive CSR
+and the full counted source. These are generic/conditional controls, not new
+nonempty native-source-global/whole-worker/physical witnesses, attacks or defects.
+No fabricated global history for old local zero-pointer aliases.
+
+This closes ONE joint logical grouped execution for all actual active workers.
+The noninjective rank is proof order only. Physical round sequencing/standard
+scheduled full hash, inactive caller activity/converse accounting, public MOP
+custom execution, original CSR/MOP/worker Sail, physical cryptography, completeness
+and parity remain open. Public ordinary7-or-CSR excludes MOP; original seven-profile
+Sail excludes CSR/MOP. All43ports/BOTHtimes/OLDREAD/refresh/aliases/AUX-m0poles/
+inactiveD/callerdecoder equations/unmaskedSW/publicx0times stay; caller requests
+never filtered. Old logical boundaries are not fixed-challenge/sum/capacity/
+finite-field/transcript or physical Rust/JSON/FFT-LDE/quotient/verifier refinement.
+No native adaptation/pin/artifact/intake/generation/heavy replay/dependency/v3refresh/
+production/Sail/old acceptance/FINDINGS change. Counts are audit counters, not parity.
+
+
 ## Grouped native worker post-state and frame (8 November 2026)
 
 [Group model](Airbender/Review/Trace/Families/ReducedMachine/WorkerGroup.lean) and

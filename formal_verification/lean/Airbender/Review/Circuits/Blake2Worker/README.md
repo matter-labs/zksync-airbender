@@ -364,3 +364,12 @@ standard scheduled hash and protocol/Sail/accounting boundaries remain open.
 frame and complete residual replay for each active worker, with all25reference
 outputs sampled from pre/post states. One jointly grouped trace for ALL workers,
 physical scheduling and protocol/Sail/accounting boundaries remain open.
+
+## One shared native block execution
+
+[Joint replay](../../Trace/Families/ReducedMachine/JointReplayTheorems.lean) places ALL active worker43-port blocks and MAIN
+port singletons in ONE complete initialized raw-token execution. Each worker
+has exact pre/post samples, all25reference outputs and an unaffected-address
+frame within that same order. Physical round scheduling, standard scheduled
+hash, caller activity/converse accounting and the prior Sail/physical boundaries
+remain open.
