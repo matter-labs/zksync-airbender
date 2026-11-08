@@ -993,3 +993,9 @@ finalization/write-result/full hash and physical schedules remain open.
 assembles all four first-half G vectors on derived routed inputs/weighted messages
 from the SAME counted source. Prior column G/replay effects stay. Second diagonal
 steps, finalization/write-result/full hash and physical schedules remain open.
+
+## Second native diagonal A/D steps
+
+[Second diagonal A/D](WorkerDiagonalADTheorems.lean) derives wrapping A additions
+and chained D XORrotate8 while retaining prior column G/diagonal first-half/replay.
+Second C/B, finalization/write-result/full hash and physical schedules remain open.

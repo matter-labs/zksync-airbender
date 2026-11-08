@@ -1,5 +1,60 @@
 # Circuit formal verification plan
 
+## Second native diagonal A/D steps (8 November 2026)
+
+[Second diagonal A/D observables](Airbender/Review/Circuits/Blake2Worker/DiagonalAD.lean)
+retain actual carry bits, sums, B inputs and D rotation bytes. FULL unchanged352-
+equation/296-query BODY on the actual344384-row fixed pool derives all16 A carry
+bits Boolean, all8 second A-sum and8 D-input limbs u16, and four exact D XOR/rotate8
+results. Actual prior B-output bounds and4/3/9 packing derive all8 B-input bounds
+and identify packed B with first B. Prior first A bounds and canonical ten-weight
+message bounds prove four natural32-bit second A wrapping additions, using odd
+selected messages9+2i. Native carry weights1/2 keep derived bound3; wide message low
+carry stays before32-bit reduction. Zero/multiple round masks remain.
+
+[Short TRACE roots](Airbender/Review/Trace/Families/ReducedMachine/WorkerDiagonalADTheorems.lean)
+chain second D rotations to actual first D results from the SAME counted source,
+original public image/log20, OLD LogicalLookups and OLD explicit SourceIdentity.
+EVERY ordinary worker, including inactive, retains all prior initialized exact
+raw-token replay, word bounds, capacity, dependencies, controls, weighted messages,
+ALLFOUR COLUMN G, routing and first-half diagonal G. No expected read/value/range/
+result, one-hot mask, round, schedule, history or fulfilled ledger is supplied.
+Second diagonal C/B, finalization/native write-result connections, full worker
+round/hash and physical schedules remain open.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeWorkerDiagonalAD.lean)
+binds all three fields of16 actual queries and24 prior B outputs before their
+witness evaluation. Exact original block1 Boolean syntax precedes generic field
+evaluation; native groups retain stride44. Old rotate8, rotated-half packing,
+byte XOR/packing, carry arithmetic, no-wrap equality and wide addition are reused
+unchanged. Explicit widths and Nat coordinates precede finite packing. Full
+existing G-source Git67ee bytes were rechecked and805..921 read before the second
+A/D prototype; full extended-CS hash/call sites were checked earlier in the same
+heartbeat before first C/B. Specific bindings are not general Rust/JSON/compiler/
+physical refinement. No new pin, artifact, importer, generation or heavy replay.
+
+[Seventeen controls](Tests/NativeWorkerDiagonalAD.lean) cover an independently
+computed nonzero second A/D prefix vector, maximal4/3/9 packing, symbolic rotate8,
+old complete LOCAL BODY/zero effects, all carries/bounds/B inputs/encoded carries/
+additions/chained rotations, retained first-half results/weighted messages, corrupt
+D-output rejection, inactive caller requests and full counted acceptance. Pure/
+reference/oldLOCAL/conditional only, not new nonempty source-global/whole-worker/
+physical witnesses, attacks, defects or absent-enforcement evidence. Zero-pointer
+aliases stay visible; no compatible global history is fabricated.
+
+All43 ports, BOTH raw times, aliases, readonly refreshes, OLDREADs, AUX/m0 poles,
+inactiveD, caller equations, unmasked SW and public x0 times stay. Caller requests
+are never filtered. Public ordinary7-or-CSR excludes MOP; original seven-profile
+Sail excludes CSR/MOP. Logical crypto boundaries remain explicit. Four modules
+add29 roots and9 exact parent references, preserving all6,632 prior ordered roots
+and exact audit bytes addition-only. Native107 pins, v3 reference, dependencies,
+production, original Sail, old acceptance and FINDINGS stay. Second diagonal C/B,
+finalization/native write-result connections, full worker round/hash, physical
+schedules, inactive caller activity/converse accounting, MOP public custom execution,
+original CSR/MOP/worker Sail, physical cryptography, completeness and parity remain
+open.
+
+
 ## First-half native diagonal G arithmetic (8 November 2026)
 
 [Diagonal C/B observables](Airbender/Review/Circuits/Blake2Worker/DiagonalCB.lean)
