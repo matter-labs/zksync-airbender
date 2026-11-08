@@ -1,5 +1,57 @@
 # Verification status
 
+## Conditional active native address support (8 November 2026)
+
+[AddressSupport](Airbender/Review/Circuits/ReducedMachine/AddressSupport.lean)
+observes canonical raw native addresses: GPR indicator1/index below32/high0, or
+RAM indicator0 with both limbs below65536. RAM includes observed ROM-shadow
+addresses. Alignment, permissions and independent public-domain coverage remain
+separate. Raw token addresses, values and both timestamp fields stay unchanged.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeAddressSupport.lean)
+first proves a generic path invariant and typed-cell address arithmetic, before
+actual row/seed-domain instantiation. Actual main and worker memory edges
+structurally preserve their address. The checked seed paths and same-source
+initial-cell encoding therefore bind every active read and write address to an
+actual observed seed cell. Lossless native address encoding, proved without
+Boolean or range premises, then identifies each raw field address with that
+canonical cell address. Full RV32 addresses are split as natural limbs before
+field casting, including words above the field modulus.
+
+Every actual active main port and every actual multiplicity1 worker Fin43 port
+has the derived raw address domain. No expected key, address, range, seed-domain
+identity or read value is supplied. This does not derive current read-value
+bounds, alignment, worker RAM-only permissions, no-carry or STAGE2 key identity.
+All duplicates, aliases, readonly refreshes, OLDREAD and unmasked writes remain.
+Inactive worker reads remain in full acceptance and its ledger; this theorem
+makes no new claim that all inactive accesses are rooted or canonical.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/AddressSupportTheorems.lean)
+retain unchanged full initialization/main/caller/worker/global acceptance and
+the existing explicit formal extraction boundary. The counted root retains
+positive main count and every capacity prefix guard on the same observations.
+No new Accepted relation, crypto boundary, scalar-to-permutation inference,
+fake Trace.Accepted, ClockInputs.previous or Sail frame is introduced.
+
+[Sixteen controls](Tests/NativeAddressSupport.lean) cover canonical GPR/RAM
+endpoints and full RV32 above the field, wide limbs, nonboolean space, index32,
+address sentinels, distinct GPR/RAM spaces, actual address preservation, derived
+seed-cell membership, all active worker address limbs, inactive read retention
+and full conditional roots. These are pure or conditional controls, not new
+accepted native BODY, nonempty global/source/worker/physical witnesses, attacks,
+native defects or absent-other-enforcement evidence.
+
+Four modules add25 roots/11 exact parent references; all6,121 prior ordered roots
+and exact audit bytes remain addition-only. Native107 source pins, dependencies,
+v3 reference, prior proofs/acceptance/artifacts and FINDINGS stay unchanged. No
+new native adoption/pin/intake, production/importer/exporter/fixture change,
+generation, heavy replay, issue assumption, fix or project axiom. Initialized
+word values, unique/latest reads, online history, STAGE2 keys, worker reference
+results, request validity/activity, issuance/fulfillment/converse accounting,
+original CSR/MOP/worker Sail, physical cryptography, completeness and parity
+remain open.
+
+
 ## Conditional native memory seed paths (8 November 2026)
 
 [MemoryRoots](Airbender/Review/Circuits/ReducedMachine/MemoryRoots.lean)

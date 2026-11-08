@@ -1724,3 +1724,10 @@ seed paths and initialized worker history remain separately scoped.
 duplicate-preserving logical cancellation and seed paths for active main/worker
 ports. All source acceptance and prior crypto boundaries remain. Unique/latest
 reads, online history, STAGE2 keys and worker Sail execution remain open.
+
+## Conditional active address support
+
+[Actual seed-cell address support](Airbender/Review/Circuits/ReducedMachine/AddressSupportTheorems.lean) derives canonical raw native
+addresses for active main/worker ports from same-source seed paths. All prior
+crypto boundaries and source observations stay. Read-value bounds, alignment,
+STAGE2 key identity, online history and worker Sail remain open.

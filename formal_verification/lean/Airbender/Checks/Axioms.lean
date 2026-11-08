@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.AddressSupport
+import Airbender.Proofs.ReducedMachine.NativeAddressSupport
+import Airbender.Review.Circuits.ReducedMachine.AddressSupportTheorems
+import Tests.NativeAddressSupport
+
 import Airbender.Review.Circuits.ReducedMachine.MemoryRoots
 import Airbender.Proofs.ReducedMachine.NativeMemoryRoots
 import Airbender.Review.Circuits.ReducedMachine.MemoryRootsTheorems
@@ -7065,3 +7070,29 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeMemoryRoots.actual_worker_write_root
 #print axioms Airbender.Tests.NativeMemoryRoots.complete_conditional
 #print axioms Airbender.Tests.NativeMemoryRoots.complete_conditional_counted
+
+#print axioms Airbender.NativeAddressSupportProofs.path_invariant
+#print axioms Airbender.NativeAddressSupportProofs.cell_address
+#print axioms Airbender.NativeAddressSupportProofs.domain_of_code
+#print axioms Airbender.NativeAddressSupportProofs.step_address
+#print axioms Airbender.NativeAddressSupportProofs.main_address
+#print axioms Airbender.NativeAddressSupportProofs.effects
+#print axioms Airbender.NativeAddressSupportProofs.counted
+#print axioms Airbender.NativeAddressSupport.native_memory_address_support
+#print axioms Airbender.NativeAddressSupport.native_counted_memory_address_support
+#print axioms Airbender.Tests.NativeAddressSupport.register_zero
+#print axioms Airbender.Tests.NativeAddressSupport.register_max
+#print axioms Airbender.Tests.NativeAddressSupport.ram_max
+#print axioms Airbender.Tests.NativeAddressSupport.ram_above_field
+#print axioms Airbender.Tests.NativeAddressSupport.wide_limb_rejected
+#print axioms Airbender.Tests.NativeAddressSupport.nonboolean_space_rejected
+#print axioms Airbender.Tests.NativeAddressSupport.register32_rejected
+#print axioms Airbender.Tests.NativeAddressSupport.address_sentinel_rejected
+#print axioms Airbender.Tests.NativeAddressSupport.spaces_distinct
+#print axioms Airbender.Tests.NativeAddressSupport.actual_edge_preserves_address
+#print axioms Airbender.Tests.NativeAddressSupport.actual_read_cell
+#print axioms Airbender.Tests.NativeAddressSupport.actual_write_cell
+#print axioms Airbender.Tests.NativeAddressSupport.actual_worker_address_limbs
+#print axioms Airbender.Tests.NativeAddressSupport.inactive_read_stays
+#print axioms Airbender.Tests.NativeAddressSupport.complete_conditional
+#print axioms Airbender.Tests.NativeAddressSupport.complete_conditional_counted
