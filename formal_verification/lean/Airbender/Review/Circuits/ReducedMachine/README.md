@@ -1008,3 +1008,10 @@ boundaries stay. Physical Rust, word values, history and Sail remain separate.
 port occurrence from actual seeds to teardown, with strict per-path ranks and
 all multiplicities retained. Prior source/crypto boundaries stay. General word
 values, Clean online history, worker execution and accounting remain open.
+
+## Conditional actual write uniqueness
+
+[Actual write and worker-port uniqueness](MemoryWriteUniquenessTheorems.lean) derives unique
+(address, proof-rank) write occurrences and distinct addresses of all43 active
+worker ports from the same complete accepted flow. Raw fields, inactive ports
+and prior extraction remain. Word values, online history and execution stay open.

@@ -1,5 +1,51 @@
 # Trust and review boundaries
 
+## Conditional actual write and worker-port uniqueness (8 November 2026)
+
+[MemoryWriteUniqueness](Airbender/Review/Circuits/ReducedMachine/MemoryWriteUniqueness.lean)
+records a derived consequence of complete actual paths: the list of active
+writes has no repeated (address, proof-rank) pair. Each same-address path has
+unique ranks and accounts for every port occurrence. Generic counted grouping
+and sublist arguments precede native row-domain instantiation; no occurrence
+is discarded. The rank stays the prior noninjective signed proof ordering.
+All raw addresses, values and both raw timestamp fields remain unchanged.
+Different addresses can share a write clock/rank.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeMemoryWriteUniqueness.lean)
+then retains the actual43-port active worker list as a sublist of those writes.
+The unchanged raw-clock theorem gives the same processing clock to every port,
+so their addresses are pairwise distinct. Fin43 address injectivity is derived
+from full accepted flow and unique seeds, without a disjoint-pointer premise.
+Old complete LOCAL fixtures with pointer aliases remain visible; this result
+is conditional on full source acceptance and prior explicit formal extraction,
+not a new physical witness, enforcement proof, fix or native defect.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/MemoryWriteUniquenessTheorems.lean)
+keep unchanged complete acceptance, the prior explicit SourceIdentity boundary,
+all complete-path/key results, positive main count and every capacity prefix
+guard on the same observations. All inactive worker ports/AUX/m0 poles,
+inactiveD, caller/decoder equations, refreshes, OLDREAD, unmasked writes and x0
+times remain; no caller request is filtered. No expected read/value/range/key/
+clock/history/path/schedule/result or disjoint-pointer premise is introduced.
+
+[Sixteen controls](Tests/NativeMemoryWriteUniqueness.lean) check duplicate key
+rejection, distinct addresses sharing a rank, later ranks at the same address,
+counted grouping and chains, duplicate segment retention, actual write uniqueness,
+all43 worker addresses and conditional alias rejection, retained inactive reads
+and zero factors, and complete conditional roots. They are pure or conditional,
+not new accepted native BODY/nonempty source/global/worker/physical witnesses,
+attacks, defects or evidence that other enforcement is absent.
+
+Four modules add25 roots/10 exact parent references. All6,197 previous ordered
+roots and exact audit bytes stay addition-only; native107 pins, dependencies,
+v3 reference, prior proofs/acceptance/artifacts and FINDINGS remain unchanged.
+There is no native adoption/pin/intake, production/importer/exporter/fixture
+change, generation, heavy replay, issue assumption, fix or project axiom.
+General word-value closure, latest reads, Clean online history, worker rounds
+and results, original CSR/MOP/worker Sail, request activity and converse
+accounting, physical cryptography, completeness and parity remain open.
+
+
 ## Conditional complete mixed memory paths (8 November 2026)
 
 [CompleteMemoryPaths](Airbender/Review/Circuits/ReducedMachine/CompleteMemoryPaths.lean)

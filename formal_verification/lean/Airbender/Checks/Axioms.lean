@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.MemoryWriteUniqueness
+import Airbender.Proofs.ReducedMachine.NativeMemoryWriteUniqueness
+import Airbender.Review.Circuits.ReducedMachine.MemoryWriteUniquenessTheorems
+import Tests.NativeMemoryWriteUniqueness
+
 import Airbender.Review.Circuits.ReducedMachine.CompleteMemoryPaths
 import Airbender.Proofs.ReducedMachine.NativeCompleteMemoryPaths
 import Airbender.Review.Circuits.ReducedMachine.CompleteMemoryPathsTheorems
@@ -7159,3 +7164,29 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeCompleteMemoryPaths.zero_factor_retained
 #print axioms Airbender.Tests.NativeCompleteMemoryPaths.complete_conditional
 #print axioms Airbender.Tests.NativeCompleteMemoryPaths.complete_conditional_counted
+
+#print axioms Airbender.NativeMemoryWriteUniquenessProofs.grouped_nodup
+#print axioms Airbender.NativeMemoryWriteUniquenessProofs.unique_writes
+#print axioms Airbender.NativeMemoryWriteUniquenessProofs.flatMap_segment
+#print axioms Airbender.NativeMemoryWriteUniquenessProofs.worker_segment
+#print axioms Airbender.NativeMemoryWriteUniquenessProofs.worker_addresses
+#print axioms Airbender.NativeMemoryWriteUniquenessProofs.effects
+#print axioms Airbender.NativeMemoryWriteUniquenessProofs.counted
+#print axioms Airbender.NativeMemoryWriteUniqueness.native_memory_write_uniqueness
+#print axioms Airbender.NativeMemoryWriteUniqueness.native_counted_memory_write_uniqueness
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.same_address_same_rank_rejected
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.different_addresses_same_rank
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.same_address_later_rank
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.rank_alone_can_repeat
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.grouped_chain
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.complete_chain_writes
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.duplicate_segment_preserved
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.duplicate_segment_rejected
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.actual_writes_unique
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.worker_slot_identity
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.worker_alias_rejected
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.all43_addresses_unique
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.inactive_read_retained
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.zero_factor_retained
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.complete_conditional
+#print axioms Airbender.Tests.NativeMemoryWriteUniqueness.complete_conditional_counted
